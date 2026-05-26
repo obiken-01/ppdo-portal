@@ -1,0 +1,13 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+    "SqlConnectionString": "Server=.\\SQLEXPRESS;Database=PPDOPortalDev;Trusted_Connection=True;TrustServerCertificate=True;",
+    "Jwt__SecretKey": "dev-secret-key-minimum-32-characters-long-replace-in-prod",
+    "Jwt__Issuer": "http://localhost:4280",
+    "Jwt__Audience": "ppdo-portal",
+    "Jwt__AccessTokenExpiryMinutes": "15",
+    "Jwt__RefreshTokenExpiryDays": "7"
+  }
+}
