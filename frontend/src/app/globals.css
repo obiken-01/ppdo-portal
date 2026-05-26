@@ -1,0 +1,91 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/**
+ * PPDO Portal — Global CSS
+ * shadcn/ui CSS variable definitions mapped to PPDO green design system.
+ * All PPDO-specific colour values also available as Tailwind classes
+ * via tailwind.config.ts (green-*, slate-*, danger-*, info-*, amber-*).
+ *
+ * DO NOT hardcode hex values in components — use Tailwind classes only.
+ */
+
+@layer base {
+  :root {
+    /* Page & card surfaces */
+    --background: 210 17% 96%;   /* slate-100 #F1F3F5 */
+    --foreground: 210 9% 23%;    /* slate-800 #343A40 */
+
+    --card: 0 0% 100%;           /* white */
+    --card-foreground: 210 9% 23%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 210 9% 23%;
+
+    /* Primary — PPDO green-600 #1F7A45 */
+    --primary: 147 59% 30%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary — green-50 surface */
+    --secondary: 143 57% 95%;    /* green-50 #F0FAF4 */
+    --secondary-foreground: 147 59% 30%;
+
+    /* Muted — slate-100 */
+    --muted: 210 17% 96%;
+    --muted-foreground: 208 7% 46%; /* slate-600 #6C757D */
+
+    /* Accent — green-50 */
+    --accent: 143 57% 95%;
+    --accent-foreground: 147 59% 30%;
+
+    /* Destructive — danger-500 #E24B4A */
+    --destructive: 1 72% 59%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Borders & inputs — slate-200 */
+    --border: 210 16% 82%;       /* slate-200 #E9ECEF */
+    --input: 210 16% 82%;
+    --ring: 147 59% 30%;         /* green-600 focus ring */
+
+    --radius: 0.5rem;
+  }
+
+  /* Dark mode placeholder — not a priority for PPDO v1 but keeps shadcn happy */
+  .dark {
+    --background: 147 59% 8%;
+    --foreground: 143 57% 95%;
+    --card: 147 59% 10%;
+    --card-foreground: 143 57% 95%;
+    --popover: 147 59% 10%;
+    --popover-foreground: 143 57% 95%;
+    --primary: 147 59% 55%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 147 59% 15%;
+    --secondary-foreground: 143 57% 95%;
+    --muted: 147 59% 15%;
+    --muted-foreground: 208 7% 60%;
+    --accent: 147 59% 15%;
+    --accent-foreground: 143 57% 95%;
+    --destructive: 1 72% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 147 59% 18%;
+    --input: 147 59% 18%;
+    --ring: 147 59% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
