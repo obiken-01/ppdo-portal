@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="PPDO.Application/PPDO.Application.csproj" />
+  <Project Path="PPDO.Domain/PPDO.Domain.csproj" />
+  <Project Path="PPDO.Functions/PPDO.Functions.csproj" />
+  <Project Path="PPDO.Infrastructure/PPDO.Infrastructure.csproj" />
+  <Project Path="PPDO.Tests/PPDO.Tests.csproj" />
+</Solution>
