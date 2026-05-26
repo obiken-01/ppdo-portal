@@ -49,6 +49,7 @@ ppdo-portal/
 | Node.js | installed | Frontend + Azure Functions Core Tools |
 | Azure Functions Core Tools | v4 | Run Functions locally (`func start`) |
 | Azure SWA CLI | latest | Emulate SWA /api proxy locally |
+| Application Insights SDK | auto | Installed via NuGet in PPDO.Functions — no manual setup |
 
 ### Install Azure Functions Core Tools (if not yet installed)
 ```bash
@@ -109,10 +110,13 @@ swa start http://localhost:3000 --api-location http://localhost:7071
     "Jwt__Issuer": "http://localhost:4280",
     "Jwt__Audience": "ppdo-portal",
     "Jwt__AccessTokenExpiryMinutes": "15",
-    "Jwt__RefreshTokenExpiryDays": "7"
+    "Jwt__RefreshTokenExpiryDays": "7",
+    "APPLICATIONINSIGHTS_CONNECTION_STRING": ""
   }
 }
 ```
+
+> Leave `APPLICATIONINSIGHTS_CONNECTION_STRING` blank locally — telemetry won't be sent to Azure but console logging via `ILogger<T>` still works. Add the real value if you want to test monitoring locally.
 
 ### frontend/.env.local
 > ⚠️ This file is git-ignored. Never commit it. Create it manually on each machine.
@@ -203,6 +207,31 @@ Interfaces / contracts first → Implementations → Tests
   if (user.Role is Staff or Observer)
       query = query.Where(x => x.Division == user.Division);
   ```
+
+### Logging
+- Always inject `ILogger<T>` in Application services — never in Function handlers or Domain entities
+- Use structured logging with named parameters — always use `{PropertyName}` format, never string interpolation:
+  ```csharp
+  // ✅ Correct — structured, searchable in Application Insights
+  _logger.LogInformation("PR submitted. PRNo: {PRNo}, Division: {Division}", pr.PRNo, pr.Division);
+
+  // ❌ Wrong — not structured, harder to query
+  _logger.LogInformation($"PR submitted: {pr.PRNo}");
+  ```
+- Log these business events at `LogInformation` level:
+  - PR submitted (PRNo, Division, UserId)
+  - Delivery received (DeliveryRef, PRNo, UserId)
+  - PR status changed (PRNo, OldStatus, NewStatus)
+  - User created (UserId, Role, Division)
+  - User login success (UserId)
+- Log these at `LogWarning` level:
+  - Low stock alert (StockNo, ItemName, RemainingQty)
+  - Login failed — wrong password (Email — never log passwords)
+  - Permission denied — user attempted unauthorized action (UserId, Feature)
+- Log these at `LogError` level:
+  - All caught exceptions in Application services (include `ex` as first parameter)
+  - EF Core save failures
+- **Never log:** passwords, JWT tokens, full request bodies, PII beyond UserId
 
 ### Frontend (Next.js)
 - All pages under `src/app/(portal)/` require authentication — enforced by `layout.tsx` auth guard
@@ -383,6 +412,9 @@ Follow the JWT validation and permission check patterns in CLAUDE.md.
 - ❌ Do not call APIs from Next.js Server Components — use Client Components with Axios via `api.ts`
 - ❌ Do not hardcode division names as strings — always use the `Division` enum
 - ❌ Do not modify EF Core migrations manually after they have been applied
+- ❌ Do not use `Console.WriteLine` for logging — always use `ILogger<T>`
+- ❌ Do not use string interpolation in log messages — always use structured `{PropertyName}` parameters
+- ❌ Do not log passwords, tokens, or sensitive PII — UserId is fine, email is acceptable, never passwords
 
 ---
 

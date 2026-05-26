@@ -2,8 +2,8 @@
 
 ## Project Documentation — .NET 9 + Azure Stack
 
-> **Stack:** ASP.NET Core on Azure Functions · Next.js 14 on Azure Static Web Apps · Azure SQL Database  
-> **Deployment:** Free forever — Azure Static Web Apps (Free) + Azure Functions (Consumption) + Azure SQL (Free offer)  
+> **Stack:** ASP.NET Core on Azure Functions · Next.js 14 on Azure Static Web Apps · Azure SQL Database · Azure Application Insights  
+> **Deployment:** Free forever — Azure Static Web Apps (Free) + Azure Functions (Consumption) + Azure SQL (Free offer) + Application Insights (Free 5GB/mo)  
 > **Last Updated:** 2026-05-26  
 > **Version:** v0.1
 
@@ -53,6 +53,8 @@
 | JWT Bearer Auth | built-in (.NET 9) | Access token + refresh token authentication flow |
 | ClosedXML | 0.104+ | Excel `.xlsx` — export PR Report, generate PR import template, parse uploaded PR files — MIT license, no commercial fee |
 | FluentValidation | 11+ | Request body validation (Create PR, Receive Delivery, user forms) |
+| Application Insights | latest | Monitoring, logging, request tracking, exception capture — Azure native |
+| Microsoft.Extensions.Logging | built-in (.NET 9) | `ILogger<T>` — standard logging abstraction used throughout all layers |
 
 > **ClosedXML vs EPPlus:** ClosedXML is MIT-licensed with no commercial restrictions. EPPlus requires a paid commercial license for production use. ClosedXML handles merged cells, borders, and column widths needed for the PR Report export.
 
@@ -76,6 +78,7 @@
 | Azure Static Web Apps (Free) | Frontend hosting — Next.js, 100 GB bandwidth/mo | ₱0 |
 | Azure Functions (Consumption plan) | Backend API hosting — 1M executions/mo free | ₱0 |
 | Azure SQL Database (Free offer) | Managed SQL Server — 32 GB, 100K vCore-sec/mo free | ₱0 |
+| Azure Application Insights | Monitoring, logging, request tracking — 5 GB/mo free | ₱0 |
 | GitHub | Source control, PR reviews | Free |
 | GitHub Actions | CI/CD — build, test, deploy on push to `main` | Free |
 
@@ -131,6 +134,7 @@ New injectable services and constructors must be delivered before the methods th
 - **DTO Pattern** — request and response models are separate from domain entities; no entity is exposed directly over HTTP
 - **Service Layer** — business logic lives in Application services, not in Function handlers
 - **Options Pattern** — configuration (JWT settings, connection strings) bound via `IOptions<T>`
+- **Structured Logging** — `ILogger<T>` injected into all Application services; Application Insights hooks in automatically via `APPLICATIONINSIGHTS_CONNECTION_STRING`; key business events logged manually (PR submit, delivery receive, low stock alerts, auth failures)
 
 ---
 
@@ -169,6 +173,7 @@ ppdo-portal/
 │   │   └── Services/
 │   │       ├── ExcelService.cs             ← ClosedXML: export PR Report, generate PR template, parse PR import upload
 │   │       └── CurrentUserService.cs
+│   │       └── (logging handled via ILogger<T> injection — no separate service needed)
 │   │
 │   ├── PPDO.Application/               ← Application layer
 │   │   ├── DTOs/
@@ -705,10 +710,13 @@ dotnet ef database update \
     "Jwt__Issuer": "Issuer claim — e.g. https://yourapp.azurestaticapps.net",
     "Jwt__Audience": "Audience claim — e.g. ppdo-portal",
     "Jwt__AccessTokenExpiryMinutes": "15",
-    "Jwt__RefreshTokenExpiryDays": "7"
+    "Jwt__RefreshTokenExpiryDays": "7",
+    "APPLICATIONINSIGHTS_CONNECTION_STRING": "Azure Application Insights connection string — from Azure Portal → Application Insights → Connection String"
   }
 }
 ```
+
+> **Application Insights local dev note:** The connection string is optional for local development. When omitted, telemetry is not sent to Azure — console logging still works via `ILogger<T>`. Add the connection string to `local.settings.json` only if you want to test monitoring locally.
 
 ### Frontend (Next.js — `.env.local` locally, Azure SWA App Settings in prod)
 
@@ -729,6 +737,8 @@ NEXT_PUBLIC_API_BASE_URL=URL of the Azure Functions API (e.g. /api for SWA proxy
 ### Known Configuration Notes
 
 - .NET Functions use double-underscore for nested config: `Jwt__SecretKey` maps to `Jwt:SecretKey` in code
+- Application Insights uses `APPLICATIONINSIGHTS_CONNECTION_STRING` — Azure Functions auto-detects this key and hooks into `ILogger<T>` automatically
+- In Azure Portal, Application Insights is created separately and then linked to the Function App
 - Add `http://localhost:3000` and `http://localhost:4280` to CORS allowed origins in `Program.cs` for local dev; production CORS is handled by Azure SWA automatically
 - `NEXT_PUBLIC_API_BASE_URL` should be `/api` in production (SWA proxy) and `http://localhost:7071/api` in local dev without SWA CLI
 
@@ -858,6 +868,8 @@ These rules must be preserved exactly in the web app:
 - [ ] EF Core initial migration — all domain entities
 - [ ] GitHub Actions CI/CD pipeline (build + test + deploy)
 - [ ] `.env.example` and `local.settings.json.example` committed
+- [ ] Azure Application Insights resource created and linked to Function App
+- [ ] `APPLICATIONINSIGHTS_CONNECTION_STRING` added to Azure App Settings
 
 ### v1.0 — Core Portal + Inventory Monitoring (Planned)
 
@@ -971,6 +983,24 @@ This is your backend API host — replaces IIS for the .NET API.
 
 ---
 
+### Step 3b — Create Azure Application Insights
+
+This is your monitoring and logging dashboard. Azure Functions sends all `ILogger<T>` output here automatically once the connection string is set.
+
+1. In Azure Portal → **Create a resource** → search **Application Insights** → **Create**
+2. Fill in:
+   - **Resource group:** `ppdo-portal-rg`
+   - **Name:** `ppdo-portal-insights`
+   - **Region:** Southeast Asia
+   - **Resource Mode:** Workspace-based
+3. Click **Review + create** → **Create**
+4. After creation, go to the resource → **Overview** → copy the **Connection String** (starts with `InstrumentationKey=...`)
+   - You'll need this in Step 4
+
+> **Cost:** Application Insights free tier includes **5 GB/month** data ingestion. For ~10 PPDO users this will never be exceeded. ₱0/month.
+
+---
+
 ### Step 4 — Set Environment Variables (App Settings)
 
 This replaces `web.config` / `appsettings.json` for sensitive values. Never put secrets in your code files.
@@ -986,6 +1016,7 @@ This replaces `web.config` / `appsettings.json` for sensitive values. Never put 
 | `Jwt__Audience` | `ppdo-portal` |
 | `Jwt__AccessTokenExpiryMinutes` | `15` |
 | `Jwt__RefreshTokenExpiryDays` | `7` |
+| `APPLICATIONINSIGHTS_CONNECTION_STRING` | Connection string from Step 3b — Azure Portal → Application Insights → Overview → Connection String |
 
 3. Click **Apply** → **Confirm**
 
@@ -1076,6 +1107,8 @@ git push origin main
 - [ ] App Settings added (connection string, JWT keys)
 - [ ] Azure Static Web Apps created — linked to GitHub repo
 - [ ] Functions app linked to SWA (`/api` proxy working)
+- [ ] Azure Application Insights resource created
+- [ ] `APPLICATIONINSIGHTS_CONNECTION_STRING` added to Function App Settings
 - [ ] Azure SQL firewall — Azure services allowed
 - [ ] EF Core migrations applied to Azure SQL
 - [ ] GitHub Actions pipeline passing (green)
