@@ -923,22 +923,23 @@ These rules must be preserved exactly in the web app:
 
 > **Implementation sequence** — always follow this order. Backend before frontend. Foundation before features.
 
-#### Phase 1 — Infrastructure & Auth Backend
+#### Phase 1 — Infrastructure, DB Schema & Auth Backend
 *Must be completed first — all other features depend on these.*
 
 | Seq | Issue | Description |
 |---|---|---|
-| 1 | RAL-38 | Infrastructure — generic Repository + feature repositories |
-| 2 | RAL-39 | Infrastructure — JwtMiddleware + CurrentUserService + PermissionService |
-| 3 | RAL-34 | Auth — login, refresh, logout endpoints + AuthService |
-| 4 | RAL-36 | User Management — CRUD endpoints + RBAC enforcement |
+| 1 | RAL-37 | Infrastructure — generic Repository + feature repositories |
+| 2 | RAL-38 | Infrastructure — JwtMiddleware + CurrentUserService + PermissionService |
+| 3 | RAL-34 | Resource Links — domain model + migration + seed ⚠️ DB schema change (adds ResourceLink table + CanManageResourceLinks to PermissionGroup) |
+| 4 | RAL-39 | Auth — login, refresh, logout endpoints + AuthService |
+| 5 | RAL-40 | User Management — CRUD endpoints + RBAC enforcement |
 
 #### Phase 2 — Public Pages (no auth required)
 *Can be worked on in parallel with Phase 1 frontend work.*
 
 | Seq | Issue | Description |
 |---|---|---|
-| 5 | RAL-40 | Landing page — hero, mission/vision, announcements, login CTA (Penpot `01 Landing`) |
+| 6 | RAL-41 | Landing page — hero, mission/vision, announcements, login CTA |
 
 #### Phase 3 — Auth Frontend
 *Depends on Phase 1 backend.*
@@ -957,13 +958,13 @@ These rules must be preserved exactly in the web app:
 | 9 | RAL-42 | Dashboard — page UI with FullCalendar (Penpot `03 Main Dashboard`) |
 
 #### Phase 5 — Resource Links
+*Domain model + DB done in Phase 1 (RAL-34). This phase builds the API and UI on top of it.*
 *Depends on Phase 3 (auth). Low complexity — good to build early for staff value.*
 
 | Seq | Issue | Description |
 |---|---|---|
-| 10 | RAL-43 | Resource Links — domain model + migration + seed data (Google Site links) |
-| 11 | RAL-44 | Resource Links — API endpoints + ResourceLinkService |
-| 12 | RAL-45 | Resource Links — Resources page UI + Dashboard widget |
+| 10 | RAL-35 | Resource Links — API endpoints + ResourceLinkService |
+| 11 | RAL-36 | Resource Links — Resources page UI + Dashboard widget |
 
 #### Phase 6 — Inventory Core Backend
 *Depends on Phase 1. Heaviest backend work.*
@@ -1001,14 +1002,15 @@ These rules must be preserved exactly in the web app:
 
 **Checklist view:**
 
-**Phase 1 — Infrastructure & Auth Backend**
-- [ ] RAL-38 — Infrastructure repositories
-- [ ] RAL-39 — JwtMiddleware, CurrentUserService, PermissionService
-- [ ] RAL-34 — Auth endpoints + AuthService
-- [ ] RAL-36 — User Management endpoints + RBAC
+**Phase 1 — Infrastructure, DB Schema & Auth Backend**
+- [ ] RAL-37 — Infrastructure repositories
+- [ ] RAL-38 — JwtMiddleware, CurrentUserService, PermissionService
+- [ ] RAL-34 — ResourceLink entity + migration + seed data (DB schema change)
+- [ ] RAL-39 — Auth endpoints + AuthService
+- [ ] RAL-40 — User Management endpoints + RBAC
 
 **Phase 2 — Public Pages**
-- [ ] RAL-40 — Public landing page (mission, vision, announcements, logos)
+- [ ] RAL-41 — Public landing page (mission, vision, announcements, logos)
 
 **Phase 3 — Auth Frontend**
 - [ ] RAL-35 — Login page UI
@@ -1019,9 +1021,9 @@ These rules must be preserved exactly in the web app:
 - [ ] RAL-42 — Dashboard page UI
 
 **Phase 5 — Resource Links**
-- [ ] RAL-43 — ResourceLink model + migration + seed
-- [ ] RAL-44 — ResourceLink API endpoints
-- [ ] RAL-45 — Resources page UI + Dashboard widget
+*(RAL-34 domain model + seed already done in Phase 1)*
+- [ ] RAL-35 — ResourceLink API endpoints
+- [ ] RAL-36 — Resources page UI + Dashboard widget
 
 **Phase 6 — Inventory Backend**
 - [ ] RAL-46 — ExcelService (3 methods)
