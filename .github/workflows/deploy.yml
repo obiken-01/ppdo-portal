@@ -44,7 +44,7 @@ jobs:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: upload
           app_location: frontend
-          output_location: ""
+          output_location: out
         env:
           # Baked into the Next.js build at compile time.
           # SWA proxies /api/* to the linked Functions app — no full URL needed.
