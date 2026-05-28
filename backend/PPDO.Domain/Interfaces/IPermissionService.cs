@@ -1,0 +1,44 @@
+using PPDO.Domain.Entities;
+
+namespace PPDO.Domain.Interfaces;
+
+/// <summary>
+/// Resolves effective feature permissions for an authenticated user.
+/// Implemented in PPDO.Application/Services/PermissionService.cs.
+///
+/// Resolution chain (from CLAUDE.md RBAC rules):
+///   SuperAdmin / Admin     → true (always — group/override flags ignored)
+///   Staff / Observer       → override ?? group flag
+///
+/// Exceptions:
+///   CanManageUsers — Observer always returns false regardless of override.
+///   CanAccessProfile — always true for all roles.
+///
+/// Always call these methods for permission checks in Function handlers.
+/// Never inline the resolution logic.
+///
+/// Note: CanManageResourceLinksAsync is added in RAL-34 (requires PermissionGroup
+/// and User schema changes that are part of that issue).
+/// </summary>
+public interface IPermissionService
+{
+    /// <summary>
+    /// True when the user may access the full Inventory module:
+    /// Create PR, Receive Delivery, Items Master, Item Ledger, PR Register, Excel import.
+    /// </summary>
+    Task<bool> CanAccessInventoryAsync(User user, CancellationToken cancellationToken = default);
+
+    /// <summary>True when the user may view and export PR Reports.</summary>
+    Task<bool> CanAccessReportsAsync(User user, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// True when the user may access User Management (add, reset password, deactivate).
+    /// Observer always returns false, regardless of any individual override.
+    /// </summary>
+    Task<bool> CanManageUsersAsync(User user, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Always true — all authenticated roles can view and edit their own profile.
+    /// </summary>
+    Task<bool> CanAccessProfileAsync(User user, CancellationToken cancellationToken = default);
+}

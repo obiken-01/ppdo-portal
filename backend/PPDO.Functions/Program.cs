@@ -1,20 +1,24 @@
-﻿using Microsoft.Azure.Functions.Worker;
+using Microsoft.Azure.Functions.Worker;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using PPDO.Application.Services;
 using PPDO.Application.Settings;
+using PPDO.Domain.Interfaces;
 using PPDO.Infrastructure.Data;
+using PPDO.Infrastructure.Repositories;
+using PPDO.Infrastructure.Services;
 
 var host = new HostBuilder()
     .ConfigureFunctionsWebApplication()
     .ConfigureServices((context, services) =>
     {
-        // â”€â”€ JWT Options (Options pattern) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // -- JWT Options (Options pattern) ------------------------------------
         // Binds Jwt__* keys from local.settings.json / Azure App Settings
         // to JwtSettings. Inject via IOptions<JwtSettings>.
         services.Configure<JwtSettings>(context.Configuration.GetSection("Jwt"));
 
-        // â”€â”€ EF Core (Azure SQL) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // -- EF Core (Azure SQL) ---------------------------------------------
         string connectionString = context.Configuration["SqlConnectionString"]
             ?? throw new InvalidOperationException(
                 "SqlConnectionString is not configured. " +
@@ -23,26 +27,31 @@ var host = new HostBuilder()
         services.AddDbContext<AppDbContext>(options =>
             options.UseSqlServer(connectionString));
 
-        // â”€â”€ Application Insights â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // -- Application Insights --------------------------------------------
         // Hooks into ILogger<T> automatically when APPLICATIONINSIGHTS_CONNECTION_STRING
         // is present. Leave the key blank in local.settings.json to skip telemetry locally.
         services.AddApplicationInsightsTelemetryWorkerService();
         services.ConfigureFunctionsApplicationInsights();
 
-        // â”€â”€ Infrastructure services â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        // Uncomment each line as the implementation is added (RAL-33+):
-        // services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
-        // services.AddScoped<IExcelService, ExcelService>();
-        // services.AddScoped<ICurrentUserService, CurrentUserService>();
+        // -- ASP.NET Core helpers --------------------------------------------
+        // Required by JwtMiddleware and CurrentUserService to read/write HttpContext.
+        services.AddHttpContextAccessor();
 
-        // â”€â”€ Application services â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        // Uncomment each line as the implementation is added (RAL-33+):
-        // services.AddScoped<IAuthService, AuthService>();
-        // services.AddScoped<IPurchaseRequestService, PurchaseRequestService>();
-        // services.AddScoped<IDeliveryService, DeliveryService>();
-        // services.AddScoped<IItemService, ItemService>();
-        // services.AddScoped<IUserService, UserService>();
-        // services.AddScoped<IPermissionService, PermissionService>();
+        // -- Infrastructure services (RAL-37 / RAL-38) -----------------------
+        services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
+        services.AddScoped<IPurchaseRequestRepository, PurchaseRequestRepository>();
+        services.AddScoped<IItemMasterRepository, ItemMasterRepository>();
+        services.AddScoped<IJwtMiddleware, JwtMiddleware>();
+        services.AddScoped<ICurrentUserService, CurrentUserService>();
+        // services.AddScoped<IExcelService, ExcelService>();           // RAL-46
+
+        // -- Application services (RAL-38+) ----------------------------------
+        services.AddScoped<IPermissionService, PermissionService>();
+        // services.AddScoped<IAuthService, AuthService>();              // RAL-39
+        // services.AddScoped<IUserService, UserService>();              // RAL-40
+        // services.AddScoped<IItemService, ItemService>();              // RAL-47
+        // services.AddScoped<IPurchaseRequestService, PurchaseRequestService>();  // RAL-48
+        // services.AddScoped<IDeliveryService, DeliveryService>();      // RAL-49
     })
     .Build();
 
