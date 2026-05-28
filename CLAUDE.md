@@ -198,6 +198,14 @@ Interfaces / contracts first → Implementations → Tests
   SuperAdmin or Admin role → return true (always)
   Staff/Observer → return OverrideCanAccessInventory ?? Group.CanAccessInventory
   ```
+- `PermissionService.CanManageResourceLinksAsync(user)` logic:
+  ```
+  SuperAdmin or Admin role → return true (always, full manage: add/edit/delete)
+  Staff → return OverrideCanManageResourceLinks ?? Group.CanManageResourceLinks
+           (if true: add only — cannot edit or delete)
+  Observer → return false (never)
+  ```
+- Resource link ownership rule: Staff can only add. Edit and delete always require Admin/SuperAdmin regardless of flag.
 - Division scope — always apply for Staff and Observer:
   ```csharp
   // Write actions
@@ -343,20 +351,77 @@ These rules come from the Google Sheets v0.4 prototype and must be preserved exa
 | Long text fields | Program, Project, Activity — `textarea`, min-height 44px, max-height 88px, resize vertical |
 | Timezone | Always use Manila time (UTC+8) for generated refs and timestamps |
 
+
+---
+
+## Landing Page Content
+
+The public landing page (`src/app/(public)/page.tsx`) must include:
+
+**Logo header** — three logos in a row:
+- Left: `public/images/Ph_seal_occidental_mindoro.png` — Province of Occidental Mindoro Official Seal
+- Center: PPDO name + title text
+- Right: `public/images/Bagong_Pilipinas_logo.png` — Bagong Pilipinas ⚠️ use transparent PNG version
+- PPDO logo: `public/images/ppdo-logo-placeholder.png` — generate a simple green circle placeholder (replaced when official logo is provided)
+
+**Mission section** — styled card with logo header, title "MISSION" centered:
+> "To be an effective and efficient department in helping the LGU attain its goals and thrust and provide better quality service."
+> Highlight "effective" and "efficient" in `text-red-600` — matching the official slides.
+
+**Vision section** — styled card with logo header, title "VISION" centered:
+> "Occidental Mindoro PPDO is an organization handled by competent, people-oriented, committed, proactive and innovative staff equipped with updated capabilities to generate and utilize a vast array of information and technology to propose to stakeholders appropriate socio-economic, physical, cultural and environmental development frameworks and able to work harmoniously with other local and national government functionaries towards the provincial government's mandate."
+> Highlight "PPDO" in `text-red-600` — matching the official slides.
+
+**Announcements section** — public posts from Admin. Show empty state card when none exist.
+
+**Login CTA** — prominent green button directing visitors to `/login`.
+
+---
+
+## Resource Links — Default Seed Data
+
+Seed these on first migration alongside PermissionGroups. URLs are placeholders — update with real Google Drive URLs before first deploy.
+
+| Category (Order) | Title | Link Order |
+|---|---|---|
+| Supply & Property Management (1) | Inventory of Supplies/Property & Equipment | 1 |
+| Supply & Property Management (1) | PPDO Transactions Tracker | 2 |
+| Supply & Property Management (1) | PPMP | 3 |
+| Supply & Property Management (1) | PR Monitoring | 4 |
+| Records Management (2) | Administrative Division Files | 1 |
+| Records Management (2) | Calendar of Activities | 2 |
+| Records Management (2) | PDC Files | 3 |
+| Records Management (2) | Planning Division Files | 4 |
+| Records Management (2) | RMED Files | 5 |
+| Records Management (2) | Incoming Communications | 6 |
+| Human Resource Management (3) | Personnel Profile | 1 |
+| Human Resource Management (3) | 201 Files | 2 |
+| Human Resource Management (3) | IPCR/DPCR | 3 |
+| Human Resource Management (3) | Leave | 4 |
+| Human Resource Management (3) | Training/s Attended | 5 |
+| Financial Management (4) | WFP | 1 |
+| Financial Management (4) | AIP | 2 |
+| Financial Management (4) | SAIP | 3 |
+| Financial Management (4) | GAD WFP | 4 |
+| Financial Management (4) | 20% Development Funds Report | 5 |
+| General (5) | E-Directory | 1 |
+| General (5) | Organizational Chart | 2 |
+| General (5) | Citizen's Charter | 3 |
+
 ---
 
 ## PermissionGroup Seed Data
 
 Run this seed on first migration. Do not change group names — they are referenced in user creation logic.
 
-| Name | Division | CanAccessInventory | CanAccessReports | CanManageUsers |
-|---|---|---|---|---|
-| Admin Division Staff | Admin | true | true | false |
-| Planning Staff | Planning | false | true | false |
-| RM Staff | RM | false | true | false |
-| MIS Staff | MIS | false | true | false |
-| SPD Staff | SPD | false | true | false |
-| Observer Default | — (null) | false | false | false |
+| Name | Division | CanAccessInventory | CanAccessReports | CanManageUsers | CanManageResourceLinks |
+|---|---|---|---|---|---|
+| Admin Division Staff | Admin | true | true | false | true |
+| Planning Staff | Planning | false | true | false | false |
+| RM Staff | RM | false | true | false | false |
+| MIS Staff | MIS | false | true | false | false |
+| SPD Staff | SPD | false | true | false | false |
+| Observer Default | — (null) | false | false | false | false |
 
 ---
 

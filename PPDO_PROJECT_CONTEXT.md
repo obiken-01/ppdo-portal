@@ -343,4 +343,61 @@ storage.rtxt = (F, name, content, rx, ry, size, color, bold) => {
 
 ---
 
-*This file was auto-generated on 2026-05-25. Update after major sessions.*
+## 15. Portal Replaces PPDO Google Site
+
+The PPDO portal replaces the existing internal Google Site at:
+`https://sites.google.com/view/ppdo-missionvision/home`
+
+The Google Site currently serves as a central hub of links to Google Sheets, Drive folders, and Docs organized into 4 sections. The portal's **Resource Links** feature replicates this structure natively, with Admin-manageable links.
+
+### Google Site Sections → Portal Resource Links Categories
+
+| Google Site Section | Portal Category | Status |
+|---|---|---|
+| Supply & Property Management | Supply & Property Management | 🔄 Replaced by Resource Links (+ native Inventory feature) |
+| Records Management | Records Management | 🔄 Replaced by Resource Links |
+| Human Resource Management | Human Resource Management | 🔄 Replaced by Resource Links (+ Employee Profiles v1.1) |
+| Financial Management | Financial Management | 🔄 Replaced by Resource Links |
+| Admin Portal / General | General | 🔄 Replaced by Resource Links |
+
+### Migration Strategy (Strangler Fig Pattern)
+1. **v1.0** — Resource Links page provides the same links as the Google Site. Staff switch to the portal.
+2. **v1.1** — Employee Profiles replaces the HR section's Personnel Profile and 201 Files links.
+3. **Future** — Native features replace individual Google Sheet links one by one as they're built.
+
+---
+
+## 16. Landing Page Content Spec
+
+### Image Assets
+| File | Description | Location |
+|---|---|---|
+| `Ph_seal_occidental_mindoro.png` | Province of Occidental Mindoro Official Seal | `frontend/public/images/` |
+| `Bagong_Pilipinas_logo.png` | Bagong Pilipinas logo — use transparent PNG version | `frontend/public/images/` |
+| `ppdo-logo-placeholder.png` | Placeholder until official PPDO logo is provided | `frontend/public/images/` (generated) |
+
+### Mission (exact text)
+> "To be an effective and efficient department in helping the LGU attain its goals and thrust and provide better quality service."
+
+**Styling:** "effective" and "efficient" in red (`text-red-600`) — matching official PPDO slides.
+
+### Vision (exact text)
+> "Occidental Mindoro PPDO is an organization handled by competent, people-oriented, committed, proactive and innovative staff equipped with updated capabilities to generate and utilize a vast array of information and technology to propose to stakeholders appropriate socio-economic, physical, cultural and environmental development frameworks and able to work harmoniously with other local and national government functionaries towards the provincial government's mandate."
+
+**Styling:** "PPDO" in red (`text-red-600`) — matching official PPDO slides.
+
+### Card Header Layout (Mission & Vision)
+Each card has a 3-column header matching the official slides:
+- Left: `Ph_seal_occidental_mindoro.png` (48×48px)
+- Center: Title text ("MISSION" or "VISION") — bold, underlined, large
+- Right: `Bagong_Pilipinas_logo.png` (48×48px)
+
+### Landing Page Sections (top to bottom)
+1. **Hero** — PPDO name, tagline, login CTA button
+2. **Mission & Vision** — two side-by-side cards (stacked on mobile)
+3. **Announcements** — public posts from Admin, empty state if none
+4. **Login CTA** — secondary CTA at bottom
+
+---
+
+*This file was auto-generated on 2026-05-25. Updated 2026-05-28 — added Google Site replacement notes, landing page content spec.*
