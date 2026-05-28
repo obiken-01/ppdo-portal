@@ -148,6 +148,7 @@ ppdo-portal/
 │   │   ├── Entities/
 │   │   │   ├── User.cs
 │   │   │   ├── PermissionGroup.cs
+│   │   │   ├── ResourceLink.cs
 │   │   │   ├── PurchaseRequest.cs
 │   │   │   ├── PRItem.cs
 │   │   │   ├── Delivery.cs
@@ -188,6 +189,7 @@ ppdo-portal/
 │   │   │   ├── DeliveryService.cs
 │   │   │   ├── ItemService.cs
 │   │   │   ├── UserService.cs
+│   │   │   ├── ResourceLinkService.cs
 │   │   │   └── PermissionService.cs        ← resolves effective permissions (group + override logic)
 │   │   └── Validators/                 ← FluentValidation — one per request DTO
 │   │
@@ -198,6 +200,7 @@ ppdo-portal/
 │   │   ├── ItemFunctions.cs
 │   │   ├── UserFunctions.cs
 │   │   ├── PermissionGroupFunctions.cs
+│   │   ├── ResourceLinkFunctions.cs
 │   │   ├── ReportFunctions.cs
 │   │   ├── Program.cs                  ← DI registration, EF Core, JWT config
 │   │   └── host.json
@@ -207,6 +210,11 @@ ppdo-portal/
 │       └── Functions/
 │
 ├── frontend/                           ← Next.js project
+│   ├── public/
+│   │   └── images/
+│   │       ├── Ph_seal_occidental_mindoro.png   ← Province of Occidental Mindoro seal
+│   │       ├── Bagong_Pilipinas_logo.png         ← Bagong Pilipinas logo (use transparent PNG)
+│   │       └── ppdo-logo-placeholder.png         ← placeholder until official PPDO logo provided
 │   ├── src/
 │   │   ├── app/                        ← Next.js App Router pages
 │   │   │   ├── (public)/
@@ -292,9 +300,10 @@ UpdatedAt                       DateTime
 
 // Individual permission overrides — null = inherit from group, true/false = explicit override
 // SuperAdmin and Admin ignore all flags — always have full access
-OverrideCanAccessInventory      bool?       null = use group value
-OverrideCanAccessReports        bool?       null = use group value
-OverrideCanManageUsers          bool?       null = use group value
+OverrideCanAccessInventory          bool?       null = use group value
+OverrideCanAccessReports            bool?       null = use group value
+OverrideCanManageUsers              bool?       null = use group value
+OverrideCanManageResourceLinks      bool?       null = use group value
 // CanAccessProfile is always true for all roles — no override needed
 ```
 
@@ -417,6 +426,34 @@ IssuedBy        string
 Remarks         string?
 ```
 
+### ResourceLink
+
+> An external link (Google Sheet, Drive folder, Doc, or any URL) organized by category. Replaces the PPDO Google Site as the central hub for office resources.
+
+```
+Id                  Guid        PK
+Title               string      required — e.g. "PR Monitoring"
+Url                 string      required — Google Sheet / Drive / Doc / any URL
+Category            string      required — e.g. "Supply & Property Management"
+CategoryOrder       int         controls category display order in UI
+LinkOrder           int         controls link order within its category
+IsActive            bool        default true — soft delete
+IsAdminCreated      bool        true = created by Admin/SuperAdmin, false = submitted by Staff
+SubmittedById       Guid        FK → User — tracks who added the link
+CreatedAt           DateTime
+UpdatedAt           DateTime
+```
+
+> **Permission rules:**
+> - SuperAdmin / Admin — full access: add, edit, delete, reorder any link
+> - Staff (CanManageResourceLinks = true) — can add links only; cannot edit or delete
+> - Staff (CanManageResourceLinks = false) — view only
+> - Observer — view only
+>
+> **Future:** `IsApproved` flag for Admin approval of Staff-submitted links (deferred post-v1.0)
+
+---
+
 ### PermissionGroup
 
 > A named set of feature permissions assigned to a division. Users inherit these flags; individual overrides can be set per user.
@@ -428,9 +465,10 @@ Division                Division    the division this group is the default for
 Description             string?     optional notes
 
 // Feature permission flags — what members of this group can do by default
-CanAccessInventory      bool        default false
-CanAccessReports        bool        default false
-CanManageUsers          bool        default false
+CanAccessInventory          bool        default false
+CanAccessReports            bool        default false
+CanManageUsers              bool        default false
+CanManageResourceLinks      bool        default false — Admin division Staff default true
 // CanAccessProfile is always true — not stored here
 
 CreatedAt               DateTime
@@ -440,14 +478,14 @@ UpdatedAt               DateTime
 
 > **Default groups seeded on first deploy:**
 >
-> | Group | Division | CanAccessInventory | CanAccessReports | CanManageUsers |
-> |---|---|---|---|---|
-> | Admin Division Staff | Admin | true | true | false |
-> | Planning Staff | Planning | false | true | false |
-> | RM Staff | RM | false | true | false |
-> | MIS Staff | MIS | false | true | false |
-> | SPD Staff | SPD | false | true | false |
-> | Observer (default) | — | false | false | false |
+> | Group | Division | CanAccessInventory | CanAccessReports | CanManageUsers | CanManageResourceLinks |
+> |---|---|---|---|---|---|
+> | Admin Division Staff | Admin | true | true | false | true |
+> | Planning Staff | Planning | false | true | false | false |
+> | RM Staff | RM | false | true | false | false |
+> | MIS Staff | MIS | false | true | false | false |
+> | SPD Staff | SPD | false | true | false | false |
+> | Observer Default | — (null) | false | false | false | false |
 
 ---
 
@@ -487,6 +525,15 @@ Division:    Admin (0), Planning (1), RM (2), MIS (3), SPD (4)
 | PUT | /api/users/{id}/reset-password | ✅ | Reset user password to default |
 | PUT | /api/users/{id}/permissions | ✅ | Set individual permission overrides for a user (SuperAdmin only) |
 | DELETE | /api/users/{id} | ✅ | Soft delete — sets IsActive = false |
+
+### Resource Links — /api/resource-links
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| GET | /api/resource-links | ✅ | Get all active links grouped by category — all roles |
+| POST | /api/resource-links | ✅ | Create new link — Admin or Staff with CanManageResourceLinks |
+| PUT | /api/resource-links/{id} | ✅ Admin | Update link title, URL, category, order |
+| DELETE | /api/resource-links/{id} | ✅ Admin | Soft delete — sets IsActive = false |
 
 ### Permission Groups — /api/permission-groups *(Super Admin only)*
 
@@ -576,6 +623,7 @@ JWT with Refresh Token Rotation — short-lived access tokens (15 min) and longe
 | `CanAccessInventory` | Full Inventory Management — Create PR, Receive Delivery, Items Master, Item Ledger, PR Register, Excel import | ✅ always | ✅ always | group + override | group + override (read-only) |
 | `CanAccessReports` | PR Report — view + export | ✅ always | ✅ always | group + override | group + override (read-only) |
 | `CanManageUsers` | User Management — add, reset password, deactivate | ✅ always | ✅ always | override only | ❌ never |
+| `CanManageResourceLinks` | Resource Links — add (Staff), full manage (Admin) | ✅ always | ✅ always | group + override | ❌ never |
 | `CanAccessProfile` | Own profile — view + edit | ✅ always | ✅ always | ✅ always | ✅ always |
 
 #### Division Scope Rule
@@ -873,31 +921,127 @@ These rules must be preserved exactly in the web app:
 
 ### v1.0 — Core Portal + Inventory Monitoring (Planned)
 
-**Auth & Users**
-- [ ] Login page (matches Penpot `02 Login` frame)
-- [ ] JWT auth flow (login, refresh, logout)
-- [ ] User management page — Admin creates users, resets passwords
-- [ ] RBAC middleware — role + division scope enforced on all endpoints
+> **Implementation sequence** — always follow this order. Backend before frontend. Foundation before features.
 
-**Main Dashboard**
-- [ ] Main Dashboard page with FullCalendar (matches Penpot `03 Main Dashboard` frame)
-- [ ] Public PH holidays loaded into calendar
-- [ ] Office events — any logged-in user can create; visible to all
+#### Phase 1 — Infrastructure & Auth Backend
+*Must be completed first — all other features depend on these.*
 
-**Inventory — Core Workflow**
-- [ ] Inventory Dashboard — grouped stat cards + PR status table (Penpot `04 Inventory Dashboard`)
-- [ ] Items Master Data — catalog view + edit (Penpot `06 Items Master`)
-- [ ] Create PR — Section 1 (18 fields) + Section 2 (items grid with autocomplete) (Penpot `04b Create PR`)
-- [ ] Receive Delivery — delivery form + PR selector + split delivery (Penpot `05 Receive Delivery`)
-- [ ] PR Report — 3-section view + Excel export via ClosedXML (Penpot `07 PR Report`)
-- [ ] Excel PR Import — download blank PR template (.xlsx), upload populated file to create one or multiple PRs in bulk
-- [ ] `ExcelService` — 3 methods: `ExportPRReport()`, `GeneratePRTemplate()`, `ParsePRImport()`
-- [ ] Item Ledger — running stock totals per item across all PRs
-- [ ] PR Register — full PR list with status filters
-- [ ] Inventory alerts — low/out-of-stock flags on dashboard
+| Seq | Issue | Description |
+|---|---|---|
+| 1 | RAL-38 | Infrastructure — generic Repository + feature repositories |
+| 2 | RAL-39 | Infrastructure — JwtMiddleware + CurrentUserService + PermissionService |
+| 3 | RAL-34 | Auth — login, refresh, logout endpoints + AuthService |
+| 4 | RAL-36 | User Management — CRUD endpoints + RBAC enforcement |
 
-**Landing Page**
-- [ ] Public landing page (matches Penpot `01 Landing` frame)
+#### Phase 2 — Public Pages (no auth required)
+*Can be worked on in parallel with Phase 1 frontend work.*
+
+| Seq | Issue | Description |
+|---|---|---|
+| 5 | RAL-40 | Landing page — hero, mission/vision, announcements, login CTA (Penpot `01 Landing`) |
+
+#### Phase 3 — Auth Frontend
+*Depends on Phase 1 backend.*
+
+| Seq | Issue | Description |
+|---|---|---|
+| 6 | RAL-35 | Login page UI (Penpot `02 Login`) |
+| 7 | RAL-37 | User Management page UI + PermissionGroup assignment |
+
+#### Phase 4 — Main Dashboard
+*Depends on Phase 3 (auth must work first).*
+
+| Seq | Issue | Description |
+|---|---|---|
+| 8 | RAL-41 | Dashboard — calendar endpoint + office events + PH holidays |
+| 9 | RAL-42 | Dashboard — page UI with FullCalendar (Penpot `03 Main Dashboard`) |
+
+#### Phase 5 — Resource Links
+*Depends on Phase 3 (auth). Low complexity — good to build early for staff value.*
+
+| Seq | Issue | Description |
+|---|---|---|
+| 10 | RAL-43 | Resource Links — domain model + migration + seed data (Google Site links) |
+| 11 | RAL-44 | Resource Links — API endpoints + ResourceLinkService |
+| 12 | RAL-45 | Resource Links — Resources page UI + Dashboard widget |
+
+#### Phase 6 — Inventory Core Backend
+*Depends on Phase 1. Heaviest backend work.*
+
+| Seq | Issue | Description |
+|---|---|---|
+| 13 | RAL-46 | ExcelService — GeneratePRTemplate, ExportPRReport, ParsePRImport (ClosedXML) |
+| 14 | RAL-47 | Items Master — ItemService + CRUD endpoints |
+| 15 | RAL-48 | Create PR — PurchaseRequestService + submit + PR number generation |
+| 16 | RAL-49 | Receive Delivery — DeliveryService + submit + PR status transitions |
+| 17 | RAL-50 | PR Report — report endpoint + Excel export |
+| 18 | RAL-51 | Inventory Dashboard — stats + alerts endpoints |
+| 19 | RAL-52 | Item Ledger + PR Register — read-only query endpoints |
+
+#### Phase 7 — Inventory Core Frontend
+*Depends on Phase 6 backend.*
+
+| Seq | Issue | Description |
+|---|---|---|
+| 20 | RAL-53 | Items Master page UI (Penpot `06 Items Master`) |
+| 21 | RAL-54 | Create PR page UI + Excel import upload (Penpot `04b Create PR`) |
+| 22 | RAL-55 | Receive Delivery page UI (Penpot `05 Receive Delivery`) |
+| 23 | RAL-56 | PR Report page UI + export trigger (Penpot `07 PR Report`) |
+| 24 | RAL-57 | Inventory Dashboard page UI (Penpot `04 Inventory Dashboard`) |
+| 25 | RAL-58 | Item Ledger + PR Register page UIs |
+
+#### Phase 8 — Polish & Logging
+*Final pass before v1.0 is complete.*
+
+| Seq | Issue | Description |
+|---|---|---|
+| 26 | RAL-33 | Add structured ILogger<T> business event logging to all services |
+
+---
+
+**Checklist view:**
+
+**Phase 1 — Infrastructure & Auth Backend**
+- [ ] RAL-38 — Infrastructure repositories
+- [ ] RAL-39 — JwtMiddleware, CurrentUserService, PermissionService
+- [ ] RAL-34 — Auth endpoints + AuthService
+- [ ] RAL-36 — User Management endpoints + RBAC
+
+**Phase 2 — Public Pages**
+- [ ] RAL-40 — Public landing page (mission, vision, announcements, logos)
+
+**Phase 3 — Auth Frontend**
+- [ ] RAL-35 — Login page UI
+- [ ] RAL-37 — User Management page UI
+
+**Phase 4 — Main Dashboard**
+- [ ] RAL-41 — Dashboard backend (calendar, events, holidays)
+- [ ] RAL-42 — Dashboard page UI
+
+**Phase 5 — Resource Links**
+- [ ] RAL-43 — ResourceLink model + migration + seed
+- [ ] RAL-44 — ResourceLink API endpoints
+- [ ] RAL-45 — Resources page UI + Dashboard widget
+
+**Phase 6 — Inventory Backend**
+- [ ] RAL-46 — ExcelService (3 methods)
+- [ ] RAL-47 — Items Master backend
+- [ ] RAL-48 — Create PR backend
+- [ ] RAL-49 — Receive Delivery backend
+- [ ] RAL-50 — PR Report backend + export
+- [ ] RAL-51 — Inventory Dashboard backend
+- [ ] RAL-52 — Item Ledger + PR Register backend
+
+**Phase 7 — Inventory Frontend**
+- [ ] RAL-53 — Items Master UI
+- [ ] RAL-54 — Create PR UI + Excel import
+- [ ] RAL-55 — Receive Delivery UI
+- [ ] RAL-56 — PR Report UI
+- [ ] RAL-57 — Inventory Dashboard UI
+- [ ] RAL-58 — Item Ledger + PR Register UIs
+
+**Phase 8 — Polish & Logging**
+- [ ] RAL-33 — Business event logging
 
 ### v1.1 — Employee Profiles (Planned)
 
