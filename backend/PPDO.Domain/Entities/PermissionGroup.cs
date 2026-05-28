@@ -47,6 +47,15 @@ public sealed class PermissionGroup
     /// <summary>Grants access to User Management — add, reset password, deactivate.</summary>
     public bool CanManageUsers { get; set; }
 
+    /// <summary>
+    /// Grants access to Resource Links management.
+    /// Staff with this flag set to true may add links only (cannot edit or delete).
+    /// Admin and SuperAdmin always have full manage access regardless of this flag.
+    /// Observer never has this access regardless of this flag.
+    /// Added in RAL-34.
+    /// </summary>
+    public bool CanManageResourceLinks { get; set; }
+
     // CanAccessProfile is always true for all users — not stored here.
 
     // ── Audit ─────────────────────────────────────────────────────────────────
