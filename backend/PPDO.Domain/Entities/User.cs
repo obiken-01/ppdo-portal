@@ -70,6 +70,13 @@ public sealed class User
     /// </summary>
     public bool? OverrideCanManageUsers { get; set; }
 
+    /// <summary>
+    /// Override for Resource Links management access. Null = use Group.CanManageResourceLinks.
+    /// Ignored for SuperAdmin and Admin. Observer can never have this set to true.
+    /// Added in RAL-34.
+    /// </summary>
+    public bool? OverrideCanManageResourceLinks { get; set; }
+
     // ── Audit ─────────────────────────────────────────────────────────────────
 
     public DateTime CreatedAt { get; set; }

@@ -46,6 +46,10 @@ public sealed class PermissionGroupConfiguration : IEntityTypeConfiguration<Perm
             .IsRequired()
             .HasDefaultValue(false);
 
+        builder.Property(g => g.CanManageResourceLinks)
+            .IsRequired()
+            .HasDefaultValue(false);
+
         // Unique index: group names are referenced by name in user creation logic.
         builder.HasIndex(g => g.Name)
             .IsUnique()
@@ -57,69 +61,75 @@ public sealed class PermissionGroupConfiguration : IEntityTypeConfiguration<Perm
         builder.HasData(
             new PermissionGroup
             {
-                Id                 = AdminDivisionStaffId,
-                Name               = "Admin Division Staff",
-                Division           = Division.Admin,
-                CanAccessInventory = true,
-                CanAccessReports   = true,
-                CanManageUsers     = false,
-                CreatedAt          = SeedDate,
-                UpdatedAt          = SeedDate,
+                Id                    = AdminDivisionStaffId,
+                Name                  = "Admin Division Staff",
+                Division              = Division.Admin,
+                CanAccessInventory    = true,
+                CanAccessReports      = true,
+                CanManageUsers        = false,
+                CanManageResourceLinks = true,   // Admin division staff manage all resource links
+                CreatedAt             = SeedDate,
+                UpdatedAt             = SeedDate,
             },
             new PermissionGroup
             {
-                Id                 = PlanningStaffId,
-                Name               = "Planning Staff",
-                Division           = Division.Planning,
-                CanAccessInventory = false,
-                CanAccessReports   = true,
-                CanManageUsers     = false,
-                CreatedAt          = SeedDate,
-                UpdatedAt          = SeedDate,
+                Id                    = PlanningStaffId,
+                Name                  = "Planning Staff",
+                Division              = Division.Planning,
+                CanAccessInventory    = false,
+                CanAccessReports      = true,
+                CanManageUsers        = false,
+                CanManageResourceLinks = false,
+                CreatedAt             = SeedDate,
+                UpdatedAt             = SeedDate,
             },
             new PermissionGroup
             {
-                Id                 = RmStaffId,
-                Name               = "RM Staff",
-                Division           = Division.RM,
-                CanAccessInventory = false,
-                CanAccessReports   = true,
-                CanManageUsers     = false,
-                CreatedAt          = SeedDate,
-                UpdatedAt          = SeedDate,
+                Id                    = RmStaffId,
+                Name                  = "RM Staff",
+                Division              = Division.RM,
+                CanAccessInventory    = false,
+                CanAccessReports      = true,
+                CanManageUsers        = false,
+                CanManageResourceLinks = false,
+                CreatedAt             = SeedDate,
+                UpdatedAt             = SeedDate,
             },
             new PermissionGroup
             {
-                Id                 = MisStaffId,
-                Name               = "MIS Staff",
-                Division           = Division.MIS,
-                CanAccessInventory = false,
-                CanAccessReports   = true,
-                CanManageUsers     = false,
-                CreatedAt          = SeedDate,
-                UpdatedAt          = SeedDate,
+                Id                    = MisStaffId,
+                Name                  = "MIS Staff",
+                Division              = Division.MIS,
+                CanAccessInventory    = false,
+                CanAccessReports      = true,
+                CanManageUsers        = false,
+                CanManageResourceLinks = false,
+                CreatedAt             = SeedDate,
+                UpdatedAt             = SeedDate,
             },
             new PermissionGroup
             {
-                Id                 = SpdStaffId,
-                Name               = "SPD Staff",
-                Division           = Division.SPD,
-                CanAccessInventory = false,
-                CanAccessReports   = true,
-                CanManageUsers     = false,
-                CreatedAt          = SeedDate,
-                UpdatedAt          = SeedDate,
+                Id                    = SpdStaffId,
+                Name                  = "SPD Staff",
+                Division              = Division.SPD,
+                CanAccessInventory    = false,
+                CanAccessReports      = true,
+                CanManageUsers        = false,
+                CanManageResourceLinks = false,
+                CreatedAt             = SeedDate,
+                UpdatedAt             = SeedDate,
             },
             new PermissionGroup
             {
-                Id                 = ObserverDefaultId,
-                Name               = "Observer Default",
-                Division           = null,   // spans no specific division
-                CanAccessInventory = false,
-                CanAccessReports   = false,
-                CanManageUsers     = false,
-                CreatedAt          = SeedDate,
-                UpdatedAt          = SeedDate,
+                Id                    = ObserverDefaultId,
+                Name                  = "Observer Default",
+                Division              = null,   // spans no specific division
+                CanAccessInventory    = false,
+                CanAccessReports      = false,
+                CanManageUsers        = false,
+                CanManageResourceLinks = false,
+                CreatedAt             = SeedDate,
+                UpdatedAt             = SeedDate,
             }
         );
     }
