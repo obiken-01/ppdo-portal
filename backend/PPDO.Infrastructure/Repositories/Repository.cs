@@ -54,4 +54,8 @@ public class Repository<T> : IRepository<T> where T : class
     /// <inheritdoc />
     public IQueryable<T> Query()
         => _context.Set<T>().AsQueryable();
+
+    /// <inheritdoc />
+    public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+        => _context.SaveChangesAsync(cancellationToken);
 }

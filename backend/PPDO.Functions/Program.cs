@@ -37,17 +37,18 @@ var host = new HostBuilder()
         // Required by JwtMiddleware and CurrentUserService to read/write HttpContext.
         services.AddHttpContextAccessor();
 
-        // -- Infrastructure services (RAL-37 / RAL-38) -----------------------
+        // -- Infrastructure services (RAL-37 / RAL-38 / RAL-39) ----------------
         services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
+        services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IPurchaseRequestRepository, PurchaseRequestRepository>();
         services.AddScoped<IItemMasterRepository, ItemMasterRepository>();
         services.AddScoped<IJwtMiddleware, JwtMiddleware>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         // services.AddScoped<IExcelService, ExcelService>();           // RAL-46
 
-        // -- Application services (RAL-38+) ----------------------------------
+        // -- Application services (RAL-38 / RAL-39) --------------------------
         services.AddScoped<IPermissionService, PermissionService>();
-        // services.AddScoped<IAuthService, AuthService>();              // RAL-39
+        services.AddScoped<IAuthService, AuthService>();
         // services.AddScoped<IUserService, UserService>();              // RAL-40
         // services.AddScoped<IItemService, ItemService>();              // RAL-47
         // services.AddScoped<IPurchaseRequestService, PurchaseRequestService>();  // RAL-48

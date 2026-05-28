@@ -12,13 +12,11 @@ namespace PPDO.Domain.Interfaces;
 ///
 /// Exceptions:
 ///   CanManageUsers — Observer always returns false regardless of override.
+///   CanManageResourceLinks — Observer always returns false regardless of override.
 ///   CanAccessProfile — always true for all roles.
 ///
 /// Always call these methods for permission checks in Function handlers.
 /// Never inline the resolution logic.
-///
-/// Note: CanManageResourceLinksAsync is added in RAL-34 (requires PermissionGroup
-/// and User schema changes that are part of that issue).
 /// </summary>
 public interface IPermissionService
 {
@@ -41,4 +39,12 @@ public interface IPermissionService
     /// Always true — all authenticated roles can view and edit their own profile.
     /// </summary>
     Task<bool> CanAccessProfileAsync(User user, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// True when the user may manage Resource Links.
+    /// SuperAdmin/Admin: always true (full manage — add, edit, delete).
+    /// Staff: group + override flag (add only — edit/delete require Admin regardless).
+    /// Observer: always false, regardless of any override.
+    /// </summary>
+    Task<bool> CanManageResourceLinksAsync(User user, CancellationToken cancellationToken = default);
 }

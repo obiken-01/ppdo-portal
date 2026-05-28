@@ -77,6 +77,22 @@ public sealed class User
     /// </summary>
     public bool? OverrideCanManageResourceLinks { get; set; }
 
+    // ── Refresh token (JWT rotation) ─────────────────────────────────────────
+
+    /// <summary>
+    /// Opaque random token used to obtain a new access token when the current one expires.
+    /// Stored as a BCrypt-free base64 string (64 random bytes, 88-char base64).
+    /// Null when the user is not logged in or has logged out.
+    /// Cleared on logout and rotated on every successful refresh.
+    /// </summary>
+    public string? RefreshToken { get; set; }
+
+    /// <summary>
+    /// UTC expiry for the refresh token. Null when RefreshToken is null.
+    /// Server rejects refresh attempts past this timestamp.
+    /// </summary>
+    public DateTime? RefreshTokenExpiry { get; set; }
+
     // ── Audit ─────────────────────────────────────────────────────────────────
 
     public DateTime CreatedAt { get; set; }

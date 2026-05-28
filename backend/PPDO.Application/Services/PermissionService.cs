@@ -12,8 +12,8 @@ namespace PPDO.Application.Services;
 ///   SuperAdmin / Admin → true (always — group and override flags are ignored)
 ///   Staff / Observer   → OverrideXxx ?? Group.Xxx  (null override = inherit group flag)
 ///
-/// Exception — <see cref="CanManageUsersAsync"/>:
-///   Observer is always false regardless of override (docs: "Observer — No user management, ever").
+/// Exception — <see cref="CanManageUsersAsync"/> and <see cref="CanManageResourceLinksAsync"/>:
+///   Observer is always false regardless of override.
 ///
 /// <see cref="CanAccessProfileAsync"/> is always true for all roles.
 ///
@@ -21,9 +21,6 @@ namespace PPDO.Application.Services;
 /// <see cref="User.Group"/> navigation included before calling any method (JwtMiddleware
 /// guarantees this). If Group is null (SuperAdmin / Admin edge case), all flag lookups
 /// fall back to false, which is harmless because SuperAdmin/Admin short-circuit first.
-///
-/// Note: CanManageResourceLinksAsync is added in RAL-34, which also adds the
-/// CanManageResourceLinks flag to PermissionGroup and User.
 /// </summary>
 public sealed class PermissionService : IPermissionService
 {
@@ -73,5 +70,23 @@ public sealed class PermissionService : IPermissionService
         // All authenticated roles — SuperAdmin, Admin, Staff, Observer — can always
         // view and edit their own profile. No override needed.
         return Task.FromResult(true);
+    }
+
+    /// <inheritdoc />
+    public Task<bool> CanManageResourceLinksAsync(User user, CancellationToken cancellationToken = default)
+    {
+        if (user.Role is UserRole.SuperAdmin or UserRole.Admin)
+            return Task.FromResult(true);
+
+        // Observer can never manage resource links — no override can grant this.
+        if (user.Role is UserRole.Observer)
+            return Task.FromResult(false);
+
+        // Staff: individual override takes precedence; falls back to group flag.
+        // Note: even when this returns true, Staff may only add links — edit/delete
+        // always require Admin or SuperAdmin (enforced in the Resource Links handler).
+        bool groupFlag = user.Group?.CanManageResourceLinks ?? false;
+        bool effective = user.OverrideCanManageResourceLinks ?? groupFlag;
+        return Task.FromResult(effective);
     }
 }
