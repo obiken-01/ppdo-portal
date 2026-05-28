@@ -1,4 +1,4 @@
-using Microsoft.Azure.Functions.Worker;
+﻿using Microsoft.Azure.Functions.Worker;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -9,12 +9,12 @@ var host = new HostBuilder()
     .ConfigureFunctionsWebApplication()
     .ConfigureServices((context, services) =>
     {
-        // ── JWT Options (Options pattern) ─────────────────────────────────────
+        // â”€â”€ JWT Options (Options pattern) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // Binds Jwt__* keys from local.settings.json / Azure App Settings
         // to JwtSettings. Inject via IOptions<JwtSettings>.
         services.Configure<JwtSettings>(context.Configuration.GetSection("Jwt"));
 
-        // ── EF Core (Azure SQL) ───────────────────────────────────────────────
+        // â”€â”€ EF Core (Azure SQL) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         string connectionString = context.Configuration["SqlConnectionString"]
             ?? throw new InvalidOperationException(
                 "SqlConnectionString is not configured. " +
@@ -23,20 +23,20 @@ var host = new HostBuilder()
         services.AddDbContext<AppDbContext>(options =>
             options.UseSqlServer(connectionString));
 
-        // ── Application Insights ──────────────────────────────────────────────
+        // â”€â”€ Application Insights â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // Hooks into ILogger<T> automatically when APPLICATIONINSIGHTS_CONNECTION_STRING
         // is present. Leave the key blank in local.settings.json to skip telemetry locally.
         services.AddApplicationInsightsTelemetryWorkerService();
         services.ConfigureFunctionsApplicationInsights();
 
-        // ── Infrastructure services ───────────────────────────────────────────
-        // Uncomment each line as the implementation is added (RAL-30+):
+        // â”€â”€ Infrastructure services â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // Uncomment each line as the implementation is added (RAL-33+):
         // services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
         // services.AddScoped<IExcelService, ExcelService>();
         // services.AddScoped<ICurrentUserService, CurrentUserService>();
 
-        // ── Application services ──────────────────────────────────────────────
-        // Uncomment each line as the implementation is added (RAL-30+):
+        // â”€â”€ Application services â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // Uncomment each line as the implementation is added (RAL-33+):
         // services.AddScoped<IAuthService, AuthService>();
         // services.AddScoped<IPurchaseRequestService, PurchaseRequestService>();
         // services.AddScoped<IDeliveryService, DeliveryService>();
