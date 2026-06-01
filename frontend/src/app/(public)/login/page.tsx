@@ -67,7 +67,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex font-sans">
       {/* ── Left panel — branding (desktop only) ────────────────────────── */}
-      <aside className="hidden md:flex md:w-5/12 bg-green-700 flex-col items-center justify-center px-10 py-14 text-white">
+      <aside className="hidden md:flex md:w-1/4 bg-green-700 flex-col items-center justify-center px-8 py-14 text-white">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/images/ppdo-logo-placeholder.png"
