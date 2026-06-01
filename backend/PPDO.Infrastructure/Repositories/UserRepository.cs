@@ -33,4 +33,20 @@ public sealed class UserRepository : Repository<User>, IUserRepository
             .FirstOrDefaultAsync(
                 u => u.RefreshToken == refreshToken,
                 cancellationToken);
+
+    /// <inheritdoc />
+    public Task<User?> GetByIdWithGroupAsync(
+        Guid id,
+        CancellationToken cancellationToken = default)
+        => _context.Users
+            .Include(u => u.Group)
+            .FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<User>> GetAllWithGroupAsync(
+        CancellationToken cancellationToken = default)
+        => await _context.Users
+            .Include(u => u.Group)
+            .OrderBy(u => u.FullName)
+            .ToListAsync(cancellationToken);
 }

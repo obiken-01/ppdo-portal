@@ -25,4 +25,18 @@ public interface IUserRepository : IRepository<User>
     /// The caller is responsible for checking <see cref="User.RefreshTokenExpiry"/>.
     /// </summary>
     Task<User?> FindByRefreshTokenAsync(string refreshToken, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns the user with the given <paramref name="id"/>, with
+    /// <see cref="User.Group"/> included. Returns null if not found.
+    /// Use this instead of the base <see cref="IRepository{T}.GetByIdAsync"/> whenever
+    /// group navigation is needed (e.g. permission resolution, user detail responses).
+    /// </summary>
+    Task<User?> GetByIdWithGroupAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns all users ordered by <see cref="User.FullName"/>, with
+    /// <see cref="User.Group"/> included.
+    /// </summary>
+    Task<IReadOnlyList<User>> GetAllWithGroupAsync(CancellationToken cancellationToken = default);
 }
