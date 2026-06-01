@@ -130,6 +130,9 @@ export default function LoginPage() {
             <span className="font-bold text-green-700 text-lg">PPDO Portal</span>
           </div>
 
+          {/* ── Login card ──────────────────────────────────────────────── */}
+          <div className="bg-green-50 border border-green-200 rounded-xl px-8 py-8 shadow-sm">
+
           <h2 className="text-2xl font-bold text-slate-800 mb-1">
             Welcome back
           </h2>
@@ -224,6 +227,8 @@ export default function LoginPage() {
               ← Back to home
             </Link>
           </div>
+
+          </div>{/* end login card */}
         </div>
       </main>
     </div>
