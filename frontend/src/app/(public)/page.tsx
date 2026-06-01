@@ -32,8 +32,8 @@ export default function LandingPage() {
               <img
                 src="/images/Ph_seal_occidental_mindoro.png"
                 alt="Province of Occidental Mindoro Official Seal"
-                width={72}
-                height={72}
+                width={90}
+                height={90}
                 className="object-contain flex-shrink-0"
               />
               <div className="flex flex-col items-center text-center gap-1 flex-1 min-w-0">
@@ -56,8 +56,8 @@ export default function LandingPage() {
               <img
                 src="/images/Bagong_Pilipinas_logo.png"
                 alt="Bagong Pilipinas"
-                width={72}
-                height={72}
+                width={90}
+                height={90}
                 className="object-contain flex-shrink-0"
               />
             </div>
