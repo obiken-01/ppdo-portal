@@ -1,11 +1,11 @@
 /**
- * Public landing page — RAL-41 (updated)
+ * Public landing page — RAL-41
  *
  * Layout:
- *   Navbar → Hero (green, Mission/Vision carousel) → Announcements (white) → Footer
+ *   Navbar → Hero (green, fills viewport, Mission/Vision carousel)
+ *          → Announcements (white) → Footer
  */
 
-import Link from "next/link";
 import Navbar from "@/components/landing/Navbar";
 import Footer from "@/components/landing/Footer";
 import MissionVisionCarousel from "@/components/landing/MissionVisionCarousel";
@@ -16,11 +16,18 @@ export default function LandingPage() {
       <Navbar />
 
       <main className="flex-1">
-        {/* ── Hero — green section with carousel ──────────────────────────── */}
-        <section className="bg-green-700 text-white">
-          <div className="max-w-6xl mx-auto px-6 py-10">
+        {/* ── Hero — fills exactly the remaining viewport height ───────────
+            h-[calc(100vh-3.5rem)] accounts for the 56px (3.5rem) navbar.
+            flex-col + justify-between distributes:
+              top: logo header  |  middle: carousel  |  bottom: scroll cue  */}
+        <section
+          className="bg-green-700 text-white flex flex-col"
+          style={{ minHeight: "calc(100vh - 3.5rem)" }}
+        >
+          <div className="max-w-6xl mx-auto px-6 py-8 w-full flex flex-col flex-1 justify-between gap-6">
+
             {/* 3-column logo header */}
-            <div className="flex items-center justify-between gap-4 mb-8">
+            <div className="flex items-center justify-between gap-4">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/images/Ph_seal_occidental_mindoro.png"
@@ -34,8 +41,8 @@ export default function LandingPage() {
                 <img
                   src="/images/ppdo-logo-placeholder.png"
                   alt="PPDO Logo"
-                  width={60}
-                  height={60}
+                  width={56}
+                  height={56}
                   className="object-contain"
                 />
                 <h1 className="text-lg md:text-xl font-bold leading-tight">
@@ -55,30 +62,39 @@ export default function LandingPage() {
               />
             </div>
 
-            {/* Mission / Vision carousel */}
-            <MissionVisionCarousel />
-
-            {/* CTA below carousel */}
-            <div className="text-center mt-8">
-              <Link
-                href="/login"
-                className="inline-block bg-white text-green-700 font-bold px-8 py-2.5 rounded-lg
-                           hover:bg-green-50 transition-colors focus:outline-none focus:ring-2 focus:ring-white"
-              >
-                Sign In to Portal
-              </Link>
+            {/* Carousel — vertically centered in the remaining space */}
+            <div className="flex-1 flex items-center justify-center">
+              <MissionVisionCarousel />
             </div>
+
+            {/* Scroll-down indicator */}
+            <div className="flex flex-col items-center pb-2 text-white/60">
+              <span className="text-xs uppercase tracking-widest mb-1">Scroll</span>
+              <svg
+                className="w-6 h-6 animate-bounce"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 9l-7 7-7-7"
+                />
+              </svg>
+            </div>
+
           </div>
         </section>
 
-        {/* ── Announcements — white section ────────────────────────────────── */}
-        <section className="bg-slate-100 flex-1">
+        {/* ── Announcements — white section ────────────────────────────── */}
+        <section id="announcements" className="bg-slate-100">
           <div className="max-w-6xl mx-auto px-6 py-10">
             <h2 className="text-xl font-bold text-slate-800 mb-5">
               Announcements
             </h2>
-
-            {/* Empty state */}
             <div className="bg-white rounded-lg border border-slate-200 px-8 py-14 text-center">
               <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center">
                 <MegaphoneIcon />
