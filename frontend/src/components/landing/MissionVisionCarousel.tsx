@@ -11,7 +11,7 @@ const SLIDES: Slide[] = [
   {
     title: "MISSION",
     body: (
-      <p className="text-slate-700 leading-relaxed text-center italic">
+      <p className="text-slate-700 leading-relaxed text-center italic text-base">
         &ldquo;To be an{" "}
         <span className="text-red-600 not-italic font-semibold">effective</span>{" "}
         and{" "}
@@ -24,7 +24,7 @@ const SLIDES: Slide[] = [
   {
     title: "VISION",
     body: (
-      <p className="text-slate-700 leading-relaxed text-center italic">
+      <p className="text-slate-700 leading-relaxed text-center italic text-base">
         &ldquo;Occidental Mindoro{" "}
         <span className="text-red-600 not-italic font-semibold">PPDO</span> is
         an organization handled by competent, people-oriented, committed,
@@ -39,70 +39,80 @@ const SLIDES: Slide[] = [
   },
 ];
 
-const AUTO_ADVANCE_MS = 6000;
+/** Auto-advance interval in ms. */
+const AUTO_ADVANCE_MS = 5000;
 
 /**
  * Carousel that cycles between the MISSION and VISION cards.
- * Each card keeps the official 3-column header layout from the PPDO slide deck:
- *   Province seal | bold underlined title | Bagong Pilipinas logo
  *
- * Auto-advances every 6 s; pauses on user interaction.
+ * - No logos inside the cards — clean title-only header.
+ * - Both cards share the same fixed height so the layout never shifts.
+ * - Smooth fade transition between slides.
+ * - Auto-advances every 5 s; pauses when the user manually navigates and
+ *   resumes after 10 s of inactivity.
  */
 export default function MissionVisionCarousel() {
-  const [active, setActive] = useState(0);
-  const [paused, setPaused] = useState(false);
+  const [active, setActive]     = useState(0);
+  const [visible, setVisible]   = useState(true); // controls fade
+  const [paused, setPaused]     = useState(false);
+
+  // Fade-transition helper: fade out → swap → fade in
+  const goTo = useCallback((index: number) => {
+    setVisible(false);
+    setTimeout(() => {
+      setActive(index);
+      setVisible(true);
+    }, 250); // matches CSS transition duration below
+  }, []);
 
   const next = useCallback(() => {
-    setActive((i) => (i + 1) % SLIDES.length);
-  }, []);
+    goTo((active + 1) % SLIDES.length);
+  }, [active, goTo]);
 
   const prev = useCallback(() => {
-    setActive((i) => (i - 1 + SLIDES.length) % SLIDES.length);
-  }, []);
+    goTo((active - 1 + SLIDES.length) % SLIDES.length);
+  }, [active, goTo]);
 
-  // Auto-advance unless the user has interacted
+  // Auto-advance
   useEffect(() => {
     if (paused) return;
     const id = setInterval(next, AUTO_ADVANCE_MS);
     return () => clearInterval(id);
   }, [paused, next]);
 
+  // Resume auto-advance 10 s after the user last interacted
   const handleManual = (action: () => void) => {
     setPaused(true);
     action();
+    const resume = setTimeout(() => setPaused(false), 10_000);
+    return () => clearTimeout(resume);
   };
 
   const slide = SLIDES[active];
 
   return (
     <div className="relative max-w-2xl mx-auto select-none">
-      {/* Card */}
-      <div className="bg-white rounded-xl shadow-md overflow-hidden">
-        {/* 3-column card header — Province seal | title | Bagong Pilipinas */}
-        <div className="grid grid-cols-3 items-center gap-2 px-5 py-3 border-b border-slate-200">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/images/Ph_seal_occidental_mindoro.png"
-            alt="Province Seal"
-            width={48}
-            height={48}
-            className="object-contain justify-self-start"
-          />
-          <h2 className="text-center font-bold text-xl underline underline-offset-2 text-slate-800 tracking-wider">
+      {/* Card — fixed height so both slides occupy the same space */}
+      <div
+        className="bg-white rounded-xl shadow-md overflow-hidden"
+        style={{ minHeight: "220px" }}
+      >
+        {/* Header — title only, no logos */}
+        <div className="px-8 pt-6 pb-3 text-center border-b border-slate-200">
+          <h2 className="font-bold text-2xl underline underline-offset-4 text-slate-800 tracking-widest">
             {slide.title}
           </h2>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/images/Bagong_Pilipinas_logo.png"
-            alt="Bagong Pilipinas"
-            width={48}
-            height={48}
-            className="object-contain justify-self-end"
-          />
         </div>
 
-        {/* Card body */}
-        <div className="px-8 py-7 min-h-[140px] flex items-center justify-center">
+        {/* Body with fade transition */}
+        <div
+          className="px-10 py-8 flex items-center justify-center"
+          style={{
+            opacity: visible ? 1 : 0,
+            transition: "opacity 250ms ease-in-out",
+            minHeight: "154px", // (220px total) - (66px header) = fixed body height
+          }}
+        >
           {slide.body}
         </div>
       </div>
@@ -111,9 +121,9 @@ export default function MissionVisionCarousel() {
       <button
         onClick={() => handleManual(prev)}
         aria-label="Previous slide"
-        className="absolute -left-5 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/90
-                   shadow flex items-center justify-center text-green-700 hover:bg-white
-                   transition-colors focus:outline-none focus:ring-2 focus:ring-white"
+        className="absolute -left-5 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full
+                   bg-white/90 shadow flex items-center justify-center text-green-700
+                   hover:bg-white transition-colors focus:outline-none focus:ring-2 focus:ring-white"
       >
         <ChevronLeft />
       </button>
@@ -122,25 +132,27 @@ export default function MissionVisionCarousel() {
       <button
         onClick={() => handleManual(next)}
         aria-label="Next slide"
-        className="absolute -right-5 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/90
-                   shadow flex items-center justify-center text-green-700 hover:bg-white
-                   transition-colors focus:outline-none focus:ring-2 focus:ring-white"
+        className="absolute -right-5 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full
+                   bg-white/90 shadow flex items-center justify-center text-green-700
+                   hover:bg-white transition-colors focus:outline-none focus:ring-2 focus:ring-white"
       >
         <ChevronRight />
       </button>
 
-      {/* Dot indicators */}
-      <div className="flex justify-center gap-2 mt-4">
-        {SLIDES.map((_, i) => (
-          <button
-            key={i}
-            onClick={() => handleManual(() => setActive(i))}
-            aria-label={`Go to slide ${i + 1}`}
-            className={`w-2.5 h-2.5 rounded-full transition-colors focus:outline-none ${
-              i === active ? "bg-white" : "bg-white/40 hover:bg-white/70"
-            }`}
-          />
-        ))}
+      {/* Dot indicators + progress bar */}
+      <div className="flex flex-col items-center gap-2 mt-4">
+        <div className="flex gap-2">
+          {SLIDES.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => handleManual(() => goTo(i))}
+              aria-label={`Go to slide ${i + 1}`}
+              className={`h-2 rounded-full transition-all duration-300 focus:outline-none ${
+                i === active ? "w-6 bg-white" : "w-2.5 bg-white/40 hover:bg-white/70"
+              }`}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );
