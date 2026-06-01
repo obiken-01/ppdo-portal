@@ -46,10 +46,10 @@ var host = new HostBuilder()
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         // services.AddScoped<IExcelService, ExcelService>();           // RAL-46
 
-        // -- Application services (RAL-38 / RAL-39) --------------------------
+        // -- Application services (RAL-38 / RAL-39 / RAL-40) ----------------
         services.AddScoped<IPermissionService, PermissionService>();
         services.AddScoped<IAuthService, AuthService>();
-        // services.AddScoped<IUserService, UserService>();              // RAL-40
+        services.AddScoped<IUserService, UserService>();
         // services.AddScoped<IItemService, ItemService>();              // RAL-47
         // services.AddScoped<IPurchaseRequestService, PurchaseRequestService>();  // RAL-48
         // services.AddScoped<IDeliveryService, DeliveryService>();      // RAL-49
