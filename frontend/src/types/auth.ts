@@ -1,0 +1,32 @@
+/** Mirrors PPDO.Application/DTOs/Auth/ */
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  accessToken: string;
+  refreshToken: string;
+  expiresInSeconds: number;
+}
+
+export interface RefreshRequest {
+  refreshToken: string;
+}
+
+export interface MeResponse {
+  userId: string;
+  fullName: string;
+  email: string;
+  /** "SuperAdmin" | "Admin" | "Staff" | "Observer" */
+  role: string;
+  /** "Admin" | "Planning" | "RM" | "MIS" | "SPD" */
+  division: string;
+  position?: string | null;
+  canAccessInventory: boolean;
+  canAccessReports: boolean;
+  canManageUsers: boolean;
+  canAccessProfile: boolean;
+  canManageResourceLinks: boolean;
+}
