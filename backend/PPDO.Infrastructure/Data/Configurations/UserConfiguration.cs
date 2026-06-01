@@ -51,7 +51,14 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
             .IsRequired()
             .HasDefaultValue(true);
 
-        // OverrideCanAccess* columns are nullable bool — no extra config needed.
+        // OverrideCanAccess* and OverrideCanManage* columns are nullable bool — no extra config needed.
+
+        // Refresh token — nullable; cleared on logout, rotated on every refresh.
+        // 64 random bytes base64-encoded = 88 chars; nvarchar(100) gives a small margin.
+        builder.Property(u => u.RefreshToken)
+            .HasMaxLength(100);
+
+        // RefreshTokenExpiry — nullable DateTime; no extra config needed.
 
         // Unique index on Email — used as login username.
         builder.HasIndex(u => u.Email)

@@ -34,4 +34,12 @@ public interface IRepository<T> where T : class
     /// Never use Include chains deeper than 2 levels.
     /// </summary>
     IQueryable<T> Query();
+
+    /// <summary>
+    /// Persists all pending changes to the database.
+    /// Application services own the unit of work — call this after all mutations
+    /// for a single logical operation are complete.
+    /// Returns the number of state entries written.
+    /// </summary>
+    Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }
