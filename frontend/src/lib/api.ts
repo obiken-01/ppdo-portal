@@ -1,28 +1,132 @@
 /**
- * PPDO Portal — Axios instance
+ * PPDO Portal — Axios instance with JWT interceptors.
  *
- * All API calls MUST go through this module. Never use fetch() directly.
- * The interceptor handles:
- *  - Attaching the Bearer token from memory on every request
- *  - Automatic silent refresh on 401 (calls POST /api/auth/refresh via cookie)
- *  - Redirect to /login if refresh fails
+ * All API calls MUST go through this module — never use fetch() directly.
  *
- * TODO RAL-xx: Implement auth interceptors once AuthService + token store are ready.
+ * Request interceptor:
+ *   Attaches Authorization: Bearer <accessToken> to every outgoing request
+ *   when an access token is held in memory.
+ *
+ * Response interceptor (silent refresh on 401):
+ *   1. Intercepts 401 responses (expired / missing access token).
+ *   2. Retrieves the refresh token from localStorage.
+ *   3. POSTs to /auth/refresh using a bare axios call (not this instance,
+ *      to prevent an infinite interceptor loop).
+ *   4. On success → stores the new token pair and retries the original request.
+ *   5. On failure → clears all tokens and redirects the user to /login.
+ *
+ * Concurrent requests that 401 while a refresh is in-flight are queued and
+ * replayed once the new access token is available.
  */
-import axios from "axios";
+
+import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
+import { auth } from "./auth";
+
+// ---------------------------------------------------------------------------
+// Base URL — set NEXT_PUBLIC_API_BASE_URL in .env.local
+// ---------------------------------------------------------------------------
+
+const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api";
+
+// ---------------------------------------------------------------------------
+// Axios instance
+// ---------------------------------------------------------------------------
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  withCredentials: true, // sends httpOnly refresh-token cookie
+  baseURL: BASE_URL,
+  headers: { "Content-Type": "application/json" },
+  withCredentials: true, // forward cookies — ready for httpOnly refresh-token cookie
 });
 
-// TODO RAL-xx: Request interceptor — attach access token from memory
-// api.interceptors.request.use(...)
+// ---------------------------------------------------------------------------
+// Request interceptor — attach Bearer token
+// ---------------------------------------------------------------------------
 
-// TODO RAL-xx: Response interceptor — silent refresh on 401
-// api.interceptors.response.use(...)
+api.interceptors.request.use((config) => {
+  const token = auth.getToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// ---------------------------------------------------------------------------
+// Response interceptor — silent refresh on 401
+// ---------------------------------------------------------------------------
+
+type QueueEntry = {
+  resolve: (token: string) => void;
+  reject: (error: unknown) => void;
+};
+
+let isRefreshing = false;
+let failedQueue: QueueEntry[] = [];
+
+function processQueue(error: unknown, token: string | null): void {
+  failedQueue.forEach(({ resolve, reject }) => {
+    if (error || token === null) reject(error);
+    else resolve(token);
+  });
+  failedQueue = [];
+}
+
+interface RetryConfig extends InternalAxiosRequestConfig {
+  _retry?: boolean;
+}
+
+api.interceptors.response.use(
+  (response) => response,
+
+  async (error: AxiosError) => {
+    const original = error.config as RetryConfig | undefined;
+
+    // Only attempt refresh on 401 and only once per request
+    if (!original || error.response?.status !== 401 || original._retry) {
+      return Promise.reject(error);
+    }
+
+    // Queue concurrent 401s while refresh is in-flight
+    if (isRefreshing) {
+      return new Promise<string>((resolve, reject) => {
+        failedQueue.push({ resolve, reject });
+      })
+        .then((token) => {
+          original.headers.Authorization = `Bearer ${token}`;
+          return api(original);
+        })
+        .catch(Promise.reject.bind(Promise));
+    }
+
+    original._retry = true;
+    isRefreshing = true;
+
+    const refreshToken = auth.getRefreshToken();
+
+    if (!refreshToken) {
+      // No refresh token stored — send the user to login immediately
+      isRefreshing = false;
+      processQueue(new Error("No refresh token."), null);
+      auth.logout();
+      if (typeof window !== "undefined") window.location.href = "/login";
+      return Promise.reject(error);
+    }
+
+    try {
+      // Use a plain axios call (not `api`) to avoid triggering this interceptor again
+      const { data } = await axios.post(`${BASE_URL}/auth/refresh`, { refreshToken });
+      auth.login(data);
+      processQueue(null, data.accessToken);
+      original.headers.Authorization = `Bearer ${data.accessToken}`;
+      return api(original);
+    } catch (refreshError) {
+      processQueue(refreshError, null);
+      auth.logout();
+      if (typeof window !== "undefined") window.location.href = "/login";
+      return Promise.reject(refreshError);
+    } finally {
+      isRefreshing = false;
+    }
+  }
+);
 
 export default api;
