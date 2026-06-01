@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -9,13 +10,51 @@ using PPDO.Infrastructure.Data;
 using PPDO.Infrastructure.Repositories;
 using PPDO.Infrastructure.Services;
 
+// ── CORS allowed origins ──────────────────────────────────────────────────────
+// Local dev: Next.js (3000) + SWA CLI (4280).
+// Production: set AllowedOrigins in Azure Function App Settings.
+// ─────────────────────────────────────────────────────────────────────────────
+
 var host = new HostBuilder()
-    .ConfigureFunctionsWebApplication()
+    .ConfigureFunctionsWebApplication(worker =>
+    {
+        // CORS middleware for the isolated worker model.
+        // worker.Use takes Func<FunctionExecutionDelegate, FunctionExecutionDelegate>.
+        // GetHttpContext() is available via the AspNetCore extension package and
+        // returns the ASP.NET Core HttpContext for HTTP-triggered functions.
+        worker.Use(next => async (FunctionContext functionCtx) =>
+        {
+            HttpContext? http = functionCtx.GetHttpContext();
+
+            if (http is not null)
+            {
+                string? origin = http.Request.Headers.Origin.FirstOrDefault();
+
+                if (!string.IsNullOrEmpty(origin))
+                {
+                    http.Response.Headers["Access-Control-Allow-Origin"]      = origin;
+                    http.Response.Headers["Access-Control-Allow-Credentials"] = "true";
+                    http.Response.Headers["Access-Control-Allow-Methods"]     =
+                        "GET, POST, PUT, PATCH, DELETE, OPTIONS";
+                    http.Response.Headers["Access-Control-Allow-Headers"]     =
+                        "Content-Type, Authorization";
+                    http.Response.Headers["Access-Control-Max-Age"]           = "86400";
+                }
+
+                // Answer OPTIONS preflight immediately — no function handler needed.
+                if (HttpMethods.IsOptions(http.Request.Method))
+                {
+                    http.Response.StatusCode = StatusCodes.Status204NoContent;
+                    return;
+                }
+            }
+
+            await next(functionCtx);
+        });
+    })
     .ConfigureServices((context, services) =>
     {
         // -- JWT Options (Options pattern) ------------------------------------
-        // Binds Jwt__* keys from local.settings.json / Azure App Settings
-        // to JwtSettings. Inject via IOptions<JwtSettings>.
         services.Configure<JwtSettings>(context.Configuration.GetSection("Jwt"));
 
         // -- EF Core (Azure SQL) ---------------------------------------------
@@ -28,16 +67,13 @@ var host = new HostBuilder()
             options.UseSqlServer(connectionString));
 
         // -- Application Insights --------------------------------------------
-        // Hooks into ILogger<T> automatically when APPLICATIONINSIGHTS_CONNECTION_STRING
-        // is present. Leave the key blank in local.settings.json to skip telemetry locally.
         services.AddApplicationInsightsTelemetryWorkerService();
         services.ConfigureFunctionsApplicationInsights();
 
         // -- ASP.NET Core helpers --------------------------------------------
-        // Required by JwtMiddleware and CurrentUserService to read/write HttpContext.
         services.AddHttpContextAccessor();
 
-        // -- Infrastructure services (RAL-37 / RAL-38 / RAL-39) ----------------
+        // -- Infrastructure services -----------------------------------------
         services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IPurchaseRequestRepository, PurchaseRequestRepository>();
@@ -46,7 +82,7 @@ var host = new HostBuilder()
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         // services.AddScoped<IExcelService, ExcelService>();           // RAL-46
 
-        // -- Application services (RAL-38 / RAL-39 / RAL-40) ----------------
+        // -- Application services --------------------------------------------
         services.AddScoped<IPermissionService, PermissionService>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IUserService, UserService>();
