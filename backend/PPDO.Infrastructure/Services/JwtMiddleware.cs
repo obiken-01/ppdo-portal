@@ -14,12 +14,17 @@ using System.Text;
 namespace PPDO.Infrastructure.Services;
 
 /// <summary>
-/// Validates the JWT Bearer token in the current HTTP request and loads
-/// the authenticated <see cref="User"/> entity (with Group navigation) from the database.
+/// Validates a JWT Bearer token and loads the authenticated <see cref="User"/> entity
+/// (with Group navigation) from the database.
 ///
-/// Reads the Authorization header via <see cref="IHttpContextAccessor"/>.
-/// On success, sets <c>HttpContext.User</c> with the validated <see cref="ClaimsPrincipal"/>
-/// so that <see cref="ICurrentUserService"/> is available in Application services.
+/// The caller passes the raw Authorization header value — this avoids relying on
+/// <see cref="IHttpContextAccessor"/> for header reads, which is unreliable in the
+/// Azure Functions isolated worker model.
+///
+/// <see cref="IHttpContextAccessor"/> is still used to write <c>HttpContext.User</c>
+/// when available, so that <see cref="ICurrentUserService"/> works in Application
+/// services. The write is guarded with a null check and is best-effort only.
+///
 /// Returns null on any failure — never throws.
 ///
 /// JWT settings are read directly from <see cref="IConfiguration"/> (Jwt:SecretKey,
@@ -57,20 +62,17 @@ public sealed class JwtMiddleware : IJwtMiddleware
     }
 
     /// <inheritdoc />
-    public async Task<User?> ValidateAsync(CancellationToken cancellationToken = default)
+    public async Task<User?> ValidateAsync(
+        string? authorizationHeader,
+        CancellationToken cancellationToken = default)
     {
         try
         {
-            HttpContext? httpContext = _httpContextAccessor.HttpContext;
-            if (httpContext is null)
+            if (string.IsNullOrWhiteSpace(authorizationHeader)
+                || !authorizationHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
                 return null;
 
-            string? authHeader = httpContext.Request.Headers.Authorization.FirstOrDefault();
-            if (string.IsNullOrWhiteSpace(authHeader)
-                || !authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-                return null;
-
-            string token = authHeader["Bearer ".Length..].Trim();
+            string token = authorizationHeader["Bearer ".Length..].Trim();
             if (string.IsNullOrEmpty(token))
                 return null;
 
@@ -90,8 +92,11 @@ public sealed class JwtMiddleware : IJwtMiddleware
             if (user is null || !user.IsActive)
                 return null;
 
-            // Populate HttpContext.User so ICurrentUserService works in Application services.
-            httpContext.User = principal;
+            // Best-effort: populate HttpContext.User so ICurrentUserService works in
+            // Application services. IHttpContextAccessor.HttpContext can be null in the
+            // Azure Functions isolated worker model — guard before writing.
+            if (_httpContextAccessor.HttpContext is { } httpContext)
+                httpContext.User = principal;
 
             return user;
         }
@@ -118,6 +123,13 @@ public sealed class JwtMiddleware : IJwtMiddleware
     private ClaimsPrincipal ValidateToken(string token)
     {
         JwtSecurityTokenHandler handler = new();
+
+        // By default JwtSecurityTokenHandler maps standard claim names to Microsoft's
+        // long-form URIs (e.g. "sub" → ".../nameidentifier"). Clear the map so claim
+        // names are preserved exactly as written in the token (e.g. "sub" stays "sub"),
+        // matching what JwtClaimNames.Sub and CurrentUserService expect.
+        handler.InboundClaimTypeMap.Clear();
+
         byte[] keyBytes = Encoding.UTF8.GetBytes(_secretKey);
 
         TokenValidationParameters parameters = new()

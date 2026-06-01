@@ -90,7 +90,7 @@ public sealed class AuthFunctions
         HttpRequestData req,
         CancellationToken cancellationToken)
     {
-        User? user = await _jwt.ValidateAsync(cancellationToken);
+        User? user = await _jwt.ValidateAsync(GetAuthHeader(req), cancellationToken);
         if (user is null)
             return req.CreateResponse(HttpStatusCode.Unauthorized);
 
@@ -107,7 +107,7 @@ public sealed class AuthFunctions
         HttpRequestData req,
         CancellationToken cancellationToken)
     {
-        User? user = await _jwt.ValidateAsync(cancellationToken);
+        User? user = await _jwt.ValidateAsync(GetAuthHeader(req), cancellationToken);
         if (user is null)
             return req.CreateResponse(HttpStatusCode.Unauthorized);
 
@@ -133,9 +133,22 @@ public sealed class AuthFunctions
 
     // ── Helpers ────────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Extracts the raw Authorization header value from the request.
+    /// IHttpContextAccessor.HttpContext is not reliably populated in the Azure Functions
+    /// isolated worker model, so we read directly from HttpRequestData.Headers instead.
+    /// </summary>
+    private static string? GetAuthHeader(HttpRequestData req)
+        => req.Headers.TryGetValues("Authorization", out IEnumerable<string>? values)
+            ? values.FirstOrDefault()
+            : null;
+
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
+        // Case-insensitive for reading incoming request bodies.
         PropertyNameCaseInsensitive = true,
+        // camelCase for all outgoing JSON responses (userId, fullName, etc.)
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
     private static async Task<T?> DeserializeAsync<T>(
@@ -159,7 +172,11 @@ public sealed class AuthFunctions
         CancellationToken cancellationToken)
     {
         HttpResponseData response = req.CreateResponse(HttpStatusCode.OK);
-        await response.WriteAsJsonAsync(body, cancellationToken);
+        // Serialize manually with _jsonOptions to guarantee camelCase output.
+        // WriteAsJsonAsync without options uses the worker default (PascalCase).
+        response.Headers.Add("Content-Type", "application/json; charset=utf-8");
+        await response.WriteStringAsync(
+            JsonSerializer.Serialize(body, _jsonOptions), cancellationToken);
         return response;
     }
 
