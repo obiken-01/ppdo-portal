@@ -1,4 +1,133 @@
-// TODO RAL-xx: Landing page — matches Penpot frame "01 Landing"
+/**
+ * Public landing page — RAL-41
+ *
+ * Layout:
+ *   Navbar → Hero (green, fills viewport, Mission/Vision carousel)
+ *          → Announcements (white) → Footer
+ */
+
+import Navbar from "@/components/landing/Navbar";
+import Footer from "@/components/landing/Footer";
+import MissionVisionCarousel from "@/components/landing/MissionVisionCarousel";
+
 export default function LandingPage() {
-  return null;
+  return (
+    <div className="min-h-screen flex flex-col font-sans">
+      <Navbar />
+
+      <main className="flex-1">
+        {/* ── Hero — fills exactly the remaining viewport height ───────────
+            h-[calc(100vh-3.5rem)] accounts for the 56px (3.5rem) navbar.
+            flex-col + justify-between distributes:
+              top: logo header  |  middle: carousel  |  bottom: scroll cue  */}
+        <section
+          className="bg-green-700 text-white flex flex-col"
+          style={{ minHeight: "calc(100vh - 3.5rem)" }}
+        >
+          <div className="max-w-6xl mx-auto px-6 py-8 w-full flex flex-col flex-1 justify-between gap-6">
+
+            {/* 3-column logo header */}
+            <div className="flex items-center justify-between gap-4">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/images/Ph_seal_occidental_mindoro.png"
+                alt="Province of Occidental Mindoro Official Seal"
+                width={90}
+                height={90}
+                className="object-contain flex-shrink-0"
+              />
+              <div className="flex flex-col items-center text-center gap-1 flex-1 min-w-0">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/images/ppdo-logo-placeholder.png"
+                  alt="PPDO Logo"
+                  width={56}
+                  height={56}
+                  className="object-contain"
+                />
+                <h1 className="text-lg md:text-xl font-bold leading-tight">
+                  Provincial Planning and Development Office
+                </h1>
+                <p className="text-green-200 text-xs">
+                  Province of Occidental Mindoro, Philippines
+                </p>
+              </div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/images/Bagong_Pilipinas_logo.png"
+                alt="Bagong Pilipinas"
+                width={90}
+                height={90}
+                className="object-contain flex-shrink-0"
+              />
+            </div>
+
+            {/* Carousel — vertically centered in the remaining space */}
+            <div className="flex-1 flex items-center justify-center">
+              <MissionVisionCarousel />
+            </div>
+
+            {/* Scroll-down indicator */}
+            <div className="flex flex-col items-center pb-2 text-white/60">
+              <span className="text-xs uppercase tracking-widest mb-1">Scroll</span>
+              <svg
+                className="w-6 h-6 animate-bounce"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 9l-7 7-7-7"
+                />
+              </svg>
+            </div>
+
+          </div>
+        </section>
+
+        {/* ── Announcements — white section ────────────────────────────── */}
+        <section id="announcements" className="bg-slate-100">
+          <div className="max-w-6xl mx-auto px-6 py-10">
+            <h2 className="text-xl font-bold text-slate-800 mb-5">
+              Announcements
+            </h2>
+            <div className="bg-white rounded-lg border border-slate-200 px-8 py-14 text-center">
+              <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center">
+                <MegaphoneIcon />
+              </div>
+              <p className="text-slate-600 font-medium">No announcements yet</p>
+              <p className="text-slate-400 text-sm mt-1">
+                Check back later for updates from the office.
+              </p>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <Footer />
+    </div>
+  );
+}
+
+function MegaphoneIcon() {
+  return (
+    <svg
+      className="w-6 h-6 text-slate-400"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={1.5}
+        d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"
+      />
+    </svg>
+  );
 }
