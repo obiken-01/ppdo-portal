@@ -160,7 +160,7 @@ export default function LoginPage() {
                   focus:outline-none focus:ring-2 focus:ring-green-600 focus:border-transparent
                   ${errors.email
                     ? "border-red-400 bg-red-50"
-                    : "border-slate-200 bg-white hover:border-slate-300"
+                    : "border-slate-300 bg-white shadow-sm hover:border-slate-400"
                   }`}
               />
               {errors.email && (
@@ -187,7 +187,7 @@ export default function LoginPage() {
                   focus:outline-none focus:ring-2 focus:ring-green-600 focus:border-transparent
                   ${errors.password
                     ? "border-red-400 bg-red-50"
-                    : "border-slate-200 bg-white hover:border-slate-300"
+                    : "border-slate-300 bg-white shadow-sm hover:border-slate-400"
                   }`}
               />
               {errors.password && (
