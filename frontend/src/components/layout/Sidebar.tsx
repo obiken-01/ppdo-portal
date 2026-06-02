@@ -133,7 +133,7 @@ export default function Sidebar({ me }: SidebarProps) {
             >
               <span className="text-base leading-none w-5 text-center">📦</span>
               <span className="flex-1 text-left truncate">Inventory</span>
-              <span className={`text-xs transition-transform duration-200 ${inventoryOpen ? "rotate-90" : ""}`}>
+              <span className={`text-base leading-none transition-transform duration-200 ${inventoryOpen ? "rotate-90" : ""}`}>
                 ›
               </span>
             </button>
@@ -220,7 +220,7 @@ export default function Sidebar({ me }: SidebarProps) {
               <p className="text-green-200 text-xs font-medium truncate">{me.fullName}</p>
               <p className="text-green-400 text-xs truncate">{me.role}</p>
             </div>
-            <span className={`text-green-400 text-xs transition-transform duration-200 ${userMenuOpen ? "rotate-180" : ""}`}>
+            <span className={`text-green-400 text-base leading-none transition-transform duration-200 ${userMenuOpen ? "rotate-180" : ""}`}>
               ‹
             </span>
           </button>
