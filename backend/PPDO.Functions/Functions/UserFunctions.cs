@@ -202,6 +202,28 @@ public sealed class UserFunctions
         return await ToResponse(req, result, HttpStatusCode.OK, cancellationToken);
     }
 
+    // ── PUT /api/users/{id}/reactivate ─────────────────────────────────────────
+
+    [Function("ReactivateUser")]
+    public async Task<HttpResponseData> Reactivate(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "users/{id:guid}/reactivate")]
+        HttpRequestData req,
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        User? caller = await _jwt.ValidateAsync(GetAuthHeader(req), cancellationToken);
+        if (caller is null)
+            return req.CreateResponse(HttpStatusCode.Unauthorized);
+
+        if (!await _permissions.CanManageUsersAsync(caller, cancellationToken))
+            return req.CreateResponse(HttpStatusCode.Forbidden);
+
+        ServiceResult<UserResponseDto> result =
+            await _users.ReactivateAsync(caller, id, cancellationToken);
+
+        return await ToResponse(req, result, HttpStatusCode.OK, cancellationToken);
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     private static string? GetAuthHeader(HttpRequestData req)

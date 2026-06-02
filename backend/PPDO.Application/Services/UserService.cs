@@ -138,6 +138,7 @@ public sealed class UserService : IUserService
             return ServiceResult<UserResponseDto>.Forbidden(
                 "You do not have permission to modify this user.");
 
+        // -- Profile fields ---------------------------------------------------
         if (dto.FullName is not null)
             target.FullName  = dto.FullName.Trim();
         if (dto.Position is not null)
@@ -145,10 +146,62 @@ public sealed class UserService : IUserService
         if (dto.ContactNo is not null)
             target.ContactNo = dto.ContactNo.Trim();
 
+        // -- Role & Division (triggers GroupId recalculation) ------------------
+        UserRole  effectiveRole     = target.Role;
+        Division  effectiveDivision = target.Division;
+        bool      roleOrDivChanged  = false;
+
+        if (dto.Role is not null)
+        {
+            if (!Enum.TryParse<UserRole>(dto.Role, ignoreCase: true, out UserRole newRole))
+                return ServiceResult<UserResponseDto>.BadRequest(
+                    $"'{dto.Role}' is not a valid Role. Valid values: SuperAdmin, Admin, Staff, Observer.");
+
+            if (!CanRequesterManageRole(requester, newRole))
+                return ServiceResult<UserResponseDto>.Forbidden(
+                    $"You do not have permission to assign role '{newRole}'.");
+
+            effectiveRole    = newRole;
+            target.Role      = newRole;
+            roleOrDivChanged = true;
+        }
+
+        if (dto.Division is not null)
+        {
+            if (!Enum.TryParse<Division>(dto.Division, ignoreCase: true, out Division newDivision))
+                return ServiceResult<UserResponseDto>.BadRequest(
+                    $"'{dto.Division}' is not a valid Division. Valid values: Admin, Planning, RM, MIS, SPD.");
+
+            effectiveDivision = newDivision;
+            target.Division   = newDivision;
+            roleOrDivChanged  = true;
+        }
+
+        // Auto-recalculate GroupId when Role or Division changed,
+        // unless the caller supplied an explicit GroupId override.
+        if (dto.GroupId is not null)
+            target.GroupId = dto.GroupId;
+        else if (roleOrDivChanged)
+            target.GroupId = GroupIdFor(effectiveRole, effectiveDivision);
+
+        // -- Permission overrides (null = inherit from group) ------------------
+        // Only meaningful for Staff / Observer; Admin/SuperAdmin ignore flags at
+        // runtime, but we store whatever the caller sends for consistency.
+        target.OverrideCanAccessInventory     = dto.OverrideCanAccessInventory;
+        target.OverrideCanAccessReports       = dto.OverrideCanAccessReports;
+        target.OverrideCanManageUsers         = dto.OverrideCanManageUsers;
+        target.OverrideCanManageResourceLinks = dto.OverrideCanManageResourceLinks;
+
         await _users.UpdateAsync(target, cancellationToken);
         await _users.SaveChangesAsync(cancellationToken);
 
-        return ServiceResult<UserResponseDto>.Ok(MapToDto(target));
+        _logger.LogInformation(
+            "User updated. TargetUserId: {TargetUserId}, UpdatedBy: {UpdatedBy}",
+            target.Id, requester.Id);
+
+        // Reload with group navigation for the response DTO.
+        User updated = (await _users.GetByIdWithGroupAsync(target.Id, cancellationToken))!;
+        return ServiceResult<UserResponseDto>.Ok(MapToDto(updated));
     }
 
     /// <inheritdoc />
@@ -242,6 +295,36 @@ public sealed class UserService : IUserService
 
         _logger.LogInformation(
             "User deactivated. TargetUserId: {TargetUserId}, DeactivatedBy: {DeactivatedBy}",
+            target.Id, requester.Id);
+
+        return ServiceResult<UserResponseDto>.Ok(MapToDto(target));
+    }
+
+    /// <inheritdoc />
+    public async Task<ServiceResult<UserResponseDto>> ReactivateAsync(
+        User requester,
+        Guid targetId,
+        CancellationToken cancellationToken = default)
+    {
+        User? target = await _users.GetByIdWithGroupAsync(targetId, cancellationToken);
+        if (target is null)
+            return ServiceResult<UserResponseDto>.NotFound($"User {targetId} not found.");
+
+        if (!CanRequesterManageTarget(requester, target))
+            return ServiceResult<UserResponseDto>.Forbidden(
+                "You do not have permission to reactivate this user.");
+
+        if (target.IsActive)
+            return ServiceResult<UserResponseDto>.BadRequest(
+                "User is already active.");
+
+        target.IsActive = true;
+
+        await _users.UpdateAsync(target, cancellationToken);
+        await _users.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "User reactivated. TargetUserId: {TargetUserId}, ReactivatedBy: {ReactivatedBy}",
             target.Id, requester.Id);
 
         return ServiceResult<UserResponseDto>.Ok(MapToDto(target));
