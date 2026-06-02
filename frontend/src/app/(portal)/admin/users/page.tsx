@@ -472,12 +472,17 @@ export default function UsersPage() {
     setLoading(true);
     setFetchError(null);
     try {
-      const [usersRes, groupsRes] = await Promise.all([
-        api.get<UserResponse[]>("/users"),
-        api.get<PermissionGroupResponse[]>("/permission-groups"),
-      ]);
+      // Fetch users — required. Groups are optional (endpoint may not exist yet).
+      const usersRes = await api.get<UserResponse[]>("/users");
       setUsers(usersRes.data);
-      setGroups(groupsRes.data);
+
+      try {
+        const groupsRes = await api.get<PermissionGroupResponse[]>("/permission-groups");
+        setGroups(groupsRes.data);
+      } catch {
+        // permission-groups endpoint not yet implemented — group dropdown stays empty
+        setGroups([]);
+      }
     } catch {
       setFetchError("Failed to load user data. Please try again.");
     } finally {
