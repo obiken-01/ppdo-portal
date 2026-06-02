@@ -506,6 +506,7 @@ Follow the JWT validation and permission check patterns in CLAUDE.md.
 | RAL-36 | Resource Links page UI + Dashboard widget upgrade (collapsible, View All) | PR #25 |
 | RAL-46 | ExcelService — `GeneratePRTemplate`, `ExportPRReport`, `ParsePRImport` (ClosedXML) | PR #26 |
 | RAL-47 | Items Master API — `ItemService` + 5 endpoints (CRUD + `/lookup` autocomplete) | PR #27 |
+| RAL-48 | Purchase Requests API — `PurchaseRequestService` + 6 endpoints (CRUD, template download, Excel import) | PR #28 |
 
 ### Bug Fixes Applied
 
@@ -515,6 +516,7 @@ Follow the JWT validation and permission check patterns in CLAUDE.md.
 | `JwtMiddleware` header read | Reads `Authorization` from `HttpRequestData.Headers` directly — `IHttpContextAccessor.HttpContext` is unreliable in isolated worker. |
 | JWT claim mapping | Added `handler.InboundClaimTypeMap.Clear()` in `ValidateToken` — otherwise `"sub"` is remapped to a long Microsoft URI and `FindFirstValue("sub")` returns null. |
 | JSON casing | All Function responses serialized manually with `PropertyNamingPolicy = CamelCase` — `WriteAsJsonAsync` defaults to PascalCase in isolated worker. |
+| Excel import — non-seekable stream | `req.Body` in isolated worker is `HttpRequestStream` which throws `NotSupportedException` on `.Length`. Fix: `CopyToAsync` into a `MemoryStream` and reset `Position = 0` before passing to `IExcelService.ParsePRImport`. |
 
 ### Key Architecture Decisions Made
 
@@ -530,7 +532,6 @@ Follow the JWT validation and permission check patterns in CLAUDE.md.
 
 > Check `PROJECT_DOCUMENTATION_NET_AZURE.md` Section 11 (Roadmap) for full list.
 
-- **RAL-48**: Purchase Requests API — `PurchaseRequestService` + endpoints (CRUD, Excel import/export)
 - **RAL-49**: Delivery Service + endpoints
 - **RAL-50**: PR Report endpoint + Excel export (wires `ExcelService.ExportPRReport`)
 - **RAL-54+**: Inventory UI (Items Master, Create PR, Receive Delivery)
