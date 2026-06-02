@@ -81,7 +81,7 @@ var host = new HostBuilder()
         services.AddScoped<ICalendarEventRepository, CalendarEventRepository>();
         services.AddScoped<IJwtMiddleware, JwtMiddleware>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
-        // services.AddScoped<IExcelService, ExcelService>();           // RAL-46
+        services.AddScoped<IExcelService, ExcelService>();
 
         // NagerHolidayProvider uses a singleton HttpClient via IHttpClientFactory.
         services.AddHttpClient<IHolidayProvider, NagerHolidayProvider>();

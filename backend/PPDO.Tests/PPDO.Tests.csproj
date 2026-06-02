@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\PPDO.Application\PPDO.Application.csproj" />
+    <ProjectReference Include="..\PPDO.Infrastructure\PPDO.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
