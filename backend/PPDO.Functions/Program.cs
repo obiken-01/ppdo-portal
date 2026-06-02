@@ -78,14 +78,19 @@ var host = new HostBuilder()
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IPurchaseRequestRepository, PurchaseRequestRepository>();
         services.AddScoped<IItemMasterRepository, ItemMasterRepository>();
+        services.AddScoped<ICalendarEventRepository, CalendarEventRepository>();
         services.AddScoped<IJwtMiddleware, JwtMiddleware>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         // services.AddScoped<IExcelService, ExcelService>();           // RAL-46
+
+        // NagerHolidayProvider uses a singleton HttpClient via IHttpClientFactory.
+        services.AddHttpClient<IHolidayProvider, NagerHolidayProvider>();
 
         // -- Application services --------------------------------------------
         services.AddScoped<IPermissionService, PermissionService>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IUserService, UserService>();
+        services.AddScoped<IDashboardService, DashboardService>();
         // services.AddScoped<IItemService, ItemService>();              // RAL-47
         // services.AddScoped<IPurchaseRequestService, PurchaseRequestService>();  // RAL-48
         // services.AddScoped<IDeliveryService, DeliveryService>();      // RAL-49

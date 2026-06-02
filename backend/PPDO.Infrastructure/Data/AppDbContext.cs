@@ -30,6 +30,7 @@ public sealed class AppDbContext : DbContext
     public DbSet<Delivery> Deliveries { get; set; } = null!;
     public DbSet<DeliveryItem> DeliveryItems { get; set; } = null!;
     public DbSet<Distribution> Distributions { get; set; } = null!;
+    public DbSet<CalendarEvent> CalendarEvents { get; set; } = null!;
 
     // ── Model configuration ───────────────────────────────────────────────────
 

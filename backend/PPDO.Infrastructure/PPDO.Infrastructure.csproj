@@ -26,6 +26,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\PPDO.Domain\PPDO.Domain.csproj" />
+    <ProjectReference Include="..\PPDO.Application\PPDO.Application.csproj" />
   </ItemGroup>
 
 </Project>
