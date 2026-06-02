@@ -69,13 +69,8 @@ const blankForm = (): CreateUserRequest => ({
   email: "",
   role: "Staff",
   division: "Admin",
-  groupId: null,
   position: null,
   contactNo: null,
-  overrideCanAccessInventory: null,
-  overrideCanAccessReports: null,
-  overrideCanManageUsers: null,
-  overrideCanManageResourceLinks: null,
 });
 
 // ---------------------------------------------------------------------------
@@ -190,7 +185,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 type UserFormProps = {
   form: CreateUserRequest | UpdateUserRequest;
   groups: PermissionGroupResponse[];
-  isEdit: boolean;
+  isEdit: boolean;  // when false, group dropdown and overrides are hidden
   saving: boolean;
   error: string | null;
   onChange: (patch: Partial<CreateUserRequest & UpdateUserRequest>) => void;
@@ -273,11 +268,15 @@ function UserForm({ form, groups, isEdit, saving, error, onChange, onSubmit, onC
           />
         </div>
 
-        {groups.length > 0 && (
+        {/* Group dropdown — Edit only. Add User auto-assigns group from Role + Division. */}
+        {isEdit && groups.length > 0 && (
           <div className="col-span-2">
-            <label className="block text-xs font-medium text-slate-600 mb-1">Permission Group</label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">
+              Permission Group
+              <span className="ml-1 font-normal text-slate-400">(auto-assigned from Role + Division)</span>
+            </label>
             <select
-              value={form.groupId ?? ""}
+              value={"groupId" in form ? (form.groupId ?? "") : ""}
               onChange={(e) => onChange({ groupId: e.target.value || null })}
               className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 bg-white"
             >
@@ -311,8 +310,8 @@ function UserForm({ form, groups, isEdit, saving, error, onChange, onSubmit, onC
         )}
       </div>
 
-      {/* Permission overrides — Staff / Observer only */}
-      {showOverrides && (
+      {/* Permission overrides — Edit only, Staff / Observer only */}
+      {isEdit && showOverrides && (
         <div>
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
             Permission Overrides
@@ -333,8 +332,8 @@ function UserForm({ form, groups, isEdit, saving, error, onChange, onSubmit, onC
         </div>
       )}
 
-      {/* SuperAdmin / Admin note */}
-      {!showOverrides && (
+      {/* SuperAdmin / Admin note — Edit only */}
+      {isEdit && !showOverrides && (
         <p className="text-xs text-slate-400 bg-slate-50 rounded-lg px-3 py-2">
           SuperAdmin and Admin roles always have full access — permission overrides do not apply.
         </p>
@@ -544,17 +543,17 @@ export default function UsersPage() {
   function openEdit(user: UserResponse) {
     setEditTarget(user);
     setEditForm({
-      fullName: user.fullName,
-      email: user.email,
-      role: user.role,
-      division: user.division,
-      groupId: user.groupId,
-      position: user.position,
-      contactNo: user.contactNo,
-      isActive: user.isActive,
-      overrideCanAccessInventory: user.overrideCanAccessInventory,
-      overrideCanAccessReports: user.overrideCanAccessReports,
-      overrideCanManageUsers: user.overrideCanManageUsers,
+      fullName:                      user.fullName,
+      email:                         user.email,
+      role:                          user.role,
+      division:                      user.division,
+      groupId:                       user.groupId,
+      position:                      user.position,
+      contactNo:                     user.contactNo,
+      isActive:                      user.isActive,
+      overrideCanAccessInventory:    user.overrideCanAccessInventory,
+      overrideCanAccessReports:      user.overrideCanAccessReports,
+      overrideCanManageUsers:        user.overrideCanManageUsers,
       overrideCanManageResourceLinks: user.overrideCanManageResourceLinks,
     });
     setFormError(null);

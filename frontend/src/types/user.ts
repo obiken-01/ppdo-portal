@@ -25,13 +25,9 @@ export interface CreateUserRequest {
   email: string;
   role: UserRole;
   division: Division | null;
-  groupId: string | null;
   position: string | null;
   contactNo: string | null;
-  overrideCanAccessInventory: boolean | null;
-  overrideCanAccessReports: boolean | null;
-  overrideCanManageUsers: boolean | null;
-  overrideCanManageResourceLinks: boolean | null;
+  // groupId intentionally omitted — backend auto-assigns from Role + Division
 }
 
 export interface UpdateUserRequest extends CreateUserRequest {

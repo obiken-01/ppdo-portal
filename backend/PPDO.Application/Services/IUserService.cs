@@ -46,11 +46,14 @@ public interface IUserService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Updates FullName, Position, and ContactNo of an existing user.
+    /// Updates profile fields (FullName, Position, ContactNo), Role, Division, GroupId,
+    /// and individual permission override flags for an existing user.
+    /// Changing Role or Division auto-recalculates GroupId unless an explicit GroupId is supplied.
     ///
     /// Returns:
     ///   <see cref="ServiceErrorCode.NotFound"/>   — target user not found.
-    ///   <see cref="ServiceErrorCode.Forbidden"/>  — requester cannot manage the target user.
+    ///   <see cref="ServiceErrorCode.Forbidden"/>  — requester cannot manage the target user or assign the given role.
+    ///   <see cref="ServiceErrorCode.BadRequest"/>  — invalid Role or Division string.
     /// </summary>
     Task<ServiceResult<UserResponseDto>> UpdateAsync(
         User requester,
