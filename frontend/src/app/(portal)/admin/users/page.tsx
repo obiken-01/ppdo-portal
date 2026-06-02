@@ -53,7 +53,7 @@ const ROLE_BADGE: Record<UserRole, string> = {
 // Overrides that are meaningful only for Staff / Observer
 const OVERRIDE_KEYS = [
   { key: "overrideCanAccessInventory",     label: "Access Inventory" },
-  { key: "overrideCanAccessReports",       label: "Access Reports" },
+  { key: "overrideCanAccessReports",       label: "Inventory Report" },
   { key: "overrideCanManageUsers",         label: "Manage Users" },
   { key: "overrideCanManageResourceLinks", label: "Manage Resource Links" },
 ] as const;
@@ -635,25 +635,8 @@ export default function UsersPage() {
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans">
-      {/* Page header */}
-      <div className="bg-green-700 text-white px-6 py-4 shadow-sm">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div>
-            <h1 className="text-lg font-bold">User Management</h1>
-            <p className="text-green-200 text-xs mt-0.5">Manage portal accounts and permission overrides</p>
-          </div>
-          <button
-            onClick={openAdd}
-            className="flex items-center gap-2 bg-white text-green-700 font-semibold text-sm px-4 py-2 rounded-lg hover:bg-green-50 transition-colors shadow-sm"
-          >
-            <span className="text-lg leading-none">+</span>
-            Add User
-          </button>
-        </div>
-      </div>
-
       <div className="max-w-6xl mx-auto px-6 py-6 space-y-4">
-        {/* Search bar */}
+        {/* Toolbar: search + add button */}
         <div className="flex items-center gap-3">
           <input
             value={search}
@@ -669,6 +652,13 @@ export default function UsersPage() {
               Clear
             </button>
           )}
+          <button
+            onClick={openAdd}
+            className="flex items-center gap-1.5 bg-green-600 text-white font-semibold text-sm px-4 py-2.5 rounded-lg hover:bg-green-500 transition-colors shadow-sm shrink-0"
+          >
+            <span className="text-base leading-none">+</span>
+            Add User
+          </button>
         </div>
 
         {/* Table card */}
