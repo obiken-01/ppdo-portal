@@ -499,6 +499,7 @@ Follow the JWT validation and permission check patterns in CLAUDE.md.
 | RAL-40 | User management API — `UserService` + `UserFunctions` (7 endpoints) | PR #14 |
 | RAL-41 | Public landing page — hero carousel, mission/vision, announcements, navbar, footer | PR #15 |
 | RAL-42 | Login page UI + Axios JWT client + portal auth guard | PR #16 |
+| RAL-43 | User Management page UI + permission overrides + `GET /api/permission-groups` + `PUT /api/users/{id}/reactivate` | PR #20 |
 
 ### Bug Fixes Applied
 
