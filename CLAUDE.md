@@ -483,4 +483,50 @@ Follow the JWT validation and permission check patterns in CLAUDE.md.
 
 ---
 
+## Implementation Status
+
+> ⚠️ **This section is a session progress update — not part of the original CLAUDE.md spec.**
+> Updated: 2026-06-02. Keep this section current as RALs are completed.
+
+### Completed RALs (v1.0 branch)
+
+| RAL | Description | Branch / PR |
+|---|---|---|
+| RAL-37 | Generic `Repository<T>` + feature repositories in Infrastructure | PR #10 |
+| RAL-38 | `JwtMiddleware`, `CurrentUserService`, `PermissionService` | PR #11 |
+| RAL-34 | `ResourceLink` entity + `AddResourceLinks` migration + 23 seed links | PR #12 |
+| RAL-39 | Auth endpoints — login, refresh, logout, me (`AuthService` + `AuthFunctions`) | PR #13 |
+| RAL-40 | User management API — `UserService` + `UserFunctions` (7 endpoints) | PR #14 |
+| RAL-41 | Public landing page — hero carousel, mission/vision, announcements, navbar, footer | PR #15 |
+| RAL-42 | Login page UI + Axios JWT client + portal auth guard | PR #16 |
+
+### Bug Fixes Applied
+
+| Fix | What / Why |
+|---|---|
+| CORS — isolated worker | `CorsFunctions.cs` catch-all `OPTIONS` handler + `Program.cs` middleware via `worker.Use()`. `host.json` cors does NOT work for isolated worker. |
+| `JwtMiddleware` header read | Reads `Authorization` from `HttpRequestData.Headers` directly — `IHttpContextAccessor.HttpContext` is unreliable in isolated worker. |
+| JWT claim mapping | Added `handler.InboundClaimTypeMap.Clear()` in `ValidateToken` — otherwise `"sub"` is remapped to a long Microsoft URI and `FindFirstValue("sub")` returns null. |
+| JSON casing | All Function responses serialized manually with `PropertyNamingPolicy = CamelCase` — `WriteAsJsonAsync` defaults to PascalCase in isolated worker. |
+
+### Key Architecture Decisions Made
+
+| Decision | Detail |
+|---|---|
+| `ServiceResult<T>` | Shared result type in `PPDO.Application/Common/` — all Application services return this instead of throwing exceptions for flow control. |
+| Token storage | Access token: in-memory only (`auth.ts`). Refresh token: `localStorage["ppdo_rt"]` — backend returns in response body, not httpOnly cookie. Migrate when backend sets `Set-Cookie`. |
+| `IUserService` in Application | Returns Application-layer DTOs — placing in Domain would create circular dependency. |
+| `IJwtMiddleware.ValidateAsync(string? authHeader)` | Takes raw header string from caller instead of reading from `HttpContext` — avoids null HttpContext in isolated worker. |
+| Default user password | `PPDOUser2026!` — set on `UserService.CreateAsync` and `ResetPasswordAsync`. |
+
+### Next RALs (planned)
+
+> Check `PROJECT_DOCUMENTATION_NET_AZURE.md` Section 11 (Roadmap) for full list.
+
+- **RAL-43+**: Main Dashboard UI (calendar, stat cards, sidebar layout)
+- **RAL-46**: Excel service (`IExcelService`) — commented out in `Program.cs`
+- **RAL-47+**: Inventory features (items, purchase requests, deliveries)
+
+---
+
 *CLAUDE.md — PPDO Portal v0.1 — 2026-05-26 — Ralph Armand Alcaide*
