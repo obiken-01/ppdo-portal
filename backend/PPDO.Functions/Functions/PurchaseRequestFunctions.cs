@@ -97,12 +97,20 @@ public sealed class PurchaseRequestFunctions
         if (caller is null)
             return req.CreateResponse(HttpStatusCode.Unauthorized);
 
-        if (req.Body is null || req.Body.Length == 0)
+        // req.Body in the isolated worker is a non-seekable HttpRequestStream.
+        // ClosedXML calls .Length internally, which throws NotSupportedException.
+        // Copy to a MemoryStream first so the stream is fully seekable.
+        using MemoryStream ms = new();
+        await req.Body.CopyToAsync(ms, cancellationToken);
+
+        if (ms.Length == 0)
             return await PlainError(req, HttpStatusCode.BadRequest,
                 "Request body must contain the .xlsx file.", cancellationToken);
 
+        ms.Position = 0;
+
         ServiceResult<IReadOnlyList<PRResponseDto>> result =
-            await _service.ImportFromExcelAsync(caller, req.Body, cancellationToken);
+            await _service.ImportFromExcelAsync(caller, ms, cancellationToken);
 
         return await ToResponse(req, result, HttpStatusCode.Created, cancellationToken);
     }
