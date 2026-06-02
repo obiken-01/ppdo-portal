@@ -77,6 +77,7 @@ var host = new HostBuilder()
         services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IPurchaseRequestRepository, PurchaseRequestRepository>();
+        services.AddScoped<IDeliveryRepository, DeliveryRepository>();
         services.AddScoped<IItemMasterRepository, ItemMasterRepository>();
         services.AddScoped<ICalendarEventRepository, CalendarEventRepository>();
         services.AddScoped<IJwtMiddleware, JwtMiddleware>();
@@ -94,7 +95,7 @@ var host = new HostBuilder()
         services.AddScoped<IResourceLinkService, ResourceLinkService>();
         services.AddScoped<IItemService, ItemService>();
         services.AddScoped<IPurchaseRequestService, PurchaseRequestService>();
-        // services.AddScoped<IDeliveryService, DeliveryService>();      // RAL-49
+        services.AddScoped<IDeliveryService, DeliveryService>();
     })
     .Build();
 
