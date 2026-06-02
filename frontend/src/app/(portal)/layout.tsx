@@ -31,8 +31,10 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api";
 const PAGE_TITLES: Record<string, string> = {
   "/dashboard":     "Main Dashboard",
   "/inventory":     "Inventory",
-  "/resource-links":  "Resource Links",
-  "/admin/users":   "User Management",
+  "/resource-links":        "Resource Links",
+  "/profile":               "My Profile",
+  "/inventory/pr-report":   "Inventory Report",
+  "/admin/users":           "User Management",
 };
 
 function getPageTitle(pathname: string): string {
