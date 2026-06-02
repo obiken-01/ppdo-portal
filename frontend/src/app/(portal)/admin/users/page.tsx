@@ -58,8 +58,6 @@ const OVERRIDE_KEYS = [
   { key: "overrideCanManageResourceLinks", label: "Manage Resource Links" },
 ] as const;
 
-type OverrideKey = typeof OVERRIDE_KEYS[number]["key"];
-
 // ---------------------------------------------------------------------------
 // Blank form state
 // ---------------------------------------------------------------------------
