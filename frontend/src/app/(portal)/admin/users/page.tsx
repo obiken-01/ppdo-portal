@@ -17,9 +17,9 @@
  *   GET    /api/users                     → list all users
  *   POST   /api/users                     → create user
  *   PUT    /api/users/{id}                → update user
- *   POST   /api/users/{id}/reset-password → reset to default password
- *   PUT    /api/users/{id}/deactivate     → deactivate
- *   PUT    /api/users/{id}/reactivate     → reactivate
+ *   PUT    /api/users/{id}/reset-password → reset to default password
+ *   DELETE /api/users/{id}               → deactivate
+ *   PUT    /api/users/{id}/reactivate    → reactivate
  *   GET    /api/permission-groups         → list groups for dropdown
  */
 
@@ -607,25 +607,9 @@ export default function UsersPage() {
     setActionLoading(true);
     try {
       if (deactivateTarget.isActive) {
-        // Backend: DELETE /api/users/{id}
         await api.delete(`/users/${deactivateTarget.id}`);
       } else {
-        // No dedicated reactivate endpoint — use PUT /api/users/{id} with isActive: true
-        const body: UpdateUserRequest = {
-          fullName: deactivateTarget.fullName,
-          email: deactivateTarget.email,
-          role: deactivateTarget.role,
-          division: deactivateTarget.division,
-          groupId: deactivateTarget.groupId,
-          position: deactivateTarget.position,
-          contactNo: deactivateTarget.contactNo,
-          isActive: true,
-          overrideCanAccessInventory: deactivateTarget.overrideCanAccessInventory,
-          overrideCanAccessReports: deactivateTarget.overrideCanAccessReports,
-          overrideCanManageUsers: deactivateTarget.overrideCanManageUsers,
-          overrideCanManageResourceLinks: deactivateTarget.overrideCanManageResourceLinks,
-        };
-        await api.put(`/users/${deactivateTarget.id}`, body);
+        await api.put(`/users/${deactivateTarget.id}/reactivate`);
       }
       setDeactivateTarget(null);
       await loadData();

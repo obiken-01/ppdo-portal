@@ -98,4 +98,17 @@ public interface IUserService
         User requester,
         Guid targetId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Restores a previously deactivated user by setting <see cref="User.IsActive"/> to true.
+    ///
+    /// Returns:
+    ///   <see cref="ServiceErrorCode.NotFound"/>   — target user not found.
+    ///   <see cref="ServiceErrorCode.Forbidden"/>  — requester cannot manage the target user.
+    ///   <see cref="ServiceErrorCode.BadRequest"/>  — user is already active.
+    /// </summary>
+    Task<ServiceResult<UserResponseDto>> ReactivateAsync(
+        User requester,
+        Guid targetId,
+        CancellationToken cancellationToken = default);
 }

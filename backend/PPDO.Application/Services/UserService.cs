@@ -247,6 +247,36 @@ public sealed class UserService : IUserService
         return ServiceResult<UserResponseDto>.Ok(MapToDto(target));
     }
 
+    /// <inheritdoc />
+    public async Task<ServiceResult<UserResponseDto>> ReactivateAsync(
+        User requester,
+        Guid targetId,
+        CancellationToken cancellationToken = default)
+    {
+        User? target = await _users.GetByIdWithGroupAsync(targetId, cancellationToken);
+        if (target is null)
+            return ServiceResult<UserResponseDto>.NotFound($"User {targetId} not found.");
+
+        if (!CanRequesterManageTarget(requester, target))
+            return ServiceResult<UserResponseDto>.Forbidden(
+                "You do not have permission to reactivate this user.");
+
+        if (target.IsActive)
+            return ServiceResult<UserResponseDto>.BadRequest(
+                "User is already active.");
+
+        target.IsActive = true;
+
+        await _users.UpdateAsync(target, cancellationToken);
+        await _users.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "User reactivated. TargetUserId: {TargetUserId}, ReactivatedBy: {ReactivatedBy}",
+            target.Id, requester.Id);
+
+        return ServiceResult<UserResponseDto>.Ok(MapToDto(target));
+    }
+
     // ── Private helpers ────────────────────────────────────────────────────────
 
     /// <summary>
