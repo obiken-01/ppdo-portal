@@ -25,6 +25,12 @@ import { auth } from "@/lib/auth";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api";
 
+// Module-level — shared across all instances and StrictMode double-runs.
+// Ensures only one /auth/refresh request fires at a time; concurrent callers
+// (e.g. the StrictMode second mount) await the same promise instead of sending
+// a duplicate that would be rejected because the token was already rotated.
+let _refreshInFlight: Promise<boolean> | null = null;
+
 export default function PortalLayout({
   children,
 }: {
@@ -38,35 +44,32 @@ export default function PortalLayout({
 
     async function checkAuth() {
       // Access token already in memory — no round-trip needed.
-      // Also covers the StrictMode second-run case: if the first run already
-      // stored a new access token, skip the refresh entirely.
       if (auth.isAuthenticated()) {
         if (!cancelled) setReady(true);
         return;
       }
 
-      // Try silent refresh with the stored refresh token
       const refreshToken = auth.getRefreshToken();
       if (!refreshToken) {
-        router.replace("/login");
+        if (!cancelled) router.replace("/login");
         return;
       }
 
-      try {
-        // Use plain axios to bypass the api.ts interceptor and avoid loops
-        const { data } = await axios.post(`${BASE_URL}/auth/refresh`, {
-          refreshToken,
-        });
-        auth.login(data);
-        if (!cancelled) setReady(true);
-      } catch {
-        // Only clear tokens and redirect if we are still the active effect.
-        // If cancelled=true, a second StrictMode run is already in-flight —
-        // let that run decide whether to redirect.
-        if (!cancelled) {
-          auth.logout();
-          router.replace("/login");
-        }
+      // If a refresh is already in-flight (StrictMode second mount fires before
+      // the first network call resolves), wait on the same promise instead of
+      // sending a duplicate request that would be rejected as token-already-used.
+      if (!_refreshInFlight) {
+        _refreshInFlight = axios
+          .post(`${BASE_URL}/auth/refresh`, { refreshToken })
+          .then(({ data }) => { auth.login(data); return true; })
+          .catch(() => { auth.logout(); return false; })
+          .finally(() => { _refreshInFlight = null; });
+      }
+
+      const ok = await _refreshInFlight;
+      if (!cancelled) {
+        if (ok) setReady(true);
+        else router.replace("/login");
       }
     }
 
