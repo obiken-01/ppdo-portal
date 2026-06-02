@@ -93,7 +93,6 @@ export default function DashboardPage() {
                     : "bg-green-100 text-green-700"
                 }`}>
                   {selectedEvent.eventType}
-                  {selectedEvent.source ? ` · ${selectedEvent.source}` : ""}
                 </span>
                 <h3 className="text-base font-semibold text-slate-800 mt-1.5">
                   {selectedEvent.title}
