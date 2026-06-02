@@ -46,4 +46,13 @@ public interface IDeliveryRepository : IRepository<Delivery>
     Task<bool> DeliveryRefExistsAsync(
         string deliveryRef,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns all deliveries for a PR with Items, Distributions, and PRItem
+    /// eager-loaded — the full graph needed by PR Report Section 3 and ExcelService.ExportPRReport.
+    /// Include depth: 2 per chain (two sibling ThenIncludes on Items).
+    /// </summary>
+    Task<IReadOnlyList<Delivery>> GetDeliveriesForPRReportAsync(
+        Guid prId,
+        CancellationToken cancellationToken = default);
 }

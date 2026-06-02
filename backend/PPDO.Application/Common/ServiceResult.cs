@@ -42,6 +42,15 @@ public sealed class ServiceResult<T>
 
     public static ServiceResult<T> BadRequest(string error)
         => new(default, error, ServiceErrorCode.BadRequest);
+
+    /// <summary>
+    /// Propagates an error from a <see cref="ServiceResult{TSource}"/> of a different type.
+    /// Preserves the original error code and message — used when one service method
+    /// delegates to a shared load step and needs to forward its failure.
+    /// Only valid when <paramref name="source"/> is not successful.
+    /// </summary>
+    public static ServiceResult<T> FromError<TSource>(ServiceResult<TSource> source)
+        => new(default, source.Error, source.Code);
 }
 
 /// <summary>Machine-readable error categories for HTTP status mapping.</summary>

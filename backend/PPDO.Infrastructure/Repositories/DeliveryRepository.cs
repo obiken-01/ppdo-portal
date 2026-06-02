@@ -54,4 +54,17 @@ public sealed class DeliveryRepository : Repository<Delivery>, IDeliveryReposito
         CancellationToken cancellationToken = default)
         => await _context.Deliveries
             .AnyAsync(d => d.DeliveryRef == deliveryRef, cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<Delivery>> GetDeliveriesForPRReportAsync(
+        Guid prId,
+        CancellationToken cancellationToken = default)
+        => await _context.Deliveries
+            .Where(d => d.PRId == prId)
+            .Include(d => d.Items)                      // depth 1
+                .ThenInclude(di => di.Distributions)   // depth 2 — sibling A
+            .Include(d => d.Items)                      // depth 1
+                .ThenInclude(di => di.PRItem)           // depth 2 — sibling B
+            .OrderBy(d => d.DeliveryDate)
+            .ToListAsync(cancellationToken);
 }
