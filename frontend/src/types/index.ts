@@ -6,3 +6,4 @@
 export type * from "./auth";
 export type * from "./user";
 export type * from "./dashboard";
+export type * from "./resourceLinks";
