@@ -324,7 +324,7 @@ function UserForm({ form, groups, isEdit, saving, error, onChange, onSubmit, onC
               <OverrideToggle
                 key={key}
                 label={label}
-                value={form[key as OverrideKey]}
+                value={(form as UpdateUserRequest)[key]}
                 onChange={(v) => onChange({ [key]: v })}
               />
             ))}
