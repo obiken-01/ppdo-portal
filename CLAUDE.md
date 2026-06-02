@@ -499,6 +499,13 @@ Follow the JWT validation and permission check patterns in CLAUDE.md.
 | RAL-40 | User management API — `UserService` + `UserFunctions` (7 endpoints) | PR #14 |
 | RAL-41 | Public landing page — hero carousel, mission/vision, announcements, navbar, footer | PR #15 |
 | RAL-42 | Login page UI + Axios JWT client + portal auth guard | PR #16 |
+| RAL-43 | User Management page UI + permission overrides + `GET /api/permission-groups` + `PUT /api/users/{id}/reactivate` | PR #20 |
+| RAL-44 | Dashboard events + stats endpoints + PH holidays (Nager.Date) + `CalendarEvent` entity | PR #22 |
+| RAL-45 | Main Dashboard page UI — FullCalendar, portal shell (Sidebar + Topbar), Resource Links widget | PR #23 |
+| RAL-35 | Resource Links API — `ResourceLinkService` + 4 endpoints (GET/POST/PUT/DELETE) | PR #24 |
+| RAL-36 | Resource Links page UI + Dashboard widget upgrade (collapsible, View All) | PR #25 |
+| RAL-46 | ExcelService — `GeneratePRTemplate`, `ExportPRReport`, `ParsePRImport` (ClosedXML) | PR #26 |
+| RAL-47 | Items Master API — `ItemService` + 5 endpoints (CRUD + `/lookup` autocomplete) | PR #27 |
 
 ### Bug Fixes Applied
 
@@ -523,9 +530,10 @@ Follow the JWT validation and permission check patterns in CLAUDE.md.
 
 > Check `PROJECT_DOCUMENTATION_NET_AZURE.md` Section 11 (Roadmap) for full list.
 
-- **RAL-43+**: Main Dashboard UI (calendar, stat cards, sidebar layout)
-- **RAL-46**: Excel service (`IExcelService`) — commented out in `Program.cs`
-- **RAL-47+**: Inventory features (items, purchase requests, deliveries)
+- **RAL-48**: Purchase Requests API — `PurchaseRequestService` + endpoints (CRUD, Excel import/export)
+- **RAL-49**: Delivery Service + endpoints
+- **RAL-50**: PR Report endpoint + Excel export (wires `ExcelService.ExportPRReport`)
+- **RAL-54+**: Inventory UI (Items Master, Create PR, Receive Delivery)
 
 ---
 
