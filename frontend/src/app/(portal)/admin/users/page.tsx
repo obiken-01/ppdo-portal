@@ -589,7 +589,7 @@ export default function UsersPage() {
     if (!resetTarget) return;
     setActionLoading(true);
     try {
-      await api.post(`/users/${resetTarget.id}/reset-password`);
+      await api.put(`/users/${resetTarget.id}/reset-password`);
       setResetTarget(null);
     } catch {
       // keep modal open — user can retry
@@ -605,11 +605,28 @@ export default function UsersPage() {
   async function handleToggleActive() {
     if (!deactivateTarget) return;
     setActionLoading(true);
-    const endpoint = deactivateTarget.isActive
-      ? `/users/${deactivateTarget.id}/deactivate`
-      : `/users/${deactivateTarget.id}/reactivate`;
     try {
-      await api.put(endpoint);
+      if (deactivateTarget.isActive) {
+        // Backend: DELETE /api/users/{id}
+        await api.delete(`/users/${deactivateTarget.id}`);
+      } else {
+        // No dedicated reactivate endpoint — use PUT /api/users/{id} with isActive: true
+        const body: UpdateUserRequest = {
+          fullName: deactivateTarget.fullName,
+          email: deactivateTarget.email,
+          role: deactivateTarget.role,
+          division: deactivateTarget.division,
+          groupId: deactivateTarget.groupId,
+          position: deactivateTarget.position,
+          contactNo: deactivateTarget.contactNo,
+          isActive: true,
+          overrideCanAccessInventory: deactivateTarget.overrideCanAccessInventory,
+          overrideCanAccessReports: deactivateTarget.overrideCanAccessReports,
+          overrideCanManageUsers: deactivateTarget.overrideCanManageUsers,
+          overrideCanManageResourceLinks: deactivateTarget.overrideCanManageResourceLinks,
+        };
+        await api.put(`/users/${deactivateTarget.id}`, body);
+      }
       setDeactivateTarget(null);
       await loadData();
     } catch {
