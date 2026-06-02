@@ -1,6 +1,7 @@
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.PurchaseRequest;
 using PPDO.Domain.Entities;
+using PPDO.Domain.Enums;
 
 namespace PPDO.Application.Services;
 
@@ -12,11 +13,13 @@ namespace PPDO.Application.Services;
 public interface IPurchaseRequestService
 {
     /// <summary>
-    /// Returns all PRs visible to the requester.
+    /// Returns all PRs visible to the requester, optionally filtered by status.
     /// Staff/Observer: own division only. Admin/SuperAdmin: all divisions.
+    /// Pass status to power the PR Register filtered view (e.g. Open only).
     /// </summary>
     Task<IReadOnlyList<PRSummaryDto>> GetAllAsync(
         User requester,
+        PRStatus? status = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

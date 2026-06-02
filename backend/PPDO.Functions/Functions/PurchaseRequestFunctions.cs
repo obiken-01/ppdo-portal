@@ -6,6 +6,7 @@ using PPDO.Application.Common;
 using PPDO.Application.DTOs.PurchaseRequest;
 using PPDO.Application.Services;
 using PPDO.Domain.Entities;
+using PPDO.Domain.Enums;
 using PPDO.Domain.Interfaces;
 
 namespace PPDO.Functions.Functions;
@@ -52,8 +53,15 @@ public sealed class PurchaseRequestFunctions
         if (caller is null)
             return req.CreateResponse(HttpStatusCode.Unauthorized);
 
+        // Optional ?status= filter for PR Register view (e.g. ?status=Open)
+        PRStatus? status = null;
+        string? statusParam = req.Query["status"];
+        if (!string.IsNullOrEmpty(statusParam)
+            && Enum.TryParse(statusParam, ignoreCase: true, out PRStatus parsed))
+            status = parsed;
+
         IReadOnlyList<PRSummaryDto> result =
-            await _service.GetAllAsync(caller, cancellationToken);
+            await _service.GetAllAsync(caller, status, cancellationToken);
         return await OkJson(req, result, cancellationToken);
     }
 
