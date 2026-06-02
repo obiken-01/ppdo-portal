@@ -2,33 +2,35 @@
 
 /**
  * Resource Links sidebar widget for the Main Dashboard.
- * Fetches GET /api/resource-links and groups links by category.
+ * Fetches GET /api/resource-links — returns ResourceLinkCategoryDto[]
+ * (already grouped and sorted by the backend).
  * Gracefully shows an empty state when the endpoint is not yet available.
  */
 
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
-import type { ResourceLink } from "@/types";
 
-type GroupedLinks = Record<string, ResourceLink[]>;
+interface ResourceLinkItem {
+  id: string;
+  title: string;
+  url: string;
+  linkOrder: number;
+}
+
+interface ResourceLinkCategory {
+  category: string;
+  categoryOrder: number;
+  links: ResourceLinkItem[];
+}
 
 export default function ResourceLinksWidget() {
-  const [grouped, setGrouped]   = useState<GroupedLinks>({});
-  const [loading, setLoading]   = useState(true);
+  const [categories, setCategories] = useState<ResourceLinkCategory[]>([]);
+  const [loading, setLoading]       = useState(true);
   const [unavailable, setUnavailable] = useState(false);
 
   useEffect(() => {
-    api.get<ResourceLink[]>("/resource-links")
-      .then(({ data }) => {
-        const map: GroupedLinks = {};
-        data
-          .sort((a, b) => a.categoryOrder - b.categoryOrder || a.linkOrder - b.linkOrder)
-          .forEach((link) => {
-            if (!map[link.category]) map[link.category] = [];
-            map[link.category].push(link);
-          });
-        setGrouped(map);
-      })
+    api.get<ResourceLinkCategory[]>("/resource-links")
+      .then(({ data }) => setCategories(data))
       .catch(() => setUnavailable(true))
       .finally(() => setLoading(false));
   }, []);
@@ -54,19 +56,19 @@ export default function ResourceLinksWidget() {
           </p>
         )}
 
-        {!loading && !unavailable && Object.keys(grouped).length === 0 && (
+        {!loading && !unavailable && categories.length === 0 && (
           <p className="text-xs text-slate-400 text-center py-4">
             No resource links found.
           </p>
         )}
 
-        {!loading && !unavailable && Object.entries(grouped).map(([category, links]) => (
-          <div key={category}>
+        {!loading && !unavailable && categories.map((cat) => (
+          <div key={cat.category}>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1 px-1">
-              {category}
+              {cat.category}
             </p>
             <div className="space-y-0.5">
-              {links.map((link) => (
+              {cat.links.map((link) => (
                 <a
                   key={link.id}
                   href={link.url}
@@ -74,7 +76,7 @@ export default function ResourceLinksWidget() {
                   rel="noopener noreferrer"
                   className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-slate-600 hover:bg-green-50 hover:text-green-700 transition-colors group"
                 >
-                  <span className="text-slate-300 group-hover:text-green-400 transition-colors">↗</span>
+                  <span className="text-slate-300 group-hover:text-green-400 transition-colors shrink-0">↗</span>
                   <span className="truncate">{link.title}</span>
                 </a>
               ))}

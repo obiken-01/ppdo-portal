@@ -91,6 +91,7 @@ var host = new HostBuilder()
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<IDashboardService, DashboardService>();
+        services.AddScoped<IResourceLinkService, ResourceLinkService>();
         // services.AddScoped<IItemService, ItemService>();              // RAL-47
         // services.AddScoped<IPurchaseRequestService, PurchaseRequestService>();  // RAL-48
         // services.AddScoped<IDeliveryService, DeliveryService>();      // RAL-49
