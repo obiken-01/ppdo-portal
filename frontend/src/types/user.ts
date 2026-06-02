@@ -31,7 +31,12 @@ export interface CreateUserRequest {
 }
 
 export interface UpdateUserRequest extends CreateUserRequest {
+  groupId: string | null;
   isActive: boolean;
+  overrideCanAccessInventory: boolean | null;
+  overrideCanAccessReports: boolean | null;
+  overrideCanManageUsers: boolean | null;
+  overrideCanManageResourceLinks: boolean | null;
 }
 
 export interface PermissionGroupResponse {
