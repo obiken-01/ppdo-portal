@@ -50,6 +50,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
     /// <inheritdoc />
     public async Task<IReadOnlyList<PRSummaryDto>> GetAllAsync(
         User requester,
+        PRStatus? status = null,
         CancellationToken cancellationToken = default)
     {
         IReadOnlyList<PurchaseRequest> all;
@@ -59,9 +60,13 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         else
             all = await _prs.GetAllAsync(cancellationToken);
 
-        return all.OrderByDescending(pr => pr.PRDate)
-                  .Select(MapToSummary)
-                  .ToList();
+        IEnumerable<PurchaseRequest> filtered = status.HasValue
+            ? all.Where(pr => pr.Status == status.Value)
+            : all;
+
+        return filtered.OrderByDescending(pr => pr.PRDate)
+                       .Select(MapToSummary)
+                       .ToList();
     }
 
     // ── GetByIdAsync ───────────────────────────────────────────────────────────

@@ -1,0 +1,151 @@
+using PPDO.Application.DTOs.Inventory;
+using PPDO.Domain.Entities;
+using PPDO.Domain.Enums;
+using PPDO.Domain.Interfaces;
+
+namespace PPDO.Application.Services;
+
+/// <summary>
+/// Inventory Dashboard stats and Item Ledger computation.
+///
+/// Division scope:
+///   Staff/Observer → pass their division to IInventoryRepository and PR queries.
+///   Admin/SuperAdmin → pass null (all divisions).
+///
+/// Stock level formula:
+///   OnHand        = QtyDelivered - QtyDistributed
+///   IsLowStock    = OnHand ≤ ReorderQty (and OnHand > 0)
+///   IsOutOfStock  = OnHand ≤ 0
+///
+/// PR status grouping for stat cards:
+///   "FullyDeliveredOrCompleted" = PRStatus.FullyDelivered OR PRStatus.Completed
+/// </summary>
+public sealed class InventoryService : IInventoryService
+{
+    private readonly IInventoryRepository        _inventory;
+    private readonly IPurchaseRequestRepository  _prs;
+    private readonly IItemMasterRepository       _items;
+
+    public InventoryService(
+        IInventoryRepository inventory,
+        IPurchaseRequestRepository prs,
+        IItemMasterRepository items)
+    {
+        _inventory = inventory;
+        _prs       = prs;
+        _items     = items;
+    }
+
+    // ── GetStatsAsync ──────────────────────────────────────────────────────────
+
+    /// <inheritdoc />
+    public async Task<InventoryStatsDto> GetStatsAsync(
+        User requester,
+        CancellationToken cancellationToken = default)
+    {
+        Division? division = ScopeFor(requester);
+
+        // Load PRs for division-scoped counts and total value.
+        IReadOnlyList<PurchaseRequest> prs = division.HasValue
+            ? await _prs.GetByDivisionAsync(division.Value, cancellationToken)
+            : await _prs.GetAllAsync(cancellationToken);
+
+        // Group 1 — Purchase Request stat cards.
+        PRStatsGroupDto prGroup = new(
+            Total:                   prs.Count,
+            Open:                    prs.Count(p => p.Status == PRStatus.Open),
+            PartiallyDelivered:      prs.Count(p => p.Status == PRStatus.PartiallyDelivered),
+            FullyDeliveredOrCompleted: prs.Count(p =>
+                p.Status is PRStatus.FullyDelivered or PRStatus.Completed));
+
+        // Group 2 — Inventory Alert stat cards.
+        // Stock levels from the aggregate repository query.
+        IReadOnlyList<ItemStockLevel> stockLevels =
+            await _inventory.GetItemStockLevelsAsync(division, cancellationToken);
+
+        IReadOnlyList<ItemMaster> catalog = await _items.GetAllAsync(cancellationToken);
+        Dictionary<string, ItemMaster> catalogMap =
+            catalog.ToDictionary(i => i.StockNo, i => i);
+
+        int inStock        = 0;
+        int lowOrOutStock  = 0;
+
+        foreach (ItemStockLevel level in stockLevels)
+        {
+            decimal onHand = level.QtyDelivered - level.QtyDistributed;
+            int reorderQty = catalogMap.TryGetValue(level.StockNo, out ItemMaster? master)
+                ? master.ReorderQty : 0;
+
+            if (onHand > reorderQty)
+                inStock++;
+            else
+                lowOrOutStock++;
+        }
+
+        decimal totalPRValue = prs.Sum(p => p.TotalAmount);
+
+        // UniqueItemsTracked — count distinct StockNos with any PR activity (within scope).
+        int uniqueItems = stockLevels.Count;
+
+        AlertsGroupDto alertsGroup = new(
+            InStock:            inStock,
+            LowOrOutOfStock:    lowOrOutStock,
+            TotalPRValue:       totalPRValue,
+            UniqueItemsTracked: uniqueItems);
+
+        return new InventoryStatsDto(prGroup, alertsGroup);
+    }
+
+    // ── GetItemLedgerAsync ─────────────────────────────────────────────────────
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<ItemLedgerRowDto>> GetItemLedgerAsync(
+        User requester,
+        CancellationToken cancellationToken = default)
+    {
+        Division? division = ScopeFor(requester);
+
+        IReadOnlyList<ItemStockLevel> stockLevels =
+            await _inventory.GetItemStockLevelsAsync(division, cancellationToken);
+
+        IReadOnlyList<ItemMaster> catalog = await _items.GetAllAsync(cancellationToken);
+        Dictionary<string, ItemMaster> catalogMap =
+            catalog.ToDictionary(i => i.StockNo, i => i);
+
+        List<ItemLedgerRowDto> rows = new(stockLevels.Count);
+
+        foreach (ItemStockLevel level in stockLevels)
+        {
+            decimal onHand = level.QtyDelivered - level.QtyDistributed;
+
+            catalogMap.TryGetValue(level.StockNo, out ItemMaster? master);
+
+            rows.Add(new ItemLedgerRowDto(
+                StockNo:         level.StockNo,
+                Description:     master?.Description ?? level.StockNo,
+                Category:        master?.Category,
+                Unit:            master?.Unit ?? string.Empty,
+                UnitCost:        master?.UnitCost ?? 0m,
+                ItemType:        master?.ItemType,
+                ReorderQty:      master?.ReorderQty ?? 0,
+                QtyOrdered:      level.QtyOrdered,
+                QtyDelivered:    level.QtyDelivered,
+                QtyDistributed:  level.QtyDistributed,
+                OnHand:          onHand,
+                IsLowStock:      onHand > 0 && onHand <= (master?.ReorderQty ?? 0),
+                IsOutOfStock:    onHand <= 0));
+        }
+
+        return rows.OrderBy(r => r.StockNo).ToList();
+    }
+
+    // ── Helpers ────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns the division to scope queries to, or null for Admin/SuperAdmin (all divisions).
+    /// </summary>
+    private static Division? ScopeFor(User requester)
+        => requester.Role is UserRole.Staff or UserRole.Observer
+            ? requester.Division
+            : null;
+}

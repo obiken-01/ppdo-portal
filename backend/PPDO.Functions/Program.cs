@@ -79,6 +79,7 @@ var host = new HostBuilder()
         services.AddScoped<IPurchaseRequestRepository, PurchaseRequestRepository>();
         services.AddScoped<IDeliveryRepository, DeliveryRepository>();
         services.AddScoped<IItemMasterRepository, ItemMasterRepository>();
+        services.AddScoped<IInventoryRepository, InventoryRepository>();
         services.AddScoped<ICalendarEventRepository, CalendarEventRepository>();
         services.AddScoped<IJwtMiddleware, JwtMiddleware>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
@@ -97,6 +98,7 @@ var host = new HostBuilder()
         services.AddScoped<IPurchaseRequestService, PurchaseRequestService>();
         services.AddScoped<IDeliveryService, DeliveryService>();
         services.AddScoped<IPRReportService, PRReportService>();
+        services.AddScoped<IInventoryService, InventoryService>();
     })
     .Build();
 
