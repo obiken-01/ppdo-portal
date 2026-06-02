@@ -37,7 +37,9 @@ export default function PortalLayout({
     let cancelled = false;
 
     async function checkAuth() {
-      // Access token already in memory — no round-trip needed
+      // Access token already in memory — no round-trip needed.
+      // Also covers the StrictMode second-run case: if the first run already
+      // stored a new access token, skip the refresh entirely.
       if (auth.isAuthenticated()) {
         if (!cancelled) setReady(true);
         return;
@@ -58,8 +60,13 @@ export default function PortalLayout({
         auth.login(data);
         if (!cancelled) setReady(true);
       } catch {
-        auth.logout();
-        router.replace("/login");
+        // Only clear tokens and redirect if we are still the active effect.
+        // If cancelled=true, a second StrictMode run is already in-flight —
+        // let that run decide whether to redirect.
+        if (!cancelled) {
+          auth.logout();
+          router.replace("/login");
+        }
       }
     }
 
