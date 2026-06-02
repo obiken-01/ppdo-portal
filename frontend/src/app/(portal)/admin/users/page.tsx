@@ -53,7 +53,7 @@ const ROLE_BADGE: Record<UserRole, string> = {
 // Overrides that are meaningful only for Staff / Observer
 const OVERRIDE_KEYS = [
   { key: "overrideCanAccessInventory",     label: "Access Inventory" },
-  { key: "overrideCanAccessReports",       label: "Access Reports" },
+  { key: "overrideCanAccessReports",       label: "Inventory Report" },
   { key: "overrideCanManageUsers",         label: "Manage Users" },
   { key: "overrideCanManageResourceLinks", label: "Manage Resource Links" },
 ] as const;

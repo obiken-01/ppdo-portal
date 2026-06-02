@@ -2,31 +2,19 @@
 
 /**
  * PPDO Portal — main navigation sidebar.
- * Always visible on desktop; collapses on mobile via the isOpen prop.
  * Uses PPDO green-700 (#196638) as background to match the Penpot design.
+ *
+ * Inventory group is collapsible. Visibility rules:
+ *   - Inventory parent shown if canAccessInventory OR canAccessReports
+ *   - "Inventory Dashboard" child shown if canAccessInventory
+ *   - "Inventory Report"    child shown if canAccessReports
+ *   - Parent auto-expands when the current path is under /inventory
  */
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { MeResponse } from "@/types";
-
-interface NavItem {
-  label: string;
-  href: string;
-  icon: string;
-  /** If set, only shown when the user has this permission. */
-  requiredPermission?: keyof Pick<
-    MeResponse,
-    "canManageUsers" | "canAccessInventory" | "canManageResourceLinks"
-  >;
-}
-
-const NAV_ITEMS: NavItem[] = [
-  { label: "Dashboard",       href: "/dashboard",       icon: "🏠" },
-  { label: "Inventory",       href: "/inventory",       icon: "📦", requiredPermission: "canAccessInventory" },
-  { label: "Resource Links",  href: "/resource-links",  icon: "🔗" },
-  { label: "User Management", href: "/admin/users",     icon: "👥", requiredPermission: "canManageUsers" },
-];
 
 interface SidebarProps {
   me: MeResponse | null;
@@ -35,14 +23,40 @@ interface SidebarProps {
 export default function Sidebar({ me }: SidebarProps) {
   const pathname = usePathname();
 
+  // Auto-expand inventory group when on an inventory route
+  const [inventoryOpen, setInventoryOpen] = useState(
+    () => pathname.startsWith("/inventory")
+  );
+
+  useEffect(() => {
+    if (pathname.startsWith("/inventory")) setInventoryOpen(true);
+  }, [pathname]);
+
   function isActive(href: string) {
     return pathname === href || pathname.startsWith(href + "/");
   }
 
-  function isVisible(item: NavItem): boolean {
-    if (!item.requiredPermission) return true;
-    if (!me) return false;
-    return me[item.requiredPermission] === true;
+  // ── Permission helpers ─────────────────────────────────────────────────────
+  const hasInventory = me?.canAccessInventory === true;
+  const hasReport    = me?.canAccessReports    === true;
+  const showInventoryGroup = hasInventory || hasReport;
+  const showManageUsers    = me?.canManageUsers === true;
+
+  // ── Shared link class ──────────────────────────────────────────────────────
+  function linkCls(active: boolean) {
+    return `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+      active
+        ? "bg-green-800 text-white"
+        : "text-green-100 hover:bg-green-600 hover:text-white"
+    }`;
+  }
+
+  function childLinkCls(active: boolean) {
+    return `flex items-center gap-2 pl-9 pr-3 py-2 rounded-lg text-sm transition-colors ${
+      active
+        ? "bg-green-800 text-white font-medium"
+        : "text-green-200 hover:bg-green-600 hover:text-white"
+    }`;
   }
 
   return (
@@ -65,20 +79,72 @@ export default function Sidebar({ me }: SidebarProps) {
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {NAV_ITEMS.filter(isVisible).map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-              isActive(item.href)
-                ? "bg-green-800 text-white"
-                : "text-green-100 hover:bg-green-600 hover:text-white"
-            }`}
-          >
-            <span className="text-base leading-none w-5 text-center">{item.icon}</span>
-            <span className="truncate">{item.label}</span>
+
+        {/* Dashboard */}
+        <Link href="/dashboard" className={linkCls(isActive("/dashboard"))}>
+          <span className="text-base leading-none w-5 text-center">🏠</span>
+          <span className="truncate">Dashboard</span>
+        </Link>
+
+        {/* Inventory group — collapsible */}
+        {showInventoryGroup && (
+          <div>
+            {/* Parent toggle */}
+            <button
+              onClick={() => setInventoryOpen((o) => !o)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                isActive("/inventory")
+                  ? "bg-green-800 text-white"
+                  : "text-green-100 hover:bg-green-600 hover:text-white"
+              }`}
+            >
+              <span className="text-base leading-none w-5 text-center">📦</span>
+              <span className="flex-1 text-left truncate">Inventory</span>
+              <span className={`text-xs transition-transform ${inventoryOpen ? "rotate-90" : ""}`}>
+                ›
+              </span>
+            </button>
+
+            {/* Children */}
+            {inventoryOpen && (
+              <div className="mt-0.5 space-y-0.5">
+                {hasInventory && (
+                  <Link
+                    href="/inventory"
+                    className={childLinkCls(pathname === "/inventory")}
+                  >
+                    <span className="text-xs">•</span>
+                    <span className="truncate">Inventory Dashboard</span>
+                  </Link>
+                )}
+                {hasReport && (
+                  <Link
+                    href="/inventory/pr-report"
+                    className={childLinkCls(isActive("/inventory/pr-report"))}
+                  >
+                    <span className="text-xs">•</span>
+                    <span className="truncate">Inventory Report</span>
+                  </Link>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Resource Links */}
+        <Link href="/resource-links" className={linkCls(isActive("/resource-links"))}>
+          <span className="text-base leading-none w-5 text-center">🔗</span>
+          <span className="truncate">Resource Links</span>
+        </Link>
+
+        {/* User Management */}
+        {showManageUsers && (
+          <Link href="/admin/users" className={linkCls(isActive("/admin/users"))}>
+            <span className="text-base leading-none w-5 text-center">👥</span>
+            <span className="truncate">User Management</span>
           </Link>
-        ))}
+        )}
+
       </nav>
 
       {/* User info strip */}
