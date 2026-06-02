@@ -507,6 +507,9 @@ Follow the JWT validation and permission check patterns in CLAUDE.md.
 | RAL-46 | ExcelService — `GeneratePRTemplate`, `ExportPRReport`, `ParsePRImport` (ClosedXML) | PR #26 |
 | RAL-47 | Items Master API — `ItemService` + 5 endpoints (CRUD + `/lookup` autocomplete) | PR #27 |
 | RAL-48 | Purchase Requests API — `PurchaseRequestService` + 6 endpoints (CRUD, template download, Excel import) | PR #28 |
+| RAL-49 | Receive Delivery API — `DeliveryService` + 4 endpoints + PR status auto-transition + split delivery | PR #29 |
+| RAL-50 | PR Report — `PRReportService` + JSON report endpoint + `.xlsx` export via `ExcelService` | PR #30 |
+| RAL-51 | Inventory Dashboard stats + Item Ledger + PR Register filter — `InventoryService` + 2 endpoints + `?status=` filter | PR #31 |
 
 ### Bug Fixes Applied
 
@@ -532,9 +535,20 @@ Follow the JWT validation and permission check patterns in CLAUDE.md.
 
 > Check `PROJECT_DOCUMENTATION_NET_AZURE.md` Section 11 (Roadmap) for full list.
 
-- **RAL-49**: Delivery Service + endpoints
-- **RAL-50**: PR Report endpoint + Excel export (wires `ExcelService.ExportPRReport`)
-- **RAL-54+**: Inventory UI (Items Master, Create PR, Receive Delivery)
+### Phase 6 complete — all backend RALs shipped ✅
+
+### Next: Phase 7 — Inventory Core Frontend
+
+| RAL | Screen | Penpot Frame |
+|---|---|---|
+| RAL-52 | Items Master page UI | `06 Items Master` |
+| RAL-53 | Create PR page UI + Excel import upload | `04b Create PR` |
+| RAL-54 | Receive Delivery page UI | `05 Receive Delivery` |
+| RAL-55 | PR Report page UI + export trigger | `07 PR Report` |
+| RAL-56 | Inventory Dashboard page UI | `04 Inventory Dashboard` |
+| RAL-57 | Item Ledger + PR Register page UIs | (HTML prototype only) |
+
+> ⚠️ Full E2E delivery flow testing (RAL-49) deferred to RAL-54 UI — see memory note.
 
 ---
 
