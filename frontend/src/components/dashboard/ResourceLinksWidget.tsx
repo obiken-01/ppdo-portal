@@ -76,7 +76,7 @@ export default function ResourceLinksWidget() {
                 <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide group-hover:text-slate-600 transition-colors text-left">
                   {cat.category}
                 </span>
-                <span className={`text-xs text-slate-300 transition-transform duration-200 ${isCollapsed ? "" : "rotate-90"}`}>
+                <span className={`text-base text-slate-400 transition-transform duration-200 leading-none ${isCollapsed ? "" : "rotate-90"}`}>
                   ›
                 </span>
               </button>

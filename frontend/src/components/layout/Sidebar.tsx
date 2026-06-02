@@ -133,7 +133,7 @@ export default function Sidebar({ me }: SidebarProps) {
             >
               <span className="text-base leading-none w-5 text-center">📦</span>
               <span className="flex-1 text-left truncate">Inventory</span>
-              <span className={`text-xs transition-transform duration-200 ${inventoryOpen ? "rotate-90" : ""}`}>
+              <span className={`text-base leading-none transition-transform duration-200 ${inventoryOpen ? "rotate-90" : ""}`}>
                 ›
               </span>
             </button>
