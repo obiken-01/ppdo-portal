@@ -1,34 +1,48 @@
 "use client";
 
 /**
- * Portal layout — RAL-42.
+ * Portal layout — RAL-42 (auth guard) + RAL-45 (sidebar shell).
  *
  * Auth guard: every route inside (portal)/ requires a valid JWT.
- *
  * On mount:
  *   1. If an access token is already in memory → allow immediately.
  *   2. If not, look for a stored refresh token in localStorage.
  *      - Found  → POST /auth/refresh → store new tokens → allow.
  *      - Missing / expired → clear tokens → redirect to /login.
  *
- * A full-screen loading spinner is shown while the auth check runs to
- * prevent a flash of portal content before the redirect fires.
- *
- * The sidebar and top-nav shell will be added in a future RAL once the
- * dashboard design is implemented.
+ * After auth passes, renders the full portal shell:
+ *   Sidebar (left, fixed) + Topbar (top) + main content area.
+ * The shell fetches /auth/me to populate the sidebar and topbar with
+ * the current user's name, role, and permission-based nav items.
  */
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import axios from "axios";
+import api from "@/lib/api";
 import { auth } from "@/lib/auth";
+import Sidebar from "@/components/layout/Sidebar";
+import Topbar from "@/components/layout/Topbar";
+import type { MeResponse } from "@/types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api";
 
-// Module-level — shared across all instances and StrictMode double-runs.
-// Ensures only one /auth/refresh request fires at a time; concurrent callers
-// (e.g. the StrictMode second mount) await the same promise instead of sending
-// a duplicate that would be rejected because the token was already rotated.
+// Page title map — keyed by pathname prefix.
+const PAGE_TITLES: Record<string, string> = {
+  "/dashboard":     "Main Dashboard",
+  "/inventory":     "Inventory",
+  "/resource-links":"Resource Links",
+  "/admin/users":   "User Management",
+};
+
+function getPageTitle(pathname: string): string {
+  for (const [prefix, title] of Object.entries(PAGE_TITLES)) {
+    if (pathname === prefix || pathname.startsWith(prefix + "/")) return title;
+  }
+  return "PPDO Portal";
+}
+
+// Module-level — deduplicates the silent refresh across StrictMode double-mounts.
 let _refreshInFlight: Promise<boolean> | null = null;
 
 export default function PortalLayout({
@@ -36,14 +50,17 @@ export default function PortalLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const router = useRouter();
+  const router   = useRouter();
+  const pathname = usePathname();
   const [ready, setReady] = useState(false);
+  const [me, setMe]       = useState<MeResponse | null>(null);
+
+  // ── Auth guard ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
     let cancelled = false;
 
     async function checkAuth() {
-      // Access token already in memory — no round-trip needed.
       if (auth.isAuthenticated()) {
         if (!cancelled) setReady(true);
         return;
@@ -55,9 +72,6 @@ export default function PortalLayout({
         return;
       }
 
-      // If a refresh is already in-flight (StrictMode second mount fires before
-      // the first network call resolves), wait on the same promise instead of
-      // sending a duplicate request that would be rejected as token-already-used.
       if (!_refreshInFlight) {
         _refreshInFlight = axios
           .post(`${BASE_URL}/auth/refresh`, { refreshToken })
@@ -77,6 +91,15 @@ export default function PortalLayout({
     return () => { cancelled = true; };
   }, [router]);
 
+  // ── Fetch current user for sidebar / topbar ────────────────────────────────
+
+  useEffect(() => {
+    if (!ready) return;
+    api.get<MeResponse>("/auth/me").then(({ data }) => setMe(data)).catch(() => {});
+  }, [ready]);
+
+  // ── Loading state ──────────────────────────────────────────────────────────
+
   if (!ready) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-100">
@@ -88,5 +111,17 @@ export default function PortalLayout({
     );
   }
 
-  return <>{children}</>;
+  // ── Portal shell ───────────────────────────────────────────────────────────
+
+  return (
+    <div className="flex h-screen bg-slate-100 font-sans overflow-hidden">
+      <Sidebar me={me} />
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <Topbar me={me} title={getPageTitle(pathname)} />
+        <main className="flex-1 overflow-auto">
+          {children}
+        </main>
+      </div>
+    </div>
+  );
 }

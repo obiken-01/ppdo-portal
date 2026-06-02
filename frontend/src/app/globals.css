@@ -89,3 +89,79 @@
     text-wrap: balance;
   }
 }
+
+/* ── FullCalendar PPDO overrides ──────────────────────────────────────────── */
+/* Scoped to .fc-ppdo so other uses of FullCalendar are unaffected.           */
+
+.fc-ppdo .fc-toolbar-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #343A40;
+}
+
+.fc-ppdo .fc-button {
+  background-color: #1F7A45 !important;
+  border-color: #196638 !important;
+  font-size: 0.75rem !important;
+  padding: 0.25rem 0.6rem !important;
+  border-radius: 0.5rem !important;
+}
+
+.fc-ppdo .fc-button:hover {
+  background-color: #2E9958 !important;
+  border-color: #1F7A45 !important;
+}
+
+.fc-ppdo .fc-button-active,
+.fc-ppdo .fc-button:focus {
+  background-color: #13512D !important;
+  border-color: #0F4526 !important;
+  box-shadow: none !important;
+}
+
+.fc-ppdo .fc-col-header-cell {
+  background-color: #F0FAF4;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #1F7A45;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.35rem 0;
+}
+
+.fc-ppdo .fc-daygrid-day-number {
+  font-size: 0.75rem;
+  color: #6C757D;
+  padding: 0.2rem 0.4rem;
+}
+
+.fc-ppdo .fc-daygrid-day.fc-day-today {
+  background-color: #F0FAF4 !important;
+}
+
+.fc-ppdo .fc-daygrid-day.fc-day-today .fc-daygrid-day-number {
+  background-color: #1F7A45;
+  color: #ffffff;
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fc-ppdo .fc-event {
+  font-size: 0.7rem !important;
+  border-radius: 4px !important;
+  padding: 1px 4px !important;
+  cursor: pointer;
+}
+
+.fc-ppdo .fc-daygrid-more-link {
+  font-size: 0.7rem;
+  color: #1F7A45;
+}
+
+.fc-ppdo td, .fc-ppdo th {
+  border-color: #E9ECEF !important;
+}
