@@ -1,22 +1,27 @@
 "use client";
 
 /**
- * Items Master page — RAL-52 (inline-editing revision).
+ * Items Master page — RAL-52 (inline-editing, uncontrolled-input fix).
  * Matches Penpot frame "06 Items Master".
  *
  * Access guard: canAccessInventory permission required.
  *
+ * Inline editing — focus-loss fix:
+ *   Edit values are stored in a useRef (editRef), NOT in useState.
+ *   Cell inputs use defaultValue (uncontrolled) and write to editRef on change.
+ *   This means the columns useMemo NEVER lists edit values as a dependency,
+ *   so the column array is stable across keystrokes → no remount → no focus loss.
+ *   The only state that columns depend on: editingId, saving, reviewingId.
+ *
  * Table behaviour:
  *   - TanStack Table v8 — per-column filter row, global search, sortable columns
- *   - Clicking ✏️ on a row switches it into inline edit mode (inputs in cells)
+ *   - ✏️ click → row switches to inline edit mode (inputs in cells)
  *   - Only one row editable at a time
  *   - isNewItem rendered as a toggle button in edit mode / ★ NEW badge in display mode
  *   - Remarks column always visible; editable inline
- *   - "+ Add Item" appends a blank sentinel row (id "__new__") at the top,
- *     immediately in edit mode — Save calls POST, Cancel removes the sentinel
- *   - Validation errors shown inline inside the editing row
- *   - Save/API success → toast (top-right, auto-dismiss 2 s)
- *   - API errors on save → toast
+ *   - "+ Add Item" appends a blank sentinel row at the top, immediately in edit mode
+ *   - Validation errors appear as a sub-row below the editing row
+ *   - Save/API success → toast. API errors on save → toast.
  *
  * API endpoints (ItemFunctions.cs):
  *   GET  /api/items/master        → list all items
@@ -24,7 +29,7 @@
  *   PUT  /api/items/master/{id}   → update item
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   useReactTable,
@@ -36,7 +41,6 @@ import {
   type ColumnDef,
   type ColumnFiltersState,
   type SortingState,
-  type Row,
 } from "@tanstack/react-table";
 import api from "@/lib/api";
 import { useToast } from "@/components/ui/Toast";
@@ -54,36 +58,7 @@ import type {
 const NEW_ROW_ID = "__new__";
 
 // ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function fmt(n: number) {
-  return new Intl.NumberFormat("en-PH", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(n);
-}
-
-/** Sentinel row used for the "+ Add Item" inline new row */
-function blankSentinel(): ItemMasterResponse {
-  return {
-    id:          NEW_ROW_ID,
-    stockNo:     "",
-    description: "",
-    category:    null,
-    unit:        "",
-    unitCost:    0,
-    itemType:    null,
-    reorderQty:  0,
-    remarks:     null,
-    isNewItem:   false,
-    createdAt:   "",
-    updatedAt:   "",
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Inline-edit field types
+// Types
 // ---------------------------------------------------------------------------
 
 type EditValues = {
@@ -98,63 +73,89 @@ type EditValues = {
   isNewItem:   boolean;
 };
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function fmt(n: number) {
+  return new Intl.NumberFormat("en-PH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(n);
+}
+
 function toEditValues(item: ItemMasterResponse): EditValues {
   return {
     stockNo:     item.stockNo,
     description: item.description,
-    category:    item.category    ?? "",
+    category:    item.category   ?? "",
     unit:        item.unit,
     unitCost:    item.unitCost,
-    itemType:    item.itemType    ?? "",
+    itemType:    item.itemType   ?? "",
     reorderQty:  item.reorderQty,
-    remarks:     item.remarks     ?? "",
+    remarks:     item.remarks    ?? "",
     isNewItem:   item.isNewItem,
   };
 }
 
+function blankSentinel(): ItemMasterResponse {
+  return {
+    id: NEW_ROW_ID, stockNo: "", description: "", category: null,
+    unit: "", unitCost: 0, itemType: null, reorderQty: 0,
+    remarks: null, isNewItem: false, createdAt: "", updatedAt: "",
+  };
+}
+
 // ---------------------------------------------------------------------------
-// Small reusable edit input
+// Uncontrolled text input — writes to a ref field on change.
+// defaultValue is set when the row enters edit mode (keyed by editingId).
 // ---------------------------------------------------------------------------
 
-function EditInput({
-  value,
-  onChange,
+function EditCell({
+  defaultValue,
+  onWrite,
   placeholder,
   type = "text",
-  className = "",
 }: {
-  value: string | number;
-  onChange: (v: string) => void;
+  defaultValue: string | number;
+  onWrite: (v: string) => void;
   placeholder?: string;
   type?: "text" | "number";
-  className?: string;
 }) {
   return (
     <input
       type={type}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
+      defaultValue={defaultValue}
+      onChange={(e) => onWrite(e.target.value)}
       placeholder={placeholder}
-      className={`w-full px-2 py-1 text-xs rounded border border-slate-300 bg-cell-fill focus:outline-none focus:ring-1 focus:ring-green-500 focus:bg-white transition-colors ${className}`}
+      className="w-full px-2 py-1 text-xs rounded border border-slate-300 bg-cell-fill focus:outline-none focus:ring-1 focus:ring-green-500 focus:bg-white transition-colors"
     />
   );
 }
 
 // ---------------------------------------------------------------------------
-// isNewItem toggle used in edit mode
+// isNewItem toggle — controlled locally; syncs to ref on toggle.
 // ---------------------------------------------------------------------------
 
-function NewToggle({
-  value,
-  onChange,
+function NewToggleCell({
+  initial,
+  onWrite,
 }: {
-  value: boolean;
-  onChange: (v: boolean) => void;
+  initial: boolean;
+  onWrite: (v: boolean) => void;
 }) {
+  const [value, setValue] = useState(initial);
+
+  function toggle() {
+    const next = !value;
+    setValue(next);
+    onWrite(next);
+  }
+
   return (
     <button
       type="button"
-      onClick={() => onChange(!value)}
+      onClick={toggle}
       className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border transition-colors whitespace-nowrap ${
         value
           ? "bg-amber-100 border-amber-300 text-amber-700"
@@ -167,48 +168,38 @@ function NewToggle({
 }
 
 // ---------------------------------------------------------------------------
-// Row-level inline error banner
-// ---------------------------------------------------------------------------
-
-function RowError({ message }: { message: string }) {
-  return (
-    <td
-      colSpan={100}
-      className="px-3 py-1 bg-red-50 border-t border-red-100"
-    >
-      <p className="text-xs text-red-600">{message}</p>
-    </td>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
 export default function ItemsMasterPage() {
-  const router     = useRouter();
-  const { toast }  = useToast();
+  const router    = useRouter();
+  const { toast } = useToast();
 
   // Auth guard
   const [authChecked, setAuthChecked] = useState(false);
 
-  // Master data — includes optional sentinel at index 0
+  // Master data
   const [items, setItems]         = useState<ItemMasterResponse[]>([]);
   const [hasSentinel, setSentinel] = useState(false);
   const [loading, setLoading]     = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  // Inline edit state
-  const [editingId, setEditingId]     = useState<string | null>(null);
-  const [editValues, setEditValues]   = useState<EditValues | null>(null);
-  const [rowError, setRowError]       = useState<string | null>(null);
-  const [saving, setSaving]           = useState(false);
+  // ---------------------------------------------------------------------------
+  // Inline edit state — ONLY editingId is in React state.
+  // Actual field values live in editRef so keystrokes never trigger re-renders.
+  // ---------------------------------------------------------------------------
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const editRef = useRef<EditValues | null>(null);
 
-  // Table state
-  const [globalFilter, setGlobalFilter]     = useState("");
-  const [columnFilters, setColumnFilters]   = useState<ColumnFiltersState>([]);
-  const [sorting, setSorting]               = useState<SortingState>([]);
-  const [showNewOnly, setShowNewOnly]       = useState(false);
+  const [rowError, setRowError]   = useState<string | null>(null);
+  const [saving, setSaving]       = useState(false);
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
+
+  // Table filter/sort state
+  const [globalFilter, setGlobalFilter]   = useState("");
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [sorting, setSorting]             = useState<SortingState>([]);
+  const [showNewOnly, setShowNewOnly]     = useState(false);
 
   // ── Auth guard ─────────────────────────────────────────────────────────────
 
@@ -221,7 +212,7 @@ export default function ItemsMasterPage() {
       .catch(() => router.replace("/login"));
   }, [router]);
 
-  // ── Load items ─────────────────────────────────────────────────────────────
+  // ── Load ───────────────────────────────────────────────────────────────────
 
   const loadItems = useCallback(async () => {
     setLoading(true);
@@ -240,69 +231,67 @@ export default function ItemsMasterPage() {
     if (authChecked) loadItems();
   }, [authChecked, loadItems]);
 
-  // ── Table data — prepend sentinel if adding ───────────────────────────────
+  // ── Table data ─────────────────────────────────────────────────────────────
 
   const tableData = useMemo<ItemMasterResponse[]>(() => {
     const base = showNewOnly ? items.filter((i) => i.isNewItem) : items;
     return hasSentinel ? [blankSentinel(), ...base] : base;
   }, [items, hasSentinel, showNewOnly]);
 
-  // ── Inline edit helpers ────────────────────────────────────────────────────
+  // ── Edit helpers ───────────────────────────────────────────────────────────
 
   function startEdit(item: ItemMasterResponse) {
-    // Discard unsaved sentinel if user clicks edit on another row
     if (hasSentinel && item.id !== NEW_ROW_ID) discardSentinel();
+    editRef.current = toEditValues(item);
     setEditingId(item.id);
-    setEditValues(toEditValues(item));
     setRowError(null);
   }
 
   function cancelEdit() {
     if (editingId === NEW_ROW_ID) discardSentinel();
+    editRef.current = null;
     setEditingId(null);
-    setEditValues(null);
     setRowError(null);
   }
 
   function discardSentinel() {
     setSentinel(false);
+    editRef.current = null;
     setEditingId(null);
-    setEditValues(null);
     setRowError(null);
   }
 
-  function patch(partial: Partial<EditValues>) {
-    setEditValues((v) => (v ? { ...v, ...partial } : v));
-  }
+  // ── Validate (reads from ref) ──────────────────────────────────────────────
 
   function validate(): string | null {
-    if (!editValues) return "No edit values.";
-    if (!editValues.stockNo.trim())     return "Stock No. is required.";
-    if (!editValues.description.trim()) return "Description is required.";
-    if (!editValues.unit.trim())        return "Unit is required.";
+    const v = editRef.current;
+    if (!v) return "No edit values.";
+    if (!v.stockNo.trim())     return "Stock No. is required.";
+    if (!v.description.trim()) return "Description is required.";
+    if (!v.unit.trim())        return "Unit is required.";
     return null;
   }
 
-  // ── Save (create or update) ────────────────────────────────────────────────
+  // ── Save ───────────────────────────────────────────────────────────────────
 
   async function handleSave() {
     const err = validate();
     if (err) { setRowError(err); return; }
-    if (!editValues) return;
 
+    const v = editRef.current!;
     setSaving(true);
     setRowError(null);
 
     const body = {
-      stockNo:     editValues.stockNo.trim(),
-      description: editValues.description.trim(),
-      unit:        editValues.unit.trim(),
-      unitCost:    editValues.unitCost,
-      category:    editValues.category.trim() || null,
-      itemType:    editValues.itemType.trim()  || null,
-      reorderQty:  editValues.reorderQty,
-      remarks:     editValues.remarks.trim()   || null,
-      isNewItem:   editValues.isNewItem,
+      stockNo:     v.stockNo.trim(),
+      description: v.description.trim(),
+      unit:        v.unit.trim(),
+      unitCost:    v.unitCost,
+      category:    v.category.trim()  || null,
+      itemType:    v.itemType.trim()  || null,
+      reorderQty:  v.reorderQty,
+      remarks:     v.remarks.trim()   || null,
+      isNewItem:   v.isNewItem,
     };
 
     try {
@@ -314,8 +303,8 @@ export default function ItemsMasterPage() {
         await api.put(`/items/master/${editingId}`, body satisfies UpdateItemMasterRequest);
         toast.success("Changes saved", `${body.description} was updated.`);
       }
+      editRef.current = null;
       setEditingId(null);
-      setEditValues(null);
       await loadItems();
     } catch (e: unknown) {
       const msg =
@@ -327,23 +316,16 @@ export default function ItemsMasterPage() {
     }
   }
 
-  // ── Mark Reviewed quick action ─────────────────────────────────────────────
-
-  const [reviewingId, setReviewingId] = useState<string | null>(null);
+  // ── Mark Reviewed ──────────────────────────────────────────────────────────
 
   async function handleMarkReviewed(item: ItemMasterResponse) {
     setReviewingId(item.id);
     try {
       await api.put(`/items/master/${item.id}`, {
-        stockNo:     item.stockNo,
-        description: item.description,
-        unit:        item.unit,
-        unitCost:    item.unitCost,
-        category:    item.category,
-        itemType:    item.itemType,
-        reorderQty:  item.reorderQty,
-        remarks:     item.remarks,
-        isNewItem:   false,
+        stockNo: item.stockNo, description: item.description,
+        unit: item.unit, unitCost: item.unitCost, category: item.category,
+        itemType: item.itemType, reorderQty: item.reorderQty,
+        remarks: item.remarks, isNewItem: false,
       } satisfies UpdateItemMasterRequest);
       toast.success("Marked as reviewed", `${item.description} is no longer flagged as NEW.`);
       await loadItems();
@@ -357,28 +339,23 @@ export default function ItemsMasterPage() {
   // ── Add new row ────────────────────────────────────────────────────────────
 
   function handleAddRow() {
-    if (editingId) return; // finish current edit first
+    if (editingId) return;
+    editRef.current = toEditValues(blankSentinel());
     setSentinel(true);
     setEditingId(NEW_ROW_ID);
-    setEditValues(toEditValues(blankSentinel()));
     setRowError(null);
-    // Scroll to top so the sentinel row is visible
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  // ── Columns ────────────────────────────────────────────────────────────────
-
-  function renderCell(
-    row: Row<ItemMasterResponse>,
-    displayNode: React.ReactNode,
-    editNode: React.ReactNode
-  ) {
-    return row.original.id === editingId ? editNode : displayNode;
-  }
+  // ── Columns — STABLE: no editValues dependency ────────────────────────────
+  //
+  // Inputs use defaultValue (uncontrolled). Their key is `${editingId}-<field>`
+  // so React resets them only when we switch which row is being edited,
+  // not on every keystroke.
 
   const columns = useMemo<ColumnDef<ItemMasterResponse>[]>(
     () => [
-      // Row number
+      // # row number
       {
         id: "rowNo",
         header: "#",
@@ -396,24 +373,31 @@ export default function ItemsMasterPage() {
         header: "Stock No.",
         size: 110,
         cell: ({ row, getValue }) =>
-          renderCell(
-            row,
-            <span className="font-mono text-xs text-slate-700">{getValue<string>()}</span>,
-            <EditInput
-              value={editValues?.stockNo ?? ""}
-              onChange={(v) => patch({ stockNo: v })}
+          row.original.id === editingId ? (
+            <EditCell
+              key={`${editingId}-stockNo`}
+              defaultValue={editRef.current?.stockNo ?? ""}
+              onWrite={(v) => { if (editRef.current) editRef.current.stockNo = v; }}
               placeholder="SUP-001"
             />
+          ) : (
+            <span className="font-mono text-xs text-slate-700">{getValue<string>()}</span>
           ),
       },
       // Description
       {
         accessorKey: "description",
         header: "Description",
-        size: 220,
+        size: 210,
         cell: ({ row, getValue }) =>
-          renderCell(
-            row,
+          row.original.id === editingId ? (
+            <EditCell
+              key={`${editingId}-description`}
+              defaultValue={editRef.current?.description ?? ""}
+              onWrite={(v) => { if (editRef.current) editRef.current.description = v; }}
+              placeholder="Full description"
+            />
+          ) : (
             <div className="flex items-center gap-2">
               <span className="text-slate-800 text-sm">{getValue<string>()}</span>
               {row.original.isNewItem && (
@@ -421,12 +405,7 @@ export default function ItemsMasterPage() {
                   ★ NEW
                 </span>
               )}
-            </div>,
-            <EditInput
-              value={editValues?.description ?? ""}
-              onChange={(v) => patch({ description: v })}
-              placeholder="Full description"
-            />
+            </div>
           ),
       },
       // Category
@@ -435,14 +414,15 @@ export default function ItemsMasterPage() {
         header: "Category",
         size: 120,
         cell: ({ row, getValue }) =>
-          renderCell(
-            row,
-            <span className="text-slate-600 text-sm">{getValue<string | null>() ?? "—"}</span>,
-            <EditInput
-              value={editValues?.category ?? ""}
-              onChange={(v) => patch({ category: v })}
-              placeholder="e.g. Office Supplies"
+          row.original.id === editingId ? (
+            <EditCell
+              key={`${editingId}-category`}
+              defaultValue={editRef.current?.category ?? ""}
+              onWrite={(v) => { if (editRef.current) editRef.current.category = v; }}
+              placeholder="Office Supplies"
             />
+          ) : (
+            <span className="text-slate-600 text-sm">{getValue<string | null>() ?? "—"}</span>
           ),
       },
       // Unit
@@ -451,14 +431,15 @@ export default function ItemsMasterPage() {
         header: "Unit",
         size: 72,
         cell: ({ row, getValue }) =>
-          renderCell(
-            row,
-            <span className="text-slate-600 text-sm">{getValue<string>()}</span>,
-            <EditInput
-              value={editValues?.unit ?? ""}
-              onChange={(v) => patch({ unit: v })}
+          row.original.id === editingId ? (
+            <EditCell
+              key={`${editingId}-unit`}
+              defaultValue={editRef.current?.unit ?? ""}
+              onWrite={(v) => { if (editRef.current) editRef.current.unit = v; }}
               placeholder="ream"
             />
+          ) : (
+            <span className="text-slate-600 text-sm">{getValue<string>()}</span>
           ),
       },
       // Unit Cost
@@ -468,14 +449,15 @@ export default function ItemsMasterPage() {
         size: 96,
         enableColumnFilter: false,
         cell: ({ row, getValue }) =>
-          renderCell(
-            row,
-            <span className="text-slate-700 text-sm tabular-nums">₱{fmt(getValue<number>())}</span>,
-            <EditInput
+          row.original.id === editingId ? (
+            <EditCell
+              key={`${editingId}-unitCost`}
               type="number"
-              value={editValues?.unitCost ?? 0}
-              onChange={(v) => patch({ unitCost: parseFloat(v) || 0 })}
+              defaultValue={editRef.current?.unitCost ?? 0}
+              onWrite={(v) => { if (editRef.current) editRef.current.unitCost = parseFloat(v) || 0; }}
             />
+          ) : (
+            <span className="text-slate-700 text-sm tabular-nums">₱{fmt(getValue<number>())}</span>
           ),
       },
       // Item Type
@@ -484,14 +466,15 @@ export default function ItemsMasterPage() {
         header: "Type",
         size: 100,
         cell: ({ row, getValue }) =>
-          renderCell(
-            row,
-            <span className="text-slate-600 text-sm">{getValue<string | null>() ?? "—"}</span>,
-            <EditInput
-              value={editValues?.itemType ?? ""}
-              onChange={(v) => patch({ itemType: v })}
+          row.original.id === editingId ? (
+            <EditCell
+              key={`${editingId}-itemType`}
+              defaultValue={editRef.current?.itemType ?? ""}
+              onWrite={(v) => { if (editRef.current) editRef.current.itemType = v; }}
               placeholder="Consumable"
             />
+          ) : (
+            <span className="text-slate-600 text-sm">{getValue<string | null>() ?? "—"}</span>
           ),
       },
       // Reorder Qty
@@ -501,51 +484,54 @@ export default function ItemsMasterPage() {
         size: 72,
         enableColumnFilter: false,
         cell: ({ row, getValue }) =>
-          renderCell(
-            row,
-            <span className="text-slate-600 text-sm tabular-nums">{getValue<number>()}</span>,
-            <EditInput
+          row.original.id === editingId ? (
+            <EditCell
+              key={`${editingId}-reorderQty`}
               type="number"
-              value={editValues?.reorderQty ?? 0}
-              onChange={(v) => patch({ reorderQty: parseInt(v) || 0 })}
+              defaultValue={editRef.current?.reorderQty ?? 0}
+              onWrite={(v) => { if (editRef.current) editRef.current.reorderQty = parseInt(v) || 0; }}
             />
+          ) : (
+            <span className="text-slate-600 text-sm tabular-nums">{getValue<number>()}</span>
           ),
       },
-      // Remarks
+      // Remarks — wider column
       {
         accessorKey: "remarks",
         header: "Remarks",
-        size: 160,
+        size: 240,
         cell: ({ row, getValue }) =>
-          renderCell(
-            row,
+          row.original.id === editingId ? (
+            <EditCell
+              key={`${editingId}-remarks`}
+              defaultValue={editRef.current?.remarks ?? ""}
+              onWrite={(v) => { if (editRef.current) editRef.current.remarks = v; }}
+              placeholder="Optional notes"
+            />
+          ) : (
             <span
-              className="text-slate-500 text-xs truncate block max-w-[150px]"
+              className="text-slate-500 text-xs truncate block max-w-[230px]"
               title={getValue<string | null>() ?? ""}
             >
               {getValue<string | null>() ?? "—"}
-            </span>,
-            <EditInput
-              value={editValues?.remarks ?? ""}
-              onChange={(v) => patch({ remarks: v })}
-              placeholder="Optional notes"
-            />
+            </span>
           ),
       },
-      // isNewItem (toggle in edit, badge in display)
+      // Status / isNewItem toggle — narrower column
       {
         accessorKey: "isNewItem",
-        header: "Status",
-        size: 88,
+        header: "New?",
+        size: 66,
         enableColumnFilter: false,
         enableSorting: false,
         cell: ({ row }) =>
           row.original.id === editingId ? (
-            <NewToggle
-              value={editValues?.isNewItem ?? false}
-              onChange={(v) => patch({ isNewItem: v })}
+            <NewToggleCell
+              key={`${editingId}-isNewItem`}
+              initial={editRef.current?.isNewItem ?? false}
+              onWrite={(v) => { if (editRef.current) editRef.current.isNewItem = v; }}
             />
-          ) : null, // badge is already inside Description cell
+          ) : null, // badge shown inside Description in display mode
       },
       // Actions
       {
@@ -609,8 +595,10 @@ export default function ItemsMasterPage() {
         },
       },
     ],
+    // ⚠️ Do NOT add editValues / editRef.current here — they must stay out of
+    // deps to keep columns stable across keystrokes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [editingId, editValues, saving, reviewingId]
+    [editingId, saving, reviewingId]
   );
 
   // ── Table instance ─────────────────────────────────────────────────────────
@@ -661,15 +649,12 @@ export default function ItemsMasterPage() {
             className="flex-1 min-w-48 px-4 py-2.5 rounded-lg text-sm border border-slate-200 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-green-600"
           />
           {globalFilter && (
-            <button
-              onClick={() => setGlobalFilter("")}
-              className="text-sm text-slate-400 hover:text-slate-600 px-2"
-            >
+            <button onClick={() => setGlobalFilter("")} className="text-sm text-slate-400 hover:text-slate-600 px-2">
               Clear
             </button>
           )}
 
-          {/* ★ NEW filter */}
+          {/* ★ NEW filter toggle */}
           <button
             onClick={() => setShowNewOnly((v) => !v)}
             className={`flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-sm border transition-colors shrink-0 ${
@@ -708,38 +693,27 @@ export default function ItemsMasterPage() {
           ) : fetchError ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
               <p className="text-sm text-red-500">{fetchError}</p>
-              <button onClick={loadItems} className="text-sm text-green-600 hover:underline">
-                Retry
-              </button>
+              <button onClick={loadItems} className="text-sm text-green-600 hover:underline">Retry</button>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm border-collapse">
 
-                {/* ── Header + filter row ── */}
+                {/* ── Header ── */}
                 <thead>
                   {table.getHeaderGroups().map((hg) => (
-                    <tr
-                      key={hg.id}
-                      className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500 uppercase tracking-wide"
-                    >
-                      {hg.headers.map((header) => (
-                        <th
-                          key={header.id}
-                          style={{ width: header.getSize() }}
-                          className="text-left px-3 py-2.5 font-medium select-none"
-                        >
-                          {header.isPlaceholder ? null : (
+                    <tr key={hg.id} className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500 uppercase tracking-wide">
+                      {hg.headers.map((h) => (
+                        <th key={h.id} style={{ width: h.getSize() }} className="text-left px-3 py-2.5 font-medium select-none">
+                          {h.isPlaceholder ? null : (
                             <div
-                              className={header.column.getCanSort() ? "cursor-pointer flex items-center gap-1 hover:text-slate-700" : ""}
-                              onClick={header.column.getToggleSortingHandler()}
+                              className={h.column.getCanSort() ? "cursor-pointer flex items-center gap-1 hover:text-slate-700" : ""}
+                              onClick={h.column.getToggleSortingHandler()}
                             >
-                              {flexRender(header.column.columnDef.header, header.getContext())}
-                              {header.column.getCanSort() && (
+                              {flexRender(h.column.columnDef.header, h.getContext())}
+                              {h.column.getCanSort() && (
                                 <span className="text-slate-300">
-                                  {header.column.getIsSorted() === "asc" ? " ▲"
-                                    : header.column.getIsSorted() === "desc" ? " ▼"
-                                    : " ⇅"}
+                                  {h.column.getIsSorted() === "asc" ? " ▲" : h.column.getIsSorted() === "desc" ? " ▼" : " ⇅"}
                                 </span>
                               )}
                             </div>
@@ -752,12 +726,12 @@ export default function ItemsMasterPage() {
                   {/* Filter row */}
                   {table.getHeaderGroups().map((hg) => (
                     <tr key={`filter-${hg.id}`} className="bg-white border-b border-slate-100">
-                      {hg.headers.map((header) => (
-                        <th key={`f-${header.id}`} className="px-2 py-1.5">
-                          {header.column.getCanFilter() ? (
+                      {hg.headers.map((h) => (
+                        <th key={`f-${h.id}`} className="px-2 py-1.5">
+                          {h.column.getCanFilter() ? (
                             <input
-                              value={(header.column.getFilterValue() as string) ?? ""}
-                              onChange={(e) => header.column.setFilterValue(e.target.value)}
+                              value={(h.column.getFilterValue() as string) ?? ""}
+                              onChange={(e) => h.column.setFilterValue(e.target.value)}
                               placeholder="Filter…"
                               className="w-full px-2 py-1 text-xs rounded border border-slate-200 bg-slate-50 focus:outline-none focus:ring-1 focus:ring-green-500 focus:bg-white transition-colors"
                             />
@@ -781,8 +755,6 @@ export default function ItemsMasterPage() {
                   ) : (
                     table.getRowModel().rows.map((row, i) => {
                       const isEditing = row.original.id === editingId;
-                      const isNew     = row.original.id === NEW_ROW_ID;
-
                       return (
                         <>
                           <tr
@@ -797,18 +769,18 @@ export default function ItemsMasterPage() {
                                 : "bg-white hover:bg-green-50"
                             }`}
                           >
-                            {/* New-row label in first cell */}
-                            {isNew && !isEditing ? null : null}
                             {row.getVisibleCells().map((cell) => (
                               <td key={cell.id} className="px-3 py-2 align-middle">
                                 {flexRender(cell.column.columnDef.cell, cell.getContext())}
                               </td>
                             ))}
                           </tr>
-                          {/* Inline validation error row */}
+                          {/* Inline validation error sub-row */}
                           {isEditing && rowError && (
                             <tr key={`${row.id}-err`}>
-                              <RowError message={rowError} />
+                              <td colSpan={columns.length} className="px-3 py-1 bg-red-50 border-t border-red-100">
+                                <p className="text-xs text-red-600">{rowError}</p>
+                              </td>
                             </tr>
                           )}
                         </>
@@ -825,43 +797,22 @@ export default function ItemsMasterPage() {
                     ? `${totalFiltered} item${totalFiltered !== 1 ? "s" : ""}`
                     : `${visibleRows} of ${totalFiltered} items`}
                   {newCount > 0 && (
-                    <span className="ml-2 text-amber-600 font-medium">
-                      · {newCount} pending review
-                    </span>
+                    <span className="ml-2 text-amber-600 font-medium">· {newCount} pending review</span>
                   )}
                   {editingId && (
-                    <span className="ml-2 text-green-600 font-medium">
-                      · editing…
-                    </span>
+                    <span className="ml-2 text-green-600 font-medium">· editing…</span>
                   )}
                 </span>
-
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => table.previousPage()}
-                    disabled={!table.getCanPreviousPage()}
-                    className="px-2 py-0.5 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50 transition-colors"
-                  >
-                    ‹
-                  </button>
-                  <span>
-                    Page {table.getState().pagination.pageIndex + 1} / {table.getPageCount() || 1}
-                  </span>
-                  <button
-                    onClick={() => table.nextPage()}
-                    disabled={!table.getCanNextPage()}
-                    className="px-2 py-0.5 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50 transition-colors"
-                  >
-                    ›
-                  </button>
+                  <button onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="px-2 py-0.5 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50 transition-colors">‹</button>
+                  <span>Page {table.getState().pagination.pageIndex + 1} / {table.getPageCount() || 1}</span>
+                  <button onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="px-2 py-0.5 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50 transition-colors">›</button>
                   <select
                     value={table.getState().pagination.pageSize}
                     onChange={(e) => table.setPageSize(Number(e.target.value))}
                     className="px-2 py-0.5 rounded border border-slate-200 bg-white focus:outline-none text-xs"
                   >
-                    {[25, 50, 100].map((n) => (
-                      <option key={n} value={n}>{n} / page</option>
-                    ))}
+                    {[25, 50, 100].map((n) => <option key={n} value={n}>{n} / page</option>)}
                   </select>
                 </div>
               </div>
@@ -869,7 +820,6 @@ export default function ItemsMasterPage() {
           )}
         </div>
 
-        {/* Keyboard hint */}
         {editingId && (
           <p className="text-xs text-slate-400 text-right">
             Press <kbd className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 font-mono">✕</kbd> to cancel without saving
