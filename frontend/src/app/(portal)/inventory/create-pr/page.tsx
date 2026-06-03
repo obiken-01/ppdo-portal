@@ -86,6 +86,10 @@ interface LineItem {
   suggestions: ItemLookupResponse[];
   suggestFor: "stockNo" | "description" | null;
   suggesting: boolean;
+  /** true when this row's fields were filled from a catalog lookup selection.
+   *  Used to decide whether retyping in either field should clear the other.
+   *  Manually typed new items keep this false so StockNo is never wiped. */
+  fromLookup: boolean;
 }
 
 function blankLine(): LineItem {
@@ -94,8 +98,11 @@ function blankLine(): LineItem {
     stockNo: "", description: "", unit: "",
     quantity: "", unitCost: 0, itemType: null,
     suggestions: [], suggestFor: null, suggesting: false,
+    fromLookup: false,
   };
 }
+
+const INITIAL_ROW_COUNT = 5;
 
 // ---------------------------------------------------------------------------
 // LookupInput
@@ -321,10 +328,18 @@ function validateHeader(f: HeaderForm): HeaderErrors {
   return e;
 }
 
+/** Returns only rows the user has actually started filling in. */
+function filledRows(items: LineItem[]): LineItem[] {
+  return items.filter(
+    (r) => r.description.trim() || r.stockNo.trim() || r.quantity.trim()
+  );
+}
+
 function validateItems(items: LineItem[]): string | null {
-  if (items.length === 0) return "At least one line item is required.";
-  for (let i = 0; i < items.length; i++) {
-    const it = items[i];
+  const filled = filledRows(items);
+  if (filled.length === 0) return "At least one line item is required.";
+  for (let i = 0; i < filled.length; i++) {
+    const it = filled[i];
     if (!it.description.trim()) return `Row ${i + 1}: Description is required.`;
     if (!it.unit.trim())        return `Row ${i + 1}: Unit is required.`;
     const qty = parseFloat(it.quantity);
@@ -348,7 +363,9 @@ export default function CreatePRPage() {
   // Form state
   const [header, setHeader]       = useState<HeaderForm>(blankHeader());
   const [headerErrors, setHeaderErrors] = useState<HeaderErrors>({});
-  const [items, setItems]         = useState<LineItem[]>([blankLine()]);
+  const [items, setItems]         = useState<LineItem[]>(() =>
+    Array.from({ length: INITIAL_ROW_COUNT }, blankLine)
+  );
   const [itemsError, setItemsError] = useState<string | null>(null);
 
   // Submit state
@@ -422,15 +439,24 @@ export default function CreatePRPage() {
     value: string,
     field: "stockNo" | "description"
   ) {
-    // Update the typed field immediately
+    // Find whether this row was previously filled from a catalog selection.
+    // Only clear the sibling field in that case — if the user manually typed
+    // both fields (new item not in catalog) we must NOT wipe their StockNo
+    // just because they moved to Description, and vice versa.
+    const row = items.find((r) => r._id === rowId);
+    const wasFromLookup = row?.fromLookup ?? false;
+
     patchRow(rowId, {
       [field]: value,
       suggestions: [],
       suggestFor: null,
-      // Clear auto-filled fields when user retypes
-      ...(field === "stockNo"
-        ? { description: "", unit: "", unitCost: 0, itemType: null }
-        : { stockNo: "", unit: "", unitCost: 0, itemType: null }),
+      fromLookup: false,           // user is now typing manually
+      // Only clear auto-filled companion fields when overriding a lookup result
+      ...(wasFromLookup
+        ? field === "stockNo"
+          ? { description: "", unit: "", unitCost: 0, itemType: null }
+          : { stockNo: "", unit: "", unitCost: 0, itemType: null }
+        : {}),
     });
 
     // Debounce lookup
@@ -462,6 +488,7 @@ export default function CreatePRPage() {
       suggestions: [],
       suggestFor:  null,
       suggesting:  false,
+      fromLookup:  true,               // mark so retyping later can clear companion fields
     });
     setItemsError(null);
   }
@@ -565,7 +592,7 @@ export default function CreatePRPage() {
       activity:          header.activity.trim()          || null,
       saiNo:             header.saiNo.trim()             || null,
       alobsNo:           header.alobsNo.trim()           || null,
-      items: items.map((r): CreatePRItemRequest => ({
+      items: filledRows(items).map((r): CreatePRItemRequest => ({
         stockNo:     r.stockNo.trim()     || null,
         description: r.description.trim(),
         unit:        r.unit.trim(),
@@ -598,7 +625,7 @@ export default function CreatePRPage() {
       position:    me?.position ?? "",
       division:    (me?.division as Division) ?? "",
     });
-    setItems([blankLine()]);
+    setItems(Array.from({ length: INITIAL_ROW_COUNT }, blankLine));
     setHeaderErrors({});
     setItemsError(null);
     setSubmitted(null);
@@ -1045,7 +1072,7 @@ export default function CreatePRPage() {
 
             <div className="ml-auto flex items-center gap-3">
               <span className="text-xs text-slate-500">
-                {items.length} item{items.length !== 1 ? "s" : ""}
+                {filledRows(items).length} item{filledRows(items).length !== 1 ? "s" : ""}
               </span>
               <div className="text-sm font-semibold text-slate-700 tabular-nums">
                 Total: ₱ {fmt(totalAmount)}
