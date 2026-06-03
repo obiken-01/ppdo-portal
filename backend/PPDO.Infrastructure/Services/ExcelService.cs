@@ -124,8 +124,28 @@ public sealed class ExcelService : IExcelService
         XLColor LabelBg   = XLColor.FromHtml("#E9ECEF");
 
         // ── Section 1 — Header ────────────────────────────────────────────────
+        //
+        // Full layout uses 10 columns (A–J):
+        //   Title / Division / Section-1 banner  → A:J merged
+        //   Pair rows:
+        //     Col B (2)   = left label  (bold, right-aligned, sz 11, no fill)
+        //     Col C (3)   = left value  (single cell, sz 11, no fill)
+        //     Col D–F     = empty spacers
+        //     Col G (7)   = right label (bold, right-aligned, sz 11, no fill)
+        //     Col H (8)   = right value (single cell, sz 11, no fill)
+        //   FullRow (AccountTitle, Program, Project, Activity):
+        //     Col B (2)   = label, Col C:G (3–7) merged = value
+        //   PR No. row:
+        //     B=label "PR No.:", C=value, G:I (7–9) merged = "Status:  X"
+        //   Total Amount:
+        //     A:H (1–8) merged = label, I:J (9–10) merged = ₱ value
+        //   Delivery bar (row after blank):
+        //     A:B (1–2) = Delivery count (amber)
+        //     C:E (3–5) = Status (light green)
+        //     F:H (6–8) = Fulfillment % (teal)
+        //     I:J (9–10)= Total (navy)
 
-        // Row 1: Main title
+        // Row 1: Main title — A:J
         ws.Cell(1, 1).Value = "📋  PURCHASE REQUEST REPORT";
         ws.Cell(1, 1).Style
             .Font.SetBold(true)
@@ -134,10 +154,10 @@ public sealed class ExcelService : IExcelService
             .Fill.SetBackgroundColor(DarkGreen)
             .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center)
             .Alignment.SetVertical(XLAlignmentVerticalValues.Center);
-        ws.Range(1, 1, 1, 8).Merge();
+        ws.Range(1, 1, 1, 10).Merge();
         ws.Row(1).Height = 28;
 
-        // Row 2: Division sub-header
+        // Row 2: Division sub-header — A:J
         ws.Cell(2, 1).Value = pr.Division.ToString();
         ws.Cell(2, 1).Style
             .Font.SetFontSize(11)
@@ -145,125 +165,171 @@ public sealed class ExcelService : IExcelService
             .Font.SetFontColor(White)
             .Fill.SetBackgroundColor(MedGreen)
             .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
-        ws.Range(2, 1, 2, 8).Merge();
+        ws.Range(2, 1, 2, 10).Merge();
         ws.Row(2).Height = 18;
 
-        // Row 3: blank separator
-        ws.Row(3).Height = 6;
-
-        // ── Section 1 fields — 2-column grid ─────────────────────────────────
-        // Left pair:  col A (label, width 18) | col B-C (value, merged, width 22)
-        // Spacer:     col D (width 3)
-        // Right pair: col E (label, width 18) | col F-G (value, merged, width 22)
-        // col H: small right margin (width 3)
+        // Row 3: Section 1 banner — A:J
+        ws.Cell(3, 1).Value = "SECTION 1 — PURCHASE REQUEST DETAILS";
+        ws.Cell(3, 1).Style.Font.SetBold(true).Font.SetFontSize(10)
+            .Font.SetFontColor(White)
+            .Fill.SetBackgroundColor(DarkGreen)
+            .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Left);
+        ws.Range(3, 1, 3, 10).Merge();
+        ws.Row(3).Height = 18;
 
         int r = 4;  // current row pointer
 
+        // Helpers — no fills, no borders, matching user's edited file
+        void Label(int row, string text)
+        {
+            ws.Cell(row, 2).Value = text;
+            ws.Cell(row, 2).Style
+                .Font.SetBold(true)
+                .Font.SetFontSize(11)
+                .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Right);
+        }
+
+        void Value(int row, int col, string? text, bool bold = false, bool wrap = false)
+        {
+            if (text != null) ws.Cell(row, col).Value = text;
+            ws.Cell(row, col).Style
+                .Font.SetBold(bold)
+                .Font.SetFontSize(11);
+            if (wrap) ws.Cell(row, col).Style.Alignment.SetWrapText(true);
+        }
+
+        void RLabel(int row, string text)
+        {
+            ws.Cell(row, 7).Value = text;
+            ws.Cell(row, 7).Style
+                .Font.SetBold(true)
+                .Font.SetFontSize(11)
+                .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Right);
+        }
+
+        void RValue(int row, string? text, bool bold = false)
+        {
+            // Right value: H:I merged (cols 8–9), left-aligned
+            ws.Range(row, 8, row, 9).Merge();
+            if (text != null) ws.Cell(row, 8).Value = text;
+            ws.Cell(row, 8).Style
+                .Font.SetBold(bold)
+                .Font.SetFontSize(11)
+                .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Left);
+        }
+
         void Pair(string labelL, string? valL, string labelR, string? valR, bool valLBold = false, bool valRBold = false)
         {
-            // Left label
-            ws.Cell(r, 1).Value = labelL;
-            ws.Cell(r, 1).Style.Font.SetBold(true).Fill.SetBackgroundColor(LabelBg)
-                .Border.SetOutsideBorder(XLBorderStyleValues.Thin)
-                .Border.SetOutsideBorderColor(XLColor.FromHtml("#CED4DA"));
-            ws.Range(r, 1, r, 1).Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Right);
-
-            // Left value
-            ws.Range(r, 2, r, 3).Merge();
-            if (valL != null) ws.Cell(r, 2).Value = valL;
-            ws.Cell(r, 2).Style.Fill.SetBackgroundColor(LightGray)
-                .Border.SetOutsideBorder(XLBorderStyleValues.Thin)
-                .Border.SetOutsideBorderColor(XLColor.FromHtml("#CED4DA"))
-                .Font.SetBold(valLBold);
-
-            // Right label
-            ws.Cell(r, 5).Value = labelR;
-            ws.Cell(r, 5).Style.Font.SetBold(true).Fill.SetBackgroundColor(LabelBg)
-                .Border.SetOutsideBorder(XLBorderStyleValues.Thin)
-                .Border.SetOutsideBorderColor(XLColor.FromHtml("#CED4DA"));
-            ws.Range(r, 5, r, 5).Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Right);
-
-            // Right value
-            ws.Range(r, 6, r, 7).Merge();
-            if (valR != null) ws.Cell(r, 6).Value = valR;
-            ws.Cell(r, 6).Style.Fill.SetBackgroundColor(LightGray)
-                .Border.SetOutsideBorder(XLBorderStyleValues.Thin)
-                .Border.SetOutsideBorderColor(XLColor.FromHtml("#CED4DA"))
-                .Font.SetBold(valRBold);
-
+            Label(r, labelL);
+            // Left value: C:D merged (cols 3–4), left-aligned
+            ws.Range(r, 3, r, 4).Merge();
+            Value(r, 3, valL, bold: valLBold);
+            ws.Cell(r, 3).Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Left);
+            RLabel(r, labelR);
+            RValue(r, valR, bold: valRBold);
+            ws.Row(r).Height = 18;
             r++;
         }
 
-        void FullRow(string label, string? val, bool wrap = false, bool bold = false)
+        void FullRow(string label, string? val, bool wrap = false)
         {
-            ws.Cell(r, 1).Value = label;
-            ws.Cell(r, 1).Style.Font.SetBold(true).Fill.SetBackgroundColor(LabelBg)
-                .Border.SetOutsideBorder(XLBorderStyleValues.Thin)
-                .Border.SetOutsideBorderColor(XLColor.FromHtml("#CED4DA"));
-
-            ws.Range(r, 2, r, 7).Merge();
-            if (val != null) ws.Cell(r, 2).Value = val;
-            ws.Cell(r, 2).Style.Fill.SetBackgroundColor(LightGray)
-                .Border.SetOutsideBorder(XLBorderStyleValues.Thin)
-                .Border.SetOutsideBorderColor(XLColor.FromHtml("#CED4DA"))
-                .Font.SetBold(bold);
-            if (wrap) ws.Cell(r, 2).Style.Alignment.SetWrapText(true);
+            Label(r, label);
+            ws.Range(r, 3, r, 7).Merge();
+            Value(r, 3, val, wrap: wrap);
+            ws.Row(r).Height = wrap ? 32 : 18;
             r++;
         }
 
-        // PR No. and Status — highlighted pair
-        ws.Range(r, 1, r, 3).Merge();
-        ws.Cell(r, 1).Value  = $"PR No.:  {pr.PRNo}";
+        // Row 4 — PR No. / Status — same structure as all other Pair rows
+        Pair("PR No.:", pr.PRNo, "Status:", pr.Status.ToString(), valLBold: true, valRBold: true);
+
+        Pair("PR Date",           pr.PRDate.ToShortDateString(),
+             "Department",        pr.Department);
+        Pair("Division",          pr.Division.ToString(),
+             "Fund",              pr.Fund);
+        Pair("Requested By",      pr.RequestedBy,
+             "Position",          pr.Position);
+        Pair("Approved By",       pr.ApprovedBy ?? "—",
+             "Approving Position",pr.ApprovingPosition ?? "—");
+        Pair("AIP Code",          pr.AIPCode   ?? "—",
+             "Account No.",       pr.AccountNo ?? "—");
+        FullRow("Account Title",  pr.AccountTitle ?? "—");
+        FullRow("Program",        pr.Program      ?? "—", wrap: true);
+        FullRow("Project",        pr.Project      ?? "—", wrap: true);
+        FullRow("Activity",       pr.Activity     ?? "—", wrap: true);
+        Pair("SAI No.",           pr.SAINo   ?? "—",
+             "ALOBS No.",         pr.ALOBSNo ?? "—");
+
+        // blank spacer row
+        r++;
+
+        // Total Amount row — A:H label | I:J value
+        ws.Range(r, 1, r, 8).Merge();
+        ws.Cell(r, 1).Value = "TOTAL AMOUNT";
         ws.Cell(r, 1).Style.Font.SetBold(true).Font.SetFontSize(11)
             .Fill.SetBackgroundColor(LightGreen)
-            .Border.SetOutsideBorder(XLBorderStyleValues.Medium)
-            .Border.SetOutsideBorderColor(XLColor.FromHtml("#A8DABC"));
-        ws.Range(r, 5, r, 7).Merge();
-        ws.Cell(r, 5).Value  = $"Status:  {pr.Status}";
-        ws.Cell(r, 5).Style.Font.SetBold(true).Font.SetFontSize(11)
-            .Fill.SetBackgroundColor(LightGreen)
-            .Border.SetOutsideBorder(XLBorderStyleValues.Medium)
-            .Border.SetOutsideBorderColor(XLColor.FromHtml("#A8DABC"));
-        ws.Row(r).Height = 20;
-        r += 2; // blank spacer
-
-        Pair("PR Date",          pr.PRDate.ToShortDateString(),
-             "Department",       pr.Department);
-        Pair("Division",         pr.Division.ToString(),
-             "Fund",             pr.Fund);
-        Pair("Requested By",     pr.RequestedBy,
-             "Position",         pr.Position);
-        Pair("Approved By",      pr.ApprovedBy ?? "—",
-             "Approving Position", pr.ApprovingPosition ?? "—");
-        Pair("AIP Code",         pr.AIPCode    ?? "—",
-             "Account No.",      pr.AccountNo  ?? "—");
-        FullRow("Account Title", pr.AccountTitle ?? "—");
-        FullRow("Program",       pr.Program      ?? "—", wrap: true);
-        FullRow("Project",       pr.Project      ?? "—", wrap: true);
-        FullRow("Activity",      pr.Activity     ?? "—", wrap: true);
-        Pair("SAI No.",          pr.SAINo    ?? "—",
-             "ALOBS No.",        pr.ALOBSNo  ?? "—");
-
-        // Total Amount row
-        r++;
-        ws.Range(r, 1, r, 6).Merge();
-        ws.Cell(r, 1).Value = "TOTAL AMOUNT";
-        ws.Cell(r, 1).Style.Font.SetBold(true)
-            .Fill.SetBackgroundColor(LightGreen)
-            .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Right)
-            .Border.SetOutsideBorder(XLBorderStyleValues.Medium)
-            .Border.SetOutsideBorderColor(XLColor.FromHtml("#A8DABC"));
-        ws.Range(r, 7, r, 8).Merge();
-        ws.Cell(r, 7).Value = pr.TotalAmount;
-        ws.Cell(r, 7).Style.Font.SetBold(true).Font.SetFontSize(12)
+            .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Right);
+        ws.Range(r, 9, r, 10).Merge();
+        ws.Cell(r, 9).Value = pr.TotalAmount;
+        ws.Cell(r, 9).Style.Font.SetBold(true).Font.SetFontSize(12)
             .Font.SetFontColor(DarkGreen)
             .Fill.SetBackgroundColor(LightGreen)
             .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Right)
-            .Border.SetOutsideBorder(XLBorderStyleValues.Medium)
-            .Border.SetOutsideBorderColor(XLColor.FromHtml("#A8DABC"))
             .NumberFormat.SetFormat("₱#,##0.00");
         ws.Row(r).Height = 22;
-        r += 2;
+        r++;
+
+        // ── Delivery summary bar ──────────────────────────────────────────────
+        // A:B = Delivery count (amber) | C:E = Status (light green)
+        // F:H = Fulfillment % (teal)   | I:J = Total (navy)
+        {
+            int deliveryCount       = pr.Deliveries?.Count ?? 0;
+            decimal totalOrdered    = pr.Items.Sum(i => i.Quantity);
+            decimal totalDelivered  = pr.Deliveries?
+                .SelectMany(d => d.Items)
+                .GroupBy(di => di.Id)
+                .Sum(g => g.First().QtyDelivered) ?? 0;
+            int pct = totalOrdered > 0
+                ? (int)Math.Round(totalDelivered / totalOrdered * 100)
+                : 0;
+
+            XLColor AmberBg = XLColor.FromHtml("#FEF3CD");
+            XLColor TealBg  = XLColor.FromHtml("#D1ECE5");
+            XLColor NavyBg  = XLColor.FromHtml("#1A3557");
+
+            // Cell 1 — Delivery count (amber) A:B
+            ws.Range(r, 1, r, 2).Merge();
+            ws.Cell(r, 1).Value = $"Delivery: {deliveryCount}";
+            ws.Cell(r, 1).Style.Font.SetBold(true).Font.SetFontSize(10)
+                .Fill.SetBackgroundColor(AmberBg)
+                .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
+
+            // Cell 2 — Status (light green) C:E
+            ws.Range(r, 3, r, 5).Merge();
+            ws.Cell(r, 3).Value = $"Status: {pr.Status}";
+            ws.Cell(r, 3).Style.Font.SetBold(true).Font.SetFontSize(10)
+                .Font.SetFontColor(DarkGreen)
+                .Fill.SetBackgroundColor(LightGreen)
+                .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
+
+            // Cell 3 — Fulfillment % (teal) F:H
+            ws.Range(r, 6, r, 8).Merge();
+            ws.Cell(r, 6).Value = $"{pct}% fulfilled ({totalDelivered} / {totalOrdered} units)";
+            ws.Cell(r, 6).Style.Font.SetBold(true).Font.SetFontSize(10)
+                .Fill.SetBackgroundColor(TealBg)
+                .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
+
+            // Cell 4 — Total (dark navy) I:J
+            ws.Range(r, 9, r, 10).Merge();
+            ws.Cell(r, 9).Value = $"Total: ₱{pr.TotalAmount:#,##0.00}";
+            ws.Cell(r, 9).Style.Font.SetBold(true).Font.SetFontSize(10)
+                .Font.SetFontColor(White)
+                .Fill.SetBackgroundColor(NavyBg)
+                .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
+
+            ws.Row(r).Height = 22;
+            r++;
+        }
 
         // ── Section 2 — Line Items (UI-matching columns) ──────────────────────
 
@@ -459,14 +525,17 @@ public sealed class ExcelService : IExcelService
 
         // ── Column widths ─────────────────────────────────────────────────────
 
-        ws.Column(1) .Width = 6;    // # / Item#
-        ws.Column(2) .Width = 36;   // Description
-        ws.Column(3) .Width = 16;   // Stock No.
-        ws.Column(4) .Width = 8;    // Unit
-        ws.Column(5) .Width = 12;   // Qty Ordered
-        ws.Column(6) .Width = 12;   // Qty Delivered / Delivery Ref
-        ws.Column(7) .Width = 14;   // Qty Distributed / Division
-        ws.Column(8) .Width = 12;   // Remaining / Qty Issued
+        // Widths match user's edited file exactly (from openpyxl column_dimensions)
+        ws.Column(1) .Width = 6.5;   // A: narrow spacer / Sec2 #
+        ws.Column(2) .Width = 36.5;  // B: Sec1 label    / Sec2 Description
+        ws.Column(3) .Width = 16.5;  // C: Sec1 value    / Sec2 Stock No.
+        ws.Column(4) .Width = 8.5;   // D: spacer        / Sec2 Unit
+        ws.Column(5) .Width = 12.5;  // E: spacer        / Sec2 Qty Ordered
+        ws.Column(6) .Width = 12.5;  // F: spacer        / Sec2 Qty Delivered
+        ws.Column(7) .Width = 14.5;  // G: Sec1 r-label  / Sec2 Qty Distributed
+        ws.Column(8) .Width = 12.5;  // H: Sec1 r-value  / Sec2 Remaining
+        ws.Column(9) .Width = 22.5;  // I: Total value   / Sec3 cols
+        ws.Column(10).Width = 12.5;  // J: Total value½  / Sec3 cols
         ws.Column(9) .Width = 22;   // Issue Ref
         ws.Column(10).Width = 12;   // Date Issued
         ws.Column(11).Width = 20;   // Issued By

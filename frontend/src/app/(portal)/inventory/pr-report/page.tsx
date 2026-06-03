@@ -32,7 +32,6 @@ import type {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const TODAY = new Date().toISOString().slice(0, 10);
 
 function fmt(n: number) {
   return new Intl.NumberFormat("en-PH", {
