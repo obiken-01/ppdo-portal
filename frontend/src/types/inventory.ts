@@ -144,6 +144,17 @@ export interface CreateDeliveryRequest {
   items: CreateDeliveryItemRequest[];
 }
 
+/** Mirrors DeliverySummaryDto — lightweight list record with no items */
+export interface DeliverySummaryResponse {
+  id: string;
+  deliveryRef: string;
+  prId: string;
+  deliveryDate: string;
+  receivedBy: string;
+  supplier: string | null;
+  createdAt: string;
+}
+
 /** Mirrors DeliveryResponseDto */
 export interface DeliveryResponse {
   id: string;

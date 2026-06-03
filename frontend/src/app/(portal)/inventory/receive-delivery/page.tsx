@@ -40,6 +40,7 @@ import type {
   CreateDeliveryRequest,
   CreateDistributionRequest,
   DeliveryResponse,
+  DeliverySummaryResponse,
   Division,
   MeResponse,
   PRResponse,
@@ -344,6 +345,8 @@ export default function ReceiveDeliveryPage() {
 
   // Item rows
   const [items, setItems] = useState<ItemRow[]>([]);
+  // deliveredQty[prItemId] = total qty already delivered across all previous deliveries
+  const [deliveredQty, setDeliveredQty] = useState<Record<string, number>>({});
 
   // Form errors
   const [formError, setFormError] = useState<string | null>(null);
@@ -380,17 +383,52 @@ export default function ReceiveDeliveryPage() {
       .finally(() => setPRsLoading(false));
   }, [authChecked]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Load PR items when selection changes ──────────────────────────────────
+  // ── Load PR items + delivery history when selection changes ──────────────
 
   useEffect(() => {
-    if (!selectedPRId) { setSelectedPR(null); setItems([]); return; }
+    if (!selectedPRId) {
+      setSelectedPR(null);
+      setItems([]);
+      setDeliveredQty({});
+      return;
+    }
     setPRLoading(true);
     setFormError(null);
-    api.get<PRResponse>(`/purchase-requests/${selectedPRId}`)
-      .then(({ data }) => {
-        setSelectedPR(data);
-        setItems(itemsFromPR(data, deliveryDate, receivedBy));
-      })
+
+    async function load() {
+      // Fetch PR detail and past deliveries in parallel
+      const [prRes, deliverySummaries] = await Promise.all([
+        api.get<PRResponse>(`/purchase-requests/${selectedPRId}`),
+        api.get<DeliverySummaryResponse[]>(`/deliveries?prId=${selectedPRId}`)
+          .then((r) => r.data)
+          .catch(() => [] as DeliverySummaryResponse[]),  // non-fatal
+      ]);
+
+      const pr = prRes.data;
+      setSelectedPR(pr);
+      setItems(itemsFromPR(pr, deliveryDate, receivedBy));
+
+      // Fetch each delivery's full detail to get per-item QtyDelivered
+      const totals: Record<string, number> = {};
+      if (deliverySummaries.length > 0) {
+        const detailed = await Promise.all(
+          deliverySummaries.map((s) =>
+            api.get<DeliveryResponse>(`/deliveries/${s.id}`)
+              .then((r) => r.data)
+              .catch(() => null)
+          )
+        );
+        for (const delivery of detailed) {
+          if (!delivery) continue;
+          for (const item of delivery.items) {
+            totals[item.prItemId] = (totals[item.prItemId] ?? 0) + item.qtyDelivered;
+          }
+        }
+      }
+      setDeliveredQty(totals);
+    }
+
+    load()
       .catch(() => toast.error("Failed to load PR", "Could not fetch PR details."))
       .finally(() => setPRLoading(false));
   }, [selectedPRId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -407,6 +445,7 @@ export default function ReceiveDeliveryPage() {
     setSelectedPRId("");
     setSelectedPR(null);
     setItems([]);
+    setDeliveredQty({});
     setPrSearch("");
     setPrOpen(false);
   }
@@ -563,6 +602,7 @@ export default function ReceiveDeliveryPage() {
     setSelectedPRId("");
     setSelectedPR(null);
     setItems([]);
+    setDeliveredQty({});
     setPrSearch("");
     setPrOpen(false);
     setDeliveryDate(TODAY);
@@ -727,6 +767,7 @@ export default function ReceiveDeliveryPage() {
                       <th className="px-3 py-2.5 text-left font-medium min-w-52">Description</th>
                       <th className="px-3 py-2.5 text-left font-medium w-20">Unit</th>
                       <th className="px-3 py-2.5 text-right font-medium w-24">Qty Ordered</th>
+                      <th className="px-3 py-2.5 text-right font-medium w-24">Remaining</th>
                       <th className="px-3 py-2.5 text-right font-medium w-32">Qty This Delivery</th>
                       <th className="px-3 py-2.5 text-right font-medium w-28">Date Issued</th>
                       <th className="px-3 py-2.5 text-left font-medium w-28">Issued By</th>
@@ -764,6 +805,22 @@ export default function ReceiveDeliveryPage() {
                               {fmt(row.qtyOrdered)}
                             </div>
                           </td>
+
+                          {/* Remaining — gray, computed from previous deliveries */}
+                          {(() => {
+                            const already  = deliveredQty[row.prItemId] ?? 0;
+                            const remaining = Math.max(0, row.qtyOrdered - already);
+                            const isFull    = remaining === 0;
+                            return (
+                              <td className="px-1.5 py-1.5 text-right">
+                                <div className={`w-full px-2 py-1.5 border border-slate-200 bg-cell-auto text-right select-none font-medium ${
+                                  isFull ? "text-red-500" : "text-green-700"
+                                }`}>
+                                  {isFull ? "Full" : fmt(remaining)}
+                                </div>
+                              </td>
+                            );
+                          })()}
 
                           {/* Qty This Delivery — yellow (hidden when split open and has distributions) */}
                           <td className="px-1.5 py-1.5">
