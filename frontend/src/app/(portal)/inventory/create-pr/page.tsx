@@ -1004,22 +1004,26 @@ export default function CreatePRPage() {
                         />
                       </td>
 
-                      {/* Unit Cost — gray (auto-filled from lookup) */}
+                      {/* Unit Cost — gray + locked only when filled from catalog lookup.
+                          Manually typed new items (fromLookup=false) keep it yellow & editable. */}
                       <td className="px-1.5 py-1.5">
                         <input
-                          type="text"
-                          value={row.unitCost > 0 ? fmt(row.unitCost) : ""}
-                          readOnly={!!row.stockNo}
+                          type="number"
+                          min={0}
+                          step="any"
+                          value={row.unitCost || ""}
+                          readOnly={row.fromLookup}
                           onChange={(e) => {
-                            if (!row.stockNo) {
-                              const n = parseFloat(e.target.value.replace(/,/g, "")) || 0;
-                              patchRow(row._id, { unitCost: n });
+                            if (!row.fromLookup) {
+                              patchRow(row._id, { unitCost: parseFloat(e.target.value) || 0 });
                             }
                           }}
                           placeholder="0.00"
-                          tabIndex={row.stockNo ? -1 : 0}
+                          tabIndex={row.fromLookup ? -1 : 0}
                           className={`w-full px-2 py-1.5 text-xs border border-slate-200 text-right focus:outline-none focus:ring-1 focus:ring-green-500 transition-colors ${
-                            row.stockNo ? "bg-cell-auto text-slate-500 cursor-default" : "bg-cell-fill"
+                            row.fromLookup
+                              ? "bg-cell-auto text-slate-500 cursor-default"
+                              : "bg-cell-fill"
                           }`}
                         />
                       </td>
