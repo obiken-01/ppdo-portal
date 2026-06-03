@@ -149,6 +149,15 @@ export default function Sidebar({ me }: SidebarProps) {
                     <span className="truncate">Inventory Dashboard</span>
                   </Link>
                 )}
+                {hasInventory && (
+                  <Link
+                    href="/inventory/items-master"
+                    className={childLinkCls(isActive("/inventory/items-master"))}
+                  >
+                    <span className="text-xs">•</span>
+                    <span className="truncate">Items Master</span>
+                  </Link>
+                )}
                 {hasReport && (
                   <Link
                     href="/inventory/pr-report"
