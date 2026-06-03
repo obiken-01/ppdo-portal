@@ -494,7 +494,7 @@ export default function PRReportPage() {
                           className={i % 2 === 1 ? "bg-slate-50" : "bg-white"}
                         >
                           <td className="px-3 py-2.5 text-center text-slate-500 font-medium">{item.itemNo}</td>
-                          <td className="px-3 py-2.5 text-slate-800 font-medium">{item.description}</td>
+                          <td className="px-3 py-2.5 text-slate-800 font-bold">{item.description}</td>
                           <td className="px-3 py-2.5 font-mono text-xs text-slate-600">{item.stockNo ?? "—"}</td>
                           <td className="px-3 py-2.5 text-center text-slate-600">{item.unit}</td>
                           {/* Qty Ordered — bold */}
