@@ -213,6 +213,50 @@ export interface DistributionResponse {
   remarks: string | null;
 }
 
+// ---------------------------------------------------------------------------
+// Inventory Dashboard Stats
+// ---------------------------------------------------------------------------
+
+/** Mirrors PRStatsGroupDto — Group 1: Purchase Requests */
+export interface PRStatsGroupResponse {
+  total: number;
+  open: number;
+  partiallyDelivered: number;
+  fullyDeliveredOrCompleted: number;
+}
+
+/** Mirrors AlertsGroupDto — Group 2: Inventory Alerts */
+export interface AlertsGroupResponse {
+  inStock: number;
+  lowOrOutOfStock: number;
+  totalPRValue: number;
+  uniqueItemsTracked: number;
+}
+
+/** Mirrors InventoryStatsDto */
+export interface InventoryStatsResponse {
+  purchaseRequests: PRStatsGroupResponse;
+  inventoryAlerts: AlertsGroupResponse;
+}
+
+// ---------------------------------------------------------------------------
+// Item Ledger
+// ---------------------------------------------------------------------------
+
+/** Mirrors ItemLedgerRowDto */
+export interface ItemLedgerRowResponse {
+  stockNo: string;
+  description: string;
+  unit: string;
+  totalOrdered: number;
+  totalDelivered: number;
+  totalDistributed: number;
+  onHand: number;
+  reorderQty: number;
+  isLowStock: boolean;
+  isOutOfStock: boolean;
+}
+
 /** Mirrors PRResponseDto — division is now a string name e.g. "Admin" */
 export interface PRResponse {
   id: string;
