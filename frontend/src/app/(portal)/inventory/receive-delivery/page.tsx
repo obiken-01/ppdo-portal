@@ -247,6 +247,79 @@ function DistRowUI({
 }
 
 // ---------------------------------------------------------------------------
+// PR Combobox — typeable input with filtered suggestion list
+// ---------------------------------------------------------------------------
+
+const STATUS_BADGE: Record<string, string> = {
+  Open:                "bg-blue-100 text-blue-700",
+  PartiallyDelivered:  "bg-amber-100 text-amber-700",
+  FullyDelivered:      "bg-green-100 text-green-700",
+};
+
+function PRCombobox({
+  search, onSearchChange, onFocus, onBlur,
+  open, suggestions, selectedId, onSelect, loading,
+}: {
+  search: string;
+  onSearchChange: (v: string) => void;
+  onFocus: () => void;
+  onBlur: () => void;
+  open: boolean;
+  suggestions: PRSummaryResponse[];
+  selectedId: string;
+  onSelect: (pr: PRSummaryResponse) => void;
+  loading: boolean;
+}) {
+  return (
+    <div className="relative w-full">
+      <div className="flex items-center border border-slate-200 bg-cell-fill focus-within:ring-2 focus-within:ring-green-600">
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => onSearchChange(e.target.value)}
+          onFocus={onFocus}
+          onBlur={onBlur}
+          placeholder={loading ? "Loading PRs…" : "Type PR number, division, or status to search…"}
+          disabled={loading}
+          className="flex-1 px-3 py-2 text-sm bg-transparent outline-none disabled:opacity-60"
+        />
+        {loading && (
+          <span className="px-3">
+            <span className="w-4 h-4 border-2 border-slate-300 border-t-transparent rounded-full animate-spin inline-block" />
+          </span>
+        )}
+      </div>
+
+      {open && (
+        <ul className="absolute z-50 top-full left-0 right-0 bg-white border border-slate-200 shadow-xl max-h-64 overflow-y-auto text-sm">
+          {suggestions.length === 0 ? (
+            <li className="px-4 py-3 text-slate-400 text-xs">No PRs match your search.</li>
+          ) : suggestions.map((pr) => (
+            <li
+              key={pr.id}
+              onMouseDown={(e) => { e.preventDefault(); onSelect(pr); }}
+              className={`px-4 py-2.5 cursor-pointer border-b border-slate-50 last:border-0 transition-colors ${
+                pr.id === selectedId ? "bg-green-50" : "hover:bg-slate-50"
+              }`}
+            >
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-mono font-semibold text-slate-800 text-xs">{pr.prNo}</span>
+                <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${STATUS_BADGE[pr.status] ?? "bg-slate-100 text-slate-600"}`}>
+                  {pr.status}
+                </span>
+                <span className="text-xs text-slate-400">{divName(pr.division)}</span>
+                {pr.id === selectedId && <span className="ml-auto text-green-600 text-xs">✓</span>}
+              </div>
+              <div className="text-xs text-slate-500 mt-0.5 truncate">{pr.requestedBy}</div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
@@ -257,9 +330,11 @@ export default function ReceiveDeliveryPage() {
   const [me, setMe]             = useState<MeResponse | null>(null);
   const [authChecked, setAuth]  = useState(false);
 
-  // PR dropdown
-  const [prs, setPRs]           = useState<PRSummaryResponse[]>([]);
+  // PR list + combobox
+  const [prs, setPRs]               = useState<PRSummaryResponse[]>([]);
   const [prsLoading, setPRsLoading] = useState(false);
+  const [prSearch, setPrSearch]     = useState("");  // typed text in combobox
+  const [prOpen, setPrOpen]         = useState(false);
 
   // Selected PR + its items
   const [selectedPRId, setSelectedPRId] = useState("");
@@ -302,10 +377,9 @@ export default function ReceiveDeliveryPage() {
     setPRsLoading(true);
     api.get<PRSummaryResponse[]>("/purchase-requests")
       .then(({ data }) => {
-        // Show only PRs eligible for delivery
-        setPRs(data.filter((p) =>
-          p.status === "Open" || p.status === "PartiallyDelivered"
-        ));
+        // Exclude only Completed — backend blocks Completed at submit time.
+        // Open, PartiallyDelivered and FullyDelivered can all receive deliveries.
+        setPRs(data.filter((p) => p.status !== "Completed"));
       })
       .catch(() => toast.error("Failed to load PRs", "Could not fetch purchase requests."))
       .finally(() => setPRsLoading(false));
@@ -325,6 +399,34 @@ export default function ReceiveDeliveryPage() {
       .catch(() => toast.error("Failed to load PR", "Could not fetch PR details."))
       .finally(() => setPRLoading(false));
   }, [selectedPRId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── PR combobox selection ──────────────────────────────────────────────────
+
+  function selectPR(pr: PRSummaryResponse) {
+    setSelectedPRId(pr.id);
+    setPrSearch(pr.prNo);  // show PRNo in the input after selection
+    setPrOpen(false);
+  }
+
+  function clearPR() {
+    setSelectedPRId("");
+    setSelectedPR(null);
+    setItems([]);
+    setPrSearch("");
+    setPrOpen(false);
+  }
+
+  // Suggestions: match search text against prNo, division name, status
+  const prSuggestions = useMemo(() => {
+    const q = prSearch.toLowerCase().trim();
+    if (!q) return prs;
+    return prs.filter((p) =>
+      p.prNo.toLowerCase().includes(q) ||
+      divName(p.division).toLowerCase().includes(q) ||
+      p.status.toLowerCase().includes(q) ||
+      p.requestedBy.toLowerCase().includes(q)
+    );
+  }, [prs, prSearch]);
 
   // ── Item / distribution patching ───────────────────────────────────────────
 
@@ -466,6 +568,8 @@ export default function ReceiveDeliveryPage() {
     setSelectedPRId("");
     setSelectedPR(null);
     setItems([]);
+    setPrSearch("");
+    setPrOpen(false);
     setDeliveryDate(TODAY);
     setReceivedBy(me?.fullName ?? "");
     setSupplier("");
@@ -553,24 +657,28 @@ export default function ReceiveDeliveryPage() {
           <SectionHeading number="1" title="Delivery Details" />
           <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
 
-            {/* PR Selector — full width */}
+            {/* PR Selector — searchable combobox */}
             <div className="md:col-span-2">
               <FieldLabel required>Purchase Request</FieldLabel>
-              <select
-                value={selectedPRId}
-                onChange={(e) => setSelectedPRId(e.target.value)}
-                disabled={prsLoading}
-                className="w-full px-3 py-2 text-sm border border-slate-200 bg-cell-fill focus:outline-none focus:ring-2 focus:ring-green-600 disabled:opacity-60"
-              >
-                <option value="">
-                  {prsLoading ? "Loading…" : prs.length === 0 ? "No open PRs available" : "— Select a Purchase Request —"}
-                </option>
-                {prs.map((pr) => (
-                  <option key={pr.id} value={pr.id}>
-                    {pr.prNo} · {divName(pr.division)} · {pr.status}
-                  </option>
-                ))}
-              </select>
+              <PRCombobox
+                search={prSearch}
+                onSearchChange={(v) => { setPrSearch(v); setPrOpen(true); if (!v) clearPR(); }}
+                onFocus={() => setPrOpen(true)}
+                onBlur={() => setTimeout(() => setPrOpen(false), 150)}
+                open={prOpen && prSuggestions.length > 0}
+                suggestions={prSuggestions}
+                selectedId={selectedPRId}
+                onSelect={selectPR}
+                loading={prsLoading}
+              />
+              {selectedPRId && (
+                <div className="mt-1.5 flex items-center gap-2">
+                  <span className="text-xs text-green-600 font-medium">✓ Selected</span>
+                  <button onClick={clearPR} className="text-xs text-slate-400 hover:text-slate-600 transition-colors">
+                    Change PR
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Delivery Date | Delivery Ref */}
