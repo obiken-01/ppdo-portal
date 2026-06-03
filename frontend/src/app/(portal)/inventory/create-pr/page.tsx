@@ -30,7 +30,6 @@
  */
 
 import {
-  useCallback,
   useEffect,
   useMemo,
   useRef,
