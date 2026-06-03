@@ -10,8 +10,12 @@
  *
  * Behaviour:
  *   - Toasts stack in the top-right corner.
- *   - Each auto-dismisses after 2 seconds.
+ *   - Each auto-dismisses after AUTO_DISMISS_MS (5 s).
+ *   - A progress bar at the bottom shrinks from full-width to zero over that
+ *     duration; its colour matches the variant's accent colour.
  *   - User can also close manually via the × button.
+ *   - Rectangular shape, no rounded corners.
+ *   - Left accent bar is full-height and thicker (6 px).
  *
  * When to use toasts vs inline errors — see CLAUDE.md / Toast standard:
  *   ✅ Toast  — success confirmations, API errors on completed actions
@@ -71,39 +75,39 @@ export function useToast(): ToastContextValue {
 
 const VARIANT_CONFIG: Record<
   ToastVariant,
-  { bar: string; iconBg: string; icon: string; titleColor: string }
+  { bar: string; iconBg: string; icon: string; progress: string }
 > = {
   success: {
-    bar:       "bg-green-500",
-    iconBg:    "bg-green-500",
-    icon:      "✓",
-    titleColor: "text-slate-800",
+    bar:      "bg-green-500",
+    iconBg:   "bg-green-500",
+    icon:     "✓",
+    progress: "bg-green-500",
   },
   error: {
-    bar:       "bg-red-500",
-    iconBg:    "bg-red-500",
-    icon:      "✕",
-    titleColor: "text-slate-800",
+    bar:      "bg-red-500",
+    iconBg:   "bg-red-500",
+    icon:     "✕",
+    progress: "bg-red-500",
   },
   info: {
-    bar:       "bg-blue-500",
-    iconBg:    "bg-blue-500",
-    icon:      "i",
-    titleColor: "text-slate-800",
+    bar:      "bg-blue-500",
+    iconBg:   "bg-blue-500",
+    icon:     "i",
+    progress: "bg-blue-500",
   },
   warning: {
-    bar:       "bg-amber-400",
-    iconBg:    "bg-amber-400",
-    icon:      "!",
-    titleColor: "text-slate-800",
+    bar:      "bg-amber-400",
+    iconBg:   "bg-amber-400",
+    icon:     "!",
+    progress: "bg-amber-400",
   },
 };
 
 // ---------------------------------------------------------------------------
-// Single toast item component
+// Single toast card
 // ---------------------------------------------------------------------------
 
-const AUTO_DISMISS_MS = 2000;
+const AUTO_DISMISS_MS = 5000;
 
 function ToastCard({
   item,
@@ -113,50 +117,61 @@ function ToastCard({
   onDismiss: (id: string) => void;
 }) {
   const cfg = VARIANT_CONFIG[item.variant];
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Auto-dismiss timer
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     timerRef.current = setTimeout(() => onDismiss(item.id), AUTO_DISMISS_MS);
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, [item.id, onDismiss]);
 
   return (
     <div
       role="alert"
-      className="flex items-start gap-3 bg-white rounded-xl shadow-lg border border-slate-100 pr-4 pl-0 py-3.5 min-w-72 max-w-sm w-full overflow-hidden animate-slide-in"
+      className="flex flex-col bg-white shadow-lg border border-slate-200 min-w-72 max-w-sm w-full overflow-hidden animate-slide-in"
+      // No rounded corners — rectangular by design
     >
-      {/* Left colour bar */}
-      <div className={`w-1.5 self-stretch rounded-l-xl shrink-0 ${cfg.bar}`} />
+      {/* ── Main row: accent bar | icon | text | close ── */}
+      <div className="flex items-stretch">
+        {/* Left accent bar — full-height, 6 px wide */}
+        <div className={`w-1.5 shrink-0 ${cfg.bar}`} />
 
-      {/* Icon */}
-      <div
-        className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-white text-sm font-bold mt-0.5 ${cfg.iconBg}`}
-      >
-        {cfg.icon}
-      </div>
+        {/* Icon */}
+        <div className={`flex items-center justify-center w-11 shrink-0 ${cfg.iconBg}`}>
+          <span className="text-white text-sm font-bold">{cfg.icon}</span>
+        </div>
 
-      {/* Text */}
-      <div className="flex-1 min-w-0">
-        <p className={`text-sm font-bold leading-tight ${cfg.titleColor}`}>
-          {item.title}
-        </p>
-        {item.message && (
-          <p className="text-xs text-slate-500 mt-0.5 leading-snug">
-            {item.message}
+        {/* Text */}
+        <div className="flex-1 min-w-0 px-3 py-3">
+          <p className="text-sm font-bold leading-tight text-slate-800">
+            {item.title}
           </p>
-        )}
+          {item.message && (
+            <p className="text-xs text-slate-500 mt-0.5 leading-snug">
+              {item.message}
+            </p>
+          )}
+        </div>
+
+        {/* Close button */}
+        <button
+          onClick={() => onDismiss(item.id)}
+          aria-label="Dismiss"
+          className="px-3 text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors self-stretch flex items-start pt-2.5 text-base leading-none shrink-0"
+        >
+          ×
+        </button>
       </div>
 
-      {/* Close */}
-      <button
-        onClick={() => onDismiss(item.id)}
-        aria-label="Dismiss"
-        className="text-slate-400 hover:text-slate-600 transition-colors text-base leading-none mt-0.5 shrink-0"
-      >
-        ×
-      </button>
+      {/* ── Progress bar — shrinks left-to-right over AUTO_DISMISS_MS ── */}
+      <div className="h-1 w-full bg-slate-100">
+        <div
+          className={`h-full ${cfg.progress} origin-left`}
+          style={{
+            animation: `toast-progress ${AUTO_DISMISS_MS}ms linear forwards`,
+          }}
+        />
+      </div>
     </div>
   );
 }
