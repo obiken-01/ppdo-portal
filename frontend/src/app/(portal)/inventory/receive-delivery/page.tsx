@@ -31,7 +31,7 @@
  * Cell colours: yellow (bg-cell-fill) = user fills, gray (bg-cell-auto) = read-only.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { useToast } from "@/components/ui/Toast";
