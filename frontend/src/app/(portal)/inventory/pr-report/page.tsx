@@ -462,7 +462,7 @@ export default function PRReportPage() {
                 title="Line Items — Ordered vs Delivered vs Distributed vs Remaining"
               />
               <div className="overflow-x-auto">
-                <table className="w-full text-sm border-collapse">
+                <table className="w-full text-xs border-collapse">
                   <thead>
                     <tr className="bg-green-800 text-white text-xs uppercase tracking-wide">
                       <th className="px-3 py-2.5 text-center font-medium w-10">#</th>
