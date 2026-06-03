@@ -1,5 +1,3 @@
-using PPDO.Domain.Enums;
-
 namespace PPDO.Application.DTOs.PurchaseRequest;
 
 /// <summary>Full PR detail response — includes all header fields and line items.</summary>
@@ -9,7 +7,8 @@ public sealed record PRResponseDto(
     DateOnly PRDate,
     DateTime DateCreated,
     string Department,
-    Division Division,
+    /// <summary>Division name string e.g. "Admin" — not the enum integer.</summary>
+    string Division,
     string Fund,
     string RequestedBy,
     string Position,

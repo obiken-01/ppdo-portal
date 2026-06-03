@@ -102,12 +102,12 @@ export interface PRItemResponse {
   itemType: string | null;
 }
 
-/** Mirrors PRSummaryDto — Division comes back as integer (no JsonStringEnumConverter) */
+/** Mirrors PRSummaryDto */
 export interface PRSummaryResponse {
   id: string;
   prNo: string;
   prDate: string;
-  division: number;   // 0=Admin 1=Planning 2=RM 3=MIS 4=SPD
+  division: string;   // "Admin" | "Planning" | "RM" | "MIS" | "SPD"
   requestedBy: string;
   totalAmount: number;
   status: string;
@@ -176,14 +176,14 @@ export interface DistributionResponse {
   remarks: string | null;
 }
 
-/** Mirrors PRResponseDto */
+/** Mirrors PRResponseDto — division is now a string name e.g. "Admin" */
 export interface PRResponse {
   id: string;
   prNo: string;
   prDate: string;
   dateCreated: string;
   department: string;
-  division: string;
+  division: string;   // "Admin" | "Planning" | "RM" | "MIS" | "SPD"
   fund: string;
   requestedBy: string;
   position: string;

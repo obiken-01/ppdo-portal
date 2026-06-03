@@ -53,10 +53,6 @@ import type {
 const DIVISIONS: Division[] = ["Admin", "Planning", "RM", "MIS", "SPD"];
 const TODAY = new Date().toISOString().slice(0, 10);
 
-/** PRSummaryDto.Division arrives as integer — map to string name */
-const DIV_MAP: Record<number, Division> = {
-  0: "Admin", 1: "Planning", 2: "RM", 3: "MIS", 4: "SPD",
-};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -70,9 +66,8 @@ function fmt(n: number) {
 
 function uid() { return `${Date.now()}-${Math.random()}`; }
 
-function divName(d: number | string): Division {
-  if (typeof d === "string") return d as Division;
-  return DIV_MAP[d] ?? "Admin";
+function divName(d: string): Division {
+  return d as Division;
 }
 
 // ---------------------------------------------------------------------------
@@ -515,7 +510,7 @@ export default function ReceiveDeliveryPage() {
           }));
       } else {
         // Auto-distribution: use PR's division, full qty
-        const prDivision = selectedPR ? divName(selectedPR.division as unknown as number) : "Admin";
+        const prDivision = selectedPR ? selectedPR.division : "Admin";
         dists = [{
           division:   prDivision,
           qtyIssued:  qty,

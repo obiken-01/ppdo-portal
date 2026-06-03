@@ -132,8 +132,10 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
                 "A Purchase Request must have at least one line item.");
 
         DateTime manilaNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, ManilaZone);
-        string prNo        = await GeneratePRNoAsync(manilaNow, cancellationToken);
-        DateTime utcNow    = DateTime.UtcNow;
+        string prNo = !string.IsNullOrWhiteSpace(dto.PrNo)
+            ? dto.PrNo.Trim()
+            : await GeneratePRNoAsync(manilaNow, cancellationToken);
+        DateTime utcNow = DateTime.UtcNow;
 
         PurchaseRequest pr = new()
         {
@@ -481,12 +483,12 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
     // ── Mapping ────────────────────────────────────────────────────────────────
 
     private static PRSummaryDto MapToSummary(PurchaseRequest pr) => new(
-        pr.Id, pr.PRNo, pr.PRDate, pr.Division,
+        pr.Id, pr.PRNo, pr.PRDate, pr.Division.ToString(),
         pr.RequestedBy, pr.TotalAmount, pr.Status.ToString(), pr.CreatedAt);
 
     private static PRResponseDto MapToResponse(PurchaseRequest pr) => new(
         pr.Id, pr.PRNo, pr.PRDate, pr.DateCreated,
-        pr.Department, pr.Division, pr.Fund,
+        pr.Department, pr.Division.ToString(), pr.Fund,
         pr.RequestedBy, pr.Position,
         pr.ApprovedBy, pr.ApprovingPosition,
         pr.AIPCode, pr.AccountNo, pr.AccountTitle,
