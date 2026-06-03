@@ -111,13 +111,18 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
                 "You do not have permission to create Purchase Requests.");
         }
 
+        // Parse Division string → enum (matches CreateUserDto pattern).
+        if (!Enum.TryParse<Division>(dto.Division, ignoreCase: true, out Division division))
+            return ServiceResult<PRResponseDto>.BadRequest(
+                $"Invalid division '{dto.Division}'. Must be one of: Admin, Planning, RM, MIS, SPD.");
+
         // Staff can only submit PRs for their own division.
         if (requester.Role is UserRole.Staff or UserRole.Observer
-            && dto.Division != requester.Division)
+            && division != requester.Division)
         {
             _logger.LogWarning(
                 "Permission denied — user {UserId} attempted to create a PR for division {Division}.",
-                requester.Id, dto.Division);
+                requester.Id, division);
             return ServiceResult<PRResponseDto>.Forbidden(
                 "You can only create Purchase Requests for your own division.");
         }
@@ -137,7 +142,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
             PRDate            = dto.PRDate,
             DateCreated       = utcNow,
             Department        = string.IsNullOrWhiteSpace(dto.Department) ? "PPDO" : dto.Department.Trim(),
-            Division          = dto.Division,
+            Division          = division,
             Fund              = dto.Fund.Trim(),
             RequestedBy       = dto.RequestedBy.Trim(),
             Position          = dto.Position.Trim(),
@@ -198,9 +203,15 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         DateTime utcNow     = DateTime.UtcNow;
         DateTime manilaNow  = TimeZoneInfo.ConvertTimeFromUtc(utcNow, ManilaZone);
 
-        if (dto.PRDate is not null)            pr.PRDate            = dto.PRDate.Value;
-        if (dto.Department is not null)        pr.Department        = dto.Department.Trim();
-        if (dto.Division is not null)          pr.Division          = dto.Division.Value;
+        if (dto.PRDate is not null)     pr.PRDate     = dto.PRDate.Value;
+        if (dto.Department is not null) pr.Department = dto.Department.Trim();
+        if (dto.Division is not null)
+        {
+            if (!Enum.TryParse<Division>(dto.Division, ignoreCase: true, out Division updatedDivision))
+                return ServiceResult<PRResponseDto>.BadRequest(
+                    $"Invalid division '{dto.Division}'. Must be one of: Admin, Planning, RM, MIS, SPD.");
+            pr.Division = updatedDivision;
+        }
         if (dto.Fund is not null)              pr.Fund              = dto.Fund.Trim();
         if (dto.RequestedBy is not null)       pr.RequestedBy       = dto.RequestedBy.Trim();
         if (dto.Position is not null)          pr.Position          = dto.Position.Trim();
@@ -443,7 +454,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
     {
         PRDate            = row.PRDate,
         Department        = row.Department,
-        Division          = row.Division,
+        Division          = row.Division.ToString(),
         Fund              = row.Fund ?? "General Fund",
         RequestedBy       = row.RequestedBy,
         Position          = row.Position ?? string.Empty,
