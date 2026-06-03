@@ -19,7 +19,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import api from "@/lib/api";
 import { useToast } from "@/components/ui/Toast";
 import type {
@@ -182,8 +182,9 @@ function PRCombobox({
 // ---------------------------------------------------------------------------
 
 export default function PRReportPage() {
-  const router    = useRouter();
-  const { toast } = useToast();
+  const router       = useRouter();
+  const searchParams = useSearchParams();
+  const { toast }    = useToast();
 
   const [authChecked, setAuthChecked] = useState(false);
 
@@ -248,7 +249,18 @@ export default function PRReportPage() {
     if (!authChecked) return;
     setPRsLoading(true);
     api.get<PRSummaryResponse[]>("/purchase-requests")
-      .then(({ data }) => setPRs(data))
+      .then(({ data }) => {
+        setPRs(data);
+        // Auto-select if ?id= is in the URL (e.g. navigated from Dashboard "Report" link)
+        const idParam = searchParams.get("id");
+        if (idParam) {
+          const match = data.find((p) => p.id === idParam);
+          if (match) {
+            setSelectedId(match.id);
+            setPrSearch(match.prNo);
+          }
+        }
+      })
       .catch(() => toast.error("Failed to load PRs", "Could not fetch purchase requests."))
       .finally(() => setPRsLoading(false));
   }, [authChecked]); // eslint-disable-line react-hooks/exhaustive-deps

@@ -19,7 +19,7 @@
  *   GET /api/inventory/ledger         → ItemLedgerRowResponse[] (alerts table)
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import api from "@/lib/api";
@@ -30,6 +30,48 @@ import type {
   InventoryStatsResponse,
   ItemLedgerRowResponse,
 } from "@/types";
+
+// ---------------------------------------------------------------------------
+// Sort helpers
+// ---------------------------------------------------------------------------
+
+type SortDir = "asc" | "desc" | null;
+
+function nextDir(current: SortDir): SortDir {
+  return current === null ? "asc" : current === "asc" ? "desc" : null;
+}
+
+function SortableHeader({
+  label,
+  col,
+  active,
+  dir,
+  onClick,
+  right = false,
+}: {
+  label: string;
+  col: string;
+  active: string | null;
+  dir: SortDir;
+  onClick: (col: string) => void;
+  right?: boolean;
+}) {
+  const isActive = active === col;
+  const icon = !isActive || dir === null ? "⇅" : dir === "asc" ? "↑" : "↓";
+  return (
+    <th
+      className={`px-4 py-2.5 font-semibold cursor-pointer select-none whitespace-nowrap group ${right ? "text-right" : "text-left"}`}
+      onClick={() => onClick(col)}
+    >
+      <span className="inline-flex items-center gap-1">
+        {label}
+        <span className={`text-xs transition-colors ${isActive && dir ? "text-green-600" : "text-slate-300 group-hover:text-slate-400"}`}>
+          {icon}
+        </span>
+      </span>
+    </th>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -158,14 +200,22 @@ export default function InventoryDashboardPage() {
 
   const [authChecked, setAuthChecked] = useState(false);
 
-  const [stats,       setStats]       = useState<InventoryStatsResponse | null>(null);
-  const [statsLoading, setStatsLoading] = useState(false);
+  const [stats,         setStats]         = useState<InventoryStatsResponse | null>(null);
+  const [statsLoading,  setStatsLoading]  = useState(false);
 
-  const [prs,         setPRs]         = useState<PRSummaryResponse[]>([]);
-  const [prsLoading,  setPRsLoading]  = useState(false);
+  const [prs,           setPRs]           = useState<PRSummaryResponse[]>([]);
+  const [prsLoading,    setPRsLoading]    = useState(false);
 
-  const [ledger,      setLedger]      = useState<ItemLedgerRowResponse[]>([]);
+  const [ledger,        setLedger]        = useState<ItemLedgerRowResponse[]>([]);
   const [ledgerLoading, setLedgerLoading] = useState(false);
+
+  // ── Sort state — PR table ──────────────────────────────────────────────────
+  const [prSortCol, setPrSortCol] = useState<string | null>(null);
+  const [prSortDir, setPrSortDir] = useState<SortDir>(null);
+
+  // ── Sort state — Alerts table ──────────────────────────────────────────────
+  const [alSortCol, setAlSortCol] = useState<string | null>(null);
+  const [alSortDir, setAlSortDir] = useState<SortDir>(null);
 
   // ── Auth guard ─────────────────────────────────────────────────────────────
 
@@ -205,9 +255,61 @@ export default function InventoryDashboardPage() {
       .finally(() => setLedgerLoading(false));
   }, [authChecked]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Derived ────────────────────────────────────────────────────────────────
+  // ── Sort handlers ──────────────────────────────────────────────────────────
 
-  const alertItems = ledger.filter((r) => r.isLowStock || r.isOutOfStock);
+  function handlePrSort(col: string) {
+    if (prSortCol !== col) { setPrSortCol(col); setPrSortDir("asc"); return; }
+    const next = nextDir(prSortDir);
+    setPrSortDir(next);
+    if (next === null) setPrSortCol(null);
+  }
+
+  function handleAlSort(col: string) {
+    if (alSortCol !== col) { setAlSortCol(col); setAlSortDir("asc"); return; }
+    const next = nextDir(alSortDir);
+    setAlSortDir(next);
+    if (next === null) setAlSortCol(null);
+  }
+
+  // ── Derived & sorted data ─────────────────────────────────────────────────
+
+  const STATUS_ORDER: Record<string, number> = {
+    Open: 0, PartiallyDelivered: 1, FullyDelivered: 2, Completed: 3,
+  };
+
+  const sortedPRs = useMemo(() => {
+    if (!prSortCol || !prSortDir) return prs;
+    return [...prs].sort((a, b) => {
+      let cmp = 0;
+      switch (prSortCol) {
+        case "prNo":        cmp = a.prNo.localeCompare(b.prNo); break;
+        case "division":    cmp = a.division.localeCompare(b.division); break;
+        case "requestedBy": cmp = a.requestedBy.localeCompare(b.requestedBy); break;
+        case "prDate":      cmp = a.prDate.localeCompare(b.prDate); break;
+        case "status":      cmp = (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9); break;
+        case "totalAmount": cmp = a.totalAmount - b.totalAmount; break;
+      }
+      return prSortDir === "asc" ? cmp : -cmp;
+    });
+  }, [prs, prSortCol, prSortDir]);
+
+  const rawAlertItems = ledger.filter((r) => r.isLowStock || r.isOutOfStock);
+
+  const alertItems = useMemo(() => {
+    if (!alSortCol || !alSortDir) return rawAlertItems;
+    return [...rawAlertItems].sort((a, b) => {
+      let cmp = 0;
+      switch (alSortCol) {
+        case "stockNo":     cmp = a.stockNo.localeCompare(b.stockNo); break;
+        case "description": cmp = a.description.localeCompare(b.description); break;
+        case "unit":        cmp = a.unit.localeCompare(b.unit); break;
+        case "onHand":      cmp = a.onHand - b.onHand; break;
+        case "reorderQty":  cmp = a.reorderQty - b.reorderQty; break;
+        case "status":      cmp = Number(a.isOutOfStock) - Number(b.isOutOfStock); break;
+      }
+      return alSortDir === "asc" ? cmp : -cmp;
+    });
+  }, [rawAlertItems, alSortCol, alSortDir]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Loading skeleton ───────────────────────────────────────────────────────
 
@@ -360,18 +462,18 @@ export default function InventoryDashboardPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-50 text-xs text-slate-500 uppercase tracking-wide border-b border-slate-100">
-                  <th className="px-4 py-2.5 text-left font-semibold">PR No.</th>
-                  <th className="px-4 py-2.5 text-left font-semibold">Division</th>
-                  <th className="px-4 py-2.5 text-left font-semibold">Requested By</th>
-                  <th className="px-4 py-2.5 text-left font-semibold">PR Date</th>
-                  <th className="px-4 py-2.5 text-left font-semibold">Status</th>
-                  <th className="px-4 py-2.5 text-left font-semibold">Fulfillment</th>
-                  <th className="px-4 py-2.5 text-right font-semibold">Total Amount</th>
-                  <th className="px-4 py-2.5 text-left font-semibold">Actions</th>
+                  <SortableHeader label="PR No."       col="prNo"        active={prSortCol} dir={prSortDir} onClick={handlePrSort} />
+                  <SortableHeader label="Division"     col="division"    active={prSortCol} dir={prSortDir} onClick={handlePrSort} />
+                  <SortableHeader label="Requested By" col="requestedBy" active={prSortCol} dir={prSortDir} onClick={handlePrSort} />
+                  <SortableHeader label="PR Date"      col="prDate"      active={prSortCol} dir={prSortDir} onClick={handlePrSort} />
+                  <SortableHeader label="Status"       col="status"      active={prSortCol} dir={prSortDir} onClick={handlePrSort} />
+                  <th className="px-4 py-2.5 text-left font-semibold select-none">Fulfillment</th>
+                  <SortableHeader label="Total Amount" col="totalAmount" active={prSortCol} dir={prSortDir} onClick={handlePrSort} right />
+                  <th className="px-4 py-2.5 text-left font-semibold select-none">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {prs.map((pr, idx) => (
+                {sortedPRs.map((pr, idx) => (
                   <tr
                     key={pr.id}
                     className={`border-b border-slate-50 last:border-0 transition-colors hover:bg-green-50/50 ${
@@ -456,12 +558,12 @@ export default function InventoryDashboardPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-50 text-xs text-slate-500 uppercase tracking-wide border-b border-slate-100">
-                  <th className="px-4 py-2.5 text-left font-semibold">Stock No.</th>
-                  <th className="px-4 py-2.5 text-left font-semibold">Description</th>
-                  <th className="px-4 py-2.5 text-left font-semibold">Unit</th>
-                  <th className="px-4 py-2.5 text-center font-semibold">On Hand</th>
-                  <th className="px-4 py-2.5 text-center font-semibold">Reorder Qty</th>
-                  <th className="px-4 py-2.5 text-center font-semibold">Status</th>
+                  <SortableHeader label="Stock No."    col="stockNo"     active={alSortCol} dir={alSortDir} onClick={handleAlSort} />
+                  <SortableHeader label="Description"  col="description" active={alSortCol} dir={alSortDir} onClick={handleAlSort} />
+                  <SortableHeader label="Unit"         col="unit"        active={alSortCol} dir={alSortDir} onClick={handleAlSort} />
+                  <SortableHeader label="On Hand"      col="onHand"      active={alSortCol} dir={alSortDir} onClick={handleAlSort} right />
+                  <SortableHeader label="Reorder Qty"  col="reorderQty"  active={alSortCol} dir={alSortDir} onClick={handleAlSort} right />
+                  <SortableHeader label="Status"       col="status"      active={alSortCol} dir={alSortDir} onClick={handleAlSort} />
                 </tr>
               </thead>
               <tbody>
