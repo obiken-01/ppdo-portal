@@ -151,6 +151,15 @@ export default function Sidebar({ me }: SidebarProps) {
                 )}
                 {hasInventory && (
                   <Link
+                    href="/inventory/create-pr"
+                    className={childLinkCls(isActive("/inventory/create-pr"))}
+                  >
+                    <span className="text-xs">•</span>
+                    <span className="truncate">Create PR</span>
+                  </Link>
+                )}
+                {hasInventory && (
+                  <Link
                     href="/inventory/items-master"
                     className={childLinkCls(isActive("/inventory/items-master"))}
                   >

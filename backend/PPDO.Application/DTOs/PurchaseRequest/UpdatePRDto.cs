@@ -1,17 +1,17 @@
-using PPDO.Domain.Enums;
-
 namespace PPDO.Application.DTOs.PurchaseRequest;
 
 /// <summary>
 /// Request body for PUT /api/purchase-requests/{id}.
 /// Null properties are ignored (patch-style update).
+/// Division accepted as string name — parsed in PurchaseRequestService.
 /// Only allowed when PR Status = Open; Admin/SuperAdmin only.
 /// </summary>
 public sealed record UpdatePRDto
 {
     public DateOnly? PRDate { get; init; }
     public string? Department { get; init; }
-    public Division? Division { get; init; }
+    /// <summary>"Admin" | "Planning" | "RM" | "MIS" | "SPD" — or null to leave unchanged</summary>
+    public string? Division { get; init; }
     public string? Fund { get; init; }
     public string? RequestedBy { get; init; }
     public string? Position { get; init; }

@@ -68,7 +68,7 @@ public sealed class PurchaseRequestServiceTests
     private static CreatePRDto ValidDto(Division division = Division.Planning) => new()
     {
         PRDate = DateOnly.FromDateTime(DateTime.UtcNow),
-        Division = division,
+        Division = division.ToString(),
         Fund = "General Fund",
         RequestedBy = "Test Staff",
         Position = "Staff I",
@@ -245,7 +245,7 @@ public sealed class PurchaseRequestServiceTests
         CreatePRDto dto = new()
         {
             PRDate = DateOnly.FromDateTime(DateTime.UtcNow),
-            Division = Division.Admin,
+            Division = Division.Admin.ToString(),
             Fund = "General Fund",
             RequestedBy = "Test",
             Position = "Staff",
@@ -279,7 +279,7 @@ public sealed class PurchaseRequestServiceTests
         CreatePRDto dto = new()
         {
             PRDate = DateOnly.FromDateTime(DateTime.UtcNow),
-            Division = Division.Admin,
+            Division = Division.Admin.ToString(),
             Fund = "General Fund",
             RequestedBy = "Test",
             Position = "Staff",
