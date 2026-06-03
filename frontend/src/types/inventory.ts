@@ -102,14 +102,99 @@ export interface PRItemResponse {
   itemType: string | null;
 }
 
-/** Mirrors PRResponseDto */
+/** Mirrors PRSummaryDto */
+export interface PRSummaryResponse {
+  id: string;
+  prNo: string;
+  prDate: string;
+  division: string;   // "Admin" | "Planning" | "RM" | "MIS" | "SPD"
+  requestedBy: string;
+  totalAmount: number;
+  status: string;
+  createdAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Deliveries
+// ---------------------------------------------------------------------------
+
+/** Mirrors CreateDistributionDto */
+export interface CreateDistributionRequest {
+  division: string;   // "Admin" | "Planning" | "RM" | "MIS" | "SPD"
+  qtyIssued: number;
+  dateIssued: string; // "YYYY-MM-DD"
+  issuedBy: string;
+  remarks: string | null;
+}
+
+/** Mirrors CreateDeliveryItemDto */
+export interface CreateDeliveryItemRequest {
+  prItemId: string;
+  qtyDelivered: number;
+  distributions: CreateDistributionRequest[];
+}
+
+/** Mirrors CreateDeliveryDto */
+export interface CreateDeliveryRequest {
+  prId: string;
+  deliveryDate: string; // "YYYY-MM-DD"
+  receivedBy: string;
+  supplier: string | null;
+  remarks: string | null;
+  items: CreateDeliveryItemRequest[];
+}
+
+/** Mirrors DeliverySummaryDto — lightweight list record with no items */
+export interface DeliverySummaryResponse {
+  id: string;
+  deliveryRef: string;
+  prId: string;
+  deliveryDate: string;
+  receivedBy: string;
+  supplier: string | null;
+  createdAt: string;
+}
+
+/** Mirrors DeliveryResponseDto */
+export interface DeliveryResponse {
+  id: string;
+  deliveryRef: string;
+  prId: string;
+  deliveryDate: string;
+  receivedBy: string;
+  supplier: string | null;
+  remarks: string | null;
+  createdAt: string;
+  items: DeliveryItemResponse[];
+}
+
+export interface DeliveryItemResponse {
+  id: string;
+  deliveryId: string;
+  prItemId: string;
+  qtyDelivered: number;
+  distributions: DistributionResponse[];
+}
+
+export interface DistributionResponse {
+  id: string;
+  issueRef: string;
+  deliveryItemId: string;
+  division: number;  // integer from API
+  qtyIssued: number;
+  dateIssued: string;
+  issuedBy: string;
+  remarks: string | null;
+}
+
+/** Mirrors PRResponseDto — division is now a string name e.g. "Admin" */
 export interface PRResponse {
   id: string;
   prNo: string;
   prDate: string;
   dateCreated: string;
   department: string;
-  division: string;
+  division: string;   // "Admin" | "Planning" | "RM" | "MIS" | "SPD"
   fund: string;
   requestedBy: string;
   position: string;

@@ -198,7 +198,7 @@ public sealed class PRReportServiceTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal(pr.PRNo, result.Value!.PR.PRNo);
-        Assert.Equal(pr.Division, result.Value.PR.Division);
+        Assert.Equal(pr.Division.ToString(), result.Value.PR.Division);
         Assert.Single(result.Value.PR.Items);
         Assert.Equal(item.Description, result.Value.PR.Items[0].Description);
     }

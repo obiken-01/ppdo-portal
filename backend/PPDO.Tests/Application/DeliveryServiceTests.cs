@@ -63,7 +63,7 @@ public sealed class DeliveryServiceTests
     private static CreateDistributionDto ValidDist(
         decimal qty, Division division = Division.Admin) => new()
     {
-        Division = division, QtyIssued = qty,
+        Division = division.ToString(), QtyIssued = qty,
         DateIssued = DateOnly.FromDateTime(DateTime.UtcNow),
         IssuedBy = "Ralph",
     };

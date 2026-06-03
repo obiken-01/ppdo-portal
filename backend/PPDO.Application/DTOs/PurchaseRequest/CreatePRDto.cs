@@ -9,6 +9,11 @@ namespace PPDO.Application.DTOs.PurchaseRequest;
 public sealed record CreatePRDto
 {
     public required DateOnly PRDate { get; init; }
+    /// <summary>
+    /// Optional. When provided and non-empty the supplied value is used as the PR No.
+    /// If null or empty the backend auto-generates using the standard format.
+    /// </summary>
+    public string? PrNo { get; init; }
     public string Department { get; init; } = "PPDO";
     /// <summary>"Admin" | "Planning" | "RM" | "MIS" | "SPD"</summary>
     public required string Division { get; init; }

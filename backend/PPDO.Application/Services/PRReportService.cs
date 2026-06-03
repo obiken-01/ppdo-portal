@@ -139,7 +139,7 @@ public sealed class PRReportService : IPRReportService
 
     private static PRResponseDto MapToPRResponse(PurchaseRequest pr) => new(
         pr.Id, pr.PRNo, pr.PRDate, pr.DateCreated,
-        pr.Department, pr.Division, pr.Fund,
+        pr.Department, pr.Division.ToString(), pr.Fund,
         pr.RequestedBy, pr.Position,
         pr.ApprovedBy, pr.ApprovingPosition,
         pr.AIPCode, pr.AccountNo, pr.AccountTitle,
