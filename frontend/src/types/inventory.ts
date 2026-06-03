@@ -144,6 +144,32 @@ export interface CreateDeliveryRequest {
   items: CreateDeliveryItemRequest[];
 }
 
+// ---------------------------------------------------------------------------
+// PR Report
+// ---------------------------------------------------------------------------
+
+/** Mirrors PRReportDistributionDto — Section 3 row */
+export interface PRReportDistributionResponse {
+  itemNo: number;
+  description: string;
+  unit: string;
+  qtyDelivered: number;
+  deliveryRef: string;
+  deliveryDate: string;   // "YYYY-MM-DD"
+  division: string;       // "Admin" | "Planning" | "RM" | "MIS" | "SPD"
+  qtyIssued: number;
+  issueRef: string;
+  dateIssued: string;     // "YYYY-MM-DD"
+  issuedBy: string;
+  remarks: string | null;
+}
+
+/** Mirrors PRReportDto */
+export interface PRReportResponse {
+  pr: PRResponse;
+  distributions: PRReportDistributionResponse[];
+}
+
 /** Mirrors DeliverySummaryDto — lightweight list record with no items */
 export interface DeliverySummaryResponse {
   id: string;

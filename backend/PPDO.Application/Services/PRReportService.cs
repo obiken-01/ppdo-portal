@@ -172,7 +172,7 @@ public sealed class PRReportService : IPRReportService
                         QtyDelivered: di.QtyDelivered,
                         DeliveryRef:  delivery.DeliveryRef,
                         DeliveryDate: delivery.DeliveryDate,
-                        Division:     dist.Division,
+                        Division:     dist.Division.ToString(),
                         QtyIssued:    dist.QtyIssued,
                         IssueRef:     dist.IssueRef,
                         DateIssued:   dist.DateIssued,

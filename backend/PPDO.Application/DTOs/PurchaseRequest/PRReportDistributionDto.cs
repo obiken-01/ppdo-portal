@@ -1,11 +1,10 @@
-using PPDO.Domain.Enums;
-
 namespace PPDO.Application.DTOs.PurchaseRequest;
 
 /// <summary>
 /// A single row in PR Report Section 3 — Distribution.
 /// Each row represents one distribution line (one division's allocation
 /// for one delivery item in one delivery event).
+/// Division is a string name (e.g. "Admin") — not the enum integer.
 /// </summary>
 public sealed record PRReportDistributionDto(
     int ItemNo,
@@ -14,7 +13,7 @@ public sealed record PRReportDistributionDto(
     decimal QtyDelivered,
     string DeliveryRef,
     DateOnly DeliveryDate,
-    Division Division,
+    string Division,
     decimal QtyIssued,
     string IssueRef,
     DateOnly DateIssued,
