@@ -121,6 +121,22 @@ const config: Config = {
       fontFamily: {
         sans: ["Segoe UI", "Source Sans Pro", "system-ui", "sans-serif"],
       },
+
+      // ── Animations ───────────────────────────────────────────────────────
+      keyframes: {
+        "slide-in": {
+          "0%":   { opacity: "0", transform: "translateX(120%)" },
+          "100%": { opacity: "1", transform: "translateX(0)" },
+        },
+        "toast-progress": {
+          "0%":   { transform: "scaleX(1)" },
+          "100%": { transform: "scaleX(0)" },
+        },
+      },
+      animation: {
+        "slide-in":       "slide-in 0.22s ease-out",
+        "toast-progress": "toast-progress linear forwards",
+      },
     },
   },
   plugins: [],
