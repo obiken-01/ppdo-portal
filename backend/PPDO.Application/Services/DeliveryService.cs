@@ -227,6 +227,12 @@ public sealed class DeliveryService : IDeliveryService
 
             foreach (CreateDistributionDto distDto in itemDto.Distributions)
             {
+                // Parse Division string → enum (matches CreateUserDto / CreatePRDto pattern).
+                if (!Enum.TryParse<Division>(distDto.Division, ignoreCase: true, out Division distDivision))
+                    return ServiceResult<DeliveryResponseDto>.BadRequest(
+                        $"Invalid division '{distDto.Division}' in distribution. " +
+                        "Must be one of: Admin, Planning, RM, MIS, SPD.");
+
                 string issueRef = BuildIssueRef(manilaNow, randomSuffix, issueSeq++);
 
                 deliveryItem.Distributions.Add(new Distribution
@@ -234,7 +240,7 @@ public sealed class DeliveryService : IDeliveryService
                     Id             = Guid.NewGuid(),
                     IssueRef       = issueRef,
                     DeliveryItemId = deliveryItem.Id,
-                    Division       = distDto.Division,
+                    Division       = distDivision,
                     QtyIssued      = distDto.QtyIssued,
                     DateIssued     = distDto.DateIssued,
                     IssuedBy       = distDto.IssuedBy.Trim(),
