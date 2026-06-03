@@ -69,6 +69,7 @@ export interface CreatePRItemRequest {
 /** Mirrors CreatePRDto */
 export interface CreatePRRequest {
   prDate: string;           // "YYYY-MM-DD"
+  prNo?: string | null;     // optional — omit or null to let backend auto-generate
   department: string;
   division: string;
   fund: string;

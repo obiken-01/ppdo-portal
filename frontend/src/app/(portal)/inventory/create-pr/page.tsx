@@ -269,6 +269,7 @@ function SectionHeading({ number, title }: { number: string; title: string }) {
 
 type HeaderForm = {
   prDate: string;
+  prNo: string;               // optional — blank means backend auto-generates
   department: string;
   division: Division | "";
   fund: string;
@@ -291,6 +292,7 @@ type HeaderErrors = Partial<Record<keyof HeaderForm, string>>;
 function blankHeader(): HeaderForm {
   return {
     prDate: TODAY,
+    prNo: "",
     department: "PPDO",
     division: "",
     fund: "",
@@ -547,6 +549,7 @@ export default function CreatePRPage() {
 
     const body: CreatePRRequest = {
       prDate:            header.prDate,
+      prNo:              header.prNo.trim() || null,
       department:        header.department,
       division:          header.division as string,
       fund:              header.fund.trim(),
@@ -730,7 +733,11 @@ export default function CreatePRPage() {
             </div>
             <div>
               <FieldLabel>PR No.</FieldLabel>
-              <GrayInput value="Auto-generated on submit" />
+              <YellowInput
+                value={header.prNo}
+                onChange={(v) => patchHeader({ prNo: v })}
+                placeholder="Leave blank to auto-generate"
+              />
             </div>
 
             {/* Row 2: Department | Division */}
