@@ -202,6 +202,33 @@ export default function PRReportPage() {
   // Export
   const [exporting, setExporting] = useState(false);
 
+  // ── Computed delivery/distribution totals per item (from Section 3 data) ──
+  // Used to populate Section 2 Qty Delivered / Qty Distributed / Remaining.
+  //
+  // qtyDelivered[itemNo]   = sum of unique (itemNo, deliveryRef) QtyDelivered values
+  //                          (deduplicates split-delivery rows that share the same value)
+  // qtyDistributed[itemNo] = sum of all QtyIssued for that item (equals qtyDelivered
+  //                          when all distributions are fully recorded)
+
+  const { qtyDelivered, qtyDistributed } = useMemo(() => {
+    const delivered: Record<number, number>    = {};
+    const distributed: Record<number, number>  = {};
+    const seen = new Set<string>();
+
+    for (const d of report?.distributions ?? []) {
+      // Qty Distributed — straightforward sum of QtyIssued
+      distributed[d.itemNo] = (distributed[d.itemNo] ?? 0) + d.qtyIssued;
+
+      // Qty Delivered — one QtyDelivered per (itemNo, deliveryRef) to avoid double-counting
+      const key = `${d.itemNo}-${d.deliveryRef}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        delivered[d.itemNo] = (delivered[d.itemNo] ?? 0) + d.qtyDelivered;
+      }
+    }
+    return { qtyDelivered: delivered, qtyDistributed: distributed };
+  }, [report]);
+
   // ── Auth guard ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -426,21 +453,26 @@ export default function PRReportPage() {
               </div>
             </div>
 
-            {/* ── Section 2 — Line Items ───────────────────────────────────── */}
+            {/* ── Section 2 — Line Items (GS column structure) ─────────────── */}
+            {/* Columns: # | Description | Stock No. | Unit | Qty Ordered |     */}
+            {/*          Qty Delivered | Qty Distributed | Remaining             */}
             <div className="bg-white border border-slate-200 shadow-sm rounded-lg overflow-hidden">
-              <SectionHeading number="2" title="Line Items" />
+              <SectionHeading
+                number="2"
+                title="Line Items — Ordered vs Delivered vs Distributed vs Remaining"
+              />
               <div className="overflow-x-auto">
                 <table className="w-full text-sm border-collapse">
                   <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500 uppercase tracking-wide">
+                    <tr className="bg-green-800 text-white text-xs uppercase tracking-wide">
                       <th className="px-3 py-2.5 text-center font-medium w-10">#</th>
-                      <th className="px-3 py-2.5 text-left font-medium w-32">Stock No.</th>
-                      <th className="px-3 py-2.5 text-left font-medium min-w-56">Description</th>
-                      <th className="px-3 py-2.5 text-left font-medium w-20">Unit</th>
-                      <th className="px-3 py-2.5 text-right font-medium w-24">Qty</th>
-                      <th className="px-3 py-2.5 text-right font-medium w-28">Unit Cost</th>
-                      <th className="px-3 py-2.5 text-right font-medium w-28">Total Cost</th>
-                      <th className="px-3 py-2.5 text-left font-medium w-28">Item Type</th>
+                      <th className="px-3 py-2.5 text-left font-medium min-w-56">Item Description</th>
+                      <th className="px-3 py-2.5 text-left font-medium w-36">Stock No.</th>
+                      <th className="px-3 py-2.5 text-center font-medium w-20">Unit</th>
+                      <th className="px-3 py-2.5 text-right font-medium w-28">Qty Ordered</th>
+                      <th className="px-3 py-2.5 text-right font-medium w-28">Qty Delivered</th>
+                      <th className="px-3 py-2.5 text-right font-medium w-28">Qty Distributed</th>
+                      <th className="px-3 py-2.5 text-right font-medium w-28">Remaining</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -450,36 +482,47 @@ export default function PRReportPage() {
                           No line items on this PR.
                         </td>
                       </tr>
-                    ) : pr.items.map((item, i) => (
-                      <tr
-                        key={item.id}
-                        className={i % 2 === 1 ? "bg-slate-50" : "bg-white"}
-                      >
-                        <td className="px-3 py-2.5 text-center text-slate-400 text-xs">{item.itemNo}</td>
-                        <td className="px-3 py-2.5 font-mono text-xs text-slate-600">{item.stockNo ?? "—"}</td>
-                        <td className="px-3 py-2.5 text-slate-800">{item.description}</td>
-                        <td className="px-3 py-2.5 text-slate-600">{item.unit}</td>
-                        <td className="px-3 py-2.5 text-right tabular-nums text-slate-700">{fmt(item.quantity)}</td>
-                        <td className="px-3 py-2.5 text-right tabular-nums text-slate-700">₱{fmt(item.unitCost)}</td>
-                        <td className="px-3 py-2.5 text-right tabular-nums font-medium text-slate-800">₱{fmt(item.totalCost)}</td>
-                        <td className="px-3 py-2.5 text-slate-500 text-xs">{item.itemType ?? "—"}</td>
-                      </tr>
-                    ))}
+                    ) : pr.items.map((item, i) => {
+                      const delivered    = qtyDelivered[item.itemNo]    ?? 0;
+                      const distributed  = qtyDistributed[item.itemNo]  ?? 0;
+                      const remaining    = Math.max(0, item.quantity - delivered);
+                      const isFull       = remaining === 0 && delivered > 0;
+
+                      return (
+                        <tr
+                          key={item.id}
+                          className={i % 2 === 1 ? "bg-slate-50" : "bg-white"}
+                        >
+                          <td className="px-3 py-2.5 text-center text-slate-500 font-medium">{item.itemNo}</td>
+                          <td className="px-3 py-2.5 text-slate-800 font-medium">{item.description}</td>
+                          <td className="px-3 py-2.5 font-mono text-xs text-slate-600">{item.stockNo ?? "—"}</td>
+                          <td className="px-3 py-2.5 text-center text-slate-600">{item.unit}</td>
+                          {/* Qty Ordered — bold */}
+                          <td className="px-3 py-2.5 text-right tabular-nums font-bold text-slate-800">
+                            {fmt(item.quantity)}
+                          </td>
+                          {/* Qty Delivered — blue */}
+                          <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-blue-600">
+                            {delivered > 0 ? fmt(delivered) : <span className="text-slate-300">0</span>}
+                          </td>
+                          {/* Qty Distributed — amber */}
+                          <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-amber-600">
+                            {distributed > 0 ? fmt(distributed) : <span className="text-slate-300">0</span>}
+                          </td>
+                          {/* Remaining — green if > 0, red if fully delivered */}
+                          <td className={`px-3 py-2.5 text-right tabular-nums font-bold ${
+                            isFull
+                              ? "text-red-500 bg-red-50"
+                              : remaining > 0
+                              ? "text-green-600"
+                              : "text-slate-400"
+                          }`}>
+                            {isFull ? "0" : fmt(remaining)}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
-                  {/* Section 2 total row */}
-                  {pr.items.length > 0 && (
-                    <tfoot>
-                      <tr className="bg-green-50 border-t-2 border-green-200">
-                        <td colSpan={6} className="px-3 py-2.5 text-right text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                          Total
-                        </td>
-                        <td className="px-3 py-2.5 text-right tabular-nums font-bold text-green-700">
-                          ₱{fmt(pr.totalAmount)}
-                        </td>
-                        <td />
-                      </tr>
-                    </tfoot>
-                  )}
                 </table>
               </div>
             </div>
