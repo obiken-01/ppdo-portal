@@ -563,7 +563,7 @@ export default function PRReportPage() {
                         >
                           <td className="px-3 py-2 text-center text-slate-400">{dist.itemNo}</td>
                           <td className="px-3 py-2 text-slate-800 max-w-xs">
-                            <span className="truncate block" title={dist.description}>{dist.description}</span>
+                            <span className="truncate block font-bold" title={dist.description}>{dist.description}</span>
                           </td>
                           <td className="px-3 py-2 text-slate-600">{dist.unit}</td>
                           <td className="px-3 py-2 text-right tabular-nums text-slate-700">{fmt(dist.qtyDelivered)}</td>
@@ -574,7 +574,7 @@ export default function PRReportPage() {
                               {dist.division}
                             </span>
                           </td>
-                          <td className="px-3 py-2 text-right tabular-nums font-medium text-slate-800">{fmt(dist.qtyIssued)}</td>
+                          <td className="px-3 py-2 text-right tabular-nums font-bold text-slate-800">{fmt(dist.qtyIssued)}</td>
                           <td className="px-3 py-2 font-mono text-slate-500">{dist.issueRef}</td>
                           <td className="px-3 py-2 text-slate-600">{fmtDate(dist.dateIssued)}</td>
                           <td className="px-3 py-2 text-slate-700">{dist.issuedBy}</td>
