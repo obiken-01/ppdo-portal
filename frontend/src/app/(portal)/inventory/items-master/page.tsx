@@ -1,18 +1,22 @@
 "use client";
 
 /**
- * Items Master page — RAL-52.
+ * Items Master page — RAL-52 (inline-editing revision).
  * Matches Penpot frame "06 Items Master".
  *
  * Access guard: canAccessInventory permission required.
- * Redirects to /dashboard if the permission is not present.
  *
- * Features:
- *   - TanStack Table v8 data grid with per-column filter row + global search
- *   - ★ NEW badge for items where isNewItem = true
- *   - Add Item modal — creates a new catalog entry
- *   - Edit Item modal — update any field, including clearing the isNewItem flag
- *   - "Mark Reviewed" quick action — clears isNewItem in one click
+ * Table behaviour:
+ *   - TanStack Table v8 — per-column filter row, global search, sortable columns
+ *   - Clicking ✏️ on a row switches it into inline edit mode (inputs in cells)
+ *   - Only one row editable at a time
+ *   - isNewItem rendered as a toggle button in edit mode / ★ NEW badge in display mode
+ *   - Remarks column always visible; editable inline
+ *   - "+ Add Item" appends a blank sentinel row (id "__new__") at the top,
+ *     immediately in edit mode — Save calls POST, Cancel removes the sentinel
+ *   - Validation errors shown inline inside the editing row
+ *   - Save/API success → toast (top-right, auto-dismiss 2 s)
+ *   - API errors on save → toast
  *
  * API endpoints (ItemFunctions.cs):
  *   GET  /api/items/master        → list all items
@@ -20,7 +24,7 @@
  *   PUT  /api/items/master/{id}   → update item
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   useReactTable,
@@ -32,14 +36,22 @@ import {
   type ColumnDef,
   type ColumnFiltersState,
   type SortingState,
+  type Row,
 } from "@tanstack/react-table";
 import api from "@/lib/api";
+import { useToast } from "@/components/ui/Toast";
 import type {
   CreateItemMasterRequest,
   ItemMasterResponse,
   MeResponse,
   UpdateItemMasterRequest,
 } from "@/types";
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const NEW_ROW_ID = "__new__";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -52,280 +64,120 @@ function fmt(n: number) {
   }).format(n);
 }
 
-function NewBadge() {
-  return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 whitespace-nowrap">
-      ★ NEW
-    </span>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Blank forms
-// ---------------------------------------------------------------------------
-
-function blankCreate(): CreateItemMasterRequest {
+/** Sentinel row used for the "+ Add Item" inline new row */
+function blankSentinel(): ItemMasterResponse {
   return {
-    stockNo: "",
+    id:          NEW_ROW_ID,
+    stockNo:     "",
     description: "",
-    unit: "",
-    unitCost: 0,
-    category: null,
-    itemType: null,
-    reorderQty: 0,
-    remarks: null,
-    isNewItem: false,
+    category:    null,
+    unit:        "",
+    unitCost:    0,
+    itemType:    null,
+    reorderQty:  0,
+    remarks:     null,
+    isNewItem:   false,
+    createdAt:   "",
+    updatedAt:   "",
   };
 }
 
 // ---------------------------------------------------------------------------
-// Modal
+// Inline-edit field types
 // ---------------------------------------------------------------------------
 
-function Modal({
-  title,
-  onClose,
-  children,
+type EditValues = {
+  stockNo:     string;
+  description: string;
+  category:    string;
+  unit:        string;
+  unitCost:    number;
+  itemType:    string;
+  reorderQty:  number;
+  remarks:     string;
+  isNewItem:   boolean;
+};
+
+function toEditValues(item: ItemMasterResponse): EditValues {
+  return {
+    stockNo:     item.stockNo,
+    description: item.description,
+    category:    item.category    ?? "",
+    unit:        item.unit,
+    unitCost:    item.unitCost,
+    itemType:    item.itemType    ?? "",
+    reorderQty:  item.reorderQty,
+    remarks:     item.remarks     ?? "",
+    isNewItem:   item.isNewItem,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Small reusable edit input
+// ---------------------------------------------------------------------------
+
+function EditInput({
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+  className = "",
 }: {
-  title: string;
-  onClose: () => void;
-  children: React.ReactNode;
+  value: string | number;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  type?: "text" | "number";
+  className?: string;
 }) {
-  const backdropRef = useRef<HTMLDivElement>(null);
-
-  function handleBackdrop(e: React.MouseEvent) {
-    if (e.target === backdropRef.current) onClose();
-  }
-
   return (
-    <div
-      ref={backdropRef}
-      onClick={handleBackdrop}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-    >
-      <div className="w-full max-w-2xl bg-white rounded-xl shadow-2xl flex flex-col max-h-[90vh]">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 shrink-0">
-          <h2 className="text-base font-semibold text-slate-800">{title}</h2>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 transition-colors text-xl leading-none"
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
-        <div className="overflow-y-auto flex-1 px-6 py-5">{children}</div>
-      </div>
-    </div>
+    <input
+      type={type}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      className={`w-full px-2 py-1 text-xs rounded border border-slate-300 bg-cell-fill focus:outline-none focus:ring-1 focus:ring-green-500 focus:bg-white transition-colors ${className}`}
+    />
   );
 }
 
 // ---------------------------------------------------------------------------
-// Item form (shared between Add and Edit)
+// isNewItem toggle used in edit mode
 // ---------------------------------------------------------------------------
 
-type ItemFormData = CreateItemMasterRequest | UpdateItemMasterRequest;
-
-function ItemForm({
-  form,
-  saving,
-  error,
-  isEdit,
+function NewToggle({
+  value,
   onChange,
-  onSubmit,
-  onCancel,
 }: {
-  form: ItemFormData;
-  saving: boolean;
-  error: string | null;
-  isEdit: boolean;
-  onChange: (patch: Partial<ItemFormData>) => void;
-  onSubmit: () => void;
-  onCancel: () => void;
+  value: boolean;
+  onChange: (v: boolean) => void;
 }) {
-  const f = form as unknown as Record<string, unknown>;
-
-  function str(key: string): string {
-    const v = f[key];
-    return v == null ? "" : String(v);
-  }
-
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        {/* Stock No */}
-        <div>
-          <label className="block text-xs font-medium text-slate-600 mb-1">
-            Stock No. *
-          </label>
-          <input
-            value={str("stockNo")}
-            onChange={(e) => onChange({ stockNo: e.target.value })}
-            placeholder="e.g. SUP-001"
-            className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
-          />
-        </div>
+    <button
+      type="button"
+      onClick={() => onChange(!value)}
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border transition-colors whitespace-nowrap ${
+        value
+          ? "bg-amber-100 border-amber-300 text-amber-700"
+          : "bg-slate-100 border-slate-300 text-slate-500"
+      }`}
+    >
+      ★ {value ? "NEW" : "—"}
+    </button>
+  );
+}
 
-        {/* Unit */}
-        <div>
-          <label className="block text-xs font-medium text-slate-600 mb-1">
-            Unit *
-          </label>
-          <input
-            value={str("unit")}
-            onChange={(e) => onChange({ unit: e.target.value })}
-            placeholder="e.g. ream, box, piece"
-            className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
-          />
-        </div>
+// ---------------------------------------------------------------------------
+// Row-level inline error banner
+// ---------------------------------------------------------------------------
 
-        {/* Description */}
-        <div className="col-span-2">
-          <label className="block text-xs font-medium text-slate-600 mb-1">
-            Description *
-          </label>
-          <input
-            value={str("description")}
-            onChange={(e) => onChange({ description: e.target.value })}
-            placeholder="Full item name / description"
-            className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
-          />
-        </div>
-
-        {/* Category */}
-        <div>
-          <label className="block text-xs font-medium text-slate-600 mb-1">
-            Category
-          </label>
-          <input
-            value={str("category")}
-            onChange={(e) =>
-              onChange({ category: e.target.value || null })
-            }
-            placeholder="e.g. Office Supplies"
-            className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
-          />
-        </div>
-
-        {/* Item Type */}
-        <div>
-          <label className="block text-xs font-medium text-slate-600 mb-1">
-            Item Type
-          </label>
-          <input
-            value={str("itemType")}
-            onChange={(e) =>
-              onChange({ itemType: e.target.value || null })
-            }
-            placeholder="e.g. Consumable"
-            className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
-          />
-        </div>
-
-        {/* Unit Cost */}
-        <div>
-          <label className="block text-xs font-medium text-slate-600 mb-1">
-            Unit Cost (₱)
-          </label>
-          <input
-            type="number"
-            min={0}
-            step={0.01}
-            value={f["unitCost"] == null ? "" : String(f["unitCost"])}
-            onChange={(e) =>
-              onChange({ unitCost: parseFloat(e.target.value) || 0 })
-            }
-            className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
-          />
-        </div>
-
-        {/* Reorder Qty */}
-        <div>
-          <label className="block text-xs font-medium text-slate-600 mb-1">
-            Reorder Qty
-          </label>
-          <input
-            type="number"
-            min={0}
-            step={1}
-            value={f["reorderQty"] == null ? "" : String(f["reorderQty"])}
-            onChange={(e) =>
-              onChange({ reorderQty: parseInt(e.target.value) || 0 })
-            }
-            className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
-          />
-        </div>
-
-        {/* Remarks */}
-        <div className="col-span-2">
-          <label className="block text-xs font-medium text-slate-600 mb-1">
-            Remarks
-          </label>
-          <input
-            value={str("remarks")}
-            onChange={(e) =>
-              onChange({ remarks: e.target.value || null })
-            }
-            placeholder="Optional notes"
-            className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
-          />
-        </div>
-
-        {/* isNewItem toggle — edit only */}
-        {isEdit && (
-          <div className="col-span-2 flex items-center gap-3 py-1">
-            <span className="text-xs font-medium text-slate-600">
-              ★ NEW Flag
-            </span>
-            <button
-              type="button"
-              onClick={() => onChange({ isNewItem: !f["isNewItem"] })}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-amber-400 ${
-                f["isNewItem"] ? "bg-amber-400" : "bg-slate-300"
-              }`}
-            >
-              <span
-                className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform ${
-                  f["isNewItem"] ? "translate-x-6" : "translate-x-1"
-                }`}
-              />
-            </button>
-            <span className="text-xs text-slate-500">
-              {f["isNewItem"]
-                ? "Flagged as NEW — pending admin review"
-                : "Reviewed / active item"}
-            </span>
-          </div>
-        )}
-      </div>
-
-      {error && (
-        <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3">
-          <p className="text-sm text-red-600">{error}</p>
-        </div>
-      )}
-
-      <div className="flex justify-end gap-3 pt-2">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="px-4 py-2 text-sm rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={onSubmit}
-          disabled={saving}
-          className="px-5 py-2 text-sm rounded-lg bg-green-600 text-white font-medium hover:bg-green-500 transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
-        >
-          {saving && (
-            <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-          )}
-          {saving ? "Saving…" : isEdit ? "Save Changes" : "Add Item"}
-        </button>
-      </div>
-    </div>
+function RowError({ message }: { message: string }) {
+  return (
+    <td
+      colSpan={100}
+      className="px-3 py-1 bg-red-50 border-t border-red-100"
+    >
+      <p className="text-xs text-red-600">{message}</p>
+    </td>
   );
 }
 
@@ -334,50 +186,39 @@ function ItemForm({
 // ---------------------------------------------------------------------------
 
 export default function ItemsMasterPage() {
-  const router = useRouter();
+  const router     = useRouter();
+  const { toast }  = useToast();
 
   // Auth guard
   const [authChecked, setAuthChecked] = useState(false);
 
-  // Data
-  const [items, setItems] = useState<ItemMasterResponse[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Master data — includes optional sentinel at index 0
+  const [items, setItems]         = useState<ItemMasterResponse[]>([]);
+  const [hasSentinel, setSentinel] = useState(false);
+  const [loading, setLoading]     = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  // TanStack Table state
-  const [globalFilter, setGlobalFilter] = useState("");
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [showNewOnly, setShowNewOnly] = useState(false);
+  // Inline edit state
+  const [editingId, setEditingId]     = useState<string | null>(null);
+  const [editValues, setEditValues]   = useState<EditValues | null>(null);
+  const [rowError, setRowError]       = useState<string | null>(null);
+  const [saving, setSaving]           = useState(false);
 
-  // Modals
-  const [showAdd, setShowAdd] = useState(false);
-  const [editTarget, setEditTarget] = useState<ItemMasterResponse | null>(null);
-
-  // Form state
-  const [addForm, setAddForm] = useState<CreateItemMasterRequest>(blankCreate());
-  const [editForm, setEditForm] = useState<UpdateItemMasterRequest | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-
-  // Quick-action loading
-  const [reviewingId, setReviewingId] = useState<string | null>(null);
+  // Table state
+  const [globalFilter, setGlobalFilter]     = useState("");
+  const [columnFilters, setColumnFilters]   = useState<ColumnFiltersState>([]);
+  const [sorting, setSorting]               = useState<SortingState>([]);
+  const [showNewOnly, setShowNewOnly]       = useState(false);
 
   // ── Auth guard ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    api
-      .get<MeResponse>("/auth/me")
+    api.get<MeResponse>("/auth/me")
       .then(({ data }) => {
-        if (!data.canAccessInventory) {
-          router.replace("/dashboard");
-        } else {
-          setAuthChecked(true);
-        }
+        if (!data.canAccessInventory) router.replace("/dashboard");
+        else setAuthChecked(true);
       })
-      .catch(() => {
-        router.replace("/login");
-      });
+      .catch(() => router.replace("/login"));
   }, [router]);
 
   // ── Load items ─────────────────────────────────────────────────────────────
@@ -399,119 +240,367 @@ export default function ItemsMasterPage() {
     if (authChecked) loadItems();
   }, [authChecked, loadItems]);
 
-  // ── Table columns ──────────────────────────────────────────────────────────
+  // ── Table data — prepend sentinel if adding ───────────────────────────────
+
+  const tableData = useMemo<ItemMasterResponse[]>(() => {
+    const base = showNewOnly ? items.filter((i) => i.isNewItem) : items;
+    return hasSentinel ? [blankSentinel(), ...base] : base;
+  }, [items, hasSentinel, showNewOnly]);
+
+  // ── Inline edit helpers ────────────────────────────────────────────────────
+
+  function startEdit(item: ItemMasterResponse) {
+    // Discard unsaved sentinel if user clicks edit on another row
+    if (hasSentinel && item.id !== NEW_ROW_ID) discardSentinel();
+    setEditingId(item.id);
+    setEditValues(toEditValues(item));
+    setRowError(null);
+  }
+
+  function cancelEdit() {
+    if (editingId === NEW_ROW_ID) discardSentinel();
+    setEditingId(null);
+    setEditValues(null);
+    setRowError(null);
+  }
+
+  function discardSentinel() {
+    setSentinel(false);
+    setEditingId(null);
+    setEditValues(null);
+    setRowError(null);
+  }
+
+  function patch(partial: Partial<EditValues>) {
+    setEditValues((v) => (v ? { ...v, ...partial } : v));
+  }
+
+  function validate(): string | null {
+    if (!editValues) return "No edit values.";
+    if (!editValues.stockNo.trim())     return "Stock No. is required.";
+    if (!editValues.description.trim()) return "Description is required.";
+    if (!editValues.unit.trim())        return "Unit is required.";
+    return null;
+  }
+
+  // ── Save (create or update) ────────────────────────────────────────────────
+
+  async function handleSave() {
+    const err = validate();
+    if (err) { setRowError(err); return; }
+    if (!editValues) return;
+
+    setSaving(true);
+    setRowError(null);
+
+    const body = {
+      stockNo:     editValues.stockNo.trim(),
+      description: editValues.description.trim(),
+      unit:        editValues.unit.trim(),
+      unitCost:    editValues.unitCost,
+      category:    editValues.category.trim() || null,
+      itemType:    editValues.itemType.trim()  || null,
+      reorderQty:  editValues.reorderQty,
+      remarks:     editValues.remarks.trim()   || null,
+      isNewItem:   editValues.isNewItem,
+    };
+
+    try {
+      if (editingId === NEW_ROW_ID) {
+        await api.post("/items/master", body satisfies CreateItemMasterRequest);
+        setSentinel(false);
+        toast.success("Item added", `${body.description} was added to the catalog.`);
+      } else {
+        await api.put(`/items/master/${editingId}`, body satisfies UpdateItemMasterRequest);
+        toast.success("Changes saved", `${body.description} was updated.`);
+      }
+      setEditingId(null);
+      setEditValues(null);
+      await loadItems();
+    } catch (e: unknown) {
+      const msg =
+        (e as { response?: { data?: { message?: string } } })?.response?.data?.message
+        ?? "Failed to save. Please try again.";
+      toast.error("Save failed", msg);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // ── Mark Reviewed quick action ─────────────────────────────────────────────
+
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
+
+  async function handleMarkReviewed(item: ItemMasterResponse) {
+    setReviewingId(item.id);
+    try {
+      await api.put(`/items/master/${item.id}`, {
+        stockNo:     item.stockNo,
+        description: item.description,
+        unit:        item.unit,
+        unitCost:    item.unitCost,
+        category:    item.category,
+        itemType:    item.itemType,
+        reorderQty:  item.reorderQty,
+        remarks:     item.remarks,
+        isNewItem:   false,
+      } satisfies UpdateItemMasterRequest);
+      toast.success("Marked as reviewed", `${item.description} is no longer flagged as NEW.`);
+      await loadItems();
+    } catch {
+      toast.error("Failed to update", "Could not clear the ★ NEW flag. Please try again.");
+    } finally {
+      setReviewingId(null);
+    }
+  }
+
+  // ── Add new row ────────────────────────────────────────────────────────────
+
+  function handleAddRow() {
+    if (editingId) return; // finish current edit first
+    setSentinel(true);
+    setEditingId(NEW_ROW_ID);
+    setEditValues(toEditValues(blankSentinel()));
+    setRowError(null);
+    // Scroll to top so the sentinel row is visible
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  // ── Columns ────────────────────────────────────────────────────────────────
+
+  function renderCell(
+    row: Row<ItemMasterResponse>,
+    displayNode: React.ReactNode,
+    editNode: React.ReactNode
+  ) {
+    return row.original.id === editingId ? editNode : displayNode;
+  }
 
   const columns = useMemo<ColumnDef<ItemMasterResponse>[]>(
     () => [
+      // Row number
       {
         id: "rowNo",
         header: "#",
-        size: 48,
+        size: 40,
         enableColumnFilter: false,
         enableSorting: false,
-        cell: ({ row }) => (
-          <span className="text-slate-400 text-xs">{row.index + 1}</span>
-        ),
+        cell: ({ row }) =>
+          row.original.id === editingId ? null : (
+            <span className="text-slate-400 text-xs">{row.index + 1}</span>
+          ),
       },
+      // Stock No.
       {
         accessorKey: "stockNo",
         header: "Stock No.",
-        size: 120,
-        cell: ({ getValue }) => (
-          <span className="font-mono text-xs text-slate-700">
-            {getValue<string>()}
-          </span>
-        ),
+        size: 110,
+        cell: ({ row, getValue }) =>
+          renderCell(
+            row,
+            <span className="font-mono text-xs text-slate-700">{getValue<string>()}</span>,
+            <EditInput
+              value={editValues?.stockNo ?? ""}
+              onChange={(v) => patch({ stockNo: v })}
+              placeholder="SUP-001"
+            />
+          ),
       },
+      // Description
       {
         accessorKey: "description",
         header: "Description",
-        size: 260,
-        cell: ({ row, getValue }) => (
-          <div className="flex items-center gap-2">
-            <span className="text-slate-800 text-sm">{getValue<string>()}</span>
-            {row.original.isNewItem && <NewBadge />}
-          </div>
-        ),
+        size: 220,
+        cell: ({ row, getValue }) =>
+          renderCell(
+            row,
+            <div className="flex items-center gap-2">
+              <span className="text-slate-800 text-sm">{getValue<string>()}</span>
+              {row.original.isNewItem && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 whitespace-nowrap">
+                  ★ NEW
+                </span>
+              )}
+            </div>,
+            <EditInput
+              value={editValues?.description ?? ""}
+              onChange={(v) => patch({ description: v })}
+              placeholder="Full description"
+            />
+          ),
       },
+      // Category
       {
         accessorKey: "category",
         header: "Category",
-        size: 140,
-        cell: ({ getValue }) => (
-          <span className="text-slate-600 text-sm">
-            {getValue<string | null>() ?? "—"}
-          </span>
-        ),
+        size: 120,
+        cell: ({ row, getValue }) =>
+          renderCell(
+            row,
+            <span className="text-slate-600 text-sm">{getValue<string | null>() ?? "—"}</span>,
+            <EditInput
+              value={editValues?.category ?? ""}
+              onChange={(v) => patch({ category: v })}
+              placeholder="e.g. Office Supplies"
+            />
+          ),
       },
+      // Unit
       {
         accessorKey: "unit",
         header: "Unit",
-        size: 80,
-        cell: ({ getValue }) => (
-          <span className="text-slate-600 text-sm">{getValue<string>()}</span>
-        ),
+        size: 72,
+        cell: ({ row, getValue }) =>
+          renderCell(
+            row,
+            <span className="text-slate-600 text-sm">{getValue<string>()}</span>,
+            <EditInput
+              value={editValues?.unit ?? ""}
+              onChange={(v) => patch({ unit: v })}
+              placeholder="ream"
+            />
+          ),
       },
+      // Unit Cost
       {
         accessorKey: "unitCost",
         header: "Unit Cost",
-        size: 100,
+        size: 96,
         enableColumnFilter: false,
-        cell: ({ getValue }) => (
-          <span className="text-slate-700 text-sm tabular-nums">
-            ₱{fmt(getValue<number>())}
-          </span>
-        ),
+        cell: ({ row, getValue }) =>
+          renderCell(
+            row,
+            <span className="text-slate-700 text-sm tabular-nums">₱{fmt(getValue<number>())}</span>,
+            <EditInput
+              type="number"
+              value={editValues?.unitCost ?? 0}
+              onChange={(v) => patch({ unitCost: parseFloat(v) || 0 })}
+            />
+          ),
       },
+      // Item Type
       {
         accessorKey: "itemType",
         header: "Type",
-        size: 110,
-        cell: ({ getValue }) => (
-          <span className="text-slate-600 text-sm">
-            {getValue<string | null>() ?? "—"}
-          </span>
-        ),
+        size: 100,
+        cell: ({ row, getValue }) =>
+          renderCell(
+            row,
+            <span className="text-slate-600 text-sm">{getValue<string | null>() ?? "—"}</span>,
+            <EditInput
+              value={editValues?.itemType ?? ""}
+              onChange={(v) => patch({ itemType: v })}
+              placeholder="Consumable"
+            />
+          ),
       },
+      // Reorder Qty
       {
         accessorKey: "reorderQty",
         header: "Reorder",
-        size: 80,
+        size: 72,
         enableColumnFilter: false,
-        cell: ({ getValue }) => (
-          <span className="text-slate-600 text-sm tabular-nums">
-            {getValue<number>()}
-          </span>
-        ),
+        cell: ({ row, getValue }) =>
+          renderCell(
+            row,
+            <span className="text-slate-600 text-sm tabular-nums">{getValue<number>()}</span>,
+            <EditInput
+              type="number"
+              value={editValues?.reorderQty ?? 0}
+              onChange={(v) => patch({ reorderQty: parseInt(v) || 0 })}
+            />
+          ),
       },
+      // Remarks
+      {
+        accessorKey: "remarks",
+        header: "Remarks",
+        size: 160,
+        cell: ({ row, getValue }) =>
+          renderCell(
+            row,
+            <span
+              className="text-slate-500 text-xs truncate block max-w-[150px]"
+              title={getValue<string | null>() ?? ""}
+            >
+              {getValue<string | null>() ?? "—"}
+            </span>,
+            <EditInput
+              value={editValues?.remarks ?? ""}
+              onChange={(v) => patch({ remarks: v })}
+              placeholder="Optional notes"
+            />
+          ),
+      },
+      // isNewItem (toggle in edit, badge in display)
+      {
+        accessorKey: "isNewItem",
+        header: "Status",
+        size: 88,
+        enableColumnFilter: false,
+        enableSorting: false,
+        cell: ({ row }) =>
+          row.original.id === editingId ? (
+            <NewToggle
+              value={editValues?.isNewItem ?? false}
+              onChange={(v) => patch({ isNewItem: v })}
+            />
+          ) : null, // badge is already inside Description cell
+      },
+      // Actions
       {
         id: "actions",
         header: "",
-        size: 100,
+        size: 110,
         enableColumnFilter: false,
         enableSorting: false,
         cell: ({ row }) => {
           const item = row.original;
+          const isEditing = item.id === editingId;
+
+          if (isEditing) {
+            return (
+              <div className="flex items-center gap-1 justify-end">
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg bg-green-600 text-white font-medium hover:bg-green-500 disabled:opacity-60 transition-colors"
+                >
+                  {saving
+                    ? <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    : "✓"}
+                  Save
+                </button>
+                <button
+                  onClick={cancelEdit}
+                  disabled={saving}
+                  className="px-2.5 py-1 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-60 transition-colors"
+                >
+                  ✕
+                </button>
+              </div>
+            );
+          }
+
           return (
             <div className="flex items-center justify-end gap-1">
               {item.isNewItem && (
                 <button
                   title="Mark as reviewed — clears ★ NEW flag"
-                  disabled={reviewingId === item.id}
+                  disabled={reviewingId === item.id || !!editingId}
                   onClick={() => handleMarkReviewed(item)}
                   className="p-1.5 rounded-lg text-xs transition-colors hover:bg-amber-50 text-amber-500 hover:text-amber-700 disabled:opacity-40"
                 >
-                  {reviewingId === item.id ? (
-                    <span className="w-3.5 h-3.5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin inline-block" />
-                  ) : (
-                    "✓"
-                  )}
+                  {reviewingId === item.id
+                    ? <span className="w-3.5 h-3.5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin inline-block" />
+                    : "✓"}
                 </button>
               )}
               <button
-                title="Edit item"
-                onClick={() => openEdit(item)}
-                className="p-1.5 rounded-lg text-xs transition-colors hover:bg-green-50 text-slate-400 hover:text-green-700"
+                title="Edit row"
+                disabled={!!editingId}
+                onClick={() => startEdit(item)}
+                className="p-1.5 rounded-lg text-xs transition-colors hover:bg-green-50 text-slate-400 hover:text-green-700 disabled:opacity-40"
               >
                 ✏️
               </button>
@@ -520,14 +609,11 @@ export default function ItemsMasterPage() {
         },
       },
     ],
-    [reviewingId] // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [editingId, editValues, saving, reviewingId]
   );
 
-  // Apply showNewOnly filter before passing to table
-  const tableData = useMemo(
-    () => (showNewOnly ? items.filter((i) => i.isNewItem) : items),
-    [items, showNewOnly]
-  );
+  // ── Table instance ─────────────────────────────────────────────────────────
 
   const table = useReactTable({
     data: tableData,
@@ -544,101 +630,13 @@ export default function ItemsMasterPage() {
     globalFilterFn: "includesString",
   });
 
-  // ── Handlers — Add ─────────────────────────────────────────────────────────
+  // ── Derived ────────────────────────────────────────────────────────────────
 
-  function openAdd() {
-    setAddForm(blankCreate());
-    setFormError(null);
-    setShowAdd(true);
-  }
+  const newCount      = items.filter((i) => i.isNewItem).length;
+  const visibleRows   = table.getRowModel().rows.length;
+  const totalFiltered = table.getFilteredRowModel().rows.length;
 
-  async function handleAdd() {
-    if (!addForm.stockNo.trim() || !addForm.description.trim() || !addForm.unit.trim()) {
-      setFormError("Stock No., Description, and Unit are required.");
-      return;
-    }
-    setSaving(true);
-    setFormError(null);
-    try {
-      await api.post("/items/master", addForm);
-      setShowAdd(false);
-      await loadItems();
-    } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      setFormError(msg ?? "Failed to add item. Please try again.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  // ── Handlers — Edit ────────────────────────────────────────────────────────
-
-  function openEdit(item: ItemMasterResponse) {
-    setEditTarget(item);
-    setEditForm({
-      stockNo: item.stockNo,
-      description: item.description,
-      unit: item.unit,
-      unitCost: item.unitCost,
-      category: item.category,
-      itemType: item.itemType,
-      reorderQty: item.reorderQty,
-      remarks: item.remarks,
-      isNewItem: item.isNewItem,
-    });
-    setFormError(null);
-  }
-
-  async function handleEdit() {
-    if (!editTarget || !editForm) return;
-    const f = editForm as unknown as Record<string, unknown>;
-    const sn = String(f["stockNo"] ?? "").trim();
-    const desc = String(f["description"] ?? "").trim();
-    const unit = String(f["unit"] ?? "").trim();
-    if (!sn || !desc || !unit) {
-      setFormError("Stock No., Description, and Unit are required.");
-      return;
-    }
-    setSaving(true);
-    setFormError(null);
-    try {
-      await api.put(`/items/master/${editTarget.id}`, editForm);
-      setEditTarget(null);
-      setEditForm(null);
-      await loadItems();
-    } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      setFormError(msg ?? "Failed to update item. Please try again.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  // ── Handlers — Mark Reviewed ───────────────────────────────────────────────
-
-  async function handleMarkReviewed(item: ItemMasterResponse) {
-    setReviewingId(item.id);
-    try {
-      await api.put(`/items/master/${item.id}`, {
-        stockNo: item.stockNo,
-        description: item.description,
-        unit: item.unit,
-        unitCost: item.unitCost,
-        category: item.category,
-        itemType: item.itemType,
-        reorderQty: item.reorderQty,
-        remarks: item.remarks,
-        isNewItem: false,
-      } satisfies UpdateItemMasterRequest);
-      await loadItems();
-    } catch {
-      // silently fail — user can retry via Edit modal
-    } finally {
-      setReviewingId(null);
-    }
-  }
-
-  // ── Loading / auth guard ───────────────────────────────────────────────────
+  // ── Loading / auth ─────────────────────────────────────────────────────────
 
   if (!authChecked) {
     return (
@@ -648,12 +646,6 @@ export default function ItemsMasterPage() {
     );
   }
 
-  // ── Derived counts ─────────────────────────────────────────────────────────
-
-  const newCount = items.filter((i) => i.isNewItem).length;
-  const visibleRows = table.getRowModel().rows.length;
-  const totalFiltered = table.getFilteredRowModel().rows.length;
-
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -662,7 +654,6 @@ export default function ItemsMasterPage() {
 
         {/* ── Toolbar ──────────────────────────────────────────────────────── */}
         <div className="flex flex-wrap items-center gap-3">
-          {/* Global search */}
           <input
             value={globalFilter}
             onChange={(e) => setGlobalFilter(e.target.value)}
@@ -672,13 +663,13 @@ export default function ItemsMasterPage() {
           {globalFilter && (
             <button
               onClick={() => setGlobalFilter("")}
-              className="text-sm text-slate-400 hover:text-slate-600 transition-colors px-2"
+              className="text-sm text-slate-400 hover:text-slate-600 px-2"
             >
               Clear
             </button>
           )}
 
-          {/* ★ NEW filter toggle */}
+          {/* ★ NEW filter */}
           <button
             onClick={() => setShowNewOnly((v) => !v)}
             className={`flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-sm border transition-colors shrink-0 ${
@@ -689,13 +680,9 @@ export default function ItemsMasterPage() {
           >
             ★ NEW
             {newCount > 0 && (
-              <span
-                className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold ${
-                  showNewOnly
-                    ? "bg-amber-400 text-white"
-                    : "bg-amber-100 text-amber-700"
-                }`}
-              >
+              <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold ${
+                showNewOnly ? "bg-amber-400 text-white" : "bg-amber-100 text-amber-700"
+              }`}>
                 {newCount}
               </span>
             )}
@@ -703,8 +690,9 @@ export default function ItemsMasterPage() {
 
           {/* Add item */}
           <button
-            onClick={openAdd}
-            className="flex items-center gap-1.5 bg-green-600 text-white font-semibold text-sm px-4 py-2.5 rounded-lg hover:bg-green-500 transition-colors shadow-sm shrink-0"
+            onClick={handleAddRow}
+            disabled={!!editingId}
+            className="flex items-center gap-1.5 bg-green-600 text-white font-semibold text-sm px-4 py-2.5 rounded-lg hover:bg-green-500 transition-colors shadow-sm shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"
           >
             <span className="text-base leading-none">+</span>
             Add Item
@@ -720,17 +708,15 @@ export default function ItemsMasterPage() {
           ) : fetchError ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
               <p className="text-sm text-red-500">{fetchError}</p>
-              <button
-                onClick={loadItems}
-                className="text-sm text-green-600 hover:underline"
-              >
+              <button onClick={loadItems} className="text-sm text-green-600 hover:underline">
                 Retry
               </button>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm border-collapse">
-                {/* ── Headers ── */}
+
+                {/* ── Header + filter row ── */}
                 <thead>
                   {table.getHeaderGroups().map((hg) => (
                     <tr
@@ -745,23 +731,14 @@ export default function ItemsMasterPage() {
                         >
                           {header.isPlaceholder ? null : (
                             <div
-                              className={
-                                header.column.getCanSort()
-                                  ? "cursor-pointer flex items-center gap-1 hover:text-slate-700"
-                                  : ""
-                              }
+                              className={header.column.getCanSort() ? "cursor-pointer flex items-center gap-1 hover:text-slate-700" : ""}
                               onClick={header.column.getToggleSortingHandler()}
                             >
-                              {flexRender(
-                                header.column.columnDef.header,
-                                header.getContext()
-                              )}
+                              {flexRender(header.column.columnDef.header, header.getContext())}
                               {header.column.getCanSort() && (
                                 <span className="text-slate-300">
-                                  {header.column.getIsSorted() === "asc"
-                                    ? " ▲"
-                                    : header.column.getIsSorted() === "desc"
-                                    ? " ▼"
+                                  {header.column.getIsSorted() === "asc" ? " ▲"
+                                    : header.column.getIsSorted() === "desc" ? " ▼"
                                     : " ⇅"}
                                 </span>
                               )}
@@ -772,22 +749,15 @@ export default function ItemsMasterPage() {
                     </tr>
                   ))}
 
-                  {/* ── Filter row ── */}
+                  {/* Filter row */}
                   {table.getHeaderGroups().map((hg) => (
-                    <tr
-                      key={`filter-${hg.id}`}
-                      className="bg-white border-b border-slate-100"
-                    >
+                    <tr key={`filter-${hg.id}`} className="bg-white border-b border-slate-100">
                       {hg.headers.map((header) => (
                         <th key={`f-${header.id}`} className="px-2 py-1.5">
                           {header.column.getCanFilter() ? (
                             <input
-                              value={
-                                (header.column.getFilterValue() as string) ?? ""
-                              }
-                              onChange={(e) =>
-                                header.column.setFilterValue(e.target.value)
-                              }
+                              value={(header.column.getFilterValue() as string) ?? ""}
+                              onChange={(e) => header.column.setFilterValue(e.target.value)}
                               placeholder="Filter…"
                               className="w-full px-2 py-1 text-xs rounded border border-slate-200 bg-slate-50 focus:outline-none focus:ring-1 focus:ring-green-500 focus:bg-white transition-colors"
                             />
@@ -802,40 +772,48 @@ export default function ItemsMasterPage() {
                 <tbody className="divide-y divide-slate-100">
                   {table.getRowModel().rows.length === 0 ? (
                     <tr>
-                      <td
-                        colSpan={columns.length}
-                        className="text-center py-16 text-slate-400 text-sm"
-                      >
+                      <td colSpan={columns.length} className="text-center py-16 text-slate-400 text-sm">
                         {globalFilter || columnFilters.length > 0 || showNewOnly
                           ? "No items match your filters."
                           : "No items in the catalog yet."}
                       </td>
                     </tr>
                   ) : (
-                    table.getRowModel().rows.map((row, i) => (
-                      <tr
-                        key={row.id}
-                        className={`transition-colors hover:bg-green-50 ${
-                          row.original.isNewItem
-                            ? "bg-amber-50"
-                            : i % 2 === 1
-                            ? "bg-slate-50"
-                            : "bg-white"
-                        }`}
-                      >
-                        {row.getVisibleCells().map((cell) => (
-                          <td
-                            key={cell.id}
-                            className="px-3 py-2.5 align-middle"
+                    table.getRowModel().rows.map((row, i) => {
+                      const isEditing = row.original.id === editingId;
+                      const isNew     = row.original.id === NEW_ROW_ID;
+
+                      return (
+                        <>
+                          <tr
+                            key={row.id}
+                            className={`transition-colors ${
+                              isEditing
+                                ? "bg-cell-fill ring-1 ring-inset ring-green-300"
+                                : row.original.isNewItem
+                                ? "bg-amber-50 hover:bg-amber-100"
+                                : i % 2 === 1
+                                ? "bg-slate-50 hover:bg-green-50"
+                                : "bg-white hover:bg-green-50"
+                            }`}
                           >
-                            {flexRender(
-                              cell.column.columnDef.cell,
-                              cell.getContext()
-                            )}
-                          </td>
-                        ))}
-                      </tr>
-                    ))
+                            {/* New-row label in first cell */}
+                            {isNew && !isEditing ? null : null}
+                            {row.getVisibleCells().map((cell) => (
+                              <td key={cell.id} className="px-3 py-2 align-middle">
+                                {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                              </td>
+                            ))}
+                          </tr>
+                          {/* Inline validation error row */}
+                          {isEditing && rowError && (
+                            <tr key={`${row.id}-err`}>
+                              <RowError message={rowError} />
+                            </tr>
+                          )}
+                        </>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -851,6 +829,11 @@ export default function ItemsMasterPage() {
                       · {newCount} pending review
                     </span>
                   )}
+                  {editingId && (
+                    <span className="ml-2 text-green-600 font-medium">
+                      · editing…
+                    </span>
+                  )}
                 </span>
 
                 <div className="flex items-center gap-2">
@@ -862,8 +845,7 @@ export default function ItemsMasterPage() {
                     ‹
                   </button>
                   <span>
-                    Page {table.getState().pagination.pageIndex + 1} /{" "}
-                    {table.getPageCount() || 1}
+                    Page {table.getState().pagination.pageIndex + 1} / {table.getPageCount() || 1}
                   </span>
                   <button
                     onClick={() => table.nextPage()}
@@ -878,9 +860,7 @@ export default function ItemsMasterPage() {
                     className="px-2 py-0.5 rounded border border-slate-200 bg-white focus:outline-none text-xs"
                   >
                     {[25, 50, 100].map((n) => (
-                      <option key={n} value={n}>
-                        {n} / page
-                      </option>
+                      <option key={n} value={n}>{n} / page</option>
                     ))}
                   </select>
                 </div>
@@ -888,52 +868,14 @@ export default function ItemsMasterPage() {
             </div>
           )}
         </div>
+
+        {/* Keyboard hint */}
+        {editingId && (
+          <p className="text-xs text-slate-400 text-right">
+            Press <kbd className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 font-mono">✕</kbd> to cancel without saving
+          </p>
+        )}
       </div>
-
-      {/* ── Add Item modal ──────────────────────────────────────────────────── */}
-      {showAdd && (
-        <Modal title="Add New Item" onClose={() => setShowAdd(false)}>
-          <ItemForm
-            form={addForm}
-            saving={saving}
-            error={formError}
-            isEdit={false}
-            onChange={(patch) =>
-              setAddForm((f) => ({ ...f, ...patch } as CreateItemMasterRequest))
-            }
-            onSubmit={handleAdd}
-            onCancel={() => setShowAdd(false)}
-          />
-        </Modal>
-      )}
-
-      {/* ── Edit Item modal ─────────────────────────────────────────────────── */}
-      {editTarget && editForm && (
-        <Modal
-          title={`Edit Item — ${editTarget.stockNo}`}
-          onClose={() => {
-            setEditTarget(null);
-            setEditForm(null);
-          }}
-        >
-          <ItemForm
-            form={editForm}
-            saving={saving}
-            error={formError}
-            isEdit
-            onChange={(patch) =>
-              setEditForm((f) =>
-                f ? ({ ...f, ...patch } as UpdateItemMasterRequest) : f
-              )
-            }
-            onSubmit={handleEdit}
-            onCancel={() => {
-              setEditTarget(null);
-              setEditForm(null);
-            }}
-          />
-        </Modal>
-      )}
     </div>
   );
 }

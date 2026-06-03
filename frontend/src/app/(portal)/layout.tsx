@@ -23,6 +23,7 @@ import api from "@/lib/api";
 import { auth } from "@/lib/auth";
 import Sidebar from "@/components/layout/Sidebar";
 import Topbar from "@/components/layout/Topbar";
+import { ToastProvider } from "@/components/ui/Toast";
 import type { MeResponse } from "@/types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api";
@@ -117,14 +118,16 @@ export default function PortalLayout({
   // ── Portal shell ───────────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-screen bg-slate-100 font-sans overflow-hidden">
-      <Sidebar me={me} />
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <Topbar me={me} title={getPageTitle(pathname)} />
-        <main className="flex-1 overflow-auto">
-          {children}
-        </main>
+    <ToastProvider>
+      <div className="flex h-screen bg-slate-100 font-sans overflow-hidden">
+        <Sidebar me={me} />
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          <Topbar me={me} title={getPageTitle(pathname)} />
+          <main className="flex-1 overflow-auto">
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
+    </ToastProvider>
   );
 }
