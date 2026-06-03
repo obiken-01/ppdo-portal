@@ -37,7 +37,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/inventory/create-pr":       "Create Purchase Request",
   "/inventory/receive-delivery": "Receive Delivery",
   "/inventory/items-master": "Items Master",
-  "/inventory/pr-report":   "Inventory Report",
+  "/inventory/pr-report":    "PR Report",
   "/admin/users":           "User Management",
 };
 

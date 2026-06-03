@@ -232,7 +232,7 @@ public sealed class PRReportServiceTests
         Assert.Equal(1, dist.ItemNo);
         Assert.Equal("Bond Paper", dist.Description);
         Assert.Equal(5m, dist.QtyDelivered);
-        Assert.Equal(Division.Admin, dist.Division);
+        Assert.Equal(Division.Admin.ToString(), dist.Division);
         Assert.Equal(5m, dist.QtyIssued);
         Assert.Equal("DEL-20260602-ABCDE", dist.DeliveryRef);
         Assert.Equal("ISS-20260602-ABCDE-1", dist.IssueRef);
