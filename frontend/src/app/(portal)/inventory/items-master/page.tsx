@@ -196,10 +196,19 @@ export default function ItemsMasterPage() {
   const [reviewingId, setReviewingId] = useState<string | null>(null);
 
   // Table filter/sort state
+  // searchInput is what the user sees; globalFilter is what the table uses.
+  // The 150 ms debounce keeps filtering off the keystroke hot path so the
+  // page stays responsive even when the catalog grows beyond 1 000 items.
+  const [searchInput, setSearchInput]     = useState("");
   const [globalFilter, setGlobalFilter]   = useState("");
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [sorting, setSorting]             = useState<SortingState>([]);
   const [showNewOnly, setShowNewOnly]     = useState(false);
+
+  useEffect(() => {
+    const id = setTimeout(() => setGlobalFilter(searchInput), 150);
+    return () => clearTimeout(id);
+  }, [searchInput]);
 
   // ── Auth guard ─────────────────────────────────────────────────────────────
 
@@ -643,13 +652,16 @@ export default function ItemsMasterPage() {
         {/* ── Toolbar ──────────────────────────────────────────────────────── */}
         <div className="flex flex-wrap items-center gap-3">
           <input
-            value={globalFilter}
-            onChange={(e) => setGlobalFilter(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Search items…"
             className="flex-1 min-w-48 px-4 py-2.5 rounded-lg text-sm border border-slate-200 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-green-600"
           />
-          {globalFilter && (
-            <button onClick={() => setGlobalFilter("")} className="text-sm text-slate-400 hover:text-slate-600 px-2">
+          {searchInput && (
+            <button
+              onClick={() => { setSearchInput(""); setGlobalFilter(""); }}
+              className="text-sm text-slate-400 hover:text-slate-600 px-2"
+            >
               Clear
             </button>
           )}
