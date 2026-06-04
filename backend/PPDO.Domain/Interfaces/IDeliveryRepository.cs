@@ -1,4 +1,5 @@
 using PPDO.Domain.Entities;
+using PPDO.Domain.Enums;
 
 namespace PPDO.Domain.Interfaces;
 
@@ -55,4 +56,44 @@ public interface IDeliveryRepository : IRepository<Delivery>
     Task<IReadOnlyList<Delivery>> GetDeliveriesForPRReportAsync(
         Guid prId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns every DeliveryItem for the given StockNo, with its parent Delivery,
+    /// PR number, and existing Distributions — all the data needed to render the
+    /// Distribution page breakdown for one item.
+    /// Optionally scoped to a division for Staff/Observer.
+    /// </summary>
+    Task<IReadOnlyList<DeliveryItemBreakdownRow>> GetDeliveryItemBreakdownsByStockNoAsync(
+        string stockNo,
+        Division? division = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Returns a single DeliveryItem with its Distributions loaded.</summary>
+    Task<DeliveryItemBreakdownRow?> GetDeliveryItemBreakdownAsync(
+        Guid deliveryItemId,
+        CancellationToken cancellationToken = default);
 }
+
+// ---------------------------------------------------------------------------
+// Projection records used by breakdown queries (not full EF entities)
+// ---------------------------------------------------------------------------
+
+/// <summary>All data needed to render one delivery batch row on the Distribution page.</summary>
+public sealed record DeliveryItemBreakdownRow(
+    Guid          DeliveryItemId,
+    string        DeliveryRef,
+    DateOnly      DeliveryDate,
+    Guid          PRId,
+    string        PRNo,
+    decimal       QtyDelivered,
+    IReadOnlyList<DistributionBreakdownRow> Distributions);
+
+/// <summary>One existing distribution record within a delivery item breakdown.</summary>
+public sealed record DistributionBreakdownRow(
+    Guid     Id,
+    string   IssueRef,
+    Division Division,
+    decimal  QtyIssued,
+    DateOnly DateIssued,
+    string   IssuedBy,
+    string?  Remarks);

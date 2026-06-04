@@ -183,15 +183,6 @@ public sealed class DeliveryService : IDeliveryService
             if (item.QtyDelivered <= 0)
                 return ServiceResult<DeliveryResponseDto>.BadRequest(
                     $"QtyDelivered must be greater than zero for PRItemId {item.PRItemId}.");
-
-            if (item.Distributions is null || item.Distributions.Count == 0)
-                return ServiceResult<DeliveryResponseDto>.BadRequest(
-                    $"Each delivery item must have at least one distribution (PRItemId {item.PRItemId}).");
-
-            decimal totalIssued = item.Distributions.Sum(d => d.QtyIssued);
-            if (totalIssued != item.QtyDelivered)
-                return ServiceResult<DeliveryResponseDto>.BadRequest(
-                    $"Sum of QtyIssued ({totalIssued}) must equal QtyDelivered ({item.QtyDelivered}) for PRItemId {item.PRItemId}.");
         }
 
         // Generate DeliveryRef — retry on collision (statistically negligible).
