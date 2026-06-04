@@ -82,8 +82,13 @@ public sealed class UserService : IUserService
 
         // Scope check: requester cannot create a user with a higher/peer role unless SuperAdmin.
         if (!CanRequesterManageRole(requester, newRole))
+        {
+            _logger.LogWarning(
+                "Permission denied — user {UserId} attempted to create a user with role {TargetRole}.",
+                requester.Id, newRole);
             return ServiceResult<UserResponseDto>.Forbidden(
                 $"You do not have permission to create a user with role '{newRole}'.");
+        }
 
         // Email uniqueness check.
         User? existing = await _users.FindByEmailAsync(dto.Email, cancellationToken);
@@ -135,8 +140,13 @@ public sealed class UserService : IUserService
             return ServiceResult<UserResponseDto>.NotFound($"User {targetId} not found.");
 
         if (!CanRequesterManageTarget(requester, target))
+        {
+            _logger.LogWarning(
+                "Permission denied — user {UserId} attempted to update user {TargetUserId} (Role: {TargetRole}).",
+                requester.Id, target.Id, target.Role);
             return ServiceResult<UserResponseDto>.Forbidden(
                 "You do not have permission to modify this user.");
+        }
 
         // -- Profile fields ---------------------------------------------------
         if (dto.FullName is not null)
@@ -242,8 +252,13 @@ public sealed class UserService : IUserService
     {
         // SuperAdmin only.
         if (requester.Role is not UserRole.SuperAdmin)
+        {
+            _logger.LogWarning(
+                "Permission denied — user {UserId} (Role: {Role}) attempted to set permission overrides for user {TargetUserId}.",
+                requester.Id, requester.Role, targetId);
             return ServiceResult<UserResponseDto>.Forbidden(
                 "Only SuperAdmin can modify individual permission overrides.");
+        }
 
         User? target = await _users.GetByIdWithGroupAsync(targetId, cancellationToken);
         if (target is null)
@@ -282,8 +297,13 @@ public sealed class UserService : IUserService
             return ServiceResult<UserResponseDto>.NotFound($"User {targetId} not found.");
 
         if (!CanRequesterManageTarget(requester, target))
+        {
+            _logger.LogWarning(
+                "Permission denied — user {UserId} attempted to deactivate user {TargetUserId} (Role: {TargetRole}).",
+                requester.Id, target.Id, target.Role);
             return ServiceResult<UserResponseDto>.Forbidden(
                 "You do not have permission to deactivate this user.");
+        }
 
         target.IsActive           = false;
         // Invalidate active sessions immediately.
@@ -311,8 +331,13 @@ public sealed class UserService : IUserService
             return ServiceResult<UserResponseDto>.NotFound($"User {targetId} not found.");
 
         if (!CanRequesterManageTarget(requester, target))
+        {
+            _logger.LogWarning(
+                "Permission denied — user {UserId} attempted to reactivate user {TargetUserId} (Role: {TargetRole}).",
+                requester.Id, target.Id, target.Role);
             return ServiceResult<UserResponseDto>.Forbidden(
                 "You do not have permission to reactivate this user.");
+        }
 
         if (target.IsActive)
             return ServiceResult<UserResponseDto>.BadRequest(

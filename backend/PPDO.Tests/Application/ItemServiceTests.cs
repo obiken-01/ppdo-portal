@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.Items;
@@ -57,7 +58,7 @@ public sealed class ItemServiceTests
     }
 
     private static ItemService BuildSut(Mock<IItemMasterRepository> repo) =>
-        new(repo.Object, new PermissionService());
+        new(repo.Object, new PermissionService(), NullLogger<ItemService>.Instance);
 
     // ── GetAllAsync ───────────────────────────────────────────────────────────
 

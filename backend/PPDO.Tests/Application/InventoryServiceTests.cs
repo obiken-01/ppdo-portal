@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using PPDO.Application.DTOs.Inventory;
 using PPDO.Application.Services;
@@ -53,7 +54,8 @@ public sealed class InventoryServiceTests
         Mock<IInventoryRepository> invRepo,
         Mock<IPurchaseRequestRepository> prRepo,
         Mock<IItemMasterRepository> itemRepo)
-        => new(invRepo.Object, prRepo.Object, itemRepo.Object);
+        => new(invRepo.Object, prRepo.Object, itemRepo.Object,
+               NullLogger<InventoryService>.Instance);
 
     // ── Group 1 — PR stat cards ───────────────────────────────────────────────
 

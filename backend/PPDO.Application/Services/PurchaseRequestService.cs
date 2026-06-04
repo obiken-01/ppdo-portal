@@ -85,7 +85,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
             && pr.Division != requester.Division)
         {
             _logger.LogWarning(
-                "Permission denied — user {UserId} attempted to view PR {PRNo} from division {Division}.",
+                "Permission denied — user {UserId} attempted to view PR {PRNo} from division {Division}. Feature: ViewPR",
                 requester.Id, pr.PRNo, pr.Division);
             return ServiceResult<PRResponseDto>.Forbidden(
                 "You can only view Purchase Requests from your own division.");
@@ -191,8 +191,13 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
     {
         // Only Admin/SuperAdmin can update PRs.
         if (requester.Role is not (UserRole.Admin or UserRole.SuperAdmin))
+        {
+            _logger.LogWarning(
+                "Permission denied — user {UserId} (Role: {Role}) attempted to update PR {PRId}. Feature: UpdatePR",
+                requester.Id, requester.Role, id);
             return ServiceResult<PRResponseDto>.Forbidden(
                 "Only Admin users can update Purchase Requests.");
+        }
 
         PurchaseRequest? pr = await _prs.GetWithItemsAsync(id, cancellationToken);
         if (pr is null)
