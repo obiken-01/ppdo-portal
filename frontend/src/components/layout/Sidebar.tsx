@@ -182,7 +182,7 @@ export default function Sidebar({ me }: SidebarProps) {
                     className={childLinkCls(isActive("/inventory/item-ledger"))}
                   >
                     <span className="text-xs">•</span>
-                    <span className="truncate">Item Ledger</span>
+                    <span className="truncate">Stock Overview</span>
                   </Link>
                 )}
                 {hasInventory && (
@@ -191,7 +191,7 @@ export default function Sidebar({ me }: SidebarProps) {
                     className={childLinkCls(isActive("/inventory/pr-register"))}
                   >
                     <span className="text-xs">•</span>
-                    <span className="truncate">PR Register</span>
+                    <span className="truncate">PR List</span>
                   </Link>
                 )}
                 {hasReport && (

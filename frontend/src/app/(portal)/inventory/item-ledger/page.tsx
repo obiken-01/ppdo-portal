@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Item Ledger page — RAL-57.
+ * Stock Overview page — RAL-57 (formerly Item Ledger).
  * Shows remaining stock per item with color-coded status badges.
  *   green  = in stock  (onHand > reorderQty)
  *   amber  = low stock (onHand > 0, onHand <= reorderQty)

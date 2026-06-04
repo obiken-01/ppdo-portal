@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * PR Register page — RAL-57.
+ * PR List page — RAL-57 (formerly PR Register).
  * Full PR list with status filter tabs and a View Report action per row.
  * View Report → /inventory/pr-report/[prNo]
  *

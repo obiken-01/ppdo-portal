@@ -15,8 +15,8 @@ const INVENTORY_CRUMBS: { prefix: string; label: string }[] = [
   { prefix: "/inventory/receive-delivery", label: "Receive Delivery" },
   { prefix: "/inventory/items-master",     label: "Items Master" },
   { prefix: "/inventory/pr-report",        label: "PR Report" },
-  { prefix: "/inventory/item-ledger",      label: "Item Ledger" },
-  { prefix: "/inventory/pr-register",      label: "PR Register" },
+  { prefix: "/inventory/item-ledger",      label: "Stock Overview" },
+  { prefix: "/inventory/pr-register",      label: "PR List" },
   { prefix: "/inventory",                  label: "Dashboard" },
 ];
 
