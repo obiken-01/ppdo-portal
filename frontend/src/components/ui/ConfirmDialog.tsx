@@ -135,7 +135,7 @@ export default function ConfirmDialog({
       />
 
       {/* Panel */}
-      <div className="relative w-full max-w-sm bg-white shadow-xl rounded-xl border border-slate-200 overflow-hidden">
+      <div className="relative w-full max-w-sm bg-white shadow-xl border border-slate-200 overflow-hidden">
 
         {/* Top accent bar */}
         <div className={`h-1 w-full ${
@@ -148,7 +148,7 @@ export default function ConfirmDialog({
 
           {/* Icon + Title */}
           <div className="flex items-start gap-3">
-            <span className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-base font-bold ${ICON_BG[variant]}`}>
+            <span className={`flex-shrink-0 w-9 h-9 flex items-center justify-center text-base font-bold ${ICON_BG[variant]}`}>
               {ICON[variant]}
             </span>
             <div>
@@ -166,7 +166,7 @@ export default function ConfirmDialog({
             <button
               ref={confirmRef}
               onClick={handleConfirm}
-              className={`px-4 py-2 text-sm rounded-lg border font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 ${CONFIRM_BTN[variant]} ${
+              className={`px-4 py-2 text-sm border font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 ${CONFIRM_BTN[variant]} ${
                 variant === "primary" ? "focus:ring-green-400" :
                 variant === "warning" ? "focus:ring-amber-400" :
                 "focus:ring-red-400"
@@ -177,7 +177,7 @@ export default function ConfirmDialog({
             <button
               ref={cancelRef}
               onClick={onClose}
-              className="px-4 py-2 text-sm rounded-lg border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 transition-colors font-medium focus:outline-none focus:ring-2 focus:ring-slate-300"
+              className="px-4 py-2 text-sm border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 transition-colors font-medium focus:outline-none focus:ring-2 focus:ring-slate-300"
             >
               {cancelLabel}
             </button>
