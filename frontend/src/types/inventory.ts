@@ -255,7 +255,10 @@ export interface InventoryStatsResponse {
 export interface ItemLedgerRowResponse {
   stockNo: string;
   description: string;
+  category: string | null;
   unit: string;
+  unitCost: number;
+  itemType: string | null;
   qtyOrdered: number;
   qtyDelivered: number;
   qtyDistributed: number;

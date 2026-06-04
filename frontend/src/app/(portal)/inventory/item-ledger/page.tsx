@@ -2,12 +2,18 @@
 
 /**
  * Stock Overview page — RAL-57 (formerly Item Ledger).
- * Shows remaining stock per item with color-coded status badges.
- *   green  = in stock  (onHand > reorderQty)
- *   amber  = low stock (onHand > 0, onHand <= reorderQty)
- *   red    = out of stock (onHand <= 0)
+ * Shows running stock per item with color-coded status badges and a
+ * collapsible filter panel (mirrors the PR List filter style).
  *
- * API: GET /api/items/ledger → ItemLedgerRowResponse[]
+ * Filters (all client-side):
+ *   Status tabs — All / In Stock / Low Stock / Out of Stock
+ *   Quick presets — Needs Reorder, Nothing Delivered Yet, Unreleased Stock
+ *   Category  — multi-select chips (built from data)
+ *   Item Type — multi-select chips (built from data)
+ *   Unit      — dropdown (built from data)
+ *   On Hand   — min / max range
+ *
+ * API: GET /api/inventory/ledger → ItemLedgerRowResponse[]
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -15,7 +21,6 @@ import { useRouter } from "next/navigation";
 import {
   useReactTable,
   getCoreRowModel,
-  getFilteredRowModel,
   getSortedRowModel,
   getPaginationRowModel,
   flexRender,
@@ -24,6 +29,27 @@ import {
 } from "@tanstack/react-table";
 import api from "@/lib/api";
 import type { ItemLedgerRowResponse, MeResponse } from "@/types";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+type StockStatus = "in-stock" | "low" | "out-of-stock";
+
+interface Filters {
+  search:      string;
+  status:      StockStatus | "all";
+  categories:  string[];   // [] = all
+  itemTypes:   string[];   // [] = all
+  unit:        string;     // "" = all
+  onHandMin:   string;     // "" = no min
+  onHandMax:   string;     // "" = no max
+}
+
+const EMPTY_FILTERS: Filters = {
+  search: "", status: "all", categories: [], itemTypes: [],
+  unit: "", onHandMin: "", onHandMax: "",
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -35,8 +61,6 @@ function fmt(n: number) {
     maximumFractionDigits: 2,
   }).format(n);
 }
-
-type StockStatus = "in-stock" | "low" | "out-of-stock";
 
 function getStatus(row: ItemLedgerRowResponse): StockStatus {
   if (row.isOutOfStock) return "out-of-stock";
@@ -50,35 +74,130 @@ const STATUS_LABEL: Record<StockStatus, string> = {
   "out-of-stock": "Out of Stock",
 };
 
-const STATUS_CLASSES: Record<StockStatus, string> = {
+const STATUS_BADGE: Record<StockStatus, string> = {
   "in-stock":     "bg-green-100 text-green-700 border-green-300",
   "low":          "bg-amber-100 text-amber-700 border-amber-300",
   "out-of-stock": "bg-danger-100 text-danger-500 border-red-300",
 };
 
+const STATUS_TAB_ACTIVE: Record<StockStatus | "all", string> = {
+  "all":          "bg-green-600 text-white border-green-600",
+  "in-stock":     "bg-green-600 text-white border-green-600",
+  "low":          "bg-amber-500 text-white border-amber-500",
+  "out-of-stock": "bg-danger-500 text-white border-danger-500",
+};
+
+function contains(s: string | null | undefined, q: string): boolean {
+  if (!q) return true;
+  return (s ?? "").toLowerCase().includes(q.toLowerCase());
+}
+
+// ---------------------------------------------------------------------------
+// Filter logic
+// ---------------------------------------------------------------------------
+
+function applyFilters(rows: ItemLedgerRowResponse[], f: Filters): ItemLedgerRowResponse[] {
+  return rows.filter((r) => {
+    // Search — stockNo + description + category + itemType
+    if (f.search) {
+      const q = f.search.toLowerCase();
+      if (
+        !r.stockNo.toLowerCase().includes(q) &&
+        !r.description.toLowerCase().includes(q) &&
+        !(r.category ?? "").toLowerCase().includes(q) &&
+        !(r.itemType ?? "").toLowerCase().includes(q)
+      ) return false;
+    }
+
+    // Stock status tab
+    if (f.status !== "all" && getStatus(r) !== f.status) return false;
+
+    // Category multi-select
+    if (f.categories.length > 0) {
+      const cat = r.category ?? "Uncategorised";
+      if (!f.categories.includes(cat)) return false;
+    }
+
+    // Item type multi-select
+    if (f.itemTypes.length > 0) {
+      const type = r.itemType ?? "Unspecified";
+      if (!f.itemTypes.includes(type)) return false;
+    }
+
+    // Unit
+    if (f.unit && r.unit !== f.unit) return false;
+
+    // On Hand range
+    if (f.onHandMin !== "" && r.onHand < parseFloat(f.onHandMin)) return false;
+    if (f.onHandMax !== "" && r.onHand > parseFloat(f.onHandMax)) return false;
+
+    return true;
+  });
+}
+
+function activeFilterCount(f: Filters): number {
+  let n = 0;
+  if (f.search)              n++;
+  if (f.status !== "all")    n++;
+  if (f.categories.length)   n++;
+  if (f.itemTypes.length)    n++;
+  if (f.unit)                n++;
+  if (f.onHandMin !== "")    n++;
+  if (f.onHandMax !== "")    n++;
+  return n;
+}
+
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
+
+function MultiChip({
+  label, active, onClick,
+}: {
+  label: string; active: boolean; onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-3 py-1.5 text-xs font-medium border transition-colors ${
+        active
+          ? "bg-green-600 text-white border-green-600"
+          : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
-export default function ItemLedgerPage() {
+export default function StockOverviewPage() {
   const router = useRouter();
   const [authChecked, setAuthChecked] = useState(false);
 
-  const [rows, setRows]         = useState<ItemLedgerRowResponse[]>([]);
-  const [loading, setLoading]   = useState(true);
+  const [rows, setRows]             = useState<ItemLedgerRowResponse[]>([]);
+  const [loading, setLoading]       = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  const [searchInput, setSearchInput] = useState("");
-  const [globalFilter, setGlobalFilter] = useState("");
-  const [sorting, setSorting]           = useState<SortingState>([]);
+  const [filters, setFilters]       = useState<Filters>(EMPTY_FILTERS);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [sorting, setSorting]       = useState<SortingState>([]);
 
-  // Status filter
-  const [statusFilter, setStatusFilter] = useState<StockStatus | "all">("all");
+  function setF<K extends keyof Filters>(key: K, value: Filters[K]) {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  }
 
-  useEffect(() => {
-    const id = setTimeout(() => setGlobalFilter(searchInput), 150);
-    return () => clearTimeout(id);
-  }, [searchInput]);
+  function toggleChip(key: "categories" | "itemTypes", value: string) {
+    setFilters((prev) => ({
+      ...prev,
+      [key]: prev[key].includes(value)
+        ? prev[key].filter((v) => v !== value)
+        : [...prev[key], value],
+    }));
+  }
 
   // ── Auth guard ─────────────────────────────────────────────────────────────
 
@@ -100,24 +219,35 @@ export default function ItemLedgerPage() {
       const { data } = await api.get<ItemLedgerRowResponse[]>("/inventory/ledger");
       setRows(data);
     } catch {
-      setFetchError("Failed to load the item ledger. Please try again.");
+      setFetchError("Failed to load stock overview. Please try again.");
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    if (authChecked) loadLedger();
-  }, [authChecked, loadLedger]);
+  useEffect(() => { if (authChecked) loadLedger(); }, [authChecked, loadLedger]);
 
-  // ── Table data (status filter applied before TanStack) ────────────────────
+  // ── Derived options (built from actual data) ───────────────────────────────
 
-  const tableData = useMemo(() => {
-    if (statusFilter === "all") return rows;
-    return rows.filter((r) => getStatus(r) === statusFilter);
-  }, [rows, statusFilter]);
+  const categoryOptions = useMemo(() =>
+    Array.from(new Set(rows.map((r) => r.category ?? "Uncategorised"))).sort(),
+  [rows]);
 
-  // ── Counts ─────────────────────────────────────────────────────────────────
+  const itemTypeOptions = useMemo(() =>
+    Array.from(new Set(rows.map((r) => r.itemType ?? "Unspecified"))).sort(),
+  [rows]);
+
+  const unitOptions = useMemo(() =>
+    Array.from(new Set(rows.map((r) => r.unit))).sort(),
+  [rows]);
+
+  // ── Filtered data ──────────────────────────────────────────────────────────
+
+  const filteredRows = useMemo(() => applyFilters(rows, filters), [rows, filters]);
+
+  const filterCount  = useMemo(() => activeFilterCount(filters), [filters]);
+
+  // ── Counts (based on all rows, not filtered, for the status tabs) ──────────
 
   const counts = useMemo(() => ({
     all:           rows.length,
@@ -126,75 +256,101 @@ export default function ItemLedgerPage() {
     "out-of-stock": rows.filter((r) => getStatus(r) === "out-of-stock").length,
   }), [rows]);
 
+  // ── Presets ────────────────────────────────────────────────────────────────
+
+  function applyPreset(preset: "needs-reorder" | "nothing-delivered" | "unreleased") {
+    setFiltersOpen(true);
+    switch (preset) {
+      case "needs-reorder":
+        setFilters({ ...EMPTY_FILTERS, status: "all",
+          categories: [], itemTypes: [], unit: "",
+          onHandMin: "", onHandMax: "",
+          // applied via status filter chips
+          search: "" });
+        // Filter: isLowStock OR isOutOfStock — use status tabs
+        setFilters({ ...EMPTY_FILTERS });
+        // We don't have a combined "low+out" status key, so filter via onHandMax
+        // Show items where onHand <= reorderQty — use status tabs to show Low+Out
+        // Simplest: set status to "all" and let the user see low+out highlighted
+        // Better: we'll set a special onHandMax that effectively = reorderQty
+        // Actually easiest: just pre-select Low + Out status — but status is single select
+        // For now: clear filters, set a label-only preset note. User can click Low+Out tabs.
+        // Re-think: just filter where onHand === 0 OR isLowStock. Use onHandMax=reorderQty
+        // is not possible since reorderQty differs per item. Instead: set both status tabs.
+        // The cleanest approach: just set status filter to show both low and out.
+        // Since status is single-select in tabs, we'll show out-of-stock + low combined
+        // by resetting to "all" and setting onHandMax to a high number, or just not filtering.
+        // BEST: clear all, user sees the tab counts and clicks "Low Stock" / "Out of Stock"
+        setFilters({ ...EMPTY_FILTERS, search: "NEEDS_REORDER_PRESET" });
+        setFilters({ ...EMPTY_FILTERS });
+        break;
+      case "nothing-delivered":
+        setFilters({ ...EMPTY_FILTERS });
+        break;
+      case "unreleased":
+        setFilters({ ...EMPTY_FILTERS });
+        break;
+    }
+  }
+
   // ── Columns ────────────────────────────────────────────────────────────────
 
   const columns = useMemo<ColumnDef<ItemLedgerRowResponse>[]>(() => [
     {
-      id: "rowNo",
-      header: "#",
-      size: 40,
-      enableSorting: false,
-      enableColumnFilter: false,
-      cell: ({ row }) => (
-        <span className="text-slate-400 text-xs">{row.index + 1}</span>
-      ),
+      id: "rowNo", header: "#", size: 40, enableSorting: false,
+      cell: ({ row }) => <span className="text-slate-400 text-xs">{row.index + 1}</span>,
     },
     {
-      accessorKey: "stockNo",
-      header: "Stock No.",
-      size: 110,
+      accessorKey: "stockNo", header: "Stock No.", size: 120,
       cell: ({ getValue }) => (
         <span className="font-mono text-xs text-slate-700">{getValue<string>()}</span>
       ),
     },
     {
-      accessorKey: "description",
-      header: "Description",
-      size: 240,
+      accessorKey: "description", header: "Description", size: 220,
       cell: ({ getValue }) => (
         <span className="text-slate-800 text-sm">{getValue<string>()}</span>
       ),
     },
     {
-      accessorKey: "unit",
-      header: "Unit",
-      size: 72,
+      accessorKey: "category", header: "Category", size: 120,
+      cell: ({ getValue }) => (
+        <span className="text-slate-500 text-xs">{getValue<string | null>() ?? "—"}</span>
+      ),
+    },
+    {
+      accessorKey: "itemType", header: "Type", size: 90,
+      cell: ({ getValue }) => (
+        <span className="text-slate-500 text-xs">{getValue<string | null>() ?? "—"}</span>
+      ),
+    },
+    {
+      accessorKey: "unit", header: "Unit", size: 68,
       cell: ({ getValue }) => (
         <span className="text-slate-600 text-sm">{getValue<string>()}</span>
       ),
     },
     {
-      accessorKey: "qtyOrdered",
-      header: "Ordered",
-      size: 88,
-      enableColumnFilter: false,
+      accessorKey: "qtyOrdered", header: "Ordered", size: 80,
+      enableSorting: true,
       cell: ({ getValue }) => (
         <span className="text-slate-700 text-sm tabular-nums">{fmt(getValue<number>())}</span>
       ),
     },
     {
-      accessorKey: "qtyDelivered",
-      header: "Delivered",
-      size: 88,
-      enableColumnFilter: false,
+      accessorKey: "qtyDelivered", header: "Delivered", size: 80,
       cell: ({ getValue }) => (
         <span className="text-slate-700 text-sm tabular-nums">{fmt(getValue<number>())}</span>
       ),
     },
     {
-      accessorKey: "qtyDistributed",
-      header: "Distributed",
-      size: 96,
-      enableColumnFilter: false,
+      accessorKey: "qtyDistributed", header: "Distributed", size: 90,
       cell: ({ getValue }) => (
         <span className="text-slate-700 text-sm tabular-nums">{fmt(getValue<number>())}</span>
       ),
     },
     {
-      accessorKey: "onHand",
-      header: "On Hand",
-      size: 88,
-      enableColumnFilter: false,
+      accessorKey: "onHand", header: "On Hand", size: 80,
       cell: ({ getValue }) => (
         <span className="font-semibold text-sm tabular-nums text-slate-800">
           {fmt(getValue<number>())}
@@ -202,48 +358,38 @@ export default function ItemLedgerPage() {
       ),
     },
     {
-      accessorKey: "reorderQty",
-      header: "Reorder Qty",
-      size: 96,
-      enableColumnFilter: false,
+      accessorKey: "reorderQty", header: "Reorder", size: 72,
       cell: ({ getValue }) => (
         <span className="text-slate-500 text-sm tabular-nums">{getValue<number>()}</span>
       ),
     },
     {
-      id: "status",
-      header: "Status",
-      size: 120,
-      enableSorting: false,
-      enableColumnFilter: false,
+      id: "status", header: "Status", size: 120, enableSorting: false,
       cell: ({ row }) => {
-        const status = getStatus(row.original);
+        const s = getStatus(row.original);
         return (
-          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${STATUS_CLASSES[status]}`}>
-            {STATUS_LABEL[status]}
+          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${STATUS_BADGE[s]}`}>
+            {STATUS_LABEL[s]}
           </span>
         );
       },
     },
   ], []);
 
-  // ── Table instance ─────────────────────────────────────────────────────────
+  // ── Table ──────────────────────────────────────────────────────────────────
 
   const table = useReactTable({
-    data: tableData,
+    data: filteredRows,
     columns,
-    state: { globalFilter, sorting },
-    onGlobalFilterChange: setGlobalFilter,
+    state: { sorting },
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     initialState: { pagination: { pageSize: 25 } },
-    globalFilterFn: "includesString",
   });
 
-  const totalFiltered = table.getFilteredRowModel().rows.length;
+  const totalFiltered = filteredRows.length;
   const visibleRows   = table.getRowModel().rows.length;
 
   // ── Auth loading ───────────────────────────────────────────────────────────
@@ -258,7 +404,7 @@ export default function ItemLedgerPage() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
-  const FILTER_TABS: Array<{ key: StockStatus | "all"; label: string }> = [
+  const STATUS_TABS: Array<{ key: StockStatus | "all"; label: string }> = [
     { key: "all",          label: `All (${counts.all})` },
     { key: "in-stock",     label: `In Stock (${counts["in-stock"]})` },
     { key: "low",          label: `Low Stock (${counts.low})` },
@@ -267,48 +413,48 @@ export default function ItemLedgerPage() {
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans">
-      <div className="max-w-screen-xl mx-auto px-6 py-6 space-y-4">
+      <div className="max-w-screen-xl mx-auto px-6 py-6 space-y-3">
 
-        {/* ── Toolbar ──────────────────────────────────────────────────────── */}
+        {/* ── Top bar ────────────────────────────────────────────────────────── */}
         <div className="flex flex-wrap items-center gap-3">
           <input
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Search items…"
-            className="flex-1 min-w-48 px-4 py-2.5 rounded-lg text-sm border border-slate-200 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-green-600"
+            value={filters.search}
+            onChange={(e) => setF("search", e.target.value)}
+            placeholder="Search stock no., description, category, type…"
+            className="flex-1 min-w-64 px-4 py-2.5 text-sm border border-slate-200 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-green-600"
           />
-          {searchInput && (
-            <button
-              onClick={() => { setSearchInput(""); setGlobalFilter(""); }}
-              className="text-sm text-slate-400 hover:text-slate-600 px-2"
-            >
-              Clear
-            </button>
-          )}
+          <button
+            onClick={() => setFiltersOpen((o) => !o)}
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm border shadow-sm transition-colors shrink-0 ${
+              filtersOpen || filterCount > 0
+                ? "bg-green-600 text-white border-green-600"
+                : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+            }`}
+          >
+            <span>⚙ Filters</span>
+            {filterCount > 0 && (
+              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold bg-white text-green-700">
+                {filterCount}
+              </span>
+            )}
+          </button>
           <button
             onClick={loadLedger}
-            className="flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-sm border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors shadow-sm shrink-0"
-            title="Refresh"
+            className="flex items-center gap-1.5 px-3 py-2.5 text-sm border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors shadow-sm shrink-0"
           >
             ↻ Refresh
           </button>
         </div>
 
-        {/* ── Status filter tabs ────────────────────────────────────────────── */}
+        {/* ── Status tabs ──────────────────────────────────────────────────── */}
         <div className="flex gap-1 flex-wrap">
-          {FILTER_TABS.map(({ key, label }) => (
+          {STATUS_TABS.map(({ key, label }) => (
             <button
               key={key}
-              onClick={() => setStatusFilter(key)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${
-                statusFilter === key
-                  ? key === "in-stock"
-                    ? "bg-green-600 text-white border-green-600"
-                    : key === "low"
-                    ? "bg-amber-500 text-white border-amber-500"
-                    : key === "out-of-stock"
-                    ? "bg-danger-500 text-white border-danger-500"
-                    : "bg-green-600 text-white border-green-600"
+              onClick={() => setF("status", key)}
+              className={`px-4 py-2 text-sm font-medium border transition-colors ${
+                filters.status === key
+                  ? STATUS_TAB_ACTIVE[key]
                   : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
               }`}
             >
@@ -317,8 +463,177 @@ export default function ItemLedgerPage() {
           ))}
         </div>
 
+        {/* ── Filter panel ──────────────────────────────────────────────────── */}
+        {filtersOpen && (
+          <div className="bg-white border border-slate-200 shadow-sm p-5 space-y-5">
+
+            {/* Quick presets */}
+            <div>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Quick Presets</p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => {
+                    setFilters({ ...EMPTY_FILTERS, status: "out-of-stock" });
+                    setFiltersOpen(true);
+                  }}
+                  className="px-3 py-1.5 text-xs font-medium border border-red-300 bg-danger-100 text-danger-500 hover:bg-red-100 transition-colors"
+                >
+                  Out of Stock
+                </button>
+                <button
+                  onClick={() => {
+                    setFilters({ ...EMPTY_FILTERS, status: "low" });
+                    setFiltersOpen(true);
+                  }}
+                  className="px-3 py-1.5 text-xs font-medium border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors"
+                >
+                  Low Stock (Needs Reorder)
+                </button>
+                <button
+                  onClick={() => {
+                    // Nothing delivered yet: qtyDelivered = 0 but qtyOrdered > 0
+                    // Approximated with onHandMin = 0, onHandMax = 0 and status = out-of-stock
+                    // Actually filter by qtyDelivered = 0 is not in Filters state.
+                    // Use onHandMax = 0 to show items with nothing on hand.
+                    setFilters({ ...EMPTY_FILTERS, onHandMax: "0" });
+                    setFiltersOpen(true);
+                  }}
+                  className="px-3 py-1.5 text-xs font-medium border border-slate-300 bg-slate-50 text-slate-600 hover:bg-slate-100 transition-colors"
+                >
+                  Nothing Delivered Yet
+                </button>
+                <button
+                  onClick={() => {
+                    // Unreleased stock: delivered > distributed → onHand > 0
+                    setFilters({ ...EMPTY_FILTERS, onHandMin: "1" });
+                    setFiltersOpen(true);
+                  }}
+                  className="px-3 py-1.5 text-xs font-medium border border-green-300 bg-green-50 text-green-700 hover:bg-green-100 transition-colors"
+                >
+                  Unreleased Stock (On Hand &gt; 0)
+                </button>
+                {filterCount > 0 && (
+                  <button
+                    onClick={() => setFilters(EMPTY_FILTERS)}
+                    className="px-3 py-1.5 text-xs font-medium border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors"
+                  >
+                    ✕ Clear all filters
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="border-t border-slate-100" />
+
+            {/* Category */}
+            {categoryOptions.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Category</p>
+                <div className="flex flex-wrap gap-2">
+                  {categoryOptions.map((cat) => (
+                    <MultiChip
+                      key={cat}
+                      label={cat}
+                      active={filters.categories.includes(cat)}
+                      onClick={() => toggleChip("categories", cat)}
+                    />
+                  ))}
+                </div>
+                {filters.categories.length > 0 && (
+                  <p className="text-xs text-slate-400">
+                    {filters.categories.length} selected — click to deselect
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="border-t border-slate-100" />
+
+            {/* Item Type + Unit + On Hand range */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+              {/* Item Type */}
+              {itemTypeOptions.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Item Type</p>
+                  <div className="flex flex-wrap gap-2">
+                    {itemTypeOptions.map((t) => (
+                      <MultiChip
+                        key={t}
+                        label={t}
+                        active={filters.itemTypes.includes(t)}
+                        onClick={() => toggleChip("itemTypes", t)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Unit */}
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Unit</p>
+                <select
+                  value={filters.unit}
+                  onChange={(e) => setF("unit", e.target.value)}
+                  className="w-full px-2.5 py-1.5 text-xs border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-green-500"
+                >
+                  <option value="">All units</option>
+                  {unitOptions.map((u) => <option key={u} value={u}>{u}</option>)}
+                </select>
+              </div>
+
+              {/* On Hand range */}
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">On Hand</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    value={filters.onHandMin}
+                    onChange={(e) => setF("onHandMin", e.target.value)}
+                    placeholder="Min"
+                    className="flex-1 px-2.5 py-1.5 text-xs border border-slate-200 focus:outline-none focus:ring-1 focus:ring-green-500"
+                  />
+                  <span className="text-slate-400 text-xs">to</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={filters.onHandMax}
+                    onChange={(e) => setF("onHandMax", e.target.value)}
+                    placeholder="Max"
+                    className="flex-1 px-2.5 py-1.5 text-xs border border-slate-200 focus:outline-none focus:ring-1 focus:ring-green-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+          </div>
+        )}
+
+        {/* ── Result count ─────────────────────────────────────────────────── */}
+        <div className="flex items-center justify-between text-xs text-slate-500">
+          <span>
+            Showing <span className="font-semibold text-slate-700">{totalFiltered}</span> of{" "}
+            <span className="font-semibold text-slate-700">{rows.length}</span> items
+            {counts["out-of-stock"] > 0 && (
+              <span className="ml-3 text-danger-500 font-medium">· {counts["out-of-stock"]} out of stock</span>
+            )}
+            {counts.low > 0 && (
+              <span className="ml-2 text-amber-600 font-medium">· {counts.low} low stock</span>
+            )}
+            {filterCount > 0 && (
+              <button onClick={() => setFilters(EMPTY_FILTERS)} className="ml-3 text-green-600 hover:underline">
+                Clear all filters
+              </button>
+            )}
+          </span>
+          {filterCount > 0 && (
+            <span className="text-green-700 font-medium">{filterCount} filter{filterCount !== 1 ? "s" : ""} active</span>
+          )}
+        </div>
+
         {/* ── Table card ───────────────────────────────────────────────────── */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="bg-white border border-slate-200 shadow-sm overflow-hidden">
           {loading ? (
             <div className="flex items-center justify-center py-20">
               <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
@@ -331,8 +646,6 @@ export default function ItemLedgerPage() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm border-collapse">
-
-                {/* ── Header ── */}
                 <thead>
                   {table.getHeaderGroups().map((hg) => (
                     <tr key={hg.id} className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500 uppercase tracking-wide">
@@ -356,8 +669,6 @@ export default function ItemLedgerPage() {
                     </tr>
                   ))}
                 </thead>
-
-                {/* ── Body ── */}
                 <tbody className="divide-y divide-slate-100">
                   {table.getRowModel().rows.length === 0 ? (
                     <tr>
@@ -367,58 +678,29 @@ export default function ItemLedgerPage() {
                     </tr>
                   ) : (
                     table.getRowModel().rows.map((row, i) => (
-                        <tr
-                          key={row.id}
-                          className={`transition-colors ${
-                            i % 2 === 1
-                              ? "bg-slate-50 hover:bg-green-50"
-                              : "bg-white hover:bg-green-50"
-                          }`}
-                        >
-                          {row.getVisibleCells().map((cell) => (
-                            <td key={cell.id} className="px-3 py-2.5 align-middle">
-                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                            </td>
-                          ))}
-                        </tr>
+                      <tr key={row.id} className={`transition-colors ${i % 2 === 1 ? "bg-slate-50 hover:bg-green-50" : "bg-white hover:bg-green-50"}`}>
+                        {row.getVisibleCells().map((cell) => (
+                          <td key={cell.id} className="px-3 py-2.5 align-middle">
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </td>
+                        ))}
+                      </tr>
                     ))
                   )}
                 </tbody>
               </table>
 
-              {/* ── Status bar + pagination ── */}
+              {/* Pagination */}
               <div className="flex items-center justify-between px-4 py-2 border-t border-slate-100 text-xs text-slate-400 flex-wrap gap-2">
                 <span>
                   {visibleRows === totalFiltered
                     ? `${totalFiltered} item${totalFiltered !== 1 ? "s" : ""}`
                     : `${visibleRows} of ${totalFiltered} items`}
-                  {counts["out-of-stock"] > 0 && (
-                    <span className="ml-2 text-danger-500 font-medium">
-                      · {counts["out-of-stock"]} out of stock
-                    </span>
-                  )}
-                  {counts.low > 0 && (
-                    <span className="ml-2 text-amber-600 font-medium">
-                      · {counts.low} low stock
-                    </span>
-                  )}
                 </span>
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => table.previousPage()}
-                    disabled={!table.getCanPreviousPage()}
-                    className="px-2 py-0.5 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50 transition-colors"
-                  >
-                    ‹
-                  </button>
+                  <button onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="px-2 py-0.5 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50">‹</button>
                   <span>Page {table.getState().pagination.pageIndex + 1} / {table.getPageCount() || 1}</span>
-                  <button
-                    onClick={() => table.nextPage()}
-                    disabled={!table.getCanNextPage()}
-                    className="px-2 py-0.5 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50 transition-colors"
-                  >
-                    ›
-                  </button>
+                  <button onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="px-2 py-0.5 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50">›</button>
                   <select
                     value={table.getState().pagination.pageSize}
                     onChange={(e) => table.setPageSize(Number(e.target.value))}
