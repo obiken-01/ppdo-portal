@@ -46,6 +46,14 @@ function fmtDate(d: string): string {
   return d.slice(0, 10);
 }
 
+function toQuarter(dateStr: string): string {
+  if (!dateStr) return "—";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "—";
+  const q = Math.ceil((d.getMonth() + 1) / 3);
+  return `Q${q}-${d.getFullYear()}`;
+}
+
 const STATUS_BADGE: Record<string, string> = {
   Open:                "bg-blue-100 text-blue-700",
   PartiallyDelivered:  "bg-amber-100 text-amber-700",
@@ -417,8 +425,8 @@ export default function PRReportPage() {
                 </div>
 
                 {/* Row 2 */}
-                <Field label="PR Date"    value={fmtDate(pr.prDate)} />
-                <Field label="Date Created" value={new Date(pr.dateCreated).toLocaleDateString("en-PH")} />
+                <Field label="PR Date" value={fmtDate(pr.prDate)} />
+                <Field label="Quarter" value={toQuarter(pr.prDate)} />
 
                 {/* Row 3 */}
                 <Field label="Department" value={pr.department} />

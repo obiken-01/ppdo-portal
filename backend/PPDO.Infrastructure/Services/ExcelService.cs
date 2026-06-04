@@ -244,9 +244,11 @@ public sealed class ExcelService : IExcelService
         Pair("PR No.:", pr.PRNo, "Status:", pr.Status.ToString(), valLBold: true, valRBold: true);
 
         Pair("PR Date",           pr.PRDate.ToShortDateString(),
-             "Department",        pr.Department);
-        Pair("Division",          pr.Division.ToString(),
-             "Fund",              pr.Fund);
+             "Quarter",           ToQuarter(pr.PRDate));
+        Pair("Department",        pr.Department,
+             "Division",          pr.Division.ToString());
+        Pair("Fund",              pr.Fund,
+             "",                  "");
         Pair("Requested By",      pr.RequestedBy,
              "Position",          pr.Position);
         Pair("Approved By",       pr.ApprovedBy ?? "—",
@@ -958,4 +960,15 @@ public sealed class ExcelService : IExcelService
 
     private static string? NullIfBlank(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    /// <summary>
+    /// Returns the fiscal quarter label for a given date.
+    /// Q1 = Jan–Mar, Q2 = Apr–Jun, Q3 = Jul–Sep, Q4 = Oct–Dec.
+    /// Example: 2026-05-15 → "Q2-2026"
+    /// </summary>
+    private static string ToQuarter(DateOnly date)
+    {
+        int q = (date.Month - 1) / 3 + 1;
+        return $"Q{q}-{date.Year}";
+    }
 }
