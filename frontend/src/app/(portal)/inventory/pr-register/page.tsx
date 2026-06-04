@@ -21,6 +21,7 @@ import {
   type SortingState,
 } from "@tanstack/react-table";
 import api from "@/lib/api";
+import { useToast } from "@/components/ui/Toast";
 import type { MeResponse, PRSummaryResponse } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -67,12 +68,16 @@ function fmtDate(iso: string) {
 // ---------------------------------------------------------------------------
 
 export default function PRRegisterPage() {
-  const router = useRouter();
+  const router     = useRouter();
+  const { toast }  = useToast();
   const [authChecked, setAuthChecked] = useState(false);
 
   const [prs, setPRs]               = useState<PRSummaryResponse[]>([]);
   const [loading, setLoading]       = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+
+  // Track which PR is being marked completed (shows spinner on that row)
+  const [completingId, setCompletingId] = useState<string | null>(null);
 
   const [searchInput, setSearchInput]   = useState("");
   const [globalFilter, setGlobalFilter] = useState("");
@@ -130,6 +135,28 @@ export default function PRRegisterPage() {
     if (activeTab === "All") return prs;
     return prs.filter((p) => p.status === activeTab);
   }, [prs, activeTab]);
+
+  // ── Mark Completed ─────────────────────────────────────────────────────────
+
+  async function handleMarkCompleted(pr: PRSummaryResponse) {
+    if (!window.confirm(`Mark "${pr.prNo}" as Completed?\n\nThis cannot be undone.`)) return;
+    setCompletingId(pr.id);
+    try {
+      await api.put(`/purchase-requests/${pr.id}/complete`);
+      // Optimistically update the row status in place — no full reload needed.
+      setPRs((prev) =>
+        prev.map((p) => p.id === pr.id ? { ...p, status: "Completed" } : p)
+      );
+      toast.success("PR Completed", `${pr.prNo} has been marked as Completed.`);
+    } catch (e: unknown) {
+      const msg =
+        (e as { response?: { data?: string } })?.response?.data
+        ?? "Could not mark the PR as Completed. Please try again.";
+      toast.error("Action failed", msg);
+    } finally {
+      setCompletingId(null);
+    }
+  }
 
   // ── Columns ────────────────────────────────────────────────────────────────
 
@@ -204,21 +231,39 @@ export default function PRRegisterPage() {
     {
       id: "actions",
       header: "",
-      size: 110,
+      size: 220,
       enableSorting: false,
       enableColumnFilter: false,
-      cell: ({ row }) => (
-        <div className="flex justify-end">
-          <button
-            onClick={() => router.push(`/inventory/pr-report?id=${encodeURIComponent(row.original.id)}`)}
-            className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border border-green-300 text-green-700 bg-green-50 hover:bg-green-100 transition-colors font-medium"
-          >
-            📋 View Report
-          </button>
-        </div>
-      ),
+      cell: ({ row }) => {
+        const pr           = row.original;
+        const isCompleting = completingId === pr.id;
+        return (
+          <div className="flex items-center justify-end gap-2">
+            {/* Mark as Completed — only shown for FullyDelivered PRs */}
+            {pr.status === "FullyDelivered" && (
+              <button
+                onClick={() => handleMarkCompleted(pr)}
+                disabled={isCompleting || completingId !== null}
+                className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border border-slate-300 text-slate-600 bg-white hover:bg-slate-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+              >
+                {isCompleting
+                  ? <span className="w-3 h-3 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+                  : "✓"}
+                {isCompleting ? "Saving…" : "Mark Completed"}
+              </button>
+            )}
+            <button
+              onClick={() => router.push(`/inventory/pr-report?id=${encodeURIComponent(pr.id)}`)}
+              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border border-green-300 text-green-700 bg-green-50 hover:bg-green-100 transition-colors font-medium whitespace-nowrap"
+            >
+              📋 View Report
+            </button>
+          </div>
+        );
+      },
     },
-  ], [router]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [router, completingId]);
 
   // ── Table instance ─────────────────────────────────────────────────────────
 
