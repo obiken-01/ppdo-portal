@@ -21,9 +21,10 @@ namespace PPDO.Functions.Functions;
 ///   GET  /api/purchase-requests             — list PRs (division-scoped for Staff/Observer)
 ///   GET  /api/purchase-requests/{id}        — PR detail with line items
 ///   POST /api/purchase-requests             — submit new PR
-///   PUT  /api/purchase-requests/{id}        — update PR (Admin only, status = Open)
-///   GET  /api/purchase-requests/template    — download blank PR import template (.xlsx)
-///   POST /api/purchase-requests/import      — upload populated PR template → create PRs
+///   PUT  /api/purchase-requests/{id}          — update PR (Admin only, status = Open)
+///   PUT  /api/purchase-requests/{id}/complete — mark PR as Completed (FullyDelivered only)
+///   GET  /api/purchase-requests/template      — download blank PR import template (.xlsx)
+///   POST /api/purchase-requests/import        — upload populated PR template → create PRs
 /// </summary>
 public sealed class PurchaseRequestFunctions
 {
@@ -183,6 +184,24 @@ public sealed class PurchaseRequestFunctions
 
         ServiceResult<PRResponseDto> result =
             await _service.UpdateAsync(caller, id, body, cancellationToken);
+        return await ToResponse(req, result, HttpStatusCode.OK, cancellationToken);
+    }
+
+    // ── PUT /api/purchase-requests/{id}/complete ──────────────────────────────
+
+    [Function("MarkPurchaseRequestCompleted")]
+    public async Task<HttpResponseData> MarkCompleted(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "purchase-requests/{id:guid}/complete")]
+        HttpRequestData req,
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        User? caller = await _jwt.ValidateAsync(GetAuthHeader(req), cancellationToken);
+        if (caller is null)
+            return req.CreateResponse(HttpStatusCode.Unauthorized);
+
+        ServiceResult<PRSummaryDto> result =
+            await _service.MarkCompletedAsync(caller, id, cancellationToken);
         return await ToResponse(req, result, HttpStatusCode.OK, cancellationToken);
     }
 

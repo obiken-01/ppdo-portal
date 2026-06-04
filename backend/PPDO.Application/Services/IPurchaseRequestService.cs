@@ -73,4 +73,14 @@ public interface IPurchaseRequestService
         User requester,
         Stream stream,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Marks a PR as Completed. Only valid when current status is FullyDelivered.
+    /// Requires CanAccessInventory. Division scope is not enforced — any
+    /// inventory-permitted user can close a fully delivered PR.
+    /// </summary>
+    Task<ServiceResult<PRSummaryDto>> MarkCompletedAsync(
+        User requester,
+        Guid id,
+        CancellationToken cancellationToken = default);
 }
