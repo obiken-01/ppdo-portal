@@ -512,9 +512,9 @@ export default function InventoryDashboardPage() {
                     <td className="px-4 py-2.5">
                       <Link
                         href={`/inventory/pr-report?id=${pr.id}`}
-                        className="text-xs text-green-600 hover:underline font-medium"
+                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border border-green-300 text-green-700 bg-green-50 hover:bg-green-100 transition-colors font-medium whitespace-nowrap"
                       >
-                        Report
+                        📋 View Report
                       </Link>
                     </td>
                   </tr>
