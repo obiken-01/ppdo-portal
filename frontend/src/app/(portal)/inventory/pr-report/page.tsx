@@ -459,15 +459,31 @@ export default function PRReportPage() {
                 <Field label="SAI No."   value={pr.saiNo} />
                 <Field label="ALOBS No." value={pr.alobsNo} />
 
-                {/* Row 13 — Total Amount highlighted */}
-                <div className="md:col-span-2 flex justify-end">
-                  <div className="text-right">
-                    <p className="text-xs font-medium text-slate-500 mb-1">Total Amount</p>
-                    <p className="text-xl font-bold text-green-700 tabular-nums">
-                      ₱ {fmt(pr.totalAmount)}
-                    </p>
-                  </div>
-                </div>
+                {/* Row 13 — Delivery summary bar */}
+                {(() => {
+                  const totalOrdered   = pr.items.reduce((s, i) => s + i.quantity, 0);
+                  const totalDelivered = Object.values(qtyDelivered).reduce((s, v) => s + v, 0);
+                  const deliveryCount  = new Set(report!.distributions.map((d) => d.deliveryRef)).size;
+                  const pct            = totalOrdered > 0
+                    ? Math.round((totalDelivered / totalOrdered) * 100)
+                    : 0;
+                  return (
+                    <div className="md:col-span-2 grid grid-cols-4 text-xs font-semibold text-center overflow-hidden border border-slate-200">
+                      <div className="px-3 py-2.5 bg-amber-100 text-amber-800">
+                        Deliveries: {deliveryCount}
+                      </div>
+                      <div className="px-3 py-2.5 bg-green-50 text-green-700">
+                        Status: {pr.status}
+                      </div>
+                      <div className="px-3 py-2.5 bg-teal-50 text-teal-700">
+                        {pct}% fulfilled ({fmt(totalDelivered)} / {fmt(totalOrdered)} units)
+                      </div>
+                      <div className="px-3 py-2.5 bg-slate-800 text-white tabular-nums">
+                        Total: ₱{fmt(pr.totalAmount)}
+                      </div>
+                    </div>
+                  );
+                })()}
 
               </div>
             </div>

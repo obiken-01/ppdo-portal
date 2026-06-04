@@ -262,25 +262,6 @@ public sealed class ExcelService : IExcelService
         Pair("SAI No.",           pr.SAINo   ?? "—",
              "ALOBS No.",         pr.ALOBSNo ?? "—");
 
-        // blank spacer row
-        r++;
-
-        // Total Amount row — A:H label | I:J value
-        ws.Range(r, 1, r, 8).Merge();
-        ws.Cell(r, 1).Value = "TOTAL AMOUNT";
-        ws.Cell(r, 1).Style.Font.SetBold(true).Font.SetFontSize(11)
-            .Fill.SetBackgroundColor(LightGreen)
-            .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Right);
-        ws.Range(r, 9, r, 10).Merge();
-        ws.Cell(r, 9).Value = pr.TotalAmount;
-        ws.Cell(r, 9).Style.Font.SetBold(true).Font.SetFontSize(12)
-            .Font.SetFontColor(DarkGreen)
-            .Fill.SetBackgroundColor(LightGreen)
-            .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Right)
-            .NumberFormat.SetFormat("₱#,##0.00");
-        ws.Row(r).Height = 22;
-        r++;
-
         // ── Delivery summary bar ──────────────────────────────────────────────
         // A:B = Delivery count (amber) | C:E = Status (light green)
         // F:H = Fulfillment % (teal)   | I:J = Total (navy)
