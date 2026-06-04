@@ -168,12 +168,6 @@ function inQuarter(prDate: string, q: string): boolean {
   return prDate >= bounds.from && prDate <= bounds.to;
 }
 
-/** True if prDate is strictly before the start of "QN-YYYY". */
-function beforeQuarter(prDate: string, q: string): boolean {
-  const bounds = quarterBounds(q);
-  if (!bounds) return false;
-  return prDate < bounds.from;
-}
 
 function contains(haystack: string | null | undefined, needle: string): boolean {
   if (!needle) return true;

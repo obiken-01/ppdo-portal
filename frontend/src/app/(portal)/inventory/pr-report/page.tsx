@@ -74,8 +74,8 @@ const PR_STATUS_BADGE: Record<string, string> = {
 
 function SectionHeading({ number, title }: { number: string; title: string }) {
   return (
-    <div className="flex items-center gap-3 px-6 py-3 bg-green-600 text-white rounded-t-lg">
-      <span className="w-6 h-6 rounded-full bg-white text-green-700 flex items-center justify-center text-xs font-bold shrink-0">
+    <div className="flex items-center gap-3 px-6 py-3 bg-green-600 text-white">
+      <span className="w-6 h-6 bg-white text-green-700 flex items-center justify-center text-xs font-bold shrink-0">
         {number}
       </span>
       <span className="text-sm font-semibold tracking-wide uppercase">{title}</span>
@@ -170,7 +170,7 @@ function PRCombobox({
             >
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-mono font-semibold text-slate-800 text-xs">{pr.prNo}</span>
-                <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${STATUS_BADGE[pr.status] ?? "bg-slate-100 text-slate-600"}`}>
+                <span className={`text-xs px-1.5 py-0.5 font-medium ${STATUS_BADGE[pr.status] ?? "bg-slate-100 text-slate-600"}`}>
                   {pr.status}
                 </span>
                 <span className="text-xs text-slate-400">{pr.division}</span>
@@ -373,7 +373,7 @@ export default function PRReportPage() {
           <button
             onClick={handleExport}
             disabled={!selectedId || !report || exporting}
-            className="flex items-center gap-2 px-4 py-2.5 text-sm rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2.5 text-sm border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {exporting
               ? <span className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
@@ -384,7 +384,7 @@ export default function PRReportPage() {
 
         {/* ── Empty / loading state ─────────────────────────────────────────── */}
         {!selectedId && (
-          <div className="bg-white border border-slate-200 shadow-sm rounded-xl flex flex-col items-center justify-center py-20 gap-3 text-slate-400">
+          <div className="bg-white border border-slate-200 shadow-sm flex flex-col items-center justify-center py-20 gap-3 text-slate-400">
             <span className="text-4xl">📋</span>
             <p className="text-sm font-medium">Select a Purchase Request to view its report</p>
             <p className="text-xs">Search by PR number, division, or status above</p>
@@ -392,7 +392,7 @@ export default function PRReportPage() {
         )}
 
         {selectedId && reportLoading && (
-          <div className="bg-white border border-slate-200 shadow-sm rounded-xl flex items-center justify-center py-20">
+          <div className="bg-white border border-slate-200 shadow-sm flex items-center justify-center py-20">
             <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
           </div>
         )}
@@ -402,7 +402,7 @@ export default function PRReportPage() {
           <>
 
             {/* ── Section 1 — PR Details ──────────────────────────────────── */}
-            <div className="bg-white border border-slate-200 shadow-sm rounded-lg overflow-hidden">
+            <div className="bg-white border border-slate-200 shadow-sm overflow-hidden">
               <SectionHeading number="1" title="PR Details" />
               <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
 
@@ -411,7 +411,7 @@ export default function PRReportPage() {
                 <div>
                   <p className="text-xs font-medium text-slate-500 mb-1">Status</p>
                   <div className="px-3 py-2">
-                    <span className={`text-xs font-semibold px-3 py-1 rounded-full ${PR_STATUS_BADGE[pr.status] ?? "bg-slate-100 text-slate-600"}`}>
+                    <span className={`text-xs font-semibold px-3 py-1 ${PR_STATUS_BADGE[pr.status] ?? "bg-slate-100 text-slate-600"}`}>
                       {pr.status}
                     </span>
                   </div>
@@ -485,7 +485,7 @@ export default function PRReportPage() {
             {/* ── Section 2 — Line Items (GS column structure) ─────────────── */}
             {/* Columns: # | Description | Stock No. | Unit | Qty Ordered |     */}
             {/*          Qty Delivered | Qty Distributed | Remaining             */}
-            <div className="bg-white border border-slate-200 shadow-sm rounded-lg overflow-hidden">
+            <div className="bg-white border border-slate-200 shadow-sm overflow-hidden">
               <SectionHeading
                 number="2"
                 title="Line Items — Ordered vs Delivered vs Distributed vs Remaining"
@@ -557,7 +557,7 @@ export default function PRReportPage() {
             </div>
 
             {/* ── Section 3 — Distribution ─────────────────────────────────── */}
-            <div className="bg-white border border-slate-200 shadow-sm rounded-lg overflow-hidden">
+            <div className="bg-white border border-slate-200 shadow-sm overflow-hidden">
               <SectionHeading number="3" title="Distribution" />
 
               {report!.distributions.length === 0 ? (
@@ -599,7 +599,7 @@ export default function PRReportPage() {
                           <td className="px-3 py-2 font-mono text-slate-600">{dist.deliveryRef}</td>
                           <td className="px-3 py-2 text-slate-600">{fmtDate(dist.deliveryDate)}</td>
                           <td className="px-3 py-2">
-                            <span className="px-1.5 py-0.5 rounded bg-green-50 text-green-700 text-xs font-medium border border-green-200">
+                            <span className="px-1.5 py-0.5 bg-green-50 text-green-700 text-xs font-medium border border-green-200">
                               {dist.division}
                             </span>
                           </td>

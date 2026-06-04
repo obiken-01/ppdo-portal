@@ -117,7 +117,7 @@ function StatCard({
   sub?: string;
 }) {
   return (
-    <div className={`flex-1 min-w-0 rounded-lg p-4 ${bg} border border-white/60`}>
+    <div className={`flex-1 min-w-0 p-4 min-h-[110px] ${bg} border border-white/60`}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-xs font-medium text-slate-500 truncate">{label}</p>
@@ -142,7 +142,7 @@ function StatGroup({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex-1 min-w-0 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+    <div className="flex-1 min-w-0 bg-white border border-slate-200 shadow-sm overflow-hidden">
       <div className="px-4 py-2.5 bg-green-600 text-white text-xs font-semibold tracking-wide uppercase">
         {title}
       </div>
@@ -179,9 +179,9 @@ function FulfillmentBar({
 
   return (
     <div className="flex items-center gap-2 min-w-[80px]">
-      <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+      <div className="flex-1 h-1.5 bg-slate-100 overflow-hidden">
         <div
-          className={`h-full rounded-full transition-all ${barColor}`}
+          className={`h-full transition-all ${barColor}`}
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -344,25 +344,25 @@ export default function InventoryDashboardPage() {
         <div className="flex gap-2 flex-wrap">
           <Link
             href="/inventory/create-pr"
-            className="flex items-center gap-1.5 px-3 py-2 bg-green-600 hover:bg-green-500 text-white text-sm font-medium rounded transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 bg-green-600 hover:bg-green-500 text-white text-sm font-medium transition-colors"
           >
             <span>📋</span> Create PR
           </Link>
           <Link
             href="/inventory/receive-delivery"
-            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium transition-colors"
           >
             <span>🚚</span> Receive Delivery
           </Link>
           <Link
             href="/inventory/pr-report"
-            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium transition-colors"
           >
             <span>📊</span> PR Report
           </Link>
           <Link
             href="/inventory/distribution"
-            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium transition-colors"
           >
             <span>📦</span> Distribution
           </Link>
@@ -442,7 +442,7 @@ export default function InventoryDashboardPage() {
       </div>
 
       {/* ── PR Status Table ───────────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white border border-slate-200 shadow-sm overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
           <h2 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
             <span>📋</span> Purchase Request Status
@@ -498,7 +498,7 @@ export default function InventoryDashboardPage() {
                     </td>
                     <td className="px-4 py-2.5">
                       <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${
+                        className={`inline-flex items-center px-2 py-0.5 text-xs font-medium whitespace-nowrap ${
                           STATUS_BADGE[pr.status] ?? "bg-slate-100 text-slate-600"
                         }`}
                       >
@@ -518,7 +518,7 @@ export default function InventoryDashboardPage() {
                     <td className="px-4 py-2.5">
                       <Link
                         href={`/inventory/pr-report?id=${pr.id}`}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border border-green-300 text-green-700 bg-green-50 hover:bg-green-100 transition-colors font-medium whitespace-nowrap"
+                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs border border-green-300 text-green-700 bg-green-50 hover:bg-green-100 transition-colors font-medium whitespace-nowrap"
                       >
                         📋 View Report
                       </Link>
@@ -532,12 +532,12 @@ export default function InventoryDashboardPage() {
       </div>
 
       {/* ── Inventory Alerts Table ────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white border border-slate-200 shadow-sm overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
           <h2 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
             <span>⚠️</span> Inventory Alerts
             {alertItems.length > 0 && (
-              <span className="ml-1 px-2 py-0.5 bg-danger-100 text-danger-500 text-xs font-semibold rounded-full">
+              <span className="ml-1 px-2 py-0.5 bg-danger-100 text-danger-500 text-xs font-semibold">
                 {alertItems.length}
               </span>
             )}
@@ -595,11 +595,11 @@ export default function InventoryDashboardPage() {
                     </td>
                     <td className="px-4 py-2.5 text-center">
                       {item.isOutOfStock ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-danger-100 text-danger-500 border border-red-200">
+                        <span className="inline-flex items-center px-2 py-0.5 text-xs font-semibold bg-danger-100 text-danger-500 border border-red-200">
                           Out of Stock
                         </span>
                       ) : (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-500 border border-amber-200">
+                        <span className="inline-flex items-center px-2 py-0.5 text-xs font-semibold bg-amber-100 text-amber-500 border border-amber-200">
                           Low Stock
                         </span>
                       )}

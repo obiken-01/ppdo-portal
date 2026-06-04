@@ -87,10 +87,6 @@ const STATUS_TAB_ACTIVE: Record<StockStatus | "all", string> = {
   "out-of-stock": "bg-danger-500 text-white border-danger-500",
 };
 
-function contains(s: string | null | undefined, q: string): boolean {
-  if (!q) return true;
-  return (s ?? "").toLowerCase().includes(q.toLowerCase());
-}
 
 /** Returns [YYYY-MM-DD, YYYY-MM-DD] bounds for a "QN-YYYY" quarter string. */
 function quarterBounds(q: string): { from: string; to: string } | null {
@@ -293,43 +289,6 @@ export default function StockOverviewPage() {
     low:           rows.filter((r) => getStatus(r) === "low").length,
     "out-of-stock": rows.filter((r) => getStatus(r) === "out-of-stock").length,
   }), [rows]);
-
-  // ── Presets ────────────────────────────────────────────────────────────────
-
-  function applyPreset(preset: "needs-reorder" | "nothing-delivered" | "unreleased") {
-    setFiltersOpen(true);
-    switch (preset) {
-      case "needs-reorder":
-        setFilters({ ...EMPTY_FILTERS, status: "all",
-          categories: [], itemTypes: [], unit: "",
-          onHandMin: "", onHandMax: "",
-          // applied via status filter chips
-          search: "" });
-        // Filter: isLowStock OR isOutOfStock — use status tabs
-        setFilters({ ...EMPTY_FILTERS });
-        // We don't have a combined "low+out" status key, so filter via onHandMax
-        // Show items where onHand <= reorderQty — use status tabs to show Low+Out
-        // Simplest: set status to "all" and let the user see low+out highlighted
-        // Better: we'll set a special onHandMax that effectively = reorderQty
-        // Actually easiest: just pre-select Low + Out status — but status is single select
-        // For now: clear filters, set a label-only preset note. User can click Low+Out tabs.
-        // Re-think: just filter where onHand === 0 OR isLowStock. Use onHandMax=reorderQty
-        // is not possible since reorderQty differs per item. Instead: set both status tabs.
-        // The cleanest approach: just set status filter to show both low and out.
-        // Since status is single-select in tabs, we'll show out-of-stock + low combined
-        // by resetting to "all" and setting onHandMax to a high number, or just not filtering.
-        // BEST: clear all, user sees the tab counts and clicks "Low Stock" / "Out of Stock"
-        setFilters({ ...EMPTY_FILTERS, search: "NEEDS_REORDER_PRESET" });
-        setFilters({ ...EMPTY_FILTERS });
-        break;
-      case "nothing-delivered":
-        setFilters({ ...EMPTY_FILTERS });
-        break;
-      case "unreleased":
-        setFilters({ ...EMPTY_FILTERS });
-        break;
-    }
-  }
 
   // ── Columns ────────────────────────────────────────────────────────────────
 

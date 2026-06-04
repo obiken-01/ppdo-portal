@@ -260,8 +260,8 @@ function FieldError({ message }: { message?: string }) {
 
 function SectionHeading({ number, title }: { number: string; title: string }) {
   return (
-    <div className="flex items-center gap-3 px-6 py-3 bg-green-600 text-white rounded-t-lg">
-      <span className="w-6 h-6 rounded-full bg-white text-green-700 flex items-center justify-center text-xs font-bold shrink-0">
+    <div className="flex items-center gap-3 px-6 py-3 bg-green-600 text-white">
+      <span className="w-6 h-6 bg-white text-green-700 flex items-center justify-center text-xs font-bold shrink-0">
         {number}
       </span>
       <span className="text-sm font-semibold tracking-wide uppercase">{title}</span>
@@ -645,15 +645,15 @@ export default function CreatePRPage() {
   if (submitted) {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center p-6">
-        <div className="bg-white border border-slate-200 shadow-sm rounded-xl p-10 max-w-md w-full text-center space-y-4">
-          <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mx-auto text-2xl">
+        <div className="bg-white border border-slate-200 shadow-sm p-10 max-w-md w-full text-center space-y-4">
+          <div className="w-14 h-14 bg-green-100 flex items-center justify-center mx-auto text-2xl">
             ✅
           </div>
           <h2 className="text-lg font-bold text-slate-800">PR Submitted</h2>
           <p className="text-sm text-slate-600">
             Your Purchase Request has been successfully submitted.
           </p>
-          <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-left space-y-1 text-sm">
+          <div className="bg-slate-50 border border-slate-200 px-4 py-3 text-left space-y-1 text-sm">
             <div className="flex justify-between">
               <span className="text-slate-500">PR No.</span>
               <span className="font-mono font-semibold text-slate-800">{submitted.prNo}</span>
@@ -674,13 +674,13 @@ export default function CreatePRPage() {
           <div className="flex gap-3 justify-center pt-2">
             <button
               onClick={handleReset}
-              className="px-5 py-2 text-sm rounded-lg bg-green-600 text-white font-medium hover:bg-green-500 transition-colors"
+              className="px-5 py-2 text-sm bg-green-600 text-white font-medium hover:bg-green-500 transition-colors"
             >
               Create Another PR
             </button>
             <button
               onClick={() => router.push("/inventory")}
-              className="px-5 py-2 text-sm rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+              className="px-5 py-2 text-sm border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
             >
               Back to Dashboard
             </button>
@@ -701,7 +701,7 @@ export default function CreatePRPage() {
           {/* Download Template */}
           <button
             onClick={handleDownloadTemplate}
-            className="flex items-center gap-2 px-4 py-2.5 text-sm rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-sm transition-colors"
+            className="flex items-center gap-2 px-4 py-2.5 text-sm border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-sm transition-colors"
           >
             <span>⬇</span>
             Download Template
@@ -711,7 +711,7 @@ export default function CreatePRPage() {
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            className="flex items-center gap-2 px-4 py-2.5 text-sm rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-sm transition-colors disabled:opacity-60"
+            className="flex items-center gap-2 px-4 py-2.5 text-sm border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-sm transition-colors disabled:opacity-60"
           >
             {uploading
               ? <span className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
@@ -732,7 +732,7 @@ export default function CreatePRPage() {
           <button
             onClick={handleSubmit}
             disabled={submitting}
-            className="flex items-center gap-2 px-6 py-2.5 text-sm rounded-lg bg-green-600 text-white font-semibold hover:bg-green-500 shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-6 py-2.5 text-sm bg-green-600 text-white font-semibold hover:bg-green-500 shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {submitting
               ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -742,7 +742,7 @@ export default function CreatePRPage() {
         </div>
 
         {/* ── Section 1 — PR Details ────────────────────────────────────────── */}
-        <div className="bg-white border border-slate-200 shadow-sm rounded-lg overflow-hidden">
+        <div className="bg-white border border-slate-200 shadow-sm overflow-hidden">
           <SectionHeading number="1" title="PR Details" />
 
           <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
@@ -921,7 +921,7 @@ export default function CreatePRPage() {
         </div>
 
         {/* ── Section 2 — Line Items ────────────────────────────────────────── */}
-        <div className="bg-white border border-slate-200 shadow-sm rounded-lg overflow-hidden">
+        <div className="bg-white border border-slate-200 shadow-sm overflow-hidden">
           <SectionHeading number="2" title="Items" />
 
           <div className="overflow-x-auto">
@@ -1089,7 +1089,7 @@ export default function CreatePRPage() {
           <button
             onClick={handleSubmit}
             disabled={submitting}
-            className="flex items-center gap-2 px-8 py-3 text-sm rounded-lg bg-green-600 text-white font-semibold hover:bg-green-500 shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-8 py-3 text-sm bg-green-600 text-white font-semibold hover:bg-green-500 shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {submitting
               ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
