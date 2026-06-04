@@ -164,13 +164,6 @@ export default function ConfirmDialog({
           {/* Actions */}
           <div className="flex justify-end gap-2 pt-1">
             <button
-              ref={cancelRef}
-              onClick={onClose}
-              className="px-4 py-2 text-sm rounded-lg border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 transition-colors font-medium focus:outline-none focus:ring-2 focus:ring-slate-300"
-            >
-              {cancelLabel}
-            </button>
-            <button
               ref={confirmRef}
               onClick={handleConfirm}
               className={`px-4 py-2 text-sm rounded-lg border font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 ${CONFIRM_BTN[variant]} ${
@@ -180,6 +173,13 @@ export default function ConfirmDialog({
               }`}
             >
               {confirmLabel}
+            </button>
+            <button
+              ref={cancelRef}
+              onClick={onClose}
+              className="px-4 py-2 text-sm rounded-lg border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 transition-colors font-medium focus:outline-none focus:ring-2 focus:ring-slate-300"
+            >
+              {cancelLabel}
             </button>
           </div>
 
