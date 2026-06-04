@@ -210,31 +210,24 @@ export default function PRReportPage() {
   // Export
   const [exporting, setExporting] = useState(false);
 
-  // ── Computed delivery/distribution totals per item (from Section 3 data) ──
-  // Used to populate Section 2 Qty Delivered / Qty Distributed / Remaining.
-  //
-  // qtyDelivered[itemNo]   = sum of unique (itemNo, deliveryRef) QtyDelivered values
-  //                          (deduplicates split-delivery rows that share the same value)
-  // qtyDistributed[itemNo] = sum of all QtyIssued for that item (equals qtyDelivered
-  //                          when all distributions are fully recorded)
-
-  const { qtyDelivered, qtyDistributed } = useMemo(() => {
-    const delivered: Record<number, number>    = {};
-    const distributed: Record<number, number>  = {};
-    const seen = new Set<string>();
-
-    for (const d of report?.distributions ?? []) {
-      // Qty Distributed — straightforward sum of QtyIssued
-      distributed[d.itemNo] = (distributed[d.itemNo] ?? 0) + d.qtyIssued;
-
-      // Qty Delivered — one QtyDelivered per (itemNo, deliveryRef) to avoid double-counting
-      const key = `${d.itemNo}-${d.deliveryRef}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        delivered[d.itemNo] = (delivered[d.itemNo] ?? 0) + d.qtyDelivered;
-      }
+  // ── Qty Delivered — sourced from deliveryItems (independent of distributions) ──
+  // This fixes the bug where deliveries without distributions showed zero qty.
+  // qtyDelivered[itemNo] = sum of QtyDelivered across all delivery batches for that item.
+  const qtyDelivered = useMemo(() => {
+    const delivered: Record<number, number> = {};
+    for (const di of report?.deliveryItems ?? []) {
+      delivered[di.itemNo] = (delivered[di.itemNo] ?? 0) + di.qtyDelivered;
     }
-    return { qtyDelivered: delivered, qtyDistributed: distributed };
+    return delivered;
+  }, [report]);
+
+  // ── Qty Distributed — from distribution records (may be 0 if not yet distributed) ──
+  const qtyDistributed = useMemo(() => {
+    const distributed: Record<number, number> = {};
+    for (const d of report?.distributions ?? []) {
+      distributed[d.itemNo] = (distributed[d.itemNo] ?? 0) + d.qtyIssued;
+    }
+    return distributed;
   }, [report]);
 
   // ── Auth guard ─────────────────────────────────────────────────────────────
@@ -463,7 +456,8 @@ export default function PRReportPage() {
                 {(() => {
                   const totalOrdered   = pr.items.reduce((s, i) => s + i.quantity, 0);
                   const totalDelivered = Object.values(qtyDelivered).reduce((s, v) => s + v, 0);
-                  const deliveryCount  = new Set(report!.distributions.map((d) => d.deliveryRef)).size;
+                  // Delivery count from deliveryItems — works even when distributions are absent
+                  const deliveryCount  = new Set(report!.deliveryItems.map((d) => d.deliveryRef)).size;
                   const pct            = totalOrdered > 0
                     ? Math.round((totalDelivered / totalOrdered) * 100)
                     : 0;

@@ -57,9 +57,10 @@ public sealed class PRReportService : IPRReportService
 
         PRResponseDto prDto = MapToPRResponse(pr);
 
-        List<PRReportDistributionDto> distributions = BuildDistributionRows(deliveries);
+        List<PRReportDistributionDto>  distributions = BuildDistributionRows(deliveries);
+        List<PRReportDeliveryItemDto>  deliveryItems  = BuildDeliveryItemRows(deliveries);
 
-        return ServiceResult<PRReportDto>.Ok(new PRReportDto(prDto, distributions));
+        return ServiceResult<PRReportDto>.Ok(new PRReportDto(prDto, distributions, deliveryItems));
     }
 
     // ── ExportReportAsync ──────────────────────────────────────────────────────
@@ -153,6 +154,30 @@ public sealed class PRReportService : IPRReportService
                     i.Description, i.Unit, i.Quantity,
                     i.UnitCost, i.TotalCost, i.ItemType))
                 .ToList());
+
+    /// <summary>
+    /// Builds one row per DeliveryItem — no dependency on distributions.
+    /// Used to compute qty-delivered even when no distributions exist yet.
+    /// </summary>
+    private static List<PRReportDeliveryItemDto> BuildDeliveryItemRows(
+        IReadOnlyList<Delivery> deliveries)
+    {
+        List<PRReportDeliveryItemDto> rows = new();
+
+        foreach (Delivery delivery in deliveries)
+        {
+            foreach (DeliveryItem di in delivery.Items)
+            {
+                rows.Add(new PRReportDeliveryItemDto(
+                    ItemNo:      di.PRItem?.ItemNo ?? 0,
+                    DeliveryRef:  delivery.DeliveryRef,
+                    DeliveryDate: delivery.DeliveryDate,
+                    QtyDelivered: di.QtyDelivered));
+            }
+        }
+
+        return rows.OrderBy(r => r.ItemNo).ThenBy(r => r.DeliveryDate).ToList();
+    }
 
     private static List<PRReportDistributionDto> BuildDistributionRows(
         IReadOnlyList<Delivery> deliveries)

@@ -172,10 +172,20 @@ export interface PRReportDistributionResponse {
   remarks: string | null;
 }
 
+/** Mirrors PRReportDeliveryItemDto — one row per DeliveryItem, no distributions required */
+export interface PRReportDeliveryItemResponse {
+  itemNo: number;
+  deliveryRef: string;
+  deliveryDate: string;   // "YYYY-MM-DD"
+  qtyDelivered: number;
+}
+
 /** Mirrors PRReportDto */
 export interface PRReportResponse {
   pr: PRResponse;
   distributions: PRReportDistributionResponse[];
+  /** Delivery items — source of truth for qty delivered, independent of distributions */
+  deliveryItems: PRReportDeliveryItemResponse[];
 }
 
 /** Mirrors DeliverySummaryDto — lightweight list record with no items */
