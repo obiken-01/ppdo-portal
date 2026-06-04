@@ -366,17 +366,11 @@ export default function ItemLedgerPage() {
                       </td>
                     </tr>
                   ) : (
-                    table.getRowModel().rows.map((row, i) => {
-                      const status = getStatus(row.original);
-                      return (
+                    table.getRowModel().rows.map((row, i) => (
                         <tr
                           key={row.id}
                           className={`transition-colors ${
-                            status === "out-of-stock"
-                              ? "bg-danger-100 hover:bg-red-100"
-                              : status === "low"
-                              ? "bg-amber-50 hover:bg-amber-100"
-                              : i % 2 === 1
+                            i % 2 === 1
                               ? "bg-slate-50 hover:bg-green-50"
                               : "bg-white hover:bg-green-50"
                           }`}
@@ -387,8 +381,7 @@ export default function ItemLedgerPage() {
                             </td>
                           ))}
                         </tr>
-                      );
-                    })
+                    ))
                   )}
                 </tbody>
               </table>
