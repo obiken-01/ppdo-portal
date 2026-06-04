@@ -80,120 +80,175 @@ function StatCell({ label, value, accent }: { label: string; value: string; acce
 }
 
 // ---------------------------------------------------------------------------
-// Distribution Form (shown inline per delivery batch)
+// Distribution Form — supports split distribution across multiple divisions
 // ---------------------------------------------------------------------------
 
-interface DistFormState {
-  deliveryItemId: string;
-  qty:            string;
-  dateIssued:     string;
-  issuedBy:       string;
-  division:       string;
-  remarks:        string;
+interface SplitRow {
+  _id:       string;
+  division:  string;
+  qty:       string;
+  issuedBy:  string;
+  dateIssued: string;
+  remarks:   string;
+}
+
+function blankRow(date: string): SplitRow {
+  return { _id: `${Date.now()}-${Math.random()}`, division: "", qty: "", issuedBy: "", dateIssued: date, remarks: "" };
 }
 
 function DistributeForm({
   batch, onSubmit, onCancel, submitting,
 }: {
   batch:      DeliveryItemBreakdownResponse;
-  onSubmit:   (form: DistFormState) => void;
+  onSubmit:   (rows: SplitRow[]) => void;
   onCancel:   () => void;
   submitting: boolean;
 }) {
-  const [form, setForm] = useState<DistFormState>({
-    deliveryItemId: batch.deliveryItemId,
-    qty:            "",
-    dateIssued:     TODAY,
-    issuedBy:       "",
-    division:       "",
-    remarks:        "",
-  });
+  const [rows, setRows] = useState<SplitRow[]>([blankRow(TODAY)]);
 
-  function patch<K extends keyof DistFormState>(key: K, val: DistFormState[K]) {
-    setForm((f) => ({ ...f, [key]: val }));
+  function patchRow(id: string, patch: Partial<SplitRow>) {
+    setRows((prev) => prev.map((r) => r._id === id ? { ...r, ...patch } : r));
   }
 
-  const qtyNum    = parseFloat(form.qty) || 0;
-  const overLimit = qtyNum > batch.qtyAvailable;
-  const canSubmit = qtyNum > 0 && !overLimit && form.issuedBy.trim() && form.division;
+  function addRow() {
+    setRows((prev) => [...prev, blankRow(rows[0]?.dateIssued ?? TODAY)]);
+  }
+
+  function removeRow(id: string) {
+    setRows((prev) => prev.filter((r) => r._id !== id));
+  }
+
+  const totalQty   = rows.reduce((s, r) => s + (parseFloat(r.qty) || 0), 0);
+  const overLimit  = totalQty > batch.qtyAvailable;
+  const hasInvalid = rows.some((r) => !r.division || !r.issuedBy.trim() || !(parseFloat(r.qty) > 0));
+  const canSubmit  = rows.length > 0 && !overLimit && !hasInvalid;
 
   return (
     <div className="bg-green-50 border border-green-200 p-4 space-y-3">
-      <p className="text-xs font-semibold text-green-700 uppercase tracking-wide">
-        Distribute from {batch.deliveryRef} — {batch.qtyAvailable} {batch.qtyAvailable === 1 ? "unit" : "units"} available
-      </p>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {/* Qty */}
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-slate-500">Qty to Distribute *</label>
-          <input
-            type="number" min={0.01} step="any" max={batch.qtyAvailable}
-            value={form.qty}
-            onChange={(e) => patch("qty", e.target.value)}
-            placeholder={`Max ${batch.qtyAvailable}`}
-            className={`w-full px-2.5 py-1.5 text-sm border focus:outline-none focus:ring-1 focus:ring-green-500 bg-white ${
-              overLimit ? "border-red-400" : "border-slate-200"
-            }`}
-          />
-          {overLimit && <p className="text-xs text-red-500">Exceeds available ({batch.qtyAvailable})</p>}
-        </div>
 
-        {/* Date */}
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-slate-500">Date Issued *</label>
-          <input
-            type="date" value={form.dateIssued}
-            onChange={(e) => patch("dateIssued", e.target.value)}
-            className="w-full px-2.5 py-1.5 text-sm border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-green-500"
-          />
-        </div>
-
-        {/* Issued To */}
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-slate-500">Issued To (Name) *</label>
-          <input
-            type="text" value={form.issuedBy}
-            onChange={(e) => patch("issuedBy", e.target.value)}
-            placeholder="Recipient name"
-            className="w-full px-2.5 py-1.5 text-sm border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-green-500"
-          />
-        </div>
-
-        {/* Division */}
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-slate-500">Division *</label>
-          <select
-            value={form.division}
-            onChange={(e) => patch("division", e.target.value)}
-            className="w-full px-2.5 py-1.5 text-sm border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-green-500"
-          >
-            <option value="">— Select —</option>
-            {DIVISIONS.map((d) => <option key={d} value={d}>{d}</option>)}
-          </select>
-        </div>
-
-        {/* Remarks — full width */}
-        <div className="col-span-2 md:col-span-4 space-y-1">
-          <label className="text-xs font-medium text-slate-500">Remarks (optional)</label>
-          <input
-            type="text" value={form.remarks}
-            onChange={(e) => patch("remarks", e.target.value)}
-            placeholder="Optional notes"
-            className="w-full px-2.5 py-1.5 text-sm border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-green-500"
-          />
-        </div>
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-green-700 uppercase tracking-wide">
+          Distribute from {batch.deliveryRef} — {batch.qtyAvailable} {batch.qtyAvailable === 1 ? "unit" : "units"} available
+        </p>
+        <button
+          onClick={addRow}
+          className="flex items-center gap-1 px-2.5 py-1 text-xs border border-green-400 text-green-700 hover:bg-green-100 transition-colors"
+        >
+          + Add Division
+        </button>
       </div>
 
-      <div className="flex items-center gap-2 pt-1">
+      {/* Column headers */}
+      <div className="grid grid-cols-12 gap-2 text-xs font-medium text-slate-500 px-1">
+        <span className="col-span-2">Division *</span>
+        <span className="col-span-2">Qty *</span>
+        <span className="col-span-3">Issued To (Name) *</span>
+        <span className="col-span-2">Date Issued *</span>
+        <span className="col-span-2">Remarks</span>
+        <span className="col-span-1" />
+      </div>
+
+      {/* Split rows */}
+      <div className="space-y-2">
+        {rows.map((row) => {
+          const rowQty     = parseFloat(row.qty) || 0;
+          const rowInvalid = !row.division || !row.issuedBy.trim() || !(rowQty > 0);
+          return (
+            <div key={row._id} className="grid grid-cols-12 gap-2 items-start">
+              {/* Division */}
+              <div className="col-span-2">
+                <select
+                  value={row.division}
+                  onChange={(e) => patchRow(row._id, { division: e.target.value })}
+                  className="w-full px-2 py-1.5 text-xs border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-green-500"
+                >
+                  <option value="">— Select —</option>
+                  {DIVISIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
+
+              {/* Qty */}
+              <div className="col-span-2">
+                <input
+                  type="number" min={0.01} step="any"
+                  value={row.qty}
+                  onChange={(e) => patchRow(row._id, { qty: e.target.value })}
+                  placeholder="0"
+                  className="w-full px-2 py-1.5 text-xs border border-slate-200 bg-white text-right focus:outline-none focus:ring-1 focus:ring-green-500"
+                />
+              </div>
+
+              {/* Issued To */}
+              <div className="col-span-3">
+                <input
+                  type="text"
+                  value={row.issuedBy}
+                  onChange={(e) => patchRow(row._id, { issuedBy: e.target.value })}
+                  placeholder="Recipient name"
+                  className="w-full px-2 py-1.5 text-xs border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-green-500"
+                />
+              </div>
+
+              {/* Date */}
+              <div className="col-span-2">
+                <input
+                  type="date"
+                  value={row.dateIssued}
+                  onChange={(e) => patchRow(row._id, { dateIssued: e.target.value })}
+                  className="w-full px-2 py-1.5 text-xs border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-green-500"
+                />
+              </div>
+
+              {/* Remarks */}
+              <div className="col-span-2">
+                <input
+                  type="text"
+                  value={row.remarks}
+                  onChange={(e) => patchRow(row._id, { remarks: e.target.value })}
+                  placeholder="Optional"
+                  className="w-full px-2 py-1.5 text-xs border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-green-500"
+                />
+              </div>
+
+              {/* Remove */}
+              <div className="col-span-1 flex justify-center pt-1.5">
+                <button
+                  onClick={() => removeRow(row._id)}
+                  disabled={rows.length === 1}
+                  className="text-slate-300 hover:text-red-400 disabled:opacity-20 transition-colors text-sm"
+                  title="Remove row"
+                >✕</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Total / validation */}
+      <div className="flex items-center gap-4 text-xs pt-1">
+        <span className={`font-semibold tabular-nums ${overLimit ? "text-red-500" : "text-slate-700"}`}>
+          Total: {totalQty} / {batch.qtyAvailable} available
+          {overLimit && " — exceeds available"}
+        </span>
+        {rows.length > 1 && (
+          <span className="text-slate-400">
+            {rows.length} divisions
+          </span>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div className="flex items-center gap-2 border-t border-green-200 pt-3">
         <button
-          onClick={() => onSubmit(form)}
+          onClick={() => onSubmit(rows)}
           disabled={!canSubmit || submitting}
           className="flex items-center gap-1.5 px-4 py-2 text-sm bg-green-600 text-white font-medium hover:bg-green-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {submitting
             ? <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
             : "✓"}
-          {submitting ? "Saving…" : "Confirm Distribution"}
+          {submitting ? "Saving…" : rows.length > 1 ? `Confirm ${rows.length} Distributions` : "Confirm Distribution"}
         </button>
         <button
           onClick={onCancel}
@@ -289,22 +344,33 @@ export default function DistributionPage() {
     } finally { setSummaryLoading(false); }
   }
 
-  // Submit distribution
-  async function handleDistribute(form: DistFormState) {
+  // Submit distribution — supports split (multiple rows per batch)
+  async function handleDistribute(rows: SplitRow[]) {
     setSubmitting(true);
     try {
-      const payload: CreateDistributionStandaloneRequest = {
-        deliveryItemId: form.deliveryItemId,
-        division:       form.division,
-        qtyIssued:      parseFloat(form.qty),
-        dateIssued:     form.dateIssued,
-        issuedBy:       form.issuedBy.trim(),
-        remarks:        form.remarks.trim() || null,
-      };
-      await api.post<DistributionCreatedResponse>("/distributions", payload);
-      toast.success("Distribution recorded", `${payload.qtyIssued} units issued to ${payload.division}.`);
+      // Submit each split row sequentially — stops on first error
+      for (const row of rows) {
+        const payload: CreateDistributionStandaloneRequest = {
+          deliveryItemId: activeDeliveryItemId!,
+          division:       row.division,
+          qtyIssued:      parseFloat(row.qty),
+          dateIssued:     row.dateIssued,
+          issuedBy:       row.issuedBy.trim(),
+          remarks:        row.remarks.trim() || null,
+        };
+        await api.post<DistributionCreatedResponse>("/distributions", payload);
+      }
+
+      const totalQty = rows.reduce((s, r) => s + (parseFloat(r.qty) || 0), 0);
+      const divLabel = rows.length === 1
+        ? rows[0].division
+        : `${rows.length} divisions`;
+      toast.success(
+        "Distribution recorded",
+        `${totalQty} units issued to ${divLabel}.`
+      );
       setActiveDeliveryItemId(null);
-      // Reload breakdown to show updated qtys
+      // Reload breakdown to reflect updated available qty
       if (selectedStockNo && summary) {
         await loadSummary(selectedStockNo, summary.description);
       }
@@ -468,7 +534,7 @@ export default function DistributionPage() {
                           <div className="px-5 pb-4">
                             <DistributeForm
                               batch={batch}
-                              onSubmit={handleDistribute}
+                              onSubmit={(rows) => void handleDistribute(rows)}
                               onCancel={() => setActiveDeliveryItemId(null)}
                               submitting={submitting}
                             />
