@@ -69,4 +69,27 @@ public sealed class InventoryRepository : IInventoryRepository
             })
             .ToList();
     }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlySet<string>> GetStockNosDeliveredInRangeAsync(
+        DateOnly dateFrom,
+        DateOnly dateTo,
+        Division? division = null,
+        CancellationToken cancellationToken = default)
+    {
+        List<string> stockNos =
+            await (from d  in _context.Deliveries
+                   join di in _context.DeliveryItems        on d.Id        equals di.DeliveryId
+                   join pi in _context.PRItems              on di.PRItemId equals pi.Id
+                   join pr in _context.PurchaseRequests     on pi.PRId     equals pr.Id
+                   where d.DeliveryDate >= dateFrom
+                      && d.DeliveryDate <= dateTo
+                      && (division == null || pr.Division == division)
+                      && pi.StockNo != null && pi.StockNo != ""
+                   select pi.StockNo!)
+                  .Distinct()
+                  .ToListAsync(cancellationToken);
+
+        return new HashSet<string>(stockNos, StringComparer.OrdinalIgnoreCase);
+    }
 }

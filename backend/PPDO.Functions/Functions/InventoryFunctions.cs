@@ -64,8 +64,23 @@ public sealed class InventoryFunctions
         if (caller is null)
             return req.CreateResponse(HttpStatusCode.Unauthorized);
 
+        // Optional delivery date range — powers the "received in quarter" filter.
+        DateOnly? deliveryDateFrom = null;
+        DateOnly? deliveryDateTo   = null;
+
+        string? fromParam = req.Query["deliveryDateFrom"];
+        string? toParam   = req.Query["deliveryDateTo"];
+
+        if (!string.IsNullOrWhiteSpace(fromParam)
+            && DateOnly.TryParse(fromParam, out DateOnly parsedFrom))
+            deliveryDateFrom = parsedFrom;
+
+        if (!string.IsNullOrWhiteSpace(toParam)
+            && DateOnly.TryParse(toParam, out DateOnly parsedTo))
+            deliveryDateTo = parsedTo;
+
         IReadOnlyList<ItemLedgerRowDto> result =
-            await _service.GetItemLedgerAsync(caller, cancellationToken);
+            await _service.GetItemLedgerAsync(caller, deliveryDateFrom, deliveryDateTo, cancellationToken);
         return await OkJson(req, result, cancellationToken);
     }
 

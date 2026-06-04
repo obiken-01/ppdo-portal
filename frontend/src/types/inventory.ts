@@ -112,6 +112,14 @@ export interface PRSummaryResponse {
   totalAmount: number;
   status: string;
   createdAt: string;
+  // Filter fields
+  fund: string;
+  aipCode: string | null;
+  accountNo: string | null;
+  accountTitle: string | null;
+  program: string | null;
+  project: string | null;
+  activity: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -164,10 +172,20 @@ export interface PRReportDistributionResponse {
   remarks: string | null;
 }
 
+/** Mirrors PRReportDeliveryItemDto — one row per DeliveryItem, no distributions required */
+export interface PRReportDeliveryItemResponse {
+  itemNo: number;
+  deliveryRef: string;
+  deliveryDate: string;   // "YYYY-MM-DD"
+  qtyDelivered: number;
+}
+
 /** Mirrors PRReportDto */
 export interface PRReportResponse {
   pr: PRResponse;
   distributions: PRReportDistributionResponse[];
+  /** Delivery items — source of truth for qty delivered, independent of distributions */
+  deliveryItems: PRReportDeliveryItemResponse[];
 }
 
 /** Mirrors DeliverySummaryDto — lightweight list record with no items */
@@ -247,10 +265,13 @@ export interface InventoryStatsResponse {
 export interface ItemLedgerRowResponse {
   stockNo: string;
   description: string;
+  category: string | null;
   unit: string;
-  totalOrdered: number;
-  totalDelivered: number;
-  totalDistributed: number;
+  unitCost: number;
+  itemType: string | null;
+  qtyOrdered: number;
+  qtyDelivered: number;
+  qtyDistributed: number;
   onHand: number;
   reorderQty: number;
   isLowStock: boolean;
@@ -284,4 +305,71 @@ export interface PRResponse {
   createdAt: string;
   updatedAt: string;
   items: PRItemResponse[];
+}
+
+// ---------------------------------------------------------------------------
+// Distribution
+// ---------------------------------------------------------------------------
+
+/** Mirrors ExistingDistributionDto */
+export interface ExistingDistributionResponse {
+  id: string;
+  issueRef: string;
+  division: string;
+  qtyIssued: number;
+  dateIssued: string;
+  issuedBy: string;
+  remarks: string | null;
+}
+
+/** Mirrors DeliveryItemBreakdownDto */
+export interface DeliveryItemBreakdownResponse {
+  deliveryItemId: string;
+  deliveryRef: string;
+  deliveryDate: string;
+  prId: string;
+  prNo: string;
+  qtyDelivered: number;
+  qtyDistributed: number;
+  qtyAvailable: number;
+  distributions: ExistingDistributionResponse[];
+}
+
+/** Mirrors ItemDistributionSummaryDto — returned by GET /api/distributions/item/{stockNo} */
+export interface ItemDistributionSummaryResponse {
+  stockNo: string;
+  description: string;
+  category: string | null;
+  unit: string;
+  totalOrdered: number;
+  totalDelivered: number;
+  totalDistributed: number;
+  onHand: number;
+  deliveryItems: DeliveryItemBreakdownResponse[];
+}
+
+/** Mirrors CreateStandaloneDistributionDto */
+export interface CreateDistributionStandaloneRequest {
+  deliveryItemId: string;
+  division: string;
+  qtyIssued: number;
+  dateIssued: string;   // "YYYY-MM-DD"
+  issuedBy: string;
+  remarks: string | null;
+}
+
+/** Mirrors DistributionCreatedDto */
+export interface DistributionCreatedResponse {
+  id: string;
+  issueRef: string;
+  deliveryItemId: string;
+  deliveryRef: string;
+  prNo: string;
+  stockNo: string;
+  description: string;
+  division: string;
+  qtyIssued: number;
+  dateIssued: string;
+  issuedBy: string;
+  remarks: string | null;
 }

@@ -244,9 +244,11 @@ public sealed class ExcelService : IExcelService
         Pair("PR No.:", pr.PRNo, "Status:", pr.Status.ToString(), valLBold: true, valRBold: true);
 
         Pair("PR Date",           pr.PRDate.ToShortDateString(),
-             "Department",        pr.Department);
-        Pair("Division",          pr.Division.ToString(),
-             "Fund",              pr.Fund);
+             "Quarter",           ToQuarter(pr.PRDate));
+        Pair("Department",        pr.Department,
+             "Division",          pr.Division.ToString());
+        Pair("Fund",              pr.Fund,
+             "",                  "");
         Pair("Requested By",      pr.RequestedBy,
              "Position",          pr.Position);
         Pair("Approved By",       pr.ApprovedBy ?? "—",
@@ -259,25 +261,6 @@ public sealed class ExcelService : IExcelService
         FullRow("Activity",       pr.Activity     ?? "—", wrap: true);
         Pair("SAI No.",           pr.SAINo   ?? "—",
              "ALOBS No.",         pr.ALOBSNo ?? "—");
-
-        // blank spacer row
-        r++;
-
-        // Total Amount row — A:H label | I:J value
-        ws.Range(r, 1, r, 8).Merge();
-        ws.Cell(r, 1).Value = "TOTAL AMOUNT";
-        ws.Cell(r, 1).Style.Font.SetBold(true).Font.SetFontSize(11)
-            .Fill.SetBackgroundColor(LightGreen)
-            .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Right);
-        ws.Range(r, 9, r, 10).Merge();
-        ws.Cell(r, 9).Value = pr.TotalAmount;
-        ws.Cell(r, 9).Style.Font.SetBold(true).Font.SetFontSize(12)
-            .Font.SetFontColor(DarkGreen)
-            .Fill.SetBackgroundColor(LightGreen)
-            .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Right)
-            .NumberFormat.SetFormat("₱#,##0.00");
-        ws.Row(r).Height = 22;
-        r++;
 
         // ── Delivery summary bar ──────────────────────────────────────────────
         // A:B = Delivery count (amber) | C:E = Status (light green)
@@ -314,7 +297,7 @@ public sealed class ExcelService : IExcelService
 
             // Cell 3 — Fulfillment % (teal) F:H
             ws.Range(r, 6, r, 8).Merge();
-            ws.Cell(r, 6).Value = $"{pct}% fulfilled ({totalDelivered} / {totalOrdered} units)";
+            ws.Cell(r, 6).Value = $"{pct}% fulfilled ({(int)totalDelivered} / {(int)totalOrdered} units)";
             ws.Cell(r, 6).Style.Font.SetBold(true).Font.SetFontSize(10)
                 .Fill.SetBackgroundColor(TealBg)
                 .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
@@ -958,4 +941,15 @@ public sealed class ExcelService : IExcelService
 
     private static string? NullIfBlank(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    /// <summary>
+    /// Returns the fiscal quarter label for a given date.
+    /// Q1 = Jan–Mar, Q2 = Apr–Jun, Q3 = Jul–Sep, Q4 = Oct–Dec.
+    /// Example: 2026-05-15 → "Q2-2026"
+    /// </summary>
+    private static string ToQuarter(DateOnly date)
+    {
+        int q = (date.Month - 1) / 3 + 1;
+        return $"Q{q}-{date.Year}";
+    }
 }

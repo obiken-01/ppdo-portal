@@ -26,7 +26,14 @@ public interface IInventoryService
     /// Staff/Observer: only items appearing in their division's PRs are included.
     /// Items with no PR activity are excluded (nothing to track yet).
     /// </summary>
+    /// <param name="deliveryDateFrom">
+    /// If set together with <paramref name="deliveryDateTo"/>, only items that had
+    /// at least one delivery within the date range are included.
+    /// All-time quantity totals are still shown for the matching items.
+    /// </param>
     Task<IReadOnlyList<ItemLedgerRowDto>> GetItemLedgerAsync(
         User requester,
+        DateOnly? deliveryDateFrom = null,
+        DateOnly? deliveryDateTo   = null,
         CancellationToken cancellationToken = default);
 }

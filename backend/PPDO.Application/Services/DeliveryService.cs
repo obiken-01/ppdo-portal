@@ -184,14 +184,15 @@ public sealed class DeliveryService : IDeliveryService
                 return ServiceResult<DeliveryResponseDto>.BadRequest(
                     $"QtyDelivered must be greater than zero for PRItemId {item.PRItemId}.");
 
-            if (item.Distributions is null || item.Distributions.Count == 0)
-                return ServiceResult<DeliveryResponseDto>.BadRequest(
-                    $"Each delivery item must have at least one distribution (PRItemId {item.PRItemId}).");
-
-            decimal totalIssued = item.Distributions.Sum(d => d.QtyIssued);
-            if (totalIssued != item.QtyDelivered)
-                return ServiceResult<DeliveryResponseDto>.BadRequest(
-                    $"Sum of QtyIssued ({totalIssued}) must equal QtyDelivered ({item.QtyDelivered}) for PRItemId {item.PRItemId}.");
+            // If inline distributions are provided, their qty sum must match QtyDelivered exactly.
+            if (item.Distributions is { Count: > 0 })
+            {
+                decimal distSum = item.Distributions.Sum(d => d.QtyIssued);
+                if (distSum != item.QtyDelivered)
+                    return ServiceResult<DeliveryResponseDto>.BadRequest(
+                        $"Distribution quantities ({distSum}) do not match QtyDelivered ({item.QtyDelivered}) " +
+                        $"for PRItemId {item.PRItemId}. They must be equal.");
+            }
         }
 
         // Generate DeliveryRef — retry on collision (statistically negligible).

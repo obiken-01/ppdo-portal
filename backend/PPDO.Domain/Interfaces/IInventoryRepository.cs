@@ -23,6 +23,19 @@ public interface IInventoryRepository
     Task<IReadOnlyList<ItemStockLevel>> GetItemStockLevelsAsync(
         Division? division,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns the distinct StockNos that had at least one delivery record with
+    /// a DeliveryDate within [from, to] (inclusive), optionally scoped to a division.
+    /// Used to power the "received in quarter" filter on the Stock Overview page.
+    /// Stock level totals are computed separately — this only determines which
+    /// items appear in the filtered result.
+    /// </summary>
+    Task<IReadOnlySet<string>> GetStockNosDeliveredInRangeAsync(
+        DateOnly dateFrom,
+        DateOnly dateTo,
+        Division? division = null,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>

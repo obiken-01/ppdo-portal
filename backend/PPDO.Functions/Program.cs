@@ -97,6 +97,7 @@ var host = new HostBuilder()
         services.AddScoped<IItemService, ItemService>();
         services.AddScoped<IPurchaseRequestService, PurchaseRequestService>();
         services.AddScoped<IDeliveryService, DeliveryService>();
+        services.AddScoped<IDistributionService, DistributionService>();
         services.AddScoped<IPRReportService, PRReportService>();
         services.AddScoped<IInventoryService, InventoryService>();
     })

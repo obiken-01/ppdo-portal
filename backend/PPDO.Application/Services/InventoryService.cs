@@ -105,12 +105,30 @@ public sealed class InventoryService : IInventoryService
     /// <inheritdoc />
     public async Task<IReadOnlyList<ItemLedgerRowDto>> GetItemLedgerAsync(
         User requester,
+        DateOnly? deliveryDateFrom = null,
+        DateOnly? deliveryDateTo   = null,
         CancellationToken cancellationToken = default)
     {
         Division? division = ScopeFor(requester);
 
         IReadOnlyList<ItemStockLevel> stockLevels =
             await _inventory.GetItemStockLevelsAsync(division, cancellationToken);
+
+        // If a delivery date range is specified, restrict to items that had at
+        // least one delivery within that window. Totals remain all-time figures.
+        if (deliveryDateFrom.HasValue && deliveryDateTo.HasValue)
+        {
+            IReadOnlySet<string> deliveredStockNos =
+                await _inventory.GetStockNosDeliveredInRangeAsync(
+                    dateFrom: deliveryDateFrom.Value,
+                    dateTo:   deliveryDateTo.Value,
+                    division: division,
+                    cancellationToken: cancellationToken);
+
+            stockLevels = stockLevels
+                .Where(l => deliveredStockNos.Contains(l.StockNo))
+                .ToList();
+        }
 
         IReadOnlyList<ItemMaster> catalog = await _items.GetAllAsync(cancellationToken);
         Dictionary<string, ItemMaster> catalogMap =
