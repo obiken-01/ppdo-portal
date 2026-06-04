@@ -248,9 +248,9 @@ export interface ItemLedgerRowResponse {
   stockNo: string;
   description: string;
   unit: string;
-  totalOrdered: number;
-  totalDelivered: number;
-  totalDistributed: number;
+  qtyOrdered: number;
+  qtyDelivered: number;
+  qtyDistributed: number;
   onHand: number;
   reorderQty: number;
   isLowStock: boolean;

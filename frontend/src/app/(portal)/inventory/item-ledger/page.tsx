@@ -164,7 +164,7 @@ export default function ItemLedgerPage() {
       ),
     },
     {
-      accessorKey: "totalOrdered",
+      accessorKey: "qtyOrdered",
       header: "Ordered",
       size: 88,
       enableColumnFilter: false,
@@ -173,7 +173,7 @@ export default function ItemLedgerPage() {
       ),
     },
     {
-      accessorKey: "totalDelivered",
+      accessorKey: "qtyDelivered",
       header: "Delivered",
       size: 88,
       enableColumnFilter: false,
@@ -182,7 +182,7 @@ export default function ItemLedgerPage() {
       ),
     },
     {
-      accessorKey: "totalDistributed",
+      accessorKey: "qtyDistributed",
       header: "Distributed",
       size: 96,
       enableColumnFilter: false,
