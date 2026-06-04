@@ -297,7 +297,7 @@ public sealed class ExcelService : IExcelService
 
             // Cell 3 — Fulfillment % (teal) F:H
             ws.Range(r, 6, r, 8).Merge();
-            ws.Cell(r, 6).Value = $"{pct}% fulfilled ({totalDelivered} / {totalOrdered} units)";
+            ws.Cell(r, 6).Value = $"{pct}% fulfilled ({(int)totalDelivered} / {(int)totalOrdered} units)";
             ws.Cell(r, 6).Style.Font.SetBold(true).Font.SetFontSize(10)
                 .Fill.SetBackgroundColor(TealBg)
                 .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);

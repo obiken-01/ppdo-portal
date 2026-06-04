@@ -476,7 +476,7 @@ export default function PRReportPage() {
                         Status: {pr.status}
                       </div>
                       <div className="px-3 py-2.5 bg-teal-50 text-teal-700">
-                        {pct}% fulfilled ({fmt(totalDelivered)} / {fmt(totalOrdered)} units)
+                        {pct}% fulfilled ({Math.round(totalDelivered)} / {Math.round(totalOrdered)} units)
                       </div>
                       <div className="px-3 py-2.5 bg-slate-800 text-white tabular-nums">
                         Total: ₱{fmt(pr.totalAmount)}
