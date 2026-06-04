@@ -9,8 +9,8 @@
 
 | Version | Milestone | Status |
 |---|---|---|
-| v0.1 | Project Setup & Foundation | 🔄 In Progress |
-| v1.0 | Core Portal & Inventory Monitoring | 📋 Planned |
+| v0.1 | Project Setup & Foundation | Done |
+| v1.0 | Core Portal & Inventory Monitoring | 🔄 In Progress |
 | v1.1 | Employee Profiles | 📋 Planned |
 | v1.2 | Calendar & Announcements | 📋 Planned |
 
