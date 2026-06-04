@@ -360,6 +360,12 @@ export default function InventoryDashboardPage() {
           >
             <span>📊</span> PR Report
           </Link>
+          <Link
+            href="/inventory/distribution"
+            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded transition-colors"
+          >
+            <span>📦</span> Distribution
+          </Link>
         </div>
       </div>
 
