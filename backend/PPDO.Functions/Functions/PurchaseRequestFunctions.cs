@@ -22,7 +22,8 @@ namespace PPDO.Functions.Functions;
 ///   GET  /api/purchase-requests/{id}        — PR detail with line items
 ///   POST /api/purchase-requests             — submit new PR
 ///   PUT  /api/purchase-requests/{id}          — update PR (Admin only, status = Open)
-///   PUT  /api/purchase-requests/{id}/complete — mark PR as Completed (FullyDelivered only)
+///   PUT  /api/purchase-requests/{id}/complete   — mark PR as Completed (FullyDelivered only)
+///   PUT  /api/purchase-requests/{id}/uncomplete — revert PR to FullyDelivered (Completed only)
 ///   GET  /api/purchase-requests/template      — download blank PR import template (.xlsx)
 ///   POST /api/purchase-requests/import        — upload populated PR template → create PRs
 /// </summary>
@@ -202,6 +203,24 @@ public sealed class PurchaseRequestFunctions
 
         ServiceResult<PRSummaryDto> result =
             await _service.MarkCompletedAsync(caller, id, cancellationToken);
+        return await ToResponse(req, result, HttpStatusCode.OK, cancellationToken);
+    }
+
+    // ── PUT /api/purchase-requests/{id}/uncomplete ────────────────────────────
+
+    [Function("UnmarkPurchaseRequestCompleted")]
+    public async Task<HttpResponseData> UnmarkCompleted(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "purchase-requests/{id:guid}/uncomplete")]
+        HttpRequestData req,
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        User? caller = await _jwt.ValidateAsync(GetAuthHeader(req), cancellationToken);
+        if (caller is null)
+            return req.CreateResponse(HttpStatusCode.Unauthorized);
+
+        ServiceResult<PRSummaryDto> result =
+            await _service.UnmarkCompletedAsync(caller, id, cancellationToken);
         return await ToResponse(req, result, HttpStatusCode.OK, cancellationToken);
     }
 

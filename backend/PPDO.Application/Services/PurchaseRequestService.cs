@@ -291,6 +291,44 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         return ServiceResult<PRSummaryDto>.Ok(MapToSummary(pr));
     }
 
+    // ── UnmarkCompletedAsync ───────────────────────────────────────────────────
+
+    /// <inheritdoc />
+    public async Task<ServiceResult<PRSummaryDto>> UnmarkCompletedAsync(
+        User requester,
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await _permissions.CanAccessInventoryAsync(requester, cancellationToken))
+        {
+            _logger.LogWarning(
+                "Permission denied — user {UserId} attempted to unmark PR {PRId} without CanAccessInventory.",
+                requester.Id, id);
+            return ServiceResult<PRSummaryDto>.Forbidden(
+                "You do not have permission to access Inventory.");
+        }
+
+        PurchaseRequest? pr = await _prs.GetByIdAsync(id, cancellationToken);
+        if (pr is null)
+            return ServiceResult<PRSummaryDto>.NotFound($"Purchase Request {id} not found.");
+
+        if (pr.Status != PRStatus.Completed)
+            return ServiceResult<PRSummaryDto>.BadRequest(
+                $"Only Completed PRs can be reverted. Current status: {pr.Status}.");
+
+        pr.Status    = PRStatus.FullyDelivered;
+        pr.UpdatedAt = DateTime.UtcNow;
+
+        await _prs.UpdateAsync(pr, cancellationToken);
+        await _prs.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "PR status changed. PRNo: {PRNo}, OldStatus: {OldStatus}, NewStatus: {NewStatus}",
+            pr.PRNo, PRStatus.Completed, PRStatus.FullyDelivered);
+
+        return ServiceResult<PRSummaryDto>.Ok(MapToSummary(pr));
+    }
+
     // ── GetTemplateAsync ───────────────────────────────────────────────────────
 
     /// <inheritdoc />

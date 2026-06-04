@@ -83,4 +83,14 @@ public interface IPurchaseRequestService
         User requester,
         Guid id,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reverts a PR from Completed back to FullyDelivered.
+    /// Only valid when current status is Completed.
+    /// Requires CanAccessInventory.
+    /// </summary>
+    Task<ServiceResult<PRSummaryDto>> UnmarkCompletedAsync(
+        User requester,
+        Guid id,
+        CancellationToken cancellationToken = default);
 }
