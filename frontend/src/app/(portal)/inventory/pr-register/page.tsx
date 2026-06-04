@@ -22,6 +22,7 @@ import {
 } from "@tanstack/react-table";
 import api from "@/lib/api";
 import { useToast } from "@/components/ui/Toast";
+import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import type { MeResponse, PRSummaryResponse } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -76,8 +77,12 @@ export default function PRRegisterPage() {
   const [loading, setLoading]       = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  // Track which PR is being marked completed (shows spinner on that row)
-  const [completingId, setCompletingId] = useState<string | null>(null);
+  // Track which PR is being marked / unmarked (shows spinner on that row)
+  const [completingId, setCompletingId]     = useState<string | null>(null);
+  const [uncompletingId, setUncompletingId] = useState<string | null>(null);
+
+  // Confirm dialog state — null = closed
+  const [dialog, setDialog] = useState<ConfirmDialogProps | null>(null);
 
   const [searchInput, setSearchInput]   = useState("");
   const [globalFilter, setGlobalFilter] = useState("");
@@ -139,11 +144,20 @@ export default function PRRegisterPage() {
   // ── Mark Completed ─────────────────────────────────────────────────────────
 
   async function handleMarkCompleted(pr: PRSummaryResponse) {
-    if (!window.confirm(`Mark "${pr.prNo}" as Completed?\n\nThis cannot be undone.`)) return;
+    setDialog({
+      title:        "Mark as Completed?",
+      message:      `${pr.prNo} will be marked as Completed. It can still receive deliveries until confirmed. You can undo this at any time.`,
+      confirmLabel: "Mark Completed",
+      variant:      "primary",
+      onConfirm:    () => doMarkCompleted(pr),
+      onClose:      () => setDialog(null),
+    });
+  }
+
+  async function doMarkCompleted(pr: PRSummaryResponse) {
     setCompletingId(pr.id);
     try {
       await api.put(`/purchase-requests/${pr.id}/complete`);
-      // Optimistically update the row status in place — no full reload needed.
       setPRs((prev) =>
         prev.map((p) => p.id === pr.id ? { ...p, status: "Completed" } : p)
       );
@@ -155,6 +169,37 @@ export default function PRRegisterPage() {
       toast.error("Action failed", msg);
     } finally {
       setCompletingId(null);
+    }
+  }
+
+  // ── Unmark Completed ───────────────────────────────────────────────────────
+
+  async function handleUnmarkCompleted(pr: PRSummaryResponse) {
+    setDialog({
+      title:        "Revert to Fully Delivered?",
+      message:      `${pr.prNo} will be set back to Fully Delivered. The "Mark Completed" button will reappear on this row.`,
+      confirmLabel: "Yes, Revert",
+      variant:      "warning",
+      onConfirm:    () => doUnmarkCompleted(pr),
+      onClose:      () => setDialog(null),
+    });
+  }
+
+  async function doUnmarkCompleted(pr: PRSummaryResponse) {
+    setUncompletingId(pr.id);
+    try {
+      await api.put(`/purchase-requests/${pr.id}/uncomplete`);
+      setPRs((prev) =>
+        prev.map((p) => p.id === pr.id ? { ...p, status: "FullyDelivered" } : p)
+      );
+      toast.success("PR reverted", `${pr.prNo} has been set back to Fully Delivered.`);
+    } catch (e: unknown) {
+      const msg =
+        (e as { response?: { data?: string } })?.response?.data
+        ?? "Could not revert the PR. Please try again.";
+      toast.error("Action failed", msg);
+    } finally {
+      setUncompletingId(null);
     }
   }
 
@@ -235,21 +280,36 @@ export default function PRRegisterPage() {
       enableSorting: false,
       enableColumnFilter: false,
       cell: ({ row }) => {
-        const pr           = row.original;
-        const isCompleting = completingId === pr.id;
+        const pr             = row.original;
+        const isCompleting   = completingId === pr.id;
+        const isUncompleting = uncompletingId === pr.id;
+        const anyBusy        = completingId !== null || uncompletingId !== null;
         return (
           <div className="flex items-center justify-end gap-2">
-            {/* Mark as Completed — only shown for FullyDelivered PRs */}
+            {/* Mark as Completed — only on FullyDelivered rows */}
             {pr.status === "FullyDelivered" && (
               <button
                 onClick={() => handleMarkCompleted(pr)}
-                disabled={isCompleting || completingId !== null}
+                disabled={isCompleting || anyBusy}
                 className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border border-slate-300 text-slate-600 bg-white hover:bg-slate-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
               >
                 {isCompleting
                   ? <span className="w-3 h-3 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
                   : "✓"}
                 {isCompleting ? "Saving…" : "Mark Completed"}
+              </button>
+            )}
+            {/* Unmark Completed — only on Completed rows */}
+            {pr.status === "Completed" && (
+              <button
+                onClick={() => handleUnmarkCompleted(pr)}
+                disabled={isUncompleting || anyBusy}
+                className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+              >
+                {isUncompleting
+                  ? <span className="w-3 h-3 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                  : "↩"}
+                {isUncompleting ? "Reverting…" : "Unmark"}
               </button>
             )}
             <button
@@ -263,7 +323,7 @@ export default function PRRegisterPage() {
       },
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [router, completingId]);
+  ], [router, completingId, uncompletingId]);
 
   // ── Table instance ─────────────────────────────────────────────────────────
 
@@ -476,6 +536,9 @@ export default function PRRegisterPage() {
           )}
         </div>
       </div>
+
+      {/* ── Confirm dialog ───────────────────────────────────────────────────── */}
+      {dialog && <ConfirmDialog {...dialog} />}
     </div>
   );
 }

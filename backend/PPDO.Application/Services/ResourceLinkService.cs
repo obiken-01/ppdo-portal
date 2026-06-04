@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.ResourceLinks;
 using PPDO.Domain.Entities;
@@ -15,15 +16,18 @@ namespace PPDO.Application.Services;
 /// </summary>
 public sealed class ResourceLinkService : IResourceLinkService
 {
-    private readonly IRepository<ResourceLink> _links;
-    private readonly IPermissionService        _permissions;
+    private readonly IRepository<ResourceLink>      _links;
+    private readonly IPermissionService             _permissions;
+    private readonly ILogger<ResourceLinkService>   _logger;
 
     public ResourceLinkService(
         IRepository<ResourceLink> links,
-        IPermissionService        permissions)
+        IPermissionService permissions,
+        ILogger<ResourceLinkService> logger)
     {
         _links       = links;
         _permissions = permissions;
+        _logger      = logger;
     }
 
     /// <inheritdoc />
@@ -52,8 +56,13 @@ public sealed class ResourceLinkService : IResourceLinkService
         CancellationToken cancellationToken = default)
     {
         if (!await _permissions.CanManageResourceLinksAsync(requester, cancellationToken))
+        {
+            _logger.LogWarning(
+                "Permission denied — user {UserId} attempted to create a resource link without CanManageResourceLinks.",
+                requester.Id);
             return ServiceResult<ResourceLinkDto>.Forbidden(
                 "You do not have permission to add resource links.");
+        }
 
         if (string.IsNullOrWhiteSpace(dto.Title))
             return ServiceResult<ResourceLinkDto>.BadRequest("Title is required.");
@@ -79,6 +88,10 @@ public sealed class ResourceLinkService : IResourceLinkService
         await _links.AddAsync(link, cancellationToken);
         await _links.SaveChangesAsync(cancellationToken);
 
+        _logger.LogInformation(
+            "Resource link created. LinkId: {LinkId}, Title: {Title}, Category: {Category}, UserId: {UserId}",
+            link.Id, link.Title, link.Category, requester.Id);
+
         return ServiceResult<ResourceLinkDto>.Ok(MapToDto(link));
     }
 
@@ -91,8 +104,13 @@ public sealed class ResourceLinkService : IResourceLinkService
     {
         // Edit always requires Admin/SuperAdmin — Staff cannot edit regardless of flag.
         if (requester.Role is not (UserRole.SuperAdmin or UserRole.Admin))
+        {
+            _logger.LogWarning(
+                "Permission denied — user {UserId} (Role: {Role}) attempted to edit resource link {LinkId}.",
+                requester.Id, requester.Role, id);
             return ServiceResult<ResourceLinkDto>.Forbidden(
                 "Only Admin and SuperAdmin can edit resource links.");
+        }
 
         ResourceLink? link = await _links.GetByIdAsync(id, cancellationToken);
         if (link is null)
@@ -113,6 +131,10 @@ public sealed class ResourceLinkService : IResourceLinkService
         await _links.UpdateAsync(link, cancellationToken);
         await _links.SaveChangesAsync(cancellationToken);
 
+        _logger.LogInformation(
+            "Resource link updated. LinkId: {LinkId}, Title: {Title}, Category: {Category}, UserId: {UserId}",
+            link.Id, link.Title, link.Category, requester.Id);
+
         return ServiceResult<ResourceLinkDto>.Ok(MapToDto(link));
     }
 
@@ -124,8 +146,13 @@ public sealed class ResourceLinkService : IResourceLinkService
     {
         // Delete always requires Admin/SuperAdmin — Staff cannot delete regardless of flag.
         if (requester.Role is not (UserRole.SuperAdmin or UserRole.Admin))
+        {
+            _logger.LogWarning(
+                "Permission denied — user {UserId} (Role: {Role}) attempted to delete resource link {LinkId}.",
+                requester.Id, requester.Role, id);
             return ServiceResult<ResourceLinkDto>.Forbidden(
                 "Only Admin and SuperAdmin can delete resource links.");
+        }
 
         ResourceLink? link = await _links.GetByIdAsync(id, cancellationToken);
         if (link is null)
@@ -135,6 +162,10 @@ public sealed class ResourceLinkService : IResourceLinkService
 
         await _links.UpdateAsync(link, cancellationToken);
         await _links.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Resource link deleted (soft). LinkId: {LinkId}, Title: {Title}, UserId: {UserId}",
+            link.Id, link.Title, requester.Id);
 
         return ServiceResult<ResourceLinkDto>.Ok(MapToDto(link));
     }

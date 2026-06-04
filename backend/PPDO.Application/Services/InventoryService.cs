@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using PPDO.Application.DTOs.Inventory;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Enums;
@@ -25,15 +26,18 @@ public sealed class InventoryService : IInventoryService
     private readonly IInventoryRepository        _inventory;
     private readonly IPurchaseRequestRepository  _prs;
     private readonly IItemMasterRepository       _items;
+    private readonly ILogger<InventoryService>   _logger;
 
     public InventoryService(
         IInventoryRepository inventory,
         IPurchaseRequestRepository prs,
-        IItemMasterRepository items)
+        IItemMasterRepository items,
+        ILogger<InventoryService> logger)
     {
         _inventory = inventory;
         _prs       = prs;
         _items     = items;
+        _logger    = logger;
     }
 
     // ── GetStatsAsync ──────────────────────────────────────────────────────────
@@ -119,20 +123,35 @@ public sealed class InventoryService : IInventoryService
             decimal onHand = level.QtyDelivered - level.QtyDistributed;
 
             catalogMap.TryGetValue(level.StockNo, out ItemMaster? master);
+            string itemName  = master?.Description ?? level.StockNo;
+            int    reorderQty = master?.ReorderQty ?? 0;
+
+            if (onHand <= 0)
+            {
+                _logger.LogWarning(
+                    "Low stock alert — out of stock. StockNo: {StockNo}, ItemName: {ItemName}, RemainingQty: {RemainingQty}",
+                    level.StockNo, itemName, onHand);
+            }
+            else if (onHand <= reorderQty)
+            {
+                _logger.LogWarning(
+                    "Low stock alert. StockNo: {StockNo}, ItemName: {ItemName}, RemainingQty: {RemainingQty}",
+                    level.StockNo, itemName, onHand);
+            }
 
             rows.Add(new ItemLedgerRowDto(
                 StockNo:         level.StockNo,
-                Description:     master?.Description ?? level.StockNo,
+                Description:     itemName,
                 Category:        master?.Category,
                 Unit:            master?.Unit ?? string.Empty,
                 UnitCost:        master?.UnitCost ?? 0m,
                 ItemType:        master?.ItemType,
-                ReorderQty:      master?.ReorderQty ?? 0,
+                ReorderQty:      reorderQty,
                 QtyOrdered:      level.QtyOrdered,
                 QtyDelivered:    level.QtyDelivered,
                 QtyDistributed:  level.QtyDistributed,
                 OnHand:          onHand,
-                IsLowStock:      onHand > 0 && onHand <= (master?.ReorderQty ?? 0),
+                IsLowStock:      onHand > 0 && onHand <= reorderQty,
                 IsOutOfStock:    onHand <= 0));
         }
 

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.Items;
 using PPDO.Domain.Entities;
@@ -14,13 +15,18 @@ namespace PPDO.Application.Services;
 /// </summary>
 public sealed class ItemService : IItemService
 {
-    private readonly IItemMasterRepository _items;
-    private readonly IPermissionService    _permissions;
+    private readonly IItemMasterRepository    _items;
+    private readonly IPermissionService       _permissions;
+    private readonly ILogger<ItemService>     _logger;
 
-    public ItemService(IItemMasterRepository items, IPermissionService permissions)
+    public ItemService(
+        IItemMasterRepository items,
+        IPermissionService permissions,
+        ILogger<ItemService> logger)
     {
         _items       = items;
         _permissions = permissions;
+        _logger      = logger;
     }
 
     /// <inheritdoc />
@@ -64,8 +70,13 @@ public sealed class ItemService : IItemService
         CancellationToken cancellationToken = default)
     {
         if (!await _permissions.CanAccessInventoryAsync(requester, cancellationToken))
+        {
+            _logger.LogWarning(
+                "Permission denied — user {UserId} attempted to create an item without CanAccessInventory.",
+                requester.Id);
             return ServiceResult<ItemMasterDto>.Forbidden(
                 "You do not have permission to manage Items Master.");
+        }
 
         if (string.IsNullOrWhiteSpace(dto.StockNo))
             return ServiceResult<ItemMasterDto>.BadRequest("StockNo is required.");
@@ -95,6 +106,10 @@ public sealed class ItemService : IItemService
         await _items.AddAsync(item, cancellationToken);
         await _items.SaveChangesAsync(cancellationToken);
 
+        _logger.LogInformation(
+            "Item created. StockNo: {StockNo}, Description: {Description}, UserId: {UserId}",
+            item.StockNo, item.Description, requester.Id);
+
         return ServiceResult<ItemMasterDto>.Ok(MapToDto(item));
     }
 
@@ -106,8 +121,13 @@ public sealed class ItemService : IItemService
         CancellationToken cancellationToken = default)
     {
         if (!await _permissions.CanAccessInventoryAsync(requester, cancellationToken))
+        {
+            _logger.LogWarning(
+                "Permission denied — user {UserId} attempted to update item {ItemId} without CanAccessInventory.",
+                requester.Id, id);
             return ServiceResult<ItemMasterDto>.Forbidden(
                 "You do not have permission to manage Items Master.");
+        }
 
         ItemMaster? item = await _items.GetByIdAsync(id, cancellationToken);
         if (item is null)
@@ -127,6 +147,10 @@ public sealed class ItemService : IItemService
 
         await _items.UpdateAsync(item, cancellationToken);
         await _items.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Item updated. StockNo: {StockNo}, Description: {Description}, IsNewItem: {IsNewItem}, UserId: {UserId}",
+            item.StockNo, item.Description, item.IsNewItem, requester.Id);
 
         return ServiceResult<ItemMasterDto>.Ok(MapToDto(item));
     }

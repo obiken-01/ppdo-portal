@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.ResourceLinks;
@@ -66,7 +67,7 @@ public sealed class ResourceLinkServiceTests
     }
 
     private static ResourceLinkService BuildSut(Mock<IRepository<ResourceLink>> repo) =>
-        new(repo.Object, new PermissionService());
+        new(repo.Object, new PermissionService(), NullLogger<ResourceLinkService>.Instance);
 
     // ── GetAllAsync ───────────────────────────────────────────────────────────
 

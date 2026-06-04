@@ -85,7 +85,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
             && pr.Division != requester.Division)
         {
             _logger.LogWarning(
-                "Permission denied — user {UserId} attempted to view PR {PRNo} from division {Division}.",
+                "Permission denied — user {UserId} attempted to view PR {PRNo} from division {Division}. Feature: ViewPR",
                 requester.Id, pr.PRNo, pr.Division);
             return ServiceResult<PRResponseDto>.Forbidden(
                 "You can only view Purchase Requests from your own division.");
@@ -191,8 +191,13 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
     {
         // Only Admin/SuperAdmin can update PRs.
         if (requester.Role is not (UserRole.Admin or UserRole.SuperAdmin))
+        {
+            _logger.LogWarning(
+                "Permission denied — user {UserId} (Role: {Role}) attempted to update PR {PRId}. Feature: UpdatePR",
+                requester.Id, requester.Role, id);
             return ServiceResult<PRResponseDto>.Forbidden(
                 "Only Admin users can update Purchase Requests.");
+        }
 
         PurchaseRequest? pr = await _prs.GetWithItemsAsync(id, cancellationToken);
         if (pr is null)
@@ -287,6 +292,44 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         _logger.LogInformation(
             "PR status changed. PRNo: {PRNo}, OldStatus: {OldStatus}, NewStatus: {NewStatus}",
             pr.PRNo, PRStatus.FullyDelivered, PRStatus.Completed);
+
+        return ServiceResult<PRSummaryDto>.Ok(MapToSummary(pr));
+    }
+
+    // ── UnmarkCompletedAsync ───────────────────────────────────────────────────
+
+    /// <inheritdoc />
+    public async Task<ServiceResult<PRSummaryDto>> UnmarkCompletedAsync(
+        User requester,
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await _permissions.CanAccessInventoryAsync(requester, cancellationToken))
+        {
+            _logger.LogWarning(
+                "Permission denied — user {UserId} attempted to unmark PR {PRId} without CanAccessInventory.",
+                requester.Id, id);
+            return ServiceResult<PRSummaryDto>.Forbidden(
+                "You do not have permission to access Inventory.");
+        }
+
+        PurchaseRequest? pr = await _prs.GetByIdAsync(id, cancellationToken);
+        if (pr is null)
+            return ServiceResult<PRSummaryDto>.NotFound($"Purchase Request {id} not found.");
+
+        if (pr.Status != PRStatus.Completed)
+            return ServiceResult<PRSummaryDto>.BadRequest(
+                $"Only Completed PRs can be reverted. Current status: {pr.Status}.");
+
+        pr.Status    = PRStatus.FullyDelivered;
+        pr.UpdatedAt = DateTime.UtcNow;
+
+        await _prs.UpdateAsync(pr, cancellationToken);
+        await _prs.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "PR status changed. PRNo: {PRNo}, OldStatus: {OldStatus}, NewStatus: {NewStatus}",
+            pr.PRNo, PRStatus.Completed, PRStatus.FullyDelivered);
 
         return ServiceResult<PRSummaryDto>.Ok(MapToSummary(pr));
     }
