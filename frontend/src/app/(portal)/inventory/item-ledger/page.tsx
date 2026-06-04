@@ -97,7 +97,7 @@ export default function ItemLedgerPage() {
     setLoading(true);
     setFetchError(null);
     try {
-      const { data } = await api.get<ItemLedgerRowResponse[]>("/items/ledger");
+      const { data } = await api.get<ItemLedgerRowResponse[]>("/inventory/ledger");
       setRows(data);
     } catch {
       setFetchError("Failed to load the item ledger. Please try again.");
