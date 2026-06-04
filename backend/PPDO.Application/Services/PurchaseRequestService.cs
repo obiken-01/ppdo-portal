@@ -565,7 +565,9 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
 
     private static PRSummaryDto MapToSummary(PurchaseRequest pr) => new(
         pr.Id, pr.PRNo, pr.PRDate, pr.Division.ToString(),
-        pr.RequestedBy, pr.TotalAmount, pr.Status.ToString(), pr.CreatedAt);
+        pr.RequestedBy, pr.TotalAmount, pr.Status.ToString(), pr.CreatedAt,
+        pr.Fund, pr.AIPCode, pr.AccountNo, pr.AccountTitle,
+        pr.Program, pr.Project, pr.Activity);
 
     private static PRResponseDto MapToResponse(PurchaseRequest pr) => new(
         pr.Id, pr.PRNo, pr.PRDate, pr.DateCreated,

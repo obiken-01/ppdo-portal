@@ -112,6 +112,14 @@ export interface PRSummaryResponse {
   totalAmount: number;
   status: string;
   createdAt: string;
+  // Filter fields
+  fund: string;
+  aipCode: string | null;
+  accountNo: string | null;
+  accountTitle: string | null;
+  program: string | null;
+  project: string | null;
+  activity: string | null;
 }
 
 // ---------------------------------------------------------------------------
