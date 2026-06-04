@@ -22,6 +22,7 @@ import {
 } from "@tanstack/react-table";
 import api from "@/lib/api";
 import { useToast } from "@/components/ui/Toast";
+import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import type { MeResponse, PRSummaryResponse } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -77,8 +78,11 @@ export default function PRRegisterPage() {
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   // Track which PR is being marked / unmarked (shows spinner on that row)
-  const [completingId, setCompletingId]   = useState<string | null>(null);
+  const [completingId, setCompletingId]     = useState<string | null>(null);
   const [uncompletingId, setUncompletingId] = useState<string | null>(null);
+
+  // Confirm dialog state — null = closed
+  const [dialog, setDialog] = useState<ConfirmDialogProps | null>(null);
 
   const [searchInput, setSearchInput]   = useState("");
   const [globalFilter, setGlobalFilter] = useState("");
@@ -140,11 +144,20 @@ export default function PRRegisterPage() {
   // ── Mark Completed ─────────────────────────────────────────────────────────
 
   async function handleMarkCompleted(pr: PRSummaryResponse) {
-    if (!window.confirm(`Mark "${pr.prNo}" as Completed?\n\nThis cannot be undone.`)) return;
+    setDialog({
+      title:        "Mark as Completed?",
+      message:      `${pr.prNo} will be marked as Completed. It can still receive deliveries until confirmed. You can undo this at any time.`,
+      confirmLabel: "Mark Completed",
+      variant:      "primary",
+      onConfirm:    () => doMarkCompleted(pr),
+      onClose:      () => setDialog(null),
+    });
+  }
+
+  async function doMarkCompleted(pr: PRSummaryResponse) {
     setCompletingId(pr.id);
     try {
       await api.put(`/purchase-requests/${pr.id}/complete`);
-      // Optimistically update the row status in place — no full reload needed.
       setPRs((prev) =>
         prev.map((p) => p.id === pr.id ? { ...p, status: "Completed" } : p)
       );
@@ -162,7 +175,17 @@ export default function PRRegisterPage() {
   // ── Unmark Completed ───────────────────────────────────────────────────────
 
   async function handleUnmarkCompleted(pr: PRSummaryResponse) {
-    if (!window.confirm(`Revert "${pr.prNo}" back to Fully Delivered?`)) return;
+    setDialog({
+      title:        "Revert to Fully Delivered?",
+      message:      `${pr.prNo} will be set back to Fully Delivered. The "Mark Completed" button will reappear on this row.`,
+      confirmLabel: "Yes, Revert",
+      variant:      "warning",
+      onConfirm:    () => doUnmarkCompleted(pr),
+      onClose:      () => setDialog(null),
+    });
+  }
+
+  async function doUnmarkCompleted(pr: PRSummaryResponse) {
     setUncompletingId(pr.id);
     try {
       await api.put(`/purchase-requests/${pr.id}/uncomplete`);
@@ -513,6 +536,9 @@ export default function PRRegisterPage() {
           )}
         </div>
       </div>
+
+      {/* ── Confirm dialog ───────────────────────────────────────────────────── */}
+      {dialog && <ConfirmDialog {...dialog} />}
     </div>
   );
 }
