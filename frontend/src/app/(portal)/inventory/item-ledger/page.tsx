@@ -92,6 +92,32 @@ function contains(s: string | null | undefined, q: string): boolean {
   return (s ?? "").toLowerCase().includes(q.toLowerCase());
 }
 
+/** Returns [YYYY-MM-DD, YYYY-MM-DD] bounds for a "QN-YYYY" quarter string. */
+function quarterBounds(q: string): { from: string; to: string } | null {
+  const m = q.match(/^Q(\d)-(\d{4})$/);
+  if (!m) return null;
+  const qn   = parseInt(m[1]);
+  const yr   = parseInt(m[2]);
+  const from = new Date(yr, (qn - 1) * 3, 1);
+  const to   = new Date(yr, qn * 3, 0);
+  return {
+    from: from.toISOString().slice(0, 10),
+    to:   to.toISOString().slice(0, 10),
+  };
+}
+
+/** Generates the last N quarters ending at the current quarter. */
+function recentQuarters(n = 8): string[] {
+  const result: string[] = [];
+  const d = new Date();
+  for (let i = 0; i < n; i++) {
+    const q = Math.ceil((d.getMonth() + 1) / 3);
+    result.push(`Q${q}-${d.getFullYear()}`);
+    d.setMonth(d.getMonth() - 3);
+  }
+  return result;
+}
+
 // ---------------------------------------------------------------------------
 // Filter logic
 // ---------------------------------------------------------------------------
@@ -182,9 +208,12 @@ export default function StockOverviewPage() {
   const [loading, setLoading]       = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  const [filters, setFilters]       = useState<Filters>(EMPTY_FILTERS);
+  const [filters, setFilters]         = useState<Filters>(EMPTY_FILTERS);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [sorting, setSorting]       = useState<SortingState>([]);
+  const [sorting, setSorting]         = useState<SortingState>([]);
+
+  // "Received in Quarter" — triggers API re-fetch with delivery date params
+  const [receivedInQuarter, setReceivedInQuarter] = useState("");
 
   function setF<K extends keyof Filters>(key: K, value: Filters[K]) {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -212,11 +241,15 @@ export default function StockOverviewPage() {
 
   // ── Load ───────────────────────────────────────────────────────────────────
 
-  const loadLedger = useCallback(async () => {
+  const loadLedger = useCallback(async (quarter?: string) => {
     setLoading(true);
     setFetchError(null);
     try {
-      const { data } = await api.get<ItemLedgerRowResponse[]>("/inventory/ledger");
+      const bounds = quarter ? quarterBounds(quarter) : null;
+      const params = bounds
+        ? `?deliveryDateFrom=${bounds.from}&deliveryDateTo=${bounds.to}`
+        : "";
+      const { data } = await api.get<ItemLedgerRowResponse[]>(`/inventory/ledger${params}`);
       setRows(data);
     } catch {
       setFetchError("Failed to load stock overview. Please try again.");
@@ -225,7 +258,8 @@ export default function StockOverviewPage() {
     }
   }, []);
 
-  useEffect(() => { if (authChecked) loadLedger(); }, [authChecked, loadLedger]);
+  useEffect(() => { if (authChecked) loadLedger(receivedInQuarter || undefined); },
+    [authChecked, loadLedger, receivedInQuarter]);
 
   // ── Derived options (built from actual data) ───────────────────────────────
 
@@ -245,7 +279,11 @@ export default function StockOverviewPage() {
 
   const filteredRows = useMemo(() => applyFilters(rows, filters), [rows, filters]);
 
-  const filterCount  = useMemo(() => activeFilterCount(filters), [filters]);
+  const filterCount  = useMemo(
+    () => activeFilterCount(filters) + (receivedInQuarter ? 1 : 0),
+    [filters, receivedInQuarter]);
+
+  const quarterOptions = useMemo(() => recentQuarters(8), []);
 
   // ── Counts (based on all rows, not filtered, for the status tabs) ──────────
 
@@ -439,7 +477,7 @@ export default function StockOverviewPage() {
             )}
           </button>
           <button
-            onClick={loadLedger}
+            onClick={() => void loadLedger(receivedInQuarter || undefined)}
             className="flex items-center gap-1.5 px-3 py-2.5 text-sm border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors shadow-sm shrink-0"
           >
             ↻ Refresh
@@ -514,11 +552,46 @@ export default function StockOverviewPage() {
                 </button>
                 {filterCount > 0 && (
                   <button
-                    onClick={() => setFilters(EMPTY_FILTERS)}
+                    onClick={() => { setFilters(EMPTY_FILTERS); setReceivedInQuarter(""); }}
                     className="px-3 py-1.5 text-xs font-medium border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors"
                   >
                     ✕ Clear all filters
                   </button>
+                )}
+              </div>
+            </div>
+
+            <div className="border-t border-slate-100" />
+
+            {/* Received in Quarter */}
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                Received in Quarter
+                <span className="ml-1 font-normal normal-case text-slate-400">— re-fetches from server</span>
+              </p>
+              <div className="flex items-center gap-3">
+                <select
+                  value={receivedInQuarter}
+                  onChange={(e) => setReceivedInQuarter(e.target.value)}
+                  className="w-48 px-2.5 py-1.5 text-xs border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-green-500"
+                >
+                  <option value="">All time (no filter)</option>
+                  {quarterOptions.map((q) => (
+                    <option key={q} value={q}>{q}</option>
+                  ))}
+                </select>
+                {receivedInQuarter && (
+                  <button
+                    onClick={() => setReceivedInQuarter("")}
+                    className="text-xs text-slate-400 hover:text-slate-600"
+                  >
+                    ✕ Clear
+                  </button>
+                )}
+                {receivedInQuarter && (
+                  <span className="text-xs text-green-700 font-medium">
+                    Showing items received in {receivedInQuarter}
+                  </span>
                 )}
               </div>
             </div>
@@ -622,7 +695,10 @@ export default function StockOverviewPage() {
               <span className="ml-2 text-amber-600 font-medium">· {counts.low} low stock</span>
             )}
             {filterCount > 0 && (
-              <button onClick={() => setFilters(EMPTY_FILTERS)} className="ml-3 text-green-600 hover:underline">
+              <button
+                onClick={() => { setFilters(EMPTY_FILTERS); setReceivedInQuarter(""); }}
+                className="ml-3 text-green-600 hover:underline"
+              >
                 Clear all filters
               </button>
             )}
@@ -641,7 +717,7 @@ export default function StockOverviewPage() {
           ) : fetchError ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
               <p className="text-sm text-red-500">{fetchError}</p>
-              <button onClick={loadLedger} className="text-sm text-green-600 hover:underline">Retry</button>
+              <button onClick={() => void loadLedger(receivedInQuarter || undefined)} className="text-sm text-green-600 hover:underline">Retry</button>
             </div>
           ) : (
             <div className="overflow-x-auto">
