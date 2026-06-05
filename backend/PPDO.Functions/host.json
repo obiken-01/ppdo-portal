@@ -3,7 +3,8 @@
   "cors": {
     "allowedOrigins": [
       "http://localhost:3000",
-      "http://localhost:4280"
+      "http://localhost:4280",
+      "https://jolly-sky-0e3a2e310.7.azurestaticapps.net"
     ],
     "supportCredentials": true
   },
