@@ -21,7 +21,7 @@ import api from "@/lib/api";
 import { auth } from "@/lib/auth";
 import type { MeResponse } from "@/types";
 
-const APP_VERSION = "v1.0";
+const APP_VERSION = "v1.1";
 
 interface SidebarProps {
   me: MeResponse | null;
