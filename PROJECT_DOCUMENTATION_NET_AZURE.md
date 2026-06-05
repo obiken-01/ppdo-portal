@@ -4,8 +4,8 @@
 
 > **Stack:** ASP.NET Core on Azure Functions · Next.js 14 on Azure Static Web Apps · Azure SQL Database · Azure Application Insights  
 > **Deployment:** Free forever — Azure Static Web Apps (Free) + Azure Functions (Consumption) + Azure SQL (Free offer) + Application Insights (Free 5GB/mo)  
-> **Last Updated:** 2026-05-26  
-> **Version:** v0.1
+> **Last Updated:** 2026-06-05  
+> **Version:** v1.1 (live)
 
 ---
 
@@ -31,11 +31,11 @@
 
 | Field | Detail |
 |---|---|
-| **Frontend** | https://[yourapp].azurestaticapps.net *(to be updated after deploy)* |
-| **API** | https://[yourapp-api].azurewebsites.net/api *(to be updated after deploy)* |
-| **GitHub** | https://github.com/[username]/ppdo-portal |
+| **Frontend** | https://jolly-sky-0e3a2e310.7.azurestaticapps.net |
+| **API** | https://ppdo-portal-api-dpevbthmd5dycacq.centralus-01.azurewebsites.net/api |
+| **GitHub** | https://github.com/obiken-01/ppdo-portal |
 | **Design (Penpot)** | https://design.penpot.app — PPDO Portal v0.5 (8 screens complete) |
-| **Current Version** | v0.1 |
+| **Current Version** | v1.1 (live on Azure) |
 
 ---
 

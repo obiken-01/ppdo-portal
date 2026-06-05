@@ -486,30 +486,55 @@ Follow the JWT validation and permission check patterns in CLAUDE.md.
 ## Implementation Status
 
 > ⚠️ **This section is a session progress update — not part of the original CLAUDE.md spec.**
-> Updated: 2026-06-02. Keep this section current as RALs are completed.
+> Updated: 2026-06-05. Keep this section current as RALs are completed.
 
-### Completed RALs (v1.0 branch)
+### ✅ v1.0 — Core Portal & Inventory Monitoring (DONE)
 
-| RAL | Description | Branch / PR |
+| RAL | Description | PR |
 |---|---|---|
-| RAL-37 | Generic `Repository<T>` + feature repositories in Infrastructure | PR #10 |
-| RAL-38 | `JwtMiddleware`, `CurrentUserService`, `PermissionService` | PR #11 |
-| RAL-34 | `ResourceLink` entity + `AddResourceLinks` migration + 23 seed links | PR #12 |
-| RAL-39 | Auth endpoints — login, refresh, logout, me (`AuthService` + `AuthFunctions`) | PR #13 |
-| RAL-40 | User management API — `UserService` + `UserFunctions` (7 endpoints) | PR #14 |
-| RAL-41 | Public landing page — hero carousel, mission/vision, announcements, navbar, footer | PR #15 |
-| RAL-42 | Login page UI + Axios JWT client + portal auth guard | PR #16 |
-| RAL-43 | User Management page UI + permission overrides + `GET /api/permission-groups` + `PUT /api/users/{id}/reactivate` | PR #20 |
-| RAL-44 | Dashboard events + stats endpoints + PH holidays (Nager.Date) + `CalendarEvent` entity | PR #22 |
-| RAL-45 | Main Dashboard page UI — FullCalendar, portal shell (Sidebar + Topbar), Resource Links widget | PR #23 |
-| RAL-35 | Resource Links API — `ResourceLinkService` + 4 endpoints (GET/POST/PUT/DELETE) | PR #24 |
-| RAL-36 | Resource Links page UI + Dashboard widget upgrade (collapsible, View All) | PR #25 |
-| RAL-46 | ExcelService — `GeneratePRTemplate`, `ExportPRReport`, `ParsePRImport` (ClosedXML) | PR #26 |
-| RAL-47 | Items Master API — `ItemService` + 5 endpoints (CRUD + `/lookup` autocomplete) | PR #27 |
-| RAL-48 | Purchase Requests API — `PurchaseRequestService` + 6 endpoints (CRUD, template download, Excel import) | PR #28 |
-| RAL-49 | Receive Delivery API — `DeliveryService` + 4 endpoints + PR status auto-transition + split delivery | PR #29 |
-| RAL-50 | PR Report — `PRReportService` + JSON report endpoint + `.xlsx` export via `ExcelService` | PR #30 |
-| RAL-51 | Inventory Dashboard stats + Item Ledger + PR Register filter — `InventoryService` + 2 endpoints + `?status=` filter | PR #31 |
+| RAL-37 | Generic `Repository<T>` + feature repositories in Infrastructure | #10 |
+| RAL-38 | `JwtMiddleware`, `CurrentUserService`, `PermissionService` | #11 |
+| RAL-34 | `ResourceLink` entity + `AddResourceLinks` migration + 23 seed links | #12 |
+| RAL-39 | Auth endpoints — login, refresh, logout, me | #13 |
+| RAL-40 | User management API — `UserService` + `UserFunctions` (7 endpoints) | #14 |
+| RAL-41 | Public landing page — hero carousel, mission/vision, announcements | #15 |
+| RAL-42 | Login page UI + Axios JWT client + portal auth guard | #16 |
+| RAL-43 | User Management page UI + permission overrides | #20 |
+| RAL-44 | Dashboard events + stats endpoints + PH holidays (Nager.Date) | #22 |
+| RAL-45 | Main Dashboard page UI — FullCalendar, portal shell (Sidebar + Topbar) | #23 |
+| RAL-35 | Resource Links API — 4 endpoints (GET/POST/PUT/DELETE) | #24 |
+| RAL-36 | Resource Links page UI + Dashboard widget | #25 |
+| RAL-46 | ExcelService — PR template, report export, import (ClosedXML) | #26 |
+| RAL-47 | Items Master API — `ItemService` + 5 endpoints | #27 |
+| RAL-48 | Purchase Requests API — `PurchaseRequestService` + 6 endpoints | #28 |
+| RAL-49 | Receive Delivery API — `DeliveryService` + PR status auto-transition | #29 |
+| RAL-50 | PR Report — `PRReportService` + JSON + `.xlsx` export | #30 |
+| RAL-51 | Inventory Dashboard stats + Stock Overview + PR List | #31 |
+| RAL-52 | Items Master page UI | #32 |
+| RAL-53 | Create PR page UI + Excel import upload | #33 |
+| RAL-54 | Receive Delivery page UI | #34 |
+| RAL-55 | PR Report page UI + export trigger | #35 |
+| RAL-56 | Inventory Dashboard page UI | #36 |
+| RAL-57 | Stock Overview + PR List page UIs | #37 |
+| RAL-58 | Business Events (Calendar) | #38 |
+
+### ✅ v1.1 — Inventory UI Refinements + Distribution (DONE)
+
+| RAL | Description | PR |
+|---|---|---|
+| RAL-60 | Separate Distribution from Receive Delivery — standalone page | #39 |
+| RAL-61 | Distribution: single Distribute button per item with FIFO batch allocation | #39 |
+| RAL-62 | Distribution: Stock Sources read-only delivery batch view | #39 |
+| RAL-63 | Add Distribution quick-action button to Inventory Dashboard | #39 |
+| RAL-64 | PR List: full filter panel | #39 |
+| RAL-65 | Stock Overview: filter panel with Received in Quarter filter | #39 |
+| RAL-66 | Rename Item Ledger → Stock Overview, PR Register → PR List | #39 |
+| RAL-67 | PR Report: delivery summary bar + Quarter column | #39 |
+| RAL-68 | PR Report: fix zero-delivery count when no distributions exist | #39 |
+| RAL-69 | UI: flat design (no rounded edges) across all inventory pages | #39 |
+| RAL-70 | UI: unify stat card heights on Inventory Dashboard | #39 |
+| RAL-71 | Add version indicator to sidebar (`APP_VERSION` in `Sidebar.tsx`) | #40 |
+| RAL-72 | Production deployment to Azure (SWA + Functions + SQL) | #39 |
 
 ### Bug Fixes Applied
 
@@ -517,39 +542,55 @@ Follow the JWT validation and permission check patterns in CLAUDE.md.
 |---|---|
 | CORS — isolated worker | `CorsFunctions.cs` catch-all `OPTIONS` handler + `Program.cs` middleware via `worker.Use()`. `host.json` cors does NOT work for isolated worker. |
 | `JwtMiddleware` header read | Reads `Authorization` from `HttpRequestData.Headers` directly — `IHttpContextAccessor.HttpContext` is unreliable in isolated worker. |
-| JWT claim mapping | Added `handler.InboundClaimTypeMap.Clear()` in `ValidateToken` — otherwise `"sub"` is remapped to a long Microsoft URI and `FindFirstValue("sub")` returns null. |
-| JSON casing | All Function responses serialized manually with `PropertyNamingPolicy = CamelCase` — `WriteAsJsonAsync` defaults to PascalCase in isolated worker. |
-| Excel import — non-seekable stream | `req.Body` in isolated worker is `HttpRequestStream` which throws `NotSupportedException` on `.Length`. Fix: `CopyToAsync` into a `MemoryStream` and reset `Position = 0` before passing to `IExcelService.ParsePRImport`. |
+| JWT claim mapping | Added `handler.InboundClaimTypeMap.Clear()` in `ValidateToken` — otherwise `"sub"` is remapped to a long Microsoft URI. |
+| JSON casing | All Function responses serialized with `PropertyNamingPolicy = CamelCase` — `WriteAsJsonAsync` defaults to PascalCase in isolated worker. |
+| Excel import — non-seekable stream | `req.Body` throws `NotSupportedException` on `.Length`. Fix: `CopyToAsync` into `MemoryStream`, reset `Position = 0`. |
+| PR Report zero deliveries | Fixed by sourcing `qtyDelivered` from `deliveryItems` directly, not from distributions. |
+| Distribution FIFO allocation | Frontend allocates across batches oldest-first when distributing from item-level form. |
 
 ### Key Architecture Decisions Made
 
 | Decision | Detail |
 |---|---|
-| `ServiceResult<T>` | Shared result type in `PPDO.Application/Common/` — all Application services return this instead of throwing exceptions for flow control. |
-| Token storage | Access token: in-memory only (`auth.ts`). Refresh token: `localStorage["ppdo_rt"]` — backend returns in response body, not httpOnly cookie. Migrate when backend sets `Set-Cookie`. |
-| `IUserService` in Application | Returns Application-layer DTOs — placing in Domain would create circular dependency. |
-| `IJwtMiddleware.ValidateAsync(string? authHeader)` | Takes raw header string from caller instead of reading from `HttpContext` — avoids null HttpContext in isolated worker. |
+| `ServiceResult<T>` | Shared result type in `PPDO.Application/Common/` — services return this instead of throwing exceptions for flow control. |
+| Token storage | Access token: in-memory only (`auth.ts`). Refresh token: `localStorage["ppdo_rt"]`. |
 | Default user password | `PPDOUser2026!` — set on `UserService.CreateAsync` and `ResetPasswordAsync`. |
+| Distribution as standalone | Distribution separated from Receive Delivery — `POST /api/distributions` creates standalone distribution records. FIFO batch allocation done on the frontend. |
+| Version indicator | `APP_VERSION` const in `frontend/src/components/layout/Sidebar.tsx` — update this string for each new release (e.g. `"v1.2"`). |
 
-### Next RALs (planned)
+### Linear Milestones
+
+| Milestone | Status |
+|---|---|
+| v0.1 — Project Setup & Foundation | ✅ Done |
+| v1.0 — Core Portal & Inventory Monitoring | ✅ Done |
+| v1.1 — Inventory UI Refinements + Distribution | ✅ Done |
+| v1.2 — Employee Profiles | 📋 Planned |
+| v1.3 — Calendar & Announcements | 📋 Planned |
+
+### Production Deployment (Live as of 2026-06-05)
+
+| Service | Resource Name | URL / Notes |
+|---|---|---|
+| Frontend | `ppdo-portal` (Azure Static Web Apps) | https://jolly-sky-0e3a2e310.7.azurestaticapps.net |
+| Backend API | `ppdo-portal-api` (Azure Functions) | https://ppdo-portal-api-dpevbthmd5dycacq.centralus-01.azurewebsites.net/api |
+| Database | `ppdo-portal-db` on `ppdo-portal-server` (Azure SQL Free) | Southeast Asia region |
+| Storage | `ppdoportalstorage` (Azure Storage — LRS) | Required by Azure Functions (`AzureWebJobsStorage`) |
+| Monitoring | `ppdo-portal-api` (Application Insights) | Central US |
+| Resource Group | `ppdo-portal-rg` | All resources grouped here |
+
+**Deployment notes:**
+- `NEXT_PUBLIC_API_BASE_URL` is baked into the Next.js build via `.github/workflows/deploy.yml` — SWA Free tier does not support API linking
+- Azure Functions CORS is configured in **Azure Portal → Function App → CORS** (not `host.json`) — add any new allowed origins there
+- Azure SQL Free tier auto-pauses after inactivity — first request after pause takes ~20-30s to resume (normal)
+- Push to `main` → GitHub Actions builds and deploys both frontend and backend automatically
+- First-time DB setup: run `dotnet ef database update --project PPDO.Infrastructure` with `SqlConnectionString` env var pointing to Azure SQL
+- SuperAdmin seed account: `superadmin@ppdo.gov.ph` / `PPDOAdmin2026!`
+
+### Next: v1.2 — Employee Profiles (Planned)
 
 > Check `PROJECT_DOCUMENTATION_NET_AZURE.md` Section 11 (Roadmap) for full list.
 
-### Phase 6 complete — all backend RALs shipped ✅
-
-### Next: Phase 7 — Inventory Core Frontend
-
-| RAL | Screen | Penpot Frame |
-|---|---|---|
-| RAL-52 | Items Master page UI | `06 Items Master` |
-| RAL-53 | Create PR page UI + Excel import upload | `04b Create PR` |
-| RAL-54 | Receive Delivery page UI | `05 Receive Delivery` |
-| RAL-55 | PR Report page UI + export trigger | `07 PR Report` |
-| RAL-56 | Inventory Dashboard page UI | `04 Inventory Dashboard` |
-| RAL-57 | Item Ledger + PR Register page UIs | (HTML prototype only) |
-
-> ⚠️ Full E2E delivery flow testing (RAL-49) deferred to RAL-54 UI — see memory note.
-
 ---
 
-*CLAUDE.md — PPDO Portal v0.1 — 2026-05-26 — Ralph Armand Alcaide*
+*CLAUDE.md — PPDO Portal v1.1 — 2026-06-05 — Ralph Armand Alcaide*
