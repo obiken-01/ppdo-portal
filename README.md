@@ -9,10 +9,11 @@
 
 | Version | Milestone | Status |
 |---|---|---|
-| v0.1 | Project Setup & Foundation | Done |
-| v1.0 | Core Portal & Inventory Monitoring | 🔄 In Progress |
-| v1.1 | Employee Profiles | 📋 Planned |
-| v1.2 | Calendar & Announcements | 📋 Planned |
+| v0.1 | Project Setup & Foundation | ✅ Done |
+| v1.0 | Core Portal & Inventory Monitoring | ✅ Done |
+| v1.1 | Inventory UI Refinements + Distribution | ✅ Done |
+| v1.2 | Employee Profiles | 📋 Planned |
+| v1.3 | Calendar & Announcements | 📋 Planned |
 
 ---
 
@@ -160,9 +161,20 @@ Domain → Infrastructure → Application → Functions → Frontend
 - 🚚 **Receive Delivery** — delivery logging with split-by-division support
 - 🗃️ **Items Master** — supply catalog management
 - 📊 **PR Report** — 3-section report with Excel export (ClosedXML)
-- 📒 **Item Ledger** — running stock totals per item
-- 🔍 **PR Register** — full PR list with status filters
+- 📒 **Stock Overview** — running stock totals per item
+- 🔍 **PR List** — full PR list with status filters
 - 👤 **User Management** — add users, reset passwords, manage permissions
+
+## What's New in v1.1 — Inventory UI Refinements + Distribution
+
+- 📦 **Distribution page** — standalone distribution flow, separate from Receive Delivery; single Distribute button per item with FIFO batch allocation; Stock Sources read-only view
+- 📊 **Inventory Dashboard** — Distribution quick-action button added; flat UI (no rounded edges); stat card heights unified
+- 📋 **PR List** — full filter panel (division, quarter, status, requested by, fund, AIP code, account)
+- 📒 **Stock Overview** — filter panel with Received in Quarter filter; renamed from Item Ledger
+- 📊 **PR Report** — delivery summary bar; Quarter column replaces Date Created; fixed zero-delivery count bug
+- 🎨 **UI refinements** — flat design system applied across all inventory pages (no rounded panels/buttons)
+- 🔢 **Version indicator** — `APP_VERSION` displayed in sidebar top left (`Occ. Mindoro · v1.1`); update `APP_VERSION` in `frontend/src/components/layout/Sidebar.tsx` for each new release
+- 🚀 **Production deployment** — Azure Static Web Apps + Azure Functions + Azure SQL fully configured and live
 
 ---
 
