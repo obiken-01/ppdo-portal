@@ -23,12 +23,36 @@ jobs:
             --configuration Release \
             --output ${{ github.workspace }}/publish/api
 
-      - name: Deploy to Azure Functions
-        uses: Azure/functions-action@v1
-        with:
-          app-name: ppdo-portal-api
-          package: ${{ github.workspace }}/publish/api
-          publish-profile: ${{ secrets.AZURE_FUNCTIONS_PUBLISH_PROFILE }}
+      - name: Zip published output
+        run: |
+          cd ${{ github.workspace }}/publish/api
+          zip -r ${{ github.workspace }}/publish/function.zip .
+
+      - name: Deploy to Azure Functions via ZIP deploy
+        env:
+          PUBLISH_PROFILE: ${{ secrets.AZURE_FUNCTIONS_PUBLISH_PROFILE }}
+        run: |
+          # Extract MSDeploy credentials from publish profile XML
+          USER=$(echo "$PUBLISH_PROFILE" | python3 -c "
+          import sys, xml.etree.ElementTree as ET
+          root = ET.parse(sys.stdin).getroot()
+          p = root.find('.//publishProfile[@publishMethod=\"MSDeploy\"]')
+          print(p.get('userName'))
+          ")
+          PASS=$(echo "$PUBLISH_PROFILE" | python3 -c "
+          import sys, xml.etree.ElementTree as ET
+          root = ET.parse(sys.stdin).getroot()
+          p = root.find('.//publishProfile[@publishMethod=\"MSDeploy\"]')
+          print(p.get('userPWD'))
+          ")
+
+          curl -X POST \
+            "https://ppdo-portal-api.scm.azurewebsites.net/api/zipdeploy" \
+            -u "${USER}:${PASS}" \
+            --data-binary @${{ github.workspace }}/publish/function.zip \
+            --fail \
+            --silent \
+            --show-error
 
   deploy-frontend:
     name: Deploy Frontend to Azure Static Web Apps
