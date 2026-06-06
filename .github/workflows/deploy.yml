@@ -47,7 +47,7 @@ jobs:
           ")
 
           curl -X POST \
-            "https://ppdo-portal-api.scm.azurewebsites.net/api/zipdeploy" \
+            "https://ppdo-portal-api-dpevbthmd5dycacq.scm.centralus-01.azurewebsites.net/api/zipdeploy" \
             -u "${USER}:${PASS}" \
             --data-binary @${{ github.workspace }}/publish/function.zip \
             --fail \
