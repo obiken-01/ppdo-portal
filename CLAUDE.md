@@ -181,7 +181,7 @@ Interfaces / contracts first → Implementations → Tests
   if (!await _permissions.CanAccessInventoryAsync(user))
       return req.CreateResponse(HttpStatusCode.Forbidden);
   ```
-- Public endpoints (no JWT needed): `POST /api/auth/login`, `POST /api/auth/refresh`, `GET /api/announcements`
+- Public endpoints (no JWT needed): `POST /api/auth/login`, `POST /api/auth/refresh`, `GET /api/health`, `GET /api/announcements`
 - **Never skip the JWT check on a non-public endpoint.** When in doubt, protect it.
 
 ### EF Core
@@ -547,6 +547,8 @@ Follow the JWT validation and permission check patterns in CLAUDE.md.
 | Excel import — non-seekable stream | `req.Body` throws `NotSupportedException` on `.Length`. Fix: `CopyToAsync` into `MemoryStream`, reset `Position = 0`. |
 | PR Report zero deliveries | Fixed by sourcing `qtyDelivered` from `deliveryItems` directly, not from distributions. |
 | Distribution FIFO allocation | Frontend allocates across batches oldest-first when distributing from item-level form. |
+| Auth redirect after idle (v1.0.1) | Azure Functions cold start (~10 min) + Azure SQL auto-pause (1 hr) caused refresh token call to fail with a network error → user incorrectly redirected to `/login`. Fixed by wrapping refresh calls in `callWithRetry()` (retries 2x with 3s delay on network errors only; 4xx still fails immediately). Applied in both `api.ts` interceptor and `layout.tsx` auth guard. |
+| CI deploy blocked — `Azure/functions-action` (v1.0.1) | GitHub repo Actions policy blocked `Azure/functions-action@v1`. Replaced with direct ZIP deploy via `curl` using credentials extracted from `AZURE_FUNCTIONS_PUBLISH_PROFILE` secret. |
 
 ### Key Architecture Decisions Made
 
@@ -556,7 +558,10 @@ Follow the JWT validation and permission check patterns in CLAUDE.md.
 | Token storage | Access token: in-memory only (`auth.ts`). Refresh token: `localStorage["ppdo_rt"]`. |
 | Default user password | `PPDOUser2026!` — set on `UserService.CreateAsync` and `ResetPasswordAsync`. |
 | Distribution as standalone | Distribution separated from Receive Delivery — `POST /api/distributions` creates standalone distribution records. FIFO batch allocation done on the frontend. |
-| Version indicator | `APP_VERSION` const in `frontend/src/components/layout/Sidebar.tsx` — update this string for each new release (e.g. `"v1.2"`). |
+| Version indicator | `APP_VERSION` const in `frontend/src/components/layout/Sidebar.tsx` — update this string for each new release (e.g. `"v1.2"`). Also update `Portal vX.Y.Z` in `frontend/src/components/landing/Footer.tsx`. |
+| Version scheme | Patch releases (bug fixes, optimizations, no new features) use `vX.Y.Z` (e.g. `v1.0.1`). Feature milestones use `vX.Y` (e.g. `v1.2`). |
+| Cold start mitigation | `GET /api/health` (no auth) runs `SELECT 1` against Azure SQL — called on login page mount to warm up both Azure Functions (cold start ~10 min) and Azure SQL (auto-pause ~1 hr) before user clicks Sign In. |
+| Health endpoint | `HealthFunctions.cs` — `GET /api/health`. Returns `{ status, api, database, utc }`. 200 OK when DB is reachable, 503 when DB is down. No auth required. |
 
 ### Linear Milestones
 
@@ -565,8 +570,19 @@ Follow the JWT validation and permission check patterns in CLAUDE.md.
 | v0.1 — Project Setup & Foundation | ✅ Done |
 | v1.0 — Core Portal & Inventory Monitoring | ✅ Done |
 | v1.1 — Inventory UI Refinements + Distribution | ✅ Done |
+| v1.0.1 — Patch: logo compression, CI fix, auth retry, health check | ✅ Done |
 | v1.2 — Employee Profiles | 📋 Planned |
 | v1.3 — Calendar & Announcements | 📋 Planned |
+
+### v1.0.1 Patch — Changes (merged to main 2026-06-08)
+
+| Change | Detail |
+|---|---|
+| Logo compression | `Bagong_Pilipinas_logo.png` compressed from 17 MB → 88 KB (99.5% reduction) |
+| Version bump | `APP_VERSION` → `v1.0.1` in Sidebar; `Portal v1.0.1` in Footer |
+| CI fix | Replaced blocked `Azure/functions-action@v1` with direct ZIP deploy via `curl` + publish profile |
+| Auth retry on cold start | `callWithRetry()` in `api.ts` and `layout.tsx` — retries refresh up to 2x with 3s delay on network errors |
+| Health check endpoint | `GET /api/health` wakes Functions + SQL; login page shows status indicator (yellow/green/red) |
 
 ### Production Deployment (Live as of 2026-06-05)
 
@@ -582,7 +598,8 @@ Follow the JWT validation and permission check patterns in CLAUDE.md.
 **Deployment notes:**
 - `NEXT_PUBLIC_API_BASE_URL` is baked into the Next.js build via `.github/workflows/deploy.yml` — SWA Free tier does not support API linking
 - Azure Functions CORS is configured in **Azure Portal → Function App → CORS** (not `host.json`) — add any new allowed origins there
-- Azure SQL Free tier auto-pauses after inactivity — first request after pause takes ~20-30s to resume (normal)
+- Azure SQL Free tier auto-pauses after **1 hour** of inactivity — first request after pause takes ~20-30s to resume. The `GET /api/health` call on the login page pre-warms both services.
+- Azure Functions Consumption plan scales to zero after **~10 min** of no traffic — cold start takes 5-20s
 - Push to `main` → GitHub Actions builds and deploys both frontend and backend automatically
 - First-time DB setup: run `dotnet ef database update --project PPDO.Infrastructure` with `SqlConnectionString` env var pointing to Azure SQL
 - SuperAdmin seed account: `superadmin@ppdo.gov.ph` / `PPDOAdmin2026!`
@@ -593,4 +610,4 @@ Follow the JWT validation and permission check patterns in CLAUDE.md.
 
 ---
 
-*CLAUDE.md — PPDO Portal v1.1 — 2026-06-05 — Ralph Armand Alcaide*
+*CLAUDE.md — PPDO Portal v1.0.1 — 2026-06-08 — Ralph Armand Alcaide*
