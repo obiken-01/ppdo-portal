@@ -79,11 +79,22 @@ export default function PortalLayout({
       }
 
       if (!_refreshInFlight) {
-        _refreshInFlight = axios
-          .post(`${BASE_URL}/auth/refresh`, { refreshToken })
-          .then(({ data }) => { auth.login(data); return true; })
-          .catch(() => { auth.logout(); return false; })
-          .finally(() => { _refreshInFlight = null; });
+        // Retry up to 2 times to handle Azure Functions cold starts after inactivity.
+        const tryRefresh = (retries: number): Promise<boolean> =>
+          axios
+            .post(`${BASE_URL}/auth/refresh`, { refreshToken }, { withCredentials: true })
+            .then(({ data }) => { auth.login(data); return true; })
+            .catch((err) => {
+              // Retry on network errors (cold start), not on auth rejections (4xx)
+              if (retries > 0 && axios.isAxiosError(err) && !err.response) {
+                return new Promise<boolean>((resolve) => setTimeout(resolve, 3000))
+                  .then(() => tryRefresh(retries - 1));
+              }
+              auth.logout();
+              return false;
+            });
+
+        _refreshInFlight = tryRefresh(2).finally(() => { _refreshInFlight = null; });
       }
 
       const ok = await _refreshInFlight;

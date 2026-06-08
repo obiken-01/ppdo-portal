@@ -51,6 +51,28 @@ api.interceptors.request.use((config) => {
 });
 
 // ---------------------------------------------------------------------------
+// Retry helper — handles Azure Functions cold starts (Consumption plan)
+// ---------------------------------------------------------------------------
+
+async function callWithRetry<T>(
+  fn: () => Promise<T>,
+  retries = 2,
+  delayMs = 3000
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (retries <= 0) throw err;
+    // Only retry on network errors (no response), not on 4xx/5xx from the server
+    if (axios.isAxiosError(err) && !err.response) {
+      await new Promise((r) => setTimeout(r, delayMs));
+      return callWithRetry(fn, retries - 1, delayMs);
+    }
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Response interceptor — silent refresh on 401
 // ---------------------------------------------------------------------------
 
@@ -112,8 +134,12 @@ api.interceptors.response.use(
     }
 
     try {
-      // Use a plain axios call (not `api`) to avoid triggering this interceptor again
-      const { data } = await axios.post(`${BASE_URL}/auth/refresh`, { refreshToken });
+      // Use a plain axios call (not `api`) to avoid triggering this interceptor again.
+      // Retry up to 2 times with a 3-second delay to handle Azure Functions cold starts
+      // (Consumption plan scales to zero after inactivity; first request can take 20-30s).
+      const { data } = await callWithRetry(() =>
+        axios.post(`${BASE_URL}/auth/refresh`, { refreshToken }, { withCredentials: true })
+      );
       auth.login(data);
       processQueue(null, data.accessToken);
       original.headers.Authorization = `Bearer ${data.accessToken}`;
