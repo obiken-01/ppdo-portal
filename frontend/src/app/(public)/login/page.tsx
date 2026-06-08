@@ -12,15 +12,49 @@
  * navigates to /dashboard.
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import axios from "axios";
 import api from "@/lib/api";
 import { auth } from "@/lib/auth";
 import type { LoginResponse } from "@/types/auth";
+
+// ---------------------------------------------------------------------------
+// API status indicator
+// ---------------------------------------------------------------------------
+
+type ApiStatus = "checking" | "ok" | "unavailable";
+
+const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api";
+
+function StatusDot({ status }: { status: ApiStatus }) {
+  if (status === "checking") {
+    return (
+      <span className="flex items-center gap-1.5 text-xs text-slate-400">
+        <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
+        Connecting to server…
+      </span>
+    );
+  }
+  if (status === "ok") {
+    return (
+      <span className="flex items-center gap-1.5 text-xs text-green-600">
+        <span className="w-2 h-2 rounded-full bg-green-500" />
+        Server available
+      </span>
+    );
+  }
+  return (
+    <span className="flex items-center gap-1.5 text-xs text-red-500">
+      <span className="w-2 h-2 rounded-full bg-red-500" />
+      Server unavailable — login may be slow
+    </span>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Validation schema
@@ -43,6 +77,25 @@ type FormData = z.infer<typeof schema>;
 export default function LoginPage() {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
+  const [apiStatus, setApiStatus] = useState<ApiStatus>("checking");
+
+  // Fire a health check on mount — wakes up Azure Functions + Azure SQL
+  // (both auto-sleep after inactivity on the free tier).
+  useEffect(() => {
+    let cancelled = false;
+
+    async function checkHealth() {
+      try {
+        const res = await axios.get(`${BASE_URL}/health`, { timeout: 30_000 });
+        if (!cancelled) setApiStatus(res.data?.database === "ok" ? "ok" : "unavailable");
+      } catch {
+        if (!cancelled) setApiStatus("unavailable");
+      }
+    }
+
+    checkHealth();
+    return () => { cancelled = true; };
+  }, []);
 
   const {
     register,
@@ -218,14 +271,15 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Back link */}
-          <div className="mt-6 text-center">
+          {/* API status indicator */}
+          <div className="mt-6 flex items-center justify-between">
             <Link
               href="/"
               className="text-sm text-slate-400 hover:text-green-700 transition-colors"
             >
               ← Back to home
             </Link>
+            <StatusDot status={apiStatus} />
           </div>
 
           </div>{/* end login card */}
