@@ -82,6 +82,8 @@ AIP records can be created in two ways:
 
 Both modes produce the same data structure in the database.
 
+> **Priority note (2026-06-10):** Manual Web UI Entry is **deferred** — the v1.1 initial release ships the Manual Entry tab as a disabled placeholder (see RAL-76/RAL-62). The schema keeps `entry_source` = Upload/Manual so manual entry can be added later without migration. Current priority: Config pages → AIP upload → WFP page.
+
 ### Post-Upload Summary Page
 After a successful file upload, a summary page is displayed showing what was imported — structured similarly to the Excel file layout:
 - Grouped by sector (General → Social → Economic → Others)
@@ -172,7 +174,7 @@ General → Social → Economic → Others (matches the Excel file order).
 - **Account Title** → Object of Expenditure (col H in WFP)
 - **Account Number** → Account Code (col G in WFP, auto-populated)
 - Searchable textbox displays: `Account Title (Account Number)` e.g. `Salaries and Wages – Regular (5-01-01-010)`
-- Mockup: Penpot Page 3, Screen 12 (Accounts Config)
+- Mockup: Penpot Page 3, Screen 10 (Account Config)
 - CSV version (`chart_of_accounts.csv`) already generated — ready for upload to the config page
   - Columns: `account_title`, `account_number`, `normal_balance`, `description` (no `display` column — type PS/MOOE/CO is derived from `account_number` prefix at query time)
   - 556 rows total; filter to 143 rows where `account_number` starts with `5-`
@@ -232,6 +234,8 @@ Every config page has the same 4 capabilities:
 | Accounts | `chart_of_accounts.csv` | 143 expenditure accounts (5-xx prefix) | Full 571-row CSV also available; 143 are the relevant PS/MOOE/CO expense accounts |
 | Offices | `offices.csv` | 16 | Extracted from AIP 2027; sub-offices excluded; columns: `office_code`, `office_name`, `is_active` |
 | Funding Sources | `funding_sources.csv` | 6 | GF, GAD, LDRRMF, SEF, 20DF, TF; columns: `code`, `name`, `description`, `is_active` |
+
+> **Seeding decision (2026-06-10): manual upload via the website — no EF seed migration.** The seed CSVs stay outside the repo; once the config pages and CSV upload endpoints are live, the user uploads each file through the corresponding config page's CSV Upload feature. The upload's upsert + preview flow is the seeding path.
 
 > Note: ref code `3000-000-1-01-017` in the AIP file has a data entry issue (value "Janaury") — office excluded from seed. Verify and add manually.
 
