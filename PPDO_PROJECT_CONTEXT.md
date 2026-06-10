@@ -1,18 +1,22 @@
 # PPDO Portal — Project Memory Context
-**Last Updated:** 2026-05-25  
+**Last Updated:** 2026-06-10  
 **Owner:** ralpharmand.alcaide@gmail.com  
 **Project:** PPDO (Provincial Planning and Development Office), Occidental Mindoro, Philippines  
-**Claude Project:** PPDO Inventory Monitoring System  
+**Claude Project:** PPDO Portal
 
 ---
 
 ## 1. What This Project Is
 
-A **web portal** for PPDO staff. Started as a Google Sheets inventory monitoring system (v0.4), now evolving into a full web application. The Google Sheets version remains active during transition.
+A **web portal** for PPDO staff. Started as a Google Sheets inventory monitoring system (v0.4), now a production web application on Azure.
 
-**Two parallel tracks:**
-1. **Google Sheets** — `PPDO_Inventory_v0.4` — still in active use (Apps Script automation)
-2. **Web portal** — prototype stage, frontend being designed in Penpot + Claude
+**Current Status:** v1.0 (Inventory Monitoring) is live in production. v1.0.1 (Security Hardening) is done. v1.1 (Budget Planning — LDIP/AIP/WFP) is in active development on branch `release/1.1.0`.
+
+**Stack:** .NET 9 Azure Functions · Next.js 14 · Azure SQL · EF Core 9 · JWT Auth · Azure Static Web Apps (free tier)
+
+**Historical tracks (now unified):**
+1. **Google Sheets** — `PPDO_Inventory_v0.4` — legacy reference; web portal has replaced it
+2. **Web portal** — production at Azure Static Web Apps + Azure Functions + Azure SQL
 
 ---
 
@@ -46,20 +50,25 @@ A **web portal** for PPDO staff. Started as a Google Sheets inventory monitoring
 
 ## 4. Portal — Feature Scope
 
-### Confirmed Features
+### Shipped (v1.0 / v1.0.1)
 1. **Public landing page** — PPDO branding, feature overview
-2. **Login page** — Email/password, role badges shown
-3. **Main dashboard** — Calendar only (office + personal events + holidays)
-4. **Inventory monitor** — Full workflow (see Section 6)
-5. **Employee profiles** — Staff directory, self-update contact info (future)
-6. **User management** — RBAC (see Section 7)
-7. **Admin tools** — Items Master Data, Settings
+2. **Login + RBAC** — JWT auth, role-based + permission-flag access control
+3. **Main dashboard** — calendar with office events and PH holidays
+4. **Inventory monitoring** — full PR → Delivery → Distribution → Stock workflow
+5. **User management** — add users, reset passwords, manage permissions
+6. **Security hardening** — login rate limiting, httpOnly refresh token cookie, CORS whitelist
 
-### Planned / Deferred
+### In Development (v1.1)
+7. **Budget Planning — LDIP / AIP / WFP** — see Section 17
+
+### Planned
+8. **Employee Profiles** (v1.2) — Staff directory, self-update contact info
+9. **Calendar & Announcements** (v1.3)
+
+### Deferred
 - PAR/ICS slip generation
 - Printed PR form matching official GSO format
-- Employee profiles (planned v1.x)
-- Excel/Google Sheets live API sync (deferred, noted as future)
+- Excel/Google Sheets live API sync
 
 ---
 
@@ -400,4 +409,63 @@ Each card has a 3-column header matching the official slides:
 
 ---
 
-*This file was auto-generated on 2026-05-25. Updated 2026-05-28 — added Google Site replacement notes, landing page content spec.*
+## 17. Budget Planning Module (v1.1) — LDIP / AIP / WFP
+
+**Branch:** `release/1.1.0`  
+**Detailed docs:** `docs/v1.1/` (requirements, DB model, import findings)
+
+### Document Hierarchy
+
+```
+LDIP (multi-year, 5–6 segment codes)
+  └─► AIP (single fiscal year, 5–8 segment codes)
+         └─► WFP (per department, quarterly breakdown)
+```
+
+### AIP Reference Code Format
+
+`SSSS-000-[LGU type]-[category]-[office][-program[-project[-activity]]]`
+
+Sector prefixes: `1000` General · `3000` Social · `8000` Economic · `9000` Others
+
+### Database Tables Added in v1.1
+
+| Group | Tables |
+|---|---|
+| Config | `offices`, `funding_sources`, `accounts` |
+| LDIP | `ldip_records` |
+| AIP | `aip_records`, `aip_offices`, `aip_programs`, `aip_projects`, `aip_activities` |
+| WFP | `wfp_records`, `wfp_activities`, `wfp_expenditure_lines` |
+| Audit | `audit_log` |
+
+### Key Design Decisions
+
+| # | Decision |
+|---|---|
+| 1 | AIP is independent from LDIP (no required FK) |
+| 2 | AIP can be created via file upload (`.xlsm`) or manual web UI entry |
+| 3 | WFP entry uses a popup modal (3 sections: PS / MOOE / CO), always-visible Save button, localStorage offline buffer |
+| 4 | 10% Reserve is per expenditure line, controlled by a checkbox |
+| 5 | Config pages support CSV upload/download, add/edit via modal, upsert-by-key on import |
+| 6 | Expenditure type (PS/MOOE/CO) derived from account_number prefix — not stored |
+| 7 | Status lifecycle: Draft → Final → Archived; amendments copy to new Draft (`source_id` FK) |
+| 8 | Config values are snapshotted on save (`_snapshot` columns) for historical accuracy |
+| 9 | `quarterly_total` (Q1–Q4 sum) must not exceed `net_appropriation` — backend validates |
+| 10 | Sector display order: General → Social → Economic → Others |
+
+### Seed Data (ready)
+
+| Config | File | Rows |
+|---|---|---|
+| Chart of Accounts | `chart_of_accounts.csv` | 143 expense accounts (`5-xx`) |
+| Offices | `offices.csv` | 16 offices |
+| Funding Sources | `funding_sources.csv` | 6 (GF, GAD, LDRRMF, SEF, 20DF, TF) |
+
+### Access Control
+- PPDO users manage all offices
+- Non-PPDO (Visitor) users access only their own office's WFP
+- Enforced via existing roles/permissions system
+
+---
+
+*This file was auto-generated on 2026-05-25. Updated 2026-05-28 — added Google Site replacement notes, landing page content spec. Updated 2026-06-10 — v1.1 Budget Planning module added.*

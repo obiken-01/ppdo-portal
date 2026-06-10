@@ -1,7 +1,7 @@
 # PPDO Portal & Inventory System
 
 > Web portal for the Provincial Planning and Development Office (PPDO), Occidental Mindoro, Philippines.
-> Inventory monitoring is the first major feature — tracking purchase requests, deliveries, and stock levels.
+> Covers inventory monitoring, budget planning (LDIP / AIP / WFP), and office operations.
 
 ---
 
@@ -11,7 +11,8 @@
 |---|---|---|
 | v0.1 | Project Setup & Foundation | ✅ Done |
 | v1.0 | Core Portal & Inventory Monitoring | ✅ Done |
-| v1.1 | Inventory UI Refinements + Distribution | ✅ Done |
+| v1.0.1 | Security Hardening | ✅ Done |
+| v1.1 | Budget Planning — LDIP / AIP / WFP | 🚧 In Progress |
 | v1.2 | Employee Profiles | 📋 Planned |
 | v1.3 | Calendar & Announcements | 📋 Planned |
 
@@ -165,16 +166,61 @@ Domain → Infrastructure → Application → Functions → Frontend
 - 🔍 **PR List** — full PR list with status filters
 - 👤 **User Management** — add users, reset passwords, manage permissions
 
-## What's New in v1.1 — Inventory UI Refinements + Distribution
+## What's New in v1.1 — Budget Planning (LDIP / AIP / WFP)
 
-- 📦 **Distribution page** — standalone distribution flow, separate from Receive Delivery; single Distribute button per item with FIFO batch allocation; Stock Sources read-only view
-- 📊 **Inventory Dashboard** — Distribution quick-action button added; flat UI (no rounded edges); stat card heights unified
+v1.1 adds the **Budget Planning** module — a web-based replacement for the Province's existing Excel-based LDIP, AIP, and WFP files (currently managed via `.xlsm` files with VBA macros).
+
+### Module Overview
+
+| Document | Full Name | Scope |
+|---|---|---|
+| **LDIP** | Local/Provincial Development Investment Program | Multi-year (3–6 yrs), all offices |
+| **AIP** | Annual Investment Program | Single fiscal year, annual slice of LDIP |
+| **WFP** | Work and Financial Plan | Per-department, quarterly expenditure breakdown |
+
+**Hierarchy:** LDIP → AIP (annual slice) → WFP (department execution plan)  
+**Legal basis:** RA 7160, DBM LBC 152 (2023), DILG-NEDA-DBM-DOF JMC No. 1 (2016)
+
+### Key Features
+
+- 📂 **Configuration section** — Accounts (Chart of Accounts), Offices, and Funding Sources; each config page supports CSV upload/download, add/edit via modal, and searchable/sortable table
+- 📥 **AIP file upload** — import existing `.xlsm` files (4 sector sheets); post-upload summary page before confirming import
+- ✏️ **AIP manual entry** — create AIP records directly through the web UI (Office → Program → Project → Activity hierarchy)
+- 📊 **WFP entry** — per-office WFP linked to an AIP record; expenditure lines entered via popup (PS / MOOE / CO sections with quarterly amounts, 10% reserve toggle, and funding source)
+- 🌳 **Hierarchical PPA tree** — accordion/tree UI for the 4-level AIP reference code structure (Office → Program → Project → Activity)
+- 🔢 **Auto-computed totals** — PS + MOOE + CO = Total; Q1+Q2+Q3+Q4 = quarterly total; rollups at every parent level
+- 📜 **Audit log** — change history on all LDIP, AIP, and WFP records (who changed what, when)
+- 🔒 **Draft / Final / Archived workflow** — records are editable as Draft; locked when Finalized; amendments create a new Draft copy
+
+### AIP Reference Code Format
+
+`SSSS-000-L-CC-OOO[-PPP[-AAAA[-XXXX]]]`
+
+| Segments | Level | Example |
+|---|---|---|
+| 5 | Office | `1000-000-1-01-005` |
+| 6 | Program | `1000-000-1-01-005-001` |
+| 7 | Project / Sub-program | `1000-000-1-01-005-001-001` |
+| 8 | Activity (leaf) | `1000-000-1-01-005-001-001-001` |
+
+### New Database Tables
+
+Config: `offices`, `funding_sources`, `accounts`  
+LDIP: `ldip_records`  
+AIP: `aip_records`, `aip_offices`, `aip_programs`, `aip_projects`, `aip_activities`  
+WFP: `wfp_records`, `wfp_activities`, `wfp_expenditure_lines`  
+Audit: `audit_log`
+
+See [`docs/v1.1/DB_Model.md`](docs/v1.1/DB_Model.md) for the full schema.
+
+### v1.0.x — Inventory UI Refinements + Security (shipped)
+
+- 📦 **Distribution page** — standalone distribution flow with FIFO batch allocation; Stock Sources read-only view
 - 📋 **PR List** — full filter panel (division, quarter, status, requested by, fund, AIP code, account)
-- 📒 **Stock Overview** — filter panel with Received in Quarter filter; renamed from Item Ledger
-- 📊 **PR Report** — delivery summary bar; Quarter column replaces Date Created; fixed zero-delivery count bug
-- 🎨 **UI refinements** — flat design system applied across all inventory pages (no rounded panels/buttons)
-- 🔢 **Version indicator** — `APP_VERSION` displayed in sidebar top left (`Occ. Mindoro · v1.1`); update `APP_VERSION` in `frontend/src/components/layout/Sidebar.tsx` for each new release
-- 🚀 **Production deployment** — Azure Static Web Apps + Azure Functions + Azure SQL fully configured and live
+- 📒 **Stock Overview** — Received in Quarter filter; renamed from Item Ledger
+- 📊 **PR Report** — delivery summary bar; Quarter column replaces Date Created
+- 🎨 **UI refinements** — flat design system across all inventory pages
+- 🔐 **Security hardening (v1.0.1)** — login rate limiting, httpOnly refresh token cookie, CORS origin whitelist
 
 ---
 
@@ -188,6 +234,14 @@ Domain → Infrastructure → Application → Functions → Frontend
 | Bug reporting | `docs/BUG_REPORT_STANDARD.md` |
 | Claude Code instructions | `CLAUDE.md` |
 | Full technical spec | `PROJECT_DOCUMENTATION_NET_AZURE.md` |
+
+### v1.1 Budget Planning Docs
+
+| Doc | File |
+|---|---|
+| Requirements & field analysis (LDIP / AIP / WFP) | `docs/v1.1/LDIP_AIP_WFP_Web_Requirements.md` |
+| Database model | `docs/v1.1/DB_Model.md` |
+| AIP import findings & design decisions | `docs/v1.1/AIP_WFP_Import_Findings.md` |
 
 ---
 
