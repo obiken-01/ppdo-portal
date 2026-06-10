@@ -172,10 +172,10 @@ General → Social → Economic → Others (matches the Excel file order).
 - **Account Title** → Object of Expenditure (col H in WFP)
 - **Account Number** → Account Code (col G in WFP, auto-populated)
 - Searchable textbox displays: `Account Title (Account Number)` e.g. `Salaries and Wages – Regular (5-01-01-010)`
-- Config page to be built; seed data from this PDF
+- Mockup: Penpot Page 3, Screen 12 (Accounts Config)
 - CSV version (`chart_of_accounts.csv`) already generated — ready for upload to the config page
-  - Columns: `account_number`, `account_title`, `display`
-  - 556 rows total
+  - Columns: `account_title`, `account_number`, `normal_balance`, `description` (no `display` column — type PS/MOOE/CO is derived from `account_number` prefix at query time)
+  - 556 rows total; filter to 143 rows where `account_number` starts with `5-`
 
 ---
 
@@ -246,5 +246,3 @@ Every config page has the same 4 capabilities:
 - [ ] Build Funding Source Config page — seed with `funding_sources.csv`
 - [ ] Build AIP upload/import page (parse xlsm, 4 sheets, save all 4 levels)
 - [ ] Build WFP entry page (office + AIP selector → hierarchical activity grid → expenditure popup)
-- [ ] Add history tracking model to LDIP, AIP, WFP
-- [ ] Move eSRE Codes from hardcoded to config page (once labels/full names are confirmed)
