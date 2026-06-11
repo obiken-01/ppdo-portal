@@ -243,6 +243,7 @@ See [`docs/v1.1/DB_Model.md`](docs/v1.1/DB_Model.md) for the full schema.
 | Database model | `docs/v1.1/DB_Model.md` |
 | AIP import findings & design decisions | `docs/v1.1/AIP_WFP_Import_Findings.md` |
 | Shared UI component standards | `docs/v1.1/UI_Component_Standards.md` |
+| User roles, permissions & access model | `docs/v1.1/User_Roles_Permissions.md` |
 
 ---
 
