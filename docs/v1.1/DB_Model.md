@@ -320,7 +320,7 @@ CREATE INDEX IX_wfp_source_id                 ON wfp_records           (source_i
 | 7 | Soft delete (`is_active`) on all config tables; no hard delete if record is referenced |
 | 8 | `users` and `roles/permissions` tables already exist in the portal — no need to create |
 | 9 | LDIP, AIP, and WFP all share the same status pattern: Draft / Final / Archived. Draft = editable; Final = locked (read-only); Archived = superseded/inactive. Once Final, edits require an admin unlock request to revert to Draft |
-| 10 | Access control: PPDO users manage all offices; non-PPDO (Visitor) users access only their own office. Enforced via existing roles/permissions |
+| 10 | Access control: PPDO users (`users.office_id` = null) manage all offices; non-PPDO office users (`users.office_id` set) access only their own office. Office encoders = Staff role; office viewers = Observer role. `users.division` becomes nullable in v1.1 (null for office users). Full model: `docs/v1.1/User_Roles_Permissions.md` |
 | 11 | Amendment / Supplemental flow: system copies the Final record into a new Draft (`source_id` points to original); on finalize, new record becomes Final and original is Archived |
 | 12 | AIP can be created via file upload (xlsm) or manual web UI entry — `entry_source` field tracks which |
 | 13 | After file upload, a summary page is shown before confirming import: grouped by sector, hierarchical layout, with import counts |
