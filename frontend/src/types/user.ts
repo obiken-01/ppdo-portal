@@ -9,6 +9,9 @@ export interface UserResponse {
   email: string;
   role: UserRole;
   division: Division | null;
+  /** Provincial office (v1.1) — set for non-PPDO office users. */
+  officeId: number | null;
+  officeName: string | null;
   groupId: string | null;
   position: string | null;
   contactNo: string | null;
@@ -18,6 +21,9 @@ export interface UserResponse {
   overrideCanAccessReports: boolean | null;
   overrideCanManageUsers: boolean | null;
   overrideCanManageResourceLinks: boolean | null;
+  overrideCanAccessBudgetPlanning: boolean | null;
+  overrideCanUploadAip: boolean | null;
+  overrideCanManageConfig: boolean | null;
 }
 
 export interface CreateUserRequest {
@@ -25,9 +31,11 @@ export interface CreateUserRequest {
   email: string;
   role: UserRole;
   division: Division | null;
+  /** Set to create a non-PPDO office user (Division is then ignored). */
+  officeId: number | null;
   position: string | null;
   contactNo: string | null;
-  // groupId intentionally omitted — backend auto-assigns from Role + Division
+  // groupId intentionally omitted — backend auto-assigns from Role + Division/office
 }
 
 export interface UpdateUserRequest extends CreateUserRequest {
@@ -37,6 +45,9 @@ export interface UpdateUserRequest extends CreateUserRequest {
   overrideCanAccessReports: boolean | null;
   overrideCanManageUsers: boolean | null;
   overrideCanManageResourceLinks: boolean | null;
+  overrideCanAccessBudgetPlanning: boolean | null;
+  overrideCanUploadAip: boolean | null;
+  overrideCanManageConfig: boolean | null;
 }
 
 export interface PermissionGroupResponse {
@@ -47,4 +58,15 @@ export interface PermissionGroupResponse {
   canAccessReports: boolean;
   canManageUsers: boolean;
   canManageResourceLinks: boolean;
+  canAccessBudgetPlanning: boolean;
+  canUploadAip: boolean;
+  canManageConfig: boolean;
+}
+
+/** Mirrors PPDO.Application/DTOs/Config/OfficeDto — GET /api/config/offices */
+export interface OfficeResponse {
+  id: number;
+  officeCode: string;
+  officeName: string;
+  isActive: boolean;
 }

@@ -25,11 +25,23 @@ public sealed class User
     public UserRole Role { get; set; }
 
     /// <summary>
-    /// The organisational division this user belongs to.
-    /// Staff and Observer are restricted to writing data for their own Division.
+    /// The organisational division this user belongs to (PPDO-internal scope).
+    /// Staff and Observer are restricted to writing inventory data for their own Division.
     /// SuperAdmin and Admin can read/write all Divisions regardless of this value.
+    ///
+    /// Nullable from v1.1: non-PPDO office users have no division (see <see cref="OfficeId"/>).
+    /// ⚠️ A null Division on a Staff/Observer must resolve to an EMPTY inventory scope,
+    /// never "all divisions" — see InventoryService/DistributionService scope guards.
     /// </summary>
-    public Division Division { get; set; }
+    public Division? Division { get; set; }
+
+    /// <summary>
+    /// FK to the provincial office this user belongs to (<c>offices.id</c>). New in v1.1.
+    /// This is the PPDO / non-PPDO discriminator:
+    ///   null  → PPDO-internal user (uses <see cref="Division"/> for scope)
+    ///   set   → non-PPDO office user, scoped to that office's budget planning data only.
+    /// </summary>
+    public int? OfficeId { get; set; }
 
     /// <summary>
     /// FK to the user's PermissionGroup.
@@ -77,6 +89,26 @@ public sealed class User
     /// </summary>
     public bool? OverrideCanManageResourceLinks { get; set; }
 
+    /// <summary>
+    /// Override for Budget Planning access. Null = use Group.CanAccessBudgetPlanning.
+    /// Ignored for SuperAdmin and Admin. Added in RAL-81 (v1.1).
+    /// </summary>
+    public bool? OverrideCanAccessBudgetPlanning { get; set; }
+
+    /// <summary>
+    /// Override for AIP upload/import. Null = use Group.CanUploadAip.
+    /// Ignored for SuperAdmin and Admin. Observer and non-PPDO office users can never
+    /// have this effectively granted (resolved in PermissionService). Added in RAL-81.
+    /// </summary>
+    public bool? OverrideCanUploadAip { get; set; }
+
+    /// <summary>
+    /// Override for Configuration management (Accounts, Offices, Funding Sources).
+    /// Null = use Group.CanManageConfig. Ignored for SuperAdmin and Admin.
+    /// Observer can never have this effectively granted. Added in RAL-81.
+    /// </summary>
+    public bool? OverrideCanManageConfig { get; set; }
+
     // ── Refresh token (JWT rotation) ─────────────────────────────────────────
 
     /// <summary>
@@ -102,4 +134,7 @@ public sealed class User
 
     /// <summary>The permission group this user belongs to. Null for SuperAdmin/Admin.</summary>
     public PermissionGroup? Group { get; set; }
+
+    /// <summary>The provincial office this user belongs to. Null for PPDO-internal users.</summary>
+    public Office? Office { get; set; }
 }

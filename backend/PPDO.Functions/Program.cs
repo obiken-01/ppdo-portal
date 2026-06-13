@@ -100,6 +100,7 @@ var host = new HostBuilder()
         services.AddScoped<IDistributionService, DistributionService>();
         services.AddScoped<IPRReportService, PRReportService>();
         services.AddScoped<IInventoryService, InventoryService>();
+        services.AddScoped<IOfficeService, OfficeService>();
     })
     .Build();
 

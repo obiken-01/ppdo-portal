@@ -10,4 +10,7 @@ public sealed record PermissionGroupResponseDto(
     bool    CanAccessInventory,
     bool    CanAccessReports,
     bool    CanManageUsers,
-    bool    CanManageResourceLinks);
+    bool    CanManageResourceLinks,
+    bool    CanAccessBudgetPlanning,
+    bool    CanUploadAip,
+    bool    CanManageConfig);

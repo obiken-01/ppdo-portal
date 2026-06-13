@@ -166,6 +166,50 @@ public sealed class InventoryServiceTests
         Assert.Null(capturedDivision); // Admin → null (all divisions)
     }
 
+    // ── Null-division bug guard (v1.1 — office users) ─────────────────────────
+
+    private static User MakeOfficeStaff() => new()
+    {
+        Id = Guid.NewGuid(), FullName = "Office Encoder", Email = "office@lgu.gov.ph",
+        PasswordHash = "hash", Role = UserRole.Staff, Division = null, OfficeId = 7, IsActive = true,
+        Group = new PermissionGroup { Id = Guid.NewGuid(), Name = "Office User Default" },
+    };
+
+    [Fact]
+    public async Task GetStatsAsync_StaffWithNullDivision_ReturnsEmpty_NeverQueriesAllDivisions()
+    {
+        // A Staff/Observer with a null Division (an office user) must resolve to an
+        // EMPTY scope — never "all divisions". Previously null meant the Admin path.
+        Mock<IPurchaseRequestRepository> prRepo = new();
+        Mock<IInventoryRepository> invRepo = new();
+        Mock<IItemMasterRepository> itemRepo = new();
+
+        InventoryStatsDto result =
+            await BuildSut(invRepo, prRepo, itemRepo).GetStatsAsync(MakeOfficeStaff());
+
+        Assert.Equal(0, result.PurchaseRequests.Total);
+        Assert.Equal(0, result.InventoryAlerts.UniqueItemsTracked);
+        Assert.Equal(0m, result.InventoryAlerts.TotalPRValue);
+
+        // Must NOT fall through to the all-divisions query.
+        prRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
+        prRepo.Verify(r => r.GetByDivisionAsync(It.IsAny<Division>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetItemLedgerAsync_StaffWithNullDivision_ReturnsEmpty_NeverQueriesAllDivisions()
+    {
+        Mock<IPurchaseRequestRepository> prRepo = new();
+        Mock<IInventoryRepository> invRepo = new();
+        Mock<IItemMasterRepository> itemRepo = new();
+
+        IReadOnlyList<ItemLedgerRowDto> result =
+            await BuildSut(invRepo, prRepo, itemRepo).GetItemLedgerAsync(MakeOfficeStaff());
+
+        Assert.Empty(result);
+        invRepo.Verify(r => r.GetItemStockLevelsAsync(It.IsAny<Division?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     // ── Group 2 — Stock alert counts ──────────────────────────────────────────
 
     [Fact]

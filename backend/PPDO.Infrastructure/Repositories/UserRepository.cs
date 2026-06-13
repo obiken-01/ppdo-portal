@@ -40,6 +40,7 @@ public sealed class UserRepository : Repository<User>, IUserRepository
         CancellationToken cancellationToken = default)
         => _context.Users
             .Include(u => u.Group)
+            .Include(u => u.Office)   // v1.1 — OfficeName for the user detail/list DTO
             .FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
 
     /// <inheritdoc />
@@ -47,6 +48,7 @@ public sealed class UserRepository : Repository<User>, IUserRepository
         CancellationToken cancellationToken = default)
         => await _context.Users
             .Include(u => u.Group)
+            .Include(u => u.Office)   // v1.1 — OfficeName for the user list DTO
             .OrderBy(u => u.FullName)
             .ToListAsync(cancellationToken);
 }

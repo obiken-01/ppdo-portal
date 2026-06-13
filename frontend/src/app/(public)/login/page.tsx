@@ -21,7 +21,7 @@ import { z } from "zod";
 import axios from "axios";
 import api from "@/lib/api";
 import { auth } from "@/lib/auth";
-import type { LoginResponse } from "@/types/auth";
+import type { LoginResponse, MeResponse } from "@/types/auth";
 
 // ---------------------------------------------------------------------------
 // API status indicator
@@ -111,7 +111,15 @@ export default function LoginPage() {
         password: values.password,
       });
       auth.login(data);
-      router.replace("/dashboard");
+
+      // Non-PPDO office users go straight to Budget Planning — it's their only feature.
+      // PPDO users land on the main Dashboard.
+      try {
+        const { data: me } = await api.get<MeResponse>("/auth/me");
+        router.replace(me.officeId != null ? "/budget-planning" : "/dashboard");
+      } catch {
+        router.replace("/dashboard");
+      }
     } catch {
       setServerError("Invalid email or password. Please try again.");
     }

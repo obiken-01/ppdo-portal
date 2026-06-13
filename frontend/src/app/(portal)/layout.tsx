@@ -32,6 +32,8 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api";
 const PAGE_TITLES: Record<string, string> = {
   "/dashboard":     "Main Dashboard",
   "/inventory":     "Inventory",
+  "/budget-planning":       "Budget Planning",
+  "/config":                "Configuration",
   "/resource-links":        "Resource Links",
   "/profile":               "My Profile",
   "/inventory/create-pr":       "Create Purchase Request",
@@ -114,6 +116,16 @@ export default function PortalLayout({
     if (!ready) return;
     api.get<MeResponse>("/auth/me").then(({ data }) => setMe(data)).catch(() => {});
   }, [ready]);
+
+  // ── Office-user gate ────────────────────────────────────────────────────────
+  // Non-PPDO office users have Budget Planning as their only feature. If they land
+  // anywhere else (e.g. via a stale link or the home dashboard), send them back.
+  useEffect(() => {
+    if (!me || me.officeId == null) return;
+    const allowed =
+      pathname.startsWith("/budget-planning") || pathname.startsWith("/profile");
+    if (!allowed) router.replace("/budget-planning");
+  }, [me, pathname, router]);
 
   // ── Loading state ──────────────────────────────────────────────────────────
 

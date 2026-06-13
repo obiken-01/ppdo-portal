@@ -59,7 +59,10 @@ public sealed class PermissionGroupFunctions
                 g.CanAccessInventory,
                 g.CanAccessReports,
                 g.CanManageUsers,
-                g.CanManageResourceLinks));
+                g.CanManageResourceLinks,
+                g.CanAccessBudgetPlanning,
+                g.CanUploadAip,
+                g.CanManageConfig));
 
         HttpResponseData response = req.CreateResponse(HttpStatusCode.OK);
         response.Headers.Add("Content-Type", "application/json; charset=utf-8");

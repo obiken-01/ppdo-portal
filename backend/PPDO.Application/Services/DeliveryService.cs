@@ -54,12 +54,15 @@ public sealed class DeliveryService : IDeliveryService
         User requester,
         CancellationToken cancellationToken = default)
     {
-        IReadOnlyList<PurchaseRequest> prs;
+        // Division scope — office users (Staff/Observer with no division) see nothing,
+        // never the all-divisions list. See DivisionScope.
+        DivisionScope scope = DivisionScope.Resolve(requester);
+        if (scope.SeeNothing)
+            return Array.Empty<DeliverySummaryDto>();
 
-        if (requester.Role is UserRole.Staff or UserRole.Observer)
-            prs = await _prs.GetByDivisionAsync(requester.Division, cancellationToken);
-        else
-            prs = await _prs.GetAllAsync(cancellationToken);
+        IReadOnlyList<PurchaseRequest> prs = scope.SeeAll
+            ? await _prs.GetAllAsync(cancellationToken)
+            : await _prs.GetByDivisionAsync(scope.Division!.Value, cancellationToken);
 
         List<DeliverySummaryDto> result = new();
 

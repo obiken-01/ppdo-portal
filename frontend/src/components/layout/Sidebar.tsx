@@ -66,10 +66,18 @@ export default function Sidebar({ me }: SidebarProps) {
     return pathname === href || pathname.startsWith(href + "/");
   }
 
-  const hasInventory       = me?.canAccessInventory   === true;
-  const hasReport          = me?.canAccessReports      === true;
-  const showInventoryGroup = hasInventory || hasReport;
-  const showManageUsers    = me?.canManageUsers        === true;
+  // Non-PPDO office users (officeId set) get Budget Planning ONLY — no Dashboard,
+  // Inventory, Resource Links (PPDO-internal), Configuration, or User Management.
+  const isOfficeUser       = me != null && me.officeId != null;
+
+  const hasInventory       = me?.canAccessInventory      === true;
+  const hasReport          = me?.canAccessReports         === true;
+  const showInventoryGroup = !isOfficeUser && (hasInventory || hasReport);
+  const showManageUsers    = !isOfficeUser && me?.canManageUsers === true;
+  const showBudgetPlanning = me?.canAccessBudgetPlanning === true;
+  const showConfig         = !isOfficeUser && me?.canManageConfig === true;
+  const showResourceLinks  = !isOfficeUser;
+  const showDashboard      = !isOfficeUser;
 
   function linkCls(active: boolean) {
     return `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
@@ -114,11 +122,13 @@ export default function Sidebar({ me }: SidebarProps) {
       {/* ── Navigation ───────────────────────────────────────────────────── */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
 
-        {/* Dashboard */}
-        <Link href="/dashboard" className={linkCls(isActive("/dashboard"))}>
-          <span className="text-base leading-none w-5 text-center">🏠</span>
-          <span className="truncate">Dashboard</span>
-        </Link>
+        {/* Dashboard — PPDO users only */}
+        {showDashboard && (
+          <Link href="/dashboard" className={linkCls(isActive("/dashboard"))}>
+            <span className="text-base leading-none w-5 text-center">🏠</span>
+            <span className="truncate">Dashboard</span>
+          </Link>
+        )}
 
         {/* Inventory group — collapsible */}
         {showInventoryGroup && (
@@ -217,11 +227,29 @@ export default function Sidebar({ me }: SidebarProps) {
           </div>
         )}
 
-        {/* Resource Links */}
-        <Link href="/resource-links" className={linkCls(isActive("/resource-links"))}>
-          <span className="text-base leading-none w-5 text-center">🔗</span>
-          <span className="truncate">Resource Links</span>
-        </Link>
+        {/* Budget Planning — v1.1. Office users see only this; PPDO users gated by flag. */}
+        {showBudgetPlanning && (
+          <Link href="/budget-planning" className={linkCls(isActive("/budget-planning"))}>
+            <span className="text-base leading-none w-5 text-center">💰</span>
+            <span className="truncate">Budget Planning</span>
+          </Link>
+        )}
+
+        {/* Configuration — PPDO users with CanManageConfig */}
+        {showConfig && (
+          <Link href="/config" className={linkCls(isActive("/config"))}>
+            <span className="text-base leading-none w-5 text-center">⚙️</span>
+            <span className="truncate">Configuration</span>
+          </Link>
+        )}
+
+        {/* Resource Links — PPDO-internal; hidden for office users */}
+        {showResourceLinks && (
+          <Link href="/resource-links" className={linkCls(isActive("/resource-links"))}>
+            <span className="text-base leading-none w-5 text-center">🔗</span>
+            <span className="truncate">Resource Links</span>
+          </Link>
+        )}
 
         {/* User Management */}
         {showManageUsers && (

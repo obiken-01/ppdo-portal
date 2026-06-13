@@ -53,12 +53,15 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         PRStatus? status = null,
         CancellationToken cancellationToken = default)
     {
-        IReadOnlyList<PurchaseRequest> all;
+        // Division scope — office users (Staff/Observer with no division) see nothing,
+        // never the all-divisions list. See DivisionScope.
+        DivisionScope scope = DivisionScope.Resolve(requester);
+        if (scope.SeeNothing)
+            return Array.Empty<PRSummaryDto>();
 
-        if (requester.Role is UserRole.Staff or UserRole.Observer)
-            all = await _prs.GetByDivisionAsync(requester.Division, cancellationToken);
-        else
-            all = await _prs.GetAllAsync(cancellationToken);
+        IReadOnlyList<PurchaseRequest> all = scope.SeeAll
+            ? await _prs.GetAllAsync(cancellationToken)
+            : await _prs.GetByDivisionAsync(scope.Division!.Value, cancellationToken);
 
         IEnumerable<PurchaseRequest> filtered = status.HasValue
             ? all.Where(pr => pr.Status == status.Value)

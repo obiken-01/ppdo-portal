@@ -26,4 +26,7 @@ public sealed class Office
 
     /// <summary>WFP records scoped to this office.</summary>
     public ICollection<WfpRecord> WfpRecords { get; set; } = new List<WfpRecord>();
+
+    /// <summary>Non-PPDO users belonging to this office (encoders / viewers). Added in RAL-81.</summary>
+    public ICollection<User> Users { get; set; } = new List<User>();
 }

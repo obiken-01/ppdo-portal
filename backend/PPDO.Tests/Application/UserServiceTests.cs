@@ -52,8 +52,12 @@ public sealed class UserServiceTests
         Group    = new PermissionGroup { Id = Guid.NewGuid(), Name = "Planning Staff" },
     };
 
-    private static UserService BuildSut(Mock<IUserRepository> repoMock) =>
-        new(repoMock.Object, NullLogger<UserService>.Instance);
+    private static UserService BuildSut(
+        Mock<IUserRepository> repoMock,
+        Mock<IRepository<Office>>? officeMock = null) =>
+        new(repoMock.Object,
+            (officeMock ?? new Mock<IRepository<Office>>()).Object,
+            NullLogger<UserService>.Instance);
 
     private static Mock<IUserRepository> RepoThatSaves()
     {
@@ -201,6 +205,84 @@ public sealed class UserServiceTests
         ServiceResult<UserResponseDto> result = await BuildSut(repo).CreateAsync(MakeSuperAdmin(), dto);
 
         Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task CreateAsync_StaffWithoutDivisionOrOffice_ReturnsBadRequest()
+    {
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+
+        // PPDO Staff with neither a division nor an office cannot be assigned a group.
+        CreateUserDto dto = new("Jane", "jane@ppdo.gov.ph", "Staff", null, null, null);
+
+        ServiceResult<UserResponseDto> result = await BuildSut(repo).CreateAsync(MakeAdmin(), dto);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task CreateAsync_OfficeUser_NullDivision_AssignsOfficeUserDefaultGroup()
+    {
+        // Office User Default group GUID — must match UserService + seed.
+        Guid officeUserDefault = new("10000000-0000-0000-0000-000000000007");
+        User? captured = null;
+
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+        repo.Setup(r => r.AddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
+            .Callback<User, CancellationToken>((u, _) => captured = u)
+            .Returns(Task.CompletedTask);
+        repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+        repo.Setup(r => r.GetByIdWithGroupAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakeStaff());
+
+        Mock<IRepository<Office>> offices = new();
+        offices.Setup(o => o.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Office> { new() { Id = 7, OfficeCode = "PGO", OfficeName = "Provincial Gov Office", IsActive = true } });
+
+        // Division supplied but ignored because an office is set.
+        CreateUserDto dto = new("Office Encoder", "enc@lgu.gov.ph", "Staff", "Planning", null, null, OfficeId: 7);
+
+        ServiceResult<UserResponseDto> result = await BuildSut(repo, offices).CreateAsync(MakeAdmin(), dto);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(captured);
+        Assert.Equal(7, captured!.OfficeId);
+        Assert.Null(captured.Division);
+        Assert.Equal(officeUserDefault, captured.GroupId);
+    }
+
+    [Fact]
+    public async Task CreateAsync_OfficeUser_InactiveOffice_ReturnsBadRequest()
+    {
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+
+        Mock<IRepository<Office>> offices = new();
+        offices.Setup(o => o.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Office> { new() { Id = 7, OfficeName = "Closed Office", IsActive = false } });
+
+        CreateUserDto dto = new("Enc", "enc@lgu.gov.ph", "Staff", null, null, null, OfficeId: 7);
+
+        ServiceResult<UserResponseDto> result = await BuildSut(repo, offices).CreateAsync(MakeAdmin(), dto);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task CreateAsync_OfficeUser_AdminRole_ReturnsBadRequest()
+    {
+        Mock<IUserRepository> repo = new();
+        CreateUserDto dto = new("Enc", "enc@lgu.gov.ph", "Admin", null, null, null, OfficeId: 7);
+
+        // Office users must be Staff or Observer — never Admin/SuperAdmin.
+        ServiceResult<UserResponseDto> result = await BuildSut(repo).CreateAsync(MakeSuperAdmin(), dto);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
     }
 
     // ── UpdateAsync ───────────────────────────────────────────────────────────
