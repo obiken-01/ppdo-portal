@@ -528,8 +528,9 @@ export default function UsersPage() {
       }
 
       try {
-        const officesRes = await api.get<OfficeResponse[]>("/config/offices?active=true");
-        setOffices(officesRes.data);
+        // /api/config/offices returns the { data, error, message } envelope (RAL-70).
+        const officesRes = await api.get<{ data: OfficeResponse[] }>("/config/offices?active=true");
+        setOffices(officesRes.data.data ?? []);
       } catch {
         // offices endpoint unavailable — office dropdown stays empty
         setOffices([]);

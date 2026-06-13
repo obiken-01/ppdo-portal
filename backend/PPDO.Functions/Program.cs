@@ -101,6 +101,8 @@ var host = new HostBuilder()
         services.AddScoped<IPRReportService, PRReportService>();
         services.AddScoped<IInventoryService, InventoryService>();
         services.AddScoped<IOfficeService, OfficeService>();
+        services.AddScoped<IAccountService, AccountService>();
+        services.AddScoped<IFundingSourceService, FundingSourceService>();
     })
     .Build();
 
