@@ -47,4 +47,28 @@ public interface IPermissionService
     /// Observer: always false, regardless of any override.
     /// </summary>
     Task<bool> CanManageResourceLinksAsync(User user, CancellationToken cancellationToken = default);
+
+    // ── Budget Planning (v1.1 — RAL-81) ───────────────────────────────────────
+
+    /// <summary>
+    /// True when the user may access the Budget Planning module (dashboard, LDIP, AIP, WFP).
+    /// SuperAdmin/Admin: always true. Staff/Observer: override ?? group flag.
+    /// Observer is allowed (read-only by role) — NOT hard-blocked.
+    /// </summary>
+    Task<bool> CanAccessBudgetPlanningAsync(User user, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// True when the user may upload / import AIP files.
+    /// SuperAdmin/Admin: always true. PPDO Staff: override ?? group flag.
+    /// Observer: always false. Non-PPDO office users (OfficeId set): always false —
+    /// the uploaded file contains every office's records, so upload is PPDO-only.
+    /// </summary>
+    Task<bool> CanUploadAipAsync(User user, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// True when the user may manage configuration (Accounts, Offices, Funding Sources).
+    /// SuperAdmin/Admin: always true. Staff: override ?? group flag.
+    /// Observer: always false, regardless of any override.
+    /// </summary>
+    Task<bool> CanManageConfigAsync(User user, CancellationToken cancellationToken = default);
 }

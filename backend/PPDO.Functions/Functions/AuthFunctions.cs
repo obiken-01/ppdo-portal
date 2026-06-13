@@ -115,17 +115,21 @@ public sealed class AuthFunctions
 
         MeResponseDto dto = new()
         {
-            UserId                 = me.UserId,
-            FullName               = me.FullName,
-            Email                  = me.Email,
-            Role                   = me.Role,
-            Division               = me.Division,
-            Position               = me.Position,
-            CanAccessInventory     = me.CanAccessInventory,
-            CanAccessReports       = me.CanAccessReports,
-            CanManageUsers         = me.CanManageUsers,
-            CanAccessProfile       = me.CanAccessProfile,
-            CanManageResourceLinks = me.CanManageResourceLinks,
+            UserId                  = me.UserId,
+            FullName                = me.FullName,
+            Email                   = me.Email,
+            Role                    = me.Role,
+            Division                = me.Division,
+            OfficeId                = me.OfficeId,
+            Position                = me.Position,
+            CanAccessInventory      = me.CanAccessInventory,
+            CanAccessReports        = me.CanAccessReports,
+            CanManageUsers          = me.CanManageUsers,
+            CanAccessProfile        = me.CanAccessProfile,
+            CanManageResourceLinks  = me.CanManageResourceLinks,
+            CanAccessBudgetPlanning = me.CanAccessBudgetPlanning,
+            CanUploadAip            = me.CanUploadAip,
+            CanManageConfig         = me.CanManageConfig,
         };
 
         return await Ok(req, dto, cancellationToken);

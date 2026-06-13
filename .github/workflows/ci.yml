@@ -1,9 +1,9 @@
 name: CI
 
 on:
+  # Run CI on every pull request, regardless of target branch.
+  # (No 'branches' filter — covers main, release/**, and any future integration branch.)
   pull_request:
-    branches:
-      - main
 
 jobs:
   backend:

@@ -14,7 +14,11 @@ public sealed class UserResponseDto
     public string Role { get; init; } = string.Empty;
 
     /// <summary>"Admin" | "Planning" | "RM" | "MIS" | "SPD"</summary>
-    public string Division { get; init; } = string.Empty;
+    public string? Division { get; init; }
+
+    // -- Office (v1.1) — set for non-PPDO office users -------------------------
+    public int? OfficeId { get; init; }
+    public string? OfficeName { get; init; }
 
     public string? Position { get; init; }
     public string? ContactNo { get; init; }
@@ -29,6 +33,9 @@ public sealed class UserResponseDto
     public bool? OverrideCanAccessReports { get; init; }
     public bool? OverrideCanManageUsers { get; init; }
     public bool? OverrideCanManageResourceLinks { get; init; }
+    public bool? OverrideCanAccessBudgetPlanning { get; init; }
+    public bool? OverrideCanUploadAip { get; init; }
+    public bool? OverrideCanManageConfig { get; init; }
 
     // -- Audit -----------------------------------------------------------------
     public DateTime CreatedAt { get; init; }

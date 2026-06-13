@@ -57,7 +57,12 @@ public sealed class MeResponse
     public string FullName { get; init; } = string.Empty;
     public string Email { get; init; } = string.Empty;
     public string Role { get; init; } = string.Empty;
-    public string Division { get; init; } = string.Empty;
+    /// <summary>Division name, or null for non-PPDO office users.</summary>
+    public string? Division { get; init; }
+
+    /// <summary>Provincial office id, or null for PPDO-internal users. New in v1.1.</summary>
+    public int? OfficeId { get; init; }
+
     public string? Position { get; init; }
 
     // -- Effective permission flags (resolved via PermissionService) --------
@@ -66,4 +71,7 @@ public sealed class MeResponse
     public bool CanManageUsers { get; init; }
     public bool CanAccessProfile { get; init; }
     public bool CanManageResourceLinks { get; init; }
+    public bool CanAccessBudgetPlanning { get; init; }
+    public bool CanUploadAip { get; init; }
+    public bool CanManageConfig { get; init; }
 }

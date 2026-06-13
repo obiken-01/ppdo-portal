@@ -38,8 +38,8 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(u => u.Role)
             .IsRequired();
 
-        builder.Property(u => u.Division)
-            .IsRequired();
+        // Division is nullable from v1.1 — non-PPDO office users have no division.
+        builder.Property(u => u.Division);
 
         builder.Property(u => u.Position)
             .HasMaxLength(100);
@@ -75,6 +75,18 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
 
         builder.HasIndex(u => u.GroupId)
             .HasDatabaseName("IX_Users_GroupId");
+
+        // FK: Users.OfficeId → offices.id (v1.1 — non-PPDO office users).
+        // Restrict: an office that has users assigned cannot be hard-deleted
+        // (offices are soft-deleted via IsActive anyway).
+        builder.HasOne(u => u.Office)
+            .WithMany(o => o.Users)
+            .HasForeignKey(u => u.OfficeId)
+            .HasConstraintName("FK_Users_offices_OfficeId")
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(u => u.OfficeId)
+            .HasDatabaseName("IX_Users_OfficeId");
 
         // ── Seed data ─────────────────────────────────────────────────────────
         // One SuperAdmin user created at first deploy.

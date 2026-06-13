@@ -89,4 +89,53 @@ public sealed class PermissionService : IPermissionService
         bool effective = user.OverrideCanManageResourceLinks ?? groupFlag;
         return Task.FromResult(effective);
     }
+
+    // ── Budget Planning (v1.1 — RAL-81) ───────────────────────────────────────
+
+    /// <inheritdoc />
+    public Task<bool> CanAccessBudgetPlanningAsync(User user, CancellationToken cancellationToken = default)
+    {
+        if (user.Role is UserRole.SuperAdmin or UserRole.Admin)
+            return Task.FromResult(true);
+
+        // Observer is allowed read-only budget-planning access — no hard block here.
+        bool groupFlag = user.Group?.CanAccessBudgetPlanning ?? false;
+        bool effective = user.OverrideCanAccessBudgetPlanning ?? groupFlag;
+        return Task.FromResult(effective);
+    }
+
+    /// <inheritdoc />
+    public Task<bool> CanUploadAipAsync(User user, CancellationToken cancellationToken = default)
+    {
+        if (user.Role is UserRole.SuperAdmin or UserRole.Admin)
+            return Task.FromResult(true);
+
+        // Observer can never upload — no override can grant this.
+        if (user.Role is UserRole.Observer)
+            return Task.FromResult(false);
+
+        // PPDO-only: a non-PPDO office user (OfficeId set) can never upload, because the
+        // uploaded file contains every office's records. No override can grant this.
+        if (user.OfficeId is not null)
+            return Task.FromResult(false);
+
+        bool groupFlag = user.Group?.CanUploadAip ?? false;
+        bool effective = user.OverrideCanUploadAip ?? groupFlag;
+        return Task.FromResult(effective);
+    }
+
+    /// <inheritdoc />
+    public Task<bool> CanManageConfigAsync(User user, CancellationToken cancellationToken = default)
+    {
+        if (user.Role is UserRole.SuperAdmin or UserRole.Admin)
+            return Task.FromResult(true);
+
+        // Observer can never manage config — no override can grant this.
+        if (user.Role is UserRole.Observer)
+            return Task.FromResult(false);
+
+        bool groupFlag = user.Group?.CanManageConfig ?? false;
+        bool effective = user.OverrideCanManageConfig ?? groupFlag;
+        return Task.FromResult(effective);
+    }
 }

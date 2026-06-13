@@ -56,6 +56,28 @@ public sealed class PermissionGroup
     /// </summary>
     public bool CanManageResourceLinks { get; set; }
 
+    // ── Budget Planning flags (v1.1 — RAL-81) ─────────────────────────────────
+
+    /// <summary>
+    /// Grants access to the Budget Planning module (dashboard, LDIP, AIP view, WFP).
+    /// Observer members get read-only access by role. The "Office User Default" group
+    /// sets this true; it is the only feature available to non-PPDO office users.
+    /// </summary>
+    public bool CanAccessBudgetPlanning { get; set; }
+
+    /// <summary>
+    /// Grants AIP upload / import preview / confirm. Resolved as PPDO-users-only:
+    /// the uploaded file contains every office's records, so non-PPDO office users
+    /// can never effectively hold this, and Observer never holds it.
+    /// </summary>
+    public bool CanUploadAip { get; set; }
+
+    /// <summary>
+    /// Grants access to all configuration pages (Accounts, Offices, Funding Sources).
+    /// One flag for the whole config section — not per page. Observer never holds it.
+    /// </summary>
+    public bool CanManageConfig { get; set; }
+
     // CanAccessProfile is always true for all users — not stored here.
 
     // ── Audit ─────────────────────────────────────────────────────────────────
