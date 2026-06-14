@@ -394,12 +394,15 @@ export default function AccountConfigPage() {
       header: "Actions",
       align: "right",
       render: (a) => (
-        <div className="flex items-center justify-end gap-1">
-          <ActionButton title="Edit account" icon="✏️" onClick={() => openEdit(a)} />
+        <div className="flex items-center justify-end gap-2 text-sm">
+          <TextAction onClick={() => openEdit(a)}>Edit</TextAction>
+          <span className="text-slate-300">·</span>
           {a.isActive ? (
-            <ActionButton title="Deactivate account" icon="🚫" danger onClick={() => confirmDeactivate(a)} />
+            <TextAction danger onClick={() => confirmDeactivate(a)}>
+              Deactivate
+            </TextAction>
           ) : (
-            <ActionButton title="Reactivate account" icon="✅" onClick={() => void doReactivate(a)} />
+            <TextAction onClick={() => void doReactivate(a)}>Reactivate</TextAction>
           )}
         </div>
       ),
@@ -686,28 +689,23 @@ export default function AccountConfigPage() {
 // Small helpers
 // ---------------------------------------------------------------------------
 
-function ActionButton({
-  title,
-  icon,
+function TextAction({
+  children,
   danger,
   onClick,
 }: {
-  title: string;
-  icon: string;
+  children: React.ReactNode;
   danger?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
-      title={title}
       onClick={onClick}
-      className={`p-1.5 text-sm transition-colors ${
-        danger
-          ? "hover:bg-danger-100 text-slate-400 hover:text-danger-500"
-          : "hover:bg-green-50 text-slate-400 hover:text-green-700"
-      }`}
+      className={`font-medium transition-colors ${
+        danger ? "text-danger-500 hover:text-red-600" : "text-green-600 hover:text-green-700"
+      } hover:underline`}
     >
-      {icon}
+      {children}
     </button>
   );
 }
