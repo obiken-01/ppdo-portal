@@ -75,3 +75,24 @@ export interface UpsertOfficeRequest {
   officeName: string;
   isActive: boolean;
 }
+
+// ---------------------------------------------------------------------------
+// Funding Sources — RAL-74
+// ---------------------------------------------------------------------------
+
+/** Read model for a funding source (config table `funding_sources`). */
+export interface FundingSourceResponse {
+  id: number;
+  code: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+}
+
+/** Create/update body for a funding source. code is the unique key. */
+export interface UpsertFundingSourceRequest {
+  code: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+}

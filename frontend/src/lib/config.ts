@@ -16,8 +16,10 @@ import type {
   ApiResponse,
   ActiveFilter,
   CsvImportResult,
+  FundingSourceResponse,
   OfficeResponse,
   UpsertAccountRequest,
+  UpsertFundingSourceRequest,
   UpsertOfficeRequest,
 } from "@/types";
 
@@ -141,5 +143,72 @@ export async function importOfficesCsv(csvText: string): Promise<CsvImportResult
   const { data } = await api.post<ApiResponse<CsvImportResult>>("/config/offices/csv", csvText, {
     headers: { "Content-Type": "text/csv" },
   });
+  return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// Funding Sources — /api/config/funding-sources
+// ---------------------------------------------------------------------------
+
+export interface FundingSourceListParams {
+  search?: string;
+  active?: ActiveFilter;
+}
+
+/** GET /api/config/funding-sources — list with optional search / status filters. */
+export async function listFundingSources(
+  params: FundingSourceListParams = {},
+): Promise<FundingSourceResponse[]> {
+  const query: Record<string, string> = {};
+  if (params.search?.trim()) query.search = params.search.trim();
+  if (params.active) query.active = params.active;
+
+  const { data } = await api.get<ApiResponse<FundingSourceResponse[]>>("/config/funding-sources", {
+    params: query,
+  });
+  return unwrap(data);
+}
+
+/** POST /api/config/funding-sources — create a new funding source. */
+export async function createFundingSource(
+  body: UpsertFundingSourceRequest,
+): Promise<FundingSourceResponse> {
+  const { data } = await api.post<ApiResponse<FundingSourceResponse>>("/config/funding-sources", body);
+  return unwrap(data);
+}
+
+/** PUT /api/config/funding-sources/{id} — update an existing funding source. */
+export async function updateFundingSource(
+  id: number,
+  body: UpsertFundingSourceRequest,
+): Promise<FundingSourceResponse> {
+  const { data } = await api.put<ApiResponse<FundingSourceResponse>>(
+    `/config/funding-sources/${id}`,
+    body,
+  );
+  return unwrap(data);
+}
+
+/** DELETE /api/config/funding-sources/{id} — soft delete (isActive = false). */
+export async function deactivateFundingSource(id: number): Promise<FundingSourceResponse> {
+  const { data } = await api.delete<ApiResponse<FundingSourceResponse>>(
+    `/config/funding-sources/${id}`,
+  );
+  return unwrap(data);
+}
+
+/** GET /api/config/funding-sources/csv — raw CSV text in seed column order. */
+export async function exportFundingSourcesCsv(): Promise<string> {
+  const { data } = await api.get<string>("/config/funding-sources/csv", { responseType: "text" });
+  return data;
+}
+
+/** POST /api/config/funding-sources/csv — upsert by code; returns counts. */
+export async function importFundingSourcesCsv(csvText: string): Promise<CsvImportResult> {
+  const { data } = await api.post<ApiResponse<CsvImportResult>>(
+    "/config/funding-sources/csv",
+    csvText,
+    { headers: { "Content-Type": "text/csv" } },
+  );
   return unwrap(data);
 }
