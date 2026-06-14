@@ -16,7 +16,9 @@ import type {
   ApiResponse,
   ActiveFilter,
   CsvImportResult,
+  OfficeResponse,
   UpsertAccountRequest,
+  UpsertOfficeRequest,
 } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -86,6 +88,57 @@ export async function exportAccountsCsv(): Promise<string> {
 /** POST /api/config/accounts/csv — upsert by account_number; returns counts. */
 export async function importAccountsCsv(csvText: string): Promise<CsvImportResult> {
   const { data } = await api.post<ApiResponse<CsvImportResult>>("/config/accounts/csv", csvText, {
+    headers: { "Content-Type": "text/csv" },
+  });
+  return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// Offices (provincial offices) — /api/config/offices
+// ---------------------------------------------------------------------------
+
+export interface OfficeListParams {
+  search?: string;
+  active?: ActiveFilter;
+}
+
+/** GET /api/config/offices — list with optional search / status filters. */
+export async function listOffices(params: OfficeListParams = {}): Promise<OfficeResponse[]> {
+  const query: Record<string, string> = {};
+  if (params.search?.trim()) query.search = params.search.trim();
+  if (params.active) query.active = params.active;
+
+  const { data } = await api.get<ApiResponse<OfficeResponse[]>>("/config/offices", { params: query });
+  return unwrap(data);
+}
+
+/** POST /api/config/offices — create a new office. */
+export async function createOffice(body: UpsertOfficeRequest): Promise<OfficeResponse> {
+  const { data } = await api.post<ApiResponse<OfficeResponse>>("/config/offices", body);
+  return unwrap(data);
+}
+
+/** PUT /api/config/offices/{id} — update an existing office. */
+export async function updateOffice(id: number, body: UpsertOfficeRequest): Promise<OfficeResponse> {
+  const { data } = await api.put<ApiResponse<OfficeResponse>>(`/config/offices/${id}`, body);
+  return unwrap(data);
+}
+
+/** DELETE /api/config/offices/{id} — soft delete (isActive = false). */
+export async function deactivateOffice(id: number): Promise<OfficeResponse> {
+  const { data } = await api.delete<ApiResponse<OfficeResponse>>(`/config/offices/${id}`);
+  return unwrap(data);
+}
+
+/** GET /api/config/offices/csv — raw CSV text in seed column order. */
+export async function exportOfficesCsv(): Promise<string> {
+  const { data } = await api.get<string>("/config/offices/csv", { responseType: "text" });
+  return data;
+}
+
+/** POST /api/config/offices/csv — upsert by office_code; returns counts. */
+export async function importOfficesCsv(csvText: string): Promise<CsvImportResult> {
+  const { data } = await api.post<ApiResponse<CsvImportResult>>("/config/offices/csv", csvText, {
     headers: { "Content-Type": "text/csv" },
   });
   return unwrap(data);
