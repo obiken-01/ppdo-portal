@@ -63,10 +63,4 @@ export interface PermissionGroupResponse {
   canManageConfig: boolean;
 }
 
-/** Mirrors PPDO.Application/DTOs/Config/OfficeDto — GET /api/config/offices */
-export interface OfficeResponse {
-  id: number;
-  officeCode: string;
-  officeName: string;
-  isActive: boolean;
-}
+// OfficeResponse moved to ./config.ts (RAL-73) — re-exported via the @/types barrel.

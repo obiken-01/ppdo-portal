@@ -56,3 +56,22 @@ export interface UpsertAccountRequest {
   description: string | null;
   isActive: boolean;
 }
+
+// ---------------------------------------------------------------------------
+// Offices (provincial offices) — RAL-73
+// ---------------------------------------------------------------------------
+
+/** Read model for a provincial office (config table `offices`). Mirrors OfficeDto. */
+export interface OfficeResponse {
+  id: number;
+  officeCode: string;
+  officeName: string;
+  isActive: boolean;
+}
+
+/** Create/update body for an office. officeCode is the unique key. */
+export interface UpsertOfficeRequest {
+  officeCode: string;
+  officeName: string;
+  isActive: boolean;
+}
