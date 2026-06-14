@@ -35,11 +35,19 @@ export default function Sidebar({ me }: SidebarProps) {
   const [inventoryOpen, setInventoryOpen] = useState(
     () => pathname.startsWith("/inventory")
   );
+  const [configOpen, setConfigOpen] = useState(
+    () => pathname.startsWith("/config")
+  );
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   // Auto-expand inventory when navigating to an inventory route
   useEffect(() => {
     if (pathname.startsWith("/inventory")) setInventoryOpen(true);
+  }, [pathname]);
+
+  // Auto-expand configuration when navigating to a config route
+  useEffect(() => {
+    if (pathname.startsWith("/config")) setConfigOpen(true);
   }, [pathname]);
 
   // Close user menu when clicking outside
@@ -235,12 +243,45 @@ export default function Sidebar({ me }: SidebarProps) {
           </Link>
         )}
 
-        {/* Configuration — PPDO users with CanManageConfig */}
+        {/* Configuration — collapsible group; PPDO users with CanManageConfig */}
         {showConfig && (
-          <Link href="/config" className={linkCls(isActive("/config"))}>
-            <span className="text-base leading-none w-5 text-center">⚙️</span>
-            <span className="truncate">Configuration</span>
-          </Link>
+          <div>
+            <button
+              onClick={() => setConfigOpen((o) => !o)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                isActive("/config")
+                  ? "bg-green-800 text-white"
+                  : "text-green-100 hover:bg-green-600 hover:text-white"
+              }`}
+            >
+              <span className="text-base leading-none w-5 text-center">⚙️</span>
+              <span className="flex-1 text-left truncate">Configuration</span>
+              <span className={`text-base leading-none transition-transform duration-200 ${configOpen ? "rotate-90" : ""}`}>
+                ›
+              </span>
+            </button>
+
+            {configOpen && (
+              <div className="mt-0.5 space-y-0.5">
+                <Link href="/config" className={childLinkCls(pathname === "/config")}>
+                  <span className="text-xs">•</span>
+                  <span className="truncate">Dashboard</span>
+                </Link>
+                <Link href="/config/accounts" className={childLinkCls(isActive("/config/accounts"))}>
+                  <span className="text-xs">•</span>
+                  <span className="truncate">Accounts</span>
+                </Link>
+                <Link href="/config/offices" className={childLinkCls(isActive("/config/offices"))}>
+                  <span className="text-xs">•</span>
+                  <span className="truncate">Offices</span>
+                </Link>
+                <Link href="/config/funding-sources" className={childLinkCls(isActive("/config/funding-sources"))}>
+                  <span className="text-xs">•</span>
+                  <span className="truncate">Funding Sources</span>
+                </Link>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Resource Links — PPDO-internal; hidden for office users */}
