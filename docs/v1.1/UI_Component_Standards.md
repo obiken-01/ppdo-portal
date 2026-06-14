@@ -26,6 +26,8 @@ Rules:
 
 ## 3. New Shared Components Needed for v1.1
 
+> **Build status:** all five below were built in RAL-72 (Account Config page) and are now available in `frontend/src/components/ui/`. Reuse as-is for Offices / Funding Sources (RAL-73/74) and the AIP/WFP pages — do not fork.
+
 Build these in `frontend/src/components/ui/` following the same conventions as `ConfirmDialog` (backdrop click + Escape closes, focus trap, design tokens).
 
 ### 3.1 `Modal` — generic content modal with custom footer buttons
@@ -55,6 +57,12 @@ All three config pages share the same table behavior: search box, sortable colum
 ### 3.4 `CsvUploadButton` + `CsvDownloadButton`
 
 Shared CSV round-trip controls used on every config page: upload triggers parse + preview modal (new vs. updated vs. skipped counts) before confirming; download exports current table in the seed CSV column order.
+
+> **As built (RAL-72):** the buttons are intentionally thin. `CsvDownloadButton` is self-contained (fetch via authed Axios → Blob → download). `CsvUploadButton` only surfaces the chosen `File` via `onSelect`; the consuming page composes the confirm step from `Modal` and the post-import summary from `MessageDialog` (the RAL-70 upsert endpoint commits on POST and returns the new/updated/skipped counts — there is no dry-run, so the "preview" is a pre-commit confirm + post-commit summary).
+
+### 3.5 `DataTable` filtering note (RAL-72)
+
+`DataTable` owns render + client-side **sort** + pagination + the loading/error/empty states. **Filtering is the consumer's responsibility** — config pages keep a dedicated filter bar (search + type + status) and pass already-filtered `rows` in. This keeps server-side filters (e.g. the `accountType` → account_number prefix translation, handled by the API) separate from client-only sort.
 
 ---
 
