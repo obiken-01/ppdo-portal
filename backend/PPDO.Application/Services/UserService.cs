@@ -23,7 +23,7 @@ public sealed class UserService : IUserService
 {
     // Default password issued to every newly created user and on reset.
     // Users should change this on first login via POST /api/auth/change-password.
-    private const string DefaultPassword = "PPDOUser2026!";
+    private const string DefaultPassword = "TamarawUser2026";
 
     // Fixed seed GUIDs from PermissionGroupConfiguration — must never change.
     private static readonly Guid GroupAdminDivisionStaff = new("10000000-0000-0000-0000-000000000001");

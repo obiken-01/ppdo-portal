@@ -422,7 +422,7 @@ public sealed class UserServiceTests
         await BuildSut(repo).ResetPasswordAsync(MakeAdmin(), target.Id);
 
         Assert.NotEqual(originalHash, target.PasswordHash);
-        Assert.True(BCrypt.Net.BCrypt.Verify("PPDOUser2026!", target.PasswordHash));
+        Assert.True(BCrypt.Net.BCrypt.Verify("TamarawUser2026", target.PasswordHash));
     }
 
     // ── DeactivateAsync ───────────────────────────────────────────────────────

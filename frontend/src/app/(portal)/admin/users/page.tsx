@@ -8,9 +8,9 @@
  *
  * Features:
  *   - Table listing all portal users (name, email, role, division, status)
- *   - Add User modal — create a new account with default password PPDOUser2026!
+ *   - Add User modal — create a new account with default password TamarawUser2026
  *   - Edit User modal — update profile + per-user permission override toggles
- *   - Reset Password — one-click reset back to PPDOUser2026!
+ *   - Reset Password — one-click reset back to TamarawUser2026
  *   - Deactivate / Reactivate — toggle isActive without deleting the record
  *
  * API endpoints used (all from UserFunctions.cs):
@@ -819,7 +819,7 @@ export default function UsersPage() {
       {showAdd && (
         <Modal title="Add New User" onClose={() => setShowAdd(false)}>
           <p className="text-xs text-slate-400 mb-4">
-            Default password <span className="font-mono bg-slate-100 px-1 rounded">PPDOUser2026!</span> is set automatically. The user must change it on first login.
+            Default password <span className="font-mono bg-slate-100 px-1 rounded">TamarawUser2026</span> is set automatically. The user must change it on first login.
           </p>
           <UserForm
             form={addForm}
@@ -855,7 +855,7 @@ export default function UsersPage() {
       {/* ── Reset Password confirm ─────────────────────────────────────────── */}
       {resetTarget && (
         <ConfirmDialog
-          message={`Reset password for ${resetTarget.fullName}? Their password will be set back to the default: PPDOUser2026!`}
+          message={`Reset password for ${resetTarget.fullName}? Their password will be set back to the default: TamarawUser2026`}
           confirmLabel="Reset Password"
           loading={actionLoading}
           onConfirm={handleResetPassword}
