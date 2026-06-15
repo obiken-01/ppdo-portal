@@ -275,7 +275,7 @@ export default function DistributionPage() {
   useEffect(() => {
     api.get<MeResponse>("/auth/me")
       .then(({ data }) => {
-        if (!data.canAccessInventory) { router.replace("/dashboard"); return; }
+        if (!data.canAccessInventory) { router.replace(data.officeId != null ? "/budget-planning" : "/dashboard"); return; }
         setAuthChecked(true);
       })
       .catch(() => router.replace("/login"));

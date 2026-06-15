@@ -498,7 +498,7 @@ export default function UsersPage() {
   useEffect(() => {
     api.get<MeResponse>("/auth/me").then(({ data }) => {
       if (!data.canManageUsers) {
-        router.replace("/dashboard");
+        router.replace(data.officeId != null ? "/budget-planning" : "/dashboard");
       } else {
         setAuthChecked(true);
       }

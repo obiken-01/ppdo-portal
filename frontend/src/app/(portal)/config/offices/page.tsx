@@ -137,7 +137,7 @@ export default function OfficeConfigPage() {
     api
       .get<MeResponse>("/auth/me")
       .then(({ data }) => {
-        if (!data.canManageConfig) router.replace("/dashboard");
+        if (!data.canManageConfig) router.replace(data.officeId != null ? "/budget-planning" : "/dashboard");
         else setAuthChecked(true);
       })
       .catch(() => router.replace("/login"));

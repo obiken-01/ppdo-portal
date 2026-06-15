@@ -223,7 +223,7 @@ export default function InventoryDashboardPage() {
     api.get<MeResponse>("/auth/me")
       .then(({ data }) => {
         if (!data.canAccessInventory) {
-          router.replace("/dashboard");
+          router.replace(data.officeId != null ? "/budget-planning" : "/dashboard");
           return;
         }
         setAuthChecked(true);
