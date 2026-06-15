@@ -9,8 +9,8 @@ using PPDO.Domain.Interfaces;
 namespace PPDO.Tests.Application;
 
 /// <summary>
-/// Unit tests for <see cref="OfficeService"/> (RAL-70): CSV upsert by office_code,
-/// key uniqueness, soft delete, and the active (dropdown) filter.
+/// Unit tests for <see cref="OfficeService"/> (RAL-70 + RAL-77): CSV upsert by office_code,
+/// key uniqueness, soft delete, the active (dropdown) filter, and audit log calls.
 /// </summary>
 public sealed class OfficeServiceTests
 {
@@ -20,7 +20,8 @@ public sealed class OfficeServiceTests
         CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
     };
 
-    private static (OfficeService sut, Mock<IRepository<Office>> repo) Build(List<Office> seed)
+    private static (OfficeService sut, Mock<IRepository<Office>> repo) Build(
+        List<Office> seed, IAuditService? audit = null)
     {
         Mock<IRepository<Office>> repo = new();
         repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(seed);
@@ -29,7 +30,20 @@ public sealed class OfficeServiceTests
             .Returns(Task.CompletedTask);
         repo.Setup(r => r.UpdateAsync(It.IsAny<Office>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
-        return (new OfficeService(repo.Object, NullLogger<OfficeService>.Instance), repo);
+        return (new OfficeService(repo.Object, NullLogger<OfficeService>.Instance,
+            audit ?? Mock.Of<IAuditService>()), repo);
+    }
+
+    private static (OfficeService sut, Mock<IRepository<Office>> repo, Mock<IAuditService> audit)
+        BuildWithAudit(List<Office> seed)
+    {
+        Mock<IAuditService> audit = new();
+        audit.Setup(a => a.LogAsync(
+            It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>(),
+            It.IsAny<object?>(), It.IsAny<object?>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        (OfficeService sut, Mock<IRepository<Office>> repo) = Build(seed, audit.Object);
+        return (sut, repo, audit);
     }
 
     [Fact]
@@ -92,5 +106,45 @@ public sealed class OfficeServiceTests
         Assert.Equal(1, result.Value!.New);
         Assert.Equal(1, result.Value.Updated);
         Assert.Equal(1, result.Value.Skipped);
+    }
+
+    // ── audit logging (RAL-77) ─────────────────────────────────────────────────
+
+    [Fact]
+    public async Task CreateAsync_CallsAuditLog_WithCreateAction()
+    {
+        (OfficeService sut, _, Mock<IAuditService> audit) = BuildWithAudit([]);
+
+        await sut.CreateAsync(new UpsertOfficeDto("PPDO", "Planning Office"));
+
+        audit.Verify(a => a.LogAsync(
+            "offices", It.IsAny<int>(), AuditAction.Create,
+            null, It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_CallsAuditLog_CapturingOldAndNewValues()
+    {
+        List<Office> seed = [Off(1, "PPDO", "Old Name")];
+        (OfficeService sut, _, Mock<IAuditService> audit) = BuildWithAudit(seed);
+
+        await sut.UpdateAsync(1, new UpsertOfficeDto("PPDO", "New Name"));
+
+        audit.Verify(a => a.LogAsync(
+            "offices", 1, AuditAction.Update,
+            It.IsNotNull<object>(), It.IsNotNull<object>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_CallsAuditLog_WithDeleteAction()
+    {
+        List<Office> seed = [Off(1, "PPDO", "Planning", active: true)];
+        (OfficeService sut, _, Mock<IAuditService> audit) = BuildWithAudit(seed);
+
+        await sut.DeleteAsync(1);
+
+        audit.Verify(a => a.LogAsync(
+            "offices", 1, AuditAction.Delete,
+            It.IsNotNull<object>(), null, It.IsAny<CancellationToken>()), Times.Once);
     }
 }

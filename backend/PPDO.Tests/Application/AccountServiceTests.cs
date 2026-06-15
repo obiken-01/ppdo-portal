@@ -9,9 +9,10 @@ using PPDO.Domain.Interfaces;
 namespace PPDO.Tests.Application;
 
 /// <summary>
-/// Unit tests for <see cref="AccountService"/> (RAL-70).
-/// Covers the accountType prefix filter, CSV upsert counts, key uniqueness, and soft delete.
-/// IRepository&lt;Account&gt; is mocked; no database access occurs.
+/// Unit tests for <see cref="AccountService"/> (RAL-70 + RAL-77).
+/// Covers the accountType prefix filter, CSV upsert counts, key uniqueness, soft delete,
+/// and audit log calls on create / update / deactivate.
+/// IRepository&lt;Account&gt; and IAuditService are mocked; no database access occurs.
 /// </summary>
 public sealed class AccountServiceTests
 {
@@ -21,7 +22,8 @@ public sealed class AccountServiceTests
         CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
     };
 
-    private static (AccountService sut, Mock<IRepository<Account>> repo) Build(List<Account> seed)
+    private static (AccountService sut, Mock<IRepository<Account>> repo) Build(
+        List<Account> seed, IAuditService? audit = null)
     {
         Mock<IRepository<Account>> repo = new();
         repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(seed);
@@ -30,7 +32,20 @@ public sealed class AccountServiceTests
             .Returns(Task.CompletedTask);
         repo.Setup(r => r.UpdateAsync(It.IsAny<Account>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
-        return (new AccountService(repo.Object, NullLogger<AccountService>.Instance), repo);
+        return (new AccountService(repo.Object, NullLogger<AccountService>.Instance,
+            audit ?? Mock.Of<IAuditService>()), repo);
+    }
+
+    private static (AccountService sut, Mock<IRepository<Account>> repo, Mock<IAuditService> audit)
+        BuildWithAudit(List<Account> seed)
+    {
+        Mock<IAuditService> audit = new();
+        audit.Setup(a => a.LogAsync(
+            It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>(),
+            It.IsAny<object?>(), It.IsAny<object?>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        (AccountService sut, Mock<IRepository<Account>> repo) = Build(seed, audit.Object);
+        return (sut, repo, audit);
     }
 
     // ── accountType prefix filter ─────────────────────────────────────────────
@@ -211,5 +226,45 @@ public sealed class AccountServiceTests
 
         Assert.Equal(1, result.Value!.Updated);
         Assert.True(inactive.IsActive);
+    }
+
+    // ── audit logging (RAL-77) ─────────────────────────────────────────────────
+
+    [Fact]
+    public async Task CreateAsync_CallsAuditLog_WithCreateAction()
+    {
+        (AccountService sut, _, Mock<IAuditService> audit) = BuildWithAudit([]);
+
+        await sut.CreateAsync(new UpsertAccountDto("Salaries", "5-01-01-010", null, null));
+
+        audit.Verify(a => a.LogAsync(
+            "accounts", It.IsAny<int>(), AuditAction.Create,
+            null, It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_CallsAuditLog_CapturingOldAndNewValues()
+    {
+        List<Account> seed = [Acct(1, "5-01-01-010", "Old Title")];
+        (AccountService sut, _, Mock<IAuditService> audit) = BuildWithAudit(seed);
+
+        await sut.UpdateAsync(1, new UpsertAccountDto("New Title", "5-01-01-010", null, null));
+
+        audit.Verify(a => a.LogAsync(
+            "accounts", 1, AuditAction.Update,
+            It.IsNotNull<object>(), It.IsNotNull<object>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_CallsAuditLog_WithDeleteAction()
+    {
+        List<Account> seed = [Acct(1, "5-01-01-010", "Salaries", active: true)];
+        (AccountService sut, _, Mock<IAuditService> audit) = BuildWithAudit(seed);
+
+        await sut.DeleteAsync(1);
+
+        audit.Verify(a => a.LogAsync(
+            "accounts", 1, AuditAction.Delete,
+            It.IsNotNull<object>(), null, It.IsAny<CancellationToken>()), Times.Once);
     }
 }

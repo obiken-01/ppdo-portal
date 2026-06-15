@@ -17,11 +17,13 @@ public sealed class FundingSourceService : IFundingSourceService
 
     private readonly IRepository<FundingSource> _repo;
     private readonly ILogger<FundingSourceService> _logger;
+    private readonly IAuditService _audit;
 
-    public FundingSourceService(IRepository<FundingSource> repo, ILogger<FundingSourceService> logger)
+    public FundingSourceService(IRepository<FundingSource> repo, ILogger<FundingSourceService> logger, IAuditService audit)
     {
         _repo   = repo;
         _logger = logger;
+        _audit  = audit;
     }
 
     /// <inheritdoc />
@@ -87,6 +89,10 @@ public sealed class FundingSourceService : IFundingSourceService
         await _repo.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Funding source created. Code: {Code}", entity.Code);
+        await _audit.LogAsync("funding_sources", entity.Id, AuditAction.Create,
+            oldValues: null,
+            newValues: new { entity.Code, entity.Name, entity.IsActive },
+            cancellationToken);
         return ServiceResult<FundingSourceDto>.Ok(MapToDto(entity));
     }
 
@@ -107,6 +113,8 @@ public sealed class FundingSourceService : IFundingSourceService
         if (all.Any(f => f.Id != id && f.Code.Equals(code, StringComparison.OrdinalIgnoreCase)))
             return ServiceResult<FundingSourceDto>.Conflict($"Funding source code '{code}' already exists.");
 
+        var oldSnapshot = new { entity.Code, entity.Name, entity.IsActive };
+
         entity.Code        = code;
         entity.Name        = dto.Name.Trim();
         entity.Description  = Blank(dto.Description);
@@ -115,6 +123,10 @@ public sealed class FundingSourceService : IFundingSourceService
 
         await _repo.UpdateAsync(entity, cancellationToken);
         await _repo.SaveChangesAsync(cancellationToken);
+        await _audit.LogAsync("funding_sources", entity.Id, AuditAction.Update,
+            oldValues: oldSnapshot,
+            newValues: new { entity.Code, entity.Name, entity.IsActive },
+            cancellationToken);
         return ServiceResult<FundingSourceDto>.Ok(MapToDto(entity));
     }
 
@@ -132,6 +144,10 @@ public sealed class FundingSourceService : IFundingSourceService
         await _repo.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Funding source deactivated. Code: {Code}", entity.Code);
+        await _audit.LogAsync("funding_sources", entity.Id, AuditAction.Delete,
+            oldValues: new { IsActive = true },
+            newValues: null,
+            cancellationToken);
         return ServiceResult<FundingSourceDto>.Ok(MapToDto(entity));
     }
 

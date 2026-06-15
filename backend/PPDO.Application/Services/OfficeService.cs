@@ -18,11 +18,13 @@ public sealed class OfficeService : IOfficeService
 
     private readonly IRepository<Office> _repo;
     private readonly ILogger<OfficeService> _logger;
+    private readonly IAuditService _audit;
 
-    public OfficeService(IRepository<Office> repo, ILogger<OfficeService> logger)
+    public OfficeService(IRepository<Office> repo, ILogger<OfficeService> logger, IAuditService audit)
     {
         _repo   = repo;
         _logger = logger;
+        _audit  = audit;
     }
 
     /// <inheritdoc />
@@ -87,6 +89,10 @@ public sealed class OfficeService : IOfficeService
         await _repo.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Office created. OfficeCode: {OfficeCode}", entity.OfficeCode);
+        await _audit.LogAsync("offices", entity.Id, AuditAction.Create,
+            oldValues: null,
+            newValues: new { entity.OfficeCode, entity.OfficeName, entity.IsActive },
+            cancellationToken);
         return ServiceResult<OfficeDto>.Ok(MapToDto(entity));
     }
 
@@ -107,6 +113,8 @@ public sealed class OfficeService : IOfficeService
         if (all.Any(o => o.Id != id && o.OfficeCode.Equals(code, StringComparison.OrdinalIgnoreCase)))
             return ServiceResult<OfficeDto>.Conflict($"Office code '{code}' already exists.");
 
+        var oldSnapshot = new { entity.OfficeCode, entity.OfficeName, entity.IsActive };
+
         entity.OfficeCode = code;
         entity.OfficeName = dto.OfficeName.Trim();
         entity.IsActive   = dto.IsActive;
@@ -114,6 +122,10 @@ public sealed class OfficeService : IOfficeService
 
         await _repo.UpdateAsync(entity, cancellationToken);
         await _repo.SaveChangesAsync(cancellationToken);
+        await _audit.LogAsync("offices", entity.Id, AuditAction.Update,
+            oldValues: oldSnapshot,
+            newValues: new { entity.OfficeCode, entity.OfficeName, entity.IsActive },
+            cancellationToken);
         return ServiceResult<OfficeDto>.Ok(MapToDto(entity));
     }
 
@@ -131,6 +143,10 @@ public sealed class OfficeService : IOfficeService
         await _repo.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Office deactivated. OfficeCode: {OfficeCode}", entity.OfficeCode);
+        await _audit.LogAsync("offices", entity.Id, AuditAction.Delete,
+            oldValues: new { IsActive = true },
+            newValues: null,
+            cancellationToken);
         return ServiceResult<OfficeDto>.Ok(MapToDto(entity));
     }
 

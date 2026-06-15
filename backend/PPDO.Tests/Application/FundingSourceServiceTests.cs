@@ -9,8 +9,8 @@ using PPDO.Domain.Interfaces;
 namespace PPDO.Tests.Application;
 
 /// <summary>
-/// Unit tests for <see cref="FundingSourceService"/> (RAL-70): CSV upsert by code,
-/// key uniqueness, soft delete.
+/// Unit tests for <see cref="FundingSourceService"/> (RAL-70 + RAL-77): CSV upsert by code,
+/// key uniqueness, soft delete, and audit log calls.
 /// </summary>
 public sealed class FundingSourceServiceTests
 {
@@ -20,7 +20,8 @@ public sealed class FundingSourceServiceTests
         CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
     };
 
-    private static (FundingSourceService sut, Mock<IRepository<FundingSource>> repo) Build(List<FundingSource> seed)
+    private static (FundingSourceService sut, Mock<IRepository<FundingSource>> repo) Build(
+        List<FundingSource> seed, IAuditService? audit = null)
     {
         Mock<IRepository<FundingSource>> repo = new();
         repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(seed);
@@ -29,7 +30,20 @@ public sealed class FundingSourceServiceTests
             .Returns(Task.CompletedTask);
         repo.Setup(r => r.UpdateAsync(It.IsAny<FundingSource>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
-        return (new FundingSourceService(repo.Object, NullLogger<FundingSourceService>.Instance), repo);
+        return (new FundingSourceService(repo.Object, NullLogger<FundingSourceService>.Instance,
+            audit ?? Mock.Of<IAuditService>()), repo);
+    }
+
+    private static (FundingSourceService sut, Mock<IRepository<FundingSource>> repo, Mock<IAuditService> audit)
+        BuildWithAudit(List<FundingSource> seed)
+    {
+        Mock<IAuditService> audit = new();
+        audit.Setup(a => a.LogAsync(
+            It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>(),
+            It.IsAny<object?>(), It.IsAny<object?>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        (FundingSourceService sut, Mock<IRepository<FundingSource>> repo) = Build(seed, audit.Object);
+        return (sut, repo, audit);
     }
 
     [Fact]
@@ -78,5 +92,45 @@ public sealed class FundingSourceServiceTests
         Assert.Equal(1, result.Value!.New);
         Assert.Equal(1, result.Value.Updated);
         Assert.Equal(1, result.Value.Skipped);
+    }
+
+    // ── audit logging (RAL-77) ─────────────────────────────────────────────────
+
+    [Fact]
+    public async Task CreateAsync_CallsAuditLog_WithCreateAction()
+    {
+        (FundingSourceService sut, _, Mock<IAuditService> audit) = BuildWithAudit([]);
+
+        await sut.CreateAsync(new UpsertFundingSourceDto("GF", "General Fund", null));
+
+        audit.Verify(a => a.LogAsync(
+            "funding_sources", It.IsAny<int>(), AuditAction.Create,
+            null, It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_CallsAuditLog_CapturingOldAndNewValues()
+    {
+        List<FundingSource> seed = [Fs(1, "GF", "Old Name")];
+        (FundingSourceService sut, _, Mock<IAuditService> audit) = BuildWithAudit(seed);
+
+        await sut.UpdateAsync(1, new UpsertFundingSourceDto("GF", "New Name", null));
+
+        audit.Verify(a => a.LogAsync(
+            "funding_sources", 1, AuditAction.Update,
+            It.IsNotNull<object>(), It.IsNotNull<object>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_CallsAuditLog_WithDeleteAction()
+    {
+        List<FundingSource> seed = [Fs(1, "GF", "General Fund", active: true)];
+        (FundingSourceService sut, _, Mock<IAuditService> audit) = BuildWithAudit(seed);
+
+        await sut.DeleteAsync(1);
+
+        audit.Verify(a => a.LogAsync(
+            "funding_sources", 1, AuditAction.Delete,
+            It.IsNotNull<object>(), null, It.IsAny<CancellationToken>()), Times.Once);
     }
 }

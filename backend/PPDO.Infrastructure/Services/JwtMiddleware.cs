@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
+using PPDO.Application.Common;
 using PPDO.Domain.Common;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Interfaces;
@@ -39,12 +40,14 @@ public sealed class JwtMiddleware : IJwtMiddleware
     private readonly string _audience;
     private readonly AppDbContext _context;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly CallerContext _callerContext;
     private readonly ILogger<JwtMiddleware> _logger;
 
     public JwtMiddleware(
         IConfiguration configuration,
         AppDbContext context,
         IHttpContextAccessor httpContextAccessor,
+        CallerContext callerContext,
         ILogger<JwtMiddleware> logger)
     {
         _secretKey = configuration["Jwt:SecretKey"]
@@ -58,6 +61,7 @@ public sealed class JwtMiddleware : IJwtMiddleware
                 "Jwt:Audience is not configured. Add Jwt__Audience to local.settings.json or Azure App Settings.");
         _context = context;
         _httpContextAccessor = httpContextAccessor;
+        _callerContext = callerContext;
         _logger = logger;
     }
 
@@ -91,6 +95,10 @@ public sealed class JwtMiddleware : IJwtMiddleware
 
             if (user is null || !user.IsActive)
                 return null;
+
+            // Populate CallerContext so AuditService and other Application services can
+            // read the authenticated caller's ID reliably within this DI scope.
+            _callerContext.SetUserId(user.Id);
 
             // Best-effort: populate HttpContext.User so ICurrentUserService works in
             // Application services. IHttpContextAccessor.HttpContext can be null in the
