@@ -108,6 +108,7 @@ var host = new HostBuilder()
         services.AddScoped<IAccountService, AccountService>();
         services.AddScoped<IFundingSourceService, FundingSourceService>();
         services.AddScoped<IAuditService, AuditService>();
+        services.AddScoped<IBudgetPlanningDashboardService, BudgetPlanningDashboardService>();
     })
     .Build();
 
