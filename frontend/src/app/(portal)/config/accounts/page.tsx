@@ -39,7 +39,6 @@ import {
   listAccounts,
   updateAccount,
 } from "@/lib/config";
-import Breadcrumb from "@/components/ui/Breadcrumb";
 import DataTable, { type Column } from "@/components/ui/DataTable";
 import Modal from "@/components/ui/Modal";
 import MessageDialog from "@/components/ui/MessageDialog";
@@ -430,7 +429,6 @@ export default function AccountConfigPage() {
         {/* Header */}
         <div className="flex items-start justify-between gap-3">
           <div>
-            <Breadcrumb items={[{ label: "Configuration", href: "/config" }, { label: "Accounts" }]} />
             <h1 className="text-lg font-bold text-slate-800">Chart of Accounts</h1>
             <p className="text-sm text-slate-500">
               Expense accounts (PS / MOOE / CO) used across AIP and WFP budget planning.

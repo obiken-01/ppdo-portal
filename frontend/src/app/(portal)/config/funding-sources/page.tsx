@@ -39,7 +39,6 @@ import {
   listFundingSources,
   updateFundingSource,
 } from "@/lib/config";
-import Breadcrumb from "@/components/ui/Breadcrumb";
 import DataTable, { type Column } from "@/components/ui/DataTable";
 import Modal from "@/components/ui/Modal";
 import MessageDialog from "@/components/ui/MessageDialog";
@@ -392,7 +391,6 @@ export default function FundingSourceConfigPage() {
         {/* Header */}
         <div className="flex items-start justify-between gap-3">
           <div>
-            <Breadcrumb items={[{ label: "Configuration", href: "/config" }, { label: "Funding Sources" }]} />
             <h1 className="text-lg font-bold text-slate-800">Funding Sources</h1>
             <p className="text-sm text-slate-500">
               Budget funding sources used as the Source of Fund across AIP and WFP entries.

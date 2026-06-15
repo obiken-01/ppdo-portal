@@ -39,7 +39,6 @@ import {
   listOffices,
   updateOffice,
 } from "@/lib/config";
-import Breadcrumb from "@/components/ui/Breadcrumb";
 import DataTable, { type Column } from "@/components/ui/DataTable";
 import Modal from "@/components/ui/Modal";
 import MessageDialog from "@/components/ui/MessageDialog";
@@ -375,7 +374,6 @@ export default function OfficeConfigPage() {
         {/* Header */}
         <div className="flex items-start justify-between gap-3">
           <div>
-            <Breadcrumb items={[{ label: "Configuration", href: "/config" }, { label: "Offices" }]} />
             <h1 className="text-lg font-bold text-slate-800">Offices</h1>
             <p className="text-sm text-slate-500">
               Provincial government offices used as planning scope across AIP and WFP.
