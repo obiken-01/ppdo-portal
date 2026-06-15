@@ -76,7 +76,7 @@ public sealed class AuthServiceTests
     [Fact]
     public async Task LoginAsync_ValidCredentials_ReturnsTokenPair()
     {
-        string password = "PPDOUser2026!";
+        string password = "TamarawUser2026";
         string hash = BCrypt.Net.BCrypt.HashPassword(password);
         User user = MakeActiveUser(hash);
 
@@ -99,7 +99,7 @@ public sealed class AuthServiceTests
     [Fact]
     public async Task LoginAsync_ValidCredentials_StoresRefreshTokenOnUser()
     {
-        string password = "PPDOUser2026!";
+        string password = "TamarawUser2026";
         User user = MakeActiveUser(BCrypt.Net.BCrypt.HashPassword(password));
 
         Mock<IUserRepository> repo = new();

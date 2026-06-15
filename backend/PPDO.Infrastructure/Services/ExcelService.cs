@@ -924,7 +924,7 @@ public sealed class ExcelService : IExcelService
             "",
             "DEFAULT PASSWORD:",
             "  If you forget your portal password, contact your System Administrator.",
-            "  Default password (after reset): PPDOUser2026!",
+            "  Default password (after reset): TamarawUser2026",
         ];
 
         for (int i = 0; i < lines.Length; i++)
