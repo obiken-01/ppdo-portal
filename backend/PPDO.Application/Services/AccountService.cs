@@ -21,11 +21,13 @@ public sealed class AccountService : IAccountService
 
     private readonly IRepository<Account> _repo;
     private readonly ILogger<AccountService> _logger;
+    private readonly IAuditService _audit;
 
-    public AccountService(IRepository<Account> repo, ILogger<AccountService> logger)
+    public AccountService(IRepository<Account> repo, ILogger<AccountService> logger, IAuditService audit)
     {
         _repo   = repo;
         _logger = logger;
+        _audit  = audit;
     }
 
     // ── Queries ────────────────────────────────────────────────────────────────
@@ -100,6 +102,10 @@ public sealed class AccountService : IAccountService
         await _repo.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Account created. AccountNumber: {AccountNumber}", entity.AccountNumber);
+        await _audit.LogAsync("accounts", entity.Id, AuditAction.Create,
+            oldValues: null,
+            newValues: new { entity.AccountTitle, entity.AccountNumber, entity.IsActive },
+            cancellationToken);
         return ServiceResult<AccountDto>.Ok(MapToDto(entity));
     }
 
@@ -120,6 +126,8 @@ public sealed class AccountService : IAccountService
         if (all.Any(a => a.Id != id && a.AccountNumber.Equals(number, StringComparison.OrdinalIgnoreCase)))
             return ServiceResult<AccountDto>.Conflict($"Account number '{number}' already exists.");
 
+        var oldSnapshot = new { entity.AccountTitle, entity.AccountNumber, entity.IsActive };
+
         entity.AccountTitle  = dto.AccountTitle.Trim();
         entity.AccountNumber = number;
         entity.NormalBalance = Blank(dto.NormalBalance);
@@ -129,6 +137,10 @@ public sealed class AccountService : IAccountService
 
         await _repo.UpdateAsync(entity, cancellationToken);
         await _repo.SaveChangesAsync(cancellationToken);
+        await _audit.LogAsync("accounts", entity.Id, AuditAction.Update,
+            oldValues: oldSnapshot,
+            newValues: new { entity.AccountTitle, entity.AccountNumber, entity.IsActive },
+            cancellationToken);
         return ServiceResult<AccountDto>.Ok(MapToDto(entity));
     }
 
@@ -146,6 +158,10 @@ public sealed class AccountService : IAccountService
         await _repo.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Account deactivated. AccountNumber: {AccountNumber}", entity.AccountNumber);
+        await _audit.LogAsync("accounts", entity.Id, AuditAction.Delete,
+            oldValues: new { IsActive = true },
+            newValues: null,
+            cancellationToken);
         return ServiceResult<AccountDto>.Ok(MapToDto(entity));
     }
 
