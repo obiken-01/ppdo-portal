@@ -3,6 +3,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using PPDO.Application.Common;
 using PPDO.Application.Services;
 using PPDO.Application.Settings;
 using PPDO.Domain.Interfaces;
@@ -72,6 +73,9 @@ var host = new HostBuilder()
 
         // -- ASP.NET Core helpers --------------------------------------------
         services.AddHttpContextAccessor();
+
+        // -- Scoped request context ------------------------------------------
+        services.AddScoped<CallerContext>();
 
         // -- Infrastructure services -----------------------------------------
         services.AddScoped(typeof(IRepository<>), typeof(Repository<>));

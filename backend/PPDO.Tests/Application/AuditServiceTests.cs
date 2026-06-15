@@ -10,11 +10,11 @@ namespace PPDO.Tests.Application;
 /// Unit tests for <see cref="AuditService"/> (RAL-77).
 /// Verifies that LogAsync stores the correct action, snapshots, user ID,
 /// and raises for an unauthenticated caller.
-/// IRepository&lt;AuditLog&gt; and ICurrentUserService are mocked — no DB access.
+/// IRepository&lt;AuditLog&gt; is mocked; CallerContext is used directly (no mock needed).
 /// </summary>
 public sealed class AuditServiceTests
 {
-    private static readonly Guid UserId = Guid.Parse("aaaaaaaa-0000-0000-0000-000000000001");
+    private static readonly Guid DefaultUserId = Guid.Parse("aaaaaaaa-0000-0000-0000-000000000001");
 
     private static (AuditService sut, List<AuditLog> captured) Build(Guid? userId = null)
     {
@@ -26,10 +26,10 @@ public sealed class AuditServiceTests
             .Returns(Task.CompletedTask);
         repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
-        Mock<ICurrentUserService> currentUser = new();
-        currentUser.Setup(u => u.UserId).Returns(userId ?? UserId);
+        CallerContext caller = new();
+        caller.SetUserId(userId ?? DefaultUserId);
 
-        return (new AuditService(repo.Object, currentUser.Object), captured);
+        return (new AuditService(repo.Object, caller), captured);
     }
 
     // ── action / snapshot correctness ────────────────────────────────────────
@@ -87,7 +87,7 @@ public sealed class AuditServiceTests
     // ── user identity ─────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task LogAsync_SetsChangedByFromCurrentUser()
+    public async Task LogAsync_SetsChangedByFromCallerContext()
     {
         Guid expectedId = Guid.Parse("bbbbbbbb-0000-0000-0000-000000000002");
         (AuditService sut, List<AuditLog> captured) = Build(userId: expectedId);
@@ -101,16 +101,12 @@ public sealed class AuditServiceTests
     [Fact]
     public async Task LogAsync_NullUserId_Throws()
     {
-        (AuditService sut, _) = Build(userId: null);
-
-        // Override the mock so UserId returns null specifically
+        // CallerContext with no SetUserId call simulates a request that bypassed auth
         Mock<IRepository<AuditLog>> repo = new();
-        Mock<ICurrentUserService> anonUser = new();
-        anonUser.Setup(u => u.UserId).Returns((Guid?)null);
-        AuditService svcWithNoUser = new(repo.Object, anonUser.Object);
+        AuditService svc = new(repo.Object, new CallerContext());
 
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => svcWithNoUser.LogAsync("accounts", 1, AuditAction.Create,
+            () => svc.LogAsync("accounts", 1, AuditAction.Create,
                 oldValues: null, newValues: new { AccountTitle = "Test" }));
     }
 }

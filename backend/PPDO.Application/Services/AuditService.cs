@@ -1,4 +1,5 @@
 using System.Text.Json;
+using PPDO.Application.Common;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Interfaces;
 
@@ -9,6 +10,9 @@ namespace PPDO.Application.Services;
 /// budget planning and config services (RAL-77).
 /// Caller provides anonymous-object snapshots; this service serialises them to JSON
 /// and stamps the current authenticated user + UTC timestamp.
+/// User identity is read from <see cref="CallerContext"/>, which is set by
+/// JwtMiddleware after successful token validation — reliably available even when
+/// IHttpContextAccessor.HttpContext is null in the Azure Functions isolated worker.
 /// </summary>
 public sealed class AuditService : IAuditService
 {
@@ -18,12 +22,12 @@ public sealed class AuditService : IAuditService
     };
 
     private readonly IRepository<AuditLog> _repo;
-    private readonly ICurrentUserService _currentUser;
+    private readonly CallerContext _caller;
 
-    public AuditService(IRepository<AuditLog> repo, ICurrentUserService currentUser)
+    public AuditService(IRepository<AuditLog> repo, CallerContext caller)
     {
-        _repo        = repo;
-        _currentUser = currentUser;
+        _repo   = repo;
+        _caller = caller;
     }
 
     /// <inheritdoc />
@@ -35,7 +39,7 @@ public sealed class AuditService : IAuditService
         object? newValues,
         CancellationToken cancellationToken = default)
     {
-        Guid userId = _currentUser.UserId
+        Guid userId = _caller.UserId
             ?? throw new InvalidOperationException("Audit requires an authenticated user.");
 
         AuditLog entry = new()
