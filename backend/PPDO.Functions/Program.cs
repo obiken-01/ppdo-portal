@@ -109,6 +109,12 @@ var host = new HostBuilder()
         services.AddScoped<IFundingSourceService, FundingSourceService>();
         services.AddScoped<IAuditService, AuditService>();
         services.AddScoped<IBudgetPlanningDashboardService, BudgetPlanningDashboardService>();
+
+        // -- Budget Planning services (RAL-64) --------------------------------
+        services.AddScoped<IAipXlsmParser, AipXlsmParser>();
+        services.AddScoped<ILdipService, LdipService>();
+        services.AddScoped<IAipService, AipService>();
+        services.AddScoped<IWfpService, WfpService>();
     })
     .Build();
 
