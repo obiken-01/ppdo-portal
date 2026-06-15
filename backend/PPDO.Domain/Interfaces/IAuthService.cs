@@ -12,15 +12,15 @@ namespace PPDO.Domain.Interfaces;
 public interface IAuthService
 {
     /// <summary>
-    /// Validates email + password and issues a new access token and refresh token.
+    /// Validates username + password and issues a new access token and refresh token.
     /// Returns null when credentials are invalid or the user is inactive.
     /// </summary>
-    /// <param name="email">The login email (case-insensitive).</param>
+    /// <param name="username">The login username (case-insensitive).</param>
     /// <param name="password">The plain-text password to verify against the stored BCrypt hash.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Tokens on success; null on failure.</returns>
     Task<(string AccessToken, string RefreshToken)?> LoginAsync(
-        string email,
+        string username,
         string password,
         CancellationToken cancellationToken = default);
 
@@ -55,7 +55,8 @@ public sealed class MeResponse
 {
     public Guid UserId { get; init; }
     public string FullName { get; init; } = string.Empty;
-    public string Email { get; init; } = string.Empty;
+    public string Username { get; init; } = string.Empty;
+    public string? Email { get; init; }
     public string Role { get; init; } = string.Empty;
     /// <summary>Division name, or null for non-PPDO office users.</summary>
     public string? Division { get; init; }

@@ -12,7 +12,10 @@ public static class JwtClaimNames
     /// <summary>Subject — the authenticated user's primary key (Guid, stored as string).</summary>
     public const string Sub = "sub";
 
-    /// <summary>The user's email address.</summary>
+    /// <summary>The user's login username.</summary>
+    public const string Username = "username";
+
+    /// <summary>The user's email address (optional — omitted when user has no email).</summary>
     public const string Email = "email";
 
     /// <summary>

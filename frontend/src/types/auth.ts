@@ -1,7 +1,7 @@
 /** Mirrors PPDO.Application/DTOs/Auth/ */
 
 export interface LoginRequest {
-  email: string;
+  username: string;
   password: string;
 }
 
@@ -18,7 +18,8 @@ export interface RefreshRequest {
 export interface MeResponse {
   userId: string;
   fullName: string;
-  email: string;
+  username: string;
+  email?: string;
   /** "SuperAdmin" | "Admin" | "Staff" | "Observer" */
   role: string;
   /** "Admin" | "Planning" | "RM" | "MIS" | "SPD" — null for non-PPDO office users */

@@ -6,7 +6,8 @@ export type Division = "Admin" | "Planning" | "RM" | "MIS" | "SPD";
 export interface UserResponse {
   id: string;
   fullName: string;
-  email: string;
+  username: string;
+  email?: string;
   role: UserRole;
   division: Division | null;
   /** Provincial office (v1.1) — set for non-PPDO office users. */
@@ -28,7 +29,8 @@ export interface UserResponse {
 
 export interface CreateUserRequest {
   fullName: string;
-  email: string;
+  username: string;
+  email?: string;
   role: UserRole;
   division: Division | null;
   /** Set to create a non-PPDO office user (Division is then ignored). */

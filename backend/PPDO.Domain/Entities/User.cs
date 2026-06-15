@@ -15,8 +15,11 @@ public sealed class User
     /// <summary>Full legal name. Max 100 characters.</summary>
     public string FullName { get; set; } = string.Empty;
 
-    /// <summary>Email address — used as login username. Must be unique.</summary>
-    public string Email { get; set; } = string.Empty;
+    /// <summary>Login username. Must be unique. Max 50 characters.</summary>
+    public string Username { get; set; } = string.Empty;
+
+    /// <summary>Email address — optional, must be unique when set. Max 256 characters.</summary>
+    public string? Email { get; set; }
 
     /// <summary>BCrypt password hash. Never store or log the plain-text password.</summary>
     public string PasswordHash { get; set; } = string.Empty;

@@ -15,6 +15,16 @@ public sealed class UserRepository : Repository<User>, IUserRepository
     public UserRepository(AppDbContext context) : base(context) { }
 
     /// <inheritdoc />
+    public Task<User?> FindByUsernameAsync(
+        string username,
+        CancellationToken cancellationToken = default)
+        => _context.Users
+            .Include(u => u.Group)
+            .FirstOrDefaultAsync(
+                u => u.Username.ToLower() == username.ToLower() && u.IsActive,
+                cancellationToken);
+
+    /// <inheritdoc />
     public Task<User?> FindByEmailAsync(
         string email,
         CancellationToken cancellationToken = default)

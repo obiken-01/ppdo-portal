@@ -11,7 +11,8 @@ namespace PPDO.Application.DTOs.Users;
 /// </summary>
 public sealed record CreateUserDto(
     string FullName,
-    string Email,
+    string Username,
+    string? Email,
     /// <summary>"SuperAdmin" | "Admin" | "Staff" | "Observer"</summary>
     string Role,
     /// <summary>"Admin" | "Planning" | "RM" | "MIS" | "SPD" — optional when OfficeId is set.</summary>
