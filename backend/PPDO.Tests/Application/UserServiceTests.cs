@@ -22,6 +22,7 @@ public sealed class UserServiceTests
     {
         Id       = Guid.NewGuid(),
         FullName = "Super Admin",
+        Username = "superadmin",
         Email    = "superadmin@ppdo.gov.ph",
         PasswordHash = "hash",
         Role     = UserRole.SuperAdmin,
@@ -33,6 +34,7 @@ public sealed class UserServiceTests
     {
         Id       = Guid.NewGuid(),
         FullName = "Admin User",
+        Username = "admin",
         Email    = "admin@ppdo.gov.ph",
         PasswordHash = "hash",
         Role     = UserRole.Admin,
@@ -44,6 +46,7 @@ public sealed class UserServiceTests
     {
         Id       = Guid.NewGuid(),
         FullName = "Staff User",
+        Username = "staff",
         Email    = "staff@ppdo.gov.ph",
         PasswordHash = "hash",
         Role     = UserRole.Staff,
@@ -110,6 +113,7 @@ public sealed class UserServiceTests
         ServiceResult<UserResponseDto> result = await BuildSut(repo).GetByIdAsync(user.Id);
 
         Assert.True(result.IsSuccess);
+        Assert.Equal(user.Username, result.Value!.Username);
         Assert.Equal(user.Email, result.Value!.Email);
     }
 
@@ -119,7 +123,7 @@ public sealed class UserServiceTests
     public async Task CreateAsync_InvalidRole_ReturnsBadRequest()
     {
         Mock<IUserRepository> repo = new();
-        CreateUserDto dto = new("Jane", "jane@ppdo.gov.ph", "NotARole", "Admin", null, null);
+        CreateUserDto dto = new("Jane", "jane", "jane@ppdo.gov.ph", "NotARole", "Admin", null, null);
 
         ServiceResult<UserResponseDto> result = await BuildSut(repo).CreateAsync(MakeAdmin(), dto);
 
@@ -130,7 +134,7 @@ public sealed class UserServiceTests
     public async Task CreateAsync_InvalidDivision_ReturnsBadRequest()
     {
         Mock<IUserRepository> repo = new();
-        CreateUserDto dto = new("Jane", "jane@ppdo.gov.ph", "Staff", "NotADivision", null, null);
+        CreateUserDto dto = new("Jane", "jane", "jane@ppdo.gov.ph", "Staff", "NotADivision", null, null);
 
         ServiceResult<UserResponseDto> result = await BuildSut(repo).CreateAsync(MakeAdmin(), dto);
 
@@ -141,7 +145,7 @@ public sealed class UserServiceTests
     public async Task CreateAsync_AdminCreatesAdmin_ReturnsForbidden()
     {
         Mock<IUserRepository> repo = new();
-        CreateUserDto dto = new("Jane", "jane@ppdo.gov.ph", "Admin", "Admin", null, null);
+        CreateUserDto dto = new("Jane", "jane", "jane@ppdo.gov.ph", "Admin", "Admin", null, null);
 
         // Admin cannot create another Admin — only SuperAdmin can.
         ServiceResult<UserResponseDto> result = await BuildSut(repo).CreateAsync(MakeAdmin(), dto);
@@ -150,14 +154,31 @@ public sealed class UserServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_DuplicateUsername_ReturnsConflict()
+    {
+        User existing = MakeStaff();
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByUsernameAsync("staff", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existing);
+
+        CreateUserDto dto = new("Jane", "staff", "jane@ppdo.gov.ph", "Staff", "Planning", null, null);
+
+        ServiceResult<UserResponseDto> result = await BuildSut(repo).CreateAsync(MakeAdmin(), dto);
+
+        Assert.Equal(ServiceErrorCode.Conflict, result.Code);
+    }
+
+    [Fact]
     public async Task CreateAsync_DuplicateEmail_ReturnsConflict()
     {
         User existing = MakeStaff();
         Mock<IUserRepository> repo = new();
-        repo.Setup(r => r.FindByEmailAsync(existing.Email, It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.FindByUsernameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+        repo.Setup(r => r.FindByEmailAsync("staff@ppdo.gov.ph", It.IsAny<CancellationToken>()))
             .ReturnsAsync(existing);
 
-        CreateUserDto dto = new("Jane", existing.Email, "Staff", "Planning", null, null);
+        CreateUserDto dto = new("Jane", "jane", existing.Email, "Staff", "Planning", null, null);
 
         ServiceResult<UserResponseDto> result = await BuildSut(repo).CreateAsync(MakeAdmin(), dto);
 
@@ -169,6 +190,8 @@ public sealed class UserServiceTests
     {
         User created = MakeStaff(Division.Planning);
         Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByUsernameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
         repo.Setup(r => r.FindByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((User?)null);
         repo.Setup(r => r.AddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
@@ -179,7 +202,7 @@ public sealed class UserServiceTests
         repo.Setup(r => r.GetByIdWithGroupAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(created);
 
-        CreateUserDto dto = new("Jane Doe", "jane@ppdo.gov.ph", "Staff", "Planning", null, null);
+        CreateUserDto dto = new("Jane Doe", "janedoe", "jane@ppdo.gov.ph", "Staff", "Planning", null, null);
 
         ServiceResult<UserResponseDto> result = await BuildSut(repo).CreateAsync(MakeAdmin(), dto);
 
@@ -191,6 +214,8 @@ public sealed class UserServiceTests
     {
         User created = MakeAdmin();
         Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByUsernameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
         repo.Setup(r => r.FindByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((User?)null);
         repo.Setup(r => r.AddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
@@ -200,7 +225,7 @@ public sealed class UserServiceTests
         repo.Setup(r => r.GetByIdWithGroupAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(created);
 
-        CreateUserDto dto = new("Admin Two", "admin2@ppdo.gov.ph", "Admin", "Admin", null, null);
+        CreateUserDto dto = new("Admin Two", "admin2", "admin2@ppdo.gov.ph", "Admin", "Admin", null, null);
 
         ServiceResult<UserResponseDto> result = await BuildSut(repo).CreateAsync(MakeSuperAdmin(), dto);
 
@@ -211,11 +236,9 @@ public sealed class UserServiceTests
     public async Task CreateAsync_StaffWithoutDivisionOrOffice_ReturnsBadRequest()
     {
         Mock<IUserRepository> repo = new();
-        repo.Setup(r => r.FindByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((User?)null);
 
         // PPDO Staff with neither a division nor an office cannot be assigned a group.
-        CreateUserDto dto = new("Jane", "jane@ppdo.gov.ph", "Staff", null, null, null);
+        CreateUserDto dto = new("Jane", "jane", "jane@ppdo.gov.ph", "Staff", null, null, null);
 
         ServiceResult<UserResponseDto> result = await BuildSut(repo).CreateAsync(MakeAdmin(), dto);
 
@@ -230,6 +253,8 @@ public sealed class UserServiceTests
         User? captured = null;
 
         Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByUsernameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
         repo.Setup(r => r.FindByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((User?)null);
         repo.Setup(r => r.AddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
@@ -244,7 +269,7 @@ public sealed class UserServiceTests
             .ReturnsAsync(new List<Office> { new() { Id = 7, OfficeCode = "PGO", OfficeName = "Provincial Gov Office", IsActive = true } });
 
         // Division supplied but ignored because an office is set.
-        CreateUserDto dto = new("Office Encoder", "enc@lgu.gov.ph", "Staff", "Planning", null, null, OfficeId: 7);
+        CreateUserDto dto = new("Office Encoder", "enc", "enc@lgu.gov.ph", "Staff", "Planning", null, null, OfficeId: 7);
 
         ServiceResult<UserResponseDto> result = await BuildSut(repo, offices).CreateAsync(MakeAdmin(), dto);
 
@@ -259,14 +284,12 @@ public sealed class UserServiceTests
     public async Task CreateAsync_OfficeUser_InactiveOffice_ReturnsBadRequest()
     {
         Mock<IUserRepository> repo = new();
-        repo.Setup(r => r.FindByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((User?)null);
 
         Mock<IRepository<Office>> offices = new();
         offices.Setup(o => o.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Office> { new() { Id = 7, OfficeName = "Closed Office", IsActive = false } });
 
-        CreateUserDto dto = new("Enc", "enc@lgu.gov.ph", "Staff", null, null, null, OfficeId: 7);
+        CreateUserDto dto = new("Enc", "enc", "enc@lgu.gov.ph", "Staff", null, null, null, OfficeId: 7);
 
         ServiceResult<UserResponseDto> result = await BuildSut(repo, offices).CreateAsync(MakeAdmin(), dto);
 
@@ -277,7 +300,7 @@ public sealed class UserServiceTests
     public async Task CreateAsync_OfficeUser_AdminRole_ReturnsBadRequest()
     {
         Mock<IUserRepository> repo = new();
-        CreateUserDto dto = new("Enc", "enc@lgu.gov.ph", "Admin", null, null, null, OfficeId: 7);
+        CreateUserDto dto = new("Enc", "enc", "enc@lgu.gov.ph", "Admin", null, null, null, OfficeId: 7);
 
         // Office users must be Staff or Observer — never Admin/SuperAdmin.
         ServiceResult<UserResponseDto> result = await BuildSut(repo).CreateAsync(MakeSuperAdmin(), dto);
@@ -294,7 +317,7 @@ public sealed class UserServiceTests
         repo.Setup(r => r.GetByIdWithGroupAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((User?)null);
 
-        UpdateUserDto dto = new("New Name", null, null, null, null, null, null, null, null, null);
+        UpdateUserDto dto = new("New Name", null, null, null, null, null, null, null, null, null, null, null);
 
         ServiceResult<UserResponseDto> result =
             await BuildSut(repo).UpdateAsync(MakeAdmin(), Guid.NewGuid(), dto);
@@ -310,7 +333,7 @@ public sealed class UserServiceTests
         repo.Setup(r => r.GetByIdWithGroupAsync(target.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(target);
 
-        UpdateUserDto dto = new("New Name", null, null, null, null, null, null, null, null, null);
+        UpdateUserDto dto = new("New Name", null, null, null, null, null, null, null, null, null, null, null);
 
         // Admin cannot update another Admin.
         ServiceResult<UserResponseDto> result =
@@ -327,7 +350,7 @@ public sealed class UserServiceTests
         repo.Setup(r => r.GetByIdWithGroupAsync(target.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(target);
 
-        UpdateUserDto dto = new("Updated Name", null, null, null, "New Position", "09171234567",
+        UpdateUserDto dto = new("Updated Name", null, null, null, null, null, "New Position", "09171234567",
             null, null, null, null);
 
         ServiceResult<UserResponseDto> result =
@@ -340,6 +363,44 @@ public sealed class UserServiceTests
     }
 
     [Fact]
+    public async Task UpdateAsync_UsernameSaved()
+    {
+        User target = MakeStaff();
+        Mock<IUserRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByIdWithGroupAsync(target.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(target);
+        repo.Setup(r => r.FindByUsernameAsync("newstaff", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+
+        UpdateUserDto dto = new(null, "newstaff", null, null, null, null, null, null, null, null, null, null);
+
+        ServiceResult<UserResponseDto> result =
+            await BuildSut(repo).UpdateAsync(MakeAdmin(), target.Id, dto);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("newstaff", target.Username);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_EmailSaved()
+    {
+        User target = MakeStaff();
+        Mock<IUserRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByIdWithGroupAsync(target.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(target);
+        repo.Setup(r => r.FindByEmailAsync("newemail@ppdo.gov.ph", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+
+        UpdateUserDto dto = new(null, null, "newemail@ppdo.gov.ph", null, null, null, null, null, null, null, null, null);
+
+        ServiceResult<UserResponseDto> result =
+            await BuildSut(repo).UpdateAsync(MakeAdmin(), target.Id, dto);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("newemail@ppdo.gov.ph", target.Email);
+    }
+
+    [Fact]
     public async Task UpdateAsync_InvalidRole_ReturnsBadRequest()
     {
         User target = MakeStaff();
@@ -347,7 +408,7 @@ public sealed class UserServiceTests
         repo.Setup(r => r.GetByIdWithGroupAsync(target.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(target);
 
-        UpdateUserDto dto = new(null, "NotARole", null, null, null, null, null, null, null, null);
+        UpdateUserDto dto = new(null, null, null, "NotARole", null, null, null, null, null, null, null, null);
 
         ServiceResult<UserResponseDto> result =
             await BuildSut(repo).UpdateAsync(MakeAdmin(), target.Id, dto);
@@ -363,7 +424,7 @@ public sealed class UserServiceTests
         repo.Setup(r => r.GetByIdWithGroupAsync(target.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(target);
 
-        UpdateUserDto dto = new(null, null, null, null, null, null,
+        UpdateUserDto dto = new(null, null, null, null, null, null, null, null,
             OverrideCanAccessInventory:     true,
             OverrideCanAccessReports:       false,
             OverrideCanManageUsers:         null,
@@ -422,7 +483,7 @@ public sealed class UserServiceTests
         await BuildSut(repo).ResetPasswordAsync(MakeAdmin(), target.Id);
 
         Assert.NotEqual(originalHash, target.PasswordHash);
-        Assert.True(BCrypt.Net.BCrypt.Verify("TamarawUser2026", target.PasswordHash));
+        Assert.True(BCrypt.Net.BCrypt.Verify("TamarawUser2026!", target.PasswordHash));
     }
 
     // ── DeactivateAsync ───────────────────────────────────────────────────────

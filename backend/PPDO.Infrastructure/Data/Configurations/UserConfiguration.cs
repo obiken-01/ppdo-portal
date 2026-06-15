@@ -28,8 +28,11 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
             .IsRequired()
             .HasMaxLength(100);
 
-        builder.Property(u => u.Email)
+        builder.Property(u => u.Username)
             .IsRequired()
+            .HasMaxLength(50);
+
+        builder.Property(u => u.Email)
             .HasMaxLength(256);
 
         builder.Property(u => u.PasswordHash)
@@ -60,9 +63,16 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
 
         // RefreshTokenExpiry — nullable DateTime; no extra config needed.
 
-        // Unique index on Email — used as login username.
+        // Unique index on Username — the login identity.
+        builder.HasIndex(u => u.Username)
+            .IsUnique()
+            .HasDatabaseName("IX_Users_Username");
+
+        // Filtered unique index on Email — multiple NULL emails are allowed
+        // (SQL Server treats multiple NULLs as duplicates in a plain unique index).
         builder.HasIndex(u => u.Email)
             .IsUnique()
+            .HasFilter("[Email] IS NOT NULL")
             .HasDatabaseName("IX_Users_Email");
 
         // FK: Users.GroupId → PermissionGroups.Id
@@ -97,6 +107,7 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         {
             Id           = SuperAdminId,
             FullName     = "System Administrator",
+            Username     = "superadmin",
             Email        = "superadmin@ppdo.gov.ph",
             PasswordHash = DefaultSuperAdminHash,
             Role         = UserRole.SuperAdmin,

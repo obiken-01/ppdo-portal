@@ -48,17 +48,17 @@ public sealed class AuthService : IAuthService
 
     /// <inheritdoc />
     public async Task<(string AccessToken, string RefreshToken)?> LoginAsync(
-        string email,
+        string username,
         string password,
         CancellationToken cancellationToken = default)
     {
-        User? user = await _users.FindByEmailAsync(email, cancellationToken);
+        User? user = await _users.FindByUsernameAsync(username, cancellationToken);
 
         if (user is null)
         {
             // Consistent timing — run a dummy verify so response time doesn't leak existence.
             BCrypt.Net.BCrypt.Verify(password, "$2a$11$dummyhashtopreventtimingattacksonuserexistence00000000000");
-            _logger.LogWarning("Login failed — email not found or user inactive. Email: {Email}", email);
+            _logger.LogWarning("Login failed — username not found or user inactive. Username: {Username}", username);
             return null;
         }
 
@@ -146,6 +146,7 @@ public sealed class AuthService : IAuthService
         {
             UserId   = user.Id,
             FullName = user.FullName,
+            Username = user.Username,
             Email    = user.Email,
             Role     = user.Role.ToString(),
             Division = user.Division?.ToString(),   // null for non-PPDO office users
@@ -176,10 +177,14 @@ public sealed class AuthService : IAuthService
 
         List<Claim> claims =
         [
-            new Claim(JwtClaimNames.Sub,   user.Id.ToString()),
-            new Claim(JwtClaimNames.Email, user.Email),
-            new Claim(JwtClaimNames.Role,  ((int)user.Role).ToString()),
+            new Claim(JwtClaimNames.Sub,      user.Id.ToString()),
+            new Claim(JwtClaimNames.Username, user.Username),
+            new Claim(JwtClaimNames.Role,     ((int)user.Role).ToString()),
         ];
+
+        // Email is optional — only emit the claim when present.
+        if (user.Email is string email)
+            claims.Add(new Claim(JwtClaimNames.Email, email));
 
         // Division is nullable from v1.1 (non-PPDO office users have none) — only emit
         // the div claim when present. Scoping reads Division from the loaded user, not

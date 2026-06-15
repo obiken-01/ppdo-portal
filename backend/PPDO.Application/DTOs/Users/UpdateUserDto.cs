@@ -12,6 +12,8 @@ namespace PPDO.Application.DTOs.Users;
 /// </summary>
 public sealed record UpdateUserDto(
     string?  FullName,
+    string?  Username,
+    string?  Email,
     /// <summary>"SuperAdmin" | "Admin" | "Staff" | "Observer" — triggers GroupId recalculation</summary>
     string?  Role,
     /// <summary>"Admin" | "Planning" | "RM" | "MIS" | "SPD" — triggers GroupId recalculation</summary>

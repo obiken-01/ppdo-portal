@@ -8,9 +8,9 @@
  *
  * Features:
  *   - Table listing all portal users (name, email, role, division, status)
- *   - Add User modal — create a new account with default password TamarawUser2026
+ *   - Add User modal — create a new account with default password TamarawUser2026!
  *   - Edit User modal — update profile + per-user permission override toggles
- *   - Reset Password — one-click reset back to TamarawUser2026
+ *   - Reset Password — one-click reset back to TamarawUser2026!
  *   - Deactivate / Reactivate — toggle isActive without deleting the record
  *
  * API endpoints used (all from UserFunctions.cs):
@@ -68,7 +68,8 @@ const OVERRIDE_KEYS = [
 
 const blankForm = (): CreateUserRequest => ({
   fullName: "",
-  email: "",
+  username: "",
+  email: undefined,
   role: "Staff",
   division: "Admin",
   officeId: null,
@@ -229,11 +230,25 @@ function UserForm({ form, groups, offices, isEdit, saving, error, onChange, onSu
         </div>
 
         <div className="col-span-2">
-          <label className="block text-xs font-medium text-slate-600 mb-1">Email *</label>
+          <label className="block text-xs font-medium text-slate-600 mb-1">Username *</label>
+          <input
+            value={form.username}
+            onChange={(e) => onChange({ username: e.target.value })}
+            placeholder="juandelacruz"
+            autoComplete="off"
+            className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 font-mono"
+          />
+        </div>
+
+        <div className="col-span-2">
+          <label className="block text-xs font-medium text-slate-600 mb-1">
+            Email
+            <span className="ml-1 font-normal text-slate-400">(optional)</span>
+          </label>
           <input
             type="email"
-            value={form.email}
-            onChange={(e) => onChange({ email: e.target.value })}
+            value={form.email ?? ""}
+            onChange={(e) => onChange({ email: e.target.value || undefined })}
             placeholder="user@ppdo.gov.ph"
             className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
           />
@@ -554,7 +569,8 @@ export default function UsersPage() {
     const q = search.toLowerCase();
     return (
       u.fullName.toLowerCase().includes(q) ||
-      u.email.toLowerCase().includes(q) ||
+      u.username.toLowerCase().includes(q) ||
+      (u.email ?? "").toLowerCase().includes(q) ||
       u.role.toLowerCase().includes(q) ||
       (u.division ?? "").toLowerCase().includes(q) ||
       (u.officeName ?? "").toLowerCase().includes(q)
@@ -572,8 +588,8 @@ export default function UsersPage() {
   }
 
   async function handleAdd() {
-    if (!addForm.fullName.trim() || !addForm.email.trim()) {
-      setFormError("Full name and email are required.");
+    if (!addForm.fullName.trim() || !addForm.username.trim()) {
+      setFormError("Full name and username are required.");
       return;
     }
     setSaving(true);
@@ -598,6 +614,7 @@ export default function UsersPage() {
     setEditTarget(user);
     setEditForm({
       fullName:                      user.fullName,
+      username:                      user.username,
       email:                         user.email,
       role:                          user.role,
       division:                      user.division,
@@ -619,8 +636,8 @@ export default function UsersPage() {
 
   async function handleEdit() {
     if (!editTarget || !editForm) return;
-    if (!editForm.fullName.trim() || !editForm.email.trim()) {
-      setFormError("Full name and email are required.");
+    if (!editForm.fullName.trim() || !editForm.username.trim()) {
+      setFormError("Full name and username are required.");
       return;
     }
     setSaving(true);
@@ -701,7 +718,7 @@ export default function UsersPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name, email, role, or division…"
+            placeholder="Search by name, username, email, role, or division…"
             className="flex-1 px-4 py-2.5 rounded-lg text-sm border border-slate-200 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-green-600"
           />
           {search && (
@@ -750,7 +767,7 @@ export default function UsersPage() {
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500 uppercase tracking-wide">
                     <th className="text-left px-4 py-3 font-medium">Name</th>
-                    <th className="text-left px-4 py-3 font-medium">Email</th>
+                    <th className="text-left px-4 py-3 font-medium">Username / Email</th>
                     <th className="text-left px-4 py-3 font-medium">Role</th>
                     <th className="text-left px-4 py-3 font-medium">Division / Office</th>
                     <th className="text-left px-4 py-3 font-medium">Status</th>
@@ -769,7 +786,12 @@ export default function UsersPage() {
                           <div className="text-xs text-slate-400">{user.position}</div>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-slate-600">{user.email}</td>
+                      <td className="px-4 py-3">
+                        <div className="font-mono text-sm text-slate-700">{user.username}</div>
+                        {user.email && (
+                          <div className="text-xs text-slate-400">{user.email}</div>
+                        )}
+                      </td>
                       <td className="px-4 py-3">{roleBadge(user.role)}</td>
                       <td className="px-4 py-3 text-slate-600">
                         {user.officeName
@@ -819,7 +841,7 @@ export default function UsersPage() {
       {showAdd && (
         <Modal title="Add New User" onClose={() => setShowAdd(false)}>
           <p className="text-xs text-slate-400 mb-4">
-            Default password <span className="font-mono bg-slate-100 px-1 rounded">TamarawUser2026</span> is set automatically. The user must change it on first login.
+            Default password <span className="font-mono bg-slate-100 px-1 rounded">TamarawUser2026!</span> is set automatically. The user must change it on first login.
           </p>
           <UserForm
             form={addForm}
@@ -855,7 +877,7 @@ export default function UsersPage() {
       {/* ── Reset Password confirm ─────────────────────────────────────────── */}
       {resetTarget && (
         <ConfirmDialog
-          message={`Reset password for ${resetTarget.fullName}? Their password will be set back to the default: TamarawUser2026`}
+          message={`Reset password for ${resetTarget.fullName}? Their password will be set back to the default: TamarawUser2026!`}
           confirmLabel="Reset Password"
           loading={actionLoading}
           onConfirm={handleResetPassword}

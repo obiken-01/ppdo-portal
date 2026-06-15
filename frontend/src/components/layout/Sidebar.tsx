@@ -311,7 +311,7 @@ export default function Sidebar({ me }: SidebarProps) {
             <div className="absolute bottom-full left-3 right-3 mb-1 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden z-50">
               <div className="px-4 py-2.5 border-b border-slate-100">
                 <p className="text-xs font-semibold text-slate-700 truncate">{me.fullName}</p>
-                <p className="text-xs text-slate-400 truncate">{me.email}</p>
+                <p className="text-xs text-slate-400 truncate">{me.username}</p>
               </div>
               <Link
                 href="/profile"

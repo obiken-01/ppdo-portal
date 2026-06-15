@@ -31,6 +31,7 @@ public sealed class AuthServiceTests
     {
         Id           = Guid.NewGuid(),
         FullName     = "Test User",
+        Username     = "testuser",
         Email        = "test@ppdo.gov.ph",
         PasswordHash = passwordHash,
         Role         = UserRole.Admin,
@@ -47,13 +48,13 @@ public sealed class AuthServiceTests
     // ── LoginAsync ────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task LoginAsync_UserNotFound_ReturnsNull()
+    public async Task LoginAsync_UsernameNotFound_ReturnsNull()
     {
         Mock<IUserRepository> repo = new();
-        repo.Setup(r => r.FindByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.FindByUsernameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((User?)null);
 
-        (string, string)? result = await BuildSut(repo).LoginAsync("nobody@ppdo.gov.ph", "pass");
+        (string, string)? result = await BuildSut(repo).LoginAsync("nobody", "pass");
 
         Assert.Null(result);
     }
@@ -65,10 +66,10 @@ public sealed class AuthServiceTests
         User user = MakeActiveUser(correctHash);
 
         Mock<IUserRepository> repo = new();
-        repo.Setup(r => r.FindByEmailAsync(user.Email, It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.FindByUsernameAsync(user.Username, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        (string, string)? result = await BuildSut(repo).LoginAsync(user.Email, "wrong");
+        (string, string)? result = await BuildSut(repo).LoginAsync(user.Username, "wrong");
 
         Assert.Null(result);
     }
@@ -76,12 +77,12 @@ public sealed class AuthServiceTests
     [Fact]
     public async Task LoginAsync_ValidCredentials_ReturnsTokenPair()
     {
-        string password = "TamarawUser2026";
+        string password = "TamarawUser2026!";
         string hash = BCrypt.Net.BCrypt.HashPassword(password);
         User user = MakeActiveUser(hash);
 
         Mock<IUserRepository> repo = new();
-        repo.Setup(r => r.FindByEmailAsync(user.Email, It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.FindByUsernameAsync(user.Username, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
         repo.Setup(r => r.UpdateAsync(user, It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
@@ -89,7 +90,7 @@ public sealed class AuthServiceTests
             .ReturnsAsync(1);
 
         (string AccessToken, string RefreshToken)? result =
-            await BuildSut(repo).LoginAsync(user.Email, password);
+            await BuildSut(repo).LoginAsync(user.Username, password);
 
         Assert.NotNull(result);
         Assert.False(string.IsNullOrWhiteSpace(result.Value.AccessToken));
@@ -99,18 +100,18 @@ public sealed class AuthServiceTests
     [Fact]
     public async Task LoginAsync_ValidCredentials_StoresRefreshTokenOnUser()
     {
-        string password = "TamarawUser2026";
+        string password = "TamarawUser2026!";
         User user = MakeActiveUser(BCrypt.Net.BCrypt.HashPassword(password));
 
         Mock<IUserRepository> repo = new();
-        repo.Setup(r => r.FindByEmailAsync(user.Email, It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.FindByUsernameAsync(user.Username, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
         repo.Setup(r => r.UpdateAsync(user, It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(1);
 
-        await BuildSut(repo).LoginAsync(user.Email, password);
+        await BuildSut(repo).LoginAsync(user.Username, password);
 
         Assert.NotNull(user.RefreshToken);
         Assert.NotNull(user.RefreshTokenExpiry);

@@ -23,7 +23,7 @@ public sealed class UserService : IUserService
 {
     // Default password issued to every newly created user and on reset.
     // Users should change this on first login via POST /api/auth/change-password.
-    private const string DefaultPassword = "TamarawUser2026";
+    private const string DefaultPassword = "TamarawUser2026!";
 
     // Fixed seed GUIDs from PermissionGroupConfiguration — must never change.
     private static readonly Guid GroupAdminDivisionStaff = new("10000000-0000-0000-0000-000000000001");
@@ -119,23 +119,33 @@ public sealed class UserService : IUserService
                     "Division is required for PPDO Staff (or assign an office instead).");
         }
 
-        // Email uniqueness check.
-        User? existing = await _users.FindByEmailAsync(dto.Email, cancellationToken);
-        if (existing is not null)
-            return ServiceResult<UserResponseDto>.Conflict(
-                $"Email '{dto.Email}' is already registered.");
-
         // Basic field validation.
         if (string.IsNullOrWhiteSpace(dto.FullName))
             return ServiceResult<UserResponseDto>.BadRequest("FullName is required.");
-        if (string.IsNullOrWhiteSpace(dto.Email))
-            return ServiceResult<UserResponseDto>.BadRequest("Email is required.");
+        if (string.IsNullOrWhiteSpace(dto.Username))
+            return ServiceResult<UserResponseDto>.BadRequest("Username is required.");
+
+        // Username uniqueness check.
+        User? existingByUsername = await _users.FindByUsernameAsync(dto.Username, cancellationToken);
+        if (existingByUsername is not null)
+            return ServiceResult<UserResponseDto>.Conflict(
+                $"Username '{dto.Username}' is already taken.");
+
+        // Email uniqueness check (only when provided).
+        if (!string.IsNullOrWhiteSpace(dto.Email))
+        {
+            User? existingByEmail = await _users.FindByEmailAsync(dto.Email, cancellationToken);
+            if (existingByEmail is not null)
+                return ServiceResult<UserResponseDto>.Conflict(
+                    $"Email '{dto.Email}' is already registered.");
+        }
 
         User user = new()
         {
             Id           = Guid.NewGuid(),
             FullName     = dto.FullName.Trim(),
-            Email        = dto.Email.Trim().ToLowerInvariant(),
+            Username     = dto.Username.Trim().ToLowerInvariant(),
+            Email        = string.IsNullOrWhiteSpace(dto.Email) ? null : dto.Email.Trim().ToLowerInvariant(),
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(DefaultPassword),
             Role         = newRole,
             Division     = newDivision,
@@ -185,6 +195,37 @@ public sealed class UserService : IUserService
             target.Position  = dto.Position.Trim();
         if (dto.ContactNo is not null)
             target.ContactNo = dto.ContactNo.Trim();
+
+        // -- Username (uniqueness check; null = leave unchanged) ---------------
+        if (dto.Username is not null)
+        {
+            string newUsername = dto.Username.Trim().ToLowerInvariant();
+            if (!string.Equals(newUsername, target.Username, StringComparison.OrdinalIgnoreCase))
+            {
+                User? taken = await _users.FindByUsernameAsync(newUsername, cancellationToken);
+                if (taken is not null)
+                    return ServiceResult<UserResponseDto>.Conflict(
+                        $"Username '{newUsername}' is already taken.");
+            }
+            target.Username = newUsername;
+        }
+
+        // -- Email (uniqueness check; null = leave unchanged) ------------------
+        if (dto.Email is not null)
+        {
+            string? newEmail = string.IsNullOrWhiteSpace(dto.Email) ? null : dto.Email.Trim().ToLowerInvariant();
+            if (!string.Equals(newEmail, target.Email, StringComparison.OrdinalIgnoreCase))
+            {
+                if (newEmail is not null)
+                {
+                    User? taken = await _users.FindByEmailAsync(newEmail, cancellationToken);
+                    if (taken is not null)
+                        return ServiceResult<UserResponseDto>.Conflict(
+                            $"Email '{newEmail}' is already registered.");
+                }
+            }
+            target.Email = newEmail;
+        }
 
         // -- Role (triggers GroupId recalculation) ------------------------------
         UserRole effectiveRole = target.Role;
@@ -491,6 +532,7 @@ public sealed class UserService : IUserService
     {
         Id                            = u.Id,
         FullName                      = u.FullName,
+        Username                      = u.Username,
         Email                         = u.Email,
         Role                          = u.Role.ToString(),
         Division                      = u.Division?.ToString(),

@@ -13,9 +13,15 @@ namespace PPDO.Domain.Interfaces;
 public interface IUserRepository : IRepository<User>
 {
     /// <summary>
+    /// Returns the active user whose <see cref="User.Username"/> matches (case-insensitive),
+    /// with <see cref="User.Group"/> included. Returns null if no match or the user is inactive.
+    /// </summary>
+    Task<User?> FindByUsernameAsync(string username, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Returns the active user whose <see cref="User.Email"/> matches (case-insensitive),
     /// with <see cref="User.Group"/> included. Returns null if no match or the user
-    /// is inactive.
+    /// is inactive. Used for email uniqueness checks during user create/update.
     /// </summary>
     Task<User?> FindByEmailAsync(string email, CancellationToken cancellationToken = default);
 
