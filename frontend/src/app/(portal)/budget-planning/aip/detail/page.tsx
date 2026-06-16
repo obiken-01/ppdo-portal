@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * AIP Detail page — read-only hierarchy view.
+ * AIP Detail page — read-only hierarchy view with collapsible levels.
  * Route: /budget-planning/aip/detail?id=<aipRecordId>
  *
  * Uses a query param instead of a dynamic [id] segment because
@@ -21,6 +21,26 @@ import type {
   AipActivityDetail,
   MeResponse,
 } from "@/types";
+
+// ── Chevron icon ───────────────────────────────────────────────────────────────
+
+function Chevron({ open, className = "" }: { open: boolean; className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 12 12"
+      width="10"
+      height="10"
+      className={`inline-block transition-transform duration-150 ${open ? "rotate-90" : ""} ${className}`}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <polyline points="4,2 8,6 4,10" />
+    </svg>
+  );
+}
 
 // ── Number helpers ─────────────────────────────────────────────────────────────
 
@@ -131,6 +151,15 @@ function groupBySector(
   return result;
 }
 
+// ── Toggle helper ──────────────────────────────────────────────────────────────
+
+function toggle<T>(set: Set<T>, key: T): Set<T> {
+  const next = new Set(set);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  return next;
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function AipDetailPage() {
@@ -142,6 +171,12 @@ export default function AipDetailPage() {
   const [record, setRecord] = useState<AipRecordDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Collapse state — key = sector name, office id, program id, project id
+  const [collapsedSectors,  setCollapsedSectors]  = useState<Set<string>>(new Set());
+  const [collapsedOffices,  setCollapsedOffices]  = useState<Set<number>>(new Set());
+  const [collapsedPrograms, setCollapsedPrograms] = useState<Set<number>>(new Set());
+  const [collapsedProjects, setCollapsedProjects] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     api.get<MeResponse>("/auth/me").then(({ data }) => {
@@ -171,30 +206,20 @@ export default function AipDetailPage() {
     return (
       <div className="p-8">
         <p className="text-red-600 text-sm mb-3">Invalid AIP record ID.</p>
-        <Link
-          href="/budget-planning/aip"
-          className="text-sm text-green-700 hover:underline"
-        >
+        <Link href="/budget-planning/aip" className="text-sm text-green-700 hover:underline">
           ← Back to AIP list
         </Link>
       </div>
     );
 
   if (loading)
-    return (
-      <div className="p-8 text-slate-500 text-sm">Loading AIP record…</div>
-    );
+    return <div className="p-8 text-slate-500 text-sm">Loading AIP record…</div>;
 
   if (error || !record)
     return (
       <div className="p-8">
-        <p className="text-red-600 text-sm mb-3">
-          {error ?? "Record not found."}
-        </p>
-        <Link
-          href="/budget-planning/aip"
-          className="text-sm text-green-700 hover:underline"
-        >
+        <p className="text-red-600 text-sm mb-3">{error ?? "Record not found."}</p>
+        <Link href="/budget-planning/aip" className="text-sm text-green-700 hover:underline">
           ← Back to AIP list
         </Link>
       </div>
@@ -202,14 +227,9 @@ export default function AipDetailPage() {
 
   const sectors = groupBySector(record.offices);
 
-  const programCount = record.offices.flatMap((o) => o.programs).length;
-  const projectCount = record.offices
-    .flatMap((o) => o.programs)
-    .flatMap((p) => p.projects).length;
-  const activityCount = record.offices
-    .flatMap((o) => o.programs)
-    .flatMap((p) => p.projects)
-    .flatMap((p) => p.activities).length;
+  const programCount  = record.offices.flatMap((o) => o.programs).length;
+  const projectCount  = record.offices.flatMap((o) => o.programs).flatMap((p) => p.projects).length;
+  const activityCount = record.offices.flatMap((o) => o.programs).flatMap((p) => p.projects).flatMap((p) => p.activities).length;
 
   return (
     <div className="p-6 max-w-screen-2xl mx-auto">
@@ -223,14 +243,11 @@ export default function AipDetailPage() {
             <StatusBadge status={record.status} />
           </div>
           <p className="text-sm text-slate-500">
-            {record.offices.length} office records &middot; {programCount}{" "}
-            programs &middot; {projectCount} projects &middot; {activityCount}{" "}
-            activities
+            {record.offices.length} office records &middot; {programCount} programs &middot;{" "}
+            {projectCount} projects &middot; {activityCount} activities
           </p>
           {record.originalFilename && (
-            <p className="text-xs text-slate-400 mt-0.5">
-              Source: {record.originalFilename}
-            </p>
+            <p className="text-xs text-slate-400 mt-0.5">Source: {record.originalFilename}</p>
           )}
         </div>
         <Link
@@ -247,42 +264,32 @@ export default function AipDetailPage() {
           <colgroup>
             <col style={{ width: "140px" }} />
             <col style={{ width: "300px" }} />
-            <col style={{ width: "56px" }} />
+            <col style={{ width: "56px"  }} />
             <col style={{ width: "110px" }} />
-            <col style={{ width: "72px" }} />
-            <col style={{ width: "72px" }} />
+            <col style={{ width: "72px"  }} />
+            <col style={{ width: "72px"  }} />
             <col style={{ width: "200px" }} />
-            <col style={{ width: "90px" }} />
-            <col style={{ width: "90px" }} />
-            <col style={{ width: "90px" }} />
-            <col style={{ width: "90px" }} />
+            <col style={{ width: "90px"  }} />
+            <col style={{ width: "90px"  }} />
+            <col style={{ width: "90px"  }} />
+            <col style={{ width: "90px"  }} />
             <col style={{ width: "100px" }} />
-            <col style={{ width: "80px" }} />
-            <col style={{ width: "80px" }} />
-            <col style={{ width: "70px" }} />
+            <col style={{ width: "80px"  }} />
+            <col style={{ width: "80px"  }} />
+            <col style={{ width: "70px"  }} />
           </colgroup>
 
           <thead>
             <tr className="bg-slate-100">
               <TH rowSpan={2}>AIP Ref Code</TH>
               <TH rowSpan={2}>Program / Project / Activity Description</TH>
-              <TH rowSpan={2} align="center">
-                eSRE Code
-              </TH>
+              <TH rowSpan={2} align="center">eSRE Code</TH>
               <TH rowSpan={2}>Implementing Office</TH>
-              <TH colSpan={2} align="center">
-                Schedule of Implementation
-              </TH>
+              <TH colSpan={2} align="center">Schedule of Implementation</TH>
               <TH rowSpan={2}>Expected Outputs</TH>
-              <TH rowSpan={2} align="center">
-                Funding Source
-              </TH>
-              <TH colSpan={4} align="center">
-                Amount (in ₱000)
-              </TH>
-              <TH colSpan={3} align="center">
-                CC Expenditure (₱000)
-              </TH>
+              <TH rowSpan={2} align="center">Funding Source</TH>
+              <TH colSpan={4} align="center">Amount (in ₱000)</TH>
+              <TH colSpan={3} align="center">CC Expenditure (₱000)</TH>
             </tr>
             <tr className="bg-slate-100">
               <TH align="center">Start</TH>
@@ -298,133 +305,156 @@ export default function AipDetailPage() {
           </thead>
 
           <tbody>
-            {sectors.map(([sector, offices]) => (
-              <>
-                <tr key={`sector-${sector}`} className="bg-green-800">
-                  <td
-                    colSpan={15}
-                    className="px-3 py-2 text-white font-bold text-xs tracking-widest uppercase"
-                  >
-                    {sector} SECTOR
-                  </td>
-                </tr>
-
-                {offices.map((office) => {
-                  const officePs = sumActivities(office, "ps");
-                  const officeMooe = sumActivities(office, "mooe");
-                  const officeCo = sumActivities(office, "co");
-                  const officeTotal = sumActivities(office, "total");
-
-                  return (
-                    <>
-                      <tr
-                        key={`office-${office.id}`}
-                        className="bg-green-50 border-t-2 border-green-200"
+            {sectors.map(([sector, offices]) => {
+              const sectorOpen = !collapsedSectors.has(sector);
+              return (
+                <>
+                  {/* ── Sector header ─────────────────────────────── */}
+                  <tr key={`sector-${sector}`} className="bg-green-800">
+                    <td colSpan={15} className="px-3 py-2 text-white font-bold text-xs tracking-widest uppercase">
+                      <button
+                        onClick={() => setCollapsedSectors(toggle(collapsedSectors, sector))}
+                        className="flex items-center gap-2 w-full text-left"
                       >
-                        <td className="px-2 py-2 font-mono text-xs text-slate-500 align-top">
-                          {office.refCode}
-                        </td>
-                        <td className="px-2 py-2 font-bold text-sm uppercase text-green-900 align-top">
-                          {office.name}
-                        </td>
-                        <td />
-                        <td />
-                        <td />
-                        <td />
-                        <td />
-                        <td />
-                        <AmtTD value={officePs} bold />
-                        <AmtTD value={officeMooe} bold />
-                        <AmtTD value={officeCo} bold />
-                        <AmtTD value={officeTotal} bold />
-                        <td />
-                        <td />
-                        <td />
-                      </tr>
+                        <Chevron open={sectorOpen} className="text-green-300" />
+                        {sector} SECTOR
+                        <span className="font-normal text-green-300 text-[10px] tracking-normal ml-1">
+                          ({offices.length} offices)
+                        </span>
+                      </button>
+                    </td>
+                  </tr>
 
-                      {office.programs.map((prog) => (
-                        <>
-                          <tr
-                            key={`prog-${prog.id}`}
-                            className="bg-slate-50 border-t border-slate-200"
-                          >
-                            <td className="px-2 py-1.5 pl-5 font-mono text-xs text-slate-400">
-                              {prog.refCode}
-                            </td>
-                            <td
-                              colSpan={14}
-                              className="px-2 py-1.5 pl-5 font-semibold text-xs italic text-slate-700 uppercase"
+                  {sectorOpen && offices.map((office) => {
+                    const officeOpen  = !collapsedOffices.has(office.id);
+                    const officePs    = sumActivities(office, "ps");
+                    const officeMooe  = sumActivities(office, "mooe");
+                    const officeCo    = sumActivities(office, "co");
+                    const officeTotal = sumActivities(office, "total");
+
+                    return (
+                      <>
+                        {/* ── Office row ──────────────────────────── */}
+                        <tr key={`office-${office.id}`} className="bg-green-50 border-t-2 border-green-200">
+                          <td className="px-2 py-2 font-mono text-xs text-slate-500 align-top">
+                            <button
+                              onClick={() => setCollapsedOffices(toggle(collapsedOffices, office.id))}
+                              className="flex items-center gap-1.5 text-left"
                             >
-                              {prog.name}
-                            </td>
-                          </tr>
+                              <Chevron open={officeOpen} className="text-green-600 shrink-0" />
+                              {office.refCode}
+                            </button>
+                          </td>
+                          <td className="px-2 py-2 font-bold text-sm uppercase text-green-900 align-top">
+                            {office.name}
+                          </td>
+                          <td /><td /><td /><td /><td /><td />
+                          <AmtTD value={officePs}    bold />
+                          <AmtTD value={officeMooe}  bold />
+                          <AmtTD value={officeCo}    bold />
+                          <AmtTD value={officeTotal} bold />
+                          <td /><td /><td />
+                        </tr>
 
-                          {prog.projects.map((proj) => (
+                        {officeOpen && office.programs.map((prog) => {
+                          const progOpen = !collapsedPrograms.has(prog.id);
+                          return (
                             <>
-                              <tr
-                                key={`proj-${proj.id}`}
-                                className="border-t border-slate-100"
-                              >
-                                <td className="px-2 py-1.5 pl-9 font-mono text-xs text-slate-400">
-                                  {proj.refCode}
+                              {/* ── Program row ─────────────────────── */}
+                              <tr key={`prog-${prog.id}`} className="bg-slate-50 border-t border-slate-200">
+                                <td className="px-2 py-1.5 pl-5 font-mono text-xs text-slate-400">
+                                  <button
+                                    onClick={() => setCollapsedPrograms(toggle(collapsedPrograms, prog.id))}
+                                    className="flex items-center gap-1.5 text-left"
+                                  >
+                                    <Chevron open={progOpen} className="text-slate-400 shrink-0" />
+                                    {prog.refCode}
+                                  </button>
                                 </td>
                                 <td
                                   colSpan={14}
-                                  className="px-2 py-1.5 pl-9 text-xs font-medium text-slate-600"
+                                  className="px-2 py-1.5 pl-5 font-semibold text-xs italic text-slate-700 uppercase"
                                 >
-                                  {proj.name}
+                                  {prog.name}
                                 </td>
                               </tr>
 
-                              {proj.activities.map((act) => (
-                                <tr
-                                  key={`act-${act.id}`}
-                                  className="border-t border-slate-100 hover:bg-blue-50 transition-colors"
-                                >
-                                  <td className="px-2 py-1.5 pl-12 font-mono text-[11px] text-slate-400 align-top">
-                                    {act.refCode}
-                                  </td>
-                                  <td className="px-2 py-1.5 pl-12 text-xs text-slate-800 align-top leading-snug">
-                                    {act.name}
-                                  </td>
-                                  <td className="px-2 py-1.5 text-center text-xs text-slate-600">
-                                    {act.esreCode ?? "—"}
-                                  </td>
-                                  <td className="px-2 py-1.5 text-xs text-slate-600 align-top">
-                                    {act.implementingOffice ?? "—"}
-                                  </td>
-                                  <td className="px-2 py-1.5 text-center text-xs text-slate-600 whitespace-nowrap">
-                                    {act.startDate ?? "—"}
-                                  </td>
-                                  <td className="px-2 py-1.5 text-center text-xs text-slate-600 whitespace-nowrap">
-                                    {act.endDate ?? "—"}
-                                  </td>
-                                  <td className="px-2 py-1.5 text-xs text-slate-600 align-top leading-snug">
-                                    {act.expectedOutputs ?? "—"}
-                                  </td>
-                                  <td className="px-2 py-1.5 text-center text-xs font-medium text-slate-700">
-                                    {act.fundingSourceSnapshot ?? "—"}
-                                  </td>
-                                  <AmtTD value={act.ps} />
-                                  <AmtTD value={act.mooe} />
-                                  <AmtTD value={act.co} />
-                                  <AmtTD value={act.total} />
-                                  <AmtTD value={act.ccAdaptation} />
-                                  <AmtTD value={act.ccMitigation} />
-                                  <td className="px-2 py-1.5 text-center text-xs text-slate-500">
-                                    {act.ccTypologyCode ?? "—"}
-                                  </td>
-                                </tr>
-                              ))}
+                              {progOpen && prog.projects.map((proj) => {
+                                const projOpen = !collapsedProjects.has(proj.id);
+                                return (
+                                  <>
+                                    {/* ── Project row ───────────────── */}
+                                    <tr key={`proj-${proj.id}`} className="border-t border-slate-100">
+                                      <td className="px-2 py-1.5 pl-9 font-mono text-xs text-slate-400">
+                                        <button
+                                          onClick={() => setCollapsedProjects(toggle(collapsedProjects, proj.id))}
+                                          className="flex items-center gap-1.5 text-left"
+                                        >
+                                          <Chevron open={projOpen} className="text-slate-300 shrink-0" />
+                                          {proj.refCode}
+                                        </button>
+                                      </td>
+                                      <td
+                                        colSpan={14}
+                                        className="px-2 py-1.5 pl-9 text-xs font-medium text-slate-600"
+                                      >
+                                        {proj.name}
+                                      </td>
+                                    </tr>
+
+                                    {/* ── Activity rows ─────────────── */}
+                                    {projOpen && proj.activities.map((act) => (
+                                      <tr
+                                        key={`act-${act.id}`}
+                                        className="border-t border-slate-100 hover:bg-blue-50 transition-colors"
+                                      >
+                                        <td className="px-2 py-1.5 pl-12 font-mono text-[11px] text-slate-400 align-top">
+                                          {act.refCode}
+                                        </td>
+                                        <td className="px-2 py-1.5 pl-12 text-xs text-slate-800 align-top leading-snug">
+                                          {act.name}
+                                        </td>
+                                        <td className="px-2 py-1.5 text-center text-xs text-slate-600">
+                                          {act.esreCode ?? "—"}
+                                        </td>
+                                        <td className="px-2 py-1.5 text-xs text-slate-600 align-top">
+                                          {act.implementingOffice ?? "—"}
+                                        </td>
+                                        <td className="px-2 py-1.5 text-center text-xs text-slate-600 whitespace-nowrap">
+                                          {act.startDate ?? "—"}
+                                        </td>
+                                        <td className="px-2 py-1.5 text-center text-xs text-slate-600 whitespace-nowrap">
+                                          {act.endDate ?? "—"}
+                                        </td>
+                                        <td className="px-2 py-1.5 text-xs text-slate-600 align-top leading-snug">
+                                          {act.expectedOutputs ?? "—"}
+                                        </td>
+                                        <td className="px-2 py-1.5 text-center text-xs font-medium text-slate-700">
+                                          {act.fundingSourceSnapshot ?? "—"}
+                                        </td>
+                                        <AmtTD value={act.ps} />
+                                        <AmtTD value={act.mooe} />
+                                        <AmtTD value={act.co} />
+                                        <AmtTD value={act.total} />
+                                        <AmtTD value={act.ccAdaptation} />
+                                        <AmtTD value={act.ccMitigation} />
+                                        <td className="px-2 py-1.5 text-center text-xs text-slate-500">
+                                          {act.ccTypologyCode ?? "—"}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </>
+                                );
+                              })}
                             </>
-                          ))}
-                        </>
-                      ))}
-                    </>
-                  );
-                })}
-              </>
-            ))}
+                          );
+                        })}
+                      </>
+                    );
+                  })}
+                </>
+              );
+            })}
           </tbody>
         </table>
       </div>
