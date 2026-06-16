@@ -1,7 +1,12 @@
 // Server component shell — required by Next.js static export (output: 'export').
-// AIP record IDs are resolved client-side at runtime via the Azure Functions API.
+// generateStaticParams must live in a Server Component (no "use client").
+// The actual UI is in AipDetailClient.tsx (client component).
 export function generateStaticParams() {
   return [{ id: "__placeholder__" }];
 }
 
-export { default } from "./AipDetailClient";
+import AipDetailClient from "./AipDetailClient";
+
+export default function AipDetailPage({ params }: { params: { id: string } }) {
+  return <AipDetailClient params={params} />;
+}
