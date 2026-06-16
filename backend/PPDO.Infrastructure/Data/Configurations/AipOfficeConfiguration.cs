@@ -31,9 +31,10 @@ public sealed class AipOfficeConfiguration : IEntityTypeConfiguration<AipOffice>
             .IsRequired()
             .HasMaxLength(20);
 
+        // NOT unique: the AIP file legitimately has multiple office-level rows with
+        // the same ref code (main office + sub-offices share the same 5-segment code).
         builder.HasIndex(o => new { o.AipRecordId, o.RefCode })
-            .IsUnique()
-            .HasDatabaseName("UX_aip_offices_aip_record_id_ref_code");
+            .HasDatabaseName("IX_aip_offices_aip_record_id_ref_code");
 
         builder.HasIndex(o => o.AipRecordId)
             .HasDatabaseName("IX_aip_offices_aip_record_id");
