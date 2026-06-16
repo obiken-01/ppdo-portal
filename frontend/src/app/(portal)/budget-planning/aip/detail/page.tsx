@@ -4,13 +4,14 @@
  * AIP Detail page — read-only hierarchy view with collapsible levels.
  * Route: /budget-planning/aip/detail?id=<aipRecordId>
  *
- * Uses a query param instead of a dynamic [id] segment because
- * Next.js output: 'export' requires all path segments to be known at build time.
+ * Performance: all rows are always in the DOM; collapse uses CSS `hidden` so
+ * React only updates className strings instead of mounting/unmounting thousands
+ * of <tr> elements on each toggle.
  *
  * Access: canAccessBudgetPlanning.
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import api from "@/lib/api";
@@ -30,7 +31,7 @@ function Chevron({ open, className = "" }: { open: boolean; className?: string }
       viewBox="0 0 12 12"
       width="10"
       height="10"
-      className={`inline-block transition-transform duration-150 ${open ? "rotate-90" : ""} ${className}`}
+      className={`inline-block shrink-0 transition-transform duration-150 ${open ? "rotate-90" : ""} ${className}`}
       fill="none"
       stroke="currentColor"
       strokeWidth="2"
@@ -46,10 +47,7 @@ function Chevron({ open, className = "" }: { open: boolean; className?: string }
 
 function fmt(n: number | null | undefined): string {
   if (n == null || n === 0) return "—";
-  return n.toLocaleString("en-PH", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  return n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function sumActivities(
@@ -66,41 +64,24 @@ function sumActivities(
 
 function StatusBadge({ status }: { status: string }) {
   const cls =
-    status === "Final"
-      ? "bg-green-100 text-green-700"
-      : status === "Draft"
-      ? "bg-amber-100 text-amber-700"
-      : "bg-slate-100 text-slate-500";
-  return (
-    <span className={`px-2 py-0.5 text-xs font-medium ${cls}`}>{status}</span>
-  );
+    status === "Final"   ? "bg-green-100 text-green-700" :
+    status === "Draft"   ? "bg-amber-100 text-amber-700" :
+                           "bg-slate-100 text-slate-500";
+  return <span className={`px-2 py-0.5 text-xs font-medium ${cls}`}>{status}</span>;
 }
 
 // ── Table column header ────────────────────────────────────────────────────────
 
-function TH({
-  children,
-  align = "left",
-  className = "",
-  rowSpan,
-  colSpan,
-}: {
+function TH({ children, align = "left", className = "", rowSpan, colSpan }: {
   children: React.ReactNode;
   align?: "left" | "right" | "center";
   className?: string;
   rowSpan?: number;
   colSpan?: number;
 }) {
-  const alignCls =
-    align === "right"
-      ? "text-right"
-      : align === "center"
-      ? "text-center"
-      : "text-left";
+  const alignCls = align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left";
   return (
-    <th
-      rowSpan={rowSpan}
-      colSpan={colSpan}
+    <th rowSpan={rowSpan} colSpan={colSpan}
       className={`px-2 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-600 whitespace-nowrap border-b border-slate-300 bg-slate-100 ${alignCls} ${className}`}
     >
       {children}
@@ -110,19 +91,9 @@ function TH({
 
 // ── Amount cell ────────────────────────────────────────────────────────────────
 
-function AmtTD({
-  value,
-  bold = false,
-}: {
-  value: number | null | undefined;
-  bold?: boolean;
-}) {
+function AmtTD({ value, bold = false }: { value: number | null | undefined; bold?: boolean }) {
   return (
-    <td
-      className={`px-2 py-1.5 text-right text-xs tabular-nums whitespace-nowrap ${
-        bold ? "font-semibold" : "text-slate-700"
-      }`}
-    >
+    <td className={`px-2 py-1.5 text-right text-xs tabular-nums whitespace-nowrap ${bold ? "font-semibold" : "text-slate-700"}`}>
       {fmt(value)}
     </td>
   );
@@ -132,9 +103,7 @@ function AmtTD({
 
 const SECTOR_ORDER = ["GENERAL", "SOCIAL", "ECONOMIC", "OTHERS"];
 
-function groupBySector(
-  offices: AipOfficeDetail[]
-): [string, AipOfficeDetail[]][] {
+function groupBySector(offices: AipOfficeDetail[]): [string, AipOfficeDetail[]][] {
   const map = new Map<string, AipOfficeDetail[]>();
   for (const o of offices) {
     const sector = (o.sector ?? "OTHERS").toUpperCase();
@@ -153,37 +122,38 @@ function groupBySector(
 
 // ── Toggle helper ──────────────────────────────────────────────────────────────
 
-function toggle<T>(set: Set<T>, key: T): Set<T> {
-  const next = new Set(set);
-  if (next.has(key)) next.delete(key);
-  else next.add(key);
+function toggleSet<T>(prev: Set<T>, key: T): Set<T> {
+  const next = new Set(prev);
+  if (next.has(key)) next.delete(key); else next.add(key);
   return next;
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function AipDetailPage() {
-  const router = useRouter();
+  const router       = useRouter();
   const searchParams = useSearchParams();
-  const id = parseInt(searchParams.get("id") ?? "", 10);
+  const id           = parseInt(searchParams.get("id") ?? "", 10);
 
-  const [me, setMe] = useState<MeResponse | null>(null);
-  const [record, setRecord] = useState<AipRecordDetail | null>(null);
+  const [me,      setMe]      = useState<MeResponse | null>(null);
+  const [record,  setRecord]  = useState<AipRecordDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error,   setError]   = useState<string | null>(null);
 
-  // Collapse state — key = sector name, office id, program id, project id
+  // Collapse state — CSS hidden approach: all rows stay in DOM, only className changes.
   const [collapsedSectors,  setCollapsedSectors]  = useState<Set<string>>(new Set());
   const [collapsedOffices,  setCollapsedOffices]  = useState<Set<number>>(new Set());
   const [collapsedPrograms, setCollapsedPrograms] = useState<Set<number>>(new Set());
   const [collapsedProjects, setCollapsedProjects] = useState<Set<number>>(new Set());
 
+  const toggleSector  = useCallback((k: string) => setCollapsedSectors( (p) => toggleSet(p, k)), []);
+  const toggleOffice  = useCallback((k: number) => setCollapsedOffices( (p) => toggleSet(p, k)), []);
+  const toggleProgram = useCallback((k: number) => setCollapsedPrograms((p) => toggleSet(p, k)), []);
+  const toggleProject = useCallback((k: number) => setCollapsedProjects((p) => toggleSet(p, k)), []);
+
   useEffect(() => {
     api.get<MeResponse>("/auth/me").then(({ data }) => {
-      if (!data.canAccessBudgetPlanning) {
-        router.replace("/dashboard");
-        return;
-      }
+      if (!data.canAccessBudgetPlanning) { router.replace("/dashboard"); return; }
       setMe(data);
     });
   }, [router]);
@@ -194,11 +164,15 @@ export default function AipDetailPage() {
     setError(null);
     getAipById(id)
       .then(setRecord)
-      .catch((err) =>
-        setError(aipErrorMessage(err, "Failed to load AIP record."))
-      )
+      .catch((err) => setError(aipErrorMessage(err, "Failed to load AIP record.")))
       .finally(() => setLoading(false));
   }, [me, id]);
+
+  // Memoised derived data — only recomputed when record changes, not on collapse toggles.
+  const sectors      = useMemo(() => record ? groupBySector(record.offices) : [], [record]);
+  const programCount = useMemo(() => record?.offices.flatMap((o) => o.programs).length ?? 0, [record]);
+  const projectCount = useMemo(() => record?.offices.flatMap((o) => o.programs).flatMap((p) => p.projects).length ?? 0, [record]);
+  const activityCount = useMemo(() => record?.offices.flatMap((o) => o.programs).flatMap((p) => p.projects).flatMap((p) => p.activities).length ?? 0, [record]);
 
   if (!me) return null;
 
@@ -206,9 +180,7 @@ export default function AipDetailPage() {
     return (
       <div className="p-8">
         <p className="text-red-600 text-sm mb-3">Invalid AIP record ID.</p>
-        <Link href="/budget-planning/aip" className="text-sm text-green-700 hover:underline">
-          ← Back to AIP list
-        </Link>
+        <Link href="/budget-planning/aip" className="text-sm text-green-700 hover:underline">← Back to AIP list</Link>
       </div>
     );
 
@@ -219,17 +191,9 @@ export default function AipDetailPage() {
     return (
       <div className="p-8">
         <p className="text-red-600 text-sm mb-3">{error ?? "Record not found."}</p>
-        <Link href="/budget-planning/aip" className="text-sm text-green-700 hover:underline">
-          ← Back to AIP list
-        </Link>
+        <Link href="/budget-planning/aip" className="text-sm text-green-700 hover:underline">← Back to AIP list</Link>
       </div>
     );
-
-  const sectors = groupBySector(record.offices);
-
-  const programCount  = record.offices.flatMap((o) => o.programs).length;
-  const projectCount  = record.offices.flatMap((o) => o.programs).flatMap((p) => p.projects).length;
-  const activityCount = record.offices.flatMap((o) => o.programs).flatMap((p) => p.projects).flatMap((p) => p.activities).length;
 
   return (
     <div className="p-6 max-w-screen-2xl mx-auto">
@@ -250,10 +214,7 @@ export default function AipDetailPage() {
             <p className="text-xs text-slate-400 mt-0.5">Source: {record.originalFilename}</p>
           )}
         </div>
-        <Link
-          href="/budget-planning/aip"
-          className="text-sm text-green-700 hover:underline whitespace-nowrap"
-        >
+        <Link href="/budget-planning/aip" className="text-sm text-green-700 hover:underline whitespace-nowrap">
           ← Back to AIP list
         </Link>
       </div>
@@ -306,14 +267,16 @@ export default function AipDetailPage() {
 
           <tbody>
             {sectors.map(([sector, offices]) => {
+              // CSS visibility: derived from collapse sets, not conditional rendering.
               const sectorOpen = !collapsedSectors.has(sector);
+
               return (
                 <>
-                  {/* ── Sector header ─────────────────────────────── */}
+                  {/* ── Sector header — always visible ─────────── */}
                   <tr key={`sector-${sector}`} className="bg-green-800">
                     <td colSpan={15} className="px-3 py-2 text-white font-bold text-xs tracking-widest uppercase">
                       <button
-                        onClick={() => setCollapsedSectors(toggle(collapsedSectors, sector))}
+                        onClick={() => toggleSector(sector)}
                         className="flex items-center gap-2 w-full text-left"
                       >
                         <Chevron open={sectorOpen} className="text-green-300" />
@@ -325,23 +288,28 @@ export default function AipDetailPage() {
                     </td>
                   </tr>
 
-                  {sectorOpen && offices.map((office) => {
-                    const officeOpen  = !collapsedOffices.has(office.id);
-                    const officePs    = sumActivities(office, "ps");
-                    const officeMooe  = sumActivities(office, "mooe");
-                    const officeCo    = sumActivities(office, "co");
-                    const officeTotal = sumActivities(office, "total");
+                  {offices.map((office) => {
+                    const officeOpen    = !collapsedOffices.has(office.id);
+                    // Visibility flags — each level is hidden if ANY ancestor is collapsed.
+                    const officeVisible = sectorOpen;
+                    const officePs      = sumActivities(office, "ps");
+                    const officeMooe    = sumActivities(office, "mooe");
+                    const officeCo      = sumActivities(office, "co");
+                    const officeTotal   = sumActivities(office, "total");
 
                     return (
                       <>
                         {/* ── Office row ──────────────────────────── */}
-                        <tr key={`office-${office.id}`} className="bg-green-50 border-t-2 border-green-200">
+                        <tr
+                          key={`office-${office.id}`}
+                          className={`bg-green-50 border-t-2 border-green-200 ${officeVisible ? "" : "hidden"}`}
+                        >
                           <td className="px-2 py-2 font-mono text-xs text-slate-500 align-top">
                             <button
-                              onClick={() => setCollapsedOffices(toggle(collapsedOffices, office.id))}
+                              onClick={() => toggleOffice(office.id)}
                               className="flex items-center gap-1.5 text-left"
                             >
-                              <Chevron open={officeOpen} className="text-green-600 shrink-0" />
+                              <Chevron open={officeOpen} className="text-green-600" />
                               {office.refCode}
                             </button>
                           </td>
@@ -356,57 +324,61 @@ export default function AipDetailPage() {
                           <td /><td /><td />
                         </tr>
 
-                        {officeOpen && office.programs.map((prog) => {
-                          const progOpen = !collapsedPrograms.has(prog.id);
+                        {office.programs.map((prog) => {
+                          const progOpen    = !collapsedPrograms.has(prog.id);
+                          const progVisible = officeVisible && officeOpen;
+
                           return (
                             <>
                               {/* ── Program row ─────────────────────── */}
-                              <tr key={`prog-${prog.id}`} className="bg-slate-50 border-t border-slate-200">
+                              <tr
+                                key={`prog-${prog.id}`}
+                                className={`bg-slate-50 border-t border-slate-200 ${progVisible ? "" : "hidden"}`}
+                              >
                                 <td className="px-2 py-1.5 pl-5 font-mono text-xs text-slate-400">
                                   <button
-                                    onClick={() => setCollapsedPrograms(toggle(collapsedPrograms, prog.id))}
+                                    onClick={() => toggleProgram(prog.id)}
                                     className="flex items-center gap-1.5 text-left"
                                   >
-                                    <Chevron open={progOpen} className="text-slate-400 shrink-0" />
+                                    <Chevron open={progOpen} className="text-slate-400" />
                                     {prog.refCode}
                                   </button>
                                 </td>
-                                <td
-                                  colSpan={14}
-                                  className="px-2 py-1.5 pl-5 font-semibold text-xs italic text-slate-700 uppercase"
-                                >
+                                <td colSpan={14} className="px-2 py-1.5 pl-5 font-semibold text-xs italic text-slate-700 uppercase">
                                   {prog.name}
                                 </td>
                               </tr>
 
-                              {progOpen && prog.projects.map((proj) => {
-                                const projOpen = !collapsedProjects.has(proj.id);
+                              {prog.projects.map((proj) => {
+                                const projOpen    = !collapsedProjects.has(proj.id);
+                                const projVisible = progVisible && progOpen;
+
                                 return (
                                   <>
                                     {/* ── Project row ───────────────── */}
-                                    <tr key={`proj-${proj.id}`} className="border-t border-slate-100">
+                                    <tr
+                                      key={`proj-${proj.id}`}
+                                      className={`border-t border-slate-100 ${projVisible ? "" : "hidden"}`}
+                                    >
                                       <td className="px-2 py-1.5 pl-9 font-mono text-xs text-slate-400">
                                         <button
-                                          onClick={() => setCollapsedProjects(toggle(collapsedProjects, proj.id))}
+                                          onClick={() => toggleProject(proj.id)}
                                           className="flex items-center gap-1.5 text-left"
                                         >
-                                          <Chevron open={projOpen} className="text-slate-300 shrink-0" />
+                                          <Chevron open={projOpen} className="text-slate-300" />
                                           {proj.refCode}
                                         </button>
                                       </td>
-                                      <td
-                                        colSpan={14}
-                                        className="px-2 py-1.5 pl-9 text-xs font-medium text-slate-600"
-                                      >
+                                      <td colSpan={14} className="px-2 py-1.5 pl-9 text-xs font-medium text-slate-600">
                                         {proj.name}
                                       </td>
                                     </tr>
 
                                     {/* ── Activity rows ─────────────── */}
-                                    {projOpen && proj.activities.map((act) => (
+                                    {proj.activities.map((act) => (
                                       <tr
                                         key={`act-${act.id}`}
-                                        className="border-t border-slate-100 hover:bg-blue-50 transition-colors"
+                                        className={`border-t border-slate-100 hover:bg-blue-50 transition-colors ${projVisible && projOpen ? "" : "hidden"}`}
                                       >
                                         <td className="px-2 py-1.5 pl-12 font-mono text-[11px] text-slate-400 align-top">
                                           {act.refCode}
