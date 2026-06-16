@@ -172,8 +172,10 @@ export default function BudgetPlanningPage() {
       ? (dashboard?.wfpByOffice ?? [])
       : (dashboard?.wfpByOffice ?? []).filter((r) => r.officeId === selectedOffice);
 
-  const ownOfficeName =
-    dashboard?.wfpByOffice.find((r) => r.officeId === user?.officeId)?.officeName ?? "Your Office";
+  const ownOfficeLabel =
+    user?.officeCode && user?.officeName
+      ? `${user.officeCode} — ${user.officeName}`
+      : user?.officeCode ?? user?.officeName ?? "Your Office";
 
   // ── Loading gate (before user is set) ────────────────────────────────────
 
@@ -197,7 +199,7 @@ export default function BudgetPlanningPage() {
           <p className="text-sm text-slate-500">
             {isPpdo
               ? "FY overview · PPDO view — all offices"
-              : `FY overview · Visitor view — ${ownOfficeName}`}
+              : `FY overview · Visitor view — ${ownOfficeLabel}`}
           </p>
         </div>
 
@@ -255,7 +257,7 @@ export default function BudgetPlanningPage() {
                 Office
               </span>
               <span className="text-sm text-slate-700 bg-white border border-slate-200 px-3 py-1.5">
-                {ownOfficeName}
+                {ownOfficeLabel}
               </span>
             </div>
           )}
@@ -342,7 +344,7 @@ export default function BudgetPlanningPage() {
           <div className="px-5 py-4 border-b border-slate-100">
             <h2 className="text-sm font-semibold text-slate-700">Recent Activity</h2>
             <p className="text-xs text-slate-400 mt-0.5">
-              {isPpdo ? "All offices (PPDO view)" : `${ownOfficeName} only`}
+              {isPpdo ? "All offices (PPDO view)" : `${ownOfficeLabel} only`}
             </p>
           </div>
           <div className="divide-y divide-slate-50">

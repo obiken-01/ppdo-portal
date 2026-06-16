@@ -96,7 +96,7 @@ public sealed class AipXlsmParser : IAipXlsmParser
 
         int lastRow = ws.LastRowUsed()?.RowNumber() ?? 0;
 
-        for (int row = 14; row <= lastRow; row++)
+        for (int row = 1; row <= lastRow; row++)
         {
             string refCode = ws.Cell(row, 1).GetString().Trim();
 
@@ -119,12 +119,15 @@ public sealed class AipXlsmParser : IAipXlsmParser
 
             int segments = CountSegments(refCode);
 
+            // Strip the -XXX- placeholder before storing; segment count uses the raw (inflated) value.
+            string storedRefCode = refCode.Replace("-XXX-", "-", StringComparison.OrdinalIgnoreCase);
+
             switch (segments)
             {
                 case 5: // Office level
                 {
                     string name = ws.Cell(row, 2).GetString().Trim();
-                    currentOffice = new ParsedAipOffice(refCode, name, sector, new List<ParsedAipProgram>());
+                    currentOffice = new ParsedAipOffice(storedRefCode, name, sector, new List<ParsedAipProgram>());
                     offices.Add(currentOffice);
                     currentProgram = null;
                     currentProject = null;
@@ -136,7 +139,7 @@ public sealed class AipXlsmParser : IAipXlsmParser
                 {
                     if (currentOffice is null) break;
                     string name = ws.Cell(row, 3).GetString().Trim();
-                    currentProgram = new ParsedAipProgram(refCode, name, new List<ParsedAipProject>());
+                    currentProgram = new ParsedAipProgram(storedRefCode, name, new List<ParsedAipProject>());
                     ((List<ParsedAipProgram>)currentOffice.Programs).Add(currentProgram);
                     currentProject = null;
                     lastActivity   = null;
@@ -147,7 +150,7 @@ public sealed class AipXlsmParser : IAipXlsmParser
                 {
                     if (currentProgram is null) break;
                     string name = ws.Cell(row, 4).GetString().Trim();
-                    currentProject = new ParsedAipProject(refCode, name, new List<ParsedAipActivity>());
+                    currentProject = new ParsedAipProject(storedRefCode, name, new List<ParsedAipActivity>());
                     ((List<ParsedAipProject>)currentProgram.Projects).Add(currentProject);
                     lastActivity   = null;
                     currentActivityList = (List<ParsedAipActivity>)currentProject.Activities;
@@ -158,7 +161,7 @@ public sealed class AipXlsmParser : IAipXlsmParser
                     if (currentProject is null) break;
                     currentActivityList = (List<ParsedAipActivity>)currentProject.Activities;
                     ParsedAipActivity activity = new(
-                        RefCode:           refCode,
+                        RefCode:           storedRefCode,
                         Name:              ws.Cell(row, 5).GetString().Trim(),
                         EsreCode:          NullIfBlank(ws.Cell(row, 6).GetString()),
                         ImplementingOffice:NullIfBlank(ws.Cell(row, 7).GetString()),

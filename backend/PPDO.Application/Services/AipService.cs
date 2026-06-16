@@ -20,6 +20,7 @@ public sealed class AipService : IAipService
     private readonly IRepository<AipProject>   _projectRepo;
     private readonly IRepository<AipActivity>  _actRepo;
     private readonly IRepository<FundingSource> _fsRepo;
+    private readonly IRepository<User>         _userRepo;
     private readonly IAipXlsmParser _parser;
     private readonly IAuditService  _audit;
     private readonly CallerContext  _caller;
@@ -31,6 +32,7 @@ public sealed class AipService : IAipService
         IRepository<AipProject>    projectRepo,
         IRepository<AipActivity>   actRepo,
         IRepository<FundingSource>  fsRepo,
+        IRepository<User>          userRepo,
         IAipXlsmParser parser,
         IAuditService  audit,
         CallerContext  caller)
@@ -41,6 +43,7 @@ public sealed class AipService : IAipService
         _projectRepo = projectRepo;
         _actRepo     = actRepo;
         _fsRepo      = fsRepo;
+        _userRepo    = userRepo;
         _parser      = parser;
         _audit       = audit;
         _caller      = caller;
@@ -55,7 +58,20 @@ public sealed class AipService : IAipService
         if (fiscalYear.HasValue) q = q.Where(r => r.FiscalYear == fiscalYear.Value);
         if (!string.IsNullOrWhiteSpace(status))
             q = q.Where(r => r.Status.Equals(status.Trim(), StringComparison.OrdinalIgnoreCase));
-        return q.OrderByDescending(r => r.UploadedAt).Select(MapToDto).ToList();
+
+        List<AipRecord> records = q.OrderByDescending(r => r.UploadedAt).ToList();
+
+        // Build office-count lookup: aip_record_id → count of aip_offices rows.
+        IReadOnlyList<AipOffice> allOffices = await _officeRepo.GetAllAsync(ct);
+        Dictionary<int, int> officeCounts = allOffices
+            .GroupBy(o => o.AipRecordId)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        // Build user name lookup: user_id → full name.
+        IReadOnlyList<User> allUsers = await _userRepo.GetAllAsync(ct);
+        Dictionary<Guid, string> userNames = allUsers.ToDictionary(u => u.Id, u => u.FullName);
+
+        return records.Select(r => MapToListDto(r, officeCounts, userNames)).ToList();
     }
 
     public async Task<ServiceResult<AipRecordDetailDto>> GetByIdAsync(
@@ -177,12 +193,32 @@ public sealed class AipService : IAipService
     public async Task<ServiceResult<AipRecordDto>> ConfirmImportAsync(
         AipImportConfirmDto dto, Guid uploadedById, CancellationToken ct = default)
     {
+        // Guard: only one active (Draft or Final) AIP per fiscal year.
+        IReadOnlyList<AipRecord> all = await _aipRepo.GetAllAsync(ct);
+        AipRecord? conflict = all.FirstOrDefault(
+            r => r.FiscalYear == dto.FiscalYear && r.Status != PlanningStatus.Archived);
+        if (conflict is not null)
+        {
+            string hint = conflict.Status == PlanningStatus.Draft
+                ? "Archive the existing record first before uploading a new one."
+                : "The existing record must be unlocked by an admin before a new upload is allowed.";
+            return ServiceResult<AipRecordDto>.BadRequest(
+                $"An AIP for FY {dto.FiscalYear} already exists with status '{conflict.Status}'. {hint}");
+        }
+
         // Load funding source lookup for snapshot population.
         IReadOnlyList<FundingSource> fsList = await _fsRepo.GetAllAsync(ct);
         Dictionary<string, FundingSource> fsDict =
             fsList.ToDictionary(f => f.Code, StringComparer.OrdinalIgnoreCase);
 
         DateTime now = DateTime.UtcNow;
+
+        // Build the full entity graph in memory so EF Core inserts it in a single
+        // SaveChangesAsync (one implicit transaction). Previously each hierarchy
+        // level called SaveChangesAsync individually to obtain generated IDs, so a
+        // failure at the activity level (e.g. column truncation) left committed
+        // orphan rows for offices/programs/projects. Navigation properties let EF
+        // Core resolve all FK assignments without intermediate saves.
         AipRecord aipRecord = new()
         {
             FiscalYear       = dto.FiscalYear,
@@ -192,80 +228,52 @@ public sealed class AipService : IAipService
             UploadedAt       = now,
             Status           = PlanningStatus.Draft,
             LdipId           = dto.LdipId,
+            Offices          = dto.SectorOffices
+                .SelectMany(kvp => kvp.Value)
+                .Select(officeDto => new AipOffice
+                {
+                    RefCode  = officeDto.RefCode,
+                    Name     = officeDto.Name,
+                    Sector   = officeDto.Sector,
+                    Programs = officeDto.Programs.Select(progDto => new AipProgram
+                    {
+                        RefCode  = progDto.RefCode,
+                        Name     = progDto.Name,
+                        Projects = progDto.Projects.Select(projDto => new AipProject
+                        {
+                            RefCode    = projDto.RefCode,
+                            Name       = projDto.Name,
+                            Activities = projDto.Activities.Select(actDto =>
+                            {
+                                fsDict.TryGetValue(actDto.FundingSourceRaw ?? string.Empty,
+                                    out FundingSource? fs);
+                                return new AipActivity
+                                {
+                                    RefCode               = actDto.RefCode,
+                                    Name                  = actDto.Name,
+                                    EsreCode              = actDto.EsreCode,
+                                    ImplementingOffice    = actDto.ImplementingOffice,
+                                    StartDate             = actDto.StartDate,
+                                    EndDate               = actDto.EndDate,
+                                    ExpectedOutputs       = actDto.ExpectedOutputs,
+                                    FundingSourceId       = fs?.Id,
+                                    FundingSourceSnapshot = fs?.Code ?? actDto.FundingSourceRaw,
+                                    Ps                    = actDto.Ps,
+                                    Mooe                  = actDto.Mooe,
+                                    Co                    = actDto.Co,
+                                    Total                 = actDto.Total,
+                                    CcAdaptation          = actDto.CcAdaptation,
+                                    CcMitigation          = actDto.CcMitigation,
+                                    CcTypologyCode        = actDto.CcTypologyCode,
+                                };
+                            }).ToList(),
+                        }).ToList(),
+                    }).ToList(),
+                }).ToList(),
         };
 
         await _aipRepo.AddAsync(aipRecord, ct);
-        await _aipRepo.SaveChangesAsync(ct); // generate AipRecord.Id
-
-        // Walk and persist hierarchy.
-        foreach ((_, List<ParsedAipOfficeDto> offices) in dto.SectorOffices)
-        {
-            foreach (ParsedAipOfficeDto officeDto in offices)
-            {
-                AipOffice office = new()
-                {
-                    AipRecordId = aipRecord.Id,
-                    RefCode     = officeDto.RefCode,
-                    Name        = officeDto.Name,
-                    Sector      = officeDto.Sector,
-                };
-                await _officeRepo.AddAsync(office, ct);
-                await _officeRepo.SaveChangesAsync(ct);
-
-                foreach (ParsedAipProgramDto progDto in officeDto.Programs)
-                {
-                    AipProgram program = new()
-                    {
-                        OfficeId = office.Id,
-                        RefCode  = progDto.RefCode,
-                        Name     = progDto.Name,
-                    };
-                    await _programRepo.AddAsync(program, ct);
-                    await _programRepo.SaveChangesAsync(ct);
-
-                    foreach (ParsedAipProjectDto projDto in progDto.Projects)
-                    {
-                        AipProject project = new()
-                        {
-                            ProgramId = program.Id,
-                            RefCode   = projDto.RefCode,
-                            Name      = projDto.Name,
-                        };
-                        await _projectRepo.AddAsync(project, ct);
-                        await _projectRepo.SaveChangesAsync(ct);
-
-                        foreach (ParsedAipActivityDto actDto in projDto.Activities)
-                        {
-                            fsDict.TryGetValue(actDto.FundingSourceRaw ?? string.Empty,
-                                out FundingSource? fs);
-
-                            AipActivity activity = new()
-                            {
-                                ProjectId              = project.Id,
-                                RefCode                = actDto.RefCode,
-                                Name                   = actDto.Name,
-                                EsreCode               = actDto.EsreCode,
-                                ImplementingOffice     = actDto.ImplementingOffice,
-                                StartDate              = actDto.StartDate,
-                                EndDate                = actDto.EndDate,
-                                ExpectedOutputs        = actDto.ExpectedOutputs,
-                                FundingSourceId        = fs?.Id,
-                                FundingSourceSnapshot  = fs?.Code ?? actDto.FundingSourceRaw,
-                                Ps                     = actDto.Ps,
-                                Mooe                   = actDto.Mooe,
-                                Co                     = actDto.Co,
-                                Total                  = actDto.Total,
-                                CcAdaptation           = actDto.CcAdaptation,
-                                CcMitigation           = actDto.CcMitigation,
-                                CcTypologyCode         = actDto.CcTypologyCode,
-                            };
-                            await _actRepo.AddAsync(activity, ct);
-                        }
-                    }
-                }
-            }
-        }
-        await _actRepo.SaveChangesAsync(ct);
+        await _aipRepo.SaveChangesAsync(ct); // single transaction — all-or-nothing
 
         await _audit.LogAsync("aip_records", aipRecord.Id, AuditAction.Create,
             null, new { aipRecord.FiscalYear, aipRecord.EntrySource, aipRecord.Status }, ct);
@@ -344,9 +352,21 @@ public sealed class AipService : IAipService
 
     // ── Mapping ───────────────────────────────────────────────────────────────
 
+    // Used by status-transition methods where office count / uploader name are not needed.
     private static AipRecordDto MapToDto(AipRecord r) => new(
         r.Id, r.FiscalYear, r.EntrySource, r.OriginalFilename,
-        r.UploadedById, r.UploadedAt, r.Status, r.LdipId, r.SourceId);
+        r.UploadedById, r.UploadedAt, r.Status, r.LdipId, r.SourceId,
+        OfficeCount: 0, UploadedByName: null);
+
+    // Used by GetAllAsync — populates office count and uploader display name.
+    private static AipRecordDto MapToListDto(
+        AipRecord r,
+        Dictionary<int, int> officeCounts,
+        Dictionary<Guid, string> userNames) => new(
+        r.Id, r.FiscalYear, r.EntrySource, r.OriginalFilename,
+        r.UploadedById, r.UploadedAt, r.Status, r.LdipId, r.SourceId,
+        OfficeCount: officeCounts.GetValueOrDefault(r.Id, 0),
+        UploadedByName: userNames.GetValueOrDefault(r.UploadedById));
 
     private static AipActivityDto MapActivityToDto(AipActivity a) => new(
         a.Id, a.ProjectId, a.RefCode, a.Name, a.EsreCode, a.ImplementingOffice,

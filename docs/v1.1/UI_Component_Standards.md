@@ -81,8 +81,54 @@ Toast remains separate (non-blocking, top-right stack).
 
 ---
 
-## 5. Checklist Before Adding Any New UI
+## 5. Breadcrumbs — always use the Topbar `SECTIONS` array
+
+Breadcrumbs are rendered in **`frontend/src/components/layout/Topbar.tsx`** via `SectionBreadcrumb`, not as inline markup inside pages.
+
+**Do not add a `<p>` / `<nav>` breadcrumb block inside a page component.** The Topbar reads `pathname` and automatically selects the right crumb from `SECTIONS`.
+
+### How to register a new page
+
+Open `Topbar.tsx` and add an entry to the relevant `Section.crumbs` array:
+
+```ts
+// 2-level:  Budget Planning › AIP
+{ prefix: "/budget-planning/aip", label: "AIP" }
+
+// 3-level:  Budget Planning › AIP › New AIP
+{ prefix: "/budget-planning/aip/new", label: "New AIP",
+  parent: { label: "AIP", href: "/budget-planning/aip" } }
+```
+
+Matching is longest-prefix-first, so **put deeper paths before shallower ones** within the same crumbs array.
+
+### Adding a new top-level section
+
+Add a new `Section` object to the `SECTIONS` array:
+
+```ts
+{
+  root: "/my-section",
+  rootLabel: "My Section",
+  crumbs: [
+    { prefix: "/my-section/sub-page", label: "Sub Page" },
+  ],
+}
+```
+
+### Registered sections (as of v1.1)
+
+| Section | Root label | Registered crumbs |
+|---|---|---|
+| `/inventory` | Inventory | Create PR, Receive Delivery, Items Master, PR Report, Distribution, Stock Overview, PR List |
+| `/config` | Configuration | Accounts, Offices, Funding Sources |
+| `/budget-planning` | Budget Planning | AIP; AIP › New AIP; AIP › Import Preview; LDIP; WFP |
+
+---
+
+## 6. Checklist Before Adding Any New UI
 
 - [ ] Does a component in `components/ui/` already cover this? → use it
 - [ ] Can an existing component be extended with a prop? → extend it
 - [ ] Genuinely new pattern? → build in `components/ui/`, document the usage block at the top of the file (match `Toast.tsx` / `ConfirmDialog.tsx` style), and add a row to §2/§3 of this doc
+- [ ] New page with a breadcrumb? → register it in `Topbar.tsx` SECTIONS, do not add inline breadcrumb markup

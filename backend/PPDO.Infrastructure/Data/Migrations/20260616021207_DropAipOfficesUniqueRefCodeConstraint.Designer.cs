@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PPDO.Infrastructure.Data;
 
@@ -11,9 +12,11 @@ using PPDO.Infrastructure.Data;
 namespace PPDO.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260616021207_DropAipOfficesUniqueRefCodeConstraint")]
+    partial class DropAipOfficesUniqueRefCodeConstraint
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -114,8 +117,8 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasColumnName("end_date");
 
                     b.Property<string>("EsreCode")
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)")
                         .HasColumnName("esre_code");
 
                     b.Property<string>("ExpectedOutputs")
@@ -127,7 +130,8 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasColumnName("funding_source_id");
 
                     b.Property<string>("FundingSourceSnapshot")
-                        .HasColumnType("nvarchar(max)")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("funding_source_snapshot");
 
                     b.Property<string>("ImplementingOffice")

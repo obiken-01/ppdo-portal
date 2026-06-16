@@ -150,8 +150,10 @@ public sealed class AuthService : IAuthService
             Email    = user.Email,
             Role     = user.Role.ToString(),
             Division = user.Division?.ToString(),   // null for non-PPDO office users
-            OfficeId = user.OfficeId,
-            Position = user.Position,
+            OfficeId   = user.OfficeId,
+            OfficeCode = user.Office?.OfficeCode,
+            OfficeName = user.Office?.OfficeName,
+            Position   = user.Position,
             CanAccessInventory      = await _permissions.CanAccessInventoryAsync(user, cancellationToken),
             CanAccessReports        = await _permissions.CanAccessReportsAsync(user, cancellationToken),
             CanManageUsers          = await _permissions.CanManageUsersAsync(user, cancellationToken),

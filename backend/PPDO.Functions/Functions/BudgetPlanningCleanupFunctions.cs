@@ -8,9 +8,6 @@ using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Configuration;
 using PPDO.Application.Common;
 using PPDO.Application.Services;
-using PPDO.Domain.Entities;
-using PPDO.Domain.Enums;
-using PPDO.Domain.Interfaces;
 
 namespace PPDO.Functions.Functions;
 
@@ -29,20 +26,17 @@ public sealed class BudgetPlanningCleanupFunctions
     private readonly ILdipService       _ldip;
     private readonly IAipService        _aip;
     private readonly IWfpService        _wfp;
-    private readonly IJwtMiddleware     _jwt;
     private readonly IConfiguration     _config;
 
     public BudgetPlanningCleanupFunctions(
         ILdipService     ldip,
         IAipService      aip,
         IWfpService      wfp,
-        IJwtMiddleware   jwt,
         IConfiguration   config)
     {
         _ldip   = ldip;
         _aip    = aip;
         _wfp    = wfp;
-        _jwt    = jwt;
         _config = config;
     }
 
@@ -63,13 +57,6 @@ public sealed class BudgetPlanningCleanupFunctions
 
         if (headerKey != devKey)
             return await Forbidden(req, "Invalid or missing X-Dev-Cleanup-Key header.", ct);
-
-        // Safeguard 2: JWT + SuperAdmin role.
-        User? caller = await _jwt.ValidateAsync(ConfigHttp.AuthHeader(req), ct);
-        if (caller is null)
-            return req.CreateResponse(HttpStatusCode.Unauthorized);
-        if (caller.Role != UserRole.SuperAdmin)
-            return await Forbidden(req, "SuperAdmin role required.", ct);
 
         // Delete in FK-safe order: WFP → AIP hierarchy → LDIP.
         // DB cascade removes WfpActivities/Lines when WfpRecord is deleted.

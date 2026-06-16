@@ -10,12 +10,19 @@ interface TopbarProps {
 }
 
 // A breadcrumb section: a root page plus its sub-pages (longest prefix wins).
-// On the root path the breadcrumb shows just the root label; on a sub-page it
-// shows "Root › Sub-page" with the root as a link back to the section root.
+// Crumbs may carry an optional `parent` to render a 3-level trail:
+//   Root › parent.label › label
+interface Crumb {
+  prefix: string;
+  label: string;
+  parent?: { label: string; href: string };
+  match?: (pathname: string) => boolean; // override prefix matching for dynamic routes
+}
+
 interface Section {
   root: string;
   rootLabel: string;
-  crumbs: { prefix: string; label: string }[];
+  crumbs: Crumb[];
 }
 
 const SECTIONS: Section[] = [
@@ -41,14 +48,31 @@ const SECTIONS: Section[] = [
       { prefix: "/config/funding-sources", label: "Funding Sources" },
     ],
   },
+  {
+    root: "/budget-planning",
+    rootLabel: "Budget Planning",
+    crumbs: [
+      // Longer prefixes must come before shorter ones so matchesPrefix picks the right crumb.
+      { prefix: "/budget-planning/aip/import-preview", label: "Import Preview", parent: { label: "AIP", href: "/budget-planning/aip" } },
+      { prefix: "/budget-planning/aip/new",            label: "New AIP",        parent: { label: "AIP", href: "/budget-planning/aip" } },
+      { prefix: "/budget-planning/aip/detail", label: "Detail", parent: { label: "AIP", href: "/budget-planning/aip" } },
+      { prefix: "/budget-planning/aip",  label: "AIP"  },
+      { prefix: "/budget-planning/ldip", label: "LDIP" },
+      { prefix: "/budget-planning/wfp",  label: "WFP"  },
+    ],
+  },
 ];
 
 function matchesPrefix(pathname: string, prefix: string) {
   return pathname === prefix || pathname.startsWith(prefix + "/");
 }
 
+function matchesCrumb(pathname: string, crumb: Crumb): boolean {
+  return crumb.match ? crumb.match(pathname) : matchesPrefix(pathname, crumb.prefix);
+}
+
 function SectionBreadcrumb({ section, pathname }: { section: Section; pathname: string }) {
-  const sub = section.crumbs.find((c) => matchesPrefix(pathname, c.prefix));
+  const sub = section.crumbs.find((c) => matchesCrumb(pathname, c));
 
   return (
     <nav aria-label="breadcrumb" className="flex items-center gap-1.5 text-sm">
@@ -60,6 +84,17 @@ function SectionBreadcrumb({ section, pathname }: { section: Section; pathname: 
           >
             {section.rootLabel}
           </Link>
+          {sub.parent && (
+            <>
+              <span className="text-slate-300">›</span>
+              <Link
+                href={sub.parent.href}
+                className="font-medium text-green-600 hover:text-green-700 hover:underline transition-colors"
+              >
+                {sub.parent.label}
+              </Link>
+            </>
+          )}
           <span className="text-slate-300">›</span>
           <span className="font-semibold text-slate-700">{sub.label}</span>
         </>

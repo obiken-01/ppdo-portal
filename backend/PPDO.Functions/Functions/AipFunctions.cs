@@ -82,8 +82,15 @@ public sealed class AipFunctions
         // Load active funding sources so the parser can flag unmatched codes.
         IReadOnlyList<FundingSource> fundingSources = await _fsRepo.GetAllAsync(ct);
 
+        // Buffer the request body into a MemoryStream before passing to ClosedXML.
+        // Kestrel (Azure Functions isolated worker) disallows synchronous reads on the
+        // HttpRequestStream; MemoryStream supports them so XLWorkbook.Load() succeeds.
+        using MemoryStream xlsmBuffer = new();
+        await req.Body.CopyToAsync(xlsmBuffer, ct);
+        xlsmBuffer.Position = 0;
+
         ServiceResult<AipImportPreviewDto> result =
-            await _aip.ParsePreviewAsync(req.Body, fiscalYear, fundingSources, ct);
+            await _aip.ParsePreviewAsync(xlsmBuffer, fiscalYear, fundingSources, ct);
 
         return await ConfigHttp.FromResultAsync(req, result, ct);
     }

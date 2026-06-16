@@ -194,6 +194,10 @@ function FulfillmentBar({
 // Page
 // ---------------------------------------------------------------------------
 
+const STATUS_ORDER: Record<string, number> = {
+  Open: 0, PartiallyDelivered: 1, FullyDelivered: 2, Completed: 3,
+};
+
 export default function InventoryDashboardPage() {
   const router    = useRouter();
   const { toast } = useToast();
@@ -273,10 +277,6 @@ export default function InventoryDashboardPage() {
 
   // ── Derived & sorted data ─────────────────────────────────────────────────
 
-  const STATUS_ORDER: Record<string, number> = {
-    Open: 0, PartiallyDelivered: 1, FullyDelivered: 2, Completed: 3,
-  };
-
   const sortedPRs = useMemo(() => {
     if (!prSortCol || !prSortDir) return prs;
     return [...prs].sort((a, b) => {
@@ -291,7 +291,7 @@ export default function InventoryDashboardPage() {
       }
       return prSortDir === "asc" ? cmp : -cmp;
     });
-  }, [prs, prSortCol, prSortDir]);
+  }, [prs, prSortCol, prSortDir, STATUS_ORDER]);
 
   const rawAlertItems = ledger.filter((r) => r.isLowStock || r.isOutOfStock);
 

@@ -26,6 +26,10 @@ export interface MeResponse {
   division: string | null;
   /** Provincial office id, or null for PPDO-internal users (the PPDO discriminator). */
   officeId: number | null;
+  /** Short office code, e.g. "PEO". Null for PPDO-internal users. */
+  officeCode: string | null;
+  /** Full office name. Null for PPDO-internal users. */
+  officeName: string | null;
   position?: string | null;
   canAccessInventory: boolean;
   canAccessReports: boolean;

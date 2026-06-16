@@ -53,7 +53,9 @@ public record AipRecordDto(
     DateTime UploadedAt,
     string   Status,
     int?     LdipId,
-    int?     SourceId);
+    int?     SourceId,
+    int      OfficeCount,
+    string?  UploadedByName);
 
 public record AipRecordDetailDto(
     int      Id,
