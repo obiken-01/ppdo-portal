@@ -193,6 +193,19 @@ public sealed class AipService : IAipService
     public async Task<ServiceResult<AipRecordDto>> ConfirmImportAsync(
         AipImportConfirmDto dto, Guid uploadedById, CancellationToken ct = default)
     {
+        // Guard: only one active (Draft or Final) AIP per fiscal year.
+        IReadOnlyList<AipRecord> all = await _aipRepo.GetAllAsync(ct);
+        AipRecord? conflict = all.FirstOrDefault(
+            r => r.FiscalYear == dto.FiscalYear && r.Status != PlanningStatus.Archived);
+        if (conflict is not null)
+        {
+            string hint = conflict.Status == PlanningStatus.Draft
+                ? "Archive the existing record first before uploading a new one."
+                : "The existing record must be unlocked by an admin before a new upload is allowed.";
+            return ServiceResult<AipRecordDto>.BadRequest(
+                $"An AIP for FY {dto.FiscalYear} already exists with status '{conflict.Status}'. {hint}");
+        }
+
         // Load funding source lookup for snapshot population.
         IReadOnlyList<FundingSource> fsList = await _fsRepo.GetAllAsync(ct);
         Dictionary<string, FundingSource> fsDict =

@@ -297,10 +297,14 @@ public sealed class AipServiceTests
     [Fact]
     public async Task ConfirmImport_PersistsAllFourHierarchyLevels()
     {
-        var (sut, aipRepo, officeRepo, programRepo, projectRepo, actRepo, _, _, _, _) =
-            Build([], [Fs(1, "GF")]);
+        // Graph insertion: only _aipRepo.AddAsync is called; child entities are
+        // attached via navigation properties, NOT via their own repo.AddAsync.
+        AipRecord? insertedGraph = null;
+        var (sut, aipRepo, _, _, _, _, _, _, _, _) = Build([], [Fs(1, "GF")]);
+        aipRepo.Setup(r => r.AddAsync(It.IsAny<AipRecord>(), It.IsAny<CancellationToken>()))
+            .Callback<AipRecord, CancellationToken>((e, _) => { e.Id = 100; insertedGraph = e; })
+            .Returns(Task.CompletedTask);
 
-        // One office > 1 program > 1 project > 1 activity
         var dto = new AipImportConfirmDto(2027, "aip.xlsm", null,
             new Dictionary<string, List<ParsedAipOfficeDto>>
             {
@@ -323,20 +327,26 @@ public sealed class AipServiceTests
 
         await sut.ConfirmImportAsync(dto, UserId, CancellationToken.None);
 
-        aipRepo.Verify(r     => r.AddAsync(It.IsAny<AipRecord>(),    It.IsAny<CancellationToken>()), Times.Once);
-        officeRepo.Verify(r  => r.AddAsync(It.IsAny<AipOffice>(),   It.IsAny<CancellationToken>()), Times.Once);
-        programRepo.Verify(r => r.AddAsync(It.IsAny<AipProgram>(),  It.IsAny<CancellationToken>()), Times.Once);
-        projectRepo.Verify(r => r.AddAsync(It.IsAny<AipProject>(),  It.IsAny<CancellationToken>()), Times.Once);
-        actRepo.Verify(r     => r.AddAsync(It.IsAny<AipActivity>(), It.IsAny<CancellationToken>()), Times.Once);
+        // Entire graph passed to a single AddAsync — no per-level repo calls.
+        aipRepo.Verify(r => r.AddAsync(It.IsAny<AipRecord>(), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.NotNull(insertedGraph);
+        Assert.Single(insertedGraph!.Offices);
+        AipOffice office = insertedGraph.Offices.First();
+        Assert.Single(office.Programs);
+        AipProgram program = office.Programs.First();
+        Assert.Single(program.Projects);
+        AipProject project = program.Projects.First();
+        Assert.Single(project.Activities);
     }
 
     [Fact]
     public async Task ConfirmImport_SetsActivityFundingSourceSnapshot_WhenCodeMatches()
     {
-        AipActivity? createdActivity = null;
-        var (sut, _, _, _, _, actRepo, _, _, _, _) = Build([], [Fs(7, "GF")]);
-        actRepo.Setup(r => r.AddAsync(It.IsAny<AipActivity>(), It.IsAny<CancellationToken>()))
-            .Callback<AipActivity, CancellationToken>((e, _) => createdActivity = e)
+        // Capture the root graph via aipRepo; navigate to the activity to assert snapshot.
+        AipRecord? insertedGraph = null;
+        var (sut, aipRepo, _, _, _, _, _, _, _, _) = Build([], [Fs(7, "GF")]);
+        aipRepo.Setup(r => r.AddAsync(It.IsAny<AipRecord>(), It.IsAny<CancellationToken>()))
+            .Callback<AipRecord, CancellationToken>((e, _) => { e.Id = 100; insertedGraph = e; })
             .Returns(Task.CompletedTask);
 
         AipImportConfirmDto dto = new(2027, "aip.xlsm", null,
@@ -361,9 +371,54 @@ public sealed class AipServiceTests
 
         await sut.ConfirmImportAsync(dto, UserId, CancellationToken.None);
 
-        Assert.NotNull(createdActivity);
-        Assert.Equal(7, createdActivity!.FundingSourceId);
-        Assert.Equal("GF", createdActivity.FundingSourceSnapshot);
+        AipActivity act = insertedGraph!.Offices.First().Programs.First().Projects.First().Activities.First();
+        Assert.Equal(7, act.FundingSourceId);
+        Assert.Equal("GF", act.FundingSourceSnapshot);
+    }
+
+    [Fact]
+    public async Task ConfirmImport_DuplicateDraftYear_ReturnsBadRequest()
+    {
+        // Existing Draft for FY 2027 → new upload for same year should fail.
+        var (sut, _, _, _, _, _, _, _, _, _) = Build([Rec(1, PlanningStatus.Draft)], []);
+        AipImportConfirmDto dto = new(2027, "aip.xlsm", null,
+            new Dictionary<string, List<ParsedAipOfficeDto>>());
+
+        ServiceResult<AipRecordDto> result = await sut.ConfirmImportAsync(dto, UserId, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("FY 2027", result.Error);
+    }
+
+    [Fact]
+    public async Task ConfirmImport_DuplicateFinalYear_ReturnsBadRequest()
+    {
+        var (sut, _, _, _, _, _, _, _, _, _) = Build([Rec(1, PlanningStatus.Final)], []);
+        AipImportConfirmDto dto = new(2027, "aip.xlsm", null,
+            new Dictionary<string, List<ParsedAipOfficeDto>>());
+
+        ServiceResult<AipRecordDto> result = await sut.ConfirmImportAsync(dto, UserId, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("FY 2027", result.Error);
+    }
+
+    [Fact]
+    public async Task ConfirmImport_OnlyArchivedForYear_Succeeds()
+    {
+        // Archived record for same year should NOT block a new upload.
+        AipRecord archived = Rec(1, PlanningStatus.Archived);
+        var (sut, aipRepo, _, _, _, _, _, _, _, _) = Build([archived], []);
+        aipRepo.Setup(r => r.AddAsync(It.IsAny<AipRecord>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        AipImportConfirmDto dto = new(2027, "aip.xlsm", null,
+            new Dictionary<string, List<ParsedAipOfficeDto>>());
+
+        ServiceResult<AipRecordDto> result = await sut.ConfirmImportAsync(dto, UserId, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
     }
 
     // ── Status transitions ────────────────────────────────────────────────────
