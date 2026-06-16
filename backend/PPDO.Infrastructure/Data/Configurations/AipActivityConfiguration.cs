@@ -28,7 +28,7 @@ public sealed class AipActivityConfiguration : IEntityTypeConfiguration<AipActiv
 
         builder.Property(a => a.EsreCode)
             .HasColumnName("esre_code")
-            .HasMaxLength(10);
+            .HasMaxLength(20);
 
         builder.Property(a => a.ImplementingOffice)
             .HasColumnName("implementing_office");  // nvarchar(max) — sub-office names are unbounded
@@ -48,9 +48,10 @@ public sealed class AipActivityConfiguration : IEntityTypeConfiguration<AipActiv
         builder.Property(a => a.FundingSourceId)
             .HasColumnName("funding_source_id");
 
+        // nvarchar(max) — AIP activities can list multiple funding sources separated by "/";
+        // WFP picks one at entry time. Store the full raw value here.
         builder.Property(a => a.FundingSourceSnapshot)
-            .HasColumnName("funding_source_snapshot")
-            .HasMaxLength(20);
+            .HasColumnName("funding_source_snapshot");
 
         builder.Property(a => a.Ps)
             .HasColumnName("ps")
