@@ -86,9 +86,11 @@ function TH({ children, align = "left", rowSpan, colSpan }: {
 
 // ── Amount cell ────────────────────────────────────────────────────────────────
 
-function AmtTD({ value, bold = false }: { value: number | null | undefined; bold?: boolean }) {
+function AmtTD({ value, bold = false, white = false }: { value: number | null | undefined; bold?: boolean; white?: boolean }) {
   return (
-    <td className={`px-2 py-1.5 text-right text-xs tabular-nums whitespace-nowrap ${bold ? "font-semibold" : "text-slate-700"}`}>
+    <td className={`px-2 py-1.5 text-right text-xs tabular-nums whitespace-nowrap ${
+      white ? "text-white font-semibold" : bold ? "font-semibold text-slate-800" : "text-slate-700"
+    }`}>
       {fmt(value)}
     </td>
   );
@@ -330,26 +332,26 @@ export default function AipDetailPage() {
               return (
                 <>
                   {/* ── Office row ──────────────────────────────── */}
-                  <tr key={`office-${office.id}`} className="bg-green-50 border-t-2 border-green-200">
+                  <tr key={`office-${office.id}`} className="bg-green-700 border-t-2 border-green-800">
                     <td className="px-2 py-2 font-mono text-xs text-slate-500 align-top">
                       <button onClick={() => toggleOffice(office.id)} className="flex items-center gap-1.5 text-left">
-                        <Chevron open={officeOpen} className="text-green-600" />
-                        {office.refCode}
+                        <Chevron open={officeOpen} className="text-green-200" />
+                        <span className="text-green-100">{office.refCode}</span>
                       </button>
                     </td>
                     <td className="px-2 py-2 align-top">
-                      <span className="font-bold text-sm uppercase text-green-900">{office.name}</span>
+                      <span className="font-bold text-sm uppercase text-white">{office.name}</span>
                       {!officeOpen && (
-                        <span className="ml-2 text-[10px] text-slate-400">
+                        <span className="ml-2 text-[10px] text-green-200">
                           {office.programs.length} programs · {actCount} activities
                         </span>
                       )}
                     </td>
                     <td /><td /><td /><td /><td /><td />
-                    <AmtTD value={officePs}    bold />
-                    <AmtTD value={officeMooe}  bold />
-                    <AmtTD value={officeCo}    bold />
-                    <AmtTD value={officeTotal} bold />
+                    <AmtTD value={officePs}    white />
+                    <AmtTD value={officeMooe}  white />
+                    <AmtTD value={officeCo}    white />
+                    <AmtTD value={officeTotal} white />
                     <td /><td /><td />
                   </tr>
 
@@ -359,14 +361,14 @@ export default function AipDetailPage() {
 
                     return (
                       <>
-                        <tr key={`prog-${prog.id}`} className="bg-slate-50 border-t border-slate-200">
-                          <td className="px-2 py-1.5 pl-5 font-mono text-xs text-slate-400">
+                        <tr key={`prog-${prog.id}`} className="bg-white border-t-2 border-slate-200">
+                          <td className="px-2 py-1.5 pl-5 font-mono text-xs text-slate-400 border-l-4 border-green-400">
                             <button onClick={() => toggleProgram(prog.id)} className="flex items-center gap-1.5 text-left">
-                              <Chevron open={progOpen} className="text-slate-400" />
+                              <Chevron open={progOpen} className="text-green-500" />
                               {prog.refCode}
                             </button>
                           </td>
-                          <td colSpan={14} className="px-2 py-1.5 pl-5 font-semibold text-xs italic text-slate-700 uppercase">
+                          <td colSpan={14} className="px-2 py-1.5 font-semibold text-xs italic text-slate-700 uppercase tracking-wide">
                             {prog.name}
                             {!progOpen && (
                               <span className="ml-2 font-normal not-italic text-[10px] text-slate-400">
@@ -383,14 +385,14 @@ export default function AipDetailPage() {
 
                           return (
                             <>
-                              <tr key={`proj-${proj.id}`} className="border-t border-slate-100">
-                                <td className="px-2 py-1.5 pl-9 font-mono text-xs text-slate-400">
+                              <tr key={`proj-${proj.id}`} className="bg-slate-50 border-t border-slate-200">
+                                <td className="px-2 py-1.5 pl-9 font-mono text-xs text-slate-400 border-l-4 border-slate-300">
                                   <button onClick={() => toggleProject(proj.id)} className="flex items-center gap-1.5 text-left">
-                                    <Chevron open={projOpen} className="text-slate-300" />
+                                    <Chevron open={projOpen} className="text-slate-400" />
                                     {proj.refCode}
                                   </button>
                                 </td>
-                                <td colSpan={14} className="px-2 py-1.5 pl-9 text-xs font-medium text-slate-600">
+                                <td colSpan={14} className="px-2 py-1.5 text-xs font-medium text-slate-600">
                                   {proj.name}
                                   {!projOpen && (
                                     <span className="ml-2 font-normal text-[10px] text-slate-400">
@@ -402,11 +404,11 @@ export default function AipDetailPage() {
 
                               {/* ── Activities (only in DOM when project is expanded) ── */}
                               {projOpen && proj.activities.map((act) => (
-                                <tr key={`act-${act.id}`} className="border-t border-slate-100 hover:bg-blue-50 transition-colors">
-                                  <td className="px-2 py-1.5 pl-12 font-mono text-[11px] text-slate-400 align-top">
+                                <tr key={`act-${act.id}`} className="bg-white border-t border-slate-100 hover:bg-green-50 transition-colors">
+                                  <td className="px-2 py-1.5 pl-12 font-mono text-[11px] text-slate-400 align-top border-l-4 border-transparent">
                                     {act.refCode}
                                   </td>
-                                  <td className="px-2 py-1.5 pl-12 text-xs text-slate-800 align-top leading-snug">
+                                  <td className="px-2 py-1.5 pl-12 text-xs text-slate-900 align-top leading-snug">
                                     {act.name}
                                   </td>
                                   <td className="px-2 py-1.5 text-center text-xs text-slate-600">{act.esreCode ?? "—"}</td>
