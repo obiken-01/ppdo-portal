@@ -271,9 +271,6 @@ export default function AipListPage() {
 
   return (
     <div className="p-6 max-w-screen-xl mx-auto">
-      {/* Breadcrumb */}
-      <p className="text-xs text-slate-500 mb-1">Planning / AIP</p>
-
       {/* Header */}
       <div className="flex items-start justify-between mb-5">
         <div>

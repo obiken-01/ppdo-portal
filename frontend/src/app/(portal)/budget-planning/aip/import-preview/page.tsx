@@ -16,7 +16,6 @@
  */
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { aipErrorMessage, confirmAipImport } from "@/lib/aip";
@@ -173,12 +172,6 @@ export default function AipImportPreviewPage() {
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
-      {/* Breadcrumb */}
-      <p className="text-xs text-slate-500 mb-1">
-        <Link href="/budget-planning/aip" className="hover:underline">Planning / AIP</Link>
-        {" / Import Preview"}
-      </p>
-
       {/* Header */}
       <h1 className="text-xl font-bold text-slate-800 mb-0.5">
         Import Preview — AIP FY{preview.fiscalYear}
