@@ -8,6 +8,7 @@
 import api from "./api";
 import type {
   AipRecordResponse,
+  AipRecordDetail,
   AipImportPreviewResponse,
   AipImportConfirmRequest,
   ApiResponse,
@@ -73,6 +74,17 @@ export async function confirmAipImport(body: AipImportConfirmRequest): Promise<A
   const { data } = await api.post<ApiResponse<AipRecordResponse>>(
     "/budget-planning/aip/confirm",
     body
+  );
+  return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// AIP detail — GET /api/budget-planning/aip/{id}
+// ---------------------------------------------------------------------------
+
+export async function getAipById(id: number): Promise<AipRecordDetail> {
+  const { data } = await api.get<ApiResponse<AipRecordDetail>>(
+    `/budget-planning/aip/${id}`
   );
   return unwrap(data);
 }

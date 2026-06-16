@@ -230,11 +230,17 @@ export default function AipListPage() {
       header: "ACTIONS",
       render: (r) => (
         <div className="flex items-center gap-3 text-sm">
+          <Link
+            href={`/budget-planning/aip/${r.id}`}
+            className="text-green-700 hover:underline"
+          >
+            View
+          </Link>
           {r.status === "Draft" && me?.canUploadAip && (
             <>
               <button
                 onClick={() => handleFinalize(r)}
-                className="text-green-700 hover:underline"
+                className="text-slate-600 hover:underline"
               >
                 Finalize
               </button>
@@ -247,18 +253,12 @@ export default function AipListPage() {
             </>
           )}
           {r.status === "Final" && (
-            <>
-              <span className="text-slate-400 cursor-not-allowed" title="Detail view coming soon">View</span>
-              <Link
-                href={`/budget-planning/wfp?aip=${r.id}`}
-                className="text-blue-600 hover:underline"
-              >
-                WFP
-              </Link>
-            </>
-          )}
-          {r.status === "Archived" && (
-            <span className="text-slate-400 cursor-not-allowed" title="Detail view coming soon">View</span>
+            <Link
+              href={`/budget-planning/wfp?aip=${r.id}`}
+              className="text-blue-600 hover:underline"
+            >
+              WFP
+            </Link>
           )}
         </div>
       ),

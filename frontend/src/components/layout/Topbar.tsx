@@ -16,6 +16,7 @@ interface Crumb {
   prefix: string;
   label: string;
   parent?: { label: string; href: string };
+  match?: (pathname: string) => boolean; // override prefix matching for dynamic routes
 }
 
 interface Section {
@@ -54,6 +55,9 @@ const SECTIONS: Section[] = [
       // Longer prefixes must come before shorter ones so matchesPrefix picks the right crumb.
       { prefix: "/budget-planning/aip/import-preview", label: "Import Preview", parent: { label: "AIP", href: "/budget-planning/aip" } },
       { prefix: "/budget-planning/aip/new",            label: "New AIP",        parent: { label: "AIP", href: "/budget-planning/aip" } },
+      // Dynamic detail route /budget-planning/aip/[id] — matched by numeric id segment.
+      { prefix: "/budget-planning/aip/__detail__", label: "Detail", parent: { label: "AIP", href: "/budget-planning/aip" },
+        match: (p) => /^\/budget-planning\/aip\/\d+$/.test(p) },
       { prefix: "/budget-planning/aip",  label: "AIP"  },
       { prefix: "/budget-planning/ldip", label: "LDIP" },
       { prefix: "/budget-planning/wfp",  label: "WFP"  },
@@ -65,8 +69,12 @@ function matchesPrefix(pathname: string, prefix: string) {
   return pathname === prefix || pathname.startsWith(prefix + "/");
 }
 
+function matchesCrumb(pathname: string, crumb: Crumb): boolean {
+  return crumb.match ? crumb.match(pathname) : matchesPrefix(pathname, crumb.prefix);
+}
+
 function SectionBreadcrumb({ section, pathname }: { section: Section; pathname: string }) {
-  const sub = section.crumbs.find((c) => matchesPrefix(pathname, c.prefix));
+  const sub = section.crumbs.find((c) => matchesCrumb(pathname, c));
 
   return (
     <nav aria-label="breadcrumb" className="flex items-center gap-1.5 text-sm">
