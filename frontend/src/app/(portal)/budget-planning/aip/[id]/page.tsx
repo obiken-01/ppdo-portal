@@ -1,12 +1,9 @@
-// Server component shell — required by Next.js static export (output: 'export').
-// generateStaticParams must live in a Server Component (no "use client").
-// The actual UI is in AipDetailClient.tsx (client component).
+// Placeholder — dynamic [id] routes can't be used with output: 'export'.
+// The AIP detail page lives at /budget-planning/aip/detail?id=<n> instead.
 export function generateStaticParams() {
-  return [{ id: "__placeholder__" }];
+  return [];
 }
 
-import AipDetailClient from "./AipDetailClient";
-
-export default function AipDetailPage({ params }: { params: { id: string } }) {
-  return <AipDetailClient params={params} />;
+export default function Page() {
+  return null;
 }

@@ -55,9 +55,7 @@ const SECTIONS: Section[] = [
       // Longer prefixes must come before shorter ones so matchesPrefix picks the right crumb.
       { prefix: "/budget-planning/aip/import-preview", label: "Import Preview", parent: { label: "AIP", href: "/budget-planning/aip" } },
       { prefix: "/budget-planning/aip/new",            label: "New AIP",        parent: { label: "AIP", href: "/budget-planning/aip" } },
-      // Dynamic detail route /budget-planning/aip/[id] — matched by numeric id segment.
-      { prefix: "/budget-planning/aip/__detail__", label: "Detail", parent: { label: "AIP", href: "/budget-planning/aip" },
-        match: (p) => /^\/budget-planning\/aip\/\d+$/.test(p) },
+      { prefix: "/budget-planning/aip/detail", label: "Detail", parent: { label: "AIP", href: "/budget-planning/aip" } },
       { prefix: "/budget-planning/aip",  label: "AIP"  },
       { prefix: "/budget-planning/ldip", label: "LDIP" },
       { prefix: "/budget-planning/wfp",  label: "WFP"  },

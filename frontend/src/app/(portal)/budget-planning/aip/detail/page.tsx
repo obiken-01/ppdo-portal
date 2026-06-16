@@ -2,22 +2,17 @@
 
 /**
  * AIP Detail page — read-only hierarchy view.
+ * Route: /budget-planning/aip/detail?id=<aipRecordId>
  *
- * Displays the full AipRecord hierarchy (Office → Program → Project → Activity)
- * in a table that mirrors the column structure of the AIP XLSM file:
- *   Ref Code | Description | eSRE | Implementing Office | Start | End |
- *   Expected Outputs | Funding Source | PS | MOOE | CO | Total |
- *   CC Adaptation | CC Mitigation | CC Typology Code
- *
- * Amounts are stored and displayed in thousands of pesos (matching the Excel).
- * Office rows show aggregate totals summed from all descendant activities.
+ * Uses a query param instead of a dynamic [id] segment because
+ * Next.js output: 'export' requires all path segments to be known at build time.
  *
  * Access: canAccessBudgetPlanning.
  */
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import api from "@/lib/api";
 import { getAipById, aipErrorMessage } from "@/lib/aip";
 import type {
@@ -63,7 +58,13 @@ function StatusBadge({ status }: { status: string }) {
 
 // ── Table column header ────────────────────────────────────────────────────────
 
-function TH({ children, align = "left", className = "", rowSpan, colSpan }: {
+function TH({
+  children,
+  align = "left",
+  className = "",
+  rowSpan,
+  colSpan,
+}: {
   children: React.ReactNode;
   align?: "left" | "right" | "center";
   className?: string;
@@ -71,7 +72,11 @@ function TH({ children, align = "left", className = "", rowSpan, colSpan }: {
   colSpan?: number;
 }) {
   const alignCls =
-    align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left";
+    align === "right"
+      ? "text-right"
+      : align === "center"
+      ? "text-center"
+      : "text-left";
   return (
     <th
       rowSpan={rowSpan}
@@ -85,7 +90,13 @@ function TH({ children, align = "left", className = "", rowSpan, colSpan }: {
 
 // ── Amount cell ────────────────────────────────────────────────────────────────
 
-function AmtTD({ value, bold = false }: { value: number | null | undefined; bold?: boolean }) {
+function AmtTD({
+  value,
+  bold = false,
+}: {
+  value: number | null | undefined;
+  bold?: boolean;
+}) {
   return (
     <td
       className={`px-2 py-1.5 text-right text-xs tabular-nums whitespace-nowrap ${
@@ -101,7 +112,9 @@ function AmtTD({ value, bold = false }: { value: number | null | undefined; bold
 
 const SECTOR_ORDER = ["GENERAL", "SOCIAL", "ECONOMIC", "OTHERS"];
 
-function groupBySector(offices: AipOfficeDetail[]): [string, AipOfficeDetail[]][] {
+function groupBySector(
+  offices: AipOfficeDetail[]
+): [string, AipOfficeDetail[]][] {
   const map = new Map<string, AipOfficeDetail[]>();
   for (const o of offices) {
     const sector = (o.sector ?? "OTHERS").toUpperCase();
@@ -120,16 +133,16 @@ function groupBySector(offices: AipOfficeDetail[]): [string, AipOfficeDetail[]][
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-export default function AipDetailClient({ params }: { params: { id: string } }) {
+export default function AipDetailPage() {
   const router = useRouter();
-  const id = parseInt(params.id, 10);
+  const searchParams = useSearchParams();
+  const id = parseInt(searchParams.get("id") ?? "", 10);
 
   const [me, setMe] = useState<MeResponse | null>(null);
   const [record, setRecord] = useState<AipRecordDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Auth check
   useEffect(() => {
     api.get<MeResponse>("/auth/me").then(({ data }) => {
       if (!data.canAccessBudgetPlanning) {
@@ -140,18 +153,32 @@ export default function AipDetailClient({ params }: { params: { id: string } }) 
     });
   }, [router]);
 
-  // Load record
   useEffect(() => {
     if (!me || isNaN(id)) return;
     setLoading(true);
     setError(null);
     getAipById(id)
       .then(setRecord)
-      .catch((err) => setError(aipErrorMessage(err, "Failed to load AIP record.")))
+      .catch((err) =>
+        setError(aipErrorMessage(err, "Failed to load AIP record."))
+      )
       .finally(() => setLoading(false));
   }, [me, id]);
 
   if (!me) return null;
+
+  if (isNaN(id))
+    return (
+      <div className="p-8">
+        <p className="text-red-600 text-sm mb-3">Invalid AIP record ID.</p>
+        <Link
+          href="/budget-planning/aip"
+          className="text-sm text-green-700 hover:underline"
+        >
+          ← Back to AIP list
+        </Link>
+      </div>
+    );
 
   if (loading)
     return (
@@ -161,8 +188,13 @@ export default function AipDetailClient({ params }: { params: { id: string } }) 
   if (error || !record)
     return (
       <div className="p-8">
-        <p className="text-red-600 text-sm mb-3">{error ?? "Record not found."}</p>
-        <Link href="/budget-planning/aip" className="text-sm text-green-700 hover:underline">
+        <p className="text-red-600 text-sm mb-3">
+          {error ?? "Record not found."}
+        </p>
+        <Link
+          href="/budget-planning/aip"
+          className="text-sm text-green-700 hover:underline"
+        >
           ← Back to AIP list
         </Link>
       </div>
@@ -171,7 +203,9 @@ export default function AipDetailClient({ params }: { params: { id: string } }) 
   const sectors = groupBySector(record.offices);
 
   const programCount = record.offices.flatMap((o) => o.programs).length;
-  const projectCount = record.offices.flatMap((o) => o.programs).flatMap((p) => p.projects).length;
+  const projectCount = record.offices
+    .flatMap((o) => o.programs)
+    .flatMap((p) => p.projects).length;
   const activityCount = record.offices
     .flatMap((o) => o.programs)
     .flatMap((p) => p.projects)
@@ -189,8 +223,9 @@ export default function AipDetailClient({ params }: { params: { id: string } }) 
             <StatusBadge status={record.status} />
           </div>
           <p className="text-sm text-slate-500">
-            {record.offices.length} office records &middot; {programCount} programs &middot;{" "}
-            {projectCount} projects &middot; {activityCount} activities
+            {record.offices.length} office records &middot; {programCount}{" "}
+            programs &middot; {projectCount} projects &middot; {activityCount}{" "}
+            activities
           </p>
           {record.originalFilename && (
             <p className="text-xs text-slate-400 mt-0.5">
@@ -212,32 +247,42 @@ export default function AipDetailClient({ params }: { params: { id: string } }) 
           <colgroup>
             <col style={{ width: "140px" }} />
             <col style={{ width: "300px" }} />
-            <col style={{ width: "56px"  }} />
+            <col style={{ width: "56px" }} />
             <col style={{ width: "110px" }} />
-            <col style={{ width: "72px"  }} />
-            <col style={{ width: "72px"  }} />
+            <col style={{ width: "72px" }} />
+            <col style={{ width: "72px" }} />
             <col style={{ width: "200px" }} />
-            <col style={{ width: "90px"  }} />
-            <col style={{ width: "90px"  }} />
-            <col style={{ width: "90px"  }} />
-            <col style={{ width: "90px"  }} />
+            <col style={{ width: "90px" }} />
+            <col style={{ width: "90px" }} />
+            <col style={{ width: "90px" }} />
+            <col style={{ width: "90px" }} />
             <col style={{ width: "100px" }} />
-            <col style={{ width: "80px"  }} />
-            <col style={{ width: "80px"  }} />
-            <col style={{ width: "70px"  }} />
+            <col style={{ width: "80px" }} />
+            <col style={{ width: "80px" }} />
+            <col style={{ width: "70px" }} />
           </colgroup>
 
           <thead>
             <tr className="bg-slate-100">
               <TH rowSpan={2}>AIP Ref Code</TH>
               <TH rowSpan={2}>Program / Project / Activity Description</TH>
-              <TH rowSpan={2} align="center">eSRE Code</TH>
+              <TH rowSpan={2} align="center">
+                eSRE Code
+              </TH>
               <TH rowSpan={2}>Implementing Office</TH>
-              <TH colSpan={2} align="center">Schedule of Implementation</TH>
+              <TH colSpan={2} align="center">
+                Schedule of Implementation
+              </TH>
               <TH rowSpan={2}>Expected Outputs</TH>
-              <TH rowSpan={2} align="center">Funding Source</TH>
-              <TH colSpan={4} align="center">Amount (in ₱000)</TH>
-              <TH colSpan={3} align="center">CC Expenditure (₱000)</TH>
+              <TH rowSpan={2} align="center">
+                Funding Source
+              </TH>
+              <TH colSpan={4} align="center">
+                Amount (in ₱000)
+              </TH>
+              <TH colSpan={3} align="center">
+                CC Expenditure (₱000)
+              </TH>
             </tr>
             <tr className="bg-slate-100">
               <TH align="center">Start</TH>
@@ -265,9 +310,9 @@ export default function AipDetailClient({ params }: { params: { id: string } }) 
                 </tr>
 
                 {offices.map((office) => {
-                  const officePs    = sumActivities(office, "ps");
-                  const officeMooe  = sumActivities(office, "mooe");
-                  const officeCo    = sumActivities(office, "co");
+                  const officePs = sumActivities(office, "ps");
+                  const officeMooe = sumActivities(office, "mooe");
+                  const officeCo = sumActivities(office, "co");
                   const officeTotal = sumActivities(office, "total");
 
                   return (
@@ -282,17 +327,27 @@ export default function AipDetailClient({ params }: { params: { id: string } }) 
                         <td className="px-2 py-2 font-bold text-sm uppercase text-green-900 align-top">
                           {office.name}
                         </td>
-                        <td /><td /><td /><td /><td /><td />
-                        <AmtTD value={officePs}    bold />
-                        <AmtTD value={officeMooe}  bold />
-                        <AmtTD value={officeCo}    bold />
+                        <td />
+                        <td />
+                        <td />
+                        <td />
+                        <td />
+                        <td />
+                        <AmtTD value={officePs} bold />
+                        <AmtTD value={officeMooe} bold />
+                        <AmtTD value={officeCo} bold />
                         <AmtTD value={officeTotal} bold />
-                        <td /><td /><td />
+                        <td />
+                        <td />
+                        <td />
                       </tr>
 
                       {office.programs.map((prog) => (
                         <>
-                          <tr key={`prog-${prog.id}`} className="bg-slate-50 border-t border-slate-200">
+                          <tr
+                            key={`prog-${prog.id}`}
+                            className="bg-slate-50 border-t border-slate-200"
+                          >
                             <td className="px-2 py-1.5 pl-5 font-mono text-xs text-slate-400">
                               {prog.refCode}
                             </td>
@@ -306,7 +361,10 @@ export default function AipDetailClient({ params }: { params: { id: string } }) 
 
                           {prog.projects.map((proj) => (
                             <>
-                              <tr key={`proj-${proj.id}`} className="border-t border-slate-100">
+                              <tr
+                                key={`proj-${proj.id}`}
+                                className="border-t border-slate-100"
+                              >
                                 <td className="px-2 py-1.5 pl-9 font-mono text-xs text-slate-400">
                                   {proj.refCode}
                                 </td>

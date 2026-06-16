@@ -231,7 +231,7 @@ export default function AipListPage() {
       render: (r) => (
         <div className="flex items-center gap-3 text-sm">
           <Link
-            href={`/budget-planning/aip/${r.id}`}
+            href={`/budget-planning/aip/detail?id=${r.id}`}
             className="text-green-700 hover:underline"
           >
             View
