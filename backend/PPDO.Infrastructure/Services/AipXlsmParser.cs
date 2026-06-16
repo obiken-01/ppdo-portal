@@ -96,7 +96,7 @@ public sealed class AipXlsmParser : IAipXlsmParser
 
         int lastRow = ws.LastRowUsed()?.RowNumber() ?? 0;
 
-        for (int row = 14; row <= lastRow; row++)
+        for (int row = 1; row <= lastRow; row++)
         {
             string refCode = ws.Cell(row, 1).GetString().Trim();
 
