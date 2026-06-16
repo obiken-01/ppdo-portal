@@ -24,8 +24,7 @@ public sealed class AipOfficeConfiguration : IEntityTypeConfiguration<AipOffice>
 
         builder.Property(o => o.Name)
             .HasColumnName("name")
-            .IsRequired()
-            .HasMaxLength(500);
+            .IsRequired();  // nvarchar(max) — AIP names are unbounded free-text
 
         builder.Property(o => o.Sector)
             .HasColumnName("sector")

@@ -24,8 +24,7 @@ public sealed class AipProgramConfiguration : IEntityTypeConfiguration<AipProgra
 
         builder.Property(p => p.Name)
             .HasColumnName("name")
-            .IsRequired()
-            .HasMaxLength(500);
+            .IsRequired();  // nvarchar(max) — AIP names are unbounded free-text
 
         builder.HasIndex(p => new { p.OfficeId, p.RefCode })
             .IsUnique()

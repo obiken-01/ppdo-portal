@@ -24,16 +24,14 @@ public sealed class AipActivityConfiguration : IEntityTypeConfiguration<AipActiv
 
         builder.Property(a => a.Name)
             .HasColumnName("name")
-            .IsRequired()
-            .HasMaxLength(1000);
+            .IsRequired();  // nvarchar(max) — AIP names are unbounded free-text
 
         builder.Property(a => a.EsreCode)
             .HasColumnName("esre_code")
             .HasMaxLength(10);
 
         builder.Property(a => a.ImplementingOffice)
-            .HasColumnName("implementing_office")
-            .HasMaxLength(200);
+            .HasColumnName("implementing_office");  // nvarchar(max) — sub-office names are unbounded
 
         // Stored as strings — source data uses month names ("January"), not dates.
         builder.Property(a => a.StartDate)
