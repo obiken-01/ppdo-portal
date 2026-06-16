@@ -846,6 +846,34 @@ fix(auth): refresh token not rotating on concurrent requests
 chore(deps): upgrade ClosedXML to 0.104.1
 ```
 
+### Frontend UI Conventions
+
+#### Breadcrumbs
+
+Breadcrumbs are rendered exclusively in **`frontend/src/components/layout/Topbar.tsx`** via `SectionBreadcrumb`. Never add inline breadcrumb markup inside a page component.
+
+To register a new page, add an entry to the `SECTIONS` array in `Topbar.tsx`:
+
+```ts
+// 2-level:  Configuration › Accounts
+{ prefix: "/config/accounts", label: "Accounts" }
+
+// 3-level:  Budget Planning › AIP › New AIP
+{ prefix: "/budget-planning/aip/new", label: "New AIP",
+  parent: { label: "AIP", href: "/budget-planning/aip" } }
+```
+
+Rules:
+- Put **deeper prefixes before shallower ones** within the same `crumbs` array (longest-prefix wins)
+- For a genuinely new top-level section, add a new `Section` object with a `root` + `rootLabel`
+- See `docs/v1.1/UI_Component_Standards.md §5` for the full reference table and examples
+
+#### Shared UI Components
+
+All modals, toasts, tables, and CSV controls come from `frontend/src/components/ui/`. Do not create page-local copies. See `docs/v1.1/UI_Component_Standards.md` for the full component catalogue and composition guidelines.
+
+---
+
 ### AI Assistance
 
 - `PROJECT_DOCUMENTATION_NET_AZURE.md` — primary context for Claude Code sessions (this file)
