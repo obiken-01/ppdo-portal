@@ -44,7 +44,6 @@ type Tab = "upload" | "manual";
 export default function AipNewPage() {
   const router = useRouter();
 
-  const [me, setMe] = useState<MeResponse | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("upload");
   const [fiscalYear, setFiscalYear] = useState<number>(CURRENT_YEAR);
   const [file, setFile] = useState<File | null>(null);
@@ -65,7 +64,6 @@ export default function AipNewPage() {
         router.replace("/budget-planning/aip");
         return;
       }
-      setMe(data);
     });
   }, [router]);
 
