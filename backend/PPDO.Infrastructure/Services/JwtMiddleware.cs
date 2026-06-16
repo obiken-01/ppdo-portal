@@ -91,6 +91,7 @@ public sealed class JwtMiddleware : IJwtMiddleware
             // Load the user with their Group — Group is required for permission resolution.
             User? user = await _context.Users
                 .Include(u => u.Group)          // depth 1
+                .Include(u => u.Office)         // depth 1 — null for PPDO-internal users
                 .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
 
             if (user is null || !user.IsActive)

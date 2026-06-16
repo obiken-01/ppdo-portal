@@ -122,6 +122,8 @@ public sealed class AuthFunctions
             Role                    = me.Role,
             Division                = me.Division,
             OfficeId                = me.OfficeId,
+            OfficeCode              = me.OfficeCode,
+            OfficeName              = me.OfficeName,
             Position                = me.Position,
             CanAccessInventory      = me.CanAccessInventory,
             CanAccessReports        = me.CanAccessReports,

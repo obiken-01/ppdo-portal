@@ -64,6 +64,12 @@ public sealed class MeResponse
     /// <summary>Provincial office id, or null for PPDO-internal users. New in v1.1.</summary>
     public int? OfficeId { get; init; }
 
+    /// <summary>Short office code, e.g. "PEO". Null for PPDO-internal users.</summary>
+    public string? OfficeCode { get; init; }
+
+    /// <summary>Full office name. Null for PPDO-internal users.</summary>
+    public string? OfficeName { get; init; }
+
     public string? Position { get; init; }
 
     // -- Effective permission flags (resolved via PermissionService) --------
