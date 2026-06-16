@@ -3,6 +3,7 @@ using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
 using PPDO.Application.Services;
 using PPDO.Domain.Entities;
+using PPDO.Domain.Enums;
 using PPDO.Domain.Interfaces;
 
 namespace PPDO.Tests.Application;
@@ -28,6 +29,13 @@ public sealed class AipServiceTests
         CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
     };
 
+    private static User MakeUser(Guid id, string fullName) => new()
+    {
+        Id = id, FullName = fullName, Username = "user",
+        PasswordHash = "x", Role = UserRole.Staff,
+        CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+    };
+
     private static (
         AipService sut,
         Mock<IRepository<AipRecord>>   aipRepo,
@@ -36,11 +44,14 @@ public sealed class AipServiceTests
         Mock<IRepository<AipProject>>  projectRepo,
         Mock<IRepository<AipActivity>> activityRepo,
         Mock<IRepository<FundingSource>> fsRepo,
+        Mock<IRepository<User>>        userRepo,
         Mock<IAipXlsmParser> parser,
         Mock<IAuditService>  audit)
         Build(
             List<AipRecord>    aipSeed,
             List<FundingSource> fsSeed,
+            List<User>?        userSeed   = null,
+            List<AipOffice>?   officeSeed = null,
             IAipXlsmParser?    parserImpl = null)
     {
         Mock<IRepository<AipRecord>>    aipRepo     = new();
@@ -49,6 +60,7 @@ public sealed class AipServiceTests
         Mock<IRepository<AipProject>>   projectRepo = new();
         Mock<IRepository<AipActivity>>  actRepo     = new();
         Mock<IRepository<FundingSource>> fsRepo      = new();
+        Mock<IRepository<User>>         userRepo    = new();
         Mock<IAipXlsmParser>  parser = new();
         Mock<IAuditService>   audit  = new();
 
@@ -62,8 +74,10 @@ public sealed class AipServiceTests
             .Returns(Task.CompletedTask);
         aipRepo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
-        // Hierarchy repos — just capture adds
+        // Hierarchy repos — capture adds and seed GetAllAsync
+        List<AipOffice> officeList = officeSeed ?? [];
         int nextOfficeId = 200;
+        officeRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(officeList);
         officeRepo.Setup(r => r.AddAsync(It.IsAny<AipOffice>(), It.IsAny<CancellationToken>()))
             .Callback<AipOffice, CancellationToken>((e, _) => e.Id = nextOfficeId++)
             .Returns(Task.CompletedTask);
@@ -85,8 +99,10 @@ public sealed class AipServiceTests
             .Returns(Task.CompletedTask);
         actRepo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
-        // FundingSource repo
+        // FundingSource and User repos
         fsRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(fsSeed);
+        userRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(userSeed ?? []);
 
         // Audit
         audit.Setup(a => a.LogAsync(
@@ -104,9 +120,82 @@ public sealed class AipServiceTests
         AipService sut = new(
             aipRepo.Object, officeRepo.Object, programRepo.Object,
             projectRepo.Object, actRepo.Object, fsRepo.Object,
-            parser.Object, audit.Object, ctx);
+            userRepo.Object, parser.Object, audit.Object, ctx);
 
-        return (sut, aipRepo, officeRepo, programRepo, projectRepo, actRepo, fsRepo, parser, audit);
+        return (sut, aipRepo, officeRepo, programRepo, projectRepo, actRepo, fsRepo, userRepo, parser, audit);
+    }
+
+    // ── GetAllAsync ───────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetAll_PopulatesOfficeCount_FromAipOfficesTable()
+    {
+        Guid uploaderId = Guid.NewGuid();
+        AipRecord rec = new() { Id = 10, FiscalYear = 2027, EntrySource = "Upload",
+            UploadedById = uploaderId, UploadedAt = DateTime.UtcNow, Status = "Draft" };
+
+        List<AipOffice> offices =
+        [
+            new() { Id = 1, AipRecordId = 10, RefCode = "A", Name = "Off1", Sector = "GENERAL" },
+            new() { Id = 2, AipRecordId = 10, RefCode = "B", Name = "Off2", Sector = "SOCIAL" },
+        ];
+
+        var (sut, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeSeed: offices);
+
+        IReadOnlyList<AipRecordDto> result = await sut.GetAllAsync(null, null);
+
+        Assert.Single(result);
+        Assert.Equal(2, result[0].OfficeCount);
+    }
+
+    [Fact]
+    public async Task GetAll_PopulatesUploadedByName_FromUsersTable()
+    {
+        Guid uploaderId = Guid.NewGuid();
+        AipRecord rec = new() { Id = 11, FiscalYear = 2027, EntrySource = "Upload",
+            UploadedById = uploaderId, UploadedAt = DateTime.UtcNow, Status = "Draft" };
+
+        List<User> users = [ MakeUser(uploaderId, "Ralph Alcaide") ];
+
+        var (sut, _, _, _, _, _, _, _, _, _) = Build([rec], [], userSeed: users);
+
+        IReadOnlyList<AipRecordDto> result = await sut.GetAllAsync(null, null);
+
+        Assert.Single(result);
+        Assert.Equal("Ralph Alcaide", result[0].UploadedByName);
+    }
+
+    [Fact]
+    public async Task GetAll_UnknownUploader_ReturnsNullUploadedByName()
+    {
+        AipRecord rec = new() { Id = 12, FiscalYear = 2027, EntrySource = "Upload",
+            UploadedById = Guid.NewGuid(), UploadedAt = DateTime.UtcNow, Status = "Draft" };
+
+        var (sut, _, _, _, _, _, _, _, _, _) = Build([rec], []);
+
+        IReadOnlyList<AipRecordDto> result = await sut.GetAllAsync(null, null);
+
+        Assert.Single(result);
+        Assert.Null(result[0].UploadedByName);
+    }
+
+    [Fact]
+    public async Task GetAll_FiltersByFiscalYear()
+    {
+        List<AipRecord> seed =
+        [
+            new() { Id = 1, FiscalYear = 2027, EntrySource = "Upload",
+                UploadedById = Guid.NewGuid(), UploadedAt = DateTime.UtcNow, Status = "Draft" },
+            new() { Id = 2, FiscalYear = 2026, EntrySource = "Upload",
+                UploadedById = Guid.NewGuid(), UploadedAt = DateTime.UtcNow, Status = "Final" },
+        ];
+
+        var (sut, _, _, _, _, _, _, _, _, _) = Build(seed, []);
+
+        IReadOnlyList<AipRecordDto> result = await sut.GetAllAsync(2027, null);
+
+        Assert.Single(result);
+        Assert.Equal(2027, result[0].FiscalYear);
     }
 
     // ── ParsePreviewAsync ─────────────────────────────────────────────────────
@@ -123,7 +212,7 @@ public sealed class AipServiceTests
         ParsedAipProgram prog  = new("A-B-C-D-1-1", "Program 1", [proj]);
         ParsedAipOffice  off   = new("A-B-C-D-1", "Office 1", "GENERAL", [prog]);
 
-        var (sut, _, _, _, _, _, _, parser, _) = Build([], []);
+        var (sut, _, _, _, _, _, _, _, parser, _) = Build([], []);
         parser.Setup(p => p.Parse(It.IsAny<Stream>()))
             .Returns(new Dictionary<string, List<ParsedAipOffice>>
                 { ["GENERAL"] = [off] });
@@ -150,7 +239,7 @@ public sealed class AipServiceTests
         ParsedAipProgram prog = new("A-B-C-D-1-1", "Prog", [proj]);
         ParsedAipOffice  off  = new("A-B-C-D-1", "Office", "GENERAL", [prog]);
 
-        var (sut, _, _, _, _, _, _, parser, _) = Build([], []);
+        var (sut, _, _, _, _, _, _, _, parser, _) = Build([], []);
         parser.Setup(p => p.Parse(It.IsAny<Stream>()))
             .Returns(new Dictionary<string, List<ParsedAipOffice>> { ["GENERAL"] = [off] });
 
@@ -171,7 +260,7 @@ public sealed class AipServiceTests
         ParsedAipProgram prog = new("A-B-C-D-1-1", "Prog", [proj]);
         ParsedAipOffice  off  = new("A-B-C-D-1", "Office", "GENERAL", [prog]);
 
-        var (sut, _, _, _, _, _, _, parser, _) = Build([], []);
+        var (sut, _, _, _, _, _, _, _, parser, _) = Build([], []);
         parser.Setup(p => p.Parse(It.IsAny<Stream>()))
             .Returns(new Dictionary<string, List<ParsedAipOffice>> { ["GENERAL"] = [off] });
 
@@ -189,7 +278,7 @@ public sealed class AipServiceTests
     public async Task ConfirmImport_SetsEntrySourceUpload()
     {
         AipRecord? created = null;
-        var (sut, aipRepo, _, _, _, _, _, _, _) = Build([], [Fs(1, "GF")]);
+        var (sut, aipRepo, _, _, _, _, _, _, _, _) = Build([], [Fs(1, "GF")]);
         aipRepo.Setup(r => r.AddAsync(It.IsAny<AipRecord>(), It.IsAny<CancellationToken>()))
             .Callback<AipRecord, CancellationToken>((e, _) => { e.Id = 1; created = e; })
             .Returns(Task.CompletedTask);
@@ -208,7 +297,7 @@ public sealed class AipServiceTests
     [Fact]
     public async Task ConfirmImport_PersistsAllFourHierarchyLevels()
     {
-        var (sut, aipRepo, officeRepo, programRepo, projectRepo, actRepo, _, _, _) =
+        var (sut, aipRepo, officeRepo, programRepo, projectRepo, actRepo, _, _, _, _) =
             Build([], [Fs(1, "GF")]);
 
         // One office > 1 program > 1 project > 1 activity
@@ -245,7 +334,7 @@ public sealed class AipServiceTests
     public async Task ConfirmImport_SetsActivityFundingSourceSnapshot_WhenCodeMatches()
     {
         AipActivity? createdActivity = null;
-        var (sut, _, _, _, _, actRepo, _, _, _) = Build([], [Fs(7, "GF")]);
+        var (sut, _, _, _, _, actRepo, _, _, _, _) = Build([], [Fs(7, "GF")]);
         actRepo.Setup(r => r.AddAsync(It.IsAny<AipActivity>(), It.IsAny<CancellationToken>()))
             .Callback<AipActivity, CancellationToken>((e, _) => createdActivity = e)
             .Returns(Task.CompletedTask);
@@ -283,7 +372,7 @@ public sealed class AipServiceTests
     public async Task Finalize_Draft_TransitionsToFinal()
     {
         AipRecord rec = Rec(1, PlanningStatus.Draft);
-        var (sut, _, _, _, _, _, _, _, _) = Build([rec], []);
+        var (sut, _, _, _, _, _, _, _, _, _) = Build([rec], []);
 
         ServiceResult<AipRecordDto> result = await sut.FinalizeAsync(1, CancellationToken.None);
 
@@ -295,7 +384,7 @@ public sealed class AipServiceTests
     [Fact]
     public async Task Finalize_AlreadyFinal_ReturnsBadRequest()
     {
-        var (sut, _, _, _, _, _, _, _, _) = Build([Rec(1, PlanningStatus.Final)], []);
+        var (sut, _, _, _, _, _, _, _, _, _) = Build([Rec(1, PlanningStatus.Final)], []);
 
         ServiceResult<AipRecordDto> result = await sut.FinalizeAsync(1, CancellationToken.None);
 
@@ -306,7 +395,7 @@ public sealed class AipServiceTests
     public async Task Unlock_Final_TransitionsToDraft()
     {
         AipRecord rec = Rec(1, PlanningStatus.Final);
-        var (sut, _, _, _, _, _, _, _, _) = Build([rec], []);
+        var (sut, _, _, _, _, _, _, _, _, _) = Build([rec], []);
 
         ServiceResult<AipRecordDto> result = await sut.UnlockAsync(1, CancellationToken.None);
 
@@ -321,7 +410,7 @@ public sealed class AipServiceTests
     public async Task PurgeAll_DeletesAllAipRecords_ReturnsCount()
     {
         List<AipRecord> seed = [Rec(1, PlanningStatus.Draft), Rec(2, PlanningStatus.Final)];
-        var (sut, aipRepo, _, _, _, _, _, _, _) = Build(seed, []);
+        var (sut, aipRepo, _, _, _, _, _, _, _, _) = Build(seed, []);
 
         int count = await sut.PurgeAllAsync(CancellationToken.None);
 

@@ -38,6 +38,9 @@ export default function Sidebar({ me }: SidebarProps) {
   const [configOpen, setConfigOpen] = useState(
     () => pathname.startsWith("/config")
   );
+  const [budgetPlanningOpen, setBudgetPlanningOpen] = useState(
+    () => pathname.startsWith("/budget-planning")
+  );
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   // Auto-expand inventory when navigating to an inventory route
@@ -48,6 +51,11 @@ export default function Sidebar({ me }: SidebarProps) {
   // Auto-expand configuration when navigating to a config route
   useEffect(() => {
     if (pathname.startsWith("/config")) setConfigOpen(true);
+  }, [pathname]);
+
+  // Auto-expand budget planning when navigating to a budget-planning route
+  useEffect(() => {
+    if (pathname.startsWith("/budget-planning")) setBudgetPlanningOpen(true);
   }, [pathname]);
 
   // Close user menu when clicking outside
@@ -237,10 +245,35 @@ export default function Sidebar({ me }: SidebarProps) {
 
         {/* Budget Planning — v1.1. Office users see only this; PPDO users gated by flag. */}
         {showBudgetPlanning && (
-          <Link href="/budget-planning" className={linkCls(isActive("/budget-planning"))}>
-            <span className="text-base leading-none w-5 text-center">💰</span>
-            <span className="truncate">Budget Planning</span>
-          </Link>
+          <div>
+            <button
+              onClick={() => setBudgetPlanningOpen((o) => !o)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                isActive("/budget-planning")
+                  ? "bg-green-800 text-white"
+                  : "text-green-100 hover:bg-green-600 hover:text-white"
+              }`}
+            >
+              <span className="text-base leading-none w-5 text-center">💰</span>
+              <span className="flex-1 text-left truncate">Budget Planning</span>
+              <span className={`text-base leading-none transition-transform duration-200 ${budgetPlanningOpen ? "rotate-90" : ""}`}>
+                ›
+              </span>
+            </button>
+
+            {budgetPlanningOpen && (
+              <div className="mt-0.5 space-y-0.5">
+                <Link href="/budget-planning" className={childLinkCls(pathname === "/budget-planning")}>
+                  <span className="text-xs">•</span>
+                  <span className="truncate">Dashboard</span>
+                </Link>
+                <Link href="/budget-planning/aip" className={childLinkCls(isActive("/budget-planning/aip"))}>
+                  <span className="text-xs">•</span>
+                  <span className="truncate">AIP</span>
+                </Link>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Configuration — collapsible group; PPDO users with CanManageConfig */}

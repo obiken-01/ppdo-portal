@@ -20,6 +20,7 @@ public sealed class AipService : IAipService
     private readonly IRepository<AipProject>   _projectRepo;
     private readonly IRepository<AipActivity>  _actRepo;
     private readonly IRepository<FundingSource> _fsRepo;
+    private readonly IRepository<User>         _userRepo;
     private readonly IAipXlsmParser _parser;
     private readonly IAuditService  _audit;
     private readonly CallerContext  _caller;
@@ -31,6 +32,7 @@ public sealed class AipService : IAipService
         IRepository<AipProject>    projectRepo,
         IRepository<AipActivity>   actRepo,
         IRepository<FundingSource>  fsRepo,
+        IRepository<User>          userRepo,
         IAipXlsmParser parser,
         IAuditService  audit,
         CallerContext  caller)
@@ -41,6 +43,7 @@ public sealed class AipService : IAipService
         _projectRepo = projectRepo;
         _actRepo     = actRepo;
         _fsRepo      = fsRepo;
+        _userRepo    = userRepo;
         _parser      = parser;
         _audit       = audit;
         _caller      = caller;
@@ -55,7 +58,20 @@ public sealed class AipService : IAipService
         if (fiscalYear.HasValue) q = q.Where(r => r.FiscalYear == fiscalYear.Value);
         if (!string.IsNullOrWhiteSpace(status))
             q = q.Where(r => r.Status.Equals(status.Trim(), StringComparison.OrdinalIgnoreCase));
-        return q.OrderByDescending(r => r.UploadedAt).Select(MapToDto).ToList();
+
+        List<AipRecord> records = q.OrderByDescending(r => r.UploadedAt).ToList();
+
+        // Build office-count lookup: aip_record_id → count of aip_offices rows.
+        IReadOnlyList<AipOffice> allOffices = await _officeRepo.GetAllAsync(ct);
+        Dictionary<int, int> officeCounts = allOffices
+            .GroupBy(o => o.AipRecordId)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        // Build user name lookup: user_id → full name.
+        IReadOnlyList<User> allUsers = await _userRepo.GetAllAsync(ct);
+        Dictionary<Guid, string> userNames = allUsers.ToDictionary(u => u.Id, u => u.FullName);
+
+        return records.Select(r => MapToListDto(r, officeCounts, userNames)).ToList();
     }
 
     public async Task<ServiceResult<AipRecordDetailDto>> GetByIdAsync(
@@ -344,9 +360,21 @@ public sealed class AipService : IAipService
 
     // ── Mapping ───────────────────────────────────────────────────────────────
 
+    // Used by status-transition methods where office count / uploader name are not needed.
     private static AipRecordDto MapToDto(AipRecord r) => new(
         r.Id, r.FiscalYear, r.EntrySource, r.OriginalFilename,
-        r.UploadedById, r.UploadedAt, r.Status, r.LdipId, r.SourceId);
+        r.UploadedById, r.UploadedAt, r.Status, r.LdipId, r.SourceId,
+        OfficeCount: 0, UploadedByName: null);
+
+    // Used by GetAllAsync — populates office count and uploader display name.
+    private static AipRecordDto MapToListDto(
+        AipRecord r,
+        Dictionary<int, int> officeCounts,
+        Dictionary<Guid, string> userNames) => new(
+        r.Id, r.FiscalYear, r.EntrySource, r.OriginalFilename,
+        r.UploadedById, r.UploadedAt, r.Status, r.LdipId, r.SourceId,
+        OfficeCount: officeCounts.GetValueOrDefault(r.Id, 0),
+        UploadedByName: userNames.GetValueOrDefault(r.UploadedById));
 
     private static AipActivityDto MapActivityToDto(AipActivity a) => new(
         a.Id, a.ProjectId, a.RefCode, a.Name, a.EsreCode, a.ImplementingOffice,
