@@ -38,18 +38,10 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     public async Task<PlanningDashboardDto> GetDashboardAsync(
         int? fiscalYear, CancellationToken cancellationToken = default)
     {
-        // Load the four entity lists in parallel.
-        Task<IReadOnlyList<LdipRecord>> ldipTask   = _ldipRepo.GetAllAsync(cancellationToken);
-        Task<IReadOnlyList<AipRecord>>  aipTask    = _aipRepo.GetAllAsync(cancellationToken);
-        Task<IReadOnlyList<WfpRecord>>  wfpTask    = _wfpRepo.GetAllAsync(cancellationToken);
-        Task<IReadOnlyList<Office>>     officeTask = _officeRepo.GetAllAsync(cancellationToken);
-
-        await Task.WhenAll(ldipTask, aipTask, wfpTask, officeTask);
-
-        IReadOnlyList<LdipRecord> ldips   = ldipTask.Result;
-        IReadOnlyList<AipRecord>  aips    = aipTask.Result;
-        IReadOnlyList<WfpRecord>  wfps    = wfpTask.Result;
-        IReadOnlyList<Office>     offices = officeTask.Result;
+        IReadOnlyList<LdipRecord> ldips   = await _ldipRepo.GetAllAsync(cancellationToken);
+        IReadOnlyList<AipRecord>  aips    = await _aipRepo.GetAllAsync(cancellationToken);
+        IReadOnlyList<WfpRecord>  wfps    = await _wfpRepo.GetAllAsync(cancellationToken);
+        IReadOnlyList<Office>     offices = await _officeRepo.GetAllAsync(cancellationToken);
 
         // Available fiscal years — distinct, newest first.
         List<int> availableFiscalYears = aips
@@ -124,13 +116,8 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     public async Task<IReadOnlyList<RecentActivityDto>> GetRecentActivityAsync(
         int? officeId, CancellationToken cancellationToken = default)
     {
-        Task<IReadOnlyList<AuditLog>> auditTask = _auditRepo.GetAllAsync(cancellationToken);
-        Task<IReadOnlyList<User>>     userTask  = _userRepo.GetAllAsync(cancellationToken);
-
-        await Task.WhenAll(auditTask, userTask);
-
-        IReadOnlyList<AuditLog> audits = auditTask.Result;
-        IReadOnlyList<User>     users  = userTask.Result;
+        IReadOnlyList<AuditLog> audits = await _auditRepo.GetAllAsync(cancellationToken);
+        IReadOnlyList<User>     users  = await _userRepo.GetAllAsync(cancellationToken);
 
         Dictionary<Guid, User> userLookup = users.ToDictionary(u => u.Id);
 

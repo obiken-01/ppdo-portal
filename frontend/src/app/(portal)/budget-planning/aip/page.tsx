@@ -254,7 +254,7 @@ export default function AipListPage() {
           )}
           {r.status === "Final" && (
             <Link
-              href={`/budget-planning/wfp?aip=${r.id}`}
+              href={`/budget-planning/wfp?aipId=${r.id}`}
               className="text-blue-600 hover:underline"
             >
               WFP

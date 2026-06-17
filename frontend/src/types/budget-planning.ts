@@ -183,3 +183,84 @@ export interface RecentActivity {
   recordId: number;
   actorName: string;
 }
+
+// ── WFP ──────────────────────────────────────────────────────────────────────
+
+export type ExpenditureType = "PS" | "MOOE" | "CO";
+
+export interface WfpExpenditureLine {
+  id: number;
+  wfpActivityId: number;
+  expenditureType: ExpenditureType;
+  resourcesNeeded: string | null;
+  responsibleUnit: string | null;
+  successIndicator: string | null;
+  meansOfVerification: string | null;
+  accountId: number | null;
+  accountNumberSnapshot: string | null;
+  accountTitleSnapshot: string | null;
+  totalAppropriation: number;
+  applyReserve: boolean;
+  reserveAmount: number;
+  netAppropriation: number;
+  q1: number;
+  q2: number;
+  q3: number;
+  q4: number;
+  quarterlyTotal: number;
+  fundingSourceId: number | null;
+  fundingSourceSnapshot: string | null;
+  sortOrder: number;
+}
+
+export interface WfpActivity {
+  id: number;
+  wfpId: number;
+  aipActivityId: number;
+  lines: WfpExpenditureLine[];
+}
+
+export interface WfpRecord {
+  id: number;
+  aipRecordId: number;
+  officeId: number;
+  fiscalYear: number;
+  status: "Draft" | "Final";
+  createdById: string;
+  createdAt: string;
+  updatedAt: string | null;
+  finalizedAt: string | null;
+}
+
+export interface WfpRecordDetail extends WfpRecord {
+  activities: WfpActivity[];
+}
+
+export interface SaveWfpLine {
+  expenditureType: ExpenditureType;
+  resourcesNeeded: string | null;
+  responsibleUnit: string | null;
+  successIndicator: string | null;
+  meansOfVerification: string | null;
+  accountId: number | null;
+  totalAppropriation: number;
+  applyReserve: boolean;
+  q1: number;
+  q2: number;
+  q3: number;
+  q4: number;
+  fundingSourceId: number | null;
+  sortOrder: number;
+}
+
+export interface SaveWfpActivityRequest {
+  aipActivityId: number;
+  lines: SaveWfpLine[];
+}
+
+export interface SaveWfpRequest {
+  aipRecordId: number;
+  officeId: number;
+  fiscalYear: number;
+  activities: SaveWfpActivityRequest[];
+}

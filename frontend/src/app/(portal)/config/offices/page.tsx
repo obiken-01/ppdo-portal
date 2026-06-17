@@ -91,9 +91,10 @@ function StatusBadge({ active }: { active: boolean }) {
 interface FormState {
   officeCode: string;
   officeName: string;
+  officeRefCode: string;
 }
 
-const blankForm = (): FormState => ({ officeCode: "", officeName: "" });
+const blankForm = (): FormState => ({ officeCode: "", officeName: "", officeRefCode: "" });
 
 // ---------------------------------------------------------------------------
 // Page
@@ -184,7 +185,11 @@ export default function OfficeConfigPage() {
 
   function openEdit(office: OfficeResponse) {
     setEditTarget(office);
-    setForm({ officeCode: office.officeCode, officeName: office.officeName });
+    setForm({
+      officeCode: office.officeCode,
+      officeName: office.officeName,
+      officeRefCode: office.officeRefCode ?? "",
+    });
     setFormError(null);
     setCodeError(null);
     setShowForm(true);
@@ -229,6 +234,7 @@ export default function OfficeConfigPage() {
     const body: UpsertOfficeRequest = {
       officeCode: code,
       officeName: name,
+      officeRefCode: form.officeRefCode.trim() || null,
       // Modal does not edit status; preserve it on update, default active on create.
       isActive: editTarget ? editTarget.isActive : true,
     };
@@ -280,6 +286,7 @@ export default function OfficeConfigPage() {
       await updateOffice(office.id, {
         officeCode: office.officeCode,
         officeName: office.officeName,
+        officeRefCode: office.officeRefCode,
         isActive: true,
       });
       toast.success("Office reactivated", `${office.officeCode} is now active.`);
@@ -320,6 +327,13 @@ export default function OfficeConfigPage() {
       header: "Office Code",
       sortable: true,
       render: (o) => <span className="font-mono text-slate-800">{o.officeCode}</span>,
+    },
+    {
+      key: "officeRefCode",
+      header: "AIP Ref",
+      render: (o) => (
+        <span className="font-mono text-xs text-slate-500">{o.officeRefCode ?? "—"}</span>
+      ),
     },
     {
       key: "officeName",
@@ -518,6 +532,23 @@ export default function OfficeConfigPage() {
               />
             </div>
 
+            {/* AIP Ref Code Suffix */}
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">
+                AIP Ref Code Suffix <span className="font-normal text-slate-400">(optional)</span>
+              </label>
+              <input
+                value={form.officeRefCode}
+                onChange={(e) => setForm((f) => ({ ...f, officeRefCode: e.target.value }))}
+                placeholder="01-010"
+                className="w-full px-3 py-2 text-sm font-mono border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
+              />
+              <p className="mt-1 text-[11px] text-slate-400">
+                Last two segments of the AIP office ref code (e.g. <span className="font-mono">01-010</span> from{" "}
+                <span className="font-mono">8000-000-1-01-010</span>). Used to link this office to AIP entries in the WFP page.
+              </p>
+            </div>
+
             {formError && (
               <div className="bg-danger-100 border border-danger-500/30 px-4 py-3">
                 <p className="text-sm text-danger-500">{formError}</p>
@@ -552,7 +583,7 @@ export default function OfficeConfigPage() {
               Rows are matched by <span className="font-mono text-xs">office_code</span>: new codes are
               added and existing ones are updated. Nothing is deleted.
             </p>
-            <p className="text-xs text-slate-400">Expected columns: office_code, office_name, is_active.</p>
+            <p className="text-xs text-slate-400">Expected columns: office_code, office_name, is_active, office_ref_code (optional).</p>
           </div>
         </Modal>
       )}

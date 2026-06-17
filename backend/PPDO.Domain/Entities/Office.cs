@@ -16,6 +16,13 @@ public sealed class Office
     /// <summary>Full office name. Max 200 characters.</summary>
     public string OfficeName { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Last segment of the office-level AIP ref code (e.g. "013" from "3000-000-1-01-013").
+    /// Used to match this config office to the correct AIP office hierarchy row.
+    /// Nullable — populated manually via CSV download/upload.
+    /// </summary>
+    public string? OfficeRefCode { get; set; }
+
     /// <summary>Soft-delete flag. Inactive offices are hidden from pickers but kept for history.</summary>
     public bool IsActive { get; set; } = true;
 
