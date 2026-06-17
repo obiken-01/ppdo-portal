@@ -1,5 +1,9 @@
 "use client";
 
+export function generateStaticParams() {
+  return [{ id: "__placeholder__" }];
+}
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
