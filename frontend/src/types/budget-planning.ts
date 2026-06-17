@@ -264,3 +264,36 @@ export interface SaveWfpRequest {
   fiscalYear: number;
   activities: SaveWfpActivityRequest[];
 }
+
+// ── LDIP ──────────────────────────────────────────────────────────────────────
+
+export type LdipEntryMode = "New" | "Amendment" | "Supplemental";
+export type LdipStatus    = "Draft" | "Final" | "Archived";
+
+export interface LdipRecord {
+  id: number;
+  refCode: string;
+  title: string;
+  fiscalYearStart: number;
+  fiscalYearEnd: number;
+  entryMode: LdipEntryMode;
+  status: LdipStatus;
+  sourceId: number | null;
+  createdById: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateLdipRequest {
+  title: string;
+  fiscalYearStart: number;
+  fiscalYearEnd: number;
+  entryMode: LdipEntryMode;
+}
+
+export interface UpdateLdipRequest {
+  title: string;
+  fiscalYearStart: number;
+  fiscalYearEnd: number;
+  entryMode: LdipEntryMode;
+}
