@@ -1,4 +1,6 @@
 using ClosedXML.Excel;
+using PPDO.Application.Common;
+using PPDO.Application.DTOs.BudgetPlanning;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Enums;
 using PPDO.Domain.Interfaces;
@@ -343,6 +345,85 @@ public sealed class ExcelServiceTests
 
         string allText = string.Concat(ws.CellsUsed().Select(c => c.GetString()));
         Assert.Contains("Bond Paper A4", allText);
+    }
+
+    // ── GenerateWfpReport ─────────────────────────────────────────────────────
+
+    [Fact]
+    public void GenerateWfpReport_EmptyActivities_ReturnsValidXlsx()
+    {
+        byte[] result = _sut.GenerateWfpReport(EmptyWfpReportData());
+        Assert.NotEmpty(result);
+        using IXLWorkbook wb = new XLWorkbook(new MemoryStream(result));
+        Assert.Single(wb.Worksheets);
+    }
+
+    [Fact]
+    public void GenerateWfpReport_HasWfpReportSheet()
+    {
+        byte[] result = _sut.GenerateWfpReport(EmptyWfpReportData());
+        using IXLWorkbook wb = new XLWorkbook(new MemoryStream(result));
+        Assert.Contains(wb.Worksheets, ws => ws.Name == "WFP Report");
+    }
+
+    [Fact]
+    public void GenerateWfpReport_ContainsTitleAndFiscalYear()
+    {
+        byte[] result = _sut.GenerateWfpReport(EmptyWfpReportData());
+        using IXLWorkbook wb = new XLWorkbook(new MemoryStream(result));
+        string allText = string.Concat(wb.Worksheets.First().CellsUsed().Select(c => c.GetString()));
+        Assert.Contains("WORK AND FINANCIAL PLAN", allText);
+        Assert.Contains("2027", allText);
+    }
+
+    [Fact]
+    public void GenerateWfpReport_WithActivity_ContainsActivityNameAndAmount()
+    {
+        byte[] result = _sut.GenerateWfpReport(WfpReportDataWithActivity());
+        using IXLWorkbook wb = new XLWorkbook(new MemoryStream(result));
+        string allText = string.Concat(wb.Worksheets.First().CellsUsed().Select(c => c.GetString()));
+        Assert.Contains("Test Activity", allText);
+        Assert.Contains("TEST PROGRAM",  allText);
+    }
+
+    private static WfpExcelReportData EmptyWfpReportData()
+    {
+        WfpRecordDetailDto wfp = new(
+            1, 1, 1, 2027, "Draft", Guid.NewGuid(),
+            DateTime.UtcNow, DateTime.UtcNow, null, null, []);
+        AipRecordDetailDto aip = new(
+            1, 2027, "upload", null, Guid.NewGuid(),
+            DateTime.UtcNow, "Final", null, null, []);
+        return new WfpExcelReportData(wfp, aip, "Test Department", "TD");
+    }
+
+    private static WfpExcelReportData WfpReportDataWithActivity()
+    {
+        AipActivityDto aipAct = new(
+            99, 1, "ACT-01", "Test Activity",
+            null, null, null, null, null,
+            null, null,
+            100000m, null, null, 100000m,
+            null, null, null);
+        AipProjectDto  aipProj   = new(1, 1, "PROJ-01", "Test Project",  [aipAct]);
+        AipProgramDto  aipProg   = new(1, 1, "PROG-01", "Test Program",  [aipProj]);
+        AipOfficeDto   aipOffice = new(1, 1, "01-010",  "Test Office",   "GENERAL", [aipProg]);
+        AipRecordDetailDto aip   = new(1, 2027, "upload", null, Guid.NewGuid(),
+            DateTime.UtcNow, "Final", null, null, [aipOffice]);
+
+        WfpExpenditureLineDto line = new(
+            1, 1, "PS",
+            null, null, null, null,
+            null, "5-01-01", "Salaries",
+            100000m, false, 0m, 100000m,
+            25000m, 25000m, 25000m, 25000m, 100000m,
+            null, "GF", 0);
+        WfpActivityDto    wfpAct = new(1, 1, 99, [line]);
+        WfpRecordDetailDto wfp   = new(
+            1, 1, 1, 2027, "Draft", Guid.NewGuid(),
+            DateTime.UtcNow, DateTime.UtcNow, null, null, [wfpAct]);
+
+        return new WfpExcelReportData(wfp, aip, "Test Office", "TO");
     }
 
     // ── Fixture ───────────────────────────────────────────────────────────────

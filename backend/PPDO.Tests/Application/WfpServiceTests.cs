@@ -1,6 +1,7 @@
 using Moq;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
+using PPDO.Application.DTOs.Config;
 using PPDO.Application.Services;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Interfaces;
@@ -118,8 +119,20 @@ public sealed class WfpServiceTests
         CallerContext ctx = new();
         ctx.SetUserId(UserId);
 
+        Mock<IAipService>      aipSvc    = new();
+        Mock<IOfficeService>   officeSvc = new();
+        Mock<IWfpExcelService> excelSvc  = new();
+
+        aipSvc.Setup(s => s.GetByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ServiceResult<AipRecordDetailDto>.NotFound("AIP not found."));
+        officeSvc.Setup(s => s.GetByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ServiceResult<OfficeDto>.NotFound("Office not found."));
+        excelSvc.Setup(s => s.GenerateWfpReport(It.IsAny<WfpExcelReportData>()))
+            .Returns([1, 2, 3]);
+
         WfpService sut = new(wfpRepo.Object, actRepo.Object, lineRepo.Object,
-            accountRepo.Object, fsRepo.Object, audit.Object, ctx);
+            accountRepo.Object, fsRepo.Object, audit.Object, ctx,
+            aipSvc.Object, officeSvc.Object, excelSvc.Object);
 
         return (sut, wfpRepo, actRepo, lineRepo, audit);
     }
@@ -359,5 +372,77 @@ public sealed class WfpServiceTests
 
         Assert.Equal(2, count);
         wfpRepo.Verify(r => r.DeleteAsync(It.IsAny<WfpRecord>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+    }
+
+    // ── ExportReportAsync ─────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ExportReportAsync_UnknownId_ReturnsNotFound()
+    {
+        var (sut, _, _, _, _) = Build([], [], [], []);
+
+        ServiceResult<byte[]> result = await sut.ExportReportAsync(999, CancellationToken.None);
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Fact]
+    public async Task ExportReportAsync_AipNotFound_ReturnsNotFound()
+    {
+        // AIP service returns NotFound (default stub in Build()) → export propagates it
+        WfpRecord rec = WfpRec(1, PlanningStatus.Draft, aipId: 2, officeId: 3);
+        var (sut, _, _, _, _) = Build([rec], [], [], []);
+
+        ServiceResult<byte[]> result = await sut.ExportReportAsync(1, CancellationToken.None);
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Fact]
+    public async Task ExportReportAsync_KnownId_DelegatesAndReturnsBytes()
+    {
+        WfpRecord rec = WfpRec(42, PlanningStatus.Draft, aipId: 2, officeId: 3);
+
+        Mock<IRepository<WfpRecord>>          wfpRepo     = new();
+        Mock<IRepository<WfpActivity>>        actRepo     = new();
+        Mock<IRepository<WfpExpenditureLine>> lineRepo    = new();
+        Mock<IRepository<Account>>            accountRepo = new();
+        Mock<IRepository<FundingSource>>      fsRepo      = new();
+        Mock<IAuditService>                   audit       = new();
+
+        wfpRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([rec]);
+        actRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        lineRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        accountRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        fsRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+
+        CallerContext ctx = new(); ctx.SetUserId(UserId);
+
+        AipRecordDetailDto aipDetail = new(2, 2027, "upload", null, Guid.NewGuid(),
+            DateTime.UtcNow, "Final", null, null, []);
+
+        Mock<IAipService> aipSvc = new();
+        aipSvc.Setup(s => s.GetByIdAsync(2, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ServiceResult<AipRecordDetailDto>.Ok(aipDetail));
+
+        OfficeDto officeDto = new(3, "PPDO", "Provincial Planning and Development Office", null, true);
+        Mock<IOfficeService> officeSvc = new();
+        officeSvc.Setup(s => s.GetByIdAsync(3, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ServiceResult<OfficeDto>.Ok(officeDto));
+
+        byte[] expectedBytes = [10, 20, 30];
+        Mock<IWfpExcelService> excelSvc = new();
+        excelSvc.Setup(s => s.GenerateWfpReport(It.IsAny<WfpExcelReportData>()))
+            .Returns(expectedBytes);
+
+        WfpService sut = new(wfpRepo.Object, actRepo.Object, lineRepo.Object,
+            accountRepo.Object, fsRepo.Object, audit.Object, ctx,
+            aipSvc.Object, officeSvc.Object, excelSvc.Object);
+
+        ServiceResult<byte[]> result = await sut.ExportReportAsync(42, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(expectedBytes, result.Value!);
+        excelSvc.Verify(s => s.GenerateWfpReport(It.IsAny<WfpExcelReportData>()), Times.Once);
     }
 }

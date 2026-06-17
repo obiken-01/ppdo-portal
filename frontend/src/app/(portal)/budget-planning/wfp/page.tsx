@@ -26,6 +26,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import api from "@/lib/api";
 import { getAipById, listAip } from "@/lib/aip";
 import {
+  downloadWfpReport,
   finalizeWfp,
   getWfpById,
   listWfp,
@@ -590,6 +591,7 @@ function WfpPageInner() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [confirm, setConfirm] = useState<ConfirmDialogProps | null>(null);
 
   const restoreConfirmed = useRef(false);
@@ -880,6 +882,20 @@ function WfpPageInner() {
     });
   }
 
+  // ── Export Excel ──────────────────────────────────────────────────────────
+
+  async function handleExport() {
+    if (!wfp) return;
+    setExporting(true);
+    try {
+      await downloadWfpReport(wfp.id, `WFP-FY${wfp.fiscalYear}.xlsx`);
+    } catch {
+      toast.error("Failed", "Could not export WFP report.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   // ── Derived flags ─────────────────────────────────────────────────────────
 
   const isFinal = wfp?.status === "Final";
@@ -916,6 +932,18 @@ function WfpPageInner() {
           </div>
 
           <div className="flex items-center gap-2">
+            {wfp && (
+              <button
+                onClick={handleExport}
+                disabled={exporting}
+                className="px-4 py-2 text-sm border border-slate-300 text-slate-600 bg-white hover:bg-slate-50 transition-colors font-medium flex items-center gap-2"
+              >
+                {exporting && (
+                  <span className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+                )}
+                Export Excel
+              </button>
+            )}
             {me?.canManageConfig && isFinal && wfp && (
               <button
                 onClick={handleUnlock}
