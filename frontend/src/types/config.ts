@@ -66,6 +66,8 @@ export interface OfficeResponse {
   id: number;
   officeCode: string;
   officeName: string;
+  /** Last segment of the AIP office ref code (e.g. "013"). Used to match AIP → config office in WFP. */
+  officeRefCode: string | null;
   isActive: boolean;
 }
 
@@ -73,6 +75,7 @@ export interface OfficeResponse {
 export interface UpsertOfficeRequest {
   officeCode: string;
   officeName: string;
+  officeRefCode?: string | null;
   isActive: boolean;
 }
 

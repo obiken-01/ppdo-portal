@@ -34,7 +34,7 @@
 
 import { useEffect, useRef } from "react";
 
-export type ModalSize = "sm" | "md" | "lg" | "xl";
+export type ModalSize = "sm" | "md" | "lg" | "xl" | "2xl";
 
 export interface ModalProps {
   title: string;
@@ -50,6 +50,7 @@ const SIZE_CLASS: Record<ModalSize, string> = {
   md: "max-w-lg",
   lg: "max-w-2xl",
   xl: "max-w-5xl",
+  "2xl": "max-w-7xl",
 };
 
 export default function Modal({ title, children, footer, size = "md", onClose }: ModalProps) {

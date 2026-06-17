@@ -24,6 +24,11 @@ public sealed class OfficeConfiguration : IEntityTypeConfiguration<Office>
             .IsRequired()
             .HasMaxLength(200);
 
+        builder.Property(o => o.OfficeRefCode)
+            .HasColumnName("office_ref_code")
+            .HasMaxLength(50)
+            .IsRequired(false);
+
         builder.Property(o => o.IsActive)
             .HasColumnName("is_active")
             .IsRequired()

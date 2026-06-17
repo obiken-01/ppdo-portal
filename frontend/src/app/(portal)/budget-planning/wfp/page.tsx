@@ -3,7 +3,11 @@
 /**
  * WFP (Work and Financial Plan) page — RAL-68.
  *
- * Shows the full AIP activity hierarchy for a selected AIP + office pair.
+ * Shows the full AIP activity hierarchy for a selected AIP + config office pair.
+ * The config office is matched to the AIP office hierarchy using `officeRefCode`
+ * (the last segment of the AIP office ref code, e.g. "013" from "3000-000-1-01-013").
+ * Set `officeRefCode` in Config → Offices for each office before using this page.
+ *
  * Users enter PS/MOOE/CO expenditure lines per activity via a popup modal.
  * Draft lines persist to localStorage (keyed by aipId + officeId).
  *
@@ -47,22 +51,35 @@ import type {
 } from "@/types";
 
 // ---------------------------------------------------------------------------
-// Format helpers
+// Helpers
 // ---------------------------------------------------------------------------
+
+function officeRefSuffix(refCode: string): string {
+  const parts = refCode.split("-");
+  return parts.length >= 2 ? parts.slice(-2).join("-") : refCode;
+}
+
+function resolveDefaultFundingSourceId(
+  snapshot: string | null,
+  fundingSources: FundingSourceResponse[]
+): number | null {
+  if (!snapshot?.trim()) return null;
+  if (/[,/]/.test(snapshot)) return null;
+  const q = snapshot.trim().toLowerCase();
+  return (
+    fundingSources.find((f) => f.code.toLowerCase() === q)?.id ??
+    fundingSources.find((f) => f.name.toLowerCase() === q)?.id ??
+    null
+  );
+}
 
 function fmtCurrency(n: number): string {
   if (n === 0) return "—";
-  return n.toLocaleString("en-PH", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  return n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function fmtNum(n: number): string {
-  return n.toLocaleString("en-PH", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  return n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function computeNet(line: SaveWfpLine): number {
@@ -100,6 +117,90 @@ const CF_FIELDS: [keyof SaveWfpLine, string][] = [
   ["meansOfVerification", "Means of Verification"],
 ];
 
+// Account search combobox — replaces the plain <select> for object of expenditure
+function AccountCombobox({
+  accounts,
+  value,
+  onChange,
+}: {
+  accounts: AccountResponse[];
+  value: number | null;
+  onChange: (id: number | null) => void;
+}) {
+  const selected = accounts.find((a) => a.id === value) ?? null;
+  const [query, setQuery] = useState(
+    selected ? `${selected.accountTitle} (${selected.accountNumber})` : ""
+  );
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const found = accounts.find((a) => a.id === value) ?? null;
+    setQuery(found ? `${found.accountTitle} (${found.accountNumber})` : "");
+  }, [value, accounts]);
+
+  useEffect(() => {
+    function onMouseDown(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        const found = accounts.find((a) => a.id === value) ?? null;
+        setQuery(found ? `${found.accountTitle} (${found.accountNumber})` : "");
+      }
+    }
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
+  }, [value, accounts]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return accounts.slice(0, 30);
+    return accounts
+      .filter(
+        (a) =>
+          a.accountTitle.toLowerCase().includes(q) ||
+          a.accountNumber.toLowerCase().includes(q)
+      )
+      .slice(0, 30);
+  }, [query, accounts]);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <input
+        type="text"
+        value={query}
+        onFocus={() => setOpen(true)}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setOpen(true);
+          if (!e.target.value) onChange(null);
+        }}
+        placeholder="Search account…"
+        className="w-full border border-slate-200 text-xs px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-green-500"
+      />
+      {open && filtered.length > 0 && (
+        <div className="absolute z-50 top-full left-0 w-80 bg-white border border-slate-200 shadow-lg max-h-52 overflow-y-auto">
+          {filtered.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                onChange(a.id);
+                setQuery(`${a.accountTitle} (${a.accountNumber})`);
+                setOpen(false);
+              }}
+              className="w-full text-left px-3 py-1.5 text-xs hover:bg-green-50 hover:text-green-800 border-b border-slate-50 last:border-0"
+            >
+              <span className="font-mono text-slate-400 mr-2">{a.accountNumber}</span>
+              {a.accountTitle}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ExpenditurePopup({
   activity,
   accounts,
@@ -111,7 +212,6 @@ function ExpenditurePopup({
 }: PopupProps) {
   const [activeTab, setActiveTab] = useState<ExpenditureType>("PS");
   const [localLines, setLocalLines] = useState<SaveWfpLine[]>(() => [...initialLines]);
-  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const [validationError, setValidationError] = useState<string | null>(null);
 
   const tabAccounts = useMemo(
@@ -144,7 +244,7 @@ function ExpenditurePopup({
         q2: 0,
         q3: 0,
         q4: 0,
-        fundingSourceId: fundingSources[0]?.id ?? null,
+        fundingSourceId: resolveDefaultFundingSourceId(activity.fundingSourceSnapshot, fundingSources),
         sortOrder,
       },
     ]);
@@ -152,26 +252,12 @@ function ExpenditurePopup({
 
   function removeLine(idx: number) {
     setLocalLines((prev) => prev.filter((_, i) => i !== idx));
-    setExpandedRows((prev) => {
-      const s = new Set(prev);
-      s.delete(idx);
-      return s;
-    });
   }
 
   function updateLine(idx: number, updates: Partial<SaveWfpLine>) {
     setLocalLines((prev) =>
       prev.map((l, i) => (i === idx ? { ...l, ...updates } : l))
     );
-  }
-
-  function toggleExpand(idx: number) {
-    setExpandedRows((prev) => {
-      const s = new Set(prev);
-      if (s.has(idx)) s.delete(idx);
-      else s.add(idx);
-      return s;
-    });
   }
 
   function handleSave() {
@@ -193,12 +279,12 @@ function ExpenditurePopup({
     onSave(localLines.map((l, i) => ({ ...l, sortOrder: i })));
   }
 
-  const colCount = readonly ? 12 : 13;
+  const colCount = readonly ? 11 : 12;
 
   return (
     <Modal
       title={`Expenditure Lines — ${activity.name}`}
-      size="xl"
+      size="2xl"
       onClose={onClose}
       footer={
         readonly ? (
@@ -233,9 +319,8 @@ function ExpenditurePopup({
         <table className="w-full text-xs border-collapse min-w-[900px]">
           <thead>
             <tr className="bg-slate-50 text-slate-600 text-left border-b border-slate-200">
-              <th className="px-2 py-1.5 w-6" />
               <th className="px-2 py-1.5 whitespace-nowrap">ACCT CODE</th>
-              <th className="px-2 py-1.5 whitespace-nowrap w-48">OBJECT OF EXPENDITURE</th>
+              <th className="px-2 py-1.5 whitespace-nowrap w-56">OBJECT OF EXPENDITURE</th>
               <th className="px-2 py-1.5 text-right whitespace-nowrap">TOTAL APPROP</th>
               <th className="px-2 py-1.5 text-center whitespace-nowrap">RESERVE</th>
               <th className="px-2 py-1.5 text-right whitespace-nowrap">NET</th>
@@ -261,22 +346,10 @@ function ExpenditurePopup({
                 const quarterly = line.q1 + line.q2 + line.q3 + line.q4;
                 const isOver = net > 0 && quarterly > net + 0.001;
                 const selectedAccount = accounts.find((a) => a.id === line.accountId);
-                const isExpanded = expandedRows.has(idx);
 
                 return (
                   <Fragment key={idx}>
                     <tr className={isOver ? "bg-red-50" : "hover:bg-slate-50"}>
-                      {/* Expand toggle (C–F detail fields) */}
-                      <td className="px-2 py-1.5 text-center">
-                        <button
-                          onClick={() => toggleExpand(idx)}
-                          className="text-slate-400 hover:text-slate-600 text-xs"
-                          title="Toggle detail fields (Resources Needed, Responsible Unit, etc.)"
-                        >
-                          {isExpanded ? "▴" : "▾"}
-                        </button>
-                      </td>
-
                       {/* ACCT CODE */}
                       <td className="px-2 py-1.5 font-mono text-slate-600 whitespace-nowrap">
                         {selectedAccount?.accountNumber ?? "—"}
@@ -291,22 +364,11 @@ function ExpenditurePopup({
                               : "—"}
                           </span>
                         ) : (
-                          <select
-                            value={line.accountId ?? ""}
-                            onChange={(e) =>
-                              updateLine(idx, {
-                                accountId: e.target.value ? Number(e.target.value) : null,
-                              })
-                            }
-                            className="w-full border border-slate-200 text-xs px-1 py-0.5 bg-white focus:outline-none focus:ring-1 focus:ring-green-500"
-                          >
-                            <option value="">— select account —</option>
-                            {tabAccounts.map((a) => (
-                              <option key={a.id} value={a.id}>
-                                {a.accountTitle} ({a.accountNumber})
-                              </option>
-                            ))}
-                          </select>
+                          <AccountCombobox
+                            accounts={tabAccounts}
+                            value={line.accountId}
+                            onChange={(id) => updateLine(idx, { accountId: id })}
+                          />
                         )}
                       </td>
 
@@ -340,7 +402,7 @@ function ExpenditurePopup({
                         />
                       </td>
 
-                      {/* NET (auto-computed) */}
+                      {/* NET */}
                       <td className="px-2 py-1.5 text-right font-medium text-slate-700 whitespace-nowrap">
                         {fmtNum(net)}
                       </td>
@@ -365,7 +427,7 @@ function ExpenditurePopup({
                         </td>
                       ))}
 
-                      {/* LINE TOTAL (auto-computed) */}
+                      {/* LINE TOTAL */}
                       <td
                         className={`px-2 py-1.5 text-right font-medium whitespace-nowrap ${
                           isOver ? "text-red-600" : "text-slate-700"
@@ -378,8 +440,7 @@ function ExpenditurePopup({
                       <td className="px-2 py-1.5">
                         {readonly ? (
                           <span>
-                            {fundingSources.find((f) => f.id === line.fundingSourceId)?.code ??
-                              "—"}
+                            {fundingSources.find((f) => f.id === line.fundingSourceId)?.name ?? "—"}
                           </span>
                         ) : (
                           <select
@@ -394,7 +455,7 @@ function ExpenditurePopup({
                             <option value="">— source —</option>
                             {fundingSources.map((f) => (
                               <option key={f.id} value={f.id}>
-                                {f.code}
+                                {f.name}
                               </option>
                             ))}
                           </select>
@@ -415,38 +476,35 @@ function ExpenditurePopup({
                       )}
                     </tr>
 
-                    {/* Expanded C–F detail row */}
-                    {isExpanded && (
-                      <tr className="bg-slate-50 border-b border-slate-100">
-                        <td />
-                        <td colSpan={colCount - 1} className="px-3 pb-2 pt-1">
-                          <div className="grid grid-cols-2 gap-x-6 gap-y-2">
-                            {CF_FIELDS.map(([key, label]) => (
-                              <div key={key} className="flex flex-col gap-0.5">
-                                <span className="text-xs font-medium text-slate-500">
-                                  {label}
+                    {/* C–F detail fields — always visible */}
+                    <tr className="bg-slate-50 border-b border-slate-100">
+                      <td colSpan={colCount} className="px-3 pb-3 pt-1.5">
+                        <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                          {CF_FIELDS.map(([key, label]) => (
+                            <div key={key} className="flex flex-col gap-0.5">
+                              <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">
+                                {label}
+                              </span>
+                              {readonly ? (
+                                <span className="text-xs text-slate-700">
+                                  {(line[key] as string | null) ?? "—"}
                                 </span>
-                                {readonly ? (
-                                  <span className="text-xs text-slate-700">
-                                    {(line[key] as string | null) ?? "—"}
-                                  </span>
-                                ) : (
-                                  <input
-                                    type="text"
-                                    value={(line[key] as string | null) ?? ""}
-                                    onChange={(e) =>
-                                      updateLine(idx, { [key]: e.target.value || null })
-                                    }
-                                    placeholder={label}
-                                    className="border border-slate-200 text-xs px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-green-500"
-                                  />
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
+                              ) : (
+                                <input
+                                  type="text"
+                                  value={(line[key] as string | null) ?? ""}
+                                  onChange={(e) =>
+                                    updateLine(idx, { [key]: e.target.value || null })
+                                  }
+                                  placeholder={label}
+                                  className="border border-slate-200 text-xs px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-green-500 bg-white"
+                                />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
                   </Fragment>
                 );
               })
@@ -517,6 +575,15 @@ function WfpPageInner() {
   const [draftLines, setDraftLines] = useState<Record<number, SaveWfpLine[]>>({});
   const [popupActivityId, setPopupActivityId] = useState<number | null>(null);
   const [hasUnsaved, setHasUnsaved] = useState(false);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
+  function toggleCollapse(key: string) {
+    setCollapsed((prev) => {
+      const s = new Set(prev);
+      if (s.has(key)) s.delete(key); else s.add(key);
+      return s;
+    });
+  }
 
   // ── UI flags ─────────────────────────────────────────────────────────────
 
@@ -525,10 +592,9 @@ function WfpPageInner() {
   const [finalizing, setFinalizing] = useState(false);
   const [confirm, setConfirm] = useState<ConfirmDialogProps | null>(null);
 
-  // Track whether the user clicked "Restore" in the draft restore dialog
   const restoreConfirmed = useRef(false);
 
-  // ── Load selectors once on auth ──────────────────────────────────────────
+  // ── Effect A: Load lists once on auth ────────────────────────────────────
 
   useEffect(() => {
     if (!me) return;
@@ -550,11 +616,11 @@ function WfpPageInner() {
 
         if (urlAipId) setSelectedAipId(Number(urlAipId));
 
-        // Office users are locked to their own office
-        if (me.officeId != null) {
-          setSelectedOfficeId(me.officeId);
-        } else if (urlOfficeId) {
+        // Pre-fill office from URL ?officeId= or me.officeId (both are config office PKs)
+        if (urlOfficeId) {
           setSelectedOfficeId(Number(urlOfficeId));
+        } else if (me.officeId != null) {
+          setSelectedOfficeId(me.officeId);
         }
       })
       .catch(() => {
@@ -563,10 +629,16 @@ function WfpPageInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me]);
 
-  // ── Load AIP detail + WFP when selection changes ─────────────────────────
+  // ── Effect B: Load AIP detail + WFP when both selectors are set ──────────
 
   useEffect(() => {
-    if (selectedAipId == null || selectedOfficeId == null) return;
+    if (selectedAipId == null || selectedOfficeId == null) {
+      setAipDetail(null);
+      setWfp(null);
+      setDraftLines({});
+      setHasUnsaved(false);
+      return;
+    }
 
     const aipId = selectedAipId;
     const officeId = selectedOfficeId;
@@ -596,7 +668,7 @@ function WfpPageInner() {
 
           const initial: Record<number, SaveWfpLine[]> = {};
           for (const act of fullDetail.activities) {
-            initial[act.aipActivityId] = act.expenditureLines.map((l) => ({
+            initial[act.aipActivityId] = act.lines.map((l) => ({
               expenditureType: l.expenditureType,
               resourcesNeeded: l.resourcesNeeded,
               responsibleUnit: l.responsibleUnit,
@@ -616,7 +688,8 @@ function WfpPageInner() {
           setDraftLines(initial);
 
           // Check localStorage for a newer local draft
-          const stored = localStorage.getItem(`wfp_draft_${aipId}_${officeId}`);
+          const lsKey = `wfp_draft_${aipId}_${officeId}`;
+          const stored = localStorage.getItem(lsKey);
           if (stored) {
             try {
               const parsed = JSON.parse(stored) as {
@@ -632,9 +705,9 @@ function WfpPageInner() {
                 restoreConfirmed.current = false;
                 setConfirm({
                   title: "Restore Unsaved Draft",
-                  message: `A local draft was saved at ${new Date(parsed.savedAt).toLocaleString(
-                    "en-PH"
-                  )}. Restore it?`,
+                  message: `A local draft was saved at ${new Date(
+                    parsed.savedAt
+                  ).toLocaleString("en-PH")}. Restore it?`,
                   confirmLabel: "Restore",
                   cancelLabel: "Discard",
                   variant: "primary",
@@ -645,7 +718,7 @@ function WfpPageInner() {
                   },
                   onClose: () => {
                     if (!restoreConfirmed.current) {
-                      localStorage.removeItem(`wfp_draft_${aipId}_${officeId}`);
+                      localStorage.removeItem(lsKey);
                     }
                     restoreConfirmed.current = false;
                     setConfirm(null);
@@ -672,6 +745,17 @@ function WfpPageInner() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedAipId, selectedOfficeId]);
+
+  // ── Derived: match config office to AIP office via officeRefCode ──────────
+
+  const selectedConfigOffice = officeList.find((o) => o.id === selectedOfficeId) ?? null;
+
+  const aipOffices = useMemo(() => {
+    if (!aipDetail || !selectedConfigOffice?.officeRefCode) return [];
+    return aipDetail.offices.filter(
+      (o) => officeRefSuffix(o.refCode) === selectedConfigOffice.officeRefCode
+    );
+  }, [aipDetail, selectedConfigOffice]);
 
   // ── Popup activity lookup ─────────────────────────────────────────────────
 
@@ -723,7 +807,7 @@ function WfpPageInner() {
 
     const activities = Object.entries(draftLines)
       .filter(([, lines]) => lines.length > 0)
-      .map(([id, lines]) => ({ aipActivityId: Number(id), expenditureLines: lines }));
+      .map(([id, lines]) => ({ aipActivityId: Number(id), lines }));
 
     setSaving(true);
     try {
@@ -796,23 +880,12 @@ function WfpPageInner() {
     });
   }
 
-  // ── Derived state ─────────────────────────────────────────────────────────
-
-  const selectedConfigOffice = officeList.find((o) => o.id === selectedOfficeId) ?? null;
-
-  const aipOffice = useMemo(() => {
-    if (!aipDetail || !selectedConfigOffice) return null;
-    return (
-      aipDetail.offices.find(
-        (o) =>
-          o.refCode === selectedConfigOffice.officeCode ||
-          o.name === selectedConfigOffice.officeName
-      ) ?? null
-    );
-  }, [aipDetail, selectedConfigOffice]);
+  // ── Derived flags ─────────────────────────────────────────────────────────
 
   const isFinal = wfp?.status === "Final";
   const isOfficeUser = me != null && me.officeId != null;
+  const canSave =
+    aipDetail != null && selectedAipId != null && selectedOfficeId != null && !isFinal && !saving;
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -823,7 +896,6 @@ function WfpPageInner() {
         {/* Header */}
         <div className="flex items-start justify-between mb-5">
           <div>
-            <p className="text-xs text-slate-400 mb-1">Planning / WFP</p>
             <h1 className="text-xl font-bold text-slate-800">Work and Financial Plan</h1>
             {aipDetail && selectedConfigOffice && (
               <p className="text-sm text-slate-500 mt-0.5">
@@ -869,11 +941,14 @@ function WfpPageInner() {
 
         {/* Selector row */}
         <div className="flex flex-wrap items-center gap-3 mb-5">
+          {/* AIP selector */}
           <div className="flex items-center gap-2">
             <label className="text-sm text-slate-600 font-medium whitespace-nowrap">AIP</label>
             <select
               value={selectedAipId ?? ""}
-              onChange={(e) => setSelectedAipId(e.target.value ? Number(e.target.value) : null)}
+              onChange={(e) => {
+                setSelectedAipId(e.target.value ? Number(e.target.value) : null);
+              }}
               disabled={isFinal}
               className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600 disabled:opacity-60"
             >
@@ -886,22 +961,21 @@ function WfpPageInner() {
             </select>
           </div>
 
+          {/* Office selector (config offices) */}
           <div className="flex items-center gap-2">
-            <label className="text-sm text-slate-600 font-medium whitespace-nowrap">
-              Office
-            </label>
+            <label className="text-sm text-slate-600 font-medium whitespace-nowrap">Office</label>
             <select
               value={selectedOfficeId ?? ""}
-              onChange={(e) =>
-                setSelectedOfficeId(e.target.value ? Number(e.target.value) : null)
-              }
+              onChange={(e) => {
+                setSelectedOfficeId(e.target.value ? Number(e.target.value) : null);
+              }}
               disabled={isFinal || isOfficeUser}
               className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600 disabled:opacity-60"
             >
               <option value="">— select office —</option>
               {officeList.map((o) => (
                 <option key={o.id} value={o.id}>
-                  {o.officeName}
+                  {o.officeCode} — {o.officeName}
                 </option>
               ))}
             </select>
@@ -918,10 +992,12 @@ function WfpPageInner() {
           <p className="text-slate-400 text-sm py-8">
             Select an AIP and an office to view the WFP grid.
           </p>
-        ) : !aipOffice ? (
+        ) : aipOffices.length === 0 ? (
           <p className="text-slate-400 text-sm py-8">
             {aipDetail
-              ? "This office has no activities in the selected AIP."
+              ? selectedConfigOffice?.officeRefCode
+                ? "This office has no activities in the selected AIP."
+                : "AIP ref code suffix not configured for this office. Set it in Config → Offices, then try again."
               : "Loading AIP details…"}
           </p>
         ) : (
@@ -931,6 +1007,7 @@ function WfpPageInner() {
                 <tr className="bg-slate-50 text-xs text-slate-600 text-left border-b border-slate-200">
                   <th className="px-3 py-2 whitespace-nowrap w-36">AIP REF CODE</th>
                   <th className="px-3 py-2">PROGRAM / PROJECT / ACTIVITY</th>
+                  <th className="px-3 py-2 whitespace-nowrap">FUND SOURCE</th>
                   <th className="px-3 py-2 text-right whitespace-nowrap">PS</th>
                   <th className="px-3 py-2 text-right whitespace-nowrap">MOOE</th>
                   <th className="px-3 py-2 text-right whitespace-nowrap">CO</th>
@@ -943,126 +1020,167 @@ function WfpPageInner() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-
-                {/* Sector header */}
-                <tr className="bg-slate-200">
-                  <td
-                    colSpan={11}
-                    className="px-3 py-1.5 text-xs font-bold text-slate-700 uppercase tracking-wide"
-                  >
-                    {aipOffice.sector}
-                  </td>
-                </tr>
-
-                {/* Office row */}
-                <tr className="bg-slate-100">
-                  <td className="px-3 py-2 font-mono text-xs text-slate-600 whitespace-nowrap">
-                    {aipOffice.refCode}
-                  </td>
-                  <td className="px-3 py-2 font-semibold text-slate-800">{aipOffice.name}</td>
-                  {Array.from({ length: 9 }, (_, i) => (
-                    <td key={i} className="px-3 py-2 text-right text-slate-400 text-xs">
-                      —
-                    </td>
-                  ))}
-                </tr>
-
-                {/* Programs → Projects → Activities */}
-                {aipOffice.programs.map((program) => (
-                  <Fragment key={program.id}>
-                    <tr className="bg-blue-50">
-                      <td className="px-3 py-2 font-mono text-xs text-slate-600 whitespace-nowrap">
-                        {program.refCode}
-                      </td>
-                      <td className="px-3 py-2 pl-6 font-semibold text-slate-700">
-                        {program.name}
-                      </td>
-                      {Array.from({ length: 9 }, (_, i) => (
-                        <td key={i} className="px-3 py-2 text-right text-slate-400 text-xs">
-                          —
+                {aipOffices.map((aipOffice) => {
+                  const sKey = `sector-${aipOffice.id}`;
+                  const oKey = `office-${aipOffice.id}`;
+                  return (
+                    <Fragment key={aipOffice.id}>
+                      {/* Sector header */}
+                      <tr className="bg-slate-200">
+                        <td
+                          colSpan={12}
+                          className="px-3 py-1.5 text-xs font-bold text-slate-700 uppercase tracking-wide"
+                        >
+                          <button
+                            onClick={() => toggleCollapse(sKey)}
+                            className="mr-2 text-slate-500 hover:text-slate-700 leading-none"
+                          >
+                            {collapsed.has(sKey) ? "▶" : "▼"}
+                          </button>
+                          {aipOffice.sector}
                         </td>
-                      ))}
-                    </tr>
+                      </tr>
 
-                    {program.projects.map((project) => (
-                      <Fragment key={project.id}>
-                        <tr className="bg-green-50">
-                          <td className="px-3 py-2 font-mono text-xs text-slate-600 whitespace-nowrap">
-                            {project.refCode}
-                          </td>
-                          <td className="px-3 py-2 pl-10 font-medium text-slate-700">
-                            {project.name}
-                          </td>
-                          {Array.from({ length: 9 }, (_, i) => (
-                            <td key={i} className="px-3 py-2 text-right text-slate-400 text-xs">
-                              —
+                      {!collapsed.has(sKey) && (
+                        <>
+                          {/* Office row */}
+                          <tr className="bg-slate-100">
+                            <td className="px-3 py-2 font-mono text-xs text-slate-600 whitespace-nowrap">
+                              {aipOffice.refCode}
                             </td>
-                          ))}
-                        </tr>
+                            <td className="px-3 py-2 font-semibold text-slate-800">
+                              <button
+                                onClick={() => toggleCollapse(oKey)}
+                                className="mr-1.5 text-slate-400 hover:text-slate-600 leading-none"
+                              >
+                                {collapsed.has(oKey) ? "▶" : "▼"}
+                              </button>
+                              {aipOffice.name}
+                            </td>
+                            <td className="px-3 py-2" />
+                            {Array.from({ length: 9 }, (_, i) => (
+                              <td key={i} className="px-3 py-2 text-right text-slate-400 text-xs">—</td>
+                            ))}
+                          </tr>
 
-                        {project.activities.map((activity) => {
-                          const ps = sumNet(activity.id, "PS");
-                          const mooe = sumNet(activity.id, "MOOE");
-                          const co = sumNet(activity.id, "CO");
-                          const total = ps + mooe + co;
-                          const hasLines = (draftLines[activity.id]?.length ?? 0) > 0;
+                          {/* Programs → Projects → Activities */}
+                          {!collapsed.has(oKey) && aipOffice.programs.map((program) => {
+                            const pKey = `program-${program.id}`;
+                            return (
+                              <Fragment key={program.id}>
+                                <tr className="bg-blue-50">
+                                  <td className="px-3 py-2 font-mono text-xs text-slate-600 whitespace-nowrap">
+                                    {program.refCode}
+                                  </td>
+                                  <td className="px-3 py-2 pl-6 font-semibold text-slate-700">
+                                    <button
+                                      onClick={() => toggleCollapse(pKey)}
+                                      className="mr-1.5 text-slate-400 hover:text-slate-600 leading-none"
+                                    >
+                                      {collapsed.has(pKey) ? "▶" : "▼"}
+                                    </button>
+                                    {program.name}
+                                  </td>
+                                  <td className="px-3 py-2" />
+                                  {Array.from({ length: 9 }, (_, i) => (
+                                    <td key={i} className="px-3 py-2 text-right text-slate-400 text-xs">—</td>
+                                  ))}
+                                </tr>
 
-                          return (
-                            <tr key={activity.id} className="bg-white hover:bg-slate-50">
-                              <td className="px-3 py-2 font-mono text-xs text-slate-500 leading-tight whitespace-nowrap">
-                                {activity.refCode}
-                              </td>
-                              <td className="px-3 py-2 pl-14 text-slate-700">
-                                {activity.name}
-                              </td>
-                              <td className="px-3 py-2 text-right tabular-nums">
-                                {fmtCurrency(ps)}
-                              </td>
-                              <td className="px-3 py-2 text-right tabular-nums">
-                                {fmtCurrency(mooe)}
-                              </td>
-                              <td className="px-3 py-2 text-right tabular-nums">
-                                {fmtCurrency(co)}
-                              </td>
-                              <td className="px-3 py-2 text-right tabular-nums font-medium">
-                                {fmtCurrency(total)}
-                              </td>
-                              <td className="px-3 py-2 text-right tabular-nums">
-                                {fmtCurrency(sumQ(activity.id, "q1"))}
-                              </td>
-                              <td className="px-3 py-2 text-right tabular-nums">
-                                {fmtCurrency(sumQ(activity.id, "q2"))}
-                              </td>
-                              <td className="px-3 py-2 text-right tabular-nums">
-                                {fmtCurrency(sumQ(activity.id, "q3"))}
-                              </td>
-                              <td className="px-3 py-2 text-right tabular-nums">
-                                {fmtCurrency(sumQ(activity.id, "q4"))}
-                              </td>
-                              <td className="px-3 py-2 text-center">
-                                {!isFinal ? (
-                                  <button
-                                    onClick={() => setPopupActivityId(activity.id)}
-                                    className="text-green-700 text-sm hover:underline"
-                                  >
-                                    Edit
-                                  </button>
-                                ) : hasLines ? (
-                                  <button
-                                    onClick={() => setPopupActivityId(activity.id)}
-                                    className="text-slate-500 text-sm hover:underline"
-                                  >
-                                    View
-                                  </button>
-                                ) : null}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </Fragment>
-                    ))}
-                  </Fragment>
-                ))}
+                                {!collapsed.has(pKey) && program.projects.map((project) => {
+                                  const prKey = `project-${project.id}`;
+                                  return (
+                                    <Fragment key={project.id}>
+                                      <tr className="bg-green-50">
+                                        <td className="px-3 py-2 font-mono text-xs text-slate-600 whitespace-nowrap">
+                                          {project.refCode}
+                                        </td>
+                                        <td className="px-3 py-2 pl-10 font-medium text-slate-700">
+                                          <button
+                                            onClick={() => toggleCollapse(prKey)}
+                                            className="mr-1.5 text-slate-400 hover:text-slate-600 leading-none"
+                                          >
+                                            {collapsed.has(prKey) ? "▶" : "▼"}
+                                          </button>
+                                          {project.name}
+                                        </td>
+                                        <td className="px-3 py-2" />
+                                        {Array.from({ length: 9 }, (_, i) => (
+                                          <td key={i} className="px-3 py-2 text-right text-slate-400 text-xs">—</td>
+                                        ))}
+                                      </tr>
+
+                                      {!collapsed.has(prKey) && project.activities.map((activity) => {
+                                        const ps = sumNet(activity.id, "PS");
+                                        const mooe = sumNet(activity.id, "MOOE");
+                                        const co = sumNet(activity.id, "CO");
+                                        const total = ps + mooe + co;
+                                        const hasLines = (draftLines[activity.id]?.length ?? 0) > 0;
+
+                                        return (
+                                          <tr key={activity.id} className="bg-white hover:bg-slate-50">
+                                            <td className="px-3 py-2 font-mono text-xs text-slate-500 leading-tight whitespace-nowrap">
+                                              {activity.refCode}
+                                            </td>
+                                            <td className="px-3 py-2 pl-14 text-slate-700">{activity.name}</td>
+                                            <td className="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">
+                                              {activity.fundingSourceSnapshot ?? "—"}
+                                            </td>
+                                            <td className="px-3 py-2 text-right tabular-nums">
+                                              {fmtCurrency(ps)}
+                                            </td>
+                                            <td className="px-3 py-2 text-right tabular-nums">
+                                              {fmtCurrency(mooe)}
+                                            </td>
+                                            <td className="px-3 py-2 text-right tabular-nums">
+                                              {fmtCurrency(co)}
+                                            </td>
+                                            <td className="px-3 py-2 text-right tabular-nums font-medium">
+                                              {fmtCurrency(total)}
+                                            </td>
+                                            <td className="px-3 py-2 text-right tabular-nums">
+                                              {fmtCurrency(sumQ(activity.id, "q1"))}
+                                            </td>
+                                            <td className="px-3 py-2 text-right tabular-nums">
+                                              {fmtCurrency(sumQ(activity.id, "q2"))}
+                                            </td>
+                                            <td className="px-3 py-2 text-right tabular-nums">
+                                              {fmtCurrency(sumQ(activity.id, "q3"))}
+                                            </td>
+                                            <td className="px-3 py-2 text-right tabular-nums">
+                                              {fmtCurrency(sumQ(activity.id, "q4"))}
+                                            </td>
+                                            <td className="px-3 py-2 text-center">
+                                              {!isFinal ? (
+                                                <button
+                                                  onClick={() => setPopupActivityId(activity.id)}
+                                                  className="text-green-700 text-sm hover:underline"
+                                                >
+                                                  Edit
+                                                </button>
+                                              ) : hasLines ? (
+                                                <button
+                                                  onClick={() => setPopupActivityId(activity.id)}
+                                                  className="text-slate-500 text-sm hover:underline"
+                                                >
+                                                  View
+                                                </button>
+                                              ) : null}
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </Fragment>
+                                  );
+                                })}
+                              </Fragment>
+                            );
+                          })}
+                        </>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1076,13 +1194,7 @@ function WfpPageInner() {
         </span>
         <button
           onClick={handleSave}
-          disabled={
-            !aipDetail ||
-            selectedAipId == null ||
-            selectedOfficeId == null ||
-            isFinal ||
-            saving
-          }
+          disabled={!canSave}
           className="px-5 py-2 bg-green-600 text-white text-sm font-medium hover:bg-green-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
         >
           {saving && (
@@ -1105,7 +1217,7 @@ function WfpPageInner() {
         />
       )}
 
-      {/* Confirm dialogs (finalize / unlock / restore draft) */}
+      {/* Confirm dialogs */}
       {confirm && <ConfirmDialog {...confirm} />}
     </div>
   );

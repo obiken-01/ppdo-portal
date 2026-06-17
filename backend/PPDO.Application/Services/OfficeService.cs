@@ -14,7 +14,7 @@ namespace PPDO.Application.Services;
 /// </summary>
 public sealed class OfficeService : IOfficeService
 {
-    private static readonly string[] CsvHeaders = { "office_code", "office_name", "is_active" };
+    private static readonly string[] CsvHeaders = { "office_code", "office_name", "is_active", "office_ref_code" };
 
     private readonly IRepository<Office> _repo;
     private readonly ILogger<OfficeService> _logger;
@@ -78,11 +78,12 @@ public sealed class OfficeService : IOfficeService
         DateTime now = DateTime.UtcNow;
         Office entity = new()
         {
-            OfficeCode = code,
-            OfficeName = dto.OfficeName.Trim(),
-            IsActive   = dto.IsActive,
-            CreatedAt  = now,
-            UpdatedAt  = now,
+            OfficeCode    = code,
+            OfficeName    = dto.OfficeName.Trim(),
+            OfficeRefCode = NullIfBlank(dto.OfficeRefCode),
+            IsActive      = dto.IsActive,
+            CreatedAt     = now,
+            UpdatedAt     = now,
         };
 
         await _repo.AddAsync(entity, cancellationToken);
@@ -91,7 +92,7 @@ public sealed class OfficeService : IOfficeService
         _logger.LogInformation("Office created. OfficeCode: {OfficeCode}", entity.OfficeCode);
         await _audit.LogAsync("offices", entity.Id, AuditAction.Create,
             oldValues: null,
-            newValues: new { entity.OfficeCode, entity.OfficeName, entity.IsActive },
+            newValues: new { entity.OfficeCode, entity.OfficeName, entity.OfficeRefCode, entity.IsActive },
             cancellationToken);
         return ServiceResult<OfficeDto>.Ok(MapToDto(entity));
     }
@@ -113,18 +114,19 @@ public sealed class OfficeService : IOfficeService
         if (all.Any(o => o.Id != id && o.OfficeCode.Equals(code, StringComparison.OrdinalIgnoreCase)))
             return ServiceResult<OfficeDto>.Conflict($"Office code '{code}' already exists.");
 
-        var oldSnapshot = new { entity.OfficeCode, entity.OfficeName, entity.IsActive };
+        var oldSnapshot = new { entity.OfficeCode, entity.OfficeName, entity.OfficeRefCode, entity.IsActive };
 
-        entity.OfficeCode = code;
-        entity.OfficeName = dto.OfficeName.Trim();
-        entity.IsActive   = dto.IsActive;
-        entity.UpdatedAt  = DateTime.UtcNow;
+        entity.OfficeCode    = code;
+        entity.OfficeName    = dto.OfficeName.Trim();
+        entity.OfficeRefCode = NullIfBlank(dto.OfficeRefCode);
+        entity.IsActive      = dto.IsActive;
+        entity.UpdatedAt     = DateTime.UtcNow;
 
         await _repo.UpdateAsync(entity, cancellationToken);
         await _repo.SaveChangesAsync(cancellationToken);
         await _audit.LogAsync("offices", entity.Id, AuditAction.Update,
             oldValues: oldSnapshot,
-            newValues: new { entity.OfficeCode, entity.OfficeName, entity.IsActive },
+            newValues: new { entity.OfficeCode, entity.OfficeName, entity.OfficeRefCode, entity.IsActive },
             cancellationToken);
         return ServiceResult<OfficeDto>.Ok(MapToDto(entity));
     }
@@ -156,7 +158,7 @@ public sealed class OfficeService : IOfficeService
         IReadOnlyList<Office> all = await _repo.GetAllAsync(cancellationToken);
         IEnumerable<string?[]> rows = all
             .OrderBy(o => o.OfficeName, StringComparer.OrdinalIgnoreCase)
-            .Select(o => new string?[] { o.OfficeCode, o.OfficeName, o.IsActive ? "true" : "false" });
+            .Select(o => new string?[] { o.OfficeCode, o.OfficeName, o.IsActive ? "true" : "false", o.OfficeRefCode ?? "" });
         return Csv.Write(CsvHeaders, rows);
     }
 
@@ -180,9 +182,10 @@ public sealed class OfficeService : IOfficeService
         for (int i = start; i < parsed.Count; i++)
         {
             string[] f = parsed[i];
-            string code   = Field(f, 0).Trim();
-            string name   = Field(f, 1);
-            bool   active = Csv.ParseBool(Field(f, 2), fallback: true);
+            string  code    = Field(f, 0).Trim();
+            string  name    = Field(f, 1);
+            bool    active  = Csv.ParseBool(Field(f, 2), fallback: true);
+            string? refCode = NullIfBlank(Field(f, 3));
 
             if (code.Length == 0 || name.Trim().Length == 0)
             {
@@ -193,12 +196,15 @@ public sealed class OfficeService : IOfficeService
 
             if (byCode.TryGetValue(code, out Office? existing))
             {
-                bool changed = existing.OfficeName != name.Trim() || existing.IsActive != active;
+                bool changed = existing.OfficeName    != name.Trim()
+                            || existing.IsActive      != active
+                            || existing.OfficeRefCode != refCode;
                 if (!changed) { skipped++; continue; }
 
-                existing.OfficeName = name.Trim();
-                existing.IsActive   = active;
-                existing.UpdatedAt  = now;
+                existing.OfficeName    = name.Trim();
+                existing.OfficeRefCode = refCode;
+                existing.IsActive      = active;
+                existing.UpdatedAt     = now;
                 await _repo.UpdateAsync(existing, cancellationToken);
                 updated++;
             }
@@ -206,11 +212,12 @@ public sealed class OfficeService : IOfficeService
             {
                 Office entity = new()
                 {
-                    OfficeCode = code,
-                    OfficeName = name.Trim(),
-                    IsActive   = active,
-                    CreatedAt  = now,
-                    UpdatedAt  = now,
+                    OfficeCode    = code,
+                    OfficeName    = name.Trim(),
+                    OfficeRefCode = refCode,
+                    IsActive      = active,
+                    CreatedAt     = now,
+                    UpdatedAt     = now,
                 };
                 await _repo.AddAsync(entity, cancellationToken);
                 byCode[code] = entity;
@@ -224,7 +231,11 @@ public sealed class OfficeService : IOfficeService
         return ServiceResult<CsvImportResult>.Ok(new CsvImportResult(created, updated, skipped, errors));
     }
 
-    private static OfficeDto MapToDto(Office o) => new(o.Id, o.OfficeCode, o.OfficeName, o.IsActive);
+    private static OfficeDto MapToDto(Office o) =>
+        new(o.Id, o.OfficeCode, o.OfficeName, o.OfficeRefCode, o.IsActive);
 
     private static string Field(string[] row, int index) => index < row.Length ? row[index] : string.Empty;
+
+    private static string? NullIfBlank(string? s) =>
+        string.IsNullOrWhiteSpace(s) ? null : s.Trim();
 }

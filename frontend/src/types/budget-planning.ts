@@ -215,9 +215,9 @@ export interface WfpExpenditureLine {
 
 export interface WfpActivity {
   id: number;
-  wfpRecordId: number;
+  wfpId: number;
   aipActivityId: number;
-  expenditureLines: WfpExpenditureLine[];
+  lines: WfpExpenditureLine[];
 }
 
 export interface WfpRecord {
@@ -255,7 +255,7 @@ export interface SaveWfpLine {
 
 export interface SaveWfpActivityRequest {
   aipActivityId: number;
-  expenditureLines: SaveWfpLine[];
+  lines: SaveWfpLine[];
 }
 
 export interface SaveWfpRequest {
