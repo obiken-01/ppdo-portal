@@ -216,6 +216,22 @@ public sealed class WfpServiceTests
         Assert.Equal("GF", captured.FundingSourceSnapshot);
     }
 
+    [Fact]
+    public async Task Save_PopulatesFundingSourceNameSnapshot()
+    {
+        FundingSource fs = Fs(7, "GF");
+        WfpExpenditureLine? captured = null;
+        var (sut, _, _, lineRepo, _) = Build([], [], [], [fs]);
+        lineRepo.Setup(r => r.AddAsync(It.IsAny<WfpExpenditureLine>(), It.IsAny<CancellationToken>()))
+            .Callback<WfpExpenditureLine, CancellationToken>((e, _) => captured = e)
+            .Returns(Task.CompletedTask);
+
+        await sut.SaveAsync(SimpleDto(2, 3, 10, fsId: 7), UserId, CancellationToken.None);
+
+        Assert.NotNull(captured);
+        Assert.Equal("Fund GF", captured!.FundingSourceNameSnapshot);
+    }
+
     // ── Save — computed fields ────────────────────────────────────────────────
 
     [Fact]

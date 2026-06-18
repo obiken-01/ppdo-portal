@@ -209,9 +209,10 @@ public sealed class WfpService : IWfpService
                     Q3                     = lineDto.Q3,
                     Q4                     = lineDto.Q4,
                     QuarterlyTotal         = quarterly,
-                    FundingSourceId        = lineDto.FundingSourceId,
-                    FundingSourceSnapshot  = fs?.Code,
-                    SortOrder              = lineDto.SortOrder,
+                    FundingSourceId            = lineDto.FundingSourceId,
+                    FundingSourceSnapshot      = fs?.Code,
+                    FundingSourceNameSnapshot  = fs?.Name,
+                    SortOrder                  = lineDto.SortOrder,
                 };
                 await _lineRepo.AddAsync(line, ct);
             }
@@ -286,8 +287,11 @@ public sealed class WfpService : IWfpService
         string officeName = officeResult.IsSuccess ? officeResult.Value!.OfficeName : "PPDO";
         string officeCode = officeResult.IsSuccess ? officeResult.Value!.OfficeCode : "PPDO";
 
+        IReadOnlyList<FundingSource> allFs = await _fsRepo.GetAllAsync(ct);
+        Dictionary<int, string?> fsColors = allFs.ToDictionary(f => f.Id, f => f.Color);
+
         byte[] bytes = _excel.GenerateWfpReport(
-            new WfpExcelReportData(wfp, aipResult.Value!, officeName, officeCode));
+            new WfpExcelReportData(wfp, aipResult.Value!, officeName, officeCode, fsColors));
         return ServiceResult<byte[]>.Ok(bytes);
     }
 
@@ -314,5 +318,5 @@ public sealed class WfpService : IWfpService
         l.SuccessIndicator, l.MeansOfVerification, l.AccountId, l.AccountNumberSnapshot,
         l.AccountTitleSnapshot, l.TotalAppropriation, l.ApplyReserve, l.ReserveAmount,
         l.NetAppropriation, l.Q1, l.Q2, l.Q3, l.Q4, l.QuarterlyTotal,
-        l.FundingSourceId, l.FundingSourceSnapshot, l.SortOrder);
+        l.FundingSourceId, l.FundingSourceSnapshot, l.FundingSourceNameSnapshot, l.SortOrder);
 }

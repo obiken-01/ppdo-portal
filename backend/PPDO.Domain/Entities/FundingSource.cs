@@ -19,6 +19,9 @@ public sealed class FundingSource
     /// <summary>Optional free-text description.</summary>
     public string? Description { get; set; }
 
+    /// <summary>Optional hex colour (#RRGGBB) for WFP report total groups. Null = default green.</summary>
+    public string? Color { get; set; }
+
     /// <summary>Soft-delete flag. Inactive sources are hidden from pickers but kept for history.</summary>
     public bool IsActive { get; set; } = true;
 

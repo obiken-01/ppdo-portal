@@ -6,6 +6,7 @@ public sealed record FundingSourceDto(
     string  Code,
     string  Name,
     string? Description,
+    string? Color,
     bool    IsActive);
 
 /// <summary>Create/update body for a funding source. Code is the unique key.</summary>
@@ -13,4 +14,5 @@ public sealed record UpsertFundingSourceDto(
     string  Code,
     string  Name,
     string? Description,
+    string? Color = null,
     bool    IsActive = true);

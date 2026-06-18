@@ -984,7 +984,7 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
         XLColor clrProject   = XLColor.FromHtml("#D5E8D4");
         XLColor clrActivity  = XLColor.FromHtml("#EBF5FB");
         XLColor clrAltLine   = XLColor.FromHtml("#F9F9F9");
-        XLColor clrProgTotal = XLColor.FromHtml("#D5E8D4");
+        XLColor clrProgTotal = XLColor.FromHtml("#64ec5b");
         XLColor clrGrandTot  = XLColor.FromHtml("#1A5276");
         XLColor clrWhite     = XLColor.White;
         XLColor clrDarkText  = XLColor.FromHtml("#1C2833");
@@ -1007,7 +1007,7 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
         ws.Style.Font.SetFontSize(8);
 
         // ── Column widths ─────────────────────────────────────────────────────
-        int[] widths = { 15, 38, 20, 16, 20, 20, 13, 20, 13, 11, 13, 10, 10, 10, 10, 12, 10 };
+        int[] widths = { 15, 30, 20, 16, 20, 20, 13, 20, 13, 11, 13, 10, 10, 10, 10, 12, 20 };
         for (int c = 0; c < widths.Length; c++)
             ws.Column(c + 1).Width = widths[c];
 
@@ -1155,8 +1155,6 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
             {
                 if (lastProgramRef != null)
                 {
-                    row = WriteProgramSubtotal(ws, row, lastProgramName!, clrProgTotal, clrDarkText,
-                        progTotal, progReserve, progNet, progQ1, progQ2, progQ3, progQ4, progQTot);
                     (progTotal, progReserve, progNet, progQ1, progQ2, progQ3, progQ4, progQTot) =
                         (0, 0, 0, 0, 0, 0, 0, 0);
                 }
@@ -1181,8 +1179,6 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
             {
                 if (lastProgramRef != null)
                 {
-                    row = WriteProgramSubtotal(ws, row, lastProgramName!, clrProgTotal, clrDarkText,
-                        progTotal, progReserve, progNet, progQ1, progQ2, progQ3, progQ4, progQTot);
                     (progTotal, progReserve, progNet, progQ1, progQ2, progQ3, progQ4, progQTot) =
                         (0, 0, 0, 0, 0, 0, 0, 0);
                 }
@@ -1254,51 +1250,178 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
             row++;
             lineIsOdd = true;
 
-            // ── Expenditure line rows ──────────────────────────────────────
-            foreach (WfpExpenditureLineDto line in g.WfpAct.Lines.OrderBy(l => l.SortOrder))
+            // ── Expenditure line rows — grouped PS → MOOE → CO ────────────
+            var allLines   = g.WfpAct.Lines.OrderBy(l => l.SortOrder).ToList();
+            var typeOrder  = new[] { "PS", "MOOE", "CO" };
+            XLColor clrTypeHdr = XLColor.FromHtml("#FFF9C4");
+            XLColor clrSubTot  = XLColor.FromHtml("#FFD700");
+
+            foreach (string expType in typeOrder)
             {
-                XLColor bg = lineIsOdd ? clrWhite : clrAltLine;
+                var typeLines = allLines.Where(l => l.ExpenditureType == expType).ToList();
+                if (typeLines.Count == 0) continue;
 
-                ws.Cell(row, 2).Value  = $"  ▸ {line.ExpenditureType}";
-                ws.Cell(row, 3).Value  = line.ResourcesNeeded;
-                ws.Cell(row, 4).Value  = line.ResponsibleUnit;
-                ws.Cell(row, 5).Value  = line.SuccessIndicator;
-                ws.Cell(row, 6).Value  = line.MeansOfVerification;
-                ws.Cell(row, 7).Value  = line.AccountNumberSnapshot;
-                ws.Cell(row, 8).Value  = line.AccountTitleSnapshot;
-                ws.Cell(row, 17).Value = line.FundingSourceSnapshot;
+                // Type header row
+                ws.Cell(row, 8).Value = expType;
+                ws.Row(row).Height = 12;
+                WfpStyle(ws, row, 1, 17, s => s.Fill.SetBackgroundColor(clrTypeHdr));
+                ws.Cell(row, 8).Style.Font.SetBold(true).Font.SetFontSize(8)
+                    .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Left);
+                row++;
 
-                WfpSetNumericCells(ws, row,
-                    line.TotalAppropriation ?? 0m,
-                    line.ApplyReserve ? (line.ReserveAmount ?? 0m) : 0m,
-                    line.NetAppropriation ?? 0m,
-                    line.Q1 ?? 0m, line.Q2 ?? 0m, line.Q3 ?? 0m, line.Q4 ?? 0m,
-                    line.QuarterlyTotal ?? 0m);
+                // Individual lines — col B blank
+                decimal subTotal = 0m, subReserve = 0m, subNet = 0m;
+                decimal subQ1 = 0m, subQ2 = 0m, subQ3 = 0m, subQ4 = 0m, subQTot = 0m;
+                foreach (WfpExpenditureLineDto line in typeLines)
+                {
+                    XLColor bg = lineIsOdd ? clrWhite : clrAltLine;
 
-                ws.Row(row).Height = 14;
-                WfpStyle(ws, row, 1, 17, s => s.Fill.SetBackgroundColor(bg));
-                ws.Cell(row, 2).Style.Font.SetItalic(false).Font.SetFontColor(XLColor.FromHtml("#5D6D7E"));
-                ws.Cell(row, 7).Style.Font.SetFontName("Courier New").Font.SetFontSize(7)
-                    .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
-                WfpApplyTextWrap(ws, row, [3, 4, 5, 6]);
+                    ws.Cell(row, 3).Value  = line.ResourcesNeeded;
+                    ws.Cell(row, 4).Value  = line.ResponsibleUnit;
+                    ws.Cell(row, 5).Value  = line.SuccessIndicator;
+                    ws.Cell(row, 6).Value  = line.MeansOfVerification;
+                    ws.Cell(row, 7).Value  = line.AccountNumberSnapshot;
+                    ws.Cell(row, 8).Value  = line.AccountTitleSnapshot;
+                    ws.Cell(row, 17).Value = line.FundingSourceNameSnapshot ?? line.FundingSourceSnapshot;
 
-                lineIsOdd = !lineIsOdd;
+                    decimal lineTotal   = line.TotalAppropriation ?? 0m;
+                    decimal lineReserve = line.ApplyReserve ? (line.ReserveAmount ?? 0m) : 0m;
+                    decimal lineNet     = line.NetAppropriation ?? 0m;
+                    decimal lineQ1      = line.Q1 ?? 0m;
+                    decimal lineQ2      = line.Q2 ?? 0m;
+                    decimal lineQ3      = line.Q3 ?? 0m;
+                    decimal lineQ4      = line.Q4 ?? 0m;
+                    decimal lineQTot    = line.QuarterlyTotal ?? 0m;
+
+                    subTotal   += lineTotal;   subReserve += lineReserve; subNet  += lineNet;
+                    subQ1      += lineQ1;      subQ2      += lineQ2;      subQ3   += lineQ3;
+                    subQ4      += lineQ4;      subQTot    += lineQTot;
+
+                    WfpSetNumericCells(ws, row, lineTotal, lineReserve, lineNet,
+                        lineQ1, lineQ2, lineQ3, lineQ4, lineQTot);
+
+                    ws.Row(row).Height = 14;
+                    WfpStyle(ws, row, 1, 17, s => s.Fill.SetBackgroundColor(bg));
+                    ws.Cell(row, 2).Style.Font.SetItalic(false).Font.SetFontColor(XLColor.FromHtml("#5D6D7E"));
+                    ws.Cell(row, 7).Style.Font.SetFontName("Courier New").Font.SetFontSize(7)
+                        .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
+                    WfpApplyTextWrap(ws, row, [3, 4, 5, 6]);
+
+                    lineIsOdd = !lineIsOdd;
+                    row++;
+                }
+
+                // SUB-TOTAL row
+                ws.Cell(row, 8).Value = "SUB-TOTAL";
+                WfpSetNumericCells(ws, row, subTotal, subReserve, subNet,
+                    subQ1, subQ2, subQ3, subQ4, subQTot);
+                ws.Row(row).Height = 13;
+                WfpStyle(ws, row, 1, 17, s => s
+                    .Font.SetBold(true).Font.SetFontSize(8)
+                    .Fill.SetBackgroundColor(clrSubTot));
                 row++;
             }
         }
 
-        // Close last program subtotal
-        if (lastProgramRef != null)
-        {
-            row = WriteProgramSubtotal(ws, row, lastProgramName!, clrProgTotal, clrDarkText,
-                progTotal, progReserve, progNet, progQ1, progQ2, progQ3, progQ4, progQTot);
-        }
+        // (programme subtotal removed — totals appear in fund-source grouped blocks below)
 
-        // Grand total row
+        // ── Fund-source grouped total blocks ─────────────────────────────────
         if (groups.Count > 0)
         {
-            ws.Cell(row, 1).Value = "GRAND TOTAL";
-            WfpMerge(ws, row, 1, 8);
+            // Collect all lines from all activities
+            var allWfpLines = data.Wfp.Activities
+                .SelectMany(a => a.Lines)
+                .ToList();
+
+            // For each line resolve its "group color key": look up the fund source
+            // display name (or code for old records) in the colors map.
+            // null color → no-color group; hex string → that color's group.
+            string? GetFsColor(WfpExpenditureLineDto l)
+            {
+                if (l.FundingSourceId == null) return null;
+                return data.FundingSourceColors.TryGetValue(l.FundingSourceId.Value, out string? c) ? c : null;
+            }
+
+            // Build ordered list of groups: no-color first, then each distinct hex color
+            // in the order first encountered scanning activities top-to-bottom.
+            var colorGroupOrder = new List<string?>();   // null = no-color group
+            var seenColors      = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            colorGroupOrder.Add(null);                   // no-color group always first
+            foreach (WfpExpenditureLineDto l in allWfpLines)
+            {
+                string? c = GetFsColor(l);
+                if (c != null && seenColors.Add(c))
+                    colorGroupOrder.Add(c);
+            }
+
+            foreach (string? groupColor in colorGroupOrder)
+            {
+                var groupLines = allWfpLines
+                    .Where(l => string.Equals(GetFsColor(l), groupColor,
+                                    StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                if (groupLines.Count == 0) continue;
+
+                XLColor bg = groupColor != null
+                    ? XLColor.FromHtml(groupColor)
+                    : clrProgTotal;   // default green for no-color group
+
+                // Blank separator row
+                ws.Row(row).Height = 6;
+                row++;
+
+                // TOTAL - PS / MOOE / CO rows (skip types with zero sum)
+                foreach (string expType in new[] { "PS", "MOOE", "CO" })
+                {
+                    var typeLines = groupLines.Where(l => l.ExpenditureType == expType).ToList();
+                    decimal tTotal   = typeLines.Sum(l => l.TotalAppropriation ?? 0m);
+                    decimal tReserve = typeLines.Sum(l => l.ReserveAmount      ?? 0m);
+                    decimal tNet     = typeLines.Sum(l => l.NetAppropriation   ?? 0m);
+                    decimal tQ1      = typeLines.Sum(l => l.Q1 ?? 0m);
+                    decimal tQ2      = typeLines.Sum(l => l.Q2 ?? 0m);
+                    decimal tQ3      = typeLines.Sum(l => l.Q3 ?? 0m);
+                    decimal tQ4      = typeLines.Sum(l => l.Q4 ?? 0m);
+                    decimal tQTot    = typeLines.Sum(l => l.QuarterlyTotal ?? 0m);
+                    if (tTotal == 0m && tQ1 == 0m && tQ2 == 0m && tQ3 == 0m && tQ4 == 0m) continue;
+
+                    ws.Cell(row, 6).Value = $"TOTAL - {expType}";
+                    WfpSetNumericCells(ws, row, tTotal, tReserve, tNet, tQ1, tQ2, tQ3, tQ4, tQTot);
+                    ws.Row(row).Height = 13;
+                    WfpStyle(ws, row, 1, 17, s => s
+                        .Font.SetBold(true).Font.SetFontSize(8)
+                        .Fill.SetBackgroundColor(bg)
+                        .Alignment.SetVertical(XLAlignmentVerticalValues.Center));
+                    ws.Cell(row, 6).Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Left);
+                    row++;
+                }
+
+                // GRAND row for this fund-source group
+                decimal gTotal   = groupLines.Sum(l => l.TotalAppropriation ?? 0m);
+                decimal gReserve = groupLines.Sum(l => l.ReserveAmount      ?? 0m);
+                decimal gNet     = groupLines.Sum(l => l.NetAppropriation   ?? 0m);
+                decimal gQ1      = groupLines.Sum(l => l.Q1 ?? 0m);
+                decimal gQ2      = groupLines.Sum(l => l.Q2 ?? 0m);
+                decimal gQ3      = groupLines.Sum(l => l.Q3 ?? 0m);
+                decimal gQ4      = groupLines.Sum(l => l.Q4 ?? 0m);
+                decimal gQTot    = groupLines.Sum(l => l.QuarterlyTotal ?? 0m);
+
+                ws.Cell(row, 6).Value = "GRAND";
+                WfpSetNumericCells(ws, row, gTotal, gReserve, gNet, gQ1, gQ2, gQ3, gQ4, gQTot);
+                ws.Row(row).Height = 14;
+                WfpStyle(ws, row, 1, 17, s => s
+                    .Font.SetBold(true).Font.SetFontSize(9)
+                    .Fill.SetBackgroundColor(bg)
+                    .Alignment.SetVertical(XLAlignmentVerticalValues.Center));
+                ws.Cell(row, 6).Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Left);
+                row++;
+            }
+
+            // Blank separator before GRAND TOTAL
+            ws.Row(row).Height = 6;
+            row++;
+
+            // Final GRAND TOTAL
+            ws.Cell(row, 6).Value = "GRAND TOTAL";
             WfpSetNumericCells(ws, row, grandTotal, grandReserve, grandNet,
                 grandQ1, grandQ2, grandQ3, grandQ4, grandQTot);
             ws.Row(row).Height = 16;
@@ -1306,8 +1429,7 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
                 .Font.SetBold(true).Font.SetFontSize(9).Font.SetFontColor(clrWhite)
                 .Fill.SetBackgroundColor(clrGrandTot)
                 .Alignment.SetVertical(XLAlignmentVerticalValues.Center));
-            ws.Cell(row, 1).Style
-                .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
+            ws.Cell(row, 6).Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Left);
             row++;
         }
 
@@ -1380,17 +1502,15 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
         decimal total, decimal reserve, decimal net,
         decimal q1, decimal q2, decimal q3, decimal q4, decimal qTot)
     {
-        ws.Cell(row, 1).Value = "PROGRAMME TOTAL";
-        ws.Cell(row, 2).Value = programName.ToUpper();
-        ws.Range(row, 1, row, 8).Merge();
+        ws.Cell(row, 6).Value = "PROGRAMME TOTAL";
         WfpSetNumericCells(ws, row, total, reserve, net, q1, q2, q3, q4, qTot);
         ws.Row(row).Height = 14;
         ws.Range(row, 1, row, 17).Style
             .Font.SetBold(true).Font.SetFontSize(8).Font.SetFontColor(fg)
             .Fill.SetBackgroundColor(bg)
             .Alignment.SetVertical(XLAlignmentVerticalValues.Center);
-        ws.Cell(row, 1).Style
-            .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center)
+        ws.Cell(row, 6).Style
+            .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Left)
             .Alignment.SetVertical(XLAlignmentVerticalValues.Center);
         return row + 1;
     }

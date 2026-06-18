@@ -37,11 +37,13 @@ import { useEffect, useRef } from "react";
 export type ModalSize = "sm" | "md" | "lg" | "xl" | "2xl";
 
 export interface ModalProps {
-  title: string;
+  title: React.ReactNode;
   children: React.ReactNode;
   /** Footer buttons; caller supplies them. Omit for no footer. */
   footer?: React.ReactNode;
   size?: ModalSize;
+  /** Lock the panel to a fixed 90vh height instead of auto-sizing up to 90vh. */
+  fixedHeight?: boolean;
   onClose: () => void;
 }
 
@@ -53,7 +55,7 @@ const SIZE_CLASS: Record<ModalSize, string> = {
   "2xl": "max-w-7xl",
 };
 
-export default function Modal({ title, children, footer, size = "md", onClose }: ModalProps) {
+export default function Modal({ title, children, footer, size = "md", fixedHeight, onClose }: ModalProps) {
   const backdropRef = useRef<HTMLDivElement>(null);
 
   // Close on Escape
@@ -76,9 +78,9 @@ export default function Modal({ title, children, footer, size = "md", onClose }:
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4"
       aria-modal="true"
       role="dialog"
-      aria-label={title}
+      aria-label={typeof title === "string" ? title : undefined}
     >
-      <div className={`w-full ${SIZE_CLASS[size]} bg-white shadow-xl border border-slate-200 flex flex-col max-h-[90vh]`}>
+      <div className={`w-full ${SIZE_CLASS[size]} bg-white shadow-xl border border-slate-200 flex flex-col ${fixedHeight ? "h-[90vh]" : "max-h-[90vh]"}`}>
         {/* Top accent bar — flat green */}
         <div className="h-1 w-full bg-green-600 shrink-0" />
 

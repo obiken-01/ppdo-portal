@@ -26,6 +26,10 @@ public sealed class FundingSourceConfiguration : IEntityTypeConfiguration<Fundin
         builder.Property(f => f.Description)
             .HasColumnName("description");  // nvarchar(max), nullable
 
+        builder.Property(f => f.Color)
+            .HasColumnName("color")
+            .HasMaxLength(7);
+
         builder.Property(f => f.IsActive)
             .HasColumnName("is_active")
             .IsRequired()

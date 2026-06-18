@@ -394,7 +394,8 @@ public sealed class ExcelServiceTests
         AipRecordDetailDto aip = new(
             1, 2027, "upload", null, Guid.NewGuid(),
             DateTime.UtcNow, "Final", null, null, []);
-        return new WfpExcelReportData(wfp, aip, "Test Department", "TD");
+        return new WfpExcelReportData(wfp, aip, "Test Department", "TD",
+            new Dictionary<int, string?>());
     }
 
     private static WfpExcelReportData WfpReportDataWithActivity()
@@ -417,13 +418,14 @@ public sealed class ExcelServiceTests
             null, "5-01-01", "Salaries",
             100000m, false, 0m, 100000m,
             25000m, 25000m, 25000m, 25000m, 100000m,
-            null, "GF", 0);
+            null, "GF", "General Fund", 0);
         WfpActivityDto    wfpAct = new(1, 1, 99, [line]);
         WfpRecordDetailDto wfp   = new(
             1, 1, 1, 2027, "Draft", Guid.NewGuid(),
             DateTime.UtcNow, DateTime.UtcNow, null, null, [wfpAct]);
 
-        return new WfpExcelReportData(wfp, aip, "Test Office", "TO");
+        return new WfpExcelReportData(wfp, aip, "Test Office", "TO",
+            new Dictionary<int, string?>());
     }
 
     // ── Fixture ───────────────────────────────────────────────────────────────

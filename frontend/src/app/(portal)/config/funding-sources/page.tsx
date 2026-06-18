@@ -94,9 +94,17 @@ interface FormState {
   code: string;
   name: string;
   description: string;
+  color: string;
+  noColor: boolean;
 }
 
-const blankForm = (): FormState => ({ code: "", name: "", description: "" });
+const blankForm = (): FormState => ({
+  code: "",
+  name: "",
+  description: "",
+  color: "#D5E8D4",
+  noColor: true,
+});
 
 // ---------------------------------------------------------------------------
 // Page
@@ -187,7 +195,13 @@ export default function FundingSourceConfigPage() {
 
   function openEdit(source: FundingSourceResponse) {
     setEditTarget(source);
-    setForm({ code: source.code, name: source.name, description: source.description ?? "" });
+    setForm({
+      code: source.code,
+      name: source.name,
+      description: source.description ?? "",
+      color: source.color ?? "#D5E8D4",
+      noColor: source.color == null,
+    });
     setFormError(null);
     setCodeError(null);
     setShowForm(true);
@@ -233,6 +247,7 @@ export default function FundingSourceConfigPage() {
       code,
       name,
       description: form.description.trim() || null,
+      color: form.noColor ? null : form.color,
       // Modal does not edit status; preserve it on update, default active on create.
       isActive: editTarget ? editTarget.isActive : true,
     };
@@ -285,6 +300,7 @@ export default function FundingSourceConfigPage() {
         code: source.code,
         name: source.name,
         description: source.description,
+        color: source.color,
         isActive: true,
       });
       toast.success("Funding source reactivated", `${source.code} is now active.`);
@@ -330,7 +346,20 @@ export default function FundingSourceConfigPage() {
       key: "name",
       header: "Name",
       sortable: true,
-      render: (s) => <span className="font-medium text-slate-800">{s.name}</span>,
+      render: (s) => (
+        <div className="flex items-center gap-2">
+          {s.color ? (
+            <span
+              className="w-3 h-3 rounded-full shrink-0 border border-slate-300"
+              style={{ backgroundColor: s.color }}
+              title={s.color}
+            />
+          ) : (
+            <span className="w-3 h-3 rounded-full shrink-0 border border-slate-200 bg-slate-100" title="No color" />
+          )}
+          <span className="font-medium text-slate-800">{s.name}</span>
+        </div>
+      ),
     },
     {
       key: "description",
@@ -545,6 +574,34 @@ export default function FundingSourceConfigPage() {
               />
             </div>
 
+            {/* Color */}
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">
+                Color <span className="text-slate-400 font-normal">(for WFP report total groups)</span>
+              </label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="color"
+                  value={form.color}
+                  onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))}
+                  disabled={form.noColor}
+                  className="w-10 h-9 p-0.5 border border-slate-200 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                />
+                {!form.noColor && (
+                  <span className="font-mono text-xs text-slate-500">{form.color}</span>
+                )}
+                <label className="flex items-center gap-1.5 text-sm text-slate-600 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={form.noColor}
+                    onChange={(e) => setForm((f) => ({ ...f, noColor: e.target.checked }))}
+                    className="w-4 h-4 accent-green-600"
+                  />
+                  No color (default green group)
+                </label>
+              </div>
+            </div>
+
             {formError && (
               <div className="bg-danger-100 border border-danger-500/30 px-4 py-3">
                 <p className="text-sm text-danger-500">{formError}</p>
@@ -579,7 +636,7 @@ export default function FundingSourceConfigPage() {
               Rows are matched by <span className="font-mono text-xs">code</span>: new codes are added
               and existing ones are updated. Nothing is deleted.
             </p>
-            <p className="text-xs text-slate-400">Expected columns: code, name, description, is_active.</p>
+            <p className="text-xs text-slate-400">Expected columns: code, name, description, color, is_active.</p>
           </div>
         </Modal>
       )}

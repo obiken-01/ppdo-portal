@@ -90,6 +90,10 @@ public sealed class WfpExpenditureLineConfiguration : IEntityTypeConfiguration<W
             .HasColumnName("funding_source_snapshot")
             .HasMaxLength(20);
 
+        builder.Property(e => e.FundingSourceNameSnapshot)
+            .HasColumnName("funding_source_name_snapshot")
+            .HasMaxLength(100);
+
         builder.Property(e => e.SortOrder)
             .HasColumnName("sort_order")
             .IsRequired()

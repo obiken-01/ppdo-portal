@@ -70,6 +70,11 @@ function resolveDefaultFundingSourceId(
   return (
     fundingSources.find((f) => f.code.toLowerCase() === q)?.id ??
     fundingSources.find((f) => f.name.toLowerCase() === q)?.id ??
+    fundingSources.find((f) =>
+      f.description
+        ?.split(";")
+        .some((alias) => alias.trim().toLowerCase() === q)
+    )?.id ??
     null
   );
 }
@@ -109,6 +114,12 @@ const ACCOUNT_PREFIX: Record<ExpenditureType, string> = {
   PS: "5-01-",
   MOOE: "5-02-",
   CO: "5-03-",
+};
+
+const TAB_COLORS: Record<ExpenditureType, { active: string; bg: string; addBtn: string; borderB: string }> = {
+  PS:   { active: "border-sky-600 text-sky-700 bg-sky-50",          bg: "bg-sky-50",    addBtn: "text-sky-700 hover:text-sky-600",    borderB: "border-sky-300" },
+  MOOE: { active: "border-amber-500 text-amber-700 bg-amber-50",    bg: "bg-amber-50",  addBtn: "text-amber-700 hover:text-amber-600", borderB: "border-amber-300" },
+  CO:   { active: "border-violet-600 text-violet-700 bg-violet-50", bg: "bg-violet-50", addBtn: "text-violet-700 hover:text-violet-600", borderB: "border-violet-300" },
 };
 
 const CF_FIELDS: [keyof SaveWfpLine, string][] = [
@@ -213,7 +224,23 @@ function ExpenditurePopup({
 }: PopupProps) {
   const [activeTab, setActiveTab] = useState<ExpenditureType>("PS");
   const [localLines, setLocalLines] = useState<SaveWfpLine[]>(() => [...initialLines]);
-  const [validationError, setValidationError] = useState<string | null>(null);
+
+  const validationErrors = useMemo(() => {
+    const errs: string[] = [];
+    localLines.forEach((l, i) => {
+      const net = computeNet(l);
+      const quarterly = l.q1 + l.q2 + l.q3 + l.q4;
+      if (net > 0 && quarterly > net + 0.001)
+        errs.push(`Line ${i + 1} (${l.expenditureType}): quarterly total ${fmtNum(quarterly)} exceeds net appropriation ${fmtNum(net)}.`);
+    });
+    const aipBudget = activity.total != null ? activity.total * 1000 : null;
+    if (aipBudget != null) {
+      const totalApprop = localLines.reduce((sum, l) => sum + l.totalAppropriation, 0);
+      if (totalApprop > aipBudget + 0.001)
+        errs.push(`Total appropriation ${fmtNum(totalApprop)} exceeds the AIP budget of ${fmtNum(aipBudget)}.`);
+    }
+    return errs;
+  }, [localLines, activity.total]);
 
   const tabAccounts = useMemo(
     () => accounts.filter((a) => a.accountNumber.startsWith(ACCOUNT_PREFIX[activeTab])),
@@ -262,30 +289,28 @@ function ExpenditurePopup({
   }
 
   function handleSave() {
-    const errors: string[] = [];
-    localLines.forEach((l, i) => {
-      const net = computeNet(l);
-      const quarterly = l.q1 + l.q2 + l.q3 + l.q4;
-      if (quarterly > net + 0.001) {
-        errors.push(
-          `Line ${i + 1} (${l.expenditureType}): quarterly total ${fmtNum(quarterly)} exceeds net ${fmtNum(net)}.`
-        );
-      }
-    });
-    if (errors.length > 0) {
-      setValidationError(errors.join(" "));
-      return;
-    }
-    setValidationError(null);
+    if (validationErrors.length > 0) return;
     onSave(localLines.map((l, i) => ({ ...l, sortOrder: i })));
   }
 
   const colCount = readonly ? 11 : 12;
 
+  const hasErrors = validationErrors.length > 0;
+
   return (
     <Modal
-      title={`Expenditure Lines — ${activity.name}`}
+      title={
+        <div>
+          <div className="font-mono text-xs font-normal text-slate-500 mb-0.5 tracking-wide">
+            {activity.refCode}
+          </div>
+          <div className="text-base font-semibold text-slate-800 truncate max-w-2xl">
+            {activity.name}
+          </div>
+        </div>
+      }
       size="2xl"
+      fixedHeight
       onClose={onClose}
       footer={
         readonly ? (
@@ -293,20 +318,37 @@ function ExpenditurePopup({
         ) : (
           <>
             <Modal.SecondaryButton onClick={onClose}>Cancel</Modal.SecondaryButton>
-            <Modal.PrimaryButton onClick={handleSave}>Save Changes</Modal.PrimaryButton>
+            <Modal.PrimaryButton onClick={handleSave} disabled={hasErrors}>
+              Save Changes
+            </Modal.PrimaryButton>
           </>
         )
       }
     >
+      {/* Validation errors */}
+      {hasErrors && (
+        <div className="mb-3 px-3 py-2 bg-red-50 border border-red-200 text-xs text-red-700">
+          {validationErrors.map((e, i) => <p key={i}>{e}</p>)}
+        </div>
+      )}
+
+      {/* AIP Budget summary */}
+      <p className="mb-4 text-sm text-slate-600">
+        AIP Budget:{" "}
+        <span className="font-semibold tabular-nums text-slate-800">
+          {activity.total != null ? fmtNum(activity.total * 1000) : "—"}
+        </span>
+      </p>
+
       {/* Tabs */}
-      <div className="flex border-b border-slate-200 mb-4 -mx-6 px-6">
+      <div className={`flex border-b mb-0 -mx-6 px-6 ${TAB_COLORS[activeTab].borderB}`}>
         {TABS.map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={`px-5 py-2 text-sm font-medium border-b-2 transition-colors ${
               activeTab === tab
-                ? "border-green-600 text-green-700"
+                ? TAB_COLORS[tab].active
                 : "border-transparent text-slate-500 hover:text-slate-700"
             }`}
           >
@@ -315,7 +357,8 @@ function ExpenditurePopup({
         ))}
       </div>
 
-      {/* Table */}
+      {/* Tab content */}
+      <div className={`-mx-6 px-6 pt-4 pb-3 ${TAB_COLORS[activeTab].bg}`}>
       <div className="overflow-x-auto">
         <table className="w-full text-xs border-collapse min-w-[900px]">
           <thead>
@@ -518,18 +561,13 @@ function ExpenditurePopup({
       {!readonly && (
         <button
           onClick={addLine}
-          className="mt-3 text-xs text-green-700 hover:text-green-600 hover:underline font-medium"
+          className={`mt-3 text-xs font-medium hover:underline ${TAB_COLORS[activeTab].addBtn}`}
         >
           + Add {activeTab} Line
         </button>
       )}
+      </div>{/* end tab content */}
 
-      {/* Validation error */}
-      {validationError && (
-        <p className="mt-3 text-xs text-red-600 bg-red-50 border border-red-200 px-3 py-2">
-          {validationError}
-        </p>
-      )}
     </Modal>
   );
 }
@@ -888,7 +926,8 @@ function WfpPageInner() {
     if (!wfp) return;
     setExporting(true);
     try {
-      await downloadWfpReport(wfp.id, `WFP-FY${wfp.fiscalYear}.xlsx`);
+      const officeCode = selectedConfigOffice?.officeCode ?? "PPDO";
+      await downloadWfpReport(wfp.id, `${officeCode}-WFP-FY${wfp.fiscalYear}.xlsx`);
     } catch {
       toast.error("Failed", "Could not export WFP report.");
     } finally {
@@ -1040,11 +1079,12 @@ function WfpPageInner() {
                   <th className="px-3 py-2 text-right whitespace-nowrap">MOOE</th>
                   <th className="px-3 py-2 text-right whitespace-nowrap">CO</th>
                   <th className="px-3 py-2 text-right whitespace-nowrap">TOTAL</th>
+                  <th className="px-3 py-2 text-right whitespace-nowrap">AIP BUDGET</th>
                   <th className="px-3 py-2 text-right">Q1</th>
                   <th className="px-3 py-2 text-right">Q2</th>
                   <th className="px-3 py-2 text-right">Q3</th>
                   <th className="px-3 py-2 text-right">Q4</th>
-                  <th className="px-3 py-2 text-center">ACTIONS</th>
+                  <th className="px-3 py-2 text-center sticky right-0 bg-slate-50 border-l border-slate-200">ACTIONS</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -1067,6 +1107,7 @@ function WfpPageInner() {
                           </button>
                           {aipOffice.sector}
                         </td>
+                        <td className="sticky right-0 bg-slate-200 border-l border-slate-300" />
                       </tr>
 
                       {!collapsed.has(sKey) && (
@@ -1089,6 +1130,7 @@ function WfpPageInner() {
                             {Array.from({ length: 9 }, (_, i) => (
                               <td key={i} className="px-3 py-2 text-right text-slate-400 text-xs">—</td>
                             ))}
+                            <td className="sticky right-0 bg-slate-100 border-l border-slate-200" />
                           </tr>
 
                           {/* Programs → Projects → Activities */}
@@ -1113,6 +1155,7 @@ function WfpPageInner() {
                                   {Array.from({ length: 9 }, (_, i) => (
                                     <td key={i} className="px-3 py-2 text-right text-slate-400 text-xs">—</td>
                                   ))}
+                                  <td className="sticky right-0 bg-blue-50 border-l border-slate-200" />
                                 </tr>
 
                                 {!collapsed.has(pKey) && program.projects.map((project) => {
@@ -1136,6 +1179,7 @@ function WfpPageInner() {
                                         {Array.from({ length: 9 }, (_, i) => (
                                           <td key={i} className="px-3 py-2 text-right text-slate-400 text-xs">—</td>
                                         ))}
+                                        <td className="sticky right-0 bg-green-50 border-l border-slate-200" />
                                       </tr>
 
                                       {!collapsed.has(prKey) && project.activities.map((activity) => {
@@ -1146,7 +1190,7 @@ function WfpPageInner() {
                                         const hasLines = (draftLines[activity.id]?.length ?? 0) > 0;
 
                                         return (
-                                          <tr key={activity.id} className="bg-white hover:bg-slate-50">
+                                          <tr key={activity.id} className="group bg-white hover:bg-slate-50">
                                             <td className="px-3 py-2 font-mono text-xs text-slate-500 leading-tight whitespace-nowrap">
                                               {activity.refCode}
                                             </td>
@@ -1166,6 +1210,9 @@ function WfpPageInner() {
                                             <td className="px-3 py-2 text-right tabular-nums font-medium">
                                               {fmtCurrency(total)}
                                             </td>
+                                            <td className="px-3 py-2 text-right tabular-nums text-slate-400 text-xs">
+                                              {activity.total != null ? fmtNum(activity.total * 1000) : "—"}
+                                            </td>
                                             <td className="px-3 py-2 text-right tabular-nums">
                                               {fmtCurrency(sumQ(activity.id, "q1"))}
                                             </td>
@@ -1178,7 +1225,7 @@ function WfpPageInner() {
                                             <td className="px-3 py-2 text-right tabular-nums">
                                               {fmtCurrency(sumQ(activity.id, "q4"))}
                                             </td>
-                                            <td className="px-3 py-2 text-center">
+                                            <td className="px-3 py-2 text-center sticky right-0 bg-white group-hover:bg-slate-50 border-l border-slate-200">
                                               {!isFinal ? (
                                                 <button
                                                   onClick={() => setPopupActivityId(activity.id)}

@@ -24,6 +24,7 @@ public record WfpExpenditureLineDto(
     decimal? QuarterlyTotal,
     int?     FundingSourceId,
     string?  FundingSourceSnapshot,
+    string?  FundingSourceNameSnapshot,
     int      SortOrder);
 
 public record WfpActivityDto(
