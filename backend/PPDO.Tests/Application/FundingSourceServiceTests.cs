@@ -82,10 +82,10 @@ public sealed class FundingSourceServiceTests
         (FundingSourceService sut, _) = Build(seed);
 
         string csv = string.Join("\r\n",
-            "code,name,description,is_active",
-            "GF,General Fund,,true",                          // unchanged → skipped
-            "GAD,Gender and Development,Updated desc,true",   // changed → updated
-            "SEF,Special Education Fund,,true");              // new → inserted
+            "code,name,description,color,is_active",
+            "GF,General Fund,,,true",                          // unchanged → skipped
+            "GAD,Gender and Development,Updated desc,,true",   // changed → updated
+            "SEF,Special Education Fund,,,true");              // new → inserted
 
         ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv);
 
@@ -132,5 +132,79 @@ public sealed class FundingSourceServiceTests
         audit.Verify(a => a.LogAsync(
             "funding_sources", 1, AuditAction.Delete,
             It.IsNotNull<object>(), null, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // ── Color field (new in migration AddFundingSourceColor) ──────────────────
+
+    [Fact]
+    public async Task CreateAsync_WithColor_PersistsColorOnEntity()
+    {
+        List<FundingSource> seed = [];
+        (FundingSourceService sut, _) = Build(seed);
+
+        ServiceResult<FundingSourceDto> result =
+            await sut.CreateAsync(new UpsertFundingSourceDto("GAD", "Gender and Development", null, "#7B61FF"));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("#7B61FF", result.Value!.Color);
+        Assert.Equal("#7B61FF", seed.Single().Color);
+    }
+
+    [Fact]
+    public async Task CreateAsync_NullColor_PersistsNullOnEntity()
+    {
+        List<FundingSource> seed = [];
+        (FundingSourceService sut, _) = Build(seed);
+
+        ServiceResult<FundingSourceDto> result =
+            await sut.CreateAsync(new UpsertFundingSourceDto("GF", "General Fund", null, null));
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Value!.Color);
+        Assert.Null(seed.Single().Color);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ChangesColor()
+    {
+        FundingSource target = Fs(1, "GAD", "GAD");
+        target.Color = null;
+        (FundingSourceService sut, _) = Build([target]);
+
+        ServiceResult<FundingSourceDto> result =
+            await sut.UpdateAsync(1, new UpsertFundingSourceDto("GAD", "GAD", null, "#FF6B6B"));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("#FF6B6B", result.Value!.Color);
+        Assert.Equal("#FF6B6B", target.Color);
+    }
+
+    [Fact]
+    public async Task ExportCsvAsync_IncludesColorColumn()
+    {
+        FundingSource gad = Fs(1, "GAD", "Gender and Development");
+        gad.Color = "#7B61FF";
+        (FundingSourceService sut, _) = Build([gad]);
+
+        string csv = await sut.ExportCsvAsync();
+
+        Assert.Contains("color", csv);
+        Assert.Contains("#7B61FF", csv);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_RoundtripsColorColumn()
+    {
+        List<FundingSource> seed = [];
+        (FundingSourceService sut, _) = Build(seed);
+
+        string csv = string.Join("\r\n",
+            "code,name,description,color,is_active",
+            "GAD,Gender and Development,,#7B61FF,true");
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv);
+
+        Assert.Equal(1, result.Value!.New);
+        Assert.Equal("#7B61FF", seed.Single().Color);
     }
 }

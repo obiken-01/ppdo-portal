@@ -1,5 +1,6 @@
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
+using PPDO.Application.DTOs.Config;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Interfaces;
 
@@ -7,7 +8,7 @@ namespace PPDO.Application.Services;
 
 /// <summary>
 /// WFP service — upsert, expenditure-line validation, snapshot population,
-/// and status lifecycle (RAL-64).
+/// status lifecycle (RAL-64), and Excel export (RAL-79).
 ///
 /// SaveAsync two-pass logic:
 ///   1. Validate all lines (quarterly_total ≤ net_appropriation).
@@ -26,6 +27,9 @@ public sealed class WfpService : IWfpService
     private readonly IRepository<FundingSource>      _fsRepo;
     private readonly IAuditService                   _audit;
     private readonly CallerContext                   _caller;
+    private readonly IAipService                     _aip;
+    private readonly IOfficeService                  _office;
+    private readonly IWfpExcelService                _excel;
 
     public WfpService(
         IRepository<WfpRecord>          wfpRepo,
@@ -34,7 +38,10 @@ public sealed class WfpService : IWfpService
         IRepository<Account>            accountRepo,
         IRepository<FundingSource>      fsRepo,
         IAuditService                   audit,
-        CallerContext                   caller)
+        CallerContext                   caller,
+        IAipService                     aip,
+        IOfficeService                  office,
+        IWfpExcelService                excel)
     {
         _wfpRepo     = wfpRepo;
         _actRepo     = actRepo;
@@ -43,6 +50,9 @@ public sealed class WfpService : IWfpService
         _fsRepo      = fsRepo;
         _audit       = audit;
         _caller      = caller;
+        _aip         = aip;
+        _office      = office;
+        _excel       = excel;
     }
 
     // ── Read ──────────────────────────────────────────────────────────────────
@@ -199,9 +209,10 @@ public sealed class WfpService : IWfpService
                     Q3                     = lineDto.Q3,
                     Q4                     = lineDto.Q4,
                     QuarterlyTotal         = quarterly,
-                    FundingSourceId        = lineDto.FundingSourceId,
-                    FundingSourceSnapshot  = fs?.Code,
-                    SortOrder              = lineDto.SortOrder,
+                    FundingSourceId            = lineDto.FundingSourceId,
+                    FundingSourceSnapshot      = fs?.Code,
+                    FundingSourceNameSnapshot  = fs?.Name,
+                    SortOrder                  = lineDto.SortOrder,
                 };
                 await _lineRepo.AddAsync(line, ct);
             }
@@ -257,6 +268,33 @@ public sealed class WfpService : IWfpService
         return ServiceResult<WfpRecordDto>.Ok(MapToDto(rec));
     }
 
+    // ── Export (RAL-79) ───────────────────────────────────────────────────────
+
+    public async Task<ServiceResult<byte[]>> ExportReportAsync(
+        int id, CancellationToken ct = default)
+    {
+        ServiceResult<WfpRecordDetailDto> wfpResult = await GetByIdAsync(id, ct);
+        if (!wfpResult.IsSuccess)
+            return ServiceResult<byte[]>.NotFound(wfpResult.Error!);
+
+        WfpRecordDetailDto wfp = wfpResult.Value!;
+
+        ServiceResult<AipRecordDetailDto> aipResult = await _aip.GetByIdAsync(wfp.AipRecordId, ct);
+        if (!aipResult.IsSuccess)
+            return ServiceResult<byte[]>.NotFound("Parent AIP record not found.");
+
+        ServiceResult<OfficeDto> officeResult = await _office.GetByIdAsync(wfp.OfficeId, ct);
+        string officeName = officeResult.IsSuccess ? officeResult.Value!.OfficeName : "PPDO";
+        string officeCode = officeResult.IsSuccess ? officeResult.Value!.OfficeCode : "PPDO";
+
+        IReadOnlyList<FundingSource> allFs = await _fsRepo.GetAllAsync(ct);
+        Dictionary<int, string?> fsColors = allFs.ToDictionary(f => f.Id, f => f.Color);
+
+        byte[] bytes = _excel.GenerateWfpReport(
+            new WfpExcelReportData(wfp, aipResult.Value!, officeName, officeCode, fsColors));
+        return ServiceResult<byte[]>.Ok(bytes);
+    }
+
     // ── Purge (dev/test only) ─────────────────────────────────────────────────
 
     public async Task<int> PurgeAllAsync(CancellationToken ct = default)
@@ -280,5 +318,5 @@ public sealed class WfpService : IWfpService
         l.SuccessIndicator, l.MeansOfVerification, l.AccountId, l.AccountNumberSnapshot,
         l.AccountTitleSnapshot, l.TotalAppropriation, l.ApplyReserve, l.ReserveAmount,
         l.NetAppropriation, l.Q1, l.Q2, l.Q3, l.Q4, l.QuarterlyTotal,
-        l.FundingSourceId, l.FundingSourceSnapshot, l.SortOrder);
+        l.FundingSourceId, l.FundingSourceSnapshot, l.FundingSourceNameSnapshot, l.SortOrder);
 }

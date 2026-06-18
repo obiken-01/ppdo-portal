@@ -72,6 +72,9 @@ public sealed class WfpExpenditureLine
     /// <summary>Snapshot of FundingSource.Code at save time. Max 20 characters.</summary>
     public string? FundingSourceSnapshot { get; set; }
 
+    /// <summary>Snapshot of FundingSource.Name at save time. Max 100 characters.</summary>
+    public string? FundingSourceNameSnapshot { get; set; }
+
     /// <summary>Preserves the user-defined row order within the activity popup.</summary>
     public int SortOrder { get; set; }
 

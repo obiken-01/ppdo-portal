@@ -92,3 +92,22 @@ export async function unlockWfp(id: number): Promise<WfpRecord> {
   );
   return unwrap(data);
 }
+
+// ---------------------------------------------------------------------------
+// Export Excel — GET /api/budget-planning/wfp/{id}/report
+// JWT must be sent via Authorization header, so we use Axios (not a plain link).
+// ---------------------------------------------------------------------------
+
+export async function downloadWfpReport(id: number, filename: string): Promise<void> {
+  const response = await api.get(`/budget-planning/wfp/${id}/report`, {
+    responseType: "blob",
+  });
+  const url = URL.createObjectURL(new Blob([response.data as BlobPart]));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}

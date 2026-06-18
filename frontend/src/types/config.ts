@@ -89,6 +89,8 @@ export interface FundingSourceResponse {
   code: string;
   name: string;
   description: string | null;
+  /** Hex color (#RRGGBB) for WFP report total groups. Null = default green group. */
+  color: string | null;
   isActive: boolean;
 }
 
@@ -97,5 +99,7 @@ export interface UpsertFundingSourceRequest {
   code: string;
   name: string;
   description: string | null;
+  /** Hex color (#RRGGBB) for WFP report total groups. Null = default green group. */
+  color: string | null;
   isActive: boolean;
 }

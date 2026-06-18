@@ -106,4 +106,27 @@ public sealed class WfpFunctions
 
         return await ConfigHttp.FromResultAsync(req, await _wfp.UnlockAsync(id, ct), ct);
     }
+
+    // ── GET /api/budget-planning/wfp/{id}/report ─────────────────────────────
+    [Function("WfpExportReport")]
+    public async Task<HttpResponseData> ExportReport(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get",
+            Route = "budget-planning/wfp/{id:int}/report")] HttpRequestData req,
+        int id, CancellationToken ct)
+    {
+        (User? _, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        ServiceResult<byte[]> result = await _wfp.ExportReportAsync(id, ct);
+        if (!result.IsSuccess)
+            return await ConfigHttp.FromResultAsync(req, result, ct);
+
+        HttpResponseData response = req.CreateResponse(HttpStatusCode.OK);
+        response.Headers.Add("Content-Type",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.Headers.Add("Content-Disposition",
+            $"attachment; filename=\"WFP_Report.xlsx\"");
+        await response.WriteBytesAsync(result.Value!);
+        return response;
+    }
 }

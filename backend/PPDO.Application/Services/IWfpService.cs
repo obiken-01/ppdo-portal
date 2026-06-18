@@ -24,6 +24,13 @@ public interface IWfpService
     Task<ServiceResult<WfpRecordDto>> FinalizeAsync(int id, CancellationToken ct = default);
     Task<ServiceResult<WfpRecordDto>> UnlockAsync(int id, CancellationToken ct = default);
 
+    /// <summary>
+    /// Generates an A4-landscape Excel report for the given WFP record.
+    /// Loads the parent AIP hierarchy and config-office name internally.
+    /// Returns <c>NotFound</c> if the WFP or its AIP record does not exist.
+    /// </summary>
+    Task<ServiceResult<byte[]>> ExportReportAsync(int id, CancellationToken ct = default);
+
     /// <summary>Wipes all WFP records (cascade removes activities/lines). Returns deleted count.</summary>
     Task<int> PurgeAllAsync(CancellationToken ct = default);
 }
