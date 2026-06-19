@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using PPDO.Application.Common;
 using PPDO.Application.DTOs.Inventory;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Enums;
@@ -47,7 +48,14 @@ public sealed class InventoryService : IInventoryService
         User requester,
         CancellationToken cancellationToken = default)
     {
-        Division? division = ScopeFor(requester);
+        DivisionScope scope = DivisionScope.Resolve(requester);
+
+        // Office users (Staff/Observer with no division) have no inventory scope —
+        // return empty stats rather than leaking every division's data.
+        if (scope.SeeNothing)
+            return EmptyStats();
+
+        Division? division = scope.Division;
 
         // Load PRs for division-scoped counts and total value.
         IReadOnlyList<PurchaseRequest> prs = division.HasValue
@@ -109,7 +117,13 @@ public sealed class InventoryService : IInventoryService
         DateOnly? deliveryDateTo   = null,
         CancellationToken cancellationToken = default)
     {
-        Division? division = ScopeFor(requester);
+        DivisionScope scope = DivisionScope.Resolve(requester);
+
+        // Office users (Staff/Observer with no division) have no inventory scope.
+        if (scope.SeeNothing)
+            return Array.Empty<ItemLedgerRowDto>();
+
+        Division? division = scope.Division;
 
         IReadOnlyList<ItemStockLevel> stockLevels =
             await _inventory.GetItemStockLevelsAsync(division, cancellationToken);
@@ -179,10 +193,11 @@ public sealed class InventoryService : IInventoryService
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Returns the division to scope queries to, or null for Admin/SuperAdmin (all divisions).
+    /// All-zero stats — returned for users whose inventory scope is empty
+    /// (e.g. an office user with no division).
     /// </summary>
-    private static Division? ScopeFor(User requester)
-        => requester.Role is UserRole.Staff or UserRole.Observer
-            ? requester.Division
-            : null;
+    private static InventoryStatsDto EmptyStats()
+        => new(
+            new PRStatsGroupDto(Total: 0, Open: 0, PartiallyDelivered: 0, FullyDeliveredOrCompleted: 0),
+            new AlertsGroupDto(InStock: 0, LowOrOutOfStock: 0, TotalPRValue: 0m, UniqueItemsTracked: 0));
 }

@@ -8,3 +8,5 @@ export type * from "./user";
 export type * from "./dashboard";
 export type * from "./resourceLinks";
 export type * from "./inventory";
+export type * from "./config";
+export type * from "./budget-planning";

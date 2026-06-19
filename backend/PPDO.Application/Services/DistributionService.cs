@@ -66,16 +66,22 @@ public sealed class DistributionService : IDistributionService
                 "You do not have permission to access Inventory.");
         }
 
-        Division? scope = requester.Role is UserRole.Staff or UserRole.Observer
-            ? requester.Division
-            : null;
+        DivisionScope scope = DivisionScope.Resolve(requester);
+
+        // Office users (Staff/Observer with no division) have no inventory scope —
+        // never fall through to an unscoped (all-divisions) query.
+        if (scope.SeeNothing)
+            return ServiceResult<ItemDistributionSummaryDto>.NotFound(
+                $"No activity found for StockNo '{stockNo}'.");
+
+        Division? scopeDivision = scope.Division;
 
         // Load catalog entry for item details (optional — might be an orphan StockNo).
         ItemMaster? master = await _items.GetByStockNoAsync(stockNo, cancellationToken);
 
         // Load all delivery batches for this item.
         IReadOnlyList<DeliveryItemBreakdownRow> batches =
-            await _deliveries.GetDeliveryItemBreakdownsByStockNoAsync(stockNo, scope, cancellationToken);
+            await _deliveries.GetDeliveryItemBreakdownsByStockNoAsync(stockNo, scopeDivision, cancellationToken);
 
         if (batches.Count == 0 && master is null)
             return ServiceResult<ItemDistributionSummaryDto>.NotFound(

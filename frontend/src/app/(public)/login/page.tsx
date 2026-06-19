@@ -21,7 +21,7 @@ import { z } from "zod";
 import axios from "axios";
 import api from "@/lib/api";
 import { auth } from "@/lib/auth";
-import type { LoginResponse } from "@/types/auth";
+import type { LoginResponse, MeResponse } from "@/types/auth";
 
 // ---------------------------------------------------------------------------
 // API status indicator
@@ -61,10 +61,7 @@ function StatusDot({ status }: { status: ApiStatus }) {
 // ---------------------------------------------------------------------------
 
 const schema = z.object({
-  email: z
-    .string()
-    .min(1, "Email is required")
-    .email("Enter a valid email address"),
+  username: z.string().min(1, "Username is required"),
   password: z.string().min(1, "Password is required"),
 });
 
@@ -107,13 +104,21 @@ export default function LoginPage() {
     setServerError(null);
     try {
       const { data } = await api.post<LoginResponse>("/auth/login", {
-        email: values.email,
+        username: values.username,
         password: values.password,
       });
       auth.login(data);
-      router.replace("/dashboard");
+
+      // Non-PPDO office users go straight to Budget Planning — it's their only feature.
+      // PPDO users land on the main Dashboard.
+      try {
+        const { data: me } = await api.get<MeResponse>("/auth/me");
+        router.replace(me.officeId != null ? "/budget-planning" : "/dashboard");
+      } catch {
+        router.replace("/dashboard");
+      }
     } catch {
-      setServerError("Invalid email or password. Please try again.");
+      setServerError("Invalid username or password. Please try again.");
     }
   }
 
@@ -194,30 +199,30 @@ export default function LoginPage() {
           </p>
 
           <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-5">
-            {/* Email */}
+            {/* Username */}
             <div>
               <label
-                htmlFor="email"
+                htmlFor="username"
                 className="block text-sm font-medium text-slate-700 mb-1"
               >
-                Email address
+                Username
               </label>
               <input
-                id="email"
-                type="email"
-                autoComplete="email"
-                placeholder="your.name@ppdo.gov.ph"
-                {...register("email")}
+                id="username"
+                type="text"
+                autoComplete="username"
+                placeholder="Enter your username"
+                {...register("username")}
                 className={`w-full px-3 py-2.5 rounded-lg text-sm text-slate-800 border
                   placeholder:text-slate-400 transition-colors
                   focus:outline-none focus:ring-2 focus:ring-green-600 focus:border-transparent
-                  ${errors.email
+                  ${errors.username
                     ? "border-red-400 bg-red-50"
                     : "border-slate-300 bg-white shadow-sm hover:border-slate-400"
                   }`}
               />
-              {errors.email && (
-                <p className="mt-1 text-xs text-red-600">{errors.email.message}</p>
+              {errors.username && (
+                <p className="mt-1 text-xs text-red-600">{errors.username.message}</p>
               )}
             </div>
 

@@ -28,8 +28,11 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
             .IsRequired()
             .HasMaxLength(100);
 
-        builder.Property(u => u.Email)
+        builder.Property(u => u.Username)
             .IsRequired()
+            .HasMaxLength(50);
+
+        builder.Property(u => u.Email)
             .HasMaxLength(256);
 
         builder.Property(u => u.PasswordHash)
@@ -38,8 +41,8 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(u => u.Role)
             .IsRequired();
 
-        builder.Property(u => u.Division)
-            .IsRequired();
+        // Division is nullable from v1.1 — non-PPDO office users have no division.
+        builder.Property(u => u.Division);
 
         builder.Property(u => u.Position)
             .HasMaxLength(100);
@@ -60,9 +63,16 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
 
         // RefreshTokenExpiry — nullable DateTime; no extra config needed.
 
-        // Unique index on Email — used as login username.
+        // Unique index on Username — the login identity.
+        builder.HasIndex(u => u.Username)
+            .IsUnique()
+            .HasDatabaseName("IX_Users_Username");
+
+        // Filtered unique index on Email — multiple NULL emails are allowed
+        // (SQL Server treats multiple NULLs as duplicates in a plain unique index).
         builder.HasIndex(u => u.Email)
             .IsUnique()
+            .HasFilter("[Email] IS NOT NULL")
             .HasDatabaseName("IX_Users_Email");
 
         // FK: Users.GroupId → PermissionGroups.Id
@@ -76,6 +86,18 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.HasIndex(u => u.GroupId)
             .HasDatabaseName("IX_Users_GroupId");
 
+        // FK: Users.OfficeId → offices.id (v1.1 — non-PPDO office users).
+        // Restrict: an office that has users assigned cannot be hard-deleted
+        // (offices are soft-deleted via IsActive anyway).
+        builder.HasOne(u => u.Office)
+            .WithMany(o => o.Users)
+            .HasForeignKey(u => u.OfficeId)
+            .HasConstraintName("FK_Users_offices_OfficeId")
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(u => u.OfficeId)
+            .HasDatabaseName("IX_Users_OfficeId");
+
         // ── Seed data ─────────────────────────────────────────────────────────
         // One SuperAdmin user created at first deploy.
         // GroupId is null — SuperAdmin bypasses all permission group flag checks.
@@ -85,6 +107,7 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         {
             Id           = SuperAdminId,
             FullName     = "System Administrator",
+            Username     = "superadmin",
             Email        = "superadmin@ppdo.gov.ph",
             PasswordHash = DefaultSuperAdminHash,
             Role         = UserRole.SuperAdmin,

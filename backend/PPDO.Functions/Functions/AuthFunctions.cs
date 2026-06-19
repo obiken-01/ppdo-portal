@@ -43,10 +43,10 @@ public sealed class AuthFunctions
         CancellationToken cancellationToken)
     {
         LoginRequestDto? body = await DeserializeAsync<LoginRequestDto>(req, cancellationToken);
-        if (body is null || string.IsNullOrWhiteSpace(body.Email) || string.IsNullOrWhiteSpace(body.Password))
-            return await BadRequest(req, "Email and Password are required.");
+        if (body is null || string.IsNullOrWhiteSpace(body.Username) || string.IsNullOrWhiteSpace(body.Password))
+            return await BadRequest(req, "Username and Password are required.");
 
-        var tokens = await _auth.LoginAsync(body.Email, body.Password, cancellationToken);
+        var tokens = await _auth.LoginAsync(body.Username, body.Password, cancellationToken);
         if (tokens is null)
             return req.CreateResponse(HttpStatusCode.Unauthorized);
 
@@ -115,17 +115,24 @@ public sealed class AuthFunctions
 
         MeResponseDto dto = new()
         {
-            UserId                 = me.UserId,
-            FullName               = me.FullName,
-            Email                  = me.Email,
-            Role                   = me.Role,
-            Division               = me.Division,
-            Position               = me.Position,
-            CanAccessInventory     = me.CanAccessInventory,
-            CanAccessReports       = me.CanAccessReports,
-            CanManageUsers         = me.CanManageUsers,
-            CanAccessProfile       = me.CanAccessProfile,
-            CanManageResourceLinks = me.CanManageResourceLinks,
+            UserId                  = me.UserId,
+            FullName                = me.FullName,
+            Username                = me.Username,
+            Email                   = me.Email,
+            Role                    = me.Role,
+            Division                = me.Division,
+            OfficeId                = me.OfficeId,
+            OfficeCode              = me.OfficeCode,
+            OfficeName              = me.OfficeName,
+            Position                = me.Position,
+            CanAccessInventory      = me.CanAccessInventory,
+            CanAccessReports        = me.CanAccessReports,
+            CanManageUsers          = me.CanManageUsers,
+            CanAccessProfile        = me.CanAccessProfile,
+            CanManageResourceLinks  = me.CanManageResourceLinks,
+            CanAccessBudgetPlanning = me.CanAccessBudgetPlanning,
+            CanUploadAip            = me.CanUploadAip,
+            CanManageConfig         = me.CanManageConfig,
         };
 
         return await Ok(req, dto, cancellationToken);

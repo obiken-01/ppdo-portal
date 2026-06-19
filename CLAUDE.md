@@ -556,7 +556,7 @@ Follow the JWT validation and permission check patterns in CLAUDE.md.
 |---|---|
 | `ServiceResult<T>` | Shared result type in `PPDO.Application/Common/` — services return this instead of throwing exceptions for flow control. |
 | Token storage | Access token: in-memory only (`auth.ts`). Refresh token: `localStorage["ppdo_rt"]`. |
-| Default user password | `PPDOUser2026!` — set on `UserService.CreateAsync` and `ResetPasswordAsync`. |
+| Default user password | `TamarawUser2026!` — set on `UserService.CreateAsync` and `ResetPasswordAsync`. |
 | Distribution as standalone | Distribution separated from Receive Delivery — `POST /api/distributions` creates standalone distribution records. FIFO batch allocation done on the frontend. |
 | Version indicator | `APP_VERSION` const in `frontend/src/components/layout/Sidebar.tsx` — update this string for each new release (e.g. `"v1.2"`). Also update `Portal vX.Y.Z` in `frontend/src/components/landing/Footer.tsx`. |
 | Version scheme | Patch releases (bug fixes, optimizations, no new features) use `vX.Y.Z` (e.g. `v1.0.1`). Feature milestones use `vX.Y` (e.g. `v1.2`). |

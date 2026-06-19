@@ -32,6 +32,22 @@ public sealed class AppDbContext : DbContext
     public DbSet<Distribution> Distributions { get; set; } = null!;
     public DbSet<CalendarEvent> CalendarEvents { get; set; } = null!;
 
+    // ── v1.1 Budget Planning (RAL-67 — docs/v1.1/DB_Model.md) ────────────────
+
+    public DbSet<Office> Offices { get; set; } = null!;
+    public DbSet<FundingSource> FundingSources { get; set; } = null!;
+    public DbSet<Account> Accounts { get; set; } = null!;
+    public DbSet<LdipRecord> LdipRecords { get; set; } = null!;
+    public DbSet<AipRecord> AipRecords { get; set; } = null!;
+    public DbSet<AipOffice> AipOffices { get; set; } = null!;
+    public DbSet<AipProgram> AipPrograms { get; set; } = null!;
+    public DbSet<AipProject> AipProjects { get; set; } = null!;
+    public DbSet<AipActivity> AipActivities { get; set; } = null!;
+    public DbSet<WfpRecord> WfpRecords { get; set; } = null!;
+    public DbSet<WfpActivity> WfpActivities { get; set; } = null!;
+    public DbSet<WfpExpenditureLine> WfpExpenditureLines { get; set; } = null!;
+    public DbSet<AuditLog> AuditLogs { get; set; } = null!;
+
     // ── Model configuration ───────────────────────────────────────────────────
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

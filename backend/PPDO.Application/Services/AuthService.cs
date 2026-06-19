@@ -9,6 +9,7 @@ using PPDO.Application.DTOs.Auth;
 using PPDO.Application.Settings;
 using PPDO.Domain.Common;
 using PPDO.Domain.Entities;
+using PPDO.Domain.Enums;
 using PPDO.Domain.Interfaces;
 
 namespace PPDO.Application.Services;
@@ -47,17 +48,17 @@ public sealed class AuthService : IAuthService
 
     /// <inheritdoc />
     public async Task<(string AccessToken, string RefreshToken)?> LoginAsync(
-        string email,
+        string username,
         string password,
         CancellationToken cancellationToken = default)
     {
-        User? user = await _users.FindByEmailAsync(email, cancellationToken);
+        User? user = await _users.FindByUsernameAsync(username, cancellationToken);
 
         if (user is null)
         {
             // Consistent timing — run a dummy verify so response time doesn't leak existence.
             BCrypt.Net.BCrypt.Verify(password, "$2a$11$dummyhashtopreventtimingattacksonuserexistence00000000000");
-            _logger.LogWarning("Login failed — email not found or user inactive. Email: {Email}", email);
+            _logger.LogWarning("Login failed — username not found or user inactive. Username: {Username}", username);
             return null;
         }
 
@@ -145,15 +146,22 @@ public sealed class AuthService : IAuthService
         {
             UserId   = user.Id,
             FullName = user.FullName,
+            Username = user.Username,
             Email    = user.Email,
             Role     = user.Role.ToString(),
-            Division = user.Division.ToString(),
-            Position = user.Position,
+            Division = user.Division?.ToString(),   // null for non-PPDO office users
+            OfficeId   = user.OfficeId,
+            OfficeCode = user.Office?.OfficeCode,
+            OfficeName = user.Office?.OfficeName,
+            Position   = user.Position,
             CanAccessInventory      = await _permissions.CanAccessInventoryAsync(user, cancellationToken),
             CanAccessReports        = await _permissions.CanAccessReportsAsync(user, cancellationToken),
             CanManageUsers          = await _permissions.CanManageUsersAsync(user, cancellationToken),
             CanAccessProfile        = await _permissions.CanAccessProfileAsync(user, cancellationToken),
             CanManageResourceLinks  = await _permissions.CanManageResourceLinksAsync(user, cancellationToken),
+            CanAccessBudgetPlanning = await _permissions.CanAccessBudgetPlanningAsync(user, cancellationToken),
+            CanUploadAip            = await _permissions.CanUploadAipAsync(user, cancellationToken),
+            CanManageConfig         = await _permissions.CanManageConfigAsync(user, cancellationToken),
         };
     }
 
@@ -172,10 +180,19 @@ public sealed class AuthService : IAuthService
         List<Claim> claims =
         [
             new Claim(JwtClaimNames.Sub,      user.Id.ToString()),
-            new Claim(JwtClaimNames.Email,    user.Email),
+            new Claim(JwtClaimNames.Username, user.Username),
             new Claim(JwtClaimNames.Role,     ((int)user.Role).ToString()),
-            new Claim(JwtClaimNames.Division, ((int)user.Division).ToString()),
         ];
+
+        // Email is optional — only emit the claim when present.
+        if (user.Email is string email)
+            claims.Add(new Claim(JwtClaimNames.Email, email));
+
+        // Division is nullable from v1.1 (non-PPDO office users have none) — only emit
+        // the div claim when present. Scoping reads Division from the loaded user, not
+        // this claim, so omitting it is safe. (The optional office claim is deferred — §9.)
+        if (user.Division is Division division)
+            claims.Add(new Claim(JwtClaimNames.Division, ((int)division).ToString()));
 
         SecurityTokenDescriptor descriptor = new()
         {

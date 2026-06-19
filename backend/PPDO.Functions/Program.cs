@@ -3,6 +3,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using PPDO.Application.Common;
 using PPDO.Application.Services;
 using PPDO.Application.Settings;
 using PPDO.Domain.Interfaces;
@@ -73,6 +74,9 @@ var host = new HostBuilder()
         // -- ASP.NET Core helpers --------------------------------------------
         services.AddHttpContextAccessor();
 
+        // -- Scoped request context ------------------------------------------
+        services.AddScoped<CallerContext>();
+
         // -- Infrastructure services -----------------------------------------
         services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
         services.AddScoped<IUserRepository, UserRepository>();
@@ -84,6 +88,7 @@ var host = new HostBuilder()
         services.AddScoped<IJwtMiddleware, JwtMiddleware>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<IExcelService, ExcelService>();
+        services.AddScoped<IWfpExcelService, ExcelService>();
 
         // NagerHolidayProvider uses a singleton HttpClient via IHttpClientFactory.
         services.AddHttpClient<IHolidayProvider, NagerHolidayProvider>();
@@ -100,6 +105,17 @@ var host = new HostBuilder()
         services.AddScoped<IDistributionService, DistributionService>();
         services.AddScoped<IPRReportService, PRReportService>();
         services.AddScoped<IInventoryService, InventoryService>();
+        services.AddScoped<IOfficeService, OfficeService>();
+        services.AddScoped<IAccountService, AccountService>();
+        services.AddScoped<IFundingSourceService, FundingSourceService>();
+        services.AddScoped<IAuditService, AuditService>();
+        services.AddScoped<IBudgetPlanningDashboardService, BudgetPlanningDashboardService>();
+
+        // -- Budget Planning services (RAL-64) --------------------------------
+        services.AddScoped<IAipXlsmParser, AipXlsmParser>();
+        services.AddScoped<ILdipService, LdipService>();
+        services.AddScoped<IAipService, AipService>();
+        services.AddScoped<IWfpService, WfpService>();
     })
     .Build();
 

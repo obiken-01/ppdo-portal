@@ -18,4 +18,11 @@ public sealed class SetPermissionsDto
     public bool? OverrideCanManageUsers { get; init; }
     /// <summary>true is rejected for Observer users — Observer can never manage resource links.</summary>
     public bool? OverrideCanManageResourceLinks { get; init; }
+
+    // ── v1.1 (RAL-81) ─────────────────────────────────────────────────────────
+    public bool? OverrideCanAccessBudgetPlanning { get; init; }
+    /// <summary>true is rejected for Observer users — Observer can never upload AIP.</summary>
+    public bool? OverrideCanUploadAip { get; init; }
+    /// <summary>true is rejected for Observer users — Observer can never manage config.</summary>
+    public bool? OverrideCanManageConfig { get; init; }
 }

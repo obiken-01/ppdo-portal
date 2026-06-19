@@ -1,0 +1,299 @@
+/** Budget Planning types — mirrors PPDO.Application/DTOs/BudgetPlanning/ */
+
+// ── AIP list ─────────────────────────────────────────────────────────────────
+
+export interface AipRecordResponse {
+  id: number;
+  fiscalYear: number;
+  entrySource: string;
+  originalFilename: string | null;
+  uploadedById: string;
+  uploadedAt: string;
+  status: string;
+  ldipId: number | null;
+  sourceId: number | null;
+  officeCount: number;
+  uploadedByName: string | null;
+}
+
+// ── AIP import preview / confirm ──────────────────────────────────────────────
+
+export interface ParsedAipActivityResponse {
+  refCode: string;
+  name: string;
+  esreCode: string | null;
+  implementingOffice: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  expectedOutputs: string | null;
+  fundingSourceRaw: string | null;
+  ps: number | null;
+  mooe: number | null;
+  co: number | null;
+  total: number | null;
+  ccAdaptation: number | null;
+  ccMitigation: number | null;
+  ccTypologyCode: string | null;
+}
+
+export interface ParsedAipProjectResponse {
+  refCode: string;
+  name: string;
+  activities: ParsedAipActivityResponse[];
+}
+
+export interface ParsedAipProgramResponse {
+  refCode: string;
+  name: string;
+  projects: ParsedAipProjectResponse[];
+}
+
+export interface ParsedAipOfficeResponse {
+  refCode: string;
+  name: string;
+  sector: string;
+  programs: ParsedAipProgramResponse[];
+}
+
+export interface AipImportCountsResponse {
+  offices: number;
+  programs: number;
+  projects: number;
+  activities: number;
+}
+
+export interface AipImportPreviewResponse {
+  fiscalYear: number;
+  sectorOffices: Record<string, ParsedAipOfficeResponse[]>;
+  counts: AipImportCountsResponse;
+  warnings: string[];
+}
+
+export interface AipImportConfirmRequest {
+  fiscalYear: number;
+  originalFilename: string;
+  ldipId: number | null;
+  sectorOffices: Record<string, ParsedAipOfficeResponse[]>;
+}
+
+// ── AIP detail (stored hierarchy) ────────────────────────────────────────────
+
+export interface AipActivityDetail {
+  id: number;
+  projectId: number;
+  refCode: string;
+  name: string;
+  esreCode: string | null;
+  implementingOffice: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  expectedOutputs: string | null;
+  fundingSourceId: number | null;
+  fundingSourceSnapshot: string | null;
+  ps: number | null;
+  mooe: number | null;
+  co: number | null;
+  total: number | null;
+  ccAdaptation: number | null;
+  ccMitigation: number | null;
+  ccTypologyCode: string | null;
+}
+
+export interface AipProjectDetail {
+  id: number;
+  programId: number;
+  refCode: string;
+  name: string;
+  activities: AipActivityDetail[];
+}
+
+export interface AipProgramDetail {
+  id: number;
+  officeId: number;
+  refCode: string;
+  name: string;
+  projects: AipProjectDetail[];
+}
+
+export interface AipOfficeDetail {
+  id: number;
+  aipRecordId: number;
+  refCode: string;
+  name: string;
+  sector: string;
+  programs: AipProgramDetail[];
+}
+
+export interface AipRecordDetail {
+  id: number;
+  fiscalYear: number;
+  entrySource: string;
+  originalFilename: string | null;
+  uploadedById: string;
+  uploadedAt: string;
+  status: string;
+  ldipId: number | null;
+  sourceId: number | null;
+  offices: AipOfficeDetail[];
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+
+export interface StatusBreakdown {
+  status: string;
+  count: number;
+}
+
+export interface LdipSummary {
+  total: number;
+  breakdown: StatusBreakdown[];
+}
+
+export interface AipSummary {
+  total: number;
+  breakdown: StatusBreakdown[];
+}
+
+export interface WfpSummary {
+  finalCount: number;
+  activeOfficeCount: number;
+}
+
+export interface WfpOfficeStatus {
+  officeId: number;
+  officeName: string;
+  wfpStatus: "Draft" | "Final" | "Not started";
+  aipRecordId: number | null;
+}
+
+export interface PlanningDashboard {
+  fiscalYear: number;
+  availableFiscalYears: number[];
+  ldip: LdipSummary;
+  aip: AipSummary;
+  wfp: WfpSummary;
+  wfpByOffice: WfpOfficeStatus[];
+}
+
+export interface RecentActivity {
+  id: number;
+  changedAt: string; // ISO 8601
+  tableName: string;
+  action: string;
+  recordId: number;
+  actorName: string;
+}
+
+// ── WFP ──────────────────────────────────────────────────────────────────────
+
+export type ExpenditureType = "PS" | "MOOE" | "CO";
+
+export interface WfpExpenditureLine {
+  id: number;
+  wfpActivityId: number;
+  expenditureType: ExpenditureType;
+  resourcesNeeded: string | null;
+  responsibleUnit: string | null;
+  successIndicator: string | null;
+  meansOfVerification: string | null;
+  accountId: number | null;
+  accountNumberSnapshot: string | null;
+  accountTitleSnapshot: string | null;
+  totalAppropriation: number;
+  applyReserve: boolean;
+  reserveAmount: number;
+  netAppropriation: number;
+  q1: number;
+  q2: number;
+  q3: number;
+  q4: number;
+  quarterlyTotal: number;
+  fundingSourceId: number | null;
+  fundingSourceSnapshot: string | null;
+  sortOrder: number;
+}
+
+export interface WfpActivity {
+  id: number;
+  wfpId: number;
+  aipActivityId: number;
+  lines: WfpExpenditureLine[];
+}
+
+export interface WfpRecord {
+  id: number;
+  aipRecordId: number;
+  officeId: number;
+  fiscalYear: number;
+  status: "Draft" | "Final";
+  createdById: string;
+  createdAt: string;
+  updatedAt: string | null;
+  finalizedAt: string | null;
+}
+
+export interface WfpRecordDetail extends WfpRecord {
+  activities: WfpActivity[];
+}
+
+export interface SaveWfpLine {
+  expenditureType: ExpenditureType;
+  resourcesNeeded: string | null;
+  responsibleUnit: string | null;
+  successIndicator: string | null;
+  meansOfVerification: string | null;
+  accountId: number | null;
+  totalAppropriation: number;
+  applyReserve: boolean;
+  q1: number;
+  q2: number;
+  q3: number;
+  q4: number;
+  fundingSourceId: number | null;
+  sortOrder: number;
+}
+
+export interface SaveWfpActivityRequest {
+  aipActivityId: number;
+  lines: SaveWfpLine[];
+}
+
+export interface SaveWfpRequest {
+  aipRecordId: number;
+  officeId: number;
+  fiscalYear: number;
+  activities: SaveWfpActivityRequest[];
+}
+
+// ── LDIP ──────────────────────────────────────────────────────────────────────
+
+export type LdipEntryMode = "New" | "Amendment" | "Supplemental";
+export type LdipStatus    = "Draft" | "Final" | "Archived";
+
+export interface LdipRecord {
+  id: number;
+  refCode: string;
+  title: string;
+  fiscalYearStart: number;
+  fiscalYearEnd: number;
+  entryMode: LdipEntryMode;
+  status: LdipStatus;
+  sourceId: number | null;
+  createdById: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateLdipRequest {
+  title: string;
+  fiscalYearStart: number;
+  fiscalYearEnd: number;
+  entryMode: LdipEntryMode;
+}
+
+export interface UpdateLdipRequest {
+  title: string;
+  fiscalYearStart: number;
+  fiscalYearEnd: number;
+  entryMode: LdipEntryMode;
+}

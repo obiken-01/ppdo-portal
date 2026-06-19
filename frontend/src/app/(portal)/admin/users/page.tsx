@@ -8,9 +8,9 @@
  *
  * Features:
  *   - Table listing all portal users (name, email, role, division, status)
- *   - Add User modal — create a new account with default password PPDOUser2026!
+ *   - Add User modal — create a new account with default password TamarawUser2026!
  *   - Edit User modal — update profile + per-user permission override toggles
- *   - Reset Password — one-click reset back to PPDOUser2026!
+ *   - Reset Password — one-click reset back to TamarawUser2026!
  *   - Deactivate / Reactivate — toggle isActive without deleting the record
  *
  * API endpoints used (all from UserFunctions.cs):
@@ -30,6 +30,7 @@ import type {
   CreateUserRequest,
   Division,
   MeResponse,
+  OfficeResponse,
   PermissionGroupResponse,
   UpdateUserRequest,
   UserResponse,
@@ -52,10 +53,13 @@ const ROLE_BADGE: Record<UserRole, string> = {
 
 // Overrides that are meaningful only for Staff / Observer
 const OVERRIDE_KEYS = [
-  { key: "overrideCanAccessInventory",     label: "Access Inventory" },
-  { key: "overrideCanAccessReports",       label: "Inventory Report" },
-  { key: "overrideCanManageUsers",         label: "Manage Users" },
-  { key: "overrideCanManageResourceLinks", label: "Manage Resource Links" },
+  { key: "overrideCanAccessInventory",      label: "Access Inventory" },
+  { key: "overrideCanAccessReports",        label: "Inventory Report" },
+  { key: "overrideCanManageUsers",          label: "Manage Users" },
+  { key: "overrideCanManageResourceLinks",  label: "Manage Resource Links" },
+  { key: "overrideCanAccessBudgetPlanning", label: "Access Budget Planning" },
+  { key: "overrideCanUploadAip",            label: "Upload AIP" },
+  { key: "overrideCanManageConfig",         label: "Manage Configuration" },
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -64,9 +68,11 @@ const OVERRIDE_KEYS = [
 
 const blankForm = (): CreateUserRequest => ({
   fullName: "",
-  email: "",
+  username: "",
+  email: undefined,
   role: "Staff",
   division: "Admin",
+  officeId: null,
   position: null,
   contactNo: null,
 });
@@ -183,6 +189,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 type UserFormProps = {
   form: CreateUserRequest | UpdateUserRequest;
   groups: PermissionGroupResponse[];
+  offices: OfficeResponse[];
   isEdit: boolean;  // when false, group dropdown and overrides are hidden
   saving: boolean;
   error: string | null;
@@ -191,8 +198,22 @@ type UserFormProps = {
   onCancel: () => void;
 };
 
-function UserForm({ form, groups, isEdit, saving, error, onChange, onSubmit, onCancel }: UserFormProps) {
+function UserForm({ form, groups, offices, isEdit, saving, error, onChange, onSubmit, onCancel }: UserFormProps) {
   const showOverrides = form.role === "Staff" || form.role === "Observer";
+  // A non-PPDO office user has an office assigned. Office and Division are mutually
+  // exclusive: selecting an office clears the division (office users have no division).
+  const isOfficeUser = form.officeId != null;
+
+  // Selecting an office forces a non-admin role (office users are encoder/viewer).
+  function handleOfficeChange(value: string) {
+    const officeId = value ? Number(value) : null;
+    const patch: Partial<CreateUserRequest & UpdateUserRequest> = { officeId };
+    if (officeId != null) {
+      patch.division = null;                                   // offices have no division
+      if (form.role === "SuperAdmin" || form.role === "Admin") patch.role = "Staff";
+    }
+    onChange(patch);
+  }
 
   return (
     <div className="space-y-4">
@@ -209,11 +230,25 @@ function UserForm({ form, groups, isEdit, saving, error, onChange, onSubmit, onC
         </div>
 
         <div className="col-span-2">
-          <label className="block text-xs font-medium text-slate-600 mb-1">Email *</label>
+          <label className="block text-xs font-medium text-slate-600 mb-1">Username *</label>
+          <input
+            value={form.username}
+            onChange={(e) => onChange({ username: e.target.value })}
+            placeholder="juandelacruz"
+            autoComplete="off"
+            className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 font-mono"
+          />
+        </div>
+
+        <div className="col-span-2">
+          <label className="block text-xs font-medium text-slate-600 mb-1">
+            Email
+            <span className="ml-1 font-normal text-slate-400">(optional)</span>
+          </label>
           <input
             type="email"
-            value={form.email}
-            onChange={(e) => onChange({ email: e.target.value })}
+            value={form.email ?? ""}
+            onChange={(e) => onChange({ email: e.target.value || undefined })}
             placeholder="user@ppdo.gov.ph"
             className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
           />
@@ -226,10 +261,13 @@ function UserForm({ form, groups, isEdit, saving, error, onChange, onSubmit, onC
             onChange={(e) => onChange({ role: e.target.value as UserRole })}
             className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 bg-white"
           >
-            {ROLES.map((r) => (
+            {(isOfficeUser ? (["Staff", "Observer"] as UserRole[]) : ROLES).map((r) => (
               <option key={r} value={r}>{r}</option>
             ))}
           </select>
+          {isOfficeUser && (
+            <p className="mt-1 text-[11px] text-slate-400">Office users are Staff (encoder) or Observer (viewer).</p>
+          )}
         </div>
 
         <div>
@@ -237,11 +275,33 @@ function UserForm({ form, groups, isEdit, saving, error, onChange, onSubmit, onC
           <select
             value={form.division ?? ""}
             onChange={(e) => onChange({ division: (e.target.value as Division) || null })}
-            className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 bg-white"
+            disabled={isOfficeUser}
+            className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 bg-white disabled:bg-slate-100 disabled:text-slate-400"
           >
             <option value="">— None —</option>
             {DIVISIONS.map((d) => (
               <option key={d} value={d}>{d}</option>
+            ))}
+          </select>
+          {isOfficeUser && (
+            <p className="mt-1 text-[11px] text-slate-400">Not used for office users.</p>
+          )}
+        </div>
+
+        {/* Office (v1.1) — set to create a non-PPDO office user (Budget Planning only). */}
+        <div className="col-span-2">
+          <label className="block text-xs font-medium text-slate-600 mb-1">
+            Office
+            <span className="ml-1 font-normal text-slate-400">(non-PPDO user — clears Division)</span>
+          </label>
+          <select
+            value={form.officeId ?? ""}
+            onChange={(e) => handleOfficeChange(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 bg-white"
+          >
+            <option value="">— None (PPDO-internal user) —</option>
+            {offices.map((o) => (
+              <option key={o.id} value={o.id}>{o.officeName} ({o.officeCode})</option>
             ))}
           </select>
         </div>
@@ -424,6 +484,7 @@ export default function UsersPage() {
   // Data
   const [users, setUsers] = useState<UserResponse[]>([]);
   const [groups, setGroups] = useState<PermissionGroupResponse[]>([]);
+  const [offices, setOffices] = useState<OfficeResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
@@ -452,7 +513,7 @@ export default function UsersPage() {
   useEffect(() => {
     api.get<MeResponse>("/auth/me").then(({ data }) => {
       if (!data.canManageUsers) {
-        router.replace("/dashboard");
+        router.replace(data.officeId != null ? "/budget-planning" : "/dashboard");
       } else {
         setAuthChecked(true);
       }
@@ -480,6 +541,15 @@ export default function UsersPage() {
         // permission-groups endpoint not yet implemented — group dropdown stays empty
         setGroups([]);
       }
+
+      try {
+        // /api/config/offices returns the { data, error, message } envelope (RAL-70).
+        const officesRes = await api.get<{ data: OfficeResponse[] }>("/config/offices?active=true");
+        setOffices(officesRes.data.data ?? []);
+      } catch {
+        // offices endpoint unavailable — office dropdown stays empty
+        setOffices([]);
+      }
     } catch {
       setFetchError("Failed to load user data. Please try again.");
     } finally {
@@ -499,9 +569,11 @@ export default function UsersPage() {
     const q = search.toLowerCase();
     return (
       u.fullName.toLowerCase().includes(q) ||
-      u.email.toLowerCase().includes(q) ||
+      u.username.toLowerCase().includes(q) ||
+      (u.email ?? "").toLowerCase().includes(q) ||
       u.role.toLowerCase().includes(q) ||
-      (u.division ?? "").toLowerCase().includes(q)
+      (u.division ?? "").toLowerCase().includes(q) ||
+      (u.officeName ?? "").toLowerCase().includes(q)
     );
   });
 
@@ -516,8 +588,8 @@ export default function UsersPage() {
   }
 
   async function handleAdd() {
-    if (!addForm.fullName.trim() || !addForm.email.trim()) {
-      setFormError("Full name and email are required.");
+    if (!addForm.fullName.trim() || !addForm.username.trim()) {
+      setFormError("Full name and username are required.");
       return;
     }
     setSaving(true);
@@ -542,9 +614,11 @@ export default function UsersPage() {
     setEditTarget(user);
     setEditForm({
       fullName:                      user.fullName,
+      username:                      user.username,
       email:                         user.email,
       role:                          user.role,
       division:                      user.division,
+      officeId:                      user.officeId,
       groupId:                       user.groupId,
       position:                      user.position,
       contactNo:                     user.contactNo,
@@ -553,14 +627,17 @@ export default function UsersPage() {
       overrideCanAccessReports:      user.overrideCanAccessReports,
       overrideCanManageUsers:        user.overrideCanManageUsers,
       overrideCanManageResourceLinks: user.overrideCanManageResourceLinks,
+      overrideCanAccessBudgetPlanning: user.overrideCanAccessBudgetPlanning,
+      overrideCanUploadAip:            user.overrideCanUploadAip,
+      overrideCanManageConfig:         user.overrideCanManageConfig,
     });
     setFormError(null);
   }
 
   async function handleEdit() {
     if (!editTarget || !editForm) return;
-    if (!editForm.fullName.trim() || !editForm.email.trim()) {
-      setFormError("Full name and email are required.");
+    if (!editForm.fullName.trim() || !editForm.username.trim()) {
+      setFormError("Full name and username are required.");
       return;
     }
     setSaving(true);
@@ -641,7 +718,7 @@ export default function UsersPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name, email, role, or division…"
+            placeholder="Search by name, username, email, role, or division…"
             className="flex-1 px-4 py-2.5 rounded-lg text-sm border border-slate-200 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-green-600"
           />
           {search && (
@@ -690,9 +767,9 @@ export default function UsersPage() {
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500 uppercase tracking-wide">
                     <th className="text-left px-4 py-3 font-medium">Name</th>
-                    <th className="text-left px-4 py-3 font-medium">Email</th>
+                    <th className="text-left px-4 py-3 font-medium">Username / Email</th>
                     <th className="text-left px-4 py-3 font-medium">Role</th>
-                    <th className="text-left px-4 py-3 font-medium">Division</th>
+                    <th className="text-left px-4 py-3 font-medium">Division / Office</th>
                     <th className="text-left px-4 py-3 font-medium">Status</th>
                     <th className="text-right px-4 py-3 font-medium">Actions</th>
                   </tr>
@@ -709,9 +786,18 @@ export default function UsersPage() {
                           <div className="text-xs text-slate-400">{user.position}</div>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-slate-600">{user.email}</td>
+                      <td className="px-4 py-3">
+                        <div className="font-mono text-sm text-slate-700">{user.username}</div>
+                        {user.email && (
+                          <div className="text-xs text-slate-400">{user.email}</div>
+                        )}
+                      </td>
                       <td className="px-4 py-3">{roleBadge(user.role)}</td>
-                      <td className="px-4 py-3 text-slate-600">{user.division ?? "—"}</td>
+                      <td className="px-4 py-3 text-slate-600">
+                        {user.officeName
+                          ? <span className="inline-flex items-center gap-1"><span className="text-xs">🏛️</span>{user.officeName}</span>
+                          : (user.division ?? "—")}
+                      </td>
                       <td className="px-4 py-3">{statusBadge(user.isActive)}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">
@@ -755,11 +841,12 @@ export default function UsersPage() {
       {showAdd && (
         <Modal title="Add New User" onClose={() => setShowAdd(false)}>
           <p className="text-xs text-slate-400 mb-4">
-            Default password <span className="font-mono bg-slate-100 px-1 rounded">PPDOUser2026!</span> is set automatically. The user must change it on first login.
+            Default password <span className="font-mono bg-slate-100 px-1 rounded">TamarawUser2026!</span> is set automatically. The user must change it on first login.
           </p>
           <UserForm
             form={addForm}
             groups={groups}
+            offices={offices}
             isEdit={false}
             saving={saving}
             error={formError}
@@ -776,6 +863,7 @@ export default function UsersPage() {
           <UserForm
             form={editForm}
             groups={groups}
+            offices={offices}
             isEdit
             saving={saving}
             error={formError}
@@ -789,7 +877,7 @@ export default function UsersPage() {
       {/* ── Reset Password confirm ─────────────────────────────────────────── */}
       {resetTarget && (
         <ConfirmDialog
-          message={`Reset password for ${resetTarget.fullName}? Their password will be set back to the default: PPDOUser2026!`}
+          message={`Reset password for ${resetTarget.fullName}? Their password will be set back to the default: TamarawUser2026!`}
           confirmLabel="Reset Password"
           loading={actionLoading}
           onConfirm={handleResetPassword}
