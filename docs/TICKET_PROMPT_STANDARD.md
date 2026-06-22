@@ -51,6 +51,11 @@ a fresh Claude Code session with no prior context should be able to act on it co
   endpoints; `ServiceResult` for service returns.
 - **Frontend reuse:** reuse `components/ui/` (`Modal`, `DataTable`, `ConfirmDialog`, `useToast`);
   flat design (no rounded corners); the sidebar uses **emoji icons**, not an icon library.
+- **Performance (`docs/PERFORMANCE_GUIDELINES.md`):** query at the DB, not in memory (no
+  `GetAllAsync()` + in-memory filter/count/uniqueness — use scoped repo methods, `CountAsync`,
+  `AnyAsync`); no `Task.WhenAll` over one `DbContext`; slim DTOs for list/grid endpoints; fetch
+  shared state (`/auth/me`) once via context; loading states must not cause layout shift. Call out
+  the relevant rule when the ticket adds a query, endpoint, or list view.
 - **PR body:** include a manual test plan checklist (`docs/TEST_CONVENTIONS.md`), note blocked-by /
   blocks relationships, and flag any new migration for the deploy step.
 
