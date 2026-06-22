@@ -370,14 +370,6 @@ export default function Sidebar({ me }: SidebarProps) {
                 <p className="text-xs font-semibold text-slate-700 truncate">{me.fullName}</p>
                 <p className="text-xs text-slate-400 truncate">{me.username}</p>
               </div>
-              <Link
-                href="/account"
-                onClick={() => setUserMenuOpen(false)}
-                className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
-              >
-                <span>👤</span>
-                <span>My Account</span>
-              </Link>
               <button
                 onClick={handleLogout}
                 className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-danger-500 hover:bg-danger-100 transition-colors"
