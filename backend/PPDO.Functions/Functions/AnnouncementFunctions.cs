@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using PPDO.Application.Common;
@@ -206,6 +207,9 @@ public sealed class AnnouncementFunctions
     {
         PropertyNameCaseInsensitive = true,
         PropertyNamingPolicy        = JsonNamingPolicy.CamelCase,
+        // Serialize AnnouncementStatus (and any future enums) as strings so the
+        // frontend can compare against "Draft"/"Published"/"Archived" directly.
+        Converters = { new JsonStringEnumConverter() },
     };
 
     private static async Task<T?> DeserializeAsync<T>(
