@@ -9,7 +9,7 @@ export default function Footer() {
         <span>
           &copy; 2026 Provincial Government of Occidental Mindoro &mdash; PPDO
         </span>
-        <span className="text-slate-500">Portal v1.1.0</span>
+        <span className="text-slate-500">Portal v1.1.1</span>
       </div>
     </footer>
   );
