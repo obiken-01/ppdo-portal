@@ -91,28 +91,25 @@ export default function DashboardPage() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
-  return (
-    <div className="p-5 h-full flex flex-col gap-3">
-      {/* Pending chip — shown for admin when there are items to review */}
-      {pendingCount > 0 && (
-        <div className="flex">
-          {isAdmin ? (
-            <button
-              onClick={() => setApprovalPanelOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium
-                         bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors"
-            >
-              ⏳ {pendingCount} event{pendingCount !== 1 ? "s" : ""} awaiting review
-            </button>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm
-                             bg-amber-50 text-amber-600">
-              ⏳ {pendingCount} event{pendingCount !== 1 ? "s" : ""} submitted for approval
-            </span>
-          )}
-        </div>
-      )}
+  const pendingChip = pendingCount > 0 ? (
+    isAdmin ? (
+      <button
+        onClick={() => setApprovalPanelOpen(true)}
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium
+                   bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors rounded"
+      >
+        ⏳ {pendingCount} event{pendingCount !== 1 ? "s" : ""} awaiting review
+      </button>
+    ) : (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs
+                       bg-amber-50 text-amber-600 rounded">
+        ⏳ {pendingCount} event{pendingCount !== 1 ? "s" : ""} pending approval
+      </span>
+    )
+  ) : null;
 
+  return (
+    <div className="p-5 h-full flex flex-col">
       {/* Calendar + Resource Links */}
       <div className="flex gap-4 flex-1 min-h-0">
         {/* Calendar — takes most of the horizontal space */}
@@ -123,6 +120,7 @@ export default function DashboardPage() {
             onMonthChange={handleMonthChange}
             onEventClick={setSelectedEvent}
             onDateClick={(dateStr) => setCreateModalDate(dateStr)}
+            headerRight={pendingChip}
           />
         </div>
 

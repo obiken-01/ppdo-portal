@@ -60,6 +60,8 @@ interface DashboardCalendarProps {
   onEventClick?: (event: CalendarEventResponse) => void;
   /** Fires when the user clicks an empty calendar date cell. */
   onDateClick?: (dateStr: string) => void;
+  /** Optional content rendered on the right side of the legend bar (e.g. pending chip). */
+  headerRight?: React.ReactNode;
 }
 
 export default function DashboardCalendar({
@@ -68,6 +70,7 @@ export default function DashboardCalendar({
   onMonthChange,
   onEventClick,
   onDateClick,
+  headerRight,
 }: DashboardCalendarProps) {
   function handleDatesSet(arg: DatesSetArg) {
     const d = arg.view.currentStart;
@@ -110,14 +113,17 @@ export default function DashboardCalendar({
         </div>
       )}
 
-      {/* Legend */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 pt-3 pb-1">
-        {LEGEND_ENTRIES.map(({ key, label }) => (
-          <div key={key} className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-sm inline-block" style={{ backgroundColor: EVENT_COLORS[key].bg }} />
-            <span className="text-xs text-slate-500">{label}</span>
-          </div>
-        ))}
+      {/* Legend + optional header-right slot */}
+      <div className="flex items-center justify-between gap-4 px-4 pt-3 pb-1">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          {LEGEND_ENTRIES.map(({ key, label }) => (
+            <div key={key} className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-sm inline-block" style={{ backgroundColor: EVENT_COLORS[key].bg }} />
+              <span className="text-xs text-slate-500">{label}</span>
+            </div>
+          ))}
+        </div>
+        {headerRight && <div className="shrink-0">{headerRight}</div>}
       </div>
 
       {/* Calendar */}
