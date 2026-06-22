@@ -16,20 +16,41 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import DOMPurify from "dompurify";
+import Modal from "@/components/ui/Modal";
 import type { AnnouncementPublicDto } from "@/types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api";
 
 export default function AnnouncementsSection() {
-  const [items, setItems]     = useState<AnnouncementPublicDto[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [items, setItems]       = useState<AnnouncementPublicDto[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [warming, setWarming]   = useState(false);
+  const [selected, setSelected] = useState<AnnouncementPublicDto | null>(null);
 
   useEffect(() => {
+    const controller = new AbortController();
+    // After 5 s still loading → show "server waking up" hint in skeleton.
+    const warmTimer  = setTimeout(() => setWarming(true), 5_000);
+    // After 15 s give up entirely → fall through to empty state silently.
+    const abortTimer = setTimeout(() => controller.abort(), 15_000);
+
     axios
-      .get<AnnouncementPublicDto[]>(`${API_BASE}/announcements`)
+      .get<AnnouncementPublicDto[]>(`${API_BASE}/announcements`, {
+        signal: controller.signal,
+      })
       .then((r) => setItems(r.data))
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => {
+        clearTimeout(warmTimer);
+        clearTimeout(abortTimer);
+        setLoading(false);
+      });
+
+    return () => {
+      controller.abort();
+      clearTimeout(warmTimer);
+      clearTimeout(abortTimer);
+    };
   }, []);
 
   return (
@@ -38,17 +59,31 @@ export default function AnnouncementsSection() {
         <h2 className="text-xl font-bold text-slate-800 mb-5">Announcements</h2>
 
         {loading ? (
-          <SkeletonBars />
+          <SkeletonBars warming={warming} />
         ) : items.length === 0 ? (
           <EmptyState />
         ) : (
           <div className="space-y-4">
             {items.map((item) => (
-              <AnnouncementCard key={item.id} item={item} />
+              <AnnouncementCard key={item.id} item={item} onReadMore={setSelected} />
             ))}
           </div>
         )}
       </div>
+
+      {selected && (
+        <Modal title={selected.title} size="lg" onClose={() => setSelected(null)}>
+          <time className="block text-xs text-slate-400 mb-4" dateTime={selected.publishedAt}>
+            {new Date(selected.publishedAt).toLocaleDateString("en-US", {
+              month: "long", day: "numeric", year: "numeric",
+            })}
+          </time>
+          <div
+            className="text-sm text-slate-600 leading-relaxed announcement-content"
+            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selected.content) }}
+          />
+        </Modal>
+      )}
     </section>
   );
 }
@@ -57,7 +92,7 @@ export default function AnnouncementsSection() {
 // Skeleton — 3 animated bars while data loads
 // ---------------------------------------------------------------------------
 
-function SkeletonBars() {
+function SkeletonBars({ warming }: { warming: boolean }) {
   return (
     <div className="space-y-4" aria-busy="true" aria-label="Loading announcements">
       {[0, 1, 2].map((i) => (
@@ -73,6 +108,11 @@ function SkeletonBars() {
           </div>
         </div>
       ))}
+      {warming && (
+        <p className="text-xs text-slate-400 text-center pt-1">
+          Server is waking up, this may take a moment…
+        </p>
+      )}
     </div>
   );
 }
@@ -99,7 +139,13 @@ function EmptyState() {
 // Announcement card — flat, no rounded corners
 // ---------------------------------------------------------------------------
 
-function AnnouncementCard({ item }: { item: AnnouncementPublicDto }) {
+function AnnouncementCard({
+  item,
+  onReadMore,
+}: {
+  item: AnnouncementPublicDto;
+  onReadMore: (item: AnnouncementPublicDto) => void;
+}) {
   const formattedDate = new Date(item.publishedAt).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -115,9 +161,15 @@ function AnnouncementCard({ item }: { item: AnnouncementPublicDto }) {
         </time>
       </div>
       <div
-        className="text-sm text-slate-600 leading-relaxed announcement-content"
+        className="text-sm text-slate-600 leading-relaxed announcement-content line-clamp-4 overflow-hidden"
         dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(item.content) }}
       />
+      <button
+        onClick={() => onReadMore(item)}
+        className="mt-3 text-sm text-green-700 hover:text-green-600 font-medium transition-colors"
+      >
+        Read more →
+      </button>
     </article>
   );
 }
