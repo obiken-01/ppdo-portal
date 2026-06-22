@@ -98,7 +98,7 @@ export default function Sidebar({ me }: SidebarProps) {
   const showAnnouncements  = !isOfficeUser && isAdmin;
 
   function linkCls(active: boolean) {
-    return `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+    return `flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition-colors ${
       active
         ? "bg-green-800 text-white"
         : "text-green-100 hover:bg-green-600 hover:text-white"
@@ -106,7 +106,7 @@ export default function Sidebar({ me }: SidebarProps) {
   }
 
   function childLinkCls(active: boolean) {
-    return `flex items-center gap-2 pl-9 pr-3 py-2 rounded-lg text-sm transition-colors ${
+    return `flex items-center gap-2 pl-9 pr-3 py-2 text-sm transition-colors ${
       active
         ? "bg-green-800 text-white font-medium"
         : "text-green-200 hover:bg-green-600 hover:text-white"
@@ -161,7 +161,7 @@ export default function Sidebar({ me }: SidebarProps) {
           <div>
             <button
               onClick={() => setInventoryOpen((o) => !o)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition-colors ${
                 isActive("/inventory")
                   ? "bg-green-800 text-white"
                   : "text-green-100 hover:bg-green-600 hover:text-white"
@@ -258,7 +258,7 @@ export default function Sidebar({ me }: SidebarProps) {
           <div>
             <button
               onClick={() => setBudgetPlanningOpen((o) => !o)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition-colors ${
                 isActive("/budget-planning")
                   ? "bg-green-800 text-white"
                   : "text-green-100 hover:bg-green-600 hover:text-white"
@@ -299,7 +299,7 @@ export default function Sidebar({ me }: SidebarProps) {
           <div>
             <button
               onClick={() => setConfigOpen((o) => !o)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition-colors ${
                 isActive("/config")
                   ? "bg-green-800 text-white"
                   : "text-green-100 hover:bg-green-600 hover:text-white"
