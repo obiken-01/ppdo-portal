@@ -36,6 +36,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/config":                "Configuration",
   "/resource-links":        "Resource Links",
   "/profile":               "My Profile",
+  "/account":               "My Account",
   "/inventory/create-pr":       "Create Purchase Request",
   "/inventory/receive-delivery": "Receive Delivery",
   "/inventory/items-master": "Items Master",
@@ -123,7 +124,9 @@ export default function PortalLayout({
   useEffect(() => {
     if (!me || me.officeId == null) return;
     const allowed =
-      pathname.startsWith("/budget-planning") || pathname.startsWith("/profile");
+      pathname.startsWith("/budget-planning") ||
+      pathname.startsWith("/profile") ||
+      pathname.startsWith("/account");
     if (!allowed) router.replace("/budget-planning");
   }, [me, pathname, router]);
 

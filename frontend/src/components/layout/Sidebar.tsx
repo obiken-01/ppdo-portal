@@ -36,7 +36,7 @@ export default function Sidebar({ me }: SidebarProps) {
     () => pathname.startsWith("/inventory")
   );
   const [configOpen, setConfigOpen] = useState(
-    () => pathname.startsWith("/config")
+    () => pathname.startsWith("/config") || pathname.startsWith("/admin/users")
   );
   const [budgetPlanningOpen, setBudgetPlanningOpen] = useState(
     () => pathname.startsWith("/budget-planning")
@@ -48,9 +48,9 @@ export default function Sidebar({ me }: SidebarProps) {
     if (pathname.startsWith("/inventory")) setInventoryOpen(true);
   }, [pathname]);
 
-  // Auto-expand configuration when navigating to a config route
+  // Auto-expand configuration when navigating to a config route or user management
   useEffect(() => {
-    if (pathname.startsWith("/config")) setConfigOpen(true);
+    if (pathname.startsWith("/config") || pathname.startsWith("/admin/users")) setConfigOpen(true);
   }, [pathname]);
 
   // Auto-expand budget planning when navigating to a budget-planning route
@@ -98,7 +98,7 @@ export default function Sidebar({ me }: SidebarProps) {
   const showAnnouncements  = !isOfficeUser && isAdmin;
 
   function linkCls(active: boolean) {
-    return `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+    return `flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition-colors ${
       active
         ? "bg-green-800 text-white"
         : "text-green-100 hover:bg-green-600 hover:text-white"
@@ -106,7 +106,7 @@ export default function Sidebar({ me }: SidebarProps) {
   }
 
   function childLinkCls(active: boolean) {
-    return `flex items-center gap-2 pl-9 pr-3 py-2 rounded-lg text-sm transition-colors ${
+    return `flex items-center gap-2 pl-9 pr-3 py-2 text-sm transition-colors ${
       active
         ? "bg-green-800 text-white font-medium"
         : "text-green-200 hover:bg-green-600 hover:text-white"
@@ -161,7 +161,7 @@ export default function Sidebar({ me }: SidebarProps) {
           <div>
             <button
               onClick={() => setInventoryOpen((o) => !o)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition-colors ${
                 isActive("/inventory")
                   ? "bg-green-800 text-white"
                   : "text-green-100 hover:bg-green-600 hover:text-white"
@@ -258,7 +258,7 @@ export default function Sidebar({ me }: SidebarProps) {
           <div>
             <button
               onClick={() => setBudgetPlanningOpen((o) => !o)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition-colors ${
                 isActive("/budget-planning")
                   ? "bg-green-800 text-white"
                   : "text-green-100 hover:bg-green-600 hover:text-white"
@@ -294,13 +294,13 @@ export default function Sidebar({ me }: SidebarProps) {
           </div>
         )}
 
-        {/* Configuration — collapsible group; PPDO users with CanManageConfig */}
-        {showConfig && (
+        {/* Configuration — collapsible group; PPDO users with CanManageConfig or CanManageUsers */}
+        {(showConfig || showManageUsers) && (
           <div>
             <button
               onClick={() => setConfigOpen((o) => !o)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                isActive("/config")
+              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition-colors ${
+                (isActive("/config") || isActive("/admin/users"))
                   ? "bg-green-800 text-white"
                   : "text-green-100 hover:bg-green-600 hover:text-white"
               }`}
@@ -314,22 +314,32 @@ export default function Sidebar({ me }: SidebarProps) {
 
             {configOpen && (
               <div className="mt-0.5 space-y-0.5">
-                <Link href="/config" className={childLinkCls(pathname === "/config")}>
-                  <span className="text-xs">•</span>
-                  <span className="truncate">Dashboard</span>
-                </Link>
-                <Link href="/config/accounts" className={childLinkCls(isActive("/config/accounts"))}>
-                  <span className="text-xs">•</span>
-                  <span className="truncate">Accounts</span>
-                </Link>
-                <Link href="/config/offices" className={childLinkCls(isActive("/config/offices"))}>
-                  <span className="text-xs">•</span>
-                  <span className="truncate">Offices</span>
-                </Link>
-                <Link href="/config/funding-sources" className={childLinkCls(isActive("/config/funding-sources"))}>
-                  <span className="text-xs">•</span>
-                  <span className="truncate">Funding Sources</span>
-                </Link>
+                {showConfig && (
+                  <>
+                    <Link href="/config" className={childLinkCls(pathname === "/config")}>
+                      <span className="text-xs">•</span>
+                      <span className="truncate">Dashboard</span>
+                    </Link>
+                    <Link href="/config/accounts" className={childLinkCls(isActive("/config/accounts"))}>
+                      <span className="text-xs">•</span>
+                      <span className="truncate">Accounts</span>
+                    </Link>
+                    <Link href="/config/offices" className={childLinkCls(isActive("/config/offices"))}>
+                      <span className="text-xs">•</span>
+                      <span className="truncate">Offices</span>
+                    </Link>
+                    <Link href="/config/funding-sources" className={childLinkCls(isActive("/config/funding-sources"))}>
+                      <span className="text-xs">•</span>
+                      <span className="truncate">Funding Sources</span>
+                    </Link>
+                  </>
+                )}
+                {showManageUsers && (
+                  <Link href="/admin/users" className={childLinkCls(isActive("/admin/users"))}>
+                    <span className="text-xs">•</span>
+                    <span className="truncate">User Management</span>
+                  </Link>
+                )}
               </div>
             )}
           </div>
@@ -343,14 +353,6 @@ export default function Sidebar({ me }: SidebarProps) {
           </Link>
         )}
 
-        {/* User Management */}
-        {showManageUsers && (
-          <Link href="/admin/users" className={linkCls(isActive("/admin/users"))}>
-            <span className="text-base leading-none w-5 text-center">👥</span>
-            <span className="truncate">User Management</span>
-          </Link>
-        )}
-
       </nav>
 
       {/* ── User strip — click to toggle popup menu ──────────────────────── */}
@@ -359,18 +361,18 @@ export default function Sidebar({ me }: SidebarProps) {
 
           {/* Popup menu — renders above the strip */}
           {userMenuOpen && (
-            <div className="absolute bottom-full left-3 right-3 mb-1 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden z-50">
+            <div className="absolute bottom-full left-3 right-3 mb-1 bg-white shadow-xl border border-slate-100 overflow-hidden z-50">
               <div className="px-4 py-2.5 border-b border-slate-100">
                 <p className="text-xs font-semibold text-slate-700 truncate">{me.fullName}</p>
                 <p className="text-xs text-slate-400 truncate">{me.username}</p>
               </div>
               <Link
-                href="/profile"
+                href="/account"
                 onClick={() => setUserMenuOpen(false)}
                 className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
               >
                 <span>👤</span>
-                <span>My Profile</span>
+                <span>My Account</span>
               </Link>
               <button
                 onClick={handleLogout}

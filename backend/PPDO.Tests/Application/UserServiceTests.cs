@@ -597,4 +597,291 @@ public sealed class UserServiceTests
 
         Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
     }
+
+    // ── UpdateOwnProfileAsync ─────────────────────────────────────────────────
+
+    [Fact]
+    public async Task UpdateOwnProfileAsync_UserNotFound_ReturnsNotFound()
+    {
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.GetByIdWithGroupAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+
+        UpdateOwnProfileDto dto = new("Full Name", "username", null, null, null);
+
+        ServiceResult<UserResponseDto> result =
+            await BuildSut(repo).UpdateOwnProfileAsync(MakeStaff(), dto);
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Fact]
+    public async Task UpdateOwnProfileAsync_EmptyFullName_ReturnsBadRequest()
+    {
+        User caller = MakeStaff();
+        Mock<IUserRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByIdWithGroupAsync(caller.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(caller);
+
+        UpdateOwnProfileDto dto = new("  ", "username", null, null, null);
+
+        ServiceResult<UserResponseDto> result =
+            await BuildSut(repo).UpdateOwnProfileAsync(caller, dto);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task UpdateOwnProfileAsync_EmptyUsername_ReturnsBadRequest()
+    {
+        User caller = MakeStaff();
+        Mock<IUserRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByIdWithGroupAsync(caller.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(caller);
+
+        UpdateOwnProfileDto dto = new("Full Name", "  ", null, null, null);
+
+        ServiceResult<UserResponseDto> result =
+            await BuildSut(repo).UpdateOwnProfileAsync(caller, dto);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task UpdateOwnProfileAsync_DuplicateUsername_ReturnsConflict()
+    {
+        User caller = MakeStaff();
+        User other  = MakeAdmin();
+        other.Username = "taken";
+
+        Mock<IUserRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByIdWithGroupAsync(caller.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(caller);
+        repo.Setup(r => r.FindByUsernameAsync("taken", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(other);
+
+        UpdateOwnProfileDto dto = new("Full Name", "taken", null, null, null);
+
+        ServiceResult<UserResponseDto> result =
+            await BuildSut(repo).UpdateOwnProfileAsync(caller, dto);
+
+        Assert.Equal(ServiceErrorCode.Conflict, result.Code);
+    }
+
+    [Fact]
+    public async Task UpdateOwnProfileAsync_DuplicateEmail_ReturnsConflict()
+    {
+        User caller = MakeStaff();
+        User other  = MakeAdmin();
+        other.Email = "taken@ppdo.gov.ph";
+
+        Mock<IUserRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByIdWithGroupAsync(caller.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(caller);
+        repo.Setup(r => r.FindByUsernameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+        repo.Setup(r => r.FindByEmailAsync("taken@ppdo.gov.ph", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(other);
+
+        UpdateOwnProfileDto dto = new("Full Name", caller.Username, "taken@ppdo.gov.ph", null, null);
+
+        ServiceResult<UserResponseDto> result =
+            await BuildSut(repo).UpdateOwnProfileAsync(caller, dto);
+
+        Assert.Equal(ServiceErrorCode.Conflict, result.Code);
+    }
+
+    [Fact]
+    public async Task UpdateOwnProfileAsync_EmailClearedToNull_Succeeds()
+    {
+        User caller = MakeStaff();
+        caller.Email = "old@ppdo.gov.ph";
+
+        User reloaded = MakeStaff();
+        reloaded.Email = null;
+
+        Mock<IUserRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByIdWithGroupAsync(caller.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(caller);
+        repo.Setup(r => r.FindByUsernameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+        // Reload after save returns the updated user
+        repo.SetupSequence(r => r.GetByIdWithGroupAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(caller)
+            .ReturnsAsync(reloaded);
+
+        UpdateOwnProfileDto dto = new("Full Name", caller.Username, "", null, null);
+
+        ServiceResult<UserResponseDto> result =
+            await BuildSut(repo).UpdateOwnProfileAsync(caller, dto);
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(caller.Email);
+    }
+
+    [Fact]
+    public async Task UpdateOwnProfileAsync_Success_UpdatesOnlyEditableFields()
+    {
+        User caller = MakeStaff();
+        UserRole originalRole          = caller.Role;
+        Division? originalDivision     = caller.Division;
+        bool originalIsActive          = caller.IsActive;
+
+        User reloaded = MakeStaff();
+        reloaded.FullName  = "New Name";
+        reloaded.Position  = "Engineer";
+        reloaded.ContactNo = "09171234567";
+
+        Mock<IUserRepository> repo = RepoThatSaves();
+        repo.SetupSequence(r => r.GetByIdWithGroupAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(caller)
+            .ReturnsAsync(reloaded);
+        repo.Setup(r => r.FindByUsernameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+
+        UpdateOwnProfileDto dto = new("New Name", caller.Username, null, "Engineer", "09171234567");
+
+        ServiceResult<UserResponseDto> result =
+            await BuildSut(repo).UpdateOwnProfileAsync(caller, dto);
+
+        Assert.True(result.IsSuccess);
+        // Role, Division, IsActive must be untouched (privilege-escalation guard)
+        Assert.Equal(originalRole,     caller.Role);
+        Assert.Equal(originalDivision, caller.Division);
+        Assert.Equal(originalIsActive, caller.IsActive);
+        // Editable fields updated
+        Assert.Equal("New Name",    caller.FullName);
+        Assert.Equal("Engineer",    caller.Position);
+        Assert.Equal("09171234567", caller.ContactNo);
+    }
+
+    // ── ChangePasswordAsync ───────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ChangePasswordAsync_UserNotFound_ReturnsNotFound()
+    {
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.GetByIdWithGroupAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+
+        ChangePasswordDto dto = new("old", "NewPass1!", "NewPass1!");
+
+        ServiceResult<bool> result =
+            await BuildSut(repo).ChangePasswordAsync(MakeStaff(), dto);
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Fact]
+    public async Task ChangePasswordAsync_WrongCurrentPassword_ReturnsBadRequest()
+    {
+        User caller = MakeStaff();
+        caller.PasswordHash = BCrypt.Net.BCrypt.HashPassword("CorrectPass1!");
+
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.GetByIdWithGroupAsync(caller.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(caller);
+
+        ChangePasswordDto dto = new("WrongPass1!", "NewPass1!", "NewPass1!");
+
+        ServiceResult<bool> result =
+            await BuildSut(repo).ChangePasswordAsync(caller, dto);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("incorrect", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ChangePasswordAsync_PasswordMismatch_ReturnsBadRequest()
+    {
+        User caller = MakeStaff();
+        caller.PasswordHash = BCrypt.Net.BCrypt.HashPassword("Current1!");
+
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.GetByIdWithGroupAsync(caller.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(caller);
+
+        ChangePasswordDto dto = new("Current1!", "NewPass1!", "DifferentPass1!");
+
+        ServiceResult<bool> result =
+            await BuildSut(repo).ChangePasswordAsync(caller, dto);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("match", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ChangePasswordAsync_PolicyFailure_ShortPassword_ReturnsBadRequest()
+    {
+        User caller = MakeStaff();
+        caller.PasswordHash = BCrypt.Net.BCrypt.HashPassword("Current1!");
+
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.GetByIdWithGroupAsync(caller.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(caller);
+
+        ChangePasswordDto dto = new("Current1!", "Short1!", "Short1!");
+
+        ServiceResult<bool> result =
+            await BuildSut(repo).ChangePasswordAsync(caller, dto);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task ChangePasswordAsync_PolicyFailure_NoUppercase_ReturnsBadRequest()
+    {
+        User caller = MakeStaff();
+        caller.PasswordHash = BCrypt.Net.BCrypt.HashPassword("Current1!");
+
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.GetByIdWithGroupAsync(caller.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(caller);
+
+        ChangePasswordDto dto = new("Current1!", "newpass123!", "newpass123!");
+
+        ServiceResult<bool> result =
+            await BuildSut(repo).ChangePasswordAsync(caller, dto);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task ChangePasswordAsync_PolicyFailure_NoDigit_ReturnsBadRequest()
+    {
+        User caller = MakeStaff();
+        caller.PasswordHash = BCrypt.Net.BCrypt.HashPassword("Current1!");
+
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.GetByIdWithGroupAsync(caller.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(caller);
+
+        ChangePasswordDto dto = new("Current1!", "NoDigitHere!", "NoDigitHere!");
+
+        ServiceResult<bool> result =
+            await BuildSut(repo).ChangePasswordAsync(caller, dto);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task ChangePasswordAsync_ValidNewPassword_HashUpdated()
+    {
+        User caller = MakeStaff();
+        string originalHash = BCrypt.Net.BCrypt.HashPassword("Current1!");
+        caller.PasswordHash = originalHash;
+
+        Mock<IUserRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByIdWithGroupAsync(caller.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(caller);
+
+        ChangePasswordDto dto = new("Current1!", "NewPass2@", "NewPass2@");
+
+        ServiceResult<bool> result =
+            await BuildSut(repo).ChangePasswordAsync(caller, dto);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotEqual(originalHash, caller.PasswordHash);
+        Assert.True(BCrypt.Net.BCrypt.Verify("NewPass2@", caller.PasswordHash));
+    }
 }
