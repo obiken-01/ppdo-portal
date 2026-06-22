@@ -66,7 +66,9 @@ public sealed class NagerHolidayProvider : IHolidayProvider
                 null,
                 true,
                 "Holiday",
-                "Nager.Date")).ToList();
+                "Nager.Date",
+                null,
+                null)).ToList();
         }
         catch
         {
@@ -93,7 +95,9 @@ public sealed class NagerHolidayProvider : IHolidayProvider
             null,
             true,
             "Holiday",
-            "Static")).ToList();
+            "Static",
+            null,
+            null)).ToList();
     }
 
     // ── PH Public Holidays 2026 ───────────────────────────────────────────────
