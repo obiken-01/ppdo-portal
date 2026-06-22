@@ -23,13 +23,32 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api";
 export default function AnnouncementsSection() {
   const [items, setItems]     = useState<AnnouncementPublicDto[]>([]);
   const [loading, setLoading] = useState(true);
+  const [warming, setWarming] = useState(false);
 
   useEffect(() => {
+    const controller = new AbortController();
+    // After 5 s still loading → show "server waking up" hint in skeleton.
+    const warmTimer  = setTimeout(() => setWarming(true), 5_000);
+    // After 15 s give up entirely → fall through to empty state silently.
+    const abortTimer = setTimeout(() => controller.abort(), 15_000);
+
     axios
-      .get<AnnouncementPublicDto[]>(`${API_BASE}/announcements`)
+      .get<AnnouncementPublicDto[]>(`${API_BASE}/announcements`, {
+        signal: controller.signal,
+      })
       .then((r) => setItems(r.data))
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => {
+        clearTimeout(warmTimer);
+        clearTimeout(abortTimer);
+        setLoading(false);
+      });
+
+    return () => {
+      controller.abort();
+      clearTimeout(warmTimer);
+      clearTimeout(abortTimer);
+    };
   }, []);
 
   return (
@@ -38,7 +57,7 @@ export default function AnnouncementsSection() {
         <h2 className="text-xl font-bold text-slate-800 mb-5">Announcements</h2>
 
         {loading ? (
-          <SkeletonBars />
+          <SkeletonBars warming={warming} />
         ) : items.length === 0 ? (
           <EmptyState />
         ) : (
@@ -57,7 +76,7 @@ export default function AnnouncementsSection() {
 // Skeleton — 3 animated bars while data loads
 // ---------------------------------------------------------------------------
 
-function SkeletonBars() {
+function SkeletonBars({ warming }: { warming: boolean }) {
   return (
     <div className="space-y-4" aria-busy="true" aria-label="Loading announcements">
       {[0, 1, 2].map((i) => (
@@ -73,6 +92,11 @@ function SkeletonBars() {
           </div>
         </div>
       ))}
+      {warming && (
+        <p className="text-xs text-slate-400 text-center pt-1">
+          Server is waking up, this may take a moment…
+        </p>
+      )}
     </div>
   );
 }
