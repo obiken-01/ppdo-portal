@@ -24,7 +24,6 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import type {
@@ -714,13 +713,6 @@ export default function UsersPage() {
   return (
     <div className="min-h-screen bg-slate-100 font-sans">
       <div className="max-w-6xl mx-auto px-6 py-6 space-y-4">
-        {/* Breadcrumb */}
-        <nav className="flex items-center gap-1.5 text-xs text-slate-400">
-          <Link href="/config" className="hover:text-slate-600 transition-colors">Configuration</Link>
-          <span>›</span>
-          <span className="text-slate-600 font-medium">User Management</span>
-        </nav>
-
         {/* Toolbar: search + add button */}
         <div className="flex items-center gap-3">
           <input

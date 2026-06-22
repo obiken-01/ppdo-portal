@@ -22,6 +22,7 @@ interface Crumb {
 interface Section {
   root: string;
   rootLabel: string;
+  rootHref?: string; // href for the root link; defaults to root if omitted
   crumbs: Crumb[];
 }
 
@@ -46,6 +47,14 @@ const SECTIONS: Section[] = [
       { prefix: "/config/accounts",        label: "Accounts" },
       { prefix: "/config/offices",         label: "Offices" },
       { prefix: "/config/funding-sources", label: "Funding Sources" },
+    ],
+  },
+  {
+    root: "/admin",
+    rootLabel: "Configuration",
+    rootHref: "/config",
+    crumbs: [
+      { prefix: "/admin/users", label: "User Management" },
     ],
   },
   {
@@ -79,7 +88,7 @@ function SectionBreadcrumb({ section, pathname }: { section: Section; pathname: 
       {sub ? (
         <>
           <Link
-            href={section.root}
+            href={section.rootHref ?? section.root}
             className="font-medium text-green-600 hover:text-green-700 hover:underline transition-colors"
           >
             {section.rootLabel}
