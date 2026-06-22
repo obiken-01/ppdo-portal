@@ -11,6 +11,21 @@ export interface CalendarEventResponse {
   eventType: string;
   /** "Nager.Date" | "Static" | null */
   source: string | null;
+  /** null for holidays; "Pending" | "Approved" | "Rejected" for DB events */
+  status: 'Pending' | 'Approved' | 'Rejected' | null;
+  rejectionReason: string | null;
+}
+
+export interface PendingCalendarEvent {
+  id: string;
+  title: string;
+  description: string | null;
+  startDate: string;
+  endDate: string | null;
+  isAllDay: boolean;
+  createdById: string;
+  createdByName: string;
+  createdAt: string;
 }
 
 export interface CreateCalendarEventRequest {

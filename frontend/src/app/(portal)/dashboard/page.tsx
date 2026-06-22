@@ -1,23 +1,13 @@
 "use client";
 
-/**
- * Main Dashboard page — RAL-45.
- * Matches Penpot frame "03 Main Dashboard".
- *
- * Layout: FullCalendar (left, wide) + ResourceLinksWidget (right, narrow).
- *
- * Stat cards and inventory alerts belong on the Inventory Dashboard (frame 04)
- * and will be built in a later RAL.
- *
- * Data source:
- *   GET /api/dashboard/events?year&month → CalendarEventResponse[]
- */
-
 import { useCallback, useEffect, useState } from "react";
 import api from "@/lib/api";
-import type { CalendarEventResponse } from "@/types";
+import { getPendingEvents } from "@/lib/dashboard";
+import type { CalendarEventResponse, MeResponse } from "@/types";
 import DashboardCalendar from "@/components/dashboard/DashboardCalendar";
 import ResourceLinksWidget from "@/components/dashboard/ResourceLinksWidget";
+import CalendarApprovalPanel from "@/components/dashboard/CalendarApprovalPanel";
+import CreateEventModal from "@/components/dashboard/CreateEventModal";
 
 export default function DashboardPage() {
   const [events, setEvents]               = useState<CalendarEventResponse[]>([]);
@@ -25,6 +15,22 @@ export default function DashboardPage() {
   const [activeYear, setActiveYear]       = useState(() => new Date().getFullYear());
   const [activeMonth, setActiveMonth]     = useState(() => new Date().getMonth() + 1);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEventResponse | null>(null);
+
+  const [currentUser, setCurrentUser]       = useState<MeResponse | null>(null);
+  const [pendingCount, setPendingCount]     = useState(0);
+  const [approvalPanelOpen, setApprovalPanelOpen] = useState(false);
+  const [createModalDate, setCreateModalDate]     = useState<string | null>(null);
+
+  const isAdmin =
+    currentUser?.role === "Admin" || currentUser?.role === "SuperAdmin";
+
+  // ── Fetch current user ─────────────────────────────────────────────────────
+
+  useEffect(() => {
+    api.get<MeResponse>("/auth/me")
+      .then((r) => setCurrentUser(r.data))
+      .catch(() => {});
+  }, []);
 
   // ── Fetch events ───────────────────────────────────────────────────────────
 
@@ -46,15 +52,67 @@ export default function DashboardPage() {
     fetchEvents(activeYear, activeMonth);
   }, [activeYear, activeMonth, fetchEvents]);
 
+  // ── Pending count (admin only) ─────────────────────────────────────────────
+
+  const refreshPendingCount = useCallback(async () => {
+    if (!isAdmin) {
+      setPendingCount(0);
+      return;
+    }
+    try {
+      const pending = await getPendingEvents();
+      setPendingCount(pending.length);
+    } catch {
+      setPendingCount(0);
+    }
+  }, [isAdmin]);
+
+  useEffect(() => {
+    refreshPendingCount();
+  }, [refreshPendingCount]);
+
+  // ── Handlers ───────────────────────────────────────────────────────────────
+
   function handleMonthChange(year: number, month: number) {
     setActiveYear(year);
     setActiveMonth(month);
   }
 
+  function handleReviewed() {
+    refreshPendingCount();
+    fetchEvents(activeYear, activeMonth);
+  }
+
+  function handleCreated() {
+    setCreateModalDate(null);
+    fetchEvents(activeYear, activeMonth);
+    refreshPendingCount();
+  }
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="p-5 h-full flex flex-col">
+    <div className="p-5 h-full flex flex-col gap-3">
+      {/* Pending chip — shown for admin when there are items to review */}
+      {pendingCount > 0 && (
+        <div className="flex">
+          {isAdmin ? (
+            <button
+              onClick={() => setApprovalPanelOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium
+                         bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors"
+            >
+              ⏳ {pendingCount} event{pendingCount !== 1 ? "s" : ""} awaiting review
+            </button>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm
+                             bg-amber-50 text-amber-600">
+              ⏳ {pendingCount} event{pendingCount !== 1 ? "s" : ""} submitted for approval
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Calendar + Resource Links */}
       <div className="flex gap-4 flex-1 min-h-0">
         {/* Calendar — takes most of the horizontal space */}
@@ -64,6 +122,7 @@ export default function DashboardPage() {
             loading={eventsLoading}
             onMonthChange={handleMonthChange}
             onEventClick={setSelectedEvent}
+            onDateClick={(dateStr) => setCreateModalDate(dateStr)}
           />
         </div>
 
@@ -94,6 +153,19 @@ export default function DashboardPage() {
                 }`}>
                   {selectedEvent.eventType}
                 </span>
+
+                {/* Approval status badge */}
+                {selectedEvent.status === "Pending" && (
+                  <span className="ml-1.5 text-xs font-medium px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">
+                    Awaiting admin approval
+                  </span>
+                )}
+                {selectedEvent.status === "Rejected" && (
+                  <span className="ml-1.5 text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                    Rejected
+                  </span>
+                )}
+
                 <h3 className="text-base font-semibold text-slate-800 mt-1.5">
                   {selectedEvent.title}
                 </h3>
@@ -110,6 +182,14 @@ export default function DashboardPage() {
               <p className="text-sm text-slate-600 mb-2">{selectedEvent.description}</p>
             )}
 
+            {/* Rejection reason */}
+            {selectedEvent.status === "Rejected" && selectedEvent.rejectionReason && (
+              <div className="mb-3 p-2.5 bg-red-50 border border-red-200">
+                <p className="text-xs font-medium text-red-700 mb-0.5">Reason</p>
+                <p className="text-xs text-red-600">{selectedEvent.rejectionReason}</p>
+              </div>
+            )}
+
             <p className="text-xs text-slate-400">
               {new Date(selectedEvent.startDate).toLocaleDateString("en-PH", {
                 weekday: "long", year: "numeric", month: "long", day: "numeric",
@@ -118,6 +198,24 @@ export default function DashboardPage() {
             </p>
           </div>
         </div>
+      )}
+
+      {/* Admin: event approval panel */}
+      <CalendarApprovalPanel
+        open={approvalPanelOpen}
+        onClose={() => setApprovalPanelOpen(false)}
+        onReviewed={handleReviewed}
+      />
+
+      {/* Create event modal — triggered by date click */}
+      {createModalDate && (
+        <CreateEventModal
+          open={true}
+          initialDate={createModalDate}
+          isAdmin={isAdmin}
+          onClose={() => setCreateModalDate(null)}
+          onCreated={handleCreated}
+        />
       )}
     </div>
   );
