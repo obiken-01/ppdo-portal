@@ -13,6 +13,7 @@ namespace PPDO.Functions.Functions;
 /// <summary>
 /// HTTP-triggered Azure Functions for the Main Dashboard (<c>/api/dashboard</c>).
 /// All endpoints require a valid JWT — no public access.
+/// Calendar approval endpoints added in v1.1.1 (RAL-84).
 /// </summary>
 public sealed class DashboardFunctions
 {
@@ -81,6 +82,70 @@ public sealed class DashboardFunctions
             await _dashboard.CreateEventAsync(caller, body, cancellationToken);
 
         return await ToResponse(req, result, HttpStatusCode.Created, cancellationToken);
+    }
+
+    // ── GET /api/dashboard/events/pending ─────────────────────────────────────
+
+    [Function("GetPendingEvents")]
+    public async Task<HttpResponseData> GetPendingEvents(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "dashboard/events/pending")]
+        HttpRequestData req,
+        CancellationToken cancellationToken)
+    {
+        User? caller = await _jwt.ValidateAsync(GetAuthHeader(req), cancellationToken);
+        if (caller is null)
+            return req.CreateResponse(HttpStatusCode.Unauthorized);
+
+        ServiceResult<IReadOnlyList<PendingCalendarEventDto>> result =
+            await _dashboard.GetPendingEventsAsync(caller, cancellationToken);
+
+        return await ToResponse(req, result, HttpStatusCode.OK, cancellationToken);
+    }
+
+    // ── PUT /api/dashboard/events/{id}/review ─────────────────────────────────
+
+    [Function("ReviewCalendarEvent")]
+    public async Task<HttpResponseData> ReviewEvent(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "dashboard/events/{id:guid}/review")]
+        HttpRequestData req,
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        User? caller = await _jwt.ValidateAsync(GetAuthHeader(req), cancellationToken);
+        if (caller is null)
+            return req.CreateResponse(HttpStatusCode.Unauthorized);
+
+        ReviewCalendarEventDto? body =
+            await DeserializeAsync<ReviewCalendarEventDto>(req, cancellationToken);
+        if (body is null)
+            return await BadRequest(req, "Request body is missing or malformed.");
+
+        ServiceResult<CalendarEventDto> result =
+            await _dashboard.ReviewEventAsync(caller, id, body, cancellationToken);
+
+        return await ToResponse(req, result, HttpStatusCode.OK, cancellationToken);
+    }
+
+    // ── DELETE /api/dashboard/events/{id} ─────────────────────────────────────
+
+    [Function("DeleteCalendarEvent")]
+    public async Task<HttpResponseData> DeleteEvent(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "dashboard/events/{id:guid}")]
+        HttpRequestData req,
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        User? caller = await _jwt.ValidateAsync(GetAuthHeader(req), cancellationToken);
+        if (caller is null)
+            return req.CreateResponse(HttpStatusCode.Unauthorized);
+
+        ServiceResult<bool> result =
+            await _dashboard.DeleteEventAsync(caller, id, cancellationToken);
+
+        if (!result.IsSuccess)
+            return await ToResponse(req, result, HttpStatusCode.OK, cancellationToken);
+
+        return req.CreateResponse(HttpStatusCode.NoContent);
     }
 
     // ── GET /api/dashboard/stats ───────────────────────────────────────────────
