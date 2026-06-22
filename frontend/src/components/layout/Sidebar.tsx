@@ -36,7 +36,7 @@ export default function Sidebar({ me }: SidebarProps) {
     () => pathname.startsWith("/inventory")
   );
   const [configOpen, setConfigOpen] = useState(
-    () => pathname.startsWith("/config")
+    () => pathname.startsWith("/config") || pathname.startsWith("/admin/users")
   );
   const [budgetPlanningOpen, setBudgetPlanningOpen] = useState(
     () => pathname.startsWith("/budget-planning")
@@ -48,9 +48,9 @@ export default function Sidebar({ me }: SidebarProps) {
     if (pathname.startsWith("/inventory")) setInventoryOpen(true);
   }, [pathname]);
 
-  // Auto-expand configuration when navigating to a config route
+  // Auto-expand configuration when navigating to a config route or user management
   useEffect(() => {
-    if (pathname.startsWith("/config")) setConfigOpen(true);
+    if (pathname.startsWith("/config") || pathname.startsWith("/admin/users")) setConfigOpen(true);
   }, [pathname]);
 
   // Auto-expand budget planning when navigating to a budget-planning route
@@ -294,13 +294,13 @@ export default function Sidebar({ me }: SidebarProps) {
           </div>
         )}
 
-        {/* Configuration — collapsible group; PPDO users with CanManageConfig */}
-        {showConfig && (
+        {/* Configuration — collapsible group; PPDO users with CanManageConfig or CanManageUsers */}
+        {(showConfig || showManageUsers) && (
           <div>
             <button
               onClick={() => setConfigOpen((o) => !o)}
               className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition-colors ${
-                isActive("/config")
+                (isActive("/config") || isActive("/admin/users"))
                   ? "bg-green-800 text-white"
                   : "text-green-100 hover:bg-green-600 hover:text-white"
               }`}
@@ -314,22 +314,32 @@ export default function Sidebar({ me }: SidebarProps) {
 
             {configOpen && (
               <div className="mt-0.5 space-y-0.5">
-                <Link href="/config" className={childLinkCls(pathname === "/config")}>
-                  <span className="text-xs">•</span>
-                  <span className="truncate">Dashboard</span>
-                </Link>
-                <Link href="/config/accounts" className={childLinkCls(isActive("/config/accounts"))}>
-                  <span className="text-xs">•</span>
-                  <span className="truncate">Accounts</span>
-                </Link>
-                <Link href="/config/offices" className={childLinkCls(isActive("/config/offices"))}>
-                  <span className="text-xs">•</span>
-                  <span className="truncate">Offices</span>
-                </Link>
-                <Link href="/config/funding-sources" className={childLinkCls(isActive("/config/funding-sources"))}>
-                  <span className="text-xs">•</span>
-                  <span className="truncate">Funding Sources</span>
-                </Link>
+                {showConfig && (
+                  <>
+                    <Link href="/config" className={childLinkCls(pathname === "/config")}>
+                      <span className="text-xs">•</span>
+                      <span className="truncate">Dashboard</span>
+                    </Link>
+                    <Link href="/config/accounts" className={childLinkCls(isActive("/config/accounts"))}>
+                      <span className="text-xs">•</span>
+                      <span className="truncate">Accounts</span>
+                    </Link>
+                    <Link href="/config/offices" className={childLinkCls(isActive("/config/offices"))}>
+                      <span className="text-xs">•</span>
+                      <span className="truncate">Offices</span>
+                    </Link>
+                    <Link href="/config/funding-sources" className={childLinkCls(isActive("/config/funding-sources"))}>
+                      <span className="text-xs">•</span>
+                      <span className="truncate">Funding Sources</span>
+                    </Link>
+                  </>
+                )}
+                {showManageUsers && (
+                  <Link href="/admin/users" className={childLinkCls(isActive("/admin/users"))}>
+                    <span className="text-xs">•</span>
+                    <span className="truncate">User Management</span>
+                  </Link>
+                )}
               </div>
             )}
           </div>
@@ -342,20 +352,6 @@ export default function Sidebar({ me }: SidebarProps) {
             <span className="truncate">Resource Links</span>
           </Link>
         )}
-
-        {/* User Management */}
-        {showManageUsers && (
-          <Link href="/admin/users" className={linkCls(isActive("/admin/users"))}>
-            <span className="text-base leading-none w-5 text-center">👥</span>
-            <span className="truncate">User Management</span>
-          </Link>
-        )}
-
-        {/* My Account — visible to all authenticated users */}
-        <Link href="/account" className={linkCls(isActive("/account"))}>
-          <span className="text-base leading-none w-5 text-center">👤</span>
-          <span className="truncate">My Account</span>
-        </Link>
 
       </nav>
 
@@ -370,6 +366,14 @@ export default function Sidebar({ me }: SidebarProps) {
                 <p className="text-xs font-semibold text-slate-700 truncate">{me.fullName}</p>
                 <p className="text-xs text-slate-400 truncate">{me.username}</p>
               </div>
+              <Link
+                href="/account"
+                onClick={() => setUserMenuOpen(false)}
+                className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
+              >
+                <span>👤</span>
+                <span>My Account</span>
+              </Link>
               <button
                 onClick={handleLogout}
                 className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-danger-500 hover:bg-danger-100 transition-colors"
