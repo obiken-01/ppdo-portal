@@ -105,10 +105,10 @@ export default function DashboardCalendar({
   }
 
   return (
-    <div className="relative bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+    <div className="relative bg-white border border-slate-200 shadow-sm overflow-hidden">
       {/* Loading overlay */}
       {loading && (
-        <div className="absolute inset-0 bg-white/70 z-10 flex items-center justify-center rounded-xl">
+        <div className="absolute inset-0 bg-white/70 z-10 flex items-center justify-center">
           <div className="w-6 h-6 border-3 border-green-600 border-t-transparent rounded-full animate-spin" />
         </div>
       )}

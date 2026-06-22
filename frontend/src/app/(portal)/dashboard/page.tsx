@@ -137,7 +137,7 @@ export default function DashboardPage() {
           onClick={() => setSelectedEvent(null)}
         >
           <div
-            className="bg-white rounded-xl shadow-xl max-w-sm w-full p-5"
+            className="bg-white shadow-xl max-w-sm w-full p-5 border border-slate-200"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-2 mb-3">
