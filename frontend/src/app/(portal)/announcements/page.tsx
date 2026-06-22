@@ -14,6 +14,7 @@ import {
 import type { AnnouncementDto, MeResponse } from "@/types";
 import DataTable, { type Column } from "@/components/ui/DataTable";
 import AnnouncementEditorModal from "@/components/announcements/AnnouncementEditorModal";
+import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
 
 const STATUS_BADGE_CLS: Record<string, string> = {
@@ -52,6 +53,7 @@ export default function AnnouncementsPage() {
   const [editorOpen, setEditorOpen]   = useState(false);
   const [editing, setEditing]         = useState<AnnouncementDto | null>(null);
   const [actioning, setActioning]     = useState<string | null>(null);
+  const [dialog, setDialog]           = useState<ConfirmDialogProps | null>(null);
 
   // ── Auth guard (Admin / SuperAdmin only) ──────────────────────────────────
 
@@ -125,8 +127,18 @@ export default function AnnouncementsPage() {
     }
   }
 
-  async function handleArchive(item: AnnouncementDto) {
-    if (!confirm(`Archive "${item.title}"? It will no longer be visible publicly.`)) return;
+  function handleArchive(item: AnnouncementDto) {
+    setDialog({
+      title:        "Archive announcement?",
+      message:      `"${item.title}" will be hidden from the public landing page. You can restore it by unpublishing then republishing.`,
+      confirmLabel: "Archive",
+      variant:      "warning",
+      onConfirm:    () => void performArchive(item),
+      onClose:      () => setDialog(null),
+    });
+  }
+
+  async function performArchive(item: AnnouncementDto) {
     setActioning(item.id);
     try {
       await archiveAnnouncement(item.id);
@@ -139,8 +151,18 @@ export default function AnnouncementsPage() {
     }
   }
 
-  async function handleDelete(item: AnnouncementDto) {
-    if (!confirm(`Delete "${item.title}"? This cannot be undone.`)) return;
+  function handleDelete(item: AnnouncementDto) {
+    setDialog({
+      title:        "Delete announcement?",
+      message:      `"${item.title}" will be permanently removed. This cannot be undone.`,
+      confirmLabel: "Delete",
+      variant:      "danger",
+      onConfirm:    () => void performDelete(item),
+      onClose:      () => setDialog(null),
+    });
+  }
+
+  async function performDelete(item: AnnouncementDto) {
     setActioning(item.id);
     try {
       await deleteAnnouncement(item.id);
@@ -286,6 +308,9 @@ export default function AnnouncementsPage() {
         }}
         onSaved={load}
       />
+
+      {/* Confirmation dialog (Archive / Delete) */}
+      {dialog && <ConfirmDialog {...dialog} />}
     </div>
   );
 }
