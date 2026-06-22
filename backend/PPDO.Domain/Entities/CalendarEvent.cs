@@ -1,3 +1,5 @@
+using PPDO.Domain.Enums;
+
 namespace PPDO.Domain.Entities;
 
 /// <summary>
@@ -51,6 +53,23 @@ public sealed class CalendarEvent
     /// <summary>FK → User who created this event.</summary>
     public Guid CreatedById { get; set; }
 
+    // ── Approval workflow (v1.1.1, RAL-82) ──────────────────────────────────────
+
+    /// <summary>
+    /// Approval state. Office events created by non-admins start <see cref="CalendarEventStatus.Pending"/>;
+    /// admin-created events and all legacy rows are <see cref="CalendarEventStatus.Approved"/>.
+    /// </summary>
+    public CalendarEventStatus Status { get; set; }
+
+    /// <summary>FK → User (Admin/SuperAdmin) who reviewed this event. Null until reviewed.</summary>
+    public Guid? ReviewedById { get; set; }
+
+    /// <summary>UTC timestamp of the review decision. Null until reviewed.</summary>
+    public DateTime? ReviewedAt { get; set; }
+
+    /// <summary>Reason shown to the creator when an event is rejected. Max 500 characters.</summary>
+    public string? RejectionReason { get; set; }
+
     // ── Audit ──────────────────────────────────────────────────────────────────
 
     public DateTime CreatedAt { get; set; }
@@ -60,4 +79,7 @@ public sealed class CalendarEvent
 
     /// <summary>User who created the event.</summary>
     public User? CreatedBy { get; set; }
+
+    /// <summary>Admin/SuperAdmin who reviewed the event. Null until reviewed.</summary>
+    public User? ReviewedBy { get; set; }
 }
