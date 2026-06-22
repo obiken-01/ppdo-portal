@@ -351,6 +351,12 @@ export default function Sidebar({ me }: SidebarProps) {
           </Link>
         )}
 
+        {/* My Account — visible to all authenticated users */}
+        <Link href="/account" className={linkCls(isActive("/account"))}>
+          <span className="text-base leading-none w-5 text-center">👤</span>
+          <span className="truncate">My Account</span>
+        </Link>
+
       </nav>
 
       {/* ── User strip — click to toggle popup menu ──────────────────────── */}
@@ -365,12 +371,12 @@ export default function Sidebar({ me }: SidebarProps) {
                 <p className="text-xs text-slate-400 truncate">{me.username}</p>
               </div>
               <Link
-                href="/profile"
+                href="/account"
                 onClick={() => setUserMenuOpen(false)}
                 className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
               >
                 <span>👤</span>
-                <span>My Profile</span>
+                <span>My Account</span>
               </Link>
               <button
                 onClick={handleLogout}

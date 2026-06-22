@@ -452,6 +452,100 @@ public sealed class UserService : IUserService
         return ServiceResult<UserResponseDto>.Ok(MapToDto(target));
     }
 
+    // ── Self-service profile & password ───────────────────────────────────────
+
+    /// <inheritdoc />
+    public async Task<ServiceResult<UserResponseDto>> UpdateOwnProfileAsync(
+        User caller,
+        UpdateOwnProfileDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        User? user = await _users.GetByIdWithGroupAsync(caller.Id, cancellationToken);
+        if (user is null)
+            return ServiceResult<UserResponseDto>.NotFound($"User {caller.Id} not found.");
+
+        if (string.IsNullOrWhiteSpace(dto.FullName))
+            return ServiceResult<UserResponseDto>.BadRequest("FullName is required.");
+        if (string.IsNullOrWhiteSpace(dto.Username))
+            return ServiceResult<UserResponseDto>.BadRequest("Username is required.");
+
+        // Username uniqueness — exclude self
+        string newUsername = dto.Username.Trim().ToLowerInvariant();
+        if (!string.Equals(newUsername, user.Username, StringComparison.OrdinalIgnoreCase))
+        {
+            User? taken = await _users.FindByUsernameAsync(newUsername, cancellationToken);
+            if (taken is not null)
+                return ServiceResult<UserResponseDto>.Conflict(
+                    $"Username '{newUsername}' is already taken.");
+        }
+
+        // Email uniqueness — exclude self; empty string clears the email
+        string? newEmail = string.IsNullOrWhiteSpace(dto.Email)
+            ? null
+            : dto.Email.Trim().ToLowerInvariant();
+        if (!string.Equals(newEmail, user.Email, StringComparison.OrdinalIgnoreCase))
+        {
+            if (newEmail is not null)
+            {
+                User? taken = await _users.FindByEmailAsync(newEmail, cancellationToken);
+                if (taken is not null)
+                    return ServiceResult<UserResponseDto>.Conflict(
+                        $"Email '{newEmail}' is already registered.");
+            }
+        }
+
+        // Assign ONLY the five editable fields — Role/Division/OfficeId/Override*/IsActive stay untouched.
+        user.FullName  = dto.FullName.Trim();
+        user.Username  = newUsername;
+        user.Email     = newEmail;
+        user.Position  = dto.Position?.Trim();
+        user.ContactNo = dto.ContactNo?.Trim();
+
+        await _users.UpdateAsync(user, cancellationToken);
+        await _users.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Profile updated. UserId: {UserId}", user.Id);
+
+        User updated = (await _users.GetByIdWithGroupAsync(user.Id, cancellationToken))!;
+        return ServiceResult<UserResponseDto>.Ok(MapToDto(updated));
+    }
+
+    /// <inheritdoc />
+    public async Task<ServiceResult<bool>> ChangePasswordAsync(
+        User caller,
+        ChangePasswordDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        User? user = await _users.GetByIdWithGroupAsync(caller.Id, cancellationToken);
+        if (user is null)
+            return ServiceResult<bool>.NotFound($"User {caller.Id} not found.");
+
+        if (!BCrypt.Net.BCrypt.Verify(dto.CurrentPassword, user.PasswordHash))
+            return ServiceResult<bool>.BadRequest("Current password is incorrect.");
+
+        if (dto.NewPassword != dto.ConfirmPassword)
+            return ServiceResult<bool>.BadRequest("Passwords do not match.");
+
+        if (dto.NewPassword.Length < 8)
+            return ServiceResult<bool>.BadRequest(
+                "Password must be at least 8 characters.");
+        if (!dto.NewPassword.Any(char.IsUpper))
+            return ServiceResult<bool>.BadRequest(
+                "Password must contain at least one uppercase letter.");
+        if (!dto.NewPassword.Any(char.IsDigit))
+            return ServiceResult<bool>.BadRequest(
+                "Password must contain at least one digit.");
+
+        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
+
+        await _users.UpdateAsync(user, cancellationToken);
+        await _users.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Password changed. UserId: {UserId}", user.Id);
+
+        return ServiceResult<bool>.Ok(true);
+    }
+
     // ── Private helpers ────────────────────────────────────────────────────────
 
     /// <summary>

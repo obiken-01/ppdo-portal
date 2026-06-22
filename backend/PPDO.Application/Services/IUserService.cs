@@ -114,4 +114,32 @@ public interface IUserService
         User requester,
         Guid targetId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Self-service profile update — updates only the five editable fields
+    /// (FullName, Username, Email, Position, ContactNo) for the authenticated user.
+    /// Role, Division, OfficeId, permission overrides, and IsActive are never touched.
+    ///
+    /// Returns:
+    ///   <see cref="ServiceErrorCode.NotFound"/>  — caller's user record not found.
+    ///   <see cref="ServiceErrorCode.Conflict"/>  — username or email already taken by another user.
+    ///   <see cref="ServiceErrorCode.BadRequest"/> — FullName or Username is empty.
+    /// </summary>
+    Task<ServiceResult<UserResponseDto>> UpdateOwnProfileAsync(
+        User caller,
+        UpdateOwnProfileDto dto,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Self-service password change. Validates the current password, checks confirmation
+    /// and policy (min 8 chars, ≥1 uppercase, ≥1 digit), then hashes and saves the new one.
+    ///
+    /// Returns:
+    ///   <see cref="ServiceErrorCode.NotFound"/>  — caller's user record not found.
+    ///   <see cref="ServiceErrorCode.BadRequest"/> — wrong current password, mismatch, or policy failure.
+    /// </summary>
+    Task<ServiceResult<bool>> ChangePasswordAsync(
+        User caller,
+        ChangePasswordDto dto,
+        CancellationToken cancellationToken = default);
 }
