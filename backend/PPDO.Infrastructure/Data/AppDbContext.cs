@@ -48,6 +48,10 @@ public sealed class AppDbContext : DbContext
     public DbSet<WfpExpenditureLine> WfpExpenditureLines { get; set; } = null!;
     public DbSet<AuditLog> AuditLogs { get; set; } = null!;
 
+    // ── v1.1.1 Announcements (RAL-83) ─────────────────────────────────────────
+
+    public DbSet<Announcement> Announcements { get; set; } = null!;
+
     // ── Model configuration ───────────────────────────────────────────────────
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
