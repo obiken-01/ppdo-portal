@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 /**
  * User Management page — RAL-43.
@@ -23,9 +23,10 @@
  *   GET    /api/permission-groups         → list groups for dropdown
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
+import Modal from "@/components/ui/Modal";
 import type {
   CreateUserRequest,
   Division,
@@ -130,7 +131,7 @@ function OverrideToggle({
   }
 
   return (
-    <div className={`flex items-center justify-between py-2 px-3 border border-slate-200 ${disabled ? "opacity-40" : ""}`}>
+    <div className={`flex items-center justify-between py-2 px-3 rounded-lg border border-slate-200 ${disabled ? "opacity-40" : ""}`}>
       <span className="text-sm text-slate-700">{label}</span>
       <button
         type="button"
@@ -145,44 +146,6 @@ function OverrideToggle({
 }
 
 // ---------------------------------------------------------------------------
-// Modal wrapper
-// ---------------------------------------------------------------------------
-
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  const backdropRef = useRef<HTMLDivElement>(null);
-
-  function handleBackdrop(e: React.MouseEvent) {
-    if (e.target === backdropRef.current) onClose();
-  }
-
-  return (
-    <div
-      ref={backdropRef}
-      onClick={handleBackdrop}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-    >
-      <div className="w-full max-w-lg bg-white shadow-2xl flex flex-col max-h-[90vh]">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 shrink-0">
-          <h2 className="text-base font-semibold text-slate-800">{title}</h2>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 transition-colors text-xl leading-none"
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
-        {/* Body — scrollable */}
-        <div className="overflow-y-auto flex-1 px-6 py-5">
-          {children}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // User form (shared between Add and Edit)
 // ---------------------------------------------------------------------------
 
@@ -191,14 +154,11 @@ type UserFormProps = {
   groups: PermissionGroupResponse[];
   offices: OfficeResponse[];
   isEdit: boolean;  // when false, group dropdown and overrides are hidden
-  saving: boolean;
   error: string | null;
   onChange: (patch: Partial<CreateUserRequest & UpdateUserRequest>) => void;
-  onSubmit: () => void;
-  onCancel: () => void;
 };
 
-function UserForm({ form, groups, offices, isEdit, saving, error, onChange, onSubmit, onCancel }: UserFormProps) {
+function UserForm({ form, groups, offices, isEdit, error, onChange }: UserFormProps) {
   const showOverrides = form.role === "Staff" || form.role === "Observer";
   // A non-PPDO office user has an office assigned. Office and Division are mutually
   // exclusive: selecting an office clears the division (office users have no division).
@@ -404,25 +364,6 @@ function UserForm({ form, groups, offices, isEdit, saving, error, onChange, onSu
         </div>
       )}
 
-      {/* Actions */}
-      <div className="flex justify-end gap-3 pt-2">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="px-4 py-2 text-sm border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={onSubmit}
-          disabled={saving}
-          className="px-5 py-2 text-sm bg-green-600 text-white font-medium hover:bg-green-500 transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
-        >
-          {saving && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-          {saving ? "Saving…" : isEdit ? "Save Changes" : "Create User"}
-        </button>
-      </div>
     </div>
   );
 }
@@ -447,26 +388,32 @@ function ConfirmDialog({
   onCancel: () => void;
 }) {
   return (
-    <Modal title="Confirm Action" onClose={onCancel}>
-      <p className="text-sm text-slate-700 mb-6">{message}</p>
-      <div className="flex justify-end gap-3">
-        <button
-          onClick={onCancel}
-          className="px-4 py-2 text-sm border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={onConfirm}
-          disabled={loading}
-          className={`px-5 py-2 text-sm font-medium text-white transition-colors disabled:opacity-60 flex items-center gap-2 ${
-            danger ? "bg-danger-500 hover:bg-red-600" : "bg-green-600 hover:bg-green-500"
-          }`}
-        >
-          {loading && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-          {loading ? "Processing…" : confirmLabel}
-        </button>
-      </div>
+    <Modal
+      title="Confirm Action"
+      size="sm"
+      onClose={onCancel}
+      footer={
+        <>
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 text-sm border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={loading}
+            className={`px-5 py-2 text-sm font-medium text-white transition-colors disabled:opacity-60 flex items-center gap-2 ${
+              danger ? "bg-danger-500 hover:bg-red-600" : "bg-green-600 hover:bg-green-500"
+            }`}
+          >
+            {loading && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+            {loading ? "Processing…" : confirmLabel}
+          </button>
+        </>
+      }
+    >
+      <p className="text-sm text-slate-700">{message}</p>
     </Modal>
   );
 }
@@ -839,7 +786,20 @@ export default function UsersPage() {
 
       {/* ── Add User modal ─────────────────────────────────────────────────── */}
       {showAdd && (
-        <Modal title="Add New User" onClose={() => setShowAdd(false)}>
+        <Modal
+          title="Add New User"
+          onClose={() => setShowAdd(false)}
+          footer={
+            <>
+              <Modal.SecondaryButton onClick={() => setShowAdd(false)} disabled={saving}>
+                Cancel
+              </Modal.SecondaryButton>
+              <Modal.PrimaryButton onClick={handleAdd} loading={saving} disabled={saving}>
+                Create User
+              </Modal.PrimaryButton>
+            </>
+          }
+        >
           <p className="text-xs text-slate-400 mb-4">
             Default password <span className="font-mono bg-slate-100 px-1">TamarawUser2026!</span> is set automatically. The user must change it on first login.
           </p>
@@ -848,28 +808,35 @@ export default function UsersPage() {
             groups={groups}
             offices={offices}
             isEdit={false}
-            saving={saving}
             error={formError}
             onChange={(patch) => setAddForm((f) => ({ ...f, ...patch }))}
-            onSubmit={handleAdd}
-            onCancel={() => setShowAdd(false)}
           />
         </Modal>
       )}
 
       {/* ── Edit User modal ────────────────────────────────────────────────── */}
       {editTarget && editForm && (
-        <Modal title={`Edit User — ${editTarget.fullName}`} onClose={() => { setEditTarget(null); setEditForm(null); }}>
+        <Modal
+          title={`Edit User — ${editTarget.fullName}`}
+          onClose={() => { setEditTarget(null); setEditForm(null); }}
+          footer={
+            <>
+              <Modal.SecondaryButton onClick={() => { setEditTarget(null); setEditForm(null); }} disabled={saving}>
+                Cancel
+              </Modal.SecondaryButton>
+              <Modal.PrimaryButton onClick={handleEdit} loading={saving} disabled={saving}>
+                Save Changes
+              </Modal.PrimaryButton>
+            </>
+          }
+        >
           <UserForm
             form={editForm}
             groups={groups}
             offices={offices}
             isEdit
-            saving={saving}
             error={formError}
             onChange={(patch) => setEditForm((f) => f ? { ...f, ...patch } : f)}
-            onSubmit={handleEdit}
-            onCancel={() => { setEditTarget(null); setEditForm(null); }}
           />
         </Modal>
       )}
