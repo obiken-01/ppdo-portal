@@ -33,6 +33,7 @@
  */
 
 import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 
 export type ModalSize = "sm" | "md" | "lg" | "xl" | "2xl";
 
@@ -71,7 +72,7 @@ export default function Modal({ title, children, footer, size = "md", fixedHeigh
     if (e.target === backdropRef.current) onClose();
   }
 
-  return (
+  const content = (
     <div
       ref={backdropRef}
       onClick={handleBackdrop}
@@ -108,6 +109,9 @@ export default function Modal({ title, children, footer, size = "md", fixedHeigh
       </div>
     </div>
   );
+
+  if (typeof document === "undefined") return null;
+  return createPortal(content, document.body);
 }
 
 // ---------------------------------------------------------------------------

@@ -27,6 +27,7 @@
  */
 
 import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -119,7 +120,7 @@ export default function ConfirmDialog({
     onClose();
   }
 
-  return (
+  const content = (
     /* Backdrop */
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -187,4 +188,7 @@ export default function ConfirmDialog({
       </div>
     </div>
   );
+
+  if (typeof document === "undefined") return null;
+  return createPortal(content, document.body);
 }

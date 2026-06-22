@@ -10,19 +10,21 @@
  *   loading → 3-bar skeleton
  *   empty   → empty-state card (preserved from the old placeholder)
  *   error   → silently shows empty state
- *   loaded  → one flat card per announcement
+ *   loaded  → one flat card per announcement (4-line excerpt + "Read more" modal)
  */
 
 import { useEffect, useState } from "react";
 import axios from "axios";
 import DOMPurify from "dompurify";
+import Modal from "@/components/ui/Modal";
 import type { AnnouncementPublicDto } from "@/types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api";
 
 export default function AnnouncementsSection() {
-  const [items, setItems]     = useState<AnnouncementPublicDto[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [items, setItems]       = useState<AnnouncementPublicDto[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [selected, setSelected] = useState<AnnouncementPublicDto | null>(null);
 
   useEffect(() => {
     axios
@@ -44,11 +46,31 @@ export default function AnnouncementsSection() {
         ) : (
           <div className="space-y-4">
             {items.map((item) => (
-              <AnnouncementCard key={item.id} item={item} />
+              <AnnouncementCard key={item.id} item={item} onReadMore={setSelected} />
             ))}
           </div>
         )}
       </div>
+
+      {selected && (
+        <Modal
+          title={selected.title}
+          size="lg"
+          onClose={() => setSelected(null)}
+        >
+          <time className="block text-xs text-slate-400 mb-4" dateTime={selected.publishedAt}>
+            {new Date(selected.publishedAt).toLocaleDateString("en-US", {
+              month: "long",
+              day: "numeric",
+              year: "numeric",
+            })}
+          </time>
+          <div
+            className="text-sm text-slate-600 leading-relaxed announcement-content"
+            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selected.content) }}
+          />
+        </Modal>
+      )}
     </section>
   );
 }
@@ -96,10 +118,16 @@ function EmptyState() {
 }
 
 // ---------------------------------------------------------------------------
-// Announcement card — flat, no rounded corners
+// Announcement card — flat, 4-line excerpt with "Read more" button
 // ---------------------------------------------------------------------------
 
-function AnnouncementCard({ item }: { item: AnnouncementPublicDto }) {
+function AnnouncementCard({
+  item,
+  onReadMore,
+}: {
+  item: AnnouncementPublicDto;
+  onReadMore: (item: AnnouncementPublicDto) => void;
+}) {
   const formattedDate = new Date(item.publishedAt).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -115,9 +143,15 @@ function AnnouncementCard({ item }: { item: AnnouncementPublicDto }) {
         </time>
       </div>
       <div
-        className="text-sm text-slate-600 leading-relaxed announcement-content"
+        className="text-sm text-slate-600 leading-relaxed announcement-content line-clamp-4 overflow-hidden"
         dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(item.content) }}
       />
+      <button
+        onClick={() => onReadMore(item)}
+        className="mt-3 text-sm text-green-700 hover:text-green-600 font-medium transition-colors"
+      >
+        Read more →
+      </button>
     </article>
   );
 }
