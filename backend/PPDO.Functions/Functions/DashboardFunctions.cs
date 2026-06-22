@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using PPDO.Application.Common;
@@ -23,6 +24,9 @@ public sealed class DashboardFunctions
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        // Serialize CalendarEventStatus (and any future enums) as strings so the
+        // frontend can compare against "Pending"/"Approved"/"Rejected" directly.
+        Converters = { new JsonStringEnumConverter() },
     };
 
     public DashboardFunctions(IDashboardService dashboard, IJwtMiddleware jwt)
