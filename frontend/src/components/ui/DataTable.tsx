@@ -133,9 +133,37 @@ export default function DataTable<T>({
   // ── States ────────────────────────────────────────────────────────────────
 
   if (loading) {
+    const skeletonCount = Math.min(pageSize ?? 8, 10);
     return (
-      <div className="bg-white border border-slate-200 flex items-center justify-center py-16">
-        <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
+      <div className="bg-white border border-slate-200 overflow-hidden">
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="bg-slate-50 border-b border-slate-200">
+              {columns.map((col) => (
+                <th
+                  key={col.key}
+                  className={`px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wide ${ALIGN_CLASS[col.align ?? "left"]}`}
+                >
+                  {col.header}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {Array.from({ length: skeletonCount }).map((_, rowIdx) => (
+              <tr key={rowIdx} className="border-b border-slate-100">
+                {columns.map((col, colIdx) => (
+                  <td key={col.key} className={`px-4 py-3 ${ALIGN_CLASS[col.align ?? "left"]}`}>
+                    <div
+                      className="h-4 bg-slate-100 animate-pulse inline-block"
+                      style={{ width: `${50 + ((rowIdx * 3 + colIdx * 17) % 35)}%` }}
+                    />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     );
   }

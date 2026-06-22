@@ -409,16 +409,6 @@ export default function AccountConfigPage() {
     },
   ];
 
-  // ── Auth gate ─────────────────────────────────────────────────────────────────
-
-  if (!authChecked) {
-    return (
-      <div className="min-h-full flex items-center justify-center bg-slate-100">
-        <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
-
   const filtersActive = debouncedSearch !== "" || typeFilter !== "All" || statusFilter !== "Active";
 
   // ── Render ────────────────────────────────────────────────────────────────────
