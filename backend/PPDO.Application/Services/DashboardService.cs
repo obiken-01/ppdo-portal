@@ -231,13 +231,8 @@ public sealed class DashboardService : IDashboardService
     /// <inheritdoc />
     public async Task<DashboardStatsDto> GetStatsAsync(CancellationToken cancellationToken = default)
     {
-        Task<IReadOnlyList<PurchaseRequest>> prsTask   = _prs.GetAllAsync(cancellationToken);
-        Task<IReadOnlyList<ItemMaster>>      itemsTask = _items.GetAllAsync(cancellationToken);
-
-        await Task.WhenAll(prsTask, itemsTask);
-
-        IReadOnlyList<PurchaseRequest> prs   = prsTask.Result;
-        IReadOnlyList<ItemMaster>      items = itemsTask.Result;
+        IReadOnlyList<PurchaseRequest> prs   = await _prs.GetAllAsync(cancellationToken);
+        IReadOnlyList<ItemMaster>      items = await _items.GetAllAsync(cancellationToken);
 
         return new DashboardStatsDto
         {
