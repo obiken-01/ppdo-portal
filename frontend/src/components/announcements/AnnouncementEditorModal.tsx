@@ -7,6 +7,7 @@ import { TextStyle } from "@tiptap/extension-text-style";
 import { Color } from "@tiptap/extension-color";
 import FontFamily from "@tiptap/extension-font-family";
 import Underline from "@tiptap/extension-underline";
+import { Indent } from "./IndentExtension";
 import Modal from "@/components/ui/Modal";
 import RichTextToolbar from "./RichTextToolbar";
 import { useToast } from "@/components/ui/Toast";
@@ -38,12 +39,12 @@ export default function AnnouncementEditorModal({
   const [saving, setSaving] = useState(false);
 
   const editor = useEditor({
-    extensions: [StarterKit, TextStyle, Color, FontFamily, Underline],
+    extensions: [StarterKit, TextStyle, Color, FontFamily, Underline, Indent],
     content: "",
     editorProps: {
       attributes: {
         class:
-          "min-h-[220px] p-3 focus:outline-none text-sm text-slate-800 leading-relaxed prose prose-sm max-w-none",
+          "tiptap-editor min-h-[220px] p-3 focus:outline-none text-sm text-slate-800 leading-relaxed",
       },
     },
   });

@@ -11,14 +11,14 @@ const FONT_FAMILIES = [
 ];
 
 const TEXT_COLORS = [
-  "#111827",  // near-black
-  "#dc2626",  // red
-  "#d97706",  // amber
-  "#16a34a",  // green
-  "#2563eb",  // blue
-  "#9333ea",  // purple
-  "#db2777",  // pink
-  "#6b7280",  // slate
+  "#111827",
+  "#dc2626",
+  "#d97706",
+  "#16a34a",
+  "#2563eb",
+  "#9333ea",
+  "#db2777",
+  "#6b7280",
 ];
 
 interface RichTextToolbarProps {
@@ -36,12 +36,13 @@ export default function RichTextToolbar({ editor }: RichTextToolbarProps) {
 
   return (
     <div className="flex flex-wrap items-center gap-1 p-2 border-b border-slate-200 bg-slate-50">
+
       {/* Bold / Italic / Underline */}
       <button
         type="button"
         onClick={() => editor.chain().focus().toggleBold().run()}
         className={btnCls(editor.isActive("bold"))}
-        title="Bold"
+        title="Bold (Ctrl+B)"
       >
         <strong>B</strong>
       </button>
@@ -49,7 +50,7 @@ export default function RichTextToolbar({ editor }: RichTextToolbarProps) {
         type="button"
         onClick={() => editor.chain().focus().toggleItalic().run()}
         className={btnCls(editor.isActive("italic"))}
-        title="Italic"
+        title="Italic (Ctrl+I)"
       >
         <em>I</em>
       </button>
@@ -57,29 +58,9 @@ export default function RichTextToolbar({ editor }: RichTextToolbarProps) {
         type="button"
         onClick={() => editor.chain().focus().toggleUnderline().run()}
         className={btnCls(editor.isActive("underline"))}
-        title="Underline"
+        title="Underline (Ctrl+U)"
       >
         <span className="underline">U</span>
-      </button>
-
-      <span className="w-px h-5 bg-slate-200 mx-0.5" />
-
-      {/* Headings */}
-      <button
-        type="button"
-        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-        className={btnCls(editor.isActive("heading", { level: 2 }))}
-        title="Heading 2"
-      >
-        H2
-      </button>
-      <button
-        type="button"
-        onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-        className={btnCls(editor.isActive("heading", { level: 3 }))}
-        title="Heading 3"
-      >
-        H3
       </button>
 
       <span className="w-px h-5 bg-slate-200 mx-0.5" />
@@ -100,6 +81,26 @@ export default function RichTextToolbar({ editor }: RichTextToolbarProps) {
         title="Ordered list"
       >
         1. List
+      </button>
+
+      <span className="w-px h-5 bg-slate-200 mx-0.5" />
+
+      {/* Indentation */}
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().increaseIndent().run()}
+        className={btnCls(false)}
+        title="Increase indent (Tab)"
+      >
+        →
+      </button>
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().decreaseIndent().run()}
+        className={btnCls(false)}
+        title="Decrease indent (Shift+Tab)"
+      >
+        ←
       </button>
 
       <span className="w-px h-5 bg-slate-200 mx-0.5" />
@@ -154,9 +155,7 @@ export default function RichTextToolbar({ editor }: RichTextToolbarProps) {
       {/* Clear formatting */}
       <button
         type="button"
-        onClick={() =>
-          editor.chain().focus().clearNodes().unsetAllMarks().run()
-        }
+        onClick={() => editor.chain().focus().clearNodes().unsetAllMarks().run()}
         className="px-2 py-1 text-xs border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
         title="Clear formatting"
       >
