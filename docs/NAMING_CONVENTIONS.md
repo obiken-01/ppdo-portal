@@ -99,15 +99,30 @@ Follows [PEP 8](https://peps.python.org/pep-0008/).
 
 ## Database
 
+> **Convention (updated 2026-06-22):** new tables and columns use **snake_case**. C# entity
+> properties stay PascalCase and are mapped to snake_case columns via `.ToTable("…")` /
+> `.HasColumnName("…")` in each entity's `IEntityTypeConfiguration` (see `AccountConfiguration`
+> for the canonical pattern). Tables that already exist in **PascalCase** are **left as-is — never
+> rename them**; new columns added to such a table follow that table's existing PascalCase for
+> intra-table consistency.
+
 |Element|Convention|Example|
 |---|---|---|
-|Table names|PascalCase (match entity)|`TimekeepingUsers`, `TimeLogs`|
-|Column names|PascalCase (match property)|`PublicId`, `TaskDescription`|
-|Primary keys|`Id`|`Id`|
-|Foreign keys|`[EntityName]Id`|`TimekeepingUserId`, `TripId`|
-|Indexes|`IX_[Table]_[Column]`|`IX_TimekeepingUsers_PublicId`|
-|Foreign key constraints|`FK_[Table]_[RefTable]_[Column]`|`FK_TimeLogs_TimekeepingUsers_TimekeepingUserId`|
-|Migration names|PascalCase, descriptive|`AddTimekeepingTables`, `RemoveRefreshTokenUserForeignKey`|
+|Table names|snake_case, plural|`accounts`, `funding_sources`, `wfp_expenditure_lines`|
+|Column names|snake_case (mapped from PascalCase property)|`account_title`, `is_active`, `created_at`|
+|Primary keys|`id`|`id`|
+|Foreign keys|`[entity]_id`|`office_id`, `created_by_id`|
+|Indexes|`IX_[table]_[column]`|`IX_accounts_number`|
+|Foreign key constraints|`FK_[Table]_[RefTable]_[Column]`|`FK_calendar_events_users_reviewed_by_id`|
+|Migration names|PascalCase, descriptive|`AddPlanningTables`, `AddAnnouncements`|
+
+**Legacy PascalCase tables (do not rename):** pre-v1.1 tables — e.g. `Users`, `CalendarEvents`,
+`ResourceLinks`, `PermissionGroups`, and the v1.0 inventory tables — keep PascalCase table and
+column names. The snake_case convention above applies to every table introduced from **v1.1
+onward** (`accounts`, `offices`, `funding_sources`, the `ldip_*` / `aip_*` / `wfp_*` tables,
+`announcements`, …). When you add a column to a legacy PascalCase table, match that table
+(PascalCase) rather than introducing a mixed-casing table — e.g. the v1.1.1 approval columns added
+to `CalendarEvents` are `Status` / `ReviewedById`, not `status` / `reviewed_by_id`.
 
 ---
 
