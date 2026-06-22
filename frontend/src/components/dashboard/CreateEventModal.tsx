@@ -25,6 +25,7 @@ export default function CreateEventModal({
   const [title, setTitle]         = useState("");
   const [description, setDesc]    = useState("");
   const [startDate, setStartDate] = useState(initialDate);
+  const [endDate, setEndDate]     = useState("");
   const [isAllDay, setIsAllDay]   = useState(true);
   const [eventType, setEventType] = useState<"Office" | "Personal">("Office");
   const [saving, setSaving]       = useState(false);
@@ -37,12 +38,17 @@ export default function CreateEventModal({
       toast.error("Title is required.");
       return;
     }
+    if (endDate && endDate < startDate) {
+      toast.error("End date cannot be before start date.");
+      return;
+    }
     setSaving(true);
     try {
       await createCalendarEvent({
         title: title.trim(),
         description: description.trim() || null,
         startDate,
+        endDate: endDate || null,
         isAllDay,
         eventType,
       });
@@ -64,6 +70,7 @@ export default function CreateEventModal({
     setTitle("");
     setDesc("");
     setStartDate(initialDate);
+    setEndDate("");
     setIsAllDay(true);
     setEventType("Office");
   }
@@ -117,15 +124,35 @@ export default function CreateEventModal({
           />
         </div>
 
-        {/* Date */}
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            className="w-full border border-slate-300 px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
-          />
+        {/* Date range */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Start Date <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => {
+                setStartDate(e.target.value);
+                // Clear end date if it's now before the new start
+                if (endDate && endDate < e.target.value) setEndDate("");
+              }}
+              className="w-full border border-slate-300 px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              End Date <span className="text-slate-400 font-normal">(optional)</span>
+            </label>
+            <input
+              type="date"
+              value={endDate}
+              min={startDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="w-full border border-slate-300 px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+            />
+          </div>
         </div>
 
         {/* All day toggle */}
