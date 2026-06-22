@@ -190,6 +190,7 @@ Interfaces / contracts first → Implementations → Tests
 - Never use `Include` chains deeper than 2 levels — write separate queries instead
 - Migrations go in `PPDO.Infrastructure/Data/Migrations/`
 - Migration naming convention: `PascalCase` description — e.g. `AddPermissionGroups`, `AddRefreshTokenTable`
+- **Table & column naming (snake_case for new tables):** new tables and columns use **snake_case**, mapped from PascalCase C# properties via `.ToTable("…")` / `.HasColumnName("…")` in the entity's `IEntityTypeConfiguration` (see `AccountConfiguration` for the pattern). **Legacy pre-v1.1 PascalCase tables** (`Users`, `CalendarEvents`, `ResourceLinks`, the v1.0 inventory tables, …) are left as-is — never rename them, and new columns added to such a table follow that table's existing PascalCase (e.g. the v1.1.1 `CalendarEvents.Status` column). Full rules in `docs/NAMING_CONVENTIONS.md`.
 
 ### RBAC / Permissions
 - Effective permission resolution always goes through `PermissionService` — never inline the logic
@@ -461,6 +462,11 @@ Do not change any logic outside the affected area.
 Read CLAUDE.md then add the [endpoint] endpoint to [FunctionsFile].
 Follow the JWT validation and permission check patterns in CLAUDE.md.
 ```
+
+When writing the implementation prompt that is pasted into a Linear ticket to kick off a
+ticket, follow the standard structure in **`docs/TICKET_PROMPT_STANDARD.md`** (context docs to
+read → files to read before coding → working branch + PR target → TDD → numbered steps →
+out-of-scope → commit message). `RAL-81` is the reference example.
 
 ---
 
