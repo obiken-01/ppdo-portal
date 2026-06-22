@@ -24,6 +24,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import type {
@@ -130,7 +131,7 @@ function OverrideToggle({
   }
 
   return (
-    <div className={`flex items-center justify-between py-2 px-3 rounded-lg border border-slate-200 ${disabled ? "opacity-40" : ""}`}>
+    <div className={`flex items-center justify-between py-2 px-3 border border-slate-200 ${disabled ? "opacity-40" : ""}`}>
       <span className="text-sm text-slate-700">{label}</span>
       <button
         type="button"
@@ -161,7 +162,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
       onClick={handleBackdrop}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
     >
-      <div className="w-full max-w-lg bg-white rounded-xl shadow-2xl flex flex-col max-h-[90vh]">
+      <div className="w-full max-w-lg bg-white shadow-2xl flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 shrink-0">
           <h2 className="text-base font-semibold text-slate-800">{title}</h2>
@@ -225,7 +226,7 @@ function UserForm({ form, groups, offices, isEdit, saving, error, onChange, onSu
             value={form.fullName}
             onChange={(e) => onChange({ fullName: e.target.value })}
             placeholder="Juan dela Cruz"
-            className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
+            className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
           />
         </div>
 
@@ -236,7 +237,7 @@ function UserForm({ form, groups, offices, isEdit, saving, error, onChange, onSu
             onChange={(e) => onChange({ username: e.target.value })}
             placeholder="juandelacruz"
             autoComplete="off"
-            className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 font-mono"
+            className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 font-mono"
           />
         </div>
 
@@ -250,7 +251,7 @@ function UserForm({ form, groups, offices, isEdit, saving, error, onChange, onSu
             value={form.email ?? ""}
             onChange={(e) => onChange({ email: e.target.value || undefined })}
             placeholder="user@ppdo.gov.ph"
-            className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
+            className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
           />
         </div>
 
@@ -259,7 +260,7 @@ function UserForm({ form, groups, offices, isEdit, saving, error, onChange, onSu
           <select
             value={form.role}
             onChange={(e) => onChange({ role: e.target.value as UserRole })}
-            className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 bg-white"
+            className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 bg-white"
           >
             {(isOfficeUser ? (["Staff", "Observer"] as UserRole[]) : ROLES).map((r) => (
               <option key={r} value={r}>{r}</option>
@@ -276,7 +277,7 @@ function UserForm({ form, groups, offices, isEdit, saving, error, onChange, onSu
             value={form.division ?? ""}
             onChange={(e) => onChange({ division: (e.target.value as Division) || null })}
             disabled={isOfficeUser}
-            className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 bg-white disabled:bg-slate-100 disabled:text-slate-400"
+            className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 bg-white disabled:bg-slate-100 disabled:text-slate-400"
           >
             <option value="">— None —</option>
             {DIVISIONS.map((d) => (
@@ -297,7 +298,7 @@ function UserForm({ form, groups, offices, isEdit, saving, error, onChange, onSu
           <select
             value={form.officeId ?? ""}
             onChange={(e) => handleOfficeChange(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 bg-white"
+            className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 bg-white"
           >
             <option value="">— None (PPDO-internal user) —</option>
             {offices.map((o) => (
@@ -312,7 +313,7 @@ function UserForm({ form, groups, offices, isEdit, saving, error, onChange, onSu
             value={form.position ?? ""}
             onChange={(e) => onChange({ position: e.target.value || null })}
             placeholder="Planning Officer II"
-            className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
+            className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
           />
         </div>
 
@@ -322,7 +323,7 @@ function UserForm({ form, groups, offices, isEdit, saving, error, onChange, onSu
             value={form.contactNo ?? ""}
             onChange={(e) => onChange({ contactNo: e.target.value || null })}
             placeholder="09XX-XXX-XXXX"
-            className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
+            className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
           />
         </div>
 
@@ -336,7 +337,7 @@ function UserForm({ form, groups, offices, isEdit, saving, error, onChange, onSu
             <select
               value={(form as UpdateUserRequest).groupId ?? ""}
               onChange={(e) => onChange({ groupId: e.target.value || null })}
-              className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 bg-white"
+              className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 bg-white"
             >
               <option value="">— No group —</option>
               {groups.map((g) => (
@@ -392,14 +393,14 @@ function UserForm({ form, groups, offices, isEdit, saving, error, onChange, onSu
 
       {/* SuperAdmin / Admin note — Edit only */}
       {isEdit && !showOverrides && (
-        <p className="text-xs text-slate-400 bg-slate-50 rounded-lg px-3 py-2">
+        <p className="text-xs text-slate-400 bg-slate-50 px-3 py-2">
           SuperAdmin and Admin roles always have full access — permission overrides do not apply.
         </p>
       )}
 
       {/* Error */}
       {error && (
-        <div className="rounded-lg bg-danger-100 border border-danger-500/30 px-4 py-3">
+        <div className="bg-danger-100 border border-danger-500/30 px-4 py-3">
           <p className="text-sm text-danger-500">{error}</p>
         </div>
       )}
@@ -409,7 +410,7 @@ function UserForm({ form, groups, offices, isEdit, saving, error, onChange, onSu
         <button
           type="button"
           onClick={onCancel}
-          className="px-4 py-2 text-sm rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+          className="px-4 py-2 text-sm border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
         >
           Cancel
         </button>
@@ -417,7 +418,7 @@ function UserForm({ form, groups, offices, isEdit, saving, error, onChange, onSu
           type="button"
           onClick={onSubmit}
           disabled={saving}
-          className="px-5 py-2 text-sm rounded-lg bg-green-600 text-white font-medium hover:bg-green-500 transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+          className="px-5 py-2 text-sm bg-green-600 text-white font-medium hover:bg-green-500 transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
         >
           {saving && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
           {saving ? "Saving…" : isEdit ? "Save Changes" : "Create User"}
@@ -452,14 +453,14 @@ function ConfirmDialog({
       <div className="flex justify-end gap-3">
         <button
           onClick={onCancel}
-          className="px-4 py-2 text-sm rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+          className="px-4 py-2 text-sm border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
         >
           Cancel
         </button>
         <button
           onClick={onConfirm}
           disabled={loading}
-          className={`px-5 py-2 text-sm rounded-lg font-medium text-white transition-colors disabled:opacity-60 flex items-center gap-2 ${
+          className={`px-5 py-2 text-sm font-medium text-white transition-colors disabled:opacity-60 flex items-center gap-2 ${
             danger ? "bg-danger-500 hover:bg-red-600" : "bg-green-600 hover:bg-green-500"
           }`}
         >
@@ -713,13 +714,20 @@ export default function UsersPage() {
   return (
     <div className="min-h-screen bg-slate-100 font-sans">
       <div className="max-w-6xl mx-auto px-6 py-6 space-y-4">
+        {/* Breadcrumb */}
+        <nav className="flex items-center gap-1.5 text-xs text-slate-400">
+          <Link href="/config" className="hover:text-slate-600 transition-colors">Configuration</Link>
+          <span>›</span>
+          <span className="text-slate-600 font-medium">User Management</span>
+        </nav>
+
         {/* Toolbar: search + add button */}
         <div className="flex items-center gap-3">
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by name, username, email, role, or division…"
-            className="flex-1 px-4 py-2.5 rounded-lg text-sm border border-slate-200 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-green-600"
+            className="flex-1 px-4 py-2.5 text-sm border border-slate-200 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-green-600"
           />
           {search && (
             <button
@@ -731,7 +739,7 @@ export default function UsersPage() {
           )}
           <button
             onClick={openAdd}
-            className="flex items-center gap-1.5 bg-green-600 text-white font-semibold text-sm px-4 py-2.5 rounded-lg hover:bg-green-500 transition-colors shadow-sm shrink-0"
+            className="flex items-center gap-1.5 bg-green-600 text-white font-semibold text-sm px-4 py-2.5 hover:bg-green-500 transition-colors shadow-sm shrink-0"
           >
             <span className="text-base leading-none">+</span>
             Add User
@@ -739,7 +747,7 @@ export default function UsersPage() {
         </div>
 
         {/* Table card */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="bg-white shadow-sm border border-slate-200 overflow-hidden">
           {loading ? (
             <div className="flex items-center justify-center py-16">
               <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
@@ -841,7 +849,7 @@ export default function UsersPage() {
       {showAdd && (
         <Modal title="Add New User" onClose={() => setShowAdd(false)}>
           <p className="text-xs text-slate-400 mb-4">
-            Default password <span className="font-mono bg-slate-100 px-1 rounded">TamarawUser2026!</span> is set automatically. The user must change it on first login.
+            Default password <span className="font-mono bg-slate-100 px-1">TamarawUser2026!</span> is set automatically. The user must change it on first login.
           </p>
           <UserForm
             form={addForm}
@@ -923,7 +931,7 @@ function ActionButton({
     <button
       title={title}
       onClick={onClick}
-      className={`p-1.5 rounded-lg text-sm transition-colors ${
+      className={`p-1.5 text-sm transition-colors ${
         danger
           ? "hover:bg-danger-100 text-slate-400 hover:text-danger-500"
           : "hover:bg-green-50 text-slate-400 hover:text-green-700"
