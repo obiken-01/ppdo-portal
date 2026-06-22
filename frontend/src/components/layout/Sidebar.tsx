@@ -89,11 +89,13 @@ export default function Sidebar({ me }: SidebarProps) {
   const hasInventory       = me?.canAccessInventory      === true;
   const hasReport          = me?.canAccessReports         === true;
   const showInventoryGroup = !isOfficeUser && (hasInventory || hasReport);
+  const isAdmin            = me?.role === "Admin" || me?.role === "SuperAdmin";
   const showManageUsers    = !isOfficeUser && me?.canManageUsers === true;
   const showBudgetPlanning = me?.canAccessBudgetPlanning === true;
   const showConfig         = !isOfficeUser && me?.canManageConfig === true;
   const showResourceLinks  = !isOfficeUser;
   const showDashboard      = !isOfficeUser;
+  const showAnnouncements  = !isOfficeUser && isAdmin;
 
   function linkCls(active: boolean) {
     return `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
@@ -143,6 +145,14 @@ export default function Sidebar({ me }: SidebarProps) {
           <Link href="/dashboard" className={linkCls(isActive("/dashboard"))}>
             <span className="text-base leading-none w-5 text-center">🏠</span>
             <span className="truncate">Dashboard</span>
+          </Link>
+        )}
+
+        {/* Announcements — Admin / SuperAdmin only */}
+        {showAnnouncements && (
+          <Link href="/announcements" className={linkCls(isActive("/announcements"))}>
+            <span className="text-base leading-none w-5 text-center">📢</span>
+            <span className="truncate">Announcements</span>
           </Link>
         )}
 
