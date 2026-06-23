@@ -621,24 +621,19 @@ function WfpPageInner() {
   const [confirm, setConfirm] = useState<ConfirmDialogProps | null>(null);
 
   const restoreConfirmed = useRef(false);
+  const fundingSourcesLoaded = useRef(false);
+  const accountsLoaded = useRef(false);
 
-  // ── Effect A: Load lists immediately (no auth gate) ─────────────────────
+  // ── Effect A: Load selector lists on mount (accounts/funding deferred) ───
 
   useEffect(() => {
     const urlAipId = searchParams.get("aipId");
     const urlOfficeId = searchParams.get("officeId");
 
-    Promise.all([
-      listAip(),
-      listOffices({ active: "true" }),
-      listAccounts({ active: "true" }),
-      listFundingSources({ active: "true" }),
-    ])
-      .then(([aips, offices, accts, funds]) => {
+    Promise.all([listAip(), listOffices({ active: "true" })])
+      .then(([aips, offices]) => {
         setAipList(aips);
         setOfficeList(offices);
-        setAccounts(accts);
-        setFundingSources(funds);
 
         if (urlAipId) setSelectedAipId(Number(urlAipId));
         // Pre-fill office from URL ?officeId= (me.officeId pre-fill handled in Effect A2)
@@ -680,13 +675,25 @@ function WfpPageInner() {
       setHasUnsaved(false);
 
       try {
-        const [detail, wfpList] = await Promise.all([
+        const fetchFunds: Promise<FundingSourceResponse[] | null> = !fundingSourcesLoaded.current
+          ? listFundingSources({ active: "true" })
+          : Promise.resolve(null);
+        const fetchAccts: Promise<AccountResponse[] | null> = !accountsLoaded.current
+          ? listAccounts({ active: "true" })
+          : Promise.resolve(null);
+
+        const [detail, wfpList, newFunds, newAccts] = await Promise.all([
           getAipSummary(aipId),
           listWfp({ aipRecordId: aipId, officeId }),
+          fetchFunds,
+          fetchAccts,
         ]);
         if (cancelled) return;
 
         setAipDetail(detail);
+        if (newFunds) { setFundingSources(newFunds); fundingSourcesLoaded.current = true; }
+        if (newAccts) { setAccounts(newAccts); accountsLoaded.current = true; }
+
         const record = wfpList[0] ?? null;
         setWfp(record);
 
