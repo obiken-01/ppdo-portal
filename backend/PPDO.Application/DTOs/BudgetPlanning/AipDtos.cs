@@ -132,3 +132,46 @@ public record AipImportConfirmDto(
     string OriginalFilename,
     int?   LdipId,
     Dictionary<string, List<ParsedAipOfficeDto>> SectorOffices);
+
+// ── Slim WFP-grid DTOs (RAL-89) ───────────────────────────────────────────────
+
+/// <summary>
+/// Minimal activity data for the WFP activity grid.
+/// Omits EsreCode, ImplementingOffice, StartDate, EndDate, ExpectedOutputs,
+/// CcAdaptation, CcMitigation, CcTypologyCode — none read by the WFP page.
+/// Cuts the 1.2 MB full-detail payload to ~90 KB.
+/// </summary>
+public record AipActivitySummaryDto(
+    int      Id,
+    string   RefCode,
+    string   Name,
+    decimal? Ps,
+    decimal? Mooe,
+    decimal? Co,
+    decimal? Total,
+    int?     FundingSourceId,
+    string?  FundingSourceSnapshot);
+
+public record AipProjectSummaryDto(
+    int    Id,
+    string RefCode,
+    string Name,
+    IReadOnlyList<AipActivitySummaryDto> Activities);
+
+public record AipProgramSummaryDto(
+    int    Id,
+    string RefCode,
+    string Name,
+    IReadOnlyList<AipProjectSummaryDto> Projects);
+
+public record AipOfficeSummaryDto(
+    int    Id,
+    string RefCode,
+    string Name,
+    string Sector,
+    IReadOnlyList<AipProgramSummaryDto> Programs);
+
+public record AipRecordSummaryDto(
+    int    Id,
+    int    FiscalYear,
+    IReadOnlyList<AipOfficeSummaryDto> Offices);

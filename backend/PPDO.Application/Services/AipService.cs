@@ -115,6 +115,46 @@ public sealed class AipService : IAipService
         return ServiceResult<AipRecordDetailDto>.Ok(detail);
     }
 
+    public async Task<ServiceResult<AipRecordSummaryDto>> GetSummaryByIdAsync(
+        int id, CancellationToken ct = default)
+    {
+        AipRecord? rec = (await _aipRepo.GetAllAsync(ct)).FirstOrDefault(r => r.Id == id);
+        if (rec is null)
+            return ServiceResult<AipRecordSummaryDto>.NotFound($"AIP record {id} not found.");
+
+        IReadOnlyList<AipOffice>   offices  = (await _officeRepo.GetAllAsync(ct)).Where(o => o.AipRecordId == id).ToList();
+        List<int> officeIds  = offices.Select(o => o.Id).ToList();
+        IReadOnlyList<AipProgram>  programs = (await _programRepo.GetAllAsync(ct)).Where(p => officeIds.Contains(p.OfficeId)).ToList();
+        List<int> programIds = programs.Select(p => p.Id).ToList();
+        IReadOnlyList<AipProject>  projects = (await _projectRepo.GetAllAsync(ct)).Where(j => programIds.Contains(j.ProgramId)).ToList();
+        List<int> projectIds = projects.Select(j => j.Id).ToList();
+        IReadOnlyList<AipActivity> acts     = (await _actRepo.GetAllAsync(ct)).Where(a => projectIds.Contains(a.ProjectId)).ToList();
+
+        IReadOnlyList<AipOfficeSummaryDto> officeDtos = offices.Select(o =>
+        {
+            IReadOnlyList<AipProgramSummaryDto> progDtos = programs
+                .Where(p => p.OfficeId == o.Id)
+                .Select(p =>
+                {
+                    IReadOnlyList<AipProjectSummaryDto> projDtos = projects
+                        .Where(j => j.ProgramId == p.Id)
+                        .Select(j => new AipProjectSummaryDto(j.Id, j.RefCode, j.Name,
+                            acts.Where(a => a.ProjectId == j.Id)
+                                .Select(a => new AipActivitySummaryDto(
+                                    a.Id, a.RefCode, a.Name,
+                                    a.Ps, a.Mooe, a.Co, a.Total,
+                                    a.FundingSourceId, a.FundingSourceSnapshot))
+                                .ToList()))
+                        .ToList();
+                    return new AipProgramSummaryDto(p.Id, p.RefCode, p.Name, projDtos);
+                })
+                .ToList();
+            return new AipOfficeSummaryDto(o.Id, o.RefCode, o.Name, o.Sector, progDtos);
+        }).ToList();
+
+        return ServiceResult<AipRecordSummaryDto>.Ok(new AipRecordSummaryDto(rec.Id, rec.FiscalYear, officeDtos));
+    }
+
     // ── Preview ───────────────────────────────────────────────────────────────
 
     public async Task<ServiceResult<AipImportPreviewDto>> ParsePreviewAsync(

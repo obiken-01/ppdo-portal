@@ -65,6 +65,18 @@ public sealed class AipFunctions
         return await ConfigHttp.FromResultAsync(req, await _aip.GetByIdAsync(id, ct), ct);
     }
 
+    // ── GET /api/budget-planning/aip/{id}/summary ─────────────────────────────
+    [Function("AipGetSummary")]
+    public async Task<HttpResponseData> GetSummary(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "budget-planning/aip/{id:int}/summary")] HttpRequestData req,
+        int id, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        return await ConfigHttp.FromResultAsync(req, await _aip.GetSummaryByIdAsync(id, ct), ct);
+    }
+
     // ── POST /api/budget-planning/aip/upload?fiscalYear= ─────────────────────
     // Body: raw XLSM bytes (Content-Type: application/octet-stream)
     [Function("AipUpload")]
