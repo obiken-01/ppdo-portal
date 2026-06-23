@@ -490,7 +490,7 @@ export default function PRReportPage() {
                 number="2"
                 title="Line Items — Ordered vs Delivered vs Distributed vs Remaining"
               />
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto overflow-y-hidden">
                 <table className="w-full text-xs border-collapse">
                   <thead>
                     <tr className="bg-green-800 text-white text-xs uppercase tracking-wide">
@@ -566,7 +566,7 @@ export default function PRReportPage() {
                   <p className="text-sm">No deliveries recorded yet for this PR.</p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto overflow-y-hidden">
                   <table className="w-full text-xs border-collapse">
                     <thead>
                       <tr className="bg-green-800 text-white text-xs uppercase tracking-wide">

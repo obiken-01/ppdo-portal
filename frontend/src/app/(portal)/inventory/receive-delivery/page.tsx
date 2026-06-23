@@ -516,7 +516,7 @@ export default function ReceiveDeliveryPage() {
                 <div className="w-7 h-7 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto overflow-y-hidden">
                 <table className="w-full text-xs border-collapse">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wide">

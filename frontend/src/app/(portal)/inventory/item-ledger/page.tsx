@@ -679,7 +679,7 @@ export default function StockOverviewPage() {
               <button onClick={() => void loadLedger(receivedInQuarter || undefined)} className="text-sm text-green-600 hover:underline">Retry</button>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overflow-y-hidden">
               <table className="w-full text-sm border-collapse">
                 <thead>
                   {table.getHeaderGroups().map((hg) => (

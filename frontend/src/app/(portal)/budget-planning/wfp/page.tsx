@@ -392,7 +392,7 @@ function ExpenditurePopup({
 
       {/* Tab content */}
       <div className={`-mx-6 px-6 pt-4 pb-3 ${TAB_COLORS[activeTab].bg}`}>
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto overflow-y-hidden">
         <table className="w-full text-xs border-collapse min-w-[900px]">
           <thead>
             <tr className="bg-slate-50 text-slate-600 text-left border-b border-slate-200">
@@ -1097,7 +1097,7 @@ function WfpPageInner() {
               : "Loading AIP details…"}
           </p>
         ) : (
-          <div className="overflow-x-auto border border-slate-200">
+          <div className="overflow-x-auto overflow-y-hidden border border-slate-200">
             <table className="w-full text-sm border-collapse min-w-[960px]">
               <thead>
                 <tr className="bg-slate-50 text-xs text-slate-600 text-left border-b border-slate-200">

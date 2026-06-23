@@ -924,7 +924,7 @@ export default function CreatePRPage() {
         <div className="bg-white border border-slate-200 shadow-sm overflow-hidden">
           <SectionHeading number="2" title="Items" />
 
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto overflow-y-hidden">
             <table className="w-full text-xs border-collapse">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wide">

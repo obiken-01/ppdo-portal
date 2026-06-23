@@ -462,7 +462,7 @@ export default function InventoryDashboardPage() {
             No purchase requests found.
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto overflow-y-hidden">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-50 text-xs text-slate-500 uppercase tracking-wide border-b border-slate-100">
@@ -558,7 +558,7 @@ export default function InventoryDashboardPage() {
             <p className="text-xs text-slate-400 mt-1">No low or out-of-stock items detected.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto overflow-y-hidden">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-50 text-xs text-slate-500 uppercase tracking-wide border-b border-slate-100">
