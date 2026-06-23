@@ -125,21 +125,45 @@ export default function PortalLayout({
   // ── Prefetch nav routes after permissions are known ─────────────────────────
   // Sidebar links are permission-gated so <Link> elements don't exist in the DOM
   // until auth/me resolves — by then the user may already click before Next.js
-  // auto-prefetch runs. Calling router.prefetch() here warms the chunk cache
-  // proactively so first navigation to any section is instant.
+  // auto-prefetch runs. Prefetch every reachable route (including sub-pages) so
+  // first navigation to any section is instant.
   useEffect(() => {
     if (!me) return;
     const isOfficeUser = me.officeId != null;
-    const routes: string[] = [];
+    const routes: string[] = ["/account"];
     if (!isOfficeUser) {
       routes.push("/dashboard", "/resource-links");
-      if (me.canAccessInventory || me.canAccessReports) routes.push("/inventory");
-      if (me.canManageConfig)  routes.push("/config");
+      if (me.canAccessInventory || me.canAccessReports) {
+        routes.push(
+          "/inventory",
+          "/inventory/create-pr",
+          "/inventory/receive-delivery",
+          "/inventory/items-master",
+          "/inventory/distribution",
+          "/inventory/item-ledger",
+          "/inventory/pr-register",
+          "/inventory/pr-report",
+        );
+      }
+      if (me.canManageConfig) {
+        routes.push(
+          "/config",
+          "/config/accounts",
+          "/config/offices",
+          "/config/funding-sources",
+        );
+      }
       if (me.canManageUsers)   routes.push("/admin/users");
       if (me.role === "Admin" || me.role === "SuperAdmin") routes.push("/announcements");
     }
-    if (me.canAccessBudgetPlanning) routes.push("/budget-planning");
-    routes.push("/account");
+    if (me.canAccessBudgetPlanning) {
+      routes.push(
+        "/budget-planning",
+        "/budget-planning/ldip",
+        "/budget-planning/aip",
+        "/budget-planning/wfp",
+      );
+    }
     routes.forEach((r) => router.prefetch(r));
   }, [me, router]);
 
