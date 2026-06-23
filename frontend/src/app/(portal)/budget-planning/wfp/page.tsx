@@ -303,7 +303,7 @@ function ExpenditurePopup({
           <div className="font-mono text-xs font-normal text-slate-500 mb-0.5 tracking-wide">
             {activity.refCode}
           </div>
-          <div className="text-base font-semibold text-slate-800 truncate max-w-2xl">
+          <div className="text-base font-semibold text-slate-800">
             {activity.name}
           </div>
         </div>
@@ -1131,13 +1131,15 @@ function WfpPageInner() {
                                     {program.refCode}
                                   </td>
                                   <td className="px-3 py-2 pl-6 font-semibold text-slate-700">
-                                    <button
-                                      onClick={() => toggleCollapse(pKey)}
-                                      className="mr-1.5 text-slate-400 hover:text-slate-600 leading-none"
-                                    >
-                                      {collapsed.has(pKey) ? "▶" : "▼"}
-                                    </button>
-                                    {program.name}
+                                    <div className="flex items-start gap-1">
+                                      <button
+                                        onClick={() => toggleCollapse(pKey)}
+                                        className="mt-0.5 shrink-0 text-slate-400 hover:text-slate-600 leading-none"
+                                      >
+                                        {collapsed.has(pKey) ? "▶" : "▼"}
+                                      </button>
+                                      <span className="line-clamp-2" title={program.name}>{program.name}</span>
+                                    </div>
                                   </td>
                                   <td className="px-3 py-2" />
                                   {Array.from({ length: 9 }, (_, i) => (
@@ -1155,13 +1157,15 @@ function WfpPageInner() {
                                           {project.refCode}
                                         </td>
                                         <td className="px-3 py-2 pl-10 font-medium text-slate-700">
-                                          <button
-                                            onClick={() => toggleCollapse(prKey)}
-                                            className="mr-1.5 text-slate-400 hover:text-slate-600 leading-none"
-                                          >
-                                            {collapsed.has(prKey) ? "▶" : "▼"}
-                                          </button>
-                                          {project.name}
+                                          <div className="flex items-start gap-1">
+                                            <button
+                                              onClick={() => toggleCollapse(prKey)}
+                                              className="mt-0.5 shrink-0 text-slate-400 hover:text-slate-600 leading-none"
+                                            >
+                                              {collapsed.has(prKey) ? "▶" : "▼"}
+                                            </button>
+                                            <span className="line-clamp-2" title={project.name}>{project.name}</span>
+                                          </div>
                                         </td>
                                         <td className="px-3 py-2" />
                                         {Array.from({ length: 9 }, (_, i) => (
@@ -1182,7 +1186,9 @@ function WfpPageInner() {
                                             <td className="px-3 py-2 font-mono text-xs text-slate-500 leading-tight whitespace-nowrap">
                                               {activity.refCode}
                                             </td>
-                                            <td className="px-3 py-2 pl-14 text-slate-700">{activity.name}</td>
+                                            <td className="px-3 py-2 pl-14 text-slate-700">
+                                              <span className="line-clamp-2" title={activity.name}>{activity.name}</span>
+                                            </td>
                                             <td className="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">
                                               {activity.fundingSourceSnapshot ?? "—"}
                                             </td>
