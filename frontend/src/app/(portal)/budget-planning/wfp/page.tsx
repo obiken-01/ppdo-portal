@@ -24,7 +24,7 @@
 import { Fragment, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import api from "@/lib/api";
-import { getAipById, listAip } from "@/lib/aip";
+import { getAipSummary, listAip } from "@/lib/aip";
 import {
   downloadWfpReport,
   finalizeWfp,
@@ -39,8 +39,8 @@ import Modal from "@/components/ui/Modal";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
 import type {
-  AipActivityDetail,
-  AipRecordDetail,
+  AipActivitySummary,
+  AipRecordSummary,
   AipRecordResponse,
   AccountResponse,
   ExpenditureType,
@@ -99,7 +99,7 @@ function computeNet(line: SaveWfpLine): number {
 // ---------------------------------------------------------------------------
 
 interface PopupProps {
-  activity: AipActivityDetail;
+  activity: AipActivitySummary;
   accounts: AccountResponse[];
   fundingSources: FundingSourceResponse[];
   initialLines: SaveWfpLine[];
@@ -604,7 +604,7 @@ function WfpPageInner() {
 
   // ── Loaded data ──────────────────────────────────────────────────────────
 
-  const [aipDetail, setAipDetail] = useState<AipRecordDetail | null>(null);
+  const [aipDetail, setAipDetail] = useState<AipRecordSummary | null>(null);
   const [wfp, setWfp] = useState<WfpRecord | null>(null);
   const [accounts, setAccounts] = useState<AccountResponse[]>([]);
   const [fundingSources, setFundingSources] = useState<FundingSourceResponse[]>([]);
@@ -693,7 +693,7 @@ function WfpPageInner() {
 
       try {
         const [detail, wfpList] = await Promise.all([
-          getAipById(aipId),
+          getAipSummary(aipId),
           listWfp({ aipRecordId: aipId, officeId }),
         ]);
         if (cancelled) return;
@@ -799,7 +799,7 @@ function WfpPageInner() {
 
   // ── Popup activity lookup ─────────────────────────────────────────────────
 
-  const popupActivity = useMemo<AipActivityDetail | null>(() => {
+  const popupActivity = useMemo<AipActivitySummary | null>(() => {
     if (popupActivityId === null || !aipDetail) return null;
     for (const office of aipDetail.offices) {
       for (const program of office.programs) {

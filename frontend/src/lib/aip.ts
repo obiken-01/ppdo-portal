@@ -9,6 +9,7 @@ import api from "./api";
 import type {
   AipRecordResponse,
   AipRecordDetail,
+  AipRecordSummary,
   AipImportPreviewResponse,
   AipImportConfirmRequest,
   ApiResponse,
@@ -85,6 +86,18 @@ export async function confirmAipImport(body: AipImportConfirmRequest): Promise<A
 export async function getAipById(id: number): Promise<AipRecordDetail> {
   const { data } = await api.get<ApiResponse<AipRecordDetail>>(
     `/budget-planning/aip/${id}`
+  );
+  return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// AIP summary — GET /api/budget-planning/aip/{id}/summary
+// Slim hierarchy for the WFP grid: omits heavy free-text fields (~10× smaller).
+// ---------------------------------------------------------------------------
+
+export async function getAipSummary(id: number): Promise<AipRecordSummary> {
+  const { data } = await api.get<ApiResponse<AipRecordSummary>>(
+    `/budget-planning/aip/${id}/summary`
   );
   return unwrap(data);
 }
