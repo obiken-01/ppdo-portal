@@ -82,13 +82,17 @@ export default function PortalLayout({
       }
 
       if (!_refreshInFlight) {
-        // Retry up to 2 times to handle Azure Functions cold starts after inactivity.
+        // Production: retry up to 2× with a 3-second delay to handle Azure Functions
+        // cold starts (Consumption plan). Development: 0 retries — fail fast so a
+        // restarted local server redirects to /login immediately instead of making
+        // the user wait 6 seconds through retry delays.
+        const maxRetries = process.env.NODE_ENV === "production" ? 2 : 0;
+
         const tryRefresh = (retries: number): Promise<boolean> =>
           axios
             .post(`${BASE_URL}/auth/refresh`, { refreshToken }, { withCredentials: true })
             .then(({ data }) => { auth.login(data); return true; })
             .catch((err) => {
-              // Retry on network errors (cold start), not on auth rejections (4xx)
               if (retries > 0 && axios.isAxiosError(err) && !err.response) {
                 return new Promise<boolean>((resolve) => setTimeout(resolve, 3000))
                   .then(() => tryRefresh(retries - 1));
@@ -97,7 +101,7 @@ export default function PortalLayout({
               return false;
             });
 
-        _refreshInFlight = tryRefresh(2).finally(() => { _refreshInFlight = null; });
+        _refreshInFlight = tryRefresh(maxRetries).finally(() => { _refreshInFlight = null; });
       }
 
       const ok = await _refreshInFlight;
