@@ -33,8 +33,10 @@ public sealed class NagerHolidayProvider : IHolidayProvider
             if (_cache.TryGetValue(year, out IReadOnlyList<CalendarEventDto>? cached))
                 return cached;
 
-            IReadOnlyList<CalendarEventDto> result = await FetchFromNagerAsync(year, cancellationToken)
-                ?? GetStaticFallback(year);
+            // Prefer static data for known years — no external HTTP call needed.
+            IReadOnlyList<CalendarEventDto> result = HasStaticData(year)
+                ? GetStaticFallback(year)
+                : await FetchFromNagerAsync(year, cancellationToken) ?? [];
 
             _cache[year] = result;
             return result;
@@ -44,6 +46,8 @@ public sealed class NagerHolidayProvider : IHolidayProvider
             _lock.Release();
         }
     }
+
+    private static bool HasStaticData(int year) => year is 2026 or 2027;
 
     // ── Nager.Date HTTP call ───────────────────────────────────────────────────
 
