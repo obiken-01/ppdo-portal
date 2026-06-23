@@ -21,7 +21,7 @@
  *   POST /api/budget-planning/wfp/{id}/unlock
  */
 
-import { Fragment, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMe } from "@/lib/me-cache";
 import { getAipSummary, listAip } from "@/lib/aip";
@@ -127,6 +127,40 @@ const CF_FIELDS: [keyof SaveWfpLine, string][] = [
   ["successIndicator", "Success Indicator"],
   ["meansOfVerification", "Means of Verification"],
 ];
+
+// Name cell with 2-line clamp + "more/less" toggle (only shown when actually clamped)
+function ClampedName({ name }: { name: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [isClamped, setIsClamped] = useState(false);
+  const spanRef = useRef<HTMLSpanElement>(null);
+
+  useLayoutEffect(() => {
+    if (expanded) return;
+    const el = spanRef.current;
+    if (el) setIsClamped(el.scrollHeight > el.clientHeight);
+  }, [name, expanded]);
+
+  return (
+    <>
+      <span
+        ref={spanRef}
+        className={expanded ? undefined : "line-clamp-2"}
+        title={!expanded && isClamped ? name : undefined}
+      >
+        {name}
+      </span>
+      {(isClamped || expanded) && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setExpanded((p) => !p); }}
+          className="ml-1 text-xs text-green-700 hover:underline whitespace-nowrap"
+        >
+          {expanded ? "less" : "more"}
+        </button>
+      )}
+    </>
+  );
+}
 
 // Account search combobox — replaces the plain <select> for object of expenditure
 function AccountCombobox({
@@ -1138,13 +1172,15 @@ function WfpPageInner() {
                                     {program.refCode}
                                   </td>
                                   <td className="px-3 py-2 pl-6 font-semibold text-slate-700">
-                                    <button
-                                      onClick={() => toggleCollapse(pKey)}
-                                      className="mr-1.5 text-slate-400 hover:text-slate-600 leading-none"
-                                    >
-                                      {collapsed.has(pKey) ? "▶" : "▼"}
-                                    </button>
-                                    {program.name}
+                                    <div className="flex items-start gap-1">
+                                      <button
+                                        onClick={() => toggleCollapse(pKey)}
+                                        className="mt-0.5 shrink-0 text-slate-400 hover:text-slate-600 leading-none"
+                                      >
+                                        {collapsed.has(pKey) ? "▶" : "▼"}
+                                      </button>
+                                      <ClampedName name={program.name} />
+                                    </div>
                                   </td>
                                   <td className="px-3 py-2" />
                                   {Array.from({ length: 9 }, (_, i) => (
@@ -1162,13 +1198,15 @@ function WfpPageInner() {
                                           {project.refCode}
                                         </td>
                                         <td className="px-3 py-2 pl-10 font-medium text-slate-700">
-                                          <button
-                                            onClick={() => toggleCollapse(prKey)}
-                                            className="mr-1.5 text-slate-400 hover:text-slate-600 leading-none"
-                                          >
-                                            {collapsed.has(prKey) ? "▶" : "▼"}
-                                          </button>
-                                          {project.name}
+                                          <div className="flex items-start gap-1">
+                                            <button
+                                              onClick={() => toggleCollapse(prKey)}
+                                              className="mt-0.5 shrink-0 text-slate-400 hover:text-slate-600 leading-none"
+                                            >
+                                              {collapsed.has(prKey) ? "▶" : "▼"}
+                                            </button>
+                                            <ClampedName name={project.name} />
+                                          </div>
                                         </td>
                                         <td className="px-3 py-2" />
                                         {Array.from({ length: 9 }, (_, i) => (
@@ -1189,7 +1227,9 @@ function WfpPageInner() {
                                             <td className="px-3 py-2 font-mono text-xs text-slate-500 leading-tight whitespace-nowrap">
                                               {activity.refCode}
                                             </td>
-                                            <td className="px-3 py-2 pl-14 text-slate-700">{activity.name}</td>
+                                            <td className="px-3 py-2 pl-14 text-slate-700">
+                                              <ClampedName name={activity.name} />
+                                            </td>
                                             <td className="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">
                                               {activity.fundingSourceSnapshot ?? "—"}
                                             </td>
