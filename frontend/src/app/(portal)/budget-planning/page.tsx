@@ -12,11 +12,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import api from "@/lib/api";
 import { getDashboard, getRecentActivity } from "@/lib/budget-planning";
+import { useMe } from "@/lib/me-cache";
 import DataTable, { Column } from "@/components/ui/DataTable";
-import type { MeResponse, PlanningDashboard, RecentActivity, WfpOfficeStatus } from "@/types";
+import type { PlanningDashboard, RecentActivity, WfpOfficeStatus } from "@/types";
 
 // ---------------------------------------------------------------------------
 // Spinner / error helpers
@@ -103,9 +102,8 @@ const WFP_COLUMNS: Column<WfpOfficeStatus>[] = [
 // ---------------------------------------------------------------------------
 
 export default function BudgetPlanningPage() {
-  const router = useRouter();
+  const user = useMe((me) => me.canAccessBudgetPlanning);
 
-  const [user, setUser] = useState<MeResponse | null>(null);
   const [fiscalYear, setFiscalYear] = useState<number | null>(null);
   const [selectedOffice, setSelectedOffice] = useState<number | null>(null);
 
@@ -116,21 +114,6 @@ export default function BudgetPlanningPage() {
   const [activityLoading, setActivityLoading] = useState(true);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
   const [activityError, setActivityError] = useState<string | null>(null);
-
-  // ── Auth check ─────────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    api
-      .get<MeResponse>("/auth/me")
-      .then(({ data }) => {
-        if (!data.canAccessBudgetPlanning) {
-          router.replace(data.officeId != null ? "/dashboard" : "/dashboard");
-        } else {
-          setUser(data);
-        }
-      })
-      .catch(() => router.replace("/login"));
-  }, [router]);
 
   // ── Dashboard load ─────────────────────────────────────────────────────────
 
@@ -149,19 +132,20 @@ export default function BudgetPlanningPage() {
     []
   );
 
-  // ── Initial data load (fires once user is set) ─────────────────────────────
+  // ── Initial data load ──────────────────────────────────────────────────────
+
+  useEffect(() => {
+    loadDashboard();
+  }, [loadDashboard]);
 
   useEffect(() => {
     if (!user) return;
-
-    loadDashboard();
-
     setActivityLoading(true);
     getRecentActivity(user.officeId ?? undefined)
       .then(setActivity)
       .catch(() => setActivityError("Failed to load recent activity."))
       .finally(() => setActivityLoading(false));
-  }, [user, loadDashboard]);
+  }, [user]);
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
@@ -176,16 +160,6 @@ export default function BudgetPlanningPage() {
     user?.officeCode && user?.officeName
       ? `${user.officeCode} — ${user.officeName}`
       : user?.officeCode ?? user?.officeName ?? "Your Office";
-
-  // ── Loading gate (before user is set) ────────────────────────────────────
-
-  if (!user) {
-    return (
-      <div className="min-h-full flex items-center justify-center bg-slate-100">
-        <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
 
   // ── Render ────────────────────────────────────────────────────────────────
 

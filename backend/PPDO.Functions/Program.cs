@@ -90,8 +90,10 @@ var host = new HostBuilder()
         services.AddScoped<IExcelService, ExcelService>();
         services.AddScoped<IWfpExcelService, ExcelService>();
 
-        // NagerHolidayProvider uses a singleton HttpClient via IHttpClientFactory.
-        services.AddHttpClient<IHolidayProvider, NagerHolidayProvider>();
+        // NagerHolidayProvider uses a typed HttpClient. Timeout is short so a slow
+        // Nager.Date response fails fast and falls back to static data or empty list.
+        services.AddHttpClient<IHolidayProvider, NagerHolidayProvider>(c =>
+            c.Timeout = TimeSpan.FromSeconds(3));
 
         // -- Application services --------------------------------------------
         services.AddScoped<IPermissionService, PermissionService>();

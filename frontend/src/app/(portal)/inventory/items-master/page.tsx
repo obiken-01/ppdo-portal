@@ -43,11 +43,11 @@ import {
   type SortingState,
 } from "@tanstack/react-table";
 import api from "@/lib/api";
+import { fetchMe } from "@/lib/me-cache";
 import { useToast } from "@/components/ui/Toast";
 import type {
   CreateItemMasterRequest,
   ItemMasterResponse,
-  MeResponse,
   UpdateItemMasterRequest,
 } from "@/types";
 
@@ -176,7 +176,7 @@ export default function ItemsMasterPage() {
   const { toast } = useToast();
 
   // Auth guard
-  const [authChecked, setAuthChecked] = useState(false);
+  const [authChecked] = useState(true);
 
   // Master data
   const [items, setItems]         = useState<ItemMasterResponse[]>([]);
@@ -213,10 +213,9 @@ export default function ItemsMasterPage() {
   // ── Auth guard ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    api.get<MeResponse>("/auth/me")
-      .then(({ data }) => {
+    fetchMe()
+      .then((data) => {
         if (!data.canAccessInventory) router.replace(data.officeId != null ? "/budget-planning" : "/dashboard");
-        else setAuthChecked(true);
       })
       .catch(() => router.replace("/login"));
   }, [router]);

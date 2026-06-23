@@ -29,7 +29,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import api from "@/lib/api";
+import { fetchMe } from "@/lib/me-cache";
 import {
   configErrorMessage,
   createOffice,
@@ -49,7 +49,6 @@ import { useToast } from "@/components/ui/Toast";
 import type {
   ActiveFilter,
   CsvImportResult,
-  MeResponse,
   OfficeResponse,
   UpsertOfficeRequest,
 } from "@/types";
@@ -105,7 +104,7 @@ export default function OfficeConfigPage() {
   const { toast } = useToast();
 
   // Auth / permission guard
-  const [authChecked, setAuthChecked] = useState(false);
+  const [authChecked] = useState(true);
 
   // Data
   const [offices, setOffices] = useState<OfficeResponse[]>([]);
@@ -135,11 +134,9 @@ export default function OfficeConfigPage() {
   // ── Auth check ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    api
-      .get<MeResponse>("/auth/me")
-      .then(({ data }) => {
+    fetchMe()
+      .then((data) => {
         if (!data.canManageConfig) router.replace(data.officeId != null ? "/budget-planning" : "/dashboard");
-        else setAuthChecked(true);
       })
       .catch(() => router.replace("/login"));
   }, [router]);

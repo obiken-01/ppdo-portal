@@ -9,9 +9,18 @@ import ResourceLinksWidget from "@/components/dashboard/ResourceLinksWidget";
 import CalendarApprovalPanel from "@/components/dashboard/CalendarApprovalPanel";
 import CreateEventModal from "@/components/dashboard/CreateEventModal";
 
+// Module-level SPA cache: survives route changes within the same tab.
+// Keys are "yyyy-m". First visit populates; return visits show stale data
+// immediately while a background refetch updates it silently.
+const eventsCache = new Map<string, CalendarEventResponse[]>();
+
 export default function DashboardPage() {
-  const [events, setEvents]               = useState<CalendarEventResponse[]>([]);
-  const [eventsLoading, setEventsLoading] = useState(true);
+  const initYear  = new Date().getFullYear();
+  const initMonth = new Date().getMonth() + 1;
+  const initKey   = `${initYear}-${initMonth}`;
+
+  const [events, setEvents]               = useState<CalendarEventResponse[]>(() => eventsCache.get(initKey) ?? []);
+  const [eventsLoading, setEventsLoading] = useState(() => !eventsCache.has(initKey));
   const [activeYear, setActiveYear]       = useState(() => new Date().getFullYear());
   const [activeMonth, setActiveMonth]     = useState(() => new Date().getMonth() + 1);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEventResponse | null>(null);
@@ -35,16 +44,26 @@ export default function DashboardPage() {
   // ── Fetch events ───────────────────────────────────────────────────────────
 
   const fetchEvents = useCallback(async (year: number, month: number) => {
-    setEventsLoading(true);
+    const key = `${year}-${month}`;
+    const cached = eventsCache.get(key);
+
+    if (cached) {
+      // Return visit: show stale data instantly, then refetch silently.
+      setEvents(cached);
+    } else {
+      setEventsLoading(true);
+    }
+
     try {
       const { data } = await api.get<CalendarEventResponse[]>(
         `/dashboard/events?year=${year}&month=${month}`
       );
+      eventsCache.set(key, data);
       setEvents(data);
     } catch {
-      setEvents([]);
+      if (!cached) setEvents([]);
     } finally {
-      setEventsLoading(false);
+      if (!cached) setEventsLoading(false);
     }
   }, []);
 
