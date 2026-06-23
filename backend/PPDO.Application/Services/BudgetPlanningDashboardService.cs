@@ -89,7 +89,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
             {
                 wfpMap.TryGetValue(o.Id, out WfpRecord? wfp);
                 return new WfpOfficeStatusDto(
-                    o.Id, o.OfficeName,
+                    o.Id, o.OfficeCode, o.OfficeName,
                     wfp?.Status ?? "Not started",
                     wfp?.AipRecordId);
             })

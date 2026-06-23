@@ -9,7 +9,7 @@ public record AipSummaryDto(int Total, IReadOnlyList<StatusBreakdownDto> Breakdo
 public record WfpSummaryDto(int FinalCount, int ActiveOfficeCount);
 
 /// <summary>WFP status for one active office. WfpStatus = "Draft" | "Final" | "Not started".</summary>
-public record WfpOfficeStatusDto(int OfficeId, string OfficeName, string WfpStatus, int? AipRecordId);
+public record WfpOfficeStatusDto(int OfficeId, string OfficeCode, string OfficeName, string WfpStatus, int? AipRecordId);
 
 public record PlanningDashboardDto(
     int FiscalYear,
