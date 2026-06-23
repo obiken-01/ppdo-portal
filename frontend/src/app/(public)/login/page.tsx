@@ -137,7 +137,9 @@ export default function LoginPage() {
           priority
           className="rounded-full mb-6 object-contain"
         />
-        <h1 className="text-2xl font-bold text-center mb-1">PPDO Portal</h1>
+        <h1 className="text-2xl font-bold text-center mb-1">
+          PPDO Portal <span className="text-sm font-normal text-green-300">{APP_VERSION}</span>
+        </h1>
         <p className="text-green-200 text-sm text-center mb-2">
           Provincial Planning and Development Office
         </p>
@@ -173,7 +175,6 @@ export default function LoginPage() {
             className="object-contain"
           />
         </div>
-        <p className="text-green-400 text-xs mt-3 opacity-60">{APP_VERSION}</p>
       </aside>
 
       {/* ── Right panel — form ───────────────────────────────────────────── */}
