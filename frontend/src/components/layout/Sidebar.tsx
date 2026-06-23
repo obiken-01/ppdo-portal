@@ -15,6 +15,7 @@
  */
 
 import { useState, useEffect, useRef } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import api from "@/lib/api";
@@ -123,9 +124,8 @@ export default function Sidebar({ me }: SidebarProps) {
         href="/dashboard"
         className="flex items-center gap-3 px-5 py-5 border-b border-green-600 hover:bg-green-600 transition-colors group"
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/images/ppdo-logo-placeholder.png"
+        <Image
+          src="/images/ppdo-logo-placeholder.webp"
           alt="PPDO"
           width={32}
           height={32}
