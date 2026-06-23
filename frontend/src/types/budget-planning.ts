@@ -203,6 +203,7 @@ export interface WfpSummary {
 
 export interface WfpOfficeStatus {
   officeId: number;
+  officeCode: string;
   officeName: string;
   wfpStatus: "Draft" | "Final" | "Not started";
   aipRecordId: number | null;

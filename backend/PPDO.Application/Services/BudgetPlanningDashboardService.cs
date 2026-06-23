@@ -5,9 +5,10 @@ using PPDO.Domain.Interfaces;
 namespace PPDO.Application.Services;
 
 /// <summary>
-/// Budget Planning Dashboard data service (RAL-80).
-/// All data is fetched via GetAllAsync() and filtered in-memory — consistent with
-/// existing config services and appropriate for small-to-medium v1.1 datasets.
+/// Budget Planning Dashboard data service (RAL-80, RAL-92).
+/// GetDashboardAsync fetches small config tables in full (appropriate for their size).
+/// GetRecentActivityAsync delegates to IAuditRepository.GetRecentAsync so the DB
+/// applies ordering, office filtering, and TAKE — the entire audit_log is never loaded.
 /// </summary>
 public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardService
 {
@@ -15,23 +16,20 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     private readonly IRepository<AipRecord>  _aipRepo;
     private readonly IRepository<WfpRecord>  _wfpRepo;
     private readonly IRepository<Office>     _officeRepo;
-    private readonly IRepository<AuditLog>   _auditRepo;
-    private readonly IRepository<User>       _userRepo;
+    private readonly IAuditRepository        _auditRepo;
 
     public BudgetPlanningDashboardService(
         IRepository<LdipRecord> ldipRepo,
         IRepository<AipRecord>  aipRepo,
         IRepository<WfpRecord>  wfpRepo,
         IRepository<Office>     officeRepo,
-        IRepository<AuditLog>   auditRepo,
-        IRepository<User>       userRepo)
+        IAuditRepository        auditRepo)
     {
         _ldipRepo   = ldipRepo;
         _aipRepo    = aipRepo;
         _wfpRepo    = wfpRepo;
         _officeRepo = officeRepo;
         _auditRepo  = auditRepo;
-        _userRepo   = userRepo;
     }
 
     /// <inheritdoc />
@@ -85,14 +83,13 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
 
         // Active offices left-joined to WFP map → status rows, sorted Not started → Draft → Final.
         List<Office> activeOffices = offices.Where(o => o.IsActive).ToList();
-        // Sort: Not started first, Draft second, Final last (display priority in the dashboard table).
         static int WfpOfficeStatusRank(string s) => s == "Not started" ? 0 : s == "Draft" ? 1 : 2;
         List<WfpOfficeStatusDto> wfpByOffice = activeOffices
             .Select(o =>
             {
                 wfpMap.TryGetValue(o.Id, out WfpRecord? wfp);
                 return new WfpOfficeStatusDto(
-                    o.Id, o.OfficeName,
+                    o.Id, o.OfficeCode, o.OfficeName,
                     wfp?.Status ?? "Not started",
                     wfp?.AipRecordId);
             })
@@ -116,28 +113,18 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     public async Task<IReadOnlyList<RecentActivityDto>> GetRecentActivityAsync(
         int? officeId, CancellationToken cancellationToken = default)
     {
-        IReadOnlyList<AuditLog> audits = await _auditRepo.GetAllAsync(cancellationToken);
-        IReadOnlyList<User>     users  = await _userRepo.GetAllAsync(cancellationToken);
+        // GetRecentAsync pushes ORDER BY, WHERE (office filter), and TOP(10) to SQL.
+        // Actor name is read from the pre-loaded ChangedBy navigation (one JOIN, no second query).
+        IReadOnlyList<AuditLog> audits = await _auditRepo.GetRecentAsync(10, officeId, cancellationToken);
 
-        Dictionary<Guid, User> userLookup = users.ToDictionary(u => u.Id);
-
-        IEnumerable<AuditLog> filtered = audits;
-        if (officeId is not null)
-        {
-            filtered = audits.Where(a =>
-                userLookup.TryGetValue(a.ChangedById, out User? u) && u.OfficeId == officeId);
-        }
-
-        return filtered
-            .OrderByDescending(a => a.ChangedAt)
-            .Take(10)
-            .Select(a =>
-            {
-                string actor = userLookup.TryGetValue(a.ChangedById, out User? u)
-                    ? u.FullName
-                    : "Unknown";
-                return new RecentActivityDto(a.Id, a.ChangedAt, a.TableName, a.Action, a.RecordId, actor);
-            })
+        return audits
+            .Select(a => new RecentActivityDto(
+                a.Id,
+                a.ChangedAt,
+                a.TableName,
+                a.Action,
+                a.RecordId,
+                a.ChangedBy?.FullName ?? "Unknown"))
             .ToList();
     }
 }

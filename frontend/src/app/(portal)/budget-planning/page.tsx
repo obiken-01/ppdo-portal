@@ -220,7 +220,7 @@ export default function BudgetPlanningPage() {
                 <option value="">All Offices</option>
                 {(dashboard?.wfpByOffice ?? []).map((r) => (
                   <option key={r.officeId} value={r.officeId}>
-                    {r.officeName}
+                    {r.officeCode} — {r.officeName}
                   </option>
                 ))}
               </select>
