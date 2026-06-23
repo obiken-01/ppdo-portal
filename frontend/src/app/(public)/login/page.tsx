@@ -72,6 +72,8 @@ type FormData = z.infer<typeof schema>;
 // Page
 // ---------------------------------------------------------------------------
 
+const APP_VERSION = "v1.1.1";
+
 export default function LoginPage() {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
@@ -171,6 +173,7 @@ export default function LoginPage() {
             className="object-contain"
           />
         </div>
+        <p className="text-green-400 text-xs mt-3 opacity-60">{APP_VERSION}</p>
       </aside>
 
       {/* ── Right panel — form ───────────────────────────────────────────── */}
