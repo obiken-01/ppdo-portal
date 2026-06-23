@@ -1,0 +1,32 @@
+using PPDO.Domain.Entities;
+
+namespace PPDO.Domain.Interfaces;
+
+/// <summary>
+/// Repository contract for scoped, server-side AIP hierarchy reads.
+/// All query methods apply WHERE / IN filters in SQL — the full hierarchy tables
+/// are never materialised in memory just to find one record.
+/// </summary>
+public interface IAipRepository : IRepository<AipRecord>
+{
+    /// <summary>
+    /// Returns the AIP record whose integer PK equals <paramref name="id"/>, or null.
+    /// Needed because the base <see cref="IRepository{T}.GetByIdAsync"/> uses a Guid key.
+    /// </summary>
+    Task<AipRecord?> GetByIntIdAsync(int id, CancellationToken ct = default);
+
+    /// <summary>AipOffice rows WHERE aip_record_id = <paramref name="aipRecordId"/>.</summary>
+    Task<IReadOnlyList<AipOffice>> GetOfficesByAipIdAsync(int aipRecordId, CancellationToken ct = default);
+
+    /// <summary>AipOffice rows WHERE aip_record_id IN (<paramref name="aipIds"/>). Used by the list endpoint for office-count aggregation.</summary>
+    Task<IReadOnlyList<AipOffice>> GetOfficesByAipIdsAsync(IReadOnlyList<int> aipIds, CancellationToken ct = default);
+
+    /// <summary>AipProgram rows WHERE office_id IN (<paramref name="officeIds"/>).</summary>
+    Task<IReadOnlyList<AipProgram>> GetProgramsByOfficeIdsAsync(IReadOnlyList<int> officeIds, CancellationToken ct = default);
+
+    /// <summary>AipProject rows WHERE program_id IN (<paramref name="programIds"/>).</summary>
+    Task<IReadOnlyList<AipProject>> GetProjectsByProgramIdsAsync(IReadOnlyList<int> programIds, CancellationToken ct = default);
+
+    /// <summary>AipActivity rows WHERE project_id IN (<paramref name="projectIds"/>).</summary>
+    Task<IReadOnlyList<AipActivity>> GetActivitiesByProjectIdsAsync(IReadOnlyList<int> projectIds, CancellationToken ct = default);
+}
