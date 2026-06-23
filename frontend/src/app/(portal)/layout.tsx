@@ -118,6 +118,27 @@ export default function PortalLayout({
     api.get<MeResponse>("/auth/me").then(({ data }) => setMe(data)).catch(() => {});
   }, [ready]);
 
+  // ── Prefetch nav routes after permissions are known ─────────────────────────
+  // Sidebar links are permission-gated so <Link> elements don't exist in the DOM
+  // until auth/me resolves — by then the user may already click before Next.js
+  // auto-prefetch runs. Calling router.prefetch() here warms the chunk cache
+  // proactively so first navigation to any section is instant.
+  useEffect(() => {
+    if (!me) return;
+    const isOfficeUser = me.officeId != null;
+    const routes: string[] = [];
+    if (!isOfficeUser) {
+      routes.push("/dashboard", "/resource-links");
+      if (me.canAccessInventory || me.canAccessReports) routes.push("/inventory");
+      if (me.canManageConfig)  routes.push("/config");
+      if (me.canManageUsers)   routes.push("/admin/users");
+      if (me.role === "Admin" || me.role === "SuperAdmin") routes.push("/announcements");
+    }
+    if (me.canAccessBudgetPlanning) routes.push("/budget-planning");
+    routes.push("/account");
+    routes.forEach((r) => router.prefetch(r));
+  }, [me, router]);
+
   // ── Office-user gate ────────────────────────────────────────────────────────
   // Non-PPDO office users have Budget Planning as their only feature. If they land
   // anywhere else (e.g. via a stale link or the home dashboard), send them back.
