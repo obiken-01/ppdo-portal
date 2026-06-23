@@ -188,8 +188,13 @@ Interfaces / contracts first → Implementations → Tests
 - Use `AppDbContext` only in repositories — never in Application services or Functions
 - All queries must be async (`ToListAsync`, `FirstOrDefaultAsync`, etc.)
 - Never use `Include` chains deeper than 2 levels — write separate queries instead
+- **Query at the database, not in memory.** Do NOT call `GetAllAsync()` then filter/count/search with LINQ-to-objects — add a scoped method to the feature repository (`.Where`, `.OrderBy`, `.Take`) so SQL does the work. Counts → `CountAsync`; existence/uniqueness → `AnyAsync`; single record → a `WHERE Id = @id` query (the generic `GetByIdAsync` is Guid-keyed — int-keyed entities need a feature-repo by-id method). Templates: `PurchaseRequestRepository.GetByDivisionAsync`, `CalendarEventRepository.GetByDateRangeAsync`.
+- **Never run concurrent queries on one `DbContext`.** `DbContext` is not thread-safe — `Task.WhenAll` over two repo calls on the shared context throws `InvalidOperationException`. Use sequential `await`s (this caused a prod 500 in `GetStatsAsync`).
+- **List/grid endpoints return slim DTOs** — only the columns that view uses; don't ship heavy free-text fields a grid never renders (a fat AIP DTO produced a 1.2 MB response). Paginate server-side (`Skip`/`Take` + total count) for tables that grow over time.
+- Full rationale + worked examples in **`docs/PERFORMANCE_GUIDELINES.md`** — read it before adding a query, endpoint, or list view.
 - Migrations go in `PPDO.Infrastructure/Data/Migrations/`
 - Migration naming convention: `PascalCase` description — e.g. `AddPermissionGroups`, `AddRefreshTokenTable`
+- **Table & column naming (snake_case for new tables):** new tables and columns use **snake_case**, mapped from PascalCase C# properties via `.ToTable("…")` / `.HasColumnName("…")` in the entity's `IEntityTypeConfiguration` (see `AccountConfiguration` for the pattern). **Legacy pre-v1.1 PascalCase tables** (`Users`, `CalendarEvents`, `ResourceLinks`, the v1.0 inventory tables, …) are left as-is — never rename them, and new columns added to such a table follow that table's existing PascalCase (e.g. the v1.1.1 `CalendarEvents.Status` column). Full rules in `docs/NAMING_CONVENTIONS.md`.
 
 ### RBAC / Permissions
 - Effective permission resolution always goes through `PermissionService` — never inline the logic
@@ -248,6 +253,9 @@ Interfaces / contracts first → Implementations → Tests
 - Token refresh is handled automatically by the Axios interceptor in `api.ts` — never handle 401s manually in page components
 - Never hardcode colours — always use Tailwind classes mapped to PPDO design tokens in `tailwind.config.ts`
 - Component naming: PascalCase files, matching the component name — e.g. `StatCard.tsx`, `PRStatusTable.tsx`
+- **Fetch shared state once.** Don't call `/auth/me` (or any "fetched once, read everywhere" value) per component — read the current user from a shared context/provider mounted in the portal layout. The WFP page once fired `/auth/me` four times per load.
+- **Loading states must preserve layout (CLS).** Render the page shell immediately and show a skeleton that matches the loaded structure (same header, same row height) — never gate a page on a tiny centered spinner that's then replaced by a full-height table. Give images explicit dimensions (prefer `next/image`, which also serves WebP/AVIF and lazy-loads).
+- See **`docs/PERFORMANCE_GUIDELINES.md`** for the frontend performance rules and the incidents behind them.
 
 ---
 
@@ -462,6 +470,11 @@ Read CLAUDE.md then add the [endpoint] endpoint to [FunctionsFile].
 Follow the JWT validation and permission check patterns in CLAUDE.md.
 ```
 
+When writing the implementation prompt that is pasted into a Linear ticket to kick off a
+ticket, follow the standard structure in **`docs/TICKET_PROMPT_STANDARD.md`** (context docs to
+read → files to read before coding → working branch + PR target → TDD → numbered steps →
+out-of-scope → commit message). `RAL-81` is the reference example.
+
 ---
 
 ## What NOT to Do
@@ -473,6 +486,10 @@ Follow the JWT validation and permission check patterns in CLAUDE.md.
 - ❌ Do not use `DateTime.Now` — use `DateTime.UtcNow` then convert to UTC+8 where needed
 - ❌ Do not use `Console.WriteLine` for logging — use `ILogger<T>`
 - ❌ Do not create new DbContext instances manually — always inject `AppDbContext`
+- ❌ Do not `GetAllAsync()` then filter/count/search in memory — push it to SQL via a scoped repository method (see `docs/PERFORMANCE_GUIDELINES.md`)
+- ❌ Do not `Task.WhenAll` over queries that share one `DbContext` — it is not thread-safe; await sequentially
+- ❌ Do not return entity-shaped DTOs with unused heavy columns from list/grid endpoints — use a slim DTO
+- ❌ Do not fetch `/auth/me` (or other shared state) separately in each component — read it from shared context
 - ❌ Do not use `any` type in TypeScript — always type explicitly
 - ❌ Do not call APIs from Next.js Server Components — use Client Components with Axios via `api.ts`
 - ❌ Do not hardcode division names as strings — always use the `Division` enum
@@ -611,3 +628,4 @@ Follow the JWT validation and permission check patterns in CLAUDE.md.
 ---
 
 *CLAUDE.md — PPDO Portal v1.0.1 — 2026-06-08 — Ralph Armand Alcaide*
+*Performance & scalability guidelines added 2026-06-22 (`docs/PERFORMANCE_GUIDELINES.md`) — from the v1.1.0 prod audit.*

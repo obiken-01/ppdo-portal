@@ -367,6 +367,61 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.ToTable("aip_records", (string)null);
                 });
 
+            modelBuilder.Entity("PPDO.Domain.Entities.Announcement", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("content");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<DateTime?>("PublishedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("published_at");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("PublishedAt")
+                        .HasDatabaseName("IX_announcements_published_at");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("IX_announcements_status");
+
+                    b.ToTable("announcements", (string)null);
+                });
+
             modelBuilder.Entity("PPDO.Domain.Entities.AuditLog", b =>
                 {
                     b.Property<long>("Id")
@@ -454,8 +509,21 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasColumnType("bit")
                         .HasDefaultValue(false);
 
+                    b.Property<string>("RejectionReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ReviewedById")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime>("StartDate")
                         .HasColumnType("datetime2");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
 
                     b.Property<string>("Title")
                         .IsRequired()
@@ -469,8 +537,13 @@ namespace PPDO.Infrastructure.Data.Migrations
 
                     b.HasIndex("CreatedById");
 
+                    b.HasIndex("ReviewedById");
+
                     b.HasIndex("StartDate")
                         .HasDatabaseName("IX_CalendarEvents_StartDate");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("IX_CalendarEvents_Status");
 
                     b.HasIndex("EventType", "StartDate")
                         .HasDatabaseName("IX_CalendarEvents_EventType_StartDate");
@@ -606,16 +679,16 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasColumnType("nvarchar(20)")
                         .HasColumnName("code");
 
+                    b.Property<string>("Color")
+                        .HasMaxLength(7)
+                        .HasColumnType("nvarchar(7)")
+                        .HasColumnName("color");
+
                     b.Property<DateTime>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("datetime2")
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("GETUTCDATE()");
-
-                    b.Property<string>("Color")
-                        .HasMaxLength(7)
-                        .HasColumnType("nvarchar(7)")
-                        .HasColumnName("color");
 
                     b.Property<string>("Description")
                         .HasColumnType("nvarchar(max)")
@@ -1961,6 +2034,18 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.Navigation("UploadedBy");
                 });
 
+            modelBuilder.Entity("PPDO.Domain.Entities.Announcement", b =>
+                {
+                    b.HasOne("PPDO.Domain.Entities.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_announcements_Users_created_by_id");
+
+                    b.Navigation("CreatedBy");
+                });
+
             modelBuilder.Entity("PPDO.Domain.Entities.AuditLog", b =>
                 {
                     b.HasOne("PPDO.Domain.Entities.User", "ChangedBy")
@@ -1982,7 +2067,15 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasConstraintName("FK_CalendarEvents_Users_CreatedById");
 
+                    b.HasOne("PPDO.Domain.Entities.User", "ReviewedBy")
+                        .WithMany()
+                        .HasForeignKey("ReviewedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_CalendarEvents_Users_ReviewedById");
+
                     b.Navigation("CreatedBy");
+
+                    b.Navigation("ReviewedBy");
                 });
 
             modelBuilder.Entity("PPDO.Domain.Entities.Delivery", b =>

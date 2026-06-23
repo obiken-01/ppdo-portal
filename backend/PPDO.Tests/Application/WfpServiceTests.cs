@@ -9,9 +9,10 @@ using PPDO.Domain.Interfaces;
 namespace PPDO.Tests.Application;
 
 /// <summary>
-/// Unit tests for <see cref="WfpService"/> (RAL-64).
+/// Unit tests for <see cref="WfpService"/> (RAL-64, RAL-93).
 /// Covers: create vs replace, WFP status guard, quarterly-total validation,
-/// snapshot population, reserve computation, finalize/unlock transitions.
+/// snapshot population, reserve computation, finalize/unlock transitions,
+/// and — after RAL-93 — server-side scoped reads via <see cref="IWfpRepository"/>.
 /// All repositories and IAuditService are mocked.
 /// </summary>
 public sealed class WfpServiceTests
@@ -61,24 +62,25 @@ public sealed class WfpServiceTests
 
     private static (
         WfpService sut,
-        Mock<IRepository<WfpRecord>>          wfpRepo,
+        Mock<IWfpRepository>                  wfpRepo,
         Mock<IRepository<WfpActivity>>        actRepo,
         Mock<IRepository<WfpExpenditureLine>> lineRepo,
         Mock<IAuditService>                   audit)
         Build(
-            List<WfpRecord>          wfpSeed,
-            List<WfpActivity>        actSeed,
-            List<Account>            accountSeed,
-            List<FundingSource>      fsSeed)
+            List<WfpRecord>     wfpSeed,
+            List<WfpActivity>   actSeed,
+            List<Account>       accountSeed,
+            List<FundingSource> fsSeed)
     {
-        Mock<IRepository<WfpRecord>>          wfpRepo     = new();
+        Mock<IWfpRepository>                  wfpRepo     = new();
         Mock<IRepository<WfpActivity>>        actRepo     = new();
         Mock<IRepository<WfpExpenditureLine>> lineRepo    = new();
         Mock<IRepository<Account>>            accountRepo = new();
         Mock<IRepository<FundingSource>>      fsRepo      = new();
         Mock<IAuditService>                   audit       = new();
 
-        // WfpRecord repo
+        // ── WfpRecord base repo (GetAllAsync / Add / Update / Delete / Save) ──
+
         int nextWfpId = 50;
         wfpRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(wfpSeed);
         wfpRepo.Setup(r => r.AddAsync(It.IsAny<WfpRecord>(), It.IsAny<CancellationToken>()))
@@ -86,11 +88,40 @@ public sealed class WfpServiceTests
             .Returns(Task.CompletedTask);
         wfpRepo.Setup(r => r.UpdateAsync(It.IsAny<WfpRecord>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
+        wfpRepo.Setup(r => r.DeleteAsync(It.IsAny<WfpRecord>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
         wfpRepo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
-        // WfpActivity repo
+        // ── Scoped read methods (RAL-93) ──────────────────────────────────────
+
+        wfpRepo.Setup(r => r.GetByIntIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int id, CancellationToken _) => wfpSeed.FirstOrDefault(r => r.Id == id));
+
+        wfpRepo.Setup(r => r.GetFilteredAsync(
+                It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int? aipId, int? offId, CancellationToken _) =>
+                (IReadOnlyList<WfpRecord>)wfpSeed
+                    .Where(r => !aipId.HasValue || r.AipRecordId == aipId.Value)
+                    .Where(r => !offId.HasValue  || r.OfficeId    == offId.Value)
+                    .OrderByDescending(r => r.UpdatedAt)
+                    .ToList());
+
+        wfpRepo.Setup(r => r.FindByAipAndOfficeAsync(
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int aipId, int offId, CancellationToken _) =>
+                wfpSeed.FirstOrDefault(r => r.AipRecordId == aipId && r.OfficeId == offId));
+
+        wfpRepo.Setup(r => r.GetActivitiesByWfpIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int wfpId, CancellationToken _) =>
+                (IReadOnlyList<WfpActivity>)actSeed.Where(a => a.WfpId == wfpId).ToList());
+
+        wfpRepo.Setup(r => r.GetLinesByActivityIdsAsync(
+                It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<WfpExpenditureLine>());
+
+        // ── WfpActivity repo (write-only: Add / Delete / Save) ───────────────
+
         int nextActId = 200;
-        actRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(actSeed);
         actRepo.Setup(r => r.AddAsync(It.IsAny<WfpActivity>(), It.IsAny<CancellationToken>()))
             .Callback<WfpActivity, CancellationToken>((e, _) => { e.Id = nextActId++; actSeed.Add(e); })
             .Returns(Task.CompletedTask);
@@ -99,18 +130,19 @@ public sealed class WfpServiceTests
             .Returns(Task.CompletedTask);
         actRepo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
-        // WfpExpenditureLine repo — capture additions
+        // ── WfpExpenditureLine repo (write-only: Add / Save) ─────────────────
+
         lineRepo.Setup(r => r.AddAsync(It.IsAny<WfpExpenditureLine>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
-        lineRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<WfpExpenditureLine>());
         lineRepo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
-        // Config repos
+        // ── Config repos ──────────────────────────────────────────────────────
+
         accountRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(accountSeed);
         fsRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(fsSeed);
 
-        // Audit
+        // ── Audit ─────────────────────────────────────────────────────────────
+
         audit.Setup(a => a.LogAsync(
             It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>(),
             It.IsAny<object?>(), It.IsAny<object?>(), It.IsAny<CancellationToken>()))
@@ -155,8 +187,8 @@ public sealed class WfpServiceTests
     [Fact]
     public async Task Save_ExistingDraftWfp_DeletesOldActivitiesAndCreatesNew()
     {
-        WfpRecord existing  = WfpRec(1, PlanningStatus.Draft, 2, 3);
-        WfpActivity oldAct  = WfpAct(10, 1);
+        WfpRecord existing = WfpRec(1, PlanningStatus.Draft, 2, 3);
+        WfpActivity oldAct = WfpAct(10, 1);
         var (sut, wfpRepo, actRepo, _, _) = Build([existing], [oldAct], [], []);
 
         ServiceResult<WfpRecordDto> result = await sut.SaveAsync(
@@ -390,6 +422,79 @@ public sealed class WfpServiceTests
         wfpRepo.Verify(r => r.DeleteAsync(It.IsAny<WfpRecord>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
 
+    // ── RAL-93: scoped query verification ────────────────────────────────────
+
+    [Fact]
+    public async Task GetAll_UsesGetFilteredAsync_NotGetAllAsync()
+    {
+        List<WfpRecord> seed = [WfpRec(1, PlanningStatus.Draft, 2, 3)];
+        var (sut, wfpRepo, _, _, _) = Build(seed, [], [], []);
+
+        IReadOnlyList<WfpRecordDto> result = await sut.GetAllAsync(2, 3, CancellationToken.None);
+
+        Assert.Single(result);
+        wfpRepo.Verify(r => r.GetFilteredAsync(2, 3, It.IsAny<CancellationToken>()), Times.Once);
+        wfpRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetById_UsesGetByIntIdAsync_NotGetAllAsync()
+    {
+        WfpRecord rec = WfpRec(5, PlanningStatus.Draft);
+        var (sut, wfpRepo, _, _, _) = Build([rec], [], [], []);
+
+        await sut.GetByIdAsync(5, CancellationToken.None);
+
+        wfpRepo.Verify(r => r.GetByIntIdAsync(5, It.IsAny<CancellationToken>()), Times.Once);
+        wfpRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetById_UsesGetActivitiesByWfpIdAsync_NotActRepoGetAllAsync()
+    {
+        WfpRecord rec = WfpRec(7, PlanningStatus.Draft);
+        var (sut, wfpRepo, _, _, _) = Build([rec], [], [], []);
+
+        await sut.GetByIdAsync(7, CancellationToken.None);
+
+        wfpRepo.Verify(r => r.GetActivitiesByWfpIdAsync(7, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Save_ExistingCheck_UsesFindByAipAndOfficeAsync()
+    {
+        var (sut, wfpRepo, _, _, _) = Build([], [], [], []);
+
+        await sut.SaveAsync(SimpleDto(2, 3, 10), UserId, CancellationToken.None);
+
+        wfpRepo.Verify(r => r.FindByAipAndOfficeAsync(2, 3, It.IsAny<CancellationToken>()), Times.Once);
+        wfpRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Finalize_UsesGetByIntIdAsync_NotGetAllAsync()
+    {
+        WfpRecord rec = WfpRec(3, PlanningStatus.Draft);
+        var (sut, wfpRepo, _, _, _) = Build([rec], [], [], []);
+
+        await sut.FinalizeAsync(3, CancellationToken.None);
+
+        wfpRepo.Verify(r => r.GetByIntIdAsync(3, It.IsAny<CancellationToken>()), Times.Once);
+        wfpRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Unlock_UsesGetByIntIdAsync_NotGetAllAsync()
+    {
+        WfpRecord rec = WfpRec(4, PlanningStatus.Final);
+        var (sut, wfpRepo, _, _, _) = Build([rec], [], [], []);
+
+        await sut.UnlockAsync(4, CancellationToken.None);
+
+        wfpRepo.Verify(r => r.GetByIntIdAsync(4, It.IsAny<CancellationToken>()), Times.Once);
+        wfpRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     // ── ExportReportAsync ─────────────────────────────────────────────────────
 
     [Fact]
@@ -419,18 +524,25 @@ public sealed class WfpServiceTests
     {
         WfpRecord rec = WfpRec(42, PlanningStatus.Draft, aipId: 2, officeId: 3);
 
-        Mock<IRepository<WfpRecord>>          wfpRepo     = new();
+        // Build a self-contained set of mocks for this inline test.
+        Mock<IWfpRepository>                  wfpRepo     = new();
         Mock<IRepository<WfpActivity>>        actRepo     = new();
         Mock<IRepository<WfpExpenditureLine>> lineRepo    = new();
         Mock<IRepository<Account>>            accountRepo = new();
         Mock<IRepository<FundingSource>>      fsRepo      = new();
         Mock<IAuditService>                   audit       = new();
 
-        wfpRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([rec]);
-        actRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
-        lineRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
-        accountRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
-        fsRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        wfpRepo.Setup(r => r.GetByIntIdAsync(42, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(rec);
+        wfpRepo.Setup(r => r.GetActivitiesByWfpIdAsync(42, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<WfpActivity>());
+        wfpRepo.Setup(r => r.GetLinesByActivityIdsAsync(
+                It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<WfpExpenditureLine>());
+        fsRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<FundingSource>());
+        accountRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Account>());
 
         CallerContext ctx = new(); ctx.SetUserId(UserId);
 

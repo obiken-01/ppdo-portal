@@ -23,9 +23,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import api from "@/lib/api";
+import { fetchMe } from "@/lib/me-cache";
 import { useToast } from "@/components/ui/Toast";
 import type {
-  MeResponse,
   PRSummaryResponse,
   InventoryStatsResponse,
   ItemLedgerRowResponse,
@@ -202,7 +202,7 @@ export default function InventoryDashboardPage() {
   const router    = useRouter();
   const { toast } = useToast();
 
-  const [authChecked, setAuthChecked] = useState(false);
+  const [authChecked] = useState(true);
 
   const [stats,         setStats]         = useState<InventoryStatsResponse | null>(null);
   const [statsLoading,  setStatsLoading]  = useState(false);
@@ -224,13 +224,11 @@ export default function InventoryDashboardPage() {
   // ── Auth guard ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    api.get<MeResponse>("/auth/me")
-      .then(({ data }) => {
+    fetchMe()
+      .then((data) => {
         if (!data.canAccessInventory) {
           router.replace(data.officeId != null ? "/budget-planning" : "/dashboard");
-          return;
         }
-        setAuthChecked(true);
       })
       .catch(() => router.replace("/login"));
   }, [router]);
@@ -464,7 +462,7 @@ export default function InventoryDashboardPage() {
             No purchase requests found.
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto overflow-y-hidden">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-50 text-xs text-slate-500 uppercase tracking-wide border-b border-slate-100">
@@ -560,7 +558,7 @@ export default function InventoryDashboardPage() {
             <p className="text-xs text-slate-400 mt-1">No low or out-of-stock items detected.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto overflow-y-hidden">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-50 text-xs text-slate-500 uppercase tracking-wide border-b border-slate-100">

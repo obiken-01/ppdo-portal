@@ -137,6 +137,48 @@ export interface AipRecordDetail {
   offices: AipOfficeDetail[];
 }
 
+// ── AIP summary — slim WFP-grid types (RAL-89) ───────────────────────────────
+
+export interface AipActivitySummary {
+  id: number;
+  refCode: string;
+  name: string;
+  ps: number | null;
+  mooe: number | null;
+  co: number | null;
+  total: number | null;
+  fundingSourceId: number | null;
+  fundingSourceSnapshot: string | null;
+}
+
+export interface AipProjectSummary {
+  id: number;
+  refCode: string;
+  name: string;
+  activities: AipActivitySummary[];
+}
+
+export interface AipProgramSummary {
+  id: number;
+  refCode: string;
+  name: string;
+  projects: AipProjectSummary[];
+}
+
+export interface AipOfficeSummary {
+  id: number;
+  refCode: string;
+  name: string;
+  sector: string;
+  programs: AipProgramSummary[];
+}
+
+export interface AipRecordSummary {
+  id: number;
+  fiscalYear: number;
+  offices: AipOfficeSummary[];
+}
+
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 
 export interface StatusBreakdown {
@@ -161,6 +203,7 @@ export interface WfpSummary {
 
 export interface WfpOfficeStatus {
   officeId: number;
+  officeCode: string;
   officeName: string;
   wfpStatus: "Draft" | "Final" | "Not started";
   aipRecordId: number | null;

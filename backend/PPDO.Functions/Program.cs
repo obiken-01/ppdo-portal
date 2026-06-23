@@ -85,13 +85,18 @@ var host = new HostBuilder()
         services.AddScoped<IItemMasterRepository, ItemMasterRepository>();
         services.AddScoped<IInventoryRepository, InventoryRepository>();
         services.AddScoped<ICalendarEventRepository, CalendarEventRepository>();
+        services.AddScoped<IAuditRepository, AuditRepository>();
+        services.AddScoped<IAipRepository, AipRepository>();
+        services.AddScoped<IWfpRepository, WfpRepository>();
         services.AddScoped<IJwtMiddleware, JwtMiddleware>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<IExcelService, ExcelService>();
         services.AddScoped<IWfpExcelService, ExcelService>();
 
-        // NagerHolidayProvider uses a singleton HttpClient via IHttpClientFactory.
-        services.AddHttpClient<IHolidayProvider, NagerHolidayProvider>();
+        // NagerHolidayProvider uses a typed HttpClient. Timeout is short so a slow
+        // Nager.Date response fails fast and falls back to static data or empty list.
+        services.AddHttpClient<IHolidayProvider, NagerHolidayProvider>(c =>
+            c.Timeout = TimeSpan.FromSeconds(3));
 
         // -- Application services --------------------------------------------
         services.AddScoped<IPermissionService, PermissionService>();
@@ -110,6 +115,9 @@ var host = new HostBuilder()
         services.AddScoped<IFundingSourceService, FundingSourceService>();
         services.AddScoped<IAuditService, AuditService>();
         services.AddScoped<IBudgetPlanningDashboardService, BudgetPlanningDashboardService>();
+
+        // -- v1.1.1 services -------------------------------------------------
+        services.AddScoped<IAnnouncementService, AnnouncementService>();
 
         // -- Budget Planning services (RAL-64) --------------------------------
         services.AddScoped<IAipXlsmParser, AipXlsmParser>();

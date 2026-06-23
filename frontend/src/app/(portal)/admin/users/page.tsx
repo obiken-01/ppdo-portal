@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 /**
  * User Management page — RAL-43.
@@ -23,9 +23,10 @@
  *   GET    /api/permission-groups         → list groups for dropdown
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
+import Modal from "@/components/ui/Modal";
 import type {
   CreateUserRequest,
   Division,
@@ -145,44 +146,6 @@ function OverrideToggle({
 }
 
 // ---------------------------------------------------------------------------
-// Modal wrapper
-// ---------------------------------------------------------------------------
-
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  const backdropRef = useRef<HTMLDivElement>(null);
-
-  function handleBackdrop(e: React.MouseEvent) {
-    if (e.target === backdropRef.current) onClose();
-  }
-
-  return (
-    <div
-      ref={backdropRef}
-      onClick={handleBackdrop}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-    >
-      <div className="w-full max-w-lg bg-white rounded-xl shadow-2xl flex flex-col max-h-[90vh]">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 shrink-0">
-          <h2 className="text-base font-semibold text-slate-800">{title}</h2>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 transition-colors text-xl leading-none"
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
-        {/* Body — scrollable */}
-        <div className="overflow-y-auto flex-1 px-6 py-5">
-          {children}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // User form (shared between Add and Edit)
 // ---------------------------------------------------------------------------
 
@@ -191,14 +154,11 @@ type UserFormProps = {
   groups: PermissionGroupResponse[];
   offices: OfficeResponse[];
   isEdit: boolean;  // when false, group dropdown and overrides are hidden
-  saving: boolean;
   error: string | null;
   onChange: (patch: Partial<CreateUserRequest & UpdateUserRequest>) => void;
-  onSubmit: () => void;
-  onCancel: () => void;
 };
 
-function UserForm({ form, groups, offices, isEdit, saving, error, onChange, onSubmit, onCancel }: UserFormProps) {
+function UserForm({ form, groups, offices, isEdit, error, onChange }: UserFormProps) {
   const showOverrides = form.role === "Staff" || form.role === "Observer";
   // A non-PPDO office user has an office assigned. Office and Division are mutually
   // exclusive: selecting an office clears the division (office users have no division).
@@ -225,7 +185,7 @@ function UserForm({ form, groups, offices, isEdit, saving, error, onChange, onSu
             value={form.fullName}
             onChange={(e) => onChange({ fullName: e.target.value })}
             placeholder="Juan dela Cruz"
-            className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
+            className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
           />
         </div>
 
@@ -236,7 +196,7 @@ function UserForm({ form, groups, offices, isEdit, saving, error, onChange, onSu
             onChange={(e) => onChange({ username: e.target.value })}
             placeholder="juandelacruz"
             autoComplete="off"
-            className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 font-mono"
+            className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 font-mono"
           />
         </div>
 
@@ -250,7 +210,7 @@ function UserForm({ form, groups, offices, isEdit, saving, error, onChange, onSu
             value={form.email ?? ""}
             onChange={(e) => onChange({ email: e.target.value || undefined })}
             placeholder="user@ppdo.gov.ph"
-            className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
+            className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
           />
         </div>
 
@@ -259,7 +219,7 @@ function UserForm({ form, groups, offices, isEdit, saving, error, onChange, onSu
           <select
             value={form.role}
             onChange={(e) => onChange({ role: e.target.value as UserRole })}
-            className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 bg-white"
+            className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 bg-white"
           >
             {(isOfficeUser ? (["Staff", "Observer"] as UserRole[]) : ROLES).map((r) => (
               <option key={r} value={r}>{r}</option>
@@ -276,7 +236,7 @@ function UserForm({ form, groups, offices, isEdit, saving, error, onChange, onSu
             value={form.division ?? ""}
             onChange={(e) => onChange({ division: (e.target.value as Division) || null })}
             disabled={isOfficeUser}
-            className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 bg-white disabled:bg-slate-100 disabled:text-slate-400"
+            className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 bg-white disabled:bg-slate-100 disabled:text-slate-400"
           >
             <option value="">— None —</option>
             {DIVISIONS.map((d) => (
@@ -297,7 +257,7 @@ function UserForm({ form, groups, offices, isEdit, saving, error, onChange, onSu
           <select
             value={form.officeId ?? ""}
             onChange={(e) => handleOfficeChange(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 bg-white"
+            className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 bg-white"
           >
             <option value="">— None (PPDO-internal user) —</option>
             {offices.map((o) => (
@@ -312,7 +272,7 @@ function UserForm({ form, groups, offices, isEdit, saving, error, onChange, onSu
             value={form.position ?? ""}
             onChange={(e) => onChange({ position: e.target.value || null })}
             placeholder="Planning Officer II"
-            className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
+            className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
           />
         </div>
 
@@ -322,7 +282,7 @@ function UserForm({ form, groups, offices, isEdit, saving, error, onChange, onSu
             value={form.contactNo ?? ""}
             onChange={(e) => onChange({ contactNo: e.target.value || null })}
             placeholder="09XX-XXX-XXXX"
-            className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
+            className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
           />
         </div>
 
@@ -336,7 +296,7 @@ function UserForm({ form, groups, offices, isEdit, saving, error, onChange, onSu
             <select
               value={(form as UpdateUserRequest).groupId ?? ""}
               onChange={(e) => onChange({ groupId: e.target.value || null })}
-              className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 bg-white"
+              className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 bg-white"
             >
               <option value="">— No group —</option>
               {groups.map((g) => (
@@ -392,37 +352,18 @@ function UserForm({ form, groups, offices, isEdit, saving, error, onChange, onSu
 
       {/* SuperAdmin / Admin note — Edit only */}
       {isEdit && !showOverrides && (
-        <p className="text-xs text-slate-400 bg-slate-50 rounded-lg px-3 py-2">
+        <p className="text-xs text-slate-400 bg-slate-50 px-3 py-2">
           SuperAdmin and Admin roles always have full access — permission overrides do not apply.
         </p>
       )}
 
       {/* Error */}
       {error && (
-        <div className="rounded-lg bg-danger-100 border border-danger-500/30 px-4 py-3">
+        <div className="bg-danger-100 border border-danger-500/30 px-4 py-3">
           <p className="text-sm text-danger-500">{error}</p>
         </div>
       )}
 
-      {/* Actions */}
-      <div className="flex justify-end gap-3 pt-2">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="px-4 py-2 text-sm rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={onSubmit}
-          disabled={saving}
-          className="px-5 py-2 text-sm rounded-lg bg-green-600 text-white font-medium hover:bg-green-500 transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
-        >
-          {saving && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-          {saving ? "Saving…" : isEdit ? "Save Changes" : "Create User"}
-        </button>
-      </div>
     </div>
   );
 }
@@ -447,26 +388,32 @@ function ConfirmDialog({
   onCancel: () => void;
 }) {
   return (
-    <Modal title="Confirm Action" onClose={onCancel}>
-      <p className="text-sm text-slate-700 mb-6">{message}</p>
-      <div className="flex justify-end gap-3">
-        <button
-          onClick={onCancel}
-          className="px-4 py-2 text-sm rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={onConfirm}
-          disabled={loading}
-          className={`px-5 py-2 text-sm rounded-lg font-medium text-white transition-colors disabled:opacity-60 flex items-center gap-2 ${
-            danger ? "bg-danger-500 hover:bg-red-600" : "bg-green-600 hover:bg-green-500"
-          }`}
-        >
-          {loading && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-          {loading ? "Processing…" : confirmLabel}
-        </button>
-      </div>
+    <Modal
+      title="Confirm Action"
+      size="sm"
+      onClose={onCancel}
+      footer={
+        <>
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 text-sm border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={loading}
+            className={`px-5 py-2 text-sm font-medium text-white transition-colors disabled:opacity-60 flex items-center gap-2 ${
+              danger ? "bg-danger-500 hover:bg-red-600" : "bg-green-600 hover:bg-green-500"
+            }`}
+          >
+            {loading && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+            {loading ? "Processing…" : confirmLabel}
+          </button>
+        </>
+      }
+    >
+      <p className="text-sm text-slate-700">{message}</p>
     </Modal>
   );
 }
@@ -719,7 +666,7 @@ export default function UsersPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by name, username, email, role, or division…"
-            className="flex-1 px-4 py-2.5 rounded-lg text-sm border border-slate-200 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-green-600"
+            className="flex-1 px-4 py-2.5 text-sm border border-slate-200 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-green-600"
           />
           {search && (
             <button
@@ -731,7 +678,7 @@ export default function UsersPage() {
           )}
           <button
             onClick={openAdd}
-            className="flex items-center gap-1.5 bg-green-600 text-white font-semibold text-sm px-4 py-2.5 rounded-lg hover:bg-green-500 transition-colors shadow-sm shrink-0"
+            className="flex items-center gap-1.5 bg-green-600 text-white font-semibold text-sm px-4 py-2.5 hover:bg-green-500 transition-colors shadow-sm shrink-0"
           >
             <span className="text-base leading-none">+</span>
             Add User
@@ -739,7 +686,7 @@ export default function UsersPage() {
         </div>
 
         {/* Table card */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="bg-white shadow-sm border border-slate-200 overflow-hidden">
           {loading ? (
             <div className="flex items-center justify-center py-16">
               <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
@@ -762,7 +709,7 @@ export default function UsersPage() {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overflow-y-hidden">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500 uppercase tracking-wide">
@@ -839,37 +786,57 @@ export default function UsersPage() {
 
       {/* ── Add User modal ─────────────────────────────────────────────────── */}
       {showAdd && (
-        <Modal title="Add New User" onClose={() => setShowAdd(false)}>
+        <Modal
+          title="Add New User"
+          onClose={() => setShowAdd(false)}
+          footer={
+            <>
+              <Modal.SecondaryButton onClick={() => setShowAdd(false)} disabled={saving}>
+                Cancel
+              </Modal.SecondaryButton>
+              <Modal.PrimaryButton onClick={handleAdd} loading={saving} disabled={saving}>
+                Create User
+              </Modal.PrimaryButton>
+            </>
+          }
+        >
           <p className="text-xs text-slate-400 mb-4">
-            Default password <span className="font-mono bg-slate-100 px-1 rounded">TamarawUser2026!</span> is set automatically. The user must change it on first login.
+            Default password <span className="font-mono bg-slate-100 px-1">TamarawUser2026!</span> is set automatically. The user must change it on first login.
           </p>
           <UserForm
             form={addForm}
             groups={groups}
             offices={offices}
             isEdit={false}
-            saving={saving}
             error={formError}
             onChange={(patch) => setAddForm((f) => ({ ...f, ...patch }))}
-            onSubmit={handleAdd}
-            onCancel={() => setShowAdd(false)}
           />
         </Modal>
       )}
 
       {/* ── Edit User modal ────────────────────────────────────────────────── */}
       {editTarget && editForm && (
-        <Modal title={`Edit User — ${editTarget.fullName}`} onClose={() => { setEditTarget(null); setEditForm(null); }}>
+        <Modal
+          title={`Edit User — ${editTarget.fullName}`}
+          onClose={() => { setEditTarget(null); setEditForm(null); }}
+          footer={
+            <>
+              <Modal.SecondaryButton onClick={() => { setEditTarget(null); setEditForm(null); }} disabled={saving}>
+                Cancel
+              </Modal.SecondaryButton>
+              <Modal.PrimaryButton onClick={handleEdit} loading={saving} disabled={saving}>
+                Save Changes
+              </Modal.PrimaryButton>
+            </>
+          }
+        >
           <UserForm
             form={editForm}
             groups={groups}
             offices={offices}
             isEdit
-            saving={saving}
             error={formError}
             onChange={(patch) => setEditForm((f) => f ? { ...f, ...patch } : f)}
-            onSubmit={handleEdit}
-            onCancel={() => { setEditTarget(null); setEditForm(null); }}
           />
         </Modal>
       )}
@@ -923,7 +890,7 @@ function ActionButton({
     <button
       title={title}
       onClick={onClick}
-      className={`p-1.5 rounded-lg text-sm transition-colors ${
+      className={`p-1.5 text-sm transition-colors ${
         danger
           ? "hover:bg-danger-100 text-slate-400 hover:text-danger-500"
           : "hover:bg-green-50 text-slate-400 hover:text-green-700"

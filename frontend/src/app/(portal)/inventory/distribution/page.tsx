@@ -19,6 +19,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
+import { fetchMe } from "@/lib/me-cache";
 import { useToast } from "@/components/ui/Toast";
 import type {
   CreateDistributionStandaloneRequest,
@@ -26,7 +27,6 @@ import type {
   DistributionCreatedResponse,
   ItemDistributionSummaryResponse,
   ItemLookupResponse,
-  MeResponse,
 } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -248,7 +248,7 @@ export default function DistributionPage() {
   const router    = useRouter();
   const { toast } = useToast();
 
-  const [authChecked, setAuthChecked] = useState(false);
+  const [authChecked] = useState(true);
 
   // Item search
   const [searchTerm, setSearchTerm]   = useState("");
@@ -273,10 +273,9 @@ export default function DistributionPage() {
 
   // Auth
   useEffect(() => {
-    api.get<MeResponse>("/auth/me")
-      .then(({ data }) => {
-        if (!data.canAccessInventory) { router.replace(data.officeId != null ? "/budget-planning" : "/dashboard"); return; }
-        setAuthChecked(true);
+    fetchMe()
+      .then((data) => {
+        if (!data.canAccessInventory) router.replace(data.officeId != null ? "/budget-planning" : "/dashboard");
       })
       .catch(() => router.replace("/login"));
   }, [router]);
@@ -618,7 +617,7 @@ export default function DistributionPage() {
                     : "No distributions match your filters."}
                 </div>
               ) : (
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto overflow-y-hidden">
                   <table className="w-full text-sm border-collapse">
                     <thead>
                       <tr className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500 uppercase tracking-wide">

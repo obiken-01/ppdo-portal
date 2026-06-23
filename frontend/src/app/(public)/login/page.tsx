@@ -13,6 +13,7 @@
  */
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -71,6 +72,8 @@ type FormData = z.infer<typeof schema>;
 // Page
 // ---------------------------------------------------------------------------
 
+const APP_VERSION = "v1.1.1";
+
 export default function LoginPage() {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
@@ -126,15 +129,17 @@ export default function LoginPage() {
     <div className="min-h-screen flex font-sans">
       {/* ── Left panel — branding (desktop only) ────────────────────────── */}
       <aside className="hidden md:flex md:w-1/4 bg-green-700 flex-col items-center justify-center px-8 py-14 text-white">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/images/ppdo-logo-placeholder.png"
+        <Image
+          src="/images/ppdo-logo-placeholder.webp"
           alt="PPDO Logo"
           width={88}
           height={88}
+          priority
           className="rounded-full mb-6 object-contain"
         />
-        <h1 className="text-2xl font-bold text-center mb-1">PPDO Portal</h1>
+        <h1 className="text-2xl font-bold text-center mb-1">
+          PPDO Portal <span className="text-sm font-normal text-green-300">{APP_VERSION}</span>
+        </h1>
         <p className="text-green-200 text-sm text-center mb-2">
           Provincial Planning and Development Office
         </p>
@@ -153,20 +158,20 @@ export default function LoginPage() {
 
         {/* Footer logos */}
         <div className="flex items-center gap-4 mt-auto pt-10 opacity-70">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/images/Ph_seal_occidental_mindoro.png"
+          <Image
+            src="/images/Ph_seal_occidental_mindoro.webp"
             alt="Province Seal"
             width={40}
             height={40}
+            priority
             className="object-contain"
           />
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/images/Bagong_Pilipinas_logo.png"
+          <Image
+            src="/images/Bagong_Pilipinas_logo.webp"
             alt="Bagong Pilipinas"
             width={40}
             height={40}
+            priority
             className="object-contain"
           />
         </div>
@@ -177,12 +182,12 @@ export default function LoginPage() {
         <div className="w-full max-w-sm">
           {/* Mobile logo (visible only on small screens) */}
           <div className="flex md:hidden items-center justify-center gap-2 mb-8">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/images/ppdo-logo-placeholder.png"
+            <Image
+              src="/images/ppdo-logo-placeholder.webp"
               alt="PPDO"
               width={36}
               height={36}
+              priority
               className="rounded-full object-contain"
             />
             <span className="font-bold text-green-700 text-lg">PPDO Portal</span>

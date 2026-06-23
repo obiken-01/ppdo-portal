@@ -224,6 +224,81 @@ public sealed class UserFunctions
         return await ToResponse(req, result, HttpStatusCode.OK, cancellationToken);
     }
 
+    // ── GET /api/users/me ──────────────────────────────────────────────────────
+
+    [Function("GetMe")]
+    public async Task<HttpResponseData> GetMe(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "users/me")]
+        HttpRequestData req,
+        CancellationToken cancellationToken)
+    {
+        User? caller = await _jwt.ValidateAsync(GetAuthHeader(req), cancellationToken);
+        if (caller is null)
+            return req.CreateResponse(HttpStatusCode.Unauthorized);
+
+        ServiceResult<UserResponseDto> result =
+            await _users.GetByIdAsync(caller.Id, cancellationToken);
+
+        return await ToResponse(req, result, HttpStatusCode.OK, cancellationToken);
+    }
+
+    // ── PUT /api/users/me ──────────────────────────────────────────────────────
+
+    [Function("UpdateMe")]
+    public async Task<HttpResponseData> UpdateMe(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "users/me")]
+        HttpRequestData req,
+        CancellationToken cancellationToken)
+    {
+        User? caller = await _jwt.ValidateAsync(GetAuthHeader(req), cancellationToken);
+        if (caller is null)
+            return req.CreateResponse(HttpStatusCode.Unauthorized);
+
+        UpdateOwnProfileDto? body =
+            await DeserializeAsync<UpdateOwnProfileDto>(req, cancellationToken);
+        if (body is null)
+            return await BadRequest(req, "Request body is missing or malformed.");
+
+        ServiceResult<UserResponseDto> result =
+            await _users.UpdateOwnProfileAsync(caller, body, cancellationToken);
+
+        return await ToResponse(req, result, HttpStatusCode.OK, cancellationToken);
+    }
+
+    // ── PUT /api/users/me/password ─────────────────────────────────────────────
+
+    [Function("ChangeMyPassword")]
+    public async Task<HttpResponseData> ChangeMyPassword(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "users/me/password")]
+        HttpRequestData req,
+        CancellationToken cancellationToken)
+    {
+        User? caller = await _jwt.ValidateAsync(GetAuthHeader(req), cancellationToken);
+        if (caller is null)
+            return req.CreateResponse(HttpStatusCode.Unauthorized);
+
+        ChangePasswordDto? body =
+            await DeserializeAsync<ChangePasswordDto>(req, cancellationToken);
+        if (body is null)
+            return await BadRequest(req, "Request body is missing or malformed.");
+
+        ServiceResult<bool> result =
+            await _users.ChangePasswordAsync(caller, body, cancellationToken);
+
+        if (result.IsSuccess)
+            return req.CreateResponse(HttpStatusCode.NoContent);
+
+        HttpStatusCode status = result.Code switch
+        {
+            ServiceErrorCode.NotFound   => HttpStatusCode.NotFound,
+            ServiceErrorCode.BadRequest => HttpStatusCode.BadRequest,
+            _                           => HttpStatusCode.InternalServerError,
+        };
+        HttpResponseData error = req.CreateResponse(status);
+        await error.WriteStringAsync(result.Error ?? "An unexpected error occurred.");
+        return error;
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     private static string? GetAuthHeader(HttpRequestData req)

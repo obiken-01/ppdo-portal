@@ -54,9 +54,15 @@ api.interceptors.request.use((config) => {
 // Retry helper — handles Azure Functions cold starts (Consumption plan)
 // ---------------------------------------------------------------------------
 
+// In production, retry auth/refresh to handle Azure Functions cold starts
+// (Consumption plan scales to zero; first request after inactivity can take 20–30s).
+// In development, fail immediately so a restarted local server redirects to login
+// without making the user wait through retry delays.
+const COLD_START_RETRIES = process.env.NODE_ENV === "production" ? 2 : 0;
+
 async function callWithRetry<T>(
   fn: () => Promise<T>,
-  retries = 2,
+  retries = COLD_START_RETRIES,
   delayMs = 3000
 ): Promise<T> {
   try {

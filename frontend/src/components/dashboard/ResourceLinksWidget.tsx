@@ -35,7 +35,7 @@ export default function ResourceLinksWidget() {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col h-full">
+    <div className="bg-white border border-slate-200 shadow-sm flex flex-col h-full">
       {/* Header */}
       <div className="px-4 py-3 border-b border-slate-100 shrink-0">
         <h2 className="text-sm font-semibold text-slate-700">🔗 Resource Links</h2>

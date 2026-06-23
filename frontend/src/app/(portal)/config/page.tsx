@@ -15,15 +15,15 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
+import { fetchMe } from "@/lib/me-cache";
 import { listAccounts, listFundingSources, listOffices } from "@/lib/config";
-import type { MeResponse } from "@/types";
 
 // ---------------------------------------------------------------------------
 // Tile definitions
 // ---------------------------------------------------------------------------
 
 interface TileDef {
-  key: "accounts" | "offices" | "funding";
+  key: string;
   icon: string;
   name: string;
   caption: string;
@@ -58,6 +58,18 @@ const TILES: TileDef[] = [
   },
 ];
 
+const USER_TILE: TileDef = {
+  key: "users",
+  icon: "👥",
+  name: "User Management",
+  caption: "Manage portal users, roles, and access permissions.",
+  href: "/admin/users",
+  load: async () => {
+    const { data } = await api.get<unknown[]>("/users");
+    return data.length;
+  },
+};
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -65,22 +77,23 @@ const TILES: TileDef[] = [
 export default function ConfigDashboardPage() {
   const router = useRouter();
 
-  const [authChecked, setAuthChecked] = useState(false);
+  const [authChecked] = useState(true);
+  const [canManageUsers, setCanManageUsers] = useState(false);
   // null = loading, number = count, "error" = failed to load this tile's count
   const [counts, setCounts] = useState<Record<string, number | "error" | null>>({
     accounts: null,
     offices: null,
     funding: null,
+    users: null,
   });
 
   // ── Auth check ────────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    api
-      .get<MeResponse>("/auth/me")
-      .then(({ data }) => {
+    fetchMe()
+      .then((data) => {
         if (!data.canManageConfig) router.replace(data.officeId != null ? "/budget-planning" : "/dashboard");
-        else setAuthChecked(true);
+        else setCanManageUsers(data.canManageUsers === true);
       })
       .catch(() => router.replace("/login"));
   }, [router]);
@@ -89,13 +102,14 @@ export default function ConfigDashboardPage() {
 
   useEffect(() => {
     if (!authChecked) return;
-    for (const tile of TILES) {
+    const tiles = canManageUsers ? [...TILES, USER_TILE] : TILES;
+    for (const tile of tiles) {
       tile
         .load()
         .then((n) => setCounts((c) => ({ ...c, [tile.key]: n })))
         .catch(() => setCounts((c) => ({ ...c, [tile.key]: "error" })));
     }
-  }, [authChecked]);
+  }, [authChecked, canManageUsers]);
 
   // ── Auth gate ─────────────────────────────────────────────────────────────────
 
@@ -122,7 +136,7 @@ export default function ConfigDashboardPage() {
 
         {/* Tiles */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {TILES.map((tile) => (
+          {[...TILES, ...(canManageUsers ? [USER_TILE] : [])].map((tile) => (
             <Link
               key={tile.key}
               href={tile.href}

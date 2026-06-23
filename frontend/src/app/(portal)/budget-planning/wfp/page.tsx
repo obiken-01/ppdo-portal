@@ -21,10 +21,10 @@
  *   POST /api/budget-planning/wfp/{id}/unlock
  */
 
-import { Fragment, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import api from "@/lib/api";
-import { getAipById, listAip } from "@/lib/aip";
+import { Fragment, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useMe } from "@/lib/me-cache";
+import { getAipSummary, listAip } from "@/lib/aip";
 import {
   downloadWfpReport,
   finalizeWfp,
@@ -39,13 +39,12 @@ import Modal from "@/components/ui/Modal";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
 import type {
-  AipActivityDetail,
-  AipRecordDetail,
+  AipActivitySummary,
+  AipRecordSummary,
   AipRecordResponse,
   AccountResponse,
   ExpenditureType,
   FundingSourceResponse,
-  MeResponse,
   OfficeResponse,
   SaveWfpLine,
   WfpRecord,
@@ -99,7 +98,7 @@ function computeNet(line: SaveWfpLine): number {
 // ---------------------------------------------------------------------------
 
 interface PopupProps {
-  activity: AipActivityDetail;
+  activity: AipActivitySummary;
   accounts: AccountResponse[];
   fundingSources: FundingSourceResponse[];
   initialLines: SaveWfpLine[];
@@ -128,6 +127,40 @@ const CF_FIELDS: [keyof SaveWfpLine, string][] = [
   ["successIndicator", "Success Indicator"],
   ["meansOfVerification", "Means of Verification"],
 ];
+
+// Name cell with 2-line clamp + "more/less" toggle (only shown when actually clamped)
+function ClampedName({ name }: { name: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [isClamped, setIsClamped] = useState(false);
+  const spanRef = useRef<HTMLSpanElement>(null);
+
+  useLayoutEffect(() => {
+    if (expanded) return;
+    const el = spanRef.current;
+    if (el) setIsClamped(el.scrollHeight > el.clientHeight);
+  }, [name, expanded]);
+
+  return (
+    <>
+      <span
+        ref={spanRef}
+        className={expanded ? undefined : "line-clamp-2"}
+        title={!expanded && isClamped ? name : undefined}
+      >
+        {name}
+      </span>
+      {(isClamped || expanded) && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setExpanded((p) => !p); }}
+          className="ml-1 text-xs text-green-700 hover:underline whitespace-nowrap"
+        >
+          {expanded ? "less" : "more"}
+        </button>
+      )}
+    </>
+  );
+}
 
 // Account search combobox — replaces the plain <select> for object of expenditure
 function AccountCombobox({
@@ -359,7 +392,7 @@ function ExpenditurePopup({
 
       {/* Tab content */}
       <div className={`-mx-6 px-6 pt-4 pb-3 ${TAB_COLORS[activeTab].bg}`}>
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto overflow-y-hidden">
         <table className="w-full text-xs border-collapse min-w-[900px]">
           <thead>
             <tr className="bg-slate-50 text-slate-600 text-left border-b border-slate-200">
@@ -577,23 +610,12 @@ function ExpenditurePopup({
 // ---------------------------------------------------------------------------
 
 function WfpPageInner() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
 
   // ── Auth ────────────────────────────────────────────────────────────────
 
-  const [me, setMe] = useState<MeResponse | null>(null);
-
-  useEffect(() => {
-    api.get<MeResponse>("/auth/me").then(({ data }) => {
-      if (!data.canAccessBudgetPlanning) {
-        router.replace("/dashboard");
-        return;
-      }
-      setMe(data);
-    });
-  }, [router]);
+  const me = useMe((m) => m.canAccessBudgetPlanning);
 
   // ── Selector state ───────────────────────────────────────────────────────
 
@@ -604,7 +626,7 @@ function WfpPageInner() {
 
   // ── Loaded data ──────────────────────────────────────────────────────────
 
-  const [aipDetail, setAipDetail] = useState<AipRecordDetail | null>(null);
+  const [aipDetail, setAipDetail] = useState<AipRecordSummary | null>(null);
   const [wfp, setWfp] = useState<WfpRecord | null>(null);
   const [accounts, setAccounts] = useState<AccountResponse[]>([]);
   const [fundingSources, setFundingSources] = useState<FundingSourceResponse[]>([]);
@@ -633,41 +655,36 @@ function WfpPageInner() {
   const [confirm, setConfirm] = useState<ConfirmDialogProps | null>(null);
 
   const restoreConfirmed = useRef(false);
+  const fundingSourcesLoaded = useRef(false);
+  const accountsLoaded = useRef(false);
 
-  // ── Effect A: Load lists once on auth ────────────────────────────────────
+  // ── Effect A: Load selector lists on mount (accounts/funding deferred) ───
 
   useEffect(() => {
-    if (!me) return;
-
     const urlAipId = searchParams.get("aipId");
     const urlOfficeId = searchParams.get("officeId");
 
-    Promise.all([
-      listAip(),
-      listOffices({ active: "true" }),
-      listAccounts({ active: "true" }),
-      listFundingSources({ active: "true" }),
-    ])
-      .then(([aips, offices, accts, funds]) => {
+    Promise.all([listAip(), listOffices({ active: "true" })])
+      .then(([aips, offices]) => {
         setAipList(aips);
         setOfficeList(offices);
-        setAccounts(accts);
-        setFundingSources(funds);
 
         if (urlAipId) setSelectedAipId(Number(urlAipId));
-
-        // Pre-fill office from URL ?officeId= or me.officeId (both are config office PKs)
-        if (urlOfficeId) {
-          setSelectedOfficeId(Number(urlOfficeId));
-        } else if (me.officeId != null) {
-          setSelectedOfficeId(me.officeId);
-        }
+        // Pre-fill office from URL ?officeId= (me.officeId pre-fill handled in Effect A2)
+        if (urlOfficeId) setSelectedOfficeId(Number(urlOfficeId));
       })
       .catch(() => {
         toast.error("Load failed", "Could not load AIP / office data.");
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [me]);
+  }, []);
+
+  // ── Effect A2: Pre-fill office from me.officeId when no URL param ────────
+
+  useEffect(() => {
+    if (!me || me.officeId == null) return;
+    if (!searchParams.get("officeId")) setSelectedOfficeId(me.officeId);
+  }, [me, searchParams]);
 
   // ── Effect B: Load AIP detail + WFP when both selectors are set ──────────
 
@@ -692,13 +709,25 @@ function WfpPageInner() {
       setHasUnsaved(false);
 
       try {
-        const [detail, wfpList] = await Promise.all([
-          getAipById(aipId),
+        const fetchFunds: Promise<FundingSourceResponse[] | null> = !fundingSourcesLoaded.current
+          ? listFundingSources({ active: "true" })
+          : Promise.resolve(null);
+        const fetchAccts: Promise<AccountResponse[] | null> = !accountsLoaded.current
+          ? listAccounts({ active: "true" })
+          : Promise.resolve(null);
+
+        const [detail, wfpList, newFunds, newAccts] = await Promise.all([
+          getAipSummary(aipId),
           listWfp({ aipRecordId: aipId, officeId }),
+          fetchFunds,
+          fetchAccts,
         ]);
         if (cancelled) return;
 
         setAipDetail(detail);
+        if (newFunds) { setFundingSources(newFunds); fundingSourcesLoaded.current = true; }
+        if (newAccts) { setAccounts(newAccts); accountsLoaded.current = true; }
+
         const record = wfpList[0] ?? null;
         setWfp(record);
 
@@ -799,7 +828,7 @@ function WfpPageInner() {
 
   // ── Popup activity lookup ─────────────────────────────────────────────────
 
-  const popupActivity = useMemo<AipActivityDetail | null>(() => {
+  const popupActivity = useMemo<AipActivitySummary | null>(() => {
     if (popupActivityId === null || !aipDetail) return null;
     for (const office of aipDetail.offices) {
       for (const program of office.programs) {
@@ -1068,7 +1097,7 @@ function WfpPageInner() {
               : "Loading AIP details…"}
           </p>
         ) : (
-          <div className="overflow-x-auto border border-slate-200">
+          <div className="overflow-x-auto overflow-y-hidden border border-slate-200">
             <table className="w-full text-sm border-collapse min-w-[960px]">
               <thead>
                 <tr className="bg-slate-50 text-xs text-slate-600 text-left border-b border-slate-200">
@@ -1143,13 +1172,15 @@ function WfpPageInner() {
                                     {program.refCode}
                                   </td>
                                   <td className="px-3 py-2 pl-6 font-semibold text-slate-700">
-                                    <button
-                                      onClick={() => toggleCollapse(pKey)}
-                                      className="mr-1.5 text-slate-400 hover:text-slate-600 leading-none"
-                                    >
-                                      {collapsed.has(pKey) ? "▶" : "▼"}
-                                    </button>
-                                    {program.name}
+                                    <div className="flex items-start gap-1">
+                                      <button
+                                        onClick={() => toggleCollapse(pKey)}
+                                        className="mt-0.5 shrink-0 text-slate-400 hover:text-slate-600 leading-none"
+                                      >
+                                        {collapsed.has(pKey) ? "▶" : "▼"}
+                                      </button>
+                                      <ClampedName name={program.name} />
+                                    </div>
                                   </td>
                                   <td className="px-3 py-2" />
                                   {Array.from({ length: 9 }, (_, i) => (
@@ -1167,13 +1198,15 @@ function WfpPageInner() {
                                           {project.refCode}
                                         </td>
                                         <td className="px-3 py-2 pl-10 font-medium text-slate-700">
-                                          <button
-                                            onClick={() => toggleCollapse(prKey)}
-                                            className="mr-1.5 text-slate-400 hover:text-slate-600 leading-none"
-                                          >
-                                            {collapsed.has(prKey) ? "▶" : "▼"}
-                                          </button>
-                                          {project.name}
+                                          <div className="flex items-start gap-1">
+                                            <button
+                                              onClick={() => toggleCollapse(prKey)}
+                                              className="mt-0.5 shrink-0 text-slate-400 hover:text-slate-600 leading-none"
+                                            >
+                                              {collapsed.has(prKey) ? "▶" : "▼"}
+                                            </button>
+                                            <ClampedName name={project.name} />
+                                          </div>
                                         </td>
                                         <td className="px-3 py-2" />
                                         {Array.from({ length: 9 }, (_, i) => (
@@ -1194,7 +1227,9 @@ function WfpPageInner() {
                                             <td className="px-3 py-2 font-mono text-xs text-slate-500 leading-tight whitespace-nowrap">
                                               {activity.refCode}
                                             </td>
-                                            <td className="px-3 py-2 pl-14 text-slate-700">{activity.name}</td>
+                                            <td className="px-3 py-2 pl-14 text-slate-700">
+                                              <ClampedName name={activity.name} />
+                                            </td>
                                             <td className="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">
                                               {activity.fundingSourceSnapshot ?? "—"}
                                             </td>

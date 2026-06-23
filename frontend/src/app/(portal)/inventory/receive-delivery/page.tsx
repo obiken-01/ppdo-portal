@@ -17,6 +17,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
+import { fetchMe } from "@/lib/me-cache";
 import { useToast } from "@/components/ui/Toast";
 import type {
   CreateDeliveryItemRequest,
@@ -197,7 +198,7 @@ export default function ReceiveDeliveryPage() {
   const { toast } = useToast();
 
   const [me, setMe]            = useState<MeResponse | null>(null);
-  const [authChecked, setAuth] = useState(false);
+  const [authChecked] = useState(true);
 
   // PR combobox
   const [prs, setPRs]               = useState<PRSummaryResponse[]>([]);
@@ -227,12 +228,11 @@ export default function ReceiveDeliveryPage() {
   // ── Auth ────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    api.get<MeResponse>("/auth/me")
-      .then(({ data }) => {
+    fetchMe()
+      .then((data) => {
         if (!data.canAccessInventory) { router.replace(data.officeId != null ? "/budget-planning" : "/dashboard"); return; }
         setMe(data);
         setReceivedBy(data.fullName);
-        setAuth(true);
       })
       .catch(() => router.replace("/login"));
   }, [router]);
@@ -516,7 +516,7 @@ export default function ReceiveDeliveryPage() {
                 <div className="w-7 h-7 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto overflow-y-hidden">
                 <table className="w-full text-xs border-collapse">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wide">

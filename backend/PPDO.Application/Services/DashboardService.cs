@@ -8,6 +8,7 @@ namespace PPDO.Application.Services;
 
 /// <summary>
 /// Dashboard data — calendar events (office + personal + PH holidays) and stat counts.
+/// Calendar approval workflow added in v1.1.1 (RAL-84).
 /// </summary>
 public sealed class DashboardService : IDashboardService
 {
@@ -58,15 +59,26 @@ public sealed class DashboardService : IDashboardService
 
         IReadOnlyList<CalendarEvent> dbEvents = await dbTask;
 
-        IEnumerable<CalendarEventDto> mapped = dbEvents.Select(e => new CalendarEventDto(
-            e.Id,
-            e.Title,
-            e.Description,
-            e.StartDate,
-            e.EndDate,
-            e.IsAllDay,
-            e.EventType,
-            null));
+        // Visibility rules (RAL-84):
+        //   - Personal events: always visible to creator (repo already scopes by userId)
+        //   - Office Approved: visible to all
+        //   - Office Pending/Rejected: visible only to creator
+        IEnumerable<CalendarEventDto> mapped = dbEvents
+            .Where(e =>
+                e.EventType == "Personal" ||
+                e.Status == CalendarEventStatus.Approved ||
+                e.CreatedById == userId)
+            .Select(e => new CalendarEventDto(
+                e.Id,
+                e.Title,
+                e.Description,
+                e.StartDate,
+                e.EndDate,
+                e.IsAllDay,
+                e.EventType,
+                null,
+                e.Status,
+                e.RejectionReason));
 
         // Filter holidays to the requested month only.
         IEnumerable<CalendarEventDto> monthHolidays =
@@ -90,6 +102,8 @@ public sealed class DashboardService : IDashboardService
             return ServiceResult<CalendarEventDto>.BadRequest(
                 $"EventType must be 'Office' or 'Personal'. Got: '{dto.EventType}'.");
 
+        bool isAdmin = IsAdmin(requester);
+
         CalendarEvent entity = new()
         {
             Id          = Guid.NewGuid(),
@@ -100,6 +114,11 @@ public sealed class DashboardService : IDashboardService
             IsAllDay    = dto.IsAllDay,
             EventType   = dto.EventType,
             CreatedById = requester.Id,
+            // Office events: admin → Approved immediately; non-admin → Pending for review
+            // Personal events: approval not applicable (Pending as CLR default is fine — filtered by creator)
+            Status = dto.EventType == "Office"
+                ? (isAdmin ? CalendarEventStatus.Approved : CalendarEventStatus.Pending)
+                : CalendarEventStatus.Approved,  // Personal events don't require approval
         };
 
         await _events.AddAsync(entity, cancellationToken);
@@ -113,21 +132,107 @@ public sealed class DashboardService : IDashboardService
             entity.EndDate,
             entity.IsAllDay,
             entity.EventType,
+            null,
+            entity.Status,
             null);
 
         return ServiceResult<CalendarEventDto>.Ok(result);
     }
 
     /// <inheritdoc />
+    public async Task<ServiceResult<IReadOnlyList<PendingCalendarEventDto>>> GetPendingEventsAsync(
+        User caller,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsAdmin(caller))
+            return ServiceResult<IReadOnlyList<PendingCalendarEventDto>>.Forbidden(
+                "Admin or SuperAdmin role required.");
+
+        IReadOnlyList<CalendarEvent> all = await _events.GetAllAsync(cancellationToken);
+
+        IReadOnlyList<PendingCalendarEventDto> pending = all
+            .Where(e => e.Status == CalendarEventStatus.Pending && e.EventType == "Office")
+            .OrderBy(e => e.CreatedAt)
+            .Select(e => new PendingCalendarEventDto(
+                e.Id,
+                e.Title,
+                e.Description,
+                e.StartDate,
+                e.EndDate,
+                e.IsAllDay,
+                e.CreatedById,
+                e.CreatedBy?.FullName ?? string.Empty,
+                e.CreatedAt))
+            .ToList();
+
+        return ServiceResult<IReadOnlyList<PendingCalendarEventDto>>.Ok(pending);
+    }
+
+    /// <inheritdoc />
+    public async Task<ServiceResult<CalendarEventDto>> ReviewEventAsync(
+        User caller,
+        Guid id,
+        ReviewCalendarEventDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsAdmin(caller))
+            return ServiceResult<CalendarEventDto>.Forbidden("Admin or SuperAdmin role required.");
+
+        CalendarEvent? entity = await _events.GetByIdAsync(id, cancellationToken);
+        if (entity is null)
+            return ServiceResult<CalendarEventDto>.NotFound($"Calendar event {id} not found.");
+
+        if (dto.Approved)
+        {
+            entity.Status          = CalendarEventStatus.Approved;
+            entity.RejectionReason = null;
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(dto.RejectionReason))
+                return ServiceResult<CalendarEventDto>.BadRequest(
+                    "RejectionReason is required when rejecting an event.");
+
+            entity.Status          = CalendarEventStatus.Rejected;
+            entity.RejectionReason = dto.RejectionReason.Trim();
+        }
+
+        entity.ReviewedById = caller.Id;
+        entity.ReviewedAt   = DateTime.UtcNow;
+
+        await _events.UpdateAsync(entity, cancellationToken);
+        await _events.SaveChangesAsync(cancellationToken);
+
+        return ServiceResult<CalendarEventDto>.Ok(MapToDto(entity));
+    }
+
+    /// <inheritdoc />
+    public async Task<ServiceResult<bool>> DeleteEventAsync(
+        User caller,
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        CalendarEvent? entity = await _events.GetByIdAsync(id, cancellationToken);
+        if (entity is null)
+            return ServiceResult<bool>.NotFound($"Calendar event {id} not found.");
+
+        bool isAdmin  = IsAdmin(caller);
+        bool isCreator = entity.CreatedById == caller.Id;
+
+        if (!isAdmin && !isCreator)
+            return ServiceResult<bool>.Forbidden("You can only delete your own events.");
+
+        await _events.DeleteAsync(entity, cancellationToken);
+        await _events.SaveChangesAsync(cancellationToken);
+
+        return ServiceResult<bool>.Ok(true);
+    }
+
+    /// <inheritdoc />
     public async Task<DashboardStatsDto> GetStatsAsync(CancellationToken cancellationToken = default)
     {
-        Task<IReadOnlyList<PurchaseRequest>> prsTask   = _prs.GetAllAsync(cancellationToken);
-        Task<IReadOnlyList<ItemMaster>>      itemsTask = _items.GetAllAsync(cancellationToken);
-
-        await Task.WhenAll(prsTask, itemsTask);
-
-        IReadOnlyList<PurchaseRequest> prs   = prsTask.Result;
-        IReadOnlyList<ItemMaster>      items = itemsTask.Result;
+        IReadOnlyList<PurchaseRequest> prs   = await _prs.GetAllAsync(cancellationToken);
+        IReadOnlyList<ItemMaster>      items = await _items.GetAllAsync(cancellationToken);
 
         return new DashboardStatsDto
         {
@@ -139,4 +244,21 @@ public sealed class DashboardService : IDashboardService
             NewItemsPendingReview  = items.Count(i => i.IsNewItem),
         };
     }
+
+    // ── helpers ───────────────────────────────────────────────────────────────
+
+    private static bool IsAdmin(User caller) =>
+        caller.Role is UserRole.Admin or UserRole.SuperAdmin;
+
+    private static CalendarEventDto MapToDto(CalendarEvent e) => new(
+        e.Id,
+        e.Title,
+        e.Description,
+        e.StartDate,
+        e.EndDate,
+        e.IsAllDay,
+        e.EventType,
+        null,
+        e.Status,
+        e.RejectionReason);
 }

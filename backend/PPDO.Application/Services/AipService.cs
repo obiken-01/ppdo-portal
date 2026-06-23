@@ -11,14 +11,13 @@ namespace PPDO.Application.Services;
 /// Confirm is stateless: the client echoes back the full preview payload.
 /// Snapshot columns (FundingSourceId/Snapshot) are populated at confirm time
 /// by matching FundingSourceRaw against the config table.
+///
+/// RAL-93: hierarchy reads now use IAipRepository scoped queries (WHERE / IN in SQL)
+/// instead of loading full tables and filtering in memory.
 /// </summary>
 public sealed class AipService : IAipService
 {
-    private readonly IRepository<AipRecord>    _aipRepo;
-    private readonly IRepository<AipOffice>    _officeRepo;
-    private readonly IRepository<AipProgram>   _programRepo;
-    private readonly IRepository<AipProject>   _projectRepo;
-    private readonly IRepository<AipActivity>  _actRepo;
+    private readonly IAipRepository            _aipRepo;
     private readonly IRepository<FundingSource> _fsRepo;
     private readonly IRepository<User>         _userRepo;
     private readonly IAipXlsmParser _parser;
@@ -26,27 +25,19 @@ public sealed class AipService : IAipService
     private readonly CallerContext  _caller;
 
     public AipService(
-        IRepository<AipRecord>     aipRepo,
-        IRepository<AipOffice>     officeRepo,
-        IRepository<AipProgram>    programRepo,
-        IRepository<AipProject>    projectRepo,
-        IRepository<AipActivity>   actRepo,
+        IAipRepository             aipRepo,
         IRepository<FundingSource>  fsRepo,
         IRepository<User>          userRepo,
         IAipXlsmParser parser,
         IAuditService  audit,
         CallerContext  caller)
     {
-        _aipRepo     = aipRepo;
-        _officeRepo  = officeRepo;
-        _programRepo = programRepo;
-        _projectRepo = projectRepo;
-        _actRepo     = actRepo;
-        _fsRepo      = fsRepo;
-        _userRepo    = userRepo;
-        _parser      = parser;
-        _audit       = audit;
-        _caller      = caller;
+        _aipRepo  = aipRepo;
+        _fsRepo   = fsRepo;
+        _userRepo = userRepo;
+        _parser   = parser;
+        _audit    = audit;
+        _caller   = caller;
     }
 
     // ── Read ──────────────────────────────────────────────────────────────────
@@ -61,9 +52,10 @@ public sealed class AipService : IAipService
 
         List<AipRecord> records = q.OrderByDescending(r => r.UploadedAt).ToList();
 
-        // Build office-count lookup: aip_record_id → count of aip_offices rows.
-        IReadOnlyList<AipOffice> allOffices = await _officeRepo.GetAllAsync(ct);
-        Dictionary<int, int> officeCounts = allOffices
+        // Scope office count to only the AIP ids being returned (not the whole table).
+        List<int> aipIds = records.Select(r => r.Id).ToList();
+        IReadOnlyList<AipOffice> offices = await _aipRepo.GetOfficesByAipIdsAsync(aipIds, ct);
+        Dictionary<int, int> officeCounts = offices
             .GroupBy(o => o.AipRecordId)
             .ToDictionary(g => g.Key, g => g.Count());
 
@@ -77,18 +69,18 @@ public sealed class AipService : IAipService
     public async Task<ServiceResult<AipRecordDetailDto>> GetByIdAsync(
         int id, CancellationToken ct = default)
     {
-        AipRecord? rec = (await _aipRepo.GetAllAsync(ct)).FirstOrDefault(r => r.Id == id);
+        AipRecord? rec = await _aipRepo.GetByIntIdAsync(id, ct);
         if (rec is null)
             return ServiceResult<AipRecordDetailDto>.NotFound($"AIP record {id} not found.");
 
-        // Load hierarchy levels separately (no deep Include chains).
-        IReadOnlyList<AipOffice>   offices  = (await _officeRepo.GetAllAsync(ct)).Where(o => o.AipRecordId == id).ToList();
-        List<int> officeIds = offices.Select(o => o.Id).ToList();
-        IReadOnlyList<AipProgram>  programs = (await _programRepo.GetAllAsync(ct)).Where(p => officeIds.Contains(p.OfficeId)).ToList();
+        // Load each hierarchy level scoped to the ids from the level above.
+        IReadOnlyList<AipOffice>   offices  = await _aipRepo.GetOfficesByAipIdAsync(id, ct);
+        List<int> officeIds  = offices.Select(o => o.Id).ToList();
+        IReadOnlyList<AipProgram>  programs = await _aipRepo.GetProgramsByOfficeIdsAsync(officeIds, ct);
         List<int> programIds = programs.Select(p => p.Id).ToList();
-        IReadOnlyList<AipProject>  projects = (await _projectRepo.GetAllAsync(ct)).Where(j => programIds.Contains(j.ProgramId)).ToList();
+        IReadOnlyList<AipProject>  projects = await _aipRepo.GetProjectsByProgramIdsAsync(programIds, ct);
         List<int> projectIds = projects.Select(j => j.Id).ToList();
-        IReadOnlyList<AipActivity> acts     = (await _actRepo.GetAllAsync(ct)).Where(a => projectIds.Contains(a.ProjectId)).ToList();
+        IReadOnlyList<AipActivity> acts     = await _aipRepo.GetActivitiesByProjectIdsAsync(projectIds, ct);
 
         // Build nested DTO hierarchy.
         IReadOnlyList<AipOfficeDto> officeDtos = offices.Select(o =>
@@ -113,6 +105,46 @@ public sealed class AipService : IAipService
             rec.UploadedById, rec.UploadedAt, rec.Status, rec.LdipId, rec.SourceId, officeDtos);
 
         return ServiceResult<AipRecordDetailDto>.Ok(detail);
+    }
+
+    public async Task<ServiceResult<AipRecordSummaryDto>> GetSummaryByIdAsync(
+        int id, CancellationToken ct = default)
+    {
+        AipRecord? rec = await _aipRepo.GetByIntIdAsync(id, ct);
+        if (rec is null)
+            return ServiceResult<AipRecordSummaryDto>.NotFound($"AIP record {id} not found.");
+
+        IReadOnlyList<AipOffice>   offices  = await _aipRepo.GetOfficesByAipIdAsync(id, ct);
+        List<int> officeIds  = offices.Select(o => o.Id).ToList();
+        IReadOnlyList<AipProgram>  programs = await _aipRepo.GetProgramsByOfficeIdsAsync(officeIds, ct);
+        List<int> programIds = programs.Select(p => p.Id).ToList();
+        IReadOnlyList<AipProject>  projects = await _aipRepo.GetProjectsByProgramIdsAsync(programIds, ct);
+        List<int> projectIds = projects.Select(j => j.Id).ToList();
+        IReadOnlyList<AipActivity> acts     = await _aipRepo.GetActivitiesByProjectIdsAsync(projectIds, ct);
+
+        IReadOnlyList<AipOfficeSummaryDto> officeDtos = offices.Select(o =>
+        {
+            IReadOnlyList<AipProgramSummaryDto> progDtos = programs
+                .Where(p => p.OfficeId == o.Id)
+                .Select(p =>
+                {
+                    IReadOnlyList<AipProjectSummaryDto> projDtos = projects
+                        .Where(j => j.ProgramId == p.Id)
+                        .Select(j => new AipProjectSummaryDto(j.Id, j.RefCode, j.Name,
+                            acts.Where(a => a.ProjectId == j.Id)
+                                .Select(a => new AipActivitySummaryDto(
+                                    a.Id, a.RefCode, a.Name,
+                                    a.Ps, a.Mooe, a.Co, a.Total,
+                                    a.FundingSourceId, a.FundingSourceSnapshot))
+                                .ToList()))
+                        .ToList();
+                    return new AipProgramSummaryDto(p.Id, p.RefCode, p.Name, projDtos);
+                })
+                .ToList();
+            return new AipOfficeSummaryDto(o.Id, o.RefCode, o.Name, o.Sector, progDtos);
+        }).ToList();
+
+        return ServiceResult<AipRecordSummaryDto>.Ok(new AipRecordSummaryDto(rec.Id, rec.FiscalYear, officeDtos));
     }
 
     // ── Preview ───────────────────────────────────────────────────────────────
@@ -286,7 +318,7 @@ public sealed class AipService : IAipService
     public async Task<ServiceResult<AipRecordDto>> FinalizeAsync(
         int id, CancellationToken ct = default)
     {
-        AipRecord? rec = (await _aipRepo.GetAllAsync(ct)).FirstOrDefault(r => r.Id == id);
+        AipRecord? rec = await _aipRepo.GetByIntIdAsync(id, ct);
         if (rec is null)
             return ServiceResult<AipRecordDto>.NotFound($"AIP record {id} not found.");
         if (rec.Status != PlanningStatus.Draft)
@@ -304,7 +336,7 @@ public sealed class AipService : IAipService
     public async Task<ServiceResult<AipRecordDto>> UnlockAsync(
         int id, CancellationToken ct = default)
     {
-        AipRecord? rec = (await _aipRepo.GetAllAsync(ct)).FirstOrDefault(r => r.Id == id);
+        AipRecord? rec = await _aipRepo.GetByIntIdAsync(id, ct);
         if (rec is null)
             return ServiceResult<AipRecordDto>.NotFound($"AIP record {id} not found.");
         if (rec.Status != PlanningStatus.Final)
@@ -322,7 +354,7 @@ public sealed class AipService : IAipService
     public async Task<ServiceResult<AipRecordDto>> ArchiveAsync(
         int id, CancellationToken ct = default)
     {
-        AipRecord? rec = (await _aipRepo.GetAllAsync(ct)).FirstOrDefault(r => r.Id == id);
+        AipRecord? rec = await _aipRepo.GetByIntIdAsync(id, ct);
         if (rec is null)
             return ServiceResult<AipRecordDto>.NotFound($"AIP record {id} not found.");
         if (rec.Status == PlanningStatus.Archived)
@@ -352,13 +384,11 @@ public sealed class AipService : IAipService
 
     // ── Mapping ───────────────────────────────────────────────────────────────
 
-    // Used by status-transition methods where office count / uploader name are not needed.
     private static AipRecordDto MapToDto(AipRecord r) => new(
         r.Id, r.FiscalYear, r.EntrySource, r.OriginalFilename,
         r.UploadedById, r.UploadedAt, r.Status, r.LdipId, r.SourceId,
         OfficeCount: 0, UploadedByName: null);
 
-    // Used by GetAllAsync — populates office count and uploader display name.
     private static AipRecordDto MapToListDto(
         AipRecord r,
         Dictionary<int, int> officeCounts,

@@ -74,7 +74,7 @@ function LinkFormModal({
       onClick={backdropRef}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
     >
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
           <h2 className="text-sm font-semibold text-slate-800">{title}</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
@@ -87,7 +87,7 @@ function LinkFormModal({
               value={form.title}
               onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
               placeholder="PR Monitoring"
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600"
+              className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
             />
           </div>
 
@@ -97,7 +97,7 @@ function LinkFormModal({
               value={form.url}
               onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))}
               placeholder="https://docs.google.com/..."
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600"
+              className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
             />
           </div>
 
@@ -107,7 +107,7 @@ function LinkFormModal({
               <select
                 value={form.category}
                 onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600 bg-white"
+                className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 bg-white"
               >
                 {categories.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
@@ -120,13 +120,13 @@ function LinkFormModal({
                 min={1}
                 value={form.linkOrder}
                 onChange={(e) => setForm((f) => ({ ...f, linkOrder: parseInt(e.target.value) || 1 }))}
-                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600"
+                className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
               />
             </div>
           </div>
 
           {error && (
-            <div className="rounded-lg bg-danger-100 border border-danger-500/30 px-4 py-2">
+            <div className="bg-danger-100 border border-danger-500/30 px-4 py-2">
               <p className="text-xs text-danger-500">{error}</p>
             </div>
           )}
@@ -135,14 +135,14 @@ function LinkFormModal({
         <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-200">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition-colors"
+            className="px-4 py-2 text-sm border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={() => onSubmit(form)}
             disabled={saving}
-            className="flex items-center gap-2 px-5 py-2 text-sm bg-green-600 text-white font-medium rounded-lg hover:bg-green-500 transition-colors disabled:opacity-60"
+            className="flex items-center gap-2 px-5 py-2 text-sm bg-green-600 text-white font-medium hover:bg-green-500 transition-colors disabled:opacity-60"
           >
             {saving && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
             {saving ? "Saving…" : "Save"}
@@ -165,19 +165,19 @@ function ConfirmDeleteModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       onClick={onClose}
     >
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white shadow-xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-sm font-semibold text-slate-800 mb-2">Delete Link</h2>
         <p className="text-sm text-slate-600 mb-6">
           Delete <span className="font-medium">&ldquo;{linkTitle}&rdquo;</span>? This cannot be undone.
         </p>
         <div className="flex justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2 text-sm border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition-colors">
+          <button onClick={onClose} className="px-4 py-2 text-sm border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors">
             Cancel
           </button>
           <button
             onClick={onConfirm}
             disabled={loading}
-            className="flex items-center gap-2 px-5 py-2 text-sm bg-danger-500 text-white font-medium rounded-lg hover:bg-red-600 transition-colors disabled:opacity-60"
+            className="flex items-center gap-2 px-5 py-2 text-sm bg-danger-500 text-white font-medium hover:bg-red-600 transition-colors disabled:opacity-60"
           >
             {loading && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
             Delete
@@ -329,7 +329,7 @@ export default function ResourceLinksPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search links…"
-          className="flex-1 px-4 py-2.5 text-sm border border-slate-200 bg-white rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-green-600"
+          className="flex-1 px-4 py-2.5 text-sm border border-slate-200 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-green-600"
         />
         {search && (
           <button onClick={() => setSearch("")} className="text-sm text-slate-400 hover:text-slate-600 px-2">
@@ -339,7 +339,7 @@ export default function ResourceLinksPage() {
         {canAdd && (
           <button
             onClick={() => { setFormError(null); setShowAdd(true); }}
-            className="flex items-center gap-1.5 bg-green-600 text-white text-sm font-semibold px-4 py-2.5 rounded-lg hover:bg-green-500 transition-colors shadow-sm shrink-0"
+            className="flex items-center gap-1.5 bg-green-600 text-white text-sm font-semibold px-4 py-2.5 hover:bg-green-500 transition-colors shadow-sm shrink-0"
           >
             <span className="text-base leading-none">+</span>
             Add Link
@@ -365,7 +365,7 @@ export default function ResourceLinksPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filtered.map((cat) => (
-            <div key={cat.category} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div key={cat.category} className="bg-white border border-slate-200 shadow-sm overflow-hidden">
               {/* Category header */}
               <div className="px-4 py-3 bg-green-50 border-b border-green-100">
                 <h3 className="text-xs font-semibold text-green-800 uppercase tracking-wide">

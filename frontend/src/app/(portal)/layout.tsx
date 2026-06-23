@@ -19,8 +19,8 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import axios from "axios";
-import api from "@/lib/api";
 import { auth } from "@/lib/auth";
+import { clearMeCache, fetchMe } from "@/lib/me-cache";
 import Sidebar from "@/components/layout/Sidebar";
 import Topbar from "@/components/layout/Topbar";
 import { ToastProvider } from "@/components/ui/Toast";
@@ -36,6 +36,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/config":                "Configuration",
   "/resource-links":        "Resource Links",
   "/profile":               "My Profile",
+  "/account":               "My Account",
   "/inventory/create-pr":       "Create Purchase Request",
   "/inventory/receive-delivery": "Receive Delivery",
   "/inventory/items-master": "Items Master",
@@ -81,22 +82,27 @@ export default function PortalLayout({
       }
 
       if (!_refreshInFlight) {
-        // Retry up to 2 times to handle Azure Functions cold starts after inactivity.
+        // Production: retry up to 2× with a 3-second delay to handle Azure Functions
+        // cold starts (Consumption plan). Development: 0 retries — fail fast so a
+        // restarted local server redirects to /login immediately instead of making
+        // the user wait 6 seconds through retry delays.
+        const maxRetries = process.env.NODE_ENV === "production" ? 2 : 0;
+
         const tryRefresh = (retries: number): Promise<boolean> =>
           axios
             .post(`${BASE_URL}/auth/refresh`, { refreshToken }, { withCredentials: true })
             .then(({ data }) => { auth.login(data); return true; })
             .catch((err) => {
-              // Retry on network errors (cold start), not on auth rejections (4xx)
               if (retries > 0 && axios.isAxiosError(err) && !err.response) {
                 return new Promise<boolean>((resolve) => setTimeout(resolve, 3000))
                   .then(() => tryRefresh(retries - 1));
               }
+              clearMeCache();
               auth.logout();
               return false;
             });
 
-        _refreshInFlight = tryRefresh(2).finally(() => { _refreshInFlight = null; });
+        _refreshInFlight = tryRefresh(maxRetries).finally(() => { _refreshInFlight = null; });
       }
 
       const ok = await _refreshInFlight;
@@ -114,8 +120,53 @@ export default function PortalLayout({
 
   useEffect(() => {
     if (!ready) return;
-    api.get<MeResponse>("/auth/me").then(({ data }) => setMe(data)).catch(() => {});
+    fetchMe().then(setMe).catch(() => {});
   }, [ready]);
+
+  // ── Prefetch nav routes after permissions are known ─────────────────────────
+  // Sidebar links are permission-gated so <Link> elements don't exist in the DOM
+  // until auth/me resolves — by then the user may already click before Next.js
+  // auto-prefetch runs. Prefetch every reachable route (including sub-pages) so
+  // first navigation to any section is instant.
+  useEffect(() => {
+    if (!me) return;
+    const isOfficeUser = me.officeId != null;
+    const routes: string[] = ["/account"];
+    if (!isOfficeUser) {
+      routes.push("/dashboard", "/resource-links");
+      if (me.canAccessInventory || me.canAccessReports) {
+        routes.push(
+          "/inventory",
+          "/inventory/create-pr",
+          "/inventory/receive-delivery",
+          "/inventory/items-master",
+          "/inventory/distribution",
+          "/inventory/item-ledger",
+          "/inventory/pr-register",
+          "/inventory/pr-report",
+        );
+      }
+      if (me.canManageConfig) {
+        routes.push(
+          "/config",
+          "/config/accounts",
+          "/config/offices",
+          "/config/funding-sources",
+        );
+      }
+      if (me.canManageUsers)   routes.push("/admin/users");
+      if (me.role === "Admin" || me.role === "SuperAdmin") routes.push("/announcements");
+    }
+    if (me.canAccessBudgetPlanning) {
+      routes.push(
+        "/budget-planning",
+        "/budget-planning/ldip",
+        "/budget-planning/aip",
+        "/budget-planning/wfp",
+      );
+    }
+    routes.forEach((r) => router.prefetch(r));
+  }, [me, router]);
 
   // ── Office-user gate ────────────────────────────────────────────────────────
   // Non-PPDO office users have Budget Planning as their only feature. If they land
@@ -123,7 +174,9 @@ export default function PortalLayout({
   useEffect(() => {
     if (!me || me.officeId == null) return;
     const allowed =
-      pathname.startsWith("/budget-planning") || pathname.startsWith("/profile");
+      pathname.startsWith("/budget-planning") ||
+      pathname.startsWith("/profile") ||
+      pathname.startsWith("/account");
     if (!allowed) router.replace("/budget-planning");
   }, [me, pathname, router]);
 

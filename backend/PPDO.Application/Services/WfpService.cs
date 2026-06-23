@@ -17,10 +17,13 @@ namespace PPDO.Application.Services;
 ///   4. Persist new activities and lines.
 ///
 /// Reserve computation: reserveAmount = Round(totalAppropriation × 10%, 2) when ApplyReserve=true.
+///
+/// RAL-93: all WFP reads (by-id lookups, activity/line fetches, existing-WFP check) now
+/// use IWfpRepository scoped queries instead of GetAllAsync + in-memory filter.
 /// </summary>
 public sealed class WfpService : IWfpService
 {
-    private readonly IRepository<WfpRecord>          _wfpRepo;
+    private readonly IWfpRepository               _wfpRepo;
     private readonly IRepository<WfpActivity>        _actRepo;
     private readonly IRepository<WfpExpenditureLine> _lineRepo;
     private readonly IRepository<Account>            _accountRepo;
@@ -32,7 +35,7 @@ public sealed class WfpService : IWfpService
     private readonly IWfpExcelService                _excel;
 
     public WfpService(
-        IRepository<WfpRecord>          wfpRepo,
+        IWfpRepository                  wfpRepo,
         IRepository<WfpActivity>        actRepo,
         IRepository<WfpExpenditureLine> lineRepo,
         IRepository<Account>            accountRepo,
@@ -59,25 +62,18 @@ public sealed class WfpService : IWfpService
 
     public async Task<IReadOnlyList<WfpRecordDto>> GetAllAsync(
         int? aipRecordId, int? officeId, CancellationToken ct = default)
-    {
-        IEnumerable<WfpRecord> q = await _wfpRepo.GetAllAsync(ct);
-        if (aipRecordId.HasValue) q = q.Where(r => r.AipRecordId == aipRecordId.Value);
-        if (officeId.HasValue)    q = q.Where(r => r.OfficeId == officeId.Value);
-        return q.OrderByDescending(r => r.UpdatedAt).Select(MapToDto).ToList();
-    }
+        => (await _wfpRepo.GetFilteredAsync(aipRecordId, officeId, ct)).Select(MapToDto).ToList();
 
     public async Task<ServiceResult<WfpRecordDetailDto>> GetByIdAsync(
         int id, CancellationToken ct = default)
     {
-        WfpRecord? rec = (await _wfpRepo.GetAllAsync(ct)).FirstOrDefault(r => r.Id == id);
+        WfpRecord? rec = await _wfpRepo.GetByIntIdAsync(id, ct);
         if (rec is null)
             return ServiceResult<WfpRecordDetailDto>.NotFound($"WFP record {id} not found.");
 
-        IReadOnlyList<WfpActivity> activities =
-            (await _actRepo.GetAllAsync(ct)).Where(a => a.WfpId == id).ToList();
+        IReadOnlyList<WfpActivity> activities = await _wfpRepo.GetActivitiesByWfpIdAsync(id, ct);
         List<int> actIds = activities.Select(a => a.Id).ToList();
-        IReadOnlyList<WfpExpenditureLine> lines =
-            (await _lineRepo.GetAllAsync(ct)).Where(l => actIds.Contains(l.WfpActivityId)).ToList();
+        IReadOnlyList<WfpExpenditureLine> lines = await _wfpRepo.GetLinesByActivityIdsAsync(actIds, ct);
 
         IReadOnlyList<WfpActivityDto> actDtos = activities.Select(a =>
             new WfpActivityDto(a.Id, a.WfpId, a.AipActivityId,
@@ -93,9 +89,8 @@ public sealed class WfpService : IWfpService
     public async Task<ServiceResult<WfpRecordDto>> SaveAsync(
         SaveWfpDto dto, Guid createdById, CancellationToken ct = default)
     {
-        // Find existing WFP for this (aipRecordId, officeId).
-        WfpRecord? existing = (await _wfpRepo.GetAllAsync(ct))
-            .FirstOrDefault(r => r.AipRecordId == dto.AipRecordId && r.OfficeId == dto.OfficeId);
+        // Find existing WFP for this (aipRecordId, officeId) — single SQL lookup.
+        WfpRecord? existing = await _wfpRepo.FindByAipAndOfficeAsync(dto.AipRecordId, dto.OfficeId, ct);
 
         if (existing is not null && existing.Status == PlanningStatus.Final)
             return ServiceResult<WfpRecordDto>.Forbidden("Cannot edit a finalized WFP.");
@@ -139,8 +134,7 @@ public sealed class WfpService : IWfpService
         if (existing is not null)
         {
             // Delete all existing activities (cascade removes lines in DB).
-            IReadOnlyList<WfpActivity> oldActs =
-                (await _actRepo.GetAllAsync(ct)).Where(a => a.WfpId == existing.Id).ToList();
+            IReadOnlyList<WfpActivity> oldActs = await _wfpRepo.GetActivitiesByWfpIdAsync(existing.Id, ct);
             foreach (WfpActivity act in oldActs)
                 await _actRepo.DeleteAsync(act, ct);
 
@@ -231,7 +225,7 @@ public sealed class WfpService : IWfpService
     public async Task<ServiceResult<WfpRecordDto>> FinalizeAsync(
         int id, CancellationToken ct = default)
     {
-        WfpRecord? rec = (await _wfpRepo.GetAllAsync(ct)).FirstOrDefault(r => r.Id == id);
+        WfpRecord? rec = await _wfpRepo.GetByIntIdAsync(id, ct);
         if (rec is null)
             return ServiceResult<WfpRecordDto>.NotFound($"WFP record {id} not found.");
         if (rec.Status != PlanningStatus.Draft)
@@ -251,7 +245,7 @@ public sealed class WfpService : IWfpService
     public async Task<ServiceResult<WfpRecordDto>> UnlockAsync(
         int id, CancellationToken ct = default)
     {
-        WfpRecord? rec = (await _wfpRepo.GetAllAsync(ct)).FirstOrDefault(r => r.Id == id);
+        WfpRecord? rec = await _wfpRepo.GetByIntIdAsync(id, ct);
         if (rec is null)
             return ServiceResult<WfpRecordDto>.NotFound($"WFP record {id} not found.");
         if (rec.Status != PlanningStatus.Final)

@@ -33,8 +33,11 @@ public sealed class NagerHolidayProvider : IHolidayProvider
             if (_cache.TryGetValue(year, out IReadOnlyList<CalendarEventDto>? cached))
                 return cached;
 
-            IReadOnlyList<CalendarEventDto> result = await FetchFromNagerAsync(year, cancellationToken)
-                ?? GetStaticFallback(year);
+            // Prefer static data for known years — no external HTTP call needed.
+            IReadOnlyList<CalendarEventDto> staticData = GetStaticFallback(year);
+            IReadOnlyList<CalendarEventDto> result = staticData.Count > 0
+                ? staticData
+                : await FetchFromNagerAsync(year, cancellationToken) ?? [];
 
             _cache[year] = result;
             return result;
@@ -66,7 +69,9 @@ public sealed class NagerHolidayProvider : IHolidayProvider
                 null,
                 true,
                 "Holiday",
-                "Nager.Date")).ToList();
+                "Nager.Date",
+                null,
+                null)).ToList();
         }
         catch
         {
@@ -93,7 +98,9 @@ public sealed class NagerHolidayProvider : IHolidayProvider
             null,
             true,
             "Holiday",
-            "Static")).ToList();
+            "Static",
+            null,
+            null)).ToList();
     }
 
     // ── PH Public Holidays 2026 ───────────────────────────────────────────────

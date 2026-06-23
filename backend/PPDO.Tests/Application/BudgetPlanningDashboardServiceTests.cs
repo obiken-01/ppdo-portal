@@ -7,8 +7,11 @@ using PPDO.Domain.Interfaces;
 namespace PPDO.Tests.Application;
 
 /// <summary>
-/// Unit tests for <see cref="BudgetPlanningDashboardService"/> (RAL-80).
-/// All repositories are mocked via GetAllAsync(); no database access occurs.
+/// Unit tests for <see cref="BudgetPlanningDashboardService"/> (RAL-80, RAL-92).
+/// All repositories are mocked — no database access occurs.
+/// GetRecentActivityAsync tests use <see cref="IAuditRepository.GetRecentAsync"/>; actor
+/// names are read from the <see cref="AuditLog.ChangedBy"/> navigation populated by the mock,
+/// mirroring what the real <see cref="AuditRepository"/> returns via its Include(a=>a.ChangedBy).
 /// </summary>
 public sealed class BudgetPlanningDashboardServiceTests
 {
@@ -39,26 +42,40 @@ public sealed class BudgetPlanningDashboardServiceTests
         CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
     };
 
-    private static AuditLog Audit(long id, Guid userId, DateTime? at = null) => new()
-    {
-        Id = id, TableName = "accounts", RecordId = 1, Action = "CREATE",
-        ChangedById = userId, ChangedAt = at ?? DateTime.UtcNow,
-        NewValues = "{}",
-    };
-
     private static User AppUser(Guid id, string name, int? officeId = null) => new()
     {
         Id = id, FullName = name, Username = name.ToLower(), PasswordHash = "x",
         OfficeId = officeId,
     };
 
-    private static BudgetPlanningDashboardService Build(
+    /// <summary>
+    /// Builds an AuditLog with ChangedBy already populated — mirrors what
+    /// AuditRepository.GetRecentAsync returns via its Include(a => a.ChangedBy).
+    /// </summary>
+    private static AuditLog Audit(long id, User? changedBy = null, DateTime? at = null)
+    {
+        User actor = changedBy ?? AppUser(Guid.NewGuid(), "R. Alcaide");
+        return new()
+        {
+            Id = id, TableName = "accounts", RecordId = 1, Action = "CREATE",
+            ChangedById = actor.Id, ChangedAt = at ?? DateTime.UtcNow,
+            NewValues = "{}",
+            ChangedBy = actor,
+        };
+    }
+
+    /// <summary>
+    /// Builds a service with mocked dependencies.
+    /// The audit mock is returned so callers can call Verify() on it.
+    /// By default GetRecentAsync returns the supplied <paramref name="audits"/> list
+    /// for any (take, officeId) combination — tests control what's in the list.
+    /// </summary>
+    private static (BudgetPlanningDashboardService svc, Mock<IAuditRepository> auditMock) Build(
         List<LdipRecord> ldips,
         List<AipRecord> aips,
         List<WfpRecord> wfps,
         List<Office> offices,
-        List<AuditLog> audits,
-        List<User> users)
+        List<AuditLog> audits)
     {
         Mock<IRepository<LdipRecord>> ldipRepo = new();
         ldipRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(ldips);
@@ -72,15 +89,16 @@ public sealed class BudgetPlanningDashboardServiceTests
         Mock<IRepository<Office>> officeRepo = new();
         officeRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(offices);
 
-        Mock<IRepository<AuditLog>> auditRepo = new();
-        auditRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(audits);
+        Mock<IAuditRepository> auditRepo = new();
+        auditRepo
+            .Setup(r => r.GetRecentAsync(It.IsAny<int>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(audits);
 
-        Mock<IRepository<User>> userRepo = new();
-        userRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(users);
-
-        return new BudgetPlanningDashboardService(
+        BudgetPlanningDashboardService svc = new(
             ldipRepo.Object, aipRepo.Object, wfpRepo.Object,
-            officeRepo.Object, auditRepo.Object, userRepo.Object);
+            officeRepo.Object, auditRepo.Object);
+
+        return (svc, auditRepo);
     }
 
     // ── GetDashboardAsync — FY resolution ─────────────────────────────────
@@ -88,7 +106,7 @@ public sealed class BudgetPlanningDashboardServiceTests
     [Fact]
     public async Task GetDashboardAsync_NoAipRecords_DefaultsToNextCalendarYear()
     {
-        BudgetPlanningDashboardService sut = Build([], [], [], [], [], []);
+        (BudgetPlanningDashboardService sut, _) = Build([], [], [], [], []);
 
         PlanningDashboardDto result = await sut.GetDashboardAsync(fiscalYear: null);
 
@@ -99,8 +117,8 @@ public sealed class BudgetPlanningDashboardServiceTests
     [Fact]
     public async Task GetDashboardAsync_AipRecords_ReturnsDistinctFiscalYearsDescending()
     {
-        List<AipRecord> aips = [Aip(1, 2027), Aip(2, 2026), Aip(3, 2027)]; // 2027 twice
-        BudgetPlanningDashboardService sut = Build([], aips, [], [], [], []);
+        List<AipRecord> aips = [Aip(1, 2027), Aip(2, 2026), Aip(3, 2027)];
+        (BudgetPlanningDashboardService sut, _) = Build([], aips, [], [], []);
 
         PlanningDashboardDto result = await sut.GetDashboardAsync(fiscalYear: null);
 
@@ -113,7 +131,7 @@ public sealed class BudgetPlanningDashboardServiceTests
     public async Task GetDashboardAsync_LdipGroupsByStatus()
     {
         List<LdipRecord> ldips = [Ldip(1, "Final"), Ldip(2, "Draft"), Ldip(3, "Archived")];
-        BudgetPlanningDashboardService sut = Build(ldips, [], [], [], [], []);
+        (BudgetPlanningDashboardService sut, _) = Build(ldips, [], [], [], []);
 
         PlanningDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027);
 
@@ -125,7 +143,7 @@ public sealed class BudgetPlanningDashboardServiceTests
     public async Task GetDashboardAsync_AipFiltersByFiscalYear()
     {
         List<AipRecord> aips = [Aip(1, 2027), Aip(2, 2026)];
-        BudgetPlanningDashboardService sut = Build([], aips, [], [], [], []);
+        (BudgetPlanningDashboardService sut, _) = Build([], aips, [], [], []);
 
         PlanningDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027);
 
@@ -139,7 +157,7 @@ public sealed class BudgetPlanningDashboardServiceTests
     {
         List<AipRecord> aips = [Aip(10, 2027, "Final")];
         List<Office> offices = [Off(1, "PPDO")];
-        BudgetPlanningDashboardService sut = Build([], aips, [], offices, [], []);
+        (BudgetPlanningDashboardService sut, _) = Build([], aips, [], offices, []);
 
         PlanningDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027);
 
@@ -154,7 +172,7 @@ public sealed class BudgetPlanningDashboardServiceTests
         List<AipRecord> aips = [Aip(10, 2027, "Final")];
         List<Office> offices = [Off(1, "PPDO")];
         List<WfpRecord> wfps = [Wfp(1, aipId: 10, officeId: 1, status: "Draft")];
-        BudgetPlanningDashboardService sut = Build([], aips, wfps, offices, [], []);
+        (BudgetPlanningDashboardService sut, _) = Build([], aips, wfps, offices, []);
 
         PlanningDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027);
 
@@ -174,7 +192,7 @@ public sealed class BudgetPlanningDashboardServiceTests
             Wfp(2, aipId: 10, officeId: 2, status: "Draft"),
             // office 3 has no WFP → "Not started"
         ];
-        BudgetPlanningDashboardService sut = Build([], aips, wfps, offices, [], []);
+        (BudgetPlanningDashboardService sut, _) = Build([], aips, wfps, offices, []);
 
         PlanningDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027);
 
@@ -187,43 +205,80 @@ public sealed class BudgetPlanningDashboardServiceTests
     // ── GetRecentActivityAsync ─────────────────────────────────────────────
 
     [Fact]
-    public async Task GetRecentActivityAsync_NoOfficeFilter_ReturnsLast10ByDate()
+    public async Task GetRecentActivityAsync_NoOfficeFilter_ReturnsRepositoryResultsMapped()
     {
-        Guid userId = Guid.NewGuid();
-        List<AuditLog> audits = Enumerable.Range(1, 12)
-            .Select(i => Audit(i, userId, DateTime.UtcNow.AddMinutes(-i)))
+        User actor = AppUser(Guid.NewGuid(), "R. Alcaide");
+        // Mock returns exactly 10 (as the real repo would after OrderBy+Take(10)).
+        List<AuditLog> audits = Enumerable.Range(1, 10)
+            .Select(i => Audit(i, actor, DateTime.UtcNow.AddMinutes(-i)))
             .ToList();
-        List<User> users = [AppUser(userId, "R. Alcaide")];
-        BudgetPlanningDashboardService sut = Build([], [], [], [], audits, users);
+        (BudgetPlanningDashboardService sut, _) = Build([], [], [], [], audits);
 
         IReadOnlyList<RecentActivityDto> result = await sut.GetRecentActivityAsync(officeId: null);
 
         Assert.Equal(10, result.Count);
-        // Most recent first (id=1 has the smallest negative offset = most recent)
-        Assert.Equal(1, result[0].Id);
+        Assert.Equal(1, result[0].Id);                    // first in list = id 1 (most recent)
+        Assert.Equal("R. Alcaide", result[0].ActorName);  // actor name read from ChangedBy
     }
 
     [Fact]
-    public async Task GetRecentActivityAsync_WithOfficeId_FiltersToUsersInThatOffice()
+    public async Task GetRecentActivityAsync_WithOfficeId_PassesOfficeIdToRepository()
     {
-        Guid user1Id = Guid.NewGuid();
-        Guid user2Id = Guid.NewGuid();
-        List<AuditLog> audits =
+        (BudgetPlanningDashboardService sut, Mock<IAuditRepository> auditMock) = Build([], [], [], [], []);
+
+        await sut.GetRecentActivityAsync(officeId: 5);
+
+        // Service must forward officeId=5 and take=10 to the repository.
+        auditMock.Verify(
+            r => r.GetRecentAsync(10, 5, It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task GetRecentActivityAsync_WithOfficeId_MapsReturnedAuditsToDto()
+    {
+        User alice = AppUser(Guid.NewGuid(), "Alice", officeId: 1);
+        // Mock returns pre-filtered results (the real repo scopes by officeId in SQL).
+        List<AuditLog> office1Audits =
         [
-            Audit(1, user1Id, DateTime.UtcNow.AddMinutes(-1)), // office 1
-            Audit(2, user2Id, DateTime.UtcNow.AddMinutes(-2)), // office 2
-            Audit(3, user1Id, DateTime.UtcNow.AddMinutes(-3)), // office 1
+            Audit(1, alice, DateTime.UtcNow.AddMinutes(-1)),
+            Audit(3, alice, DateTime.UtcNow.AddMinutes(-3)),
         ];
-        List<User> users =
-        [
-            AppUser(user1Id, "Alice", officeId: 1),
-            AppUser(user2Id, "Bob",   officeId: 2),
-        ];
-        BudgetPlanningDashboardService sut = Build([], [], [], [], audits, users);
+        (BudgetPlanningDashboardService sut, _) = Build([], [], [], [], office1Audits);
 
         IReadOnlyList<RecentActivityDto> result = await sut.GetRecentActivityAsync(officeId: 1);
 
         Assert.Equal(2, result.Count);
         Assert.All(result, r => Assert.Equal("Alice", r.ActorName));
+    }
+
+    [Fact]
+    public async Task GetRecentActivityAsync_NullChangedBy_FallsBackToUnknown()
+    {
+        // ChangedBy can be null if the user was deleted after the audit entry was written.
+        AuditLog orphaned = new()
+        {
+            Id = 99, TableName = "wfp_records", RecordId = 7, Action = "UPDATE",
+            ChangedById = Guid.NewGuid(), ChangedAt = DateTime.UtcNow,
+            ChangedBy = null,  // navigation not populated / user deleted
+        };
+        (BudgetPlanningDashboardService sut, _) = Build([], [], [], [], [orphaned]);
+
+        IReadOnlyList<RecentActivityDto> result = await sut.GetRecentActivityAsync(officeId: null);
+
+        Assert.Single(result);
+        Assert.Equal("Unknown", result[0].ActorName);
+    }
+
+    [Fact]
+    public async Task GetRecentActivityAsync_NoOfficeFilter_PassesNullOfficeIdToRepository()
+    {
+        (BudgetPlanningDashboardService sut, Mock<IAuditRepository> auditMock) = Build([], [], [], [], []);
+
+        await sut.GetRecentActivityAsync(officeId: null);
+
+        auditMock.Verify(
+            r => r.GetRecentAsync(10, null, It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 }
