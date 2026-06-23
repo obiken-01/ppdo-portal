@@ -50,9 +50,12 @@ public sealed class AipServiceTests
         Build(
             List<AipRecord>    aipSeed,
             List<FundingSource> fsSeed,
-            List<User>?        userSeed   = null,
-            List<AipOffice>?   officeSeed = null,
-            IAipXlsmParser?    parserImpl = null)
+            List<User>?        userSeed    = null,
+            List<AipOffice>?   officeSeed  = null,
+            List<AipProgram>?  programSeed = null,
+            List<AipProject>?  projectSeed = null,
+            List<AipActivity>? actSeed     = null,
+            IAipXlsmParser?    parserImpl  = null)
     {
         Mock<IRepository<AipRecord>>    aipRepo     = new();
         Mock<IRepository<AipOffice>>    officeRepo  = new();
@@ -74,7 +77,7 @@ public sealed class AipServiceTests
             .Returns(Task.CompletedTask);
         aipRepo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
-        // Hierarchy repos — capture adds and seed GetAllAsync
+        // Hierarchy repos — seed GetAllAsync + capture adds
         List<AipOffice> officeList = officeSeed ?? [];
         int nextOfficeId = 200;
         officeRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(officeList);
@@ -83,18 +86,24 @@ public sealed class AipServiceTests
             .Returns(Task.CompletedTask);
         officeRepo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
+        List<AipProgram> programList = programSeed ?? [];
         int nextProgramId = 300;
+        programRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(programList);
         programRepo.Setup(r => r.AddAsync(It.IsAny<AipProgram>(), It.IsAny<CancellationToken>()))
             .Callback<AipProgram, CancellationToken>((e, _) => e.Id = nextProgramId++)
             .Returns(Task.CompletedTask);
         programRepo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
+        List<AipProject> projectList = projectSeed ?? [];
         int nextProjectId = 400;
+        projectRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(projectList);
         projectRepo.Setup(r => r.AddAsync(It.IsAny<AipProject>(), It.IsAny<CancellationToken>()))
             .Callback<AipProject, CancellationToken>((e, _) => e.Id = nextProjectId++)
             .Returns(Task.CompletedTask);
         projectRepo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
+        List<AipActivity> actList = actSeed ?? [];
+        actRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(actList);
         actRepo.Setup(r => r.AddAsync(It.IsAny<AipActivity>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         actRepo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
@@ -471,5 +480,109 @@ public sealed class AipServiceTests
 
         Assert.Equal(2, count);
         aipRepo.Verify(r => r.DeleteAsync(It.IsAny<AipRecord>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+    }
+
+    // ── GetSummaryByIdAsync (RAL-89) ──────────────────────────────────────────
+
+    [Fact]
+    public async Task GetSummaryById_MissingId_ReturnsNotFound()
+    {
+        var (sut, _, _, _, _, _, _, _, _, _) = Build([], []);
+
+        ServiceResult<AipRecordSummaryDto> result = await sut.GetSummaryByIdAsync(99, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Fact]
+    public async Task GetSummaryById_ExistingId_ReturnsOkWithCorrectFiscalYear()
+    {
+        AipRecord rec = Rec(5);
+        var (sut, _, _, _, _, _, _, _, _, _) = Build([rec], []);
+
+        ServiceResult<AipRecordSummaryDto> result = await sut.GetSummaryByIdAsync(5, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(5, result.Value!.Id);
+        Assert.Equal(2027, result.Value.FiscalYear);
+    }
+
+    [Fact]
+    public async Task GetSummaryById_MapsHierarchy_OfficeProgramProjectActivity()
+    {
+        AipRecord rec = Rec(10);
+
+        AipOffice office = new() { Id = 201, AipRecordId = 10, RefCode = "1000-000-1-01-010", Name = "PPDO", Sector = "GENERAL" };
+        AipProgram prog  = new() { Id = 301, OfficeId = 201, RefCode = "1000-000-1-01-010-001", Name = "Program A" };
+        AipProject proj  = new() { Id = 401, ProgramId = 301, RefCode = "1000-000-1-01-010-001-001", Name = "Project X" };
+        AipActivity act  = new()
+        {
+            Id = 501, ProjectId = 401, RefCode = "1000-000-1-01-010-001-001-001",
+            Name = "Activity Z", Total = 500m, FundingSourceId = 3,
+            FundingSourceSnapshot = "GF",
+            EsreCode = "E01", ImplementingOffice = "PPDO",
+            StartDate = "Jan", EndDate = "Dec",
+            ExpectedOutputs = "Some output",
+        };
+
+        var (sut, _, _, _, _, _, _, _, _, _) = Build(
+            [rec], [],
+            officeSeed:  [office],
+            programSeed: [prog],
+            projectSeed: [proj],
+            actSeed:     [act]);
+
+        ServiceResult<AipRecordSummaryDto> result = await sut.GetSummaryByIdAsync(10, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        AipOfficeSummaryDto  offDto  = Assert.Single(result.Value!.Offices);
+        AipProgramSummaryDto progDto = Assert.Single(offDto.Programs);
+        AipProjectSummaryDto projDto = Assert.Single(progDto.Projects);
+        AipActivitySummaryDto actDto = Assert.Single(projDto.Activities);
+
+        Assert.Equal("1000-000-1-01-010", offDto.RefCode);
+        Assert.Equal("GENERAL", offDto.Sector);
+        Assert.Equal("Program A", progDto.Name);
+        Assert.Equal("Project X", projDto.Name);
+        Assert.Equal(501, actDto.Id);
+        Assert.Equal("Activity Z", actDto.Name);
+        Assert.Equal(500m, actDto.Total);
+        Assert.Equal("GF", actDto.FundingSourceSnapshot);
+        Assert.Equal(3, actDto.FundingSourceId);
+    }
+
+    [Fact]
+    public async Task GetSummaryById_ActivitySummary_OmitsHierarchyForeignKeys()
+    {
+        // AipActivitySummaryDto has no ProjectId, ProgramId, OfficeId, AipRecordId —
+        // verify the dto only exposes the slim field set.
+        AipRecord rec    = Rec(20);
+        AipOffice office = new() { Id = 202, AipRecordId = 20, RefCode = "A", Name = "Office", Sector = "SOCIAL" };
+        AipProgram prog  = new() { Id = 302, OfficeId = 202, RefCode = "B", Name = "Prog" };
+        AipProject proj  = new() { Id = 402, ProgramId = 302, RefCode = "C", Name = "Proj" };
+        AipActivity act  = new()
+        {
+            Id = 502, ProjectId = 402, RefCode = "D", Name = "Act",
+            Ps = 100m, Mooe = 200m, Co = 50m, Total = 350m,
+            FundingSourceId = 2, FundingSourceSnapshot = "20DF",
+        };
+
+        var (sut, _, _, _, _, _, _, _, _, _) = Build(
+            [rec], [],
+            officeSeed:  [office],
+            programSeed: [prog],
+            projectSeed: [proj],
+            actSeed:     [act]);
+
+        ServiceResult<AipRecordSummaryDto> result = await sut.GetSummaryByIdAsync(20, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        AipActivitySummaryDto dto = result.Value!.Offices[0].Programs[0].Projects[0].Activities[0];
+        Assert.Equal(100m, dto.Ps);
+        Assert.Equal(200m, dto.Mooe);
+        Assert.Equal(50m,  dto.Co);
+        Assert.Equal(350m, dto.Total);
+        Assert.Equal(2,    dto.FundingSourceId);
     }
 }

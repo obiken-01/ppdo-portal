@@ -15,6 +15,12 @@ public interface IAipService
     Task<ServiceResult<AipRecordDetailDto>> GetByIdAsync(int id, CancellationToken ct = default);
 
     /// <summary>
+    /// Returns a slim hierarchy (Id, RefCode, Name, amounts, funding source) for the WFP
+    /// activity grid. Omits heavy free-text fields — ~10× smaller than GetByIdAsync.
+    /// </summary>
+    Task<ServiceResult<AipRecordSummaryDto>> GetSummaryByIdAsync(int id, CancellationToken ct = default);
+
+    /// <summary>
     /// Parses an XLSM stream and returns a preview without persisting anything.
     /// <paramref name="knownFundingSources"/> is passed in by the Functions layer so the
     /// service can flag unmatched funding source codes as warnings.
