@@ -26,6 +26,7 @@ public sealed class AipRepository : Repository<AipRecord>, IAipRepository
         int aipRecordId, CancellationToken ct = default)
         => await _context.Set<AipOffice>()
             .Where(o => o.AipRecordId == aipRecordId)
+            .OrderBy(o => o.RefCode)
             .ToListAsync(ct);
 
     /// <inheritdoc />
@@ -35,6 +36,7 @@ public sealed class AipRepository : Repository<AipRecord>, IAipRepository
         if (aipIds.Count == 0) return [];
         return await _context.Set<AipOffice>()
             .Where(o => aipIds.Contains(o.AipRecordId))
+            .OrderBy(o => o.RefCode)
             .ToListAsync(ct);
     }
 
@@ -45,6 +47,7 @@ public sealed class AipRepository : Repository<AipRecord>, IAipRepository
         if (officeIds.Count == 0) return [];
         return await _context.Set<AipProgram>()
             .Where(p => officeIds.Contains(p.OfficeId))
+            .OrderBy(p => p.RefCode)
             .ToListAsync(ct);
     }
 
@@ -55,6 +58,7 @@ public sealed class AipRepository : Repository<AipRecord>, IAipRepository
         if (programIds.Count == 0) return [];
         return await _context.Set<AipProject>()
             .Where(j => programIds.Contains(j.ProgramId))
+            .OrderBy(j => j.RefCode)
             .ToListAsync(ct);
     }
 
@@ -65,6 +69,7 @@ public sealed class AipRepository : Repository<AipRecord>, IAipRepository
         if (projectIds.Count == 0) return [];
         return await _context.Set<AipActivity>()
             .Where(a => projectIds.Contains(a.ProjectId))
+            .OrderBy(a => a.RefCode)
             .ToListAsync(ct);
     }
 }

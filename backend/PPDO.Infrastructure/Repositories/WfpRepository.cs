@@ -41,6 +41,7 @@ public sealed class WfpRepository : Repository<WfpRecord>, IWfpRepository
         int wfpId, CancellationToken ct = default)
         => await _context.Set<WfpActivity>()
             .Where(a => a.WfpId == wfpId)
+            .OrderBy(a => a.AipActivityId)
             .ToListAsync(ct);
 
     /// <inheritdoc />
@@ -50,6 +51,8 @@ public sealed class WfpRepository : Repository<WfpRecord>, IWfpRepository
         if (activityIds.Count == 0) return [];
         return await _context.Set<WfpExpenditureLine>()
             .Where(l => activityIds.Contains(l.WfpActivityId))
+            .OrderBy(l => l.WfpActivityId)
+            .ThenBy(l => l.SortOrder)
             .ToListAsync(ct);
     }
 }
