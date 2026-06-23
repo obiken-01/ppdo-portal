@@ -37,6 +37,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
+import { fetchMe } from "@/lib/me-cache";
 import { useToast } from "@/components/ui/Toast";
 import type {
   CreatePRItemRequest,
@@ -357,7 +358,7 @@ export default function CreatePRPage() {
 
   // Auth guard
   const [me, setMe]               = useState<MeResponse | null>(null);
-  const [authChecked, setAuthChecked] = useState(false);
+  const [authChecked] = useState(true);
 
   // Form state
   const [header, setHeader]       = useState<HeaderForm>(blankHeader());
@@ -381,14 +382,13 @@ export default function CreatePRPage() {
   // ── Auth guard ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    api.get<MeResponse>("/auth/me")
-      .then(({ data }) => {
+    fetchMe()
+      .then((data) => {
         if (!data.canAccessInventory) {
           router.replace(data.officeId != null ? "/budget-planning" : "/dashboard");
           return;
         }
         setMe(data);
-        setAuthChecked(true);
         // Pre-fill from current user
         setHeader((h) => ({
           ...h,

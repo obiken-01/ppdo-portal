@@ -2,13 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import api from "@/lib/api";
 import { archiveLdip, ldipErrorMessage, listLdip, unlockLdip } from "@/lib/ldip";
+import { useMe } from "@/lib/me-cache";
 import DataTable, { type Column } from "@/components/ui/DataTable";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
-import type { LdipRecord, LdipStatus, MeResponse } from "@/types";
+import type { LdipRecord, LdipStatus } from "@/types";
 
 // ---------------------------------------------------------------------------
 // Local helpers
@@ -37,10 +36,9 @@ function fmtDate(iso: string): string {
 // ---------------------------------------------------------------------------
 
 export default function LdipListPage() {
-  const router = useRouter();
   const { toast } = useToast();
 
-  const [me, setMe] = useState<MeResponse | null>(null);
+  const me = useMe((m) => m.canAccessBudgetPlanning);
   const [records, setRecords] = useState<LdipRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -48,18 +46,6 @@ export default function LdipListPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [modeFilter, setModeFilter] = useState("");
   const [confirm, setConfirm] = useState<ConfirmDialogProps | null>(null);
-
-  // ── Auth ──────────────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    api.get<MeResponse>("/auth/me").then(({ data }) => {
-      if (!data.canAccessBudgetPlanning) {
-        router.replace("/dashboard");
-        return;
-      }
-      setMe(data);
-    });
-  }, [router]);
 
   // ── Data ──────────────────────────────────────────────────────────────────
 
@@ -76,8 +62,8 @@ export default function LdipListPage() {
   }, []);
 
   useEffect(() => {
-    if (me) load();
-  }, [me, load]);
+    load();
+  }, [load]);
 
   // ── Client-side filter ────────────────────────────────────────────────────
 

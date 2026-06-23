@@ -29,7 +29,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import api from "@/lib/api";
+import { fetchMe } from "@/lib/me-cache";
 import {
   configErrorMessage,
   createFundingSource,
@@ -50,7 +50,6 @@ import type {
   ActiveFilter,
   CsvImportResult,
   FundingSourceResponse,
-  MeResponse,
   UpsertFundingSourceRequest,
 } from "@/types";
 
@@ -115,7 +114,7 @@ export default function FundingSourceConfigPage() {
   const { toast } = useToast();
 
   // Auth / permission guard
-  const [authChecked, setAuthChecked] = useState(false);
+  const [authChecked] = useState(true);
 
   // Data
   const [sources, setSources] = useState<FundingSourceResponse[]>([]);
@@ -145,11 +144,9 @@ export default function FundingSourceConfigPage() {
   // ── Auth check ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    api
-      .get<MeResponse>("/auth/me")
-      .then(({ data }) => {
+    fetchMe()
+      .then((data) => {
         if (!data.canManageConfig) router.replace(data.officeId != null ? "/budget-planning" : "/dashboard");
-        else setAuthChecked(true);
       })
       .catch(() => router.replace("/login"));
   }, [router]);

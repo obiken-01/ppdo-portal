@@ -19,8 +19,8 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import axios from "axios";
-import api from "@/lib/api";
 import { auth } from "@/lib/auth";
+import { clearMeCache, fetchMe } from "@/lib/me-cache";
 import Sidebar from "@/components/layout/Sidebar";
 import Topbar from "@/components/layout/Topbar";
 import { ToastProvider } from "@/components/ui/Toast";
@@ -97,6 +97,7 @@ export default function PortalLayout({
                 return new Promise<boolean>((resolve) => setTimeout(resolve, 3000))
                   .then(() => tryRefresh(retries - 1));
               }
+              clearMeCache();
               auth.logout();
               return false;
             });
@@ -119,7 +120,7 @@ export default function PortalLayout({
 
   useEffect(() => {
     if (!ready) return;
-    api.get<MeResponse>("/auth/me").then(({ data }) => setMe(data)).catch(() => {});
+    fetchMe().then(setMe).catch(() => {});
   }, [ready]);
 
   // ── Prefetch nav routes after permissions are known ─────────────────────────

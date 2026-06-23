@@ -15,8 +15,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
+import { fetchMe } from "@/lib/me-cache";
 import { listAccounts, listFundingSources, listOffices } from "@/lib/config";
-import type { MeResponse } from "@/types";
 
 // ---------------------------------------------------------------------------
 // Tile definitions
@@ -77,7 +77,7 @@ const USER_TILE: TileDef = {
 export default function ConfigDashboardPage() {
   const router = useRouter();
 
-  const [authChecked, setAuthChecked] = useState(false);
+  const [authChecked] = useState(true);
   const [canManageUsers, setCanManageUsers] = useState(false);
   // null = loading, number = count, "error" = failed to load this tile's count
   const [counts, setCounts] = useState<Record<string, number | "error" | null>>({
@@ -90,14 +90,10 @@ export default function ConfigDashboardPage() {
   // ── Auth check ────────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    api
-      .get<MeResponse>("/auth/me")
-      .then(({ data }) => {
+    fetchMe()
+      .then((data) => {
         if (!data.canManageConfig) router.replace(data.officeId != null ? "/budget-planning" : "/dashboard");
-        else {
-          setCanManageUsers(data.canManageUsers === true);
-          setAuthChecked(true);
-        }
+        else setCanManageUsers(data.canManageUsers === true);
       })
       .catch(() => router.replace("/login"));
   }, [router]);

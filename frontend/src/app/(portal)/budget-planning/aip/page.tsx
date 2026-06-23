@@ -16,13 +16,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import api from "@/lib/api";
 import { aipErrorMessage, archiveAip, finalizeAip, listAip } from "@/lib/aip";
+import { useMe } from "@/lib/me-cache";
 import DataTable, { type Column } from "@/components/ui/DataTable";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
-import type { AipRecordResponse, MeResponse } from "@/types";
+import type { AipRecordResponse } from "@/types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -70,10 +69,9 @@ function StatusBadge({ status }: { status: string }) {
 // ---------------------------------------------------------------------------
 
 export default function AipListPage() {
-  const router = useRouter();
   const { toast } = useToast();
 
-  const [me, setMe] = useState<MeResponse | null>(null);
+  const me = useMe((m) => m.canAccessBudgetPlanning);
   const [records, setRecords] = useState<AipRecordResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -85,20 +83,6 @@ export default function AipListPage() {
 
   // Confirm dialog
   const [confirm, setConfirm] = useState<ConfirmDialogProps | null>(null);
-
-  // ---------------------------------------------------------------------------
-  // Auth check
-  // ---------------------------------------------------------------------------
-
-  useEffect(() => {
-    api.get<MeResponse>("/auth/me").then(({ data }) => {
-      if (!data.canAccessBudgetPlanning) {
-        router.replace("/dashboard");
-        return;
-      }
-      setMe(data);
-    });
-  }, [router]);
 
   // ---------------------------------------------------------------------------
   // Load AIP records
@@ -121,8 +105,8 @@ export default function AipListPage() {
   }, [fy, statusFilter]);
 
   useEffect(() => {
-    if (me) load();
-  }, [me, load]);
+    load();
+  }, [load]);
 
   // ---------------------------------------------------------------------------
   // Client-side source filter

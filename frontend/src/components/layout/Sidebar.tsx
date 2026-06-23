@@ -19,6 +19,7 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import api from "@/lib/api";
 import { auth } from "@/lib/auth";
+import { clearMeCache } from "@/lib/me-cache";
 import type { MeResponse } from "@/types";
 
 const APP_VERSION = "v1.1.1";
@@ -72,6 +73,7 @@ export default function Sidebar({ me }: SidebarProps) {
   async function handleLogout() {
     setUserMenuOpen(false);
     try { await api.post("/auth/logout"); } catch { /* ignore */ }
+    clearMeCache();
     auth.logout();
     router.replace("/login");
   }

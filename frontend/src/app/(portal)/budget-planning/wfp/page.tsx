@@ -22,8 +22,8 @@
  */
 
 import { Fragment, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import api from "@/lib/api";
+import { useSearchParams } from "next/navigation";
+import { useMe } from "@/lib/me-cache";
 import { getAipById, listAip } from "@/lib/aip";
 import {
   downloadWfpReport,
@@ -45,7 +45,6 @@ import type {
   AccountResponse,
   ExpenditureType,
   FundingSourceResponse,
-  MeResponse,
   OfficeResponse,
   SaveWfpLine,
   WfpRecord,
@@ -577,23 +576,12 @@ function ExpenditurePopup({
 // ---------------------------------------------------------------------------
 
 function WfpPageInner() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
 
   // ── Auth ────────────────────────────────────────────────────────────────
 
-  const [me, setMe] = useState<MeResponse | null>(null);
-
-  useEffect(() => {
-    api.get<MeResponse>("/auth/me").then(({ data }) => {
-      if (!data.canAccessBudgetPlanning) {
-        router.replace("/dashboard");
-        return;
-      }
-      setMe(data);
-    });
-  }, [router]);
+  const me = useMe((m) => m.canAccessBudgetPlanning);
 
   // ── Selector state ───────────────────────────────────────────────────────
 
@@ -634,11 +622,9 @@ function WfpPageInner() {
 
   const restoreConfirmed = useRef(false);
 
-  // ── Effect A: Load lists once on auth ────────────────────────────────────
+  // ── Effect A: Load lists immediately (no auth gate) ─────────────────────
 
   useEffect(() => {
-    if (!me) return;
-
     const urlAipId = searchParams.get("aipId");
     const urlOfficeId = searchParams.get("officeId");
 
@@ -655,19 +641,21 @@ function WfpPageInner() {
         setFundingSources(funds);
 
         if (urlAipId) setSelectedAipId(Number(urlAipId));
-
-        // Pre-fill office from URL ?officeId= or me.officeId (both are config office PKs)
-        if (urlOfficeId) {
-          setSelectedOfficeId(Number(urlOfficeId));
-        } else if (me.officeId != null) {
-          setSelectedOfficeId(me.officeId);
-        }
+        // Pre-fill office from URL ?officeId= (me.officeId pre-fill handled in Effect A2)
+        if (urlOfficeId) setSelectedOfficeId(Number(urlOfficeId));
       })
       .catch(() => {
         toast.error("Load failed", "Could not load AIP / office data.");
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [me]);
+  }, []);
+
+  // ── Effect A2: Pre-fill office from me.officeId when no URL param ────────
+
+  useEffect(() => {
+    if (!me || me.officeId == null) return;
+    if (!searchParams.get("officeId")) setSelectedOfficeId(me.officeId);
+  }, [me, searchParams]);
 
   // ── Effect B: Load AIP detail + WFP when both selectors are set ──────────
 

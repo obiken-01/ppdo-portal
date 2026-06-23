@@ -24,6 +24,7 @@ import {
   type SortingState,
 } from "@tanstack/react-table";
 import api from "@/lib/api";
+import { fetchMe } from "@/lib/me-cache";
 import { useToast } from "@/components/ui/Toast";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import type { MeResponse, PRSummaryResponse } from "@/types";
@@ -272,7 +273,7 @@ export default function PRListPage() {
   const router    = useRouter();
   const { toast } = useToast();
 
-  const [authChecked, setAuthChecked] = useState(false);
+  const [authChecked] = useState(true);
   const [me, setMe]                   = useState<MeResponse | null>(null);
 
   const [prs, setPRs]               = useState<PRSummaryResponse[]>([]);
@@ -303,11 +304,10 @@ export default function PRListPage() {
   // ── Auth guard ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    api.get<MeResponse>("/auth/me")
-      .then(({ data }) => {
+    fetchMe()
+      .then((data) => {
         if (!data.canAccessInventory) { router.replace(data.officeId != null ? "/budget-planning" : "/dashboard"); return; }
         setMe(data);
-        setAuthChecked(true);
       })
       .catch(() => router.replace("/login"));
   }, [router]);

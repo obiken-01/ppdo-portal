@@ -28,7 +28,8 @@ import {
   type SortingState,
 } from "@tanstack/react-table";
 import api from "@/lib/api";
-import type { ItemLedgerRowResponse, MeResponse } from "@/types";
+import { fetchMe } from "@/lib/me-cache";
+import type { ItemLedgerRowResponse } from "@/types";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -198,7 +199,7 @@ function MultiChip({
 
 export default function StockOverviewPage() {
   const router = useRouter();
-  const [authChecked, setAuthChecked] = useState(false);
+  const [authChecked] = useState(true);
 
   const [rows, setRows]             = useState<ItemLedgerRowResponse[]>([]);
   const [loading, setLoading]       = useState(true);
@@ -227,10 +228,9 @@ export default function StockOverviewPage() {
   // ── Auth guard ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    api.get<MeResponse>("/auth/me")
-      .then(({ data }) => {
+    fetchMe()
+      .then((data) => {
         if (!data.canAccessInventory) router.replace(data.officeId != null ? "/budget-planning" : "/dashboard");
-        else setAuthChecked(true);
       })
       .catch(() => router.replace("/login"));
   }, [router]);
