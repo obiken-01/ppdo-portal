@@ -30,8 +30,8 @@ public sealed class PurchaseRequest
     /// <summary>Requesting department. Defaults to "PPDO".</summary>
     public string Department { get; set; } = "PPDO";
 
-    /// <summary>Division that is requesting the items. Used for division-scope enforcement.</summary>
-    public Division Division { get; set; }
+    /// <summary>FK to the division requesting the items (v1.2 — RAL-97). Used for division-scope enforcement.</summary>
+    public int DivisionId { get; set; }
 
     /// <summary>Funding source. e.g. "General Fund".</summary>
     public string Fund { get; set; } = string.Empty;
@@ -102,6 +102,9 @@ public sealed class PurchaseRequest
 
     /// <summary>The user who submitted this PR.</summary>
     public User? CreatedBy { get; set; }
+
+    /// <summary>The division requesting the items.</summary>
+    public Division? Division { get; set; }
 
     /// <summary>Line items on this PR (Section 2 of the PR form).</summary>
     public ICollection<PRItem> Items { get; set; } = new List<PRItem>();

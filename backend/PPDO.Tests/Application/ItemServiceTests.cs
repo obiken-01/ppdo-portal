@@ -21,21 +21,23 @@ public sealed class ItemServiceTests
     private static User MakeAdmin() => new()
     {
         Id = Guid.NewGuid(), FullName = "Admin", Email = "admin@ppdo.gov.ph",
-        PasswordHash = "hash", Role = UserRole.Admin, Division = Division.Admin, IsActive = true,
+        PasswordHash = "hash", Role = UserRole.Admin, DivisionId = null, IsActive = true,
     };
 
     private static User MakeStaffWithInventory() => new()
     {
         Id = Guid.NewGuid(), FullName = "Staff", Email = "staff@ppdo.gov.ph",
-        PasswordHash = "hash", Role = UserRole.Staff, Division = Division.Planning, IsActive = true,
-        Group = new PermissionGroup { Id = Guid.NewGuid(), Name = "Admin Division Staff", CanAccessInventory = true },
+        PasswordHash = "hash", Role = UserRole.Staff, DivisionId = 2,
+        Division = new Division { Id = 2, OfficeId = 100, Name = "Planning Division", CanAccessInventory = true },
+        IsActive = true,
     };
 
     private static User MakeStaffNoInventory() => new()
     {
         Id = Guid.NewGuid(), FullName = "Staff2", Email = "staff2@ppdo.gov.ph",
-        PasswordHash = "hash", Role = UserRole.Staff, Division = Division.Planning, IsActive = true,
-        Group = new PermissionGroup { Id = Guid.NewGuid(), Name = "Planning Staff", CanAccessInventory = false },
+        PasswordHash = "hash", Role = UserRole.Staff, DivisionId = 2,
+        Division = new Division { Id = 2, OfficeId = 100, Name = "Planning Division", CanAccessInventory = false },
+        IsActive = true,
     };
 
     private static ItemMaster MakeItem(string stockNo = "01-01-01-01") => new()

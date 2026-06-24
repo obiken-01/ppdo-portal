@@ -58,7 +58,11 @@ public sealed class MeResponse
     public string Username { get; init; } = string.Empty;
     public string? Email { get; init; }
     public string Role { get; init; } = string.Empty;
-    /// <summary>Division name, or null for non-PPDO office users.</summary>
+
+    /// <summary>Division id, or null for SuperAdmin/Admin (no division).</summary>
+    public int? DivisionId { get; init; }
+
+    /// <summary>Division name, or null for SuperAdmin/Admin.</summary>
     public string? Division { get; init; }
 
     /// <summary>Provincial office id, or null for PPDO-internal users. New in v1.1.</summary>
@@ -81,4 +85,5 @@ public sealed class MeResponse
     public bool CanAccessBudgetPlanning { get; init; }
     public bool CanUploadAip { get; init; }
     public bool CanManageConfig { get; init; }
+    public bool CanManageAllocation { get; init; }
 }

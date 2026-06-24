@@ -492,7 +492,7 @@ out-of-scope → commit message). `RAL-81` is the reference example.
 - ❌ Do not fetch `/auth/me` (or other shared state) separately in each component — read it from shared context
 - ❌ Do not use `any` type in TypeScript — always type explicitly
 - ❌ Do not call APIs from Next.js Server Components — use Client Components with Axios via `api.ts`
-- ❌ Do not hardcode division names as strings — always use the `Division` enum
+- ❌ Do not reintroduce the old `Division` enum or `PermissionGroup` table — both were retired in v1.2 (RAL-97). Divisions are now a configurable `divisions` table (FK `users.division_id`) that carries data scope AND feature flags; the `Observer` role is also retired (roles: SuperAdmin/Admin/Staff)
 - ❌ Do not modify EF Core migrations manually after they have been applied
 - ❌ Do not use `Console.WriteLine` for logging — always use `ILogger<T>`
 - ❌ Do not use string interpolation in log messages — always use structured `{PropertyName}` parameters

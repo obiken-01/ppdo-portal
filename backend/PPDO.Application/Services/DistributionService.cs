@@ -22,6 +22,7 @@ public sealed class DistributionService : IDistributionService
     private readonly IItemMasterRepository   _items;
     private readonly IPermissionService      _permissions;
     private readonly IRepository<Distribution> _distributions;
+    private readonly IRepository<Division>    _divisions;
     private readonly ILogger<DistributionService> _logger;
 
     private static readonly char[] RefChars =
@@ -40,12 +41,14 @@ public sealed class DistributionService : IDistributionService
         IItemMasterRepository items,
         IPermissionService permissions,
         IRepository<Distribution> distributions,
+        IRepository<Division> divisions,
         ILogger<DistributionService> logger)
     {
         _deliveries    = deliveries;
         _items         = items;
         _permissions   = permissions;
         _distributions = distributions;
+        _divisions     = divisions;
         _logger        = logger;
     }
 
@@ -74,7 +77,7 @@ public sealed class DistributionService : IDistributionService
             return ServiceResult<ItemDistributionSummaryDto>.NotFound(
                 $"No activity found for StockNo '{stockNo}'.");
 
-        Division? scopeDivision = scope.Division;
+        int? scopeDivision = scope.DivisionId;
 
         // Load catalog entry for item details (optional — might be an orphan StockNo).
         ItemMaster? master = await _items.GetByStockNoAsync(stockNo, cancellationToken);
@@ -107,7 +110,7 @@ public sealed class DistributionService : IDistributionService
                     QtyAvailable:   Math.Max(0, b.QtyDelivered - distributed),
                     Distributions:  b.Distributions
                         .Select(d => new ExistingDistributionDto(
-                            d.Id, d.IssueRef, d.Division.ToString(),
+                            d.Id, d.IssueRef, d.DivisionId.ToString(),
                             d.QtyIssued, d.DateIssued, d.IssuedBy, d.Remarks))
                         .ToList());
             })
@@ -142,9 +145,13 @@ public sealed class DistributionService : IDistributionService
                 "You do not have permission to access Inventory.");
         }
 
-        if (!Enum.TryParse<Division>(dto.Division, ignoreCase: true, out Division division))
+        // Resolve the division name to a configurable division id (v1.2 — RAL-97).
+        IReadOnlyList<Division> allDivisions = await _divisions.GetAllAsync(cancellationToken);
+        Division? division = allDivisions.FirstOrDefault(
+            d => d.IsActive && string.Equals(d.Name, dto.Division, StringComparison.OrdinalIgnoreCase));
+        if (division is null)
             return ServiceResult<DistributionCreatedDto>.BadRequest(
-                $"Invalid division '{dto.Division}'. Must be one of: Admin, Planning, RM, MIS, SPD.");
+                $"Division '{dto.Division}' was not found. Configure it in Config → Divisions first.");
 
         if (dto.QtyIssued <= 0)
             return ServiceResult<DistributionCreatedDto>.BadRequest(
@@ -177,7 +184,7 @@ public sealed class DistributionService : IDistributionService
             Id             = Guid.NewGuid(),
             IssueRef       = issueRef,
             DeliveryItemId = dto.DeliveryItemId,
-            Division       = division,
+            DivisionId     = division.Id,
             QtyIssued      = dto.QtyIssued,
             DateIssued     = dto.DateIssued,
             IssuedBy       = dto.IssuedBy.Trim(),
@@ -188,8 +195,8 @@ public sealed class DistributionService : IDistributionService
         await _distributions.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation(
-            "Distribution recorded. IssueRef: {IssueRef}, DeliveryRef: {DeliveryRef}, Division: {Division}, QtyIssued: {QtyIssued}, IssuedBy: {IssuedBy}, UserId: {UserId}",
-            issueRef, breakdown.DeliveryRef, division, dto.QtyIssued, dto.IssuedBy, requester.Id);
+            "Distribution recorded. IssueRef: {IssueRef}, DeliveryRef: {DeliveryRef}, DivisionId: {DivisionId}, QtyIssued: {QtyIssued}, IssuedBy: {IssuedBy}, UserId: {UserId}",
+            issueRef, breakdown.DeliveryRef, division.Id, dto.QtyIssued, dto.IssuedBy, requester.Id);
 
         return ServiceResult<DistributionCreatedDto>.Ok(new DistributionCreatedDto(
             Id:             dist.Id,
@@ -199,7 +206,7 @@ public sealed class DistributionService : IDistributionService
             PRNo:           breakdown.PRNo,
             StockNo:        "—",   // requester can get this from context
             Description:    "—",
-            Division:       division.ToString(),
+            Division:       division.Name,
             QtyIssued:      dto.QtyIssued,
             DateIssued:     dto.DateIssued,
             IssuedBy:       dto.IssuedBy.Trim(),

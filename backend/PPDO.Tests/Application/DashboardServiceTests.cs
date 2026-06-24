@@ -24,7 +24,7 @@ public sealed class DashboardServiceTests
         Email    = "test@ppdo.gov.ph",
         PasswordHash = "hash",
         Role     = role,
-        Division = Division.Admin,
+        DivisionId = null,
         IsActive = true,
     };
 

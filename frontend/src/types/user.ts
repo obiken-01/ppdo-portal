@@ -1,7 +1,12 @@
 /** Mirrors PPDO.Application/DTOs/User/ */
 
-export type UserRole = "SuperAdmin" | "Admin" | "Staff" | "Observer";
-export type Division = "Admin" | "Planning" | "RM" | "MIS" | "SPD";
+// Observer retired in v1.2 (RAL-97).
+export type UserRole = "SuperAdmin" | "Admin" | "Staff";
+
+/**
+ * Division is a configurable record now (v1.2 — RAL-97), no longer a fixed enum.
+ * The user form fetches the list from GET /api/config/divisions (see DivisionResponse in ./config).
+ */
 
 export interface UserResponse {
   id: string;
@@ -9,11 +14,13 @@ export interface UserResponse {
   username: string;
   email?: string;
   role: UserRole;
-  division: Division | null;
+  /** Configurable division id — carries scope + feature flags. Null for SuperAdmin/Admin. */
+  divisionId: number | null;
+  /** Division name (display only). */
+  division: string | null;
   /** Provincial office (v1.1) — set for non-PPDO office users. */
   officeId: number | null;
   officeName: string | null;
-  groupId: string | null;
   position: string | null;
   contactNo: string | null;
   isActive: boolean;
@@ -25,6 +32,7 @@ export interface UserResponse {
   overrideCanAccessBudgetPlanning: boolean | null;
   overrideCanUploadAip: boolean | null;
   overrideCanManageConfig: boolean | null;
+  overrideCanManageAllocation: boolean | null;
 }
 
 export interface CreateUserRequest {
@@ -32,16 +40,15 @@ export interface CreateUserRequest {
   username: string;
   email?: string;
   role: UserRole;
-  division: Division | null;
-  /** Set to create a non-PPDO office user (Division is then ignored). */
+  /** Configurable division id — required for Staff, null for SuperAdmin/Admin. */
+  divisionId: number | null;
+  /** Set to create a non-PPDO office user (its division must belong to that office). */
   officeId: number | null;
   position: string | null;
   contactNo: string | null;
-  // groupId intentionally omitted — backend auto-assigns from Role + Division/office
 }
 
 export interface UpdateUserRequest extends CreateUserRequest {
-  groupId: string | null;
   isActive: boolean;
   overrideCanAccessInventory: boolean | null;
   overrideCanAccessReports: boolean | null;
@@ -50,19 +57,7 @@ export interface UpdateUserRequest extends CreateUserRequest {
   overrideCanAccessBudgetPlanning: boolean | null;
   overrideCanUploadAip: boolean | null;
   overrideCanManageConfig: boolean | null;
+  overrideCanManageAllocation: boolean | null;
 }
 
-export interface PermissionGroupResponse {
-  id: string;
-  name: string;
-  division: Division | null;
-  canAccessInventory: boolean;
-  canAccessReports: boolean;
-  canManageUsers: boolean;
-  canManageResourceLinks: boolean;
-  canAccessBudgetPlanning: boolean;
-  canUploadAip: boolean;
-  canManageConfig: boolean;
-}
-
-// OfficeResponse moved to ./config.ts (RAL-73) — re-exported via the @/types barrel.
+// OfficeResponse / DivisionResponse live in ./config.ts — re-exported via the @/types barrel.

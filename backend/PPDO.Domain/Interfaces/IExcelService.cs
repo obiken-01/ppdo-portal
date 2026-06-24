@@ -63,7 +63,8 @@ public sealed record PurchaseRequestImportRow
 
     // ── Section 1 — PR header ─────────────────────────────────────────────────
 
-    public required Division Division { get; init; }
+    /// <summary>Raw division text parsed from the sheet — resolved to a division id at import time.</summary>
+    public required string DivisionName { get; init; }
     public required string RequestedBy { get; init; }
     public required DateOnly PRDate { get; init; }
     public string Department { get; init; } = "PPDO";

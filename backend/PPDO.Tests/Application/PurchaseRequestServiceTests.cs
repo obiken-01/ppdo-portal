@@ -22,41 +22,59 @@ public sealed class PurchaseRequestServiceTests
 {
     // ── Fixtures ──────────────────────────────────────────────────────────────
 
-    private static User MakeAdmin(Division division = Division.Admin) => new()
+    // Division ids: 1 = "Administrative Division", 2 = "Planning Division" (see DivisionsRepo()).
+    private const int AdminDiv = 1;
+    private const int PlanningDiv = 2;
+
+    private static Division DivEntity(int id, bool inventory) => new()
+    {
+        Id = id, OfficeId = 100,
+        Name = id == AdminDiv ? "Administrative Division" : "Planning Division",
+        CanAccessInventory = inventory,
+    };
+
+    private static User MakeAdmin(int? divisionId = null) => new()
     {
         Id = Guid.NewGuid(), FullName = "Admin User", Email = "admin@ppdo.gov.ph",
-        PasswordHash = "hash", Role = UserRole.Admin, Division = division, IsActive = true,
+        PasswordHash = "hash", Role = UserRole.Admin, DivisionId = divisionId, IsActive = true,
     };
 
-    private static User MakeStaff(Division division = Division.Planning) => new()
+    private static User MakeStaff(int divisionId = PlanningDiv) => new()
     {
         Id = Guid.NewGuid(), FullName = "Staff User", Email = "staff@ppdo.gov.ph",
-        PasswordHash = "hash", Role = UserRole.Staff, Division = division, IsActive = true,
-        Group = new PermissionGroup
-        {
-            Id = Guid.NewGuid(), Name = "Admin Division Staff", CanAccessInventory = true,
-        },
+        PasswordHash = "hash", Role = UserRole.Staff, DivisionId = divisionId,
+        Division = DivEntity(divisionId, inventory: true), IsActive = true,
     };
 
-    private static User MakeStaffNoInventory(Division division = Division.Planning) => new()
+    private static User MakeStaffNoInventory(int divisionId = PlanningDiv) => new()
     {
         Id = Guid.NewGuid(), FullName = "Staff No Inv", Email = "staff2@ppdo.gov.ph",
-        PasswordHash = "hash", Role = UserRole.Staff, Division = division, IsActive = true,
-        Group = new PermissionGroup
-        {
-            Id = Guid.NewGuid(), Name = "Planning Staff", CanAccessInventory = false,
-        },
+        PasswordHash = "hash", Role = UserRole.Staff, DivisionId = divisionId,
+        Division = DivEntity(divisionId, inventory: false), IsActive = true,
     };
 
-    private static PurchaseRequest MakePR(string prNo, Division division = Division.Admin) => new()
+    private static PurchaseRequest MakePR(string prNo, int divisionId = AdminDiv) => new()
     {
         Id = Guid.NewGuid(), PRNo = prNo, PRDate = DateOnly.FromDateTime(DateTime.UtcNow),
-        DateCreated = DateTime.UtcNow, Department = "PPDO", Division = division,
+        DateCreated = DateTime.UtcNow, Department = "PPDO", DivisionId = divisionId,
         Fund = "General Fund", RequestedBy = "Test Staff", Position = "Staff",
         Status = PRStatus.Open, TotalAmount = 0m,
         CreatedById = Guid.NewGuid(), CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
         Items = new List<PRItem>(),
     };
+
+    // Divisions repo for name → id resolution during create/update.
+    private static Mock<IRepository<Division>> DivisionsRepo()
+    {
+        Mock<IRepository<Division>> repo = new();
+        repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Division>
+            {
+                new() { Id = AdminDiv,    OfficeId = 100, Name = "Administrative Division", IsActive = true },
+                new() { Id = PlanningDiv, OfficeId = 100, Name = "Planning Division",       IsActive = true },
+            });
+        return repo;
+    }
 
     private static ItemMaster MakeItemMaster(string stockNo, decimal unitCost = 220m) => new()
     {
@@ -65,10 +83,10 @@ public sealed class PurchaseRequestServiceTests
         CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
     };
 
-    private static CreatePRDto ValidDto(Division division = Division.Planning) => new()
+    private static CreatePRDto ValidDto(string division = "Planning Division") => new()
     {
         PRDate = DateOnly.FromDateTime(DateTime.UtcNow),
-        Division = division.ToString(),
+        Division = division,
         Fund = "General Fund",
         RequestedBy = "Test Staff",
         Position = "Staff I",
@@ -106,12 +124,14 @@ public sealed class PurchaseRequestServiceTests
     private static PurchaseRequestService BuildSut(
         Mock<IPurchaseRequestRepository> prRepo,
         Mock<IItemMasterRepository>? itemRepo = null,
-        Mock<IExcelService>? excelService = null)
+        Mock<IExcelService>? excelService = null,
+        Mock<IRepository<Division>>? divisionRepo = null)
         => new(
             prRepo.Object,
             (itemRepo ?? RepoItemThatSaves()).Object,
             new PermissionService(),
             (excelService ?? new Mock<IExcelService>()).Object,
+            (divisionRepo ?? DivisionsRepo()).Object,
             NullLogger<PurchaseRequestService>.Instance);
 
     // ── PRNo generation ───────────────────────────────────────────────────────
@@ -125,7 +145,7 @@ public sealed class PurchaseRequestServiceTests
             .ReturnsAsync((ItemMaster?)null);
 
         ServiceResult<PRResponseDto> result =
-            await BuildSut(prRepo, itemRepo).CreateAsync(MakeAdmin(), ValidDto(Division.Admin));
+            await BuildSut(prRepo, itemRepo).CreateAsync(MakeAdmin(), ValidDto("Administrative Division"));
 
         Assert.True(result.IsSuccess);
         Assert.Matches(@"^101-1041-GF-\d{4}-\d{2}-\d{2}-001$", result.Value!.PRNo);
@@ -143,7 +163,7 @@ public sealed class PurchaseRequestServiceTests
             .ReturnsAsync((ItemMaster?)null);
 
         ServiceResult<PRResponseDto> result =
-            await BuildSut(prRepo, itemRepo).CreateAsync(MakeAdmin(), ValidDto(Division.Admin));
+            await BuildSut(prRepo, itemRepo).CreateAsync(MakeAdmin(), ValidDto("Administrative Division"));
 
         Assert.True(result.IsSuccess);
         Assert.EndsWith("-006", result.Value!.PRNo);
@@ -155,11 +175,11 @@ public sealed class PurchaseRequestServiceTests
     public async Task CreateAsync_StaffSubmittingForOtherDivision_ReturnsForbidden()
     {
         // Staff is in Planning; tries to submit a PR for Admin division.
-        User staff = MakeStaff(Division.Planning);
+        User staff = MakeStaff(PlanningDiv);
         Mock<IPurchaseRequestRepository> prRepo = RepoPRThatSaves();
 
         ServiceResult<PRResponseDto> result =
-            await BuildSut(prRepo).CreateAsync(staff, ValidDto(Division.Admin));
+            await BuildSut(prRepo).CreateAsync(staff, ValidDto("Administrative Division"));
 
         Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
     }
@@ -167,14 +187,14 @@ public sealed class PurchaseRequestServiceTests
     [Fact]
     public async Task CreateAsync_StaffSubmittingForOwnDivision_Succeeds()
     {
-        User staff = MakeStaff(Division.Planning);
+        User staff = MakeStaff(PlanningDiv);
         Mock<IPurchaseRequestRepository> prRepo = RepoPRThatSaves();
         Mock<IItemMasterRepository> itemRepo = RepoItemThatSaves();
         itemRepo.Setup(r => r.GetByStockNoAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((ItemMaster?)null);
 
         ServiceResult<PRResponseDto> result =
-            await BuildSut(prRepo, itemRepo).CreateAsync(staff, ValidDto(Division.Planning));
+            await BuildSut(prRepo, itemRepo).CreateAsync(staff, ValidDto("Planning Division"));
 
         Assert.True(result.IsSuccess);
     }
@@ -185,7 +205,7 @@ public sealed class PurchaseRequestServiceTests
         Mock<IPurchaseRequestRepository> prRepo = RepoPRThatSaves();
 
         ServiceResult<PRResponseDto> result =
-            await BuildSut(prRepo).CreateAsync(MakeStaffNoInventory(), ValidDto(Division.Planning));
+            await BuildSut(prRepo).CreateAsync(MakeStaffNoInventory(), ValidDto("Planning Division"));
 
         Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
     }
@@ -195,8 +215,8 @@ public sealed class PurchaseRequestServiceTests
     [Fact]
     public async Task GetByIdAsync_StaffViewingOtherDivisionPR_ReturnsForbidden()
     {
-        User staff = MakeStaff(Division.Planning);
-        PurchaseRequest adminPR = MakePR("101-1041-GF-2026-06-01-001", Division.Admin);
+        User staff = MakeStaff(PlanningDiv);
+        PurchaseRequest adminPR = MakePR("101-1041-GF-2026-06-01-001", AdminDiv);
         adminPR.Items = new List<PRItem>();
 
         Mock<IPurchaseRequestRepository> prRepo = new();
@@ -212,8 +232,8 @@ public sealed class PurchaseRequestServiceTests
     [Fact]
     public async Task GetByIdAsync_StaffViewingOwnDivisionPR_ReturnsOk()
     {
-        User staff = MakeStaff(Division.Planning);
-        PurchaseRequest planningPR = MakePR("101-1041-GF-2026-06-01-002", Division.Planning);
+        User staff = MakeStaff(PlanningDiv);
+        PurchaseRequest planningPR = MakePR("101-1041-GF-2026-06-01-002", PlanningDiv);
         planningPR.Items = new List<PRItem>();
 
         Mock<IPurchaseRequestRepository> prRepo = new();
@@ -245,7 +265,7 @@ public sealed class PurchaseRequestServiceTests
         CreatePRDto dto = new()
         {
             PRDate = DateOnly.FromDateTime(DateTime.UtcNow),
-            Division = Division.Admin.ToString(),
+            Division = "Administrative Division",
             Fund = "General Fund",
             RequestedBy = "Test",
             Position = "Staff",
@@ -279,7 +299,7 @@ public sealed class PurchaseRequestServiceTests
         CreatePRDto dto = new()
         {
             PRDate = DateOnly.FromDateTime(DateTime.UtcNow),
-            Division = Division.Admin.ToString(),
+            Division = "Administrative Division",
             Fund = "General Fund",
             RequestedBy = "Test",
             Position = "Staff",
@@ -337,14 +357,14 @@ public sealed class PurchaseRequestServiceTests
     [Fact]
     public async Task ImportFromExcelAsync_WrongDivisionSheet_ReturnsForbidden_WithoutCreatingAnyPR()
     {
-        User staff = MakeStaff(Division.Planning);
+        User staff = MakeStaff(PlanningDiv);
 
         IReadOnlyList<PurchaseRequestImportRow> rows = new List<PurchaseRequestImportRow>
         {
             new()
             {
                 SheetName   = "PR-001",
-                Division    = Division.Admin, // wrong division for Planning staff
+                DivisionName = "Administrative Division", // wrong division for Planning staff
                 RequestedBy = "Test",
                 PRDate      = DateOnly.FromDateTime(DateTime.UtcNow),
                 Items       = new List<PRItemImportRow>

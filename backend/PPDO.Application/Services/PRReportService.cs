@@ -120,8 +120,8 @@ public sealed class PRReportService : IPRReportService
             return ServiceResult<(PurchaseRequest, IReadOnlyList<Delivery>)>.NotFound(
                 $"Purchase Request {prId} not found.");
 
-        if (requester.Role is UserRole.Staff or UserRole.Observer
-            && pr.Division != requester.Division)
+        if (requester.Role is UserRole.Staff
+            && pr.DivisionId != requester.DivisionId)
         {
             _logger.LogWarning(
                 "Permission denied — user {UserId} attempted to access report for PR {PRNo}.",
@@ -140,7 +140,7 @@ public sealed class PRReportService : IPRReportService
 
     private static PRResponseDto MapToPRResponse(PurchaseRequest pr) => new(
         pr.Id, pr.PRNo, pr.PRDate, pr.DateCreated,
-        pr.Department, pr.Division.ToString(), pr.Fund,
+        pr.Department, pr.Division?.Name ?? "", pr.Fund,
         pr.RequestedBy, pr.Position,
         pr.ApprovedBy, pr.ApprovingPosition,
         pr.AIPCode, pr.AccountNo, pr.AccountTitle,
@@ -197,7 +197,7 @@ public sealed class PRReportService : IPRReportService
                         QtyDelivered: di.QtyDelivered,
                         DeliveryRef:  delivery.DeliveryRef,
                         DeliveryDate: delivery.DeliveryDate,
-                        Division:     dist.Division.ToString(),
+                        Division:     dist.Division?.Name ?? "",
                         QtyIssued:    dist.QtyIssued,
                         IssueRef:     dist.IssueRef,
                         DateIssued:   dist.DateIssued,

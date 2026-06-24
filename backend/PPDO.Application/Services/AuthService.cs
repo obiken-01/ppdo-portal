@@ -149,7 +149,8 @@ public sealed class AuthService : IAuthService
             Username = user.Username,
             Email    = user.Email,
             Role     = user.Role.ToString(),
-            Division = user.Division?.ToString(),   // null for non-PPDO office users
+            DivisionId = user.DivisionId,
+            Division = user.Division?.Name,          // null for SuperAdmin/Admin
             OfficeId   = user.OfficeId,
             OfficeCode = user.Office?.OfficeCode,
             OfficeName = user.Office?.OfficeName,
@@ -162,6 +163,7 @@ public sealed class AuthService : IAuthService
             CanAccessBudgetPlanning = await _permissions.CanAccessBudgetPlanningAsync(user, cancellationToken),
             CanUploadAip            = await _permissions.CanUploadAipAsync(user, cancellationToken),
             CanManageConfig         = await _permissions.CanManageConfigAsync(user, cancellationToken),
+            CanManageAllocation     = await _permissions.CanManageAllocationAsync(user, cancellationToken),
         };
     }
 
@@ -188,11 +190,10 @@ public sealed class AuthService : IAuthService
         if (user.Email is string email)
             claims.Add(new Claim(JwtClaimNames.Email, email));
 
-        // Division is nullable from v1.1 (non-PPDO office users have none) — only emit
-        // the div claim when present. Scoping reads Division from the loaded user, not
-        // this claim, so omitting it is safe. (The optional office claim is deferred — §9.)
-        if (user.Division is Division division)
-            claims.Add(new Claim(JwtClaimNames.Division, ((int)division).ToString()));
+        // Division id is null for SuperAdmin/Admin — only emit the div claim when present.
+        // Scoping reads DivisionId from the loaded user, not this claim, so omitting is safe.
+        if (user.DivisionId is int divisionId)
+            claims.Add(new Claim(JwtClaimNames.Division, divisionId.ToString()));
 
         SecurityTokenDescriptor descriptor = new()
         {

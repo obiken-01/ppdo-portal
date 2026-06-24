@@ -161,7 +161,7 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
         ws.Row(1).Height = 28;
 
         // Row 2: Division sub-header — A:J
-        ws.Cell(2, 1).Value = pr.Division.ToString();
+        ws.Cell(2, 1).Value = (pr.Division?.Name ?? "");
         ws.Cell(2, 1).Style
             .Font.SetFontSize(11)
             .Font.SetItalic(true)
@@ -249,7 +249,7 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
         Pair("PR Date",           pr.PRDate.ToShortDateString(),
              "Quarter",           ToQuarter(pr.PRDate));
         Pair("Department",        pr.Department,
-             "Division",          pr.Division.ToString());
+             "Division",          (pr.Division?.Name ?? ""));
         Pair("Fund",              pr.Fund,
              "",                  "");
         Pair("Requested By",      pr.RequestedBy,
@@ -479,7 +479,7 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
                     ws.Cell(r, 5).Value  = delivery.DeliveryRef;
                     ws.Cell(r, 6).Value  = delivery.DeliveryDate.ToDateTime(TimeOnly.MinValue);
                     ws.Cell(r, 6).Style.NumberFormat.SetFormat("yyyy-MM-dd");
-                    ws.Cell(r, 7).Value  = dist.Division.ToString();
+                    ws.Cell(r, 7).Value  = (dist.Division?.Name ?? "");
                     ws.Cell(r, 8).Value  = dist.QtyIssued;
                     ws.Cell(r, 9).Value  = dist.IssueRef;
                     ws.Cell(r, 10).Value = dist.DateIssued.ToDateTime(TimeOnly.MinValue);
@@ -566,13 +566,8 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
             if (string.IsNullOrWhiteSpace(requestedBy))
                 sheetErrors.Add($"[{ws.Name}] Requested By is required.");
 
-            Division division = Division.Admin;
-            if (!string.IsNullOrWhiteSpace(divisionRaw)
-                && !Enum.TryParse(divisionRaw, ignoreCase: true, out division))
-            {
-                sheetErrors.Add($"[{ws.Name}] Division '{divisionRaw}' is not valid. " +
-                                $"Valid values: Admin, Planning, RM, MIS, SPD.");
-            }
+            // Division is the raw sheet text — resolved to a division id at import time by
+            // PurchaseRequestService against the configurable divisions table (v1.2 — RAL-97).
 
             DateOnly prDate = DateOnly.MinValue;
             if (string.IsNullOrWhiteSpace(prDateRaw))
@@ -644,7 +639,7 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
                 results.Add(new PurchaseRequestImportRow
                 {
                     SheetName           = ws.Name,
-                    Division            = division,
+                    DivisionName        = divisionRaw,
                     RequestedBy         = requestedBy,
                     PRDate              = prDate,
                     Department          = ws.Cell(ROW_DEPARTMENT,         2).GetString().Trim() is { Length: > 0 } d ? d : "PPDO",
@@ -727,7 +722,7 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
 
         // ── Section 1 values ──────────────────────────────────────────────────
         Value(ROW_DEPARTMENT,         prefilled ? pr!.Department  : "PPDO",   isAuto: true);
-        Value(ROW_DIVISION,           prefilled ? pr!.Division.ToString()      : null);
+        Value(ROW_DIVISION,           prefilled ? (pr!.Division?.Name ?? "")      : null);
         Value(ROW_FUND,               prefilled ? pr!.Fund                     : null);
         Value(ROW_REQUESTED_BY,       prefilled ? pr!.RequestedBy              : null);
         Value(ROW_POSITION,           prefilled ? pr!.Position                 : null);
@@ -871,7 +866,7 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
                     ws.Cell(dataRow, 2).Value = di.PRItem?.Description ?? "";
                     ws.Cell(dataRow, 3).Value = di.PRItem?.Unit ?? "";
                     ws.Cell(dataRow, 4).Value = di.QtyDelivered;
-                    ws.Cell(dataRow, 5).Value = dist.Division.ToString();
+                    ws.Cell(dataRow, 5).Value = (dist.Division?.Name ?? "");
                     ws.Cell(dataRow, 6).Value = dist.QtyIssued;
                     ws.Cell(dataRow, 7).Value = dist.IssueRef;
 

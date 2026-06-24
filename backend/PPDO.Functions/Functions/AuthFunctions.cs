@@ -120,6 +120,7 @@ public sealed class AuthFunctions
             Username                = me.Username,
             Email                   = me.Email,
             Role                    = me.Role,
+            DivisionId              = me.DivisionId,
             Division                = me.Division,
             OfficeId                = me.OfficeId,
             OfficeCode              = me.OfficeCode,
@@ -133,6 +134,7 @@ public sealed class AuthFunctions
             CanAccessBudgetPlanning = me.CanAccessBudgetPlanning,
             CanUploadAip            = me.CanUploadAip,
             CanManageConfig         = me.CanManageConfig,
+            CanManageAllocation     = me.CanManageAllocation,
         };
 
         return await Ok(req, dto, cancellationToken);

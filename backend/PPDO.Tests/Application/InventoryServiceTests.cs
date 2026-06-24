@@ -18,26 +18,29 @@ public sealed class InventoryServiceTests
 {
     // ── Fixtures ──────────────────────────────────────────────────────────────
 
+    private const int PlanningDiv = 2;
+
     private static User MakeAdmin() => new()
     {
         Id = Guid.NewGuid(), FullName = "Admin", Email = "admin@ppdo.gov.ph",
-        PasswordHash = "hash", Role = UserRole.Admin, Division = Division.Admin, IsActive = true,
+        PasswordHash = "hash", Role = UserRole.Admin, DivisionId = null, IsActive = true,
     };
 
-    private static User MakeStaff(Division division = Division.Planning) => new()
+    private static User MakeStaff(int divisionId = PlanningDiv) => new()
     {
         Id = Guid.NewGuid(), FullName = "Staff", Email = "staff@ppdo.gov.ph",
-        PasswordHash = "hash", Role = UserRole.Staff, Division = division, IsActive = true,
-        Group = new PermissionGroup { Id = Guid.NewGuid(), Name = "Admin Division Staff", CanAccessInventory = true },
+        PasswordHash = "hash", Role = UserRole.Staff, DivisionId = divisionId,
+        Division = new Division { Id = divisionId, OfficeId = 100, Name = "Planning Division", CanAccessInventory = true },
+        IsActive = true,
     };
 
-    private static PurchaseRequest MakePR(PRStatus status, Division division = Division.Admin,
+    private static PurchaseRequest MakePR(PRStatus status, int divisionId = 1,
         decimal total = 0m) => new()
     {
         Id = Guid.NewGuid(), PRNo = "101-1041-GF-2026-06-02-001",
         PRDate = DateOnly.FromDateTime(DateTime.UtcNow),
         DateCreated = DateTime.UtcNow, Department = "PPDO",
-        Division = division, Fund = "GAD", RequestedBy = "Ralph",
+        DivisionId = divisionId, Fund = "GAD", RequestedBy = "Ralph",
         Position = "Staff", Status = status, TotalAmount = total,
         CreatedById = Guid.NewGuid(), CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
         Items = new List<PRItem>(), Deliveries = new List<Delivery>(),
@@ -120,16 +123,16 @@ public sealed class InventoryServiceTests
     [Fact]
     public async Task GetStatsAsync_StaffRole_ScopesQueryToDivision()
     {
-        User staff = MakeStaff(Division.Planning);
-        Division? capturedDivision = null;
+        User staff = MakeStaff(PlanningDiv);
+        int? capturedDivision = null;
 
         Mock<IPurchaseRequestRepository> prRepo = new();
-        prRepo.Setup(r => r.GetByDivisionAsync(Division.Planning, It.IsAny<CancellationToken>()))
+        prRepo.Setup(r => r.GetByDivisionAsync(PlanningDiv, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<PurchaseRequest>());
 
         Mock<IInventoryRepository> invRepo = new();
-        invRepo.Setup(r => r.GetItemStockLevelsAsync(It.IsAny<Division?>(), It.IsAny<CancellationToken>()))
-            .Callback<Division?, CancellationToken>((d, _) => capturedDivision = d)
+        invRepo.Setup(r => r.GetItemStockLevelsAsync(It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .Callback<int?, CancellationToken>((d, _) => capturedDivision = d)
             .ReturnsAsync(new List<ItemStockLevel>());
 
         Mock<IItemMasterRepository> itemRepo = new();
@@ -139,22 +142,22 @@ public sealed class InventoryServiceTests
         await BuildSut(invRepo, prRepo, itemRepo).GetStatsAsync(staff);
 
         // Staff → should scope to Planning division.
-        prRepo.Verify(r => r.GetByDivisionAsync(Division.Planning, It.IsAny<CancellationToken>()), Times.Once);
-        Assert.Equal(Division.Planning, capturedDivision);
+        prRepo.Verify(r => r.GetByDivisionAsync(PlanningDiv, It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal(PlanningDiv, capturedDivision);
     }
 
     [Fact]
     public async Task GetStatsAsync_AdminRole_PassesNullDivision()
     {
-        Division? capturedDivision = (Division?)999; // sentinel — not null
+        int? capturedDivision = 999; // sentinel — not null
 
         Mock<IPurchaseRequestRepository> prRepo = new();
         prRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<PurchaseRequest>());
 
         Mock<IInventoryRepository> invRepo = new();
-        invRepo.Setup(r => r.GetItemStockLevelsAsync(It.IsAny<Division?>(), It.IsAny<CancellationToken>()))
-            .Callback<Division?, CancellationToken>((d, _) => capturedDivision = d)
+        invRepo.Setup(r => r.GetItemStockLevelsAsync(It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .Callback<int?, CancellationToken>((d, _) => capturedDivision = d)
             .ReturnsAsync(new List<ItemStockLevel>());
 
         Mock<IItemMasterRepository> itemRepo = new();
@@ -171,8 +174,7 @@ public sealed class InventoryServiceTests
     private static User MakeOfficeStaff() => new()
     {
         Id = Guid.NewGuid(), FullName = "Office Encoder", Email = "office@lgu.gov.ph",
-        PasswordHash = "hash", Role = UserRole.Staff, Division = null, OfficeId = 7, IsActive = true,
-        Group = new PermissionGroup { Id = Guid.NewGuid(), Name = "Office User Default" },
+        PasswordHash = "hash", Role = UserRole.Staff, DivisionId = null, OfficeId = 7, IsActive = true,
     };
 
     [Fact]
@@ -193,7 +195,7 @@ public sealed class InventoryServiceTests
 
         // Must NOT fall through to the all-divisions query.
         prRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
-        prRepo.Verify(r => r.GetByDivisionAsync(It.IsAny<Division>(), It.IsAny<CancellationToken>()), Times.Never);
+        prRepo.Verify(r => r.GetByDivisionAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -207,7 +209,7 @@ public sealed class InventoryServiceTests
             await BuildSut(invRepo, prRepo, itemRepo).GetItemLedgerAsync(MakeOfficeStaff());
 
         Assert.Empty(result);
-        invRepo.Verify(r => r.GetItemStockLevelsAsync(It.IsAny<Division?>(), It.IsAny<CancellationToken>()), Times.Never);
+        invRepo.Verify(r => r.GetItemStockLevelsAsync(It.IsAny<int?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     // ── Group 2 — Stock alert counts ──────────────────────────────────────────

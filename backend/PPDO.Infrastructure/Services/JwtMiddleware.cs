@@ -88,9 +88,9 @@ public sealed class JwtMiddleware : IJwtMiddleware
             if (!Guid.TryParse(subClaim, out Guid userId))
                 return null;
 
-            // Load the user with their Group — Group is required for permission resolution.
+            // Load the user with their Division — Division carries the flags used in permission resolution.
             User? user = await _context.Users
-                .Include(u => u.Group)          // depth 1
+                .Include(u => u.Division)       // depth 1 — carries feature flags
                 .Include(u => u.Office)         // depth 1 — null for PPDO-internal users
                 .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
 

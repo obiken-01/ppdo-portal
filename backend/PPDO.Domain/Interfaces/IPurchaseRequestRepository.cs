@@ -1,5 +1,4 @@
 using PPDO.Domain.Entities;
-using PPDO.Domain.Enums;
 
 namespace PPDO.Domain.Interfaces;
 
@@ -32,8 +31,8 @@ public interface IPurchaseRequestRepository : IRepository<PurchaseRequest>
     Task<PurchaseRequest?> GetWithItemsAndDeliveriesAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Returns all PRs for the given division, ordered by PRDate descending.
-    /// Used to enforce division-scope read rules for Staff and Observer roles.
+    /// Returns all PRs for the given division id, ordered by PRDate descending.
+    /// Used to enforce division-scope read rules for Staff.
     /// </summary>
-    Task<IReadOnlyList<PurchaseRequest>> GetByDivisionAsync(Division division, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<PurchaseRequest>> GetByDivisionAsync(int divisionId, CancellationToken cancellationToken = default);
 }

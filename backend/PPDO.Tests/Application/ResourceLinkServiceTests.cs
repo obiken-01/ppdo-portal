@@ -20,31 +20,25 @@ public sealed class ResourceLinkServiceTests
     private static User MakeAdmin() => new()
     {
         Id = Guid.NewGuid(), FullName = "Admin", Email = "admin@ppdo.gov.ph",
-        PasswordHash = "hash", Role = UserRole.Admin, Division = Division.Admin, IsActive = true,
+        PasswordHash = "hash", Role = UserRole.Admin, DivisionId = null, IsActive = true,
     };
 
     private static User MakeSuperAdmin() => new()
     {
         Id = Guid.NewGuid(), FullName = "SA", Email = "sa@ppdo.gov.ph",
-        PasswordHash = "hash", Role = UserRole.SuperAdmin, Division = Division.Admin, IsActive = true,
+        PasswordHash = "hash", Role = UserRole.SuperAdmin, DivisionId = null, IsActive = true,
     };
 
     private static User MakeStaff(bool canManageLinks = true) => new()
     {
         Id = Guid.NewGuid(), FullName = "Staff", Email = "staff@ppdo.gov.ph",
-        PasswordHash = "hash", Role = UserRole.Staff, Division = Division.Planning, IsActive = true,
-        Group = new PermissionGroup
+        PasswordHash = "hash", Role = UserRole.Staff, DivisionId = 2,
+        Division = new Division
         {
-            Id = Guid.NewGuid(), Name = "Planning Staff",
+            Id = 2, OfficeId = 100, Name = "Planning Division",
             CanManageResourceLinks = canManageLinks,
         },
-    };
-
-    private static User MakeObserver() => new()
-    {
-        Id = Guid.NewGuid(), FullName = "Observer", Email = "obs@ppdo.gov.ph",
-        PasswordHash = "hash", Role = UserRole.Observer, Division = Division.Admin, IsActive = true,
-        Group = new PermissionGroup { Id = Guid.NewGuid(), Name = "Observer Default" },
+        IsActive = true,
     };
 
     private static ResourceLink MakeLink(int linkOrder = 1) => new()
@@ -146,13 +140,13 @@ public sealed class ResourceLinkServiceTests
     }
 
     [Fact]
-    public async Task CreateAsync_Observer_ReturnsForbidden()
+    public async Task CreateAsync_StaffWithoutManageLinks_ReturnsForbidden()
     {
         Mock<IRepository<ResourceLink>> repo = new();
         CreateResourceLinkDto dto = new("Link", "https://example.com", "General", 5, 1);
 
         ServiceResult<ResourceLinkDto> result =
-            await BuildSut(repo).CreateAsync(MakeObserver(), dto);
+            await BuildSut(repo).CreateAsync(MakeStaff(canManageLinks: false), dto);
 
         Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
     }

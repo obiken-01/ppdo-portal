@@ -18,24 +18,33 @@ public sealed class PRReportServiceTests
 {
     // ── Fixtures ──────────────────────────────────────────────────────────────
 
+    private const int AdminDiv = 1;
+    private const int PlanningDiv = 2;
+
+    private static string DivName(int id) => id == AdminDiv ? "Administrative Division" : "Planning Division";
+    private static Division DivEntity(int id, bool inventory = false) => new()
+    {
+        Id = id, OfficeId = 100, Name = DivName(id), CanAccessInventory = inventory,
+    };
+
     private static User MakeAdmin() => new()
     {
         Id = Guid.NewGuid(), FullName = "Admin", Email = "admin@ppdo.gov.ph",
-        PasswordHash = "hash", Role = UserRole.Admin, Division = Division.Admin, IsActive = true,
+        PasswordHash = "hash", Role = UserRole.Admin, DivisionId = null, IsActive = true,
     };
 
-    private static User MakeStaff(Division division = Division.Planning) => new()
+    private static User MakeStaff(int divisionId = PlanningDiv) => new()
     {
         Id = Guid.NewGuid(), FullName = "Staff", Email = "staff@ppdo.gov.ph",
-        PasswordHash = "hash", Role = UserRole.Staff, Division = division, IsActive = true,
-        Group = new PermissionGroup { Id = Guid.NewGuid(), Name = "Admin Division Staff", CanAccessInventory = true },
+        PasswordHash = "hash", Role = UserRole.Staff, DivisionId = divisionId,
+        Division = DivEntity(divisionId, inventory: true), IsActive = true,
     };
 
     private static User MakeStaffNoInventory() => new()
     {
         Id = Guid.NewGuid(), FullName = "No Inv", Email = "noinv@ppdo.gov.ph",
-        PasswordHash = "hash", Role = UserRole.Staff, Division = Division.Planning, IsActive = true,
-        Group = new PermissionGroup { Id = Guid.NewGuid(), Name = "Planning Staff", CanAccessInventory = false },
+        PasswordHash = "hash", Role = UserRole.Staff, DivisionId = PlanningDiv,
+        Division = DivEntity(PlanningDiv, inventory: false), IsActive = true,
     };
 
     private static PRItem MakePRItem(Guid prId, int itemNo = 1, decimal qty = 10m) => new()
@@ -46,13 +55,14 @@ public sealed class PRReportServiceTests
     };
 
     private static PurchaseRequest MakePR(
-        Division division = Division.Admin,
+        int divisionId = AdminDiv,
         IEnumerable<PRItem>? items = null) => new()
     {
         Id = Guid.NewGuid(), PRNo = "101-1041-GF-2026-06-02-001",
         PRDate = DateOnly.FromDateTime(DateTime.UtcNow),
         DateCreated = DateTime.UtcNow, Department = "PPDO",
-        Division = division, Fund = "General Fund", RequestedBy = "Ralph",
+        DivisionId = divisionId, Division = DivEntity(divisionId),
+        Fund = "General Fund", RequestedBy = "Ralph",
         Position = "Staff", Status = PRStatus.Open,
         CreatedById = Guid.NewGuid(), CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
         Items = items?.ToList() ?? new List<PRItem>(),
@@ -63,7 +73,7 @@ public sealed class PRReportServiceTests
         Guid prId,
         PRItem prItem,
         decimal qtyDelivered = 5m,
-        Division distDivision = Division.Admin) => new()
+        int distDivisionId = AdminDiv) => new()
     {
         Id = Guid.NewGuid(),
         DeliveryRef = "DEL-20260602-ABCDE",
@@ -85,7 +95,8 @@ public sealed class PRReportServiceTests
                     {
                         Id = Guid.NewGuid(),
                         IssueRef = "ISS-20260602-ABCDE-1",
-                        Division = distDivision,
+                        DivisionId = distDivisionId,
+                        Division = DivEntity(distDivisionId),
                         QtyIssued = qtyDelivered,
                         DateIssued = DateOnly.FromDateTime(DateTime.UtcNow),
                         IssuedBy = "Ralph",
@@ -142,7 +153,7 @@ public sealed class PRReportServiceTests
     [Fact]
     public async Task GetReportAsync_StaffViewingOtherDivisionPR_ReturnsForbidden()
     {
-        PurchaseRequest pr = MakePR(Division.Admin);
+        PurchaseRequest pr = MakePR(AdminDiv);
 
         Mock<IPurchaseRequestRepository> prRepo = new();
         prRepo.Setup(r => r.GetWithItemsAsync(pr.Id, It.IsAny<CancellationToken>()))
@@ -150,7 +161,7 @@ public sealed class PRReportServiceTests
 
         ServiceResult<PRReportDto> result =
             await BuildSut(prRepo, new Mock<IDeliveryRepository>())
-                .GetReportAsync(MakeStaff(Division.Planning), pr.Id);
+                .GetReportAsync(MakeStaff(PlanningDiv), pr.Id);
 
         Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
     }
@@ -158,7 +169,7 @@ public sealed class PRReportServiceTests
     [Fact]
     public async Task GetReportAsync_AdminViewingAnyDivision_ReturnsOk()
     {
-        PurchaseRequest pr = MakePR(Division.Planning);
+        PurchaseRequest pr = MakePR(PlanningDiv);
         pr.Items.Add(MakePRItem(pr.Id));
 
         Mock<IPurchaseRequestRepository> prRepo = new();
@@ -181,7 +192,7 @@ public sealed class PRReportServiceTests
     [Fact]
     public async Task GetReportAsync_ReturnsCorrectPRHeaderAndItems()
     {
-        PurchaseRequest pr = MakePR(Division.Admin);
+        PurchaseRequest pr = MakePR(AdminDiv);
         PRItem item = MakePRItem(pr.Id, itemNo: 1, qty: 10m);
         pr.Items.Add(item);
 
@@ -198,7 +209,7 @@ public sealed class PRReportServiceTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal(pr.PRNo, result.Value!.PR.PRNo);
-        Assert.Equal(pr.Division.ToString(), result.Value.PR.Division);
+        Assert.Equal(pr.Division!.Name, result.Value.PR.Division);
         Assert.Single(result.Value.PR.Items);
         Assert.Equal(item.Description, result.Value.PR.Items[0].Description);
     }
@@ -208,11 +219,11 @@ public sealed class PRReportServiceTests
     [Fact]
     public async Task GetReportAsync_WithDelivery_ReturnsDistributionRows()
     {
-        PurchaseRequest pr = MakePR(Division.Admin);
+        PurchaseRequest pr = MakePR(AdminDiv);
         PRItem item = MakePRItem(pr.Id, itemNo: 1, qty: 10m);
         pr.Items.Add(item);
 
-        Delivery delivery = MakeDelivery(pr.Id, item, qtyDelivered: 5m, Division.Admin);
+        Delivery delivery = MakeDelivery(pr.Id, item, qtyDelivered: 5m, AdminDiv);
 
         Mock<IPurchaseRequestRepository> prRepo = new();
         prRepo.Setup(r => r.GetWithItemsAsync(pr.Id, It.IsAny<CancellationToken>()))
@@ -232,7 +243,7 @@ public sealed class PRReportServiceTests
         Assert.Equal(1, dist.ItemNo);
         Assert.Equal("Bond Paper", dist.Description);
         Assert.Equal(5m, dist.QtyDelivered);
-        Assert.Equal(Division.Admin.ToString(), dist.Division);
+        Assert.Equal("Administrative Division", dist.Division);
         Assert.Equal(5m, dist.QtyIssued);
         Assert.Equal("DEL-20260602-ABCDE", dist.DeliveryRef);
         Assert.Equal("ISS-20260602-ABCDE-1", dist.IssueRef);
@@ -241,7 +252,7 @@ public sealed class PRReportServiceTests
     [Fact]
     public async Task GetReportAsync_NoDeliveries_ReturnsEmptyDistributions()
     {
-        PurchaseRequest pr = MakePR(Division.Admin);
+        PurchaseRequest pr = MakePR(AdminDiv);
         pr.Items.Add(MakePRItem(pr.Id));
 
         Mock<IPurchaseRequestRepository> prRepo = new();
@@ -264,7 +275,7 @@ public sealed class PRReportServiceTests
     [Fact]
     public async Task ExportReportAsync_CallsExcelServiceWithWiredPR()
     {
-        PurchaseRequest pr = MakePR(Division.Admin);
+        PurchaseRequest pr = MakePR(AdminDiv);
         PRItem item = MakePRItem(pr.Id);
         pr.Items.Add(item);
 

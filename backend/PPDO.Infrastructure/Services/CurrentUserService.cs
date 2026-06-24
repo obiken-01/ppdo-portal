@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Http;
 using PPDO.Domain.Common;
 using PPDO.Domain.Interfaces;
-using DivisionEnum = PPDO.Domain.Enums.Division;
 using UserRoleEnum = PPDO.Domain.Enums.UserRole;
 
 namespace PPDO.Infrastructure.Services;
@@ -17,7 +16,7 @@ namespace PPDO.Infrastructure.Services;
 ///
 /// Claim values are stored as integers by AuthService:
 ///   Role     → <see cref="PPDO.Domain.Enums.UserRole"/> cast to int
-///   Division → <see cref="PPDO.Domain.Enums.Division"/> cast to int
+///   Division → division id (divisions.id)
 /// </summary>
 public sealed class CurrentUserService : ICurrentUserService
 {
@@ -57,15 +56,13 @@ public sealed class CurrentUserService : ICurrentUserService
     }
 
     /// <inheritdoc />
-    public DivisionEnum? Division
+    public int? DivisionId
     {
         get
         {
             string? divClaim = _httpContextAccessor.HttpContext?
                 .User.FindFirst(JwtClaimNames.Division)?.Value;
-            return int.TryParse(divClaim, out int divInt)
-                ? (DivisionEnum)divInt
-                : null;
+            return int.TryParse(divClaim, out int divInt) ? divInt : null;
         }
     }
 

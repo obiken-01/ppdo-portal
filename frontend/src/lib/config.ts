@@ -16,6 +16,7 @@ import type {
   ApiResponse,
   ActiveFilter,
   CsvImportResult,
+  DivisionResponse,
   FundingSourceResponse,
   OfficeResponse,
   UpsertAccountRequest,
@@ -117,6 +118,25 @@ export async function listOffices(params: OfficeListParams = {}): Promise<Office
 /** POST /api/config/offices — create a new office. */
 export async function createOffice(body: UpsertOfficeRequest): Promise<OfficeResponse> {
   const { data } = await api.post<ApiResponse<OfficeResponse>>("/config/offices", body);
+  return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// Divisions — RAL-97
+// ---------------------------------------------------------------------------
+
+export interface DivisionListParams {
+  active?: ActiveFilter;
+  officeId?: number;
+}
+
+/** GET /api/config/divisions — list configurable divisions (drives the user-form dropdown). */
+export async function listDivisions(params: DivisionListParams = {}): Promise<DivisionResponse[]> {
+  const query: Record<string, string> = {};
+  if (params.active) query.active = params.active;
+  if (params.officeId != null) query.officeId = String(params.officeId);
+
+  const { data } = await api.get<ApiResponse<DivisionResponse[]>>("/config/divisions", { params: query });
   return unwrap(data);
 }
 

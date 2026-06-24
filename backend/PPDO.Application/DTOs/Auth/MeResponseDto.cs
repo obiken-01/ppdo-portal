@@ -11,10 +11,10 @@ public sealed class MeResponseDto
     /// <summary>Role name string, e.g. "SuperAdmin", "Admin", "Staff", "Observer".</summary>
     public string Role { get; init; } = string.Empty;
 
-    /// <summary>
-    /// Division name string, e.g. "Admin", "Planning", "RM", "MIS", "SPD".
-    /// Null for non-PPDO office users.
-    /// </summary>
+    /// <summary>Division id (divisions.id). Null for SuperAdmin/Admin.</summary>
+    public int? DivisionId { get; init; }
+
+    /// <summary>Division name. Null for SuperAdmin/Admin.</summary>
     public string? Division { get; init; }
 
     /// <summary>Provincial office id, or null for PPDO-internal users. New in v1.1.</summary>
@@ -37,4 +37,5 @@ public sealed class MeResponseDto
     public bool CanAccessBudgetPlanning { get; init; }
     public bool CanUploadAip { get; init; }
     public bool CanManageConfig { get; init; }
+    public bool CanManageAllocation { get; init; }
 }
