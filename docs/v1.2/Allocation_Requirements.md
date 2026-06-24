@@ -152,6 +152,12 @@ program_divisions
 
 **Default flags (recommended — pending confirmation):** seed all 6 with `can_access_budget_planning = true` and **every other flag `false`**. Grant inventory / reports / config / AIP-upload / user-mgmt / resource-links to specific **users** via per-user overrides (and `CanManageAllocation` to the finance officer the same way). Flip a whole-division flag later in the division config page if an entire division needs a capability. Rationale: restricted-by-default, no over-granting.
 
+### Division config page & seeding
+- The division config page gets the same **CSV upload/download** as Accounts/Offices/Funding (RAL-72 pattern). **No EF seed migration** — divisions are loaded via CSV upload, consistent with the 2026-06-10 seeding decision. Seed CSV stays outside the repo (template: `D:\RalphFiles\PPDO\PPDO\divisions_seed_template.csv`).
+- **CSV column order:** `office_code, code, name, is_active, can_access_budget_planning, can_access_inventory, can_access_reports, can_manage_config, can_upload_aip, can_manage_users, can_manage_resource_links`. Flags are `TRUE`/`FALSE`. `can_manage_allocation` is **not** a CSV/division column (per-user grant only).
+- **Upsert key = `name`** (within `office_code`), because `code` is nullable. `name` is readonly on edit (the key); `code` + flags are editable — so codes can be changed anytime.
+- **Migration ordering (no lockout):** run migration → upload divisions CSV → assign each user a `division_id`. Between migration and upload, existing users have null `division_id`; SuperAdmin bypasses all checks so admin access is never lost.
+
 > 🔴 **Supplemental AIP carry-forward (D6).** `program_divisions` is keyed by `(office_ref_code, program_ref_code)`, **not** the surrogate `aip_programs.id` (which is recreated on every upload). On a supplemental upload, existing programs re-link automatically by ref code; genuinely new programs surface as "unassigned" on the Allocation page. **Do not key assignments off `aip_program_id`** — that was the data-loss trap.
 
 ---
