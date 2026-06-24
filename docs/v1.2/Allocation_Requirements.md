@@ -150,7 +150,18 @@ program_divisions
 | Information and Communications Technology Division | ICT | MIS |
 | Open Governance and Civil Society Organization Engagement Division | OG-CSO | _(new)_ |
 
-**Default flags (recommended — pending confirmation):** seed all 6 with `can_access_budget_planning = true` and **every other flag `false`**. Grant inventory / reports / config / AIP-upload / user-mgmt / resource-links to specific **users** via per-user overrides (and `CanManageAllocation` to the finance officer the same way). Flip a whole-division flag later in the division config page if an entire division needs a capability. Rationale: restricted-by-default, no over-granting.
+**Seed flags (CONFIRMED 2026-06-24):**
+
+| Division | budget_planning | inventory | reports | config | upload_aip | manage_users | resource_links |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| Administrative | ✓ | ✓ | ✓ | – | – | – | ✓ |
+| Sectoral Planning | ✓ | – | – | – | – | – | – |
+| Statistics, Monitoring & Evaluation | ✓ | – | – | – | – | – | – |
+| Fiscal Planning & Investment Programming | ✓ | – | – | – | – | – | – |
+| Information & Communications Technology | ✓ | – | – | – | – | – | – |
+| Open Governance & CSO Engagement | ✓ | – | – | – | – | – | – |
+
+`config`, `upload_aip`, and `manage_users` are off at the division level for everyone — they're held by Admin-role users (all-true-by-default) or granted per-user via overrides (e.g. the FPIP finance officer gets `CanUploadAip`/`CanManageAllocation` as personal grants). `CanManageAllocation` is never a division flag. This filled CSV is the seed (`D:\RalphFiles\PPDO\PPDO\divisions_seed_template.csv`).
 
 ### Division config page & seeding
 - The division config page gets the same **CSV upload/download** as Accounts/Offices/Funding (RAL-72 pattern). **No EF seed migration** — divisions are loaded via CSV upload, consistent with the 2026-06-10 seeding decision. Seed CSV stays outside the repo (template: `D:\RalphFiles\PPDO\PPDO\divisions_seed_template.csv`).
@@ -252,7 +263,7 @@ All mechanical, de-risked by the clean slate, but this is the largest single pie
 ## 12. Open items (to resolve before/within ticketing)
 
 1. ~~Exact PPDO division list~~ — **captured 2026-06-24** (see §5 "PPDO Divisions"). 6 divisions, no official codes (name is the key).
-2. **Per-division default flags** — proposed default (budget-planning only; everything else via per-user override) in §5, **pending Ralph's confirmation**. Confirm before seeding.
+2. ~~Per-division default flags~~ — **CONFIRMED 2026-06-24** (see §5 seed-flags table). Administrative = budget+inventory+reports+resource-links; all others = budget-planning only.
 3. **Dashboard (RAL-80) scope** — whether to add allocation-vs-utilization tiles / WFP-by-division, and the finance/office dashboard scope. Not yet specified.
 4. **Deferred read-only** — if a true view-only user appears, add a per-user `view_only` flag (cheaper than a role). Not built in v1.2.
 5. **Non-PPDO offices** — division setup for other offices is deferred; v1.2 focuses on PPDO. Confirm a single default division per non-PPDO office is enough for now.
