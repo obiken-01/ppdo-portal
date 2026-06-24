@@ -1,6 +1,7 @@
-// ⚠️ Dev/maintenance-only endpoint (wipes ALL inventory records).
-// Supports the v1.2 clean-slate migration (RAL-97). Remove or keep behind DevCleanupKey
-// for production safety — it returns 403 unless DevCleanupKey is configured.
+// Dev/maintenance endpoint (wipes ALL inventory records). INTENTIONALLY KEPT — unlike the
+// budget-planning cleanup endpoint, this is NOT a merge-blocker. It is safe in any environment
+// because it returns 403 unless DevCleanupKey is configured (DevCleanupKey is never set in
+// Azure production App Settings). Supports the v1.2 clean-slate migration (RAL-97).
 
 using System.Net;
 using Microsoft.Azure.Functions.Worker;
