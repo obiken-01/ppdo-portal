@@ -1,6 +1,5 @@
-// ⚠️ DELETE THIS FILE BEFORE MERGING release/1.1.0 → main
-// This endpoint exists for dev/testing only (wipes all LDIP/AIP/WFP records).
-// The PurgeAllAsync service methods may be kept; the HTTP endpoint must be removed.
+// Dev/maintenance endpoint (wipes ALL LDIP/AIP/WFP records). INTENTIONALLY KEPT — gated by
+// the same DevCleanupKey guard as the inventory cleanup endpoint; not a merge-blocker.
 
 using System.Net;
 using Microsoft.Azure.Functions.Worker;
@@ -12,14 +11,11 @@ using PPDO.Application.Services;
 namespace PPDO.Functions.Functions;
 
 /// <summary>
-/// Dev-only cleanup endpoint for wiping all budget planning records.
-/// Trigger via Postman; no UI. Requires two safeguards:
-///   1. JWT with SuperAdmin role.
-///   2. X-Dev-Cleanup-Key header matching the DevCleanupKey config value.
+/// Dev/maintenance cleanup endpoint for wiping all budget planning records.
+/// Trigger via Postman; no UI. Guarded by a single safeguard:
+///   - X-Dev-Cleanup-Key header matching the DevCleanupKey config value.
 /// If DevCleanupKey is absent or empty in config, the endpoint returns 403 immediately
-/// (safe-fail — it will never be set in Azure production App Settings).
-///
-/// ⚠️ MERGE BLOCKER: Delete this file before merging release/1.1.0 into main.
+/// (safe-fail — it is never set in Azure production App Settings).
 /// </summary>
 public sealed class BudgetPlanningCleanupFunctions
 {
