@@ -50,12 +50,12 @@ public sealed class InventoryService : IInventoryService
     {
         DivisionScope scope = DivisionScope.Resolve(requester);
 
-        // Office users (Staff/Observer with no division) have no inventory scope —
+        // Office users (Staff with no division) have no inventory scope —
         // return empty stats rather than leaking every division's data.
         if (scope.SeeNothing)
             return EmptyStats();
 
-        Division? division = scope.Division;
+        int? division = scope.DivisionId;
 
         // Load PRs for division-scoped counts and total value.
         IReadOnlyList<PurchaseRequest> prs = division.HasValue
@@ -119,11 +119,11 @@ public sealed class InventoryService : IInventoryService
     {
         DivisionScope scope = DivisionScope.Resolve(requester);
 
-        // Office users (Staff/Observer with no division) have no inventory scope.
+        // Office users (Staff with no division) have no inventory scope.
         if (scope.SeeNothing)
             return Array.Empty<ItemLedgerRowDto>();
 
-        Division? division = scope.Division;
+        int? division = scope.DivisionId;
 
         IReadOnlyList<ItemStockLevel> stockLevels =
             await _inventory.GetItemStockLevelsAsync(division, cancellationToken);
@@ -136,7 +136,7 @@ public sealed class InventoryService : IInventoryService
                 await _inventory.GetStockNosDeliveredInRangeAsync(
                     dateFrom: deliveryDateFrom.Value,
                     dateTo:   deliveryDateTo.Value,
-                    division: division,
+                    divisionId: division,
                     cancellationToken: cancellationToken);
 
             stockLevels = stockLevels

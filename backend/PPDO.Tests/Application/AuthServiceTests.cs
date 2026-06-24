@@ -35,7 +35,7 @@ public sealed class AuthServiceTests
         Email        = "test@ppdo.gov.ph",
         PasswordHash = passwordHash,
         Role         = UserRole.Admin,
-        Division     = Division.Admin,
+        DivisionId   = null,
         IsActive     = true,
     };
 

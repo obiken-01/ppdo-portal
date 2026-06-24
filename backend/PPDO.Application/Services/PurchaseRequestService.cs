@@ -20,6 +20,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
     private readonly IItemMasterRepository      _items;
     private readonly IPermissionService         _permissions;
     private readonly IExcelService              _excel;
+    private readonly IRepository<Division>      _divisions;
     private readonly ILogger<PurchaseRequestService> _logger;
 
     // Manila is UTC+8. Try IANA first (Linux/Azure), fall back to Windows identifier.
@@ -36,13 +37,24 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         IItemMasterRepository items,
         IPermissionService permissions,
         IExcelService excel,
+        IRepository<Division> divisions,
         ILogger<PurchaseRequestService> logger)
     {
         _prs         = prs;
         _items       = items;
         _permissions = permissions;
         _excel       = excel;
+        _divisions   = divisions;
         _logger      = logger;
+    }
+
+    /// <summary>Resolves a division name to its active configurable division, or null (v1.2 — RAL-97).</summary>
+    private async Task<Division?> ResolveDivisionByNameAsync(string? name, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        IReadOnlyList<Division> all = await _divisions.GetAllAsync(ct);
+        return all.FirstOrDefault(d => d.IsActive
+            && string.Equals(d.Name, name, StringComparison.OrdinalIgnoreCase));
     }
 
     // ── GetAllAsync ────────────────────────────────────────────────────────────
@@ -61,7 +73,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
 
         IReadOnlyList<PurchaseRequest> all = scope.SeeAll
             ? await _prs.GetAllAsync(cancellationToken)
-            : await _prs.GetByDivisionAsync(scope.Division!.Value, cancellationToken);
+            : await _prs.GetByDivisionAsync(scope.DivisionId!.Value, cancellationToken);
 
         IEnumerable<PurchaseRequest> filtered = status.HasValue
             ? all.Where(pr => pr.Status == status.Value)
@@ -84,12 +96,12 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         if (pr is null)
             return ServiceResult<PRResponseDto>.NotFound($"Purchase Request {id} not found.");
 
-        if (requester.Role is UserRole.Staff or UserRole.Observer
-            && pr.Division != requester.Division)
+        if (requester.Role is UserRole.Staff
+            && pr.DivisionId != requester.DivisionId)
         {
             _logger.LogWarning(
-                "Permission denied — user {UserId} attempted to view PR {PRNo} from division {Division}. Feature: ViewPR",
-                requester.Id, pr.PRNo, pr.Division);
+                "Permission denied — user {UserId} attempted to view PR {PRNo} from division {DivisionId}. Feature: ViewPR",
+                requester.Id, pr.PRNo, pr.DivisionId);
             return ServiceResult<PRResponseDto>.Forbidden(
                 "You can only view Purchase Requests from your own division.");
         }
@@ -114,18 +126,19 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
                 "You do not have permission to create Purchase Requests.");
         }
 
-        // Parse Division string → enum (matches CreateUserDto pattern).
-        if (!Enum.TryParse<Division>(dto.Division, ignoreCase: true, out Division division))
+        // Resolve the division name to a configurable division id (v1.2 — RAL-97).
+        Division? division = await ResolveDivisionByNameAsync(dto.Division, cancellationToken);
+        if (division is null)
             return ServiceResult<PRResponseDto>.BadRequest(
-                $"Invalid division '{dto.Division}'. Must be one of: Admin, Planning, RM, MIS, SPD.");
+                $"Division '{dto.Division}' was not found. Configure it in Config → Divisions first.");
 
         // Staff can only submit PRs for their own division.
-        if (requester.Role is UserRole.Staff or UserRole.Observer
-            && division != requester.Division)
+        if (requester.Role is UserRole.Staff
+            && division.Id != requester.DivisionId)
         {
             _logger.LogWarning(
-                "Permission denied — user {UserId} attempted to create a PR for division {Division}.",
-                requester.Id, division);
+                "Permission denied — user {UserId} attempted to create a PR for division {DivisionId}.",
+                requester.Id, division.Id);
             return ServiceResult<PRResponseDto>.Forbidden(
                 "You can only create Purchase Requests for your own division.");
         }
@@ -147,7 +160,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
             PRDate            = dto.PRDate,
             DateCreated       = utcNow,
             Department        = string.IsNullOrWhiteSpace(dto.Department) ? "PPDO" : dto.Department.Trim(),
-            Division          = division,
+            DivisionId        = division.Id,
             Fund              = dto.Fund.Trim(),
             RequestedBy       = dto.RequestedBy.Trim(),
             Position          = dto.Position.Trim(),
@@ -177,8 +190,8 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         await _prs.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation(
-            "PR submitted. PRNo: {PRNo}, Division: {Division}, UserId: {UserId}",
-            pr.PRNo, pr.Division, requester.Id);
+            "PR submitted. PRNo: {PRNo}, DivisionId: {DivisionId}, UserId: {UserId}",
+            pr.PRNo, pr.DivisionId, requester.Id);
 
         return ServiceResult<PRResponseDto>.Ok(MapToResponse(pr));
     }
@@ -217,10 +230,11 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         if (dto.Department is not null) pr.Department = dto.Department.Trim();
         if (dto.Division is not null)
         {
-            if (!Enum.TryParse<Division>(dto.Division, ignoreCase: true, out Division updatedDivision))
+            Division? updatedDivision = await ResolveDivisionByNameAsync(dto.Division, cancellationToken);
+            if (updatedDivision is null)
                 return ServiceResult<PRResponseDto>.BadRequest(
-                    $"Invalid division '{dto.Division}'. Must be one of: Admin, Planning, RM, MIS, SPD.");
-            pr.Division = updatedDivision;
+                    $"Division '{dto.Division}' was not found. Configure it in Config → Divisions first.");
+            pr.DivisionId = updatedDivision.Id;
         }
         if (dto.Fund is not null)              pr.Fund              = dto.Fund.Trim();
         if (dto.RequestedBy is not null)       pr.RequestedBy       = dto.RequestedBy.Trim();
@@ -385,11 +399,12 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
             return ServiceResult<IReadOnlyList<PRResponseDto>>.BadRequest(
                 "No PR worksheets found in the uploaded file.");
 
-        // Enforce division scope before creating anything.
-        if (requester.Role is UserRole.Staff or UserRole.Observer)
+        // Enforce division scope before creating anything (Staff only).
+        if (requester.Role is UserRole.Staff)
         {
+            string? ownDivision = requester.Division?.Name;
             IEnumerable<PurchaseRequestImportRow> wrongDivision =
-                rows.Where(r => r.Division != requester.Division);
+                rows.Where(r => !string.Equals(r.DivisionName, ownDivision, StringComparison.OrdinalIgnoreCase));
 
             if (wrongDivision.Any())
                 return ServiceResult<IReadOnlyList<PRResponseDto>>.Forbidden(
@@ -540,7 +555,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
     {
         PRDate            = row.PRDate,
         Department        = row.Department,
-        Division          = row.Division.ToString(),
+        Division          = row.DivisionName,
         Fund              = row.Fund ?? "General Fund",
         RequestedBy       = row.RequestedBy,
         Position          = row.Position ?? string.Empty,
@@ -567,14 +582,14 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
     // ── Mapping ────────────────────────────────────────────────────────────────
 
     private static PRSummaryDto MapToSummary(PurchaseRequest pr) => new(
-        pr.Id, pr.PRNo, pr.PRDate, pr.Division.ToString(),
+        pr.Id, pr.PRNo, pr.PRDate, pr.Division?.Name ?? "",
         pr.RequestedBy, pr.TotalAmount, pr.Status.ToString(), pr.CreatedAt,
         pr.Fund, pr.AIPCode, pr.AccountNo, pr.AccountTitle,
         pr.Program, pr.Project, pr.Activity);
 
     private static PRResponseDto MapToResponse(PurchaseRequest pr) => new(
         pr.Id, pr.PRNo, pr.PRDate, pr.DateCreated,
-        pr.Department, pr.Division.ToString(), pr.Fund,
+        pr.Department, pr.Division?.Name ?? "", pr.Fund,
         pr.RequestedBy, pr.Position,
         pr.ApprovedBy, pr.ApprovingPosition,
         pr.AIPCode, pr.AccountNo, pr.AccountTitle,

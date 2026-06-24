@@ -12,10 +12,9 @@ namespace PPDO.Application.Services;
 ///   1. JWT validation (<see cref="IJwtMiddleware.ValidateAsync"/>)
 ///   2. Feature-level permission check (<see cref="IPermissionService.CanManageUsersAsync"/>)
 ///
-/// This service enforces the scope rules from Section 7 of the project documentation:
-///   SuperAdmin   — can manage everyone (SuperAdmin, Admin, Staff, Observer)
-///   Admin/Staff  — can manage Staff + Observer only
-///   Observer     — no management at all (caller must reject before reaching this service)
+/// This service enforces the scope rules:
+///   SuperAdmin   — can manage everyone (SuperAdmin, Admin, Staff)
+///   Admin/Staff  — can manage Staff only
 /// </summary>
 public interface IUserService
 {
@@ -32,8 +31,8 @@ public interface IUserService
 
     /// <summary>
     /// Creates a new user.
-    /// The PermissionGroup is auto-assigned from the new user's Role and Division.
-    /// The initial password is the system default — the user should change it on first login.
+    /// Staff users require a division id (which carries their scope + feature flags);
+    /// SuperAdmin/Admin have none. The initial password is the system default.
     ///
     /// Returns:
     ///   <see cref="ServiceErrorCode.Forbidden"/>  — requester cannot create a user with the given role.

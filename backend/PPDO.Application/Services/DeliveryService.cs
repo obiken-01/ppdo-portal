@@ -20,6 +20,7 @@ public sealed class DeliveryService : IDeliveryService
     private readonly IDeliveryRepository        _deliveries;
     private readonly IPurchaseRequestRepository _prs;
     private readonly IPermissionService         _permissions;
+    private readonly IRepository<Division>       _divisions;
     private readonly ILogger<DeliveryService>   _logger;
 
     // Characters used for random ref suffixes — uppercase alphanumeric, no ambiguous O/0/I/1.
@@ -39,11 +40,13 @@ public sealed class DeliveryService : IDeliveryService
         IDeliveryRepository deliveries,
         IPurchaseRequestRepository prs,
         IPermissionService permissions,
+        IRepository<Division> divisions,
         ILogger<DeliveryService> logger)
     {
         _deliveries  = deliveries;
         _prs         = prs;
         _permissions = permissions;
+        _divisions   = divisions;
         _logger      = logger;
     }
 
@@ -62,7 +65,7 @@ public sealed class DeliveryService : IDeliveryService
 
         IReadOnlyList<PurchaseRequest> prs = scope.SeeAll
             ? await _prs.GetAllAsync(cancellationToken)
-            : await _prs.GetByDivisionAsync(scope.Division!.Value, cancellationToken);
+            : await _prs.GetByDivisionAsync(scope.DivisionId!.Value, cancellationToken);
 
         List<DeliverySummaryDto> result = new();
 
@@ -90,8 +93,8 @@ public sealed class DeliveryService : IDeliveryService
             return ServiceResult<IReadOnlyList<DeliverySummaryDto>>.NotFound(
                 $"Purchase Request {prId} not found.");
 
-        if (requester.Role is UserRole.Staff or UserRole.Observer
-            && pr.Division != requester.Division)
+        if (requester.Role is UserRole.Staff
+            && pr.DivisionId != requester.DivisionId)
             return ServiceResult<IReadOnlyList<DeliverySummaryDto>>.Forbidden(
                 "You can only view deliveries for your own division.");
 
@@ -115,14 +118,14 @@ public sealed class DeliveryService : IDeliveryService
             return ServiceResult<DeliveryResponseDto>.NotFound($"Delivery {id} not found.");
 
         // Verify division scope — load the PR to check its division.
-        if (requester.Role is UserRole.Staff or UserRole.Observer)
+        if (requester.Role is UserRole.Staff)
         {
             PurchaseRequest? pr = await _prs.GetByIdAsync(delivery.PRId, cancellationToken);
-            if (pr is not null && pr.Division != requester.Division)
+            if (pr is not null && pr.DivisionId != requester.DivisionId)
             {
                 _logger.LogWarning(
                     "Permission denied — user {UserId} attempted to view delivery {DeliveryRef} for division {Division}.",
-                    requester.Id, delivery.DeliveryRef, pr.Division);
+                    requester.Id, delivery.DeliveryRef, pr.DivisionId);
                 return ServiceResult<DeliveryResponseDto>.Forbidden(
                     "You can only view deliveries for your own division.");
             }
@@ -159,12 +162,12 @@ public sealed class DeliveryService : IDeliveryService
                 $"PR {pr.PRNo} is already Completed and cannot receive further deliveries.");
 
         // Division scope — Staff can only deliver against their own division's PRs.
-        if (requester.Role is UserRole.Staff or UserRole.Observer
-            && pr.Division != requester.Division)
+        if (requester.Role is UserRole.Staff
+            && pr.DivisionId != requester.DivisionId)
         {
             _logger.LogWarning(
                 "Permission denied — user {UserId} attempted to deliver against PR {PRNo} from division {Division}.",
-                requester.Id, pr.PRNo, pr.Division);
+                requester.Id, pr.PRNo, pr.DivisionId);
             return ServiceResult<DeliveryResponseDto>.Forbidden(
                 "You can only receive deliveries for your own division's Purchase Requests.");
         }
@@ -197,6 +200,13 @@ public sealed class DeliveryService : IDeliveryService
                         $"for PRItemId {item.PRItemId}. They must be equal.");
             }
         }
+
+        // Resolve division names → configurable division ids once (v1.2 — RAL-97).
+        IReadOnlyList<Division> allDivisions = await _divisions.GetAllAsync(cancellationToken);
+        Dictionary<string, int> divisionIdByName = allDivisions
+            .Where(d => d.IsActive)
+            .GroupBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().Id, StringComparer.OrdinalIgnoreCase);
 
         // Generate DeliveryRef — retry on collision (statistically negligible).
         DateTime manilaNow   = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, ManilaZone);
@@ -231,11 +241,11 @@ public sealed class DeliveryService : IDeliveryService
 
             foreach (CreateDistributionDto distDto in itemDto.Distributions)
             {
-                // Parse Division string → enum (matches CreateUserDto / CreatePRDto pattern).
-                if (!Enum.TryParse<Division>(distDto.Division, ignoreCase: true, out Division distDivision))
+                // Resolve the division name to a configurable division id (v1.2 — RAL-97).
+                if (!divisionIdByName.TryGetValue(distDto.Division, out int distDivisionId))
                     return ServiceResult<DeliveryResponseDto>.BadRequest(
-                        $"Invalid division '{distDto.Division}' in distribution. " +
-                        "Must be one of: Admin, Planning, RM, MIS, SPD.");
+                        $"Division '{distDto.Division}' in distribution was not found. " +
+                        "Configure it in Config → Divisions first.");
 
                 string issueRef = BuildIssueRef(manilaNow, randomSuffix, issueSeq++);
 
@@ -244,7 +254,7 @@ public sealed class DeliveryService : IDeliveryService
                     Id             = Guid.NewGuid(),
                     IssueRef       = issueRef,
                     DeliveryItemId = deliveryItem.Id,
-                    Division       = distDivision,
+                    DivisionId     = distDivisionId,
                     QtyIssued      = distDto.QtyIssued,
                     DateIssued     = distDto.DateIssued,
                     IssuedBy       = distDto.IssuedBy.Trim(),
@@ -376,7 +386,7 @@ public sealed class DeliveryService : IDeliveryService
             i.Id, i.DeliveryId, i.PRItemId, i.QtyDelivered,
             i.Distributions.Select(dist => new DistributionDto(
                 dist.Id, dist.IssueRef, dist.DeliveryItemId,
-                dist.Division, dist.QtyIssued, dist.DateIssued,
+                dist.DivisionId, dist.QtyIssued, dist.DateIssued,
                 dist.IssuedBy, dist.Remarks))
             .ToList()))
         .ToList());

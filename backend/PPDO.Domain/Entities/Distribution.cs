@@ -1,5 +1,3 @@
-using PPDO.Domain.Enums;
-
 namespace PPDO.Domain.Entities;
 
 /// <summary>
@@ -23,8 +21,8 @@ public sealed class Distribution
     /// <summary>FK to the DeliveryItem this distribution is for.</summary>
     public Guid DeliveryItemId { get; set; }
 
-    /// <summary>The Division that received this allocation of items.</summary>
-    public Division Division { get; set; }
+    /// <summary>FK to the division that received this allocation of items (v1.2 — RAL-97).</summary>
+    public int DivisionId { get; set; }
 
     /// <summary>Quantity issued to this Division.</summary>
     public decimal QtyIssued { get; set; }
@@ -42,4 +40,7 @@ public sealed class Distribution
 
     /// <summary>The DeliveryItem this distribution is part of.</summary>
     public DeliveryItem? DeliveryItem { get; set; }
+
+    /// <summary>The division that received this allocation.</summary>
+    public Division? Division { get; set; }
 }

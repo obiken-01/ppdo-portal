@@ -121,7 +121,7 @@ public sealed class ExcelServiceTests
 
         Assert.Single(result);
         Assert.Equal("PR-001",         result[0].SheetName);
-        Assert.Equal(Division.Planning, result[0].Division);
+        Assert.Equal("Planning", result[0].DivisionName);
         Assert.Equal("Juan dela Cruz", result[0].RequestedBy);
         Assert.Equal(new DateOnly(2026, 6, 1), result[0].PRDate);
     }
@@ -332,7 +332,7 @@ public sealed class ExcelServiceTests
         string allText = string.Concat(ws.CellsUsed().Select(c => c.GetString()));
         Assert.Contains(pr.PRNo,              allText);
         Assert.Contains(pr.RequestedBy,       allText);
-        Assert.Contains(pr.Division.ToString(), allText);
+        Assert.Contains(pr.Division!.Name, allText);
     }
 
     [Fact]
@@ -442,7 +442,7 @@ public sealed class ExcelServiceTests
             PRDate      = new DateOnly(2026, 6, 1),
             DateCreated = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc),
             Department  = "PPDO",
-            Division    = Division.Planning,
+            Division    = new Division { Id = 2, OfficeId = 100, Name = "Planning" },
             Fund        = "General Fund",
             RequestedBy = "Juan dela Cruz",
             Position    = "Planning Officer",

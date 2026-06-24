@@ -11,10 +11,11 @@ public sealed class UserResponseDto
     public string Username { get; init; } = string.Empty;
     public string? Email { get; init; }
 
-    /// <summary>"SuperAdmin" | "Admin" | "Staff" | "Observer"</summary>
+    /// <summary>"SuperAdmin" | "Admin" | "Staff"</summary>
     public string Role { get; init; } = string.Empty;
 
-    /// <summary>"Admin" | "Planning" | "RM" | "MIS" | "SPD"</summary>
+    // -- Division (v1.2 — RAL-97) — carries scope + feature flags --------------
+    public int? DivisionId { get; init; }
     public string? Division { get; init; }
 
     // -- Office (v1.1) — set for non-PPDO office users -------------------------
@@ -25,11 +26,7 @@ public sealed class UserResponseDto
     public string? ContactNo { get; init; }
     public bool IsActive { get; init; }
 
-    // -- Permission group -------------------------------------------------------
-    public Guid? GroupId { get; init; }
-    public string? GroupName { get; init; }
-
-    // -- Individual permission overrides (null = inherit from group) -----------
+    // -- Individual permission overrides (null = inherit from division) --------
     public bool? OverrideCanAccessInventory { get; init; }
     public bool? OverrideCanAccessReports { get; init; }
     public bool? OverrideCanManageUsers { get; init; }
@@ -37,6 +34,7 @@ public sealed class UserResponseDto
     public bool? OverrideCanAccessBudgetPlanning { get; init; }
     public bool? OverrideCanUploadAip { get; init; }
     public bool? OverrideCanManageConfig { get; init; }
+    public bool? OverrideCanManageAllocation { get; init; }
 
     // -- Audit -----------------------------------------------------------------
     public DateTime CreatedAt { get; init; }

@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using PPDO.Domain.Entities;
-using PPDO.Domain.Enums;
 using PPDO.Domain.Interfaces;
 using PPDO.Infrastructure.Data;
 
@@ -44,10 +43,10 @@ public sealed class PurchaseRequestRepository
 
     /// <inheritdoc />
     public async Task<IReadOnlyList<PurchaseRequest>> GetByDivisionAsync(
-        Division division,
+        int divisionId,
         CancellationToken cancellationToken = default)
         => await _context.PurchaseRequests
-            .Where(pr => pr.Division == division)
+            .Where(pr => pr.DivisionId == divisionId)
             .OrderByDescending(pr => pr.PRDate)
             .ToListAsync(cancellationToken);
 }

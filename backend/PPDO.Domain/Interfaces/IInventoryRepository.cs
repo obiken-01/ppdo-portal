@@ -1,5 +1,3 @@
-using PPDO.Domain.Enums;
-
 namespace PPDO.Domain.Interfaces;
 
 /// <summary>
@@ -18,10 +16,10 @@ public interface IInventoryRepository
     ///   QtyDistributed = SUM(Distribution.QtyIssued)   — total issued to divisions
     ///
     /// Only PRItems with a non-null StockNo are included.
-    /// Pass null for division to include all divisions (Admin/SuperAdmin view).
+    /// Pass null for divisionId to include all divisions (Admin/SuperAdmin view).
     /// </summary>
     Task<IReadOnlyList<ItemStockLevel>> GetItemStockLevelsAsync(
-        Division? division,
+        int? divisionId,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -34,7 +32,7 @@ public interface IInventoryRepository
     Task<IReadOnlySet<string>> GetStockNosDeliveredInRangeAsync(
         DateOnly dateFrom,
         DateOnly dateTo,
-        Division? division = null,
+        int? divisionId = null,
         CancellationToken cancellationToken = default);
 }
 

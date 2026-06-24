@@ -19,24 +19,47 @@ public sealed class DeliveryServiceTests
 {
     // ── Fixtures ──────────────────────────────────────────────────────────────
 
-    private static User MakeAdmin(Division division = Division.Admin) => new()
+    // Division ids: 1 = "Administrative Division", 2 = "Planning Division".
+    private const int AdminDiv = 1;
+    private const int PlanningDiv = 2;
+
+    private static Division DivEntity(int id, bool inventory) => new()
     {
-        Id = Guid.NewGuid(), FullName = "Admin", Email = "admin@ppdo.gov.ph",
-        PasswordHash = "hash", Role = UserRole.Admin, Division = division, IsActive = true,
+        Id = id, OfficeId = 100,
+        Name = id == AdminDiv ? "Administrative Division" : "Planning Division",
+        CanAccessInventory = inventory,
     };
 
-    private static User MakeStaff(Division division = Division.Planning) => new()
+    private static Mock<IRepository<Division>> DivisionsRepo()
+    {
+        Mock<IRepository<Division>> repo = new();
+        repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Division>
+            {
+                new() { Id = AdminDiv,    OfficeId = 100, Name = "Administrative Division", IsActive = true },
+                new() { Id = PlanningDiv, OfficeId = 100, Name = "Planning Division",       IsActive = true },
+            });
+        return repo;
+    }
+
+    private static User MakeAdmin(int? divisionId = null) => new()
+    {
+        Id = Guid.NewGuid(), FullName = "Admin", Email = "admin@ppdo.gov.ph",
+        PasswordHash = "hash", Role = UserRole.Admin, DivisionId = divisionId, IsActive = true,
+    };
+
+    private static User MakeStaff(int divisionId = PlanningDiv) => new()
     {
         Id = Guid.NewGuid(), FullName = "Staff", Email = "staff@ppdo.gov.ph",
-        PasswordHash = "hash", Role = UserRole.Staff, Division = division, IsActive = true,
-        Group = new PermissionGroup { Id = Guid.NewGuid(), Name = "Admin Division Staff", CanAccessInventory = true },
+        PasswordHash = "hash", Role = UserRole.Staff, DivisionId = divisionId,
+        Division = DivEntity(divisionId, inventory: true), IsActive = true,
     };
 
     private static User MakeStaffNoInventory() => new()
     {
         Id = Guid.NewGuid(), FullName = "No Inv", Email = "noinv@ppdo.gov.ph",
-        PasswordHash = "hash", Role = UserRole.Staff, Division = Division.Planning, IsActive = true,
-        Group = new PermissionGroup { Id = Guid.NewGuid(), Name = "Planning Staff", CanAccessInventory = false },
+        PasswordHash = "hash", Role = UserRole.Staff, DivisionId = PlanningDiv,
+        Division = DivEntity(PlanningDiv, inventory: false), IsActive = true,
     };
 
     private static PRItem MakePRItem(Guid prId, decimal qty = 10m) => new()
@@ -47,23 +70,23 @@ public sealed class DeliveryServiceTests
     };
 
     private static PurchaseRequest MakePR(
-        Division division = Division.Admin,
+        int divisionId = AdminDiv,
         PRStatus status = PRStatus.Open,
         IEnumerable<PRItem>? items = null) => new()
     {
         Id = Guid.NewGuid(), PRNo = "101-1041-GF-2026-06-02-001",
         PRDate = DateOnly.FromDateTime(DateTime.UtcNow),
         DateCreated = DateTime.UtcNow, Department = "PPDO",
-        Division = division, Fund = "GAD", RequestedBy = "Ralph",
+        DivisionId = divisionId, Fund = "GAD", RequestedBy = "Ralph",
         Position = "Staff", Status = status,
         CreatedById = Guid.NewGuid(), CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
         Items = items?.ToList() ?? new List<PRItem>(),
     };
 
     private static CreateDistributionDto ValidDist(
-        decimal qty, Division division = Division.Admin) => new()
+        decimal qty, string division = "Administrative Division") => new()
     {
-        Division = division.ToString(), QtyIssued = qty,
+        Division = division, QtyIssued = qty,
         DateIssued = DateOnly.FromDateTime(DateTime.UtcNow),
         IssuedBy = "Ralph",
     };
@@ -93,18 +116,20 @@ public sealed class DeliveryServiceTests
             .Returns(Task.CompletedTask);
         repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<PurchaseRequest> { pr });
-        repo.Setup(r => r.GetByDivisionAsync(It.IsAny<Division>(), It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByDivisionAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<PurchaseRequest> { pr });
         return repo;
     }
 
     private static DeliveryService BuildSut(
         Mock<IDeliveryRepository> deliveryRepo,
-        Mock<IPurchaseRequestRepository> prRepo)
+        Mock<IPurchaseRequestRepository> prRepo,
+        Mock<IRepository<Division>>? divisionRepo = null)
         => new(
             deliveryRepo.Object,
             prRepo.Object,
             new PermissionService(),
+            (divisionRepo ?? DivisionsRepo()).Object,
             NullLogger<DeliveryService>.Instance);
 
     // ── Permission gate ───────────────────────────────────────────────────────
@@ -131,8 +156,8 @@ public sealed class DeliveryServiceTests
     [Fact]
     public async Task CreateAsync_StaffDeliveringOtherDivisionPR_ReturnsForbidden()
     {
-        PurchaseRequest pr = MakePR(Division.Admin); // PR belongs to Admin
-        User staff = MakeStaff(Division.Planning);   // Staff is in Planning
+        PurchaseRequest pr = MakePR(AdminDiv); // PR belongs to Admin
+        User staff = MakeStaff(PlanningDiv);   // Staff is in Planning
 
         PRItem item = MakePRItem(pr.Id);
         pr.Items.Add(item);
@@ -144,7 +169,7 @@ public sealed class DeliveryServiceTests
             Items = new List<CreateDeliveryItemDto>
             {
                 new() { PRItemId = item.Id, QtyDelivered = 5m,
-                    Distributions = new List<CreateDistributionDto> { ValidDist(5m, Division.Planning) } },
+                    Distributions = new List<CreateDistributionDto> { ValidDist(5m, "Planning Division") } },
             },
         };
 
@@ -283,8 +308,8 @@ public sealed class DeliveryServiceTests
                 new() { PRItemId = item.Id, QtyDelivered = 10m,
                     Distributions = new List<CreateDistributionDto>
                     {
-                        ValidDist(4m, Division.Admin),
-                        ValidDist(3m, Division.Planning),
+                        ValidDist(4m, "Administrative Division"),
+                        ValidDist(3m, "Planning Division"),
                     }},
             },
         };
@@ -299,7 +324,7 @@ public sealed class DeliveryServiceTests
     [Fact]
     public async Task CreateAsync_SplitDeliveryAcrossDivisions_Succeeds()
     {
-        PurchaseRequest pr = MakePR(Division.Admin);
+        PurchaseRequest pr = MakePR(AdminDiv);
         PRItem item = MakePRItem(pr.Id, qty: 10m);
         pr.Items.Add(item);
 
@@ -313,8 +338,8 @@ public sealed class DeliveryServiceTests
                 new() { PRItemId = item.Id, QtyDelivered = 10m,
                     Distributions = new List<CreateDistributionDto>
                     {
-                        ValidDist(6m, Division.Admin),
-                        ValidDist(4m, Division.Planning),
+                        ValidDist(6m, "Administrative Division"),
+                        ValidDist(4m, "Planning Division"),
                     }},
             },
         };
@@ -326,8 +351,8 @@ public sealed class DeliveryServiceTests
         Assert.True(result.IsSuccess);
         DeliveryItemDto deliveryItem = result.Value!.Items[0];
         Assert.Equal(2, deliveryItem.Distributions.Count);
-        Assert.Equal(6m, deliveryItem.Distributions.First(d => d.Division == Division.Admin).QtyIssued);
-        Assert.Equal(4m, deliveryItem.Distributions.First(d => d.Division == Division.Planning).QtyIssued);
+        Assert.Equal(6m, deliveryItem.Distributions.First(d => d.DivisionId == AdminDiv).QtyIssued);
+        Assert.Equal(4m, deliveryItem.Distributions.First(d => d.DivisionId == PlanningDiv).QtyIssued);
     }
 
     // ── PR status transitions ─────────────────────────────────────────────────
@@ -335,7 +360,7 @@ public sealed class DeliveryServiceTests
     [Fact]
     public async Task CreateAsync_PartialDelivery_SetsPRStatusToPartiallyDelivered()
     {
-        PurchaseRequest pr = MakePR(Division.Admin, PRStatus.Open);
+        PurchaseRequest pr = MakePR(AdminDiv, PRStatus.Open);
         PRItem item = MakePRItem(pr.Id, qty: 10m);
         pr.Items.Add(item);
 
@@ -364,7 +389,7 @@ public sealed class DeliveryServiceTests
     [Fact]
     public async Task CreateAsync_FullDelivery_SetsPRStatusToFullyDelivered()
     {
-        PurchaseRequest pr = MakePR(Division.Admin, PRStatus.Open);
+        PurchaseRequest pr = MakePR(AdminDiv, PRStatus.Open);
         PRItem item = MakePRItem(pr.Id, qty: 10m);
         pr.Items.Add(item);
 
@@ -392,7 +417,7 @@ public sealed class DeliveryServiceTests
     [Fact]
     public async Task CreateAsync_SecondDeliveryCompletesItem_SetsPRStatusToFullyDelivered()
     {
-        PurchaseRequest pr = MakePR(Division.Admin, PRStatus.PartiallyDelivered);
+        PurchaseRequest pr = MakePR(AdminDiv, PRStatus.PartiallyDelivered);
         PRItem item = MakePRItem(pr.Id, qty: 10m);
         pr.Items.Add(item);
 
@@ -423,7 +448,7 @@ public sealed class DeliveryServiceTests
     [Fact]
     public async Task CreateAsync_ValidSubmission_DeliveryRefMatchesFormat()
     {
-        PurchaseRequest pr = MakePR(Division.Admin);
+        PurchaseRequest pr = MakePR(AdminDiv);
         PRItem item = MakePRItem(pr.Id);
         pr.Items.Add(item);
 
@@ -449,7 +474,7 @@ public sealed class DeliveryServiceTests
     [Fact]
     public async Task CreateAsync_TwoDistributions_IssueRefsHaveSequentialSuffix()
     {
-        PurchaseRequest pr = MakePR(Division.Admin);
+        PurchaseRequest pr = MakePR(AdminDiv);
         PRItem item = MakePRItem(pr.Id, qty: 10m);
         pr.Items.Add(item);
 
@@ -462,8 +487,8 @@ public sealed class DeliveryServiceTests
                 new() { PRItemId = item.Id, QtyDelivered = 10m,
                     Distributions = new List<CreateDistributionDto>
                     {
-                        ValidDist(6m, Division.Admin),
-                        ValidDist(4m, Division.Planning),
+                        ValidDist(6m, "Administrative Division"),
+                        ValidDist(4m, "Planning Division"),
                     }},
             },
         };

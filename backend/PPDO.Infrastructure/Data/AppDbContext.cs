@@ -22,7 +22,7 @@ public sealed class AppDbContext : DbContext
     // ── DbSets ────────────────────────────────────────────────────────────────
 
     public DbSet<User> Users { get; set; } = null!;
-    public DbSet<PermissionGroup> PermissionGroups { get; set; } = null!;
+    public DbSet<Division> Divisions { get; set; } = null!;
     public DbSet<ResourceLink> ResourceLinks { get; set; } = null!;
     public DbSet<PurchaseRequest> PurchaseRequests { get; set; } = null!;
     public DbSet<PRItem> PRItems { get; set; } = null!;

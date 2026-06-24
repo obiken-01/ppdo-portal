@@ -20,9 +20,11 @@ export interface MeResponse {
   fullName: string;
   username: string;
   email?: string;
-  /** "SuperAdmin" | "Admin" | "Staff" | "Observer" */
+  /** "SuperAdmin" | "Admin" | "Staff" */
   role: string;
-  /** "Admin" | "Planning" | "RM" | "MIS" | "SPD" — null for non-PPDO office users */
+  /** Configurable division id (divisions.id). Null for SuperAdmin/Admin. */
+  divisionId: number | null;
+  /** Division name. Null for SuperAdmin/Admin. */
   division: string | null;
   /** Provincial office id, or null for PPDO-internal users (the PPDO discriminator). */
   officeId: number | null;
@@ -39,4 +41,5 @@ export interface MeResponse {
   canAccessBudgetPlanning: boolean;
   canUploadAip: boolean;
   canManageConfig: boolean;
+  canManageAllocation: boolean;
 }
