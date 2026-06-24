@@ -137,6 +137,21 @@ program_divisions
 - Table `PermissionGroups` (+ `Users.GroupId` FK).
 - Enum `Division` (`PPDO.Domain/Enums/Division.cs`).
 
+### PPDO Divisions (seed list — confirmed 2026-06-24)
+
+`code` is nullable (some divisions have no official short code → full **name** is the identifier; `UNIQUE` falls back to `(office_id, name)` when code is null). The short labels below are **optional display aids** for the PPA→division grid headers (long names won't fit 6 columns) — adopt or drop.
+
+| Name | Optional short label | Rough old-enum lineage (back-fill hint only) |
+|---|---|---|
+| Administrative Division | ADMIN | Admin |
+| Sectoral Planning Division | SECTORAL | Planning |
+| Statistics, Monitoring and Evaluation Division | SMED | RM |
+| Fiscal Planning and Investment Programming Division | FPIP | _(new — finance officer's home division)_ |
+| Information and Communications Technology Division | ICT | MIS |
+| Open Governance and Civil Society Organization Engagement Division | OG-CSO | _(new)_ |
+
+**Default flags (recommended — pending confirmation):** seed all 6 with `can_access_budget_planning = true` and **every other flag `false`**. Grant inventory / reports / config / AIP-upload / user-mgmt / resource-links to specific **users** via per-user overrides (and `CanManageAllocation` to the finance officer the same way). Flip a whole-division flag later in the division config page if an entire division needs a capability. Rationale: restricted-by-default, no over-granting.
+
 > 🔴 **Supplemental AIP carry-forward (D6).** `program_divisions` is keyed by `(office_ref_code, program_ref_code)`, **not** the surrogate `aip_programs.id` (which is recreated on every upload). On a supplemental upload, existing programs re-link automatically by ref code; genuinely new programs surface as "unassigned" on the Allocation page. **Do not key assignments off `aip_program_id`** — that was the data-loss trap.
 
 ---
@@ -230,8 +245,8 @@ All mechanical, de-risked by the clean slate, but this is the largest single pie
 
 ## 12. Open items (to resolve before/within ticketing)
 
-1. **Exact PPDO division list** — Ralph has the renamed/changed list from the finance officer; needs to be captured here (codes + names + per-division default flags) before seeding.
-2. **Permission-group flag defaults per division** — once the list is in, decide each division's default feature flags (inventory/reports/budget/config/etc.).
+1. ~~Exact PPDO division list~~ — **captured 2026-06-24** (see §5 "PPDO Divisions"). 6 divisions, no official codes (name is the key).
+2. **Per-division default flags** — proposed default (budget-planning only; everything else via per-user override) in §5, **pending Ralph's confirmation**. Confirm before seeding.
 3. **Dashboard (RAL-80) scope** — whether to add allocation-vs-utilization tiles / WFP-by-division, and the finance/office dashboard scope. Not yet specified.
 4. **Deferred read-only** — if a true view-only user appears, add a per-user `view_only` flag (cheaper than a role). Not built in v1.2.
 5. **Non-PPDO offices** — division setup for other offices is deferred; v1.2 focuses on PPDO. Confirm a single default division per non-PPDO office is enough for now.
