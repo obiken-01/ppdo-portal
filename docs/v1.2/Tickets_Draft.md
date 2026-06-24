@@ -1,22 +1,24 @@
-# v1.2.0 — Linear Ticket Drafts (for review before creating in Linear)
+# v1.2.0 — Linear Ticket Drafts
 
 These are the **Claude Code implementation prompts** per `docs/TICKET_PROMPT_STANDARD.md`.
 Authoritative spec for all of them: `docs/v1.2/Allocation_Requirements.md`.
 
-> **RAL numbers are placeholders** (`RAL-XX`) — assign the next free Linear numbers on creation and
-> substitute into the branch names. **Dependency chain (set `blockedBy` in Linear):**
-> T1 → T2 → T3 → T4; T1 → T5; T6 is independent (do early — T4/T5 consume it).
-> All branches are `feature/v1.2-ral-XX-…` off `release/1.2.0`, PRs target `release/1.2.0` (**NOT main**).
+> ✅ **CREATED IN LINEAR 2026-06-24** as RAL-97–RAL-102 under milestone
+> "v1.2 — Budget Allocation & Configurable Divisions" (the full prompts now live on the issues; the
+> bodies below are the drafts they were created from — `RAL-XX` placeholders map per the table).
+> All branches are `feature/v1.2-ral-NN-…` off `release/1.2.0`, PRs target `release/1.2.0` (**NOT main**).
 > New tables/columns are **snake_case**.
 
-| # | Title | Blocked by |
-|---|---|---|
-| T1 | Divisions + permission-model rebuild (retire PermissionGroup/enum/Observer) | — |
-| T2 | Division config page (CRUD + CSV) | T1 |
-| T3 | Allocation backend (ceiling, allocation, program-division) | T1 |
-| T4 | Allocation page UI (ceiling + allocation + PPA→division tabs) | T2, T3, T6 |
-| T5 | WFP division scoping (per-division records, filter, validation, setup gate) | T1, T6 |
-| T6 | Shared `MoneyInput` component | — |
+| Draft | RAL | Title | Blocked by | State |
+|---|---|---|---|---|
+| T1 | [RAL-97](https://linear.app/ralphoksiprojects/issue/RAL-97) | Divisions + permission-model rebuild (retire PermissionGroup/enum/Observer) | — | Todo |
+| T2 | [RAL-98](https://linear.app/ralphoksiprojects/issue/RAL-98) | Division config page (CRUD + CSV) | RAL-97 | Backlog |
+| T3 | [RAL-99](https://linear.app/ralphoksiprojects/issue/RAL-99) | Allocation backend (ceiling, allocation, program-division) | RAL-97 | Backlog |
+| T4 | [RAL-101](https://linear.app/ralphoksiprojects/issue/RAL-101) | Allocation page UI (ceiling + allocation + PPA→division tabs) | RAL-98, RAL-99, RAL-100 | Backlog |
+| T5 | [RAL-102](https://linear.app/ralphoksiprojects/issue/RAL-102) | WFP division scoping (per-division records, filter, validation, setup gate) | RAL-97, RAL-99, RAL-100 | Backlog |
+| T6 | [RAL-100](https://linear.app/ralphoksiprojects/issue/RAL-100) | Shared `MoneyInput` component | — | Todo |
+
+**Build order: RAL-97 → RAL-100 → RAL-98 → RAL-99 → RAL-101 → RAL-102** (97 foundation first; 100 early so 101/102 consume it).
 
 ---
 
