@@ -1,11 +1,12 @@
+using PPDO.Application.Common;
 using PPDO.Application.DTOs.Config;
+using PPDO.Domain.Entities;
 
 namespace PPDO.Application.Services;
 
 /// <summary>
-/// Read access to the configurable divisions (v1.2 — RAL-97).
-/// Minimal in RAL-97 (list only — to drive the user form + later pages); full CRUD + CSV
-/// upsert/export arrives in the division config ticket (RAL-98).
+/// Configurable division CRUD + CSV upsert/export (v1.2 — RAL-97 list, RAL-98 full CRUD).
+/// Soft delete only. Name is the upsert key within an office; Code is optional.
 /// </summary>
 public interface IDivisionService
 {
@@ -17,4 +18,15 @@ public interface IDivisionService
         bool? activeOnly = null,
         int? officeId = null,
         CancellationToken cancellationToken = default);
+
+    Task<ServiceResult<DivisionDto>> GetByIdAsync(int id, CancellationToken cancellationToken = default);
+    Task<ServiceResult<DivisionDto>> CreateAsync(UpsertDivisionDto dto, CancellationToken cancellationToken = default);
+    Task<ServiceResult<DivisionDto>> UpdateAsync(int id, UpsertDivisionDto dto, CancellationToken cancellationToken = default);
+    Task<ServiceResult<DivisionDto>> DeleteAsync(int id, CancellationToken cancellationToken = default);
+
+    /// <summary>Exports all divisions as CSV with the canonical 11-column order.</summary>
+    Task<string> ExportCsvAsync(IReadOnlyList<Office> offices, CancellationToken cancellationToken = default);
+
+    /// <summary>Upserts divisions by (office_code, name). Returns new/updated/skipped counts.</summary>
+    Task<ServiceResult<CsvImportResult>> ImportCsvAsync(string csvText, IReadOnlyList<Office> offices, CancellationToken cancellationToken = default);
 }
