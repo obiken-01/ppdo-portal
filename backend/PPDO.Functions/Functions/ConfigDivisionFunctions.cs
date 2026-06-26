@@ -49,8 +49,12 @@ public sealed class ConfigDivisionFunctions
         (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanReadDivisions, ct);
         if (denied is not null) return denied;
 
-        bool? activeOnly = string.Equals(req.Query["active"], "true", StringComparison.OrdinalIgnoreCase)
-            ? true : null;
+        bool? activeOnly = (req.Query["active"] ?? "").Trim().ToLowerInvariant() switch
+        {
+            "true"  => true,
+            "false" => false,
+            _       => null,
+        };
         int? officeId = int.TryParse(req.Query["officeId"], out int oid) ? oid : null;
 
         IReadOnlyList<DivisionDto> data = await _divisions.GetAllAsync(activeOnly, officeId, ct);

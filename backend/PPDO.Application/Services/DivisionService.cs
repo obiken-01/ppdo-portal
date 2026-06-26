@@ -48,7 +48,8 @@ public sealed class DivisionService : IDivisionService
         Dictionary<int, string> officeCodes = offices.ToDictionary(o => o.Id, o => o.OfficeCode);
 
         IEnumerable<Division> query = divisions;
-        if (activeOnly == true) query = query.Where(d => d.IsActive);
+        if (activeOnly == true)  query = query.Where(d => d.IsActive);
+        if (activeOnly == false) query = query.Where(d => !d.IsActive);
         if (officeId is int oid) query = query.Where(d => d.OfficeId == oid);
 
         return query
