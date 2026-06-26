@@ -20,6 +20,7 @@ import type {
   FundingSourceResponse,
   OfficeResponse,
   UpsertAccountRequest,
+  UpsertDivisionRequest,
   UpsertFundingSourceRequest,
   UpsertOfficeRequest,
 } from "@/types";
@@ -137,6 +138,38 @@ export async function listDivisions(params: DivisionListParams = {}): Promise<Di
   if (params.officeId != null) query.officeId = String(params.officeId);
 
   const { data } = await api.get<ApiResponse<DivisionResponse[]>>("/config/divisions", { params: query });
+  return unwrap(data);
+}
+
+/** POST /api/config/divisions — create a new division. */
+export async function createDivision(body: UpsertDivisionRequest): Promise<DivisionResponse> {
+  const { data } = await api.post<ApiResponse<DivisionResponse>>("/config/divisions", body);
+  return unwrap(data);
+}
+
+/** PUT /api/config/divisions/{id} — update an existing division. */
+export async function updateDivision(id: number, body: UpsertDivisionRequest): Promise<DivisionResponse> {
+  const { data } = await api.put<ApiResponse<DivisionResponse>>(`/config/divisions/${id}`, body);
+  return unwrap(data);
+}
+
+/** DELETE /api/config/divisions/{id} — soft delete (isActive = false). */
+export async function deactivateDivision(id: number): Promise<DivisionResponse> {
+  const { data } = await api.delete<ApiResponse<DivisionResponse>>(`/config/divisions/${id}`);
+  return unwrap(data);
+}
+
+/** GET /api/config/divisions/csv — raw CSV text in canonical 11-column order. */
+export async function exportDivisionsCsv(): Promise<string> {
+  const { data } = await api.get<string>("/config/divisions/csv", { responseType: "text" });
+  return data;
+}
+
+/** POST /api/config/divisions/csv — upsert by (office_code, name); returns counts. */
+export async function importDivisionsCsv(csvText: string): Promise<CsvImportResult> {
+  const { data } = await api.post<ApiResponse<CsvImportResult>>("/config/divisions/csv", csvText, {
+    headers: { "Content-Type": "text/csv" },
+  });
   return unwrap(data);
 }
 

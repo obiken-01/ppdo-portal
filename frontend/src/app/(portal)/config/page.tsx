@@ -16,7 +16,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { fetchMe } from "@/lib/me-cache";
-import { listAccounts, listFundingSources, listOffices } from "@/lib/config";
+import { listAccounts, listDivisions, listFundingSources, listOffices } from "@/lib/config";
 
 // ---------------------------------------------------------------------------
 // Tile definitions
@@ -56,6 +56,14 @@ const TILES: TileDef[] = [
     href: "/config/funding-sources",
     load: async () => (await listFundingSources({ active: "true" })).length,
   },
+  {
+    key: "divisions",
+    icon: "🏢",
+    name: "Divisions",
+    caption: "Per-office divisions that carry data scope and feature-permission flags.",
+    href: "/config/divisions",
+    load: async () => (await listDivisions({ active: "true" })).length,
+  },
 ];
 
 const USER_TILE: TileDef = {
@@ -84,6 +92,7 @@ export default function ConfigDashboardPage() {
     accounts: null,
     offices: null,
     funding: null,
+    divisions: null,
     users: null,
   });
 

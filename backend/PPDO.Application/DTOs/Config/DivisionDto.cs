@@ -8,6 +8,7 @@ public sealed record DivisionDto(
     int Id,
     int OfficeId,
     string? OfficeName,
+    string? OfficeCode,
     string? Code,
     string Name,
     bool IsActive,
