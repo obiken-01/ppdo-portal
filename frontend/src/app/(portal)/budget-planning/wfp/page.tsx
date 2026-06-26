@@ -36,8 +36,10 @@ import {
 } from "@/lib/wfp";
 import { listAccounts, listFundingSources, listOffices } from "@/lib/config";
 import Modal from "@/components/ui/Modal";
+import MoneyInput from "@/components/ui/MoneyInput";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
+import { formatMoney } from "@/lib/money";
 import type {
   AipActivitySummary,
   AipRecordSummary,
@@ -80,10 +82,6 @@ function resolveDefaultFundingSourceId(
 
 function fmtCurrency(n: number): string {
   if (n === 0) return "—";
-  return n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function fmtNum(n: number): string {
   return n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
@@ -264,13 +262,13 @@ function ExpenditurePopup({
       const net = computeNet(l);
       const quarterly = l.q1 + l.q2 + l.q3 + l.q4;
       if (net > 0 && quarterly > net + 0.001)
-        errs.push(`Line ${i + 1} (${l.expenditureType}): quarterly total ${fmtNum(quarterly)} exceeds net appropriation ${fmtNum(net)}.`);
+        errs.push(`Line ${i + 1} (${l.expenditureType}): quarterly total ${formatMoney(quarterly)} exceeds net appropriation ${formatMoney(net)}.`);
     });
     const aipBudget = activity.total != null ? activity.total * 1000 : null;
     if (aipBudget != null) {
       const totalApprop = localLines.reduce((sum, l) => sum + l.totalAppropriation, 0);
       if (totalApprop > aipBudget + 0.001)
-        errs.push(`Total appropriation ${fmtNum(totalApprop)} exceeds the AIP budget of ${fmtNum(aipBudget)}.`);
+        errs.push(`Total appropriation ${formatMoney(totalApprop)} exceeds the AIP budget of ${formatMoney(aipBudget)}.`);
     }
     return errs;
   }, [localLines, activity.total]);
@@ -369,7 +367,7 @@ function ExpenditurePopup({
       <p className="mb-4 text-sm text-slate-600">
         AIP Budget:{" "}
         <span className="font-semibold tabular-nums text-slate-800">
-          {activity.total != null ? fmtNum(activity.total * 1000) : "—"}
+          {activity.total != null ? formatMoney(activity.total * 1000) : "—"}
         </span>
       </p>
 
@@ -452,19 +450,13 @@ function ExpenditurePopup({
                       {/* TOTAL APPROP */}
                       <td className="px-2 py-1.5 text-right">
                         {readonly ? (
-                          <span>{fmtNum(line.totalAppropriation)}</span>
+                          <span>{formatMoney(line.totalAppropriation)}</span>
                         ) : (
-                          <input
-                            type="number"
+                          <MoneyInput
+                            value={line.totalAppropriation === 0 ? null : line.totalAppropriation}
+                            onChange={(v) => updateLine(idx, { totalAppropriation: v ?? 0 })}
                             min={0}
-                            step="0.01"
-                            value={line.totalAppropriation || ""}
-                            onChange={(e) =>
-                              updateLine(idx, {
-                                totalAppropriation: parseFloat(e.target.value) || 0,
-                              })
-                            }
-                            className="w-24 text-right border border-slate-200 text-xs px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-green-500"
+                            className="w-28 text-xs"
                           />
                         )}
                       </td>
@@ -481,24 +473,20 @@ function ExpenditurePopup({
 
                       {/* NET */}
                       <td className="px-2 py-1.5 text-right font-medium text-slate-700 whitespace-nowrap">
-                        {fmtNum(net)}
+                        {formatMoney(net)}
                       </td>
 
                       {/* Q1–Q4 */}
                       {(["q1", "q2", "q3", "q4"] as const).map((q) => (
                         <td key={q} className="px-2 py-1.5 text-right">
                           {readonly ? (
-                            <span>{fmtNum(line[q])}</span>
+                            <span>{formatMoney(line[q])}</span>
                           ) : (
-                            <input
-                              type="number"
+                            <MoneyInput
+                              value={line[q] === 0 ? null : line[q]}
+                              onChange={(v) => updateLine(idx, { [q]: v ?? 0 })}
                               min={0}
-                              step="0.01"
-                              value={line[q] || ""}
-                              onChange={(e) =>
-                                updateLine(idx, { [q]: parseFloat(e.target.value) || 0 })
-                              }
-                              className="w-20 text-right border border-slate-200 text-xs px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-green-500"
+                              className="w-24 text-xs"
                             />
                           )}
                         </td>
@@ -510,7 +498,7 @@ function ExpenditurePopup({
                           isOver ? "text-red-600" : "text-slate-700"
                         }`}
                       >
-                        {fmtNum(quarterly)}
+                        {formatMoney(quarterly)}
                       </td>
 
                       {/* SOURCE */}
@@ -1246,7 +1234,7 @@ function WfpPageInner() {
                                               {fmtCurrency(total)}
                                             </td>
                                             <td className="px-3 py-2 text-right tabular-nums text-slate-400 text-xs">
-                                              {activity.total != null ? fmtNum(activity.total * 1000) : "—"}
+                                              {activity.total != null ? formatMoney(activity.total * 1000) : "—"}
                                             </td>
                                             <td className="px-3 py-2 text-right tabular-nums">
                                               {fmtCurrency(sumQ(activity.id, "q1"))}
