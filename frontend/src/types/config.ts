@@ -113,6 +113,7 @@ export interface DivisionResponse {
   id: number;
   officeId: number;
   officeName: string | null;
+  officeCode: string | null;
   code: string | null;
   name: string;
   isActive: boolean;

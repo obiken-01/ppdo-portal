@@ -19,8 +19,8 @@ public sealed class DivisionService : IDivisionService
         "can_manage_config", "can_upload_aip", "can_manage_users", "can_manage_resource_links",
     };
 
-    private readonly IRepository<Division> _divisions;
-    private readonly IRepository<Office>   _offices;
+    private readonly IRepository<Division>   _divisions;
+    private readonly IRepository<Office>     _offices;
     private readonly ILogger<DivisionService> _logger;
     private readonly IAuditService            _audit;
 
@@ -45,6 +45,7 @@ public sealed class DivisionService : IDivisionService
         IReadOnlyList<Division> divisions = await _divisions.GetAllAsync(cancellationToken);
         IReadOnlyList<Office> offices     = await _offices.GetAllAsync(cancellationToken);
         Dictionary<int, string> officeNames = offices.ToDictionary(o => o.Id, o => o.OfficeName);
+        Dictionary<int, string> officeCodes = offices.ToDictionary(o => o.Id, o => o.OfficeCode);
 
         IEnumerable<Division> query = divisions;
         if (activeOnly == true) query = query.Where(d => d.IsActive);
@@ -53,7 +54,7 @@ public sealed class DivisionService : IDivisionService
         return query
             .OrderBy(d => d.OfficeId)
             .ThenBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(d => MapToDto(d, officeNames))
+            .Select(d => MapToDto(d, officeNames, officeCodes))
             .ToList();
     }
 
@@ -66,8 +67,9 @@ public sealed class DivisionService : IDivisionService
             return ServiceResult<DivisionDto>.NotFound($"Division {id} not found.");
 
         IReadOnlyList<Office> offices = await _offices.GetAllAsync(cancellationToken);
-        Dictionary<int, string> names = offices.ToDictionary(o => o.Id, o => o.OfficeName);
-        return ServiceResult<DivisionDto>.Ok(MapToDto(division, names));
+        Dictionary<int, string> names  = offices.ToDictionary(o => o.Id, o => o.OfficeName);
+        Dictionary<int, string> codes  = offices.ToDictionary(o => o.Id, o => o.OfficeCode);
+        return ServiceResult<DivisionDto>.Ok(MapToDto(division, names, codes));
     }
 
     /// <inheritdoc />
@@ -113,7 +115,8 @@ public sealed class DivisionService : IDivisionService
 
         IReadOnlyList<Office> offices = await _offices.GetAllAsync(cancellationToken);
         Dictionary<int, string> officeNames = offices.ToDictionary(o => o.Id, o => o.OfficeName);
-        return ServiceResult<DivisionDto>.Ok(MapToDto(entity, officeNames));
+        Dictionary<int, string> officeCodes = offices.ToDictionary(o => o.Id, o => o.OfficeCode);
+        return ServiceResult<DivisionDto>.Ok(MapToDto(entity, officeNames, officeCodes));
     }
 
     /// <inheritdoc />
@@ -152,7 +155,8 @@ public sealed class DivisionService : IDivisionService
 
         IReadOnlyList<Office> offices = await _offices.GetAllAsync(cancellationToken);
         Dictionary<int, string> officeNames = offices.ToDictionary(o => o.Id, o => o.OfficeName);
-        return ServiceResult<DivisionDto>.Ok(MapToDto(entity, officeNames));
+        Dictionary<int, string> officeCodes = offices.ToDictionary(o => o.Id, o => o.OfficeCode);
+        return ServiceResult<DivisionDto>.Ok(MapToDto(entity, officeNames, officeCodes));
     }
 
     /// <inheritdoc />
@@ -177,7 +181,8 @@ public sealed class DivisionService : IDivisionService
 
         IReadOnlyList<Office> offices = await _offices.GetAllAsync(cancellationToken);
         Dictionary<int, string> officeNames = offices.ToDictionary(o => o.Id, o => o.OfficeName);
-        return ServiceResult<DivisionDto>.Ok(MapToDto(entity, officeNames));
+        Dictionary<int, string> officeCodes = offices.ToDictionary(o => o.Id, o => o.OfficeCode);
+        return ServiceResult<DivisionDto>.Ok(MapToDto(entity, officeNames, officeCodes));
     }
 
     /// <inheritdoc />
@@ -328,9 +333,13 @@ public sealed class DivisionService : IDivisionService
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private static DivisionDto MapToDto(Division d, Dictionary<int, string> officeNames) =>
+    private static DivisionDto MapToDto(
+        Division d,
+        Dictionary<int, string> officeNames,
+        Dictionary<int, string>? officeCodes = null) =>
         new(d.Id, d.OfficeId,
             officeNames.GetValueOrDefault(d.OfficeId),
+            officeCodes?.GetValueOrDefault(d.OfficeId),
             d.Code, d.Name, d.IsActive,
             d.CanAccessInventory,
             d.CanAccessReports,

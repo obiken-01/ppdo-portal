@@ -211,12 +211,14 @@ export default function DivisionConfigPage() {
       const active = STATUS_TO_ACTIVE[statusFilter];
       const data = await listDivisions({ active });
       // Client-side search filter (server doesn't support name search yet — small dataset)
-      const filtered = debouncedSearch.trim()
+      const q = debouncedSearch.toLowerCase();
+      const filtered = q
         ? data.filter(
             (d) =>
-              d.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-              (d.code ?? "").toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-              (d.officeName ?? "").toLowerCase().includes(debouncedSearch.toLowerCase()),
+              d.name.toLowerCase().includes(q) ||
+              (d.code ?? "").toLowerCase().includes(q) ||
+              (d.officeName ?? "").toLowerCase().includes(q) ||
+              (d.officeCode ?? "").toLowerCase().includes(q),
           )
         : data;
       setDivisions(filtered);
@@ -389,7 +391,18 @@ export default function DivisionConfigPage() {
       key: "officeName",
       header: "Office",
       sortable: true,
-      render: (d) => <span className="text-slate-600 text-sm">{d.officeName ?? "—"}</span>,
+      render: (d) => (
+        <span className="text-slate-600 text-sm">
+          {d.officeCode ? (
+            <>
+              <span className="font-mono text-xs text-slate-400 mr-1">{d.officeCode}</span>
+              {d.officeName ?? "—"}
+            </>
+          ) : (
+            d.officeName ?? "—"
+          )}
+        </span>
+      ),
     },
     {
       key: "flags",
