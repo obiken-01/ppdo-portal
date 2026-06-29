@@ -35,7 +35,7 @@ import {
   wfpErrorMessage,
 } from "@/lib/wfp";
 import { listAccounts, listDivisions, listFundingSources, listOffices } from "@/lib/config";
-import { getSetupStatus, getAllocations } from "@/lib/allocation";
+import { getSetupStatus, getAllocations, getPrograms } from "@/lib/allocation";
 import Modal from "@/components/ui/Modal";
 import MoneyInput from "@/components/ui/MoneyInput";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
@@ -49,6 +49,7 @@ import type {
   AllocationSetupStatusDto,
   DivisionAllocationDto,
   DivisionResponse,
+  ProgramAssignmentDto,
   ExpenditureType,
   FundingSourceResponse,
   OfficeResponse,
@@ -628,6 +629,7 @@ function WfpPageInner() {
   // ── Division setup status + budget banner ─────────────────────────────────
   const [setupStatus, setSetupStatus] = useState<AllocationSetupStatusDto | null>(null);
   const [divisionAllocation, setDivisionAllocation] = useState<DivisionAllocationDto | null>(null);
+  const [programAssignments, setProgramAssignments] = useState<ProgramAssignmentDto[]>([]);
 
   // ── Draft ────────────────────────────────────────────────────────────────
 
@@ -703,6 +705,7 @@ function WfpPageInner() {
       setHasUnsaved(false);
       setSetupStatus(null);
       setDivisionAllocation(null);
+      setProgramAssignments([]);
       return;
     }
 
@@ -742,19 +745,22 @@ function WfpPageInner() {
         if (newFunds) { setFundingSources(newFunds); fundingSourcesLoaded.current = true; }
         if (newAccts) { setAccounts(newAccts); accountsLoaded.current = true; }
 
-        // Load setup gate + division budget when a division is selected
+        // Load setup gate + division budget + program assignments when a division is selected
         if (divisionId != null) {
-          const [status, allocs] = await Promise.all([
+          const [status, allocs, assignments] = await Promise.all([
             getSetupStatus(officeId, detail.fiscalYear, divisionId),
             getAllocations(officeId, detail.fiscalYear),
+            getPrograms(officeId, detail.fiscalYear),
           ]);
           if (!cancelled) {
             setSetupStatus(status);
             setDivisionAllocation(allocs.find((a) => a.divisionId === divisionId) ?? null);
+            setProgramAssignments(assignments);
           }
         } else {
           setSetupStatus(null);
           setDivisionAllocation(null);
+          setProgramAssignments([]);
         }
 
         const record = wfpList[0] ?? null;
@@ -848,10 +854,23 @@ function WfpPageInner() {
 
   const aipOffices = useMemo(() => {
     if (!aipDetail || !selectedConfigOffice?.officeRefCode) return [];
-    return aipDetail.offices.filter(
+    const offices = aipDetail.offices.filter(
       (o) => officeRefSuffix(o.refCode) === selectedConfigOffice.officeRefCode
     );
-  }, [aipDetail, selectedConfigOffice]);
+
+    // When no division selected (bypass user), show all programs
+    if (selectedDivisionId == null) return offices;
+
+    // Filter programs to only those assigned to this division
+    const assignedRefs = new Set(
+      programAssignments
+        .filter((a) => a.divisionIds.includes(selectedDivisionId))
+        .map((a) => a.programRefCode)
+    );
+    return offices
+      .map((o) => ({ ...o, programs: o.programs.filter((p) => assignedRefs.has(p.refCode)) }))
+      .filter((o) => o.programs.length > 0);
+  }, [aipDetail, selectedConfigOffice, selectedDivisionId, programAssignments]);
 
   // ── Popup activity lookup ─────────────────────────────────────────────────
 
