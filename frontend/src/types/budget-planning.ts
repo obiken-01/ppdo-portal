@@ -308,6 +308,60 @@ export interface SaveWfpRequest {
   activities: SaveWfpActivityRequest[];
 }
 
+// ── Allocation (RAL-99/101) ───────────────────────────────────────────────────
+
+export interface BudgetCeilingDto {
+  id: number;
+  officeId: number;
+  fiscalYear: number;
+  amount: number;
+}
+
+export interface DivisionAllocationDto {
+  id: number;
+  divisionId: number;
+  divisionName: string;
+  fiscalYear: number;
+  amount: number;
+}
+
+export interface ProgramAssignmentDto {
+  officeRefCode: string;
+  programRefCode: string;
+  programName: string;
+  sector: string;
+  divisionIds: number[];
+}
+
+export interface AllocationSetupStatusDto {
+  hasCeiling: boolean;
+  hasAllocation: boolean;
+  hasProgramAssignment: boolean;
+}
+
+export interface UpsertCeilingRequest {
+  officeId: number;
+  fiscalYear: number;
+  amount: number;
+}
+
+export interface UpsertDivisionAllocationItem {
+  divisionId: number;
+  amount: number;
+}
+
+export interface UpsertAllocationsRequest {
+  officeId: number;
+  fiscalYear: number;
+  allocations: UpsertDivisionAllocationItem[];
+}
+
+export interface UpsertProgramAssignmentRequest {
+  officeRefCode: string;
+  programRefCode: string;
+  divisionIds: number[];
+}
+
 // ── LDIP ──────────────────────────────────────────────────────────────────────
 
 export type LdipEntryMode = "New" | "Amendment" | "Supplemental";

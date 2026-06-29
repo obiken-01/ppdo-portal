@@ -287,6 +287,12 @@ export default function Sidebar({ me }: SidebarProps) {
                   <span className="text-xs">•</span>
                   <span className="truncate">AIP</span>
                 </Link>
+                {me?.canManageAllocation && (
+                  <Link href="/budget-planning/allocation" className={childLinkCls(isActive("/budget-planning/allocation"))}>
+                    <span className="text-xs">•</span>
+                    <span className="truncate">Allocation</span>
+                  </Link>
+                )}
                 <Link href="/budget-planning/wfp" className={childLinkCls(isActive("/budget-planning/wfp"))}>
                   <span className="text-xs">•</span>
                   <span className="truncate">WFP</span>
