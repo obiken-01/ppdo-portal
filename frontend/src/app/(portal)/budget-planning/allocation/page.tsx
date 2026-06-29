@@ -801,7 +801,7 @@ function AllocationPageInner() {
                     </div>
 
                     {/* Programs grid */}
-                    <div className="overflow-x-auto border border-slate-200">
+                    <div className="overflow-auto border border-slate-200 max-h-[60vh]">
                       <table className="text-sm border-collapse"
                         style={{ minWidth: `${420 + divisions.length * 100}px` }}>
                         <thead className="sticky top-0 z-10 bg-slate-50">
