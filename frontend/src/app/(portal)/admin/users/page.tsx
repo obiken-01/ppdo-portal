@@ -28,6 +28,7 @@ import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { listDivisions } from "@/lib/config";
 import Modal from "@/components/ui/Modal";
+import { useToast } from "@/components/ui/Toast";
 import type {
   CreateUserRequest,
   DivisionResponse,
@@ -50,8 +51,14 @@ const ROLE_BADGE: Record<UserRole, string> = {
   Staff:      "bg-slate-100 text-slate-600",
 };
 
-// Overrides that are meaningful only for Staff (inherit from division flags)
-const OVERRIDE_KEYS = [
+// Permission override descriptors.
+// adminOnly: true  — Admin does NOT auto-inherit this flag; the toggle is shown for Admin too.
+// (All flags are shown for Staff.)
+const OVERRIDE_KEYS: {
+  key: keyof UpdateUserRequest & `override${string}`;
+  label: string;
+  adminOnly?: boolean;
+}[] = [
   { key: "overrideCanAccessInventory",      label: "Access Inventory" },
   { key: "overrideCanAccessReports",        label: "Inventory Report" },
   { key: "overrideCanManageUsers",          label: "Manage Users" },
@@ -59,8 +66,8 @@ const OVERRIDE_KEYS = [
   { key: "overrideCanAccessBudgetPlanning", label: "Access Budget Planning" },
   { key: "overrideCanUploadAip",            label: "Upload AIP" },
   { key: "overrideCanManageConfig",         label: "Manage Configuration" },
-  { key: "overrideCanManageAllocation",     label: "Manage Allocation (finance officer)" },
-] as const;
+  { key: "overrideCanManageAllocation",     label: "Manage Allocation (finance officer)", adminOnly: true },
+];
 
 // ---------------------------------------------------------------------------
 // Blank form state
@@ -158,16 +165,18 @@ type UserFormProps = {
 };
 
 function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFormProps) {
-  const showOverrides = form.role === "Staff";
+  const showOverrides      = form.role === "Staff";
+  const showAdminOverrides = form.role === "Admin";
+  const adminOnlyKeys      = OVERRIDE_KEYS.filter((o) => o.adminOnly);
   // A non-PPDO office user has an office assigned. Their division must belong to that office.
   const isOfficeUser = form.officeId != null;
   const isPpdoDivisionUser = form.role === "Staff";
 
-  // Division options: filter to the selected office's divisions for office users;
-  // otherwise show all active divisions (admin picks the right PPDO one).
+  // Division options: filter to the selected office's divisions.
+  // No office selected = PPDO-internal user → show only PPDO divisions (officeCode === "PPDO").
   const divisionOptions = isOfficeUser
     ? divisions.filter((d) => d.officeId === form.officeId)
-    : divisions;
+    : divisions.filter((d) => d.officeCode === "PPDO");
 
   // Selecting an office forces a non-admin role (office users are encoders).
   function handleOfficeChange(value: string) {
@@ -317,7 +326,7 @@ function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFor
         )}
       </div>
 
-      {/* Permission overrides — Edit only, Staff only */}
+      {/* Permission overrides — Staff: all flags; Admin: adminOnly flags only */}
       {isEdit && showOverrides && (
         <div>
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
@@ -339,10 +348,38 @@ function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFor
         </div>
       )}
 
-      {/* SuperAdmin / Admin note — Edit only */}
-      {isEdit && !showOverrides && (
+      {isEdit && showAdminOverrides && adminOnlyKeys.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+            Permission Overrides
+          </p>
+          <p className="text-xs text-slate-400 mb-2">
+            Admin has full access to all features except the flags below — these must be granted explicitly.
+          </p>
+          <div className="space-y-2">
+            {adminOnlyKeys.map(({ key, label }) => (
+              <OverrideToggle
+                key={key}
+                label={label}
+                value={(form as UpdateUserRequest)[key]}
+                onChange={(v) => onChange({ [key]: v })}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* SuperAdmin note — Edit only */}
+      {isEdit && form.role === "SuperAdmin" && (
         <p className="text-xs text-slate-400 bg-slate-50 px-3 py-2">
-          SuperAdmin and Admin roles always have full access — permission overrides do not apply.
+          SuperAdmin always has full access — permission overrides do not apply.
+        </p>
+      )}
+
+      {/* Admin full-access note — only when no adminOnly overrides exist */}
+      {isEdit && showAdminOverrides && adminOnlyKeys.length === 0 && (
+        <p className="text-xs text-slate-400 bg-slate-50 px-3 py-2">
+          Admin always has full access — permission overrides do not apply.
         </p>
       )}
 
@@ -415,6 +452,7 @@ export default function UsersPage() {
   const router = useRouter();
 
   // Auth / permission guard
+  const { toast } = useToast();
   const [authChecked, setAuthChecked] = useState(false);
 
   // Data
@@ -533,6 +571,7 @@ export default function UsersPage() {
       await api.post("/users", addForm);
       setShowAdd(false);
       await loadData();
+      toast.success("User created", `${addForm.fullName} has been added. Default password: TamarawUser2026!`);
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
       setFormError(msg ?? "Failed to create user. Please try again.");
@@ -599,6 +638,7 @@ export default function UsersPage() {
     setActionLoading(true);
     try {
       await api.put(`/users/${resetTarget.id}/reset-password`);
+      toast.success("Password reset", `Password reset to TamarawUser2026! for ${resetTarget.fullName}.`);
       setResetTarget(null);
     } catch {
       // keep modal open — user can retry
