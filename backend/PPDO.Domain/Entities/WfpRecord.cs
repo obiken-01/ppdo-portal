@@ -1,9 +1,9 @@
 namespace PPDO.Domain.Entities;
 
 /// <summary>
-/// Work and Financial Plan record — one WFP per office per AIP record
-/// (enforced by a unique index on AipRecordId + OfficeId).
-/// An AIP contains activities for all offices; a WFP is scoped to exactly one office.
+/// Work and Financial Plan record — one WFP per office+division per AIP record
+/// (enforced by a unique index on AipRecordId + OfficeId + DivisionId).
+/// An AIP contains activities for all offices; a WFP is scoped to one office and one division.
 /// Status workflow: Draft / Final.
 /// </summary>
 public sealed class WfpRecord
@@ -16,6 +16,9 @@ public sealed class WfpRecord
 
     /// <summary>FK to the office this WFP is scoped to.</summary>
     public int OfficeId { get; set; }
+
+    /// <summary>FK to the division this WFP is scoped to (RAL-102). Null = no division scope (legacy).</summary>
+    public int? DivisionId { get; set; }
 
     /// <summary>Fiscal year — e.g. 2027.</summary>
     public int FiscalYear { get; set; }
@@ -42,6 +45,9 @@ public sealed class WfpRecord
 
     /// <summary>The office this WFP is scoped to.</summary>
     public Office Office { get; set; } = null!;
+
+    /// <summary>The division this WFP is scoped to. Null when DivisionId is null.</summary>
+    public Division? Division { get; set; }
 
     /// <summary>The user who created this record.</summary>
     public User? CreatedBy { get; set; }

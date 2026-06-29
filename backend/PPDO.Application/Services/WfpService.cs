@@ -8,18 +8,19 @@ namespace PPDO.Application.Services;
 
 /// <summary>
 /// WFP service — upsert, expenditure-line validation, snapshot population,
-/// status lifecycle (RAL-64), and Excel export (RAL-79).
+/// status lifecycle (RAL-64), Excel export (RAL-79), and per-division scoping (RAL-102).
 ///
 /// SaveAsync two-pass logic:
+///   0. (RAL-102) When divisionId provided: enforce setup gate, then validate Σ gross total ≤ allocation.
 ///   1. Validate all lines (quarterly_total ≤ net_appropriation).
 ///   2. Load account + funding-source dicts for snapshot population.
 ///   3. Delete existing activities (cascade removes lines) when updating a Draft.
 ///   4. Persist new activities and lines.
 ///
 /// Reserve computation: reserveAmount = Round(totalAppropriation × 10%, 2) when ApplyReserve=true.
+/// Division-budget validation uses GROSS total (D5): Σ TotalAppropriation (not net).
 ///
-/// RAL-93: all WFP reads (by-id lookups, activity/line fetches, existing-WFP check) now
-/// use IWfpRepository scoped queries instead of GetAllAsync + in-memory filter.
+/// RAL-93: all WFP reads use IWfpRepository scoped queries instead of GetAllAsync + in-memory filter.
 /// </summary>
 public sealed class WfpService : IWfpService
 {
@@ -33,6 +34,7 @@ public sealed class WfpService : IWfpService
     private readonly IAipService                     _aip;
     private readonly IOfficeService                  _office;
     private readonly IWfpExcelService                _excel;
+    private readonly IAllocationService              _allocation;
 
     public WfpService(
         IWfpRepository                  wfpRepo,
@@ -44,25 +46,27 @@ public sealed class WfpService : IWfpService
         CallerContext                   caller,
         IAipService                     aip,
         IOfficeService                  office,
-        IWfpExcelService                excel)
+        IWfpExcelService                excel,
+        IAllocationService              allocation)
     {
-        _wfpRepo     = wfpRepo;
-        _actRepo     = actRepo;
-        _lineRepo    = lineRepo;
+        _wfpRepo    = wfpRepo;
+        _actRepo    = actRepo;
+        _lineRepo   = lineRepo;
         _accountRepo = accountRepo;
-        _fsRepo      = fsRepo;
-        _audit       = audit;
-        _caller      = caller;
-        _aip         = aip;
-        _office      = office;
-        _excel       = excel;
+        _fsRepo     = fsRepo;
+        _audit      = audit;
+        _caller     = caller;
+        _aip        = aip;
+        _office     = office;
+        _excel      = excel;
+        _allocation = allocation;
     }
 
     // ── Read ──────────────────────────────────────────────────────────────────
 
     public async Task<IReadOnlyList<WfpRecordDto>> GetAllAsync(
-        int? aipRecordId, int? officeId, CancellationToken ct = default)
-        => (await _wfpRepo.GetFilteredAsync(aipRecordId, officeId, ct)).Select(MapToDto).ToList();
+        int? aipRecordId, int? officeId, int? divisionId = null, CancellationToken ct = default)
+        => (await _wfpRepo.GetFilteredAsync(aipRecordId, officeId, divisionId, ct)).Select(MapToDto).ToList();
 
     public async Task<ServiceResult<WfpRecordDetailDto>> GetByIdAsync(
         int id, CancellationToken ct = default)
@@ -80,7 +84,7 @@ public sealed class WfpService : IWfpService
                 lines.Where(l => l.WfpActivityId == a.Id).Select(MapLineToDto).ToList())).ToList();
 
         return ServiceResult<WfpRecordDetailDto>.Ok(new WfpRecordDetailDto(
-            rec.Id, rec.AipRecordId, rec.OfficeId, rec.FiscalYear, rec.Status,
+            rec.Id, rec.AipRecordId, rec.OfficeId, rec.DivisionId, rec.FiscalYear, rec.Status,
             rec.CreatedById, rec.CreatedAt, rec.UpdatedAt, rec.FinalizedAt, rec.SourceId, actDtos));
     }
 
@@ -89,11 +93,48 @@ public sealed class WfpService : IWfpService
     public async Task<ServiceResult<WfpRecordDto>> SaveAsync(
         SaveWfpDto dto, Guid createdById, CancellationToken ct = default)
     {
-        // Find existing WFP for this (aipRecordId, officeId) — single SQL lookup.
-        WfpRecord? existing = await _wfpRepo.FindByAipAndOfficeAsync(dto.AipRecordId, dto.OfficeId, ct);
+        // Find existing WFP for (aipRecordId, officeId, divisionId) — single SQL lookup.
+        WfpRecord? existing = await _wfpRepo.FindByAipOfficeAndDivisionAsync(
+            dto.AipRecordId, dto.OfficeId, dto.DivisionId, ct);
 
         if (existing is not null && existing.Status == PlanningStatus.Final)
             return ServiceResult<WfpRecordDto>.Forbidden("Cannot edit a finalized WFP.");
+
+        // ── Pass 0 (RAL-102): division-scoped checks when divisionId is provided ──
+        if (dto.DivisionId.HasValue)
+        {
+            // 0a. Setup gate: ceiling + allocation + program assignment must all be in place.
+            AllocationSetupStatusDto setup = await _allocation.GetSetupStatusAsync(
+                dto.OfficeId, dto.FiscalYear, dto.DivisionId.Value, ct);
+
+            if (!setup.HasCeiling)
+                return ServiceResult<WfpRecordDto>.BadRequest(
+                    "Setup incomplete: no budget ceiling has been set for this office and fiscal year.");
+            if (!setup.HasAllocation)
+                return ServiceResult<WfpRecordDto>.BadRequest(
+                    "Setup incomplete: no division allocation has been set for this division and fiscal year.");
+            if (!setup.HasProgramAssignment)
+                return ServiceResult<WfpRecordDto>.BadRequest(
+                    "Setup incomplete: no programs have been assigned to this division. " +
+                    "Assign programs in the Allocation page first.");
+
+            // 0b. Division-budget validation: Σ GROSS total appropriation ≤ division allocation.
+            IReadOnlyList<DivisionAllocationDto> allocs =
+                await _allocation.GetAllocationsAsync(dto.OfficeId, dto.FiscalYear, ct);
+            DivisionAllocationDto? myAlloc = allocs.FirstOrDefault(a => a.DivisionId == dto.DivisionId.Value);
+
+            if (myAlloc is not null)
+            {
+                decimal grossTotal = dto.Activities
+                    .SelectMany(a => a.Lines)
+                    .Sum(l => l.TotalAppropriation ?? 0m);
+
+                if (grossTotal > myAlloc.Amount)
+                    return ServiceResult<WfpRecordDto>.BadRequest(
+                        $"Total appropriation (₱{grossTotal:N2}) exceeds the division allocation " +
+                        $"of ₱{myAlloc.Amount:N2}.");
+            }
+        }
 
         // ── Pass 1: validate all lines before any DB write ────────────────────
         List<string> errors = [];
@@ -133,7 +174,7 @@ public sealed class WfpService : IWfpService
 
         if (existing is not null)
         {
-            // Delete all existing activities (cascade removes lines in DB).
+            // Delete all existing activities for this division's WFP record (cascade removes lines).
             IReadOnlyList<WfpActivity> oldActs = await _wfpRepo.GetActivitiesByWfpIdAsync(existing.Id, ct);
             foreach (WfpActivity act in oldActs)
                 await _actRepo.DeleteAsync(act, ct);
@@ -149,6 +190,7 @@ public sealed class WfpService : IWfpService
             {
                 AipRecordId = dto.AipRecordId,
                 OfficeId    = dto.OfficeId,
+                DivisionId  = dto.DivisionId,
                 FiscalYear  = dto.FiscalYear,
                 Status      = PlanningStatus.Draft,
                 CreatedById = createdById,
@@ -215,7 +257,7 @@ public sealed class WfpService : IWfpService
 
         await _audit.LogAsync("wfp_records", wfpRecord.Id, auditAction,
             auditAction == AuditAction.Create ? null : new { wfpRecord.Status },
-            new { wfpRecord.AipRecordId, wfpRecord.OfficeId, wfpRecord.Status }, ct);
+            new { wfpRecord.AipRecordId, wfpRecord.OfficeId, wfpRecord.DivisionId, wfpRecord.Status }, ct);
 
         return ServiceResult<WfpRecordDto>.Ok(MapToDto(wfpRecord));
     }
@@ -304,7 +346,7 @@ public sealed class WfpService : IWfpService
     // ── Mapping ───────────────────────────────────────────────────────────────
 
     private static WfpRecordDto MapToDto(WfpRecord r) => new(
-        r.Id, r.AipRecordId, r.OfficeId, r.FiscalYear, r.Status,
+        r.Id, r.AipRecordId, r.OfficeId, r.DivisionId, r.FiscalYear, r.Status,
         r.CreatedById, r.CreatedAt, r.UpdatedAt, r.FinalizedAt, r.SourceId);
 
     private static WfpExpenditureLineDto MapLineToDto(WfpExpenditureLine l) => new(
