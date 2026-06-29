@@ -24,6 +24,9 @@ internal static class ConfigHttp
             ? values.FirstOrDefault()
             : null;
 
+    /// <summary>Any authenticated user — used for reference-data list endpoints (dropdowns).</summary>
+    internal static readonly Func<User, Task<bool>> Authenticated = _ => Task.FromResult(true);
+
     /// <summary>
     /// Validates the JWT and the supplied permission predicate.
     /// Returns the caller on success, or a 401/403 response to short-circuit on failure.

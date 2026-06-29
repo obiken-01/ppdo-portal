@@ -37,10 +37,7 @@ public sealed class ConfigDivisionFunctions
 
     private Task<bool> CanManageConfig(User u)  => _permissions.CanManageConfigAsync(u);
 
-    private async Task<bool> CanReadDivisions(User u)
-        => await _permissions.CanManageConfigAsync(u)
-        || await _permissions.CanManageUsersAsync(u)
-        || await _permissions.CanManageAllocationAsync(u);
+    // Any authenticated user may read divisions — divisions are reference data used in user-form and allocation dropdowns.
 
     // ── GET /api/config/divisions?active=true&officeId=  (also the user-form dropdown) ──
     [Function("DivisionsList")]
@@ -48,7 +45,7 @@ public sealed class ConfigDivisionFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "config/divisions")] HttpRequestData req,
         CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanReadDivisions, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, ConfigHttp.Authenticated, ct);
         if (denied is not null) return denied;
 
         bool? activeOnly = (req.Query["active"] ?? "").Trim().ToLowerInvariant() switch

@@ -29,18 +29,14 @@ public sealed class ConfigAccountFunctions
 
     private Task<bool> CanManageConfig(User u) => _permissions.CanManageConfigAsync(u);
 
-    // List is used by WFP entry popup (account combobox) — allow CanManageConfig or CanAccessBudgetPlanning.
-    private async Task<bool> CanReadAccounts(User u)
-        => await _permissions.CanManageConfigAsync(u)
-        || await _permissions.CanAccessBudgetPlanningAsync(u);
-
     // ── GET /api/config/accounts?search=&accountType=PS|MOOE|CO&active=true|false|all ──
+    // Any authenticated user may read — accounts are reference data used in WFP/AIP dropdowns.
     [Function("AccountsList")]
     public async Task<HttpResponseData> List(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "config/accounts")] HttpRequestData req,
         CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanReadAccounts, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, ConfigHttp.Authenticated, ct);
         if (denied is not null) return denied;
 
         string? accountType = req.Query["accountType"];

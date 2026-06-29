@@ -29,18 +29,14 @@ public sealed class ConfigFundingSourceFunctions
 
     private Task<bool> CanManageConfig(User u) => _permissions.CanManageConfigAsync(u);
 
-    // List is used by WFP entry popup (funding source selector) — allow CanManageConfig or CanAccessBudgetPlanning.
-    private async Task<bool> CanReadFundingSources(User u)
-        => await _permissions.CanManageConfigAsync(u)
-        || await _permissions.CanAccessBudgetPlanningAsync(u);
-
     // ── GET /api/config/funding-sources?search=&active=true|false|all ──
+    // Any authenticated user may read — funding sources are reference data used in WFP dropdowns.
     [Function("FundingSourcesList")]
     public async Task<HttpResponseData> List(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "config/funding-sources")] HttpRequestData req,
         CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanReadFundingSources, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, ConfigHttp.Authenticated, ct);
         if (denied is not null) return denied;
 
         IReadOnlyList<FundingSourceDto> data = await _funding.GetAllAsync(
