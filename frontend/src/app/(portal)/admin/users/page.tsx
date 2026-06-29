@@ -28,6 +28,7 @@ import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { listDivisions } from "@/lib/config";
 import Modal from "@/components/ui/Modal";
+import { useToast } from "@/components/ui/Toast";
 import type {
   CreateUserRequest,
   DivisionResponse,
@@ -415,6 +416,7 @@ export default function UsersPage() {
   const router = useRouter();
 
   // Auth / permission guard
+  const { toast } = useToast();
   const [authChecked, setAuthChecked] = useState(false);
 
   // Data
@@ -533,6 +535,7 @@ export default function UsersPage() {
       await api.post("/users", addForm);
       setShowAdd(false);
       await loadData();
+      toast.success("User created", `${addForm.fullName} has been added. Default password: TamarawUser2026!`);
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
       setFormError(msg ?? "Failed to create user. Please try again.");
@@ -599,6 +602,7 @@ export default function UsersPage() {
     setActionLoading(true);
     try {
       await api.put(`/users/${resetTarget.id}/reset-password`);
+      toast.success("Password reset", `Password reset to TamarawUser2026! for ${resetTarget.fullName}.`);
       setResetTarget(null);
     } catch {
       // keep modal open — user can retry

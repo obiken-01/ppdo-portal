@@ -31,9 +31,11 @@ public sealed class ConfigOfficeFunctions
 
     private Task<bool> CanManageConfig(User u) => _permissions.CanManageConfigAsync(u);
 
-    // List is also used by User Management — allow CanManageUsers OR CanManageConfig.
+    // List is used by User Management and Allocation page — allow CanManageConfig, CanManageUsers, or CanManageAllocation.
     private async Task<bool> CanReadOffices(User u)
-        => await _permissions.CanManageConfigAsync(u) || await _permissions.CanManageUsersAsync(u);
+        => await _permissions.CanManageConfigAsync(u)
+        || await _permissions.CanManageUsersAsync(u)
+        || await _permissions.CanManageAllocationAsync(u);
 
     // ── GET /api/config/offices?search=&active=true|false|all  (also the dropdown) ──
     [Function("OfficesList")]
