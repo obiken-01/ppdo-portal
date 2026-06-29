@@ -35,7 +35,7 @@ import {
   wfpErrorMessage,
 } from "@/lib/wfp";
 import { listAccounts, listDivisions, listFundingSources, listOffices } from "@/lib/config";
-import { getSetupStatus, getAllocations, getPrograms } from "@/lib/allocation";
+import { getCeiling, getSetupStatus, getAllocations, getPrograms } from "@/lib/allocation";
 import Modal from "@/components/ui/Modal";
 import MoneyInput from "@/components/ui/MoneyInput";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
@@ -627,6 +627,7 @@ function WfpPageInner() {
   const [fundingSources, setFundingSources] = useState<FundingSourceResponse[]>([]);
 
   // ── Division setup status + budget banner ─────────────────────────────────
+  const [hasCeiling, setHasCeiling] = useState<boolean | null>(null);  // null = not yet loaded
   const [setupStatus, setSetupStatus] = useState<AllocationSetupStatusDto | null>(null);
   const [divisionAllocation, setDivisionAllocation] = useState<DivisionAllocationDto | null>(null);
   const [programAssignments, setProgramAssignments] = useState<ProgramAssignmentDto[]>([]);
@@ -703,6 +704,7 @@ function WfpPageInner() {
       setWfp(null);
       setDraftLines({});
       setHasUnsaved(false);
+      setHasCeiling(null);
       setSetupStatus(null);
       setDivisionAllocation(null);
       setProgramAssignments([]);
@@ -744,6 +746,10 @@ function WfpPageInner() {
         setAipDetail(detail);
         if (newFunds) { setFundingSources(newFunds); fundingSourcesLoaded.current = true; }
         if (newAccts) { setAccounts(newAccts); accountsLoaded.current = true; }
+
+        // Always check ceiling (applies to all users, all divisions)
+        const ceilingResult = await getCeiling(officeId, detail.fiscalYear);
+        if (!cancelled) setHasCeiling(ceilingResult != null);
 
         // Load setup gate + division budget + program assignments when a division is selected
         if (divisionId != null) {
@@ -1029,9 +1035,11 @@ function WfpPageInner() {
     [draftLines]
   );
 
+  // hasCeiling null = still loading (don't block yet); false = no ceiling (block)
   const setupComplete =
-    setupStatus == null ||
-    (setupStatus.hasCeiling && setupStatus.hasAllocation && setupStatus.hasProgramAssignment);
+    hasCeiling !== false &&
+    (setupStatus == null ||
+      (setupStatus.hasAllocation && setupStatus.hasProgramAssignment));
 
   const canSave =
     aipDetail != null &&
@@ -1174,13 +1182,13 @@ function WfpPageInner() {
         </div>
 
         {/* Setup-incomplete banner */}
-        {setupStatus != null && !setupComplete && (
+        {!setupComplete && hasCeiling !== null && (
           <div className="mb-4 px-4 py-3 bg-amber-50 border border-amber-300 text-amber-800 text-sm flex flex-col gap-1">
             <span className="font-semibold">WFP entry is blocked — allocation setup incomplete:</span>
             <ul className="list-disc list-inside">
-              {!setupStatus.hasCeiling && <li>No budget ceiling set for this office and fiscal year.</li>}
-              {!setupStatus.hasAllocation && <li>No division allocation set for this division.</li>}
-              {!setupStatus.hasProgramAssignment && <li>No programs have been assigned to this division.</li>}
+              {hasCeiling === false && <li>No budget ceiling set for this office and fiscal year.</li>}
+              {setupStatus != null && !setupStatus.hasAllocation && <li>No division allocation set for this division.</li>}
+              {setupStatus != null && !setupStatus.hasProgramAssignment && <li>No programs have been assigned to this division.</li>}
             </ul>
             <span className="text-xs text-amber-700">Go to Budget Planning → Allocation to complete setup.</span>
           </div>
