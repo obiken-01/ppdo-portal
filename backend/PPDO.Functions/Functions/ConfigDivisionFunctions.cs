@@ -38,7 +38,9 @@ public sealed class ConfigDivisionFunctions
     private Task<bool> CanManageConfig(User u)  => _permissions.CanManageConfigAsync(u);
 
     private async Task<bool> CanReadDivisions(User u)
-        => await _permissions.CanManageConfigAsync(u) || await _permissions.CanManageUsersAsync(u);
+        => await _permissions.CanManageConfigAsync(u)
+        || await _permissions.CanManageUsersAsync(u)
+        || await _permissions.CanManageAllocationAsync(u);
 
     // ── GET /api/config/divisions?active=true&officeId=  (also the user-form dropdown) ──
     [Function("DivisionsList")]
