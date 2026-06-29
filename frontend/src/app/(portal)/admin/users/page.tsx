@@ -51,8 +51,14 @@ const ROLE_BADGE: Record<UserRole, string> = {
   Staff:      "bg-slate-100 text-slate-600",
 };
 
-// Overrides that are meaningful only for Staff (inherit from division flags)
-const OVERRIDE_KEYS = [
+// Permission override descriptors.
+// adminOnly: true  — Admin does NOT auto-inherit this flag; the toggle is shown for Admin too.
+// (All flags are shown for Staff.)
+const OVERRIDE_KEYS: {
+  key: keyof UpdateUserRequest & `override${string}`;
+  label: string;
+  adminOnly?: boolean;
+}[] = [
   { key: "overrideCanAccessInventory",      label: "Access Inventory" },
   { key: "overrideCanAccessReports",        label: "Inventory Report" },
   { key: "overrideCanManageUsers",          label: "Manage Users" },
@@ -60,8 +66,8 @@ const OVERRIDE_KEYS = [
   { key: "overrideCanAccessBudgetPlanning", label: "Access Budget Planning" },
   { key: "overrideCanUploadAip",            label: "Upload AIP" },
   { key: "overrideCanManageConfig",         label: "Manage Configuration" },
-  { key: "overrideCanManageAllocation",     label: "Manage Allocation (finance officer)" },
-] as const;
+  { key: "overrideCanManageAllocation",     label: "Manage Allocation (finance officer)", adminOnly: true },
+];
 
 // ---------------------------------------------------------------------------
 // Blank form state
@@ -159,7 +165,9 @@ type UserFormProps = {
 };
 
 function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFormProps) {
-  const showOverrides = form.role === "Staff";
+  const showOverrides      = form.role === "Staff";
+  const showAdminOverrides = form.role === "Admin";
+  const adminOnlyKeys      = OVERRIDE_KEYS.filter((o) => o.adminOnly);
   // A non-PPDO office user has an office assigned. Their division must belong to that office.
   const isOfficeUser = form.officeId != null;
   const isPpdoDivisionUser = form.role === "Staff";
@@ -318,7 +326,7 @@ function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFor
         )}
       </div>
 
-      {/* Permission overrides — Edit only, Staff only */}
+      {/* Permission overrides — Staff: all flags; Admin: adminOnly flags only */}
       {isEdit && showOverrides && (
         <div>
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
@@ -340,10 +348,38 @@ function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFor
         </div>
       )}
 
-      {/* SuperAdmin / Admin note — Edit only */}
-      {isEdit && !showOverrides && (
+      {isEdit && showAdminOverrides && adminOnlyKeys.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+            Permission Overrides
+          </p>
+          <p className="text-xs text-slate-400 mb-2">
+            Admin has full access to all features except the flags below — these must be granted explicitly.
+          </p>
+          <div className="space-y-2">
+            {adminOnlyKeys.map(({ key, label }) => (
+              <OverrideToggle
+                key={key}
+                label={label}
+                value={(form as UpdateUserRequest)[key]}
+                onChange={(v) => onChange({ [key]: v })}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* SuperAdmin note — Edit only */}
+      {isEdit && form.role === "SuperAdmin" && (
         <p className="text-xs text-slate-400 bg-slate-50 px-3 py-2">
-          SuperAdmin and Admin roles always have full access — permission overrides do not apply.
+          SuperAdmin always has full access — permission overrides do not apply.
+        </p>
+      )}
+
+      {/* Admin full-access note — only when no adminOnly overrides exist */}
+      {isEdit && showAdminOverrides && adminOnlyKeys.length === 0 && (
+        <p className="text-xs text-slate-400 bg-slate-50 px-3 py-2">
+          Admin always has full access — permission overrides do not apply.
         </p>
       )}
 
