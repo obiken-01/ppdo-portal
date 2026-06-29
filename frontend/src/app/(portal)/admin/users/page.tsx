@@ -163,11 +163,11 @@ function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFor
   const isOfficeUser = form.officeId != null;
   const isPpdoDivisionUser = form.role === "Staff";
 
-  // Division options: filter to the selected office's divisions for office users;
-  // otherwise show all active divisions (admin picks the right PPDO one).
+  // Division options: filter to the selected office's divisions.
+  // No office selected = PPDO-internal user → show only PPDO divisions (officeCode === "PPDO").
   const divisionOptions = isOfficeUser
     ? divisions.filter((d) => d.officeId === form.officeId)
-    : divisions;
+    : divisions.filter((d) => d.officeCode === "PPDO");
 
   // Selecting an office forces a non-admin role (office users are encoders).
   function handleOfficeChange(value: string) {
