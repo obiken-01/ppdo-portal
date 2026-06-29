@@ -65,9 +65,10 @@ const SECTIONS: Section[] = [
       { prefix: "/budget-planning/aip/import-preview", label: "Import Preview", parent: { label: "AIP", href: "/budget-planning/aip" } },
       { prefix: "/budget-planning/aip/new",            label: "New AIP",        parent: { label: "AIP", href: "/budget-planning/aip" } },
       { prefix: "/budget-planning/aip/detail", label: "Detail", parent: { label: "AIP", href: "/budget-planning/aip" } },
-      { prefix: "/budget-planning/aip",  label: "AIP"  },
-      { prefix: "/budget-planning/ldip", label: "LDIP" },
-      { prefix: "/budget-planning/wfp",  label: "WFP"  },
+      { prefix: "/budget-planning/aip",        label: "AIP"        },
+      { prefix: "/budget-planning/ldip",       label: "LDIP"       },
+      { prefix: "/budget-planning/allocation", label: "Allocation" },
+      { prefix: "/budget-planning/wfp",        label: "WFP"        },
     ],
   },
 ];

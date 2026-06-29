@@ -441,10 +441,7 @@ function AllocationPageInner() {
     <div className="flex flex-col min-h-full">
       <div className="p-6 max-w-screen-xl mx-auto w-full flex-1">
 
-        {/* Breadcrumb + Header */}
-        <p className="text-xs text-slate-400 mb-1">
-          Budget Planning <span className="mx-1">›</span> Allocation
-        </p>
+        {/* Header */}
         <h1 className="text-xl font-bold text-slate-800 mb-5">Allocation</h1>
 
         {/* Selectors */}
@@ -807,8 +804,8 @@ function AllocationPageInner() {
                     <div className="overflow-x-auto border border-slate-200">
                       <table className="text-sm border-collapse"
                         style={{ minWidth: `${420 + divisions.length * 100}px` }}>
-                        <thead>
-                          <tr className="bg-slate-50 text-xs text-slate-600 border-b border-slate-200">
+                        <thead className="sticky top-0 z-10 bg-slate-50">
+                          <tr className="text-xs text-slate-600 border-b border-slate-200">
                             <th className="px-3 py-2 w-8">
                               <input
                                 type="checkbox"
