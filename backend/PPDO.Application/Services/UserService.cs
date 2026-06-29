@@ -96,18 +96,28 @@ public sealed class UserService : IUserService
         }
 
         // ── Division resolution ───────────────────────────────────────────────
-        // SuperAdmin/Admin → no division. Staff → DivisionId required + validated.
+        // SuperAdmin/Admin → no division.
+        // Office users (non-PPDO Staff with officeId) → division is optional; office_id scopes them.
+        // PPDO Staff (no officeId) → division required.
         int? newDivisionId = null;
-        if (newRole is UserRole.Staff)
+        if (newRole is UserRole.Staff && !isOfficeUser)
         {
             if (dto.DivisionId is not int did || did <= 0)
                 return ServiceResult<UserResponseDto>.BadRequest("Division is required for Staff users.");
 
             ServiceResult<UserResponseDto>? divError =
-                await ValidateDivisionAsync(did, isOfficeUser ? dto.OfficeId : null, cancellationToken);
+                await ValidateDivisionAsync(did, null, cancellationToken);
             if (divError is not null) return divError;
 
             newDivisionId = did;
+        }
+        else if (newRole is UserRole.Staff && isOfficeUser && dto.DivisionId is int offDid && offDid > 0)
+        {
+            // Optional division for office users — validate it belongs to their office if supplied.
+            ServiceResult<UserResponseDto>? divError =
+                await ValidateDivisionAsync(offDid, dto.OfficeId, cancellationToken);
+            if (divError is not null) return divError;
+            newDivisionId = offDid;
         }
 
         if (string.IsNullOrWhiteSpace(dto.FullName))
@@ -244,18 +254,35 @@ public sealed class UserService : IUserService
         {
             target.DivisionId = null;
         }
-        else
+        else if (!isOfficeUser)
         {
-            // Staff: use the supplied division id (or keep the existing one if omitted).
+            // PPDO Staff: division required.
             int? candidateDivisionId = dto.DivisionId ?? target.DivisionId;
             if (candidateDivisionId is not int did || did <= 0)
                 return ServiceResult<UserResponseDto>.BadRequest("Division is required for Staff users.");
 
             ServiceResult<UserResponseDto>? divError =
-                await ValidateDivisionAsync(did, isOfficeUser ? target.OfficeId : null, cancellationToken);
+                await ValidateDivisionAsync(did, null, cancellationToken);
             if (divError is not null) return divError;
 
             target.DivisionId = did;
+        }
+        else
+        {
+            // Office user (non-PPDO Staff): division optional; office_id scopes them.
+            // Clear any stale PPDO division that may have been carried over.
+            int? candidateDivisionId = dto.DivisionId.HasValue ? dto.DivisionId : null;
+            if (candidateDivisionId is int did && did > 0)
+            {
+                ServiceResult<UserResponseDto>? divError =
+                    await ValidateDivisionAsync(did, target.OfficeId, cancellationToken);
+                if (divError is not null) return divError;
+                target.DivisionId = did;
+            }
+            else
+            {
+                target.DivisionId = null;
+            }
         }
 
         // -- Permission overrides (null = inherit from division) -----------------
