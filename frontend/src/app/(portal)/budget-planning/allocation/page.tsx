@@ -178,7 +178,7 @@ function AllocationPageInner() {
   const [localAssignments, setLocalAssignments] = useState<Record<string, number[]>>({});
   const [multiDivision, setMultiDivision] = useState<Record<string, boolean>>({});
   const [showUnassignedOnly, setShowUnassignedOnly] = useState(false);
-  const [savingProgram, setSavingProgram] = useState<Record<string, boolean>>({});
+  const [savingPpa, setSavingPpa] = useState(false);
   const [checkedPrograms, setCheckedPrograms] = useState<Set<string>>(new Set());
   const [bulkDivisionId, setBulkDivisionId] = useState<number | null>(null);
   const [collapsedSectors, setCollapsedSectors] = useState<Set<string>>(new Set());
@@ -339,7 +339,7 @@ function AllocationPageInner() {
 
   // ── Tab 2: PPA → Division ─────────────────────────────────────────────────
 
-  async function handleProgramCheck(
+  function handleProgramCheck(
     p: ProgramAssignmentDto,
     divId: number,
     checked: boolean
@@ -347,69 +347,54 @@ function AllocationPageInner() {
     const key = `${p.officeRefCode}:${p.programRefCode}`;
     const isMulti = multiDivision[key] ?? false;
     const current = localAssignments[key] ?? [];
-
     let newIds: number[];
     if (checked) {
       newIds = isMulti ? [...current, divId] : [divId];
     } else {
       newIds = current.filter((id) => id !== divId);
     }
-
     setLocalAssignments((prev) => ({ ...prev, [key]: newIds }));
-    setSavingProgram((prev) => ({ ...prev, [key]: true }));
-
-    try {
-      const result = await upsertProgram({
-        officeRefCode: p.officeRefCode,
-        programRefCode: p.programRefCode,
-        divisionIds: newIds,
-      });
-      setPrograms((prev) =>
-        prev.map((pr) =>
-          pr.officeRefCode === p.officeRefCode && pr.programRefCode === p.programRefCode
-            ? { ...pr, divisionIds: result.divisionIds }
-            : pr
-        )
-      );
-    } catch (err) {
-      toast.error("Save failed", allocationErrorMessage(err, "Could not update assignment."));
-      setLocalAssignments((prev) => ({ ...prev, [key]: current }));
-    } finally {
-      setSavingProgram((prev) => ({ ...prev, [key]: false }));
-    }
   }
 
-  async function handleBulkAssign() {
+  function handleBulkAssign() {
     if (bulkDivisionId == null || checkedPrograms.size === 0) return;
     const keys = Array.from(checkedPrograms);
-    let failed = 0;
-
-    for (const key of keys) {
-      const p = programs.find(
-        (pr) => `${pr.officeRefCode}:${pr.programRefCode}` === key
-      );
-      if (!p) continue;
-      const current = localAssignments[key] ?? [];
-      const newIds = current.includes(bulkDivisionId) ? current : [...current, bulkDivisionId];
-      setLocalAssignments((prev) => ({ ...prev, [key]: newIds }));
-      try {
-        await upsertProgram({
-          officeRefCode: p.officeRefCode,
-          programRefCode: p.programRefCode,
-          divisionIds: newIds,
-        });
-      } catch {
-        failed++;
-        setLocalAssignments((prev) => ({ ...prev, [key]: current }));
+    setLocalAssignments((prev) => {
+      const next = { ...prev };
+      for (const key of keys) {
+        const current = next[key] ?? [];
+        next[key] = current.includes(bulkDivisionId) ? current : [...current, bulkDivisionId];
       }
-    }
-
+      return next;
+    });
     setCheckedPrograms(new Set());
     setBulkDivisionId(null);
-    if (failed > 0) {
-      toast.error("Partial failure", `${failed} program(s) could not be assigned.`);
-    } else {
-      toast.success("Assigned", `Division assigned to ${keys.length} program(s).`);
+  }
+
+  async function handleSavePpa() {
+    if (savingPpa || programs.length === 0) return;
+    setSavingPpa(true);
+    let failed = 0;
+    try {
+      for (const p of programs) {
+        const key = `${p.officeRefCode}:${p.programRefCode}`;
+        try {
+          await upsertProgram({
+            officeRefCode: p.officeRefCode,
+            programRefCode: p.programRefCode,
+            divisionIds: localAssignments[key] ?? [],
+          });
+        } catch {
+          failed++;
+        }
+      }
+      if (failed > 0) {
+        toast.error("Partial failure", `${failed} program(s) could not be saved.`);
+      } else {
+        toast.success("Saved", "Program assignments saved.");
+      }
+    } finally {
+      setSavingPpa(false);
     }
   }
 
@@ -456,8 +441,11 @@ function AllocationPageInner() {
     <div className="flex flex-col min-h-full">
       <div className="p-6 max-w-screen-xl mx-auto w-full flex-1">
 
-        {/* Header */}
-        <h1 className="text-xl font-bold text-slate-800 mb-5">Budget Allocation</h1>
+        {/* Breadcrumb + Header */}
+        <p className="text-xs text-slate-400 mb-1">
+          Budget Planning <span className="mx-1">›</span> Allocation
+        </p>
+        <h1 className="text-xl font-bold text-slate-800 mb-5">Allocation</h1>
 
         {/* Selectors */}
         <div className="flex flex-wrap items-center gap-4 mb-5">
@@ -740,7 +728,7 @@ function AllocationPageInner() {
                 ) : (
                   <>
                     {/* Filter + bulk action bar */}
-                    <div className="flex flex-wrap items-center gap-3 mb-4">
+                    <div className="flex flex-wrap items-center gap-3 mb-4 justify-between">
                       {/* Unassigned filter toggle */}
                       <button
                         onClick={() => setShowUnassignedOnly((p) => !p)}
@@ -764,7 +752,8 @@ function AllocationPageInner() {
                         )}
                       </button>
 
-                      {/* Bulk assign — shown when programs are checked */}
+                      {/* Bulk assign + Save — right side */}
+                      <div className="flex items-center gap-2">
                       {checkedPrograms.size > 0 && (
                         <div className="flex items-center gap-2 border border-slate-200 px-3 py-1.5 bg-slate-50">
                           <span className="text-xs text-slate-600 font-medium">
@@ -799,6 +788,19 @@ function AllocationPageInner() {
                           </button>
                         </div>
                       )}
+
+                      {/* Save button — top-right */}
+                      <button
+                        onClick={handleSavePpa}
+                        disabled={savingPpa || programs.length === 0}
+                        className="px-4 py-1.5 bg-green-700 text-white text-sm font-medium hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                      >
+                        {savingPpa && (
+                          <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        )}
+                        Save
+                      </button>
+                      </div>
                     </div>
 
                     {/* Programs grid */}
@@ -876,7 +878,6 @@ function AllocationPageInner() {
                                     const key = `${p.officeRefCode}:${p.programRefCode}`;
                                     const assigned = localAssignments[key] ?? [];
                                     const isMulti = multiDivision[key] ?? false;
-                                    const isSaving = savingProgram[key] ?? false;
                                     const isChecked = checkedPrograms.has(key);
                                     const isUnassigned = assigned.length === 0;
 
@@ -913,10 +914,7 @@ function AllocationPageInner() {
                                         <td className="px-3 py-2 text-slate-700 align-top">
                                           <div className="flex items-start gap-2">
                                             <span className="flex-1 min-w-0">{p.programName}</span>
-                                            {isSaving && (
-                                              <span className="w-3.5 h-3.5 border-2 border-slate-300 border-t-green-600 rounded-full animate-spin shrink-0 mt-0.5" />
-                                            )}
-                                            {isUnassigned && !isSaving && (
+                                            {isUnassigned && (
                                               <span className="text-[10px] font-medium text-amber-600 bg-amber-100 px-1 py-0.5 shrink-0">
                                                 Unassigned
                                               </span>
@@ -963,8 +961,7 @@ function AllocationPageInner() {
                                                 onChange={(e) =>
                                                   handleProgramCheck(p, div.id, e.target.checked)
                                                 }
-                                                disabled={isSaving}
-                                                className="cursor-pointer disabled:cursor-not-allowed"
+                                                className="cursor-pointer"
                                               />
                                             </td>
                                           );
@@ -982,9 +979,25 @@ function AllocationPageInner() {
                     {groupedPrograms.length === 0 && (
                       <p className="text-sm text-slate-400 py-4 text-center">
                         {showUnassignedOnly
-                          ? "All programs are assigned. 🎉"
+                          ? "All programs are assigned."
                           : "No programs to display."}
                       </p>
+                    )}
+
+                    {/* Save button — bottom-right */}
+                    {programs.length > 0 && (
+                      <div className="flex justify-end mt-3">
+                        <button
+                          onClick={handleSavePpa}
+                          disabled={savingPpa}
+                          className="px-4 py-2 bg-green-700 text-white text-sm font-medium hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                          {savingPpa && (
+                            <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          )}
+                          Save
+                        </button>
+                      </div>
                     )}
                   </>
                 )}
