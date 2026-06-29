@@ -170,7 +170,8 @@ function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFor
   const adminOnlyKeys      = OVERRIDE_KEYS.filter((o) => o.adminOnly);
   // A non-PPDO office user has an office assigned. Their division must belong to that office.
   const isOfficeUser = form.officeId != null;
-  const isPpdoDivisionUser = form.role === "Staff";
+  // Division is required only for PPDO-internal Staff. Office users are scoped by office_id, not division.
+  const isPpdoDivisionUser = form.role === "Staff" && !isOfficeUser;
 
   // Division options: filter to the selected office's divisions.
   // No office selected = PPDO-internal user → show only PPDO divisions (officeCode === "PPDO").
@@ -181,11 +182,8 @@ function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFor
   // Selecting an office forces a non-admin role (office users are encoders).
   function handleOfficeChange(value: string) {
     const officeId = value ? Number(value) : null;
-    const patch: Partial<CreateUserRequest & UpdateUserRequest> = { officeId };
-    if (officeId != null) {
-      patch.divisionId = null;                                 // re-pick a division within the new office
-      if (form.role === "SuperAdmin" || form.role === "Admin") patch.role = "Staff";
-    }
+    const patch: Partial<CreateUserRequest & UpdateUserRequest> = { officeId, divisionId: null };
+    if (officeId != null && (form.role === "SuperAdmin" || form.role === "Admin")) patch.role = "Staff";
     onChange(patch);
   }
 
@@ -573,7 +571,8 @@ export default function UsersPage() {
       await loadData();
       toast.success("User created", `${addForm.fullName} has been added. Default password: TamarawUser2026!`);
     } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      const data = (e as { response?: { data?: unknown } })?.response?.data;
+      const msg = typeof data === "string" ? data : (data as { message?: string } | undefined)?.message;
       setFormError(msg ?? "Failed to create user. Please try again.");
     } finally {
       setSaving(false);
@@ -586,12 +585,14 @@ export default function UsersPage() {
 
   function openEdit(user: UserResponse) {
     setEditTarget(user);
+    // Office users (non-PPDO): clear any stale PPDO division — they're scoped by officeId.
+    const divisionId = user.officeId != null ? null : user.divisionId;
     setEditForm({
       fullName:                      user.fullName,
       username:                      user.username,
       email:                         user.email,
       role:                          user.role,
-      divisionId:                    user.divisionId,
+      divisionId,
       officeId:                      user.officeId,
       position:                      user.position,
       contactNo:                     user.contactNo,
@@ -622,7 +623,8 @@ export default function UsersPage() {
       setEditForm(null);
       await loadData();
     } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      const data = (e as { response?: { data?: unknown } })?.response?.data;
+      const msg = typeof data === "string" ? data : (data as { message?: string } | undefined)?.message;
       setFormError(msg ?? "Failed to update user. Please try again.");
     } finally {
       setSaving(false);

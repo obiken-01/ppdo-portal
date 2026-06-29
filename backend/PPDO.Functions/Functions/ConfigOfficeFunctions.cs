@@ -31,11 +31,7 @@ public sealed class ConfigOfficeFunctions
 
     private Task<bool> CanManageConfig(User u) => _permissions.CanManageConfigAsync(u);
 
-    // List is used by User Management and Allocation page — allow CanManageConfig, CanManageUsers, or CanManageAllocation.
-    private async Task<bool> CanReadOffices(User u)
-        => await _permissions.CanManageConfigAsync(u)
-        || await _permissions.CanManageUsersAsync(u)
-        || await _permissions.CanManageAllocationAsync(u);
+    // Any authenticated user may read offices — offices are reference data used in user-form and allocation dropdowns.
 
     // ── GET /api/config/offices?search=&active=true|false|all  (also the dropdown) ──
     [Function("OfficesList")]
@@ -43,7 +39,7 @@ public sealed class ConfigOfficeFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "config/offices")] HttpRequestData req,
         CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanReadOffices, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, ConfigHttp.Authenticated, ct);
         if (denied is not null) return denied;
 
         IReadOnlyList<OfficeDto> data = await _offices.GetAllAsync(

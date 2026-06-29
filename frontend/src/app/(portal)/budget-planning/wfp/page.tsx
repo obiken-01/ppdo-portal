@@ -1085,9 +1085,9 @@ function WfpPageInner() {
               : "Loading AIP details…"}
           </p>
         ) : (
-          <div className="overflow-x-auto overflow-y-hidden border border-slate-200">
+          <div className="border border-slate-200">
             <table className="w-full text-sm border-collapse min-w-[960px]">
-              <thead>
+              <thead className="sticky top-0 z-10">
                 <tr className="bg-slate-50 text-xs text-slate-600 text-left border-b border-slate-200">
                   <th className="px-3 py-2 whitespace-nowrap w-36">AIP REF CODE</th>
                   <th className="px-3 py-2">PROGRAM / PROJECT / ACTIVITY</th>

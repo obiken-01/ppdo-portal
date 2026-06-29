@@ -275,7 +275,7 @@ export default function AipDetailPage() {
       </div>
 
       {/* ── Table — only active sector's rows are in the DOM ───────── */}
-      <div className="overflow-x-auto overflow-y-hidden border border-t-0 border-slate-200 shadow-sm">
+      <div className="border border-t-0 border-slate-200 shadow-sm">
         <table className="min-w-[1800px] w-full border-collapse text-sm">
           <colgroup>
             <col style={{ width: "140px" }} />
@@ -295,7 +295,7 @@ export default function AipDetailPage() {
             <col style={{ width: "70px"  }} />
           </colgroup>
 
-          <thead>
+          <thead className="sticky top-0 z-10">
             <tr>
               <TH rowSpan={2}>AIP Ref Code</TH>
               <TH rowSpan={2}>Program / Project / Activity Description</TH>
