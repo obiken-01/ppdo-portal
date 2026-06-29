@@ -287,9 +287,9 @@ public sealed class AllocationService : IAllocationService
         BudgetCeiling? ceiling = await FindCeilingAsync(officeId, fiscalYear, ct);
         bool hasCeiling = ceiling is not null;
 
-        // HasAllocation
+        // HasAllocation — requires a positive amount, not just a row
         IReadOnlyList<DivisionAllocation> allAllocs = await _allocationRepo.GetAllAsync(ct);
-        bool hasAllocation = allAllocs.Any(a => a.DivisionId == divisionId && a.FiscalYear == fiscalYear);
+        bool hasAllocation = allAllocs.Any(a => a.DivisionId == divisionId && a.FiscalYear == fiscalYear && a.Amount > 0);
 
         // HasProgramAssignment — at least one program assigned to this division for the office+FY.
         bool hasProgramAssignment = false;

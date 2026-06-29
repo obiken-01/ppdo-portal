@@ -1211,6 +1211,10 @@ function WfpPageInner() {
           <p className="text-slate-400 text-sm py-8">
             Select an AIP and an office to view the WFP grid.
           </p>
+        ) : !setupComplete ? (
+          <p className="text-slate-400 text-sm py-8">
+            Complete the allocation setup for this division to start entering WFP data.
+          </p>
         ) : aipOffices.length === 0 ? (
           <p className="text-slate-400 text-sm py-8">
             {aipDetail
