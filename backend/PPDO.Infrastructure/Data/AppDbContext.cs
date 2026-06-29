@@ -52,6 +52,12 @@ public sealed class AppDbContext : DbContext
 
     public DbSet<Announcement> Announcements { get; set; } = null!;
 
+    // ── v1.2 Budget Allocation (RAL-99) ──────────────────────────────────────
+
+    public DbSet<BudgetCeiling>      BudgetCeilings      { get; set; } = null!;
+    public DbSet<DivisionAllocation> DivisionAllocations { get; set; } = null!;
+    public DbSet<ProgramDivision>    ProgramDivisions    { get; set; } = null!;
+
     // ── Model configuration ───────────────────────────────────────────────────
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

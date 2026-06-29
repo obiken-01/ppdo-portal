@@ -6,6 +6,7 @@ using Microsoft.Extensions.Hosting;
 using PPDO.Application.Common;
 using PPDO.Application.Services;
 using PPDO.Application.Settings;
+using PPDO.Domain.Entities;
 using PPDO.Domain.Interfaces;
 using PPDO.Infrastructure.Data;
 using PPDO.Infrastructure.Repositories;
@@ -126,6 +127,12 @@ var host = new HostBuilder()
         services.AddScoped<ILdipService, LdipService>();
         services.AddScoped<IAipService, AipService>();
         services.AddScoped<IWfpService, WfpService>();
+
+        // -- v1.2 Allocation (RAL-99) -----------------------------------------
+        services.AddScoped<IRepository<BudgetCeiling>, Repository<BudgetCeiling>>();
+        services.AddScoped<IRepository<DivisionAllocation>, Repository<DivisionAllocation>>();
+        services.AddScoped<IAllocationRepository, AllocationRepository>();
+        services.AddScoped<IAllocationService, AllocationService>();
     })
     .Build();
 
