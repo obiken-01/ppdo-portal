@@ -1,6 +1,6 @@
 # External AIP API — Contract (DRAFT for discussion)
 
-> **Status:** DRAFT v0.1 — proposed contract for review with GSO. Nothing is implemented yet.
+> **Status:** DRAFT v0.2 — proposed contract for review with GSO. Nothing is implemented yet.
 > **Audience:** GSO development team (consumer) + PPDO Portal team (provider).
 > **Purpose:** Let an authorized external system (GSO) **read finalized AIP records for an
 > office** so it can build its own WFP. Read-only, server-to-server.
@@ -33,16 +33,18 @@ https://<ppdo-portal-domain>/api/external/v1
 
 ## 3. Authentication
 
-Every request must include a PPDO-issued **API key** in a request header:
+Every data request must include a PPDO-issued **API key** in a request header:
 
 ```
 X-Api-Key: <the key PPDO issues to GSO>
 ```
 
-- The key is issued by PPDO, scoped to the office(s) GSO is authorized to read, and can be
-  rotated or revoked by PPDO at any time.
+- **PPDO issues the key together with the office code(s) GSO is authorized to read.** GSO does
+  not need to discover offices — it already knows which `officeCode` value(s) to use.
+- The key can be rotated or revoked by PPDO at any time.
 - No username/password, no OAuth, no tokens to refresh — a single static key per consumer.
 - Missing/invalid key → `401`. Valid key but office not in the key's scope → `403`.
+- Exception: the **health endpoint** (§4.1) does not require the key.
 
 > **(confirm)** Header name `X-Api-Key`. Alternative commonly used: `Authorization: Bearer <key>`.
 
@@ -50,7 +52,32 @@ X-Api-Key: <the key PPDO issues to GSO>
 
 ## 4. Endpoints
 
-### 4.1 Get AIP for an office  ⟵ the main endpoint
+### 4.1 Health check (availability / wake-up)
+
+```
+GET /api/external/v1/health
+```
+
+A lightweight liveness check with **no authentication required**. Two uses:
+
+1. **Availability** — confirm the API is reachable before attempting a real request.
+2. **Wake-up** — the portal runs on Azure Functions (Consumption plan), which **scales to zero
+   after inactivity**. The first request after an idle period (a "cold start") can take
+   **~20–30 seconds**. Calling this endpoint first warms the server, so the subsequent AIP fetch
+   responds promptly. GSO may also poll it as a readiness check.
+
+Returns `200` with a small body (intentionally **not** wrapped in the `{data,error,message}`
+envelope — a health check stays minimal):
+
+```json
+{ "status": "ok", "timestamp": "2026-06-30T08:15:00Z" }
+```
+
+> Note: because of cold starts, treat a slow first response as normal, not a failure. We
+> recommend a generous client timeout (e.g. 30–40s) on the first call after idle, then normal
+> timeouts thereafter.
+
+### 4.2 Get AIP for an office  ⟵ the main endpoint
 
 ```
 GET /api/external/v1/aip?officeCode={code}&fiscalYear={year}
@@ -60,7 +87,7 @@ GET /api/external/v1/aip?officeCode={code}&fiscalYear={year}
 
 | Param | Required | Type | Description |
 |-------|----------|------|-------------|
-| `officeCode` | yes | string | The office to fetch, e.g. `PEO`. **(confirm)** PPDO identifies offices by a short **office code**; GSO sends that code. |
+| `officeCode` | yes | string | The office to fetch, e.g. `PEO` — the code PPDO issued with the key. |
 | `fiscalYear` | yes | integer | Fiscal year, e.g. `2027`. |
 
 **Behaviour**
@@ -69,15 +96,7 @@ GET /api/external/v1/aip?officeCode={code}&fiscalYear={year}
   (the leaf level), each carrying its full program/project lineage — the granularity needed to
   build a WFP.
 - If no `Final` AIP exists for that office/year → `200` with `data: null` (not an error).
-
-### 4.2 List offices (discovery)
-
-```
-GET /api/external/v1/offices
-```
-
-Returns the offices the calling key is authorized to read (so GSO knows valid `officeCode`
-values). See [§6.2](#62-offices-response).
+- Requires a valid `X-Api-Key` scoped to the requested `officeCode`.
 
 ### 4.3 List fiscal years (discovery)
 
@@ -85,7 +104,8 @@ values). See [§6.2](#62-offices-response).
 GET /api/external/v1/aip/fiscal-years?officeCode={code}
 ```
 
-Returns the fiscal years that have a `Final` AIP for the given office.
+Returns the fiscal years that have a `Final` AIP for the given office, so GSO can fetch the
+right year without guessing. Requires the key. See [§6.2](#62-fiscal-years-response).
 
 ---
 
@@ -104,11 +124,13 @@ Returns the fiscal years that have a `Final` AIP for the given office.
 
 ## 6. Response structures
 
-All responses use the envelope:
+Data responses use the envelope:
 
 ```json
 { "data": <payload or null>, "error": <string or null>, "message": <string or null> }
 ```
+
+(The health endpoint in §4.1 is the only exception — it returns a bare `{ status, timestamp }`.)
 
 ### 6.1 AIP response
 
@@ -185,22 +207,7 @@ All responses use the envelope:
 > **(confirm)** Shape is **flat activities with lineage** (recommended — easiest to map into WFP).
 > Alternative: a nested tree `office → programs → projects → activities`. GSO to indicate preference.
 
-### 6.2 Offices response
-
-`GET /api/external/v1/offices`
-
-```json
-{
-  "data": [
-    { "code": "PEO", "name": "Provincial Engineering Office" },
-    { "code": "PHO", "name": "Provincial Health Office" }
-  ],
-  "error": null,
-  "message": null
-}
-```
-
-### 6.3 Fiscal-years response
+### 6.2 Fiscal-years response
 
 `GET /api/external/v1/aip/fiscal-years?officeCode=PEO`
 
@@ -214,9 +221,9 @@ All responses use the envelope:
 
 | Code | When | `error` body |
 |------|------|--------------|
-| `200` | Success (including "no Final AIP found" → `data: null`). | `null` |
+| `200` | Success (including "no Final AIP found" → `data: null`), and the health check. | `null` |
 | `400` | Missing/invalid `officeCode` or `fiscalYear`. | message describing the bad parameter |
-| `401` | Missing or invalid `X-Api-Key`. | `"Invalid API key."` |
+| `401` | Missing or invalid `X-Api-Key` (on key-protected endpoints). | `"Invalid API key."` |
 | `403` | Valid key, but not authorized for the requested office. | `"Office not authorized for this key."` |
 | `429` | Rate limit exceeded (per key). Includes `Retry-After`. | `"Too many requests."` |
 | `500` | Unexpected server error. | generic message (no internals leaked) |
@@ -229,7 +236,16 @@ Error example:
 
 ---
 
-## 8. Example request
+## 8. Example requests
+
+**Warm up / check availability (no key):**
+
+```bash
+curl -s "https://<ppdo-portal-domain>/api/external/v1/health"
+# { "status": "ok", "timestamp": "2026-06-30T08:15:00Z" }
+```
+
+**Fetch AIP for an office:**
 
 ```http
 GET /api/external/v1/aip?officeCode=PEO&fiscalYear=2027 HTTP/1.1
@@ -247,16 +263,17 @@ curl -s "https://<ppdo-portal-domain>/api/external/v1/aip?officeCode=PEO&fiscalY
 
 ## 9. Open items to settle with GSO
 
-1. **Office identifier** — confirm GSO will send PPDO's **office code** (e.g. `PEO`). If GSO has
-   its own office identifiers, we need a mapping.
-2. **Response shape** — flat activities (proposed) vs nested tree.
-3. **Auth header** — `X-Api-Key` (proposed) vs `Authorization: Bearer`.
-4. **Scope** — one office per key, or a set of offices? Should a key read **all** offices?
-5. **Fields** — does GSO need everything above, or a subset? Anything missing for WFP building
+1. **Response shape** — flat activities (proposed) vs nested tree.
+2. **Auth header** — `X-Api-Key` (proposed) vs `Authorization: Bearer`.
+3. **Scope** — one office per key, or a set of offices per key?
+4. **Fields** — does GSO need everything in §6.1, or a subset? Anything missing for WFP building
    (e.g. account-level breakdown beyond PS/MOOE/CO totals)?
-6. **Volume / pagination** — expected number of activities per office/year; whether pagination is
+5. **Volume / pagination** — expected number of activities per office/year; whether pagination is
    needed (proposed: return the full set per office/year, no pagination).
-7. **Environment** — will GSO test against a staging URL with sample data before production?
+6. **Environment** — will GSO test against a staging URL with sample data before production?
+
+(Office identification is settled: PPDO issues the office code(s) with the key — no discovery
+endpoint needed.)
 
 ---
 
@@ -265,5 +282,5 @@ curl -s "https://<ppdo-portal-domain>/api/external/v1/aip?officeCode=PEO&fiscalY
 - **Phase 1 (now): this contract.** Agree the shape with GSO while the integration is still in the
   talking stage. No code.
 - **Phase 2 (later): implementation.** API-key infrastructure (issue/hash/scope/revoke + per-key
-  rate limiting), the external read endpoints, audit logging, and tests — scoped as its own set of
-  Linear tickets once this contract is signed off.
+  rate limiting), the health endpoint, the external read endpoints, audit logging, and tests —
+  scoped as its own set of Linear tickets once this contract is signed off.
