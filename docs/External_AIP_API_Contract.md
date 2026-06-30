@@ -1,6 +1,6 @@
 # External AIP API — Contract (DRAFT for discussion)
 
-> **Status:** DRAFT v0.5 — proposed contract for review with GSO. Nothing is implemented yet.
+> **Status:** DRAFT v0.6 — proposed contract for review with GSO. Nothing is implemented yet.
 > **Audience:** GSO development team (consumer) + PPDO Portal team (provider).
 > **Purpose:** Let an authorized external system (GSO) **read finalized AIP records for an
 > office** so it can build its own WFP. Read-only, server-to-server.
@@ -262,13 +262,16 @@ activities.
 }
 ```
 
-> ⚠️ **Known PPDO-side limitation (logged, deferred — NOT a Phase-1 fix).** The portal's current
-> data model stores amounts only on activities (`AipProgram` / `AipProject` have no amount
-> columns), so these program/project-level values are **not captured today**. This is a known gap,
-> deferred while PPDO data is the priority (the only case seen so far is the non-PPDO Provincial
-> Legal Office). **Phase 2 must resolve it** — either extend the model to hold values at those
-> levels, or normalize each into a synthetic leaf activity — before the API can return them. The
-> contract reserves the shape now so GSO can design for it.
+> ⚠️ **Known PPDO-side limitation (logged, deferred — NOT a Phase-1 fix).** Programs and projects
+> **are** stored as hierarchy nodes (ref code + name), but **any line-item detail recorded at the
+> program or project level — amounts, ESRE code, implementing office, schedule, expected outputs,
+> funding source, climate-change — is dropped on import**, because `AipProgram` / `AipProject`
+> store only `RefCode` + `Name`. Confirmed in the portal's AIP detail view: the PLO program/project
+> rows show the name only, with every other column blank, even though the source file populated
+> them. This is a known gap, deferred while PPDO data is the priority (the only case seen so far is
+> the non-PPDO Provincial Legal Office). **Phase 2 must resolve it** — extend the model to hold
+> these fields at program/project level, or normalize each into a synthetic leaf activity — before
+> the API can return them. The contract reserves the shape now so GSO can design for it.
 
 ### 6.2 Fiscal-years response
 
