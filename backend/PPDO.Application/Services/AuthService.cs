@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -29,29 +30,48 @@ namespace PPDO.Application.Services;
 /// </summary>
 public sealed class AuthService : IAuthService
 {
+    // Rate limiting: refuse logins after this many failed attempts per username
+    // within a fixed window (RAL-58). State is held in IMemoryCache.
+    private const int MaxFailedAttempts = 5;
+    private static readonly TimeSpan LockoutWindow = TimeSpan.FromMinutes(15);
+
     private readonly IUserRepository _users;
     private readonly IPermissionService _permissions;
     private readonly JwtSettings _jwt;
+    private readonly IMemoryCache _cache;
     private readonly ILogger<AuthService> _logger;
 
     public AuthService(
         IUserRepository users,
         IPermissionService permissions,
         IOptions<JwtSettings> jwtOptions,
+        IMemoryCache cache,
         ILogger<AuthService> logger)
     {
         _users = users;
         _permissions = permissions;
         _jwt = jwtOptions.Value;
+        _cache = cache;
         _logger = logger;
     }
 
     /// <inheritdoc />
-    public async Task<(string AccessToken, string RefreshToken)?> LoginAsync(
+    public async Task<LoginResult> LoginAsync(
         string username,
         string password,
         CancellationToken cancellationToken = default)
     {
+        string attemptKey = AttemptKey(username);
+
+        // Block before doing any DB/BCrypt work once the lockout threshold is hit.
+        if (_cache.TryGetValue(attemptKey, out LoginAttempt? attempt)
+            && attempt is not null
+            && attempt.Count >= MaxFailedAttempts)
+        {
+            _logger.LogWarning("Login blocked — too many failed attempts. Username: {Username}", username);
+            return LoginResult.RateLimited(RetryAfterSeconds(attempt));
+        }
+
         User? user = await _users.FindByUsernameAsync(username, cancellationToken);
 
         if (user is null)
@@ -59,13 +79,15 @@ public sealed class AuthService : IAuthService
             // Consistent timing — run a dummy verify so response time doesn't leak existence.
             BCrypt.Net.BCrypt.Verify(password, "$2a$11$dummyhashtopreventtimingattacksonuserexistence00000000000");
             _logger.LogWarning("Login failed — username not found or user inactive. Username: {Username}", username);
-            return null;
+            RegisterFailedAttempt(attemptKey);
+            return LoginResult.Invalid();
         }
 
         if (!BCrypt.Net.BCrypt.Verify(password, user.PasswordHash))
         {
             _logger.LogWarning("Login failed — wrong password. UserId: {UserId}", user.Id);
-            return null;
+            RegisterFailedAttempt(attemptKey);
+            return LoginResult.Invalid();
         }
 
         string accessToken = GenerateAccessToken(user);
@@ -77,9 +99,10 @@ public sealed class AuthService : IAuthService
         await _users.UpdateAsync(user, cancellationToken);
         await _users.SaveChangesAsync(cancellationToken);
 
+        _cache.Remove(attemptKey); // successful login clears the failed-attempt counter
         _logger.LogInformation("User login success. UserId: {UserId}", user.Id);
 
-        return (accessToken, refreshToken);
+        return LoginResult.Success(accessToken, refreshToken);
     }
 
     /// <inheritdoc />
@@ -165,6 +188,35 @@ public sealed class AuthService : IAuthService
             CanManageConfig         = await _permissions.CanManageConfigAsync(user, cancellationToken),
             CanManageAllocation     = await _permissions.CanManageAllocationAsync(user, cancellationToken),
         };
+    }
+
+    // ── Rate limiting ────────────────────────────────────────────────────────────
+
+    /// <summary>Failed-attempt counter for a username, with the fixed window expiry.</summary>
+    private sealed record LoginAttempt(int Count, DateTimeOffset ExpiresAtUtc);
+
+    private static string AttemptKey(string username) =>
+        $"login-attempts:{username.Trim().ToLowerInvariant()}";
+
+    /// <summary>
+    /// Increments the failed-attempt counter for the key. The first failure opens a
+    /// fixed <see cref="LockoutWindow"/>; subsequent failures keep the same expiry so the
+    /// window is exactly N attempts per window from the first failure.
+    /// </summary>
+    private void RegisterFailedAttempt(string key)
+    {
+        LoginAttempt attempt =
+            _cache.TryGetValue(key, out LoginAttempt? existing) && existing is not null
+                ? existing with { Count = existing.Count + 1 }
+                : new LoginAttempt(1, DateTimeOffset.UtcNow.Add(LockoutWindow));
+
+        _cache.Set(key, attempt, attempt.ExpiresAtUtc);
+    }
+
+    private static int RetryAfterSeconds(LoginAttempt attempt)
+    {
+        double seconds = (attempt.ExpiresAtUtc - DateTimeOffset.UtcNow).TotalSeconds;
+        return Math.Max(1, (int)Math.Ceiling(seconds));
     }
 
     // ── Private helpers ────────────────────────────────────────────────────────

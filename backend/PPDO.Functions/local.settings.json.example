@@ -9,6 +9,7 @@
     "Jwt__Audience": "ppdo-portal",
     "Jwt__AccessTokenExpiryMinutes": "15",
     "Jwt__RefreshTokenExpiryDays": "7",
+    "Cors__AllowedOrigins": "http://localhost:3000,http://localhost:4280",
     "APPLICATIONINSIGHTS_CONNECTION_STRING": ""
   },
   "Host": {
