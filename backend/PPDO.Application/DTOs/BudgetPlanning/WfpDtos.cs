@@ -37,6 +37,7 @@ public record WfpRecordDto(
     int       Id,
     int       AipRecordId,
     int       OfficeId,
+    int?      DivisionId,
     int       FiscalYear,
     string    Status,
     Guid      CreatedById,
@@ -49,6 +50,7 @@ public record WfpRecordDetailDto(
     int       Id,
     int       AipRecordId,
     int       OfficeId,
+    int?      DivisionId,
     int       FiscalYear,
     string    Status,
     Guid      CreatedById,
@@ -84,4 +86,5 @@ public record SaveWfpDto(
     int AipRecordId,
     int OfficeId,
     int FiscalYear,
+    int? DivisionId,
     IReadOnlyList<SaveWfpActivityDto> Activities);

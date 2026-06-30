@@ -321,9 +321,10 @@ function AllocationPageInner() {
     if (selectedOfficeId == null || isOverCeiling) return;
     setSavingAllocations(true);
     try {
-      const allocs = divisions
-        .filter((d) => (allocationInputs[d.id] ?? 0) > 0)
-        .map((d) => ({ divisionId: d.id, amount: allocationInputs[d.id]! }));
+      const allocs = divisions.map((d) => ({
+        divisionId: d.id,
+        amount: allocationInputs[d.id] ?? 0,
+      }));
       await upsertAllocations({
         officeId: selectedOfficeId,
         fiscalYear: selectedFiscalYear,

@@ -267,6 +267,7 @@ export interface WfpRecord {
   id: number;
   aipRecordId: number;
   officeId: number;
+  divisionId: number | null;
   fiscalYear: number;
   status: "Draft" | "Final";
   createdById: string;
@@ -305,6 +306,7 @@ export interface SaveWfpRequest {
   aipRecordId: number;
   officeId: number;
   fiscalYear: number;
+  divisionId: number | null;
   activities: SaveWfpActivityRequest[];
 }
 

@@ -36,12 +36,14 @@ export function wfpErrorMessage(err: unknown, fallback: string): string {
 export interface WfpListParams {
   aipRecordId?: number;
   officeId?: number;
+  divisionId?: number;
 }
 
 export async function listWfp(params: WfpListParams = {}): Promise<WfpRecord[]> {
   const query: Record<string, string> = {};
   if (params.aipRecordId != null) query.aipRecordId = String(params.aipRecordId);
   if (params.officeId != null) query.officeId = String(params.officeId);
+  if (params.divisionId != null) query.divisionId = String(params.divisionId);
   const { data } = await api.get<ApiResponse<WfpRecord[]>>("/budget-planning/wfp", {
     params: query,
   });

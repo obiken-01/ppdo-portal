@@ -22,19 +22,26 @@ public sealed class WfpRepository : Repository<WfpRecord>, IWfpRepository
 
     /// <inheritdoc />
     public async Task<IReadOnlyList<WfpRecord>> GetFilteredAsync(
-        int? aipRecordId, int? officeId, CancellationToken ct = default)
+        int? aipRecordId, int? officeId, int? divisionId = null, CancellationToken ct = default)
     {
         IQueryable<WfpRecord> query = _context.Set<WfpRecord>();
         if (aipRecordId.HasValue) query = query.Where(r => r.AipRecordId == aipRecordId.Value);
         if (officeId.HasValue)    query = query.Where(r => r.OfficeId    == officeId.Value);
+        if (divisionId.HasValue)  query = query.Where(r => r.DivisionId  == divisionId.Value);
         return await query.OrderByDescending(r => r.UpdatedAt).ToListAsync(ct);
     }
 
     /// <inheritdoc />
-    public async Task<WfpRecord?> FindByAipAndOfficeAsync(
-        int aipRecordId, int officeId, CancellationToken ct = default)
-        => await _context.Set<WfpRecord>()
-            .FirstOrDefaultAsync(r => r.AipRecordId == aipRecordId && r.OfficeId == officeId, ct);
+    public async Task<WfpRecord?> FindByAipOfficeAndDivisionAsync(
+        int aipRecordId, int officeId, int? divisionId, CancellationToken ct = default)
+    {
+        IQueryable<WfpRecord> query = _context.Set<WfpRecord>()
+            .Where(r => r.AipRecordId == aipRecordId && r.OfficeId == officeId);
+        query = divisionId.HasValue
+            ? query.Where(r => r.DivisionId == divisionId.Value)
+            : query.Where(r => r.DivisionId == null);
+        return await query.FirstOrDefaultAsync(ct);
+    }
 
     /// <inheritdoc />
     public async Task<IReadOnlyList<WfpActivity>> GetActivitiesByWfpIdAsync(

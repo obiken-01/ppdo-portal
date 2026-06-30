@@ -21,6 +21,9 @@ public sealed class WfpRecordConfiguration : IEntityTypeConfiguration<WfpRecord>
             .HasColumnName("office_id")
             .IsRequired();
 
+        builder.Property(w => w.DivisionId)
+            .HasColumnName("division_id");
+
         builder.Property(w => w.FiscalYear)
             .HasColumnName("fiscal_year")
             .IsRequired();
@@ -49,10 +52,10 @@ public sealed class WfpRecordConfiguration : IEntityTypeConfiguration<WfpRecord>
         builder.Property(w => w.SourceId)
             .HasColumnName("source_id");
 
-        // 1 WFP per office per AIP record.
-        builder.HasIndex(w => new { w.AipRecordId, w.OfficeId })
+        // 1 WFP per (aip, office, division) triplet.
+        builder.HasIndex(w => new { w.AipRecordId, w.OfficeId, w.DivisionId })
             .IsUnique()
-            .HasDatabaseName("UX_wfp_records_aip_record_id_office_id");
+            .HasDatabaseName("UX_wfp_records_aip_office_division");
 
         builder.HasIndex(w => w.AipRecordId)
             .HasDatabaseName("IX_wfp_records_aip_record_id");
@@ -60,12 +63,14 @@ public sealed class WfpRecordConfiguration : IEntityTypeConfiguration<WfpRecord>
         builder.HasIndex(w => w.OfficeId)
             .HasDatabaseName("IX_wfp_records_office_id");
 
+        builder.HasIndex(w => w.DivisionId)
+            .HasDatabaseName("IX_wfp_records_division_id");
+
         // Source chain index (amendment/supplemental tracing).
         builder.HasIndex(w => w.SourceId)
             .HasDatabaseName("IX_wfp_source_id");
 
         // Restrict: an AIP record cannot be deleted while WFPs are built from it.
-        // (Also avoids a second cascade path into the WFP hierarchy on SQL Server.)
         builder.HasOne(w => w.AipRecord)
             .WithMany(a => a.WfpRecords)
             .HasForeignKey(w => w.AipRecordId)
@@ -77,6 +82,14 @@ public sealed class WfpRecordConfiguration : IEntityTypeConfiguration<WfpRecord>
             .WithMany(o => o.WfpRecords)
             .HasForeignKey(w => w.OfficeId)
             .HasConstraintName("FK_wfp_records_offices_office_id")
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Restrict: a division cannot be deleted while WFPs reference it.
+        builder.HasOne(w => w.Division)
+            .WithMany()
+            .HasForeignKey(w => w.DivisionId)
+            .HasConstraintName("FK_wfp_records_divisions_division_id")
+            .IsRequired(false)
             .OnDelete(DeleteBehavior.Restrict);
 
         // Restrict: never delete a user who has authored planning records.

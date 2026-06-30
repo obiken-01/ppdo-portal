@@ -389,7 +389,7 @@ public sealed class ExcelServiceTests
     private static WfpExcelReportData EmptyWfpReportData()
     {
         WfpRecordDetailDto wfp = new(
-            1, 1, 1, 2027, "Draft", Guid.NewGuid(),
+            1, 1, 1, null, 2027, "Draft", Guid.NewGuid(),
             DateTime.UtcNow, DateTime.UtcNow, null, null, []);
         AipRecordDetailDto aip = new(
             1, 2027, "upload", null, Guid.NewGuid(),
@@ -421,7 +421,7 @@ public sealed class ExcelServiceTests
             null, "GF", "General Fund", 0);
         WfpActivityDto    wfpAct = new(1, 1, 99, [line]);
         WfpRecordDetailDto wfp   = new(
-            1, 1, 1, 2027, "Draft", Guid.NewGuid(),
+            1, 1, 1, null, 2027, "Draft", Guid.NewGuid(),
             DateTime.UtcNow, DateTime.UtcNow, null, null, [wfpAct]);
 
         return new WfpExcelReportData(wfp, aip, "Test Office", "TO",
