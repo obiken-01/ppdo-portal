@@ -22,7 +22,7 @@ public sealed class AppDbContext : DbContext
     // ── DbSets ────────────────────────────────────────────────────────────────
 
     public DbSet<User> Users { get; set; } = null!;
-    public DbSet<PermissionGroup> PermissionGroups { get; set; } = null!;
+    public DbSet<Division> Divisions { get; set; } = null!;
     public DbSet<ResourceLink> ResourceLinks { get; set; } = null!;
     public DbSet<PurchaseRequest> PurchaseRequests { get; set; } = null!;
     public DbSet<PRItem> PRItems { get; set; } = null!;
@@ -51,6 +51,12 @@ public sealed class AppDbContext : DbContext
     // ── v1.1.1 Announcements (RAL-83) ─────────────────────────────────────────
 
     public DbSet<Announcement> Announcements { get; set; } = null!;
+
+    // ── v1.2 Budget Allocation (RAL-99) ──────────────────────────────────────
+
+    public DbSet<BudgetCeiling>      BudgetCeilings      { get; set; } = null!;
+    public DbSet<DivisionAllocation> DivisionAllocations { get; set; } = null!;
+    public DbSet<ProgramDivision>    ProgramDivisions    { get; set; } = null!;
 
     // ── Model configuration ───────────────────────────────────────────────────
 

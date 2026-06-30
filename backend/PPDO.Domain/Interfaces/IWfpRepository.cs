@@ -17,17 +17,20 @@ public interface IWfpRepository : IRepository<WfpRecord>
     Task<WfpRecord?> GetByIntIdAsync(int id, CancellationToken ct = default);
 
     /// <summary>
-    /// Returns WFP records filtered by <paramref name="aipRecordId"/> and/or
-    /// <paramref name="officeId"/> entirely in SQL, ordered by UpdatedAt descending.
+    /// Returns WFP records filtered by <paramref name="aipRecordId"/>, <paramref name="officeId"/>,
+    /// and/or <paramref name="divisionId"/> entirely in SQL, ordered by UpdatedAt descending.
     /// Null parameters mean "no filter on that column".
     /// </summary>
-    Task<IReadOnlyList<WfpRecord>> GetFilteredAsync(int? aipRecordId, int? officeId, CancellationToken ct = default);
+    Task<IReadOnlyList<WfpRecord>> GetFilteredAsync(
+        int? aipRecordId, int? officeId, int? divisionId = null, CancellationToken ct = default);
 
     /// <summary>
-    /// Finds the single WFP record for the given (AipRecordId, OfficeId) pair, or null.
+    /// Finds the single WFP record for the given (AipRecordId, OfficeId, DivisionId) triplet, or null.
     /// Used by SaveAsync to detect whether this is a create or an update.
+    /// A null <paramref name="divisionId"/> matches rows WHERE division_id IS NULL.
     /// </summary>
-    Task<WfpRecord?> FindByAipAndOfficeAsync(int aipRecordId, int officeId, CancellationToken ct = default);
+    Task<WfpRecord?> FindByAipOfficeAndDivisionAsync(
+        int aipRecordId, int officeId, int? divisionId, CancellationToken ct = default);
 
     /// <summary>WfpActivity rows WHERE wfp_id = <paramref name="wfpId"/>.</summary>
     Task<IReadOnlyList<WfpActivity>> GetActivitiesByWfpIdAsync(int wfpId, CancellationToken ct = default);

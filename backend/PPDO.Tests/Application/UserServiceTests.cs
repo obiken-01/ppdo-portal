@@ -26,7 +26,7 @@ public sealed class UserServiceTests
         Email    = "superadmin@ppdo.gov.ph",
         PasswordHash = "hash",
         Role     = UserRole.SuperAdmin,
-        Division = Division.Admin,
+        DivisionId = null,
         IsActive = true,
     };
 
@@ -38,11 +38,11 @@ public sealed class UserServiceTests
         Email    = "admin@ppdo.gov.ph",
         PasswordHash = "hash",
         Role     = UserRole.Admin,
-        Division = Division.Admin,
+        DivisionId = null,
         IsActive = true,
     };
 
-    private static User MakeStaff(Division division = Division.Planning) => new()
+    private static User MakeStaff(int divisionId = 2) => new()
     {
         Id       = Guid.NewGuid(),
         FullName = "Staff User",
@@ -50,16 +50,32 @@ public sealed class UserServiceTests
         Email    = "staff@ppdo.gov.ph",
         PasswordHash = "hash",
         Role     = UserRole.Staff,
-        Division = division,
+        DivisionId = divisionId,
+        Division = new Division { Id = divisionId, OfficeId = 100, Name = "Planning Division" },
         IsActive = true,
-        Group    = new PermissionGroup { Id = Guid.NewGuid(), Name = "Planning Staff" },
     };
+
+    // Default divisions repo: two active PPDO divisions (1, 2) plus an office division (5 → office 7).
+    private static Mock<IRepository<Division>> DefaultDivisions()
+    {
+        Mock<IRepository<Division>> divisions = new();
+        divisions.Setup(d => d.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Division>
+            {
+                new() { Id = 1, OfficeId = 100, Name = "Administrative Division", IsActive = true },
+                new() { Id = 2, OfficeId = 100, Name = "Planning Division", IsActive = true },
+                new() { Id = 5, OfficeId = 7,   Name = "Office Division", IsActive = true },
+            });
+        return divisions;
+    }
 
     private static UserService BuildSut(
         Mock<IUserRepository> repoMock,
-        Mock<IRepository<Office>>? officeMock = null) =>
+        Mock<IRepository<Office>>? officeMock = null,
+        Mock<IRepository<Division>>? divisionMock = null) =>
         new(repoMock.Object,
             (officeMock ?? new Mock<IRepository<Office>>()).Object,
+            (divisionMock ?? DefaultDivisions()).Object,
             NullLogger<UserService>.Instance);
 
     private static Mock<IUserRepository> RepoThatSaves()
@@ -79,7 +95,7 @@ public sealed class UserServiceTests
     {
         List<User> users = [MakeAdmin(), MakeStaff()];
         Mock<IUserRepository> repo = new();
-        repo.Setup(r => r.GetAllWithGroupAsync(It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetAllWithDivisionAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(users);
 
         IReadOnlyList<UserResponseDto> result = await BuildSut(repo).GetAllAsync();
@@ -93,7 +109,7 @@ public sealed class UserServiceTests
     public async Task GetByIdAsync_UserNotFound_ReturnsNotFound()
     {
         Mock<IUserRepository> repo = new();
-        repo.Setup(r => r.GetByIdWithGroupAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((User?)null);
 
         ServiceResult<UserResponseDto> result = await BuildSut(repo).GetByIdAsync(Guid.NewGuid());
@@ -107,7 +123,7 @@ public sealed class UserServiceTests
     {
         User user = MakeAdmin();
         Mock<IUserRepository> repo = new();
-        repo.Setup(r => r.GetByIdWithGroupAsync(user.Id, It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(user.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
         ServiceResult<UserResponseDto> result = await BuildSut(repo).GetByIdAsync(user.Id);
@@ -123,7 +139,7 @@ public sealed class UserServiceTests
     public async Task CreateAsync_InvalidRole_ReturnsBadRequest()
     {
         Mock<IUserRepository> repo = new();
-        CreateUserDto dto = new("Jane", "jane", "jane@ppdo.gov.ph", "NotARole", "Admin", null, null);
+        CreateUserDto dto = new("Jane", "jane", "jane@ppdo.gov.ph", "NotARole", 1, null, null);
 
         ServiceResult<UserResponseDto> result = await BuildSut(repo).CreateAsync(MakeAdmin(), dto);
 
@@ -134,7 +150,7 @@ public sealed class UserServiceTests
     public async Task CreateAsync_InvalidDivision_ReturnsBadRequest()
     {
         Mock<IUserRepository> repo = new();
-        CreateUserDto dto = new("Jane", "jane", "jane@ppdo.gov.ph", "Staff", "NotADivision", null, null);
+        CreateUserDto dto = new("Jane", "jane", "jane@ppdo.gov.ph", "Staff", 999, null, null);
 
         ServiceResult<UserResponseDto> result = await BuildSut(repo).CreateAsync(MakeAdmin(), dto);
 
@@ -145,7 +161,7 @@ public sealed class UserServiceTests
     public async Task CreateAsync_AdminCreatesAdmin_ReturnsForbidden()
     {
         Mock<IUserRepository> repo = new();
-        CreateUserDto dto = new("Jane", "jane", "jane@ppdo.gov.ph", "Admin", "Admin", null, null);
+        CreateUserDto dto = new("Jane", "jane", "jane@ppdo.gov.ph", "Admin", null, null, null);
 
         // Admin cannot create another Admin — only SuperAdmin can.
         ServiceResult<UserResponseDto> result = await BuildSut(repo).CreateAsync(MakeAdmin(), dto);
@@ -161,7 +177,7 @@ public sealed class UserServiceTests
         repo.Setup(r => r.FindByUsernameAsync("staff", It.IsAny<CancellationToken>()))
             .ReturnsAsync(existing);
 
-        CreateUserDto dto = new("Jane", "staff", "jane@ppdo.gov.ph", "Staff", "Planning", null, null);
+        CreateUserDto dto = new("Jane", "staff", "jane@ppdo.gov.ph", "Staff", 2, null, null);
 
         ServiceResult<UserResponseDto> result = await BuildSut(repo).CreateAsync(MakeAdmin(), dto);
 
@@ -178,7 +194,7 @@ public sealed class UserServiceTests
         repo.Setup(r => r.FindByEmailAsync("staff@ppdo.gov.ph", It.IsAny<CancellationToken>()))
             .ReturnsAsync(existing);
 
-        CreateUserDto dto = new("Jane", "jane", existing.Email, "Staff", "Planning", null, null);
+        CreateUserDto dto = new("Jane", "jane", existing.Email, "Staff", 2, null, null);
 
         ServiceResult<UserResponseDto> result = await BuildSut(repo).CreateAsync(MakeAdmin(), dto);
 
@@ -188,7 +204,7 @@ public sealed class UserServiceTests
     [Fact]
     public async Task CreateAsync_ValidStaff_ReturnsOk_AndAutoAssignsGroup()
     {
-        User created = MakeStaff(Division.Planning);
+        User created = MakeStaff(2);
         Mock<IUserRepository> repo = new();
         repo.Setup(r => r.FindByUsernameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((User?)null);
@@ -199,10 +215,10 @@ public sealed class UserServiceTests
         repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(1);
         // Reload after create
-        repo.Setup(r => r.GetByIdWithGroupAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(created);
 
-        CreateUserDto dto = new("Jane Doe", "janedoe", "jane@ppdo.gov.ph", "Staff", "Planning", null, null);
+        CreateUserDto dto = new("Jane Doe", "janedoe", "jane@ppdo.gov.ph", "Staff", 2, null, null);
 
         ServiceResult<UserResponseDto> result = await BuildSut(repo).CreateAsync(MakeAdmin(), dto);
 
@@ -222,10 +238,10 @@ public sealed class UserServiceTests
             .Returns(Task.CompletedTask);
         repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(1);
-        repo.Setup(r => r.GetByIdWithGroupAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(created);
 
-        CreateUserDto dto = new("Admin Two", "admin2", "admin2@ppdo.gov.ph", "Admin", "Admin", null, null);
+        CreateUserDto dto = new("Admin Two", "admin2", "admin2@ppdo.gov.ph", "Admin", null, null, null);
 
         ServiceResult<UserResponseDto> result = await BuildSut(repo).CreateAsync(MakeSuperAdmin(), dto);
 
@@ -246,10 +262,8 @@ public sealed class UserServiceTests
     }
 
     [Fact]
-    public async Task CreateAsync_OfficeUser_NullDivision_AssignsOfficeUserDefaultGroup()
+    public async Task CreateAsync_OfficeUser_WithOfficeDivision_SetsOfficeAndDivision()
     {
-        // Office User Default group GUID — must match UserService + seed.
-        Guid officeUserDefault = new("10000000-0000-0000-0000-000000000007");
         User? captured = null;
 
         Mock<IUserRepository> repo = new();
@@ -261,23 +275,43 @@ public sealed class UserServiceTests
             .Callback<User, CancellationToken>((u, _) => captured = u)
             .Returns(Task.CompletedTask);
         repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
-        repo.Setup(r => r.GetByIdWithGroupAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(MakeStaff());
 
         Mock<IRepository<Office>> offices = new();
         offices.Setup(o => o.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Office> { new() { Id = 7, OfficeCode = "PGO", OfficeName = "Provincial Gov Office", IsActive = true } });
 
-        // Division supplied but ignored because an office is set.
-        CreateUserDto dto = new("Office Encoder", "enc", "enc@lgu.gov.ph", "Staff", "Planning", null, null, OfficeId: 7);
+        // Office user — division 5 belongs to office 7 (see DefaultDivisions()).
+        CreateUserDto dto = new("Office Encoder", "enc", "enc@lgu.gov.ph", "Staff", 5, null, null, OfficeId: 7);
 
         ServiceResult<UserResponseDto> result = await BuildSut(repo, offices).CreateAsync(MakeAdmin(), dto);
 
         Assert.True(result.IsSuccess);
         Assert.NotNull(captured);
         Assert.Equal(7, captured!.OfficeId);
-        Assert.Null(captured.Division);
-        Assert.Equal(officeUserDefault, captured.GroupId);
+        Assert.Equal(5, captured.DivisionId);
+    }
+
+    [Fact]
+    public async Task CreateAsync_OfficeUser_DivisionFromAnotherOffice_ReturnsBadRequest()
+    {
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByUsernameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+        repo.Setup(r => r.FindByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+
+        Mock<IRepository<Office>> offices = new();
+        offices.Setup(o => o.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Office> { new() { Id = 7, OfficeName = "PGO", IsActive = true } });
+
+        // Division 2 belongs to office 100, not office 7 → rejected.
+        CreateUserDto dto = new("Enc", "enc", "enc@lgu.gov.ph", "Staff", 2, null, null, OfficeId: 7);
+
+        ServiceResult<UserResponseDto> result = await BuildSut(repo, offices).CreateAsync(MakeAdmin(), dto);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
     }
 
     [Fact]
@@ -314,10 +348,10 @@ public sealed class UserServiceTests
     public async Task UpdateAsync_UserNotFound_ReturnsNotFound()
     {
         Mock<IUserRepository> repo = new();
-        repo.Setup(r => r.GetByIdWithGroupAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((User?)null);
 
-        UpdateUserDto dto = new("New Name", null, null, null, null, null, null, null, null, null, null, null);
+        UpdateUserDto dto = new("New Name", null, null, null, null, null, null, null, null, null, null);
 
         ServiceResult<UserResponseDto> result =
             await BuildSut(repo).UpdateAsync(MakeAdmin(), Guid.NewGuid(), dto);
@@ -330,10 +364,10 @@ public sealed class UserServiceTests
     {
         User target = MakeAdmin();
         Mock<IUserRepository> repo = new();
-        repo.Setup(r => r.GetByIdWithGroupAsync(target.Id, It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(target.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(target);
 
-        UpdateUserDto dto = new("New Name", null, null, null, null, null, null, null, null, null, null, null);
+        UpdateUserDto dto = new("New Name", null, null, null, null, null, null, null, null, null, null);
 
         // Admin cannot update another Admin.
         ServiceResult<UserResponseDto> result =
@@ -347,10 +381,10 @@ public sealed class UserServiceTests
     {
         User target = MakeStaff();
         Mock<IUserRepository> repo = RepoThatSaves();
-        repo.Setup(r => r.GetByIdWithGroupAsync(target.Id, It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(target.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(target);
 
-        UpdateUserDto dto = new("Updated Name", null, null, null, null, null, "New Position", "09171234567",
+        UpdateUserDto dto = new("Updated Name", null, null, null, null, "New Position", "09171234567",
             null, null, null, null);
 
         ServiceResult<UserResponseDto> result =
@@ -367,12 +401,12 @@ public sealed class UserServiceTests
     {
         User target = MakeStaff();
         Mock<IUserRepository> repo = RepoThatSaves();
-        repo.Setup(r => r.GetByIdWithGroupAsync(target.Id, It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(target.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(target);
         repo.Setup(r => r.FindByUsernameAsync("newstaff", It.IsAny<CancellationToken>()))
             .ReturnsAsync((User?)null);
 
-        UpdateUserDto dto = new(null, "newstaff", null, null, null, null, null, null, null, null, null, null);
+        UpdateUserDto dto = new(null, "newstaff", null, null, null, null, null, null, null, null, null);
 
         ServiceResult<UserResponseDto> result =
             await BuildSut(repo).UpdateAsync(MakeAdmin(), target.Id, dto);
@@ -386,12 +420,12 @@ public sealed class UserServiceTests
     {
         User target = MakeStaff();
         Mock<IUserRepository> repo = RepoThatSaves();
-        repo.Setup(r => r.GetByIdWithGroupAsync(target.Id, It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(target.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(target);
         repo.Setup(r => r.FindByEmailAsync("newemail@ppdo.gov.ph", It.IsAny<CancellationToken>()))
             .ReturnsAsync((User?)null);
 
-        UpdateUserDto dto = new(null, null, "newemail@ppdo.gov.ph", null, null, null, null, null, null, null, null, null);
+        UpdateUserDto dto = new(null, null, "newemail@ppdo.gov.ph", null, null, null, null, null, null, null, null);
 
         ServiceResult<UserResponseDto> result =
             await BuildSut(repo).UpdateAsync(MakeAdmin(), target.Id, dto);
@@ -405,10 +439,10 @@ public sealed class UserServiceTests
     {
         User target = MakeStaff();
         Mock<IUserRepository> repo = new();
-        repo.Setup(r => r.GetByIdWithGroupAsync(target.Id, It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(target.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(target);
 
-        UpdateUserDto dto = new(null, null, null, "NotARole", null, null, null, null, null, null, null, null);
+        UpdateUserDto dto = new(null, null, null, "NotARole", null, null, null, null, null, null, null);
 
         ServiceResult<UserResponseDto> result =
             await BuildSut(repo).UpdateAsync(MakeAdmin(), target.Id, dto);
@@ -421,10 +455,10 @@ public sealed class UserServiceTests
     {
         User target = MakeStaff();
         Mock<IUserRepository> repo = RepoThatSaves();
-        repo.Setup(r => r.GetByIdWithGroupAsync(target.Id, It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(target.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(target);
 
-        UpdateUserDto dto = new(null, null, null, null, null, null, null, null,
+        UpdateUserDto dto = new(null, null, null, null, null, null, null,
             OverrideCanAccessInventory:     true,
             OverrideCanAccessReports:       false,
             OverrideCanManageUsers:         null,
@@ -444,7 +478,7 @@ public sealed class UserServiceTests
     public async Task ResetPasswordAsync_UserNotFound_ReturnsNotFound()
     {
         Mock<IUserRepository> repo = new();
-        repo.Setup(r => r.GetByIdWithGroupAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((User?)null);
 
         ServiceResult<UserResponseDto> result =
@@ -461,7 +495,7 @@ public sealed class UserServiceTests
         target.RefreshTokenExpiry = DateTime.UtcNow.AddDays(7);
 
         Mock<IUserRepository> repo = RepoThatSaves();
-        repo.Setup(r => r.GetByIdWithGroupAsync(target.Id, It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(target.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(target);
 
         await BuildSut(repo).ResetPasswordAsync(MakeAdmin(), target.Id);
@@ -477,7 +511,7 @@ public sealed class UserServiceTests
         string originalHash = target.PasswordHash;
 
         Mock<IUserRepository> repo = RepoThatSaves();
-        repo.Setup(r => r.GetByIdWithGroupAsync(target.Id, It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(target.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(target);
 
         await BuildSut(repo).ResetPasswordAsync(MakeAdmin(), target.Id);
@@ -504,7 +538,7 @@ public sealed class UserServiceTests
     public async Task DeactivateAsync_UserNotFound_ReturnsNotFound()
     {
         Mock<IUserRepository> repo = new();
-        repo.Setup(r => r.GetByIdWithGroupAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((User?)null);
 
         ServiceResult<UserResponseDto> result =
@@ -521,7 +555,7 @@ public sealed class UserServiceTests
         target.RefreshTokenExpiry = DateTime.UtcNow.AddDays(7);
 
         Mock<IUserRepository> repo = RepoThatSaves();
-        repo.Setup(r => r.GetByIdWithGroupAsync(target.Id, It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(target.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(target);
 
         ServiceResult<UserResponseDto> result =
@@ -539,7 +573,7 @@ public sealed class UserServiceTests
     public async Task ReactivateAsync_UserNotFound_ReturnsNotFound()
     {
         Mock<IUserRepository> repo = new();
-        repo.Setup(r => r.GetByIdWithGroupAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((User?)null);
 
         ServiceResult<UserResponseDto> result =
@@ -555,7 +589,7 @@ public sealed class UserServiceTests
         target.IsActive = true;
 
         Mock<IUserRepository> repo = new();
-        repo.Setup(r => r.GetByIdWithGroupAsync(target.Id, It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(target.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(target);
 
         ServiceResult<UserResponseDto> result =
@@ -571,7 +605,7 @@ public sealed class UserServiceTests
         target.IsActive = false;
 
         Mock<IUserRepository> repo = RepoThatSaves();
-        repo.Setup(r => r.GetByIdWithGroupAsync(target.Id, It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(target.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(target);
 
         ServiceResult<UserResponseDto> result =
@@ -588,7 +622,7 @@ public sealed class UserServiceTests
         target.IsActive = false;
 
         Mock<IUserRepository> repo = new();
-        repo.Setup(r => r.GetByIdWithGroupAsync(target.Id, It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(target.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(target);
 
         // Admin cannot manage another Admin.
@@ -604,7 +638,7 @@ public sealed class UserServiceTests
     public async Task UpdateOwnProfileAsync_UserNotFound_ReturnsNotFound()
     {
         Mock<IUserRepository> repo = new();
-        repo.Setup(r => r.GetByIdWithGroupAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((User?)null);
 
         UpdateOwnProfileDto dto = new("Full Name", "username", null, null, null);
@@ -620,7 +654,7 @@ public sealed class UserServiceTests
     {
         User caller = MakeStaff();
         Mock<IUserRepository> repo = RepoThatSaves();
-        repo.Setup(r => r.GetByIdWithGroupAsync(caller.Id, It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(caller.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(caller);
 
         UpdateOwnProfileDto dto = new("  ", "username", null, null, null);
@@ -636,7 +670,7 @@ public sealed class UserServiceTests
     {
         User caller = MakeStaff();
         Mock<IUserRepository> repo = RepoThatSaves();
-        repo.Setup(r => r.GetByIdWithGroupAsync(caller.Id, It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(caller.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(caller);
 
         UpdateOwnProfileDto dto = new("Full Name", "  ", null, null, null);
@@ -655,7 +689,7 @@ public sealed class UserServiceTests
         other.Username = "taken";
 
         Mock<IUserRepository> repo = RepoThatSaves();
-        repo.Setup(r => r.GetByIdWithGroupAsync(caller.Id, It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(caller.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(caller);
         repo.Setup(r => r.FindByUsernameAsync("taken", It.IsAny<CancellationToken>()))
             .ReturnsAsync(other);
@@ -676,7 +710,7 @@ public sealed class UserServiceTests
         other.Email = "taken@ppdo.gov.ph";
 
         Mock<IUserRepository> repo = RepoThatSaves();
-        repo.Setup(r => r.GetByIdWithGroupAsync(caller.Id, It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(caller.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(caller);
         repo.Setup(r => r.FindByUsernameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((User?)null);
@@ -701,12 +735,12 @@ public sealed class UserServiceTests
         reloaded.Email = null;
 
         Mock<IUserRepository> repo = RepoThatSaves();
-        repo.Setup(r => r.GetByIdWithGroupAsync(caller.Id, It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(caller.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(caller);
         repo.Setup(r => r.FindByUsernameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((User?)null);
         // Reload after save returns the updated user
-        repo.SetupSequence(r => r.GetByIdWithGroupAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+        repo.SetupSequence(r => r.GetByIdWithDivisionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(caller)
             .ReturnsAsync(reloaded);
 
@@ -733,7 +767,7 @@ public sealed class UserServiceTests
         reloaded.ContactNo = "09171234567";
 
         Mock<IUserRepository> repo = RepoThatSaves();
-        repo.SetupSequence(r => r.GetByIdWithGroupAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+        repo.SetupSequence(r => r.GetByIdWithDivisionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(caller)
             .ReturnsAsync(reloaded);
         repo.Setup(r => r.FindByUsernameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -761,7 +795,7 @@ public sealed class UserServiceTests
     public async Task ChangePasswordAsync_UserNotFound_ReturnsNotFound()
     {
         Mock<IUserRepository> repo = new();
-        repo.Setup(r => r.GetByIdWithGroupAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((User?)null);
 
         ChangePasswordDto dto = new("old", "NewPass1!", "NewPass1!");
@@ -779,7 +813,7 @@ public sealed class UserServiceTests
         caller.PasswordHash = BCrypt.Net.BCrypt.HashPassword("CorrectPass1!");
 
         Mock<IUserRepository> repo = new();
-        repo.Setup(r => r.GetByIdWithGroupAsync(caller.Id, It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(caller.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(caller);
 
         ChangePasswordDto dto = new("WrongPass1!", "NewPass1!", "NewPass1!");
@@ -798,7 +832,7 @@ public sealed class UserServiceTests
         caller.PasswordHash = BCrypt.Net.BCrypt.HashPassword("Current1!");
 
         Mock<IUserRepository> repo = new();
-        repo.Setup(r => r.GetByIdWithGroupAsync(caller.Id, It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(caller.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(caller);
 
         ChangePasswordDto dto = new("Current1!", "NewPass1!", "DifferentPass1!");
@@ -817,7 +851,7 @@ public sealed class UserServiceTests
         caller.PasswordHash = BCrypt.Net.BCrypt.HashPassword("Current1!");
 
         Mock<IUserRepository> repo = new();
-        repo.Setup(r => r.GetByIdWithGroupAsync(caller.Id, It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(caller.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(caller);
 
         ChangePasswordDto dto = new("Current1!", "Short1!", "Short1!");
@@ -835,7 +869,7 @@ public sealed class UserServiceTests
         caller.PasswordHash = BCrypt.Net.BCrypt.HashPassword("Current1!");
 
         Mock<IUserRepository> repo = new();
-        repo.Setup(r => r.GetByIdWithGroupAsync(caller.Id, It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(caller.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(caller);
 
         ChangePasswordDto dto = new("Current1!", "newpass123!", "newpass123!");
@@ -853,7 +887,7 @@ public sealed class UserServiceTests
         caller.PasswordHash = BCrypt.Net.BCrypt.HashPassword("Current1!");
 
         Mock<IUserRepository> repo = new();
-        repo.Setup(r => r.GetByIdWithGroupAsync(caller.Id, It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(caller.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(caller);
 
         ChangePasswordDto dto = new("Current1!", "NoDigitHere!", "NoDigitHere!");
@@ -872,7 +906,7 @@ public sealed class UserServiceTests
         caller.PasswordHash = originalHash;
 
         Mock<IUserRepository> repo = RepoThatSaves();
-        repo.Setup(r => r.GetByIdWithGroupAsync(caller.Id, It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByIdWithDivisionAsync(caller.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(caller);
 
         ChangePasswordDto dto = new("Current1!", "NewPass2@", "NewPass2@");

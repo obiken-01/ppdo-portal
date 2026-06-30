@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -35,32 +36,35 @@ public sealed class AuthServiceTests
         Email        = "test@ppdo.gov.ph",
         PasswordHash = passwordHash,
         Role         = UserRole.Admin,
-        Division     = Division.Admin,
+        DivisionId   = null,
         IsActive     = true,
     };
 
-    private AuthService BuildSut(Mock<IUserRepository> repoMock) => new(
+    private static AuthService BuildSut(Mock<IUserRepository> repoMock, IMemoryCache? cache = null) => new(
         repoMock.Object,
         new PermissionService(),
         Options.Create(JwtSettings),
+        cache ?? new MemoryCache(new MemoryCacheOptions()),
         NullLogger<AuthService>.Instance);
 
     // ── LoginAsync ────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task LoginAsync_UsernameNotFound_ReturnsNull()
+    public async Task LoginAsync_UsernameNotFound_ReturnsInvalid()
     {
         Mock<IUserRepository> repo = new();
         repo.Setup(r => r.FindByUsernameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((User?)null);
 
-        (string, string)? result = await BuildSut(repo).LoginAsync("nobody", "pass");
+        LoginResult result = await BuildSut(repo).LoginAsync("nobody", "pass");
 
-        Assert.Null(result);
+        Assert.Equal(LoginOutcome.InvalidCredentials, result.Outcome);
+        Assert.Null(result.AccessToken);
+        Assert.Null(result.RefreshToken);
     }
 
     [Fact]
-    public async Task LoginAsync_WrongPassword_ReturnsNull()
+    public async Task LoginAsync_WrongPassword_ReturnsInvalid()
     {
         string correctHash = BCrypt.Net.BCrypt.HashPassword("correct");
         User user = MakeActiveUser(correctHash);
@@ -69,9 +73,9 @@ public sealed class AuthServiceTests
         repo.Setup(r => r.FindByUsernameAsync(user.Username, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        (string, string)? result = await BuildSut(repo).LoginAsync(user.Username, "wrong");
+        LoginResult result = await BuildSut(repo).LoginAsync(user.Username, "wrong");
 
-        Assert.Null(result);
+        Assert.Equal(LoginOutcome.InvalidCredentials, result.Outcome);
     }
 
     [Fact]
@@ -89,12 +93,102 @@ public sealed class AuthServiceTests
         repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(1);
 
-        (string AccessToken, string RefreshToken)? result =
-            await BuildSut(repo).LoginAsync(user.Username, password);
+        LoginResult result = await BuildSut(repo).LoginAsync(user.Username, password);
 
-        Assert.NotNull(result);
-        Assert.False(string.IsNullOrWhiteSpace(result.Value.AccessToken));
-        Assert.False(string.IsNullOrWhiteSpace(result.Value.RefreshToken));
+        Assert.Equal(LoginOutcome.Success, result.Outcome);
+        Assert.False(string.IsNullOrWhiteSpace(result.AccessToken));
+        Assert.False(string.IsNullOrWhiteSpace(result.RefreshToken));
+    }
+
+    // ── LoginAsync — rate limiting (RAL-58) ─────────────────────────────────────
+
+    [Fact]
+    public async Task LoginAsync_ExceedsMaxFailedAttempts_ReturnsRateLimited()
+    {
+        User user = MakeActiveUser(BCrypt.Net.BCrypt.HashPassword("correct"));
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByUsernameAsync(user.Username, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+
+        AuthService sut = BuildSut(repo);
+
+        // 5 failed attempts are all reported as invalid credentials …
+        for (int i = 0; i < 5; i++)
+        {
+            LoginResult fail = await sut.LoginAsync(user.Username, "wrong");
+            Assert.Equal(LoginOutcome.InvalidCredentials, fail.Outcome);
+        }
+
+        // … the 6th is blocked.
+        LoginResult blocked = await sut.LoginAsync(user.Username, "wrong");
+        Assert.Equal(LoginOutcome.RateLimited, blocked.Outcome);
+        Assert.True(blocked.RetryAfterSeconds > 0);
+    }
+
+    [Fact]
+    public async Task LoginAsync_RateLimited_BlocksEvenCorrectPassword()
+    {
+        string password = "TamarawUser2026!";
+        User user = MakeActiveUser(BCrypt.Net.BCrypt.HashPassword(password));
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByUsernameAsync(user.Username, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        repo.Setup(r => r.UpdateAsync(user, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+
+        AuthService sut = BuildSut(repo);
+        for (int i = 0; i < 5; i++)
+            await sut.LoginAsync(user.Username, "wrong");
+
+        // Once locked out, even the correct password is refused.
+        LoginResult result = await sut.LoginAsync(user.Username, password);
+        Assert.Equal(LoginOutcome.RateLimited, result.Outcome);
+    }
+
+    [Fact]
+    public async Task LoginAsync_SuccessfulLogin_ResetsFailedAttemptCounter()
+    {
+        string password = "TamarawUser2026!";
+        User user = MakeActiveUser(BCrypt.Net.BCrypt.HashPassword(password));
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByUsernameAsync(user.Username, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        repo.Setup(r => r.UpdateAsync(user, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+
+        AuthService sut = BuildSut(repo);
+
+        // 4 failures — one short of the lockout threshold.
+        for (int i = 0; i < 4; i++)
+            Assert.Equal(LoginOutcome.InvalidCredentials, (await sut.LoginAsync(user.Username, "wrong")).Outcome);
+
+        // A success clears the counter …
+        Assert.Equal(LoginOutcome.Success, (await sut.LoginAsync(user.Username, password)).Outcome);
+
+        // … so four more failures are still merely invalid, never rate-limited.
+        for (int i = 0; i < 4; i++)
+            Assert.Equal(LoginOutcome.InvalidCredentials, (await sut.LoginAsync(user.Username, "wrong")).Outcome);
+    }
+
+    [Fact]
+    public async Task LoginAsync_RateLimit_IsScopedPerUsername()
+    {
+        User userA = MakeActiveUser(BCrypt.Net.BCrypt.HashPassword("secret"));
+        userA.Username = "usera";
+
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByUsernameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string u, CancellationToken _) => u == "usera" ? userA : null);
+
+        AuthService sut = BuildSut(repo);
+
+        // Lock out "usera".
+        for (int i = 0; i < 5; i++)
+            await sut.LoginAsync("usera", "wrong");
+        Assert.Equal(LoginOutcome.RateLimited, (await sut.LoginAsync("usera", "wrong")).Outcome);
+
+        // A different username is unaffected.
+        Assert.Equal(LoginOutcome.InvalidCredentials, (await sut.LoginAsync("userb", "wrong")).Outcome);
     }
 
     [Fact]

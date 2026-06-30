@@ -121,7 +121,7 @@ public sealed class ExcelServiceTests
 
         Assert.Single(result);
         Assert.Equal("PR-001",         result[0].SheetName);
-        Assert.Equal(Division.Planning, result[0].Division);
+        Assert.Equal("Planning", result[0].DivisionName);
         Assert.Equal("Juan dela Cruz", result[0].RequestedBy);
         Assert.Equal(new DateOnly(2026, 6, 1), result[0].PRDate);
     }
@@ -332,7 +332,7 @@ public sealed class ExcelServiceTests
         string allText = string.Concat(ws.CellsUsed().Select(c => c.GetString()));
         Assert.Contains(pr.PRNo,              allText);
         Assert.Contains(pr.RequestedBy,       allText);
-        Assert.Contains(pr.Division.ToString(), allText);
+        Assert.Contains(pr.Division!.Name, allText);
     }
 
     [Fact]
@@ -389,7 +389,7 @@ public sealed class ExcelServiceTests
     private static WfpExcelReportData EmptyWfpReportData()
     {
         WfpRecordDetailDto wfp = new(
-            1, 1, 1, 2027, "Draft", Guid.NewGuid(),
+            1, 1, 1, null, 2027, "Draft", Guid.NewGuid(),
             DateTime.UtcNow, DateTime.UtcNow, null, null, []);
         AipRecordDetailDto aip = new(
             1, 2027, "upload", null, Guid.NewGuid(),
@@ -421,7 +421,7 @@ public sealed class ExcelServiceTests
             null, "GF", "General Fund", 0);
         WfpActivityDto    wfpAct = new(1, 1, 99, [line]);
         WfpRecordDetailDto wfp   = new(
-            1, 1, 1, 2027, "Draft", Guid.NewGuid(),
+            1, 1, 1, null, 2027, "Draft", Guid.NewGuid(),
             DateTime.UtcNow, DateTime.UtcNow, null, null, [wfpAct]);
 
         return new WfpExcelReportData(wfp, aip, "Test Office", "TO",
@@ -442,7 +442,7 @@ public sealed class ExcelServiceTests
             PRDate      = new DateOnly(2026, 6, 1),
             DateCreated = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc),
             Department  = "PPDO",
-            Division    = Division.Planning,
+            Division    = new Division { Id = 2, OfficeId = 100, Name = "Planning" },
             Fund        = "General Fund",
             RequestedBy = "Juan dela Cruz",
             Position    = "Planning Officer",

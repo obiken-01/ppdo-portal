@@ -2,8 +2,11 @@ namespace PPDO.Domain.Enums;
 
 /// <summary>
 /// Role assigned to a PPDO portal user. Controls which permission checks apply.
-/// SuperAdmin and Admin always have full feature access — permission group flags are ignored for them.
-/// Staff and Observer resolve permissions from their PermissionGroup plus individual overrides.
+/// SuperAdmin bypasses everything; Admin gets all feature flags by default EXCEPT special
+/// per-user grants (e.g. CanManageAllocation). Staff resolve permissions from their
+/// Division flags plus individual overrides.
+///
+/// The Observer role was retired in v1.2 (RAL-97) — read-only access is deferred.
 /// </summary>
 public enum UserRole
 {
@@ -14,20 +17,14 @@ public enum UserRole
     SuperAdmin = 0,
 
     /// <summary>
-    /// Division head. Gets all feature permissions by default — group/override flags ignored.
-    /// Can manage Staff and Observer accounts only (not other Admins or SuperAdmins).
+    /// Division head. Gets all feature permissions by default EXCEPT special per-user grants
+    /// (CanManageAllocation). Can manage Staff accounts only (not other Admins or SuperAdmins).
     /// </summary>
     Admin = 1,
 
     /// <summary>
-    /// Regular PPDO employee. Access determined by PermissionGroup flags + individual overrides.
-    /// Write actions are scoped to own Division.
+    /// Regular PPDO or office employee. Access determined by their division's flags + individual
+    /// overrides. Write/read scope is their own division (offices users: their office).
     /// </summary>
     Staff = 2,
-
-    /// <summary>
-    /// Read-only user (e.g. provincial administrator). Access determined by group flags + overrides.
-    /// Can never create, edit, or delete — observer only.
-    /// </summary>
-    Observer = 3,
 }

@@ -23,7 +23,7 @@ import { auth } from "@/lib/auth";
 import { clearMeCache } from "@/lib/me-cache";
 import type { MeResponse } from "@/types";
 
-const APP_VERSION = "v1.1.1";
+const APP_VERSION = "v1.2.0";
 
 interface SidebarProps {
   me: MeResponse | null;
@@ -287,6 +287,12 @@ export default function Sidebar({ me }: SidebarProps) {
                   <span className="text-xs">•</span>
                   <span className="truncate">AIP</span>
                 </Link>
+                {me?.canManageAllocation && (
+                  <Link href="/budget-planning/allocation" className={childLinkCls(isActive("/budget-planning/allocation"))}>
+                    <span className="text-xs">•</span>
+                    <span className="truncate">Allocation</span>
+                  </Link>
+                )}
                 <Link href="/budget-planning/wfp" className={childLinkCls(isActive("/budget-planning/wfp"))}>
                   <span className="text-xs">•</span>
                   <span className="truncate">WFP</span>
@@ -333,6 +339,10 @@ export default function Sidebar({ me }: SidebarProps) {
                     <Link href="/config/funding-sources" className={childLinkCls(isActive("/config/funding-sources"))}>
                       <span className="text-xs">•</span>
                       <span className="truncate">Funding Sources</span>
+                    </Link>
+                    <Link href="/config/divisions" className={childLinkCls(isActive("/config/divisions"))}>
+                      <span className="text-xs">•</span>
+                      <span className="truncate">Divisions</span>
                     </Link>
                   </>
                 )}

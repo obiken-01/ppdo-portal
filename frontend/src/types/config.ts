@@ -103,3 +103,40 @@ export interface UpsertFundingSourceRequest {
   color: string | null;
   isActive: boolean;
 }
+
+// ---------------------------------------------------------------------------
+// Divisions — RAL-97 (configurable division = data scope + feature flags)
+// ---------------------------------------------------------------------------
+
+/** Read model for a configurable division (config table `divisions`). Mirrors DivisionDto. */
+export interface DivisionResponse {
+  id: number;
+  officeId: number;
+  officeName: string | null;
+  officeCode: string | null;
+  code: string | null;
+  name: string;
+  isActive: boolean;
+  canAccessInventory: boolean;
+  canAccessReports: boolean;
+  canManageUsers: boolean;
+  canManageResourceLinks: boolean;
+  canAccessBudgetPlanning: boolean;
+  canUploadAip: boolean;
+  canManageConfig: boolean;
+}
+
+/** Create/update body for a configurable division. name is the upsert key within an office. */
+export interface UpsertDivisionRequest {
+  officeId: number;
+  code: string | null;
+  name: string;
+  isActive: boolean;
+  canAccessBudgetPlanning: boolean;
+  canAccessInventory: boolean;
+  canAccessReports: boolean;
+  canManageConfig: boolean;
+  canUploadAip: boolean;
+  canManageUsers: boolean;
+  canManageResourceLinks: boolean;
+}

@@ -34,15 +34,22 @@ import {
   unlockWfp,
   wfpErrorMessage,
 } from "@/lib/wfp";
-import { listAccounts, listFundingSources, listOffices } from "@/lib/config";
+import { listAccounts, listDivisions, listFundingSources, listOffices } from "@/lib/config";
+import { getCeiling, getSetupStatus, getAllocations, getPrograms } from "@/lib/allocation";
 import Modal from "@/components/ui/Modal";
+import MoneyInput from "@/components/ui/MoneyInput";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
+import { formatMoney } from "@/lib/money";
 import type {
   AipActivitySummary,
   AipRecordSummary,
   AipRecordResponse,
   AccountResponse,
+  AllocationSetupStatusDto,
+  DivisionAllocationDto,
+  DivisionResponse,
+  ProgramAssignmentDto,
   ExpenditureType,
   FundingSourceResponse,
   OfficeResponse,
@@ -80,10 +87,6 @@ function resolveDefaultFundingSourceId(
 
 function fmtCurrency(n: number): string {
   if (n === 0) return "—";
-  return n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function fmtNum(n: number): string {
   return n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
@@ -264,13 +267,13 @@ function ExpenditurePopup({
       const net = computeNet(l);
       const quarterly = l.q1 + l.q2 + l.q3 + l.q4;
       if (net > 0 && quarterly > net + 0.001)
-        errs.push(`Line ${i + 1} (${l.expenditureType}): quarterly total ${fmtNum(quarterly)} exceeds net appropriation ${fmtNum(net)}.`);
+        errs.push(`Line ${i + 1} (${l.expenditureType}): quarterly total ${formatMoney(quarterly)} exceeds net appropriation ${formatMoney(net)}.`);
     });
     const aipBudget = activity.total != null ? activity.total * 1000 : null;
     if (aipBudget != null) {
       const totalApprop = localLines.reduce((sum, l) => sum + l.totalAppropriation, 0);
       if (totalApprop > aipBudget + 0.001)
-        errs.push(`Total appropriation ${fmtNum(totalApprop)} exceeds the AIP budget of ${fmtNum(aipBudget)}.`);
+        errs.push(`Total appropriation ${formatMoney(totalApprop)} exceeds the AIP budget of ${formatMoney(aipBudget)}.`);
     }
     return errs;
   }, [localLines, activity.total]);
@@ -369,7 +372,7 @@ function ExpenditurePopup({
       <p className="mb-4 text-sm text-slate-600">
         AIP Budget:{" "}
         <span className="font-semibold tabular-nums text-slate-800">
-          {activity.total != null ? fmtNum(activity.total * 1000) : "—"}
+          {activity.total != null ? formatMoney(activity.total * 1000) : "—"}
         </span>
       </p>
 
@@ -452,19 +455,13 @@ function ExpenditurePopup({
                       {/* TOTAL APPROP */}
                       <td className="px-2 py-1.5 text-right">
                         {readonly ? (
-                          <span>{fmtNum(line.totalAppropriation)}</span>
+                          <span>{formatMoney(line.totalAppropriation)}</span>
                         ) : (
-                          <input
-                            type="number"
+                          <MoneyInput
+                            value={line.totalAppropriation === 0 ? null : line.totalAppropriation}
+                            onChange={(v) => updateLine(idx, { totalAppropriation: v ?? 0 })}
                             min={0}
-                            step="0.01"
-                            value={line.totalAppropriation || ""}
-                            onChange={(e) =>
-                              updateLine(idx, {
-                                totalAppropriation: parseFloat(e.target.value) || 0,
-                              })
-                            }
-                            className="w-24 text-right border border-slate-200 text-xs px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-green-500"
+                            className="w-28 text-xs"
                           />
                         )}
                       </td>
@@ -481,24 +478,20 @@ function ExpenditurePopup({
 
                       {/* NET */}
                       <td className="px-2 py-1.5 text-right font-medium text-slate-700 whitespace-nowrap">
-                        {fmtNum(net)}
+                        {formatMoney(net)}
                       </td>
 
                       {/* Q1–Q4 */}
                       {(["q1", "q2", "q3", "q4"] as const).map((q) => (
                         <td key={q} className="px-2 py-1.5 text-right">
                           {readonly ? (
-                            <span>{fmtNum(line[q])}</span>
+                            <span>{formatMoney(line[q])}</span>
                           ) : (
-                            <input
-                              type="number"
+                            <MoneyInput
+                              value={line[q] === 0 ? null : line[q]}
+                              onChange={(v) => updateLine(idx, { [q]: v ?? 0 })}
                               min={0}
-                              step="0.01"
-                              value={line[q] || ""}
-                              onChange={(e) =>
-                                updateLine(idx, { [q]: parseFloat(e.target.value) || 0 })
-                              }
-                              className="w-20 text-right border border-slate-200 text-xs px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-green-500"
+                              className="w-24 text-xs"
                             />
                           )}
                         </td>
@@ -510,7 +503,7 @@ function ExpenditurePopup({
                           isOver ? "text-red-600" : "text-slate-700"
                         }`}
                       >
-                        {fmtNum(quarterly)}
+                        {formatMoney(quarterly)}
                       </td>
 
                       {/* SOURCE */}
@@ -621,8 +614,10 @@ function WfpPageInner() {
 
   const [aipList, setAipList] = useState<AipRecordResponse[]>([]);
   const [officeList, setOfficeList] = useState<OfficeResponse[]>([]);
+  const [divisionList, setDivisionList] = useState<DivisionResponse[]>([]);
   const [selectedAipId, setSelectedAipId] = useState<number | null>(null);
   const [selectedOfficeId, setSelectedOfficeId] = useState<number | null>(null);
+  const [selectedDivisionId, setSelectedDivisionId] = useState<number | null>(null);
 
   // ── Loaded data ──────────────────────────────────────────────────────────
 
@@ -630,6 +625,12 @@ function WfpPageInner() {
   const [wfp, setWfp] = useState<WfpRecord | null>(null);
   const [accounts, setAccounts] = useState<AccountResponse[]>([]);
   const [fundingSources, setFundingSources] = useState<FundingSourceResponse[]>([]);
+
+  // ── Division setup status + budget banner ─────────────────────────────────
+  const [hasCeiling, setHasCeiling] = useState<boolean | null>(null);  // null = not yet loaded
+  const [setupStatus, setSetupStatus] = useState<AllocationSetupStatusDto | null>(null);
+  const [divisionAllocation, setDivisionAllocation] = useState<DivisionAllocationDto | null>(null);
+  const [programAssignments, setProgramAssignments] = useState<ProgramAssignmentDto[]>([]);
 
   // ── Draft ────────────────────────────────────────────────────────────────
 
@@ -679,14 +680,23 @@ function WfpPageInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Effect A2: Pre-fill office from me.officeId when no URL param ────────
+  // ── Effect A2: Pre-fill office + division from me when no URL param ─────────
 
   useEffect(() => {
-    if (!me || me.officeId == null) return;
-    if (!searchParams.get("officeId")) setSelectedOfficeId(me.officeId);
+    if (!me) return;
+    if (me.officeId != null && !searchParams.get("officeId")) setSelectedOfficeId(me.officeId);
+    if (me.divisionId != null) setSelectedDivisionId(me.divisionId);
   }, [me, searchParams]);
 
-  // ── Effect B: Load AIP detail + WFP when both selectors are set ──────────
+  // ── Effect A3: Load division list when office changes ─────────────────────
+
+  useEffect(() => {
+    if (selectedOfficeId == null) { setDivisionList([]); return; }
+    listDivisions({ active: "true", officeId: selectedOfficeId }).then(setDivisionList).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedOfficeId]);
+
+  // ── Effect B: Load AIP detail + WFP when selectors change ───────────────
 
   useEffect(() => {
     if (selectedAipId == null || selectedOfficeId == null) {
@@ -694,11 +704,16 @@ function WfpPageInner() {
       setWfp(null);
       setDraftLines({});
       setHasUnsaved(false);
+      setHasCeiling(null);
+      setSetupStatus(null);
+      setDivisionAllocation(null);
+      setProgramAssignments([]);
       return;
     }
 
     const aipId = selectedAipId;
     const officeId = selectedOfficeId;
+    const divisionId = selectedDivisionId;
     let cancelled = false;
 
     async function load() {
@@ -716,9 +731,13 @@ function WfpPageInner() {
           ? listAccounts({ active: "true" })
           : Promise.resolve(null);
 
+        const wfpParams = divisionId != null
+          ? { aipRecordId: aipId, officeId, divisionId }
+          : { aipRecordId: aipId, officeId };
+
         const [detail, wfpList, newFunds, newAccts] = await Promise.all([
           getAipSummary(aipId),
-          listWfp({ aipRecordId: aipId, officeId }),
+          listWfp(wfpParams),
           fetchFunds,
           fetchAccts,
         ]);
@@ -727,6 +746,28 @@ function WfpPageInner() {
         setAipDetail(detail);
         if (newFunds) { setFundingSources(newFunds); fundingSourcesLoaded.current = true; }
         if (newAccts) { setAccounts(newAccts); accountsLoaded.current = true; }
+
+        // Always check ceiling (applies to all users, all divisions)
+        const ceilingResult = await getCeiling(officeId, detail.fiscalYear);
+        if (!cancelled) setHasCeiling(ceilingResult != null);
+
+        // Load setup gate + division budget + program assignments when a division is selected
+        if (divisionId != null) {
+          const [status, allocs, assignments] = await Promise.all([
+            getSetupStatus(officeId, detail.fiscalYear, divisionId),
+            getAllocations(officeId, detail.fiscalYear),
+            getPrograms(officeId, detail.fiscalYear),
+          ]);
+          if (!cancelled) {
+            setSetupStatus(status);
+            setDivisionAllocation(allocs.find((a) => a.divisionId === divisionId) ?? null);
+            setProgramAssignments(assignments);
+          }
+        } else {
+          setSetupStatus(null);
+          setDivisionAllocation(null);
+          setProgramAssignments([]);
+        }
 
         const record = wfpList[0] ?? null;
         setWfp(record);
@@ -757,7 +798,7 @@ function WfpPageInner() {
           setDraftLines(initial);
 
           // Check localStorage for a newer local draft
-          const lsKey = `wfp_draft_${aipId}_${officeId}`;
+          const lsKey = `wfp_draft_${aipId}_${officeId}_${divisionId ?? "null"}`;
           const stored = localStorage.getItem(lsKey);
           if (stored) {
             try {
@@ -786,9 +827,7 @@ function WfpPageInner() {
                     setHasUnsaved(true);
                   },
                   onClose: () => {
-                    if (!restoreConfirmed.current) {
-                      localStorage.removeItem(lsKey);
-                    }
+                    if (!restoreConfirmed.current) localStorage.removeItem(lsKey);
                     restoreConfirmed.current = false;
                     setConfirm(null);
                   },
@@ -813,7 +852,7 @@ function WfpPageInner() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedAipId, selectedOfficeId]);
+  }, [selectedAipId, selectedOfficeId, selectedDivisionId]);
 
   // ── Derived: match config office to AIP office via officeRefCode ──────────
 
@@ -821,10 +860,23 @@ function WfpPageInner() {
 
   const aipOffices = useMemo(() => {
     if (!aipDetail || !selectedConfigOffice?.officeRefCode) return [];
-    return aipDetail.offices.filter(
+    const offices = aipDetail.offices.filter(
       (o) => officeRefSuffix(o.refCode) === selectedConfigOffice.officeRefCode
     );
-  }, [aipDetail, selectedConfigOffice]);
+
+    // When no division selected (bypass user), show all programs
+    if (selectedDivisionId == null) return offices;
+
+    // Filter programs to only those assigned to this division
+    const assignedRefs = new Set(
+      programAssignments
+        .filter((a) => a.divisionIds.includes(selectedDivisionId))
+        .map((a) => a.programRefCode)
+    );
+    return offices
+      .map((o) => ({ ...o, programs: o.programs.filter((p) => assignedRefs.has(p.refCode)) }))
+      .filter((o) => o.programs.length > 0);
+  }, [aipDetail, selectedConfigOffice, selectedDivisionId, programAssignments]);
 
   // ── Popup activity lookup ─────────────────────────────────────────────────
 
@@ -863,7 +915,7 @@ function WfpPageInner() {
     setHasUnsaved(true);
     if (selectedAipId != null && selectedOfficeId != null) {
       localStorage.setItem(
-        `wfp_draft_${selectedAipId}_${selectedOfficeId}`,
+        `wfp_draft_${selectedAipId}_${selectedOfficeId}_${selectedDivisionId ?? "null"}`,
         JSON.stringify({ savedAt: new Date().toISOString(), draftLines: newDraft })
       );
     }
@@ -884,10 +936,11 @@ function WfpPageInner() {
         aipRecordId: selectedAipId,
         officeId: selectedOfficeId,
         fiscalYear: aipDetail.fiscalYear,
+        divisionId: selectedDivisionId,
         activities,
       });
       setWfp(saved);
-      localStorage.removeItem(`wfp_draft_${selectedAipId}_${selectedOfficeId}`);
+      localStorage.removeItem(`wfp_draft_${selectedAipId}_${selectedOfficeId}_${selectedDivisionId ?? "null"}`);
       setHasUnsaved(false);
       toast.success("Saved", "WFP draft saved successfully.");
     } catch (err) {
@@ -968,8 +1021,34 @@ function WfpPageInner() {
 
   const isFinal = wfp?.status === "Final";
   const isOfficeUser = me != null && me.officeId != null;
+  const canBypassDivision =
+    me?.role === "SuperAdmin" || me?.role === "Admin" || me?.canManageAllocation === true;
+
+  // Gross total of all draft expenditure lines (in pesos — no ×1000 here).
+  // AIP totals are stored in thousands; division allocation is in pesos.
+  // Per D5: validation uses GROSS (totalAppropriation, not net).
+  const divisionGrossTotal = useMemo(
+    () =>
+      Object.values(draftLines)
+        .flat()
+        .reduce((sum, l) => sum + (l.totalAppropriation ?? 0), 0),
+    [draftLines]
+  );
+
+  // hasCeiling null = still loading (don't block yet); false = no ceiling (block)
+  const setupComplete =
+    hasCeiling !== false &&
+    (setupStatus == null ||
+      (setupStatus.hasAllocation && setupStatus.hasProgramAssignment));
+
   const canSave =
-    aipDetail != null && selectedAipId != null && selectedOfficeId != null && !isFinal && !saving;
+    aipDetail != null &&
+    selectedAipId != null &&
+    selectedOfficeId != null &&
+    !isFinal &&
+    !saving &&
+    (canBypassDivision || selectedDivisionId != null) &&
+    setupComplete;
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -1064,6 +1143,7 @@ function WfpPageInner() {
               value={selectedOfficeId ?? ""}
               onChange={(e) => {
                 setSelectedOfficeId(e.target.value ? Number(e.target.value) : null);
+                setSelectedDivisionId(null);
               }}
               disabled={isFinal || isOfficeUser}
               className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600 disabled:opacity-60"
@@ -1076,7 +1156,58 @@ function WfpPageInner() {
               ))}
             </select>
           </div>
+
+          {/* Division selector */}
+          {selectedOfficeId != null && (
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-slate-600 font-medium whitespace-nowrap">Division</label>
+              {canBypassDivision ? (
+                <select
+                  value={selectedDivisionId ?? ""}
+                  onChange={(e) => setSelectedDivisionId(e.target.value ? Number(e.target.value) : null)}
+                  className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600"
+                >
+                  <option value="">— all divisions —</option>
+                  {divisionList.map((d) => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+              ) : (
+                <span className="text-sm text-slate-700 px-2 py-1.5 border border-slate-200 bg-slate-50">
+                  {divisionList.find((d) => d.id === selectedDivisionId)?.name ?? me?.division ?? "—"}
+                </span>
+              )}
+            </div>
+          )}
         </div>
+
+        {/* Setup-incomplete banner */}
+        {!setupComplete && hasCeiling !== null && (
+          <div className="mb-4 px-4 py-3 bg-amber-50 border border-amber-300 text-amber-800 text-sm flex flex-col gap-1">
+            <span className="font-semibold">WFP entry is blocked — allocation setup incomplete:</span>
+            <ul className="list-disc list-inside">
+              {hasCeiling === false && <li>No budget ceiling set for this office and fiscal year.</li>}
+              {setupStatus != null && !setupStatus.hasAllocation && <li>No division allocation set for this division.</li>}
+              {setupStatus != null && !setupStatus.hasProgramAssignment && <li>No programs have been assigned to this division.</li>}
+            </ul>
+            <span className="text-xs text-amber-700">Go to Budget Planning → Allocation to complete setup.</span>
+          </div>
+        )}
+
+        {/* Division-budget banner */}
+        {divisionAllocation != null && selectedDivisionId != null && (
+          <div className="mb-4 px-4 py-2.5 bg-blue-50 border border-blue-200 text-blue-800 text-sm flex flex-wrap items-center gap-x-6 gap-y-1">
+            <span className="font-semibold">Division Budget:</span>
+            <span>Allocated: <strong>{formatMoney(divisionAllocation.amount)}</strong></span>
+            <span>Used (gross): <strong>{formatMoney(divisionGrossTotal)}</strong></span>
+            <span className={divisionGrossTotal > divisionAllocation.amount ? "text-red-600 font-semibold" : ""}>
+              Remaining: <strong>{formatMoney(divisionAllocation.amount - divisionGrossTotal)}</strong>
+            </span>
+            {divisionGrossTotal > divisionAllocation.amount && (
+              <span className="text-red-600 font-semibold">⚠ Exceeds allocation</span>
+            )}
+          </div>
+        )}
 
         {/* Grid area */}
         {loading ? (
@@ -1088,6 +1219,10 @@ function WfpPageInner() {
           <p className="text-slate-400 text-sm py-8">
             Select an AIP and an office to view the WFP grid.
           </p>
+        ) : !setupComplete ? (
+          <p className="text-slate-400 text-sm py-8">
+            Complete the allocation setup for this division to start entering WFP data.
+          </p>
         ) : aipOffices.length === 0 ? (
           <p className="text-slate-400 text-sm py-8">
             {aipDetail
@@ -1097,9 +1232,9 @@ function WfpPageInner() {
               : "Loading AIP details…"}
           </p>
         ) : (
-          <div className="overflow-x-auto overflow-y-hidden border border-slate-200">
+          <div className="border border-slate-200">
             <table className="w-full text-sm border-collapse min-w-[960px]">
-              <thead>
+              <thead className="sticky top-0 z-10">
                 <tr className="bg-slate-50 text-xs text-slate-600 text-left border-b border-slate-200">
                   <th className="px-3 py-2 whitespace-nowrap w-36">AIP REF CODE</th>
                   <th className="px-3 py-2">PROGRAM / PROJECT / ACTIVITY</th>
@@ -1246,7 +1381,7 @@ function WfpPageInner() {
                                               {fmtCurrency(total)}
                                             </td>
                                             <td className="px-3 py-2 text-right tabular-nums text-slate-400 text-xs">
-                                              {activity.total != null ? fmtNum(activity.total * 1000) : "—"}
+                                              {activity.total != null ? formatMoney(activity.total * 1000) : "—"}
                                             </td>
                                             <td className="px-3 py-2 text-right tabular-nums">
                                               {fmtCurrency(sumQ(activity.id, "q1"))}

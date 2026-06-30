@@ -5,19 +5,24 @@ namespace PPDO.Application.Services;
 
 /// <summary>
 /// WFP (Work and Financial Plan) save + status lifecycle (RAL-64).
-/// One WFP per office per AIP record. SaveAsync creates or replaces (upsert).
+/// One WFP per (office, division) per AIP record. SaveAsync creates or replaces (upsert).
 /// Status workflow: Draft → Final (finalize) → Draft (unlock, admin only).
-/// Business rule: quarterly_total ≤ net_appropriation per expenditure line.
+/// Business rules: quarterly_total ≤ net_appropriation per line;
+///   Σ gross_total_appropriation ≤ division_allocation (RAL-102).
 /// </summary>
 public interface IWfpService
 {
-    Task<IReadOnlyList<WfpRecordDto>> GetAllAsync(int? aipRecordId, int? officeId, CancellationToken ct = default);
+    Task<IReadOnlyList<WfpRecordDto>> GetAllAsync(
+        int? aipRecordId, int? officeId, int? divisionId = null, CancellationToken ct = default);
+
     Task<ServiceResult<WfpRecordDetailDto>> GetByIdAsync(int id, CancellationToken ct = default);
 
     /// <summary>
-    /// Upsert: creates a new WFP or replaces all activities/lines of an existing Draft WFP.
+    /// Upsert: creates a new WFP or replaces all activities/lines of an existing Draft WFP
+    /// for the given (aipRecordId, officeId, divisionId) triplet.
+    /// When divisionId is provided: enforces the setup gate (ceiling + allocation + program assignment)
+    /// and validates Σ gross total ≤ division allocation before any write.
     /// Returns Forbidden if the existing WFP is Final.
-    /// Validates quarterly_total ≤ net_appropriation on all lines before any write.
     /// </summary>
     Task<ServiceResult<WfpRecordDto>> SaveAsync(SaveWfpDto dto, Guid createdById, CancellationToken ct = default);
 

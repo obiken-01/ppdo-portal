@@ -2,8 +2,10 @@ using System.Net;
 using System.Text.Json;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
+using Microsoft.Extensions.Options;
 using PPDO.Application.DTOs.Auth;
 using PPDO.Application.Services;
+using PPDO.Application.Settings;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Interfaces;
 
@@ -25,13 +27,21 @@ namespace PPDO.Functions.Functions;
 /// </summary>
 public sealed class AuthFunctions
 {
+    // Refresh-token cookie. HttpOnly + Secure + SameSite=Strict, scoped to the refresh
+    // endpoint so it is never sent on any other request (RAL-58).
+    private const string RefreshCookieName = "ppdo_rt";
+    private const string RefreshCookiePath = "/api/auth/refresh";
+    private const int    AccessTokenLifetimeSeconds = 15 * 60;
+
     private readonly IAuthService _auth;
     private readonly IJwtMiddleware _jwt;
+    private readonly JwtSettings _jwtSettings;
 
-    public AuthFunctions(IAuthService auth, IJwtMiddleware jwt)
+    public AuthFunctions(IAuthService auth, IJwtMiddleware jwt, IOptions<JwtSettings> jwtOptions)
     {
         _auth = auth;
         _jwt  = jwt;
+        _jwtSettings = jwtOptions.Value;
     }
 
     // ── POST /api/auth/login ───────────────────────────────────────────────────
@@ -46,16 +56,24 @@ public sealed class AuthFunctions
         if (body is null || string.IsNullOrWhiteSpace(body.Username) || string.IsNullOrWhiteSpace(body.Password))
             return await BadRequest(req, "Username and Password are required.");
 
-        var tokens = await _auth.LoginAsync(body.Username, body.Password, cancellationToken);
-        if (tokens is null)
-            return req.CreateResponse(HttpStatusCode.Unauthorized);
+        LoginResult result = await _auth.LoginAsync(body.Username, body.Password, cancellationToken);
 
-        LoginResponseDto dto = new(
-            tokens.Value.AccessToken,
-            tokens.Value.RefreshToken,
-            ExpiresInSeconds: 15 * 60);
+        switch (result.Outcome)
+        {
+            case LoginOutcome.RateLimited:
+                HttpResponseData limited = req.CreateResponse(HttpStatusCode.TooManyRequests);
+                limited.Headers.Add("Retry-After", result.RetryAfterSeconds.ToString());
+                await limited.WriteStringAsync(
+                    "Too many failed login attempts. Please try again later.", cancellationToken);
+                return limited;
 
-        return await Ok(req, dto, cancellationToken);
+            case LoginOutcome.InvalidCredentials:
+                return req.CreateResponse(HttpStatusCode.Unauthorized);
+
+            default: // Success
+                LoginResponseDto dto = new(result.AccessToken!, AccessTokenLifetimeSeconds);
+                return await OkWithRefreshCookie(req, dto, result.RefreshToken!, cancellationToken);
+        }
     }
 
     // ── POST /api/auth/refresh ─────────────────────────────────────────────────
@@ -66,20 +84,17 @@ public sealed class AuthFunctions
         HttpRequestData req,
         CancellationToken cancellationToken)
     {
-        RefreshRequestDto? body = await DeserializeAsync<RefreshRequestDto>(req, cancellationToken);
-        if (body is null || string.IsNullOrWhiteSpace(body.RefreshToken))
-            return await BadRequest(req, "RefreshToken is required.");
+        // The refresh token is read from the httpOnly cookie, never the request body.
+        string? refreshToken = ReadRefreshCookie(req);
+        if (string.IsNullOrWhiteSpace(refreshToken))
+            return req.CreateResponse(HttpStatusCode.Unauthorized);
 
-        var tokens = await _auth.RefreshAsync(body.RefreshToken, cancellationToken);
+        var tokens = await _auth.RefreshAsync(refreshToken, cancellationToken);
         if (tokens is null)
             return req.CreateResponse(HttpStatusCode.Unauthorized);
 
-        LoginResponseDto dto = new(
-            tokens.Value.AccessToken,
-            tokens.Value.RefreshToken,
-            ExpiresInSeconds: 15 * 60);
-
-        return await Ok(req, dto, cancellationToken);
+        LoginResponseDto dto = new(tokens.Value.AccessToken, AccessTokenLifetimeSeconds);
+        return await OkWithRefreshCookie(req, dto, tokens.Value.RefreshToken, cancellationToken);
     }
 
     // ── POST /api/auth/logout ──────────────────────────────────────────────────
@@ -96,7 +111,9 @@ public sealed class AuthFunctions
 
         await _auth.LogoutAsync(user.Id, cancellationToken);
 
-        return req.CreateResponse(HttpStatusCode.NoContent);
+        HttpResponseData response = req.CreateResponse(HttpStatusCode.NoContent);
+        ClearRefreshCookie(response);
+        return response;
     }
 
     // ── GET /api/auth/me ───────────────────────────────────────────────────────
@@ -120,6 +137,7 @@ public sealed class AuthFunctions
             Username                = me.Username,
             Email                   = me.Email,
             Role                    = me.Role,
+            DivisionId              = me.DivisionId,
             Division                = me.Division,
             OfficeId                = me.OfficeId,
             OfficeCode              = me.OfficeCode,
@@ -133,9 +151,64 @@ public sealed class AuthFunctions
             CanAccessBudgetPlanning = me.CanAccessBudgetPlanning,
             CanUploadAip            = me.CanUploadAip,
             CanManageConfig         = me.CanManageConfig,
+            CanManageAllocation     = me.CanManageAllocation,
         };
 
         return await Ok(req, dto, cancellationToken);
+    }
+
+    // ── Refresh-token cookie helpers ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Writes a JSON OK response and attaches the rotated refresh token as an httpOnly cookie.
+    /// The cookie header is set before the body so it is present regardless of buffering.
+    /// </summary>
+    private async Task<HttpResponseData> OkWithRefreshCookie<T>(
+        HttpRequestData req,
+        T body,
+        string refreshToken,
+        CancellationToken cancellationToken)
+    {
+        HttpResponseData response = req.CreateResponse(HttpStatusCode.OK);
+        response.Headers.Add("Content-Type", "application/json; charset=utf-8");
+        AppendRefreshCookie(response, refreshToken);
+        await response.WriteStringAsync(JsonSerializer.Serialize(body, _jsonOptions), cancellationToken);
+        return response;
+    }
+
+    private void AppendRefreshCookie(HttpResponseData response, string refreshToken)
+    {
+        int maxAgeSeconds = _jwtSettings.RefreshTokenExpiryDays * 24 * 60 * 60;
+        string value = Uri.EscapeDataString(refreshToken);
+        response.Headers.Add(
+            "Set-Cookie",
+            $"{RefreshCookieName}={value}; Max-Age={maxAgeSeconds}; Path={RefreshCookiePath}; HttpOnly; Secure; SameSite=Strict");
+    }
+
+    private static void ClearRefreshCookie(HttpResponseData response)
+    {
+        response.Headers.Add(
+            "Set-Cookie",
+            $"{RefreshCookieName}=; Max-Age=0; Path={RefreshCookiePath}; HttpOnly; Secure; SameSite=Strict");
+    }
+
+    /// <summary>Reads and URL-decodes the refresh token from the request's Cookie header.</summary>
+    private static string? ReadRefreshCookie(HttpRequestData req)
+    {
+        if (!req.Headers.TryGetValues("Cookie", out IEnumerable<string>? cookieHeaders))
+            return null;
+
+        foreach (string header in cookieHeaders)
+        {
+            foreach (string part in header.Split(';'))
+            {
+                string trimmed = part.Trim();
+                if (trimmed.StartsWith(RefreshCookieName + "=", StringComparison.Ordinal))
+                    return Uri.UnescapeDataString(trimmed[(RefreshCookieName.Length + 1)..]);
+            }
+        }
+
+        return null;
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────────

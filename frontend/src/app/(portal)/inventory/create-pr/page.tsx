@@ -42,7 +42,6 @@ import { useToast } from "@/components/ui/Toast";
 import type {
   CreatePRItemRequest,
   CreatePRRequest,
-  Division,
   ItemLookupResponse,
   MeResponse,
   PRResponse,
@@ -52,7 +51,7 @@ import type {
 // Constants
 // ---------------------------------------------------------------------------
 
-const DIVISIONS: Division[] = ["Admin", "Planning", "RM", "MIS", "SPD"];
+const DIVISIONS: string[] = ["Admin", "Planning", "RM", "MIS", "SPD"];
 const TODAY = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 
 // ---------------------------------------------------------------------------
@@ -278,7 +277,7 @@ type HeaderForm = {
   prDate: string;
   prNo: string;               // optional — blank means backend auto-generates
   department: string;
-  division: Division | "";
+  division: string;
   fund: string;
   requestedBy: string;
   position: string;
@@ -394,13 +393,13 @@ export default function CreatePRPage() {
           ...h,
           requestedBy: data.fullName,
           position:    data.position ?? "",
-          division:    (data.division as Division) ?? "",
+          division:    (data.division as string) ?? "",
         }));
       })
       .catch(() => router.replace("/login"));
   }, [router]);
 
-  const isStaff = me?.role === "Staff" || me?.role === "Observer";
+  const isStaff = me?.role === "Staff";
 
   // ── Header field patch ─────────────────────────────────────────────────────
 
@@ -622,7 +621,7 @@ export default function CreatePRPage() {
       ...blankHeader(),
       requestedBy: me?.fullName ?? "",
       position:    me?.position ?? "",
-      division:    (me?.division as Division) ?? "",
+      division:    (me?.division as string) ?? "",
     });
     setItems(Array.from({ length: INITIAL_ROW_COUNT }, blankLine));
     setHeaderErrors({});
@@ -775,7 +774,7 @@ export default function CreatePRPage() {
               <FieldLabel required>Division</FieldLabel>
               <select
                 value={header.division}
-                onChange={(e) => patchHeader({ division: e.target.value as Division })}
+                onChange={(e) => patchHeader({ division: e.target.value })}
                 disabled={isStaff}
                 className="w-full px-3 py-2 text-sm border border-slate-200 bg-cell-fill focus:outline-none focus:ring-2 focus:ring-green-600 disabled:bg-cell-auto disabled:text-slate-500 disabled:cursor-not-allowed"
               >

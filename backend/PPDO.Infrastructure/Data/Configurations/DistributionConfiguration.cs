@@ -17,8 +17,9 @@ public sealed class DistributionConfiguration : IEntityTypeConfiguration<Distrib
             .IsRequired()
             .HasMaxLength(30);
 
-        // Division is non-nullable — distributions always target a specific division.
-        builder.Property(d => d.Division)
+        // DivisionId is non-nullable — distributions always target a specific division.
+        // Legacy PascalCase table — new column follows the table convention (DivisionId).
+        builder.Property(d => d.DivisionId)
             .IsRequired();
 
         // 4 decimal places — matches QtyDelivered precision.
@@ -46,5 +47,15 @@ public sealed class DistributionConfiguration : IEntityTypeConfiguration<Distrib
 
         builder.HasIndex(d => d.DeliveryItemId)
             .HasDatabaseName("IX_Distributions_DeliveryItemId");
+
+        // FK: Distributions.DivisionId → divisions.id (v1.2 — RAL-97).
+        builder.HasOne(d => d.Division)
+            .WithMany()
+            .HasForeignKey(d => d.DivisionId)
+            .HasConstraintName("FK_Distributions_divisions_DivisionId")
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(d => d.DivisionId)
+            .HasDatabaseName("IX_Distributions_DivisionId");
     }
 }

@@ -1,5 +1,4 @@
 using PPDO.Domain.Entities;
-using PPDO.Domain.Enums;
 
 namespace PPDO.Domain.Interfaces;
 
@@ -61,11 +60,11 @@ public interface IDeliveryRepository : IRepository<Delivery>
     /// Returns every DeliveryItem for the given StockNo, with its parent Delivery,
     /// PR number, and existing Distributions — all the data needed to render the
     /// Distribution page breakdown for one item.
-    /// Optionally scoped to a division for Staff/Observer.
+    /// Optionally scoped to a division for Staff.
     /// </summary>
     Task<IReadOnlyList<DeliveryItemBreakdownRow>> GetDeliveryItemBreakdownsByStockNoAsync(
         string stockNo,
-        Division? division = null,
+        int? divisionId = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>Returns a single DeliveryItem with its Distributions loaded.</summary>
@@ -92,7 +91,7 @@ public sealed record DeliveryItemBreakdownRow(
 public sealed record DistributionBreakdownRow(
     Guid     Id,
     string   IssueRef,
-    Division Division,
+    int      DivisionId,
     decimal  QtyIssued,
     DateOnly DateIssued,
     string   IssuedBy,

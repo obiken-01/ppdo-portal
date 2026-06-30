@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using PPDO.Domain.Enums;
 using PPDO.Domain.Interfaces;
 using PPDO.Infrastructure.Data;
 
@@ -20,14 +19,14 @@ public sealed class InventoryRepository : IInventoryRepository
 
     /// <inheritdoc />
     public async Task<IReadOnlyList<ItemStockLevel>> GetItemStockLevelsAsync(
-        Division? division,
+        int? divisionId,
         CancellationToken cancellationToken = default)
     {
         // ── QtyOrdered per StockNo ────────────────────────────────────────────
         List<(string StockNo, decimal QtyOrdered)> orderedRows =
             await (from pi in _context.PRItems
                    join pr in _context.PurchaseRequests on pi.PRId equals pr.Id
-                   where (division == null || pr.Division == division)
+                   where (divisionId == null || pr.DivisionId == divisionId)
                       && pi.StockNo != null && pi.StockNo != ""
                    group pi by pi.StockNo into g
                    select new ValueTuple<string, decimal>(g.Key!, g.Sum(x => x.Quantity)))
@@ -38,7 +37,7 @@ public sealed class InventoryRepository : IInventoryRepository
             await (from di in _context.DeliveryItems
                    join pi in _context.PRItems on di.PRItemId equals pi.Id
                    join pr in _context.PurchaseRequests on pi.PRId equals pr.Id
-                   where (division == null || pr.Division == division)
+                   where (divisionId == null || pr.DivisionId == divisionId)
                       && pi.StockNo != null && pi.StockNo != ""
                    group di by pi.StockNo into g
                    select new ValueTuple<string, decimal>(g.Key!, g.Sum(x => x.QtyDelivered)))
@@ -50,7 +49,7 @@ public sealed class InventoryRepository : IInventoryRepository
                    join di in _context.DeliveryItems on dist.DeliveryItemId equals di.Id
                    join pi in _context.PRItems on di.PRItemId equals pi.Id
                    join pr in _context.PurchaseRequests on pi.PRId equals pr.Id
-                   where (division == null || pr.Division == division)
+                   where (divisionId == null || pr.DivisionId == divisionId)
                       && pi.StockNo != null && pi.StockNo != ""
                    group dist by pi.StockNo into g
                    select new ValueTuple<string, decimal>(g.Key!, g.Sum(x => x.QtyIssued)))
@@ -74,7 +73,7 @@ public sealed class InventoryRepository : IInventoryRepository
     public async Task<IReadOnlySet<string>> GetStockNosDeliveredInRangeAsync(
         DateOnly dateFrom,
         DateOnly dateTo,
-        Division? division = null,
+        int? divisionId = null,
         CancellationToken cancellationToken = default)
     {
         List<string> stockNos =
@@ -84,7 +83,7 @@ public sealed class InventoryRepository : IInventoryRepository
                    join pr in _context.PurchaseRequests     on pi.PRId     equals pr.Id
                    where d.DeliveryDate >= dateFrom
                       && d.DeliveryDate <= dateTo
-                      && (division == null || pr.Division == division)
+                      && (divisionId == null || pr.DivisionId == divisionId)
                       && pi.StockNo != null && pi.StockNo != ""
                    select pi.StockNo!)
                   .Distinct()

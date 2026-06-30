@@ -31,10 +31,10 @@ public interface ICurrentUserService
     UserRole? Role { get; }
 
     /// <summary>
-    /// The authenticated user's division.
-    /// Null when unauthenticated.
+    /// The authenticated user's division id (the "div" JWT claim).
+    /// Null when unauthenticated or for SuperAdmin/Admin (no division).
     /// </summary>
-    Division? Division { get; }
+    int? DivisionId { get; }
 
     /// <summary>True when a valid JWT has been presented and validated for this request.</summary>
     bool IsAuthenticated { get; }

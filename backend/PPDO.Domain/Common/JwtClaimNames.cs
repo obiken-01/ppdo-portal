@@ -20,13 +20,14 @@ public static class JwtClaimNames
 
     /// <summary>
     /// The user's <see cref="PPDO.Domain.Enums.UserRole"/> stored as its integer value.
-    /// e.g. SuperAdmin = "0", Admin = "1", Staff = "2", Observer = "3".
+    /// e.g. SuperAdmin = "0", Admin = "1", Staff = "2".
     /// </summary>
     public const string Role = "role";
 
     /// <summary>
-    /// The user's <see cref="PPDO.Domain.Enums.Division"/> stored as its integer value.
-    /// e.g. Admin = "0", Planning = "1", RM = "2", MIS = "3", SPD = "4".
+    /// The user's division id (<c>divisions.id</c>) stored as its integer value (v1.2 — RAL-97).
+    /// Omitted for SuperAdmin/Admin (no division). Scoping reads DivisionId from the loaded
+    /// user, so this claim is informational only.
     /// </summary>
     public const string Division = "div";
 }

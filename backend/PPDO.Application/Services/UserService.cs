@@ -9,40 +9,35 @@ namespace PPDO.Application.Services;
 
 /// <summary>
 /// User management — create, read, update, reset password, set permission overrides,
-/// soft delete. Enforces the role-scoping rules from Section 7 of the project docs:
+/// soft delete (v1.2 — RAL-97: divisions are now a configurable FK that carries the
+/// user's scope AND feature flags; PermissionGroup + the Division enum are retired).
 ///
 ///   SuperAdmin → can manage everyone
-///   Admin/Staff(CanManageUsers) → can manage Staff + Observer only
+///   Admin/Staff(CanManageUsers) → can manage Staff only
 ///
-/// Group assignment on user creation follows the fixed seed mapping from CLAUDE.md:
-///   Staff + Division → the matching Division Staff group
-///   Observer         → Observer Default group
-///   Admin/SuperAdmin → no group (GroupId = null)
+/// Division assignment: Staff require a <c>DivisionId</c>; SuperAdmin/Admin have none.
+/// An office user's division must belong to that user's office.
 /// </summary>
 public sealed class UserService : IUserService
 {
     // Default password issued to every newly created user and on reset.
-    // Users should change this on first login via POST /api/auth/change-password.
     private const string DefaultPassword = "TamarawUser2026!";
-
-    // Fixed seed GUIDs from PermissionGroupConfiguration — must never change.
-    private static readonly Guid GroupAdminDivisionStaff = new("10000000-0000-0000-0000-000000000001");
-    private static readonly Guid GroupPlanningStaff      = new("10000000-0000-0000-0000-000000000002");
-    private static readonly Guid GroupRMStaff            = new("10000000-0000-0000-0000-000000000003");
-    private static readonly Guid GroupMISStaff           = new("10000000-0000-0000-0000-000000000004");
-    private static readonly Guid GroupSPDStaff           = new("10000000-0000-0000-0000-000000000005");
-    private static readonly Guid GroupObserverDefault    = new("10000000-0000-0000-0000-000000000006");
-    private static readonly Guid GroupOfficeUserDefault  = new("10000000-0000-0000-0000-000000000007");
 
     private readonly IUserRepository _users;
     private readonly IRepository<Office> _offices;
+    private readonly IRepository<Division> _divisions;
     private readonly ILogger<UserService> _logger;
 
-    public UserService(IUserRepository users, IRepository<Office> offices, ILogger<UserService> logger)
+    public UserService(
+        IUserRepository users,
+        IRepository<Office> offices,
+        IRepository<Division> divisions,
+        ILogger<UserService> logger)
     {
-        _users   = users;
-        _offices = offices;
-        _logger  = logger;
+        _users     = users;
+        _offices   = offices;
+        _divisions = divisions;
+        _logger    = logger;
     }
 
     // ── Queries ────────────────────────────────────────────────────────────────
@@ -51,7 +46,7 @@ public sealed class UserService : IUserService
     public async Task<IReadOnlyList<UserResponseDto>> GetAllAsync(
         CancellationToken cancellationToken = default)
     {
-        IReadOnlyList<User> users = await _users.GetAllWithGroupAsync(cancellationToken);
+        IReadOnlyList<User> users = await _users.GetAllWithDivisionAsync(cancellationToken);
         return users.Select(MapToDto).ToList();
     }
 
@@ -60,7 +55,7 @@ public sealed class UserService : IUserService
         Guid id,
         CancellationToken cancellationToken = default)
     {
-        User? user = await _users.GetByIdWithGroupAsync(id, cancellationToken);
+        User? user = await _users.GetByIdWithDivisionAsync(id, cancellationToken);
         return user is null
             ? ServiceResult<UserResponseDto>.NotFound($"User {id} not found.")
             : ServiceResult<UserResponseDto>.Ok(MapToDto(user));
@@ -74,12 +69,10 @@ public sealed class UserService : IUserService
         CreateUserDto dto,
         CancellationToken cancellationToken = default)
     {
-        // Parse and validate Role.
         if (!Enum.TryParse<UserRole>(dto.Role, ignoreCase: true, out UserRole newRole))
             return ServiceResult<UserResponseDto>.BadRequest(
-                $"'{dto.Role}' is not a valid Role. Valid values: SuperAdmin, Admin, Staff, Observer.");
+                $"'{dto.Role}' is not a valid Role. Valid values: SuperAdmin, Admin, Staff.");
 
-        // Scope check: requester cannot create a user with a higher/peer role unless SuperAdmin.
         if (!CanRequesterManageRole(requester, newRole))
         {
             _logger.LogWarning(
@@ -89,49 +82,54 @@ public sealed class UserService : IUserService
                 $"You do not have permission to create a user with role '{newRole}'.");
         }
 
-        // ── Office vs Division resolution (v1.1) ──────────────────────────────
         bool isOfficeUser = dto.OfficeId is int oid && oid > 0;
 
         if (isOfficeUser && newRole is UserRole.SuperAdmin or UserRole.Admin)
             return ServiceResult<UserResponseDto>.BadRequest(
-                "Office users must be Staff (encoder) or Observer (viewer), not SuperAdmin/Admin.");
+                "Office users must be Staff, not SuperAdmin/Admin.");
 
-        Division? newDivision = null;
         if (isOfficeUser)
         {
             ServiceResult<UserResponseDto>? officeError =
                 await ValidateOfficeAsync(dto.OfficeId!.Value, cancellationToken);
             if (officeError is not null) return officeError;
         }
-        else
-        {
-            // PPDO user — Division is optional except for Staff (needs a division group).
-            if (!string.IsNullOrWhiteSpace(dto.Division))
-            {
-                if (!Enum.TryParse<Division>(dto.Division, ignoreCase: true, out Division parsed))
-                    return ServiceResult<UserResponseDto>.BadRequest(
-                        $"'{dto.Division}' is not a valid Division. Valid values: Admin, Planning, RM, MIS, SPD.");
-                newDivision = parsed;
-            }
 
-            if (newRole is UserRole.Staff && newDivision is null)
-                return ServiceResult<UserResponseDto>.BadRequest(
-                    "Division is required for PPDO Staff (or assign an office instead).");
+        // ── Division resolution ───────────────────────────────────────────────
+        // SuperAdmin/Admin → no division.
+        // Office users (non-PPDO Staff with officeId) → division is optional; office_id scopes them.
+        // PPDO Staff (no officeId) → division required.
+        int? newDivisionId = null;
+        if (newRole is UserRole.Staff && !isOfficeUser)
+        {
+            if (dto.DivisionId is not int did || did <= 0)
+                return ServiceResult<UserResponseDto>.BadRequest("Division is required for Staff users.");
+
+            ServiceResult<UserResponseDto>? divError =
+                await ValidateDivisionAsync(did, null, cancellationToken);
+            if (divError is not null) return divError;
+
+            newDivisionId = did;
+        }
+        else if (newRole is UserRole.Staff && isOfficeUser && dto.DivisionId is int offDid && offDid > 0)
+        {
+            // Optional division for office users — validate it belongs to their office if supplied.
+            ServiceResult<UserResponseDto>? divError =
+                await ValidateDivisionAsync(offDid, dto.OfficeId, cancellationToken);
+            if (divError is not null) return divError;
+            newDivisionId = offDid;
         }
 
-        // Basic field validation.
         if (string.IsNullOrWhiteSpace(dto.FullName))
             return ServiceResult<UserResponseDto>.BadRequest("FullName is required.");
         if (string.IsNullOrWhiteSpace(dto.Username))
             return ServiceResult<UserResponseDto>.BadRequest("Username is required.");
 
-        // Username uniqueness check.
         User? existingByUsername = await _users.FindByUsernameAsync(dto.Username, cancellationToken);
         if (existingByUsername is not null)
             return ServiceResult<UserResponseDto>.Conflict(
                 $"Username '{dto.Username}' is already taken.");
 
-        // Email uniqueness check (only when provided).
         if (!string.IsNullOrWhiteSpace(dto.Email))
         {
             User? existingByEmail = await _users.FindByEmailAsync(dto.Email, cancellationToken);
@@ -148,9 +146,8 @@ public sealed class UserService : IUserService
             Email        = string.IsNullOrWhiteSpace(dto.Email) ? null : dto.Email.Trim().ToLowerInvariant(),
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(DefaultPassword),
             Role         = newRole,
-            Division     = newDivision,
+            DivisionId   = newDivisionId,
             OfficeId     = isOfficeUser ? dto.OfficeId : null,
-            GroupId      = GroupIdFor(newRole, newDivision, isOfficeUser),
             Position     = dto.Position?.Trim(),
             ContactNo    = dto.ContactNo?.Trim(),
             IsActive     = true,
@@ -160,11 +157,10 @@ public sealed class UserService : IUserService
         await _users.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation(
-            "User created. UserId: {UserId}, Role: {Role}, Division: {Division}, CreatedBy: {CreatedBy}",
-            user.Id, user.Role, user.Division, requester.Id);
+            "User created. UserId: {UserId}, Role: {Role}, DivisionId: {DivisionId}, CreatedBy: {CreatedBy}",
+            user.Id, user.Role, user.DivisionId, requester.Id);
 
-        // Reload with group navigation for the response DTO.
-        User created = (await _users.GetByIdWithGroupAsync(user.Id, cancellationToken))!;
+        User created = (await _users.GetByIdWithDivisionAsync(user.Id, cancellationToken))!;
         return ServiceResult<UserResponseDto>.Ok(MapToDto(created));
     }
 
@@ -175,7 +171,7 @@ public sealed class UserService : IUserService
         UpdateUserDto dto,
         CancellationToken cancellationToken = default)
     {
-        User? target = await _users.GetByIdWithGroupAsync(targetId, cancellationToken);
+        User? target = await _users.GetByIdWithDivisionAsync(targetId, cancellationToken);
         if (target is null)
             return ServiceResult<UserResponseDto>.NotFound($"User {targetId} not found.");
 
@@ -188,15 +184,10 @@ public sealed class UserService : IUserService
                 "You do not have permission to modify this user.");
         }
 
-        // -- Profile fields ---------------------------------------------------
-        if (dto.FullName is not null)
-            target.FullName  = dto.FullName.Trim();
-        if (dto.Position is not null)
-            target.Position  = dto.Position.Trim();
-        if (dto.ContactNo is not null)
-            target.ContactNo = dto.ContactNo.Trim();
+        if (dto.FullName is not null)  target.FullName  = dto.FullName.Trim();
+        if (dto.Position is not null)  target.Position  = dto.Position.Trim();
+        if (dto.ContactNo is not null) target.ContactNo = dto.ContactNo.Trim();
 
-        // -- Username (uniqueness check; null = leave unchanged) ---------------
         if (dto.Username is not null)
         {
             string newUsername = dto.Username.Trim().ToLowerInvariant();
@@ -210,31 +201,26 @@ public sealed class UserService : IUserService
             target.Username = newUsername;
         }
 
-        // -- Email (uniqueness check; null = leave unchanged) ------------------
         if (dto.Email is not null)
         {
             string? newEmail = string.IsNullOrWhiteSpace(dto.Email) ? null : dto.Email.Trim().ToLowerInvariant();
-            if (!string.Equals(newEmail, target.Email, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(newEmail, target.Email, StringComparison.OrdinalIgnoreCase) && newEmail is not null)
             {
-                if (newEmail is not null)
-                {
-                    User? taken = await _users.FindByEmailAsync(newEmail, cancellationToken);
-                    if (taken is not null)
-                        return ServiceResult<UserResponseDto>.Conflict(
-                            $"Email '{newEmail}' is already registered.");
-                }
+                User? taken = await _users.FindByEmailAsync(newEmail, cancellationToken);
+                if (taken is not null)
+                    return ServiceResult<UserResponseDto>.Conflict(
+                        $"Email '{newEmail}' is already registered.");
             }
             target.Email = newEmail;
         }
 
-        // -- Role (triggers GroupId recalculation) ------------------------------
+        // -- Role ----------------------------------------------------------------
         UserRole effectiveRole = target.Role;
-
         if (dto.Role is not null)
         {
             if (!Enum.TryParse<UserRole>(dto.Role, ignoreCase: true, out UserRole newRole))
                 return ServiceResult<UserResponseDto>.BadRequest(
-                    $"'{dto.Role}' is not a valid Role. Valid values: SuperAdmin, Admin, Staff, Observer.");
+                    $"'{dto.Role}' is not a valid Role. Valid values: SuperAdmin, Admin, Staff.");
 
             if (!CanRequesterManageRole(requester, newRole))
                 return ServiceResult<UserResponseDto>.Forbidden(
@@ -244,47 +230,62 @@ public sealed class UserService : IUserService
             target.Role   = newRole;
         }
 
-        // -- Office vs Division (v1.1, full-replacement) ------------------------
-        // OfficeId is a full replacement: a positive value makes this a non-PPDO
-        // office user (Division cleared); null/0 makes it a PPDO user.
+        // -- Office (full replacement; office users have a division within their office) ---
         bool isOfficeUser = dto.OfficeId is int oid && oid > 0;
 
         if (isOfficeUser && effectiveRole is UserRole.SuperAdmin or UserRole.Admin)
             return ServiceResult<UserResponseDto>.BadRequest(
-                "Office users must be Staff (encoder) or Observer (viewer), not SuperAdmin/Admin.");
+                "Office users must be Staff, not SuperAdmin/Admin.");
 
         if (isOfficeUser)
         {
             ServiceResult<UserResponseDto>? officeError =
                 await ValidateOfficeAsync(dto.OfficeId!.Value, cancellationToken);
             if (officeError is not null) return officeError;
-
             target.OfficeId = dto.OfficeId;
-            target.Division = null;   // office users have no division
         }
         else
         {
             target.OfficeId = null;
+        }
 
-            if (dto.Division is not null)
+        // -- Division ------------------------------------------------------------
+        if (effectiveRole is UserRole.SuperAdmin or UserRole.Admin)
+        {
+            target.DivisionId = null;
+        }
+        else if (!isOfficeUser)
+        {
+            // PPDO Staff: division required.
+            int? candidateDivisionId = dto.DivisionId ?? target.DivisionId;
+            if (candidateDivisionId is not int did || did <= 0)
+                return ServiceResult<UserResponseDto>.BadRequest("Division is required for Staff users.");
+
+            ServiceResult<UserResponseDto>? divError =
+                await ValidateDivisionAsync(did, null, cancellationToken);
+            if (divError is not null) return divError;
+
+            target.DivisionId = did;
+        }
+        else
+        {
+            // Office user (non-PPDO Staff): division optional; office_id scopes them.
+            // Clear any stale PPDO division that may have been carried over.
+            int? candidateDivisionId = dto.DivisionId.HasValue ? dto.DivisionId : null;
+            if (candidateDivisionId is int did && did > 0)
             {
-                if (!Enum.TryParse<Division>(dto.Division, ignoreCase: true, out Division newDivision))
-                    return ServiceResult<UserResponseDto>.BadRequest(
-                        $"'{dto.Division}' is not a valid Division. Valid values: Admin, Planning, RM, MIS, SPD.");
-                target.Division = newDivision;
+                ServiceResult<UserResponseDto>? divError =
+                    await ValidateDivisionAsync(did, target.OfficeId, cancellationToken);
+                if (divError is not null) return divError;
+                target.DivisionId = did;
+            }
+            else
+            {
+                target.DivisionId = null;
             }
         }
 
-        // Auto-recalculate GroupId from the effective role + division/office,
-        // unless the caller supplied an explicit GroupId override.
-        if (dto.GroupId is not null)
-            target.GroupId = dto.GroupId;
-        else
-            target.GroupId = GroupIdFor(effectiveRole, target.Division, isOfficeUser);
-
-        // -- Permission overrides (null = inherit from group) ------------------
-        // Only meaningful for Staff / Observer; Admin/SuperAdmin ignore flags at
-        // runtime, but we store whatever the caller sends for consistency.
+        // -- Permission overrides (null = inherit from division) -----------------
         target.OverrideCanAccessInventory      = dto.OverrideCanAccessInventory;
         target.OverrideCanAccessReports        = dto.OverrideCanAccessReports;
         target.OverrideCanManageUsers          = dto.OverrideCanManageUsers;
@@ -292,6 +293,7 @@ public sealed class UserService : IUserService
         target.OverrideCanAccessBudgetPlanning = dto.OverrideCanAccessBudgetPlanning;
         target.OverrideCanUploadAip            = dto.OverrideCanUploadAip;
         target.OverrideCanManageConfig         = dto.OverrideCanManageConfig;
+        target.OverrideCanManageAllocation     = dto.OverrideCanManageAllocation;
 
         await _users.UpdateAsync(target, cancellationToken);
         await _users.SaveChangesAsync(cancellationToken);
@@ -300,8 +302,7 @@ public sealed class UserService : IUserService
             "User updated. TargetUserId: {TargetUserId}, UpdatedBy: {UpdatedBy}",
             target.Id, requester.Id);
 
-        // Reload with group navigation for the response DTO.
-        User updated = (await _users.GetByIdWithGroupAsync(target.Id, cancellationToken))!;
+        User updated = (await _users.GetByIdWithDivisionAsync(target.Id, cancellationToken))!;
         return ServiceResult<UserResponseDto>.Ok(MapToDto(updated));
     }
 
@@ -311,7 +312,7 @@ public sealed class UserService : IUserService
         Guid targetId,
         CancellationToken cancellationToken = default)
     {
-        User? target = await _users.GetByIdWithGroupAsync(targetId, cancellationToken);
+        User? target = await _users.GetByIdWithDivisionAsync(targetId, cancellationToken);
         if (target is null)
             return ServiceResult<UserResponseDto>.NotFound($"User {targetId} not found.");
 
@@ -319,8 +320,7 @@ public sealed class UserService : IUserService
             return ServiceResult<UserResponseDto>.Forbidden(
                 "You do not have permission to reset this user's password.");
 
-        target.PasswordHash   = BCrypt.Net.BCrypt.HashPassword(DefaultPassword);
-        // Invalidate active sessions — user must log in again with the new default password.
+        target.PasswordHash       = BCrypt.Net.BCrypt.HashPassword(DefaultPassword);
         target.RefreshToken       = null;
         target.RefreshTokenExpiry = null;
 
@@ -341,7 +341,6 @@ public sealed class UserService : IUserService
         SetPermissionsDto dto,
         CancellationToken cancellationToken = default)
     {
-        // SuperAdmin only.
         if (requester.Role is not UserRole.SuperAdmin)
         {
             _logger.LogWarning(
@@ -351,18 +350,9 @@ public sealed class UserService : IUserService
                 "Only SuperAdmin can modify individual permission overrides.");
         }
 
-        User? target = await _users.GetByIdWithGroupAsync(targetId, cancellationToken);
+        User? target = await _users.GetByIdWithDivisionAsync(targetId, cancellationToken);
         if (target is null)
             return ServiceResult<UserResponseDto>.NotFound($"User {targetId} not found.");
-
-        // Observer can never have manage-type / PPDO-only permissions granted.
-        if (target.Role is UserRole.Observer
-            && (dto.OverrideCanManageUsers == true
-                || dto.OverrideCanManageResourceLinks == true
-                || dto.OverrideCanUploadAip == true
-                || dto.OverrideCanManageConfig == true))
-            return ServiceResult<UserResponseDto>.BadRequest(
-                "Observer users cannot be granted CanManageUsers, CanManageResourceLinks, CanUploadAip, or CanManageConfig.");
 
         target.OverrideCanAccessInventory      = dto.OverrideCanAccessInventory;
         target.OverrideCanAccessReports        = dto.OverrideCanAccessReports;
@@ -371,6 +361,7 @@ public sealed class UserService : IUserService
         target.OverrideCanAccessBudgetPlanning = dto.OverrideCanAccessBudgetPlanning;
         target.OverrideCanUploadAip            = dto.OverrideCanUploadAip;
         target.OverrideCanManageConfig         = dto.OverrideCanManageConfig;
+        target.OverrideCanManageAllocation     = dto.OverrideCanManageAllocation;
 
         await _users.UpdateAsync(target, cancellationToken);
         await _users.SaveChangesAsync(cancellationToken);
@@ -384,12 +375,11 @@ public sealed class UserService : IUserService
         Guid targetId,
         CancellationToken cancellationToken = default)
     {
-        // Cannot deactivate yourself.
         if (requester.Id == targetId)
             return ServiceResult<UserResponseDto>.BadRequest(
                 "You cannot deactivate your own account.");
 
-        User? target = await _users.GetByIdWithGroupAsync(targetId, cancellationToken);
+        User? target = await _users.GetByIdWithDivisionAsync(targetId, cancellationToken);
         if (target is null)
             return ServiceResult<UserResponseDto>.NotFound($"User {targetId} not found.");
 
@@ -403,7 +393,6 @@ public sealed class UserService : IUserService
         }
 
         target.IsActive           = false;
-        // Invalidate active sessions immediately.
         target.RefreshToken       = null;
         target.RefreshTokenExpiry = null;
 
@@ -423,7 +412,7 @@ public sealed class UserService : IUserService
         Guid targetId,
         CancellationToken cancellationToken = default)
     {
-        User? target = await _users.GetByIdWithGroupAsync(targetId, cancellationToken);
+        User? target = await _users.GetByIdWithDivisionAsync(targetId, cancellationToken);
         if (target is null)
             return ServiceResult<UserResponseDto>.NotFound($"User {targetId} not found.");
 
@@ -437,8 +426,7 @@ public sealed class UserService : IUserService
         }
 
         if (target.IsActive)
-            return ServiceResult<UserResponseDto>.BadRequest(
-                "User is already active.");
+            return ServiceResult<UserResponseDto>.BadRequest("User is already active.");
 
         target.IsActive = true;
 
@@ -460,7 +448,7 @@ public sealed class UserService : IUserService
         UpdateOwnProfileDto dto,
         CancellationToken cancellationToken = default)
     {
-        User? user = await _users.GetByIdWithGroupAsync(caller.Id, cancellationToken);
+        User? user = await _users.GetByIdWithDivisionAsync(caller.Id, cancellationToken);
         if (user is null)
             return ServiceResult<UserResponseDto>.NotFound($"User {caller.Id} not found.");
 
@@ -469,7 +457,6 @@ public sealed class UserService : IUserService
         if (string.IsNullOrWhiteSpace(dto.Username))
             return ServiceResult<UserResponseDto>.BadRequest("Username is required.");
 
-        // Username uniqueness — exclude self
         string newUsername = dto.Username.Trim().ToLowerInvariant();
         if (!string.Equals(newUsername, user.Username, StringComparison.OrdinalIgnoreCase))
         {
@@ -479,22 +466,17 @@ public sealed class UserService : IUserService
                     $"Username '{newUsername}' is already taken.");
         }
 
-        // Email uniqueness — exclude self; empty string clears the email
         string? newEmail = string.IsNullOrWhiteSpace(dto.Email)
             ? null
             : dto.Email.Trim().ToLowerInvariant();
-        if (!string.Equals(newEmail, user.Email, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(newEmail, user.Email, StringComparison.OrdinalIgnoreCase) && newEmail is not null)
         {
-            if (newEmail is not null)
-            {
-                User? taken = await _users.FindByEmailAsync(newEmail, cancellationToken);
-                if (taken is not null)
-                    return ServiceResult<UserResponseDto>.Conflict(
-                        $"Email '{newEmail}' is already registered.");
-            }
+            User? taken = await _users.FindByEmailAsync(newEmail, cancellationToken);
+            if (taken is not null)
+                return ServiceResult<UserResponseDto>.Conflict(
+                    $"Email '{newEmail}' is already registered.");
         }
 
-        // Assign ONLY the five editable fields — Role/Division/OfficeId/Override*/IsActive stay untouched.
         user.FullName  = dto.FullName.Trim();
         user.Username  = newUsername;
         user.Email     = newEmail;
@@ -506,7 +488,7 @@ public sealed class UserService : IUserService
 
         _logger.LogInformation("Profile updated. UserId: {UserId}", user.Id);
 
-        User updated = (await _users.GetByIdWithGroupAsync(user.Id, cancellationToken))!;
+        User updated = (await _users.GetByIdWithDivisionAsync(user.Id, cancellationToken))!;
         return ServiceResult<UserResponseDto>.Ok(MapToDto(updated));
     }
 
@@ -516,7 +498,7 @@ public sealed class UserService : IUserService
         ChangePasswordDto dto,
         CancellationToken cancellationToken = default)
     {
-        User? user = await _users.GetByIdWithGroupAsync(caller.Id, cancellationToken);
+        User? user = await _users.GetByIdWithDivisionAsync(caller.Id, cancellationToken);
         if (user is null)
             return ServiceResult<bool>.NotFound($"User {caller.Id} not found.");
 
@@ -527,14 +509,11 @@ public sealed class UserService : IUserService
             return ServiceResult<bool>.BadRequest("Passwords do not match.");
 
         if (dto.NewPassword.Length < 8)
-            return ServiceResult<bool>.BadRequest(
-                "Password must be at least 8 characters.");
+            return ServiceResult<bool>.BadRequest("Password must be at least 8 characters.");
         if (!dto.NewPassword.Any(char.IsUpper))
-            return ServiceResult<bool>.BadRequest(
-                "Password must contain at least one uppercase letter.");
+            return ServiceResult<bool>.BadRequest("Password must contain at least one uppercase letter.");
         if (!dto.NewPassword.Any(char.IsDigit))
-            return ServiceResult<bool>.BadRequest(
-                "Password must contain at least one digit.");
+            return ServiceResult<bool>.BadRequest("Password must contain at least one digit.");
 
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
 
@@ -550,55 +529,18 @@ public sealed class UserService : IUserService
 
     /// <summary>
     /// True when the requester may create/modify/delete a user whose role is
-    /// <paramref name="targetRole"/>. SuperAdmin can manage any role;
-    /// everyone else is limited to Staff and Observer.
+    /// <paramref name="targetRole"/>. SuperAdmin can manage any role; everyone else
+    /// is limited to Staff.
     /// </summary>
     private static bool CanRequesterManageRole(User requester, UserRole targetRole)
     {
         if (requester.Role is UserRole.SuperAdmin)
             return true;
-        return targetRole is UserRole.Staff or UserRole.Observer;
+        return targetRole is UserRole.Staff;
     }
 
-    /// <summary>
-    /// True when the requester may modify <paramref name="target"/>. SuperAdmin can manage
-    /// any user; everyone else is limited to Staff and Observer targets.
-    /// </summary>
     private static bool CanRequesterManageTarget(User requester, User target)
         => CanRequesterManageRole(requester, target.Role);
-
-    /// <summary>
-    /// Returns the fixed seed GroupId for a user based on Role, Division, and whether they
-    /// have an office (v1.1). SuperAdmin and Admin do not belong to a group (returns null).
-    ///
-    ///   SuperAdmin / Admin        → null
-    ///   user with an office       → Office User Default (encoder or viewer)
-    ///   PPDO Observer             → Observer Default
-    ///   PPDO Staff                → the division group matching their division
-    /// </summary>
-    private static Guid? GroupIdFor(UserRole role, Division? division, bool hasOffice)
-    {
-        if (role is UserRole.SuperAdmin or UserRole.Admin)
-            return null;
-
-        // Non-PPDO office users (encoder or viewer) all share the Office User Default group.
-        if (hasOffice)
-            return GroupOfficeUserDefault;
-
-        if (role is UserRole.Observer)
-            return GroupObserverDefault;
-
-        // PPDO Staff — assign the group matching the division.
-        return division switch
-        {
-            Division.Admin    => GroupAdminDivisionStaff,
-            Division.Planning => GroupPlanningStaff,
-            Division.RM       => GroupRMStaff,
-            Division.MIS      => GroupMISStaff,
-            Division.SPD      => GroupSPDStaff,
-            _                 => null,
-        };
-    }
 
     /// <summary>
     /// Validates that the office exists and is active. Returns a populated error result
@@ -608,8 +550,6 @@ public sealed class UserService : IUserService
         int officeId,
         CancellationToken cancellationToken)
     {
-        // The offices table is tiny (16 rows) — a full read is cheaper than a keyed query
-        // path here, and IRepository.GetByIdAsync only accepts Guid keys.
         IReadOnlyList<Office> offices = await _offices.GetAllAsync(cancellationToken);
         Office? office = offices.FirstOrDefault(o => o.Id == officeId);
 
@@ -621,7 +561,30 @@ public sealed class UserService : IUserService
         return null;
     }
 
-    /// <summary>Maps a <see cref="User"/> entity (Group navigation must be loaded) to a DTO.</summary>
+    /// <summary>
+    /// Validates that the division exists, is active, and (for office users) belongs to the
+    /// given office. Returns a populated error result to short-circuit, or null when valid.
+    /// </summary>
+    private async Task<ServiceResult<UserResponseDto>?> ValidateDivisionAsync(
+        int divisionId,
+        int? requireOfficeId,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<Division> divisions = await _divisions.GetAllAsync(cancellationToken);
+        Division? division = divisions.FirstOrDefault(d => d.Id == divisionId);
+
+        if (division is null)
+            return ServiceResult<UserResponseDto>.BadRequest($"Division {divisionId} not found.");
+        if (!division.IsActive)
+            return ServiceResult<UserResponseDto>.BadRequest($"Division '{division.Name}' is inactive.");
+        if (requireOfficeId is int officeId && division.OfficeId != officeId)
+            return ServiceResult<UserResponseDto>.BadRequest(
+                $"Division '{division.Name}' does not belong to the selected office.");
+
+        return null;
+    }
+
+    /// <summary>Maps a <see cref="User"/> entity (Division navigation must be loaded) to a DTO.</summary>
     private static UserResponseDto MapToDto(User u) => new()
     {
         Id                            = u.Id,
@@ -629,14 +592,13 @@ public sealed class UserService : IUserService
         Username                      = u.Username,
         Email                         = u.Email,
         Role                          = u.Role.ToString(),
-        Division                      = u.Division?.ToString(),
+        DivisionId                    = u.DivisionId,
+        Division                      = u.Division?.Name,
         OfficeId                      = u.OfficeId,
         OfficeName                    = u.Office?.OfficeName,
         Position                      = u.Position,
         ContactNo                     = u.ContactNo,
         IsActive                      = u.IsActive,
-        GroupId                       = u.GroupId,
-        GroupName                     = u.Group?.Name,
         OverrideCanAccessInventory    = u.OverrideCanAccessInventory,
         OverrideCanAccessReports      = u.OverrideCanAccessReports,
         OverrideCanManageUsers        = u.OverrideCanManageUsers,
@@ -644,6 +606,7 @@ public sealed class UserService : IUserService
         OverrideCanAccessBudgetPlanning = u.OverrideCanAccessBudgetPlanning,
         OverrideCanUploadAip            = u.OverrideCanUploadAip,
         OverrideCanManageConfig         = u.OverrideCanManageConfig,
+        OverrideCanManageAllocation     = u.OverrideCanManageAllocation,
         CreatedAt                     = u.CreatedAt,
         UpdatedAt                     = u.UpdatedAt,
     };

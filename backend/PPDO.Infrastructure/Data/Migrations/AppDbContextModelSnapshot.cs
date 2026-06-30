@@ -478,6 +478,36 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.ToTable("audit_log", (string)null);
                 });
 
+            modelBuilder.Entity("PPDO.Domain.Entities.BudgetCeiling", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("decimal(18,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<int>("FiscalYear")
+                        .HasColumnType("int")
+                        .HasColumnName("fiscal_year");
+
+                    b.Property<int>("OfficeId")
+                        .HasColumnType("int")
+                        .HasColumnName("office_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OfficeId", "FiscalYear")
+                        .IsUnique()
+                        .HasDatabaseName("IX_budget_ceilings_office_fy");
+
+                    b.ToTable("budget_ceilings", (string)null);
+                });
+
             modelBuilder.Entity("PPDO.Domain.Entities.CalendarEvent", b =>
                 {
                     b.Property<Guid>("Id")
@@ -633,7 +663,7 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.Property<Guid>("DeliveryItemId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<int>("Division")
+                    b.Property<int>("DivisionId")
                         .HasColumnType("int");
 
                     b.Property<string>("IssueRef")
@@ -657,11 +687,140 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.HasIndex("DeliveryItemId")
                         .HasDatabaseName("IX_Distributions_DeliveryItemId");
 
+                    b.HasIndex("DivisionId")
+                        .HasDatabaseName("IX_Distributions_DivisionId");
+
                     b.HasIndex("IssueRef")
                         .IsUnique()
                         .HasDatabaseName("IX_Distributions_IssueRef");
 
                     b.ToTable("Distributions", (string)null);
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.Division", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("CanAccessBudgetPlanning")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false)
+                        .HasColumnName("can_access_budget_planning");
+
+                    b.Property<bool>("CanAccessInventory")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false)
+                        .HasColumnName("can_access_inventory");
+
+                    b.Property<bool>("CanAccessReports")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false)
+                        .HasColumnName("can_access_reports");
+
+                    b.Property<bool>("CanManageConfig")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false)
+                        .HasColumnName("can_manage_config");
+
+                    b.Property<bool>("CanManageResourceLinks")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false)
+                        .HasColumnName("can_manage_resource_links");
+
+                    b.Property<bool>("CanManageUsers")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false)
+                        .HasColumnName("can_manage_users");
+
+                    b.Property<bool>("CanUploadAip")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false)
+                        .HasColumnName("can_upload_aip");
+
+                    b.Property<string>("Code")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("code");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("name");
+
+                    b.Property<int>("OfficeId")
+                        .HasColumnType("int")
+                        .HasColumnName("office_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OfficeId")
+                        .HasDatabaseName("IX_divisions_office_id");
+
+                    b.HasIndex("OfficeId", "Name")
+                        .IsUnique()
+                        .HasDatabaseName("IX_divisions_office_id_name");
+
+                    b.ToTable("divisions", (string)null);
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.DivisionAllocation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("decimal(18,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<int>("DivisionId")
+                        .HasColumnType("int")
+                        .HasColumnName("division_id");
+
+                    b.Property<int>("FiscalYear")
+                        .HasColumnType("int")
+                        .HasColumnName("fiscal_year");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DivisionId", "FiscalYear")
+                        .IsUnique()
+                        .HasDatabaseName("IX_division_allocations_div_fy");
+
+                    b.ToTable("division_allocations", (string)null);
                 });
 
             modelBuilder.Entity("PPDO.Domain.Entities.FundingSource", b =>
@@ -959,176 +1118,40 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.ToTable("PRItems", (string)null);
                 });
 
-            modelBuilder.Entity("PPDO.Domain.Entities.PermissionGroup", b =>
+            modelBuilder.Entity("PPDO.Domain.Entities.ProgramDivision", b =>
                 {
-                    b.Property<Guid>("Id")
+                    b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
+                        .HasColumnType("int")
+                        .HasColumnName("id");
 
-                    b.Property<bool>("CanAccessBudgetPlanning")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(false);
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<bool>("CanAccessInventory")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(false);
+                    b.Property<int>("DivisionId")
+                        .HasColumnType("int")
+                        .HasColumnName("division_id");
 
-                    b.Property<bool>("CanAccessReports")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(false);
-
-                    b.Property<bool>("CanManageConfig")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(false);
-
-                    b.Property<bool>("CanManageResourceLinks")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(false);
-
-                    b.Property<bool>("CanManageUsers")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(false);
-
-                    b.Property<bool>("CanUploadAip")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(false);
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Description")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int?>("Division")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Name")
+                    b.Property<string>("OfficeRefCode")
                         .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("office_ref_code");
 
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime2");
+                    b.Property<string>("ProgramRefCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("program_ref_code");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Name")
+                    b.HasIndex("DivisionId");
+
+                    b.HasIndex("OfficeRefCode", "ProgramRefCode", "DivisionId")
                         .IsUnique()
-                        .HasDatabaseName("IX_PermissionGroups_Name");
+                        .HasDatabaseName("IX_program_divisions_ref_div");
 
-                    b.ToTable("PermissionGroups", (string)null);
-
-                    b.HasData(
-                        new
-                        {
-                            Id = new Guid("10000000-0000-0000-0000-000000000001"),
-                            CanAccessBudgetPlanning = true,
-                            CanAccessInventory = true,
-                            CanAccessReports = true,
-                            CanManageConfig = false,
-                            CanManageResourceLinks = true,
-                            CanManageUsers = false,
-                            CanUploadAip = false,
-                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Division = 0,
-                            Name = "Admin Division Staff",
-                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
-                        },
-                        new
-                        {
-                            Id = new Guid("10000000-0000-0000-0000-000000000002"),
-                            CanAccessBudgetPlanning = true,
-                            CanAccessInventory = false,
-                            CanAccessReports = true,
-                            CanManageConfig = false,
-                            CanManageResourceLinks = false,
-                            CanManageUsers = false,
-                            CanUploadAip = false,
-                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Division = 1,
-                            Name = "Planning Staff",
-                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
-                        },
-                        new
-                        {
-                            Id = new Guid("10000000-0000-0000-0000-000000000003"),
-                            CanAccessBudgetPlanning = true,
-                            CanAccessInventory = false,
-                            CanAccessReports = true,
-                            CanManageConfig = false,
-                            CanManageResourceLinks = false,
-                            CanManageUsers = false,
-                            CanUploadAip = false,
-                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Division = 2,
-                            Name = "RM Staff",
-                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
-                        },
-                        new
-                        {
-                            Id = new Guid("10000000-0000-0000-0000-000000000004"),
-                            CanAccessBudgetPlanning = true,
-                            CanAccessInventory = false,
-                            CanAccessReports = true,
-                            CanManageConfig = false,
-                            CanManageResourceLinks = false,
-                            CanManageUsers = false,
-                            CanUploadAip = false,
-                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Division = 3,
-                            Name = "MIS Staff",
-                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
-                        },
-                        new
-                        {
-                            Id = new Guid("10000000-0000-0000-0000-000000000005"),
-                            CanAccessBudgetPlanning = true,
-                            CanAccessInventory = false,
-                            CanAccessReports = true,
-                            CanManageConfig = false,
-                            CanManageResourceLinks = false,
-                            CanManageUsers = false,
-                            CanUploadAip = false,
-                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Division = 4,
-                            Name = "SPD Staff",
-                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
-                        },
-                        new
-                        {
-                            Id = new Guid("10000000-0000-0000-0000-000000000006"),
-                            CanAccessBudgetPlanning = false,
-                            CanAccessInventory = false,
-                            CanAccessReports = false,
-                            CanManageConfig = false,
-                            CanManageResourceLinks = false,
-                            CanManageUsers = false,
-                            CanUploadAip = false,
-                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Name = "Observer Default",
-                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
-                        },
-                        new
-                        {
-                            Id = new Guid("10000000-0000-0000-0000-000000000007"),
-                            CanAccessBudgetPlanning = true,
-                            CanAccessInventory = false,
-                            CanAccessReports = false,
-                            CanManageConfig = false,
-                            CanManageResourceLinks = false,
-                            CanManageUsers = false,
-                            CanUploadAip = false,
-                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Name = "Office User Default",
-                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
-                        });
+                    b.ToTable("program_divisions", (string)null);
                 });
 
             modelBuilder.Entity("PPDO.Domain.Entities.PurchaseRequest", b =>
@@ -1181,7 +1204,7 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasColumnType("nvarchar(100)")
                         .HasDefaultValue("PPDO");
 
-                    b.Property<int>("Division")
+                    b.Property<int>("DivisionId")
                         .HasColumnType("int");
 
                     b.Property<string>("Fund")
@@ -1235,8 +1258,8 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.HasIndex("CreatedById")
                         .HasDatabaseName("IX_PurchaseRequests_CreatedById");
 
-                    b.HasIndex("Division")
-                        .HasDatabaseName("IX_PurchaseRequests_Division");
+                    b.HasIndex("DivisionId")
+                        .HasDatabaseName("IX_PurchaseRequests_DivisionId");
 
                     b.HasIndex("PRNo")
                         .IsUnique()
@@ -1619,7 +1642,7 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<int?>("Division")
+                    b.Property<int?>("DivisionId")
                         .HasColumnType("int");
 
                     b.Property<string>("Email")
@@ -1630,9 +1653,6 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
-
-                    b.Property<Guid?>("GroupId")
-                        .HasColumnType("uniqueidentifier");
 
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
@@ -1649,6 +1669,9 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasColumnType("bit");
 
                     b.Property<bool?>("OverrideCanAccessReports")
+                        .HasColumnType("bit");
+
+                    b.Property<bool?>("OverrideCanManageAllocation")
                         .HasColumnType("bit");
 
                     b.Property<bool?>("OverrideCanManageConfig")
@@ -1691,13 +1714,13 @@ namespace PPDO.Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("DivisionId")
+                        .HasDatabaseName("IX_Users_DivisionId");
+
                     b.HasIndex("Email")
                         .IsUnique()
                         .HasDatabaseName("IX_Users_Email")
                         .HasFilter("[Email] IS NOT NULL");
-
-                    b.HasIndex("GroupId")
-                        .HasDatabaseName("IX_Users_GroupId");
 
                     b.HasIndex("OfficeId")
                         .HasDatabaseName("IX_Users_OfficeId");
@@ -1713,7 +1736,6 @@ namespace PPDO.Infrastructure.Data.Migrations
                         {
                             Id = new Guid("20000000-0000-0000-0000-000000000001"),
                             CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Division = 0,
                             Email = "superadmin@ppdo.gov.ph",
                             FullName = "System Administrator",
                             IsActive = true,
@@ -1900,6 +1922,10 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by");
 
+                    b.Property<int?>("DivisionId")
+                        .HasColumnType("int")
+                        .HasColumnName("division_id");
+
                     b.Property<DateTime?>("FinalizedAt")
                         .HasColumnType("datetime2")
                         .HasColumnName("finalized_at");
@@ -1937,15 +1963,19 @@ namespace PPDO.Infrastructure.Data.Migrations
 
                     b.HasIndex("CreatedById");
 
+                    b.HasIndex("DivisionId")
+                        .HasDatabaseName("IX_wfp_records_division_id");
+
                     b.HasIndex("OfficeId")
                         .HasDatabaseName("IX_wfp_records_office_id");
 
                     b.HasIndex("SourceId")
                         .HasDatabaseName("IX_wfp_source_id");
 
-                    b.HasIndex("AipRecordId", "OfficeId")
+                    b.HasIndex("AipRecordId", "OfficeId", "DivisionId")
                         .IsUnique()
-                        .HasDatabaseName("UX_wfp_records_aip_record_id_office_id");
+                        .HasDatabaseName("UX_wfp_records_aip_office_division")
+                        .HasFilter("[division_id] IS NOT NULL");
 
                     b.ToTable("wfp_records", (string)null);
                 });
@@ -2058,6 +2088,17 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.Navigation("ChangedBy");
                 });
 
+            modelBuilder.Entity("PPDO.Domain.Entities.BudgetCeiling", b =>
+                {
+                    b.HasOne("PPDO.Domain.Entities.Office", "Office")
+                        .WithMany()
+                        .HasForeignKey("OfficeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Office");
+                });
+
             modelBuilder.Entity("PPDO.Domain.Entities.CalendarEvent", b =>
                 {
                     b.HasOne("PPDO.Domain.Entities.User", "CreatedBy")
@@ -2120,7 +2161,39 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasConstraintName("FK_Distributions_DeliveryItems_DeliveryItemId");
 
+                    b.HasOne("PPDO.Domain.Entities.Division", "Division")
+                        .WithMany()
+                        .HasForeignKey("DivisionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_Distributions_divisions_DivisionId");
+
                     b.Navigation("DeliveryItem");
+
+                    b.Navigation("Division");
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.Division", b =>
+                {
+                    b.HasOne("PPDO.Domain.Entities.Office", "Office")
+                        .WithMany()
+                        .HasForeignKey("OfficeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_divisions_offices_office_id");
+
+                    b.Navigation("Office");
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.DivisionAllocation", b =>
+                {
+                    b.HasOne("PPDO.Domain.Entities.Division", "Division")
+                        .WithMany()
+                        .HasForeignKey("DivisionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Division");
                 });
 
             modelBuilder.Entity("PPDO.Domain.Entities.LdipRecord", b =>
@@ -2155,6 +2228,17 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.Navigation("PurchaseRequest");
                 });
 
+            modelBuilder.Entity("PPDO.Domain.Entities.ProgramDivision", b =>
+                {
+                    b.HasOne("PPDO.Domain.Entities.Division", "Division")
+                        .WithMany()
+                        .HasForeignKey("DivisionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Division");
+                });
+
             modelBuilder.Entity("PPDO.Domain.Entities.PurchaseRequest", b =>
                 {
                     b.HasOne("PPDO.Domain.Entities.User", "CreatedBy")
@@ -2164,7 +2248,16 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasConstraintName("FK_PurchaseRequests_Users_CreatedById");
 
+                    b.HasOne("PPDO.Domain.Entities.Division", "Division")
+                        .WithMany()
+                        .HasForeignKey("DivisionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_PurchaseRequests_divisions_DivisionId");
+
                     b.Navigation("CreatedBy");
+
+                    b.Navigation("Division");
                 });
 
             modelBuilder.Entity("PPDO.Domain.Entities.ResourceLink", b =>
@@ -2180,11 +2273,11 @@ namespace PPDO.Infrastructure.Data.Migrations
 
             modelBuilder.Entity("PPDO.Domain.Entities.User", b =>
                 {
-                    b.HasOne("PPDO.Domain.Entities.PermissionGroup", "Group")
+                    b.HasOne("PPDO.Domain.Entities.Division", "Division")
                         .WithMany("Users")
-                        .HasForeignKey("GroupId")
-                        .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("FK_Users_PermissionGroups_GroupId");
+                        .HasForeignKey("DivisionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_Users_divisions_DivisionId");
 
                     b.HasOne("PPDO.Domain.Entities.Office", "Office")
                         .WithMany("Users")
@@ -2192,7 +2285,7 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("FK_Users_offices_OfficeId");
 
-                    b.Navigation("Group");
+                    b.Navigation("Division");
 
                     b.Navigation("Office");
                 });
@@ -2262,6 +2355,12 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasConstraintName("FK_wfp_records_Users_created_by");
 
+                    b.HasOne("PPDO.Domain.Entities.Division", "Division")
+                        .WithMany()
+                        .HasForeignKey("DivisionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_wfp_records_divisions_division_id");
+
                     b.HasOne("PPDO.Domain.Entities.Office", "Office")
                         .WithMany("WfpRecords")
                         .HasForeignKey("OfficeId")
@@ -2278,6 +2377,8 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.Navigation("AipRecord");
 
                     b.Navigation("CreatedBy");
+
+                    b.Navigation("Division");
 
                     b.Navigation("Office");
 
@@ -2316,16 +2417,16 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.Navigation("Distributions");
                 });
 
+            modelBuilder.Entity("PPDO.Domain.Entities.Division", b =>
+                {
+                    b.Navigation("Users");
+                });
+
             modelBuilder.Entity("PPDO.Domain.Entities.Office", b =>
                 {
                     b.Navigation("Users");
 
                     b.Navigation("WfpRecords");
-                });
-
-            modelBuilder.Entity("PPDO.Domain.Entities.PermissionGroup", b =>
-                {
-                    b.Navigation("Users");
                 });
 
             modelBuilder.Entity("PPDO.Domain.Entities.PurchaseRequest", b =>

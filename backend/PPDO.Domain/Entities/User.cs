@@ -28,29 +28,23 @@ public sealed class User
     public UserRole Role { get; set; }
 
     /// <summary>
-    /// The organisational division this user belongs to (PPDO-internal scope).
-    /// Staff and Observer are restricted to writing inventory data for their own Division.
-    /// SuperAdmin and Admin can read/write all Divisions regardless of this value.
+    /// FK to the configurable <see cref="Entities.Division"/> this user belongs to (v1.2 — RAL-97).
+    /// Replaces the former Division enum AND GroupId: the division carries both the user's
+    /// data scope AND their default feature flags.
     ///
-    /// Nullable from v1.1: non-PPDO office users have no division (see <see cref="OfficeId"/>).
-    /// ⚠️ A null Division on a Staff/Observer must resolve to an EMPTY inventory scope,
-    /// never "all divisions" — see InventoryService/DistributionService scope guards.
+    /// Null for SuperAdmin/Admin (they bypass/default all flags).
+    /// ⚠️ A null DivisionId on a Staff user must resolve to an EMPTY inventory scope,
+    /// never "all divisions" — see DivisionScope and the Inventory/Distribution guards.
     /// </summary>
-    public Division? Division { get; set; }
+    public int? DivisionId { get; set; }
 
     /// <summary>
     /// FK to the provincial office this user belongs to (<c>offices.id</c>). New in v1.1.
-    /// This is the PPDO / non-PPDO discriminator:
-    ///   null  → PPDO-internal user (uses <see cref="Division"/> for scope)
+    /// The PPDO / non-PPDO discriminator:
+    ///   null  → PPDO-internal user
     ///   set   → non-PPDO office user, scoped to that office's budget planning data only.
     /// </summary>
     public int? OfficeId { get; set; }
-
-    /// <summary>
-    /// FK to the user's PermissionGroup.
-    /// Null for SuperAdmin and Admin — they bypass all flag checks.
-    /// </summary>
-    public Guid? GroupId { get; set; }
 
     /// <summary>Job title / position. Optional, max 100 characters.</summary>
     public string? Position { get; set; }
@@ -62,9 +56,9 @@ public sealed class User
     public bool IsActive { get; set; } = true;
 
     // ── Individual permission overrides ───────────────────────────────────────
-    // null  = inherit from PermissionGroup
-    // true  = explicitly granted (overrides group value)
-    // false = explicitly revoked (overrides group value)
+    // null  = inherit from the user's Division flags
+    // true  = explicitly granted (overrides the division flag)
+    // false = explicitly revoked (overrides the division flag)
     // SuperAdmin and Admin always have full access — these flags are ignored for them.
 
     /// <summary>
@@ -106,11 +100,18 @@ public sealed class User
     public bool? OverrideCanUploadAip { get; set; }
 
     /// <summary>
-    /// Override for Configuration management (Accounts, Offices, Funding Sources).
-    /// Null = use Group.CanManageConfig. Ignored for SuperAdmin and Admin.
-    /// Observer can never have this effectively granted. Added in RAL-81.
+    /// Override for Configuration management (Accounts, Offices, Funding Sources, Divisions).
+    /// Null = use Division.CanManageConfig. Ignored for SuperAdmin and Admin.
     /// </summary>
     public bool? OverrideCanManageConfig { get; set; }
+
+    /// <summary>
+    /// Per-user grant for the Budget Allocation page (v1.2 — RAL-97). Unlike the other
+    /// flags this is NOT a division flag: it is assigned to a specific finance-officer user
+    /// regardless of role/division. Resolution: SuperAdmin → true; everyone else →
+    /// <c>OverrideCanManageAllocation ?? false</c> (Admin is NOT auto-granted this).
+    /// </summary>
+    public bool? OverrideCanManageAllocation { get; set; }
 
     // ── Refresh token (JWT rotation) ─────────────────────────────────────────
 
@@ -135,8 +136,8 @@ public sealed class User
 
     // ── Navigation ────────────────────────────────────────────────────────────
 
-    /// <summary>The permission group this user belongs to. Null for SuperAdmin/Admin.</summary>
-    public PermissionGroup? Group { get; set; }
+    /// <summary>The division this user belongs to. Null for SuperAdmin/Admin. Carries feature flags.</summary>
+    public Division? Division { get; set; }
 
     /// <summary>The provincial office this user belongs to. Null for PPDO-internal users.</summary>
     public Office? Office { get; set; }

@@ -7,7 +7,7 @@ namespace PPDO.Infrastructure.Repositories;
 
 /// <summary>
 /// Auth-specific user queries for <see cref="IUserRepository"/>.
-/// All find methods Include <see cref="User.Group"/> at depth 1 so that
+/// All find methods Include <see cref="User.Division"/> at depth 1 so that
 /// <c>PermissionService</c> can resolve flags without a second query.
 /// </summary>
 public sealed class UserRepository : Repository<User>, IUserRepository
@@ -19,7 +19,7 @@ public sealed class UserRepository : Repository<User>, IUserRepository
         string username,
         CancellationToken cancellationToken = default)
         => _context.Users
-            .Include(u => u.Group)
+            .Include(u => u.Division)
             .FirstOrDefaultAsync(
                 u => u.Username.ToLower() == username.ToLower() && u.IsActive,
                 cancellationToken);
@@ -29,7 +29,7 @@ public sealed class UserRepository : Repository<User>, IUserRepository
         string email,
         CancellationToken cancellationToken = default)
         => _context.Users
-            .Include(u => u.Group)
+            .Include(u => u.Division)
             .FirstOrDefaultAsync(
                 u => u.Email.ToLower() == email.ToLower() && u.IsActive,
                 cancellationToken);
@@ -39,25 +39,25 @@ public sealed class UserRepository : Repository<User>, IUserRepository
         string refreshToken,
         CancellationToken cancellationToken = default)
         => _context.Users
-            .Include(u => u.Group)
+            .Include(u => u.Division)
             .FirstOrDefaultAsync(
                 u => u.RefreshToken == refreshToken,
                 cancellationToken);
 
     /// <inheritdoc />
-    public Task<User?> GetByIdWithGroupAsync(
+    public Task<User?> GetByIdWithDivisionAsync(
         Guid id,
         CancellationToken cancellationToken = default)
         => _context.Users
-            .Include(u => u.Group)
+            .Include(u => u.Division)
             .Include(u => u.Office)   // v1.1 — OfficeName for the user detail/list DTO
             .FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<User>> GetAllWithGroupAsync(
+    public async Task<IReadOnlyList<User>> GetAllWithDivisionAsync(
         CancellationToken cancellationToken = default)
         => await _context.Users
-            .Include(u => u.Group)
+            .Include(u => u.Division)
             .Include(u => u.Office)   // v1.1 — OfficeName for the user list DTO
             .OrderBy(u => u.FullName)
             .ToListAsync(cancellationToken);

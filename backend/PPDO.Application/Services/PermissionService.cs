@@ -5,137 +5,91 @@ using PPDO.Domain.Interfaces;
 namespace PPDO.Application.Services;
 
 /// <summary>
-/// Resolves effective feature permissions for an authenticated user.
+/// Resolves effective feature permissions for an authenticated user (v1.2 — RAL-97).
 ///
-/// All checks follow the RBAC rules in CLAUDE.md and PROJECT_DOCUMENTATION_NET_AZURE.md:
+///   SuperAdmin → true for everything (full bypass)
+///   Admin      → true for every flag EXCEPT special per-user grants (CanManageAllocation)
+///   Staff      → Override ?? user.Division.&lt;flag&gt; ?? false
 ///
-///   SuperAdmin / Admin → true (always — group and override flags are ignored)
-///   Staff / Observer   → OverrideXxx ?? Group.Xxx  (null override = inherit group flag)
+/// CanUploadAip is additionally PPDO-only (office users can never hold it).
+/// CanManageAllocation is a per-user grant: SuperAdmin → true, else Override ?? false.
+/// CanAccessProfile is always true.
 ///
-/// Exception — <see cref="CanManageUsersAsync"/> and <see cref="CanManageResourceLinksAsync"/>:
-///   Observer is always false regardless of override.
-///
-/// <see cref="CanAccessProfileAsync"/> is always true for all roles.
-///
-/// No database access is performed here — the <see cref="User"/> must be loaded with
-/// <see cref="User.Group"/> navigation included before calling any method (JwtMiddleware
-/// guarantees this). If Group is null (SuperAdmin / Admin edge case), all flag lookups
-/// fall back to false, which is harmless because SuperAdmin/Admin short-circuit first.
+/// No database access — the <see cref="User"/> must be loaded with <see cref="User.Division"/>
+/// included (JwtMiddleware guarantees this). When Division is null (SuperAdmin/Admin, or a
+/// not-yet-assigned Staff user) flag lookups fall back to false — harmless for SuperAdmin/Admin
+/// because they short-circuit first.
 /// </summary>
 public sealed class PermissionService : IPermissionService
 {
     /// <inheritdoc />
     public Task<bool> CanAccessInventoryAsync(User user, CancellationToken cancellationToken = default)
     {
-        if (user.Role is UserRole.SuperAdmin or UserRole.Admin)
-            return Task.FromResult(true);
-
-        bool groupFlag = user.Group?.CanAccessInventory ?? false;
-        bool effective = user.OverrideCanAccessInventory ?? groupFlag;
-        return Task.FromResult(effective);
+        if (IsAdminOrAbove(user)) return Task.FromResult(true);
+        return Task.FromResult(user.OverrideCanAccessInventory ?? user.Division?.CanAccessInventory ?? false);
     }
 
     /// <inheritdoc />
     public Task<bool> CanAccessReportsAsync(User user, CancellationToken cancellationToken = default)
     {
-        if (user.Role is UserRole.SuperAdmin or UserRole.Admin)
-            return Task.FromResult(true);
-
-        bool groupFlag = user.Group?.CanAccessReports ?? false;
-        bool effective = user.OverrideCanAccessReports ?? groupFlag;
-        return Task.FromResult(effective);
+        if (IsAdminOrAbove(user)) return Task.FromResult(true);
+        return Task.FromResult(user.OverrideCanAccessReports ?? user.Division?.CanAccessReports ?? false);
     }
 
     /// <inheritdoc />
     public Task<bool> CanManageUsersAsync(User user, CancellationToken cancellationToken = default)
     {
-        if (user.Role is UserRole.SuperAdmin or UserRole.Admin)
-            return Task.FromResult(true);
-
-        // Observer can never manage users — no override can grant this.
-        if (user.Role is UserRole.Observer)
-            return Task.FromResult(false);
-
-        // Staff: individual override takes precedence; falls back to group flag.
-        // All seeded Staff groups have CanManageUsers = false — only an explicit
-        // OverrideCanManageUsers = true can grant this to a Staff user.
-        bool groupFlag = user.Group?.CanManageUsers ?? false;
-        bool effective = user.OverrideCanManageUsers ?? groupFlag;
-        return Task.FromResult(effective);
+        if (IsAdminOrAbove(user)) return Task.FromResult(true);
+        return Task.FromResult(user.OverrideCanManageUsers ?? user.Division?.CanManageUsers ?? false);
     }
 
     /// <inheritdoc />
     public Task<bool> CanAccessProfileAsync(User user, CancellationToken cancellationToken = default)
-    {
-        // All authenticated roles — SuperAdmin, Admin, Staff, Observer — can always
-        // view and edit their own profile. No override needed.
-        return Task.FromResult(true);
-    }
+        => Task.FromResult(true);
 
     /// <inheritdoc />
     public Task<bool> CanManageResourceLinksAsync(User user, CancellationToken cancellationToken = default)
     {
-        if (user.Role is UserRole.SuperAdmin or UserRole.Admin)
-            return Task.FromResult(true);
-
-        // Observer can never manage resource links — no override can grant this.
-        if (user.Role is UserRole.Observer)
-            return Task.FromResult(false);
-
-        // Staff: individual override takes precedence; falls back to group flag.
-        // Note: even when this returns true, Staff may only add links — edit/delete
-        // always require Admin or SuperAdmin (enforced in the Resource Links handler).
-        bool groupFlag = user.Group?.CanManageResourceLinks ?? false;
-        bool effective = user.OverrideCanManageResourceLinks ?? groupFlag;
-        return Task.FromResult(effective);
+        if (IsAdminOrAbove(user)) return Task.FromResult(true);
+        return Task.FromResult(user.OverrideCanManageResourceLinks ?? user.Division?.CanManageResourceLinks ?? false);
     }
 
-    // ── Budget Planning (v1.1 — RAL-81) ───────────────────────────────────────
+    // ── Budget Planning ───────────────────────────────────────────────────────
 
     /// <inheritdoc />
     public Task<bool> CanAccessBudgetPlanningAsync(User user, CancellationToken cancellationToken = default)
     {
-        if (user.Role is UserRole.SuperAdmin or UserRole.Admin)
-            return Task.FromResult(true);
-
-        // Observer is allowed read-only budget-planning access — no hard block here.
-        bool groupFlag = user.Group?.CanAccessBudgetPlanning ?? false;
-        bool effective = user.OverrideCanAccessBudgetPlanning ?? groupFlag;
-        return Task.FromResult(effective);
+        if (IsAdminOrAbove(user)) return Task.FromResult(true);
+        return Task.FromResult(user.OverrideCanAccessBudgetPlanning ?? user.Division?.CanAccessBudgetPlanning ?? false);
     }
 
     /// <inheritdoc />
     public Task<bool> CanUploadAipAsync(User user, CancellationToken cancellationToken = default)
     {
-        if (user.Role is UserRole.SuperAdmin or UserRole.Admin)
-            return Task.FromResult(true);
+        if (IsAdminOrAbove(user)) return Task.FromResult(true);
 
-        // Observer can never upload — no override can grant this.
-        if (user.Role is UserRole.Observer)
-            return Task.FromResult(false);
+        // PPDO-only: a non-PPDO office user can never upload (the file contains every office's records).
+        if (user.OfficeId is not null) return Task.FromResult(false);
 
-        // PPDO-only: a non-PPDO office user (OfficeId set) can never upload, because the
-        // uploaded file contains every office's records. No override can grant this.
-        if (user.OfficeId is not null)
-            return Task.FromResult(false);
-
-        bool groupFlag = user.Group?.CanUploadAip ?? false;
-        bool effective = user.OverrideCanUploadAip ?? groupFlag;
-        return Task.FromResult(effective);
+        return Task.FromResult(user.OverrideCanUploadAip ?? user.Division?.CanUploadAip ?? false);
     }
 
     /// <inheritdoc />
     public Task<bool> CanManageConfigAsync(User user, CancellationToken cancellationToken = default)
     {
-        if (user.Role is UserRole.SuperAdmin or UserRole.Admin)
-            return Task.FromResult(true);
-
-        // Observer can never manage config — no override can grant this.
-        if (user.Role is UserRole.Observer)
-            return Task.FromResult(false);
-
-        bool groupFlag = user.Group?.CanManageConfig ?? false;
-        bool effective = user.OverrideCanManageConfig ?? groupFlag;
-        return Task.FromResult(effective);
+        if (IsAdminOrAbove(user)) return Task.FromResult(true);
+        return Task.FromResult(user.OverrideCanManageConfig ?? user.Division?.CanManageConfig ?? false);
     }
+
+    /// <inheritdoc />
+    public Task<bool> CanManageAllocationAsync(User user, CancellationToken cancellationToken = default)
+    {
+        // Per-user grant only — Admin is NOT auto-granted. SuperAdmin bypasses for support.
+        if (user.Role is UserRole.SuperAdmin) return Task.FromResult(true);
+        return Task.FromResult(user.OverrideCanManageAllocation ?? false);
+    }
+
+    /// <summary>SuperAdmin and Admin get all standard feature flags by default.</summary>
+    private static bool IsAdminOrAbove(User user)
+        => user.Role is UserRole.SuperAdmin or UserRole.Admin;
 }

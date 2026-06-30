@@ -20,19 +20,20 @@
  *   PUT    /api/users/{id}/reset-password → reset to default password
  *   DELETE /api/users/{id}               → deactivate
  *   PUT    /api/users/{id}/reactivate    → reactivate
- *   GET    /api/permission-groups         → list groups for dropdown
+ *   GET    /api/config/divisions          → list divisions for the dropdown (RAL-97)
  */
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
+import { listDivisions } from "@/lib/config";
 import Modal from "@/components/ui/Modal";
+import { useToast } from "@/components/ui/Toast";
 import type {
   CreateUserRequest,
-  Division,
+  DivisionResponse,
   MeResponse,
   OfficeResponse,
-  PermissionGroupResponse,
   UpdateUserRequest,
   UserResponse,
   UserRole,
@@ -42,18 +43,22 @@ import type {
 // Constants
 // ---------------------------------------------------------------------------
 
-const ROLES: UserRole[] = ["SuperAdmin", "Admin", "Staff", "Observer"];
-const DIVISIONS: Division[] = ["Admin", "Planning", "RM", "MIS", "SPD"];
+const ROLES: UserRole[] = ["SuperAdmin", "Admin", "Staff"];
 
 const ROLE_BADGE: Record<UserRole, string> = {
   SuperAdmin: "bg-green-100 text-green-800",
   Admin:      "bg-info-100 text-info-500",
   Staff:      "bg-slate-100 text-slate-600",
-  Observer:   "bg-amber-100 text-amber-500",
 };
 
-// Overrides that are meaningful only for Staff / Observer
-const OVERRIDE_KEYS = [
+// Permission override descriptors.
+// adminOnly: true  — Admin does NOT auto-inherit this flag; the toggle is shown for Admin too.
+// (All flags are shown for Staff.)
+const OVERRIDE_KEYS: {
+  key: keyof UpdateUserRequest & `override${string}`;
+  label: string;
+  adminOnly?: boolean;
+}[] = [
   { key: "overrideCanAccessInventory",      label: "Access Inventory" },
   { key: "overrideCanAccessReports",        label: "Inventory Report" },
   { key: "overrideCanManageUsers",          label: "Manage Users" },
@@ -61,7 +66,8 @@ const OVERRIDE_KEYS = [
   { key: "overrideCanAccessBudgetPlanning", label: "Access Budget Planning" },
   { key: "overrideCanUploadAip",            label: "Upload AIP" },
   { key: "overrideCanManageConfig",         label: "Manage Configuration" },
-] as const;
+  { key: "overrideCanManageAllocation",     label: "Manage Allocation (finance officer)", adminOnly: true },
+];
 
 // ---------------------------------------------------------------------------
 // Blank form state
@@ -72,7 +78,7 @@ const blankForm = (): CreateUserRequest => ({
   username: "",
   email: undefined,
   role: "Staff",
-  division: "Admin",
+  divisionId: null,
   officeId: null,
   position: null,
   contactNo: null,
@@ -151,27 +157,33 @@ function OverrideToggle({
 
 type UserFormProps = {
   form: CreateUserRequest | UpdateUserRequest;
-  groups: PermissionGroupResponse[];
+  divisions: DivisionResponse[];
   offices: OfficeResponse[];
-  isEdit: boolean;  // when false, group dropdown and overrides are hidden
+  isEdit: boolean;  // when false, overrides are hidden
   error: string | null;
   onChange: (patch: Partial<CreateUserRequest & UpdateUserRequest>) => void;
 };
 
-function UserForm({ form, groups, offices, isEdit, error, onChange }: UserFormProps) {
-  const showOverrides = form.role === "Staff" || form.role === "Observer";
-  // A non-PPDO office user has an office assigned. Office and Division are mutually
-  // exclusive: selecting an office clears the division (office users have no division).
+function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFormProps) {
+  const showOverrides      = form.role === "Staff";
+  const showAdminOverrides = form.role === "Admin";
+  const adminOnlyKeys      = OVERRIDE_KEYS.filter((o) => o.adminOnly);
+  // A non-PPDO office user has an office assigned. Their division must belong to that office.
   const isOfficeUser = form.officeId != null;
+  // Division is required only for PPDO-internal Staff. Office users are scoped by office_id, not division.
+  const isPpdoDivisionUser = form.role === "Staff" && !isOfficeUser;
 
-  // Selecting an office forces a non-admin role (office users are encoder/viewer).
+  // Division options: filter to the selected office's divisions.
+  // No office selected = PPDO-internal user → show only PPDO divisions (officeCode === "PPDO").
+  const divisionOptions = isOfficeUser
+    ? divisions.filter((d) => d.officeId === form.officeId)
+    : divisions.filter((d) => d.officeCode === "PPDO");
+
+  // Selecting an office forces a non-admin role (office users are encoders).
   function handleOfficeChange(value: string) {
     const officeId = value ? Number(value) : null;
-    const patch: Partial<CreateUserRequest & UpdateUserRequest> = { officeId };
-    if (officeId != null) {
-      patch.division = null;                                   // offices have no division
-      if (form.role === "SuperAdmin" || form.role === "Admin") patch.role = "Staff";
-    }
+    const patch: Partial<CreateUserRequest & UpdateUserRequest> = { officeId, divisionId: null };
+    if (officeId != null && (form.role === "SuperAdmin" || form.role === "Admin")) patch.role = "Staff";
     onChange(patch);
   }
 
@@ -221,30 +233,34 @@ function UserForm({ form, groups, offices, isEdit, error, onChange }: UserFormPr
             onChange={(e) => onChange({ role: e.target.value as UserRole })}
             className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 bg-white"
           >
-            {(isOfficeUser ? (["Staff", "Observer"] as UserRole[]) : ROLES).map((r) => (
+            {(isOfficeUser ? (["Staff"] as UserRole[]) : ROLES).map((r) => (
               <option key={r} value={r}>{r}</option>
             ))}
           </select>
           {isOfficeUser && (
-            <p className="mt-1 text-[11px] text-slate-400">Office users are Staff (encoder) or Observer (viewer).</p>
+            <p className="mt-1 text-[11px] text-slate-400">Office users are Staff (encoder).</p>
           )}
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-slate-600 mb-1">Division</label>
+          <label className="block text-xs font-medium text-slate-600 mb-1">
+            Division{isPpdoDivisionUser ? " *" : ""}
+          </label>
           <select
-            value={form.division ?? ""}
-            onChange={(e) => onChange({ division: (e.target.value as Division) || null })}
-            disabled={isOfficeUser}
+            value={form.divisionId ?? ""}
+            onChange={(e) => onChange({ divisionId: e.target.value ? Number(e.target.value) : null })}
+            disabled={!isPpdoDivisionUser}
             className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 bg-white disabled:bg-slate-100 disabled:text-slate-400"
           >
             <option value="">— None —</option>
-            {DIVISIONS.map((d) => (
-              <option key={d} value={d}>{d}</option>
+            {divisionOptions.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}{!isOfficeUser && d.officeName ? ` (${d.officeName})` : ""}
+              </option>
             ))}
           </select>
-          {isOfficeUser && (
-            <p className="mt-1 text-[11px] text-slate-400">Not used for office users.</p>
+          {!isPpdoDivisionUser && (
+            <p className="mt-1 text-[11px] text-slate-400">SuperAdmin / Admin have no division.</p>
           )}
         </div>
 
@@ -286,26 +302,6 @@ function UserForm({ form, groups, offices, isEdit, error, onChange }: UserFormPr
           />
         </div>
 
-        {/* Group dropdown — Edit only. Add User auto-assigns group from Role + Division. */}
-        {isEdit && groups.length > 0 && (
-          <div className="col-span-2">
-            <label className="block text-xs font-medium text-slate-600 mb-1">
-              Permission Group
-              <span className="ml-1 font-normal text-slate-400">(auto-assigned from Role + Division)</span>
-            </label>
-            <select
-              value={(form as UpdateUserRequest).groupId ?? ""}
-              onChange={(e) => onChange({ groupId: e.target.value || null })}
-              className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 bg-white"
-            >
-              <option value="">— No group —</option>
-              {groups.map((g) => (
-                <option key={g.id} value={g.id}>{g.name}</option>
-              ))}
-            </select>
-          </div>
-        )}
-
         {/* isActive toggle — edit only */}
         {isEdit && "isActive" in form && (
           <div className="col-span-2 flex items-center gap-3 py-1">
@@ -328,13 +324,13 @@ function UserForm({ form, groups, offices, isEdit, error, onChange }: UserFormPr
         )}
       </div>
 
-      {/* Permission overrides — Edit only, Staff / Observer only */}
+      {/* Permission overrides — Staff: all flags; Admin: adminOnly flags only */}
       {isEdit && showOverrides && (
         <div>
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
             Permission Overrides
             <span className="ml-1 font-normal normal-case tracking-normal text-slate-400">
-              (inherits from group unless overridden)
+              (inherits from division unless overridden)
             </span>
           </p>
           <div className="space-y-2">
@@ -350,10 +346,38 @@ function UserForm({ form, groups, offices, isEdit, error, onChange }: UserFormPr
         </div>
       )}
 
-      {/* SuperAdmin / Admin note — Edit only */}
-      {isEdit && !showOverrides && (
+      {isEdit && showAdminOverrides && adminOnlyKeys.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+            Permission Overrides
+          </p>
+          <p className="text-xs text-slate-400 mb-2">
+            Admin has full access to all features except the flags below — these must be granted explicitly.
+          </p>
+          <div className="space-y-2">
+            {adminOnlyKeys.map(({ key, label }) => (
+              <OverrideToggle
+                key={key}
+                label={label}
+                value={(form as UpdateUserRequest)[key]}
+                onChange={(v) => onChange({ [key]: v })}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* SuperAdmin note — Edit only */}
+      {isEdit && form.role === "SuperAdmin" && (
         <p className="text-xs text-slate-400 bg-slate-50 px-3 py-2">
-          SuperAdmin and Admin roles always have full access — permission overrides do not apply.
+          SuperAdmin always has full access — permission overrides do not apply.
+        </p>
+      )}
+
+      {/* Admin full-access note — only when no adminOnly overrides exist */}
+      {isEdit && showAdminOverrides && adminOnlyKeys.length === 0 && (
+        <p className="text-xs text-slate-400 bg-slate-50 px-3 py-2">
+          Admin always has full access — permission overrides do not apply.
         </p>
       )}
 
@@ -426,11 +450,12 @@ export default function UsersPage() {
   const router = useRouter();
 
   // Auth / permission guard
+  const { toast } = useToast();
   const [authChecked, setAuthChecked] = useState(false);
 
   // Data
   const [users, setUsers] = useState<UserResponse[]>([]);
-  const [groups, setGroups] = useState<PermissionGroupResponse[]>([]);
+  const [divisions, setDivisions] = useState<DivisionResponse[]>([]);
   const [offices, setOffices] = useState<OfficeResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -477,16 +502,15 @@ export default function UsersPage() {
     setLoading(true);
     setFetchError(null);
     try {
-      // Fetch users — required. Groups are optional (endpoint may not exist yet).
+      // Fetch users — required. Divisions/offices drive the form dropdowns.
       const usersRes = await api.get<UserResponse[]>("/users");
       setUsers(usersRes.data);
 
       try {
-        const groupsRes = await api.get<PermissionGroupResponse[]>("/permission-groups");
-        setGroups(groupsRes.data);
+        setDivisions(await listDivisions({ active: "true" }));
       } catch {
-        // permission-groups endpoint not yet implemented — group dropdown stays empty
-        setGroups([]);
+        // divisions endpoint unavailable — division dropdown stays empty
+        setDivisions([]);
       }
 
       try {
@@ -545,8 +569,10 @@ export default function UsersPage() {
       await api.post("/users", addForm);
       setShowAdd(false);
       await loadData();
+      toast.success("User created", `${addForm.fullName} has been added. Default password: TamarawUser2026!`);
     } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      const data = (e as { response?: { data?: unknown } })?.response?.data;
+      const msg = typeof data === "string" ? data : (data as { message?: string } | undefined)?.message;
       setFormError(msg ?? "Failed to create user. Please try again.");
     } finally {
       setSaving(false);
@@ -559,14 +585,15 @@ export default function UsersPage() {
 
   function openEdit(user: UserResponse) {
     setEditTarget(user);
+    // Office users (non-PPDO): clear any stale PPDO division — they're scoped by officeId.
+    const divisionId = user.officeId != null ? null : user.divisionId;
     setEditForm({
       fullName:                      user.fullName,
       username:                      user.username,
       email:                         user.email,
       role:                          user.role,
-      division:                      user.division,
+      divisionId,
       officeId:                      user.officeId,
-      groupId:                       user.groupId,
       position:                      user.position,
       contactNo:                     user.contactNo,
       isActive:                      user.isActive,
@@ -577,6 +604,7 @@ export default function UsersPage() {
       overrideCanAccessBudgetPlanning: user.overrideCanAccessBudgetPlanning,
       overrideCanUploadAip:            user.overrideCanUploadAip,
       overrideCanManageConfig:         user.overrideCanManageConfig,
+      overrideCanManageAllocation:     user.overrideCanManageAllocation,
     });
     setFormError(null);
   }
@@ -595,7 +623,8 @@ export default function UsersPage() {
       setEditForm(null);
       await loadData();
     } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      const data = (e as { response?: { data?: unknown } })?.response?.data;
+      const msg = typeof data === "string" ? data : (data as { message?: string } | undefined)?.message;
       setFormError(msg ?? "Failed to update user. Please try again.");
     } finally {
       setSaving(false);
@@ -611,6 +640,7 @@ export default function UsersPage() {
     setActionLoading(true);
     try {
       await api.put(`/users/${resetTarget.id}/reset-password`);
+      toast.success("Password reset", `Password reset to TamarawUser2026! for ${resetTarget.fullName}.`);
       setResetTarget(null);
     } catch {
       // keep modal open — user can retry
@@ -805,7 +835,7 @@ export default function UsersPage() {
           </p>
           <UserForm
             form={addForm}
-            groups={groups}
+            divisions={divisions}
             offices={offices}
             isEdit={false}
             error={formError}
@@ -832,7 +862,7 @@ export default function UsersPage() {
         >
           <UserForm
             form={editForm}
-            groups={groups}
+            divisions={divisions}
             offices={offices}
             isEdit
             error={formError}

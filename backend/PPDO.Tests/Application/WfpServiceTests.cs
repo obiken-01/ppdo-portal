@@ -21,10 +21,10 @@ public sealed class WfpServiceTests
 
     // ── Seed helpers ──────────────────────────────────────────────────────────
 
-    private static WfpRecord WfpRec(int id, string status, int aipId = 2, int officeId = 3) => new()
+    private static WfpRecord WfpRec(int id, string status, int aipId = 2, int officeId = 3, int? divisionId = null) => new()
     {
         Id = id, AipRecordId = aipId, OfficeId = officeId, FiscalYear = 2027,
-        Status = status, CreatedById = UserId,
+        Status = status, CreatedById = UserId, DivisionId = divisionId,
         CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
     };
 
@@ -49,8 +49,8 @@ public sealed class WfpServiceTests
         int aipId, int officeId, int aipActivityId,
         decimal totalAppropriation = 1000m, bool applyReserve = false,
         decimal q1 = 250m, decimal q2 = 250m, decimal q3 = 250m, decimal q4 = 250m,
-        int? accountId = null, int? fsId = null) => new(
-        aipId, officeId, 2027,
+        int? accountId = null, int? fsId = null, int? divisionId = null) => new(
+        aipId, officeId, 2027, divisionId,
         [new SaveWfpActivityDto(aipActivityId, [
             new SaveWfpExpenditureLineDto(
                 "PS", null, null, null, null,
@@ -70,7 +70,8 @@ public sealed class WfpServiceTests
             List<WfpRecord>     wfpSeed,
             List<WfpActivity>   actSeed,
             List<Account>       accountSeed,
-            List<FundingSource> fsSeed)
+            List<FundingSource> fsSeed,
+            Mock<IAllocationService>? allocationMock = null)
     {
         Mock<IWfpRepository>                  wfpRepo     = new();
         Mock<IRepository<WfpActivity>>        actRepo     = new();
@@ -98,18 +99,20 @@ public sealed class WfpServiceTests
             .ReturnsAsync((int id, CancellationToken _) => wfpSeed.FirstOrDefault(r => r.Id == id));
 
         wfpRepo.Setup(r => r.GetFilteredAsync(
-                It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((int? aipId, int? offId, CancellationToken _) =>
+                It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int? aipId, int? offId, int? divId, CancellationToken _) =>
                 (IReadOnlyList<WfpRecord>)wfpSeed
                     .Where(r => !aipId.HasValue || r.AipRecordId == aipId.Value)
                     .Where(r => !offId.HasValue  || r.OfficeId    == offId.Value)
+                    .Where(r => !divId.HasValue  || r.DivisionId  == divId.Value)
                     .OrderByDescending(r => r.UpdatedAt)
                     .ToList());
 
-        wfpRepo.Setup(r => r.FindByAipAndOfficeAsync(
-                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((int aipId, int offId, CancellationToken _) =>
-                wfpSeed.FirstOrDefault(r => r.AipRecordId == aipId && r.OfficeId == offId));
+        wfpRepo.Setup(r => r.FindByAipOfficeAndDivisionAsync(
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int aipId, int offId, int? divId, CancellationToken _) =>
+                wfpSeed.FirstOrDefault(r =>
+                    r.AipRecordId == aipId && r.OfficeId == offId && r.DivisionId == divId));
 
         wfpRepo.Setup(r => r.GetActivitiesByWfpIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((int wfpId, CancellationToken _) =>
@@ -151,9 +154,10 @@ public sealed class WfpServiceTests
         CallerContext ctx = new();
         ctx.SetUserId(UserId);
 
-        Mock<IAipService>      aipSvc    = new();
-        Mock<IOfficeService>   officeSvc = new();
-        Mock<IWfpExcelService> excelSvc  = new();
+        Mock<IAipService>        aipSvc     = new();
+        Mock<IOfficeService>     officeSvc  = new();
+        Mock<IWfpExcelService>   excelSvc   = new();
+        Mock<IAllocationService> allocSvc   = allocationMock ?? new();
 
         aipSvc.Setup(s => s.GetByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(ServiceResult<AipRecordDetailDto>.NotFound("AIP not found."));
@@ -162,9 +166,21 @@ public sealed class WfpServiceTests
         excelSvc.Setup(s => s.GenerateWfpReport(It.IsAny<WfpExcelReportData>()))
             .Returns([1, 2, 3]);
 
+        // Default allocation mocks: setup complete, allocation = unlimited (MaxValue).
+        if (allocationMock is null)
+        allocSvc.Setup(s => s.GetSetupStatusAsync(
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AllocationSetupStatusDto(true, true, true));
+        if (allocationMock is null)
+        allocSvc.Setup(s => s.GetAllocationsAsync(
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)[
+                new DivisionAllocationDto(1, 99, "Default Division", 2027, decimal.MaxValue),
+            ]);
+
         WfpService sut = new(wfpRepo.Object, actRepo.Object, lineRepo.Object,
             accountRepo.Object, fsRepo.Object, audit.Object, ctx,
-            aipSvc.Object, officeSvc.Object, excelSvc.Object);
+            aipSvc.Object, officeSvc.Object, excelSvc.Object, allocSvc.Object);
 
         return (sut, wfpRepo, actRepo, lineRepo, audit);
     }
@@ -430,10 +446,10 @@ public sealed class WfpServiceTests
         List<WfpRecord> seed = [WfpRec(1, PlanningStatus.Draft, 2, 3)];
         var (sut, wfpRepo, _, _, _) = Build(seed, [], [], []);
 
-        IReadOnlyList<WfpRecordDto> result = await sut.GetAllAsync(2, 3, CancellationToken.None);
+        IReadOnlyList<WfpRecordDto> result = await sut.GetAllAsync(2, 3, null, CancellationToken.None);
 
         Assert.Single(result);
-        wfpRepo.Verify(r => r.GetFilteredAsync(2, 3, It.IsAny<CancellationToken>()), Times.Once);
+        wfpRepo.Verify(r => r.GetFilteredAsync(2, 3, null, It.IsAny<CancellationToken>()), Times.Once);
         wfpRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -461,13 +477,13 @@ public sealed class WfpServiceTests
     }
 
     [Fact]
-    public async Task Save_ExistingCheck_UsesFindByAipAndOfficeAsync()
+    public async Task Save_ExistingCheck_UsesFindByAipOfficeAndDivisionAsync()
     {
         var (sut, wfpRepo, _, _, _) = Build([], [], [], []);
 
-        await sut.SaveAsync(SimpleDto(2, 3, 10), UserId, CancellationToken.None);
+        await sut.SaveAsync(SimpleDto(2, 3, 10, divisionId: 5), UserId, CancellationToken.None);
 
-        wfpRepo.Verify(r => r.FindByAipAndOfficeAsync(2, 3, It.IsAny<CancellationToken>()), Times.Once);
+        wfpRepo.Verify(r => r.FindByAipOfficeAndDivisionAsync(2, 3, 5, It.IsAny<CancellationToken>()), Times.Once);
         wfpRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -519,6 +535,172 @@ public sealed class WfpServiceTests
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
     }
 
+    // ── RAL-102: per-division scoping ────────────────────────────────────────
+
+    [Fact]
+    public async Task Save_WithDivisionId_SetsRecordDivisionId()
+    {
+        WfpRecord? captured = null;
+        var (sut, wfpRepo, _, _, _) = Build([], [], [], []);
+        wfpRepo.Setup(r => r.AddAsync(It.IsAny<WfpRecord>(), It.IsAny<CancellationToken>()))
+            .Callback<WfpRecord, CancellationToken>((e, _) => { e.Id = 50; captured = e; })
+            .Returns(Task.CompletedTask);
+
+        var result = await sut.SaveAsync(SimpleDto(2, 3, 10, divisionId: 7), UserId, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(captured);
+        Assert.Equal(7, captured!.DivisionId);
+        Assert.Equal(7, result.Value!.DivisionId);
+    }
+
+    [Fact]
+    public async Task Save_DifferentDivisionsForSameAipOffice_AreIndependent()
+    {
+        // Pre-seed a record for division 1; saving for division 2 must create a NEW record.
+        WfpRecord div1Record = WfpRec(1, PlanningStatus.Draft, aipId: 2, officeId: 3, divisionId: 1);
+        var (sut, wfpRepo, actRepo, _, _) = Build([div1Record], [], [], []);
+
+        var result = await sut.SaveAsync(SimpleDto(2, 3, 10, divisionId: 2), UserId, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        // A new record is created — not an update of division 1's record.
+        wfpRepo.Verify(r => r.AddAsync(It.IsAny<WfpRecord>(), It.IsAny<CancellationToken>()), Times.Once);
+        wfpRepo.Verify(r => r.UpdateAsync(div1Record, It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Save_NullDivisionId_SkipsSetupGateAndBudgetValidation()
+    {
+        // A save with divisionId=null should NOT call the allocation service at all.
+        Mock<IAllocationService> allocMock = new();
+        allocMock.Setup(s => s.GetSetupStatusAsync(
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AllocationSetupStatusDto(false, false, false)); // would fail if called
+        allocMock.Setup(s => s.GetAllocationsAsync(
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)[]);
+
+        var (sut, _, _, _, _) = Build([], [], [], [], allocMock);
+
+        // divisionId = null → skip all division checks
+        var result = await sut.SaveAsync(SimpleDto(2, 3, 10, divisionId: null), UserId, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        allocMock.Verify(s => s.GetSetupStatusAsync(
+            It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+        allocMock.Verify(s => s.GetAllocationsAsync(
+            It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Save_SetupGateMissingCeiling_ReturnsBadRequest()
+    {
+        Mock<IAllocationService> allocMock = new();
+        allocMock.Setup(s => s.GetSetupStatusAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AllocationSetupStatusDto(false, true, true));
+        // GetAllocationsAsync won't be called when setup gate fails
+        allocMock.Setup(s => s.GetAllocationsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)[]);
+
+        var (sut, _, _, _, _) = Build([], [], [], [], allocMock);
+
+        var result = await sut.SaveAsync(SimpleDto(2, 3, 10, divisionId: 5), UserId, CancellationToken.None);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("ceiling", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Save_SetupGateMissingAllocation_ReturnsBadRequest()
+    {
+        Mock<IAllocationService> allocMock = new();
+        allocMock.Setup(s => s.GetSetupStatusAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AllocationSetupStatusDto(true, false, true));
+        allocMock.Setup(s => s.GetAllocationsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)[]);
+
+        var (sut, _, _, _, _) = Build([], [], [], [], allocMock);
+
+        var result = await sut.SaveAsync(SimpleDto(2, 3, 10, divisionId: 5), UserId, CancellationToken.None);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("allocation", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Save_SetupGateMissingProgramAssignment_ReturnsBadRequest()
+    {
+        Mock<IAllocationService> allocMock = new();
+        allocMock.Setup(s => s.GetSetupStatusAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AllocationSetupStatusDto(true, true, false));
+        allocMock.Setup(s => s.GetAllocationsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)[]);
+
+        var (sut, _, _, _, _) = Build([], [], [], [], allocMock);
+
+        var result = await sut.SaveAsync(SimpleDto(2, 3, 10, divisionId: 5), UserId, CancellationToken.None);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("program", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Save_GrossTotalExceedsDivisionAllocation_ReturnsBadRequest()
+    {
+        // Division 5 has allocation = ₱1,000. Save DTO has totalAppropriation = ₱2,000 (gross).
+        Mock<IAllocationService> allocMock = new();
+        allocMock.Setup(s => s.GetSetupStatusAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AllocationSetupStatusDto(true, true, true));
+        allocMock.Setup(s => s.GetAllocationsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)[
+                new DivisionAllocationDto(1, 5, "Division 5", 2027, 1_000m),
+            ]);
+
+        var (sut, _, _, _, _) = Build([], [], [], [], allocMock);
+
+        // TotalAppropriation = 2000 > allocation 1000
+        var result = await sut.SaveAsync(
+            SimpleDto(2, 3, 10, totalAppropriation: 2_000m, divisionId: 5),
+            UserId, CancellationToken.None);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("allocation", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Save_GrossTotalWithinDivisionAllocation_Succeeds()
+    {
+        Mock<IAllocationService> allocMock = new();
+        allocMock.Setup(s => s.GetSetupStatusAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AllocationSetupStatusDto(true, true, true));
+        allocMock.Setup(s => s.GetAllocationsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)[
+                new DivisionAllocationDto(1, 5, "Division 5", 2027, 5_000m),
+            ]);
+
+        var (sut, _, _, _, _) = Build([], [], [], [], allocMock);
+
+        // TotalAppropriation = 1000 ≤ allocation 5000
+        var result = await sut.SaveAsync(
+            SimpleDto(2, 3, 10, totalAppropriation: 1_000m, divisionId: 5),
+            UserId, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task GetAll_WithDivisionId_PassesDivisionFilterToRepo()
+    {
+        List<WfpRecord> seed = [WfpRec(1, PlanningStatus.Draft, 2, 3, divisionId: 5)];
+        var (sut, wfpRepo, _, _, _) = Build(seed, [], [], []);
+
+        var result = await sut.GetAllAsync(2, 3, 5, CancellationToken.None);
+
+        Assert.Single(result);
+        wfpRepo.Verify(r => r.GetFilteredAsync(2, 3, 5, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     [Fact]
     public async Task ExportReportAsync_KnownId_DelegatesAndReturnsBytes()
     {
@@ -563,9 +745,15 @@ public sealed class WfpServiceTests
         excelSvc.Setup(s => s.GenerateWfpReport(It.IsAny<WfpExcelReportData>()))
             .Returns(expectedBytes);
 
+        Mock<IAllocationService> allocSvc = new();
+        allocSvc.Setup(s => s.GetSetupStatusAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AllocationSetupStatusDto(true, true, true));
+        allocSvc.Setup(s => s.GetAllocationsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)[]);
+
         WfpService sut = new(wfpRepo.Object, actRepo.Object, lineRepo.Object,
             accountRepo.Object, fsRepo.Object, audit.Object, ctx,
-            aipSvc.Object, officeSvc.Object, excelSvc.Object);
+            aipSvc.Object, officeSvc.Object, excelSvc.Object, allocSvc.Object);
 
         ServiceResult<byte[]> result = await sut.ExportReportAsync(42, CancellationToken.None);
 

@@ -23,7 +23,8 @@ public sealed class PurchaseRequestConfiguration : IEntityTypeConfiguration<Purc
             .HasMaxLength(100)
             .HasDefaultValue("PPDO");
 
-        builder.Property(pr => pr.Division)
+        // Legacy PascalCase table — new column follows the table convention (DivisionId).
+        builder.Property(pr => pr.DivisionId)
             .IsRequired();
 
         builder.Property(pr => pr.Fund)
@@ -82,8 +83,8 @@ public sealed class PurchaseRequestConfiguration : IEntityTypeConfiguration<Purc
             .HasDatabaseName("IX_PurchaseRequests_PRNo");
 
         // Query indexes — division scope + status filtering are the two most common filters.
-        builder.HasIndex(pr => pr.Division)
-            .HasDatabaseName("IX_PurchaseRequests_Division");
+        builder.HasIndex(pr => pr.DivisionId)
+            .HasDatabaseName("IX_PurchaseRequests_DivisionId");
 
         builder.HasIndex(pr => pr.Status)
             .HasDatabaseName("IX_PurchaseRequests_Status");
@@ -97,6 +98,13 @@ public sealed class PurchaseRequestConfiguration : IEntityTypeConfiguration<Purc
             .WithMany()
             .HasForeignKey(pr => pr.CreatedById)
             .HasConstraintName("FK_PurchaseRequests_Users_CreatedById")
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // FK: PurchaseRequests.DivisionId → divisions.id (v1.2 — RAL-97).
+        builder.HasOne(pr => pr.Division)
+            .WithMany()
+            .HasForeignKey(pr => pr.DivisionId)
+            .HasConstraintName("FK_PurchaseRequests_divisions_DivisionId")
             .OnDelete(DeleteBehavior.Restrict);
     }
 }

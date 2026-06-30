@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using PPDO.Domain.Entities;
-using PPDO.Domain.Enums;
 using PPDO.Domain.Interfaces;
 using PPDO.Infrastructure.Data;
 
@@ -72,7 +71,7 @@ public sealed class DeliveryRepository : Repository<Delivery>, IDeliveryReposito
     /// <inheritdoc />
     public async Task<IReadOnlyList<DeliveryItemBreakdownRow>> GetDeliveryItemBreakdownsByStockNoAsync(
         string stockNo,
-        Division? division = null,
+        int? divisionId = null,
         CancellationToken cancellationToken = default)
     {
         // Load all DeliveryItems whose PRItem.StockNo matches, with full context.
@@ -82,7 +81,7 @@ public sealed class DeliveryRepository : Repository<Delivery>, IDeliveryReposito
             .Include(di => di.PRItem)
                 .ThenInclude(pi => pi!.PurchaseRequest)
             .Where(di => di.PRItem!.StockNo == stockNo
-                && (division == null || di.PRItem.PurchaseRequest!.Division == division))
+                && (divisionId == null || di.PRItem.PurchaseRequest!.DivisionId == divisionId))
             .ToListAsync(cancellationToken);
 
         return items
@@ -96,7 +95,7 @@ public sealed class DeliveryRepository : Repository<Delivery>, IDeliveryReposito
                 QtyDelivered:   di.QtyDelivered,
                 Distributions:  di.Distributions
                     .Select(dist => new DistributionBreakdownRow(
-                        dist.Id, dist.IssueRef, dist.Division,
+                        dist.Id, dist.IssueRef, dist.DivisionId,
                         dist.QtyIssued, dist.DateIssued,
                         dist.IssuedBy, dist.Remarks))
                     .ToList()))
@@ -126,7 +125,7 @@ public sealed class DeliveryRepository : Repository<Delivery>, IDeliveryReposito
             QtyDelivered:   di.QtyDelivered,
             Distributions:  di.Distributions
                 .Select(dist => new DistributionBreakdownRow(
-                    dist.Id, dist.IssueRef, dist.Division,
+                    dist.Id, dist.IssueRef, dist.DivisionId,
                     dist.QtyIssued, dist.DateIssued,
                     dist.IssuedBy, dist.Remarks))
                 .ToList());
