@@ -1,6 +1,6 @@
 # External AIP API — Contract (DRAFT for discussion)
 
-> **Status:** DRAFT v0.4 — proposed contract for review with GSO. Nothing is implemented yet.
+> **Status:** DRAFT v0.5 — proposed contract for review with GSO. Nothing is implemented yet.
 > **Audience:** GSO development team (consumer) + PPDO Portal team (provider).
 > **Purpose:** Let an authorized external system (GSO) **read finalized AIP records for an
 > office** so it can build its own WFP. Read-only, server-to-server.
@@ -211,8 +211,10 @@ office → sector → Program → Project → Activity (leaf, carries the amount
 | `sectors[].aipOfficeName` | string | Office name as written in the AIP for this grouping (may differ slightly per sector). |
 | `sectors[].programs[]` | array | Level-2 programs (6-segment ref code). |
 | `…programs[].refCode` / `.name` | string | Program reference code and name. |
+| `…programs[]` line-item fields | optional | **Rare.** A program may carry the same `amounts` / `esreCode` / `implementingOffice` / `schedule` / `fundingSource` / `climateChange` / `expectedOutputs` as an activity — see "Program- and project-level values" below. Omitted when absent. |
 | `…programs[].projects[]` | array | Level-3 projects (7-segment ref code). |
 | `…projects[].refCode` / `.name` | string | Project reference code and name. |
+| `…projects[]` line-item fields | optional | **Rare.** Same optional line-item fields as a program (see below). Omitted when absent. |
 | `…projects[].activities[]` | array | Level-4 activities (8-segment ref code) — the leaf, carries the amounts. |
 | `…activities[].refCode` / `.name` | string | Activity reference code and description. |
 | `…activities[].esreCode` | string\|null | ESRE classification: `SS` / `ES` / `ID` / `EN`. |
@@ -231,6 +233,42 @@ office → sector → Program → Project → Activity (leaf, carries the amount
 > it mirrors the AIP document, the portal's WFP grid, and PPDO's internal AIP DTOs, so the
 > implementation maps almost 1:1. Alternative: flat — one activity list with program/project and
 > sector as fields on each row. GSO to indicate preference.
+
+#### Program- and project-level values (rare)
+
+Normally only **activities** (the leaf) carry amounts. But the AIP source occasionally records a
+line item **directly at the program or project level**, with no child activity. The Provincial
+Legal Office does this — e.g. program `1000-000-1-01-011-004` "DISASTER RESILIENT HUMAN RIGHTS AND
+JUSTICE PROGRAM" carries ₱50,000 on its own.
+
+To handle this, a `programs[]` or `projects[]` node **may** carry the **same optional line-item
+fields as an activity** (`amounts`, `esreCode`, `implementingOffice`, `schedule`, `fundingSource`,
+`climateChange`, `expectedOutputs`). These fields are **omitted when the node carries no value of
+its own**. GSO consumers should read amounts **wherever they appear in the tree**, not only on
+activities.
+
+```json
+{
+  "refCode": "1000-000-1-01-011-004",
+  "name": "DISASTER RESILIENT HUMAN RIGHTS AND JUSTICE PROGRAM",
+  "esreCode": "ID",
+  "implementingOffice": "PLO",
+  "fundingSource": "GF",
+  "schedule": { "start": "January", "end": "December" },
+  "amounts": { "ps": 50000, "mooe": 0, "co": 0, "total": 50000 },
+  "climateChange": { "adaptation": 0, "mitigation": 0, "typologyCode": null },
+  "expectedOutputs": "Human rights protected and assist in the prosecution of …",
+  "projects": []
+}
+```
+
+> ⚠️ **Known PPDO-side limitation (logged, deferred — NOT a Phase-1 fix).** The portal's current
+> data model stores amounts only on activities (`AipProgram` / `AipProject` have no amount
+> columns), so these program/project-level values are **not captured today**. This is a known gap,
+> deferred while PPDO data is the priority (the only case seen so far is the non-PPDO Provincial
+> Legal Office). **Phase 2 must resolve it** — either extend the model to hold values at those
+> levels, or normalize each into a synthetic leaf activity — before the API can return them. The
+> contract reserves the shape now so GSO can design for it.
 
 ### 6.2 Fiscal-years response
 
