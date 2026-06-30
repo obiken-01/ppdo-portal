@@ -75,13 +75,11 @@ export default function PortalLayout({
         return;
       }
 
-      const refreshToken = auth.getRefreshToken();
-      if (!refreshToken) {
-        if (!cancelled) router.replace("/login");
-        return;
-      }
-
       if (!_refreshInFlight) {
+        // No JS-readable refresh token: just attempt the refresh. The httpOnly cookie
+        // is sent automatically via withCredentials; a missing/invalid cookie yields a
+        // 401 and we redirect to /login below.
+        //
         // Production: retry up to 2× with a 3-second delay to handle Azure Functions
         // cold starts (Consumption plan). Development: 0 retries — fail fast so a
         // restarted local server redirects to /login immediately instead of making
@@ -90,7 +88,7 @@ export default function PortalLayout({
 
         const tryRefresh = (retries: number): Promise<boolean> =>
           axios
-            .post(`${BASE_URL}/auth/refresh`, { refreshToken }, { withCredentials: true })
+            .post(`${BASE_URL}/auth/refresh`, {}, { withCredentials: true })
             .then(({ data }) => { auth.login(data); return true; })
             .catch((err) => {
               if (retries > 0 && axios.isAxiosError(err) && !err.response) {

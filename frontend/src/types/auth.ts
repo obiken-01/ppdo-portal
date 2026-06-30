@@ -7,12 +7,7 @@ export interface LoginRequest {
 
 export interface LoginResponse {
   accessToken: string;
-  refreshToken: string;
   expiresInSeconds: number;
-}
-
-export interface RefreshRequest {
-  refreshToken: string;
 }
 
 export interface MeResponse {

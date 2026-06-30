@@ -13,13 +13,17 @@ public interface IAuthService
 {
     /// <summary>
     /// Validates username + password and issues a new access token and refresh token.
-    /// Returns null when credentials are invalid or the user is inactive.
+    /// Tracks failed attempts per username and refuses further attempts once the
+    /// rate-limit threshold is exceeded (see <see cref="LoginOutcome.RateLimited"/>).
     /// </summary>
     /// <param name="username">The login username (case-insensitive).</param>
     /// <param name="password">The plain-text password to verify against the stored BCrypt hash.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>Tokens on success; null on failure.</returns>
-    Task<(string AccessToken, string RefreshToken)?> LoginAsync(
+    /// <returns>
+    /// A <see cref="LoginResult"/> describing the outcome: tokens on success,
+    /// invalid credentials, or rate-limited (with a retry-after hint).
+    /// </returns>
+    Task<LoginResult> LoginAsync(
         string username,
         string password,
         CancellationToken cancellationToken = default);
@@ -45,6 +49,49 @@ public interface IAuthService
     /// <c>JwtMiddleware.ValidateAsync</c>).
     /// </summary>
     Task<MeResponse> GetMeAsync(User user, CancellationToken cancellationToken = default);
+}
+
+/// <summary>The outcome of a <see cref="IAuthService.LoginAsync"/> call.</summary>
+public enum LoginOutcome
+{
+    /// <summary>Credentials valid — tokens issued.</summary>
+    Success,
+
+    /// <summary>Username unknown, user inactive, or password wrong.</summary>
+    InvalidCredentials,
+
+    /// <summary>Too many failed attempts for this username — login refused.</summary>
+    RateLimited,
+}
+
+/// <summary>
+/// Result of <see cref="IAuthService.LoginAsync"/>. On <see cref="LoginOutcome.Success"/>
+/// the tokens are populated; on <see cref="LoginOutcome.RateLimited"/> the
+/// <see cref="RetryAfterSeconds"/> hint indicates how long the caller should wait.
+/// </summary>
+public readonly record struct LoginResult
+{
+    public LoginOutcome Outcome { get; init; }
+    public string? AccessToken { get; init; }
+    public string? RefreshToken { get; init; }
+
+    /// <summary>Seconds until the lockout window clears (only set when rate-limited).</summary>
+    public int RetryAfterSeconds { get; init; }
+
+    public static LoginResult Success(string accessToken, string refreshToken) => new()
+    {
+        Outcome      = LoginOutcome.Success,
+        AccessToken  = accessToken,
+        RefreshToken = refreshToken,
+    };
+
+    public static LoginResult Invalid() => new() { Outcome = LoginOutcome.InvalidCredentials };
+
+    public static LoginResult RateLimited(int retryAfterSeconds) => new()
+    {
+        Outcome           = LoginOutcome.RateLimited,
+        RetryAfterSeconds = retryAfterSeconds,
+    };
 }
 
 /// <summary>

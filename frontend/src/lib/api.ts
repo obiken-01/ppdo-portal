@@ -9,11 +9,11 @@
  *
  * Response interceptor (silent refresh on 401):
  *   1. Intercepts 401 responses (expired / missing access token).
- *   2. Retrieves the refresh token from localStorage.
- *   3. POSTs to /auth/refresh using a bare axios call (not this instance,
- *      to prevent an infinite interceptor loop).
- *   4. On success → stores the new token pair and retries the original request.
- *   5. On failure → clears all tokens and redirects the user to /login.
+ *   2. POSTs to /auth/refresh using a bare axios call (not this instance,
+ *      to prevent an infinite interceptor loop). The httpOnly refresh cookie is
+ *      sent automatically via withCredentials — no token is read in JS.
+ *   3. On success → stores the new access token and retries the original request.
+ *   4. On failure → clears the access token and redirects the user to /login.
  *
  * Concurrent requests that 401 while a refresh is in-flight are queued and
  * replayed once the new access token is available.
@@ -128,23 +128,14 @@ api.interceptors.response.use(
     original._retry = true;
     isRefreshing = true;
 
-    const refreshToken = auth.getRefreshToken();
-
-    if (!refreshToken) {
-      // No refresh token stored — send the user to login immediately
-      isRefreshing = false;
-      processQueue(new Error("No refresh token."), null);
-      auth.logout();
-      if (typeof window !== "undefined") window.location.href = "/login";
-      return Promise.reject(error);
-    }
-
     try {
       // Use a plain axios call (not `api`) to avoid triggering this interceptor again.
+      // The httpOnly refresh cookie is sent automatically via withCredentials; if it is
+      // missing or invalid the backend returns 401 and we fall through to the catch.
       // Retry up to 2 times with a 3-second delay to handle Azure Functions cold starts
       // (Consumption plan scales to zero after inactivity; first request can take 20-30s).
       const { data } = await callWithRetry(() =>
-        axios.post(`${BASE_URL}/auth/refresh`, { refreshToken }, { withCredentials: true })
+        axios.post(`${BASE_URL}/auth/refresh`, {}, { withCredentials: true })
       );
       auth.login(data);
       processQueue(null, data.accessToken);

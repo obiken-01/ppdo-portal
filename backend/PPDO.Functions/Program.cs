@@ -12,10 +12,21 @@ using PPDO.Infrastructure.Data;
 using PPDO.Infrastructure.Repositories;
 using PPDO.Infrastructure.Services;
 
-// ── CORS allowed origins ──────────────────────────────────────────────────────
-// Local dev: Next.js (3000) + SWA CLI (4280).
-// Production: set AllowedOrigins in Azure Function App Settings.
+// ── CORS allowlist (RAL-58) ───────────────────────────────────────────────────
+// Only origins on this allowlist receive CORS headers; all others get none (the
+// browser then blocks the cross-origin response). This replaces the previous
+// origin echo-back, which — combined with Allow-Credentials — accepted credentialed
+// requests from ANY site.
+//
+// Configure via the App Setting "Cors:AllowedOrigins" (exposed to the isolated
+// worker as the env var Cors__AllowedOrigins), a comma-separated list of origins.
+// Falls back to local dev origins (Next.js 3000 + SWA CLI 4280) when unset.
 // ─────────────────────────────────────────────────────────────────────────────
+string[] allowedOrigins =
+    (Environment.GetEnvironmentVariable("Cors__AllowedOrigins")
+     ?? Environment.GetEnvironmentVariable("Cors:AllowedOrigins")
+     ?? "http://localhost:3000,http://localhost:4280")
+    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
 var host = new HostBuilder()
     .ConfigureFunctionsWebApplication(worker =>
@@ -32,7 +43,9 @@ var host = new HostBuilder()
             {
                 string? origin = http.Request.Headers.Origin.FirstOrDefault();
 
-                if (!string.IsNullOrEmpty(origin))
+                // Only emit CORS headers for an allowlisted origin.
+                if (!string.IsNullOrEmpty(origin)
+                    && allowedOrigins.Contains(origin, StringComparer.OrdinalIgnoreCase))
                 {
                     http.Response.Headers["Access-Control-Allow-Origin"]      = origin;
                     http.Response.Headers["Access-Control-Allow-Credentials"] = "true";
@@ -41,6 +54,8 @@ var host = new HostBuilder()
                     http.Response.Headers["Access-Control-Allow-Headers"]     =
                         "Content-Type, Authorization";
                     http.Response.Headers["Access-Control-Max-Age"]           = "86400";
+                    // Response varies by Origin since the allowed value is request-specific.
+                    http.Response.Headers["Vary"]                             = "Origin";
                 }
 
                 // Answer OPTIONS preflight immediately — no function handler needed.
@@ -74,6 +89,9 @@ var host = new HostBuilder()
 
         // -- ASP.NET Core helpers --------------------------------------------
         services.AddHttpContextAccessor();
+
+        // -- In-memory cache (login rate limiting, RAL-58) -------------------
+        services.AddMemoryCache();
 
         // -- Scoped request context ------------------------------------------
         services.AddScoped<CallerContext>();
