@@ -1,6 +1,6 @@
 # External AIP API — Contract (DRAFT for discussion)
 
-> **Status:** DRAFT v0.2 — proposed contract for review with GSO. Nothing is implemented yet.
+> **Status:** DRAFT v0.3 — proposed contract for review with GSO. Nothing is implemented yet.
 > **Audience:** GSO development team (consumer) + PPDO Portal team (provider).
 > **Purpose:** Let an authorized external system (GSO) **read finalized AIP records for an
 > office** so it can build its own WFP. Read-only, server-to-server.
@@ -92,9 +92,9 @@ GET /api/external/v1/aip?officeCode={code}&fiscalYear={year}
 
 **Behaviour**
 
-- Returns the **finalized** AIP for that office and fiscal year, as a flat list of **activities**
-  (the leaf level), each carrying its full program/project lineage — the granularity needed to
-  build a WFP.
+- Returns the **finalized** AIP for that office and fiscal year, **grouped by sector** (an office
+  can appear in 1–4 sectors), with each sector's activities (the leaf level) carrying full
+  program/project lineage — the granularity needed to build a WFP.
 - If no `Final` AIP exists for that office/year → `200` with `data: null` (not an error).
 - Requires a valid `X-Api-Key` scoped to the requested `officeCode`.
 
@@ -136,39 +136,59 @@ Data responses use the envelope:
 
 `GET /api/external/v1/aip?officeCode=PEO&fiscalYear=2027`
 
+> ⚠️ **A single office can have AIP items in more than one sector** (e.g. PGO often spans all
+> four: General / Social / Economic / Others). Internally each office-and-sector pair is a
+> separate grouping, so the response groups activities **by sector** under the office.
+
 ```json
 {
   "data": {
     "fiscalYear": 2027,
     "status": "Final",
     "office": {
-      "code": "PEO",
-      "name": "Provincial Engineering Office",
-      "aipRefCode": "01-010",
-      "sector": "Economic"
+      "code": "PGO",
+      "name": "Provincial Governor's Office"
     },
-    "activities": [
+    "sectors": [
       {
-        "refCode": "01-010-001-001-001-001-001-001",
-        "name": "Concreting of Barangay Access Road",
-        "program":  { "refCode": "01-010-001", "name": "Infrastructure Program" },
-        "project":  { "refCode": "01-010-001-001", "name": "Local Roads Project" },
-        "esreCode": "ID",
-        "implementingOffice": "Provincial Engineering Office",
-        "fundingSource": "20%DF",
-        "schedule": { "start": "January", "end": "December" },
-        "amounts": {
-          "ps": 0,
-          "mooe": 0,
-          "co": 1500000,
-          "total": 1500000
-        },
-        "climateChange": {
-          "adaptation": 1500000,
-          "mitigation": 0,
-          "typologyCode": "A-3"
-        },
-        "expectedOutputs": "1.2 km concrete road completed"
+        "sector": "General",
+        "aipOfficeRefCode": "1-00-000-1-001",
+        "aipOfficeName": "Provincial Governor's Office",
+        "activities": [
+          {
+            "refCode": "1-00-000-1-001-001-001-001",
+            "name": "General Administrative Services",
+            "program":  { "refCode": "1-00-000-1-001-001", "name": "General Administration Program" },
+            "project":  { "refCode": "1-00-000-1-001-001-001", "name": "Office Operations" },
+            "esreCode": "ES",
+            "implementingOffice": "Provincial Governor's Office",
+            "fundingSource": "GF",
+            "schedule": { "start": "January", "end": "December" },
+            "amounts": { "ps": 5000000, "mooe": 1200000, "co": 0, "total": 6200000 },
+            "climateChange": { "adaptation": 0, "mitigation": 0, "typologyCode": null },
+            "expectedOutputs": "Year-round office operations"
+          }
+        ]
+      },
+      {
+        "sector": "Economic",
+        "aipOfficeRefCode": "3-00-000-1-001",
+        "aipOfficeName": "Provincial Governor's Office",
+        "activities": [
+          {
+            "refCode": "3-00-000-1-001-001-001-001",
+            "name": "Livelihood Assistance Program",
+            "program":  { "refCode": "3-00-000-1-001-001", "name": "Economic Development Program" },
+            "project":  { "refCode": "3-00-000-1-001-001-001", "name": "Local Livelihood Project" },
+            "esreCode": "ID",
+            "implementingOffice": "Provincial Governor's Office",
+            "fundingSource": "20%DF",
+            "schedule": { "start": "January", "end": "December" },
+            "amounts": { "ps": 0, "mooe": 0, "co": 1500000, "total": 1500000 },
+            "climateChange": { "adaptation": 1500000, "mitigation": 0, "typologyCode": "A-3" },
+            "expectedOutputs": "200 beneficiaries assisted"
+          }
+        ]
       }
     ]
   },
@@ -183,29 +203,33 @@ Data responses use the envelope:
 |-------|------|-------|
 | `fiscalYear` | int | AIP fiscal year. |
 | `status` | string | Always `"Final"` (only finalized records are exposed). |
-| `office.code` | string | PPDO office code echoed back. |
-| `office.name` | string | Office name as written in the AIP. |
-| `office.aipRefCode` | string | 5-segment AIP reference code for the office grouping. |
-| `office.sector` | string | `General` / `Social` / `Economic` / `Others`. |
-| `activities[]` | array | One entry per AIP activity (leaf). |
-| `activities[].refCode` | string | 8-segment activity reference code (unique within its project). |
-| `activities[].name` | string | Activity description. |
-| `activities[].program` | object | Parent program `{ refCode, name }`. |
-| `activities[].project` | object | Parent project `{ refCode, name }`. |
-| `activities[].esreCode` | string\|null | ESRE classification: `SS` / `ES` / `ID` / `EN`. |
-| `activities[].implementingOffice` | string\|null | Implementing office as written in the AIP. |
-| `activities[].fundingSource` | string\|null | Funding-source code snapshot at import time (e.g. `20%DF`). |
-| `activities[].schedule.start` / `.end` | string\|null | Stored as month names (e.g. `"January"`), not dates. |
-| `activities[].amounts.ps` | number | Personal Services, **pesos**. |
-| `activities[].amounts.mooe` | number | Maintenance & Other Operating Expenses, **pesos**. |
-| `activities[].amounts.co` | number | Capital Outlay, **pesos**. |
-| `activities[].amounts.total` | number | `ps + mooe + co`, **pesos**. |
-| `activities[].climateChange.adaptation` / `.mitigation` | number | CC amounts, **pesos**. |
-| `activities[].climateChange.typologyCode` | string\|null | CC typology code. |
-| `activities[].expectedOutputs` | string\|null | Free text. |
+| `office.code` | string | PPDO office code echoed back (the canonical office). |
+| `office.name` | string | PPDO office name. |
+| `sectors[]` | array | One entry per sector the office has items in (1–4: `General` / `Social` / `Economic` / `Others`). |
+| `sectors[].sector` | string | `General` / `Social` / `Economic` / `Others`. |
+| `sectors[].aipOfficeRefCode` | string | 5-segment AIP ref code for this office-and-sector grouping. |
+| `sectors[].aipOfficeName` | string | Office name as written in the AIP for this grouping (may differ slightly per sector). |
+| `sectors[].activities[]` | array | One entry per AIP activity (leaf) in this sector. |
+| `…activities[].refCode` | string | 8-segment activity reference code (unique within its project). |
+| `…activities[].name` | string | Activity description. |
+| `…activities[].program` | object | Parent program `{ refCode, name }`. |
+| `…activities[].project` | object | Parent project `{ refCode, name }`. |
+| `…activities[].esreCode` | string\|null | ESRE classification: `SS` / `ES` / `ID` / `EN`. |
+| `…activities[].implementingOffice` | string\|null | Implementing office as written in the AIP. |
+| `…activities[].fundingSource` | string\|null | Funding-source code snapshot at import time (e.g. `20%DF`). |
+| `…activities[].schedule.start` / `.end` | string\|null | Stored as month names (e.g. `"January"`), not dates. |
+| `…activities[].amounts.ps` | number | Personal Services, **pesos**. |
+| `…activities[].amounts.mooe` | number | Maintenance & Other Operating Expenses, **pesos**. |
+| `…activities[].amounts.co` | number | Capital Outlay, **pesos**. |
+| `…activities[].amounts.total` | number | `ps + mooe + co`, **pesos**. |
+| `…activities[].climateChange.adaptation` / `.mitigation` | number | CC amounts, **pesos**. |
+| `…activities[].climateChange.typologyCode` | string\|null | CC typology code. |
+| `…activities[].expectedOutputs` | string\|null | Free text. |
 
-> **(confirm)** Shape is **flat activities with lineage** (recommended — easiest to map into WFP).
-> Alternative: a nested tree `office → programs → projects → activities`. GSO to indicate preference.
+> **(confirm)** Shape is **grouped by sector, flat activities within** — this mirrors how AIP data
+> is actually organized (and how WFP is built per office-sector grouping in PPDO). Alternatives:
+> (a) fully flat — one activity list with `sector` as a field on each row; (b) a deeper nested
+> tree `sector → programs → projects → activities`. GSO to indicate preference.
 
 ### 6.2 Fiscal-years response
 
@@ -263,7 +287,8 @@ curl -s "https://<ppdo-portal-domain>/api/external/v1/aip?officeCode=PEO&fiscalY
 
 ## 9. Open items to settle with GSO
 
-1. **Response shape** — flat activities (proposed) vs nested tree.
+1. **Response shape** — grouped by sector with flat activities within (proposed) vs fully-flat
+   (sector as a field on each activity) vs deeper nested tree.
 2. **Auth header** — `X-Api-Key` (proposed) vs `Authorization: Bearer`.
 3. **Scope** — one office per key, or a set of offices per key?
 4. **Fields** — does GSO need everything in §6.1, or a subset? Anything missing for WFP building
