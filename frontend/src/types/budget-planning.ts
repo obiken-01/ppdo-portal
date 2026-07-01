@@ -40,12 +40,16 @@ export interface ParsedAipProjectResponse {
   refCode: string;
   name: string;
   activities: ParsedAipActivityResponse[];
+  /** RAL-108: set when this project row also carries its own line item — materialized as a synthetic activity at confirm time. */
+  lineItem: ParsedAipActivityResponse | null;
 }
 
 export interface ParsedAipProgramResponse {
   refCode: string;
   name: string;
   projects: ParsedAipProjectResponse[];
+  /** RAL-108: set when this program row also carries its own line item — materialized as a synthetic project+activity at confirm time. */
+  lineItem: ParsedAipActivityResponse | null;
 }
 
 export interface ParsedAipOfficeResponse {
@@ -97,6 +101,8 @@ export interface AipActivityDetail {
   ccAdaptation: number | null;
   ccMitigation: number | null;
   ccTypologyCode: string | null;
+  /** RAL-108: true when this activity was materialized from a program/project-level line item. */
+  isSynthetic: boolean;
 }
 
 export interface AipProjectDetail {
@@ -105,6 +111,8 @@ export interface AipProjectDetail {
   refCode: string;
   name: string;
   activities: AipActivityDetail[];
+  /** RAL-108: true when this project was materialized to hold its parent program's line item. */
+  isSynthetic: boolean;
 }
 
 export interface AipProgramDetail {

@@ -18,8 +18,14 @@ public interface IAipXlsmParser
 // ── Parsed POCOs (not persisted — no IDs) ────────────────────────────────────
 
 public record ParsedAipOffice(string RefCode, string Name, string Sector, List<ParsedAipProgram> Programs);
-public record ParsedAipProgram(string RefCode, string Name, List<ParsedAipProject> Projects);
-public record ParsedAipProject(string RefCode, string Name, List<ParsedAipActivity> Activities);
+
+// LineItem (RAL-108): non-null when the source row for this program/project ALSO carries its
+// own amounts/eSRE/funding source directly (e.g. Provincial Legal Office program
+// 1000-000-1-01-011-004). Materialized as a synthetic leaf activity at confirm-import time —
+// financial data must always live on an AipActivity so it flows into WFP/reports/external API
+// the same way every other activity does.
+public record ParsedAipProgram(string RefCode, string Name, List<ParsedAipProject> Projects, ParsedAipActivity? LineItem = null);
+public record ParsedAipProject(string RefCode, string Name, List<ParsedAipActivity> Activities, ParsedAipActivity? LineItem = null);
 
 public record ParsedAipActivity(
     string   RefCode,

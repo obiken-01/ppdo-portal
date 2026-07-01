@@ -139,7 +139,8 @@ public sealed class AipXlsmParser : IAipXlsmParser
                 {
                     if (currentOffice is null) break;
                     string name = ws.Cell(row, 3).GetString().Trim();
-                    currentProgram = new ParsedAipProgram(storedRefCode, name, new List<ParsedAipProject>());
+                    ParsedAipActivity? lineItem = TryParseLineItem(ws, row, storedRefCode, name);
+                    currentProgram = new ParsedAipProgram(storedRefCode, name, new List<ParsedAipProject>(), lineItem);
                     ((List<ParsedAipProgram>)currentOffice.Programs).Add(currentProgram);
                     currentProject = null;
                     lastActivity   = null;
@@ -150,7 +151,8 @@ public sealed class AipXlsmParser : IAipXlsmParser
                 {
                     if (currentProgram is null) break;
                     string name = ws.Cell(row, 4).GetString().Trim();
-                    currentProject = new ParsedAipProject(storedRefCode, name, new List<ParsedAipActivity>());
+                    ParsedAipActivity? lineItem = TryParseLineItem(ws, row, storedRefCode, name);
+                    currentProject = new ParsedAipProject(storedRefCode, name, new List<ParsedAipActivity>(), lineItem);
                     ((List<ParsedAipProject>)currentProgram.Projects).Add(currentProject);
                     lastActivity   = null;
                     currentActivityList = (List<ParsedAipActivity>)currentProject.Activities;
@@ -160,22 +162,23 @@ public sealed class AipXlsmParser : IAipXlsmParser
                 {
                     if (currentProject is null) break;
                     currentActivityList = (List<ParsedAipActivity>)currentProject.Activities;
+                    LineItemFields f = ReadLineItemFields(ws, row);
                     ParsedAipActivity activity = new(
                         RefCode:           storedRefCode,
                         Name:              ws.Cell(row, 5).GetString().Trim(),
-                        EsreCode:          NullIfBlank(ws.Cell(row, 6).GetString()),
-                        ImplementingOffice:NullIfBlank(ws.Cell(row, 7).GetString()),
-                        StartDate:         NullIfBlank(ws.Cell(row, 8).GetString()),
-                        EndDate:           NullIfBlank(ws.Cell(row, 9).GetString()),
-                        ExpectedOutputs:   NullIfBlank(ws.Cell(row, 10).GetString()),
-                        FundingSourceRaw:  NullIfBlank(ws.Cell(row, 11).GetString()),
-                        Ps:                ParseDecimal(ws.Cell(row, 12)),
-                        Mooe:              ParseDecimal(ws.Cell(row, 13)),
-                        Co:                ParseDecimal(ws.Cell(row, 14)),
-                        Total:             ParseDecimal(ws.Cell(row, 15)),
-                        CcAdaptation:      ParseDecimal(ws.Cell(row, 16)),
-                        CcMitigation:      ParseDecimal(ws.Cell(row, 17)),
-                        CcTypologyCode:    NullIfBlank(ws.Cell(row, 18).GetString()));
+                        EsreCode:          f.EsreCode,
+                        ImplementingOffice:f.ImplementingOffice,
+                        StartDate:         f.StartDate,
+                        EndDate:           f.EndDate,
+                        ExpectedOutputs:   f.ExpectedOutputs,
+                        FundingSourceRaw:  f.FundingSourceRaw,
+                        Ps:                f.Ps,
+                        Mooe:              f.Mooe,
+                        Co:                f.Co,
+                        Total:             f.Total,
+                        CcAdaptation:      f.CcAdaptation,
+                        CcMitigation:      f.CcMitigation,
+                        CcTypologyCode:    f.CcTypologyCode);
                     currentActivityList.Add(activity);
                     lastActivity = activity;
                     break;
@@ -186,6 +189,51 @@ public sealed class AipXlsmParser : IAipXlsmParser
 
         return offices;
     }
+
+    /// <summary>
+    /// RAL-108: some program/project rows (6/7 segments) carry the same line-item columns
+    /// (F–R) as an activity row — e.g. the Provincial Legal Office records amounts directly
+    /// on a program with no child project. When any of those columns is non-blank, returns a
+    /// <see cref="ParsedAipActivity"/> using the program/project's own ref code and name so it
+    /// can be materialized as a synthetic leaf activity at confirm-import time. Returns null
+    /// when the row carries no line-item data of its own (the normal case).
+    /// </summary>
+    private static ParsedAipActivity? TryParseLineItem(IXLWorksheet ws, int row, string refCode, string name)
+    {
+        LineItemFields f = ReadLineItemFields(ws, row);
+        bool hasData = f.EsreCode is not null || f.ImplementingOffice is not null
+            || f.StartDate is not null || f.EndDate is not null || f.ExpectedOutputs is not null
+            || f.FundingSourceRaw is not null || f.Ps is not null || f.Mooe is not null
+            || f.Co is not null || f.Total is not null || f.CcAdaptation is not null
+            || f.CcMitigation is not null || f.CcTypologyCode is not null;
+
+        return hasData
+            ? new ParsedAipActivity(refCode, name, f.EsreCode, f.ImplementingOffice, f.StartDate,
+                f.EndDate, f.ExpectedOutputs, f.FundingSourceRaw, f.Ps, f.Mooe, f.Co, f.Total,
+                f.CcAdaptation, f.CcMitigation, f.CcTypologyCode)
+            : null;
+    }
+
+    private readonly record struct LineItemFields(
+        string? EsreCode, string? ImplementingOffice, string? StartDate, string? EndDate,
+        string? ExpectedOutputs, string? FundingSourceRaw,
+        decimal? Ps, decimal? Mooe, decimal? Co, decimal? Total,
+        decimal? CcAdaptation, decimal? CcMitigation, string? CcTypologyCode);
+
+    private static LineItemFields ReadLineItemFields(IXLWorksheet ws, int row) => new(
+        EsreCode:           NullIfBlank(ws.Cell(row, 6).GetString()),
+        ImplementingOffice: NullIfBlank(ws.Cell(row, 7).GetString()),
+        StartDate:          NullIfBlank(ws.Cell(row, 8).GetString()),
+        EndDate:            NullIfBlank(ws.Cell(row, 9).GetString()),
+        ExpectedOutputs:    NullIfBlank(ws.Cell(row, 10).GetString()),
+        FundingSourceRaw:   NullIfBlank(ws.Cell(row, 11).GetString()),
+        Ps:                 ParseDecimal(ws.Cell(row, 12)),
+        Mooe:               ParseDecimal(ws.Cell(row, 13)),
+        Co:                 ParseDecimal(ws.Cell(row, 14)),
+        Total:              ParseDecimal(ws.Cell(row, 15)),
+        CcAdaptation:       ParseDecimal(ws.Cell(row, 16)),
+        CcMitigation:       ParseDecimal(ws.Cell(row, 17)),
+        CcTypologyCode:     NullIfBlank(ws.Cell(row, 18).GetString()));
 
     private static int CountSegments(string refCode)
     {

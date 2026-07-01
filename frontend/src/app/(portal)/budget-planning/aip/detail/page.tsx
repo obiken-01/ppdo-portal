@@ -394,6 +394,11 @@ export default function AipDetailPage() {
                                 </td>
                                 <td colSpan={14} className="px-2 py-1.5 text-xs font-medium text-slate-600">
                                   {proj.name}
+                                  {proj.isSynthetic && (
+                                    <span className="ml-2 px-1.5 py-0.5 text-[10px] font-normal bg-amber-100 text-amber-700" title="This project does not exist in the source file — it was created to hold a line item recorded directly on the parent program row.">
+                                      program-level entry
+                                    </span>
+                                  )}
                                   {!projOpen && (
                                     <span className="ml-2 font-normal text-[10px] text-slate-400">
                                       {proj.activities.length} activities
@@ -410,6 +415,11 @@ export default function AipDetailPage() {
                                   </td>
                                   <td className="px-2 py-1.5 pl-12 text-xs text-slate-900 align-top leading-snug">
                                     {act.name}
+                                    {act.isSynthetic && (
+                                      <span className="ml-2 px-1.5 py-0.5 text-[10px] font-normal bg-amber-100 text-amber-700" title="This activity does not exist in the source file — it was created to hold a line item recorded directly on the parent program/project row.">
+                                        project-level entry
+                                      </span>
+                                    )}
                                   </td>
                                   <td className="px-2 py-1.5 text-center text-xs text-slate-600">{act.esreCode ?? "—"}</td>
                                   <td className="px-2 py-1.5 text-xs text-slate-600 align-top">{act.implementingOffice ?? "—"}</td>
