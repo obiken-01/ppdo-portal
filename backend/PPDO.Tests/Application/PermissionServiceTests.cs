@@ -150,10 +150,19 @@ public sealed class PermissionServiceTests
         Assert.False(await _sut.CanAccessBudgetPlanningAsync(MakeUser(UserRole.Staff, divBudgetPlanning: false)));
     }
 
+    // Office users' only feature is Budget Planning, and they can't be assigned a division
+    // in the UI (scoped by office_id instead). So their access defaults ON — otherwise a
+    // division-less office user resolves to false and gets locked out of their only feature.
     [Fact]
-    public async Task CanAccessBudgetPlanning_OfficeUserStaff_InheritsDivisionFlag()
+    public async Task CanAccessBudgetPlanning_OfficeUser_DefaultsTrue_WithoutDivision()
         => Assert.True(await _sut.CanAccessBudgetPlanningAsync(
-            MakeUser(UserRole.Staff, divBudgetPlanning: true, officeId: 7)));
+            MakeUser(UserRole.Staff, officeId: 7, hasDivision: false)));
+
+    // An explicit override can still turn it off for a specific office user.
+    [Fact]
+    public async Task CanAccessBudgetPlanning_OfficeUser_OverrideFalse_ReturnsFalse()
+        => Assert.False(await _sut.CanAccessBudgetPlanningAsync(
+            MakeUser(UserRole.Staff, officeId: 7, overrideBudgetPlanning: false, hasDivision: false)));
 
     // ── CanUploadAip — PPDO-only ──────────────────────────────────────────────
 
