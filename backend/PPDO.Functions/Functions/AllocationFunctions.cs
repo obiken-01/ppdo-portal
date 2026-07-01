@@ -12,9 +12,10 @@ namespace PPDO.Functions.Functions;
 /// <summary>
 /// Allocation endpoints under <c>/api/budget-planning/allocation</c> (RAL-99).
 ///
-/// Ceiling + division allocation + PPA→division assignment are all gated on
-/// CanManageAllocation (finance officer only). The setup-status check is gated on
-/// CanAccessBudgetPlanning so that regular WFP users can query the gate before entry.
+/// Mutations (ceiling/allocation/assignment upserts) and the division + program
+/// reads are gated on CanManageAllocation (finance officer only). The ceiling GET
+/// and the setup-status check are gated on CanAccessBudgetPlanning so that regular
+/// WFP users can read whether a ceiling exists and query the setup gate before entry.
 ///
 /// Amounts are in PESOS — no ×1000 conversion here (that lives in the WFP page layer).
 /// </summary>
@@ -38,13 +39,16 @@ public sealed class AllocationFunctions
     private Task<bool> CanAccessBudgetPlanning(User u) => _permissions.CanAccessBudgetPlanningAsync(u);
 
     // ── GET /api/budget-planning/allocation/ceiling?officeId=&fiscalYear= ─────
+    // Read is gated on CanAccessBudgetPlanning (not CanManageAllocation): every WFP
+    // user — including non-finance office users — needs to know whether a ceiling
+    // exists for the setup-complete gate. Mutations below stay finance-only.
     [Function("AllocationGetCeiling")]
     public async Task<HttpResponseData> GetCeiling(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get",
             Route = "budget-planning/allocation/ceiling")] HttpRequestData req,
         CancellationToken ct)
     {
-        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanManageAllocation, ct);
+        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccessBudgetPlanning, ct);
         if (denied is not null) return denied;
 
         if (!int.TryParse(req.Query["officeId"], out int officeId) ||
