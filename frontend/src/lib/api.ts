@@ -102,14 +102,28 @@ interface RetryConfig extends InternalAxiosRequestConfig {
   _retry?: boolean;
 }
 
+// On these endpoints a 401 means "bad credentials / no valid session", NOT an
+// expired access token — so we must NOT run the silent-refresh flow (which would
+// call auth.logout() and hard-redirect to /login, reloading the page out from
+// under the invalid-credentials banner). Let the caller handle the error instead.
+const NO_REFRESH_PATHS = ["/auth/login", "/auth/refresh", "/auth/logout"];
+const isNoRefreshPath = (url?: string): boolean =>
+  !!url && NO_REFRESH_PATHS.some((path) => url.includes(path));
+
 api.interceptors.response.use(
   (response) => response,
 
   async (error: AxiosError) => {
     const original = error.config as RetryConfig | undefined;
 
-    // Only attempt refresh on 401 and only once per request
-    if (!original || error.response?.status !== 401 || original._retry) {
+    // Only attempt refresh on 401, only once per request, and never for the auth
+    // endpoints themselves (a 401 there is a real credential failure, not expiry).
+    if (
+      !original ||
+      error.response?.status !== 401 ||
+      original._retry ||
+      isNoRefreshPath(original.url)
+    ) {
       return Promise.reject(error);
     }
 
