@@ -124,9 +124,11 @@ Status lifecycle is **Draft → Final → Archived** (finalize + admin unlock; *
 - **"Recent Activity"** panel (right): "All offices (PPDO view)" — chronological (Today / Jun 9 / Jun 8):
   "R. Alcaide finalized PPDO WFP", "PGO updated 12 expenditure lines", "AIP FY 2027 imported (2,309 activities)", etc.
 
-## 9. Planning Dashboard — Visitor view (board 21, RAL-80)
+## 9. Planning Dashboard — Office-user view (board 21, RAL-80)
 
-- Same header; subtitle "FY overview · Visitor view — <Office name>".
+> Terminology: "Visitor" was retired in v1.1 — these are **office users** (non-PPDO, `users.office_id` set). See `User_Roles_Permissions.md`.
+
+- Same header; subtitle "FY overview · Office view — <Office name>".
 - **Selectors:** FY (`FY 2027 ▾`) · Office **locked to own office** (e.g. `PEO`, not a free dropdown).
 - **Nav buttons:** LDIP · AIP · WFP.
 - **No stat cards, no WFP-status-by-office table.**

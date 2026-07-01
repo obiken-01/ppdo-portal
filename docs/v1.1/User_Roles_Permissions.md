@@ -4,6 +4,23 @@ _This is the reference for how users, roles, divisions, offices, and permission 
 
 ---
 
+## 🔄 SUPERSEDED IN PART BY v1.2 — read this first (updated 2026-07-01)
+
+**Authoritative current model:** `docs/v1.2/Allocation_Requirements.md` §5–6. v1.2 (divisions + permission simplification, RAL-97/98) **changed the identity/permission model**. Everything below is retained as **v1.1 history**; where it conflicts with this box, this box wins.
+
+**What changed in v1.2:**
+- **`Observer` role retired.** Roles are now **SuperAdmin / Admin / Staff** only. (Existing prod Observers were converted to Staff with restricted division flags — a "view-only" per-user flag is deferred.) So every "Observer" row/rule below no longer applies.
+- **`Division` enum retired** → replaced by a **configurable, per-office `divisions` table**. `users.division` (enum) → **`users.division_id INT NULL FK → divisions`**. PPDO's real divisions are now: Administrative, Sectoral Planning, Statistics/Monitoring & Evaluation (SMED), Fiscal Planning & Investment Programming (FPIP), ICT, Open Governance & CSO (OG-CSO).
+- **`PermissionGroup` retired** (table, `Users.GroupId`, `GroupIdFor`, group config UI all deleted). **Feature flags now live on the `divisions` row** (`divisions.can_*`) — each division *is* its "group," edited in the division config page. A Staff user's flags = `OverrideCan* ?? user.division.can_* ?? false`; SuperAdmin/Admin default all-true.
+- **New per-user grant `CanManageAllocation`** (`User.OverrideCanManageAllocation`) — gates the finance-only Allocation page; **not** a division flag. Resolution: `SuperAdmin → true; else OverrideCanManageAllocation ?? false`. PPDO finance = Admin; non-PPDO finance = Staff + this grant.
+- **Two scoping dimensions unchanged in concept**, but division scope is now `division_id`-based: **office scope** (`office_id == null` → PPDO/all offices; set → own office) and **division scope** for WFP/Allocation (skipped for Admin/SuperAdmin **or** holders of `CanManageAllocation`; otherwise filtered to `user.division_id`). ⚠️ Consequence: any Admin sees **all** divisions in WFP.
+- **WFP is now per-division** — records keyed `(aip_record_id, office_id, division_id)`; a Staff user sees only their division's PPAs (from `program_divisions`). See `Allocation_Requirements.md` §7.
+- The **nullable-Division guard** (§4 below) still applies in spirit but now targets `division_id` in `DivisionScope.Resolve` (`backend/PPDO.Application/Common/DivisionScope.cs`).
+
+**Still accurate below:** the three Budget-Planning flags (`CanAccessBudgetPlanning`, `CanUploadAip` [PPDO-only], `CanManageConfig`), the `office_id` PPDO/non-PPDO discriminator, the office-user experience (redirect to `/budget-planning`, own-office scope), and the deferred items.
+
+---
+
 ## 1. Background
 
 v1.0 was designed as a **PPDO-internal tool** — every user was assumed to be a PPDO employee. v1.1 Budget Planning introduces **non-PPDO users**: staff from the 16 provincial offices who log in to encode their office's WFP. This document defines how both user populations are modeled.
