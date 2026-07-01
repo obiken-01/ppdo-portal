@@ -459,6 +459,148 @@ public sealed class AipServiceTests
         Assert.Equal("GF", act.FundingSourceSnapshot);
     }
 
+    // ── Program/project-level line items (RAL-108, extend approach) ──────────
+
+    [Fact]
+    public async Task ConfirmImport_ProgramLineItem_PersistsFieldsOnTheProgramItself()
+    {
+        AipRecord? insertedGraph = null;
+        var (sut, aipRepo, _, _, _, _) = Build([], [Fs(1, "GF")]);
+        aipRepo.Setup(r => r.AddAsync(It.IsAny<AipRecord>(), It.IsAny<CancellationToken>()))
+            .Callback<AipRecord, CancellationToken>((e, _) => { e.Id = 100; insertedGraph = e; })
+            .Returns(Task.CompletedTask);
+
+        AipImportConfirmDto dto = new(2027, "aip.xlsm", null,
+            new Dictionary<string, List<ParsedAipOfficeDto>>
+            {
+                ["GENERAL"] =
+                [
+                    new ParsedAipOfficeDto("1000-000-1-01-011", "Provincial Legal Office", "GENERAL",
+                    [
+                        new ParsedAipProgramDto("1000-000-1-01-011-004",
+                            "DISASTER RESILIENT HUMAN RIGHTS AND JUSTICE PROGRAM",
+                            [], // no child projects — the program itself carries the line item
+                            EsreCode: "ID", ImplementingOffice: "PLO",
+                            StartDate: "January", EndDate: "December",
+                            ExpectedOutputs: "Human rights protected", FundingSourceRaw: "GF",
+                            Ps: 50000m, Total: 50000m),
+                    ]),
+                ],
+            });
+
+        await sut.ConfirmImportAsync(dto, UserId, CancellationToken.None);
+
+        AipProgram program = insertedGraph!.Offices.First().Programs.First();
+        Assert.Empty(program.Projects);
+        Assert.Equal("ID", program.EsreCode);
+        Assert.Equal("PLO", program.ImplementingOffice);
+        Assert.Equal(50000m, program.Ps);
+        Assert.Equal(50000m, program.Total);
+        Assert.Equal(1, program.FundingSourceId);
+        Assert.Equal("GF", program.FundingSourceSnapshot);
+    }
+
+    [Fact]
+    public async Task ConfirmImport_ProjectLineItem_PersistsFieldsOnTheProjectItself_AlongsideRealActivities()
+    {
+        AipRecord? insertedGraph = null;
+        var (sut, aipRepo, _, _, _, _) = Build([], [Fs(1, "GF")]);
+        aipRepo.Setup(r => r.AddAsync(It.IsAny<AipRecord>(), It.IsAny<CancellationToken>()))
+            .Callback<AipRecord, CancellationToken>((e, _) => { e.Id = 100; insertedGraph = e; })
+            .Returns(Task.CompletedTask);
+
+        ParsedAipActivityDto realActivity = new(
+            "A-B-C-D-1-1-1-1", "Real activity", null, null, null, null, null, null,
+            null, null, null, null, null, null, null);
+
+        AipImportConfirmDto dto = new(2027, "aip.xlsm", null,
+            new Dictionary<string, List<ParsedAipOfficeDto>>
+            {
+                ["SOCIAL"] =
+                [
+                    new ParsedAipOfficeDto("A-B-C-D-1", "Office", "SOCIAL",
+                    [
+                        new ParsedAipProgramDto("A-B-C-D-1-1", "Program",
+                        [
+                            new ParsedAipProjectDto("A-B-C-D-1-1-1", "Project with its own line item",
+                                [realActivity],
+                                FundingSourceRaw: "GF", Mooe: 25000m, Total: 25000m),
+                        ]),
+                    ]),
+                ],
+            });
+
+        await sut.ConfirmImportAsync(dto, UserId, CancellationToken.None);
+
+        AipProject project = insertedGraph!.Offices.First().Programs.First().Projects.First();
+        Assert.Single(project.Activities);
+        Assert.Equal("A-B-C-D-1-1-1-1", project.Activities.First().RefCode);
+        Assert.Equal(25000m, project.Mooe);
+        Assert.Equal(25000m, project.Total);
+        Assert.Equal(1, project.FundingSourceId);
+        Assert.Equal("GF", project.FundingSourceSnapshot);
+    }
+
+    [Fact]
+    public async Task ConfirmImport_NoLineItem_ProgramAndProjectFieldsStayNull()
+    {
+        AipRecord? insertedGraph = null;
+        var (sut, aipRepo, _, _, _, _) = Build([], [Fs(1, "GF")]);
+        aipRepo.Setup(r => r.AddAsync(It.IsAny<AipRecord>(), It.IsAny<CancellationToken>()))
+            .Callback<AipRecord, CancellationToken>((e, _) => { e.Id = 100; insertedGraph = e; })
+            .Returns(Task.CompletedTask);
+
+        AipImportConfirmDto dto = new(2027, "aip.xlsm", null,
+            new Dictionary<string, List<ParsedAipOfficeDto>>
+            {
+                ["GENERAL"] =
+                [
+                    new ParsedAipOfficeDto("A-B-C-D-1", "Office 1", "GENERAL",
+                    [
+                        new ParsedAipProgramDto("A-B-C-D-1-1", "Program 1",
+                        [
+                            new ParsedAipProjectDto("A-B-C-D-1-1-1", "Project 1",
+                            [
+                                new ParsedAipActivityDto("A-B-C-D-1-1-1-1", "Activity 1",
+                                    null, null, null, null, null, "GF",
+                                    1000m, 2000m, null, 3000m, null, null, null),
+                            ]),
+                        ]),
+                    ]),
+                ],
+            });
+
+        await sut.ConfirmImportAsync(dto, UserId, CancellationToken.None);
+
+        AipProgram program = insertedGraph!.Offices.First().Programs.First();
+        AipProject project = program.Projects.First();
+        Assert.Null(program.Total);
+        Assert.Null(program.FundingSourceId);
+        Assert.Null(project.Total);
+        Assert.Null(project.FundingSourceId);
+    }
+
+    [Fact]
+    public async Task ParsePreview_ProgramLineItem_EchoedInDto_WithUnmatchedFundingSourceWarning()
+    {
+        ParsedAipProgram prog = new("A-B-C-D-1-1", "Program 1", [],
+            FundingSourceRaw: "UNKNOWN", Total: 50000m);
+        ParsedAipOffice  off  = new("A-B-C-D-1", "Office 1", "GENERAL", [prog]);
+
+        var (sut, _, _, _, parser, _) = Build([], []);
+        parser.Setup(p => p.Parse(It.IsAny<Stream>()))
+            .Returns(new Dictionary<string, List<ParsedAipOffice>> { ["GENERAL"] = [off] });
+
+        using MemoryStream ms = new();
+        ServiceResult<AipImportPreviewDto> result =
+            await sut.ParsePreviewAsync(ms, 2027, [Fs(1, "GF")], CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        ParsedAipProgramDto progDto = result.Value!.SectorOffices["GENERAL"][0].Programs[0];
+        Assert.Equal(50000m, progDto.Total);
+        Assert.Contains(result.Value.Warnings, w => w.Contains("Program") && w.Contains("UNKNOWN"));
+    }
+
     [Fact]
     public async Task ConfirmImport_DuplicateDraftYear_ReturnsBadRequest()
     {

@@ -26,6 +26,20 @@ import type {
   MeResponse,
 } from "@/types";
 
+// RAL-108: a program/project row may carry its own line item (e.g. the Provincial Legal
+// Office's program "1000-000-1-01-011-004") — the same optional fields as an activity, all
+// null on a normal program/project that only groups its children.
+type LineItemNode = Pick<AipActivityDetail,
+  "esreCode" | "implementingOffice" | "startDate" | "endDate" | "expectedOutputs" |
+  "fundingSourceSnapshot" | "ps" | "mooe" | "co" | "total" | "ccAdaptation" | "ccMitigation" | "ccTypologyCode">;
+
+function hasLineItem(node: LineItemNode): boolean {
+  return node.esreCode != null || node.implementingOffice != null || node.startDate != null ||
+    node.endDate != null || node.expectedOutputs != null || node.fundingSourceSnapshot != null ||
+    node.ps != null || node.mooe != null || node.co != null || node.total != null ||
+    node.ccAdaptation != null || node.ccMitigation != null || node.ccTypologyCode != null;
+}
+
 // ── Chevron ────────────────────────────────────────────────────────────────────
 
 function Chevron({ open, className = "" }: { open: boolean; className?: string }) {
@@ -46,14 +60,22 @@ function fmt(n: number | null | undefined): string {
   return n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function sumActivities(
+// RAL-108: a program or project's own line item (if any) must be added on top of its
+// descendants' amounts — it's not double-counted because a program/project that carries its
+// own line item has no children of its own (see the "extend" import behavior).
+function sumOfficeAmounts(
   office: AipOfficeDetail,
   field: keyof Pick<AipActivityDetail, "ps" | "mooe" | "co" | "total">
 ): number {
-  return office.programs
-    .flatMap((p) => p.projects)
-    .flatMap((p) => p.activities)
-    .reduce((s, a) => s + (a[field] ?? 0), 0);
+  let total = 0;
+  for (const prog of office.programs) {
+    total += prog[field] ?? 0;
+    for (const proj of prog.projects) {
+      total += proj[field] ?? 0;
+      for (const act of proj.activities) total += act[field] ?? 0;
+    }
+  }
+  return total;
 }
 
 // ── Status badge ──────────────────────────────────────────────────────────────
@@ -93,6 +115,28 @@ function AmtTD({ value, bold = false, white = false }: { value: number | null | 
     }`}>
       {fmt(value)}
     </td>
+  );
+}
+
+// ── Line-item cells (shared by activity rows AND program/project rows that carry a line item) ──
+
+function LineItemCells({ node }: { node: LineItemNode }) {
+  return (
+    <>
+      <td className="px-2 py-1.5 text-center text-xs text-slate-600">{node.esreCode ?? "—"}</td>
+      <td className="px-2 py-1.5 text-xs text-slate-600 align-top">{node.implementingOffice ?? "—"}</td>
+      <td className="px-2 py-1.5 text-center text-xs text-slate-600 whitespace-nowrap">{node.startDate ?? "—"}</td>
+      <td className="px-2 py-1.5 text-center text-xs text-slate-600 whitespace-nowrap">{node.endDate ?? "—"}</td>
+      <td className="px-2 py-1.5 text-xs text-slate-600 align-top leading-snug">{node.expectedOutputs ?? "—"}</td>
+      <td className="px-2 py-1.5 text-center text-xs font-medium text-slate-700">{node.fundingSourceSnapshot ?? "—"}</td>
+      <AmtTD value={node.ps} />
+      <AmtTD value={node.mooe} />
+      <AmtTD value={node.co} />
+      <AmtTD value={node.total} />
+      <AmtTD value={node.ccAdaptation} />
+      <AmtTD value={node.ccMitigation} />
+      <td className="px-2 py-1.5 text-center text-xs text-slate-500">{node.ccTypologyCode ?? "—"}</td>
+    </>
   );
 }
 
@@ -323,10 +367,10 @@ export default function AipDetailPage() {
           <tbody>
             {activeOffices.map((office) => {
               const officeOpen  = !collapsedOffices.has(office.id);
-              const officePs    = sumActivities(office, "ps");
-              const officeMooe  = sumActivities(office, "mooe");
-              const officeCo    = sumActivities(office, "co");
-              const officeTotal = sumActivities(office, "total");
+              const officePs    = sumOfficeAmounts(office, "ps");
+              const officeMooe  = sumOfficeAmounts(office, "mooe");
+              const officeCo    = sumOfficeAmounts(office, "co");
+              const officeTotal = sumOfficeAmounts(office, "total");
               const actCount    = office.programs.flatMap((p) => p.projects).flatMap((p) => p.activities).length;
 
               return (
@@ -358,18 +402,24 @@ export default function AipDetailPage() {
                   {/* ── Programs (only in DOM when office is expanded) ── */}
                   {officeOpen && office.programs.map((prog) => {
                     const progOpen = !collapsedPrograms.has(prog.id);
+                    const progHasLineItem = hasLineItem(prog);
 
                     return (
                       <>
                         <tr key={`prog-${prog.id}`} className="bg-white border-t-2 border-slate-200">
-                          <td className="px-2 py-1.5 pl-5 font-mono text-xs text-slate-400 border-l-4 border-green-400">
+                          <td className="px-2 py-1.5 pl-5 font-mono text-xs text-slate-400 border-l-4 border-green-400 align-top">
                             <button onClick={() => toggleProgram(prog.id)} className="flex items-center gap-1.5 text-left">
                               <Chevron open={progOpen} className="text-green-500" />
                               {prog.refCode}
                             </button>
                           </td>
-                          <td colSpan={14} className="px-2 py-1.5 font-semibold text-xs italic text-slate-700 uppercase tracking-wide">
+                          <td colSpan={progHasLineItem ? undefined : 14} className="px-2 py-1.5 font-semibold text-xs italic text-slate-700 uppercase tracking-wide align-top">
                             {prog.name}
+                            {progHasLineItem && (
+                              <span className="ml-2 px-1.5 py-0.5 text-[10px] font-normal not-italic normal-case bg-amber-100 text-amber-700" title="This program carries its own line item recorded directly on the program row, with no child project in the source file.">
+                                program-level entry
+                              </span>
+                            )}
                             {!progOpen && (
                               <span className="ml-2 font-normal not-italic text-[10px] text-slate-400">
                                 {prog.projects.length} projects ·{" "}
@@ -377,29 +427,37 @@ export default function AipDetailPage() {
                               </span>
                             )}
                           </td>
+                          {progHasLineItem && <LineItemCells node={prog} />}
                         </tr>
 
                         {/* ── Projects (only in DOM when program is expanded) ── */}
                         {progOpen && prog.projects.map((proj) => {
                           const projOpen = !collapsedProjects.has(proj.id);
+                          const projHasLineItem = hasLineItem(proj);
 
                           return (
                             <>
                               <tr key={`proj-${proj.id}`} className="bg-slate-50 border-t border-slate-200">
-                                <td className="px-2 py-1.5 pl-9 font-mono text-xs text-slate-400 border-l-4 border-slate-300">
+                                <td className="px-2 py-1.5 pl-9 font-mono text-xs text-slate-400 border-l-4 border-slate-300 align-top">
                                   <button onClick={() => toggleProject(proj.id)} className="flex items-center gap-1.5 text-left">
                                     <Chevron open={projOpen} className="text-slate-400" />
                                     {proj.refCode}
                                   </button>
                                 </td>
-                                <td colSpan={14} className="px-2 py-1.5 text-xs font-medium text-slate-600">
+                                <td colSpan={projHasLineItem ? undefined : 14} className="px-2 py-1.5 text-xs font-medium text-slate-600 align-top">
                                   {proj.name}
+                                  {projHasLineItem && (
+                                    <span className="ml-2 px-1.5 py-0.5 text-[10px] font-normal bg-amber-100 text-amber-700" title="This project carries its own line item recorded directly on the project row, with no child activity in the source file.">
+                                      project-level entry
+                                    </span>
+                                  )}
                                   {!projOpen && (
                                     <span className="ml-2 font-normal text-[10px] text-slate-400">
                                       {proj.activities.length} activities
                                     </span>
                                   )}
                                 </td>
+                                {projHasLineItem && <LineItemCells node={proj} />}
                               </tr>
 
                               {/* ── Activities (only in DOM when project is expanded) ── */}
@@ -411,19 +469,7 @@ export default function AipDetailPage() {
                                   <td className="px-2 py-1.5 pl-12 text-xs text-slate-900 align-top leading-snug">
                                     {act.name}
                                   </td>
-                                  <td className="px-2 py-1.5 text-center text-xs text-slate-600">{act.esreCode ?? "—"}</td>
-                                  <td className="px-2 py-1.5 text-xs text-slate-600 align-top">{act.implementingOffice ?? "—"}</td>
-                                  <td className="px-2 py-1.5 text-center text-xs text-slate-600 whitespace-nowrap">{act.startDate ?? "—"}</td>
-                                  <td className="px-2 py-1.5 text-center text-xs text-slate-600 whitespace-nowrap">{act.endDate ?? "—"}</td>
-                                  <td className="px-2 py-1.5 text-xs text-slate-600 align-top leading-snug">{act.expectedOutputs ?? "—"}</td>
-                                  <td className="px-2 py-1.5 text-center text-xs font-medium text-slate-700">{act.fundingSourceSnapshot ?? "—"}</td>
-                                  <AmtTD value={act.ps} />
-                                  <AmtTD value={act.mooe} />
-                                  <AmtTD value={act.co} />
-                                  <AmtTD value={act.total} />
-                                  <AmtTD value={act.ccAdaptation} />
-                                  <AmtTD value={act.ccMitigation} />
-                                  <td className="px-2 py-1.5 text-center text-xs text-slate-500">{act.ccTypologyCode ?? "—"}</td>
+                                  <LineItemCells node={act} />
                                 </tr>
                               ))}
                             </>

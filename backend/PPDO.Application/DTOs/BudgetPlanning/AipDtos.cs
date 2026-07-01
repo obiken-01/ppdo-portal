@@ -22,19 +22,51 @@ public record AipActivityDto(
     decimal? CcMitigation,
     string?  CcTypologyCode);
 
+// RAL-108: AipProjectDto/AipProgramDto carry the same optional line-item fields as
+// AipActivityDto (defaulted to null, appended after the required fields to avoid disturbing
+// existing positional-argument call sites) — non-null only when the project/program row
+// itself carries a line item (e.g. the Provincial Legal Office's program "1000-000-1-01-011-004").
 public record AipProjectDto(
-    int    Id,
-    int    ProgramId,
-    string RefCode,
-    string Name,
-    IReadOnlyList<AipActivityDto> Activities);
+    int      Id,
+    int      ProgramId,
+    string   RefCode,
+    string   Name,
+    IReadOnlyList<AipActivityDto> Activities,
+    string?  EsreCode = null,
+    string?  ImplementingOffice = null,
+    string?  StartDate = null,
+    string?  EndDate = null,
+    string?  ExpectedOutputs = null,
+    int?     FundingSourceId = null,
+    string?  FundingSourceSnapshot = null,
+    decimal? Ps = null,
+    decimal? Mooe = null,
+    decimal? Co = null,
+    decimal? Total = null,
+    decimal? CcAdaptation = null,
+    decimal? CcMitigation = null,
+    string?  CcTypologyCode = null);
 
 public record AipProgramDto(
-    int    Id,
-    int    OfficeId,
-    string RefCode,
-    string Name,
-    IReadOnlyList<AipProjectDto> Projects);
+    int      Id,
+    int      OfficeId,
+    string   RefCode,
+    string   Name,
+    IReadOnlyList<AipProjectDto> Projects,
+    string?  EsreCode = null,
+    string?  ImplementingOffice = null,
+    string?  StartDate = null,
+    string?  EndDate = null,
+    string?  ExpectedOutputs = null,
+    int?     FundingSourceId = null,
+    string?  FundingSourceSnapshot = null,
+    decimal? Ps = null,
+    decimal? Mooe = null,
+    decimal? Co = null,
+    decimal? Total = null,
+    decimal? CcAdaptation = null,
+    decimal? CcMitigation = null,
+    string?  CcTypologyCode = null);
 
 public record AipOfficeDto(
     int    Id,
@@ -96,15 +128,43 @@ public record ParsedAipOfficeDto(
     string Sector,
     List<ParsedAipProgramDto> Programs);
 
+// RAL-108: mirrors ParsedAipProgram/ParsedAipProject — optional line-item fields, non-null
+// only when the source row itself carries a line item.
 public record ParsedAipProgramDto(
-    string RefCode,
-    string Name,
-    List<ParsedAipProjectDto> Projects);
+    string   RefCode,
+    string   Name,
+    List<ParsedAipProjectDto> Projects,
+    string?  EsreCode = null,
+    string?  ImplementingOffice = null,
+    string?  StartDate = null,
+    string?  EndDate = null,
+    string?  ExpectedOutputs = null,
+    string?  FundingSourceRaw = null,
+    decimal? Ps = null,
+    decimal? Mooe = null,
+    decimal? Co = null,
+    decimal? Total = null,
+    decimal? CcAdaptation = null,
+    decimal? CcMitigation = null,
+    string?  CcTypologyCode = null);
 
 public record ParsedAipProjectDto(
-    string RefCode,
-    string Name,
-    List<ParsedAipActivityDto> Activities);
+    string   RefCode,
+    string   Name,
+    List<ParsedAipActivityDto> Activities,
+    string?  EsreCode = null,
+    string?  ImplementingOffice = null,
+    string?  StartDate = null,
+    string?  EndDate = null,
+    string?  ExpectedOutputs = null,
+    string?  FundingSourceRaw = null,
+    decimal? Ps = null,
+    decimal? Mooe = null,
+    decimal? Co = null,
+    decimal? Total = null,
+    decimal? CcAdaptation = null,
+    decimal? CcMitigation = null,
+    string?  CcTypologyCode = null);
 
 public record ParsedAipActivityDto(
     string   RefCode,

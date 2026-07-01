@@ -123,6 +123,91 @@ public sealed class AipXlsmParserTests
         Assert.Equal(700000m,            act.Total);
     }
 
+    // ── Program/project-level line items (RAL-108, extend approach) ─────────
+
+    [Fact]
+    public void Parse_ProgramLevelRow_WithLineItemData_CapturesFieldsOnProgramItself()
+    {
+        // Provincial Legal Office fixture from the ticket: a program row that
+        // carries its own amounts/eSRE/funding source with no child project.
+        using Stream s = BuildStream(wb =>
+        {
+            IXLWorksheet ws = wb.Worksheets.Add("GENERAL_FY2027");
+            ws.Cell(14, 1).Value  = "1000-000-1-01-011";
+            ws.Cell(14, 2).Value  = "Provincial Legal Office";
+            ws.Cell(15, 1).Value  = "1000-000-1-01-011-004";       // Program level (6 segments)
+            ws.Cell(15, 3).Value  = "DISASTER RESILIENT HUMAN RIGHTS AND JUSTICE PROGRAM";
+            ws.Cell(15, 6).Value  = "ID";                          // EsreCode
+            ws.Cell(15, 7).Value  = "PLO";                         // ImplementingOffice
+            ws.Cell(15, 8).Value  = "January";                     // StartDate
+            ws.Cell(15, 9).Value  = "December";                    // EndDate
+            ws.Cell(15, 10).Value = "Human rights protected";      // ExpectedOutputs
+            ws.Cell(15, 11).Value = "GF";                          // FundingSourceRaw
+            ws.Cell(15, 12).Value = 50000.0;                       // PS
+            ws.Cell(15, 15).Value = 50000.0;                       // Total
+        });
+
+        Dictionary<string, List<ParsedAipOffice>> result = _sut.Parse(s);
+
+        ParsedAipProgram prog = result["GENERAL"][0].Programs[0];
+        Assert.Empty(prog.Projects);
+        Assert.Equal("ID",       prog.EsreCode);
+        Assert.Equal("PLO",      prog.ImplementingOffice);
+        Assert.Equal("January",  prog.StartDate);
+        Assert.Equal("December", prog.EndDate);
+        Assert.Equal("Human rights protected", prog.ExpectedOutputs);
+        Assert.Equal("GF",       prog.FundingSourceRaw);
+        Assert.Equal(50000m,     prog.Ps);
+        Assert.Equal(50000m,     prog.Total);
+    }
+
+    [Fact]
+    public void Parse_ProjectLevelRow_WithLineItemData_CapturesFieldsOnProjectItself()
+    {
+        using Stream s = BuildStream(wb =>
+        {
+            IXLWorksheet ws = wb.Worksheets.Add("SOCIAL_FY2027");
+            ws.Cell(14, 1).Value  = "A-B-C-D-1";
+            ws.Cell(14, 2).Value  = "Office";
+            ws.Cell(15, 1).Value  = "A-B-C-D-1-1";
+            ws.Cell(15, 3).Value  = "Program";
+            ws.Cell(16, 1).Value  = "A-B-C-D-1-1-1";     // Project level (7 segments)
+            ws.Cell(16, 4).Value  = "Project with its own line item";
+            ws.Cell(16, 11).Value = "GAD";                // FundingSourceRaw
+            ws.Cell(16, 13).Value = 25000.0;              // MOOE
+            ws.Cell(16, 15).Value = 25000.0;              // Total
+        });
+
+        Dictionary<string, List<ParsedAipOffice>> result = _sut.Parse(s);
+
+        ParsedAipProject proj = result["SOCIAL"][0].Programs[0].Projects[0];
+        Assert.Empty(proj.Activities);
+        Assert.Equal("GAD",   proj.FundingSourceRaw);
+        Assert.Equal(25000m,  proj.Mooe);
+        Assert.Equal(25000m,  proj.Total);
+    }
+
+    [Fact]
+    public void Parse_ProgramLevelRow_WithoutLineItemData_FieldsAreNull()
+    {
+        using Stream s = BuildStream(wb =>
+        {
+            IXLWorksheet ws = wb.Worksheets.Add("GENERAL_FY2027");
+            ws.Cell(14, 1).Value = "A-B-C-D-1";
+            ws.Cell(14, 2).Value = "Office";
+            ws.Cell(15, 1).Value = "A-B-C-D-1-1";
+            ws.Cell(15, 3).Value = "Program";
+        });
+
+        Dictionary<string, List<ParsedAipOffice>> result = _sut.Parse(s);
+
+        ParsedAipProgram prog = result["GENERAL"][0].Programs[0];
+        Assert.Null(prog.EsreCode);
+        Assert.Null(prog.Ps);
+        Assert.Null(prog.Total);
+        Assert.Null(prog.FundingSourceRaw);
+    }
+
     [Fact]
     public void Parse_BlankRefCode_AfterActivity_AppendsColEToName()
     {

@@ -36,16 +36,45 @@ export interface ParsedAipActivityResponse {
   ccTypologyCode: string | null;
 }
 
+// RAL-108: a project/program row may carry its own line item (e.g. the Provincial Legal
+// Office's program "1000-000-1-01-011-004") — these mirror ParsedAipActivityResponse's fields,
+// all null on a normal project/program that only groups its children.
 export interface ParsedAipProjectResponse {
   refCode: string;
   name: string;
   activities: ParsedAipActivityResponse[];
+  esreCode: string | null;
+  implementingOffice: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  expectedOutputs: string | null;
+  fundingSourceRaw: string | null;
+  ps: number | null;
+  mooe: number | null;
+  co: number | null;
+  total: number | null;
+  ccAdaptation: number | null;
+  ccMitigation: number | null;
+  ccTypologyCode: string | null;
 }
 
 export interface ParsedAipProgramResponse {
   refCode: string;
   name: string;
   projects: ParsedAipProjectResponse[];
+  esreCode: string | null;
+  implementingOffice: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  expectedOutputs: string | null;
+  fundingSourceRaw: string | null;
+  ps: number | null;
+  mooe: number | null;
+  co: number | null;
+  total: number | null;
+  ccAdaptation: number | null;
+  ccMitigation: number | null;
+  ccTypologyCode: string | null;
 }
 
 export interface ParsedAipOfficeResponse {
@@ -99,12 +128,28 @@ export interface AipActivityDetail {
   ccTypologyCode: string | null;
 }
 
+// RAL-108: AipProjectDetail/AipProgramDetail carry the same optional line-item fields as
+// AipActivityDetail — non-null only when the project/program row itself carries a line item.
 export interface AipProjectDetail {
   id: number;
   programId: number;
   refCode: string;
   name: string;
   activities: AipActivityDetail[];
+  esreCode: string | null;
+  implementingOffice: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  expectedOutputs: string | null;
+  fundingSourceId: number | null;
+  fundingSourceSnapshot: string | null;
+  ps: number | null;
+  mooe: number | null;
+  co: number | null;
+  total: number | null;
+  ccAdaptation: number | null;
+  ccMitigation: number | null;
+  ccTypologyCode: string | null;
 }
 
 export interface AipProgramDetail {
@@ -113,6 +158,20 @@ export interface AipProgramDetail {
   refCode: string;
   name: string;
   projects: AipProjectDetail[];
+  esreCode: string | null;
+  implementingOffice: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  expectedOutputs: string | null;
+  fundingSourceId: number | null;
+  fundingSourceSnapshot: string | null;
+  ps: number | null;
+  mooe: number | null;
+  co: number | null;
+  total: number | null;
+  ccAdaptation: number | null;
+  ccMitigation: number | null;
+  ccTypologyCode: string | null;
 }
 
 export interface AipOfficeDetail {

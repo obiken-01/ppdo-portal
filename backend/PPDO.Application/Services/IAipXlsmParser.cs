@@ -18,8 +18,46 @@ public interface IAipXlsmParser
 // ── Parsed POCOs (not persisted — no IDs) ────────────────────────────────────
 
 public record ParsedAipOffice(string RefCode, string Name, string Sector, List<ParsedAipProgram> Programs);
-public record ParsedAipProgram(string RefCode, string Name, List<ParsedAipProject> Projects);
-public record ParsedAipProject(string RefCode, string Name, List<ParsedAipActivity> Activities);
+
+// RAL-108: a program/project row may carry its own line-item detail (e.g. the Provincial Legal
+// Office's program "1000-000-1-01-011-004") — the same optional fields as ParsedAipActivity are
+// mirrored here, all defaulting to null for the normal case of a program/project that only
+// groups its children.
+public record ParsedAipProgram(
+    string   RefCode,
+    string   Name,
+    List<ParsedAipProject> Projects,
+    string?  EsreCode = null,
+    string?  ImplementingOffice = null,
+    string?  StartDate = null,
+    string?  EndDate = null,
+    string?  ExpectedOutputs = null,
+    string?  FundingSourceRaw = null,
+    decimal? Ps = null,
+    decimal? Mooe = null,
+    decimal? Co = null,
+    decimal? Total = null,
+    decimal? CcAdaptation = null,
+    decimal? CcMitigation = null,
+    string?  CcTypologyCode = null);
+
+public record ParsedAipProject(
+    string   RefCode,
+    string   Name,
+    List<ParsedAipActivity> Activities,
+    string?  EsreCode = null,
+    string?  ImplementingOffice = null,
+    string?  StartDate = null,
+    string?  EndDate = null,
+    string?  ExpectedOutputs = null,
+    string?  FundingSourceRaw = null,
+    decimal? Ps = null,
+    decimal? Mooe = null,
+    decimal? Co = null,
+    decimal? Total = null,
+    decimal? CcAdaptation = null,
+    decimal? CcMitigation = null,
+    string?  CcTypologyCode = null);
 
 public record ParsedAipActivity(
     string   RefCode,

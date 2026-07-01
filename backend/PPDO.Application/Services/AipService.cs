@@ -92,9 +92,15 @@ public sealed class AipService : IAipService
                     IReadOnlyList<AipProjectDto> projDtos = projects
                         .Where(j => j.ProgramId == p.Id)
                         .Select(j => new AipProjectDto(j.Id, j.ProgramId, j.RefCode, j.Name,
-                            acts.Where(a => a.ProjectId == j.Id).Select(MapActivityToDto).ToList()))
+                            acts.Where(a => a.ProjectId == j.Id).Select(MapActivityToDto).ToList(),
+                            j.EsreCode, j.ImplementingOffice, j.StartDate, j.EndDate, j.ExpectedOutputs,
+                            j.FundingSourceId, j.FundingSourceSnapshot,
+                            j.Ps, j.Mooe, j.Co, j.Total, j.CcAdaptation, j.CcMitigation, j.CcTypologyCode))
                         .ToList();
-                    return new AipProgramDto(p.Id, p.OfficeId, p.RefCode, p.Name, projDtos);
+                    return new AipProgramDto(p.Id, p.OfficeId, p.RefCode, p.Name, projDtos,
+                        p.EsreCode, p.ImplementingOffice, p.StartDate, p.EndDate, p.ExpectedOutputs,
+                        p.FundingSourceId, p.FundingSourceSnapshot,
+                        p.Ps, p.Mooe, p.Co, p.Total, p.CcAdaptation, p.CcMitigation, p.CcTypologyCode);
                 })
                 .ToList();
             return new AipOfficeDto(o.Id, o.AipRecordId, o.RefCode, o.Name, o.Sector, progDtos);
@@ -173,6 +179,14 @@ public sealed class AipService : IAipService
         Dictionary<string, List<ParsedAipOfficeDto>> sectorDtos =
             new(StringComparer.OrdinalIgnoreCase);
 
+        // RAL-108: shared funding-source-warning check for activities AND program/project rows
+        // that carry their own line item — "kind" only changes the warning text's noun.
+        void WarnIfUnmatchedFundingSource(string kind, string refCode, string? fundingSourceRaw)
+        {
+            if (!string.IsNullOrWhiteSpace(fundingSourceRaw) && !fsDict.ContainsKey(fundingSourceRaw))
+                warnings.Add($"{kind} {refCode}: unmatched funding source '{fundingSourceRaw}'.");
+        }
+
         foreach ((string sector, List<ParsedAipOffice> offices) in parsed)
         {
             List<ParsedAipOfficeDto> officeDtos = [];
@@ -183,29 +197,34 @@ public sealed class AipService : IAipService
                 foreach (ParsedAipProgram prog in off.Programs)
                 {
                     programCount++;
+                    WarnIfUnmatchedFundingSource("Program", prog.RefCode, prog.FundingSourceRaw);
                     List<ParsedAipProjectDto> projDtos = [];
                     foreach (ParsedAipProject proj in prog.Projects)
                     {
                         projectCount++;
+                        WarnIfUnmatchedFundingSource("Project", proj.RefCode, proj.FundingSourceRaw);
                         List<ParsedAipActivityDto> actDtos = [];
                         foreach (ParsedAipActivity act in proj.Activities)
                         {
                             activityCount++;
-                            if (!string.IsNullOrWhiteSpace(act.FundingSourceRaw) &&
-                                !fsDict.ContainsKey(act.FundingSourceRaw))
-                            {
-                                warnings.Add(
-                                    $"Activity {act.RefCode}: unmatched funding source '{act.FundingSourceRaw}'.");
-                            }
+                            WarnIfUnmatchedFundingSource("Activity", act.RefCode, act.FundingSourceRaw);
                             actDtos.Add(new ParsedAipActivityDto(
                                 act.RefCode, act.Name, act.EsreCode, act.ImplementingOffice,
                                 act.StartDate, act.EndDate, act.ExpectedOutputs, act.FundingSourceRaw,
                                 act.Ps, act.Mooe, act.Co, act.Total,
                                 act.CcAdaptation, act.CcMitigation, act.CcTypologyCode));
                         }
-                        projDtos.Add(new ParsedAipProjectDto(proj.RefCode, proj.Name, actDtos));
+                        projDtos.Add(new ParsedAipProjectDto(proj.RefCode, proj.Name, actDtos,
+                            proj.EsreCode, proj.ImplementingOffice, proj.StartDate, proj.EndDate,
+                            proj.ExpectedOutputs, proj.FundingSourceRaw,
+                            proj.Ps, proj.Mooe, proj.Co, proj.Total,
+                            proj.CcAdaptation, proj.CcMitigation, proj.CcTypologyCode));
                     }
-                    progDtos.Add(new ParsedAipProgramDto(prog.RefCode, prog.Name, projDtos));
+                    progDtos.Add(new ParsedAipProgramDto(prog.RefCode, prog.Name, projDtos,
+                        prog.EsreCode, prog.ImplementingOffice, prog.StartDate, prog.EndDate,
+                        prog.ExpectedOutputs, prog.FundingSourceRaw,
+                        prog.Ps, prog.Mooe, prog.Co, prog.Total,
+                        prog.CcAdaptation, prog.CcMitigation, prog.CcTypologyCode));
                 }
                 officeDtos.Add(new ParsedAipOfficeDto(off.RefCode, off.Name, off.Sector, progDtos));
             }
@@ -267,39 +286,75 @@ public sealed class AipService : IAipService
                     RefCode  = officeDto.RefCode,
                     Name     = officeDto.Name,
                     Sector   = officeDto.Sector,
-                    Programs = officeDto.Programs.Select(progDto => new AipProgram
+                    Programs = officeDto.Programs.Select(progDto =>
                     {
-                        RefCode  = progDto.RefCode,
-                        Name     = progDto.Name,
-                        Projects = progDto.Projects.Select(projDto => new AipProject
+                        fsDict.TryGetValue(progDto.FundingSourceRaw ?? string.Empty, out FundingSource? progFs);
+                        return new AipProgram
                         {
-                            RefCode    = projDto.RefCode,
-                            Name       = projDto.Name,
-                            Activities = projDto.Activities.Select(actDto =>
+                            RefCode               = progDto.RefCode,
+                            Name                  = progDto.Name,
+                            EsreCode              = progDto.EsreCode,
+                            ImplementingOffice    = progDto.ImplementingOffice,
+                            StartDate             = progDto.StartDate,
+                            EndDate               = progDto.EndDate,
+                            ExpectedOutputs       = progDto.ExpectedOutputs,
+                            FundingSourceId       = progFs?.Id,
+                            FundingSourceSnapshot = progFs?.Code ?? progDto.FundingSourceRaw,
+                            Ps                    = progDto.Ps,
+                            Mooe                  = progDto.Mooe,
+                            Co                    = progDto.Co,
+                            Total                 = progDto.Total,
+                            CcAdaptation          = progDto.CcAdaptation,
+                            CcMitigation          = progDto.CcMitigation,
+                            CcTypologyCode        = progDto.CcTypologyCode,
+                            Projects = progDto.Projects.Select(projDto =>
                             {
-                                fsDict.TryGetValue(actDto.FundingSourceRaw ?? string.Empty,
-                                    out FundingSource? fs);
-                                return new AipActivity
+                                fsDict.TryGetValue(projDto.FundingSourceRaw ?? string.Empty, out FundingSource? projFs);
+                                return new AipProject
                                 {
-                                    RefCode               = actDto.RefCode,
-                                    Name                  = actDto.Name,
-                                    EsreCode              = actDto.EsreCode,
-                                    ImplementingOffice    = actDto.ImplementingOffice,
-                                    StartDate             = actDto.StartDate,
-                                    EndDate               = actDto.EndDate,
-                                    ExpectedOutputs       = actDto.ExpectedOutputs,
-                                    FundingSourceId       = fs?.Id,
-                                    FundingSourceSnapshot = fs?.Code ?? actDto.FundingSourceRaw,
-                                    Ps                    = actDto.Ps,
-                                    Mooe                  = actDto.Mooe,
-                                    Co                    = actDto.Co,
-                                    Total                 = actDto.Total,
-                                    CcAdaptation          = actDto.CcAdaptation,
-                                    CcMitigation          = actDto.CcMitigation,
-                                    CcTypologyCode        = actDto.CcTypologyCode,
+                                    RefCode               = projDto.RefCode,
+                                    Name                  = projDto.Name,
+                                    EsreCode              = projDto.EsreCode,
+                                    ImplementingOffice    = projDto.ImplementingOffice,
+                                    StartDate             = projDto.StartDate,
+                                    EndDate               = projDto.EndDate,
+                                    ExpectedOutputs       = projDto.ExpectedOutputs,
+                                    FundingSourceId       = projFs?.Id,
+                                    FundingSourceSnapshot = projFs?.Code ?? projDto.FundingSourceRaw,
+                                    Ps                    = projDto.Ps,
+                                    Mooe                  = projDto.Mooe,
+                                    Co                    = projDto.Co,
+                                    Total                 = projDto.Total,
+                                    CcAdaptation          = projDto.CcAdaptation,
+                                    CcMitigation          = projDto.CcMitigation,
+                                    CcTypologyCode        = projDto.CcTypologyCode,
+                                    Activities = projDto.Activities.Select(actDto =>
+                                    {
+                                        fsDict.TryGetValue(actDto.FundingSourceRaw ?? string.Empty,
+                                            out FundingSource? fs);
+                                        return new AipActivity
+                                        {
+                                            RefCode               = actDto.RefCode,
+                                            Name                  = actDto.Name,
+                                            EsreCode              = actDto.EsreCode,
+                                            ImplementingOffice    = actDto.ImplementingOffice,
+                                            StartDate             = actDto.StartDate,
+                                            EndDate               = actDto.EndDate,
+                                            ExpectedOutputs       = actDto.ExpectedOutputs,
+                                            FundingSourceId       = fs?.Id,
+                                            FundingSourceSnapshot = fs?.Code ?? actDto.FundingSourceRaw,
+                                            Ps                    = actDto.Ps,
+                                            Mooe                  = actDto.Mooe,
+                                            Co                    = actDto.Co,
+                                            Total                 = actDto.Total,
+                                            CcAdaptation          = actDto.CcAdaptation,
+                                            CcMitigation          = actDto.CcMitigation,
+                                            CcTypologyCode        = actDto.CcTypologyCode,
+                                        };
+                                    }).ToList(),
                                 };
                             }).ToList(),
-                        }).ToList(),
+                        };
                     }).ToList(),
                 }).ToList(),
         };

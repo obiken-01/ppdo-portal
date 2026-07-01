@@ -139,7 +139,11 @@ public sealed class AipXlsmParser : IAipXlsmParser
                 {
                     if (currentOffice is null) break;
                     string name = ws.Cell(row, 3).GetString().Trim();
-                    currentProgram = new ParsedAipProgram(storedRefCode, name, new List<ParsedAipProject>());
+                    LineItemFields f = ReadLineItemFields(ws, row);
+                    currentProgram = new ParsedAipProgram(storedRefCode, name, new List<ParsedAipProject>(),
+                        f.EsreCode, f.ImplementingOffice, f.StartDate, f.EndDate, f.ExpectedOutputs,
+                        f.FundingSourceRaw, f.Ps, f.Mooe, f.Co, f.Total,
+                        f.CcAdaptation, f.CcMitigation, f.CcTypologyCode);
                     ((List<ParsedAipProgram>)currentOffice.Programs).Add(currentProgram);
                     currentProject = null;
                     lastActivity   = null;
@@ -150,7 +154,11 @@ public sealed class AipXlsmParser : IAipXlsmParser
                 {
                     if (currentProgram is null) break;
                     string name = ws.Cell(row, 4).GetString().Trim();
-                    currentProject = new ParsedAipProject(storedRefCode, name, new List<ParsedAipActivity>());
+                    LineItemFields f = ReadLineItemFields(ws, row);
+                    currentProject = new ParsedAipProject(storedRefCode, name, new List<ParsedAipActivity>(),
+                        f.EsreCode, f.ImplementingOffice, f.StartDate, f.EndDate, f.ExpectedOutputs,
+                        f.FundingSourceRaw, f.Ps, f.Mooe, f.Co, f.Total,
+                        f.CcAdaptation, f.CcMitigation, f.CcTypologyCode);
                     ((List<ParsedAipProject>)currentProgram.Projects).Add(currentProject);
                     lastActivity   = null;
                     currentActivityList = (List<ParsedAipActivity>)currentProject.Activities;
@@ -160,22 +168,23 @@ public sealed class AipXlsmParser : IAipXlsmParser
                 {
                     if (currentProject is null) break;
                     currentActivityList = (List<ParsedAipActivity>)currentProject.Activities;
+                    LineItemFields f = ReadLineItemFields(ws, row);
                     ParsedAipActivity activity = new(
                         RefCode:           storedRefCode,
                         Name:              ws.Cell(row, 5).GetString().Trim(),
-                        EsreCode:          NullIfBlank(ws.Cell(row, 6).GetString()),
-                        ImplementingOffice:NullIfBlank(ws.Cell(row, 7).GetString()),
-                        StartDate:         NullIfBlank(ws.Cell(row, 8).GetString()),
-                        EndDate:           NullIfBlank(ws.Cell(row, 9).GetString()),
-                        ExpectedOutputs:   NullIfBlank(ws.Cell(row, 10).GetString()),
-                        FundingSourceRaw:  NullIfBlank(ws.Cell(row, 11).GetString()),
-                        Ps:                ParseDecimal(ws.Cell(row, 12)),
-                        Mooe:              ParseDecimal(ws.Cell(row, 13)),
-                        Co:                ParseDecimal(ws.Cell(row, 14)),
-                        Total:             ParseDecimal(ws.Cell(row, 15)),
-                        CcAdaptation:      ParseDecimal(ws.Cell(row, 16)),
-                        CcMitigation:      ParseDecimal(ws.Cell(row, 17)),
-                        CcTypologyCode:    NullIfBlank(ws.Cell(row, 18).GetString()));
+                        EsreCode:          f.EsreCode,
+                        ImplementingOffice:f.ImplementingOffice,
+                        StartDate:         f.StartDate,
+                        EndDate:           f.EndDate,
+                        ExpectedOutputs:   f.ExpectedOutputs,
+                        FundingSourceRaw:  f.FundingSourceRaw,
+                        Ps:                f.Ps,
+                        Mooe:              f.Mooe,
+                        Co:                f.Co,
+                        Total:             f.Total,
+                        CcAdaptation:      f.CcAdaptation,
+                        CcMitigation:      f.CcMitigation,
+                        CcTypologyCode:    f.CcTypologyCode);
                     currentActivityList.Add(activity);
                     lastActivity = activity;
                     break;
@@ -210,4 +219,31 @@ public sealed class AipXlsmParser : IAipXlsmParser
         return decimal.TryParse(raw, System.Globalization.NumberStyles.Any,
             System.Globalization.CultureInfo.InvariantCulture, out decimal v) ? v : null;
     }
+
+    /// <summary>
+    /// RAL-108: columns F–R are the line-item columns shared by activity rows and, when
+    /// present, program/project rows that carry their own detail directly (e.g. the
+    /// Provincial Legal Office's program "1000-000-1-01-011-004"). Reading them through one
+    /// helper keeps the three call sites (program/project/activity) in sync.
+    /// </summary>
+    private readonly record struct LineItemFields(
+        string? EsreCode, string? ImplementingOffice, string? StartDate, string? EndDate,
+        string? ExpectedOutputs, string? FundingSourceRaw,
+        decimal? Ps, decimal? Mooe, decimal? Co, decimal? Total,
+        decimal? CcAdaptation, decimal? CcMitigation, string? CcTypologyCode);
+
+    private static LineItemFields ReadLineItemFields(IXLWorksheet ws, int row) => new(
+        EsreCode:           NullIfBlank(ws.Cell(row, 6).GetString()),
+        ImplementingOffice: NullIfBlank(ws.Cell(row, 7).GetString()),
+        StartDate:          NullIfBlank(ws.Cell(row, 8).GetString()),
+        EndDate:            NullIfBlank(ws.Cell(row, 9).GetString()),
+        ExpectedOutputs:    NullIfBlank(ws.Cell(row, 10).GetString()),
+        FundingSourceRaw:   NullIfBlank(ws.Cell(row, 11).GetString()),
+        Ps:                 ParseDecimal(ws.Cell(row, 12)),
+        Mooe:               ParseDecimal(ws.Cell(row, 13)),
+        Co:                 ParseDecimal(ws.Cell(row, 14)),
+        Total:              ParseDecimal(ws.Cell(row, 15)),
+        CcAdaptation:       ParseDecimal(ws.Cell(row, 16)),
+        CcMitigation:       ParseDecimal(ws.Cell(row, 17)),
+        CcTypologyCode:     NullIfBlank(ws.Cell(row, 18).GetString()));
 }
