@@ -12,6 +12,8 @@ namespace PPDO.Application.Services;
 ///   Staff      → Override ?? user.Division.&lt;flag&gt; ?? false
 ///
 /// CanUploadAip is additionally PPDO-only (office users can never hold it).
+/// CanAccessBudgetPlanning defaults ON for office users (office_id set) — it's their only
+/// feature and they have no division to inherit from; an override can still turn it off.
 /// CanManageAllocation is a per-user grant: SuperAdmin → true, else Override ?? false.
 /// CanAccessProfile is always true.
 ///
@@ -60,6 +62,15 @@ public sealed class PermissionService : IPermissionService
     public Task<bool> CanAccessBudgetPlanningAsync(User user, CancellationToken cancellationToken = default)
     {
         if (IsAdminOrAbove(user)) return Task.FromResult(true);
+
+        // Office users (office_id set) have Budget Planning as their ONLY feature, and they
+        // can't be assigned a division in the user form (scoped by office_id, not division).
+        // Default their access ON so a division-less office user isn't locked out of the one
+        // thing they exist to do; an explicit override can still turn it off.
+        if (user.OfficeId is not null)
+            return Task.FromResult(user.OverrideCanAccessBudgetPlanning ?? true);
+
+        // PPDO-internal Staff: inherit from their division.
         return Task.FromResult(user.OverrideCanAccessBudgetPlanning ?? user.Division?.CanAccessBudgetPlanning ?? false);
     }
 
