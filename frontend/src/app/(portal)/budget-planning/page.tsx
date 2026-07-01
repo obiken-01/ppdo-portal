@@ -102,7 +102,14 @@ const WFP_COLUMNS: Column<WfpOfficeStatus>[] = [
 // ---------------------------------------------------------------------------
 
 export default function BudgetPlanningPage() {
-  const user = useMe((me) => me.canAccessBudgetPlanning);
+  // On permission failure, an office user must NOT be sent to /dashboard — the
+  // office-user gate in the portal layout would bounce them straight back here,
+  // creating an infinite redirect loop. Send office users to /account (a terminal
+  // page they can always reach); PPDO users still fall back to /dashboard.
+  const user = useMe(
+    (me) => me.canAccessBudgetPlanning,
+    (me) => (me.officeId != null ? "/account" : "/dashboard"),
+  );
 
   const [fiscalYear, setFiscalYear] = useState<number | null>(null);
   const [selectedOffice, setSelectedOffice] = useState<number | null>(null);

@@ -169,13 +169,21 @@ export default function PortalLayout({
   // ── Office-user gate ────────────────────────────────────────────────────────
   // Non-PPDO office users have Budget Planning as their only feature. If they land
   // anywhere else (e.g. via a stale link or the home dashboard), send them back.
+  //
+  // Guard against a redirect loop: an office user WITHOUT budget-planning access
+  // (e.g. no division assigned yet) must not be sent to /budget-planning — that
+  // page would eject them to /dashboard, which this gate would bounce back here,
+  // looping forever. Send those users to /account (a terminal page they can
+  // always reach) instead.
   useEffect(() => {
     if (!me || me.officeId == null) return;
     const allowed =
       pathname.startsWith("/budget-planning") ||
       pathname.startsWith("/profile") ||
       pathname.startsWith("/account");
-    if (!allowed) router.replace("/budget-planning");
+    if (!allowed) {
+      router.replace(me.canAccessBudgetPlanning ? "/budget-planning" : "/account");
+    }
   }, [me, pathname, router]);
 
   // ── Loading state ──────────────────────────────────────────────────────────
