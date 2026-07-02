@@ -1,15 +1,15 @@
 namespace PPDO.Domain.Entities;
 
 /// <summary>
-/// LDIP hierarchy level 1 (RAL-61) — one sector grouping of programs under an LDIP
-/// document, mirroring <see cref="AipOffice"/>. The record's office is fixed, so each
-/// row corresponds to one sector choice; its RefCode is the office-level AIP ref code
-/// for that sector (e.g. "1000-000-1-01-010" = General + office ref code "01-010").
+/// LDIP hierarchy level 1 (RAL-61) — one office/sub-office grouping of programs under
+/// an LDIP document, mirroring <see cref="AipOffice"/>. RefCode is the office-level
+/// AIP ref code for the group's sector (e.g. "1000-000-1-01-010" = General + office
+/// ref code "01-010").
 ///
-/// Name is the office/sub-office display name for this sector group — the same office
-/// ref code can legitimately carry a different display name per sector (e.g.
-/// "…OFFICE" under General vs "…OFFICE - SPECIAL PROJECTS" under Economic), matching
-/// how real AIP files are encoded.
+/// A sector may hold MULTIPLE groups sharing that same ref code, distinguished by
+/// Name (e.g. "PGO - WARDEN" / "PGO - AKAP-HUB" / "PGO - HOUSING" all under
+/// 3000-000-1-01-001) — matching how real AIP files are encoded. Group identity
+/// within a record is the (Sector, Name) pair.
 /// </summary>
 public sealed class LdipOffice
 {

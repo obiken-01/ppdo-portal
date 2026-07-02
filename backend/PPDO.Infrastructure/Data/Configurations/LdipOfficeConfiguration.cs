@@ -32,10 +32,11 @@ public sealed class LdipOfficeConfiguration : IEntityTypeConfiguration<LdipOffic
             .IsRequired()
             .HasMaxLength(20);
 
-        // Unique: the record's office is fixed, so one row per sector ref code.
+        // NOT unique — same as aip_offices: multiple sub-office groups legitimately
+        // share one ref code within a record (e.g. PGO - WARDEN / - AKAP-HUB /
+        // - HOUSING all under 3000-000-1-01-001), distinguished by Name.
         builder.HasIndex(o => new { o.LdipRecordId, o.RefCode })
-            .IsUnique()
-            .HasDatabaseName("UX_ldip_offices_ldip_record_id_ref_code");
+            .HasDatabaseName("IX_ldip_offices_ldip_record_id_ref_code");
 
         builder.HasIndex(o => o.LdipRecordId)
             .HasDatabaseName("IX_ldip_offices_ldip_record_id");

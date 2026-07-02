@@ -232,19 +232,48 @@ public sealed class LdipServiceTests
     }
 
     [Fact]
-    public async Task Create_DuplicateSector_ReturnsBadRequest()
+    public async Task Create_MultipleGroupsInOneSector_NumbersProgramsContinuouslyAcrossGroups()
+    {
+        // The real AIP-file shape: PGO - WARDEN / - AKAP-HUB / - HOUSING all share
+        // 3000-000-1-01-… under Social; program numbering continues across them
+        // (never restarts at -001 per group, which would collide).
+        (LdipService sut, _, _) = Build([]);
+        CreateLdipDto dto = new("T", 2027, 2029, "New", OfficeId: 1, Groups:
+        [
+            SaveGroup("Social", "PGO - WARDEN",   ("Jail Operations Program", 100m)),
+            SaveGroup("Social", "PGO - AKAP-HUB", ("AKAP Hub Health Assistance Program", 200m)),
+            SaveGroup("Social", "PGO - HOUSING",  ("Housing Program A", 300m), ("Housing Program B", 400m)),
+        ]);
+
+        ServiceResult<LdipRecordDetailDto> result = await sut.CreateAsync(dto, UserId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(3, result.Value!.Groups.Count);
+        Assert.All(result.Value.Groups, g => Assert.Equal("3000-000-1-01-010", g.RefCode));
+        List<string> allProgramRefs = result.Value.Groups
+            .SelectMany(g => g.Programs)
+            .Select(p => p.RefCode)
+            .ToList();
+        Assert.Equal(
+            ["3000-000-1-01-010-001", "3000-000-1-01-010-002",
+             "3000-000-1-01-010-003", "3000-000-1-01-010-004"],
+            allProgramRefs);
+    }
+
+    [Fact]
+    public async Task Create_DuplicateSectorAndName_ReturnsBadRequest()
     {
         (LdipService sut, _, _) = Build([]);
         CreateLdipDto dto = new("T", 2027, 2029, "New", OfficeId: 1, Groups:
         [
-            SaveGroup("General", "A", ("P1", 1m)),
-            SaveGroup("general", "B", ("P2", 2m)),
+            SaveGroup("General", "PPDO", ("P1", 1m)),
+            SaveGroup("general", "ppdo", ("P2", 2m)),
         ]);
 
         ServiceResult<LdipRecordDetailDto> result = await sut.CreateAsync(dto, UserId);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
-        Assert.Contains("Duplicate sector", result.Error);
+        Assert.Contains("Duplicate group", result.Error);
     }
 
     [Fact]

@@ -4,20 +4,23 @@
  * LdipForm — shared create/edit form for LDIP documents (RAL-61).
  *
  * Layout follows the RAP-01 Penpot redesign (see
- * docs/v1.3/RAL-61_LDIP_Entry_Form_Penpot_Findings.md — the ticket's original
- * flat field table was superseded):
+ * docs/v1.3/RAL-61_LDIP_Entry_Form_Design.md — the ticket's original flat field
+ * table was superseded):
  *   1. LDIP information — year range + the office the whole document belongs to.
  *   2. Program information — a repeatable "add a program" mini-form: pick a
- *      Sector, see the office-level AIP ref-code preview, optionally rename the
- *      office/sub-office for that sector (locked once the group exists — one ref
- *      code maps to exactly one display name), name the program, enter its
- *      whole-period budget (₱000), and Add.
- *   3. Created programs — the grouped table (green header per sector group,
- *      AIP-detail style). Removing a program renumbers the rest of its group.
+ *      Sector, see the office-level AIP ref-code preview, set the office/
+ *      sub-office group name (a sector may hold MULTIPLE groups — e.g.
+ *      "PGO - WARDEN" / "PGO - AKAP-HUB" / "PGO - HOUSING" all under Social,
+ *      sharing one ref code; pick an existing name from the suggestions to keep
+ *      adding under that group, or type a new name to start another), name the
+ *      program, enter its whole-period budget (₱000), and Add.
+ *   3. Created programs — the grouped table (green header per group, AIP-detail
+ *      style). Program numbering runs continuously across groups that share a
+ *      ref code; removals renumber with no gaps.
  *
  * Ref codes shown here are PREVIEWS — the server recomputes all AIP ref codes
- * on every save (contiguous, 001-based per group), so they are authoritative.
- * Budgets are entered and stored in thousands (₱000), like AIP totals.
+ * on every save, so they are authoritative. Budgets are entered and stored in
+ * thousands (₱000), like AIP totals.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -59,8 +62,19 @@ interface DraftProgram {
   budget: number;
 }
 
-/** Groups keyed by sector — the record's office is fixed, so sector ≡ group. */
-type DraftGroups = Partial<Record<LdipSector, { name: string; programs: DraftProgram[] }>>;
+/**
+ * Ordered group list — order matters: the server numbers programs continuously
+ * per ref code in submitted order. Identity is the (sector, name) pair.
+ */
+interface DraftGroup {
+  sector: LdipSector;
+  name: string;
+  programs: DraftProgram[];
+}
+
+function sameName(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
 
 function StatusBadge({ status }: { status: LdipStatus }) {
   const cls =
@@ -110,17 +124,14 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
 
   // ── Section 2/3 state ──────────────────────────────────────────────────────
 
-  const [groups, setGroups] = useState<DraftGroups>(() => {
-    const initial: DraftGroups = {};
-    for (const g of record?.groups ?? []) {
-      initial[g.sector] = {
-        name: g.name,
-        programs: g.programs.map((p, i) => ({ key: i + 1, name: p.name, budget: p.budget })),
-      };
-    }
-    return initial;
-  });
-  const [nextKey, setNextKey] = useState(1000);
+  const [groups, setGroups] = useState<DraftGroup[]>(() =>
+    (record?.groups ?? []).map((g, gi) => ({
+      sector: g.sector,
+      name: g.name,
+      programs: g.programs.map((p, pi) => ({ key: gi * 1000 + pi, name: p.name, budget: p.budget })),
+    }))
+  );
+  const [nextKey, setNextKey] = useState(1_000_000);
 
   const [sector, setSector] = useState<LdipSector>("General");
   const [subOfficeName, setSubOfficeName] = useState("");
@@ -155,24 +166,25 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
   const groupRefCode =
     officeRefSuffix != null ? `${SECTOR_PREFIX[sector]}-000-1-${officeRefSuffix}` : null;
 
-  const existingGroup = groups[sector];
-  const nameLocked = existingGroup != null && existingGroup.programs.length > 0;
+  const sectorGroups = useMemo(() => groups.filter((g) => g.sector === sector), [groups, sector]);
 
+  // Program numbering is continuous per ref code (= per sector, since the office
+  // is fixed) across all its groups — mirrors the server's computation.
+  const sectorProgramCount = sectorGroups.reduce((n, g) => n + g.programs.length, 0);
   const programRefPreview =
     groupRefCode != null
-      ? `${groupRefCode}-${String((existingGroup?.programs.length ?? 0) + 1).padStart(3, "0")}`
+      ? `${groupRefCode}-${String(sectorProgramCount + 1).padStart(3, "0")}`
       : null;
 
-  const totalPrograms = SECTORS.reduce((n, s) => n + (groups[s]?.programs.length ?? 0), 0);
+  const totalPrograms = groups.reduce((n, g) => n + g.programs.length, 0);
+  const targetsExistingGroup = sectorGroups.some((g) => sameName(g.name, subOfficeName));
 
-  // Sub-office name follows the group when it exists; otherwise defaults to the
-  // office name for a fresh group (still editable until a first program is added).
+  // Reset the group-name suggestion when the sector or office changes; picking
+  // an existing name from the datalist re-targets that group.
   useEffect(() => {
-    if (nameLocked) setSubOfficeName(existingGroup!.name);
-    else if (existingGroup) setSubOfficeName(existingGroup.name);
-    else setSubOfficeName(office?.officeName ?? "");
+    setSubOfficeName(office?.officeName ?? "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sector, officeId, offices, nameLocked]);
+  }, [sector, officeId, offices.length]);
 
   // ── Program add/remove ────────────────────────────────────────────────────
 
@@ -186,29 +198,28 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
       return;
     }
     setAddError(null);
+    const entry: DraftProgram = { key: nextKey, name: programName.trim(), budget: programBudget };
     setGroups((prev) => {
-      const group = prev[sector] ?? { name: subOfficeName.trim(), programs: [] };
-      return {
-        ...prev,
-        [sector]: {
-          name: group.programs.length > 0 ? group.name : subOfficeName.trim(),
-          programs: [...group.programs, { key: nextKey, name: programName.trim(), budget: programBudget }],
-        },
-      };
+      const idx = prev.findIndex((g) => g.sector === sector && sameName(g.name, subOfficeName));
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = { ...next[idx], programs: [...next[idx].programs, entry] };
+        return next;
+      }
+      return [...prev, { sector, name: subOfficeName.trim(), programs: [entry] }];
     });
     setNextKey((k) => k + 1);
     setProgramName("");
     setProgramBudget(null);
   }
 
-  function handleRemoveProgram(s: LdipSector, key: number) {
+  function handleRemoveProgram(groupIndex: number, key: number) {
     setGroups((prev) => {
-      const group = prev[s];
-      if (!group) return prev;
+      const group = prev[groupIndex];
       const programs = group.programs.filter((p) => p.key !== key);
-      const next = { ...prev };
-      if (programs.length === 0) delete next[s];
-      else next[s] = { ...group, programs };
+      const next = [...prev];
+      if (programs.length === 0) next.splice(groupIndex, 1);
+      else next[groupIndex] = { ...group, programs };
       return next;
     });
   }
@@ -216,11 +227,13 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
   // ── Save / finalize ───────────────────────────────────────────────────────
 
   function buildPayloadGroups(): SaveLdipGroup[] {
-    return SECTORS.filter((s) => (groups[s]?.programs.length ?? 0) > 0).map((s) => ({
-      sector: s,
-      name: groups[s]!.name,
-      programs: groups[s]!.programs.map((p) => ({ name: p.name, budget: p.budget })),
-    }));
+    return groups
+      .filter((g) => g.programs.length > 0)
+      .map((g) => ({
+        sector: g.sector,
+        name: g.name,
+        programs: g.programs.map((p) => ({ name: p.name, budget: p.budget })),
+      }));
   }
 
   async function saveDraft(): Promise<LdipRecordDetail | null> {
@@ -253,7 +266,7 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
     const saved = await saveDraft();
     if (!saved) return;
     toast.success("Saved", `${saved.refCode} saved as Draft.`);
-    if (!isEdit) router.push(`/budget-planning/ldip/${saved.id}/edit`);
+    if (!isEdit) router.push(`/budget-planning/ldip/edit?id=${saved.id}`);
   }
 
   function handleFinalize() {
@@ -316,6 +329,9 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
       user ? "bg-yellow-50" : "bg-slate-100"
     }`;
 
+  // Continuous display numbering per ref code across groups (mirrors the server).
+  const seqByRefCode: Record<string, number> = {};
+
   return (
     <div className="p-6 max-w-4xl mx-auto">
       {/* Header */}
@@ -341,7 +357,7 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
         </span>
         <span className="flex items-center gap-1.5 text-xs text-slate-500">
           <span className="w-2.5 h-2.5 bg-slate-100 border border-slate-200 inline-block" />
-          Auto-filled / locked
+          Auto-filled
         </span>
         <div className="flex-1" />
         {!isReadOnly && (
@@ -482,16 +498,24 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
               <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
                 Office / Sub-office Name <span className="text-red-500">*</span>
                 <span className="ml-1 font-normal normal-case text-slate-400">
-                  {nameLocked ? "— existing group, name locked" : "— new group, name it"}
+                  {targetsExistingGroup
+                    ? "— adds to this existing group"
+                    : "— starts a new group (a sector can hold several sub-offices)"}
                 </span>
               </label>
               <input
                 value={subOfficeName}
-                readOnly={nameLocked}
                 onChange={(e) => setSubOfficeName(e.target.value)}
                 maxLength={500}
-                className={`w-full ${inputCls(!nameLocked)}`}
+                list="ldip-group-names"
+                placeholder='e.g. "OFFICE OF THE GOVERNOR - WARDEN"'
+                className={`w-full ${inputCls(true)}`}
               />
+              <datalist id="ldip-group-names">
+                {sectorGroups.map((g) => (
+                  <option key={g.name} value={g.name} />
+                ))}
+              </datalist>
             </div>
             <div className="sm:col-span-2">
               <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
@@ -553,39 +577,44 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
         {totalPrograms === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-slate-400">No programs added yet.</p>
         ) : (
-          SECTORS.filter((s) => (groups[s]?.programs.length ?? 0) > 0).map((s) => {
-            const group = groups[s]!;
+          groups.map((group, groupIndex) => {
+            if (group.programs.length === 0) return null;
             const ref =
-              officeRefSuffix != null ? `${SECTOR_PREFIX[s]}-000-1-${officeRefSuffix}` : "—";
+              officeRefSuffix != null
+                ? `${SECTOR_PREFIX[group.sector]}-000-1-${officeRefSuffix}`
+                : "—";
             return (
-              <div key={s}>
+              <div key={`${group.sector}|${group.name}`}>
                 <div className="flex items-center gap-3 bg-green-800 text-white px-4 py-2 text-xs font-bold">
                   <span className="font-mono opacity-85">{ref}</span>
                   <span>{group.name.toUpperCase()}</span>
-                  <span className="font-normal opacity-70">({s})</span>
+                  <span className="font-normal opacity-70">({group.sector})</span>
                 </div>
-                {group.programs.map((p, idx) => (
-                  <div
-                    key={p.key}
-                    className="grid grid-cols-[130px_1fr_120px_90px] gap-2 px-4 py-2 border-b border-slate-50 items-center text-sm"
-                  >
-                    <span className="font-mono text-xs text-slate-500">
-                      {ref}-{String(idx + 1).padStart(3, "0")}
-                    </span>
-                    <span className="italic font-semibold text-slate-800">{p.name}</span>
-                    <span className="text-right tabular-nums">₱{formatMoney(p.budget)}</span>
-                    <span>
-                      {!isReadOnly && (
-                        <button
-                          onClick={() => handleRemoveProgram(s, p.key)}
-                          className="text-xs font-bold text-red-500 hover:text-red-600"
-                        >
-                          Remove
-                        </button>
-                      )}
-                    </span>
-                  </div>
-                ))}
+                {group.programs.map((p) => {
+                  const seq = (seqByRefCode[ref] = (seqByRefCode[ref] ?? 0) + 1);
+                  return (
+                    <div
+                      key={p.key}
+                      className="grid grid-cols-[130px_1fr_120px_90px] gap-2 px-4 py-2 border-b border-slate-50 items-center text-sm"
+                    >
+                      <span className="font-mono text-xs text-slate-500">
+                        {ref}-{String(seq).padStart(3, "0")}
+                      </span>
+                      <span className="italic font-semibold text-slate-800">{p.name}</span>
+                      <span className="text-right tabular-nums">₱{formatMoney(p.budget)}</span>
+                      <span>
+                        {!isReadOnly && (
+                          <button
+                            onClick={() => handleRemoveProgram(groupIndex, p.key)}
+                            className="text-xs font-bold text-red-500 hover:text-red-600"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             );
           })

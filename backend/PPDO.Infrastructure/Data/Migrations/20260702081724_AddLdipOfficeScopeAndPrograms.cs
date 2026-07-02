@@ -71,10 +71,9 @@ namespace PPDO.Infrastructure.Data.Migrations
                 column: "ldip_record_id");
 
             migrationBuilder.CreateIndex(
-                name: "UX_ldip_offices_ldip_record_id_ref_code",
+                name: "IX_ldip_offices_ldip_record_id_ref_code",
                 table: "ldip_offices",
-                columns: new[] { "ldip_record_id", "ref_code" },
-                unique: true);
+                columns: new[] { "ldip_record_id", "ref_code" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_ldip_programs_ldip_office_id",

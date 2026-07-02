@@ -211,7 +211,7 @@ function LdipListInner() {
           <div className="flex items-center gap-3 text-sm">
             {r.status === "Draft" && (
               <Link
-                href={`/budget-planning/ldip/${r.id}/edit`}
+                href={`/budget-planning/ldip/edit?id=${r.id}`}
                 className="text-green-700 hover:underline"
               >
                 Edit
@@ -219,7 +219,7 @@ function LdipListInner() {
             )}
             {r.status !== "Draft" && (
               <Link
-                href={`/budget-planning/ldip/${r.id}/edit`}
+                href={`/budget-planning/ldip/edit?id=${r.id}`}
                 className="text-slate-600 hover:underline"
               >
                 View

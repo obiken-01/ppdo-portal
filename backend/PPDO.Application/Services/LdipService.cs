@@ -284,25 +284,34 @@ public sealed class LdipService : ILdipService
 
     private static string? ValidateGroups(IReadOnlyList<SaveLdipGroupDto> groups)
     {
-        HashSet<string> seenSectors = new(StringComparer.OrdinalIgnoreCase);
+        // A sector may appear multiple times — one row per SUB-OFFICE group (e.g.
+        // PGO - WARDEN / - AKAP-HUB / - HOUSING all under Social), same as real
+        // AIP files. Identity within a record is the (sector, name) pair.
+        HashSet<string> seenGroups = new(StringComparer.OrdinalIgnoreCase);
         foreach (SaveLdipGroupDto group in groups)
         {
             if (!SectorPrefixes.ContainsKey(group.Sector))
                 return $"Unknown sector '{group.Sector}'. Expected General, Social, Economic, or Others.";
-            if (!seenSectors.Add(group.Sector))
-                return $"Duplicate sector '{group.Sector}' — each sector may appear only once per LDIP.";
             if (string.IsNullOrWhiteSpace(group.Name))
                 return $"Office/sub-office name is required for sector '{group.Sector}'.";
+            if (!seenGroups.Add($"{Normalize(group.Sector)}|{group.Name.Trim()}"))
+                return $"Duplicate group '{group.Name.Trim()}' under sector '{group.Sector}' — merge its programs into one group.";
             if (group.Programs.Any(p => string.IsNullOrWhiteSpace(p.Name)))
                 return $"Every program under sector '{group.Sector}' needs a name.";
         }
         return null;
     }
 
-    /// <summary>Builds the LdipOffice/LdipProgram hierarchy with server-computed ref codes.</summary>
+    /// <summary>
+    /// Builds the LdipOffice/LdipProgram hierarchy with server-computed ref codes.
+    /// Program numbering is continuous PER REF CODE across groups (WARDEN gets -001,
+    /// AKAP-HUB continues -002, …) — groups sharing a ref code must not both start
+    /// at -001, matching how real AIP files number sub-office programs.
+    /// </summary>
     private static List<LdipOffice> BuildHierarchy(IReadOnlyList<SaveLdipGroupDto> groups, Office office)
     {
         List<LdipOffice> result = [];
+        Dictionary<string, int> nextSeqByRefCode = [];
         foreach (SaveLdipGroupDto group in groups)
         {
             string groupRef = $"{SectorPrefixes[group.Sector]}-000-1-{office.OfficeRefCode}";
@@ -312,13 +321,15 @@ public sealed class LdipService : ILdipService
                 Name    = group.Name.Trim(),
                 Sector  = Normalize(group.Sector),
             };
-            for (int i = 0; i < group.Programs.Count; i++)
+            foreach (SaveLdipProgramDto program in group.Programs)
             {
+                int seq = nextSeqByRefCode.GetValueOrDefault(groupRef, 0) + 1;
+                nextSeqByRefCode[groupRef] = seq;
                 entity.Programs.Add(new LdipProgram
                 {
-                    RefCode = $"{groupRef}-{i + 1:D3}",
-                    Name    = group.Programs[i].Name.Trim(),
-                    Budget  = group.Programs[i].Budget,
+                    RefCode = $"{groupRef}-{seq:D3}",
+                    Name    = program.Name.Trim(),
+                    Budget  = program.Budget,
                 });
             }
             result.Add(entity);

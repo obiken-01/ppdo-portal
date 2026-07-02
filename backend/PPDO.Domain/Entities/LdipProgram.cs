@@ -1,11 +1,12 @@
 namespace PPDO.Domain.Entities;
 
 /// <summary>
-/// LDIP hierarchy level 2 (RAL-61) — one program row under a sector group,
-/// mirroring <see cref="AipProgram"/>. RefCode is server-computed as the parent
-/// group's ref code + a contiguous 3-digit sequence ("…-001", "…-002", …) and is
-/// renumbered on every save so removals never leave gaps — correct AIP ref codes
-/// are a hard requirement for the downstream AIP/WFP linkage.
+/// LDIP hierarchy level 2 (RAL-61) — one program row under an office/sub-office
+/// group, mirroring <see cref="AipProgram"/>. RefCode is server-computed as the
+/// group's ref code + a 3-digit sequence ("…-001", "…-002", …) that runs
+/// CONTINUOUSLY across all groups sharing that ref code, and is renumbered on
+/// every save so removals never leave gaps — correct AIP ref codes are a hard
+/// requirement for the downstream AIP/WFP linkage.
 /// </summary>
 public sealed class LdipProgram
 {

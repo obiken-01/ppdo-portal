@@ -12,7 +12,7 @@ using PPDO.Infrastructure.Data;
 namespace PPDO.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260702071330_AddLdipOfficeScopeAndPrograms")]
+    [Migration("20260702081724_AddLdipOfficeScopeAndPrograms")]
     partial class AddLdipOfficeScopeAndPrograms
     {
         /// <inheritdoc />
@@ -981,8 +981,7 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasDatabaseName("IX_ldip_offices_ldip_record_id");
 
                     b.HasIndex("LdipRecordId", "RefCode")
-                        .IsUnique()
-                        .HasDatabaseName("UX_ldip_offices_ldip_record_id_ref_code");
+                        .HasDatabaseName("IX_ldip_offices_ldip_record_id_ref_code");
 
                     b.ToTable("ldip_offices", (string)null);
                 });
