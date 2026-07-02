@@ -17,7 +17,8 @@ public record PlanningDashboardDto(
     LdipSummaryDto Ldip,
     AipSummaryDto Aip,
     WfpSummaryDto Wfp,
-    IReadOnlyList<WfpOfficeStatusDto> WfpByOffice
+    IReadOnlyList<WfpOfficeStatusDto> WfpByOffice,
+    AllocationSetupOverviewDto Allocation
 );
 
 public record RecentActivityDto(

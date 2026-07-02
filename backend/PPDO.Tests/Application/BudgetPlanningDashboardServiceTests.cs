@@ -143,6 +143,8 @@ public sealed class BudgetPlanningDashboardServiceTests
                 .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)[]);
             allocation.Setup(a => a.GetProgramAssignmentsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((IReadOnlyList<ProgramAssignmentDto>)[]);
+            allocation.Setup(a => a.GetSetupOverviewAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new AllocationSetupOverviewDto(0, 0, 0, 0));
         }
 
         BudgetPlanningDashboardService svc = new(
@@ -251,6 +253,32 @@ public sealed class BudgetPlanningDashboardServiceTests
         Assert.Equal("Not started", result.WfpByOffice[0].WfpStatus); // O3
         Assert.Equal("Draft",       result.WfpByOffice[1].WfpStatus); // O2
         Assert.Equal("Final",       result.WfpByOffice[2].WfpStatus); // O1
+    }
+
+    // ── GetDashboardAsync — allocation-setup overview (RAL-60) ────────────
+
+    [Fact]
+    public async Task GetDashboardAsync_IncludesAllocationOverview_FromAllocationService()
+    {
+        Mock<IAllocationService> allocation = new();
+        allocation.Setup(a => a.GetCeilingAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ServiceResult<BudgetCeilingDto>.NotFound("no ceiling"));
+        allocation.Setup(a => a.GetAllocationsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)[]);
+        allocation.Setup(a => a.GetProgramAssignmentsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<ProgramAssignmentDto>)[]);
+        allocation.Setup(a => a.GetSetupOverviewAsync(2027, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AllocationSetupOverviewDto(TotalOffices: 5, FullySetupCount: 2,
+                IncompleteCount: 1, NotStartedCount: 2));
+        (BudgetPlanningDashboardService sut, _) =
+            Build([], [], [], [], [], allocationMock: allocation);
+
+        PlanningDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027);
+
+        Assert.Equal(5, result.Allocation.TotalOffices);
+        Assert.Equal(2, result.Allocation.FullySetupCount);
+        Assert.Equal(1, result.Allocation.IncompleteCount);
+        Assert.Equal(2, result.Allocation.NotStartedCount);
     }
 
     // ── GetRecentActivityAsync ─────────────────────────────────────────────

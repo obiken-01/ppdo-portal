@@ -67,4 +67,12 @@ public interface IAllocationService
     /// </summary>
     Task<AllocationSetupStatusDto> GetSetupStatusAsync(
         int officeId, int fiscalYear, int divisionId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Office-level allocation-setup counts (fully set up / incomplete / not started)
+    /// across all active offices for a fiscal year — used by the dashboard's
+    /// "All Offices" view (RAL-60), where allocation can't be shown per-office.
+    /// </summary>
+    Task<AllocationSetupOverviewDto> GetSetupOverviewAsync(
+        int fiscalYear, CancellationToken ct = default);
 }

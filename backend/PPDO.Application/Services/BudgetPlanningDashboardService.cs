@@ -106,13 +106,19 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         int finalWfpCount = wfps.Count(w => w.FiscalYear == resolvedFY && w.Status == "Final");
         WfpSummaryDto wfpSummary = new(finalWfpCount, activeOffices.Count);
 
+        // Allocation-setup counts across all active offices — used by the "All Offices"
+        // dashboard view, where per-office allocation detail can't be shown (RAL-60).
+        AllocationSetupOverviewDto allocationOverview =
+            await _allocationService.GetSetupOverviewAsync(resolvedFY, cancellationToken);
+
         return new PlanningDashboardDto(
             resolvedFY,
             availableFiscalYears,
             ldipSummary,
             aipSummary,
             wfpSummary,
-            wfpByOffice);
+            wfpByOffice,
+            allocationOverview);
     }
 
     /// <inheritdoc />
