@@ -209,6 +209,19 @@ export interface WfpOfficeStatus {
   aipRecordId: number | null;
 }
 
+/**
+ * Office-level (not per-division) allocation-setup counts across all active offices
+ * (RAL-60) — used by the "All Offices" dashboard view, where allocation can't be
+ * shown per-office. FullySetup = ceiling + allocation + PPA assignment all present;
+ * NotStarted = none present; Incomplete = everything else.
+ */
+export interface AllocationSetupOverview {
+  totalOffices: number;
+  fullySetupCount: number;
+  incompleteCount: number;
+  notStartedCount: number;
+}
+
 export interface PlanningDashboard {
   fiscalYear: number;
   availableFiscalYears: number[];
@@ -216,6 +229,7 @@ export interface PlanningDashboard {
   aip: AipSummary;
   wfp: WfpSummary;
   wfpByOffice: WfpOfficeStatus[];
+  allocation: AllocationSetupOverview;
 }
 
 export interface RecentActivity {

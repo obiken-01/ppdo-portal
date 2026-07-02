@@ -320,6 +320,95 @@ public sealed class AllocationService : IAllocationService
         return new AllocationSetupStatusDto(hasCeiling, hasAllocation, hasProgramAssignment);
     }
 
+    public async Task<AllocationSetupOverviewDto> GetSetupOverviewAsync(
+        int fiscalYear, CancellationToken ct = default)
+    {
+        IReadOnlyList<Office> activeOffices = (await _officeRepo.GetAllAsync(ct))
+            .Where(o => o.IsActive)
+            .ToList();
+
+        HashSet<int> officesWithCeiling = (await _ceilingRepo.GetAllAsync(ct))
+            .Where(c => c.FiscalYear == fiscalYear)
+            .Select(c => c.OfficeId)
+            .ToHashSet();
+
+        IReadOnlyList<Division> allDivisions = await _divisionRepo.GetAllAsync(ct);
+        Dictionary<int, int> officeIdByDivisionId = allDivisions.ToDictionary(d => d.Id, d => d.OfficeId);
+        Dictionary<int, decimal> allocatedByOfficeId = (await _allocationRepo.GetAllAsync(ct))
+            .Where(a => a.FiscalYear == fiscalYear && officeIdByDivisionId.ContainsKey(a.DivisionId))
+            .GroupBy(a => officeIdByDivisionId[a.DivisionId])
+            .ToDictionary(g => g.Key, g => g.Sum(a => a.Amount));
+
+        HashSet<int> officesWithProgramAssignment =
+            await GetOfficesWithProgramAssignmentAsync(activeOffices, fiscalYear, ct);
+
+        int fullySetup = 0, incomplete = 0, notStarted = 0;
+        foreach (Office office in activeOffices)
+        {
+            bool hasCeiling = officesWithCeiling.Contains(office.Id);
+            bool hasAllocation = allocatedByOfficeId.GetValueOrDefault(office.Id, 0m) > 0;
+            bool hasAssignment = officesWithProgramAssignment.Contains(office.Id);
+
+            if (hasCeiling && hasAllocation && hasAssignment) fullySetup++;
+            else if (!hasCeiling && !hasAllocation && !hasAssignment) notStarted++;
+            else incomplete++;
+        }
+
+        return new AllocationSetupOverviewDto(activeOffices.Count, fullySetup, incomplete, notStarted);
+    }
+
+    /// <summary>
+    /// Bulk version of the office_ref_code-match + program-assignment check in
+    /// GetProgramAssignmentsAsync/GetSetupStatusAsync — computed once for every active
+    /// office instead of one office at a time, so GetSetupOverviewAsync stays O(1) queries
+    /// regardless of office count.
+    /// </summary>
+    private async Task<HashSet<int>> GetOfficesWithProgramAssignmentAsync(
+        IReadOnlyList<Office> activeOffices, int fiscalYear, CancellationToken ct)
+    {
+        HashSet<int> result = [];
+
+        IReadOnlyList<AipRecord> allAip = await _aipRepo.GetAllAsync(ct);
+        AipRecord? aipRecord = allAip.FirstOrDefault(
+            r => r.FiscalYear == fiscalYear && r.Status != PlanningStatus.Archived);
+        if (aipRecord is null) return result;
+
+        IReadOnlyList<AipOffice> aipOffices = await _aipRepo.GetOfficesByAipIdAsync(aipRecord.Id, ct);
+
+        Dictionary<int, List<AipOffice>> matchedByOfficeId = [];
+        foreach (Office office in activeOffices)
+        {
+            if (office.OfficeRefCode is null) continue;
+            List<AipOffice> matches = aipOffices
+                .Where(ao => ao.RefCode.EndsWith(office.OfficeRefCode, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (matches.Count > 0) matchedByOfficeId[office.Id] = matches;
+        }
+        if (matchedByOfficeId.Count == 0) return result;
+
+        List<AipOffice> allMatchedAipOffices = [.. matchedByOfficeId.Values.SelectMany(m => m)];
+        List<int> matchedAipOfficeIds = allMatchedAipOffices.Select(o => o.Id).Distinct().ToList();
+        IReadOnlyList<AipProgram> programs = await _aipRepo.GetProgramsByOfficeIdsAsync(matchedAipOfficeIds, ct);
+        Dictionary<int, AipOffice> aipOfficeById = allMatchedAipOffices.ToDictionary(o => o.Id);
+
+        List<string> matchedOfficeRefCodes = allMatchedAipOffices.Select(o => o.RefCode).Distinct().ToList();
+        IReadOnlyList<ProgramDivision> pds =
+            await _pdRepo.GetProgramDivisionsByOfficeRefCodesAsync(matchedOfficeRefCodes, ct);
+        HashSet<(string OfficeRefCode, string ProgramRefCode)> assignedKeys =
+            pds.Select(pd => (pd.OfficeRefCode, pd.ProgramRefCode)).ToHashSet();
+
+        foreach ((int officeId, List<AipOffice> matches) in matchedByOfficeId)
+        {
+            HashSet<int> matchedAipOfficeIdsForOffice = matches.Select(m => m.Id).ToHashSet();
+            bool anyAssigned = programs
+                .Where(p => matchedAipOfficeIdsForOffice.Contains(p.OfficeId))
+                .Any(p => assignedKeys.Contains((aipOfficeById[p.OfficeId].RefCode, p.RefCode)));
+            if (anyAssigned) result.Add(officeId);
+        }
+
+        return result;
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private async Task<BudgetCeiling?> FindCeilingAsync(int officeId, int fiscalYear, CancellationToken ct)

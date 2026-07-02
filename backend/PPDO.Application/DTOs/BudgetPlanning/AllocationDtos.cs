@@ -35,6 +35,19 @@ public record AllocationSetupStatusDto(
     bool HasAllocation,
     bool HasProgramAssignment);
 
+/// <summary>
+/// Office-level (not per-division) allocation-setup counts across all active offices
+/// for one fiscal year — used by the "All Offices" dashboard view (RAL-60) where no
+/// single office is selected. An office is "fully set up" when it has a ceiling, a
+/// positive total division allocation, and at least one assigned program; "not started"
+/// when it has none of the three; otherwise "incomplete".
+/// </summary>
+public record AllocationSetupOverviewDto(
+    int TotalOffices,
+    int FullySetupCount,
+    int IncompleteCount,
+    int NotStartedCount);
+
 // ── Write DTOs ────────────────────────────────────────────────────────────────
 
 public record UpsertDivisionAllocationDto(

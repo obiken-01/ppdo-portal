@@ -459,4 +459,150 @@ public sealed class AllocationServiceTests
         Assert.NotEmpty(existing.DivisionIds);
         Assert.Empty(@new.DivisionIds);   // no assignment → unassigned
     }
+
+    // ── Setup overview tests (RAL-60 — "All Offices" dashboard view) ──────────
+
+    [Fact]
+    public async Task GetSetupOverview_NoActiveOffices_ReturnsAllZero()
+    {
+        (AllocationService sut, _, _, _, _, _, _, _) = Build();
+
+        AllocationSetupOverviewDto result = await sut.GetSetupOverviewAsync(2027);
+
+        Assert.Equal(0, result.TotalOffices);
+        Assert.Equal(0, result.FullySetupCount);
+        Assert.Equal(0, result.IncompleteCount);
+        Assert.Equal(0, result.NotStartedCount);
+    }
+
+    [Fact]
+    public async Task GetSetupOverview_OfficeWithNothing_CountsAsNotStarted()
+    {
+        Office office = MakeOffice(1, refCode: "01-010");
+        (AllocationService sut, _, _, _, _, _, _, _) = Build(offices: [office]);
+
+        AllocationSetupOverviewDto result = await sut.GetSetupOverviewAsync(2027);
+
+        Assert.Equal(1, result.TotalOffices);
+        Assert.Equal(1, result.NotStartedCount);
+        Assert.Equal(0, result.FullySetupCount);
+        Assert.Equal(0, result.IncompleteCount);
+    }
+
+    [Fact]
+    public async Task GetSetupOverview_OfficeWithCeilingOnly_CountsAsIncomplete()
+    {
+        Office office = MakeOffice(1, refCode: "01-010");
+        BudgetCeiling ceiling = MakeCeiling(1, 2027, 1_000_000m);
+        (AllocationService sut, _, _, _, _, _, _, _) = Build(ceilings: [ceiling], offices: [office]);
+
+        AllocationSetupOverviewDto result = await sut.GetSetupOverviewAsync(2027);
+
+        Assert.Equal(1, result.IncompleteCount);
+        Assert.Equal(0, result.NotStartedCount);
+        Assert.Equal(0, result.FullySetupCount);
+    }
+
+    [Fact]
+    public async Task GetSetupOverview_OfficeWithCeilingAndAllocationButNoProgram_CountsAsIncomplete()
+    {
+        Office office = MakeOffice(1, refCode: "01-010");
+        Division div = MakeDivision(1, 1);
+        BudgetCeiling ceiling = MakeCeiling(1, 2027, 1_000_000m);
+        DivisionAllocation alloc = MakeAllocation(1, 1, 2027, 500_000m);
+        (AllocationService sut, _, _, _, _, _, _, _) = Build(
+            ceilings: [ceiling], allocations: [alloc], divisions: [div], offices: [office]);
+
+        AllocationSetupOverviewDto result = await sut.GetSetupOverviewAsync(2027);
+
+        Assert.Equal(1, result.IncompleteCount);
+    }
+
+    [Fact]
+    public async Task GetSetupOverview_FullyConfiguredOffice_CountsAsFullySetup()
+    {
+        const string offRefCode = "I-PPDO-01-010";
+        const string progRefCode = "I-PPDO-01-010-001";
+        Office office = MakeOffice(1, refCode: "01-010");
+        Division div = MakeDivision(1, 1);
+        BudgetCeiling ceiling = MakeCeiling(1, 2027, 1_000_000m);
+        DivisionAllocation alloc = MakeAllocation(1, 1, 2027, 500_000m);
+        AipRecord rec = MakeAipRecord(1, 2027);
+        AipOffice aipOff = MakeAipOffice(1, 1, offRefCode);
+        AipProgram prog = MakeAipProgram(1, 1, progRefCode);
+        ProgramDivision pd = MakePD(1, offRefCode, progRefCode, 1);
+
+        (AllocationService sut, _, _, _, _, _, _, _) = Build(
+            ceilings: [ceiling], allocations: [alloc], pds: [pd],
+            divisions: [div], offices: [office],
+            aipRecords: [rec], aipOffices: [aipOff], aipPrograms: [prog]);
+
+        AllocationSetupOverviewDto result = await sut.GetSetupOverviewAsync(2027);
+
+        Assert.Equal(1, result.FullySetupCount);
+        Assert.Equal(0, result.IncompleteCount);
+        Assert.Equal(0, result.NotStartedCount);
+    }
+
+    [Fact]
+    public async Task GetSetupOverview_InactiveOffice_ExcludedFromTotal()
+    {
+        Office active = MakeOffice(1, refCode: "01-010");
+        Office inactive = MakeOffice(2, code: "OLD", refCode: "01-011");
+        inactive.IsActive = false;
+        (AllocationService sut, _, _, _, _, _, _, _) = Build(offices: [active, inactive]);
+
+        AllocationSetupOverviewDto result = await sut.GetSetupOverviewAsync(2027);
+
+        Assert.Equal(1, result.TotalOffices);
+    }
+
+    [Fact]
+    public async Task GetSetupOverview_MixedOffices_BucketsEachCorrectly()
+    {
+        const string offRefCode = "I-PPDO-01-010";
+        const string progRefCode = "I-PPDO-01-010-001";
+
+        // Office 1 — fully set up.
+        Office off1 = MakeOffice(1, code: "O1", refCode: "01-010");
+        Division div1 = MakeDivision(1, 1);
+        BudgetCeiling ceil1 = MakeCeiling(1, 2027, 1_000_000m);
+        DivisionAllocation alloc1 = MakeAllocation(1, 1, 2027, 500_000m);
+        AipRecord rec = MakeAipRecord(1, 2027);
+        AipOffice aipOff1 = MakeAipOffice(1, 1, offRefCode);
+        AipProgram prog1 = MakeAipProgram(1, 1, progRefCode);
+        ProgramDivision pd1 = MakePD(1, offRefCode, progRefCode, 1);
+
+        // Office 2 — ceiling only (incomplete).
+        Office off2 = MakeOffice(2, code: "O2", refCode: "01-011");
+        BudgetCeiling ceil2 = MakeCeiling(2, 2027, 200_000m);
+
+        // Office 3 — nothing (not started).
+        Office off3 = MakeOffice(3, code: "O3", refCode: "01-012");
+
+        (AllocationService sut, _, _, _, _, _, _, _) = Build(
+            ceilings: [ceil1, ceil2], allocations: [alloc1], pds: [pd1],
+            divisions: [div1], offices: [off1, off2, off3],
+            aipRecords: [rec], aipOffices: [aipOff1], aipPrograms: [prog1]);
+
+        AllocationSetupOverviewDto result = await sut.GetSetupOverviewAsync(2027);
+
+        Assert.Equal(3, result.TotalOffices);
+        Assert.Equal(1, result.FullySetupCount);
+        Assert.Equal(1, result.IncompleteCount);
+        Assert.Equal(1, result.NotStartedCount);
+    }
+
+    [Fact]
+    public async Task GetSetupOverview_DifferentFiscalYear_NotCounted()
+    {
+        // Ceiling exists but for a different FY — office should be "not started" for 2027.
+        Office office = MakeOffice(1, refCode: "01-010");
+        BudgetCeiling ceiling = MakeCeiling(1, 2026, 1_000_000m);
+        (AllocationService sut, _, _, _, _, _, _, _) = Build(ceilings: [ceiling], offices: [office]);
+
+        AllocationSetupOverviewDto result = await sut.GetSetupOverviewAsync(2027);
+
+        Assert.Equal(1, result.NotStartedCount);
+    }
 }
