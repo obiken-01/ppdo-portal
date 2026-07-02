@@ -1,21 +1,25 @@
 "use client";
 
 /**
- * Budget Planning Dashboard (RAL-80).
+ * Budget Planning Dashboard (RAL-80, RAL-60).
  *
  * PPDO view (officeId == null): FY selector, office selector, 3 stat cards,
  * WFP-status-by-office DataTable, recent activity panel.
  *
- * Visitor/office-user view (officeId set): FY selector, locked office display,
+ * Office-user view (officeId set): FY selector, locked office display,
  * nav buttons, recent activity panel only — no stat cards or WFP table.
+ *
+ * Both views get the office-scoped readiness hub (RAL-60) once an office is
+ * selected/locked: Allocation setup / LDIP / AIP / WFP panels for that office+FY.
  */
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { getDashboard, getRecentActivity } from "@/lib/budget-planning";
+import { getDashboard, getOfficeDashboard, getRecentActivity } from "@/lib/budget-planning";
 import { useMe } from "@/lib/me-cache";
+import { formatMoney } from "@/lib/money";
 import DataTable, { Column } from "@/components/ui/DataTable";
-import type { PlanningDashboard, RecentActivity, WfpOfficeStatus } from "@/types";
+import type { OfficeDashboard, PlanningDashboard, RecentActivity, WfpOfficeStatus } from "@/types";
 
 // ---------------------------------------------------------------------------
 // Spinner / error helpers
@@ -98,6 +102,150 @@ const WFP_COLUMNS: Column<WfpOfficeStatus>[] = [
 ];
 
 // ---------------------------------------------------------------------------
+// Readiness hub — Allocation setup / LDIP / AIP / WFP panels for one office (RAL-60)
+// ---------------------------------------------------------------------------
+
+function ReadinessPanel({
+  title,
+  href,
+  children,
+}: {
+  title: string;
+  href: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="bg-white border border-slate-200 p-4 flex flex-col">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{title}</h3>
+        <Link href={href} className="text-xs font-medium text-green-600 hover:text-green-700">
+          Open →
+        </Link>
+      </div>
+      <div className="flex-1 text-sm text-slate-700 space-y-1.5">{children}</div>
+    </div>
+  );
+}
+
+function ReadinessPanels({
+  officeId,
+  fiscalYear,
+  dashboard,
+  loading,
+  error,
+  wfpRow,
+}: {
+  officeId: number;
+  fiscalYear: number | null;
+  dashboard: OfficeDashboard | null;
+  loading: boolean;
+  error: string | null;
+  wfpRow: WfpOfficeStatus | null;
+}) {
+  const qs = `?officeId=${officeId}`;
+
+  if (loading) {
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {["Allocation Setup", "LDIP", "AIP", "WFP"].map((t) => (
+          <div key={t} className="bg-white border border-slate-200 p-4">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">{t}</p>
+            <Spinner />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return <div className="bg-white border border-slate-200 p-4 text-sm text-red-500">{error}</div>;
+  }
+
+  if (!dashboard) return null;
+
+  const { allocation, ldip, aip } = dashboard;
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Allocation setup */}
+      <ReadinessPanel title="Allocation Setup" href={`/budget-planning/allocation${qs}`}>
+        <p>
+          Ceiling:{" "}
+          <span className="font-medium">
+            {allocation.ceilingAmount != null ? `₱${formatMoney(allocation.ceilingAmount)}` : "Not set"}
+          </span>
+        </p>
+        {allocation.ceilingAmount != null ? (
+          <p className={allocation.isOverAllocated ? "text-red-600 font-medium" : "text-slate-600"}>
+            Allocated ₱{formatMoney(allocation.allocated)} of ₱{formatMoney(allocation.ceilingAmount)} ·
+            Remaining ₱{formatMoney(allocation.remaining ?? 0)}
+            {allocation.isOverAllocated && " (over)"}
+          </p>
+        ) : (
+          <p className="text-slate-400 text-xs">Set a ceiling to enable division allocation.</p>
+        )}
+        <p className="text-xs text-slate-500">
+          PPAs: {allocation.assignedProgramCount} assigned
+          {allocation.unassignedProgramCount > 0 && (
+            <span className="ml-1 text-amber-600 font-medium">
+              · {allocation.unassignedProgramCount} unassigned
+            </span>
+          )}
+        </p>
+      </ReadinessPanel>
+
+      {/* LDIP */}
+      <ReadinessPanel title="LDIP" href={`/budget-planning/ldip${qs}`}>
+        {ldip.scopingSupported ? (
+          <>
+            <p className="font-medium">{ldip.total} program(s)</p>
+            <p className="text-xs text-slate-500">
+              {ldip.breakdown.map((b) => `${b.count} ${b.status}`).join(" · ") || "No records yet"}
+            </p>
+          </>
+        ) : (
+          <p className="text-xs text-slate-400">Office scoping pending (RAL-61).</p>
+        )}
+      </ReadinessPanel>
+
+      {/* AIP */}
+      <ReadinessPanel title="AIP" href={`/budget-planning/aip${qs}`}>
+        {aip.exists ? (
+          <>
+            <p className="font-medium">
+              AIP created {aip.status && <span className="text-slate-400 font-normal">({aip.status})</span>}
+            </p>
+            <p className="text-xs text-slate-500">
+              {aip.programCount} program(s) · {aip.projectCount} project(s) · {aip.activityCount} activity(ies)
+            </p>
+          </>
+        ) : (
+          <p className="text-slate-400 text-xs">
+            No AIP for this office yet {fiscalYear ? `(FY ${fiscalYear})` : ""}.
+          </p>
+        )}
+      </ReadinessPanel>
+
+      {/* WFP */}
+      <ReadinessPanel
+        title="WFP"
+        href={
+          wfpRow?.aipRecordId != null
+            ? `/budget-planning/wfp?aipId=${wfpRow.aipRecordId}&officeId=${officeId}`
+            : `/budget-planning/wfp${qs}`
+        }
+      >
+        {wfpRow ? (
+          <WfpStatusBadge status={wfpRow.wfpStatus} />
+        ) : (
+          <span className="text-xs text-slate-400">No status available.</span>
+        )}
+      </ReadinessPanel>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
@@ -121,6 +269,10 @@ export default function BudgetPlanningPage() {
   const [activityLoading, setActivityLoading] = useState(true);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
   const [activityError, setActivityError] = useState<string | null>(null);
+
+  const [officeDashboard, setOfficeDashboard] = useState<OfficeDashboard | null>(null);
+  const [officeDashboardLoading, setOfficeDashboardLoading] = useState(false);
+  const [officeDashboardError, setOfficeDashboardError] = useState<string | null>(null);
 
   // ── Dashboard load ─────────────────────────────────────────────────────────
 
@@ -158,15 +310,44 @@ export default function BudgetPlanningPage() {
 
   const isPpdo = user?.officeId == null;
 
+  // The office this readiness hub is scoped to: PPDO picks any via the selector;
+  // an office user is always locked to their own.
+  const effectiveOfficeId = isPpdo ? selectedOffice : user?.officeId ?? null;
+
   const filteredWfpRows =
     selectedOffice == null
       ? (dashboard?.wfpByOffice ?? [])
       : (dashboard?.wfpByOffice ?? []).filter((r) => r.officeId === selectedOffice);
 
+  const effectiveOfficeWfpRow =
+    effectiveOfficeId == null
+      ? null
+      : (dashboard?.wfpByOffice ?? []).find((r) => r.officeId === effectiveOfficeId) ?? null;
+
   const ownOfficeLabel =
     user?.officeCode && user?.officeName
       ? `${user.officeCode} — ${user.officeName}`
       : user?.officeCode ?? user?.officeName ?? "Your Office";
+
+  const navHref = (path: string) =>
+    effectiveOfficeId != null ? `${path}?officeId=${effectiveOfficeId}` : path;
+
+  // ── Office readiness hub load ────────────────────────────────────────────
+
+  useEffect(() => {
+    if (effectiveOfficeId == null || fiscalYear == null) {
+      setOfficeDashboard(null);
+      return;
+    }
+    let cancelled = false;
+    setOfficeDashboardLoading(true);
+    setOfficeDashboardError(null);
+    getOfficeDashboard(effectiveOfficeId, fiscalYear)
+      .then((data) => { if (!cancelled) setOfficeDashboard(data); })
+      .catch(() => { if (!cancelled) setOfficeDashboardError("Failed to load office readiness data."); })
+      .finally(() => { if (!cancelled) setOfficeDashboardLoading(false); });
+    return () => { cancelled = true; };
+  }, [effectiveOfficeId, fiscalYear]);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -180,7 +361,7 @@ export default function BudgetPlanningPage() {
           <p className="text-sm text-slate-500">
             {isPpdo
               ? "FY overview · PPDO view — all offices"
-              : `FY overview · Visitor view — ${ownOfficeLabel}`}
+              : `FY overview · Office view — ${ownOfficeLabel}`}
           </p>
         </div>
 
@@ -244,12 +425,12 @@ export default function BudgetPlanningPage() {
           )}
         </div>
 
-        {/* Nav buttons */}
+        {/* Nav buttons — carry the selected office into each flow */}
         <div className="flex gap-2">
           {[
-            { label: "LDIP", href: "/budget-planning/ldip" },
-            { label: "AIP",  href: "/budget-planning/aip"  },
-            { label: "WFP",  href: "/budget-planning/wfp"  },
+            { label: "LDIP", href: navHref("/budget-planning/ldip") },
+            { label: "AIP",  href: navHref("/budget-planning/aip")  },
+            { label: "WFP",  href: navHref("/budget-planning/wfp")  },
           ].map(({ label, href }) => (
             <Link
               key={label}
@@ -260,6 +441,24 @@ export default function BudgetPlanningPage() {
             </Link>
           ))}
         </div>
+
+        {/* ── Readiness hub: Allocation setup / LDIP / AIP / WFP for the selected office ── */}
+        {effectiveOfficeId != null ? (
+          <ReadinessPanels
+            officeId={effectiveOfficeId}
+            fiscalYear={fiscalYear}
+            dashboard={officeDashboard}
+            loading={officeDashboardLoading}
+            error={officeDashboardError}
+            wfpRow={effectiveOfficeWfpRow}
+          />
+        ) : (
+          isPpdo && (
+            <p className="text-sm text-slate-400">
+              Select an office above to see its budget-planning readiness.
+            </p>
+          )
+        )}
 
         {/* ── PPDO-only: stat cards + WFP table ───────────────────────────── */}
         {isPpdo && (
