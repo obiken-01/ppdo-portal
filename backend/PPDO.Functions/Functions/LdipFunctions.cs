@@ -11,8 +11,12 @@ using PPDO.Domain.Interfaces;
 namespace PPDO.Functions.Functions;
 
 /// <summary>
-/// LDIP endpoints under <c>/api/budget-planning/ldip</c> (RAL-64).
+/// LDIP endpoints under <c>/api/budget-planning/ldip</c> (RAL-64, RAL-61).
 /// All require CanAccessBudgetPlanning. The Unlock endpoint additionally requires Admin/SuperAdmin.
+///
+/// Office scoping (RAL-61): office users (users.office_id set) only see and mutate
+/// their own office's records — the officeId is forced from the JWT user, never
+/// trusted from the request. PPDO users see all and may filter with ?officeId=.
 /// </summary>
 public sealed class LdipFunctions
 {
@@ -29,7 +33,24 @@ public sealed class LdipFunctions
 
     private Task<bool> CanAccess(User u) => _permissions.CanAccessBudgetPlanningAsync(u);
 
-    // ── GET /api/budget-planning/ldip?status= ────────────────────────────────
+    /// <summary>
+    /// Returns a 403 response when an office-scoped caller targets a record that
+    /// belongs to another office. Null when access is fine (or the record does not
+    /// exist — the service will produce the NotFound).
+    /// </summary>
+    private async Task<HttpResponseData?> DenyForeignOfficeAsync(
+        HttpRequestData req, User caller, int id, CancellationToken ct)
+    {
+        if (caller.OfficeId is null) return null;   // PPDO — full access
+
+        ServiceResult<LdipRecordDetailDto> existing = await _ldip.GetByIdAsync(id, ct);
+        if (existing.IsSuccess && existing.Value!.OfficeId != caller.OfficeId)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.Forbidden,
+                ApiResponse<LdipRecordDetailDto>.Fail("This LDIP record belongs to another office."), ct);
+        return null;
+    }
+
+    // ── GET /api/budget-planning/ldip?status=&officeId= ──────────────────────
     [Function("LdipList")]
     public async Task<HttpResponseData> List(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "budget-planning/ldip")] HttpRequestData req,
@@ -38,7 +59,11 @@ public sealed class LdipFunctions
         (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
         if (denied is not null) return denied;
 
-        IReadOnlyList<LdipRecordDto> data = await _ldip.GetAllAsync(req.Query["status"], ct);
+        // Office users are always scoped to their own office; PPDO may filter.
+        int? officeId = caller!.OfficeId
+            ?? (int.TryParse(req.Query["officeId"], out int parsed) ? parsed : null);
+
+        IReadOnlyList<LdipRecordDto> data = await _ldip.GetAllAsync(req.Query["status"], officeId, ct);
         return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK,
             ApiResponse<IReadOnlyList<LdipRecordDto>>.Ok(data), ct);
     }
@@ -51,6 +76,9 @@ public sealed class LdipFunctions
     {
         (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
         if (denied is not null) return denied;
+
+        HttpResponseData? forbidden = await DenyForeignOfficeAsync(req, caller!, id, ct);
+        if (forbidden is not null) return forbidden;
 
         return await ConfigHttp.FromResultAsync(req, await _ldip.GetByIdAsync(id, ct), ct);
     }
@@ -67,10 +95,14 @@ public sealed class LdipFunctions
         CreateLdipDto? body = await ConfigHttp.ReadBodyAsync<CreateLdipDto>(req, ct);
         if (body is null)
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
-                ApiResponse<LdipRecordDto>.Fail("Request body is missing or malformed."), ct);
+                ApiResponse<LdipRecordDetailDto>.Fail("Request body is missing or malformed."), ct);
+
+        // Office users always create for their own office, whatever the body says.
+        if (caller!.OfficeId is not null)
+            body = body with { OfficeId = caller.OfficeId };
 
         return await ConfigHttp.FromResultAsync(req,
-            await _ldip.CreateAsync(body, caller!.Id, ct), ct, HttpStatusCode.Created);
+            await _ldip.CreateAsync(body, caller.Id, ct), ct, HttpStatusCode.Created);
     }
 
     // ── PUT /api/budget-planning/ldip/{id} ───────────────────────────────────
@@ -82,10 +114,16 @@ public sealed class LdipFunctions
         (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
         if (denied is not null) return denied;
 
+        HttpResponseData? forbidden = await DenyForeignOfficeAsync(req, caller!, id, ct);
+        if (forbidden is not null) return forbidden;
+
         UpdateLdipDto? body = await ConfigHttp.ReadBodyAsync<UpdateLdipDto>(req, ct);
         if (body is null)
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
-                ApiResponse<LdipRecordDto>.Fail("Request body is missing or malformed."), ct);
+                ApiResponse<LdipRecordDetailDto>.Fail("Request body is missing or malformed."), ct);
+
+        if (caller!.OfficeId is not null)
+            body = body with { OfficeId = caller.OfficeId };
 
         return await ConfigHttp.FromResultAsync(req, await _ldip.UpdateAsync(id, body, ct), ct);
     }
@@ -99,6 +137,9 @@ public sealed class LdipFunctions
         (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
         if (denied is not null) return denied;
 
+        HttpResponseData? forbidden = await DenyForeignOfficeAsync(req, caller!, id, ct);
+        if (forbidden is not null) return forbidden;
+
         return await ConfigHttp.FromResultAsync(req, await _ldip.ArchiveAsync(id, ct), ct);
     }
 
@@ -110,6 +151,9 @@ public sealed class LdipFunctions
     {
         (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
         if (denied is not null) return denied;
+
+        HttpResponseData? forbidden = await DenyForeignOfficeAsync(req, caller!, id, ct);
+        if (forbidden is not null) return forbidden;
 
         return await ConfigHttp.FromResultAsync(req, await _ldip.FinalizeAsync(id, ct), ct);
     }

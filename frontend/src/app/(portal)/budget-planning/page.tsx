@@ -273,7 +273,7 @@ function OfficeReadinessPanels({
       <ReadinessPanel title="LDIP" href={`/budget-planning/ldip${qs}`}>
         {ldip.scopingSupported ? (
           <>
-            <p className="font-medium">{ldip.total} program(s)</p>
+            <p className="font-medium">{ldip.total} record(s) · this office</p>
             <p className="text-xs text-slate-500">
               {ldip.breakdown.map((b) => `${b.count} ${b.status}`).join(" · ") || "No records yet"}
             </p>

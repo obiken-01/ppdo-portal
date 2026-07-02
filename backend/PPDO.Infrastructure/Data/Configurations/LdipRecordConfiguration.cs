@@ -13,6 +13,10 @@ public sealed class LdipRecordConfiguration : IEntityTypeConfiguration<LdipRecor
         builder.HasKey(l => l.Id);
         builder.Property(l => l.Id).HasColumnName("id");
 
+        // Nullable for pre-v1.3 rows; required by the service for new records (RAL-61).
+        builder.Property(l => l.OfficeId)
+            .HasColumnName("office_id");
+
         builder.Property(l => l.RefCode)
             .HasColumnName("ref_code")
             .IsRequired()
@@ -77,6 +81,16 @@ public sealed class LdipRecordConfiguration : IEntityTypeConfiguration<LdipRecor
             .WithMany()
             .HasForeignKey(l => l.CreatedById)
             .HasConstraintName("FK_ldip_records_Users_created_by")
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(l => l.OfficeId)
+            .HasDatabaseName("IX_ldip_records_office_id");
+
+        // Restrict: never delete a config office that has LDIP documents.
+        builder.HasOne(l => l.Office)
+            .WithMany()
+            .HasForeignKey(l => l.OfficeId)
+            .HasConstraintName("FK_ldip_records_offices_office_id")
             .OnDelete(DeleteBehavior.Restrict);
     }
 }
