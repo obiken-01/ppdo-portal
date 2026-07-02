@@ -227,6 +227,40 @@ export interface RecentActivity {
   actorName: string;
 }
 
+// ── Office-scoped dashboard (RAL-60) ─────────────────────────────────────────
+
+export interface AllocationSetupSummary {
+  ceilingAmount: number | null;
+  allocated: number;
+  remaining: number | null;
+  isOverAllocated: boolean;
+  assignedProgramCount: number;
+  unassignedProgramCount: number;
+}
+
+/** scopingSupported is false until RAL-61 adds ldip_records.office_id. */
+export interface OfficeLdipSummary {
+  scopingSupported: boolean;
+  total: number;
+  breakdown: StatusBreakdown[];
+}
+
+export interface OfficeAipSummary {
+  exists: boolean;
+  status: string | null;
+  programCount: number;
+  projectCount: number;
+  activityCount: number;
+}
+
+export interface OfficeDashboard {
+  officeId: number;
+  fiscalYear: number;
+  allocation: AllocationSetupSummary;
+  ldip: OfficeLdipSummary;
+  aip: OfficeAipSummary;
+}
+
 // ── WFP ──────────────────────────────────────────────────────────────────────
 
 export type ExpenditureType = "PS" | "MOOE" | "CO";

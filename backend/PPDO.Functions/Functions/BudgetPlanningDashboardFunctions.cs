@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
+using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
 using PPDO.Application.Services;
 using PPDO.Domain.Entities;
@@ -10,9 +11,10 @@ using PPDO.Domain.Interfaces;
 namespace PPDO.Functions.Functions;
 
 /// <summary>
-/// HTTP-triggered Azure Functions for the Budget Planning Dashboard (RAL-80).
+/// HTTP-triggered Azure Functions for the Budget Planning Dashboard (RAL-80, RAL-60).
 /// All endpoints require a valid JWT with CanAccessBudgetPlanning — no public access.
-/// Responses are raw JSON (no { data, error, message } envelope), same as DashboardFunctions.
+/// GetDashboard/GetActivity return raw JSON (no envelope), same as DashboardFunctions.
+/// GetOfficeDashboard (RAL-60) uses the { data, error, message } envelope per its ticket.
 /// </summary>
 public sealed class BudgetPlanningDashboardFunctions
 {
@@ -79,6 +81,31 @@ public sealed class BudgetPlanningDashboardFunctions
             await _service.GetRecentActivityAsync(officeId, cancellationToken);
 
         return await OkJson(req, result, cancellationToken);
+    }
+
+    // ── GET /api/budget-planning/dashboard/office?officeId=&fiscalYear= ──────
+
+    [Function("GetBudgetPlanningOfficeDashboard")]
+    public async Task<HttpResponseData> GetOfficeDashboard(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "budget-planning/dashboard/office")]
+        HttpRequestData req,
+        CancellationToken cancellationToken)
+    {
+        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(
+            req, _jwt, u => _permissions.CanAccessBudgetPlanningAsync(u), cancellationToken);
+        if (denied is not null) return denied;
+
+        if (!int.TryParse(req.Query["officeId"], out int officeId) ||
+            !int.TryParse(req.Query["fiscalYear"], out int fiscalYear))
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<OfficeDashboardDto>.Fail(
+                    "officeId and fiscalYear query parameters are required."), cancellationToken);
+
+        OfficeDashboardDto result =
+            await _service.GetOfficeDashboardAsync(officeId, fiscalYear, cancellationToken);
+
+        return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK,
+            ApiResponse<OfficeDashboardDto>.Ok(result), cancellationToken);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

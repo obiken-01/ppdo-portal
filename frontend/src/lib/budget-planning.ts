@@ -1,13 +1,14 @@
 /**
- * Budget Planning Dashboard API helpers (RAL-80).
+ * Budget Planning Dashboard API helpers (RAL-80, RAL-60).
  *
- * Endpoints return raw JSON (no { data, error, message } envelope) — same pattern
- * as the main DashboardFunctions, not the config endpoints.
+ * getDashboard/getRecentActivity return raw JSON (no { data, error, message }
+ * envelope) — same pattern as the main DashboardFunctions, not the config endpoints.
+ * getOfficeDashboard (RAL-60) uses the envelope, per its ticket.
  * All calls go through the shared Axios instance for JWT + refresh-on-401.
  */
 
 import api from "./api";
-import type { PlanningDashboard, RecentActivity } from "@/types";
+import type { ApiResponse, OfficeDashboard, PlanningDashboard, RecentActivity } from "@/types";
 
 export async function getDashboard(fiscalYear?: number): Promise<PlanningDashboard> {
   const params = fiscalYear != null ? { fiscalYear } : {};
@@ -19,4 +20,16 @@ export async function getRecentActivity(officeId?: number): Promise<RecentActivi
   const params = officeId != null ? { officeId } : {};
   const { data } = await api.get<RecentActivity[]>("/budget-planning/activity", { params });
   return data;
+}
+
+export async function getOfficeDashboard(
+  officeId: number,
+  fiscalYear: number
+): Promise<OfficeDashboard> {
+  const { data } = await api.get<ApiResponse<OfficeDashboard>>(
+    "/budget-planning/dashboard/office",
+    { params: { officeId, fiscalYear } }
+  );
+  if (data.data == null) throw new Error(data.error ?? "Unexpected empty response.");
+  return data.data;
 }
