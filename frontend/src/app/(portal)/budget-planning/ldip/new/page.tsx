@@ -252,7 +252,8 @@ function UploadTab({ me }: { me: MeResponse }) {
               "Must be an Excel file (.xlsx)",
               "Maximum file size: 20 MB",
               "Must contain sheets named General, Social, Economic, Others",
-              "Only rows matching the selected office's AIP ref code are imported",
+              "The file covers every office — only rows matching the office you select above are imported",
+              "Only PPDO staff can upload an LDIP file (same as AIP)",
             ].map((req, i) => (
               <li key={i} className="flex items-start gap-2 text-xs text-slate-600">
                 <span className="shrink-0 text-green-600 mt-0.5">✓</span>
