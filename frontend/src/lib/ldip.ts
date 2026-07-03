@@ -9,6 +9,8 @@ import api from "./api";
 import type {
   ApiResponse,
   CreateLdipRequest,
+  LdipImportConfirmRequest,
+  LdipImportPreviewResponse,
   LdipRecord,
   LdipRecordDetail,
   LdipStatus,
@@ -103,5 +105,36 @@ export async function unlockLdip(id: number): Promise<LdipRecord> {
 
 export async function archiveLdip(id: number): Promise<LdipRecord> {
   const { data } = await api.delete<ApiResponse<LdipRecord>>(`/budget-planning/ldip/${id}`);
+  return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// File upload (RAL-113) — POST /api/budget-planning/ldip/upload (parse preview)
+// Body: raw .xlsx binary (Content-Type: application/octet-stream)
+// ---------------------------------------------------------------------------
+
+export async function uploadLdipFile(
+  file: File,
+  fiscalYearStart: number,
+  fiscalYearEnd: number,
+  officeId: number
+): Promise<LdipImportPreviewResponse> {
+  const { data } = await api.post<ApiResponse<LdipImportPreviewResponse>>(
+    `/budget-planning/ldip/upload?fiscalYearStart=${fiscalYearStart}&fiscalYearEnd=${fiscalYearEnd}&officeId=${officeId}`,
+    file,
+    { headers: { "Content-Type": "application/octet-stream" } }
+  );
+  return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// File upload — confirm import — POST /api/budget-planning/ldip/confirm
+// ---------------------------------------------------------------------------
+
+export async function confirmLdipImport(body: LdipImportConfirmRequest): Promise<LdipRecordDetail> {
+  const { data } = await api.post<ApiResponse<LdipRecordDetail>>(
+    "/budget-planning/ldip/confirm",
+    body
+  );
   return unwrap(data);
 }

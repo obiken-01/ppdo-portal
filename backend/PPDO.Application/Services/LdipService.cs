@@ -36,17 +36,23 @@ public sealed class LdipService : ILdipService
     private readonly IRepository<Office> _officeRepo;
     private readonly IAuditService _audit;
     private readonly CallerContext _caller;
+    private readonly ILdipXlsmParser _parser;
+    private readonly IRepository<FundingSource> _fsRepo;
 
     public LdipService(
         ILdipRepository repo,
         IRepository<Office> officeRepo,
         IAuditService audit,
-        CallerContext caller)
+        CallerContext caller,
+        ILdipXlsmParser parser,
+        IRepository<FundingSource> fsRepo)
     {
         _repo       = repo;
         _officeRepo = officeRepo;
         _audit      = audit;
         _caller     = caller;
+        _parser     = parser;
+        _fsRepo     = fsRepo;
     }
 
     // ── Read ──────────────────────────────────────────────────────────────────
@@ -98,6 +104,8 @@ public sealed class LdipService : ILdipService
         int seq = all.Count(r => r.FiscalYearStart == dto.FiscalYearStart) + 1;
         string refCode = $"LDIP-{dto.FiscalYearStart}-{seq:D3}";
 
+        Dictionary<string, FundingSource> fsLookup = await LoadFundingSourceLookupAsync(ct);
+
         DateTime now = DateTime.UtcNow;
         LdipRecord entity = new()
         {
@@ -111,7 +119,7 @@ public sealed class LdipService : ILdipService
             CreatedById     = createdById,
             CreatedAt       = now,
             UpdatedAt       = now,
-            Offices         = BuildHierarchy(groups, office),
+            Offices         = BuildHierarchy(groups, office, fsLookup),
         };
 
         await _repo.AddAsync(entity, ct);
@@ -157,6 +165,8 @@ public sealed class LdipService : ILdipService
             await _repo.DeleteOfficeGroupAsync(group, ct);
         await _repo.SaveChangesAsync(ct);
 
+        Dictionary<string, FundingSource> fsLookup = await LoadFundingSourceLookupAsync(ct);
+
         rec.Title           = ResolveTitle(dto.Title, dto.FiscalYearStart, dto.FiscalYearEnd, office);
         rec.FiscalYearStart = dto.FiscalYearStart;
         rec.FiscalYearEnd   = dto.FiscalYearEnd;
@@ -164,7 +174,7 @@ public sealed class LdipService : ILdipService
         rec.OfficeId        = office.Id;
         rec.UpdatedAt       = DateTime.UtcNow;
 
-        List<LdipOffice> rebuilt = BuildHierarchy(groups, office);
+        List<LdipOffice> rebuilt = BuildHierarchy(groups, office, fsLookup);
         foreach (LdipOffice group in rebuilt)
         {
             group.LdipRecordId = rec.Id;
@@ -307,8 +317,12 @@ public sealed class LdipService : ILdipService
     /// Program numbering is continuous PER REF CODE across groups (WARDEN gets -001,
     /// AKAP-HUB continues -002, …) — groups sharing a ref code must not both start
     /// at -001, matching how real AIP files number sub-office programs.
+    /// RAL-113: also copies through the detail fields (upload-only; null for
+    /// manually-added programs) and resolves FundingSourceRaw → FundingSourceId
+    /// via <paramref name="fsLookup"/> (keyed by FundingSource.Code).
     /// </summary>
-    private static List<LdipOffice> BuildHierarchy(IReadOnlyList<SaveLdipGroupDto> groups, Office office)
+    private static List<LdipOffice> BuildHierarchy(
+        IReadOnlyList<SaveLdipGroupDto> groups, Office office, Dictionary<string, FundingSource> fsLookup)
     {
         List<LdipOffice> result = [];
         Dictionary<string, int> nextSeqByRefCode = [];
@@ -327,16 +341,41 @@ public sealed class LdipService : ILdipService
             {
                 int seq = nextSeqByRefCode.GetValueOrDefault(groupRef, 0) + 1;
                 nextSeqByRefCode[groupRef] = seq;
+                fsLookup.TryGetValue(program.FundingSourceRaw ?? string.Empty, out FundingSource? fs);
                 entity.Programs.Add(new LdipProgram
                 {
-                    RefCode = $"{groupRef}-{seq:D3}",
-                    Name    = program.Name.Trim().ToUpperInvariant(),
-                    Budget  = program.Budget,
+                    RefCode               = $"{groupRef}-{seq:D3}",
+                    Name                  = program.Name.Trim().ToUpperInvariant(),
+                    Budget                = program.Budget,
+                    ImplementingOffice    = program.ImplementingOffice,
+                    StartDate             = program.StartDate,
+                    EndDate               = program.EndDate,
+                    ExpectedOutputs       = program.ExpectedOutputs,
+                    FundingSourceId       = fs?.Id,
+                    FundingSourceSnapshot = fs?.Code ?? program.FundingSourceRaw,
+                    Ps                    = program.Ps,
+                    Mooe                  = program.Mooe,
+                    Co                    = program.Co,
+                    CcAdaptation          = program.CcAdaptation,
+                    CcMitigation          = program.CcMitigation,
+                    CcTypologyCode        = program.CcTypologyCode,
+                    PdpRdp                = program.PdpRdp,
+                    Sdgs                  = program.Sdgs,
+                    SendaiFramework       = program.SendaiFramework,
+                    NdrrmPlan             = program.NdrrmPlan,
+                    Nsp                   = program.Nsp,
+                    Pdpdfp                = program.Pdpdfp,
                 });
             }
             result.Add(entity);
         }
         return result;
+    }
+
+    private async Task<Dictionary<string, FundingSource>> LoadFundingSourceLookupAsync(CancellationToken ct)
+    {
+        IReadOnlyList<FundingSource> all = await _fsRepo.GetAllAsync(ct);
+        return all.ToDictionary(f => f.Code, StringComparer.OrdinalIgnoreCase);
     }
 
     private static string Normalize(string sector) =>
@@ -361,7 +400,106 @@ public sealed class LdipService : ILdipService
         groups.Select(g => new LdipOfficeGroupDto(
             g.Id, g.RefCode, g.Name, g.Sector,
             g.Programs.OrderBy(p => p.RefCode)
-                .Select(p => new LdipProgramDto(p.Id, p.RefCode, p.Name, p.Budget))
+                .Select(MapProgramToDto)
                 .ToList()))
             .ToList());
+
+    private static LdipProgramDto MapProgramToDto(LdipProgram p) => new(
+        p.Id, p.RefCode, p.Name, p.Budget,
+        p.ImplementingOffice, p.StartDate, p.EndDate, p.ExpectedOutputs,
+        p.FundingSourceId, p.FundingSourceSnapshot,
+        p.Ps, p.Mooe, p.Co, p.CcAdaptation, p.CcMitigation, p.CcTypologyCode,
+        p.PdpRdp, p.Sdgs, p.SendaiFramework, p.NdrrmPlan, p.Nsp, p.Pdpdfp);
+
+    // ── File upload (RAL-113) ─────────────────────────────────────────────────
+
+    public async Task<ServiceResult<LdipImportPreviewDto>> ParsePreviewAsync(
+        Stream xlsxStream,
+        int fiscalYearStart,
+        int fiscalYearEnd,
+        int officeId,
+        IReadOnlyList<FundingSource> knownFundingSources,
+        CancellationToken ct = default)
+    {
+        ServiceResult<Office> officeCheck = await ResolveOfficeAsync(officeId, ct);
+        if (!officeCheck.IsSuccess)
+            return ServiceResult<LdipImportPreviewDto>.FromError(officeCheck);
+        Office office = officeCheck.Value!;
+
+        Dictionary<string, List<ParsedLdipOffice>> parsed;
+        try
+        {
+            parsed = _parser.Parse(xlsxStream);
+        }
+        catch (LdipParseException ex)
+        {
+            return ServiceResult<LdipImportPreviewDto>.BadRequest(string.Join("; ", ex.Errors));
+        }
+
+        Dictionary<string, FundingSource> fsDict =
+            knownFundingSources.ToDictionary(f => f.Code, StringComparer.OrdinalIgnoreCase);
+
+        List<string> warnings = [];
+        List<SaveLdipGroupDto> groups = [];
+        int groupCount = 0, programCount = 0;
+
+        foreach (string sector in SectorPrefixes.Keys)
+        {
+            if (!parsed.TryGetValue(sector, out List<ParsedLdipOffice>? sectorOffices)) continue;
+
+            string expectedRefCode = $"{SectorPrefixes[sector]}-000-1-{office.OfficeRefCode}";
+            foreach (ParsedLdipOffice off in sectorOffices)
+            {
+                if (!off.RefCode.Equals(expectedRefCode, StringComparison.OrdinalIgnoreCase)) continue;
+
+                groupCount++;
+                List<SaveLdipProgramDto> programDtos = [];
+                foreach (ParsedLdipProgram prog in off.Programs)
+                {
+                    programCount++;
+                    if (!string.IsNullOrWhiteSpace(prog.FundingSourceRaw) &&
+                        !fsDict.ContainsKey(prog.FundingSourceRaw))
+                    {
+                        warnings.Add($"Program {prog.RefCode}: unmatched funding source '{prog.FundingSourceRaw}'.");
+                    }
+
+                    decimal budget = prog.Total ?? (prog.Ps ?? 0) + (prog.Mooe ?? 0) + (prog.Co ?? 0);
+                    programDtos.Add(new SaveLdipProgramDto(
+                        prog.Name, budget,
+                        prog.ImplementingOffice, prog.StartDate, prog.EndDate, prog.ExpectedOutputs,
+                        prog.FundingSourceRaw, prog.Ps, prog.Mooe, prog.Co,
+                        prog.CcAdaptation, prog.CcMitigation, prog.CcTypologyCode,
+                        prog.PdpRdp, prog.Sdgs, prog.SendaiFramework, prog.NdrrmPlan, prog.Nsp, prog.Pdpdfp));
+                }
+                groups.Add(new SaveLdipGroupDto(sector, off.Name, programDtos));
+            }
+        }
+
+        if (groupCount == 0)
+        {
+            warnings.Add(
+                "No rows in the file matched this office's AIP ref code — check the file covers this " +
+                "office, or that Config → Offices has the correct office_ref_code.");
+        }
+
+        LdipImportPreviewDto preview = new(
+            fiscalYearStart, fiscalYearEnd, officeId, groups,
+            new LdipImportCountsDto(groupCount, programCount), warnings.AsReadOnly());
+
+        return ServiceResult<LdipImportPreviewDto>.Ok(preview);
+    }
+
+    public async Task<ServiceResult<LdipRecordDetailDto>> ConfirmImportAsync(
+        LdipImportConfirmDto dto, Guid createdById, CancellationToken ct = default)
+    {
+        CreateLdipDto createDto = new(
+            Title:           "",
+            FiscalYearStart: dto.FiscalYearStart,
+            FiscalYearEnd:   dto.FiscalYearEnd,
+            EntryMode:       "Upload",
+            OfficeId:        dto.OfficeId,
+            Groups:          dto.Groups);
+
+        return await CreateAsync(createDto, createdById, ct);
+    }
 }

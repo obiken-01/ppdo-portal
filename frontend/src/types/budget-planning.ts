@@ -414,7 +414,7 @@ export interface UpsertProgramAssignmentRequest {
 
 // ── LDIP ──────────────────────────────────────────────────────────────────────
 
-export type LdipEntryMode = "New" | "Amendment" | "Supplemental";
+export type LdipEntryMode = "New" | "Amendment" | "Supplemental" | "Upload";
 export type LdipStatus    = "Draft" | "Final" | "Archived";
 export type LdipSector    = "General" | "Social" | "Economic" | "Others";
 
@@ -437,12 +437,34 @@ export interface LdipRecord {
 
 // ── LDIP hierarchy (RAL-61) — ref codes are server-computed, never client-sent ──
 
-/** One program row. Budget is in thousands (₱000), like AIP totals. */
+/**
+ * One program row. Budget is in thousands (₱000), like AIP totals.
+ * The detail fields below (RAL-113) are populated only for upload-derived
+ * programs — null for programs added through the manual "+ Add Program" flow.
+ */
 export interface LdipProgram {
   id: number;
   refCode: string;
   name: string;
   budget: number;
+  implementingOffice: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  expectedOutputs: string | null;
+  fundingSourceId: number | null;
+  fundingSourceSnapshot: string | null;
+  ps: number | null;
+  mooe: number | null;
+  co: number | null;
+  ccAdaptation: number | null;
+  ccMitigation: number | null;
+  ccTypologyCode: string | null;
+  pdpRdp: string | null;
+  sdgs: string | null;
+  sendaiFramework: string | null;
+  ndrrmPlan: string | null;
+  nsp: string | null;
+  pdpdfp: string | null;
 }
 
 /**
@@ -461,9 +483,31 @@ export interface LdipRecordDetail extends LdipRecord {
   groups: LdipOfficeGroup[];
 }
 
+/**
+ * Detail fields (RAL-113) are only ever set by the upload-confirm flow (echoed
+ * back from the preview response) — the manual "+ Add Program" form only ever
+ * sends name/budget, leaving the rest undefined.
+ */
 export interface SaveLdipProgram {
   name: string;
   budget: number;
+  implementingOffice?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  expectedOutputs?: string | null;
+  fundingSourceRaw?: string | null;
+  ps?: number | null;
+  mooe?: number | null;
+  co?: number | null;
+  ccAdaptation?: number | null;
+  ccMitigation?: number | null;
+  ccTypologyCode?: string | null;
+  pdpRdp?: string | null;
+  sdgs?: string | null;
+  sendaiFramework?: string | null;
+  ndrrmPlan?: string | null;
+  nsp?: string | null;
+  pdpdfp?: string | null;
 }
 
 export interface SaveLdipGroup {
@@ -487,6 +531,34 @@ export interface UpdateLdipRequest {
   fiscalYearStart: number;
   fiscalYearEnd: number;
   entryMode: LdipEntryMode;
+  officeId: number;
+  groups: SaveLdipGroup[];
+}
+
+// ── LDIP file upload (RAL-113) ────────────────────────────────────────────────
+
+export interface LdipImportCounts {
+  groups: number;
+  programs: number;
+}
+
+/**
+ * Returned by POST /api/budget-planning/ldip/upload. Groups are already filtered
+ * to the office the caller selected — same shape as the manual-entry save
+ * payload, so the client echoes it straight back to /confirm.
+ */
+export interface LdipImportPreviewResponse {
+  fiscalYearStart: number;
+  fiscalYearEnd: number;
+  officeId: number;
+  groups: SaveLdipGroup[];
+  counts: LdipImportCounts;
+  warnings: string[];
+}
+
+export interface LdipImportConfirmRequest {
+  fiscalYearStart: number;
+  fiscalYearEnd: number;
   officeId: number;
   groups: SaveLdipGroup[];
 }
