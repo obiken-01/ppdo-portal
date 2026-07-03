@@ -162,7 +162,7 @@ public sealed class LdipServiceTests
     }
 
     [Fact]
-    public async Task Create_BlankTitle_AutoGeneratesFromOfficeAndYears()
+    public async Task Create_BlankTitle_AutoGeneratesFromOfficeCodeAndYears()
     {
         (LdipService sut, _, _) = Build([]);
 
@@ -170,9 +170,23 @@ public sealed class LdipServiceTests
             await sut.CreateAsync(new CreateLdipDto("", 2027, 2029, "New", OfficeId: 1), UserId);
 
         Assert.True(result.IsSuccess);
-        Assert.Contains("2027", result.Value!.Title);
-        Assert.Contains("2029", result.Value.Title);
-        Assert.Contains("Provincial Planning", result.Value.Title);
+        Assert.Equal("LDIP 2027-2029 — PPDO", result.Value!.Title);
+    }
+
+    [Fact]
+    public async Task Create_GroupAndProgramNames_StoredUppercase()
+    {
+        // Names normalise to UPPERCASE server-side — matching the source AIP files.
+        (LdipService sut, _, _) = Build([]);
+        CreateLdipDto dto = new("T", 2027, 2029, "New", OfficeId: 1,
+            Groups: [SaveGroup("General", "Office of the Provincial Governor",
+                ("Office Functionality and Operations Program", 100m))]);
+
+        ServiceResult<LdipRecordDetailDto> result = await sut.CreateAsync(dto, UserId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("OFFICE OF THE PROVINCIAL GOVERNOR", result.Value!.Groups[0].Name);
+        Assert.Equal("OFFICE FUNCTIONALITY AND OPERATIONS PROGRAM", result.Value.Groups[0].Programs[0].Name);
     }
 
     // ── Create — AIP ref-code computation (the RAL-61 core) ──────────────────

@@ -315,10 +315,12 @@ public sealed class LdipService : ILdipService
         foreach (SaveLdipGroupDto group in groups)
         {
             string groupRef = $"{SectorPrefixes[group.Sector]}-000-1-{office.OfficeRefCode}";
+            // Names are normalised to UPPERCASE — matching how office and program
+            // rows are written in the source AIP files.
             LdipOffice entity = new()
             {
                 RefCode = groupRef,
-                Name    = group.Name.Trim(),
+                Name    = group.Name.Trim().ToUpperInvariant(),
                 Sector  = Normalize(group.Sector),
             };
             foreach (SaveLdipProgramDto program in group.Programs)
@@ -328,7 +330,7 @@ public sealed class LdipService : ILdipService
                 entity.Programs.Add(new LdipProgram
                 {
                     RefCode = $"{groupRef}-{seq:D3}",
-                    Name    = program.Name.Trim(),
+                    Name    = program.Name.Trim().ToUpperInvariant(),
                     Budget  = program.Budget,
                 });
             }
@@ -342,7 +344,7 @@ public sealed class LdipService : ILdipService
 
     private static string ResolveTitle(string title, int start, int end, Office office) =>
         string.IsNullOrWhiteSpace(title)
-            ? $"LDIP {start}-{end} — {office.OfficeName}"
+            ? $"LDIP {start}-{end} — {office.OfficeCode}"
             : title.Trim();
 
     // ── Mapping ───────────────────────────────────────────────────────────────

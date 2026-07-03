@@ -180,9 +180,10 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
   const targetsExistingGroup = sectorGroups.some((g) => sameName(g.name, subOfficeName));
 
   // Reset the group-name suggestion when the sector or office changes; picking
-  // an existing name from the datalist re-targets that group.
+  // an existing name from the datalist re-targets that group. Names are always
+  // UPPERCASE, matching the source AIP files (server normalises too).
   useEffect(() => {
-    setSubOfficeName(office?.officeName ?? "");
+    setSubOfficeName((office?.officeName ?? "").toUpperCase());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sector, officeId, offices.length]);
 
@@ -505,11 +506,11 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
               </label>
               <input
                 value={subOfficeName}
-                onChange={(e) => setSubOfficeName(e.target.value)}
+                onChange={(e) => setSubOfficeName(e.target.value.toUpperCase())}
                 maxLength={500}
                 list="ldip-group-names"
                 placeholder='e.g. "OFFICE OF THE GOVERNOR - WARDEN"'
-                className={`w-full ${inputCls(true)}`}
+                className={`w-full uppercase ${inputCls(true)}`}
               />
               <datalist id="ldip-group-names">
                 {sectorGroups.map((g) => (
@@ -523,10 +524,10 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
               </label>
               <input
                 value={programName}
-                onChange={(e) => setProgramName(e.target.value)}
+                onChange={(e) => setProgramName(e.target.value.toUpperCase())}
                 maxLength={500}
-                placeholder="e.g. Office Functionality and Operations Program"
-                className={`w-full ${inputCls(true)}`}
+                placeholder="e.g. OFFICE FUNCTIONALITY AND OPERATIONS PROGRAM"
+                className={`w-full uppercase ${inputCls(true)}`}
               />
             </div>
             <div>
