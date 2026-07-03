@@ -10,6 +10,7 @@ import type {
   ApiResponse,
   CreateLdipRequest,
   LdipRecord,
+  LdipRecordDetail,
   LdipStatus,
   UpdateLdipRequest,
 } from "@/types";
@@ -31,14 +32,16 @@ export function ldipErrorMessage(err: unknown, fallback: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// List — GET /api/budget-planning/ldip?status=
+// List — GET /api/budget-planning/ldip?status=&officeId=
+// (office users are always scoped server-side; officeId is a PPDO-only filter)
 // ---------------------------------------------------------------------------
 
 export async function listLdip(
-  params: { status?: LdipStatus | "" } = {}
+  params: { status?: LdipStatus | ""; officeId?: number } = {}
 ): Promise<LdipRecord[]> {
   const query: Record<string, string> = {};
   if (params.status) query.status = params.status;
+  if (params.officeId != null) query.officeId = String(params.officeId);
   const { data } = await api.get<ApiResponse<LdipRecord[]>>("/budget-planning/ldip", {
     params: query,
   });
@@ -46,11 +49,11 @@ export async function listLdip(
 }
 
 // ---------------------------------------------------------------------------
-// Get by ID — GET /api/budget-planning/ldip/{id}
+// Get by ID — GET /api/budget-planning/ldip/{id} (returns the full hierarchy)
 // ---------------------------------------------------------------------------
 
-export async function getLdipById(id: number): Promise<LdipRecord> {
-  const { data } = await api.get<ApiResponse<LdipRecord>>(`/budget-planning/ldip/${id}`);
+export async function getLdipById(id: number): Promise<LdipRecordDetail> {
+  const { data } = await api.get<ApiResponse<LdipRecordDetail>>(`/budget-planning/ldip/${id}`);
   return unwrap(data);
 }
 
@@ -58,17 +61,17 @@ export async function getLdipById(id: number): Promise<LdipRecord> {
 // Create — POST /api/budget-planning/ldip
 // ---------------------------------------------------------------------------
 
-export async function createLdip(body: CreateLdipRequest): Promise<LdipRecord> {
-  const { data } = await api.post<ApiResponse<LdipRecord>>("/budget-planning/ldip", body);
+export async function createLdip(body: CreateLdipRequest): Promise<LdipRecordDetail> {
+  const { data } = await api.post<ApiResponse<LdipRecordDetail>>("/budget-planning/ldip", body);
   return unwrap(data);
 }
 
 // ---------------------------------------------------------------------------
-// Update — PUT /api/budget-planning/ldip/{id}
+// Update — PUT /api/budget-planning/ldip/{id} (full-replace of the hierarchy)
 // ---------------------------------------------------------------------------
 
-export async function updateLdip(id: number, body: UpdateLdipRequest): Promise<LdipRecord> {
-  const { data } = await api.put<ApiResponse<LdipRecord>>(`/budget-planning/ldip/${id}`, body);
+export async function updateLdip(id: number, body: UpdateLdipRequest): Promise<LdipRecordDetail> {
+  const { data } = await api.put<ApiResponse<LdipRecordDetail>>(`/budget-planning/ldip/${id}`, body);
   return unwrap(data);
 }
 

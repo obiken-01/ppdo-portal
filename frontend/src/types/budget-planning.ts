@@ -416,6 +416,7 @@ export interface UpsertProgramAssignmentRequest {
 
 export type LdipEntryMode = "New" | "Amendment" | "Supplemental";
 export type LdipStatus    = "Draft" | "Final" | "Archived";
+export type LdipSector    = "General" | "Social" | "Economic" | "Others";
 
 export interface LdipRecord {
   id: number;
@@ -429,13 +430,56 @@ export interface LdipRecord {
   createdById: string;
   createdAt: string;
   updatedAt: string;
+  officeId: number | null;
+  officeName: string | null;
+  programCount: number;
+}
+
+// ── LDIP hierarchy (RAL-61) — ref codes are server-computed, never client-sent ──
+
+/** One program row. Budget is in thousands (₱000), like AIP totals. */
+export interface LdipProgram {
+  id: number;
+  refCode: string;
+  name: string;
+  budget: number;
+}
+
+/**
+ * One sector group under a document. Name is the office/sub-office display name —
+ * it may differ per sector while sharing the same config office ref code.
+ */
+export interface LdipOfficeGroup {
+  id: number;
+  refCode: string;
+  name: string;
+  sector: LdipSector;
+  programs: LdipProgram[];
+}
+
+export interface LdipRecordDetail extends LdipRecord {
+  groups: LdipOfficeGroup[];
+}
+
+export interface SaveLdipProgram {
+  name: string;
+  budget: number;
+}
+
+export interface SaveLdipGroup {
+  sector: LdipSector;
+  name: string;
+  programs: SaveLdipProgram[];
 }
 
 export interface CreateLdipRequest {
+  /** Blank = server auto-generates "LDIP {start}-{end} — {office name}". */
   title: string;
   fiscalYearStart: number;
   fiscalYearEnd: number;
   entryMode: LdipEntryMode;
+  officeId: number;
+  groups: SaveLdipGroup[];
 }
 
 export interface UpdateLdipRequest {
@@ -443,4 +487,6 @@ export interface UpdateLdipRequest {
   fiscalYearStart: number;
   fiscalYearEnd: number;
   entryMode: LdipEntryMode;
+  officeId: number;
+  groups: SaveLdipGroup[];
 }

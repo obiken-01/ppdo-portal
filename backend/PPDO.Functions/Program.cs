@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Http;
+﻿using Microsoft.AspNetCore.Http;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -106,6 +106,7 @@ var host = new HostBuilder()
         services.AddScoped<ICalendarEventRepository, CalendarEventRepository>();
         services.AddScoped<IAuditRepository, AuditRepository>();
         services.AddScoped<IAipRepository, AipRepository>();
+        services.AddScoped<ILdipRepository, LdipRepository>();
         services.AddScoped<IWfpRepository, WfpRepository>();
         services.AddScoped<IJwtMiddleware, JwtMiddleware>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();

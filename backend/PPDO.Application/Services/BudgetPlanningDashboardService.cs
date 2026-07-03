@@ -15,7 +15,7 @@ namespace PPDO.Application.Services;
 /// </summary>
 public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardService
 {
-    private readonly IRepository<LdipRecord> _ldipRepo;
+    private readonly ILdipRepository         _ldipRepo;
     private readonly IAipRepository          _aipRepo;
     private readonly IRepository<WfpRecord>  _wfpRepo;
     private readonly IRepository<Office>     _officeRepo;
@@ -23,7 +23,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     private readonly IAllocationService      _allocationService;
 
     public BudgetPlanningDashboardService(
-        IRepository<LdipRecord> ldipRepo,
+        ILdipRepository         ldipRepo,
         IAipRepository          aipRepo,
         IRepository<WfpRecord>  wfpRepo,
         IRepository<Office>     officeRepo,
@@ -146,7 +146,8 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     {
         AllocationSetupSummaryDto allocation =
             await BuildAllocationSummaryAsync(officeId, fiscalYear, cancellationToken);
-        OfficeLdipSummaryDto ldip = BuildOfficeLdipSummary();
+        OfficeLdipSummaryDto ldip =
+            await BuildOfficeLdipSummaryAsync(officeId, fiscalYear, cancellationToken);
         OfficeAipSummaryDto aip =
             await BuildOfficeAipSummaryAsync(officeId, fiscalYear, cancellationToken);
 
@@ -177,11 +178,24 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     }
 
     /// <summary>
-    /// Stubbed until RAL-61 adds ldip_records.office_id — LDIP has no office scoping
-    /// today, so returning a real count here would silently show global data as if
-    /// it were office-scoped. ScopingSupported=false tells the frontend to say so.
+    /// Office-scoped LDIP summary (un-stubbed by RAL-61, which added
+    /// ldip_records.office_id): documents belonging to the office whose year range
+    /// covers the selected fiscal year, with a status breakdown.
     /// </summary>
-    private static OfficeLdipSummaryDto BuildOfficeLdipSummary() => new(false, 0, []);
+    private async Task<OfficeLdipSummaryDto> BuildOfficeLdipSummaryAsync(
+        int officeId, int fiscalYear, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<LdipRecord> records =
+            await _ldipRepo.GetListAsync(officeId, null, cancellationToken);
+        List<LdipRecord> covering = records
+            .Where(r => r.FiscalYearStart <= fiscalYear && fiscalYear <= r.FiscalYearEnd)
+            .ToList();
+        List<StatusBreakdownDto> breakdown = covering
+            .GroupBy(r => r.Status)
+            .Select(g => new StatusBreakdownDto(g.Key, g.Count()))
+            .ToList();
+        return new OfficeLdipSummaryDto(true, covering.Count, breakdown);
+    }
 
     private async Task<OfficeAipSummaryDto> BuildOfficeAipSummaryAsync(
         int officeId, int fiscalYear, CancellationToken cancellationToken)

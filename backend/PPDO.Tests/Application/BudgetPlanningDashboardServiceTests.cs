@@ -18,10 +18,11 @@ public sealed class BudgetPlanningDashboardServiceTests
 {
     // ── Helpers ──────────────────────────────────────────────────────────────
 
-    private static LdipRecord Ldip(int id, string status) => new()
+    private static LdipRecord Ldip(int id, string status, int? officeId = null,
+        int fyStart = 2027, int fyEnd = 2029) => new()
     {
         Id = id, Status = status, RefCode = $"LDIP-{id}", Title = "T",
-        EntryMode = "New", FiscalYearStart = 2027, FiscalYearEnd = 2029,
+        EntryMode = "New", FiscalYearStart = fyStart, FiscalYearEnd = fyEnd, OfficeId = officeId,
         CreatedById = Guid.NewGuid(), CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
     };
 
@@ -106,8 +107,14 @@ public sealed class BudgetPlanningDashboardServiceTests
         Mock<IAipRepository>? aipRepoMock = null,
         Mock<IAllocationService>? allocationMock = null)
     {
-        Mock<IRepository<LdipRecord>> ldipRepo = new();
+        Mock<ILdipRepository> ldipRepo = new();
         ldipRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(ldips);
+        ldipRepo.Setup(r => r.GetListAsync(It.IsAny<int?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int? officeId, string? status, CancellationToken _) =>
+                (IReadOnlyList<LdipRecord>)ldips
+                    .Where(l => officeId == null || l.OfficeId == officeId)
+                    .Where(l => string.IsNullOrWhiteSpace(status) || l.Status == status)
+                    .ToList());
 
         Mock<IAipRepository> aipRepo = aipRepoMock ?? new Mock<IAipRepository>();
         aipRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(aips);
@@ -465,19 +472,40 @@ public sealed class BudgetPlanningDashboardServiceTests
         Assert.Equal(1, result.Allocation.UnassignedProgramCount);
     }
 
-    // ── GetOfficeDashboardAsync — LDIP panel is stubbed until RAL-61 ──────────
+    // ── GetOfficeDashboardAsync — LDIP panel (office-scoped since RAL-61) ─────
 
     [Fact]
-    public async Task GetOfficeDashboardAsync_LdipPanelAlwaysStubbed_RegardlessOfLdipRecords()
+    public async Task GetOfficeDashboardAsync_LdipPanel_CountsOnlyThisOfficesRecords()
     {
-        List<LdipRecord> ldips = [Ldip(1, "Final"), Ldip(2, "Draft")];
+        List<LdipRecord> ldips =
+        [
+            Ldip(1, "Final", officeId: 1),
+            Ldip(2, "Draft", officeId: 1),
+            Ldip(3, "Draft", officeId: 2),   // other office — excluded
+        ];
         (BudgetPlanningDashboardService sut, _) = Build(ldips, [], [], [Off(1, "PPDO")], []);
 
         OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2027);
 
-        Assert.False(result.Ldip.ScopingSupported);
-        Assert.Equal(0, result.Ldip.Total);
-        Assert.Empty(result.Ldip.Breakdown);
+        Assert.True(result.Ldip.ScopingSupported);
+        Assert.Equal(2, result.Ldip.Total);
+        Assert.Equal(1, result.Ldip.Breakdown.First(b => b.Status == "Final").Count);
+        Assert.Equal(1, result.Ldip.Breakdown.First(b => b.Status == "Draft").Count);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_LdipPanel_ExcludesRecordsOutsideFiscalYearRange()
+    {
+        List<LdipRecord> ldips =
+        [
+            Ldip(1, "Draft", officeId: 1, fyStart: 2027, fyEnd: 2029),   // covers FY2027
+            Ldip(2, "Draft", officeId: 1, fyStart: 2030, fyEnd: 2032),   // future range — excluded
+        ];
+        (BudgetPlanningDashboardService sut, _) = Build(ldips, [], [], [Off(1, "PPDO")], []);
+
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2027);
+
+        Assert.Equal(1, result.Ldip.Total);
     }
 
     // ── GetOfficeDashboardAsync — AIP presence + PPA/activity count ───────────
