@@ -536,22 +536,31 @@ export interface UpdateLdipRequest {
 }
 
 // ── LDIP file upload (RAL-113) ────────────────────────────────────────────────
+// The workbook covers every office — there is no office picker. Every office
+// block found in the file is matched to a Config office by AIP ref code and
+// grouped below; Confirm creates one Draft LDIP record per office.
+
+export interface LdipImportOfficeResult {
+  officeId: number;
+  officeCode: string;
+  officeName: string;
+  groups: SaveLdipGroup[];
+}
 
 export interface LdipImportCounts {
+  offices: number;
   groups: number;
   programs: number;
 }
 
 /**
- * Returned by POST /api/budget-planning/ldip/upload. Groups are already filtered
- * to the office the caller selected — same shape as the manual-entry save
- * payload, so the client echoes it straight back to /confirm.
+ * Returned by POST /api/budget-planning/ldip/upload. Each entry in `offices` is
+ * echoed straight back to /confirm.
  */
 export interface LdipImportPreviewResponse {
   fiscalYearStart: number;
   fiscalYearEnd: number;
-  officeId: number;
-  groups: SaveLdipGroup[];
+  offices: LdipImportOfficeResult[];
   counts: LdipImportCounts;
   warnings: string[];
 }
@@ -559,6 +568,5 @@ export interface LdipImportPreviewResponse {
 export interface LdipImportConfirmRequest {
   fiscalYearStart: number;
   fiscalYearEnd: number;
-  officeId: number;
-  groups: SaveLdipGroup[];
+  offices: LdipImportOfficeResult[];
 }

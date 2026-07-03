@@ -27,21 +27,22 @@ public interface ILdipService
     // ── File upload (RAL-113) ────────────────────────────────────────────────
 
     /// <summary>
-    /// Parses the uploaded LDIP file and filters it down to the rows matching
-    /// <paramref name="officeId"/> (across all 4 sector sheets) — pure parse, no
-    /// persistence.
+    /// Parses the uploaded LDIP file — pure parse, no persistence. The workbook
+    /// covers every office; every office block found (across all 4 sector sheets)
+    /// is matched to a Config → Offices record by AIP ref code and returned grouped
+    /// by office.
     /// </summary>
     Task<ServiceResult<LdipImportPreviewDto>> ParsePreviewAsync(
         Stream xlsxStream,
         int fiscalYearStart,
         int fiscalYearEnd,
-        int officeId,
         IReadOnlyList<FundingSource> knownFundingSources,
         CancellationToken ct = default);
 
     /// <summary>
-    /// Persists the previewed hierarchy as a new Draft LDIP record (EntryMode = "Upload").
+    /// Persists the previewed hierarchy as one new Draft LDIP record PER OFFICE
+    /// (EntryMode = "Upload") in a single batch.
     /// </summary>
-    Task<ServiceResult<LdipRecordDetailDto>> ConfirmImportAsync(
+    Task<ServiceResult<IReadOnlyList<LdipRecordDto>>> ConfirmImportAsync(
         LdipImportConfirmDto dto, Guid createdById, CancellationToken ct = default);
 }

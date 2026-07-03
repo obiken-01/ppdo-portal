@@ -136,28 +136,35 @@ public record UpdateLdipDto(
     IReadOnlyList<SaveLdipGroupDto>? Groups = null);
 
 // ── File upload (RAL-113) ────────────────────────────────────────────────────
+// The workbook covers every office in one file — there is no office picker.
+// Upload parses the whole file, matches every office block found (across all 4
+// sectors) to a Config → Offices record by AIP ref code, and Confirm creates one
+// Draft LdipRecord PER OFFICE detected, all in a single batch.
+
+/// <summary>One config office's matched slice of the uploaded file.</summary>
+public record LdipImportOfficeResultDto(
+    int    OfficeId,
+    string OfficeCode,
+    string OfficeName,
+    IReadOnlyList<SaveLdipGroupDto> Groups);
 
 /// <summary>Import counts shown on the preview page.</summary>
-public record LdipImportCountsDto(int Groups, int Programs);
+public record LdipImportCountsDto(int Offices, int Groups, int Programs);
 
 /// <summary>
-/// Returned by POST /api/budget-planning/ldip/upload. Groups are already filtered
-/// to the office selected by the caller (the workbook covers all offices; only the
-/// rows matching that office's AIP ref code, across all 4 sectors, are returned) —
-/// same shape as the manual-entry save payload, so the client can echo it straight
-/// back to /confirm.
+/// Returned by POST /api/budget-planning/ldip/upload. Each entry in Offices is the
+/// same shape as the manual-entry save payload, so the client can echo the whole
+/// list straight back to /confirm.
 /// </summary>
 public record LdipImportPreviewDto(
     int    FiscalYearStart,
     int    FiscalYearEnd,
-    int    OfficeId,
-    IReadOnlyList<SaveLdipGroupDto> Groups,
+    IReadOnlyList<LdipImportOfficeResultDto> Offices,
     LdipImportCountsDto Counts,
     IReadOnlyList<string> Warnings);
 
-/// <summary>Body of POST /api/budget-planning/ldip/confirm — echoes back the preview's Groups.</summary>
+/// <summary>Body of POST /api/budget-planning/ldip/confirm — echoes back the preview's Offices.</summary>
 public record LdipImportConfirmDto(
     int    FiscalYearStart,
     int    FiscalYearEnd,
-    int    OfficeId,
-    IReadOnlyList<SaveLdipGroupDto> Groups);
+    IReadOnlyList<LdipImportOfficeResultDto> Offices);

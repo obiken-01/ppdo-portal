@@ -180,8 +180,10 @@ public sealed class LdipFunctions
 
     // ── File upload (RAL-113) ─────────────────────────────────────────────────
     // Upload/Confirm reuse CanUploadAip (PPDO-only) — same uploader role as AIP.
+    // The workbook covers every office, so there is no officeId param — offices
+    // are auto-detected by matching AIP ref codes against Config → Offices.
 
-    // ── POST /api/budget-planning/ldip/upload?fiscalYearStart=&fiscalYearEnd=&officeId= ──
+    // ── POST /api/budget-planning/ldip/upload?fiscalYearStart=&fiscalYearEnd= ──
     // Body: raw LDIP XLSX bytes (Content-Type: application/octet-stream)
     [Function("LdipUpload")]
     public async Task<HttpResponseData> Upload(
@@ -197,13 +199,6 @@ public sealed class LdipFunctions
         if (!int.TryParse(req.Query["fiscalYearEnd"], out int fyEnd) || fyEnd < fyStart)
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
                 ApiResponse<LdipImportPreviewDto>.Fail("Valid fiscalYearEnd query parameter (>= fiscalYearStart) is required."), ct);
-        if (!int.TryParse(req.Query["officeId"], out int officeId))
-            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
-                ApiResponse<LdipImportPreviewDto>.Fail("Valid officeId query parameter is required."), ct);
-
-        // Office users always upload for their own office, whatever the query says.
-        if (caller!.OfficeId is not null)
-            officeId = caller.OfficeId.Value;
 
         IReadOnlyList<FundingSource> fundingSources = await _fsRepo.GetAllAsync(ct);
 
@@ -215,7 +210,7 @@ public sealed class LdipFunctions
         xlsxBuffer.Position = 0;
 
         ServiceResult<LdipImportPreviewDto> result =
-            await _ldip.ParsePreviewAsync(xlsxBuffer, fyStart, fyEnd, officeId, fundingSources, ct);
+            await _ldip.ParsePreviewAsync(xlsxBuffer, fyStart, fyEnd, fundingSources, ct);
 
         return await ConfigHttp.FromResultAsync(req, result, ct);
     }
@@ -232,12 +227,9 @@ public sealed class LdipFunctions
         LdipImportConfirmDto? body = await ConfigHttp.ReadBodyAsync<LdipImportConfirmDto>(req, ct);
         if (body is null)
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
-                ApiResponse<LdipRecordDetailDto>.Fail("Request body is missing or malformed."), ct);
-
-        if (caller!.OfficeId is not null)
-            body = body with { OfficeId = caller.OfficeId.Value };
+                ApiResponse<IReadOnlyList<LdipRecordDto>>.Fail("Request body is missing or malformed."), ct);
 
         return await ConfigHttp.FromResultAsync(req,
-            await _ldip.ConfirmImportAsync(body, caller.Id, ct), ct, HttpStatusCode.Created);
+            await _ldip.ConfirmImportAsync(body, caller!.Id, ct), ct, HttpStatusCode.Created);
     }
 }

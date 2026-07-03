@@ -412,20 +412,18 @@ public sealed class LdipService : ILdipService
         p.PdpRdp, p.Sdgs, p.SendaiFramework, p.NdrrmPlan, p.Nsp, p.Pdpdfp);
 
     // ── File upload (RAL-113) ─────────────────────────────────────────────────
+    // The workbook covers every office — there is no office picker. Every office
+    // block found (across all 4 sector sheets) is matched to a Config → Offices
+    // record by AIP ref code ({sectorPrefix}-000-1-{office.OfficeRefCode}, the
+    // same formula BuildHierarchy uses) and grouped by office.
 
     public async Task<ServiceResult<LdipImportPreviewDto>> ParsePreviewAsync(
         Stream xlsxStream,
         int fiscalYearStart,
         int fiscalYearEnd,
-        int officeId,
         IReadOnlyList<FundingSource> knownFundingSources,
         CancellationToken ct = default)
     {
-        ServiceResult<Office> officeCheck = await ResolveOfficeAsync(officeId, ct);
-        if (!officeCheck.IsSuccess)
-            return ServiceResult<LdipImportPreviewDto>.FromError(officeCheck);
-        Office office = officeCheck.Value!;
-
         Dictionary<string, List<ParsedLdipOffice>> parsed;
         try
         {
@@ -439,24 +437,39 @@ public sealed class LdipService : ILdipService
         Dictionary<string, FundingSource> fsDict =
             knownFundingSources.ToDictionary(f => f.Code, StringComparer.OrdinalIgnoreCase);
 
+        // Reverse lookup per sector: computed ref code -> config office (only offices
+        // with a configured ref code can ever match).
+        IReadOnlyList<Office> allOffices = await _officeRepo.GetAllAsync(ct);
+        List<Office> refCodedOffices = allOffices.Where(o => !string.IsNullOrWhiteSpace(o.OfficeRefCode)).ToList();
+
         List<string> warnings = [];
-        List<SaveLdipGroupDto> groups = [];
-        int groupCount = 0, programCount = 0;
+        Dictionary<int, List<SaveLdipGroupDto>> groupsByOffice = [];
+        Dictionary<int, Office> officeById = [];
+        int totalGroups = 0, totalPrograms = 0;
 
         foreach (string sector in SectorPrefixes.Keys)
         {
             if (!parsed.TryGetValue(sector, out List<ParsedLdipOffice>? sectorOffices)) continue;
 
-            string expectedRefCode = $"{SectorPrefixes[sector]}-000-1-{office.OfficeRefCode}";
+            Dictionary<string, Office> refCodeToOffice = refCodedOffices.ToDictionary(
+                o => $"{SectorPrefixes[sector]}-000-1-{o.OfficeRefCode}", StringComparer.OrdinalIgnoreCase);
+
             foreach (ParsedLdipOffice off in sectorOffices)
             {
-                if (!off.RefCode.Equals(expectedRefCode, StringComparison.OrdinalIgnoreCase)) continue;
+                if (!refCodeToOffice.TryGetValue(off.RefCode, out Office? matchedOffice))
+                {
+                    warnings.Add(
+                        $"Office '{off.Name}' (ref {off.RefCode}, {sector}) did not match any configured " +
+                        "office — check office_ref_code in Config → Offices.");
+                    continue;
+                }
 
-                groupCount++;
+                totalGroups++;
+                officeById[matchedOffice.Id] = matchedOffice;
                 List<SaveLdipProgramDto> programDtos = [];
                 foreach (ParsedLdipProgram prog in off.Programs)
                 {
-                    programCount++;
+                    totalPrograms++;
                     if (!string.IsNullOrWhiteSpace(prog.FundingSourceRaw) &&
                         !fsDict.ContainsKey(prog.FundingSourceRaw))
                     {
@@ -471,35 +484,63 @@ public sealed class LdipService : ILdipService
                         prog.CcAdaptation, prog.CcMitigation, prog.CcTypologyCode,
                         prog.PdpRdp, prog.Sdgs, prog.SendaiFramework, prog.NdrrmPlan, prog.Nsp, prog.Pdpdfp));
                 }
-                groups.Add(new SaveLdipGroupDto(sector, off.Name, programDtos));
+
+                if (!groupsByOffice.TryGetValue(matchedOffice.Id, out List<SaveLdipGroupDto>? list))
+                    groupsByOffice[matchedOffice.Id] = list = [];
+                list.Add(new SaveLdipGroupDto(sector, off.Name, programDtos));
             }
         }
 
-        if (groupCount == 0)
-        {
-            warnings.Add(
-                "No rows in the file matched this office's AIP ref code — check the file covers this " +
-                "office, or that Config → Offices has the correct office_ref_code.");
-        }
+        if (totalGroups == 0)
+            warnings.Add("No office in the file matched a configured office_ref_code — nothing to import.");
+
+        List<LdipImportOfficeResultDto> officeResults = groupsByOffice
+            .Select(kvp => new LdipImportOfficeResultDto(
+                kvp.Key, officeById[kvp.Key].OfficeCode, officeById[kvp.Key].OfficeName, kvp.Value))
+            .OrderBy(o => o.OfficeCode)
+            .ToList();
 
         LdipImportPreviewDto preview = new(
-            fiscalYearStart, fiscalYearEnd, officeId, groups,
-            new LdipImportCountsDto(groupCount, programCount), warnings.AsReadOnly());
+            fiscalYearStart, fiscalYearEnd, officeResults,
+            new LdipImportCountsDto(officeResults.Count, totalGroups, totalPrograms), warnings.AsReadOnly());
 
         return ServiceResult<LdipImportPreviewDto>.Ok(preview);
     }
 
-    public async Task<ServiceResult<LdipRecordDetailDto>> ConfirmImportAsync(
+    public async Task<ServiceResult<IReadOnlyList<LdipRecordDto>>> ConfirmImportAsync(
         LdipImportConfirmDto dto, Guid createdById, CancellationToken ct = default)
     {
-        CreateLdipDto createDto = new(
-            Title:           "",
-            FiscalYearStart: dto.FiscalYearStart,
-            FiscalYearEnd:   dto.FiscalYearEnd,
-            EntryMode:       "Upload",
-            OfficeId:        dto.OfficeId,
-            Groups:          dto.Groups);
+        List<LdipRecordDto> created = [];
+        foreach (LdipImportOfficeResultDto office in dto.Offices)
+        {
+            CreateLdipDto createDto = new(
+                Title:           "",
+                FiscalYearStart: dto.FiscalYearStart,
+                FiscalYearEnd:   dto.FiscalYearEnd,
+                EntryMode:       "Upload",
+                OfficeId:        office.OfficeId,
+                Groups:          office.Groups);
 
-        return await CreateAsync(createDto, createdById, ct);
+            ServiceResult<LdipRecordDetailDto> result = await CreateAsync(createDto, createdById, ct);
+            if (!result.IsSuccess)
+            {
+                string msg = $"Office {office.OfficeCode}: {result.Error}";
+                return result.Code switch
+                {
+                    ServiceErrorCode.NotFound  => ServiceResult<IReadOnlyList<LdipRecordDto>>.NotFound(msg),
+                    ServiceErrorCode.Forbidden => ServiceResult<IReadOnlyList<LdipRecordDto>>.Forbidden(msg),
+                    ServiceErrorCode.Conflict  => ServiceResult<IReadOnlyList<LdipRecordDto>>.Conflict(msg),
+                    _                          => ServiceResult<IReadOnlyList<LdipRecordDto>>.BadRequest(msg),
+                };
+            }
+
+            LdipRecordDetailDto rec = result.Value!;
+            created.Add(new LdipRecordDto(
+                rec.Id, rec.RefCode, rec.Title, rec.FiscalYearStart, rec.FiscalYearEnd,
+                rec.EntryMode, rec.Status, rec.SourceId, rec.CreatedById, rec.CreatedAt, rec.UpdatedAt,
+                rec.OfficeId, rec.OfficeName, rec.Groups.Sum(g => g.Programs.Count)));
+        }
+
+        return ServiceResult<IReadOnlyList<LdipRecordDto>>.Ok(created);
     }
 }

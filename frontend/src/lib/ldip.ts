@@ -116,11 +116,10 @@ export async function archiveLdip(id: number): Promise<LdipRecord> {
 export async function uploadLdipFile(
   file: File,
   fiscalYearStart: number,
-  fiscalYearEnd: number,
-  officeId: number
+  fiscalYearEnd: number
 ): Promise<LdipImportPreviewResponse> {
   const { data } = await api.post<ApiResponse<LdipImportPreviewResponse>>(
-    `/budget-planning/ldip/upload?fiscalYearStart=${fiscalYearStart}&fiscalYearEnd=${fiscalYearEnd}&officeId=${officeId}`,
+    `/budget-planning/ldip/upload?fiscalYearStart=${fiscalYearStart}&fiscalYearEnd=${fiscalYearEnd}`,
     file,
     { headers: { "Content-Type": "application/octet-stream" } }
   );
@@ -129,10 +128,11 @@ export async function uploadLdipFile(
 
 // ---------------------------------------------------------------------------
 // File upload — confirm import — POST /api/budget-planning/ldip/confirm
+// Creates one Draft LDIP record per office found in the file.
 // ---------------------------------------------------------------------------
 
-export async function confirmLdipImport(body: LdipImportConfirmRequest): Promise<LdipRecordDetail> {
-  const { data } = await api.post<ApiResponse<LdipRecordDetail>>(
+export async function confirmLdipImport(body: LdipImportConfirmRequest): Promise<LdipRecord[]> {
+  const { data } = await api.post<ApiResponse<LdipRecord[]>>(
     "/budget-planning/ldip/confirm",
     body
   );

@@ -3,7 +3,8 @@
 /**
  * LDIP import preview page (RAL-113) — mirrors budget-planning/aip/import-preview.
  * Reads the upload response stashed in sessionStorage by ldip/new, shows counts +
- * sector breakdown + warnings, then confirms (persists as a Draft record) or cancels.
+ * a per-office breakdown + warnings, then confirms (creates one Draft record per
+ * office found) or cancels.
  */
 
 import { useEffect, useState } from "react";
@@ -11,7 +12,7 @@ import { useRouter } from "next/navigation";
 import { confirmLdipImport, ldipErrorMessage } from "@/lib/ldip";
 import { useMe } from "@/lib/me-cache";
 import { useToast } from "@/components/ui/Toast";
-import type { LdipImportPreviewResponse, LdipSector } from "@/types";
+import type { LdipImportPreviewResponse } from "@/types";
 
 const PREVIEW_KEY = "ldip_import_preview";
 const META_KEY    = "ldip_import_meta";
@@ -19,8 +20,6 @@ const META_KEY    = "ldip_import_meta";
 interface ImportMeta {
   originalFilename: string;
 }
-
-const SECTOR_ORDER: LdipSector[] = ["General", "Social", "Economic", "Others"];
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -76,18 +75,6 @@ export default function LdipImportPreviewPage() {
     }
   }, [router]);
 
-  function programCountFor(sector: LdipSector): number {
-    if (!preview) return 0;
-    return preview.groups
-      .filter((g) => g.sector === sector)
-      .reduce((n, g) => n + g.programs.length, 0);
-  }
-
-  function groupCountFor(sector: LdipSector): number {
-    if (!preview) return 0;
-    return preview.groups.filter((g) => g.sector === sector).length;
-  }
-
   async function handleConfirm() {
     if (!preview) return;
     setConfirmError(null);
@@ -96,13 +83,15 @@ export default function LdipImportPreviewPage() {
       const saved = await confirmLdipImport({
         fiscalYearStart: preview.fiscalYearStart,
         fiscalYearEnd:   preview.fiscalYearEnd,
-        officeId:        preview.officeId,
-        groups:          preview.groups,
+        offices:         preview.offices,
       });
       sessionStorage.removeItem(PREVIEW_KEY);
       sessionStorage.removeItem(META_KEY);
-      toast.success("Import complete", `${saved.refCode} imported successfully.`);
-      router.push(`/budget-planning/ldip/edit?id=${saved.id}`);
+      toast.success(
+        "Import complete",
+        `${saved.length} LDIP record${saved.length !== 1 ? "s" : ""} created (one per office).`
+      );
+      router.push("/budget-planning/ldip");
     } catch (err) {
       setConfirmError(ldipErrorMessage(err, "Confirm failed. Please try again."));
       setConfirming(false);
@@ -124,8 +113,6 @@ export default function LdipImportPreviewPage() {
     );
   }
 
-  const totalPrograms = preview.groups.reduce((n, g) => n + g.programs.length, 0);
-
   return (
     <div className="p-6">
       {/* Header + actions */}
@@ -134,14 +121,18 @@ export default function LdipImportPreviewPage() {
           <h1 className="text-xl font-bold text-slate-800">
             Import Preview — LDIP {preview.fiscalYearStart}–{preview.fiscalYearEnd}
           </h1>
-          <p className="text-sm text-slate-500 mt-0.5">Review the data before confirming. This cannot be undone.</p>
+          <p className="text-sm text-slate-500 mt-0.5">
+            Review the data before confirming. One Draft record is created per office. This cannot be undone.
+          </p>
         </div>
         <div className="flex items-center gap-3 shrink-0 ml-6">
           <button
             onClick={handleConfirm}
-            disabled={confirming}
+            disabled={confirming || preview.offices.length === 0}
             className={`px-5 py-2 text-sm font-medium text-white transition-colors ${
-              confirming ? "bg-green-300 cursor-not-allowed" : "bg-green-700 hover:bg-green-800"
+              confirming || preview.offices.length === 0
+                ? "bg-green-300 cursor-not-allowed"
+                : "bg-green-700 hover:bg-green-800"
             }`}
           >
             {confirming ? "Importing…" : "Confirm Import"}
@@ -163,25 +154,27 @@ export default function LdipImportPreviewPage() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
-        {/* ── Left column: counts + sector breakdown ── */}
+        {/* ── Left column: counts + office breakdown ── */}
         <div className="lg:col-span-3 space-y-5">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
+            <StatTile label="Offices"  value={preview.counts.offices} />
             <StatTile label="Groups"   value={preview.counts.groups} />
             <StatTile label="Programs" value={preview.counts.programs} />
           </div>
 
           <div>
             <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
-              Breakdown by Sector
+              Breakdown by Office
             </h2>
             <div className="border border-slate-200 divide-y divide-slate-100 bg-white">
-              {SECTOR_ORDER.map((sector) => {
-                const groupCount = groupCountFor(sector);
-                if (!groupCount) return null;
-                const progCount = programCountFor(sector);
+              {preview.offices.map((office) => {
+                const groupCount = office.groups.length;
+                const progCount = office.groups.reduce((n, g) => n + g.programs.length, 0);
                 return (
-                  <div key={sector} className="px-4 py-3 grid grid-cols-3 items-center text-sm gap-2">
-                    <span className="font-medium text-slate-700 col-span-1">{sector}</span>
+                  <div key={office.officeId} className="px-4 py-3 grid grid-cols-3 items-center text-sm gap-2">
+                    <span className="font-medium text-slate-700 col-span-1">
+                      {office.officeCode} — {office.officeName}
+                    </span>
                     <span className="text-slate-500 text-xs text-right">
                       {groupCount} group{groupCount !== 1 ? "s" : ""}
                     </span>
@@ -191,9 +184,9 @@ export default function LdipImportPreviewPage() {
                   </div>
                 );
               })}
-              {totalPrograms === 0 && (
+              {preview.offices.length === 0 && (
                 <p className="px-4 py-6 text-center text-sm text-slate-400">
-                  No matching rows found for this office.
+                  No office in the file matched a configured office_ref_code.
                 </p>
               )}
             </div>
