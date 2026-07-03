@@ -99,7 +99,11 @@ function UploadTab({ me }: { me: MeResponse }) {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
+    <div>
+      <p className="text-sm text-slate-500 mb-4">
+        Upload an .xlsx file to import an LDIP document, or enter programs manually.
+      </p>
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
       {/* ── Left column: form ── */}
       <div className="lg:col-span-3 space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -258,6 +262,7 @@ function UploadTab({ me }: { me: MeResponse }) {
           </ul>
         </div>
       </div>
+      </div>
     </div>
   );
 }
@@ -329,10 +334,6 @@ export default function LdipNewPage() {
 
   return (
     <div className="px-6 py-4">
-      <h1 className="text-xl font-bold text-slate-800 mb-0.5">Create New LDIP</h1>
-      <p className="text-sm text-slate-500 mb-4">
-        Upload an .xlsx file to import an LDIP document, or enter programs manually.
-      </p>
       <TabBar activeTab={activeTab} onChange={setActiveTab} canUpload={canUpload} />
       <UploadTab me={me} />
     </div>
