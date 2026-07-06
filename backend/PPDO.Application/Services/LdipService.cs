@@ -525,6 +525,10 @@ public sealed class LdipService : ILdipService
     /// record per office. OfficeId is null on the resulting record (a genuinely
     /// multi-office document has no single office); EntryMode is "Upload" so
     /// FinalizeAsync knows not to require one.
+    ///
+    /// RAL-114: when <see cref="LdipImportConfirmDto.TargetRecordId"/> is set the
+    /// method full-replaces that existing record's hierarchy (re-upload a corrected
+    /// file) instead of creating a new record — see <see cref="ReplaceImportAsync"/>.
     /// </summary>
     public async Task<ServiceResult<LdipRecordDto>> ConfirmImportAsync(
         LdipImportConfirmDto dto, Guid createdById, CancellationToken ct = default)
@@ -551,11 +555,15 @@ public sealed class LdipService : ILdipService
             items.AddRange(off.Groups.Select(g => (office, g)));
         }
 
+        Dictionary<string, FundingSource> fsLookup = await LoadFundingSourceLookupAsync(ct);
+
+        // Re-upload path — replace the target record's hierarchy in place (RAL-114).
+        if (dto.TargetRecordId is int targetId)
+            return await ReplaceImportAsync(targetId, dto, items, fsLookup, ct);
+
         IReadOnlyList<LdipRecord> all = await _repo.GetAllAsync(ct);
         int seq = all.Count(r => r.FiscalYearStart == dto.FiscalYearStart) + 1;
         string refCode = $"LDIP-{dto.FiscalYearStart}-{seq:D3}";
-
-        Dictionary<string, FundingSource> fsLookup = await LoadFundingSourceLookupAsync(ct);
 
         DateTime now = DateTime.UtcNow;
         LdipRecord entity = new()
@@ -583,5 +591,65 @@ public sealed class LdipService : ILdipService
             ct);
 
         return ServiceResult<LdipRecordDto>.Ok(MapToDto(entity, entity.Offices.Sum(o => o.Programs.Count)));
+    }
+
+    /// <summary>
+    /// RAL-114 — re-upload a corrected file into an EXISTING record. Full-replaces the
+    /// hierarchy using the same two-round delete-then-reinsert pattern UpdateAsync uses
+    /// (so the unique (ldip_office_id, ref_code) index never sees old+new side by side),
+    /// driven by the already-validated multi-office <paramref name="items"/>.
+    ///
+    /// Id/RefCode/CreatedById/CreatedAt are preserved — same document, corrected content,
+    /// audit trail intact; only the hierarchy, fiscal years, title and UpdatedAt change.
+    /// Guards: the target must exist, be Draft, and be an Upload-entry-mode record.
+    /// Logged as an Update (not a Create).
+    /// </summary>
+    private async Task<ServiceResult<LdipRecordDto>> ReplaceImportAsync(
+        int targetId,
+        LdipImportConfirmDto dto,
+        IReadOnlyList<(Office Office, SaveLdipGroupDto Group)> items,
+        Dictionary<string, FundingSource> fsLookup,
+        CancellationToken ct)
+    {
+        LdipRecord? rec = await _repo.GetByIntIdAsync(targetId, ct);
+        if (rec is null)
+            return ServiceResult<LdipRecordDto>.NotFound($"LDIP record {targetId} not found.");
+        if (rec.Status != PlanningStatus.Draft)
+            return ServiceResult<LdipRecordDto>.BadRequest(
+                $"Cannot re-upload into a '{rec.Status}' record. Unlock it back to Draft first.");
+        if (rec.EntryMode != "Upload")
+            return ServiceResult<LdipRecordDto>.BadRequest(
+                "Only uploaded LDIP records can be re-uploaded. This record was created through manual entry.");
+
+        // Delete-then-reinsert in two SaveChanges rounds (mirrors UpdateAsync).
+        IReadOnlyList<LdipOffice> existing = await _repo.GetOfficeGroupsAsync(targetId, ct);
+        object old = new { rec.RefCode, rec.Title, rec.FiscalYearStart, rec.FiscalYearEnd,
+                           Programs = existing.Sum(g => g.Programs.Count) };
+        foreach (LdipOffice group in existing)
+            await _repo.DeleteOfficeGroupAsync(group, ct);
+        await _repo.SaveChangesAsync(ct);
+
+        rec.Title           = $"LDIP {dto.FiscalYearStart}-{dto.FiscalYearEnd} — All Offices";
+        rec.FiscalYearStart = dto.FiscalYearStart;
+        rec.FiscalYearEnd   = dto.FiscalYearEnd;
+        rec.UpdatedAt       = DateTime.UtcNow;
+
+        List<LdipOffice> rebuilt = BuildHierarchy(items, fsLookup);
+        foreach (LdipOffice group in rebuilt)
+        {
+            group.LdipRecordId = rec.Id;
+            await _repo.AddOfficeGroupAsync(group, ct);
+        }
+
+        await _repo.UpdateAsync(rec, ct);
+        await _repo.SaveChangesAsync(ct);
+
+        await _audit.LogAsync("ldip_records", rec.Id, AuditAction.Update,
+            old,
+            new { rec.RefCode, rec.Title, rec.FiscalYearStart, rec.FiscalYearEnd,
+                  OfficeCount = dto.Offices.Count, Programs = rebuilt.Sum(o => o.Programs.Count) },
+            ct);
+
+        return ServiceResult<LdipRecordDto>.Ok(MapToDto(rec, rebuilt.Sum(o => o.Programs.Count)));
     }
 }

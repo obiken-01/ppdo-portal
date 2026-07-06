@@ -569,4 +569,10 @@ export interface LdipImportConfirmRequest {
   fiscalYearStart: number;
   fiscalYearEnd: number;
   offices: LdipImportOfficeResult[];
+  /**
+   * RAL-114 — when set, re-uploads a corrected file INTO this existing record
+   * (full-replaces its hierarchy, same Id/RefCode) instead of creating a new one.
+   * The target must be a Draft, Upload-entry-mode record. Omit to create a new record.
+   */
+  targetRecordId?: number;
 }
