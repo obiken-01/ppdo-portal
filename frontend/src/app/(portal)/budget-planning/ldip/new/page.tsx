@@ -15,7 +15,7 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ldipErrorMessage, uploadLdipFile } from "@/lib/ldip";
+import { getLdipById, ldipErrorMessage, uploadLdipFile } from "@/lib/ldip";
 import { useMe } from "@/lib/me-cache";
 import LdipForm from "../LdipForm";
 
@@ -40,6 +40,7 @@ function UploadTab({ replaceId }: { replaceId: number | null }) {
 
   const [yearStart, setYearStart] = useState(CURRENT_YEAR + 1);
   const [yearEnd, setYearEnd] = useState(CURRENT_YEAR + 3);
+  const [replaceRefCode, setReplaceRefCode] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
@@ -47,6 +48,20 @@ function UploadTab({ replaceId }: { replaceId: number | null }) {
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Re-upload (RAL-114): lock the year range to the record's ORIGINAL period — a
+  // re-upload corrects the file's contents, not the planning period. Pre-fill from
+  // the target record so the confirmed years match what the record already stores.
+  useEffect(() => {
+    if (replaceId == null) return;
+    getLdipById(replaceId)
+      .then((rec) => {
+        setYearStart(rec.fiscalYearStart);
+        setYearEnd(rec.fiscalYearEnd);
+        setReplaceRefCode(rec.refCode);
+      })
+      .catch(() => { /* leave defaults; the confirm still guards the target server-side */ });
+  }, [replaceId]);
 
   function validateAndSet(f: File | null) {
     setFileError(null);
@@ -100,8 +115,10 @@ function UploadTab({ replaceId }: { replaceId: number | null }) {
       {replaceId != null && (
         <div className="mb-4 border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <span className="font-semibold">Re-upload mode.</span>{" "}
-          Confirming replaces the existing record&apos;s programs with this file&apos;s contents.
-          The record keeps its reference code and history — only its programs change.
+          Confirming replaces{" "}
+          {replaceRefCode ? <span className="font-semibold">{replaceRefCode}</span> : "the existing record"}
+          &apos;s programs with this file&apos;s contents. The record keeps its reference code, planning
+          period, and history — only its programs change.
         </div>
       )}
       <p className="text-sm text-slate-500 mb-4">
@@ -120,8 +137,9 @@ function UploadTab({ replaceId }: { replaceId: number | null }) {
                 min={2020}
                 max={2055}
                 value={yearStart}
+                disabled={replaceId != null}
                 onChange={(e) => setYearStart(Number(e.target.value) || CURRENT_YEAR + 1)}
-                className="w-full border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600"
+                className="w-full border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
               />
             </div>
             <div>
@@ -133,8 +151,9 @@ function UploadTab({ replaceId }: { replaceId: number | null }) {
                 min={2020}
                 max={2060}
                 value={yearEnd}
+                disabled={replaceId != null}
                 onChange={(e) => setYearEnd(Number(e.target.value) || CURRENT_YEAR + 3)}
-                className="w-full border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600"
+                className="w-full border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
               />
             </div>
           </div>
@@ -254,8 +273,8 @@ function UploadTab({ replaceId }: { replaceId: number | null }) {
 }
 
 function TabBar({
-  activeTab, onChange, canUpload,
-}: { activeTab: Tab; onChange: (t: Tab) => void; canUpload: boolean }) {
+  activeTab, onChange, canUpload, hideManual = false,
+}: { activeTab: Tab; onChange: (t: Tab) => void; canUpload: boolean; hideManual?: boolean }) {
   return (
     <div className="flex border-b border-slate-200 mb-4">
       {canUpload ? (
@@ -277,16 +296,18 @@ function TabBar({
           Upload File
         </span>
       )}
-      <button
-        onClick={() => onChange("manual")}
-        className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
-          activeTab === "manual"
-            ? "border-green-700 text-green-700"
-            : "border-transparent text-slate-500 hover:text-slate-700"
-        }`}
-      >
-        Manual Entry
-      </button>
+      {!hideManual && (
+        <button
+          onClick={() => onChange("manual")}
+          className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            activeTab === "manual"
+              ? "border-green-700 text-green-700"
+              : "border-transparent text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          Manual Entry
+        </button>
+      )}
     </div>
   );
 }
@@ -326,7 +347,12 @@ function LdipNewInner() {
 
   return (
     <div className="px-6 py-4">
-      <TabBar activeTab={activeTab} onChange={setActiveTab} canUpload={canUpload} />
+      <TabBar
+        activeTab={activeTab}
+        onChange={setActiveTab}
+        canUpload={canUpload}
+        hideManual={replaceId != null}
+      />
       <UploadTab replaceId={replaceId} />
     </div>
   );
