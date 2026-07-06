@@ -37,7 +37,10 @@ public sealed class LdipProgram
     /// </summary>
     public decimal Budget { get; set; }
 
-    /// <summary>Implementing office name as written in the file. Max 200 characters. Upload-only.</summary>
+    /// <summary>
+    /// Implementing office name as written in the file. Upload-only. Unbounded —
+    /// can combine multiple offices, e.g. "PGO Housing, PEO".
+    /// </summary>
     public string? ImplementingOffice { get; set; }
 
     /// <summary>
@@ -56,7 +59,10 @@ public sealed class LdipProgram
     /// <summary>FK to the funding source config record. Null when unmatched at import. Upload-only.</summary>
     public int? FundingSourceId { get; set; }
 
-    /// <summary>Snapshot of FundingSource.Code at import time. Max 20 characters. Upload-only.</summary>
+    /// <summary>
+    /// Snapshot of FundingSource.Code at import time. Upload-only. Unbounded — the
+    /// raw file text can list multiple funding sources, e.g. "GF, LDRRMF, GADF, NGA (ER 1-94)".
+    /// </summary>
     public string? FundingSourceSnapshot { get; set; }
 
     /// <summary>Personal Services amount. Upload-only.</summary>
@@ -74,25 +80,29 @@ public sealed class LdipProgram
     /// <summary>Climate change mitigation amount. Upload-only.</summary>
     public decimal? CcMitigation { get; set; }
 
-    /// <summary>Climate change typology code. Max 50 characters. Upload-only.</summary>
+    /// <summary>
+    /// Climate change typology code(s). Upload-only. Unbounded — real files hold a
+    /// comma/newline-separated list of codes (observed up to ~150 chars), not a
+    /// single short code.
+    /// </summary>
     public string? CcTypologyCode { get; set; }
 
-    /// <summary>PDP/RDP alignment tag. Max 500 characters. Upload-only. No AIP equivalent.</summary>
+    /// <summary>PDP/RDP alignment tag. Unbounded free text. Upload-only. No AIP equivalent.</summary>
     public string? PdpRdp { get; set; }
 
-    /// <summary>SDG alignment tag. Max 500 characters. Upload-only. No AIP equivalent.</summary>
+    /// <summary>SDG alignment tag. Unbounded free text. Upload-only. No AIP equivalent.</summary>
     public string? Sdgs { get; set; }
 
-    /// <summary>Sendai Framework alignment tag. Max 500 characters. Upload-only. No AIP equivalent.</summary>
+    /// <summary>Sendai Framework alignment tag. Unbounded free text. Upload-only. No AIP equivalent.</summary>
     public string? SendaiFramework { get; set; }
 
-    /// <summary>NDRRM Plan alignment tag. Max 500 characters. Upload-only. No AIP equivalent.</summary>
+    /// <summary>NDRRM Plan alignment tag. Unbounded free text. Upload-only. No AIP equivalent.</summary>
     public string? NdrrmPlan { get; set; }
 
-    /// <summary>NSP alignment tag. Max 500 characters. Upload-only. No AIP equivalent.</summary>
+    /// <summary>NSP alignment tag. Unbounded free text. Upload-only. No AIP equivalent.</summary>
     public string? Nsp { get; set; }
 
-    /// <summary>PDPDFP alignment tag. Max 500 characters. Upload-only. No AIP equivalent.</summary>
+    /// <summary>PDPDFP alignment tag. Unbounded free text. Upload-only. No AIP equivalent.</summary>
     public string? Pdpdfp { get; set; }
 
     // ── Navigation ────────────────────────────────────────────────────────────

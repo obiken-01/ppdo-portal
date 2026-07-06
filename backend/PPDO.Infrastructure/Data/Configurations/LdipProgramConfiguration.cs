@@ -34,10 +34,17 @@ public sealed class LdipProgramConfiguration : IEntityTypeConfiguration<LdipProg
             .IsRequired();
 
         // ── RAL-113 detail columns (upload-only; null for manually-added programs) ──
+        // Several of these are genuinely open-ended, potentially multi-value free
+        // text in the real file (e.g. CcTypologyCode has held comma/newline-separated
+        // lists of 15+ codes, FundingSourceSnapshot has held combined strings like
+        // "GF, LDRRMF, GADF, NGA (ER 1-94)") — a fixed-size guess already truncated
+        // real data twice. Left unbounded (nvarchar(max)), matching how AIP treats
+        // its own equally open-ended ImplementingOffice/ExpectedOutputs/
+        // FundingSourceSnapshot columns. Only StartDate/EndDate (bare year strings)
+        // are genuinely bounded.
 
         builder.Property(p => p.ImplementingOffice)
-            .HasColumnName("implementing_office")
-            .HasMaxLength(200);
+            .HasColumnName("implementing_office");  // nvarchar(max) — can combine multiple offices, e.g. "PGO Housing, PEO"
 
         builder.Property(p => p.StartDate)
             .HasColumnName("start_date")
@@ -54,8 +61,7 @@ public sealed class LdipProgramConfiguration : IEntityTypeConfiguration<LdipProg
             .HasColumnName("funding_source_id");
 
         builder.Property(p => p.FundingSourceSnapshot)
-            .HasColumnName("funding_source_snapshot")
-            .HasMaxLength(20);
+            .HasColumnName("funding_source_snapshot");  // nvarchar(max) — can list multiple funding sources
 
         builder.Property(p => p.Ps)
             .HasColumnName("ps")
@@ -78,32 +84,25 @@ public sealed class LdipProgramConfiguration : IEntityTypeConfiguration<LdipProg
             .HasColumnType("decimal(18,2)");
 
         builder.Property(p => p.CcTypologyCode)
-            .HasColumnName("cc_typology_code")
-            .HasMaxLength(50);
+            .HasColumnName("cc_typology_code");  // nvarchar(max) — can be a long comma/newline-separated list of codes
 
         builder.Property(p => p.PdpRdp)
-            .HasColumnName("pdp_rdp")
-            .HasMaxLength(500);
+            .HasColumnName("pdp_rdp");  // nvarchar(max)
 
         builder.Property(p => p.Sdgs)
-            .HasColumnName("sdgs")
-            .HasMaxLength(500);
+            .HasColumnName("sdgs");  // nvarchar(max)
 
         builder.Property(p => p.SendaiFramework)
-            .HasColumnName("sendai_framework")
-            .HasMaxLength(500);
+            .HasColumnName("sendai_framework");  // nvarchar(max)
 
         builder.Property(p => p.NdrrmPlan)
-            .HasColumnName("ndrrm_plan")
-            .HasMaxLength(500);
+            .HasColumnName("ndrrm_plan");  // nvarchar(max)
 
         builder.Property(p => p.Nsp)
-            .HasColumnName("nsp")
-            .HasMaxLength(500);
+            .HasColumnName("nsp");  // nvarchar(max)
 
         builder.Property(p => p.Pdpdfp)
-            .HasColumnName("pdpdfp")
-            .HasMaxLength(500);
+            .HasColumnName("pdpdfp");  // nvarchar(max)
 
         builder.HasIndex(p => new { p.LdipOfficeId, p.RefCode })
             .IsUnique()
