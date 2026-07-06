@@ -7,8 +7,9 @@
  *
  * The uploaded workbook covers every office in one file — there is no office
  * picker. The server auto-detects every office block in the file (matched by
- * AIP ref code against Config -> Offices) and Confirm creates one Draft LDIP
- * record per office found, all in a single batch.
+ * AIP ref code against Config -> Offices) and Confirm creates ONE Draft LDIP
+ * record spanning every office found (mirrors AIP's own upload — one document
+ * holds all offices, not one document per office).
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -199,7 +200,7 @@ function UploadTab() {
                 ["Set the year range", "Choose the planning period this document covers."],
                 ["Upload your file",   "Drop the .xlsx file into the dropzone or browse to select it."],
                 ["Review the preview", "Every office found in the file is listed with its counts and any warnings."],
-                ["Confirm import",     "Once confirmed, one Draft LDIP record is created per office found."],
+                ["Confirm import",     "Once confirmed, one Draft LDIP record is created, spanning every office found."],
               ].map(([title, desc], i) => (
                 <li key={i} className="flex gap-3">
                   <span className="shrink-0 w-5 h-5 rounded-full bg-green-700 text-white text-xs font-bold flex items-center justify-center mt-0.5">
@@ -221,7 +222,7 @@ function UploadTab() {
                 "Must be an Excel file (.xlsx)",
                 "Maximum file size: 20 MB",
                 "Must contain sheets named General, Social, Economic, Others",
-                "The file covers every office — each one found is imported as its own Draft record",
+                "The file covers every office — all of them are imported into one Draft record",
                 "Only PPDO staff can upload an LDIP file (same as AIP)",
               ].map((req, i) => (
                 <li key={i} className="flex items-start gap-2 text-xs text-slate-600">

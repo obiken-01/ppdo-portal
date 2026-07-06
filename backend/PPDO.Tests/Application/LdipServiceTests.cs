@@ -699,7 +699,7 @@ public sealed class LdipServiceTests
     // ── File upload — ConfirmImport ───────────────────────────────────────────
 
     [Fact]
-    public async Task ConfirmImport_CreatesOneDraftRecordPerOffice_WithEntryModeUpload()
+    public async Task ConfirmImport_CreatesOneRecordSpanningAllOffices_WithEntryModeUpload()
     {
         (LdipService sut, _, _, _, _) = Build([], offices: [Off(), Off2()]);
         LdipImportConfirmDto dto = new(2027, 2029, Offices:
@@ -710,14 +710,20 @@ public sealed class LdipServiceTests
                 [SaveGroup("General", "GSO", ("Program B", 250m))]),
         ]);
 
-        ServiceResult<IReadOnlyList<LdipRecordDto>> result = await sut.ConfirmImportAsync(dto, UserId);
+        ServiceResult<LdipRecordDto> result = await sut.ConfirmImportAsync(dto, UserId);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(2, result.Value!.Count);
-        Assert.All(result.Value, r => Assert.Equal(PlanningStatus.Draft, r.Status));
-        Assert.All(result.Value, r => Assert.Equal("Upload", r.EntryMode));
-        Assert.Contains(result.Value, r => r.OfficeId == 1);
-        Assert.Contains(result.Value, r => r.OfficeId == 2);
+        Assert.Equal(PlanningStatus.Draft, result.Value!.Status);
+        Assert.Equal("Upload", result.Value.EntryMode);
+        Assert.Null(result.Value.OfficeId); // spans multiple offices — no single owner
+        Assert.Equal(2, result.Value.ProgramCount);
+
+        // Each office's group gets its OWN ref code (via its own OfficeRefCode),
+        // not one shared office's code applied to everything.
+        ServiceResult<LdipRecordDetailDto> detail = await sut.GetByIdAsync(result.Value.Id);
+        Assert.Equal(2, detail.Value!.Groups.Count);
+        Assert.Contains(detail.Value.Groups, g => g.RefCode == "1000-000-1-01-010"); // PPDO
+        Assert.Contains(detail.Value.Groups, g => g.RefCode == "1000-000-1-01-020"); // GSO
     }
 
     [Fact]
@@ -729,10 +735,10 @@ public sealed class LdipServiceTests
         LdipImportConfirmDto dto = new(2027, 2029,
             Offices: [new LdipImportOfficeResultDto(1, "PPDO", "PPDO Office", [group])]);
 
-        ServiceResult<IReadOnlyList<LdipRecordDto>> result = await sut.ConfirmImportAsync(dto, UserId);
+        ServiceResult<LdipRecordDto> result = await sut.ConfirmImportAsync(dto, UserId);
         Assert.True(result.IsSuccess);
 
-        ServiceResult<LdipRecordDetailDto> detail = await sut.GetByIdAsync(result.Value![0].Id);
+        ServiceResult<LdipRecordDetailDto> detail = await sut.GetByIdAsync(result.Value!.Id);
         LdipProgramDto program = detail.Value!.Groups[0].Programs[0];
         Assert.Equal(1, program.FundingSourceId);
         Assert.Equal("General Fund", program.FundingSourceSnapshot);
@@ -747,10 +753,10 @@ public sealed class LdipServiceTests
         LdipImportConfirmDto dto = new(2027, 2029,
             Offices: [new LdipImportOfficeResultDto(1, "PPDO", "PPDO Office", [group])]);
 
-        ServiceResult<IReadOnlyList<LdipRecordDto>> result = await sut.ConfirmImportAsync(dto, UserId);
+        ServiceResult<LdipRecordDto> result = await sut.ConfirmImportAsync(dto, UserId);
         Assert.True(result.IsSuccess);
 
-        ServiceResult<LdipRecordDetailDto> detail = await sut.GetByIdAsync(result.Value![0].Id);
+        ServiceResult<LdipRecordDetailDto> detail = await sut.GetByIdAsync(result.Value!.Id);
         LdipProgramDto program = detail.Value!.Groups[0].Programs[0];
         Assert.Null(program.FundingSourceId);
         Assert.Equal("Weird Fund", program.FundingSourceSnapshot);
@@ -772,10 +778,10 @@ public sealed class LdipServiceTests
         LdipImportConfirmDto dto = new(2027, 2029,
             Offices: [new LdipImportOfficeResultDto(1, "PPDO", "PPDO Office", [group])]);
 
-        ServiceResult<IReadOnlyList<LdipRecordDto>> result = await sut.ConfirmImportAsync(dto, UserId);
+        ServiceResult<LdipRecordDto> result = await sut.ConfirmImportAsync(dto, UserId);
         Assert.True(result.IsSuccess);
 
-        ServiceResult<LdipRecordDetailDto> detail = await sut.GetByIdAsync(result.Value![0].Id);
+        ServiceResult<LdipRecordDetailDto> detail = await sut.GetByIdAsync(result.Value!.Id);
         LdipProgramDto p = detail.Value!.Groups[0].Programs[0];
         Assert.Equal("PGO", p.ImplementingOffice);
         Assert.Equal("2027", p.StartDate);
@@ -799,17 +805,54 @@ public sealed class LdipServiceTests
     public async Task ConfirmImport_OneOfficeFails_ReturnsBadRequest_MentioningOfficeCode()
     {
         (LdipService sut, _, _, _, _) = Build([], offices: [Off()]);
-        // Unknown sector on the second office's group triggers ValidateGroups to fail.
+        // Unknown sector triggers ValidateGroups to fail for this office.
         LdipImportConfirmDto dto = new(2027, 2029, Offices:
         [
             new LdipImportOfficeResultDto(1, "PPDO", "PPDO Office",
                 [new SaveLdipGroupDto("Industrial", "PPDO", [new SaveLdipProgramDto("Program A", 1m)])]),
         ]);
 
-        ServiceResult<IReadOnlyList<LdipRecordDto>> result = await sut.ConfirmImportAsync(dto, UserId);
+        ServiceResult<LdipRecordDto> result = await sut.ConfirmImportAsync(dto, UserId);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
         Assert.Contains("PPDO", result.Error);
+    }
+
+    [Fact]
+    public async Task ConfirmImport_NoOffices_ReturnsBadRequest()
+    {
+        (LdipService sut, _, _, _, _) = Build([]);
+
+        ServiceResult<LdipRecordDto> result = await sut.ConfirmImportAsync(new LdipImportConfirmDto(2027, 2029, []), UserId);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task ConfirmImport_UnknownOffice_ReturnsNotFound()
+    {
+        (LdipService sut, _, _, _, _) = Build([], offices: [Off()]);
+        LdipImportConfirmDto dto = new(2027, 2029,
+            Offices: [new LdipImportOfficeResultDto(99, "XXX", "Unknown", [SaveGroup("General", "X", ("P", 1m))])]);
+
+        ServiceResult<LdipRecordDto> result = await sut.ConfirmImportAsync(dto, UserId);
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Fact]
+    public async Task Finalize_UploadedRecordWithNoOffice_Succeeds()
+    {
+        (LdipService sut, _, _, _, _) = Build([], offices: [Off()]);
+        LdipImportConfirmDto dto = new(2027, 2029,
+            Offices: [new LdipImportOfficeResultDto(1, "PPDO", "PPDO Office",
+                [SaveGroup("General", "PPDO", ("Program A", 100m))])]);
+        ServiceResult<LdipRecordDto> created = await sut.ConfirmImportAsync(dto, UserId);
+
+        ServiceResult<LdipRecordDto> result = await sut.FinalizeAsync(created.Value!.Id);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(PlanningStatus.Final, result.Value!.Status);
     }
 
     [Fact]

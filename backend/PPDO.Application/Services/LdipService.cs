@@ -206,7 +206,10 @@ public sealed class LdipService : ILdipService
             return ServiceResult<LdipRecordDto>.BadRequest($"Cannot finalize a record with status '{rec.Status}'.");
 
         // Completeness checks live on Finalize (the WFP pattern) — drafts save freely.
-        if (rec.OfficeId is null)
+        // Uploaded multi-office documents (RAL-113) legitimately have no single
+        // office — that's the point of them — so only manual/office-scoped records
+        // require one.
+        if (rec.OfficeId is null && rec.EntryMode != "Upload")
             return ServiceResult<LdipRecordDto>.BadRequest("Cannot finalize: no office is set on this record.");
         if (rec.FiscalYearStart > rec.FiscalYearEnd)
             return ServiceResult<LdipRecordDto>.BadRequest("Cannot finalize: year start must be on or before year end.");
@@ -323,10 +326,19 @@ public sealed class LdipService : ILdipService
     /// </summary>
     private static List<LdipOffice> BuildHierarchy(
         IReadOnlyList<SaveLdipGroupDto> groups, Office office, Dictionary<string, FundingSource> fsLookup)
+        => BuildHierarchy(groups.Select(g => (office, g)), fsLookup);
+
+    /// <summary>
+    /// Overload for the upload-confirm path (RAL-113), where a single document can
+    /// span MULTIPLE offices — each group carries its own office so its ref code is
+    /// computed correctly, instead of assuming one shared office for everything.
+    /// </summary>
+    private static List<LdipOffice> BuildHierarchy(
+        IEnumerable<(Office Office, SaveLdipGroupDto Group)> items, Dictionary<string, FundingSource> fsLookup)
     {
         List<LdipOffice> result = [];
         Dictionary<string, int> nextSeqByRefCode = [];
-        foreach (SaveLdipGroupDto group in groups)
+        foreach ((Office office, SaveLdipGroupDto group) in items)
         {
             string groupRef = $"{SectorPrefixes[group.Sector]}-000-1-{office.OfficeRefCode}";
             // Names are normalised to UPPERCASE — matching how office and program
@@ -507,40 +519,69 @@ public sealed class LdipService : ILdipService
         return ServiceResult<LdipImportPreviewDto>.Ok(preview);
     }
 
-    public async Task<ServiceResult<IReadOnlyList<LdipRecordDto>>> ConfirmImportAsync(
+    /// <summary>
+    /// Persists ONE Draft LdipRecord spanning every office in the upload — mirroring
+    /// how AipRecord holds all offices under a single document — instead of one
+    /// record per office. OfficeId is null on the resulting record (a genuinely
+    /// multi-office document has no single office); EntryMode is "Upload" so
+    /// FinalizeAsync knows not to require one.
+    /// </summary>
+    public async Task<ServiceResult<LdipRecordDto>> ConfirmImportAsync(
         LdipImportConfirmDto dto, Guid createdById, CancellationToken ct = default)
     {
-        List<LdipRecordDto> created = [];
-        foreach (LdipImportOfficeResultDto office in dto.Offices)
+        if (dto.Offices.Count == 0)
+            return ServiceResult<LdipRecordDto>.BadRequest("No offices to import.");
+
+        IReadOnlyList<Office> allOffices = await _officeRepo.GetAllAsync(ct);
+        Dictionary<int, Office> officeById = allOffices.ToDictionary(o => o.Id);
+
+        List<(Office Office, SaveLdipGroupDto Group)> items = [];
+        foreach (LdipImportOfficeResultDto off in dto.Offices)
         {
-            CreateLdipDto createDto = new(
-                Title:           "",
-                FiscalYearStart: dto.FiscalYearStart,
-                FiscalYearEnd:   dto.FiscalYearEnd,
-                EntryMode:       "Upload",
-                OfficeId:        office.OfficeId,
-                Groups:          office.Groups);
+            if (!officeById.TryGetValue(off.OfficeId, out Office? office))
+                return ServiceResult<LdipRecordDto>.NotFound($"Office {off.OfficeId} not found.");
+            if (string.IsNullOrWhiteSpace(office.OfficeRefCode))
+                return ServiceResult<LdipRecordDto>.BadRequest(
+                    $"Office '{office.OfficeCode}' has no AIP ref code configured. Set office_ref_code in Config → Offices first.");
 
-            ServiceResult<LdipRecordDetailDto> result = await CreateAsync(createDto, createdById, ct);
-            if (!result.IsSuccess)
-            {
-                string msg = $"Office {office.OfficeCode}: {result.Error}";
-                return result.Code switch
-                {
-                    ServiceErrorCode.NotFound  => ServiceResult<IReadOnlyList<LdipRecordDto>>.NotFound(msg),
-                    ServiceErrorCode.Forbidden => ServiceResult<IReadOnlyList<LdipRecordDto>>.Forbidden(msg),
-                    ServiceErrorCode.Conflict  => ServiceResult<IReadOnlyList<LdipRecordDto>>.Conflict(msg),
-                    _                          => ServiceResult<IReadOnlyList<LdipRecordDto>>.BadRequest(msg),
-                };
-            }
+            string? groupError = ValidateGroups(off.Groups);
+            if (groupError is not null)
+                return ServiceResult<LdipRecordDto>.BadRequest($"Office {office.OfficeCode}: {groupError}");
 
-            LdipRecordDetailDto rec = result.Value!;
-            created.Add(new LdipRecordDto(
-                rec.Id, rec.RefCode, rec.Title, rec.FiscalYearStart, rec.FiscalYearEnd,
-                rec.EntryMode, rec.Status, rec.SourceId, rec.CreatedById, rec.CreatedAt, rec.UpdatedAt,
-                rec.OfficeId, rec.OfficeName, rec.Groups.Sum(g => g.Programs.Count)));
+            items.AddRange(off.Groups.Select(g => (office, g)));
         }
 
-        return ServiceResult<IReadOnlyList<LdipRecordDto>>.Ok(created);
+        IReadOnlyList<LdipRecord> all = await _repo.GetAllAsync(ct);
+        int seq = all.Count(r => r.FiscalYearStart == dto.FiscalYearStart) + 1;
+        string refCode = $"LDIP-{dto.FiscalYearStart}-{seq:D3}";
+
+        Dictionary<string, FundingSource> fsLookup = await LoadFundingSourceLookupAsync(ct);
+
+        DateTime now = DateTime.UtcNow;
+        LdipRecord entity = new()
+        {
+            RefCode         = refCode,
+            Title           = $"LDIP {dto.FiscalYearStart}-{dto.FiscalYearEnd} — All Offices",
+            FiscalYearStart = dto.FiscalYearStart,
+            FiscalYearEnd   = dto.FiscalYearEnd,
+            EntryMode       = "Upload",
+            Status          = PlanningStatus.Draft,
+            OfficeId        = null,
+            CreatedById     = createdById,
+            CreatedAt       = now,
+            UpdatedAt       = now,
+            Offices         = BuildHierarchy(items, fsLookup),
+        };
+
+        await _repo.AddAsync(entity, ct);
+        await _repo.SaveChangesAsync(ct);
+
+        await _audit.LogAsync("ldip_records", entity.Id, AuditAction.Create,
+            null,
+            new { entity.RefCode, entity.Title, entity.Status,
+                  OfficeCount = dto.Offices.Count, Programs = entity.Offices.Sum(o => o.Programs.Count) },
+            ct);
+
+        return ServiceResult<LdipRecordDto>.Ok(MapToDto(entity, entity.Offices.Sum(o => o.Programs.Count)));
     }
 }

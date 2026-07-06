@@ -62,6 +62,11 @@ interface DraftProgram {
   name: string;
   budget: number;
   /**
+   * Server-persisted ref code, present only when loaded from an existing record.
+   * Newly-added (unsaved) programs compute a live preview instead (see render).
+   */
+  refCode?: string;
+  /**
    * Upload-derived detail fields (RAL-113) — present only for programs created
    * via file upload; undefined for programs added through "+ Add Program".
    */
@@ -88,6 +93,8 @@ interface DraftGroup {
   sector: LdipSector;
   name: string;
   programs: DraftProgram[];
+  /** Server-persisted ref code, present only when loaded from an existing record. */
+  refCode?: string;
 }
 
 function sameName(a: string, b: string): boolean {
@@ -171,7 +178,11 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
   );
 
   const isEdit = record != null;
-  const isReadOnly = isEdit && record.status !== "Draft";
+  // Uploaded multi-office records (RAL-113) have no single office — editing them
+  // through this single-office-centric form doesn't make sense, so they're always
+  // read-only regardless of Draft/Final status.
+  const isMultiOffice = isEdit && record.officeId == null && record.entryMode === "Upload";
+  const isReadOnly = isEdit && (record.status !== "Draft" || isMultiOffice);
   const isAdmin = me?.role === "Admin" || me?.role === "SuperAdmin";
   const isOfficeUser = me != null && me.officeId != null;
 
@@ -188,10 +199,12 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
     (record?.groups ?? []).map((g, gi) => ({
       sector: g.sector,
       name: g.name,
+      refCode: g.refCode,
       programs: g.programs.map((p, pi) => ({
         key: gi * 1000 + pi,
         name: p.name,
         budget: p.budget,
+        refCode: p.refCode,
         detail: hasUploadDetail(p) ? p : undefined,
       })),
     }))
@@ -513,7 +526,11 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
             </label>
             {isOfficeUser || isReadOnly ? (
               <span className="inline-block text-sm text-slate-700 bg-slate-100 border border-slate-200 px-3 py-2">
-                {office ? `${office.officeCode} — ${office.officeName}` : record?.officeName ?? "—"}
+                {isMultiOffice
+                  ? "All Offices"
+                  : office
+                  ? `${office.officeCode} — ${office.officeName}`
+                  : record?.officeName ?? "—"}
               </span>
             ) : (
               <OfficeSelect
@@ -655,10 +672,16 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
         ) : (
           groups.map((group, groupIndex) => {
             if (group.programs.length === 0) return null;
+            // Prefer the server-persisted ref code (always correct, and the only
+            // option for multi-office records where each group belongs to a
+            // DIFFERENT office than whatever single office this form has loaded).
+            // Fall back to a live client-side preview only for a brand-new,
+            // not-yet-saved group.
             const ref =
-              officeRefSuffix != null
+              group.refCode ??
+              (officeRefSuffix != null
                 ? `${SECTOR_PREFIX[group.sector]}-000-1-${officeRefSuffix}`
-                : "—";
+                : "—");
             return (
               <div key={`${group.sector}|${group.name}`}>
                 <div className="flex items-center gap-3 bg-green-800 text-white px-4 py-2 text-xs font-bold">
@@ -669,6 +692,7 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
                 {group.programs.map((p) => {
                   const seq = (seqByRefCode[ref] = (seqByRefCode[ref] ?? 0) + 1);
                   const expanded = expandedKeys.has(p.key);
+                  const programRef = p.refCode ?? `${ref}-${String(seq).padStart(3, "0")}`;
                   return (
                     <div key={p.key} className="border-b border-slate-50">
                       <div className="grid grid-cols-[24px_130px_1fr_120px_90px] gap-2 px-4 py-2 items-center text-sm">
@@ -688,7 +712,7 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
                           )}
                         </span>
                         <span className="font-mono text-xs text-slate-500">
-                          {ref}-{String(seq).padStart(3, "0")}
+                          {programRef}
                         </span>
                         <span className="italic font-semibold text-slate-800">{p.name}</span>
                         <span className="text-right tabular-nums">₱{formatMoney(p.budget)}</span>

@@ -40,9 +40,10 @@ public interface ILdipService
         CancellationToken ct = default);
 
     /// <summary>
-    /// Persists the previewed hierarchy as one new Draft LDIP record PER OFFICE
-    /// (EntryMode = "Upload") in a single batch.
+    /// Persists the previewed hierarchy as ONE new Draft LDIP record spanning every
+    /// office in the upload (EntryMode = "Upload", OfficeId = null) — mirrors how
+    /// AipRecord holds all offices under a single document.
     /// </summary>
-    Task<ServiceResult<IReadOnlyList<LdipRecordDto>>> ConfirmImportAsync(
+    Task<ServiceResult<LdipRecordDto>> ConfirmImportAsync(
         LdipImportConfirmDto dto, Guid createdById, CancellationToken ct = default);
 }

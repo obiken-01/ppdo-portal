@@ -91,9 +91,9 @@ export default function LdipImportPreviewPage() {
       sessionStorage.removeItem(META_KEY);
       toast.success(
         "Import complete",
-        `${saved.length} LDIP record${saved.length !== 1 ? "s" : ""} created (one per office).`
+        `${saved.refCode} imported, covering ${preview.offices.length} office${preview.offices.length !== 1 ? "s" : ""}.`
       );
-      router.push("/budget-planning/ldip");
+      router.push(`/budget-planning/ldip/edit?id=${saved.id}`);
     } catch (err) {
       setConfirmError(ldipErrorMessage(err, "Confirm failed. Please try again."));
       setConfirming(false);
@@ -132,7 +132,7 @@ export default function LdipImportPreviewPage() {
             Import Preview — LDIP {preview.fiscalYearStart}–{preview.fiscalYearEnd}
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            Review the data before confirming. One Draft record is created per office. This cannot be undone.
+            Review the data before confirming. One Draft record is created, spanning every office found. This cannot be undone.
           </p>
         </div>
         <div className="flex items-center gap-3 shrink-0 ml-6">

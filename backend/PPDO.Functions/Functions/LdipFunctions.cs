@@ -227,7 +227,7 @@ public sealed class LdipFunctions
         LdipImportConfirmDto? body = await ConfigHttp.ReadBodyAsync<LdipImportConfirmDto>(req, ct);
         if (body is null)
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
-                ApiResponse<IReadOnlyList<LdipRecordDto>>.Fail("Request body is missing or malformed."), ct);
+                ApiResponse<LdipRecordDto>.Fail("Request body is missing or malformed."), ct);
 
         return await ConfigHttp.FromResultAsync(req,
             await _ldip.ConfirmImportAsync(body, caller!.Id, ct), ct, HttpStatusCode.Created);

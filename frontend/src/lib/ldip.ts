@@ -128,11 +128,12 @@ export async function uploadLdipFile(
 
 // ---------------------------------------------------------------------------
 // File upload — confirm import — POST /api/budget-planning/ldip/confirm
-// Creates one Draft LDIP record per office found in the file.
+// Creates ONE Draft LDIP record spanning every office found in the file
+// (mirrors AIP — a single document holds all offices, not one document each).
 // ---------------------------------------------------------------------------
 
-export async function confirmLdipImport(body: LdipImportConfirmRequest): Promise<LdipRecord[]> {
-  const { data } = await api.post<ApiResponse<LdipRecord[]>>(
+export async function confirmLdipImport(body: LdipImportConfirmRequest): Promise<LdipRecord> {
+  const { data } = await api.post<ApiResponse<LdipRecord>>(
     "/budget-planning/ldip/confirm",
     body
   );
