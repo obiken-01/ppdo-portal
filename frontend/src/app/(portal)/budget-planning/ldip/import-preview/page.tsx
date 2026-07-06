@@ -12,10 +12,12 @@ import { useRouter } from "next/navigation";
 import { confirmLdipImport, ldipErrorMessage } from "@/lib/ldip";
 import { useMe } from "@/lib/me-cache";
 import { useToast } from "@/components/ui/Toast";
-import type { LdipImportPreviewResponse } from "@/types";
+import type { LdipImportPreviewResponse, LdipSector } from "@/types";
 
 const PREVIEW_KEY = "ldip_import_preview";
 const META_KEY    = "ldip_import_meta";
+
+const SECTOR_ORDER: LdipSector[] = ["General", "Social", "Economic", "Others"];
 
 interface ImportMeta {
   originalFilename: string;
@@ -104,6 +106,14 @@ export default function LdipImportPreviewPage() {
     router.push("/budget-planning/ldip/new");
   }
 
+  function programCountForSector(sector: LdipSector): number {
+    if (!preview) return 0;
+    return preview.offices
+      .flatMap((o) => o.groups)
+      .filter((g) => g.sector === sector)
+      .reduce((n, g) => n + g.programs.length, 0);
+  }
+
   if (!preview || !me) {
     return (
       <div className="p-6 flex items-center gap-3 text-sm text-slate-500">
@@ -160,6 +170,17 @@ export default function LdipImportPreviewPage() {
             <StatTile label="Offices"  value={preview.counts.offices} />
             <StatTile label="Groups"   value={preview.counts.groups} />
             <StatTile label="Programs" value={preview.counts.programs} />
+          </div>
+
+          <div>
+            <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+              Programs Parsed by Sector
+            </h2>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {SECTOR_ORDER.map((sector) => (
+                <StatTile key={sector} label={sector} value={programCountForSector(sector)} />
+              ))}
+            </div>
           </div>
 
           <div>
