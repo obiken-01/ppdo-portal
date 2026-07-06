@@ -143,6 +143,7 @@ var host = new HostBuilder()
 
         // -- Budget Planning services (RAL-64) --------------------------------
         services.AddScoped<IAipXlsmParser, AipXlsmParser>();
+        services.AddScoped<ILdipXlsmParser, LdipXlsmParser>();
         services.AddScoped<ILdipService, LdipService>();
         services.AddScoped<IAipService, AipService>();
         services.AddScoped<IWfpService, WfpService>();

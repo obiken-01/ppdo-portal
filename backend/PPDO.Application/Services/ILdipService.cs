@@ -1,5 +1,6 @@
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
+using PPDO.Domain.Entities;
 
 namespace PPDO.Application.Services;
 
@@ -22,4 +23,27 @@ public interface ILdipService
 
     /// <summary>Wipes all LDIP records. Kept for post-merge dev testing. Returns deleted count.</summary>
     Task<int> PurgeAllAsync(CancellationToken ct = default);
+
+    // ── File upload (RAL-113) ────────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses the uploaded LDIP file — pure parse, no persistence. The workbook
+    /// covers every office; every office block found (across all 4 sector sheets)
+    /// is matched to a Config → Offices record by AIP ref code and returned grouped
+    /// by office.
+    /// </summary>
+    Task<ServiceResult<LdipImportPreviewDto>> ParsePreviewAsync(
+        Stream xlsxStream,
+        int fiscalYearStart,
+        int fiscalYearEnd,
+        IReadOnlyList<FundingSource> knownFundingSources,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Persists the previewed hierarchy as ONE new Draft LDIP record spanning every
+    /// office in the upload (EntryMode = "Upload", OfficeId = null) — mirrors how
+    /// AipRecord holds all offices under a single document.
+    /// </summary>
+    Task<ServiceResult<LdipRecordDto>> ConfirmImportAsync(
+        LdipImportConfirmDto dto, Guid createdById, CancellationToken ct = default);
 }

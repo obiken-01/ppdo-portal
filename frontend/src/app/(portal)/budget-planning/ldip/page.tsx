@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { archiveLdip, ldipErrorMessage, listLdip, unlockLdip } from "@/lib/ldip";
+import { archiveLdip, finalizeLdip, ldipErrorMessage, listLdip, unlockLdip } from "@/lib/ldip";
 import { useMe } from "@/lib/me-cache";
 import DataTable, { type Column } from "@/components/ui/DataTable";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
@@ -113,6 +113,31 @@ function LdipListInner() {
     });
   }
 
+  function handleFinalize(r: LdipRecord) {
+    // The primary way to finalize is the edit form's ribbon — this is the fallback
+    // for uploaded multi-office records (RAL-113), which are always read-only in
+    // that form since there's no single office to edit against (mirrors AIP's own
+    // list-level Finalize action, since AIP has no manual edit form at all).
+    setConfirm({
+      title: "Finalize LDIP",
+      message: `Finalize ${r.refCode}? Once finalized, it is locked and can only be unlocked by an admin.`,
+      confirmLabel: "Finalize",
+      cancelLabel: "Cancel",
+      variant: "primary",
+      onConfirm: async () => {
+        setConfirm(null);
+        try {
+          await finalizeLdip(r.id);
+          toast.success("Finalized", `${r.refCode} is now Final.`);
+          load();
+        } catch (err) {
+          toast.error("Failed", ldipErrorMessage(err, "Could not finalize LDIP."));
+        }
+      },
+      onClose: () => setConfirm(null),
+    });
+  }
+
   function handleUnlock(r: LdipRecord) {
     setConfirm({
       title: "Unlock LDIP",
@@ -163,11 +188,14 @@ function LdipListInner() {
         key: "officeName",
         header: "OFFICE",
         sortable: true,
-        render: (r) => (
-          <span className="block max-w-[180px] truncate" title={r.officeName ?? undefined}>
-            {r.officeName ?? "—"}
-          </span>
-        ),
+        render: (r) => {
+          const label = r.officeName ?? (r.entryMode === "Upload" ? "All Offices" : "—");
+          return (
+            <span className="block max-w-[180px] truncate" title={label}>
+              {label}
+            </span>
+          );
+        },
       },
       {
         key: "period",
@@ -224,6 +252,14 @@ function LdipListInner() {
               >
                 View
               </Link>
+            )}
+            {r.status === "Draft" && (
+              <button
+                onClick={() => handleFinalize(r)}
+                className="text-green-700 hover:underline"
+              >
+                Finalize
+              </button>
             )}
             {r.status === "Draft" && (
               <button
@@ -298,6 +334,7 @@ function LdipListInner() {
           <option value="New">New</option>
           <option value="Amendment">Amendment</option>
           <option value="Supplemental">Supplemental</option>
+          <option value="Upload">Upload</option>
         </select>
       </div>
 

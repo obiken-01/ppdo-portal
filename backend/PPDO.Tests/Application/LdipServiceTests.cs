@@ -48,8 +48,16 @@ public sealed class LdipServiceTests
     private static SaveLdipGroupDto SaveGroup(string sector, string name, params (string Name, decimal Budget)[] programs)
         => new(sector, name, programs.Select(p => new SaveLdipProgramDto(p.Name, p.Budget)).ToList());
 
-    private static (LdipService sut, Mock<ILdipRepository> repo, Mock<IAuditService> audit)
-        Build(List<LdipRecord> seed, List<Office>? offices = null, Dictionary<int, List<LdipOffice>>? groups = null)
+    private static FundingSource Fs(int id, string code) => new()
+    {
+        Id = id, Code = code, Name = code, IsActive = true,
+        CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+    };
+
+    private static (LdipService sut, Mock<ILdipRepository> repo, Mock<IAuditService> audit,
+        Mock<ILdipXlsmParser> parser, Mock<IRepository<FundingSource>> fsRepo)
+        Build(List<LdipRecord> seed, List<Office>? offices = null, Dictionary<int, List<LdipOffice>>? groups = null,
+              List<FundingSource>? fundingSources = null)
     {
         Dictionary<int, List<LdipOffice>> groupStore = groups ?? [];
 
@@ -104,10 +112,17 @@ public sealed class LdipServiceTests
             It.IsAny<object?>(), It.IsAny<object?>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
+        Mock<ILdipXlsmParser> parser = new();
+
+        Mock<IRepository<FundingSource>> fsRepo = new();
+        fsRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(fundingSources ?? []);
+
         CallerContext ctx = new();
         ctx.SetUserId(UserId);
 
-        return (new LdipService(repo.Object, officeRepo.Object, audit.Object, ctx), repo, audit);
+        return (new LdipService(repo.Object, officeRepo.Object, audit.Object, ctx, parser.Object, fsRepo.Object),
+            repo, audit, parser, fsRepo);
     }
 
     // ── Create — document ref code + status ───────────────────────────────────
@@ -115,7 +130,7 @@ public sealed class LdipServiceTests
     [Fact]
     public async Task Create_GeneratesRefCode_InDraftStatus()
     {
-        (LdipService sut, _, _) = Build([]);
+        (LdipService sut, _, _, _, _) = Build([]);
         CreateLdipDto dto = new("My LDIP", 2027, 2029, "New", OfficeId: 1);
 
         ServiceResult<LdipRecordDetailDto> result = await sut.CreateAsync(dto, UserId);
@@ -129,7 +144,7 @@ public sealed class LdipServiceTests
     [Fact]
     public async Task Create_MissingOfficeId_ReturnsBadRequest()
     {
-        (LdipService sut, _, _) = Build([]);
+        (LdipService sut, _, _, _, _) = Build([]);
 
         ServiceResult<LdipRecordDetailDto> result =
             await sut.CreateAsync(new CreateLdipDto("T", 2027, 2029, "New"), UserId);
@@ -141,7 +156,7 @@ public sealed class LdipServiceTests
     [Fact]
     public async Task Create_UnknownOffice_ReturnsNotFound()
     {
-        (LdipService sut, _, _) = Build([]);
+        (LdipService sut, _, _, _, _) = Build([]);
 
         ServiceResult<LdipRecordDetailDto> result =
             await sut.CreateAsync(new CreateLdipDto("T", 2027, 2029, "New", OfficeId: 99), UserId);
@@ -152,7 +167,7 @@ public sealed class LdipServiceTests
     [Fact]
     public async Task Create_OfficeWithoutRefCode_ReturnsBadRequest()
     {
-        (LdipService sut, _, _) = Build([], offices: [Off(refCode: null)]);
+        (LdipService sut, _, _, _, _) = Build([], offices: [Off(refCode: null)]);
 
         ServiceResult<LdipRecordDetailDto> result =
             await sut.CreateAsync(new CreateLdipDto("T", 2027, 2029, "New", OfficeId: 1), UserId);
@@ -164,7 +179,7 @@ public sealed class LdipServiceTests
     [Fact]
     public async Task Create_BlankTitle_AutoGeneratesFromOfficeCodeAndYears()
     {
-        (LdipService sut, _, _) = Build([]);
+        (LdipService sut, _, _, _, _) = Build([]);
 
         ServiceResult<LdipRecordDetailDto> result =
             await sut.CreateAsync(new CreateLdipDto("", 2027, 2029, "New", OfficeId: 1), UserId);
@@ -177,7 +192,7 @@ public sealed class LdipServiceTests
     public async Task Create_GroupAndProgramNames_StoredUppercase()
     {
         // Names normalise to UPPERCASE server-side — matching the source AIP files.
-        (LdipService sut, _, _) = Build([]);
+        (LdipService sut, _, _, _, _) = Build([]);
         CreateLdipDto dto = new("T", 2027, 2029, "New", OfficeId: 1,
             Groups: [SaveGroup("General", "Office of the Provincial Governor",
                 ("Office Functionality and Operations Program", 100m))]);
@@ -194,7 +209,7 @@ public sealed class LdipServiceTests
     [Fact]
     public async Task Create_ComputesGroupRefCode_FromSectorPrefixAndOfficeRefCode()
     {
-        (LdipService sut, _, _) = Build([]);
+        (LdipService sut, _, _, _, _) = Build([]);
         CreateLdipDto dto = new("T", 2027, 2029, "New", OfficeId: 1,
             Groups: [SaveGroup("General", "PPDO", ("Program A", 500m))]);
 
@@ -209,7 +224,7 @@ public sealed class LdipServiceTests
     [Fact]
     public async Task Create_ProgramRefCodes_AreContiguousInSubmittedOrder()
     {
-        (LdipService sut, _, _) = Build([]);
+        (LdipService sut, _, _, _, _) = Build([]);
         CreateLdipDto dto = new("T", 2027, 2029, "New", OfficeId: 1,
             Groups: [SaveGroup("General", "PPDO", ("P1", 1m), ("P2", 2m), ("P3", 3m))]);
 
@@ -227,7 +242,7 @@ public sealed class LdipServiceTests
     {
         // Same office, two sectors — the Economic group carries a different
         // display name while sharing the office ref-code suffix (the real AIP quirk).
-        (LdipService sut, _, _) = Build([]);
+        (LdipService sut, _, _, _, _) = Build([]);
         CreateLdipDto dto = new("T", 2027, 2029, "New", OfficeId: 1, Groups:
         [
             SaveGroup("General",  "PPDO",                    ("P1", 1m)),
@@ -251,7 +266,7 @@ public sealed class LdipServiceTests
         // The real AIP-file shape: PGO - WARDEN / - AKAP-HUB / - HOUSING all share
         // 3000-000-1-01-… under Social; program numbering continues across them
         // (never restarts at -001 per group, which would collide).
-        (LdipService sut, _, _) = Build([]);
+        (LdipService sut, _, _, _, _) = Build([]);
         CreateLdipDto dto = new("T", 2027, 2029, "New", OfficeId: 1, Groups:
         [
             SaveGroup("Social", "PGO - WARDEN",   ("Jail Operations Program", 100m)),
@@ -277,7 +292,7 @@ public sealed class LdipServiceTests
     [Fact]
     public async Task Create_DuplicateSectorAndName_ReturnsBadRequest()
     {
-        (LdipService sut, _, _) = Build([]);
+        (LdipService sut, _, _, _, _) = Build([]);
         CreateLdipDto dto = new("T", 2027, 2029, "New", OfficeId: 1, Groups:
         [
             SaveGroup("General", "PPDO", ("P1", 1m)),
@@ -293,7 +308,7 @@ public sealed class LdipServiceTests
     [Fact]
     public async Task Create_UnknownSector_ReturnsBadRequest()
     {
-        (LdipService sut, _, _) = Build([]);
+        (LdipService sut, _, _, _, _) = Build([]);
         CreateLdipDto dto = new("T", 2027, 2029, "New", OfficeId: 1,
             Groups: [SaveGroup("Industrial", "A", ("P1", 1m))]);
 
@@ -306,7 +321,7 @@ public sealed class LdipServiceTests
     [Fact]
     public async Task Create_CallsAuditLog_CreateAction()
     {
-        (LdipService sut, _, Mock<IAuditService> audit) = Build([]);
+        (LdipService sut, _, Mock<IAuditService> audit, _, _) = Build([]);
 
         await sut.CreateAsync(new CreateLdipDto("T", 2027, 2029, "New", OfficeId: 1), UserId);
 
@@ -321,7 +336,7 @@ public sealed class LdipServiceTests
     public async Task Update_DraftRecord_Succeeds()
     {
         LdipRecord rec = Rec(1, PlanningStatus.Draft);
-        (LdipService sut, _, _) = Build([rec]);
+        (LdipService sut, _, _, _, _) = Build([rec]);
 
         ServiceResult<LdipRecordDetailDto> result =
             await sut.UpdateAsync(1, new UpdateLdipDto("New Title", 2028, 2030, "Amendment", OfficeId: 1));
@@ -341,7 +356,7 @@ public sealed class LdipServiceTests
         {
             [1] = [Group(10, 1, "1000-000-1-01-010", "General", "P1", "P2", "P3")],
         };
-        (LdipService sut, _, _) = Build([rec], groups: groups);
+        (LdipService sut, _, _, _, _) = Build([rec], groups: groups);
 
         ServiceResult<LdipRecordDetailDto> result = await sut.UpdateAsync(1,
             new UpdateLdipDto("T", 2027, 2029, "New", OfficeId: 1,
@@ -362,7 +377,7 @@ public sealed class LdipServiceTests
         LdipRecord rec = Rec(1, PlanningStatus.Draft);
         LdipOffice oldGroup = Group(10, 1, "1000-000-1-01-010", "General", "Old");
         Dictionary<int, List<LdipOffice>> groups = new() { [1] = [oldGroup] };
-        (LdipService sut, Mock<ILdipRepository> repo, _) = Build([rec], groups: groups);
+        (LdipService sut, Mock<ILdipRepository> repo, _, _, _) = Build([rec], groups: groups);
 
         await sut.UpdateAsync(1, new UpdateLdipDto("T", 2027, 2029, "New", OfficeId: 1,
             Groups: [SaveGroup("Social", "PPDO", ("New program", 5m))]));
@@ -375,7 +390,7 @@ public sealed class LdipServiceTests
     [Fact]
     public async Task Update_FinalRecord_ReturnsBadRequest()
     {
-        (LdipService sut, _, _) = Build([Rec(1, PlanningStatus.Final)]);
+        (LdipService sut, _, _, _, _) = Build([Rec(1, PlanningStatus.Final)]);
 
         ServiceResult<LdipRecordDetailDto> result =
             await sut.UpdateAsync(1, new UpdateLdipDto("X", 2027, 2029, "New", OfficeId: 1));
@@ -386,7 +401,7 @@ public sealed class LdipServiceTests
     [Fact]
     public async Task Update_ArchivedRecord_ReturnsBadRequest()
     {
-        (LdipService sut, _, _) = Build([Rec(1, PlanningStatus.Archived)]);
+        (LdipService sut, _, _, _, _) = Build([Rec(1, PlanningStatus.Archived)]);
 
         ServiceResult<LdipRecordDetailDto> result =
             await sut.UpdateAsync(1, new UpdateLdipDto("X", 2027, 2029, "New", OfficeId: 1));
@@ -397,7 +412,7 @@ public sealed class LdipServiceTests
     [Fact]
     public async Task Update_MissingId_ReturnsNotFound()
     {
-        (LdipService sut, _, _) = Build([]);
+        (LdipService sut, _, _, _, _) = Build([]);
 
         ServiceResult<LdipRecordDetailDto> result =
             await sut.UpdateAsync(999, new UpdateLdipDto("X", 2027, 2029, "New", OfficeId: 1));
@@ -411,7 +426,7 @@ public sealed class LdipServiceTests
     public async Task GetAll_WithOfficeId_ReturnsOnlyThatOfficesRecords()
     {
         List<LdipRecord> seed = [Rec(1, PlanningStatus.Draft, officeId: 1), Rec(2, PlanningStatus.Draft, officeId: 2)];
-        (LdipService sut, _, _) = Build(seed);
+        (LdipService sut, _, _, _, _) = Build(seed);
 
         IReadOnlyList<LdipRecordDto> result = await sut.GetAllAsync(null, officeId: 2);
 
@@ -429,7 +444,7 @@ public sealed class LdipServiceTests
         {
             [1] = [Group(10, 1, "1000-000-1-01-010", "General", "P1")],
         };
-        (LdipService sut, _, _) = Build([rec], groups: groups);
+        (LdipService sut, _, _, _, _) = Build([rec], groups: groups);
 
         ServiceResult<LdipRecordDto> result = await sut.FinalizeAsync(1);
 
@@ -440,7 +455,7 @@ public sealed class LdipServiceTests
     [Fact]
     public async Task Finalize_NoPrograms_ReturnsBadRequest()
     {
-        (LdipService sut, _, _) = Build([Rec(1, PlanningStatus.Draft)]);
+        (LdipService sut, _, _, _, _) = Build([Rec(1, PlanningStatus.Draft)]);
 
         ServiceResult<LdipRecordDto> result = await sut.FinalizeAsync(1);
 
@@ -451,7 +466,7 @@ public sealed class LdipServiceTests
     [Fact]
     public async Task Finalize_NoOffice_ReturnsBadRequest()
     {
-        (LdipService sut, _, _) = Build([Rec(1, PlanningStatus.Draft, officeId: null)]);
+        (LdipService sut, _, _, _, _) = Build([Rec(1, PlanningStatus.Draft, officeId: null)]);
 
         ServiceResult<LdipRecordDto> result = await sut.FinalizeAsync(1);
 
@@ -465,7 +480,7 @@ public sealed class LdipServiceTests
         LdipRecord rec = Rec(1, PlanningStatus.Draft);
         rec.FiscalYearStart = 2030;
         rec.FiscalYearEnd   = 2027;
-        (LdipService sut, _, _) = Build([rec]);
+        (LdipService sut, _, _, _, _) = Build([rec]);
 
         ServiceResult<LdipRecordDto> result = await sut.FinalizeAsync(1);
 
@@ -476,7 +491,7 @@ public sealed class LdipServiceTests
     [Fact]
     public async Task Finalize_AlreadyFinal_ReturnsBadRequest()
     {
-        (LdipService sut, _, _) = Build([Rec(1, PlanningStatus.Final)]);
+        (LdipService sut, _, _, _, _) = Build([Rec(1, PlanningStatus.Final)]);
 
         ServiceResult<LdipRecordDto> result = await sut.FinalizeAsync(1);
 
@@ -489,7 +504,7 @@ public sealed class LdipServiceTests
     public async Task Unlock_Final_TransitionsToDraft()
     {
         LdipRecord rec = Rec(1, PlanningStatus.Final);
-        (LdipService sut, _, _) = Build([rec]);
+        (LdipService sut, _, _, _, _) = Build([rec]);
 
         ServiceResult<LdipRecordDto> result = await sut.UnlockAsync(1);
 
@@ -500,7 +515,7 @@ public sealed class LdipServiceTests
     [Fact]
     public async Task Unlock_Draft_ReturnsBadRequest()
     {
-        (LdipService sut, _, _) = Build([Rec(1, PlanningStatus.Draft)]);
+        (LdipService sut, _, _, _, _) = Build([Rec(1, PlanningStatus.Draft)]);
 
         ServiceResult<LdipRecordDto> result = await sut.UnlockAsync(1);
 
@@ -511,7 +526,7 @@ public sealed class LdipServiceTests
     public async Task Archive_Draft_TransitionsToArchived()
     {
         LdipRecord rec = Rec(1, PlanningStatus.Draft);
-        (LdipService sut, _, _) = Build([rec]);
+        (LdipService sut, _, _, _, _) = Build([rec]);
 
         ServiceResult<LdipRecordDto> result = await sut.ArchiveAsync(1);
 
@@ -523,7 +538,7 @@ public sealed class LdipServiceTests
     public async Task Archive_Final_TransitionsToArchived()
     {
         LdipRecord rec = Rec(1, PlanningStatus.Final);
-        (LdipService sut, _, _) = Build([rec]);
+        (LdipService sut, _, _, _, _) = Build([rec]);
 
         ServiceResult<LdipRecordDto> result = await sut.ArchiveAsync(1);
 
@@ -537,11 +552,323 @@ public sealed class LdipServiceTests
     public async Task PurgeAll_DeletesAllRecords_ReturnsCount()
     {
         List<LdipRecord> seed = [Rec(1, PlanningStatus.Draft), Rec(2, PlanningStatus.Final, 2028)];
-        (LdipService sut, Mock<ILdipRepository> repo, _) = Build(seed);
+        (LdipService sut, Mock<ILdipRepository> repo, _, _, _) = Build(seed);
 
         int count = await sut.PurgeAllAsync();
 
         Assert.Equal(2, count);
         repo.Verify(r => r.DeleteAsync(It.IsAny<LdipRecord>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+    }
+
+    // ── File upload — ParsePreview (RAL-113) ──────────────────────────────────
+
+    private static ParsedLdipProgram Prog(
+        string refCode, string name, decimal? ps = null, decimal? mooe = null, decimal? co = null,
+        decimal? total = null, string? fundingSourceRaw = null) => new(
+        refCode, name, ImplementingOffice: null, StartDate: "2027", EndDate: "2029",
+        ExpectedOutputs: null, FundingSourceRaw: fundingSourceRaw, Ps: ps, Mooe: mooe, Co: co, Total: total,
+        CcAdaptation: null, CcMitigation: null, CcTypologyCode: null,
+        PdpRdp: null, Sdgs: null, SendaiFramework: null, NdrrmPlan: null, Nsp: null, Pdpdfp: null);
+
+    private static Office Off2() => new()
+    {
+        Id = 2, OfficeCode = "GSO", OfficeName = "General Services Office",
+        OfficeRefCode = "01-020", IsActive = true,
+        CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+    };
+
+    [Fact]
+    public async Task ParsePreview_MatchesMultipleOffices_AcrossSectors_NoPickerNeeded()
+    {
+        (LdipService sut, _, _, Mock<ILdipXlsmParser> parser, _) =
+            Build([], offices: [Off(), Off2()]);
+        parser.Setup(p => p.Parse(It.IsAny<Stream>())).Returns(new Dictionary<string, List<ParsedLdipOffice>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["GENERAL"] = [
+                new("1000-000-1-01-010", "PPDO", "GENERAL", [Prog("1000-000-1-01-010-001", "P1", total: 100m)]),
+                new("1000-000-1-01-020", "GSO", "GENERAL", [Prog("1000-000-1-01-020-001", "P2", total: 200m)]),
+            ],
+            ["SOCIAL"] = [
+                new("3000-000-1-01-010", "PPDO", "SOCIAL", [Prog("3000-000-1-01-010-001", "P3", total: 300m)]),
+            ],
+        });
+
+        ServiceResult<LdipImportPreviewDto> result =
+            await sut.ParsePreviewAsync(new MemoryStream(), 2027, 2029, knownFundingSources: []);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Value!.Counts.Offices);
+        Assert.Equal(3, result.Value.Counts.Groups);
+        Assert.Equal(3, result.Value.Counts.Programs);
+        Assert.Empty(result.Value.Warnings);
+
+        LdipImportOfficeResultDto ppdo = result.Value.Offices.Single(o => o.OfficeCode == "PPDO");
+        Assert.Equal(2, ppdo.Groups.Count); // General + Social
+        LdipImportOfficeResultDto gso = result.Value.Offices.Single(o => o.OfficeCode == "GSO");
+        Assert.Single(gso.Groups);
+    }
+
+    [Fact]
+    public async Task ParsePreview_UnmatchedOfficeRefCode_AddsWarning_AndIsExcluded()
+    {
+        (LdipService sut, _, _, Mock<ILdipXlsmParser> parser, _) = Build([], offices: [Off()]);
+        parser.Setup(p => p.Parse(It.IsAny<Stream>())).Returns(new Dictionary<string, List<ParsedLdipOffice>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["GENERAL"] = [
+                new("1000-000-1-01-010", "PPDO", "GENERAL", [Prog("1000-000-1-01-010-001", "P1", total: 100m)]),
+                new("1000-000-1-99-999", "UNKNOWN OFFICE", "GENERAL", [Prog("1000-000-1-99-999-001", "Not mine", total: 999m)]),
+            ],
+        });
+
+        ServiceResult<LdipImportPreviewDto> result =
+            await sut.ParsePreviewAsync(new MemoryStream(), 2027, 2029, knownFundingSources: []);
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Value!.Offices);
+        Assert.DoesNotContain(result.Value.Offices, o => o.Groups.Any(g => g.Programs.Any(p => p.Name == "Not mine")));
+        Assert.Contains(result.Value.Warnings, w => w.Contains("UNKNOWN OFFICE") && w.Contains("did not match"));
+    }
+
+    [Fact]
+    public async Task ParsePreview_UnmatchedFundingSource_AddsWarning()
+    {
+        (LdipService sut, _, _, Mock<ILdipXlsmParser> parser, _) = Build([], offices: [Off()]);
+        parser.Setup(p => p.Parse(It.IsAny<Stream>())).Returns(new Dictionary<string, List<ParsedLdipOffice>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["GENERAL"] = [
+                new("1000-000-1-01-010", "PPDO", "GENERAL",
+                    [Prog("1000-000-1-01-010-001", "P1", total: 100m, fundingSourceRaw: "Unknown Fund")]),
+            ],
+        });
+
+        ServiceResult<LdipImportPreviewDto> result =
+            await sut.ParsePreviewAsync(new MemoryStream(), 2027, 2029,
+                knownFundingSources: [Fs(1, "General Fund")]);
+
+        Assert.True(result.IsSuccess);
+        Assert.Contains(result.Value!.Warnings, w => w.Contains("Unknown Fund"));
+    }
+
+    [Fact]
+    public async Task ParsePreview_ProgramBudget_ComputedFromPsMooeCo_WhenTotalMissing()
+    {
+        (LdipService sut, _, _, Mock<ILdipXlsmParser> parser, _) = Build([], offices: [Off()]);
+        parser.Setup(p => p.Parse(It.IsAny<Stream>())).Returns(new Dictionary<string, List<ParsedLdipOffice>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["GENERAL"] = [
+                new("1000-000-1-01-010", "PPDO", "GENERAL",
+                    [Prog("1000-000-1-01-010-001", "P1", ps: 100m, mooe: 200m, co: 50m)]),
+            ],
+        });
+
+        ServiceResult<LdipImportPreviewDto> result =
+            await sut.ParsePreviewAsync(new MemoryStream(), 2027, 2029, knownFundingSources: []);
+
+        Assert.Equal(350m, result.Value!.Offices[0].Groups[0].Programs[0].Budget);
+    }
+
+    [Fact]
+    public async Task ParsePreview_NoOfficesMatched_ReturnsEmpty_WithWarning()
+    {
+        (LdipService sut, _, _, Mock<ILdipXlsmParser> parser, _) = Build([], offices: [Off()]);
+        parser.Setup(p => p.Parse(It.IsAny<Stream>())).Returns(new Dictionary<string, List<ParsedLdipOffice>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["GENERAL"] = [new("1000-000-1-99-999", "UNKNOWN OFFICE", "GENERAL", [])],
+        });
+
+        ServiceResult<LdipImportPreviewDto> result =
+            await sut.ParsePreviewAsync(new MemoryStream(), 2027, 2029, knownFundingSources: []);
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(result.Value!.Offices);
+        Assert.Contains(result.Value.Warnings, w => w.Contains("nothing to import"));
+    }
+
+    [Fact]
+    public async Task ParsePreview_ParserThrows_ReturnsBadRequest()
+    {
+        (LdipService sut, _, _, Mock<ILdipXlsmParser> parser, _) = Build([]);
+        parser.Setup(p => p.Parse(It.IsAny<Stream>())).Throws(new LdipParseException(["bad file"]));
+
+        ServiceResult<LdipImportPreviewDto> result =
+            await sut.ParsePreviewAsync(new MemoryStream(), 2027, 2029, knownFundingSources: []);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    // ── File upload — ConfirmImport ───────────────────────────────────────────
+
+    [Fact]
+    public async Task ConfirmImport_CreatesOneRecordSpanningAllOffices_WithEntryModeUpload()
+    {
+        (LdipService sut, _, _, _, _) = Build([], offices: [Off(), Off2()]);
+        LdipImportConfirmDto dto = new(2027, 2029, Offices:
+        [
+            new LdipImportOfficeResultDto(1, "PPDO", "Provincial Planning and Development Office",
+                [SaveGroup("General", "PPDO", ("Program A", 350m))]),
+            new LdipImportOfficeResultDto(2, "GSO", "General Services Office",
+                [SaveGroup("General", "GSO", ("Program B", 250m))]),
+        ]);
+
+        ServiceResult<LdipRecordDto> result = await sut.ConfirmImportAsync(dto, UserId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(PlanningStatus.Draft, result.Value!.Status);
+        Assert.Equal("Upload", result.Value.EntryMode);
+        Assert.Null(result.Value.OfficeId); // spans multiple offices — no single owner
+        Assert.Equal(2, result.Value.ProgramCount);
+
+        // Each office's group gets its OWN ref code (via its own OfficeRefCode),
+        // not one shared office's code applied to everything.
+        ServiceResult<LdipRecordDetailDto> detail = await sut.GetByIdAsync(result.Value.Id);
+        Assert.Equal(2, detail.Value!.Groups.Count);
+        Assert.Contains(detail.Value.Groups, g => g.RefCode == "1000-000-1-01-010"); // PPDO
+        Assert.Contains(detail.Value.Groups, g => g.RefCode == "1000-000-1-01-020"); // GSO
+    }
+
+    [Fact]
+    public async Task ConfirmImport_ResolvesFundingSourceRawToId_ForMatchedProgram()
+    {
+        (LdipService sut, _, _, _, _) = Build([], offices: [Off()], fundingSources: [Fs(1, "General Fund")]);
+        SaveLdipGroupDto group = new("General", "PPDO",
+            [new SaveLdipProgramDto("Program A", 100m, FundingSourceRaw: "General Fund")]);
+        LdipImportConfirmDto dto = new(2027, 2029,
+            Offices: [new LdipImportOfficeResultDto(1, "PPDO", "PPDO Office", [group])]);
+
+        ServiceResult<LdipRecordDto> result = await sut.ConfirmImportAsync(dto, UserId);
+        Assert.True(result.IsSuccess);
+
+        ServiceResult<LdipRecordDetailDto> detail = await sut.GetByIdAsync(result.Value!.Id);
+        LdipProgramDto program = detail.Value!.Groups[0].Programs[0];
+        Assert.Equal(1, program.FundingSourceId);
+        Assert.Equal("General Fund", program.FundingSourceSnapshot);
+    }
+
+    [Fact]
+    public async Task ConfirmImport_UnmatchedFundingSourceRaw_SnapshotFallsBackToRawText()
+    {
+        (LdipService sut, _, _, _, _) = Build([], offices: [Off()], fundingSources: [Fs(1, "General Fund")]);
+        SaveLdipGroupDto group = new("General", "PPDO",
+            [new SaveLdipProgramDto("Program A", 100m, FundingSourceRaw: "Weird Fund")]);
+        LdipImportConfirmDto dto = new(2027, 2029,
+            Offices: [new LdipImportOfficeResultDto(1, "PPDO", "PPDO Office", [group])]);
+
+        ServiceResult<LdipRecordDto> result = await sut.ConfirmImportAsync(dto, UserId);
+        Assert.True(result.IsSuccess);
+
+        ServiceResult<LdipRecordDetailDto> detail = await sut.GetByIdAsync(result.Value!.Id);
+        LdipProgramDto program = detail.Value!.Groups[0].Programs[0];
+        Assert.Null(program.FundingSourceId);
+        Assert.Equal("Weird Fund", program.FundingSourceSnapshot);
+    }
+
+    [Fact]
+    public async Task ConfirmImport_CopiesThroughAllDetailFields()
+    {
+        (LdipService sut, _, _, _, _) = Build([], offices: [Off()]);
+        SaveLdipGroupDto group = new("General", "PPDO",
+        [
+            new SaveLdipProgramDto("Program A", 350m,
+                ImplementingOffice: "PGO", StartDate: "2027", EndDate: "2029",
+                ExpectedOutputs: "Roads built", Ps: 100m, Mooe: 200m, Co: 50m,
+                CcAdaptation: 10m, CcMitigation: 20m, CcTypologyCode: "Typology A",
+                PdpRdp: "Chapter 14", Sdgs: "SDG 9", SendaiFramework: "Priority 3",
+                NdrrmPlan: "DRRM", Nsp: "NSP tag", Pdpdfp: "PDPDFP tag"),
+        ]);
+        LdipImportConfirmDto dto = new(2027, 2029,
+            Offices: [new LdipImportOfficeResultDto(1, "PPDO", "PPDO Office", [group])]);
+
+        ServiceResult<LdipRecordDto> result = await sut.ConfirmImportAsync(dto, UserId);
+        Assert.True(result.IsSuccess);
+
+        ServiceResult<LdipRecordDetailDto> detail = await sut.GetByIdAsync(result.Value!.Id);
+        LdipProgramDto p = detail.Value!.Groups[0].Programs[0];
+        Assert.Equal("PGO", p.ImplementingOffice);
+        Assert.Equal("2027", p.StartDate);
+        Assert.Equal("2029", p.EndDate);
+        Assert.Equal("Roads built", p.ExpectedOutputs);
+        Assert.Equal(100m, p.Ps);
+        Assert.Equal(200m, p.Mooe);
+        Assert.Equal(50m, p.Co);
+        Assert.Equal(10m, p.CcAdaptation);
+        Assert.Equal(20m, p.CcMitigation);
+        Assert.Equal("Typology A", p.CcTypologyCode);
+        Assert.Equal("Chapter 14", p.PdpRdp);
+        Assert.Equal("SDG 9", p.Sdgs);
+        Assert.Equal("Priority 3", p.SendaiFramework);
+        Assert.Equal("DRRM", p.NdrrmPlan);
+        Assert.Equal("NSP tag", p.Nsp);
+        Assert.Equal("PDPDFP tag", p.Pdpdfp);
+    }
+
+    [Fact]
+    public async Task ConfirmImport_OneOfficeFails_ReturnsBadRequest_MentioningOfficeCode()
+    {
+        (LdipService sut, _, _, _, _) = Build([], offices: [Off()]);
+        // Unknown sector triggers ValidateGroups to fail for this office.
+        LdipImportConfirmDto dto = new(2027, 2029, Offices:
+        [
+            new LdipImportOfficeResultDto(1, "PPDO", "PPDO Office",
+                [new SaveLdipGroupDto("Industrial", "PPDO", [new SaveLdipProgramDto("Program A", 1m)])]),
+        ]);
+
+        ServiceResult<LdipRecordDto> result = await sut.ConfirmImportAsync(dto, UserId);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("PPDO", result.Error);
+    }
+
+    [Fact]
+    public async Task ConfirmImport_NoOffices_ReturnsBadRequest()
+    {
+        (LdipService sut, _, _, _, _) = Build([]);
+
+        ServiceResult<LdipRecordDto> result = await sut.ConfirmImportAsync(new LdipImportConfirmDto(2027, 2029, []), UserId);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task ConfirmImport_UnknownOffice_ReturnsNotFound()
+    {
+        (LdipService sut, _, _, _, _) = Build([], offices: [Off()]);
+        LdipImportConfirmDto dto = new(2027, 2029,
+            Offices: [new LdipImportOfficeResultDto(99, "XXX", "Unknown", [SaveGroup("General", "X", ("P", 1m))])]);
+
+        ServiceResult<LdipRecordDto> result = await sut.ConfirmImportAsync(dto, UserId);
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Fact]
+    public async Task Finalize_UploadedRecordWithNoOffice_Succeeds()
+    {
+        (LdipService sut, _, _, _, _) = Build([], offices: [Off()]);
+        LdipImportConfirmDto dto = new(2027, 2029,
+            Offices: [new LdipImportOfficeResultDto(1, "PPDO", "PPDO Office",
+                [SaveGroup("General", "PPDO", ("Program A", 100m))])]);
+        ServiceResult<LdipRecordDto> created = await sut.ConfirmImportAsync(dto, UserId);
+
+        ServiceResult<LdipRecordDto> result = await sut.FinalizeAsync(created.Value!.Id);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(PlanningStatus.Final, result.Value!.Status);
+    }
+
+    [Fact]
+    public async Task ManualCreate_DetailFieldsRemainNull()
+    {
+        // The manual "+ Add Program" flow only ever sends Name/Budget — detail
+        // fields must stay null, never accidentally populated.
+        (LdipService sut, _, _, _, _) = Build([]);
+        CreateLdipDto dto = new("T", 2027, 2029, "New", OfficeId: 1,
+            Groups: [SaveGroup("General", "PPDO", ("Program A", 100m))]);
+
+        ServiceResult<LdipRecordDetailDto> result = await sut.CreateAsync(dto, UserId);
+
+        LdipProgramDto p = result.Value!.Groups[0].Programs[0];
+        Assert.Null(p.ImplementingOffice);
+        Assert.Null(p.Ps);
+        Assert.Null(p.FundingSourceId);
     }
 }

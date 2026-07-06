@@ -23,15 +23,19 @@ public sealed class LdipFunctions
     private readonly ILdipService        _ldip;
     private readonly IJwtMiddleware      _jwt;
     private readonly IPermissionService  _permissions;
+    private readonly IRepository<FundingSource> _fsRepo;
 
-    public LdipFunctions(ILdipService ldip, IJwtMiddleware jwt, IPermissionService permissions)
+    public LdipFunctions(
+        ILdipService ldip, IJwtMiddleware jwt, IPermissionService permissions, IRepository<FundingSource> fsRepo)
     {
         _ldip        = ldip;
         _jwt         = jwt;
         _permissions = permissions;
+        _fsRepo      = fsRepo;
     }
 
     private Task<bool> CanAccess(User u) => _permissions.CanAccessBudgetPlanningAsync(u);
+    private Task<bool> CanUpload(User u) => _permissions.CanUploadAipAsync(u);
 
     /// <summary>
     /// Returns a 403 response when an office-scoped caller targets a record that
@@ -172,5 +176,60 @@ public sealed class LdipFunctions
                 ApiResponse<LdipRecordDto>.Fail("Admin or SuperAdmin role required to unlock records."), ct);
 
         return await ConfigHttp.FromResultAsync(req, await _ldip.UnlockAsync(id, ct), ct);
+    }
+
+    // ── File upload (RAL-113) ─────────────────────────────────────────────────
+    // Upload/Confirm reuse CanUploadAip (PPDO-only) — same uploader role as AIP.
+    // The workbook covers every office, so there is no officeId param — offices
+    // are auto-detected by matching AIP ref codes against Config → Offices.
+
+    // ── POST /api/budget-planning/ldip/upload?fiscalYearStart=&fiscalYearEnd= ──
+    // Body: raw LDIP XLSX bytes (Content-Type: application/octet-stream)
+    [Function("LdipUpload")]
+    public async Task<HttpResponseData> Upload(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/ldip/upload")] HttpRequestData req,
+        CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanUpload, ct);
+        if (denied is not null) return denied;
+
+        if (!int.TryParse(req.Query["fiscalYearStart"], out int fyStart) || fyStart < 2000)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<LdipImportPreviewDto>.Fail("Valid fiscalYearStart query parameter is required."), ct);
+        if (!int.TryParse(req.Query["fiscalYearEnd"], out int fyEnd) || fyEnd < fyStart)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<LdipImportPreviewDto>.Fail("Valid fiscalYearEnd query parameter (>= fiscalYearStart) is required."), ct);
+
+        IReadOnlyList<FundingSource> fundingSources = await _fsRepo.GetAllAsync(ct);
+
+        // Buffer the request body into a MemoryStream before passing to ClosedXML —
+        // Kestrel (Azure Functions isolated worker) disallows synchronous reads on the
+        // HttpRequestStream; MemoryStream supports them so XLWorkbook.Load() succeeds.
+        using MemoryStream xlsxBuffer = new();
+        await req.Body.CopyToAsync(xlsxBuffer, ct);
+        xlsxBuffer.Position = 0;
+
+        ServiceResult<LdipImportPreviewDto> result =
+            await _ldip.ParsePreviewAsync(xlsxBuffer, fyStart, fyEnd, fundingSources, ct);
+
+        return await ConfigHttp.FromResultAsync(req, result, ct);
+    }
+
+    // ── POST /api/budget-planning/ldip/confirm ───────────────────────────────
+    [Function("LdipConfirm")]
+    public async Task<HttpResponseData> Confirm(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/ldip/confirm")] HttpRequestData req,
+        CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanUpload, ct);
+        if (denied is not null) return denied;
+
+        LdipImportConfirmDto? body = await ConfigHttp.ReadBodyAsync<LdipImportConfirmDto>(req, ct);
+        if (body is null)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<LdipRecordDto>.Fail("Request body is missing or malformed."), ct);
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _ldip.ConfirmImportAsync(body, caller!.Id, ct), ct, HttpStatusCode.Created);
     }
 }

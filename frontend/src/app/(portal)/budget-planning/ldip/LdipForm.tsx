@@ -35,6 +35,7 @@ import OfficeSelect from "@/components/ui/OfficeSelect";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
 import type {
+  LdipProgram,
   LdipRecordDetail,
   LdipSector,
   LdipStatus,
@@ -60,6 +61,28 @@ interface DraftProgram {
   key: number;
   name: string;
   budget: number;
+  /**
+   * Server-persisted ref code, present only when loaded from an existing record.
+   * Newly-added (unsaved) programs compute a live preview instead (see render).
+   */
+  refCode?: string;
+  /**
+   * Upload-derived detail fields (RAL-113) — present only for programs created
+   * via file upload; undefined for programs added through "+ Add Program".
+   */
+  detail?: LdipProgram;
+}
+
+/** True when any upload-only field on the program is populated. */
+function hasUploadDetail(p: LdipProgram): boolean {
+  return (
+    p.implementingOffice != null || p.startDate != null || p.endDate != null ||
+    p.expectedOutputs != null || p.fundingSourceSnapshot != null ||
+    p.ps != null || p.mooe != null || p.co != null ||
+    p.ccAdaptation != null || p.ccMitigation != null || p.ccTypologyCode != null ||
+    p.pdpRdp != null || p.sdgs != null || p.sendaiFramework != null ||
+    p.ndrrmPlan != null || p.nsp != null || p.pdpdfp != null
+  );
 }
 
 /**
@@ -70,6 +93,8 @@ interface DraftGroup {
   sector: LdipSector;
   name: string;
   programs: DraftProgram[];
+  /** Server-persisted ref code, present only when loaded from an existing record. */
+  refCode?: string;
 }
 
 function sameName(a: string, b: string): boolean {
@@ -84,6 +109,48 @@ function StatusBadge({ status }: { status: LdipStatus }) {
       ? "bg-amber-100 text-amber-700"
       : "bg-slate-100 text-slate-600";
   return <span className={`px-2 py-0.5 text-xs font-medium ${cls}`}>{status}</span>;
+}
+
+/** Read-only detail row for an upload-derived program (RAL-113) — never editable here. */
+function ProgramDetailPanel({ program: p }: { program: LdipProgram }) {
+  const field = (label: string, value: string | null): [string, string | null] => [label, value];
+  const fields: [string, string | null][] = [
+    field("Implementing Office", p.implementingOffice),
+    field("Start Date", p.startDate),
+    field("Completion Date", p.endDate),
+    field("Funding Source", p.fundingSourceSnapshot),
+    field("PS (₱000)", p.ps != null ? formatMoney(p.ps) : null),
+    field("MOOE (₱000)", p.mooe != null ? formatMoney(p.mooe) : null),
+    field("CO (₱000)", p.co != null ? formatMoney(p.co) : null),
+    field("CC Adaptation (₱000)", p.ccAdaptation != null ? formatMoney(p.ccAdaptation) : null),
+    field("CC Mitigation (₱000)", p.ccMitigation != null ? formatMoney(p.ccMitigation) : null),
+    field("CC Typology Code", p.ccTypologyCode),
+    field("PDP/RDP", p.pdpRdp),
+    field("SDGs", p.sdgs),
+    field("Sendai Framework", p.sendaiFramework),
+    field("NDRRM Plan", p.ndrrmPlan),
+    field("NSP", p.nsp),
+    field("PDPDFP", p.pdpdfp),
+  ].filter(([, v]) => v != null && v !== "");
+
+  return (
+    <div className="px-4 py-3 pl-11 bg-slate-50 border-t border-slate-100">
+      {p.expectedOutputs && (
+        <div className="mb-3">
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Expected Outputs</p>
+          <p className="text-xs text-slate-600 whitespace-pre-wrap mt-0.5">{p.expectedOutputs}</p>
+        </div>
+      )}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2">
+        {fields.map(([label, value]) => (
+          <div key={label}>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{label}</p>
+            <p className="text-xs text-slate-600 mt-0.5">{value}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function SectionHead({ num, title, hint }: { num: number; title: string; hint?: string }) {
@@ -111,7 +178,11 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
   );
 
   const isEdit = record != null;
-  const isReadOnly = isEdit && record.status !== "Draft";
+  // Uploaded multi-office records (RAL-113) have no single office — editing them
+  // through this single-office-centric form doesn't make sense, so they're always
+  // read-only regardless of Draft/Final status.
+  const isMultiOffice = isEdit && record.officeId == null && record.entryMode === "Upload";
+  const isReadOnly = isEdit && (record.status !== "Draft" || isMultiOffice);
   const isAdmin = me?.role === "Admin" || me?.role === "SuperAdmin";
   const isOfficeUser = me != null && me.officeId != null;
 
@@ -128,10 +199,26 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
     (record?.groups ?? []).map((g, gi) => ({
       sector: g.sector,
       name: g.name,
-      programs: g.programs.map((p, pi) => ({ key: gi * 1000 + pi, name: p.name, budget: p.budget })),
+      refCode: g.refCode,
+      programs: g.programs.map((p, pi) => ({
+        key: gi * 1000 + pi,
+        name: p.name,
+        budget: p.budget,
+        refCode: p.refCode,
+        detail: hasUploadDetail(p) ? p : undefined,
+      })),
     }))
   );
   const [nextKey, setNextKey] = useState(1_000_000);
+  const [expandedKeys, setExpandedKeys] = useState<Set<number>>(new Set());
+
+  function toggleExpanded(key: number) {
+    setExpandedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
 
   const [sector, setSector] = useState<LdipSector>("General");
   const [subOfficeName, setSubOfficeName] = useState("");
@@ -439,7 +526,11 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
             </label>
             {isOfficeUser || isReadOnly ? (
               <span className="inline-block text-sm text-slate-700 bg-slate-100 border border-slate-200 px-3 py-2">
-                {office ? `${office.officeCode} — ${office.officeName}` : record?.officeName ?? "—"}
+                {isMultiOffice
+                  ? "All Offices"
+                  : office
+                  ? `${office.officeCode} — ${office.officeName}`
+                  : record?.officeName ?? "—"}
               </span>
             ) : (
               <OfficeSelect
@@ -569,7 +660,8 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
       {/* ── Section 3: Created programs ─────────────────────────────────────── */}
       <div className="bg-white border border-slate-200">
         <SectionHead num={isReadOnly ? 2 : 3} title="Created Programs" />
-        <div className="grid grid-cols-[130px_1fr_120px_90px] gap-2 px-4 py-2 bg-slate-100 text-[10px] font-bold text-slate-500 uppercase tracking-wide">
+        <div className="grid grid-cols-[24px_130px_1fr_120px_90px] gap-2 px-4 py-2 bg-slate-100 text-[10px] font-bold text-slate-500 uppercase tracking-wide">
+          <span />
           <span>AIP Ref Code</span>
           <span>Program</span>
           <span className="text-right">Budget (₱000)</span>
@@ -580,10 +672,16 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
         ) : (
           groups.map((group, groupIndex) => {
             if (group.programs.length === 0) return null;
+            // Prefer the server-persisted ref code (always correct, and the only
+            // option for multi-office records where each group belongs to a
+            // DIFFERENT office than whatever single office this form has loaded).
+            // Fall back to a live client-side preview only for a brand-new,
+            // not-yet-saved group.
             const ref =
-              officeRefSuffix != null
+              group.refCode ??
+              (officeRefSuffix != null
                 ? `${SECTOR_PREFIX[group.sector]}-000-1-${officeRefSuffix}`
-                : "—";
+                : "—");
             return (
               <div key={`${group.sector}|${group.name}`}>
                 <div className="flex items-center gap-3 bg-green-800 text-white px-4 py-2 text-xs font-bold">
@@ -593,26 +691,43 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
                 </div>
                 {group.programs.map((p) => {
                   const seq = (seqByRefCode[ref] = (seqByRefCode[ref] ?? 0) + 1);
+                  const expanded = expandedKeys.has(p.key);
+                  const programRef = p.refCode ?? `${ref}-${String(seq).padStart(3, "0")}`;
                   return (
-                    <div
-                      key={p.key}
-                      className="grid grid-cols-[130px_1fr_120px_90px] gap-2 px-4 py-2 border-b border-slate-50 items-center text-sm"
-                    >
-                      <span className="font-mono text-xs text-slate-500">
-                        {ref}-{String(seq).padStart(3, "0")}
-                      </span>
-                      <span className="italic font-semibold text-slate-800">{p.name}</span>
-                      <span className="text-right tabular-nums">₱{formatMoney(p.budget)}</span>
-                      <span>
-                        {!isReadOnly && (
-                          <button
-                            onClick={() => handleRemoveProgram(groupIndex, p.key)}
-                            className="text-xs font-bold text-red-500 hover:text-red-600"
-                          >
-                            Remove
-                          </button>
-                        )}
-                      </span>
+                    <div key={p.key} className="border-b border-slate-50">
+                      <div className="grid grid-cols-[24px_130px_1fr_120px_90px] gap-2 px-4 py-2 items-center text-sm">
+                        <span>
+                          {p.detail && (
+                            <button
+                              onClick={() => toggleExpanded(p.key)}
+                              title={expanded ? "Hide uploaded detail" : "Show uploaded detail"}
+                              className="w-4 h-4 flex items-center justify-center text-slate-400 hover:text-slate-700"
+                            >
+                              <span
+                                className={`inline-block text-xs transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
+                              >
+                                ›
+                              </span>
+                            </button>
+                          )}
+                        </span>
+                        <span className="font-mono text-xs text-slate-500">
+                          {programRef}
+                        </span>
+                        <span className="italic font-semibold text-slate-800">{p.name}</span>
+                        <span className="text-right tabular-nums">₱{formatMoney(p.budget)}</span>
+                        <span>
+                          {!isReadOnly && (
+                            <button
+                              onClick={() => handleRemoveProgram(groupIndex, p.key)}
+                              className="text-xs font-bold text-red-500 hover:text-red-600"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </span>
+                      </div>
+                      {expanded && p.detail && <ProgramDetailPanel program={p.detail} />}
                     </div>
                   );
                 })}
