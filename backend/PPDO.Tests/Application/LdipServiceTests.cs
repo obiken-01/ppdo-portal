@@ -840,6 +840,151 @@ public sealed class LdipServiceTests
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
     }
 
+    // ── File upload — re-upload into an existing record (RAL-114) ─────────────
+
+    private static LdipRecord UploadRec(
+        int id, string status = PlanningStatus.Draft, int fyStart = 2027, string entryMode = "Upload") => new()
+    {
+        Id = id, RefCode = $"LDIP-{fyStart}-001",
+        Title = $"LDIP {fyStart}-{fyStart + 2} — All Offices",
+        FiscalYearStart = fyStart, FiscalYearEnd = fyStart + 2,
+        EntryMode = entryMode, Status = status, OfficeId = null,
+        CreatedById = UserId, CreatedAt = DateTime.UtcNow.AddDays(-5), UpdatedAt = DateTime.UtcNow.AddDays(-5),
+    };
+
+    [Fact]
+    public async Task ConfirmImport_WithTargetRecordId_ReplacesHierarchy_PreservingIdRefCodeCreatedAt()
+    {
+        LdipRecord target = UploadRec(7, PlanningStatus.Draft);
+        DateTime createdAt = target.CreatedAt;
+        string refCode = target.RefCode;
+        Dictionary<int, List<LdipOffice>> groups = new()
+        {
+            [7] = [Group(70, 7, "1000-000-1-01-010", "General", "Old Program")],
+        };
+        (LdipService sut, _, _, _, _) = Build([target], offices: [Off(), Off2()], groups: groups);
+
+        // A corrected file: different years, different offices/programs.
+        LdipImportConfirmDto dto = new(2028, 2030, Offices:
+        [
+            new LdipImportOfficeResultDto(1, "PPDO", "Provincial Planning and Development Office",
+                [SaveGroup("Social", "PPDO", ("Corrected Program", 500m))]),
+            new LdipImportOfficeResultDto(2, "GSO", "General Services Office",
+                [SaveGroup("General", "GSO", ("New GSO Program", 250m))]),
+        ], TargetRecordId: 7);
+
+        ServiceResult<LdipRecordDto> result = await sut.ConfirmImportAsync(dto, Guid.NewGuid());
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(7, result.Value!.Id);            // same record, not a new one
+        Assert.Equal(refCode, result.Value.RefCode);  // ref code unchanged
+        Assert.Equal("Upload", result.Value.EntryMode);
+        Assert.Null(result.Value.OfficeId);
+        Assert.Equal(2, result.Value.ProgramCount);
+
+        // Still exactly one record — no second record was created.
+        IReadOnlyList<LdipRecordDto> all = await sut.GetAllAsync(null, null);
+        Assert.Single(all);
+
+        ServiceResult<LdipRecordDetailDto> detail = await sut.GetByIdAsync(7);
+        Assert.Equal(createdAt, detail.Value!.CreatedAt);   // created timestamp preserved
+        Assert.Equal(UserId, detail.Value.CreatedById);     // author preserved
+        Assert.Equal(2028, detail.Value.FiscalYearStart);   // years refreshed from the re-upload
+        Assert.Equal(2030, detail.Value.FiscalYearEnd);
+        // Old hierarchy gone, corrected hierarchy present (with per-office ref codes).
+        Assert.DoesNotContain(detail.Value.Groups.SelectMany(g => g.Programs), p => p.Name == "Old Program");
+        Assert.Contains(detail.Value.Groups.SelectMany(g => g.Programs), p => p.Name == "CORRECTED PROGRAM");
+        Assert.Contains(detail.Value.Groups, g => g.RefCode == "3000-000-1-01-010"); // PPDO Social
+        Assert.Contains(detail.Value.Groups, g => g.RefCode == "1000-000-1-01-020"); // GSO General
+    }
+
+    [Fact]
+    public async Task ConfirmImport_WithTargetRecordId_DeletesOldGroupsBeforeInserting()
+    {
+        LdipRecord target = UploadRec(7, PlanningStatus.Draft);
+        LdipOffice oldGroup = Group(70, 7, "1000-000-1-01-010", "General", "Old");
+        Dictionary<int, List<LdipOffice>> groups = new() { [7] = [oldGroup] };
+        (LdipService sut, Mock<ILdipRepository> repo, _, _, _) = Build([target], offices: [Off()], groups: groups);
+
+        LdipImportConfirmDto dto = new(2027, 2029,
+            Offices: [new LdipImportOfficeResultDto(1, "PPDO", "PPDO Office",
+                [SaveGroup("Social", "PPDO", ("New program", 5m))])],
+            TargetRecordId: 7);
+
+        await sut.ConfirmImportAsync(dto, UserId);
+
+        repo.Verify(r => r.DeleteOfficeGroupAsync(oldGroup, It.IsAny<CancellationToken>()), Times.Once);
+        repo.Verify(r => r.AddOfficeGroupAsync(
+            It.Is<LdipOffice>(g => g.RefCode == "3000-000-1-01-010"), It.IsAny<CancellationToken>()), Times.Once);
+        // The two-round save pattern: delete round + insert round.
+        repo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.AtLeast(2));
+    }
+
+    [Fact]
+    public async Task ConfirmImport_WithTargetRecordId_AuditsAsUpdate_NotCreate()
+    {
+        LdipRecord target = UploadRec(7, PlanningStatus.Draft);
+        Dictionary<int, List<LdipOffice>> groups = new()
+        {
+            [7] = [Group(70, 7, "1000-000-1-01-010", "General", "Old")],
+        };
+        (LdipService sut, _, Mock<IAuditService> audit, _, _) = Build([target], offices: [Off()], groups: groups);
+
+        LdipImportConfirmDto dto = new(2027, 2029,
+            Offices: [new LdipImportOfficeResultDto(1, "PPDO", "PPDO Office", [SaveGroup("General", "PPDO", ("P", 1m))])],
+            TargetRecordId: 7);
+
+        await sut.ConfirmImportAsync(dto, UserId);
+
+        audit.Verify(a => a.LogAsync("ldip_records", 7, AuditAction.Update,
+            It.IsAny<object?>(), It.IsNotNull<object>(), It.IsAny<CancellationToken>()), Times.Once);
+        audit.Verify(a => a.LogAsync("ldip_records", It.IsAny<int>(), AuditAction.Create,
+            It.IsAny<object?>(), It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ConfirmImport_TargetRecordNotFound_ReturnsNotFound()
+    {
+        (LdipService sut, _, _, _, _) = Build([], offices: [Off()]);
+        LdipImportConfirmDto dto = new(2027, 2029,
+            Offices: [new LdipImportOfficeResultDto(1, "PPDO", "PPDO Office", [SaveGroup("General", "PPDO", ("P", 1m))])],
+            TargetRecordId: 999);
+
+        ServiceResult<LdipRecordDto> result = await sut.ConfirmImportAsync(dto, UserId);
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Fact]
+    public async Task ConfirmImport_TargetRecordNotDraft_ReturnsBadRequest()
+    {
+        LdipRecord target = UploadRec(7, PlanningStatus.Final);
+        (LdipService sut, _, _, _, _) = Build([target], offices: [Off()]);
+        LdipImportConfirmDto dto = new(2027, 2029,
+            Offices: [new LdipImportOfficeResultDto(1, "PPDO", "PPDO Office", [SaveGroup("General", "PPDO", ("P", 1m))])],
+            TargetRecordId: 7);
+
+        ServiceResult<LdipRecordDto> result = await sut.ConfirmImportAsync(dto, UserId);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("Final", result.Error);
+    }
+
+    [Fact]
+    public async Task ConfirmImport_TargetRecordNotUploadEntryMode_ReturnsBadRequest()
+    {
+        // A manually-created Draft record cannot be re-uploaded into.
+        LdipRecord target = UploadRec(7, PlanningStatus.Draft, entryMode: "New");
+        (LdipService sut, _, _, _, _) = Build([target], offices: [Off()]);
+        LdipImportConfirmDto dto = new(2027, 2029,
+            Offices: [new LdipImportOfficeResultDto(1, "PPDO", "PPDO Office", [SaveGroup("General", "PPDO", ("P", 1m))])],
+            TargetRecordId: 7);
+
+        ServiceResult<LdipRecordDto> result = await sut.ConfirmImportAsync(dto, UserId);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
     [Fact]
     public async Task Finalize_UploadedRecordWithNoOffice_Succeeds()
     {

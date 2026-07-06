@@ -469,6 +469,17 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
             </button>
           </>
         )}
+        {/* Re-upload (RAL-114): correct an uploaded multi-office document by importing
+            a fixed file into THIS same record. Draft + Upload-entry-mode only (Final
+            ones need admin Unlock first), and only for PPDO uploaders. */}
+        {isMultiOffice && record.status === "Draft" && me?.canUploadAip === true && (
+          <Link
+            href={`/budget-planning/ldip/new?replaceId=${record.id}`}
+            className="px-4 py-1.5 text-sm font-medium text-white bg-green-700 hover:bg-green-800 transition-colors"
+          >
+            Re-upload File
+          </Link>
+        )}
         {isReadOnly && record.status === "Final" && isAdmin && (
           <button
             onClick={handleUnlock}

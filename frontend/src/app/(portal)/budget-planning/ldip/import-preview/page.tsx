@@ -21,6 +21,12 @@ const SECTOR_ORDER: LdipSector[] = ["General", "Social", "Economic", "Others"];
 
 interface ImportMeta {
   originalFilename: string;
+  /**
+   * RAL-114 — when set, the confirm re-uploads into this existing record (full-
+   * replaces its hierarchy) instead of creating a new one. Set by ldip/new when
+   * launched with ?replaceId=.
+   */
+  replaceId?: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -81,18 +87,25 @@ export default function LdipImportPreviewPage() {
     if (!preview) return;
     setConfirmError(null);
     setConfirming(true);
+    const replaceId = meta?.replaceId ?? null;
     try {
       const saved = await confirmLdipImport({
         fiscalYearStart: preview.fiscalYearStart,
         fiscalYearEnd:   preview.fiscalYearEnd,
         offices:         preview.offices,
+        // RAL-114 — re-upload into the same record when launched with ?replaceId=.
+        ...(replaceId != null ? { targetRecordId: replaceId } : {}),
       });
       sessionStorage.removeItem(PREVIEW_KEY);
       sessionStorage.removeItem(META_KEY);
+      const officeSuffix = `${preview.offices.length} office${preview.offices.length !== 1 ? "s" : ""}`;
       toast.success(
-        "Import complete",
-        `${saved.refCode} imported, covering ${preview.offices.length} office${preview.offices.length !== 1 ? "s" : ""}.`
+        replaceId != null ? "Re-upload complete" : "Import complete",
+        replaceId != null
+          ? `${saved.refCode} updated from the file, covering ${officeSuffix}.`
+          : `${saved.refCode} imported, covering ${officeSuffix}.`
       );
+      // On re-upload the service returns the SAME record id, so this lands back on it.
       router.push(`/budget-planning/ldip/edit?id=${saved.id}`);
     } catch (err) {
       setConfirmError(ldipErrorMessage(err, "Confirm failed. Please try again."));
@@ -101,9 +114,14 @@ export default function LdipImportPreviewPage() {
   }
 
   function handleCancel() {
+    const replaceId = meta?.replaceId ?? null;
     sessionStorage.removeItem(PREVIEW_KEY);
     sessionStorage.removeItem(META_KEY);
-    router.push("/budget-planning/ldip/new");
+    router.push(
+      replaceId != null
+        ? `/budget-planning/ldip/new?replaceId=${replaceId}`
+        : "/budget-planning/ldip/new"
+    );
   }
 
   function programCountForSector(sector: LdipSector): number {
@@ -129,10 +147,13 @@ export default function LdipImportPreviewPage() {
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-xl font-bold text-slate-800">
-            Import Preview — LDIP {preview.fiscalYearStart}–{preview.fiscalYearEnd}
+            {meta?.replaceId != null ? "Re-upload Preview" : "Import Preview"} — LDIP{" "}
+            {preview.fiscalYearStart}–{preview.fiscalYearEnd}
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            Review the data before confirming. One Draft record is created, spanning every office found. This cannot be undone.
+            {meta?.replaceId != null
+              ? "Review the data before confirming. This replaces the existing record's programs with the file's contents. This cannot be undone."
+              : "Review the data before confirming. One Draft record is created, spanning every office found. This cannot be undone."}
           </p>
         </div>
         <div className="flex items-center gap-3 shrink-0 ml-6">
@@ -145,7 +166,9 @@ export default function LdipImportPreviewPage() {
                 : "bg-green-700 hover:bg-green-800"
             }`}
           >
-            {confirming ? "Importing…" : "Confirm Import"}
+            {confirming
+              ? meta?.replaceId != null ? "Replacing…" : "Importing…"
+              : meta?.replaceId != null ? "Confirm Re-upload" : "Confirm Import"}
           </button>
           <button
             onClick={handleCancel}

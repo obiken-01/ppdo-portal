@@ -12,8 +12,8 @@
  * holds all offices, not one document per office).
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ldipErrorMessage, uploadLdipFile } from "@/lib/ldip";
 import { useMe } from "@/lib/me-cache";
@@ -30,7 +30,12 @@ function formatBytes(bytes: number): string {
 
 type Tab = "upload" | "manual";
 
-function UploadTab() {
+/**
+ * @param replaceId  RAL-114 — when set, the confirmed import full-replaces this
+ *   existing record's hierarchy (re-upload a corrected file) instead of creating a
+ *   new record. Threaded to import-preview via the sessionStorage meta.
+ */
+function UploadTab({ replaceId }: { replaceId: number | null }) {
   const router = useRouter();
 
   const [yearStart, setYearStart] = useState(CURRENT_YEAR + 1);
@@ -79,7 +84,10 @@ function UploadTab() {
     try {
       const preview = await uploadLdipFile(file, yearStart, yearEnd);
       sessionStorage.setItem("ldip_import_preview", JSON.stringify(preview));
-      sessionStorage.setItem("ldip_import_meta", JSON.stringify({ originalFilename: file.name }));
+      sessionStorage.setItem(
+        "ldip_import_meta",
+        JSON.stringify({ originalFilename: file.name, replaceId })
+      );
       router.push("/budget-planning/ldip/import-preview");
     } catch (err) {
       setUploadError(ldipErrorMessage(err, "Upload failed. Please check the file and try again."));
@@ -89,6 +97,13 @@ function UploadTab() {
 
   return (
     <div>
+      {replaceId != null && (
+        <div className="mb-4 border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span className="font-semibold">Re-upload mode.</span>{" "}
+          Confirming replaces the existing record&apos;s programs with this file&apos;s contents.
+          The record keeps its reference code and history — only its programs change.
+        </div>
+      )}
       <p className="text-sm text-slate-500 mb-4">
         Upload an .xlsx file to import an LDIP document, or enter programs manually.
       </p>
@@ -183,7 +198,7 @@ function UploadTab() {
               {uploading ? "Uploading…" : "Upload & Preview"}
             </button>
             <Link
-              href="/budget-planning/ldip"
+              href={replaceId != null ? `/budget-planning/ldip/edit?id=${replaceId}` : "/budget-planning/ldip"}
               className="px-5 py-2 text-sm font-medium border border-slate-300 text-slate-600 hover:bg-slate-50 transition-colors"
             >
               Cancel
@@ -276,16 +291,22 @@ function TabBar({
   );
 }
 
-export default function LdipNewPage() {
+function LdipNewInner() {
   const me = useMe((m) => m.canAccessBudgetPlanning, (m) => (m.officeId != null ? "/account" : "/dashboard"));
   const canUpload = me?.canUploadAip === true;
 
+  // RAL-114 — re-upload into an existing record (?replaceId=). Upload-only, so it
+  // pins the Upload tab and is passed through to the confirm step.
+  const searchParams = useSearchParams();
+  const rawReplaceId = searchParams.get("replaceId");
+  const replaceId = rawReplaceId != null && /^\d+$/.test(rawReplaceId) ? Number(rawReplaceId) : null;
+
   // Office users (no upload rights) land straight on Manual Entry — the Upload
-  // tab is PPDO-only.
+  // tab is PPDO-only. Re-upload always stays on the Upload tab.
   const [activeTab, setActiveTab] = useState<Tab>("upload");
   useEffect(() => {
-    if (me && !canUpload) setActiveTab("manual");
-  }, [me, canUpload]);
+    if (me && !canUpload && replaceId == null) setActiveTab("manual");
+  }, [me, canUpload, replaceId]);
 
   if (!me) return null;
 
@@ -306,7 +327,16 @@ export default function LdipNewPage() {
   return (
     <div className="px-6 py-4">
       <TabBar activeTab={activeTab} onChange={setActiveTab} canUpload={canUpload} />
-      <UploadTab />
+      <UploadTab replaceId={replaceId} />
     </div>
+  );
+}
+
+// useSearchParams requires a Suspense boundary during prerender (Next.js app router).
+export default function LdipNewPage() {
+  return (
+    <Suspense fallback={null}>
+      <LdipNewInner />
+    </Suspense>
   );
 }

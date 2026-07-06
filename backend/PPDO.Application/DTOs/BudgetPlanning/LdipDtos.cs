@@ -163,8 +163,18 @@ public record LdipImportPreviewDto(
     LdipImportCountsDto Counts,
     IReadOnlyList<string> Warnings);
 
-/// <summary>Body of POST /api/budget-planning/ldip/confirm — echoes back the preview's Offices.</summary>
+/// <summary>
+/// Body of POST /api/budget-planning/ldip/confirm — echoes back the preview's Offices.
+/// <para>
+/// RAL-114: when <see cref="TargetRecordId"/> is set, the confirm full-replaces that
+/// existing record's hierarchy (re-upload a corrected file) instead of creating a new
+/// record — reusing the same document's Id/RefCode/CreatedAt. It must be a Draft,
+/// Upload-entry-mode record. When null (the default), a new record is created — the
+/// original, fully backward-compatible behaviour.
+/// </para>
+/// </summary>
 public record LdipImportConfirmDto(
     int    FiscalYearStart,
     int    FiscalYearEnd,
-    IReadOnlyList<LdipImportOfficeResultDto> Offices);
+    IReadOnlyList<LdipImportOfficeResultDto> Offices,
+    int?   TargetRecordId = null);
