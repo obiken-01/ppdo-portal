@@ -140,16 +140,25 @@ Both meters refresh from the server after every save (computed at read time — 
   **★ REC:** capture presets *from* real entries (the natural flow the draft describes) AND
   allow curating them in config; both write the same `procurement_presets` rows.
 
-### 5.3 ⚠ FLAG — nature of implementation has THREE values in the form
+### 5.3 ✔ RESOLVED (Ralph, 2026-07-07) — nature lives on the account as an optional default
 
-The form's dropdown is `Procurement / Non-procurement / **Combined**`; the draft only
-branches two ways. Also, the draft derives the branch from the ACCOUNT ("depending if the
-selected account code is Procurement or non-Procurement") while the form has nature as a
-per-LINE dropdown. **★ REC:** put a `default_nature` on the account config (most accounts are
-unambiguous — salaries never procure; office supplies always do), let the line inherit it,
-and allow override only where the account is marked ambiguous. **Ask PPDO what "Combined"
-means operationally** — if it's "part items, part direct amount," the entry could allow both
-sub-entries under one account line; if it's rare, drop it and split into two lines.
+- **One new column** on `accounts`: `default_nature` — accepts `Procurement` /
+  `Non-Procurement` / `Combined`, and is **optional (nullable)**. No value ⇒ the account has
+  no default; the user must choose nature explicitly when they use that account in an
+  expenditure.
+- **Behavior in WFP is default-only, never enforced.** When the user picks an account with a
+  `default_nature` set, the expenditure's Nature field pre-fills with it — but stays a normal
+  editable dropdown; the user can change it to either of the other two values for that one
+  expenditure. So the column drives the entry-screen branch (§5.1 grid vs §5.2 item table) as
+  a **starting point**, not a constraint — changing nature after prefill just swaps which
+  entry UI is shown, with whatever was typed so far discarded (confirm this is acceptable, or
+  whether switching nature mid-entry needs a confirmation prompt).
+- What **"Combined"** means operationally is still open — Ralph is asking the team (§11 Q2).
+  Whatever it turns out to mean, this resolution already covers it structurally, since the
+  column is just one of three interchangeable default values with no special-cased behavior.
+- Supersedes the earlier idea of making nature strictly account-derived with override "only
+  where ambiguous" — every account can be overridden, always; `default_nature` is purely a
+  convenience pre-fill.
 
 ## 6. Reserve rule
 
@@ -192,8 +201,9 @@ sub-entries under one account line; if it's rare, drop it and split into two lin
 ### 7.3 Chart of Accounts (expanded) — prerequisite for everything above
 - Import the ~318-account NGAS chart from the workbook's VALIDATION sheet; add explicit
   `expense_class` (PS/MOOE/CO — the `1 07 xx` CO asset accounts break the current `5-0x`
-  prefix rule), `default_nature`, `is_reserve_eligible`. Canonicalize code format (space vs
-  dash) once, at import.
+  prefix rule), `default_nature` (§5.3 — nullable, `Procurement`/`Non-Procurement`/`Combined`,
+  default-only), `is_reserve_eligible`. Canonicalize code format (space vs dash) once, at
+  import.
 - This is a **config migration with blast radius** (existing WFP lines, reports, config UI
   filter by prefix-derived type today) — its own ticket, first in sequence.
 
@@ -302,14 +312,18 @@ per-fund summary`. The report renders these values — never re-derives in Excel
 
 **Answered by this draft:** divisions = entry-only (Q1) ✔ · fund source is per-entry,
 defaulted from AIP, report groups per fund (Q7-shape) ✔ · WFP PPAs come from AIP (Q9 first
-half) ✔ · account config expansion confirmed needed (Q11) ✔.
+half) ✔ · account config expansion confirmed needed (Q11) ✔ · nature is one optional
+account-level default column, always overridable per expenditure (Q2 behavior — meaning of
+"Combined" itself still open) ✔.
 
-**Still open / newly raised** *(2026-07-07: rate typo resolved — 10% confirmed; Q2 and Q3
-below acknowledged by Ralph as pending with the team)*:
+**Still open / newly raised** *(2026-07-07: rate typo resolved — 10% confirmed; nature-column
+behavior resolved; Q2's "what does Combined mean" and Q3 acknowledged by Ralph as pending
+with the team)*:
 1. Reserve mechanics (rate = **10% ✔ confirmed**): hard cap or editable default? 10% of what
    base — the line's total, or the fund block's operational expenses?
-2. What does nature **"Combined"** mean, and is nature account-derived or per-line? (§5.3)
-   — *Ralph will ask the team.*
+2. **Nature-column behavior resolved (§5.3 ✔)** — one optional `default_nature` column,
+   pre-fills but never constrains the per-expenditure Nature field. Still open: what
+   **"Combined"** means operationally. *Ralph will ask the team.*
 3. **Function bands** CORE/STRATEGIC/SUPPORT — chosen where (program property in WFP entry,
    AIP attribute, or office config)? Required for report layout. (§3) — *not yet answered
    to Ralph either; carry to the requirements meeting.*
