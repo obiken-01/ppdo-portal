@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { archiveLdip, ldipErrorMessage, listLdip, unlockLdip } from "@/lib/ldip";
+import { useSearchParams } from "next/navigation";
+import { archiveLdip, finalizeLdip, ldipErrorMessage, listLdip, unlockLdip } from "@/lib/ldip";
 import { useMe } from "@/lib/me-cache";
 import DataTable, { type Column } from "@/components/ui/DataTable";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
@@ -35,8 +36,9 @@ function fmtDate(iso: string): string {
 // Page
 // ---------------------------------------------------------------------------
 
-export default function LdipListPage() {
+function LdipListInner() {
   const { toast } = useToast();
+  const searchParams = useSearchParams();
 
   const me = useMe((m) => m.canAccessBudgetPlanning);
   const [records, setRecords] = useState<LdipRecord[]>([]);
@@ -47,19 +49,25 @@ export default function LdipListPage() {
   const [modeFilter, setModeFilter] = useState("");
   const [confirm, setConfirm] = useState<ConfirmDialogProps | null>(null);
 
+  // Office carried from the dashboard nav (?officeId=). Office users are always
+  // scoped server-side regardless of this param.
+  const urlOfficeId = searchParams.get("officeId");
+  const officeFilter = urlOfficeId != null ? Number(urlOfficeId) : undefined;
+
   // ── Data ──────────────────────────────────────────────────────────────────
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      setRecords(await listLdip());
+      setRecords(await listLdip({ officeId: officeFilter }));
     } catch (err) {
       setError(ldipErrorMessage(err, "Failed to load LDIP records."));
     } finally {
       setLoading(false);
     }
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [officeFilter]);
 
   useEffect(() => {
     load();
@@ -99,6 +107,31 @@ export default function LdipListPage() {
           load();
         } catch (err) {
           toast.error("Failed", ldipErrorMessage(err, "Could not archive LDIP."));
+        }
+      },
+      onClose: () => setConfirm(null),
+    });
+  }
+
+  function handleFinalize(r: LdipRecord) {
+    // The primary way to finalize is the edit form's ribbon — this is the fallback
+    // for uploaded multi-office records (RAL-113), which are always read-only in
+    // that form since there's no single office to edit against (mirrors AIP's own
+    // list-level Finalize action, since AIP has no manual edit form at all).
+    setConfirm({
+      title: "Finalize LDIP",
+      message: `Finalize ${r.refCode}? Once finalized, it is locked and can only be unlocked by an admin.`,
+      confirmLabel: "Finalize",
+      cancelLabel: "Cancel",
+      variant: "primary",
+      onConfirm: async () => {
+        setConfirm(null);
+        try {
+          await finalizeLdip(r.id);
+          toast.success("Finalized", `${r.refCode} is now Final.`);
+          load();
+        } catch (err) {
+          toast.error("Failed", ldipErrorMessage(err, "Could not finalize LDIP."));
         }
       },
       onClose: () => setConfirm(null),
@@ -152,6 +185,19 @@ export default function LdipListPage() {
         ),
       },
       {
+        key: "officeName",
+        header: "OFFICE",
+        sortable: true,
+        render: (r) => {
+          const label = r.officeName ?? (r.entryMode === "Upload" ? "All Offices" : "—");
+          return (
+            <span className="block max-w-[180px] truncate" title={label}>
+              {label}
+            </span>
+          );
+        },
+      },
+      {
         key: "period",
         header: "PERIOD",
         sortable: true,
@@ -161,6 +207,13 @@ export default function LdipListPage() {
             {r.fiscalYearStart}–{r.fiscalYearEnd}
           </span>
         ),
+      },
+      {
+        key: "programCount",
+        header: "PROGRAMS",
+        sortable: true,
+        align: "right",
+        render: (r) => <span className="tabular-nums">{r.programCount}</span>,
       },
       {
         key: "entryMode",
@@ -186,7 +239,7 @@ export default function LdipListPage() {
           <div className="flex items-center gap-3 text-sm">
             {r.status === "Draft" && (
               <Link
-                href={`/budget-planning/ldip/${r.id}/edit`}
+                href={`/budget-planning/ldip/edit?id=${r.id}`}
                 className="text-green-700 hover:underline"
               >
                 Edit
@@ -194,11 +247,19 @@ export default function LdipListPage() {
             )}
             {r.status !== "Draft" && (
               <Link
-                href={`/budget-planning/ldip/${r.id}/edit`}
+                href={`/budget-planning/ldip/edit?id=${r.id}`}
                 className="text-slate-600 hover:underline"
               >
                 View
               </Link>
+            )}
+            {r.status === "Draft" && (
+              <button
+                onClick={() => handleFinalize(r)}
+                className="text-green-700 hover:underline"
+              >
+                Finalize
+              </button>
             )}
             {r.status === "Draft" && (
               <button
@@ -273,6 +334,7 @@ export default function LdipListPage() {
           <option value="New">New</option>
           <option value="Amendment">Amendment</option>
           <option value="Supplemental">Supplemental</option>
+          <option value="Upload">Upload</option>
         </select>
       </div>
 
@@ -289,5 +351,14 @@ export default function LdipListPage() {
 
       {confirm && <ConfirmDialog {...confirm} />}
     </div>
+  );
+}
+
+// useSearchParams requires a Suspense boundary during prerender (Next.js app router).
+export default function LdipListPage() {
+  return (
+    <Suspense fallback={null}>
+      <LdipListInner />
+    </Suspense>
   );
 }

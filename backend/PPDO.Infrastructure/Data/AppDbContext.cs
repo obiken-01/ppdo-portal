@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using PPDO.Domain.Entities;
@@ -38,6 +38,8 @@ public sealed class AppDbContext : DbContext
     public DbSet<FundingSource> FundingSources { get; set; } = null!;
     public DbSet<Account> Accounts { get; set; } = null!;
     public DbSet<LdipRecord> LdipRecords { get; set; } = null!;
+    public DbSet<LdipOffice> LdipOffices { get; set; } = null!;
+    public DbSet<LdipProgram> LdipPrograms { get; set; } = null!;
     public DbSet<AipRecord> AipRecords { get; set; } = null!;
     public DbSet<AipOffice> AipOffices { get; set; } = null!;
     public DbSet<AipProgram> AipPrograms { get; set; } = null!;

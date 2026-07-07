@@ -1,3 +1,4 @@
+using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Interfaces;
@@ -5,31 +6,36 @@ using PPDO.Domain.Interfaces;
 namespace PPDO.Application.Services;
 
 /// <summary>
-/// Budget Planning Dashboard data service (RAL-80, RAL-92).
+/// Budget Planning Dashboard data service (RAL-80, RAL-92, RAL-60).
 /// GetDashboardAsync fetches small config tables in full (appropriate for their size).
 /// GetRecentActivityAsync delegates to IAuditRepository.GetRecentAsync so the DB
 /// applies ordering, office filtering, and TAKE — the entire audit_log is never loaded.
+/// GetOfficeDashboardAsync composes the office-scoped readiness hub by calling
+/// IAllocationService for the allocation-setup panel — it never re-implements those queries.
 /// </summary>
 public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardService
 {
-    private readonly IRepository<LdipRecord> _ldipRepo;
-    private readonly IRepository<AipRecord>  _aipRepo;
+    private readonly ILdipRepository         _ldipRepo;
+    private readonly IAipRepository          _aipRepo;
     private readonly IRepository<WfpRecord>  _wfpRepo;
     private readonly IRepository<Office>     _officeRepo;
     private readonly IAuditRepository        _auditRepo;
+    private readonly IAllocationService      _allocationService;
 
     public BudgetPlanningDashboardService(
-        IRepository<LdipRecord> ldipRepo,
-        IRepository<AipRecord>  aipRepo,
+        ILdipRepository         ldipRepo,
+        IAipRepository          aipRepo,
         IRepository<WfpRecord>  wfpRepo,
         IRepository<Office>     officeRepo,
-        IAuditRepository        auditRepo)
+        IAuditRepository        auditRepo,
+        IAllocationService      allocationService)
     {
-        _ldipRepo   = ldipRepo;
-        _aipRepo    = aipRepo;
-        _wfpRepo    = wfpRepo;
-        _officeRepo = officeRepo;
-        _auditRepo  = auditRepo;
+        _ldipRepo          = ldipRepo;
+        _aipRepo           = aipRepo;
+        _wfpRepo           = wfpRepo;
+        _officeRepo        = officeRepo;
+        _auditRepo         = auditRepo;
+        _allocationService = allocationService;
     }
 
     /// <inheritdoc />
@@ -100,13 +106,19 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         int finalWfpCount = wfps.Count(w => w.FiscalYear == resolvedFY && w.Status == "Final");
         WfpSummaryDto wfpSummary = new(finalWfpCount, activeOffices.Count);
 
+        // Allocation-setup counts across all active offices — used by the "All Offices"
+        // dashboard view, where per-office allocation detail can't be shown (RAL-60).
+        AllocationSetupOverviewDto allocationOverview =
+            await _allocationService.GetSetupOverviewAsync(resolvedFY, cancellationToken);
+
         return new PlanningDashboardDto(
             resolvedFY,
             availableFiscalYears,
             ldipSummary,
             aipSummary,
             wfpSummary,
-            wfpByOffice);
+            wfpByOffice,
+            allocationOverview);
     }
 
     /// <inheritdoc />
@@ -126,5 +138,98 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
                 a.RecordId,
                 a.ChangedBy?.FullName ?? "Unknown"))
             .ToList();
+    }
+
+    /// <inheritdoc />
+    public async Task<OfficeDashboardDto> GetOfficeDashboardAsync(
+        int officeId, int fiscalYear, CancellationToken cancellationToken = default)
+    {
+        AllocationSetupSummaryDto allocation =
+            await BuildAllocationSummaryAsync(officeId, fiscalYear, cancellationToken);
+        OfficeLdipSummaryDto ldip =
+            await BuildOfficeLdipSummaryAsync(officeId, fiscalYear, cancellationToken);
+        OfficeAipSummaryDto aip =
+            await BuildOfficeAipSummaryAsync(officeId, fiscalYear, cancellationToken);
+
+        return new OfficeDashboardDto(officeId, fiscalYear, allocation, ldip, aip);
+    }
+
+    private async Task<AllocationSetupSummaryDto> BuildAllocationSummaryAsync(
+        int officeId, int fiscalYear, CancellationToken cancellationToken)
+    {
+        ServiceResult<BudgetCeilingDto> ceilingResult =
+            await _allocationService.GetCeilingAsync(officeId, fiscalYear, cancellationToken);
+        decimal? ceilingAmount = ceilingResult.IsSuccess ? ceilingResult.Value!.Amount : null;
+
+        IReadOnlyList<DivisionAllocationDto> allocations =
+            await _allocationService.GetAllocationsAsync(officeId, fiscalYear, cancellationToken);
+        decimal allocated = allocations.Sum(a => a.Amount);
+
+        decimal? remaining = ceilingAmount.HasValue ? ceilingAmount.Value - allocated : null;
+        bool isOverAllocated = ceilingAmount.HasValue && allocated > ceilingAmount.Value;
+
+        IReadOnlyList<ProgramAssignmentDto> programs =
+            await _allocationService.GetProgramAssignmentsAsync(officeId, fiscalYear, cancellationToken);
+        int assignedCount = programs.Count(p => p.DivisionIds.Count > 0);
+        int unassignedCount = programs.Count - assignedCount;
+
+        return new AllocationSetupSummaryDto(
+            ceilingAmount, allocated, remaining, isOverAllocated, assignedCount, unassignedCount);
+    }
+
+    /// <summary>
+    /// Office-scoped LDIP summary (un-stubbed by RAL-61, which added
+    /// ldip_records.office_id): documents belonging to the office whose year range
+    /// covers the selected fiscal year, with a status breakdown.
+    /// </summary>
+    private async Task<OfficeLdipSummaryDto> BuildOfficeLdipSummaryAsync(
+        int officeId, int fiscalYear, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<LdipRecord> records =
+            await _ldipRepo.GetListAsync(officeId, null, cancellationToken);
+        List<LdipRecord> covering = records
+            .Where(r => r.FiscalYearStart <= fiscalYear && fiscalYear <= r.FiscalYearEnd)
+            .ToList();
+        List<StatusBreakdownDto> breakdown = covering
+            .GroupBy(r => r.Status)
+            .Select(g => new StatusBreakdownDto(g.Key, g.Count()))
+            .ToList();
+        return new OfficeLdipSummaryDto(true, covering.Count, breakdown);
+    }
+
+    private async Task<OfficeAipSummaryDto> BuildOfficeAipSummaryAsync(
+        int officeId, int fiscalYear, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<Office> offices = await _officeRepo.GetAllAsync(cancellationToken);
+        Office? office = offices.FirstOrDefault(o => o.Id == officeId);
+        if (office?.OfficeRefCode is null)
+            return new OfficeAipSummaryDto(false, null, 0, 0, 0);
+
+        IReadOnlyList<AipRecord> allAip = await _aipRepo.GetAllAsync(cancellationToken);
+        AipRecord? aipRecord = allAip.FirstOrDefault(
+            r => r.FiscalYear == fiscalYear && r.Status != PlanningStatus.Archived);
+        if (aipRecord is null)
+            return new OfficeAipSummaryDto(false, null, 0, 0, 0);
+
+        IReadOnlyList<AipOffice> aipOffices =
+            await _aipRepo.GetOfficesByAipIdAsync(aipRecord.Id, cancellationToken);
+        List<AipOffice> matched = aipOffices
+            .Where(o => o.RefCode.EndsWith(office.OfficeRefCode, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (matched.Count == 0)
+            return new OfficeAipSummaryDto(false, aipRecord.Status, 0, 0, 0);
+
+        List<int> officeIds = matched.Select(o => o.Id).ToList();
+        IReadOnlyList<AipProgram> programs =
+            await _aipRepo.GetProgramsByOfficeIdsAsync(officeIds, cancellationToken);
+        List<int> programIds = programs.Select(p => p.Id).ToList();
+        IReadOnlyList<AipProject> projects =
+            await _aipRepo.GetProjectsByProgramIdsAsync(programIds, cancellationToken);
+        List<int> projectIds = projects.Select(p => p.Id).ToList();
+        IReadOnlyList<AipActivity> activities =
+            await _aipRepo.GetActivitiesByProjectIdsAsync(projectIds, cancellationToken);
+
+        return new OfficeAipSummaryDto(
+            true, aipRecord.Status, programs.Count, projects.Count, activities.Count);
     }
 }

@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PPDO.Infrastructure.Data;
 
@@ -11,9 +12,11 @@ using PPDO.Infrastructure.Data;
 namespace PPDO.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260703055853_AddLdipProgramDetailColumns")]
+    partial class AddLdipProgramDetailColumns
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1005,7 +1008,8 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasColumnName("cc_mitigation");
 
                     b.Property<string>("CcTypologyCode")
-                        .HasColumnType("nvarchar(max)")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
                         .HasColumnName("cc_typology_code");
 
                     b.Property<decimal?>("Co")
@@ -1026,11 +1030,13 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasColumnName("funding_source_id");
 
                     b.Property<string>("FundingSourceSnapshot")
-                        .HasColumnType("nvarchar(max)")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("funding_source_snapshot");
 
                     b.Property<string>("ImplementingOffice")
-                        .HasColumnType("nvarchar(max)")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
                         .HasColumnName("implementing_office");
 
                     b.Property<int>("LdipOfficeId")
@@ -1048,19 +1054,23 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasColumnName("name");
 
                     b.Property<string>("NdrrmPlan")
-                        .HasColumnType("nvarchar(max)")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("ndrrm_plan");
 
                     b.Property<string>("Nsp")
-                        .HasColumnType("nvarchar(max)")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("nsp");
 
                     b.Property<string>("PdpRdp")
-                        .HasColumnType("nvarchar(max)")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("pdp_rdp");
 
                     b.Property<string>("Pdpdfp")
-                        .HasColumnType("nvarchar(max)")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("pdpdfp");
 
                     b.Property<decimal?>("Ps")
@@ -1074,11 +1084,13 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasColumnName("ref_code");
 
                     b.Property<string>("Sdgs")
-                        .HasColumnType("nvarchar(max)")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("sdgs");
 
                     b.Property<string>("SendaiFramework")
-                        .HasColumnType("nvarchar(max)")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("sendai_framework");
 
                     b.Property<string>("StartDate")

@@ -26,8 +26,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
-import { listDivisions } from "@/lib/config";
+import { listDivisions, listOffices } from "@/lib/config";
 import Modal from "@/components/ui/Modal";
+import OfficeSelect from "@/components/ui/OfficeSelect";
 import { useToast } from "@/components/ui/Toast";
 import type {
   CreateUserRequest,
@@ -180,8 +181,7 @@ function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFor
     : divisions.filter((d) => d.officeCode === "PPDO");
 
   // Selecting an office forces a non-admin role (office users are encoders).
-  function handleOfficeChange(value: string) {
-    const officeId = value ? Number(value) : null;
+  function handleOfficeChange(officeId: number | null) {
     const patch: Partial<CreateUserRequest & UpdateUserRequest> = { officeId, divisionId: null };
     if (officeId != null && (form.role === "SuperAdmin" || form.role === "Admin")) patch.role = "Staff";
     onChange(patch);
@@ -270,16 +270,12 @@ function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFor
             Office
             <span className="ml-1 font-normal text-slate-400">(non-PPDO user — clears Division)</span>
           </label>
-          <select
-            value={form.officeId ?? ""}
-            onChange={(e) => handleOfficeChange(e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 bg-white"
-          >
-            <option value="">— None (PPDO-internal user) —</option>
-            {offices.map((o) => (
-              <option key={o.id} value={o.id}>{o.officeName} ({o.officeCode})</option>
-            ))}
-          </select>
+          <OfficeSelect
+            offices={offices}
+            value={form.officeId ?? null}
+            onChange={handleOfficeChange}
+            allOptionLabel="— None (PPDO-internal user) —"
+          />
         </div>
 
         <div>
@@ -514,9 +510,7 @@ export default function UsersPage() {
       }
 
       try {
-        // /api/config/offices returns the { data, error, message } envelope (RAL-70).
-        const officesRes = await api.get<{ data: OfficeResponse[] }>("/config/offices?active=true");
-        setOffices(officesRes.data.data ?? []);
+        setOffices(await listOffices({ active: "true" }));
       } catch {
         // offices endpoint unavailable — office dropdown stays empty
         setOffices([]);

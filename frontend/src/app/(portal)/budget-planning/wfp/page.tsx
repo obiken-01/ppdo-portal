@@ -38,6 +38,7 @@ import { listAccounts, listDivisions, listFundingSources, listOffices } from "@/
 import { getCeiling, getSetupStatus, getAllocations, getPrograms } from "@/lib/allocation";
 import Modal from "@/components/ui/Modal";
 import MoneyInput from "@/components/ui/MoneyInput";
+import OfficeSelect from "@/components/ui/OfficeSelect";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
 import { formatMoney } from "@/lib/money";
@@ -1139,22 +1140,16 @@ function WfpPageInner() {
           {/* Office selector (config offices) */}
           <div className="flex items-center gap-2">
             <label className="text-sm text-slate-600 font-medium whitespace-nowrap">Office</label>
-            <select
-              value={selectedOfficeId ?? ""}
-              onChange={(e) => {
-                setSelectedOfficeId(e.target.value ? Number(e.target.value) : null);
+            <OfficeSelect
+              offices={officeList}
+              value={selectedOfficeId}
+              onChange={(officeId) => {
+                setSelectedOfficeId(officeId);
                 setSelectedDivisionId(null);
               }}
+              placeholder="— select office —"
               disabled={isFinal || isOfficeUser}
-              className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600 disabled:opacity-60"
-            >
-              <option value="">— select office —</option>
-              {officeList.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.officeCode} — {o.officeName}
-                </option>
-              ))}
-            </select>
+            />
           </div>
 
           {/* Division selector */}

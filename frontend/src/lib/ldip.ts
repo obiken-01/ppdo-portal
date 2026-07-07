@@ -9,7 +9,10 @@ import api from "./api";
 import type {
   ApiResponse,
   CreateLdipRequest,
+  LdipImportConfirmRequest,
+  LdipImportPreviewResponse,
   LdipRecord,
+  LdipRecordDetail,
   LdipStatus,
   UpdateLdipRequest,
 } from "@/types";
@@ -31,14 +34,16 @@ export function ldipErrorMessage(err: unknown, fallback: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// List — GET /api/budget-planning/ldip?status=
+// List — GET /api/budget-planning/ldip?status=&officeId=
+// (office users are always scoped server-side; officeId is a PPDO-only filter)
 // ---------------------------------------------------------------------------
 
 export async function listLdip(
-  params: { status?: LdipStatus | "" } = {}
+  params: { status?: LdipStatus | ""; officeId?: number } = {}
 ): Promise<LdipRecord[]> {
   const query: Record<string, string> = {};
   if (params.status) query.status = params.status;
+  if (params.officeId != null) query.officeId = String(params.officeId);
   const { data } = await api.get<ApiResponse<LdipRecord[]>>("/budget-planning/ldip", {
     params: query,
   });
@@ -46,11 +51,11 @@ export async function listLdip(
 }
 
 // ---------------------------------------------------------------------------
-// Get by ID — GET /api/budget-planning/ldip/{id}
+// Get by ID — GET /api/budget-planning/ldip/{id} (returns the full hierarchy)
 // ---------------------------------------------------------------------------
 
-export async function getLdipById(id: number): Promise<LdipRecord> {
-  const { data } = await api.get<ApiResponse<LdipRecord>>(`/budget-planning/ldip/${id}`);
+export async function getLdipById(id: number): Promise<LdipRecordDetail> {
+  const { data } = await api.get<ApiResponse<LdipRecordDetail>>(`/budget-planning/ldip/${id}`);
   return unwrap(data);
 }
 
@@ -58,17 +63,17 @@ export async function getLdipById(id: number): Promise<LdipRecord> {
 // Create — POST /api/budget-planning/ldip
 // ---------------------------------------------------------------------------
 
-export async function createLdip(body: CreateLdipRequest): Promise<LdipRecord> {
-  const { data } = await api.post<ApiResponse<LdipRecord>>("/budget-planning/ldip", body);
+export async function createLdip(body: CreateLdipRequest): Promise<LdipRecordDetail> {
+  const { data } = await api.post<ApiResponse<LdipRecordDetail>>("/budget-planning/ldip", body);
   return unwrap(data);
 }
 
 // ---------------------------------------------------------------------------
-// Update — PUT /api/budget-planning/ldip/{id}
+// Update — PUT /api/budget-planning/ldip/{id} (full-replace of the hierarchy)
 // ---------------------------------------------------------------------------
 
-export async function updateLdip(id: number, body: UpdateLdipRequest): Promise<LdipRecord> {
-  const { data } = await api.put<ApiResponse<LdipRecord>>(`/budget-planning/ldip/${id}`, body);
+export async function updateLdip(id: number, body: UpdateLdipRequest): Promise<LdipRecordDetail> {
+  const { data } = await api.put<ApiResponse<LdipRecordDetail>>(`/budget-planning/ldip/${id}`, body);
   return unwrap(data);
 }
 
@@ -100,5 +105,37 @@ export async function unlockLdip(id: number): Promise<LdipRecord> {
 
 export async function archiveLdip(id: number): Promise<LdipRecord> {
   const { data } = await api.delete<ApiResponse<LdipRecord>>(`/budget-planning/ldip/${id}`);
+  return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// File upload (RAL-113) — POST /api/budget-planning/ldip/upload (parse preview)
+// Body: raw .xlsx binary (Content-Type: application/octet-stream)
+// ---------------------------------------------------------------------------
+
+export async function uploadLdipFile(
+  file: File,
+  fiscalYearStart: number,
+  fiscalYearEnd: number
+): Promise<LdipImportPreviewResponse> {
+  const { data } = await api.post<ApiResponse<LdipImportPreviewResponse>>(
+    `/budget-planning/ldip/upload?fiscalYearStart=${fiscalYearStart}&fiscalYearEnd=${fiscalYearEnd}`,
+    file,
+    { headers: { "Content-Type": "application/octet-stream" } }
+  );
+  return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// File upload — confirm import — POST /api/budget-planning/ldip/confirm
+// Creates ONE Draft LDIP record spanning every office found in the file
+// (mirrors AIP — a single document holds all offices, not one document each).
+// ---------------------------------------------------------------------------
+
+export async function confirmLdipImport(body: LdipImportConfirmRequest): Promise<LdipRecord> {
+  const { data } = await api.post<ApiResponse<LdipRecord>>(
+    "/budget-planning/ldip/confirm",
+    body
+  );
   return unwrap(data);
 }

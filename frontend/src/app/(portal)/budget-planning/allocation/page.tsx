@@ -39,6 +39,7 @@ import {
   upsertProgram,
 } from "@/lib/allocation";
 import MoneyInput from "@/components/ui/MoneyInput";
+import OfficeSelect from "@/components/ui/OfficeSelect";
 import { useToast } from "@/components/ui/Toast";
 import { formatMoney } from "@/lib/money";
 import type {
@@ -472,20 +473,13 @@ function AllocationPageInner() {
                 {me?.officeName ?? `Office #${me?.officeId}`}
               </span>
             ) : (
-              <select
-                value={selectedOfficeId ?? ""}
-                onChange={(e) =>
-                  setSelectedOfficeId(e.target.value ? Number(e.target.value) : null)
-                }
-                className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600"
-              >
-                <option value="">— select office —</option>
-                {officeList.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.officeCode} — {o.officeName}
-                  </option>
-                ))}
-              </select>
+              <OfficeSelect
+                className="w-64"
+                offices={officeList}
+                value={selectedOfficeId}
+                onChange={setSelectedOfficeId}
+                placeholder="— select office —"
+              />
             )}
           </div>
         </div>

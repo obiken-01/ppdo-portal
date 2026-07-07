@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PPDO.Infrastructure.Data;
 
@@ -11,9 +12,11 @@ using PPDO.Infrastructure.Data;
 namespace PPDO.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260702081724_AddLdipOfficeScopeAndPrograms")]
+    partial class AddLdipOfficeScopeAndPrograms
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -996,50 +999,9 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasColumnType("decimal(18,2)")
                         .HasColumnName("budget");
 
-                    b.Property<decimal?>("CcAdaptation")
-                        .HasColumnType("decimal(18,2)")
-                        .HasColumnName("cc_adaptation");
-
-                    b.Property<decimal?>("CcMitigation")
-                        .HasColumnType("decimal(18,2)")
-                        .HasColumnName("cc_mitigation");
-
-                    b.Property<string>("CcTypologyCode")
-                        .HasColumnType("nvarchar(max)")
-                        .HasColumnName("cc_typology_code");
-
-                    b.Property<decimal?>("Co")
-                        .HasColumnType("decimal(18,2)")
-                        .HasColumnName("co");
-
-                    b.Property<string>("EndDate")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)")
-                        .HasColumnName("end_date");
-
-                    b.Property<string>("ExpectedOutputs")
-                        .HasColumnType("nvarchar(max)")
-                        .HasColumnName("expected_outputs");
-
-                    b.Property<int?>("FundingSourceId")
-                        .HasColumnType("int")
-                        .HasColumnName("funding_source_id");
-
-                    b.Property<string>("FundingSourceSnapshot")
-                        .HasColumnType("nvarchar(max)")
-                        .HasColumnName("funding_source_snapshot");
-
-                    b.Property<string>("ImplementingOffice")
-                        .HasColumnType("nvarchar(max)")
-                        .HasColumnName("implementing_office");
-
                     b.Property<int>("LdipOfficeId")
                         .HasColumnType("int")
                         .HasColumnName("ldip_office_id");
-
-                    b.Property<decimal?>("Mooe")
-                        .HasColumnType("decimal(18,2)")
-                        .HasColumnName("mooe");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -1047,48 +1009,13 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasColumnType("nvarchar(500)")
                         .HasColumnName("name");
 
-                    b.Property<string>("NdrrmPlan")
-                        .HasColumnType("nvarchar(max)")
-                        .HasColumnName("ndrrm_plan");
-
-                    b.Property<string>("Nsp")
-                        .HasColumnType("nvarchar(max)")
-                        .HasColumnName("nsp");
-
-                    b.Property<string>("PdpRdp")
-                        .HasColumnType("nvarchar(max)")
-                        .HasColumnName("pdp_rdp");
-
-                    b.Property<string>("Pdpdfp")
-                        .HasColumnType("nvarchar(max)")
-                        .HasColumnName("pdpdfp");
-
-                    b.Property<decimal?>("Ps")
-                        .HasColumnType("decimal(18,2)")
-                        .HasColumnName("ps");
-
                     b.Property<string>("RefCode")
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)")
                         .HasColumnName("ref_code");
 
-                    b.Property<string>("Sdgs")
-                        .HasColumnType("nvarchar(max)")
-                        .HasColumnName("sdgs");
-
-                    b.Property<string>("SendaiFramework")
-                        .HasColumnType("nvarchar(max)")
-                        .HasColumnName("sendai_framework");
-
-                    b.Property<string>("StartDate")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)")
-                        .HasColumnName("start_date");
-
                     b.HasKey("Id");
-
-                    b.HasIndex("FundingSourceId");
 
                     b.HasIndex("LdipOfficeId")
                         .HasDatabaseName("IX_ldip_programs_ldip_office_id");
@@ -2376,20 +2303,12 @@ namespace PPDO.Infrastructure.Data.Migrations
 
             modelBuilder.Entity("PPDO.Domain.Entities.LdipProgram", b =>
                 {
-                    b.HasOne("PPDO.Domain.Entities.FundingSource", "FundingSource")
-                        .WithMany()
-                        .HasForeignKey("FundingSourceId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("FK_ldip_programs_funding_sources_funding_source_id");
-
                     b.HasOne("PPDO.Domain.Entities.LdipOffice", "Office")
                         .WithMany("Programs")
                         .HasForeignKey("LdipOfficeId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("FK_ldip_programs_ldip_offices_ldip_office_id");
-
-                    b.Navigation("FundingSource");
 
                     b.Navigation("Office");
                 });
