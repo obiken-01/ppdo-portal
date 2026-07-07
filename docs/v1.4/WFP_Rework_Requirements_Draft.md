@@ -164,19 +164,31 @@ Both meters refresh from the server after every save (computed at read time — 
 
 - **✔ RESOLVED (Ralph, 2026-07-07) — the rate is 10%**; the draft's "19%" was a typo. Matches
   the form's "Equiv. to 10% of Operational Expenses" and the `Accounts with Reserve` sheet's
-  "maximum of 10%" note. Still open: hard cap vs. editable default, and 10% *of what* base
-  (§11 Q1).
-- Eligibility comes from config: `accounts.is_reserve_eligible` (the 42 flagged MOOE accounts
+  "maximum of 10%" note.
+- **✔ RESOLVED (Ralph, 2026-07-07) — computed against the expenditure line's OWN Total**
+  (not the fund block's aggregate operational expenses). Answers §11 Q1's base question.
+- **✔ RESOLVED (Ralph, 2026-07-07) — hard cap, not an editable-upward default.**
+  `reserve_amount ≤ 10% × the line's own Total` is enforced server-side; nothing may exceed it.
+- **✔ RESOLVED (Ralph, 2026-07-07) — NO eligibility gate; supersedes the `is_reserve_eligible`
+  framing below.** Answering §11 Q11 directly: instead of a hard allow-list of accounts,
+  `accounts` gets a single **optional, default-only** column — `default_apply_reserve` (bool)
+  — mirroring `default_nature`'s pattern (§5.3). It pre-fills the reserve toggle in WFP entry
+  when that account is picked, but **every account may have the toggle turned on regardless**;
+  it is never an enforced restriction. This also resolves the earlier contradiction (the
+  workbook's own sample reserved against a Salaries/PS account, outside the 42-account list) —
+  under this design that's simply a valid override, not a data error. The 42 "Accounts with
+  Reserve" flagged accounts seed `default_apply_reserve = true`; everything else defaults false
+  but remains overridable.
+  ~~Eligibility comes from config: `accounts.is_reserve_eligible` (the 42 flagged MOOE accounts
   from the workbook's `Accounts with Reserve` sheet). The toggle in the entry flow only
-  appears for eligible accounts. *(⚠ the workbook's own sample reserves on a PS account —
-  eligibility list vs. sample contradiction is Q4 in the findings; the config flag makes
-  either answer a data change, not a code change.)*
-- **★ REC:** when toggled on, default `ReserveAmount = 10% × Total` (rate from a config value,
-  not hard-coded), editable downward, validated `≤ cap`. Reserved is **excluded from the
-  quarterly release plan** (form: Net = ΣQ, Total = Reserved + Net) — so the quarters the user
-  types are the NET plan; the UI must label this clearly ("amounts to be released, net of
-  reserve").
+  appears for eligible accounts.~~ *(superseded — see above)*
+- When toggled on, default `ReserveAmount = 10% × Total` (rate from a named config
+  value/constant, not a scattered magic number), editable downward, validated `≤ cap`.
+  Reserved is **excluded from the quarterly release plan** (form: Net = ΣQ, Total = Reserved +
+  Net) — so the quarters the user types are the NET plan; the UI must label this clearly
+  ("amounts to be released, net of reserve").
 - Current schema already has `ApplyReserve` + `ReserveAmount` on `WfpExpenditureLine` — reuse.
+- Tickets: RAL-117 (adds `default_apply_reserve`), RAL-121 (rate + cap validation, no gate).
 
 ## 7. Config pages (new)
 
@@ -188,24 +200,28 @@ Both meters refresh from the server after every save (computed at read time — 
 - **★ REC:** track `price_updated_at` and show it in search results — stale prices are the
   main data-quality risk of a price catalogue. (Full price history = out of scope unless PPDO
   asks.)
-- ⚠ Q: who maintains it (PPDO only via `CanManageConfig`, or offices too)?
+- **✔ RESOLVED (Ralph, 2026-07-07)** — PPDO maintains config, but **Price Index data itself
+  originates from GSO's own application**, currently downloaded as an Excel file (a future
+  GSO API integration is a possibility, not in scope now — parallels the existing External AIP
+  API idea). This makes the **CSV import path load-bearing, not a nice-to-have**: it is
+  literally how GSO's export gets into the system, and must be built with real per-row error
+  reporting, not just a happy-path round-trip of the app's own export. Ticket: RAL-118.
 
 ### 7.2 Procurement Presets
 - `procurement_presets`: account_id, name, is_active; child `procurement_preset_items`:
   price_index_item_id?, name/unit/price snapshot, default_qty.
 - Created from the entry flow ("Save as preset") or the config page; loading always copies.
-- ⚠ Q: presets shared across all offices/divisions, or scoped? (Draft implies shared —
-  "can be used by other activity that will procure same items." Recommend shared + created_by
-  shown.)
+- **✔ RESOLVED (Ralph, 2026-07-07) — Yes, shared** across all offices/divisions
+  (`created_by` shown for traceability). Ticket: RAL-119.
 
 ### 7.3 Chart of Accounts (expanded) — prerequisite for everything above
 - Import the ~318-account NGAS chart from the workbook's VALIDATION sheet; add explicit
   `expense_class` (PS/MOOE/CO — the `1 07 xx` CO asset accounts break the current `5-0x`
   prefix rule), `default_nature` (§5.3 — nullable, `Procurement`/`Non-Procurement`/`Combined`,
-  default-only), `is_reserve_eligible`. Canonicalize code format (space vs dash) once, at
-  import.
+  default-only), `default_apply_reserve` (§6 ✔ resolved — bool, default-only, NOT
+  `is_reserve_eligible`/a gate). Canonicalize code format (space vs dash) once, at import.
 - This is a **config migration with blast radius** (existing WFP lines, reports, config UI
-  filter by prefix-derived type today) — its own ticket, first in sequence.
+  filter by prefix-derived type today) — its own ticket (RAL-117), first in sequence.
 
 #### 7.3.1 Can procurement/non-procurement be derived from the existing account data? (investigated 2026-07-07)
 Revisited the v1.1 Chart-of-Accounts artifacts: `annex_b_charts_of_account.pdf` (DBM/COA Annex B)
@@ -241,8 +257,9 @@ WFP-NEW lists but were **missing from the older Annex-B PDF** → newer COA addi
 as reviewable config (PPDO confirms the LOW-confidence/Combined rows) — do **not** bake the
 classification into code, so future COA changes are a data edit. Distribution of the draft:
 ~90% HIGH-confidence, ~7% MEDIUM, ~1.5% Combined/LOW.
-- ⚠ The draft is a *proposal from rules + one sample file* — PPDO must sign off on the final
-  procurement column before it drives Finalize-time validation.
+- ✔ **Resolved 2026-07-07** — the draft CSV's `is_reserve_eligible` column now seeds
+  `default_apply_reserve` (§6) instead of driving a hard eligibility gate — same 42-account
+  seed data, reinterpreted as a default. No re-derivation needed.
 
 ## 8. Ceiling monitoring & validation (Division Allocation Fund)
 
@@ -252,20 +269,41 @@ Two independent checks, both **computed server-side** and returned with every sa
    (across ALL divisions of the office) vs. the AIP activity's total.
    ⚠ **Units:** AIP amounts are stored in **thousands** — compare against `aip_total × 1000`;
    WFP is entered in pesos (per the workbook sample).
-2. **Division allocation check:** user's division's `division_allocations.Amount` (original)
-   minus Σ of ALL WFP expenditure totals entered by that division for the FY = **remaining**.
+2. **Division allocation check** — ✔ **RESOLVED, redesigned 2026-07-07 (Ralph's answer to
+   §11 Q7):** instead of a live SUM query across `wfp_expenditures`, introduce a **dedicated
+   ledger table** — `wfp_division_allocation_ledger` (`division_id, fiscal_year,
+   wfp_record_id, allocated_amount_snapshot, used_amount, updated_at`), one row per
+   `(division_id, fiscal_year, wfp_record_id)`, upserted whenever that WFP record's
+   expenditure totals change. **Remaining** = `division_allocations.Amount` (current) minus
+   Σ(`used_amount` across the division+FY's ledger rows). Explicitly linked to `wfp_records`
+   per Ralph's answer ("introduce a new table … linked to wfp_records") rather than updating
+   `wfp_records` itself with new columns. Named/shaped so other future consumers of the
+   allocation could post their own ledger rows later, without over-engineering a generic
+   polymorphic design now (WFP-scoped is fine for this ticket).
    Both values displayed in the context header (§4.2) per the draft.
 
-**★ REC — warn on save, block on Finalize.** During drafting, exceeding a ceiling shows a
-non-dismissable inline warning (amount over, which ceiling) but the save succeeds — offices
-iterate and the numbers move. `Finalize` refuses while any ceiling is exceeded (admin
-override = existing Unlock pattern). A hard block on every save makes trial-and-error entry
-miserable; no block at all makes Final documents unreliable. ⚠ Confirm this split with PPDO.
+**✔ RESOLVED 2026-07-07 (Ralph's answer to §11 Q6) — block on EVERY save, not just Finalize,
+AND live-validate client-side.** Supersedes the "warn on save, block on Finalize" recommendation
+below (kept struck through for the record):
+- **Server-side:** the expenditure save path rejects (BadRequest) any save that would push
+  either ceiling over its limit — every save, not only Finalize.
+- **Client-side:** the wizard UI (§4.2's context header) calls the same ceiling-check endpoint
+  live while the user enters amounts (debounced) and disables Save before a rejected round-trip
+  happens — UX on top of the server rejection, not a substitute for it.
+- `FinalizeAsync` keeps an independent ceiling check too, as a backstop (should be unreachable
+  in practice once every save is blocked).
+- ~~**★ REC — warn on save, block on Finalize.** During drafting, exceeding a ceiling shows a
+  non-dismissable inline warning (amount over, which ceiling) but the save succeeds — offices
+  iterate and the numbers move. `Finalize` refuses while any ceiling is exceeded (admin
+  override = existing Unlock pattern).~~ *(superseded — see above)*
 
 **★ REC — also check the PPA→division assignment** (v1.2 `program_divisions`): if a program is
 assigned to divisions, the Activity picker should only offer PPAs assigned to the user's
-division (prevents two divisions budgeting the same activity by accident). ⚠ Confirm whether
-assignment is mandatory or advisory.
+division (prevents two divisions budgeting the same activity by accident). ⚠ Still open —
+confirm whether assignment is mandatory or advisory.
+
+Tickets: RAL-122 (ledger + block-on-save + endpoint), RAL-123 (live client-side validation +
+disabled Save in the wizard UI).
 
 ## 9. Data-model sketch (evolves v1.2 — not greenfield)
 
@@ -283,18 +321,26 @@ wfp_expenditures       (per line: account_id + snapshots, nature, frequency,
 wfp_expenditure_periods (expenditure_id, period_no 1–12/1–4/1–2/1, amount)
 wfp_procurement_items  (expenditure_id, period_no, price_index_item_id?, name/unit/price
                         snapshot, qty; line_total computed)
+wfp_division_allocation_ledger (§8 ✔ NEW 2026-07-07 — division_id, fiscal_year, wfp_record_id,
+                        allocated_amount_snapshot, used_amount, updated_at; one row per
+                        (division_id, fiscal_year, wfp_record_id), upserted on every
+                        expenditure change; "remaining" reads from this, not a live SUM)
 price_index_items      (§7.1)
 procurement_presets / procurement_preset_items (§7.2)
-accounts               + expense_class, default_nature, is_reserve_eligible (§7.3)
+accounts               + expense_class, default_nature, default_apply_reserve (§7.3 — renamed
+                        from is_reserve_eligible; both *_nature and *_apply_reserve are
+                        default-only pre-fills, never enforced gates)
 ```
 
 Server computation pipeline on every save (one code path, used by entry AND report):
 `period amounts (or Σ items per period) → quarter roll-up per §2 → Net = ΣQ →
 Total = Net + Reserved → expense-class sub-totals → activity/project/program totals →
 per-fund summary`. The report renders these values — never re-derives in Excel formulas.
+Every save additionally runs the §8 ceiling check (block, not warn) before persisting.
 
 ⚠ Q: migrate/retire existing v1.1/v1.2 `wfp_activities`/`wfp_expenditure_lines` data?
-(Findings Q13 — still open.)
+**✔ RESOLVED (Ralph, 2026-07-07) — discard.** It's still test data; no migration/archive
+needed. (Findings Q13.)
 
 ## 10. WFP report
 
@@ -308,58 +354,62 @@ per-fund summary`. The report renders these values — never re-derives in Excel
 - ⚠ "Creation" totals (PS CREATION / MOOE CREATION rows) still undefined — findings Q3. If
   they survive, a `is_creation` flag on the expenditure (or program) is the likely mechanism.
 
-## 11. Open questions (updated — draft answered 4 of the original 13)
+## 11. Open questions — tracked live in `WFP_Rework_Open_Questions.xlsx`
 
-**Answered by this draft:** divisions = entry-only (Q1) ✔ · fund source is per-entry,
-defaulted from AIP, report groups per fund (Q7-shape) ✔ · WFP PPAs come from AIP (Q9 first
-half) ✔ · account config expansion confirmed needed (Q11) ✔ · nature is one optional
-account-level default column, always overridable per expenditure (Q2 behavior — meaning of
-"Combined" itself still open) ✔.
+The full, up-to-date question list (with Severity/Priority/Status/Resolution columns) moved to
+a companion spreadsheet: **`D:\RalphFiles\PPDO\PPDO\WFP_Rework_Open_Questions.xlsx`**
+(sheet "Open Questions" + a "Legend" sheet). This doc's §11 is now a summary only — the
+spreadsheet is authoritative for current status.
 
-**Still open / newly raised** *(2026-07-07: rate typo resolved — 10% confirmed; nature-column
-behavior resolved; Q2's "what does Combined mean" and Q3 acknowledged by Ralph as pending
-with the team)*:
-1. Reserve mechanics (rate = **10% ✔ confirmed**): hard cap or editable default? 10% of what
-   base — the line's total, or the fund block's operational expenses?
-2. **Nature-column behavior resolved (§5.3 ✔)** — one optional `default_nature` column,
-   pre-fills but never constrains the per-expenditure Nature field. Still open: what
-   **"Combined"** means operationally. *Ralph will ask the team.*
-3. **Function bands** CORE/STRATEGIC/SUPPORT — chosen where (program property in WFP entry,
-   AIP attribute, or office config)? Required for report layout. (§3) — *not yet answered
-   to Ralph either; carry to the requirements meeting.*
-4. Reserve eligibility: only the 42 MOOE accounts, or any line (sample reserves on PS)?
-5. **"Creation"** totals — meaning + what marks a line/program as Creation? (§10)
-6. Descriptive-fields **report rendering** (data itself is settled: entered once per project,
-   optional). The six fields are COLUMNS on the printed form, so the generator must pick which
-   ROW carries the text — **(A)** print once on the project row (recommended: matches where
-   the data lives, no duplication), or **(B)** repeat the project's values on every activity
-   row beneath it (what the sample workbook's guidance placement suggests). Cosmetic only —
-   entry is unaffected. (§3)
-7. Annual frequency → Q1 default with per-entry override OK? Bi-annual fixed Q1/Q3? (§2)
-8. Ceiling checks: warn-on-save / block-on-finalize split OK? AIP check per activity total
-   or per expense class? (§8)
-9. "Remaining division allocation" = allocation − Σ WFP totals of that division-FY — right
-   definition? Anything else draws it down?
-10. Project-level expenditures (no activity) — allowed, per the form's Strategic block? (ties
-    to RAL-108's identical AIP question)
-11. Price index + presets: maintained by whom, shared across offices? (§7)
-12. Existing WFP data: migrate or archive? AIP amendment mid-WFP behavior? Signature block?
-    (findings Q9/Q12/Q13)
+**Resolved 2026-07-07 (Ralph):** reserve rate 10% (§6), reserve base = line's own Total (§6),
+reserve = hard cap (§6), reserve eligibility → `default_apply_reserve`, default-only, no gate
+(§6/§7.3), ceiling checks block on every save + live client-side validation, not just warn (§8),
+division-allocation tracking via a new ledger table linked to `wfp_records` (§8), Price
+Index/Presets maintained by PPDO with Price Index data sourced from GSO's own application
+(§7.1), Procurement Presets shared across offices (§7.2), nature-switch mid-entry shows a
+confirm dialog (§4), existing WFP data will be discarded, not migrated (§9).
 
-## 12. Suggested ticket breakdown (v1.4 milestone, dependency order)
+**Still open (blocks ticket creation, not yet in Linear):**
+1. **Function bands** CORE/STRATEGIC/SUPPORT — chosen where (program property in WFP entry,
+   AIP attribute, or office config)? Required for report layout. (§3) — not yet answered to
+   Ralph either; carry to the requirements meeting.
+2. **"Creation" totals** — meaning + what marks a line/program as Creation? (§10)
+3. Migrate/archive/discard is answered (discard), but the actual cleanup ticket isn't written
+   yet — low urgency, no blocker.
 
-| # | Ticket | Depends on |
+**Still open (implementation detail, ticket already exists with a documented default):**
+4. What does **"Combined"** nature mean operationally? *Ralph is asking the team.*
+   (RAL-117/120/123/125 all ship placeholders/defaults pending this.)
+5. "Remaining division allocation" ledger design is settled (§8); still open whether anything
+   besides WFP draws it down.
+6. Project-level expenditures with no activity — allowed, per the form's Strategic block? (ties
+   to RAL-108's identical AIP question)
+7. PPA→division assignment: mandatory or advisory when picking an Activity in WFP entry? (§8)
+8. AIP amendment mid-WFP behavior; signature block on the printed form — both low-priority,
+   deferred.
+
+## 12. Ticket breakdown (v1.4 milestone — created in Linear 2026-07-07)
+
+Epic: **RAL-116**. Real tickets, dependency order (see RAL-116 for the up-to-date graph):
+
+| Ticket | Title | Depends on |
 |---|---|---|
-| 1 | Config: expanded NGAS chart of accounts — explicit `expense_class`, `default_nature`, `is_reserve_eligible`; code canonicalization; migration + CSV + config-UI updates | — |
-| 2 | Config: Price Index (schema + API + page, CSV round-trip) | — |
-| 3 | Config: Procurement Presets (schema + API + page) | 1, 2 |
-| 4 | WFP schema rework: expenditures + periods + procurement items; computation pipeline service (TDD: frequency roll-ups, reserve math, totals cascade) | 1 |
-| 5 | Ceiling monitoring service: AIP-budget + division-allocation checks, remaining-allocation endpoint | 4 |
-| 6 | Entry UI: context picker + expenditure wizard (frequency grid, procurement table, presets, live totals, ceiling meters) | 2–5 |
-| 7 | WFP report: office-level generator in the new form layout + xlsx export + review screen | 4 |
-| 8 | Migration/retirement of v1.1–v1.2 WFP entry + data | 4–7, Q12 answer |
+| RAL-117 | Chart of Accounts rework — `expense_class`, `default_nature`, `default_apply_reserve` | — |
+| RAL-118 | Config: Price Index page | — |
+| RAL-119 | Config: Procurement Presets | RAL-117, RAL-118 |
+| RAL-120 | WFP expenditure schema + computation pipeline | RAL-117 |
+| RAL-121 | Reserve rule wiring (10% hard cap, default-only prefill) | RAL-117, RAL-120 |
+| RAL-122 | Division-allocation ledger + ceiling blocking (save + Finalize) | RAL-120 |
+| RAL-123 | Entry UI: context picker + expenditure wizard shell (+ live ceiling checks) | RAL-120, RAL-121, RAL-122 |
+| RAL-124 | Entry UI: non-procurement frequency grid | RAL-123 |
+| RAL-125 | Entry UI: procurement line-item entry (price index + presets) | RAL-118, RAL-119, RAL-123 |
+
+**Not yet ticketed** (blocked on open questions above): WFP report generator (needs function
+bands + Creation totals answered first), migration/retirement of existing WFP data (answer is
+"discard" — ticket just hasn't been written yet, no urgency).
 
 ---
 
 *Reviewed/expanded by Claude Code 2026-07-07 from Ralph's demo-meeting draft + the WFP-NEW.xlsx
-findings. Decisions pending: everything marked ⚠ FLAG and §11.*
+findings; updated same day with Ralph's answers via `WFP_Rework_Open_Questions.xlsx` and the
+resulting Linear tickets (RAL-116–RAL-125).*
