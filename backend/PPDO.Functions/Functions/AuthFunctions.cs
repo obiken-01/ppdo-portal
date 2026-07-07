@@ -27,8 +27,17 @@ namespace PPDO.Functions.Functions;
 /// </summary>
 public sealed class AuthFunctions
 {
-    // Refresh-token cookie. HttpOnly + Secure + SameSite=Strict, scoped to the refresh
+    // Refresh-token cookie. HttpOnly + Secure + SameSite=None, scoped to the refresh
     // endpoint so it is never sent on any other request (RAL-58).
+    //
+    // SameSite=None is required (not Strict/Lax) because the frontend (Azure Static
+    // Web Apps, e.g. jolly-sky-....azurestaticapps.net) and this API (Azure Functions,
+    // ....azurewebsites.net) are different registrable domains — a genuinely cross-site
+    // relationship. Strict/Lax cookies are never attached to cross-site fetch/XHR
+    // requests at all, regardless of credentials mode, so /auth/refresh always 401'd in
+    // prod (v1.2.0 hotfix). This is safe here because the cookie is narrowly scoped
+    // (HttpOnly, Path=/api/auth/refresh) and CORS only allows credentialed responses to
+    // the allowlisted origin (see Program.cs).
     private const string RefreshCookieName = "ppdo_rt";
     private const string RefreshCookiePath = "/api/auth/refresh";
     private const int    AccessTokenLifetimeSeconds = 15 * 60;
@@ -182,14 +191,14 @@ public sealed class AuthFunctions
         string value = Uri.EscapeDataString(refreshToken);
         response.Headers.Add(
             "Set-Cookie",
-            $"{RefreshCookieName}={value}; Max-Age={maxAgeSeconds}; Path={RefreshCookiePath}; HttpOnly; Secure; SameSite=Strict");
+            $"{RefreshCookieName}={value}; Max-Age={maxAgeSeconds}; Path={RefreshCookiePath}; HttpOnly; Secure; SameSite=None");
     }
 
     private static void ClearRefreshCookie(HttpResponseData response)
     {
         response.Headers.Add(
             "Set-Cookie",
-            $"{RefreshCookieName}=; Max-Age=0; Path={RefreshCookiePath}; HttpOnly; Secure; SameSite=Strict");
+            $"{RefreshCookieName}=; Max-Age=0; Path={RefreshCookiePath}; HttpOnly; Secure; SameSite=None");
     }
 
     /// <summary>Reads and URL-decodes the refresh token from the request's Cookie header.</summary>
