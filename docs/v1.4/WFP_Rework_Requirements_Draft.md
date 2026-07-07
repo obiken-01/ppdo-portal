@@ -197,6 +197,43 @@ sub-entries under one account line; if it's rare, drop it and split into two lin
 - This is a **config migration with blast radius** (existing WFP lines, reports, config UI
   filter by prefix-derived type today) — its own ticket, first in sequence.
 
+#### 7.3.1 Can procurement/non-procurement be derived from the existing account data? (investigated 2026-07-07)
+Revisited the v1.1 Chart-of-Accounts artifacts: `annex_b_charts_of_account.pdf` (DBM/COA Annex B)
+→ the extracted `AIP/chart_of_accounts.csv` (571 rows: `account_title, account_number,
+normal_balance, description`). **There is NO explicit procurement flag in that source** — the PDF
+never classifies accounts that way; it only carries title, code, normal balance, and a prose
+usage description. So the column must be *added*, but it can be **pre-populated by rule** rather
+than hand-tagging 300+ rows:
+
+- **Primary signal = NGAS account GROUP** (the 3rd segment, `5-02-xx`). NGAS groups are already
+  procurement-homogeneous by design — e.g. `5-02-03` Supplies & Materials = procurement,
+  `5-02-01` Traveling = non-procurement, `5-02-12` General Services (janitorial/security) =
+  procurement (contracted), `5-02-13` Repairs & Maintenance = procurement, `5-01-xx` PS = always
+  non-procurement, `1-04/1-07` inventories & PPE = procurement.
+- **Secondary signal = description keywords** (purchase/contract/construction/repair vs
+  salary/allowance/subsidy/tax) — only needed to split the few *mixed* groups (`5-02-05`
+  Communication: telephone = non-proc, internet subscription = proc; `5-02-06`; `5-02-99` Other
+  MOOE catch-all).
+- **A handful stay genuinely ambiguous** (`5-02-02` Training, `5-02-99-030` Representation,
+  `5-02-99-990` Other MOOE) and are flagged `Combined`/low-confidence for a human to confirm —
+  which is exactly why the form has the third **Combined** nature and why `default_nature` should
+  be an *editable* config column, not a hard-coded rule.
+
+**Validation:** the rule engine was cross-checked against the **19 real account→nature choices
+observed in WFP-NEW.xlsx** (the `L` column of the sample) → **19/19 match**. A first-pass draft is
+generated at **`D:\RalphFiles\PPDO\PPDO\AIP\accounts_nature_draft.csv`** with columns
+`account_number, account_title, expense_class, default_nature, confidence (HIGH/MEDIUM/LOW),
+is_reserve_eligible, rationale` — 306 expense/asset accounts, all **42** reserve-eligible accounts
+flagged (incl. 4 semi-expendable codes `5-02-03-210/220`, `5-02-13-210/220` that are in the
+WFP-NEW lists but were **missing from the older Annex-B PDF** → newer COA additions to append).
+
+**Recommendation:** ship the draft CSV as the seed for the new columns, but treat `default_nature`
+as reviewable config (PPDO confirms the LOW-confidence/Combined rows) — do **not** bake the
+classification into code, so future COA changes are a data edit. Distribution of the draft:
+~90% HIGH-confidence, ~7% MEDIUM, ~1.5% Combined/LOW.
+- ⚠ The draft is a *proposal from rules + one sample file* — PPDO must sign off on the final
+  procurement column before it drives Finalize-time validation.
+
 ## 8. Ceiling monitoring & validation (Division Allocation Fund)
 
 Two independent checks, both **computed server-side** and returned with every save/read:
