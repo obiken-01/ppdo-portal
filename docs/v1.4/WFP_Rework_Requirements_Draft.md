@@ -153,8 +153,10 @@ sub-entries under one account line; if it's rare, drop it and split into two lin
 
 ## 6. Reserve rule
 
-- **⚠ FLAG — draft says "19% reserve"; the form says "Equiv. to 10% of Operational Expenses"
-  and the `Accounts with Reserve` sheet caps at "maximum of 10%". Assume 10% (typo) — confirm.**
+- **✔ RESOLVED (Ralph, 2026-07-07) — the rate is 10%**; the draft's "19%" was a typo. Matches
+  the form's "Equiv. to 10% of Operational Expenses" and the `Accounts with Reserve` sheet's
+  "maximum of 10%" note. Still open: hard cap vs. editable default, and 10% *of what* base
+  (§11 Q1).
 - Eligibility comes from config: `accounts.is_reserve_eligible` (the 42 flagged MOOE accounts
   from the workbook's `Accounts with Reserve` sheet). The toggle in the entry flow only
   appears for eligible accounts. *(⚠ the workbook's own sample reserves on a PS account —
@@ -265,15 +267,23 @@ per-fund summary`. The report renders these values — never re-derives in Excel
 defaulted from AIP, report groups per fund (Q7-shape) ✔ · WFP PPAs come from AIP (Q9 first
 half) ✔ · account config expansion confirmed needed (Q11) ✔.
 
-**Still open / newly raised:**
-1. Reserve: **19% (draft) vs 10% (form)** — typo? Hard cap enforced? % of what exactly?
+**Still open / newly raised** *(2026-07-07: rate typo resolved — 10% confirmed; Q2 and Q3
+below acknowledged by Ralph as pending with the team)*:
+1. Reserve mechanics (rate = **10% ✔ confirmed**): hard cap or editable default? 10% of what
+   base — the line's total, or the fund block's operational expenses?
 2. What does nature **"Combined"** mean, and is nature account-derived or per-line? (§5.3)
+   — *Ralph will ask the team.*
 3. **Function bands** CORE/STRATEGIC/SUPPORT — chosen where (program property in WFP entry,
-   AIP attribute, or office config)? Required for report layout. (§3)
+   AIP attribute, or office config)? Required for report layout. (§3) — *not yet answered
+   to Ralph either; carry to the requirements meeting.*
 4. Reserve eligibility: only the 42 MOOE accounts, or any line (sample reserves on PS)?
 5. **"Creation"** totals — meaning + what marks a line/program as Creation? (§10)
-6. Descriptive fields: stored at project level (demo) — printed on the project row, or
-   repeated on activity rows as the form's columns suggest? (§3)
+6. Descriptive-fields **report rendering** (data itself is settled: entered once per project,
+   optional). The six fields are COLUMNS on the printed form, so the generator must pick which
+   ROW carries the text — **(A)** print once on the project row (recommended: matches where
+   the data lives, no duplication), or **(B)** repeat the project's values on every activity
+   row beneath it (what the sample workbook's guidance placement suggests). Cosmetic only —
+   entry is unaffected. (§3)
 7. Annual frequency → Q1 default with per-entry override OK? Bi-annual fixed Q1/Q3? (§2)
 8. Ceiling checks: warn-on-save / block-on-finalize split OK? AIP check per activity total
    or per expense class? (§8)
