@@ -12,8 +12,8 @@ public interface IAccountService
     /// <summary>
     /// Lists accounts ordered by account number.
     /// <paramref name="search"/> matches account number OR title (case-insensitive, contains).
-    /// <paramref name="accountType"/> "PS"/"MOOE"/"CO" filters by account_number prefix
-    /// (5-01-/5-02-/5-03-); null = no type filter.
+    /// <paramref name="accountType"/> "PS"/"MOOE"/"CO" filters by the stored
+    /// <c>expense_class</c> column (RAL-117 — no longer account_number prefix); null = no type filter.
     /// </summary>
     Task<IReadOnlyList<AccountDto>> GetAllAsync(
         string? search, string? accountType, ActiveFilter active, CancellationToken cancellationToken = default);
@@ -25,7 +25,10 @@ public interface IAccountService
     /// <summary>Soft-deletes (IsActive = false). Returns the updated record.</summary>
     Task<ServiceResult<AccountDto>> DeleteAsync(int id, CancellationToken cancellationToken = default);
 
-    /// <summary>Exports all accounts as CSV: account_title, account_number, normal_balance, description, is_active.</summary>
+    /// <summary>
+    /// Exports all accounts as CSV: account_title, account_number, normal_balance, description,
+    /// is_active, expense_class, default_nature, default_apply_reserve.
+    /// </summary>
     Task<string> ExportCsvAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Upserts accounts by account_number. Returns new/updated/skipped counts.</summary>

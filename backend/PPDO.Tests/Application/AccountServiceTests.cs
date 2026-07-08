@@ -16,9 +16,23 @@ namespace PPDO.Tests.Application;
 /// </summary>
 public sealed class AccountServiceTests
 {
-    private static Account Acct(int id, string number, string title, bool active = true) => new()
+    /// <summary>
+    /// Mirrors the pre-RAL-117 prefix rule, used only to seed test fixtures with a
+    /// plausible ExpenseClass — production data comes from the migration backfill /
+    /// CSV import, never from this derivation at read time anymore.
+    /// </summary>
+    private static string DeriveExpenseClass(string accountNumber) => accountNumber switch
+    {
+        _ when accountNumber.StartsWith("5-01-", StringComparison.OrdinalIgnoreCase) => "PS",
+        _ when accountNumber.StartsWith("5-02-", StringComparison.OrdinalIgnoreCase) => "MOOE",
+        _ when accountNumber.StartsWith("5-03-", StringComparison.OrdinalIgnoreCase) => "CO",
+        _ => "Other",
+    };
+
+    private static Account Acct(int id, string number, string title, bool active = true, string? expenseClass = null) => new()
     {
         Id = id, AccountNumber = number, AccountTitle = title, IsActive = active,
+        ExpenseClass = expenseClass ?? DeriveExpenseClass(number),
         CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
     };
 
@@ -106,7 +120,7 @@ public sealed class AccountServiceTests
         (AccountService sut, _) = Build(seed);
 
         ServiceResult<AccountDto> result = await sut.CreateAsync(
-            new UpsertAccountDto("Different Title", "5-01-01-010", null, null));
+            new UpsertAccountDto("Different Title", "5-01-01-010", null, null, ExpenseClass: "PS"));
 
         Assert.Equal(ServiceErrorCode.Conflict, result.Code);
     }
@@ -118,7 +132,7 @@ public sealed class AccountServiceTests
         (AccountService sut, _) = Build(seed);
 
         ServiceResult<AccountDto> result = await sut.CreateAsync(
-            new UpsertAccountDto("Travel", "5-02-01-010", "Debit", null));
+            new UpsertAccountDto("Travel", "5-02-01-010", "Debit", null, ExpenseClass: "MOOE"));
 
         Assert.True(result.IsSuccess);
         Assert.Equal("5-02-01-010", result.Value!.AccountNumber);
@@ -133,7 +147,7 @@ public sealed class AccountServiceTests
 
         // Try to rename #2's number to #1's number.
         ServiceResult<AccountDto> result = await sut.UpdateAsync(
-            2, new UpsertAccountDto("B", "5-01-01-010", null, null));
+            2, new UpsertAccountDto("B", "5-01-01-010", null, null, ExpenseClass: "PS"));
 
         Assert.Equal(ServiceErrorCode.Conflict, result.Code);
     }
@@ -143,7 +157,7 @@ public sealed class AccountServiceTests
     {
         (AccountService sut, _) = Build([Acct(1, "5-01-01-010", "A")]);
         ServiceResult<AccountDto> result = await sut.UpdateAsync(
-            999, new UpsertAccountDto("X", "5-09-09-090", null, null));
+            999, new UpsertAccountDto("X", "5-09-09-090", null, null, ExpenseClass: "Other"));
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
     }
 
@@ -235,7 +249,7 @@ public sealed class AccountServiceTests
     {
         (AccountService sut, _, Mock<IAuditService> audit) = BuildWithAudit([]);
 
-        await sut.CreateAsync(new UpsertAccountDto("Salaries", "5-01-01-010", null, null));
+        await sut.CreateAsync(new UpsertAccountDto("Salaries", "5-01-01-010", null, null, ExpenseClass: "PS"));
 
         audit.Verify(a => a.LogAsync(
             "accounts", It.IsAny<int>(), AuditAction.Create,
@@ -248,7 +262,7 @@ public sealed class AccountServiceTests
         List<Account> seed = [Acct(1, "5-01-01-010", "Old Title")];
         (AccountService sut, _, Mock<IAuditService> audit) = BuildWithAudit(seed);
 
-        await sut.UpdateAsync(1, new UpsertAccountDto("New Title", "5-01-01-010", null, null));
+        await sut.UpdateAsync(1, new UpsertAccountDto("New Title", "5-01-01-010", null, null, ExpenseClass: "PS"));
 
         audit.Verify(a => a.LogAsync(
             "accounts", 1, AuditAction.Update,
@@ -266,5 +280,218 @@ public sealed class AccountServiceTests
         audit.Verify(a => a.LogAsync(
             "accounts", 1, AuditAction.Delete,
             It.IsNotNull<object>(), null, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // ── RAL-117: expense_class stored, not derived ────────────────────────────
+
+    [Fact]
+    public async Task GetAllAsync_AccountType_ReadsStoredExpenseClass_NotPrefixDerived()
+    {
+        // 5-03- would derive to "CO" under the old prefix rule, but the stored
+        // ExpenseClass says "PS" (e.g. a CO-numbered asset account reclassified by the
+        // v1.4 seed). AccountType must reflect the stored value, never re-derive it.
+        List<Account> seed = [Acct(1, "5-03-01-010", "Reclassified Account", expenseClass: "PS")];
+        (AccountService sut, _) = Build(seed);
+
+        IReadOnlyList<AccountDto> result =
+            await sut.GetAllAsync(search: null, accountType: null, active: ActiveFilter.All);
+
+        Assert.Equal("PS", result[0].AccountType);
+        Assert.Equal("PS", result[0].ExpenseClass);
+    }
+
+    [Fact]
+    public async Task GetAllAsync_AccountTypeFilter_MatchesStoredExpenseClass_NotPrefix()
+    {
+        List<Account> seed =
+        [
+            Acct(1, "5-03-01-010", "Reclassified as PS", expenseClass: "PS"),
+            Acct(2, "5-01-01-020", "Regular PS", expenseClass: "PS"),
+        ];
+        (AccountService sut, _) = Build(seed);
+
+        IReadOnlyList<AccountDto> result =
+            await sut.GetAllAsync(search: null, accountType: "PS", active: ActiveFilter.All);
+
+        Assert.Equal(2, result.Count);
+    }
+
+    [Fact]
+    public async Task CreateAsync_MissingExpenseClass_ReturnsBadRequest()
+    {
+        (AccountService sut, _) = Build([]);
+
+        ServiceResult<AccountDto> result = await sut.CreateAsync(
+            new UpsertAccountDto("Travel", "5-02-01-010", null, null, ExpenseClass: ""));
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ValidExpenseClass_PersistsAndRoundTrips()
+    {
+        (AccountService sut, _) = Build([]);
+
+        ServiceResult<AccountDto> result = await sut.CreateAsync(
+            new UpsertAccountDto("Office Supplies", "5-02-03-010", null, null, ExpenseClass: "MOOE"));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("MOOE", result.Value!.ExpenseClass);
+        Assert.Equal("MOOE", result.Value.AccountType);
+    }
+
+    // ── RAL-117: default_nature — nullable, validated enum, default-only ─────
+
+    [Fact]
+    public async Task CreateAsync_DefaultNatureNull_IsAccepted()
+    {
+        (AccountService sut, _) = Build([]);
+
+        ServiceResult<AccountDto> result = await sut.CreateAsync(
+            new UpsertAccountDto("Travel", "5-02-01-010", null, null, ExpenseClass: "MOOE", DefaultNature: null));
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Value!.DefaultNature);
+    }
+
+    [Theory]
+    [InlineData("Procurement")]
+    [InlineData("Non-Procurement")]
+    [InlineData("Combined")]
+    public async Task CreateAsync_DefaultNatureAllowedValue_Persists(string nature)
+    {
+        (AccountService sut, _) = Build([]);
+
+        ServiceResult<AccountDto> result = await sut.CreateAsync(
+            new UpsertAccountDto("Supplies", "5-02-03-010", null, null, ExpenseClass: "MOOE", DefaultNature: nature));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(nature, result.Value!.DefaultNature);
+    }
+
+    [Fact]
+    public async Task CreateAsync_DefaultNatureInvalidValue_ReturnsBadRequest()
+    {
+        (AccountService sut, _) = Build([]);
+
+        ServiceResult<AccountDto> result = await sut.CreateAsync(
+            new UpsertAccountDto("Supplies", "5-02-03-010", null, null, ExpenseClass: "MOOE", DefaultNature: "Bogus"));
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_DefaultNatureInvalidValue_ReturnsBadRequest()
+    {
+        List<Account> seed = [Acct(1, "5-02-03-010", "Supplies", expenseClass: "MOOE")];
+        (AccountService sut, _) = Build(seed);
+
+        ServiceResult<AccountDto> result = await sut.UpdateAsync(1,
+            new UpsertAccountDto("Supplies", "5-02-03-010", null, null, ExpenseClass: "MOOE", DefaultNature: "Bogus"));
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    // ── RAL-117: default_apply_reserve — plain bool, no side effects, never a gate ──
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task CreateAsync_DefaultApplyReserve_RoundTripsPlainBool(bool applyReserve)
+    {
+        (AccountService sut, _) = Build([]);
+
+        ServiceResult<AccountDto> result = await sut.CreateAsync(
+            new UpsertAccountDto("Supplies", "5-02-03-010", null, null,
+                ExpenseClass: "MOOE", DefaultApplyReserve: applyReserve));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(applyReserve, result.Value!.DefaultApplyReserve);
+    }
+
+    [Fact]
+    public async Task CreateAsync_DefaultApplyReserveTrue_OnNonMooeAccount_IsAllowed()
+    {
+        // No eligibility gate: even a PS account may default the reserve toggle on.
+        (AccountService sut, _) = Build([]);
+
+        ServiceResult<AccountDto> result = await sut.CreateAsync(
+            new UpsertAccountDto("Salaries", "5-01-01-010", null, null,
+                ExpenseClass: "PS", DefaultApplyReserve: true));
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value!.DefaultApplyReserve);
+    }
+
+    // ── RAL-117: CSV export/import round-trip for the 3 new columns ──────────
+
+    [Fact]
+    public async Task ExportCsvAsync_IncludesNewColumns()
+    {
+        Account account = Acct(1, "5-02-03-010", "Supplies", expenseClass: "MOOE");
+        account.DefaultNature = "Procurement";
+        account.DefaultApplyReserve = true;
+        List<Account> seed = [account];
+        (AccountService sut, _) = Build(seed);
+
+        string csv = await sut.ExportCsvAsync();
+
+        Assert.Contains("expense_class", csv);
+        Assert.Contains("default_nature", csv);
+        Assert.Contains("default_apply_reserve", csv);
+        Assert.Contains("MOOE,Procurement,true", csv);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_UpsertsNewColumns()
+    {
+        (AccountService sut, _) = Build([]);
+
+        string csv = string.Join("\r\n",
+            "account_title,account_number,normal_balance,description,is_active,expense_class,default_nature,default_apply_reserve",
+            "Supplies,5-02-03-010,,,true,MOOE,Procurement,true");
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, result.Value!.New);
+
+        IReadOnlyList<AccountDto> all = await sut.GetAllAsync(null, null, ActiveFilter.All);
+        Assert.Equal("MOOE", all[0].ExpenseClass);
+        Assert.Equal("Procurement", all[0].DefaultNature);
+        Assert.True(all[0].DefaultApplyReserve);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_MissingExpenseClassColumn_FallsBackToPrefixDerivation()
+    {
+        // Backward compatibility: a pre-v1.4 CSV export (no new columns) must still import.
+        (AccountService sut, _) = Build([]);
+
+        string csv = string.Join("\r\n",
+            "account_title,account_number,normal_balance,description,is_active",
+            "Salaries,5-01-01-010,,,true");
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv);
+        Assert.True(result.IsSuccess);
+
+        IReadOnlyList<AccountDto> all = await sut.GetAllAsync(null, null, ActiveFilter.All);
+        Assert.Equal("PS", all[0].ExpenseClass);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_InvalidDefaultNature_IsErrorAndSkipped()
+    {
+        (AccountService sut, _) = Build([]);
+
+        string csv = string.Join("\r\n",
+            "account_title,account_number,normal_balance,description,is_active,expense_class,default_nature,default_apply_reserve",
+            "Supplies,5-02-03-010,,,true,MOOE,Bogus,false");
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(0, result.Value!.New);
+        Assert.Equal(1, result.Value.Skipped);
+        Assert.NotEmpty(result.Value.Errors);
     }
 }

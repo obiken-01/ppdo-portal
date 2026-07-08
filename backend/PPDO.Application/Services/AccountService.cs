@@ -7,17 +7,26 @@ using PPDO.Domain.Interfaces;
 namespace PPDO.Application.Services;
 
 /// <summary>
-/// Chart of Accounts config CRUD + CSV upsert/export (RAL-70).
+/// Chart of Accounts config CRUD + CSV upsert/export (RAL-70, expanded RAL-117).
 ///
-/// Expenditure type (PS/MOOE/CO) is derived from the account_number prefix — never stored:
-///   5-01- = PS · 5-02- = MOOE · 5-03- = CO · other 5- = Other.
+/// Expenditure type (PS/MOOE/CO) is stored in <c>expense_class</c> (RAL-117) — no longer
+/// derived from the account_number prefix at read time, since the `1 07 xx` CO asset
+/// accounts and similar exceptions break that rule. <c>default_nature</c> and
+/// <c>default_apply_reserve</c> are optional, default-only pre-fills for WFP entry —
+/// never enforced gates (see docs/v1.4/WFP_Rework_Requirements_Draft.md §5.3/§6).
 /// Soft delete only (IsActive = false). AccountNumber is the unique key.
-/// The accounts table is small (~143 rows) — filtering/upsert happens in-memory.
+/// The accounts table is small (~300 rows) — filtering/upsert happens in-memory.
 /// </summary>
 public sealed class AccountService : IAccountService
 {
     private static readonly string[] CsvHeaders =
-        { "account_title", "account_number", "normal_balance", "description", "is_active" };
+    {
+        "account_title", "account_number", "normal_balance", "description", "is_active",
+        "expense_class", "default_nature", "default_apply_reserve",
+    };
+
+    /// <summary>The only 3 values <c>default_nature</c> may hold (case-insensitive on input, canonicalized on save).</summary>
+    private static readonly string[] AllowedNatures = { "Procurement", "Non-Procurement", "Combined" };
 
     private readonly IRepository<Account> _repo;
     private readonly ILogger<AccountService> _logger;
@@ -45,9 +54,8 @@ public sealed class AccountService : IAccountService
             _                     => q,
         };
 
-        string? prefix = PrefixForType(accountType);
-        if (prefix is not null)
-            q = q.Where(a => a.AccountNumber.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(accountType))
+            q = q.Where(a => a.ExpenseClass.Equals(accountType.Trim(), StringComparison.OrdinalIgnoreCase));
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -80,6 +88,10 @@ public sealed class AccountService : IAccountService
             return ServiceResult<AccountDto>.BadRequest("Account title is required.");
         if (string.IsNullOrWhiteSpace(dto.AccountNumber))
             return ServiceResult<AccountDto>.BadRequest("Account number is required.");
+        if (string.IsNullOrWhiteSpace(dto.ExpenseClass))
+            return ServiceResult<AccountDto>.BadRequest("Expense class is required.");
+        if (!TryCanonicalizeNature(dto.DefaultNature, out string? nature, out string? natureError))
+            return ServiceResult<AccountDto>.BadRequest(natureError!);
 
         string number = dto.AccountNumber.Trim();
         IReadOnlyList<Account> all = await _repo.GetAllAsync(cancellationToken);
@@ -89,13 +101,16 @@ public sealed class AccountService : IAccountService
         DateTime now = DateTime.UtcNow;
         Account entity = new()
         {
-            AccountTitle  = dto.AccountTitle.Trim(),
-            AccountNumber = number,
-            NormalBalance = Blank(dto.NormalBalance),
-            Description   = Blank(dto.Description),
-            IsActive      = dto.IsActive,
-            CreatedAt     = now,
-            UpdatedAt     = now,
+            AccountTitle        = dto.AccountTitle.Trim(),
+            AccountNumber       = number,
+            NormalBalance       = Blank(dto.NormalBalance),
+            Description         = Blank(dto.Description),
+            IsActive            = dto.IsActive,
+            ExpenseClass        = dto.ExpenseClass.Trim(),
+            DefaultNature       = nature,
+            DefaultApplyReserve = dto.DefaultApplyReserve,
+            CreatedAt           = now,
+            UpdatedAt           = now,
         };
 
         await _repo.AddAsync(entity, cancellationToken);
@@ -104,7 +119,7 @@ public sealed class AccountService : IAccountService
         _logger.LogInformation("Account created. AccountNumber: {AccountNumber}", entity.AccountNumber);
         await _audit.LogAsync("accounts", entity.Id, AuditAction.Create,
             oldValues: null,
-            newValues: new { entity.AccountTitle, entity.AccountNumber, entity.IsActive },
+            newValues: new { entity.AccountTitle, entity.AccountNumber, entity.IsActive, entity.ExpenseClass },
             cancellationToken);
         return ServiceResult<AccountDto>.Ok(MapToDto(entity));
     }
@@ -116,6 +131,10 @@ public sealed class AccountService : IAccountService
             return ServiceResult<AccountDto>.BadRequest("Account title is required.");
         if (string.IsNullOrWhiteSpace(dto.AccountNumber))
             return ServiceResult<AccountDto>.BadRequest("Account number is required.");
+        if (string.IsNullOrWhiteSpace(dto.ExpenseClass))
+            return ServiceResult<AccountDto>.BadRequest("Expense class is required.");
+        if (!TryCanonicalizeNature(dto.DefaultNature, out string? nature, out string? natureError))
+            return ServiceResult<AccountDto>.BadRequest(natureError!);
 
         IReadOnlyList<Account> all = await _repo.GetAllAsync(cancellationToken);
         Account? entity = all.FirstOrDefault(a => a.Id == id);
@@ -126,20 +145,23 @@ public sealed class AccountService : IAccountService
         if (all.Any(a => a.Id != id && a.AccountNumber.Equals(number, StringComparison.OrdinalIgnoreCase)))
             return ServiceResult<AccountDto>.Conflict($"Account number '{number}' already exists.");
 
-        var oldSnapshot = new { entity.AccountTitle, entity.AccountNumber, entity.IsActive };
+        var oldSnapshot = new { entity.AccountTitle, entity.AccountNumber, entity.IsActive, entity.ExpenseClass };
 
-        entity.AccountTitle  = dto.AccountTitle.Trim();
-        entity.AccountNumber = number;
-        entity.NormalBalance = Blank(dto.NormalBalance);
-        entity.Description   = Blank(dto.Description);
-        entity.IsActive      = dto.IsActive;
-        entity.UpdatedAt     = DateTime.UtcNow;
+        entity.AccountTitle        = dto.AccountTitle.Trim();
+        entity.AccountNumber       = number;
+        entity.NormalBalance       = Blank(dto.NormalBalance);
+        entity.Description         = Blank(dto.Description);
+        entity.IsActive            = dto.IsActive;
+        entity.ExpenseClass        = dto.ExpenseClass.Trim();
+        entity.DefaultNature       = nature;
+        entity.DefaultApplyReserve = dto.DefaultApplyReserve;
+        entity.UpdatedAt           = DateTime.UtcNow;
 
         await _repo.UpdateAsync(entity, cancellationToken);
         await _repo.SaveChangesAsync(cancellationToken);
         await _audit.LogAsync("accounts", entity.Id, AuditAction.Update,
             oldValues: oldSnapshot,
-            newValues: new { entity.AccountTitle, entity.AccountNumber, entity.IsActive },
+            newValues: new { entity.AccountTitle, entity.AccountNumber, entity.IsActive, entity.ExpenseClass },
             cancellationToken);
         return ServiceResult<AccountDto>.Ok(MapToDto(entity));
     }
@@ -176,6 +198,7 @@ public sealed class AccountService : IAccountService
             .Select(a => new string?[]
             {
                 a.AccountTitle, a.AccountNumber, a.NormalBalance, a.Description, a.IsActive ? "true" : "false",
+                a.ExpenseClass, a.DefaultNature, a.DefaultApplyReserve ? "true" : "false",
             });
         return Csv.Write(CsvHeaders, rows);
     }
@@ -213,21 +236,42 @@ public sealed class AccountService : IAccountService
                 continue;
             }
 
+            // expense_class: fall back to the pre-RAL-117 prefix rule so a CSV exported
+            // before this ticket (no expense_class column) still imports cleanly.
+            string expenseClassCell = Field(f, 5).Trim();
+            string expenseClass = expenseClassCell.Length > 0 ? expenseClassCell : DeriveExpenseClassFromPrefix(number);
+
+            string natureCell = Field(f, 6);
+            if (!TryCanonicalizeNature(Blank(natureCell), out string? nature, out string? natureError))
+            {
+                skipped++;
+                errors.Add($"Row {i + 1}: {natureError}");
+                continue;
+            }
+
+            bool applyReserve = Csv.ParseBool(Field(f, 7), fallback: false);
+
             if (byNumber.TryGetValue(number, out Account? existing))
             {
                 bool changed =
                     existing.AccountTitle != title.Trim() ||
                     Blank(existing.NormalBalance) != Blank(nb) ||
                     Blank(existing.Description)   != Blank(desc) ||
-                    existing.IsActive != active;
+                    existing.IsActive != active ||
+                    existing.ExpenseClass != expenseClass ||
+                    existing.DefaultNature != nature ||
+                    existing.DefaultApplyReserve != applyReserve;
 
                 if (!changed) { skipped++; continue; }
 
-                existing.AccountTitle  = title.Trim();
-                existing.NormalBalance = Blank(nb);
-                existing.Description   = Blank(desc);
-                existing.IsActive      = active;
-                existing.UpdatedAt     = now;
+                existing.AccountTitle        = title.Trim();
+                existing.NormalBalance       = Blank(nb);
+                existing.Description         = Blank(desc);
+                existing.IsActive            = active;
+                existing.ExpenseClass        = expenseClass;
+                existing.DefaultNature       = nature;
+                existing.DefaultApplyReserve = applyReserve;
+                existing.UpdatedAt           = now;
                 await _repo.UpdateAsync(existing, cancellationToken);
                 updated++;
             }
@@ -235,13 +279,16 @@ public sealed class AccountService : IAccountService
             {
                 Account entity = new()
                 {
-                    AccountTitle  = title.Trim(),
-                    AccountNumber = number,
-                    NormalBalance = Blank(nb),
-                    Description   = Blank(desc),
-                    IsActive      = active,
-                    CreatedAt     = now,
-                    UpdatedAt     = now,
+                    AccountTitle        = title.Trim(),
+                    AccountNumber       = number,
+                    NormalBalance       = Blank(nb),
+                    Description         = Blank(desc),
+                    IsActive            = active,
+                    ExpenseClass        = expenseClass,
+                    DefaultNature       = nature,
+                    DefaultApplyReserve = applyReserve,
+                    CreatedAt           = now,
+                    UpdatedAt           = now,
                 };
                 await _repo.AddAsync(entity, cancellationToken);
                 byNumber[number] = entity;   // guard against duplicate keys within the same file
@@ -257,17 +304,11 @@ public sealed class AccountService : IAccountService
 
     // ── Helpers ────────────────────────────────────────────────────────────────
 
-    /// <summary>Maps PS/MOOE/CO (case-insensitive) to the account_number prefix; null otherwise.</summary>
-    private static string? PrefixForType(string? accountType) => accountType?.Trim().ToUpperInvariant() switch
-    {
-        "PS"   => "5-01-",
-        "MOOE" => "5-02-",
-        "CO"   => "5-03-",
-        _       => null,
-    };
-
-    /// <summary>Derives the expenditure type label from the account number prefix.</summary>
-    private static string TypeOf(string accountNumber)
+    /// <summary>
+    /// Pre-RAL-117 prefix rule, used only as a CSV-import fallback when a row's
+    /// expense_class cell is blank (e.g. a pre-v1.4 CSV export). Never used at read time.
+    /// </summary>
+    private static string DeriveExpenseClassFromPrefix(string accountNumber)
     {
         if (accountNumber.StartsWith("5-01-", StringComparison.OrdinalIgnoreCase)) return "PS";
         if (accountNumber.StartsWith("5-02-", StringComparison.OrdinalIgnoreCase)) return "MOOE";
@@ -275,8 +316,37 @@ public sealed class AccountService : IAccountService
         return "Other";
     }
 
+    /// <summary>
+    /// Validates and canonicalizes default_nature: null/blank is accepted (no default),
+    /// otherwise it must case-insensitively match one of <see cref="AllowedNatures"/>.
+    /// </summary>
+    private static bool TryCanonicalizeNature(string? input, out string? canonical, out string? error)
+    {
+        string? trimmed = Blank(input);
+        if (trimmed is null)
+        {
+            canonical = null;
+            error = null;
+            return true;
+        }
+
+        string? match = AllowedNatures.FirstOrDefault(n => n.Equals(trimmed, StringComparison.OrdinalIgnoreCase));
+        if (match is null)
+        {
+            canonical = null;
+            error = $"default_nature must be one of: {string.Join(", ", AllowedNatures)}.";
+            return false;
+        }
+
+        canonical = match;
+        error = null;
+        return true;
+    }
+
     private static AccountDto MapToDto(Account a) =>
-        new(a.Id, a.AccountTitle, a.AccountNumber, a.NormalBalance, a.Description, a.IsActive, TypeOf(a.AccountNumber));
+        new(a.Id, a.AccountTitle, a.AccountNumber, a.NormalBalance, a.Description, a.IsActive,
+            AccountType: a.ExpenseClass, ExpenseClass: a.ExpenseClass,
+            DefaultNature: a.DefaultNature, DefaultApplyReserve: a.DefaultApplyReserve);
 
     /// <summary>Trims and converts blank to null so "" and null compare equal during upsert.</summary>
     private static string? Blank(string? value)
