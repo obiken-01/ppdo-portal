@@ -18,8 +18,8 @@ namespace PPDO.Application.Services;
 ///
 /// Does NOT validate apply_reserve against the account's default_apply_reserve — RAL-117/121
 /// made that a default-only pre-fill, never an enforced gate; any expenditure may set it
-/// regardless of the account's default. Does NOT enforce the 10% reserve cap — that
-/// validation is RAL-121's scope, to be added to this same method.
+/// regardless of the account's default. Reserve rate/cap validation (RAL-121) lives in
+/// <see cref="SaveExpenditureAsync"/>, applied against Net — see <see cref="WfpReserveRule"/>.
 /// </summary>
 public sealed class WfpExpenditureService : IWfpExpenditureService
 {
@@ -47,6 +47,9 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
     }
 
     // ── Read ──────────────────────────────────────────────────────────────────
+
+    /// <inheritdoc />
+    public WfpReserveRateDto GetReserveRate() => new(WfpReserveRule.Rate);
 
     public async Task<ServiceResult<WfpExpenditureDto>> GetByIdAsync(
         int id, CancellationToken ct = default)
@@ -86,7 +89,6 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
             : null;
 
         // ── Compute (never trust client-sent totals) ─────────────────────────
-        decimal reserveAmount = dto.ApplyReserve ? dto.ReserveAmount : 0m;
         int? annualQuarterChoice = dto.Frequency == WfpFrequency.Annual
             ? (dto.AnnualQuarterChoice ?? 1)
             : null;
@@ -94,8 +96,36 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
         Dictionary<int, decimal> merged = WfpExpenditureCalculator.MergePeriodAmounts(
             dto.Periods.Select(p => (p.PeriodNo, p.Amount)),
             dto.ProcurementItems.Select(i => (i.PeriodNo, i.Qty, i.UnitPrice)));
-        WfpExpenditureCalculator.RollUp rollUp = WfpExpenditureCalculator.Compute(
-            dto.Frequency, merged, reserveAmount, annualQuarterChoice);
+
+        // Q1–Q4/Net never depend on reserve (reserve is excluded from the release plan) —
+        // compute them first so the reserve rule below can be applied against the real Net.
+        WfpExpenditureCalculator.RollUp preliminary = WfpExpenditureCalculator.Compute(
+            dto.Frequency, merged, reserveAmount: 0m, annualQuarterChoice);
+
+        // ── Reserve rule (RAL-121): no account eligibility gate — cap + default against Net ──
+        decimal reserveAmount;
+        if (dto.ApplyReserve)
+        {
+            decimal cap = WfpReserveRule.Cap(preliminary.Net);
+            if (dto.ReserveAmount is decimal explicitAmount)
+            {
+                if (explicitAmount > cap)
+                    return ServiceResult<WfpExpenditureDto>.BadRequest(
+                        $"Reserve amount (₱{explicitAmount:N2}) exceeds the {WfpReserveRule.Rate:P0} cap " +
+                        $"of ₱{cap:N2} for this expenditure's net appropriation (₱{preliminary.Net:N2}).");
+                reserveAmount = explicitAmount; // explicit value respected as-is, never overridden
+            }
+            else
+            {
+                reserveAmount = cap; // no amount given -> default to rate x Net
+            }
+        }
+        else
+        {
+            reserveAmount = 0m;
+        }
+
+        WfpExpenditureCalculator.RollUp rollUp = preliminary with { Total = preliminary.Net + reserveAmount };
 
         DateTime now = DateTime.UtcNow;
         WfpExpenditure entity;
@@ -210,7 +240,7 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
         if (max < min)
             return $"Frequency must be one of M, Q, B, or A (got '{dto.Frequency}').";
 
-        if (dto.ReserveAmount < 0)
+        if (dto.ReserveAmount is < 0)
             return "Reserve amount cannot be negative.";
 
         if (dto.AnnualQuarterChoice is int choice && choice is < 1 or > 4)

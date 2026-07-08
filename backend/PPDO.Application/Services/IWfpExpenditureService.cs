@@ -20,7 +20,15 @@ public interface IWfpExpenditureService
     /// Creates a new expenditure (dto.Id is null) or replaces an existing one's periods and
     /// procurement items in place (dto.Id provided — delete-then-reinsert). Validates
     /// Nature/Frequency/period numbers and negative amounts before any write.
+    ///
+    /// Reserve rule (RAL-121): when ApplyReserve is true, ReserveAmount defaults to
+    /// <c>WfpReserveRule.Rate</c> × Net if not supplied, and is rejected (BadRequest) if it
+    /// exceeds that cap — regardless of the account's default_apply_reserve, which is a
+    /// pre-fill only, never an eligibility gate.
     /// </summary>
     Task<ServiceResult<WfpExpenditureDto>> SaveExpenditureAsync(
         SaveWfpExpenditureDto dto, CancellationToken ct = default);
+
+    /// <summary>The current reserve rate, for the frontend to display without hard-coding it.</summary>
+    WfpReserveRateDto GetReserveRate();
 }
