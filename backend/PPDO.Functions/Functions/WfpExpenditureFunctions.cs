@@ -63,4 +63,19 @@ public sealed class WfpExpenditureFunctions
         return await ConfigHttp.FromResultAsync(req, result, ct,
             result.IsSuccess ? HttpStatusCode.OK : HttpStatusCode.BadRequest);
     }
+
+    // ── GET /api/budget-planning/wfp/reserve-rate ────────────────────────────
+    // Surfaces WfpReserveRule.Rate (RAL-121) so the entry UI (ticket #9) never hard-codes "10%".
+    [Function("WfpReserveRateGet")]
+    public async Task<HttpResponseData> GetReserveRate(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get",
+            Route = "budget-planning/wfp/reserve-rate")] HttpRequestData req,
+        CancellationToken ct)
+    {
+        (User? _, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK,
+            ApiResponse<WfpReserveRateDto>.Ok(_expenditures.GetReserveRate()), ct);
+    }
 }

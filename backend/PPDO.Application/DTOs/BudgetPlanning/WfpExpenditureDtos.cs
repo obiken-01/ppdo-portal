@@ -54,6 +54,11 @@ public record SaveWfpProcurementItemDto(
 /// existing expenditure's periods/procurement items in place (delete-then-reinsert, matching
 /// the LdipService/WfpService convention). No Q1–Q4/Net/Total fields — those are always
 /// computed server-side by <c>WfpExpenditureCalculator</c>, never accepted from the client.
+///
+/// ReserveAmount is nullable (RAL-121): null means "not specified" — the service defaults it
+/// to the reserve rate × the expenditure's Net when ApplyReserve is true. An explicit value
+/// (including 0) is respected as-is (still capped at the rate × Net ceiling), never silently
+/// overridden by the default.
 /// </summary>
 public record SaveWfpExpenditureDto(
     int?     Id,
@@ -63,7 +68,10 @@ public record SaveWfpExpenditureDto(
     string   Frequency,
     int?     FundingSourceId,
     bool     ApplyReserve,
-    decimal  ReserveAmount,
+    decimal? ReserveAmount,
     int?     AnnualQuarterChoice,
     IReadOnlyList<SaveWfpExpenditurePeriodDto>   Periods,
     IReadOnlyList<SaveWfpProcurementItemDto>     ProcurementItems);
+
+/// <summary>The current reserve rate, surfaced to the frontend so it never hard-codes "10%" (RAL-121).</summary>
+public record WfpReserveRateDto(decimal Rate);

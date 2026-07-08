@@ -8,11 +8,13 @@ using PPDO.Domain.Interfaces;
 namespace PPDO.Tests.Application;
 
 /// <summary>
-/// Unit tests for <see cref="WfpExpenditureService"/> (RAL-120).
+/// Unit tests for <see cref="WfpExpenditureService"/> (RAL-120, extended RAL-121).
 /// Covers: create vs. update (delete-then-reinsert), snapshot population, validation,
 /// procurement line_total computation, "server always recomputes from scratch on every
-/// save" (never merges/retains stale totals), and that apply_reserve is never gated by
-/// the account's default_apply_reserve. All repositories and IAuditService are mocked.
+/// save" (never merges/retains stale totals), the reserve rule (no eligibility gate,
+/// default = rate × Net, hard cap at rate × Net, explicit valid amounts respected as-is),
+/// and that apply_reserve is never gated by the account's default_apply_reserve.
+/// All repositories and IAuditService are mocked.
 /// </summary>
 public sealed class WfpExpenditureServiceTests
 {
@@ -33,7 +35,7 @@ public sealed class WfpExpenditureServiceTests
 
     private static SaveWfpExpenditureDto QuarterlyDto(
         int? id = null, int wfpActivityId = 10, int? accountId = null, int? fsId = null,
-        bool applyReserve = false, decimal reserveAmount = 0m,
+        bool applyReserve = false, decimal? reserveAmount = null,
         decimal q1 = 100m, decimal q2 = 100m, decimal q3 = 100m, decimal q4 = 100m,
         string nature = WfpNature.NonProcurement) => new(
         id, wfpActivityId, accountId, nature, WfpFrequency.Quarterly, fsId,
@@ -328,13 +330,14 @@ public sealed class WfpExpenditureServiceTests
         Assert.Equal(45001.50m, result.Value!.ProcurementItems[0].LineTotal);
     }
 
-    // ── Reserve ────────────────────────────────────────────────────────────────
+    // ── Reserve (RAL-120 shape + RAL-121 rate/cap/default) ────────────────────
 
     [Fact]
     public async Task Save_ApplyReserveTrue_ExcludedFromNet_ButAddsToTotal()
     {
         var (sut, _, _, _, _) = Build([], []);
 
+        // Net = 1000, rate 10% -> cap = 100. Explicit 100 is exactly at the cap.
         ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
             QuarterlyDto(applyReserve: true, reserveAmount: 100m, q1: 250, q2: 250, q3: 250, q4: 250),
             CancellationToken.None);
@@ -350,6 +353,7 @@ public sealed class WfpExpenditureServiceTests
     {
         var (sut, _, _, _, _) = Build([], []);
 
+        // ApplyReserve=false skips the cap check entirely — 999 would otherwise be way over cap.
         ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
             QuarterlyDto(applyReserve: false, reserveAmount: 999m), CancellationToken.None);
 
@@ -358,18 +362,23 @@ public sealed class WfpExpenditureServiceTests
         Assert.Equal(result.Value.NetAppropriation, result.Value.TotalAppropriation);
     }
 
-    [Fact]
-    public async Task Save_ApplyReserve_TrueOnAccountWithDefaultApplyReserveFalse_Succeeds()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Save_ApplyReserveTrue_AnyAccountRegardlessOfDefaultApplyReserve_Succeeds(
+        bool accountDefaultApplyReserve)
     {
-        // default_apply_reserve is a pre-fill only — never an enforced gate (RAL-117/121).
-        Account acct = Acct(1, "5-02-03-010", "Office Supplies", defaultApplyReserve: false);
+        // No eligibility gate (RAL-117/121): toggling reserve on succeeds whether the account's
+        // own default_apply_reserve agrees or disagrees with the caller's choice.
+        Account acct = Acct(1, "5-02-03-010", "Office Supplies", accountDefaultApplyReserve);
         var (sut, _, _, _, _) = Build([acct], []);
 
+        // Net = 400 (default q1..q4=100 each) -> cap = 40. Stay within cap.
         ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
-            QuarterlyDto(accountId: 1, applyReserve: true, reserveAmount: 50m), CancellationToken.None);
+            QuarterlyDto(accountId: 1, applyReserve: true, reserveAmount: 30m), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(50m, result.Value!.ReserveAmount);
+        Assert.Equal(30m, result.Value!.ReserveAmount);
     }
 
     [Fact]
@@ -384,6 +393,86 @@ public sealed class WfpExpenditureServiceTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal(0m, result.Value!.ReserveAmount);
+    }
+
+    [Fact]
+    public async Task Save_ApplyReserveTrue_NoAmountGiven_DefaultsToRateTimesNet()
+    {
+        var (sut, _, _, _, _) = Build([], []);
+
+        // Net = 2000 (500 x 4 quarters), no ReserveAmount supplied -> default = 10% x 2000 = 200.
+        ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
+            QuarterlyDto(applyReserve: true, reserveAmount: null, q1: 500, q2: 500, q3: 500, q4: 500),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2000m, result.Value!.NetAppropriation);
+        Assert.Equal(200m, result.Value.ReserveAmount);
+        Assert.Equal(2200m, result.Value.TotalAppropriation);
+    }
+
+    [Fact]
+    public async Task Save_ApplyReserveTrue_ExplicitAmountExceedsCap_ReturnsBadRequest()
+    {
+        var (sut, _, _, _, _) = Build([], []);
+
+        // Net = 400 -> cap = 40. Explicit 41 exceeds it.
+        ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
+            QuarterlyDto(applyReserve: true, reserveAmount: 41m), CancellationToken.None);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("cap", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Save_ApplyReserveTrue_ExplicitAmountOverCap_RejectedRegardlessOfAccount()
+    {
+        // The cap is a flat rate rule, independent of any account eligibility flag.
+        Account acct = Acct(3, "5-02-13-020", "Repairs and Maintenance", defaultApplyReserve: true);
+        var (sut, _, _, _, _) = Build([acct], []);
+
+        ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
+            QuarterlyDto(accountId: 3, applyReserve: true, reserveAmount: 500m), // way over the 40 cap
+            CancellationToken.None);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task Save_ApplyReserveTrue_ExplicitValidAmount_IsRespected_NotOverriddenByDefault()
+    {
+        var (sut, _, _, _, _) = Build([], []);
+
+        // Net = 400 -> default/cap would be 40, but an explicit, lower, valid amount (25) must
+        // be kept exactly as given — never silently replaced by the 40 default.
+        ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
+            QuarterlyDto(applyReserve: true, reserveAmount: 25m), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(25m, result.Value!.ReserveAmount);
+    }
+
+    [Fact]
+    public async Task Save_ApplyReserveTrue_ExplicitZero_IsRespectedAsZero_NotOverriddenByDefault()
+    {
+        // Distinguishes "0 given" from "nothing given" — only the latter triggers the default.
+        var (sut, _, _, _, _) = Build([], []);
+
+        ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
+            QuarterlyDto(applyReserve: true, reserveAmount: 0m), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(0m, result.Value!.ReserveAmount);
+    }
+
+    [Fact]
+    public void GetReserveRate_ReturnsTenPercent()
+    {
+        var (sut, _, _, _, _) = Build([], []);
+
+        WfpReserveRateDto rate = sut.GetReserveRate();
+
+        Assert.Equal(0.10m, rate.Rate);
     }
 
     // ── Combined nature (periods + procurement items together) ───────────────
