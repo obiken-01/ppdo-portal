@@ -21,4 +21,34 @@ public interface IWfpExpenditureRepository : IRepository<WfpExpenditure>
 
     /// <summary>WfpProcurementItem rows WHERE expenditure_id = <paramref name="expenditureId"/>, ordered by period_no.</summary>
     Task<IReadOnlyList<WfpProcurementItem>> GetProcurementItemsByExpenditureIdAsync(int expenditureId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Resolves the WFP record/office/division/AIP-activity context for a given expenditure's
+    /// parent activity — needed by the ceiling checks (RAL-122), which only ever start from a
+    /// wfp_activity_id. Returns null if the activity doesn't exist.
+    /// </summary>
+    Task<WfpExpenditureContext?> GetActivityContextAsync(int wfpActivityId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Sum of TotalAppropriation across every wfp_expenditure whose parent activity references
+    /// <paramref name="aipActivityId"/>, scoped to the given office+fiscal year — i.e. across
+    /// ALL divisions of the office (§8's AIP budget check). Computed in SQL, never in memory.
+    /// </summary>
+    Task<decimal> SumTotalByAipActivityAsync(
+        int aipActivityId, int officeId, int fiscalYear,
+        int? excludeExpenditureId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Sum of TotalAppropriation across every wfp_expenditure under the given WFP record
+    /// (all of its activities) — the record-level total the division-allocation ledger tracks.
+    /// </summary>
+    Task<decimal> SumTotalByWfpRecordAsync(
+        int wfpRecordId, int? excludeExpenditureId, CancellationToken ct = default);
 }
+
+/// <summary>
+/// Slim projection of a wfp_activity's parent chain, resolved in one query so ceiling checks
+/// (RAL-122) don't need separate round-trips to wfp_records/wfp_activities.
+/// </summary>
+public sealed record WfpExpenditureContext(
+    int WfpRecordId, int? DivisionId, int OfficeId, int FiscalYear, int AipActivityId);

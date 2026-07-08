@@ -20,6 +20,10 @@ namespace PPDO.Application.Services;
 /// made that a default-only pre-fill, never an enforced gate; any expenditure may set it
 /// regardless of the account's default. Reserve rate/cap validation (RAL-121) lives in
 /// <see cref="SaveExpenditureAsync"/>, applied against Net — see <see cref="WfpReserveRule"/>.
+///
+/// Ceiling monitoring (RAL-122): every save is validated against <see cref="IWfpCeilingService"/>
+/// BEFORE any write (block, not warn — §8), and the division-allocation ledger is upserted
+/// AFTER a successful save so <c>Remaining</c> always reflects the latest totals.
 /// </summary>
 public sealed class WfpExpenditureService : IWfpExpenditureService
 {
@@ -28,6 +32,7 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
     private readonly IRepository<WfpProcurementItem>      _itemRepo;
     private readonly IRepository<Account>                 _accountRepo;
     private readonly IRepository<FundingSource>           _fsRepo;
+    private readonly IWfpCeilingService                   _ceiling;
     private readonly IAuditService                        _audit;
 
     public WfpExpenditureService(
@@ -36,6 +41,7 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
         IRepository<WfpProcurementItem>   itemRepo,
         IRepository<Account>              accountRepo,
         IRepository<FundingSource>        fsRepo,
+        IWfpCeilingService                ceiling,
         IAuditService                     audit)
     {
         _repo        = repo;
@@ -43,6 +49,7 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
         _itemRepo    = itemRepo;
         _accountRepo = accountRepo;
         _fsRepo      = fsRepo;
+        _ceiling     = ceiling;
         _audit       = audit;
     }
 
@@ -126,6 +133,12 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
         }
 
         WfpExpenditureCalculator.RollUp rollUp = preliminary with { Total = preliminary.Net + reserveAmount };
+
+        // ── Ceiling check (RAL-122): block on EVERY save, before any write ────
+        string? ceilingError = await _ceiling.ValidateExpenditureSaveAsync(
+            dto.WfpActivityId, rollUp.Total, excludeExpenditureId: dto.Id, ct);
+        if (ceilingError is not null)
+            return ServiceResult<WfpExpenditureDto>.BadRequest(ceilingError);
 
         DateTime now = DateTime.UtcNow;
         WfpExpenditure entity;
@@ -219,6 +232,10 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
         }
 
         await _repo.SaveChangesAsync(ct);
+
+        // Refresh the division-allocation ledger with this record's new expenditure totals
+        // (RAL-122) — no-ops when the WFP record has no division.
+        await _ceiling.UpsertLedgerForActivityAsync(entity.WfpActivityId, ct);
 
         await _audit.LogAsync("wfp_expenditures", entity.Id, auditAction,
             oldValues: auditAction == AuditAction.Create ? null : new { existing!.Nature, existing.Frequency, existing.TotalAppropriation },

@@ -72,4 +72,8 @@ public sealed class AipRepository : Repository<AipRecord>, IAipRepository
             .OrderBy(a => a.RefCode)
             .ToListAsync(ct);
     }
+
+    /// <inheritdoc />
+    public async Task<AipActivity?> GetActivityByIdAsync(int id, CancellationToken ct = default)
+        => await _context.Set<AipActivity>().FirstOrDefaultAsync(a => a.Id == id, ct);
 }

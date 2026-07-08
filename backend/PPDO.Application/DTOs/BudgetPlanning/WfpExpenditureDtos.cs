@@ -75,3 +75,15 @@ public record SaveWfpExpenditureDto(
 
 /// <summary>The current reserve rate, surfaced to the frontend so it never hard-codes "10%" (RAL-121).</summary>
 public record WfpReserveRateDto(decimal Rate);
+
+/// <summary>
+/// Ceiling status for one (AIP activity, division, fiscal year) — §8/RAL-122. Both amounts
+/// are in PESOS: AipBudget is the AIP activity's Total × 1000, converted here (the one place
+/// this conversion happens) so the frontend never has to. Consumed by ticket #9's live UI
+/// check and the same computation is reused server-side for the block-on-save/finalize checks.
+/// </summary>
+public record WfpCeilingStatusDto(
+    decimal AipBudget,
+    decimal AipUsed,
+    decimal DivisionAllocation,
+    decimal DivisionRemaining);

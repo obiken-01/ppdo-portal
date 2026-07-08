@@ -30,4 +30,50 @@ public sealed class WfpExpenditureRepository : Repository<WfpExpenditure>, IWfpE
             .Where(i => i.ExpenditureId == expenditureId)
             .OrderBy(i => i.PeriodNo)
             .ToListAsync(ct);
+
+    /// <inheritdoc />
+    public async Task<WfpExpenditureContext?> GetActivityContextAsync(
+        int wfpActivityId, CancellationToken ct = default)
+        => await (
+            from act in _context.Set<WfpActivity>()
+            join rec in _context.Set<WfpRecord>() on act.WfpId equals rec.Id
+            where act.Id == wfpActivityId
+            select new WfpExpenditureContext(rec.Id, rec.DivisionId, rec.OfficeId, rec.FiscalYear, act.AipActivityId)
+        ).FirstOrDefaultAsync(ct);
+
+    /// <inheritdoc />
+    public async Task<decimal> SumTotalByAipActivityAsync(
+        int aipActivityId, int officeId, int fiscalYear,
+        int? excludeExpenditureId, CancellationToken ct = default)
+    {
+        IQueryable<WfpExpenditure> query =
+            from e in _context.Set<WfpExpenditure>()
+            join act in _context.Set<WfpActivity>() on e.WfpActivityId equals act.Id
+            join rec in _context.Set<WfpRecord>() on act.WfpId equals rec.Id
+            where act.AipActivityId == aipActivityId
+               && rec.OfficeId == officeId
+               && rec.FiscalYear == fiscalYear
+            select e;
+
+        if (excludeExpenditureId.HasValue)
+            query = query.Where(e => e.Id != excludeExpenditureId.Value);
+
+        return await query.SumAsync(e => (decimal?)e.TotalAppropriation, ct) ?? 0m;
+    }
+
+    /// <inheritdoc />
+    public async Task<decimal> SumTotalByWfpRecordAsync(
+        int wfpRecordId, int? excludeExpenditureId, CancellationToken ct = default)
+    {
+        IQueryable<WfpExpenditure> query =
+            from e in _context.Set<WfpExpenditure>()
+            join act in _context.Set<WfpActivity>() on e.WfpActivityId equals act.Id
+            where act.WfpId == wfpRecordId
+            select e;
+
+        if (excludeExpenditureId.HasValue)
+            query = query.Where(e => e.Id != excludeExpenditureId.Value);
+
+        return await query.SumAsync(e => (decimal?)e.TotalAppropriation, ct) ?? 0m;
+    }
 }
