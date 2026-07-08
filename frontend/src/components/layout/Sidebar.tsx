@@ -340,6 +340,10 @@ export default function Sidebar({ me }: SidebarProps) {
                       <span className="text-xs">•</span>
                       <span className="truncate">Funding Sources</span>
                     </Link>
+                    <Link href="/config/price-index" className={childLinkCls(isActive("/config/price-index"))}>
+                      <span className="text-xs">•</span>
+                      <span className="truncate">Price Index</span>
+                    </Link>
                     <Link href="/config/divisions" className={childLinkCls(isActive("/config/divisions"))}>
                       <span className="text-xs">•</span>
                       <span className="truncate">Divisions</span>

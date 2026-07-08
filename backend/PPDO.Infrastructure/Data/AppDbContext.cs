@@ -60,6 +60,10 @@ public sealed class AppDbContext : DbContext
     public DbSet<DivisionAllocation> DivisionAllocations { get; set; } = null!;
     public DbSet<ProgramDivision>    ProgramDivisions    { get; set; } = null!;
 
+    // ── v1.4 WFP Rework (RAL-116) ─────────────────────────────────────────────
+
+    public DbSet<PriceIndexItem> PriceIndexItems { get; set; } = null!;
+
     // ── Model configuration ───────────────────────────────────────────────────
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

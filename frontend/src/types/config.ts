@@ -117,6 +117,31 @@ export interface UpsertFundingSourceRequest {
 }
 
 // ---------------------------------------------------------------------------
+// Price Index — v1.4 RAL-118 (procurement item catalogue)
+// ---------------------------------------------------------------------------
+
+/** Read model for a price index item (config table `price_index_items`). */
+export interface PriceIndexItemResponse {
+  id: number;
+  name: string;
+  unit: string;
+  unitPrice: number;
+  category: string | null;
+  /** Last time unitPrice actually changed — shown so a stale price is visible, not silently trusted. */
+  priceUpdatedAt: string;
+  isActive: boolean;
+}
+
+/** Create/update body for a price index item. (name, unit) is the unique key. */
+export interface UpsertPriceIndexItemRequest {
+  name: string;
+  unit: string;
+  unitPrice: number;
+  category: string | null;
+  isActive: boolean;
+}
+
+// ---------------------------------------------------------------------------
 // Divisions — RAL-97 (configurable division = data scope + feature flags)
 // ---------------------------------------------------------------------------
 
