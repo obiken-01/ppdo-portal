@@ -112,6 +112,30 @@ public sealed class WfpFunctions
             result.IsSuccess ? HttpStatusCode.OK : HttpStatusCode.BadRequest);
     }
 
+    // ── POST /api/budget-planning/wfp/activities/ensure ──────────────────────
+    // Find-or-create the WFP record + activity for (aipRecordId, officeId, divisionId,
+    // aipActivityId) — the v1.4 entry wizard's (RAL-123) way to obtain a wfp_activity_id
+    // without RAL-102's SaveAsync destructive replace-all semantics.
+    [Function("WfpActivityEnsure")]
+    public async Task<HttpResponseData> EnsureActivity(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post",
+            Route = "budget-planning/wfp/activities/ensure")] HttpRequestData req,
+        CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        EnsureWfpActivityDto? body = await ConfigHttp.ReadBodyAsync<EnsureWfpActivityDto>(req, ct);
+        if (body is null)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<WfpActivityRefDto>.Fail("Request body is missing or malformed."), ct);
+
+        ServiceResult<WfpActivityRefDto> result = await _wfp.EnsureActivityAsync(
+            body.AipRecordId, body.OfficeId, body.DivisionId, body.FiscalYear, body.AipActivityId, caller!.Id, ct);
+        return await ConfigHttp.FromResultAsync(req, result, ct,
+            result.IsSuccess ? HttpStatusCode.OK : HttpStatusCode.BadRequest);
+    }
+
     // ── POST /api/budget-planning/wfp/{id}/finalize ───────────────────────────
     [Function("WfpFinalize")]
     public async Task<HttpResponseData> Finalize(

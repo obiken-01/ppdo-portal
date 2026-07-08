@@ -70,6 +70,20 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
         return ServiceResult<WfpExpenditureDto>.Ok(MapToDto(entity, periods, items));
     }
 
+    public async Task<IReadOnlyList<WfpExpenditureDto>> GetByActivityIdAsync(
+        int wfpActivityId, CancellationToken ct = default)
+    {
+        IReadOnlyList<WfpExpenditure> entities = await _repo.GetByWfpActivityIdAsync(wfpActivityId, ct);
+        List<WfpExpenditureDto> dtos = new(entities.Count);
+        foreach (WfpExpenditure entity in entities)
+        {
+            IReadOnlyList<WfpExpenditurePeriod> periods = await _repo.GetPeriodsByExpenditureIdAsync(entity.Id, ct);
+            IReadOnlyList<WfpProcurementItem>   items   = await _repo.GetProcurementItemsByExpenditureIdAsync(entity.Id, ct);
+            dtos.Add(MapToDto(entity, periods, items));
+        }
+        return dtos;
+    }
+
     // ── Save (create or replace) ─────────────────────────────────────────────
 
     public async Task<ServiceResult<WfpExpenditureDto>> SaveExpenditureAsync(

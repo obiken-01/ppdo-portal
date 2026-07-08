@@ -16,6 +16,9 @@ public interface IWfpExpenditureService
 {
     Task<ServiceResult<WfpExpenditureDto>> GetByIdAsync(int id, CancellationToken ct = default);
 
+    /// <summary>Expenditures already saved under this WFP activity — the entry wizard's "added so far" list (RAL-123).</summary>
+    Task<IReadOnlyList<WfpExpenditureDto>> GetByActivityIdAsync(int wfpActivityId, CancellationToken ct = default);
+
     /// <summary>
     /// Creates a new expenditure (dto.Id is null) or replaces an existing one's periods and
     /// procurement items in place (dto.Id provided — delete-then-reinsert). Validates

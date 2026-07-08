@@ -30,6 +30,19 @@ public interface IWfpService
     Task<ServiceResult<WfpRecordDto>> UnlockAsync(int id, CancellationToken ct = default);
 
     /// <summary>
+    /// Finds or creates the WFP record for (aipRecordId, officeId, divisionId) and, within it,
+    /// the WFP activity for aipActivityId — WITHOUT touching any other existing activity (unlike
+    /// <see cref="SaveAsync"/>'s destructive delete-then-reinsert-all). This is the enabler the
+    /// v1.4 entry wizard (RAL-123) needs to obtain a wfp_activity_id before calling RAL-120's
+    /// <c>WfpExpenditureService.SaveExpenditureAsync</c> — the old SaveAsync's replace-all
+    /// semantics would silently orphan/cascade-delete any wfp_expenditures already attached to
+    /// an activity if used for this purpose. Returns Forbidden if the record is already Final.
+    /// </summary>
+    Task<ServiceResult<WfpActivityRefDto>> EnsureActivityAsync(
+        int aipRecordId, int officeId, int? divisionId, int fiscalYear, int aipActivityId,
+        Guid createdById, CancellationToken ct = default);
+
+    /// <summary>
     /// Generates an A4-landscape Excel report for the given WFP record.
     /// Loads the parent AIP hierarchy and config-office name internally.
     /// Returns <c>NotFound</c> if the WFP or its AIP record does not exist.

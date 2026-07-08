@@ -313,6 +313,48 @@ public sealed class WfpService : IWfpService
         return ServiceResult<WfpRecordDto>.Ok(MapToDto(rec));
     }
 
+    // ── v1.4 entry wizard enabler (RAL-123) ───────────────────────────────────
+
+    public async Task<ServiceResult<WfpActivityRefDto>> EnsureActivityAsync(
+        int aipRecordId, int officeId, int? divisionId, int fiscalYear, int aipActivityId,
+        Guid createdById, CancellationToken ct = default)
+    {
+        WfpRecord? record = await _wfpRepo.FindByAipOfficeAndDivisionAsync(aipRecordId, officeId, divisionId, ct);
+
+        if (record is not null && record.Status != PlanningStatus.Draft)
+            return ServiceResult<WfpActivityRefDto>.Forbidden("Cannot add expenditures to a finalized WFP.");
+
+        if (record is null)
+        {
+            DateTime now = DateTime.UtcNow;
+            record = new WfpRecord
+            {
+                AipRecordId = aipRecordId,
+                OfficeId    = officeId,
+                DivisionId  = divisionId,
+                FiscalYear  = fiscalYear,
+                Status      = PlanningStatus.Draft,
+                CreatedById = createdById,
+                CreatedAt   = now,
+                UpdatedAt   = now,
+            };
+            await _wfpRepo.AddAsync(record, ct);
+            await _wfpRepo.SaveChangesAsync(ct); // generate record.Id
+        }
+
+        IReadOnlyList<WfpActivity> activities = await _wfpRepo.GetActivitiesByWfpIdAsync(record.Id, ct);
+        WfpActivity? activity = activities.FirstOrDefault(a => a.AipActivityId == aipActivityId);
+
+        if (activity is null)
+        {
+            activity = new WfpActivity { WfpId = record.Id, AipActivityId = aipActivityId };
+            await _actRepo.AddAsync(activity, ct);
+            await _actRepo.SaveChangesAsync(ct); // generate activity.Id
+        }
+
+        return ServiceResult<WfpActivityRefDto>.Ok(new WfpActivityRefDto(record.Id, activity.Id, record.Status));
+    }
+
     // ── Export (RAL-79) ───────────────────────────────────────────────────────
 
     public async Task<ServiceResult<byte[]>> ExportReportAsync(
