@@ -160,6 +160,10 @@ var host = new HostBuilder()
         services.AddScoped<IRepository<WfpProcurementItem>, Repository<WfpProcurementItem>>();
         services.AddScoped<IWfpExpenditureRepository, WfpExpenditureRepository>();
         services.AddScoped<IWfpExpenditureService, WfpExpenditureService>();
+
+        // -- v1.4 WFP ceiling monitoring + division-allocation ledger (RAL-122) --
+        services.AddScoped<IWfpAllocationLedgerRepository, WfpAllocationLedgerRepository>();
+        services.AddScoped<IWfpCeilingService, WfpCeilingService>();
     })
     .Build();
 

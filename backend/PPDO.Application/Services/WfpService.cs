@@ -35,6 +35,7 @@ public sealed class WfpService : IWfpService
     private readonly IOfficeService                  _office;
     private readonly IWfpExcelService                _excel;
     private readonly IAllocationService              _allocation;
+    private readonly IWfpCeilingService              _ceiling;
 
     public WfpService(
         IWfpRepository                  wfpRepo,
@@ -47,7 +48,8 @@ public sealed class WfpService : IWfpService
         IAipService                     aip,
         IOfficeService                  office,
         IWfpExcelService                excel,
-        IAllocationService              allocation)
+        IAllocationService              allocation,
+        IWfpCeilingService              ceiling)
     {
         _wfpRepo    = wfpRepo;
         _actRepo    = actRepo;
@@ -60,6 +62,7 @@ public sealed class WfpService : IWfpService
         _office     = office;
         _excel      = excel;
         _allocation = allocation;
+        _ceiling    = ceiling;
     }
 
     // ── Read ──────────────────────────────────────────────────────────────────
@@ -272,6 +275,12 @@ public sealed class WfpService : IWfpService
             return ServiceResult<WfpRecordDto>.NotFound($"WFP record {id} not found.");
         if (rec.Status != PlanningStatus.Draft)
             return ServiceResult<WfpRecordDto>.BadRequest($"Cannot finalize a record with status '{rec.Status}'.");
+
+        // Backstop ceiling check (§8, RAL-122) — should be unreachable in practice once every
+        // expenditure save is blocked, but kept as a safety net before locking the record.
+        string? ceilingError = await _ceiling.ValidateRecordForFinalizeAsync(id, ct);
+        if (ceilingError is not null)
+            return ServiceResult<WfpRecordDto>.BadRequest(ceilingError);
 
         rec.Status      = PlanningStatus.Final;
         rec.FinalizedAt = DateTime.UtcNow;

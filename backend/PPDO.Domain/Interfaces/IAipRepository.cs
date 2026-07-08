@@ -29,4 +29,7 @@ public interface IAipRepository : IRepository<AipRecord>
 
     /// <summary>AipActivity rows WHERE project_id IN (<paramref name="projectIds"/>).</summary>
     Task<IReadOnlyList<AipActivity>> GetActivitiesByProjectIdsAsync(IReadOnlyList<int> projectIds, CancellationToken ct = default);
+
+    /// <summary>Returns the single AipActivity whose PK equals <paramref name="id"/>, or null (RAL-122 ceiling checks).</summary>
+    Task<AipActivity?> GetActivityByIdAsync(int id, CancellationToken ct = default);
 }
