@@ -154,6 +154,12 @@ var host = new HostBuilder()
         services.AddScoped<IRepository<DivisionAllocation>, Repository<DivisionAllocation>>();
         services.AddScoped<IAllocationRepository, AllocationRepository>();
         services.AddScoped<IAllocationService, AllocationService>();
+
+        // -- v1.4 WFP expenditure schema + computation pipeline (RAL-120) -----
+        services.AddScoped<IRepository<WfpExpenditurePeriod>, Repository<WfpExpenditurePeriod>>();
+        services.AddScoped<IRepository<WfpProcurementItem>, Repository<WfpProcurementItem>>();
+        services.AddScoped<IWfpExpenditureRepository, WfpExpenditureRepository>();
+        services.AddScoped<IWfpExpenditureService, WfpExpenditureService>();
     })
     .Build();
 
