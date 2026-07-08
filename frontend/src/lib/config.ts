@@ -19,10 +19,12 @@ import type {
   DivisionResponse,
   FundingSourceResponse,
   OfficeResponse,
+  PriceIndexItemResponse,
   UpsertAccountRequest,
   UpsertDivisionRequest,
   UpsertFundingSourceRequest,
   UpsertOfficeRequest,
+  UpsertPriceIndexItemRequest,
 } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -119,6 +121,73 @@ export async function listOffices(params: OfficeListParams = {}): Promise<Office
 /** POST /api/config/offices — create a new office. */
 export async function createOffice(body: UpsertOfficeRequest): Promise<OfficeResponse> {
   const { data } = await api.post<ApiResponse<OfficeResponse>>("/config/offices", body);
+  return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// Price Index — /api/config/price-index (v1.4 RAL-118)
+// ---------------------------------------------------------------------------
+
+export interface PriceIndexListParams {
+  search?: string;
+  active?: ActiveFilter;
+}
+
+/** GET /api/config/price-index — list with optional search / status filters. */
+export async function listPriceIndex(
+  params: PriceIndexListParams = {},
+): Promise<PriceIndexItemResponse[]> {
+  const query: Record<string, string> = {};
+  if (params.search?.trim()) query.search = params.search.trim();
+  if (params.active) query.active = params.active;
+
+  const { data } = await api.get<ApiResponse<PriceIndexItemResponse[]>>("/config/price-index", {
+    params: query,
+  });
+  return unwrap(data);
+}
+
+/** POST /api/config/price-index — create a new price index item. */
+export async function createPriceIndexItem(
+  body: UpsertPriceIndexItemRequest,
+): Promise<PriceIndexItemResponse> {
+  const { data } = await api.post<ApiResponse<PriceIndexItemResponse>>("/config/price-index", body);
+  return unwrap(data);
+}
+
+/** PUT /api/config/price-index/{id} — update an existing price index item. */
+export async function updatePriceIndexItem(
+  id: number,
+  body: UpsertPriceIndexItemRequest,
+): Promise<PriceIndexItemResponse> {
+  const { data } = await api.put<ApiResponse<PriceIndexItemResponse>>(
+    `/config/price-index/${id}`,
+    body,
+  );
+  return unwrap(data);
+}
+
+/** DELETE /api/config/price-index/{id} — soft delete (isActive = false). */
+export async function deactivatePriceIndexItem(id: number): Promise<PriceIndexItemResponse> {
+  const { data } = await api.delete<ApiResponse<PriceIndexItemResponse>>(
+    `/config/price-index/${id}`,
+  );
+  return unwrap(data);
+}
+
+/** GET /api/config/price-index/csv — raw CSV text in seed column order. */
+export async function exportPriceIndexCsv(): Promise<string> {
+  const { data } = await api.get<string>("/config/price-index/csv", { responseType: "text" });
+  return data;
+}
+
+/** POST /api/config/price-index/csv — upsert by (name, unit); returns counts. */
+export async function importPriceIndexCsv(csvText: string): Promise<CsvImportResult> {
+  const { data } = await api.post<ApiResponse<CsvImportResult>>(
+    "/config/price-index/csv",
+    csvText,
+    { headers: { "Content-Type": "text/csv" } },
+  );
   return unwrap(data);
 }
 

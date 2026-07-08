@@ -23,7 +23,7 @@ import { auth } from "@/lib/auth";
 import { clearMeCache } from "@/lib/me-cache";
 import type { MeResponse } from "@/types";
 
-const APP_VERSION = "v1.3.0";
+const APP_VERSION = "v1.4.0";
 
 interface SidebarProps {
   me: MeResponse | null;
@@ -147,6 +147,14 @@ export default function Sidebar({ me }: SidebarProps) {
           <Link href="/dashboard" className={linkCls(isActive("/dashboard"))}>
             <span className="text-base leading-none w-5 text-center">🏠</span>
             <span className="truncate">Dashboard</span>
+          </Link>
+        )}
+
+        {/* Resource Links — PPDO-internal; hidden for office users */}
+        {showResourceLinks && (
+          <Link href="/resource-links" className={linkCls(isActive("/resource-links"))}>
+            <span className="text-base leading-none w-5 text-center">🔗</span>
+            <span className="truncate">Resource Links</span>
           </Link>
         )}
 
@@ -340,6 +348,10 @@ export default function Sidebar({ me }: SidebarProps) {
                       <span className="text-xs">•</span>
                       <span className="truncate">Funding Sources</span>
                     </Link>
+                    <Link href="/config/price-index" className={childLinkCls(isActive("/config/price-index"))}>
+                      <span className="text-xs">•</span>
+                      <span className="truncate">Price Index</span>
+                    </Link>
                     <Link href="/config/divisions" className={childLinkCls(isActive("/config/divisions"))}>
                       <span className="text-xs">•</span>
                       <span className="truncate">Divisions</span>
@@ -355,14 +367,6 @@ export default function Sidebar({ me }: SidebarProps) {
               </div>
             )}
           </div>
-        )}
-
-        {/* Resource Links — PPDO-internal; hidden for office users */}
-        {showResourceLinks && (
-          <Link href="/resource-links" className={linkCls(isActive("/resource-links"))}>
-            <span className="text-base leading-none w-5 text-center">🔗</span>
-            <span className="truncate">Resource Links</span>
-          </Link>
         )}
 
       </nav>
