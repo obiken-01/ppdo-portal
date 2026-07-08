@@ -261,6 +261,24 @@ classification into code, so future COA changes are a data edit. Distribution of
   `default_apply_reserve` (§6) instead of driving a hard eligibility gate — same 42-account
   seed data, reinterpreted as a default. No re-derivation needed.
 
+**⚠ New gap found during RAL-117's implementation (2026-07-08, ships as Open Question #13 in the
+xlsx tracker):** the rule engine tags 6 accounts (the `5-03-01-xxx` Financial Expense group —
+interest/bank charges) `expense_class = "FE"` — a 4th category this doc never resolved ("confirm:
+not a WFP section," §7.3's original text). RAL-117 shipped with `FE` as a valid *stored* value,
+but the Accounts config page's `expense_class` dropdown only offers PS/MOOE/CO/Other, so those 6
+rows can't be edited through the UI until this is decided: make `FE` a real 4th option, exclude
+those accounts from WFP entirely, or reclassify them as `Other`. Low urgency (6 rows, nothing
+breaks today) but worth resolving before RAL-123's account picker ships, so a user searching
+accounts doesn't hit one of these 6 with an unexplained gap.
+
+**⚠ Manual seed step still pending** — RAL-117 (PR #105) shipped the schema/columns only. The
+actual 306-account seed data has **not** been uploaded to any environment yet; `PR #105`'s
+description documents the exact reformatting steps needed (`accounts_nature_draft.csv`'s columns/
+casing/`expense_class` values don't match the app's CSV format as-is) but the reformatted file
+itself was a local scratch artifact, not committed. Whoever picks up RAL-120/121/123 next should
+either regenerate that reformatted CSV and upload it via Configuration → Accounts, or do it before
+relying on real `default_nature`/`default_apply_reserve` values for testing.
+
 ## 8. Ceiling monitoring & validation (Division Allocation Fund)
 
 Two independent checks, both **computed server-side** and returned with every save/read:
