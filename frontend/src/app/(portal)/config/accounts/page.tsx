@@ -51,6 +51,7 @@ import type {
   AccountType,
   ActiveFilter,
   CsvImportResult,
+  DefaultNature,
   UpsertAccountRequest,
 } from "@/types";
 
@@ -63,6 +64,17 @@ type StatusFilter = "Active" | "Inactive" | "All";
 
 const TYPE_OPTIONS: TypeFilter[] = ["All", "PS", "MOOE", "CO"];
 const STATUS_OPTIONS: StatusFilter[] = ["Active", "Inactive", "All"];
+
+// Expense class options for the Add/Edit form — mirrors the accountType enum (RAL-117).
+const EXPENSE_CLASS_OPTIONS: AccountType[] = ["PS", "MOOE", "CO", "Other"];
+
+// Default-nature options for the Add/Edit form (RAL-117 §5.3) — "" = no default set.
+const DEFAULT_NATURE_OPTIONS: Array<{ value: DefaultNature | ""; label: string }> = [
+  { value: "", label: "No default — user chooses" },
+  { value: "Procurement", label: "Procurement" },
+  { value: "Non-Procurement", label: "Non-Procurement" },
+  { value: "Combined", label: "Combined" },
+];
 
 const STATUS_TO_ACTIVE: Record<StatusFilter, ActiveFilter> = {
   Active: "true",
@@ -110,6 +122,9 @@ interface FormState {
   accountNumber: string;
   normalBalance: string;
   description: string;
+  expenseClass: AccountType;
+  defaultNature: DefaultNature | "";
+  defaultApplyReserve: boolean;
 }
 
 const blankForm = (): FormState => ({
@@ -117,6 +132,9 @@ const blankForm = (): FormState => ({
   accountNumber: "",
   normalBalance: "",
   description: "",
+  expenseClass: "MOOE",
+  defaultNature: "",
+  defaultApplyReserve: false,
 });
 
 // ---------------------------------------------------------------------------
@@ -213,6 +231,9 @@ export default function AccountConfigPage() {
       accountNumber: account.accountNumber,
       normalBalance: account.normalBalance ?? "",
       description: account.description ?? "",
+      expenseClass: account.expenseClass as AccountType,
+      defaultNature: account.defaultNature ?? "",
+      defaultApplyReserve: account.defaultApplyReserve,
     });
     setFormError(null);
     setNumberError(null);
@@ -265,6 +286,9 @@ export default function AccountConfigPage() {
       description: form.description.trim() || null,
       // Modal does not edit status; preserve it on update, default active on create.
       isActive: editTarget ? editTarget.isActive : true,
+      expenseClass: form.expenseClass,
+      defaultNature: form.defaultNature || null,
+      defaultApplyReserve: form.defaultApplyReserve,
     };
 
     setSaving(true);
@@ -317,6 +341,9 @@ export default function AccountConfigPage() {
         normalBalance: account.normalBalance,
         description: account.description,
         isActive: true,
+        expenseClass: account.expenseClass,
+        defaultNature: account.defaultNature,
+        defaultApplyReserve: account.defaultApplyReserve,
       });
       toast.success("Account reactivated", `${account.accountNumber} is now active.`);
       await load();
@@ -582,6 +609,61 @@ export default function AccountConfigPage() {
                 className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
               />
             </div>
+
+            {/* Expense Class */}
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Expense Class *</label>
+              <select
+                value={form.expenseClass}
+                onChange={(e) => setForm((f) => ({ ...f, expenseClass: e.target.value as AccountType }))}
+                className="w-full px-3 py-2 text-sm border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-green-600"
+              >
+                {EXPENSE_CLASS_OPTIONS.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-[11px] text-slate-400">
+                Stored directly — no longer derived from the account number prefix.
+              </p>
+            </div>
+
+            {/* Default Nature (RAL-117 — default-only, never enforced) */}
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Default Nature</label>
+              <select
+                value={form.defaultNature}
+                onChange={(e) => setForm((f) => ({ ...f, defaultNature: e.target.value as DefaultNature | "" }))}
+                className="w-full px-3 py-2 text-sm border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-green-600"
+              >
+                {DEFAULT_NATURE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-[11px] text-slate-400">
+                Pre-fills the WFP expenditure&apos;s Nature field when this account is picked — always editable there.
+              </p>
+            </div>
+
+            {/* Reserve applies by default (RAL-117 — default-only, never a gate) */}
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.defaultApplyReserve}
+                onChange={(e) => setForm((f) => ({ ...f, defaultApplyReserve: e.target.checked }))}
+                className="mt-0.5 h-4 w-4 accent-green-600"
+              />
+              <span>
+                <span className="block text-sm font-medium text-slate-700">Reserve applies by default</span>
+                <span className="block text-[11px] text-slate-400">
+                  Pre-fills the WFP reserve toggle for this account. Any account may still have the reserve
+                  toggle turned on regardless of this setting — it is a default, not an eligibility gate.
+                </span>
+              </span>
+            </label>
 
             {/* Description */}
             <div>

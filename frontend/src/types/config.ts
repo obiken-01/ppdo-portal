@@ -33,8 +33,11 @@ export type ActiveFilter = "true" | "false" | "all";
 // Accounts (Chart of Accounts) — RAL-72
 // ---------------------------------------------------------------------------
 
-/** Expenditure type derived from the account_number prefix (not stored). */
+/** Expenditure type — mirrors the stored expense_class column (RAL-117). */
 export type AccountType = "PS" | "MOOE" | "CO" | "Other";
+
+/** default_nature: default-only pre-fill for the WFP expenditure Nature field — never an enforced gate. */
+export type DefaultNature = "Procurement" | "Non-Procurement" | "Combined";
 
 /** Read model for a Chart of Accounts entry. */
 export interface AccountResponse {
@@ -44,8 +47,14 @@ export interface AccountResponse {
   normalBalance: string | null;
   description: string | null;
   isActive: boolean;
-  /** Derived from accountNumber prefix (5-01-/5-02-/5-03-/other). */
+  /** Mirrors expenseClass — kept for existing WFP/AIP consumers (RAL-117). */
   accountType: AccountType;
+  /** Stored expenditure class (RAL-117) — no longer derived from the account_number prefix. */
+  expenseClass: string;
+  /** Optional default-only pre-fill for the WFP "Nature" field; null = no default, user chooses explicitly. */
+  defaultNature: DefaultNature | null;
+  /** Default-only pre-fill for the WFP reserve toggle — every account may still enable it regardless. */
+  defaultApplyReserve: boolean;
 }
 
 /** Create/update body for an account. accountNumber is the unique key. */
@@ -55,6 +64,9 @@ export interface UpsertAccountRequest {
   normalBalance: string | null;
   description: string | null;
   isActive: boolean;
+  expenseClass: string;
+  defaultNature: DefaultNature | null;
+  defaultApplyReserve: boolean;
 }
 
 // ---------------------------------------------------------------------------
