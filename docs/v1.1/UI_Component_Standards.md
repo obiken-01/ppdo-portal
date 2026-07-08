@@ -60,6 +60,14 @@ Shared CSV round-trip controls used on every config page: upload triggers parse 
 
 > **As built (RAL-72):** the buttons are intentionally thin. `CsvDownloadButton` is self-contained (fetch via authed Axios → Blob → download). `CsvUploadButton` only surfaces the chosen `File` via `onSelect`; the consuming page composes the confirm step from `Modal` and the post-import summary from `MessageDialog` (the RAL-70 upsert endpoint commits on POST and returns the new/updated/skipped counts — there is no dry-run, so the "preview" is a pre-commit confirm + post-commit summary).
 
+> **Export filename convention (added RAL-118, 2026-07-08):** `CsvDownloadButton` automatically
+> prefixes every downloaded file with a `yyyyMMdd_HHmmss_` local timestamp (24-hour clock, so
+> filenames sort chronologically) — e.g. a page passing `filename="accounts.csv"` downloads as
+> `20260708_143022_accounts.csv`. This prevents repeated exports from the same config page
+> silently overwriting each other in a Downloads folder. The prefix is applied inside the shared
+> component, not per-page — every current and future config page gets it automatically just by
+> using `CsvDownloadButton`; **do not** add your own date/time to the `filename` prop.
+
 ### 3.5 `DataTable` filtering note (RAL-72)
 
 `DataTable` owns render + client-side **sort** + pagination + the loading/error/empty states. **Filtering is the consumer's responsibility** — config pages keep a dedicated filter bar (search + type + status) and pass already-filtered `rows` in. This keeps server-side filters (e.g. the `accountType` → account_number prefix translation, handled by the API) separate from client-only sort.
