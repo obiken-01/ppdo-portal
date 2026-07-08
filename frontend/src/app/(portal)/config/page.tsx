@@ -16,7 +16,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { fetchMe } from "@/lib/me-cache";
-import { listAccounts, listDivisions, listFundingSources, listOffices } from "@/lib/config";
+import { listAccounts, listDivisions, listFundingSources, listOffices, listPriceIndex } from "@/lib/config";
 
 // ---------------------------------------------------------------------------
 // Tile definitions
@@ -57,6 +57,14 @@ const TILES: TileDef[] = [
     load: async () => (await listFundingSources({ active: "true" })).length,
   },
   {
+    key: "priceIndex",
+    icon: "🏷️",
+    name: "Price Index",
+    caption: "Procurement item catalogue searched from WFP line-item entry.",
+    href: "/config/price-index",
+    load: async () => (await listPriceIndex({ active: "true" })).length,
+  },
+  {
     key: "divisions",
     icon: "🏢",
     name: "Divisions",
@@ -92,6 +100,7 @@ export default function ConfigDashboardPage() {
     accounts: null,
     offices: null,
     funding: null,
+    priceIndex: null,
     divisions: null,
     users: null,
   });
