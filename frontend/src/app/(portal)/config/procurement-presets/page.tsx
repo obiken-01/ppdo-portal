@@ -72,6 +72,11 @@ const accountSearchText = (a: AccountResponse) => `${a.accountNumber} ${a.accoun
 const priceIndexItemLabel = (p: PriceIndexItemResponse) => `${p.name} (${p.unit}) — ₱${formatMoney(p.unitPrice)}`;
 const priceIndexItemSearchText = (p: PriceIndexItemResponse) => `${p.name} ${p.unit}`;
 
+/** Sum of unitPrice × qty across a set of line items — the preset's full total. */
+function sumItemTotals(items: { unitPrice: number | null; defaultQty: number | null }[]): number {
+  return items.reduce((sum, i) => sum + (i.unitPrice ?? 0) * (i.defaultQty ?? 0), 0);
+}
+
 // ---------------------------------------------------------------------------
 // Status badge
 // ---------------------------------------------------------------------------
@@ -491,6 +496,10 @@ export default function ProcurementPresetsConfigPage() {
                         </p>
                       </div>
 
+                      <span className="text-sm font-mono tabular-nums font-semibold text-slate-800 shrink-0">
+                        ₱{formatMoney(sumItemTotals(preset.items))}
+                      </span>
+
                       <div className="flex items-center gap-2 text-sm shrink-0">
                         <TextAction onClick={() => openEdit(preset)}>Edit</TextAction>
                         <span className="text-slate-300">·</span>
@@ -533,6 +542,16 @@ export default function ProcurementPresetsConfigPage() {
                               </tr>
                             ))}
                           </tbody>
+                          <tfoot>
+                            <tr className="border-t-2 border-slate-300">
+                              <td colSpan={4} className="py-1.5 text-right font-medium text-slate-600">
+                                Preset Total
+                              </td>
+                              <td className="py-1.5 text-right font-mono tabular-nums font-semibold text-slate-800">
+                                ₱{formatMoney(sumItemTotals(preset.items))}
+                              </td>
+                            </tr>
+                          </tfoot>
                         </table>
                       </div>
                     )}
@@ -608,6 +627,12 @@ export default function ProcurementPresetsConfigPage() {
                     onRemove={form.items.length > 1 ? () => removeItemRow(row.key) : undefined}
                   />
                 ))}
+              </div>
+              <div className="flex items-center justify-end gap-2 mt-2 px-1">
+                <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">Preset Total</span>
+                <span className="text-base font-mono tabular-nums font-semibold text-slate-800">
+                  ₱{formatMoney(sumItemTotals(form.items))}
+                </span>
               </div>
             </div>
 
