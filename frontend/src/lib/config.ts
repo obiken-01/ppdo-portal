@@ -395,3 +395,35 @@ export async function deactivateProcurementPreset(id: number): Promise<Procureme
   );
   return unwrap(data);
 }
+
+/**
+ * GET /api/config/procurement-presets/for-entry?accountId=&active= — presets scoped to one
+ * account, readable by any CanAccessBudgetPlanning user (not just CanManageConfig). This is
+ * what the WFP entry wizard's "Load preset" uses — listProcurementPresets above requires
+ * CanManageConfig and is for the standalone config page only.
+ */
+export async function listProcurementPresetsForEntry(
+  accountId: number,
+  active: ActiveFilter = "true",
+): Promise<ProcurementPresetResponse[]> {
+  const { data } = await api.get<ApiResponse<ProcurementPresetResponse[]>>(
+    "/config/procurement-presets/for-entry",
+    { params: { accountId: String(accountId), active } },
+  );
+  return unwrap(data);
+}
+
+/**
+ * POST /api/config/procurement-presets/quick-save — create a preset from the WFP entry wizard's
+ * "Save as preset" action. Same permission gate as listProcurementPresetsForEntry
+ * (CanAccessBudgetPlanning) — no CanManageConfig required.
+ */
+export async function quickSaveProcurementPreset(
+  body: UpsertProcurementPresetRequest,
+): Promise<ProcurementPresetResponse> {
+  const { data } = await api.post<ApiResponse<ProcurementPresetResponse>>(
+    "/config/procurement-presets/quick-save",
+    body,
+  );
+  return unwrap(data);
+}

@@ -11,6 +11,7 @@ import type {
   EnsureWfpActivityRequest,
   SaveWfpExpenditurePeriodRequest,
   SaveWfpExpenditureRequest,
+  SaveWfpProcurementItemRequest,
   SaveWfpRequest,
   WfpActivityRefDto,
   WfpExpenditureDto,
@@ -241,4 +242,22 @@ export function computeWfpRollUpPreview(
   const net = q1 + q2 + q3 + q4;
   const total = net + reserveAmount;
   return { q1, q2, q3, q4, net, total };
+}
+
+/**
+ * Merges typed period amounts with Σ(qty x unitPrice) per period from procurement items —
+ * mirrors WfpExpenditureCalculator.MergePeriodAmounts (RAL-125). Works uniformly for
+ * Procurement (periods empty), Non-Procurement (procurementItems empty), or Combined (both
+ * present, summed) — matches the backend's no-nature-branching design (§5.3).
+ */
+export function mergeWfpPeriodAndItemAmounts(
+  periods: SaveWfpExpenditurePeriodRequest[],
+  procurementItems: SaveWfpProcurementItemRequest[],
+): SaveWfpExpenditurePeriodRequest[] {
+  const merged = new Map<number, number>();
+  for (const p of periods) merged.set(p.periodNo, (merged.get(p.periodNo) ?? 0) + p.amount);
+  for (const i of procurementItems) {
+    merged.set(i.periodNo, (merged.get(i.periodNo) ?? 0) + i.qty * i.unitPrice);
+  }
+  return Array.from(merged, ([periodNo, amount]) => ({ periodNo, amount }));
 }
