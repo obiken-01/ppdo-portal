@@ -7,8 +7,9 @@
  * RAL-120's wfp_expenditures schema/pipeline, RAL-121's reserve rule, and RAL-122's live
  * ceiling checks. Lives at a separate route from the classic `/budget-planning/wfp` page
  * (untouched) since this ticket intentionally ends at "routes to the right amount-entry UI
- * based on nature" — the frequency grid (RAL-124) and procurement item table (RAL-125) are
- * still stubs here, so a full round trip only produces a ₱0 placeholder expenditure for now.
+ * based on nature" — RAL-124 (this ticket) fills in the Non-Procurement/Combined periods
+ * grid (`@/components/wfp/WfpFrequencyGrid`); the Procurement branch still stubs to a ₱0
+ * placeholder pending RAL-125's line-item table.
  * Both routes can coexist during the v1.4 transition; do not edit the same WFP record from
  * both at once (the classic page's Save replaces ALL activities under a record — see
  * WfpService.SaveAsync — which would clobber activities this wizard created via
@@ -34,12 +35,14 @@ import { getAipSummary, listAip } from "@/lib/aip";
 import { listAccounts, listDivisions, listFundingSources, listOffices } from "@/lib/config";
 import { getAllocations, getCeilingStatus, getPrograms, getSetupStatus } from "@/lib/allocation";
 import {
+  computeWfpRollUpPreview,
   ensureWfpActivity,
   getReserveRate,
   listWfpExpenditures,
   saveWfpExpenditure,
   wfpErrorMessage,
 } from "@/lib/wfp";
+import WfpFrequencyGrid from "@/components/wfp/WfpFrequencyGrid";
 import Lookup from "@/components/ui/Lookup";
 import OfficeSelect from "@/components/ui/OfficeSelect";
 import Modal from "@/components/ui/Modal";
@@ -217,6 +220,7 @@ function ExpenditureWizard({
   const [fundingSourceId, setFundingSourceId] = useState<number | null>(defaultFundingSourceId);
   const [applyReserve, setApplyReserve] = useState(false);
   const [reserveAmount, setReserveAmount] = useState<number | null>(null);
+  const [annualQuarterChoice, setAnnualQuarterChoice] = useState(1);
   const [periods, setPeriods] = useState<SaveWfpExpenditurePeriodRequest[]>([]);
   const [procurementItems, setProcurementItems] = useState<SaveWfpProcurementItemRequest[]>([]);
   const [saving, setSaving] = useState(false);
@@ -224,9 +228,18 @@ function ExpenditureWizard({
 
   const selectedAccount = accounts.find((a) => a.id === accountId) ?? null;
 
-  // Amounts are stubbed in this ticket, so the wizard's would-be total is always 0 for now —
-  // RAL-124/125 wire this to the real running total once the grid/item-table UI exists.
-  const pendingTotal = 0;
+  // The frequency grid (RAL-124) drives the running total for Non-Procurement/Combined
+  // entries — the procurement item table (RAL-125) still stubs Procurement's contribution,
+  // so pendingTotal only reflects typed periods for now.
+  const pendingTotal =
+    nature === "Procurement"
+      ? 0
+      : computeWfpRollUpPreview(
+          frequency,
+          periods,
+          applyReserve ? reserveAmount ?? 0 : 0,
+          annualQuarterChoice
+        ).total;
   const { status, checking, overAip, overDivision, wouldBeAipUsed, wouldBeDivisionUsed } =
     useCeilingStatus(aipActivityId, divisionId, fiscalYear, pendingTotal, 0);
 
@@ -237,6 +250,15 @@ function ExpenditureWizard({
       if (acct.defaultNature) setNature(acct.defaultNature);
       setApplyReserve(acct.defaultApplyReserve);
     }
+  }
+
+  // Frequency changes the period grain (12/4/2/1) — stale period numbers from a different
+  // frequency would silently corrupt the roll-up (e.g. a Q-grain "period 4" surviving a
+  // switch to Monthly gets misread as April). Clear on change, same as a nature switch.
+  function handleFrequencyChange(next: WfpExpenditureFrequency) {
+    if (next === frequency) return;
+    setFrequency(next);
+    setPeriods([]);
   }
 
   // Nature-switch mid-entry: REQUIRED confirm before discarding any entered items (§4/§5.3).
@@ -280,11 +302,16 @@ function ExpenditureWizard({
         fundingSourceId,
         applyReserve,
         reserveAmount,
-        annualQuarterChoice: frequency === "A" ? 1 : null,
+        annualQuarterChoice: frequency === "A" ? annualQuarterChoice : null,
         periods,
         procurementItems,
       });
-      toast.success("Expenditure saved", "Amounts can be entered once the grid/item-table UI ships.");
+      toast.success(
+        "Expenditure saved",
+        nature === "Procurement"
+          ? "Procurement line-item entry ships in RAL-125 — this saved as a ₱0 placeholder."
+          : `Total: ₱${formatMoney(saved.totalAppropriation)}.`
+      );
       onSaved(saved);
     } catch (err) {
       toast.error("Save failed", wfpErrorMessage(err, "Could not save expenditure."));
@@ -383,7 +410,7 @@ function ExpenditureWizard({
             </label>
             <select
               value={frequency}
-              onChange={(e) => setFrequency(e.target.value as WfpExpenditureFrequency)}
+              onChange={(e) => handleFrequencyChange(e.target.value as WfpExpenditureFrequency)}
               className="w-full border border-slate-200 bg-white text-sm px-3 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-500"
             >
               {FREQUENCIES.map((f) => (
@@ -440,19 +467,38 @@ function ExpenditureWizard({
           </div>
         </div>
 
-        {/* 9. Amounts — STUB (RAL-124 frequency grid / RAL-125 procurement items) */}
-        <div className="px-4 py-6 border border-dashed border-slate-300 bg-slate-50 text-center">
-          <p className="text-sm text-slate-500">
-            {nature === "Procurement"
-              ? "Procurement line-item entry ships in RAL-125."
-              : nature === "Combined"
-              ? "Frequency grid (RAL-124) + procurement items (RAL-125) ship in follow-up tickets."
-              : "Frequency grid entry ships in RAL-124."}
-          </p>
-          <p className="mt-1 text-xs text-slate-400">
-            Saving now creates a ₱0 placeholder expenditure you can edit once that UI is available.
-          </p>
-        </div>
+        {/* 9. Amounts — frequency grid (RAL-124) for Non-Procurement/Combined periods;
+               procurement item table (RAL-125) still stubbed for Procurement. */}
+        {nature === "Procurement" ? (
+          <div className="px-4 py-6 border border-dashed border-slate-300 bg-slate-50 text-center">
+            <p className="text-sm text-slate-500">Procurement line-item entry ships in RAL-125.</p>
+            <p className="mt-1 text-xs text-slate-400">
+              Saving now creates a ₱0 placeholder expenditure you can edit once that UI is available.
+            </p>
+          </div>
+        ) : (
+          <div>
+            <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">
+              Amounts
+            </label>
+            <WfpFrequencyGrid
+              frequency={frequency}
+              periods={periods}
+              onPeriodsChange={setPeriods}
+              annualQuarterChoice={annualQuarterChoice}
+              onAnnualQuarterChoiceChange={setAnnualQuarterChoice}
+              applyReserve={applyReserve}
+              reserveAmount={reserveAmount}
+              reserveRate={reserveRate}
+            />
+            {nature === "Combined" && (
+              <p className="mt-2 text-xs text-slate-400 border-t border-slate-200 pt-2">
+                Procurement items entry ships in RAL-125 — this expenditure&apos;s Combined total
+                will only reflect typed periods until then.
+              </p>
+            )}
+          </div>
+        )}
 
         {checking && <p className="text-xs text-slate-400">Checking ceilings…</p>}
       </div>

@@ -9,10 +9,12 @@ import api from "./api";
 import type {
   ApiResponse,
   EnsureWfpActivityRequest,
+  SaveWfpExpenditurePeriodRequest,
   SaveWfpExpenditureRequest,
   SaveWfpRequest,
   WfpActivityRefDto,
   WfpExpenditureDto,
+  WfpExpenditureFrequency,
   WfpRecord,
   WfpRecordDetail,
   WfpReserveRateDto,
@@ -163,4 +165,80 @@ export async function getReserveRate(): Promise<WfpReserveRateDto> {
     "/budget-planning/wfp/reserve-rate"
   );
   return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// Client-side roll-up preview (RAL-124) — mirrors WfpExpenditureCalculator.Compute
+// EXACTLY (backend: PPDO.Application/Common/WfpExpenditureCalculator.cs). There is no
+// preview endpoint, and hitting /expenditures (the SAVE endpoint) on every keystroke would
+// create/replace real rows just to show a live total — so this small pure function is
+// duplicated client-side for the live totals strip only. The server is still the sole
+// source of truth: Q1-4/Net/Total actually persisted always come from the save response,
+// never from this preview. Keep this in lock-step with the backend if the roll-up rules
+// ever change.
+// ---------------------------------------------------------------------------
+
+export interface WfpRollUpPreview {
+  q1: number;
+  q2: number;
+  q3: number;
+  q4: number;
+  net: number;
+  total: number;
+}
+
+/** 1-based period count for a frequency, e.g. Monthly -> 12. Mirrors WfpExpenditureCalculator.PeriodRange. */
+export function wfpPeriodCount(frequency: WfpExpenditureFrequency): number {
+  switch (frequency) {
+    case "M": return 12;
+    case "Q": return 4;
+    case "B": return 2;
+    case "A": return 1;
+  }
+}
+
+/** Rolls up period amounts into Q1-Q4/Net/Total per the frequency rules (§2) — preview only. */
+export function computeWfpRollUpPreview(
+  frequency: WfpExpenditureFrequency,
+  periods: SaveWfpExpenditurePeriodRequest[],
+  reserveAmount: number,
+  annualQuarterChoice: number | null,
+): WfpRollUpPreview {
+  const amounts = new Map<number, number>();
+  for (const p of periods) amounts.set(p.periodNo, (amounts.get(p.periodNo) ?? 0) + p.amount);
+  const get = (periodNo: number) => amounts.get(periodNo) ?? 0;
+
+  let q1 = 0, q2 = 0, q3 = 0, q4 = 0;
+  switch (frequency) {
+    case "M":
+      q1 = get(1) + get(2) + get(3);
+      q2 = get(4) + get(5) + get(6);
+      q3 = get(7) + get(8) + get(9);
+      q4 = get(10) + get(11) + get(12);
+      break;
+    case "Q":
+      q1 = get(1);
+      q2 = get(2);
+      q3 = get(3);
+      q4 = get(4);
+      break;
+    case "B":
+      q1 = get(1); // 1st Half -> Q1
+      q3 = get(2); // 2nd Half -> Q3
+      break;
+    case "A": {
+      const amount = get(1);
+      switch (annualQuarterChoice ?? 1) {
+        case 2: q2 = amount; break;
+        case 3: q3 = amount; break;
+        case 4: q4 = amount; break;
+        default: q1 = amount; break; // 1 or unset -> Q1
+      }
+      break;
+    }
+  }
+
+  const net = q1 + q2 + q3 + q4;
+  const total = net + reserveAmount;
+  return { q1, q2, q3, q4, net, total };
 }
