@@ -69,6 +69,9 @@ const STATUS_TO_ACTIVE: Record<StatusFilter, ActiveFilter> = {
 const accountLabel = (a: AccountResponse) => `${a.accountNumber} — ${a.accountTitle}`;
 const accountSearchText = (a: AccountResponse) => `${a.accountNumber} ${a.accountTitle}`;
 
+const priceIndexItemLabel = (p: PriceIndexItemResponse) => `${p.name} (${p.unit}) — ₱${formatMoney(p.unitPrice)}`;
+const priceIndexItemSearchText = (p: PriceIndexItemResponse) => `${p.name} ${p.unit}`;
+
 // ---------------------------------------------------------------------------
 // Status badge
 // ---------------------------------------------------------------------------
@@ -646,18 +649,17 @@ function ItemRow({
   return (
     <div className="border border-slate-200 p-3 space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <select
-          value={row.priceIndexItemId ?? ""}
-          onChange={(e) => onPickPriceIndexItem(e.target.value ? Number(e.target.value) : null)}
-          className="flex-1 min-w-0 px-2 py-1.5 text-sm border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-green-600"
-        >
-          <option value="">Free-typed item (no price index link)</option>
-          {priceIndex.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name} ({p.unit}) — ₱{formatMoney(p.unitPrice)}
-            </option>
-          ))}
-        </select>
+        <Lookup
+          items={priceIndex}
+          value={row.priceIndexItemId}
+          onChange={onPickPriceIndexItem}
+          getId={(p) => p.id}
+          getLabel={priceIndexItemLabel}
+          getSearchText={priceIndexItemSearchText}
+          allOptionLabel="Free-typed item (no price index link)"
+          placeholder="Search price index by item name…"
+          className="flex-1 min-w-0"
+        />
         {onRemove && (
           <button onClick={onRemove} className="text-danger-500 hover:text-red-600 text-sm shrink-0">
             Remove
