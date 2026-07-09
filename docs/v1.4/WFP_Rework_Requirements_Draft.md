@@ -214,6 +214,26 @@ Both meters refresh from the server after every save (computed at read time — 
 - **✔ RESOLVED (Ralph, 2026-07-07) — Yes, shared** across all offices/divisions
   (`created_by` shown for traceability). Ticket: RAL-119.
 
+**✔ RAL-119 done (2026-07-09, PR [#111](https://github.com/obiken-01/ppdo-portal/pull/111),
+merged into `release/1.4.0`)** — schema, `IProcurementPresetService` CRUD (delete-then-reinsert
+items on update, soft delete), and the standalone `config/procurement-presets` config page
+(master-detail: account picker → preset list → expand to item rows). Two Functions surfaces on
+the same service, matching the ticket's Acceptance Criteria: `ConfigProcurementPresetFunctions`
+(full CRUD, `CanManageConfig`) and `WfpProcurementPresetFunctions`
+(`POST /quick-save`, `CanAccessBudgetPlanning`) for the WFP entry wizard's future "Save as
+preset" trigger. No CSV import/export — presets are captured one at a time, never bulk-imported.
+Item snapshot semantics verified by test (`ProcurementPresetServiceTests`): picking a
+`price_index_item_id` snapshots Name/Unit/UnitPrice at save time; a later price-index edit never
+retroactively changes an already-saved preset.
+- ⚠ **Gotcha for whoever picks up RAL-125 next:** after pulling this merge, run
+  `dotnet ef database update --project PPDO.Infrastructure --startup-project PPDO.Functions`
+  before testing locally — the `AddProcurementPresets` migration doesn't apply itself, and a
+  stale `func start` process won't pick up the new endpoints either (Azure Functions Core Tools
+  doesn't hot-reload; restart it after rebuilding).
+- ⚠ **Not built here, by design** — the WFP entry wizard's "Save as preset" trigger and the
+  "Load preset" picker UI. Both call the API this ticket exposes; they belong to RAL-125
+  (Entry UI: procurement line-item entry).
+
 ### 7.3 Chart of Accounts (expanded) — prerequisite for everything above
 - Import the ~318-account NGAS chart from the workbook's VALIDATION sheet; add explicit
   `expense_class` (PS/MOOE/CO — the `1 07 xx` CO asset accounts break the current `5-0x`
