@@ -32,10 +32,13 @@ public sealed class BudgetPlanningDashboardServiceTests
         UploadedById = Guid.NewGuid(), UploadedAt = DateTime.UtcNow,
     };
 
-    private static WfpRecord Wfp(int id, int aipId, int officeId, string status = "Draft", int fy = 2027) => new()
+    private static WfpRecord Wfp(
+        int id, int aipId, int officeId, string status = "Draft", int fy = 2027,
+        int? divisionId = null, DateTime? updatedAt = null) => new()
     {
-        Id = id, AipRecordId = aipId, OfficeId = officeId, FiscalYear = fy, Status = status,
-        CreatedById = Guid.NewGuid(), CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+        Id = id, AipRecordId = aipId, OfficeId = officeId, DivisionId = divisionId, FiscalYear = fy,
+        Status = status, CreatedById = Guid.NewGuid(), CreatedAt = DateTime.UtcNow,
+        UpdatedAt = updatedAt ?? DateTime.UtcNow,
     };
 
     private static Office Off(int id, string name, bool active = true, string? refCode = null) => new()
@@ -260,6 +263,71 @@ public sealed class BudgetPlanningDashboardServiceTests
         Assert.Equal("Not started", result.WfpByOffice[0].WfpStatus); // O3
         Assert.Equal("Draft",       result.WfpByOffice[1].WfpStatus); // O2
         Assert.Equal("Final",       result.WfpByOffice[2].WfpStatus); // O1
+    }
+
+    // ── GetDashboardAsync — multiple WfpRecords per office (one per division) ────
+    // Regression: a single office can have MULTIPLE WfpRecord rows under the same
+    // AIP — one per division (unique index is AipRecordId+OfficeId+DivisionId, not
+    // AipRecordId+OfficeId). GetDashboardAsync previously did
+    // wfps.ToDictionary(w => w.OfficeId), which throws ArgumentException
+    // ("An item with the same key has already been added") as soon as an office's
+    // second division gets a WfpRecord under the same AIP.
+
+    [Fact]
+    public async Task GetDashboardAsync_MultipleDivisionsSameOffice_DoesNotThrow()
+    {
+        List<AipRecord> aips = [Aip(10, 2027, "Final")];
+        List<Office> offices = [Off(1, "PPDO")];
+        List<WfpRecord> wfps =
+        [
+            Wfp(1, aipId: 10, officeId: 1, status: "Draft", divisionId: 1),
+            Wfp(2, aipId: 10, officeId: 1, status: "Draft", divisionId: 2),
+            Wfp(3, aipId: 10, officeId: 1, status: "Draft", divisionId: null),
+        ];
+        (BudgetPlanningDashboardService sut, _) = Build([], aips, wfps, offices, []);
+
+        PlanningDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027);
+
+        Assert.Single(result.WfpByOffice);
+    }
+
+    [Fact]
+    public async Task GetDashboardAsync_MultipleDivisionsSameOffice_AnyDivisionFinal_ShowsFinal()
+    {
+        List<AipRecord> aips = [Aip(10, 2027, "Final")];
+        List<Office> offices = [Off(1, "PPDO")];
+        List<WfpRecord> wfps =
+        [
+            Wfp(1, aipId: 10, officeId: 1, status: "Draft", divisionId: 1,
+                updatedAt: DateTime.UtcNow), // most recently updated, but not Final
+            Wfp(2, aipId: 10, officeId: 1, status: "Final", divisionId: 2,
+                updatedAt: DateTime.UtcNow.AddDays(-5)),
+        ];
+        (BudgetPlanningDashboardService sut, _) = Build([], aips, wfps, offices, []);
+
+        PlanningDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027);
+
+        Assert.Equal("Final", result.WfpByOffice[0].WfpStatus);
+    }
+
+    [Fact]
+    public async Task GetDashboardAsync_MultipleDivisionsSameOffice_NoneFinal_ShowsMostRecentlyUpdated()
+    {
+        List<AipRecord> aips = [Aip(10, 2027, "Final")];
+        List<Office> offices = [Off(1, "PPDO")];
+        List<WfpRecord> wfps =
+        [
+            Wfp(1, aipId: 10, officeId: 1, status: "Draft", divisionId: 1,
+                updatedAt: DateTime.UtcNow.AddDays(-5)),
+            Wfp(2, aipId: 10, officeId: 1, status: "Draft", divisionId: 2,
+                updatedAt: DateTime.UtcNow), // most recent
+        ];
+        (BudgetPlanningDashboardService sut, _) = Build([], aips, wfps, offices, []);
+
+        PlanningDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027);
+
+        Assert.Single(result.WfpByOffice);
+        Assert.Equal("Draft", result.WfpByOffice[0].WfpStatus);
     }
 
     // ── GetDashboardAsync — allocation-setup overview (RAL-60) ────────────
