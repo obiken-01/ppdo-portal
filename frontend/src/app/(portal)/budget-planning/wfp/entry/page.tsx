@@ -868,8 +868,14 @@ function WfpEntryPageInner() {
                   setSelectedActivityId(null);
                 }}
                 getId={(p) => p.id}
-                getLabel={(p) => p.name}
+                getLabel={(p) => `${p.refCode} — ${p.name}`}
                 getSearchText={(p) => `${p.name} ${p.refCode}`}
+                renderOption={(p) => (
+                  <>
+                    <span className="font-mono text-xs text-slate-400 mr-2">{p.refCode}</span>
+                    {p.name}
+                  </>
+                )}
                 placeholder="Search program…"
               />
             </div>
@@ -885,8 +891,14 @@ function WfpEntryPageInner() {
                   setSelectedActivityId(null);
                 }}
                 getId={(p) => p.id}
-                getLabel={(p) => p.name}
+                getLabel={(p) => `${p.refCode} — ${p.name}`}
                 getSearchText={(p) => `${p.name} ${p.refCode}`}
+                renderOption={(p) => (
+                  <>
+                    <span className="font-mono text-xs text-slate-400 mr-2">{p.refCode}</span>
+                    {p.name}
+                  </>
+                )}
                 placeholder={selectedProgramId == null ? "Pick a program first" : "Search project…"}
                 disabled={selectedProgramId == null}
               />
@@ -900,8 +912,14 @@ function WfpEntryPageInner() {
                 value={selectedActivityId}
                 onChange={setSelectedActivityId}
                 getId={(a) => a.id}
-                getLabel={(a) => a.name}
+                getLabel={(a) => `${a.refCode} — ${a.name}`}
                 getSearchText={(a) => `${a.name} ${a.refCode}`}
+                renderOption={(a) => (
+                  <>
+                    <span className="font-mono text-xs text-slate-400 mr-2">{a.refCode}</span>
+                    {a.name}
+                  </>
+                )}
                 placeholder={selectedProjectId == null ? "Pick a project first" : "Search activity…"}
                 disabled={selectedProjectId == null}
               />
