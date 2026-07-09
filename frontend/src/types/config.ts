@@ -142,6 +142,55 @@ export interface UpsertPriceIndexItemRequest {
 }
 
 // ---------------------------------------------------------------------------
+// Procurement Presets — v1.4 RAL-119 (account-scoped reusable line-item templates)
+// ---------------------------------------------------------------------------
+
+/** Read model for one procurement preset line item. */
+export interface ProcurementPresetItemResponse {
+  id: number;
+  priceIndexItemId: number | null;
+  /** Snapshotted from the price index item at save time, or free-typed. Editable, never a live link. */
+  name: string;
+  unit: string;
+  unitPrice: number;
+  defaultQty: number;
+}
+
+/** Read model for a procurement preset, with its items expanded (config table `procurement_presets`). */
+export interface ProcurementPresetResponse {
+  id: number;
+  accountId: number;
+  accountNumber: string | null;
+  accountTitle: string | null;
+  name: string;
+  isActive: boolean;
+  createdById: string;
+  /** Shown for traceability only — presets are shared across all offices/divisions. */
+  createdByName: string | null;
+  createdAt: string;
+  updatedAt: string;
+  items: ProcurementPresetItemResponse[];
+}
+
+/** Create/update body for one preset line item. */
+export interface UpsertProcurementPresetItemRequest {
+  priceIndexItemId: number | null;
+  /** Required when priceIndexItemId is null (free-typed); ignored/re-snapshotted otherwise. */
+  name: string | null;
+  unit: string | null;
+  unitPrice: number | null;
+  defaultQty: number;
+}
+
+/** Create/update body for a procurement preset. */
+export interface UpsertProcurementPresetRequest {
+  accountId: number;
+  name: string;
+  isActive: boolean;
+  items: UpsertProcurementPresetItemRequest[];
+}
+
+// ---------------------------------------------------------------------------
 // Divisions — RAL-97 (configurable division = data scope + feature flags)
 // ---------------------------------------------------------------------------
 
