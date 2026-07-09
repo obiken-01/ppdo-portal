@@ -32,17 +32,19 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMe } from "@/lib/me-cache";
 import { getAipSummary, listAip } from "@/lib/aip";
-import { listAccounts, listDivisions, listFundingSources, listOffices } from "@/lib/config";
+import { listAccounts, listDivisions, listFundingSources, listOffices, listPriceIndex } from "@/lib/config";
 import { getAllocations, getCeilingStatus, getPrograms, getSetupStatus } from "@/lib/allocation";
 import {
   computeWfpRollUpPreview,
   ensureWfpActivity,
   getReserveRate,
   listWfpExpenditures,
+  mergeWfpPeriodAndItemAmounts,
   saveWfpExpenditure,
   wfpErrorMessage,
 } from "@/lib/wfp";
 import WfpFrequencyGrid from "@/components/wfp/WfpFrequencyGrid";
+import WfpProcurementItemTable from "@/components/wfp/WfpProcurementItemTable";
 import Lookup from "@/components/ui/Lookup";
 import OfficeSelect from "@/components/ui/OfficeSelect";
 import Modal from "@/components/ui/Modal";
@@ -62,6 +64,7 @@ import type {
   DivisionResponse,
   FundingSourceResponse,
   OfficeResponse,
+  PriceIndexItemResponse,
   ProgramAssignmentDto,
   SaveWfpExpenditurePeriodRequest,
   SaveWfpProcurementItemRequest,
@@ -195,6 +198,7 @@ interface ExpenditureWizardProps {
   defaultFundingSourceId: number | null;
   accounts: AccountResponse[];
   fundingSources: FundingSourceResponse[];
+  priceIndex: PriceIndexItemResponse[];
   reserveRate: number;
   onSaved: (saved: WfpExpenditureDto) => void;
   onClose: () => void;
@@ -208,6 +212,7 @@ function ExpenditureWizard({
   defaultFundingSourceId,
   accounts,
   fundingSources,
+  priceIndex,
   reserveRate,
   onSaved,
   onClose,
@@ -228,18 +233,15 @@ function ExpenditureWizard({
 
   const selectedAccount = accounts.find((a) => a.id === accountId) ?? null;
 
-  // The frequency grid (RAL-124) drives the running total for Non-Procurement/Combined
-  // entries — the procurement item table (RAL-125) still stubs Procurement's contribution,
-  // so pendingTotal only reflects typed periods for now.
-  const pendingTotal =
-    nature === "Procurement"
-      ? 0
-      : computeWfpRollUpPreview(
-          frequency,
-          periods,
-          applyReserve ? reserveAmount ?? 0 : 0,
-          annualQuarterChoice
-        ).total;
+  // The frequency grid (RAL-124) drives typed periods; the procurement item table (RAL-125)
+  // drives procurementItems — merged the same way the backend does (§5.3: no nature-specific
+  // branching) so pendingTotal is correct for Non-Procurement, Procurement, AND Combined alike.
+  const pendingTotal = computeWfpRollUpPreview(
+    frequency,
+    mergeWfpPeriodAndItemAmounts(periods, procurementItems),
+    applyReserve ? reserveAmount ?? 0 : 0,
+    annualQuarterChoice
+  ).total;
   const { status, checking, overAip, overDivision, wouldBeAipUsed, wouldBeDivisionUsed } =
     useCeilingStatus(aipActivityId, divisionId, fiscalYear, pendingTotal, 0);
 
@@ -252,13 +254,14 @@ function ExpenditureWizard({
     }
   }
 
-  // Frequency changes the period grain (12/4/2/1) — stale period numbers from a different
+  // Frequency changes the period grain (12/4/2/1) — stale period/item numbers from a different
   // frequency would silently corrupt the roll-up (e.g. a Q-grain "period 4" surviving a
   // switch to Monthly gets misread as April). Clear on change, same as a nature switch.
   function handleFrequencyChange(next: WfpExpenditureFrequency) {
     if (next === frequency) return;
     setFrequency(next);
     setPeriods([]);
+    setProcurementItems([]);
   }
 
   // Nature-switch mid-entry: REQUIRED confirm before discarding any entered items (§4/§5.3).
@@ -308,8 +311,8 @@ function ExpenditureWizard({
       });
       toast.success(
         "Expenditure saved",
-        nature === "Procurement"
-          ? "Procurement line-item entry ships in RAL-125 — this saved as a ₱0 placeholder."
+        nature === "Combined"
+          ? `Total: ₱${formatMoney(saved.totalAppropriation)} (periods only — procurement items for Combined are pending definition).`
           : `Total: ₱${formatMoney(saved.totalAppropriation)}.`
       );
       onSaved(saved);
@@ -467,14 +470,36 @@ function ExpenditureWizard({
           </div>
         </div>
 
-        {/* 9. Amounts — frequency grid (RAL-124) for Non-Procurement/Combined periods;
-               procurement item table (RAL-125) still stubbed for Procurement. */}
-        {nature === "Procurement" ? (
+        {/* 9. Amounts — frequency grid (RAL-124) for Non-Procurement periods; procurement item
+               table (RAL-125) for Procurement. Combined is a placeholder either way (§5.3 —
+               what "Combined" means operationally is still an open question for the team, epic
+               RAL-116; we don't guess at it here). */}
+        {nature === "Combined" ? (
           <div className="px-4 py-6 border border-dashed border-slate-300 bg-slate-50 text-center">
-            <p className="text-sm text-slate-500">Procurement line-item entry ships in RAL-125.</p>
+            <p className="text-sm text-slate-500">Combined entry — pending definition, contact PPDO.</p>
             <p className="mt-1 text-xs text-slate-400">
-              Saving now creates a ₱0 placeholder expenditure you can edit once that UI is available.
+              What &quot;Combined&quot; nature means operationally is still an open question
+              (epic RAL-116). Saving now creates a ₱0 placeholder expenditure you can edit once
+              that&apos;s resolved.
             </p>
+          </div>
+        ) : nature === "Procurement" ? (
+          <div>
+            <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">
+              Items
+            </label>
+            <WfpProcurementItemTable
+              frequency={frequency}
+              accountId={accountId}
+              procurementItems={procurementItems}
+              onProcurementItemsChange={setProcurementItems}
+              priceIndex={priceIndex}
+              annualQuarterChoice={annualQuarterChoice}
+              onAnnualQuarterChoiceChange={setAnnualQuarterChoice}
+              applyReserve={applyReserve}
+              reserveAmount={reserveAmount}
+              reserveRate={reserveRate}
+            />
           </div>
         ) : (
           <div>
@@ -491,12 +516,6 @@ function ExpenditureWizard({
               reserveAmount={reserveAmount}
               reserveRate={reserveRate}
             />
-            {nature === "Combined" && (
-              <p className="mt-2 text-xs text-slate-400 border-t border-slate-200 pt-2">
-                Procurement items entry ships in RAL-125 — this expenditure&apos;s Combined total
-                will only reflect typed periods until then.
-              </p>
-            )}
           </div>
         )}
 
@@ -531,6 +550,7 @@ function WfpEntryPageInner() {
   const [aipDetail, setAipDetail] = useState<AipRecordSummary | null>(null);
   const [accounts, setAccounts] = useState<AccountResponse[]>([]);
   const [fundingSources, setFundingSources] = useState<FundingSourceResponse[]>([]);
+  const [priceIndex, setPriceIndex] = useState<PriceIndexItemResponse[]>([]);
   const [programAssignments, setProgramAssignments] = useState<ProgramAssignmentDto[]>([]);
   const [divisionAllocation, setDivisionAllocation] = useState<DivisionAllocationDto | null>(null);
   const [setupStatus, setSetupStatus] = useState<AllocationSetupStatusDto | null>(null);
@@ -560,11 +580,12 @@ function WfpEntryPageInner() {
     const urlAipId = searchParams.get("aipId");
     const urlOfficeId = searchParams.get("officeId");
 
-    Promise.all([listAip(), listOffices({ active: "true" }), getReserveRate()])
-      .then(([aips, offices, rate]) => {
+    Promise.all([listAip(), listOffices({ active: "true" }), getReserveRate(), listPriceIndex({ active: "true" })])
+      .then(([aips, offices, rate, items]) => {
         setAipList(aips);
         setOfficeList(offices);
         setReserveRate(rate.rate);
+        setPriceIndex(items);
         if (urlAipId) setSelectedAipId(Number(urlAipId));
         if (urlOfficeId) setSelectedOfficeId(Number(urlOfficeId));
       })
@@ -1078,6 +1099,7 @@ function WfpEntryPageInner() {
           defaultFundingSourceId={defaultFundingSourceId}
           accounts={accounts}
           fundingSources={fundingSources}
+          priceIndex={priceIndex}
           reserveRate={reserveRate}
           onSaved={handleExpenditureSaved}
           onClose={() => setWizardOpen(false)}
