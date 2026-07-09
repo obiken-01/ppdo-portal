@@ -118,6 +118,22 @@ Both meters refresh from the server after every save (computed at read time — 
   fast (one click) and predictable. Tab/Enter advances through the grid.
 - Live computed strip under the grid: per-quarter roll-up → Net → (+Reserved) → Total.
 
+**✔ RAL-124 done (2026-07-09, PR [#113](https://github.com/obiken-01/ppdo-portal/pull/113),
+merged into `release/1.4.0`)** — `WfpFrequencyGrid` component wired into RAL-123's wizard as
+the "nature = Non-Procurement" amounts UI. Explicit-only carry-forward ("Apply period 1's
+amount to all remaining periods" + per-period "copy previous"), Annual "Charge to Q1–Q4"
+selector (previously hardcoded to Q1 in the wizard — now a real editable choice), Tab/Enter
+keyboard nav, and a live Q1–Q4/Net/Reserved/Total strip via a new client-side
+`computeWfpRollUpPreview` (`frontend/src/lib/wfp.ts`) that mirrors
+`WfpExpenditureCalculator.Compute` — no preview endpoint exists, and hitting the save endpoint
+on every keystroke would create/replace real rows, so this small pure function is duplicated
+client-side for display only; the server remains the sole source of truth. Also wired the
+wizard's `pendingTotal` (previously hardcoded to 0) to the grid's live total so RAL-122's
+ceiling checks react in real time as amounts are typed, and fixed a bug found while wiring
+this in: switching Frequency didn't clear stale `periods`, which would have silently
+corrupted the roll-up on a frequency change (e.g. a leftover Quarterly "period 4" misread as
+April after switching to Monthly).
+
 ### 5.2 Procurement — line-item table per period
 
 - Table columns: **Item name · Unit · Qty · Unit price · Line total (computed)**.
@@ -139,6 +155,31 @@ Both meters refresh from the server after every save (computed at read time — 
   templates, not live links. Maintained in the preset config page (§7.2).
   **★ REC:** capture presets *from* real entries (the natural flow the draft describes) AND
   allow curating them in config; both write the same `procurement_presets` rows.
+
+**✔ RAL-125 done (2026-07-09, PR [#114](https://github.com/obiken-01/ppdo-portal/pull/114),
+merged into `release/1.4.0`)** — `WfpProcurementItemTable` component, the "nature =
+Procurement" amounts UI: per-period item table (Item name · Unit · Qty · Unit price · Line
+total), price-index typeahead search (picking an entry snapshots name/unit/price into the row;
+fields stay editable afterward per §5.2's "editable" wording — the backend never re-resolves
+from `priceIndexItemId` on save, so a later price-index edit can't retroactively change a
+saved line), explicit "Apply items to all periods" / "Copy previous period", and Load/Save
+preset wired to RAL-119's endpoints. Same live-totals-preview approach as RAL-124, extended
+with a `mergeWfpPeriodAndItemAmounts` helper mirroring
+`WfpExpenditureCalculator.MergePeriodAmounts` so `pendingTotal`/ceiling checks account for
+procurement items too. Combined nature renders "Combined entry — pending definition, contact
+PPDO" rather than guessing at undefined behavior (§11 Q2 is still open).
+- ⚠ **Real gap found and fixed during this ticket:** RAL-119's `listProcurementPresets`
+  endpoint requires `CanManageConfig`, which ordinary WFP entry users don't have — "Load
+  preset" would have been unusable for anyone but config admins. Added
+  `GET /api/config/procurement-presets/for-entry`, gated by `CanAccessBudgetPlanning` (same
+  pattern as RAL-119's `quick-save` route), plus the matching frontend helper.
+- ⚠ **Unrelated pre-existing bug surfaced during manual testing** (fixed separately, PR
+  [#115](https://github.com/obiken-01/ppdo-portal/pull/115), not part of this ticket's diff):
+  the Budget Planning Dashboard's "WFP Status by Office" table assumed at most one `WfpRecord`
+  per office per AIP (`wfps.ToDictionary(w => w.OfficeId)`), but the real model allows one per
+  (AIP, office, **division**) — it throws as soon as an office's second division gets a WFP
+  entry under the same AIP. Latent since RAL-80/92/123; this ticket's manual testing (adding
+  WFP data under a second division of the same office) was what tipped it over.
 
 ### 5.3 ✔ RESOLVED (Ralph, 2026-07-07) — nature lives on the account as an optional default
 
