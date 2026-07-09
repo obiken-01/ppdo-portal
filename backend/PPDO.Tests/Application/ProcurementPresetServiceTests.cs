@@ -72,6 +72,15 @@ public sealed class ProcurementPresetServiceTests
                 Relink();
                 return (IReadOnlyList<ProcurementPreset>)presetSeed.Where(p => p.AccountId == accId).OrderBy(p => p.Name).ToList();
             });
+        repo.Setup(r => r.GetAllWithItemsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync((CancellationToken _) =>
+            {
+                Relink();
+                return (IReadOnlyList<ProcurementPreset>)presetSeed
+                    .OrderBy(p => accountSeed.FirstOrDefault(a => a.Id == p.AccountId)?.AccountNumber)
+                    .ThenBy(p => p.Name)
+                    .ToList();
+            });
         repo.Setup(r => r.AddAsync(It.IsAny<ProcurementPreset>(), It.IsAny<CancellationToken>()))
             .Callback<ProcurementPreset, CancellationToken>((p, _) => { p.Id = nextPresetId++; presetSeed.Add(p); })
             .Returns(Task.CompletedTask);
@@ -349,6 +358,25 @@ public sealed class ProcurementPresetServiceTests
 
         ProcurementPresetDto only = Assert.Single(result);
         Assert.Equal("Kit A", only.Name);
+    }
+
+    [Fact]
+    public async Task GetByAccountAsync_NullAccountId_ReturnsPresetsAcrossAllAccounts()
+    {
+        Account acct1 = Acct(1);
+        Account acct2 = Acct(2, "5-02-01-010", "Traveling Expenses");
+        var (sut, _, _, _, _) = Build([acct1, acct2], []);
+
+        await sut.CreateAsync(Caller(), new UpsertProcurementPresetDto(
+            1, "Kit A", true, [new UpsertProcurementPresetItemDto(null, "Marker", "box", 100m, 1m)]));
+        await sut.CreateAsync(Caller(), new UpsertProcurementPresetDto(
+            2, "Kit B", true, [new UpsertProcurementPresetItemDto(null, "Ticket", "piece", 50m, 1m)]));
+
+        IReadOnlyList<ProcurementPresetDto> result = await sut.GetByAccountAsync(null, ActiveFilter.All);
+
+        Assert.Equal(2, result.Count);
+        Assert.Contains(result, p => p.Name == "Kit A");
+        Assert.Contains(result, p => p.Name == "Kit B");
     }
 
     [Fact]

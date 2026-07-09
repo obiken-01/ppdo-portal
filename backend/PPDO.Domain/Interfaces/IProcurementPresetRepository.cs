@@ -21,4 +21,12 @@ public interface IProcurementPresetRepository : IRepository<ProcurementPreset>
     /// loaded, ordered by Name.
     /// </summary>
     Task<IReadOnlyList<ProcurementPreset>> GetByAccountIdAsync(int accountId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Every preset across every account, with Items, CreatedBy, and Account loaded, ordered
+    /// by Account.AccountNumber then Name — the config page's "all accounts" default view.
+    /// Named distinctly from <see cref="IRepository{T}.GetAllAsync"/> (which returns bare
+    /// entities with no navigation properties loaded).
+    /// </summary>
+    Task<IReadOnlyList<ProcurementPreset>> GetAllWithItemsAsync(CancellationToken ct = default);
 }

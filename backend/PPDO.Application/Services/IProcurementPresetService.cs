@@ -20,9 +20,13 @@ namespace PPDO.Application.Services;
 /// </summary>
 public interface IProcurementPresetService
 {
-    /// <summary>Presets scoped to one account, optionally filtered by active status.</summary>
+    /// <summary>
+    /// Presets scoped to one account, optionally filtered by active status. When
+    /// <paramref name="accountId"/> is null, returns presets across ALL accounts (the config
+    /// page's default view), ordered by account number then name.
+    /// </summary>
     Task<IReadOnlyList<ProcurementPresetDto>> GetByAccountAsync(
-        int accountId, ActiveFilter active, CancellationToken cancellationToken = default);
+        int? accountId, ActiveFilter active, CancellationToken cancellationToken = default);
 
     Task<ServiceResult<ProcurementPresetDto>> GetByIdAsync(int id, CancellationToken cancellationToken = default);
 

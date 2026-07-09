@@ -11,14 +11,14 @@
  * standalone config CRUD only).
  *
  * Unlike the other config pages (flat DataTable), this is a MASTER-DETAIL layout:
- * pick an account, see its preset list, expand a preset to see its item rows.
- * No CSV import/export — presets are captured from real WFP entries or curated
- * here one at a time, never bulk-imported.
+ * pick an account (or leave it on "All Accounts", the default), see the preset
+ * list, expand a preset to see its item rows. No CSV import/export — presets are
+ * captured from real WFP entries or curated here one at a time, never bulk-imported.
  *
  * Access guard: only users with canManageConfig may view this page.
  *
  * Endpoints (ConfigProcurementPresetFunctions.cs, { data, error, message } envelope):
- *   GET    /api/config/procurement-presets?accountId=&active=
+ *   GET    /api/config/procurement-presets?accountId=&active=   (accountId optional — omit for all accounts)
  *   GET    /api/config/procurement-presets/{id}
  *   POST   /api/config/procurement-presets
  *   PUT    /api/config/procurement-presets/{id}
@@ -41,6 +41,7 @@ import { formatMoney } from "@/lib/money";
 import Modal from "@/components/ui/Modal";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import MoneyInput from "@/components/ui/MoneyInput";
+import Lookup from "@/components/ui/Lookup";
 import { useToast } from "@/components/ui/Toast";
 import type {
   AccountResponse,
@@ -64,6 +65,9 @@ const STATUS_TO_ACTIVE: Record<StatusFilter, ActiveFilter> = {
   Inactive: "false",
   All: "all",
 };
+
+const accountLabel = (a: AccountResponse) => `${a.accountNumber} — ${a.accountTitle}`;
+const accountSearchText = (a: AccountResponse) => `${a.accountNumber} ${a.accountTitle}`;
 
 // ---------------------------------------------------------------------------
 // Status badge
@@ -128,6 +132,7 @@ export default function ProcurementPresetsConfigPage() {
 
   // Accounts (for the scope filter + item picker)
   const [accounts, setAccounts] = useState<AccountResponse[]>([]);
+  // null = "All Accounts" (the default view)
   const [accountId, setAccountId] = useState<number | null>(null);
 
   // Price index (for the item picker)
@@ -170,19 +175,15 @@ export default function ProcurementPresetsConfigPage() {
   useEffect(() => {
     if (!authChecked) return;
     listAccounts({ active: "true" })
-      .then((data) => {
-        setAccounts(data);
-        if (data.length > 0) setAccountId((cur) => cur ?? data[0].id);
-      })
+      .then((data) => setAccounts(data))
       .catch(() => toast.error("Failed to load accounts", "Please refresh the page."));
     listPriceIndex({ active: "true" }).catch(() => undefined).then((data) => setPriceIndex(data ?? []));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authChecked]);
 
-  // ── Load presets for the selected account ────────────────────────────────────
+  // ── Load presets (scoped to accountId, or all accounts when null) ───────────
 
   const load = useCallback(async () => {
-    if (accountId == null) return;
     setLoading(true);
     setFetchError(null);
     try {
@@ -402,8 +403,7 @@ export default function ProcurementPresetsConfigPage() {
           </div>
           <button
             onClick={openAdd}
-            disabled={accountId == null}
-            className="flex items-center gap-1.5 bg-green-600 text-white font-semibold text-sm px-4 py-2.5 hover:bg-green-500 transition-colors shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-1.5 bg-green-600 text-white font-semibold text-sm px-4 py-2.5 hover:bg-green-500 transition-colors shrink-0"
           >
             <span className="text-base leading-none">+</span>
             Add Preset
@@ -412,19 +412,17 @@ export default function ProcurementPresetsConfigPage() {
 
         {/* Filter bar */}
         <div className="flex flex-wrap items-center gap-3 bg-white border border-slate-200 px-4 py-3">
-          <div className="flex-1 min-w-[240px]">
-            <select
-              value={accountId ?? ""}
-              onChange={(e) => setAccountId(e.target.value ? Number(e.target.value) : null)}
-              className="w-full px-3 py-2 text-sm border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-green-600"
-            >
-              {accounts.length === 0 && <option value="">No accounts available</option>}
-              {accounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.accountNumber} — {a.accountTitle}
-                </option>
-              ))}
-            </select>
+          <div className="flex-1 min-w-[280px]">
+            <Lookup
+              items={accounts}
+              value={accountId}
+              onChange={setAccountId}
+              getId={(a) => a.id}
+              getLabel={accountLabel}
+              getSearchText={accountSearchText}
+              allOptionLabel="All Accounts"
+              placeholder="Search account by number or title…"
+            />
           </div>
 
           {/* Status toggle */}
@@ -456,14 +454,12 @@ export default function ProcurementPresetsConfigPage() {
                 Retry
               </button>
             </div>
-          ) : accountId == null ? (
-            <div className="py-16 flex flex-col items-center justify-center gap-2 text-slate-400">
-              <p className="text-sm">Select an account to view its presets.</p>
-            </div>
           ) : presets.length === 0 ? (
             <div className="py-16 flex flex-col items-center justify-center gap-2 text-slate-400">
               <span className="text-3xl">📭</span>
-              <p className="text-sm">No presets for this account yet.</p>
+              <p className="text-sm">
+                {accountId == null ? "No presets yet." : "No presets for this account yet."}
+              </p>
             </div>
           ) : (
             <ul className="divide-y divide-slate-100">
@@ -486,6 +482,7 @@ export default function ProcurementPresetsConfigPage() {
                           <StatusBadge active={preset.isActive} />
                         </div>
                         <p className="text-xs text-slate-400 mt-0.5">
+                          {preset.accountNumber ?? "—"} — {preset.accountTitle ?? "Unknown account"} ·{" "}
                           {preset.items.length} item{preset.items.length === 1 ? "" : "s"} · created by{" "}
                           {preset.createdByName ?? "—"}
                         </p>
@@ -513,6 +510,7 @@ export default function ProcurementPresetsConfigPage() {
                               <th className="text-left font-medium py-1">Unit</th>
                               <th className="text-right font-medium py-1">Unit Price</th>
                               <th className="text-right font-medium py-1">Default Qty</th>
+                              <th className="text-right font-medium py-1">Total</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -525,6 +523,9 @@ export default function ProcurementPresetsConfigPage() {
                                 </td>
                                 <td className="py-1.5 text-right font-mono tabular-nums text-slate-700">
                                   {item.defaultQty}
+                                </td>
+                                <td className="py-1.5 text-right font-mono tabular-nums text-slate-800 font-medium">
+                                  ₱{formatMoney(item.unitPrice * item.defaultQty)}
                                 </td>
                               </tr>
                             ))}
@@ -544,7 +545,7 @@ export default function ProcurementPresetsConfigPage() {
       {showForm && (
         <Modal
           title={editTarget ? `Edit Preset — ${editTarget.name}` : "Add Procurement Preset"}
-          size="lg"
+          size="xl"
           onClose={closeForm}
           footer={
             <>
@@ -558,32 +559,31 @@ export default function ProcurementPresetsConfigPage() {
           }
         >
           <div className="space-y-4">
-            {/* Account */}
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Account *</label>
-              <select
-                value={form.accountId ?? ""}
-                onChange={(e) => setForm((f) => ({ ...f, accountId: e.target.value ? Number(e.target.value) : null }))}
-                className="w-full px-3 py-2 text-sm border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-green-600"
-              >
-                <option value="">Select an account…</option>
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.accountNumber} — {a.accountTitle}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <div className="grid grid-cols-2 gap-4">
+              {/* Account */}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Account *</label>
+                <Lookup
+                  items={accounts}
+                  value={form.accountId}
+                  onChange={(id) => setForm((f) => ({ ...f, accountId: id }))}
+                  getId={(a) => a.id}
+                  getLabel={accountLabel}
+                  getSearchText={accountSearchText}
+                  placeholder="Search account by number or title…"
+                />
+              </div>
 
-            {/* Name */}
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Name *</label>
-              <input
-                value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                placeholder="Standard Office Supplies Kit"
-                className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
-              />
+              {/* Name */}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Name *</label>
+                <input
+                  value={form.name}
+                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                  placeholder="Standard Office Supplies Kit"
+                  className="w-full px-3 py-1.5 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
+                />
+              </div>
             </div>
 
             {/* Items */}
@@ -641,10 +641,11 @@ function ItemRow({
   onRemove?: () => void;
 }) {
   const fromPriceIndex = row.priceIndexItemId != null;
+  const total = (row.unitPrice ?? 0) * (row.defaultQty ?? 0);
 
   return (
     <div className="border border-slate-200 p-3 space-y-2">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <select
           value={row.priceIndexItemId ?? ""}
           onChange={(e) => onPickPriceIndexItem(e.target.value ? Number(e.target.value) : null)}
@@ -658,14 +659,14 @@ function ItemRow({
           ))}
         </select>
         {onRemove && (
-          <button onClick={onRemove} className="ml-2 text-danger-500 hover:text-red-600 text-sm shrink-0">
+          <button onClick={onRemove} className="text-danger-500 hover:text-red-600 text-sm shrink-0">
             Remove
           </button>
         )}
       </div>
 
-      <div className="grid grid-cols-4 gap-2">
-        <div className="col-span-2">
+      <div className="flex items-end gap-2">
+        <div className="flex-1 min-w-0">
           <label className="block text-[11px] text-slate-400 mb-0.5">Name</label>
           <input
             value={row.name}
@@ -675,7 +676,7 @@ function ItemRow({
             className="w-full px-2 py-1.5 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 disabled:bg-slate-100 disabled:text-slate-400"
           />
         </div>
-        <div>
+        <div className="w-28 shrink-0">
           <label className="block text-[11px] text-slate-400 mb-0.5">Unit</label>
           <input
             value={row.unit}
@@ -685,7 +686,7 @@ function ItemRow({
             className="w-full px-2 py-1.5 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 disabled:bg-slate-100 disabled:text-slate-400"
           />
         </div>
-        <div>
+        <div className="w-32 shrink-0">
           <label className="block text-[11px] text-slate-400 mb-0.5">Unit Price</label>
           <MoneyInput
             value={row.unitPrice}
@@ -694,18 +695,23 @@ function ItemRow({
             className="w-full"
           />
         </div>
-      </div>
-
-      <div className="w-32">
-        <label className="block text-[11px] text-slate-400 mb-0.5">Default Qty</label>
-        <input
-          type="number"
-          min={0}
-          step="1"
-          value={row.defaultQty ?? ""}
-          onChange={(e) => onChange({ defaultQty: e.target.value === "" ? null : Number(e.target.value) })}
-          className="w-full px-2 py-1.5 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
-        />
+        <div className="w-20 shrink-0">
+          <label className="block text-[11px] text-slate-400 mb-0.5">Qty</label>
+          <input
+            type="number"
+            min={0}
+            step="1"
+            value={row.defaultQty ?? ""}
+            onChange={(e) => onChange({ defaultQty: e.target.value === "" ? null : Number(e.target.value) })}
+            className="w-full px-2 py-1.5 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
+          />
+        </div>
+        <div className="w-32 shrink-0">
+          <label className="block text-[11px] text-slate-400 mb-0.5">Total</label>
+          <div className="w-full px-2 py-1.5 text-sm text-right font-mono tabular-nums text-slate-700 bg-slate-50 border border-slate-200">
+            ₱{formatMoney(total)}
+          </div>
+        </div>
       </div>
     </div>
   );

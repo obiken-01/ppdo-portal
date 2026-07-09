@@ -34,6 +34,7 @@ public sealed class ConfigProcurementPresetFunctions
     private Task<bool> CanManageConfig(User u) => _permissions.CanManageConfigAsync(u);
 
     // ── GET /api/config/procurement-presets?accountId=&active=true|false|all ──
+    // accountId is optional — omit it to list presets across ALL accounts.
     [Function("ProcurementPresetsList")]
     public async Task<HttpResponseData> List(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "config/procurement-presets")] HttpRequestData req,
@@ -42,9 +43,7 @@ public sealed class ConfigProcurementPresetFunctions
         (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanManageConfig, ct);
         if (denied is not null) return denied;
 
-        if (!int.TryParse(req.Query["accountId"], out int accountId))
-            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
-                ApiResponse<IReadOnlyList<ProcurementPresetDto>>.Fail("accountId query parameter is required."), ct);
+        int? accountId = int.TryParse(req.Query["accountId"], out int parsedAccountId) ? parsedAccountId : null;
 
         IReadOnlyList<ProcurementPresetDto> data = await _presets.GetByAccountAsync(
             accountId, ActiveFilterParser.Parse(req.Query["active"]), ct);

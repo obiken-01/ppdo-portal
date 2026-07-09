@@ -27,4 +27,14 @@ public sealed class ProcurementPresetRepository : Repository<ProcurementPreset>,
             .Where(p => p.AccountId == accountId)
             .OrderBy(p => p.Name)
             .ToListAsync(ct);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<ProcurementPreset>> GetAllWithItemsAsync(CancellationToken ct = default)
+        => await _context.Set<ProcurementPreset>()
+            .Include(p => p.Items)
+            .Include(p => p.CreatedBy)
+            .Include(p => p.Account)
+            .OrderBy(p => p.Account.AccountNumber)
+            .ThenBy(p => p.Name)
+            .ToListAsync(ct);
 }

@@ -40,9 +40,11 @@ public sealed class ProcurementPresetService : IProcurementPresetService
 
     /// <inheritdoc />
     public async Task<IReadOnlyList<ProcurementPresetDto>> GetByAccountAsync(
-        int accountId, ActiveFilter active, CancellationToken cancellationToken = default)
+        int? accountId, ActiveFilter active, CancellationToken cancellationToken = default)
     {
-        IReadOnlyList<ProcurementPreset> presets = await _repo.GetByAccountIdAsync(accountId, cancellationToken);
+        IReadOnlyList<ProcurementPreset> presets = accountId.HasValue
+            ? await _repo.GetByAccountIdAsync(accountId.Value, cancellationToken)
+            : await _repo.GetAllWithItemsAsync(cancellationToken);
 
         IEnumerable<ProcurementPreset> q = active switch
         {

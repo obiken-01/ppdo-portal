@@ -342,15 +342,20 @@ export async function importFundingSourcesCsv(csvText: string): Promise<CsvImpor
 // ---------------------------------------------------------------------------
 
 export interface ProcurementPresetListParams {
-  accountId: number;
+  /** Omit (or null) to list presets across ALL accounts. */
+  accountId?: number | null;
   active?: ActiveFilter;
 }
 
-/** GET /api/config/procurement-presets?accountId=&active= — presets scoped to one account. */
+/**
+ * GET /api/config/procurement-presets?accountId=&active= — presets scoped to one account, or
+ * across all accounts when accountId is omitted.
+ */
 export async function listProcurementPresets(
-  params: ProcurementPresetListParams,
+  params: ProcurementPresetListParams = {},
 ): Promise<ProcurementPresetResponse[]> {
-  const query: Record<string, string> = { accountId: String(params.accountId) };
+  const query: Record<string, string> = {};
+  if (params.accountId != null) query.accountId = String(params.accountId);
   if (params.active) query.active = params.active;
 
   const { data } = await api.get<ApiResponse<ProcurementPresetResponse[]>>(
