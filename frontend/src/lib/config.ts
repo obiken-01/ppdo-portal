@@ -20,11 +20,13 @@ import type {
   FundingSourceResponse,
   OfficeResponse,
   PriceIndexItemResponse,
+  ProcurementPresetResponse,
   UpsertAccountRequest,
   UpsertDivisionRequest,
   UpsertFundingSourceRequest,
   UpsertOfficeRequest,
   UpsertPriceIndexItemRequest,
+  UpsertProcurementPresetRequest,
 } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -331,6 +333,65 @@ export async function importFundingSourcesCsv(csvText: string): Promise<CsvImpor
     "/config/funding-sources/csv",
     csvText,
     { headers: { "Content-Type": "text/csv" } },
+  );
+  return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// Procurement Presets — /api/config/procurement-presets (v1.4 RAL-119)
+// ---------------------------------------------------------------------------
+
+export interface ProcurementPresetListParams {
+  /** Omit (or null) to list presets across ALL accounts. */
+  accountId?: number | null;
+  active?: ActiveFilter;
+}
+
+/**
+ * GET /api/config/procurement-presets?accountId=&active= — presets scoped to one account, or
+ * across all accounts when accountId is omitted.
+ */
+export async function listProcurementPresets(
+  params: ProcurementPresetListParams = {},
+): Promise<ProcurementPresetResponse[]> {
+  const query: Record<string, string> = {};
+  if (params.accountId != null) query.accountId = String(params.accountId);
+  if (params.active) query.active = params.active;
+
+  const { data } = await api.get<ApiResponse<ProcurementPresetResponse[]>>(
+    "/config/procurement-presets",
+    { params: query },
+  );
+  return unwrap(data);
+}
+
+/** POST /api/config/procurement-presets — create a new preset. */
+export async function createProcurementPreset(
+  body: UpsertProcurementPresetRequest,
+): Promise<ProcurementPresetResponse> {
+  const { data } = await api.post<ApiResponse<ProcurementPresetResponse>>(
+    "/config/procurement-presets",
+    body,
+  );
+  return unwrap(data);
+}
+
+/** PUT /api/config/procurement-presets/{id} — update an existing preset (replaces its items). */
+export async function updateProcurementPreset(
+  id: number,
+  body: UpsertProcurementPresetRequest,
+): Promise<ProcurementPresetResponse> {
+  const { data } = await api.put<ApiResponse<ProcurementPresetResponse>>(
+    `/config/procurement-presets/${id}`,
+    body,
+  );
+  return unwrap(data);
+}
+
+/** DELETE /api/config/procurement-presets/{id} — soft delete (isActive = false). */
+export async function deactivateProcurementPreset(id: number): Promise<ProcurementPresetResponse> {
+  const { data } = await api.delete<ApiResponse<ProcurementPresetResponse>>(
+    `/config/procurement-presets/${id}`,
   );
   return unwrap(data);
 }

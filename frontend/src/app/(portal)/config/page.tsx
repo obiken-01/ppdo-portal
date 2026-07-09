@@ -16,7 +16,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { fetchMe } from "@/lib/me-cache";
-import { listAccounts, listDivisions, listFundingSources, listOffices, listPriceIndex } from "@/lib/config";
+import {
+  listAccounts,
+  listDivisions,
+  listFundingSources,
+  listOffices,
+  listPriceIndex,
+} from "@/lib/config";
 
 // ---------------------------------------------------------------------------
 // Tile definitions
@@ -28,7 +34,8 @@ interface TileDef {
   name: string;
   caption: string;
   href: string;
-  load: () => Promise<number>;
+  /** Omit when the tile has no meaningful account-agnostic count to show. */
+  load?: () => Promise<number>;
 }
 
 const TILES: TileDef[] = [
@@ -72,6 +79,14 @@ const TILES: TileDef[] = [
     href: "/config/divisions",
     load: async () => (await listDivisions({ active: "true" })).length,
   },
+  {
+    key: "procurementPresets",
+    icon: "📋",
+    name: "Procurement Presets",
+    caption: "Account-scoped, reusable procurement line-item templates for WFP entry.",
+    href: "/config/procurement-presets",
+    // No account-agnostic count endpoint — presets are always scoped to one account.
+  },
 ];
 
 const USER_TILE: TileDef = {
@@ -102,6 +117,7 @@ export default function ConfigDashboardPage() {
     funding: null,
     priceIndex: null,
     divisions: null,
+    procurementPresets: "error", // no account-agnostic count — renders as a dash, never fetched
     users: null,
   });
 
@@ -122,6 +138,7 @@ export default function ConfigDashboardPage() {
     if (!authChecked) return;
     const tiles = canManageUsers ? [...TILES, USER_TILE] : TILES;
     for (const tile of tiles) {
+      if (!tile.load) continue;
       tile
         .load()
         .then((n) => setCounts((c) => ({ ...c, [tile.key]: n })))

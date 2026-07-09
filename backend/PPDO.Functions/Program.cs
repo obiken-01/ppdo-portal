@@ -136,6 +136,9 @@ var host = new HostBuilder()
         services.AddScoped<IAccountService, AccountService>();
         services.AddScoped<IFundingSourceService, FundingSourceService>();
         services.AddScoped<IPriceIndexService, PriceIndexService>();
+        services.AddScoped<IProcurementPresetRepository, ProcurementPresetRepository>();
+        services.AddScoped<IRepository<ProcurementPresetItem>, Repository<ProcurementPresetItem>>();
+        services.AddScoped<IProcurementPresetService, ProcurementPresetService>();
         services.AddScoped<IAuditService, AuditService>();
         services.AddScoped<IBudgetPlanningDashboardService, BudgetPlanningDashboardService>();
 

@@ -67,6 +67,8 @@ public sealed class AppDbContext : DbContext
     public DbSet<WfpExpenditurePeriod> WfpExpenditurePeriods { get; set; } = null!;
     public DbSet<WfpProcurementItem> WfpProcurementItems { get; set; } = null!;
     public DbSet<WfpDivisionAllocationLedger> WfpDivisionAllocationLedgers { get; set; } = null!;
+    public DbSet<ProcurementPreset> ProcurementPresets { get; set; } = null!;
+    public DbSet<ProcurementPresetItem> ProcurementPresetItems { get; set; } = null!;
 
     // ── Model configuration ───────────────────────────────────────────────────
 

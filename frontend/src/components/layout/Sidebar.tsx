@@ -356,6 +356,10 @@ export default function Sidebar({ me }: SidebarProps) {
                       <span className="text-xs">•</span>
                       <span className="truncate">Divisions</span>
                     </Link>
+                    <Link href="/config/procurement-presets" className={childLinkCls(isActive("/config/procurement-presets"))}>
+                      <span className="text-xs">•</span>
+                      <span className="truncate">Procurement Presets</span>
+                    </Link>
                   </>
                 )}
                 {showManageUsers && (
