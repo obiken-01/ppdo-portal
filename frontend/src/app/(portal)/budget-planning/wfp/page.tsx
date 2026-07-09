@@ -1060,7 +1060,15 @@ function WfpPageInner() {
         {/* Header */}
         <div className="flex items-start justify-between mb-5">
           <div>
-            <h1 className="text-xl font-bold text-slate-800">Work and Financial Plan</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold text-slate-800">Work and Financial Plan</h1>
+              <a
+                href="/budget-planning/wfp/entry"
+                className="px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors"
+              >
+                Try the new entry wizard (v1.4 preview) →
+              </a>
+            </div>
             {aipDetail && selectedConfigOffice && (
               <p className="text-sm text-slate-500 mt-0.5">
                 AIP FY{aipDetail.fiscalYear} — {selectedConfigOffice.officeName}

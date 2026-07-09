@@ -8,9 +8,14 @@
 import api from "./api";
 import type {
   ApiResponse,
+  EnsureWfpActivityRequest,
+  SaveWfpExpenditureRequest,
   SaveWfpRequest,
+  WfpActivityRefDto,
+  WfpExpenditureDto,
   WfpRecord,
   WfpRecordDetail,
+  WfpReserveRateDto,
 } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -112,4 +117,50 @@ export async function downloadWfpReport(id: number, filename: string): Promise<v
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+// ---------------------------------------------------------------------------
+// v1.4 entry wizard (RAL-120/121/122/123)
+// ---------------------------------------------------------------------------
+
+/** Find-or-create the WFP record + activity for a chosen AIP activity. Never deletes/replaces existing activities. */
+export async function ensureWfpActivity(body: EnsureWfpActivityRequest): Promise<WfpActivityRefDto> {
+  const { data } = await api.post<ApiResponse<WfpActivityRefDto>>(
+    "/budget-planning/wfp/activities/ensure",
+    body
+  );
+  return unwrap(data);
+}
+
+/** Expenditures already saved under this WFP activity — the wizard's "added so far" list. */
+export async function listWfpExpenditures(wfpActivityId: number): Promise<WfpExpenditureDto[]> {
+  const { data } = await api.get<ApiResponse<WfpExpenditureDto[]>>(
+    "/budget-planning/wfp/expenditures",
+    { params: { wfpActivityId } }
+  );
+  return unwrap(data);
+}
+
+export async function getWfpExpenditureById(id: number): Promise<WfpExpenditureDto> {
+  const { data } = await api.get<ApiResponse<WfpExpenditureDto>>(
+    `/budget-planning/wfp/expenditures/${id}`
+  );
+  return unwrap(data);
+}
+
+/** Create (body.id null) or replace (body.id set) a WFP expenditure. Server computes Q1-4/Net/Total. */
+export async function saveWfpExpenditure(body: SaveWfpExpenditureRequest): Promise<WfpExpenditureDto> {
+  const { data } = await api.post<ApiResponse<WfpExpenditureDto>>(
+    "/budget-planning/wfp/expenditures",
+    body
+  );
+  return unwrap(data);
+}
+
+/** The current reserve rate (e.g. 0.10) — never hard-code "10%" client-side. */
+export async function getReserveRate(): Promise<WfpReserveRateDto> {
+  const { data } = await api.get<ApiResponse<WfpReserveRateDto>>(
+    "/budget-planning/wfp/reserve-rate"
+  );
+  return unwrap(data);
 }

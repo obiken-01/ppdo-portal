@@ -32,6 +32,14 @@ public sealed class WfpExpenditureRepository : Repository<WfpExpenditure>, IWfpE
             .ToListAsync(ct);
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<WfpExpenditure>> GetByWfpActivityIdAsync(
+        int wfpActivityId, CancellationToken ct = default)
+        => await _context.Set<WfpExpenditure>()
+            .Where(e => e.WfpActivityId == wfpActivityId)
+            .OrderBy(e => e.Id)
+            .ToListAsync(ct);
+
+    /// <inheritdoc />
     public async Task<WfpExpenditureContext?> GetActivityContextAsync(
         int wfpActivityId, CancellationToken ct = default)
         => await (

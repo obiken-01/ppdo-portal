@@ -23,6 +23,12 @@ public interface IWfpExpenditureRepository : IRepository<WfpExpenditure>
     Task<IReadOnlyList<WfpProcurementItem>> GetProcurementItemsByExpenditureIdAsync(int expenditureId, CancellationToken ct = default);
 
     /// <summary>
+    /// WfpExpenditure rows WHERE wfp_activity_id = <paramref name="wfpActivityId"/>, ordered by
+    /// Id — the entry wizard's "expenditures added so far under this activity" list (RAL-123).
+    /// </summary>
+    Task<IReadOnlyList<WfpExpenditure>> GetByWfpActivityIdAsync(int wfpActivityId, CancellationToken ct = default);
+
+    /// <summary>
     /// Resolves the WFP record/office/division/AIP-activity context for a given expenditure's
     /// parent activity — needed by the ceiling checks (RAL-122), which only ever start from a
     /// wfp_activity_id. Returns null if the activity doesn't exist.

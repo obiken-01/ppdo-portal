@@ -17,6 +17,7 @@ import type {
   UpsertAllocationsRequest,
   UpsertCeilingRequest,
   UpsertProgramAssignmentRequest,
+  WfpCeilingStatusDto,
 } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -128,6 +129,25 @@ export async function getSetupStatus(
   const { data } = await api.get<ApiResponse<AllocationSetupStatusDto>>(
     "/budget-planning/allocation/status",
     { params: { officeId, fiscalYear, divisionId } }
+  );
+  return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// WFP ceiling status — GET /api/budget-planning/wfp/ceilings (RAL-122)
+// Lives here (not lib/wfp.ts) since it's a read over allocation + AIP-budget data,
+// mirroring getAllocations/getSetupStatus above. Shared by the entry wizard's (RAL-123)
+// sticky header AND its live debounced pre-save check — one computation, two callers.
+// ---------------------------------------------------------------------------
+
+export async function getCeilingStatus(
+  activityId: number,
+  divisionId: number,
+  fiscalYear: number
+): Promise<WfpCeilingStatusDto> {
+  const { data } = await api.get<ApiResponse<WfpCeilingStatusDto>>(
+    "/budget-planning/wfp/ceilings",
+    { params: { activityId, divisionId, fiscalYear } }
   );
   return unwrap(data);
 }

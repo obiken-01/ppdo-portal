@@ -358,6 +358,106 @@ export interface SaveWfpRequest {
   activities: SaveWfpActivityRequest[];
 }
 
+// ── v1.4 WFP expenditure (RAL-120/121/122/123) ───────────────────────────────
+// Replaces the WfpExpenditureLine model above for new entries — schema+math live
+// server-side (WfpExpenditureCalculator); Q1-4/Net/Total are always server-computed.
+
+export type WfpExpenditureNature = "Procurement" | "Non-Procurement" | "Combined";
+export type WfpExpenditureFrequency = "M" | "Q" | "B" | "A";
+
+export interface WfpExpenditurePeriodDto {
+  periodNo: number;
+  amount: number;
+}
+
+export interface WfpProcurementItemDto {
+  periodNo: number;
+  priceIndexItemId: number | null;
+  name: string;
+  unit: string;
+  unitPrice: number;
+  qty: number;
+  lineTotal: number;
+}
+
+export interface WfpExpenditureDto {
+  id: number;
+  wfpActivityId: number;
+  accountId: number | null;
+  accountNumberSnapshot: string | null;
+  accountTitleSnapshot: string | null;
+  nature: WfpExpenditureNature;
+  frequency: WfpExpenditureFrequency;
+  fundingSourceId: number | null;
+  fundingSourceSnapshot: string | null;
+  fundingSourceNameSnapshot: string | null;
+  applyReserve: boolean;
+  reserveAmount: number;
+  annualQuarterChoice: number | null;
+  q1: number;
+  q2: number;
+  q3: number;
+  q4: number;
+  netAppropriation: number;
+  totalAppropriation: number;
+  periods: WfpExpenditurePeriodDto[];
+  procurementItems: WfpProcurementItemDto[];
+}
+
+export interface SaveWfpExpenditurePeriodRequest {
+  periodNo: number;
+  amount: number;
+}
+
+export interface SaveWfpProcurementItemRequest {
+  periodNo: number;
+  priceIndexItemId: number | null;
+  name: string;
+  unit: string;
+  unitPrice: number;
+  qty: number;
+}
+
+/** ReserveAmount null = "not specified" — server defaults to the reserve rate × Net. */
+export interface SaveWfpExpenditureRequest {
+  id: number | null;
+  wfpActivityId: number;
+  accountId: number | null;
+  nature: WfpExpenditureNature;
+  frequency: WfpExpenditureFrequency;
+  fundingSourceId: number | null;
+  applyReserve: boolean;
+  reserveAmount: number | null;
+  annualQuarterChoice: number | null;
+  periods: SaveWfpExpenditurePeriodRequest[];
+  procurementItems: SaveWfpProcurementItemRequest[];
+}
+
+export interface WfpReserveRateDto {
+  rate: number;
+}
+
+export interface WfpCeilingStatusDto {
+  aipBudget: number;
+  aipUsed: number;
+  divisionAllocation: number;
+  divisionRemaining: number;
+}
+
+export interface EnsureWfpActivityRequest {
+  aipRecordId: number;
+  officeId: number;
+  divisionId: number | null;
+  fiscalYear: number;
+  aipActivityId: number;
+}
+
+export interface WfpActivityRefDto {
+  wfpRecordId: number;
+  wfpActivityId: number;
+  wfpStatus: "Draft" | "Final";
+}
+
 // ── Allocation (RAL-99/101) ───────────────────────────────────────────────────
 
 export interface BudgetCeilingDto {

@@ -31,6 +31,26 @@ public sealed class WfpExpenditureFunctions
 
     private Task<bool> CanAccess(User u) => _permissions.CanAccessBudgetPlanningAsync(u);
 
+    // ── GET /api/budget-planning/wfp/expenditures?wfpActivityId= ─────────────
+    // The entry wizard's "expenditures added so far under this activity" list (RAL-123).
+    [Function("WfpExpenditureListByActivity")]
+    public async Task<HttpResponseData> ListByActivity(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get",
+            Route = "budget-planning/wfp/expenditures")] HttpRequestData req,
+        CancellationToken ct)
+    {
+        (User? _, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        if (!int.TryParse(req.Query["wfpActivityId"], out int wfpActivityId))
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<IReadOnlyList<WfpExpenditureDto>>.Fail("wfpActivityId query parameter is required."), ct);
+
+        IReadOnlyList<WfpExpenditureDto> data = await _expenditures.GetByActivityIdAsync(wfpActivityId, ct);
+        return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK,
+            ApiResponse<IReadOnlyList<WfpExpenditureDto>>.Ok(data), ct);
+    }
+
     // ── GET /api/budget-planning/wfp/expenditures/{id} ───────────────────────
     [Function("WfpExpenditureGet")]
     public async Task<HttpResponseData> Get(

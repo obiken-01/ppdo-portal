@@ -85,6 +85,9 @@ public sealed class WfpExpenditureServiceTests
 
         repo.Setup(r => r.GetByIntIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((int id, CancellationToken _) => expSeed.FirstOrDefault(e => e.Id == id));
+        repo.Setup(r => r.GetByWfpActivityIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int actId, CancellationToken _) =>
+                (IReadOnlyList<WfpExpenditure>)expSeed.Where(e => e.WfpActivityId == actId).OrderBy(e => e.Id).ToList());
         repo.Setup(r => r.AddAsync(It.IsAny<WfpExpenditure>(), It.IsAny<CancellationToken>()))
             .Callback<WfpExpenditure, CancellationToken>((e, _) => { e.Id = nextExpId++; expSeed.Add(e); })
             .Returns(Task.CompletedTask);
@@ -557,5 +560,33 @@ public sealed class WfpExpenditureServiceTests
         Assert.True(result.IsSuccess);
         ceilingMock.Verify(c => c.ValidateExpenditureSaveAsync(42, It.IsAny<decimal>(), null, It.IsAny<CancellationToken>()), Times.Once);
         ceilingMock.Verify(c => c.UpsertLedgerForActivityAsync(42, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // ── GetByActivityIdAsync (RAL-123 entry-wizard "added so far" list) ──────
+
+    [Fact]
+    public async Task GetByActivityId_NoExpenditures_ReturnsEmptyList()
+    {
+        var (sut, _, _, _, _, _) = Build([], []);
+
+        IReadOnlyList<WfpExpenditureDto> result = await sut.GetByActivityIdAsync(999, CancellationToken.None);
+
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public async Task GetByActivityId_ReturnsSavedExpendituresWithPeriodsAndItems()
+    {
+        var (sut, _, _, _, _, _) = Build([], []);
+
+        await sut.SaveExpenditureAsync(QuarterlyDto(wfpActivityId: 7, q1: 100, q2: 100, q3: 100, q4: 100), CancellationToken.None);
+        await sut.SaveExpenditureAsync(QuarterlyDto(wfpActivityId: 7, q1: 50, q2: 50, q3: 50, q4: 50), CancellationToken.None);
+        await sut.SaveExpenditureAsync(QuarterlyDto(wfpActivityId: 8, q1: 999, q2: 0, q3: 0, q4: 0), CancellationToken.None);
+
+        IReadOnlyList<WfpExpenditureDto> result = await sut.GetByActivityIdAsync(7, CancellationToken.None);
+
+        Assert.Equal(2, result.Count);
+        Assert.All(result, e => Assert.Equal(4, e.Periods.Count));
+        Assert.DoesNotContain(result, e => e.NetAppropriation == 999m);
     }
 }
