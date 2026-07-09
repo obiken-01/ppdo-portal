@@ -353,7 +353,11 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
         Dictionary<Guid, decimal> qtyDistributed = new();
         HashSet<Guid> seenDI = new();
 
-        foreach (Delivery delivery in pr.Deliveries)
+        // Deliveries is non-nullable on the entity, but nullable-flow analysis loses track of
+        // it here after the `pr.Deliveries?.Count` / `pr.Deliveries?...Sum(...)` null-conditional
+        // reads earlier in this method (lines ~272/274) — null-forgiving to match the type's
+        // actual guarantee (ICollection<Delivery> Deliveries = new List<Delivery>()).
+        foreach (Delivery delivery in pr.Deliveries!)
         {
             foreach (DeliveryItem di in delivery.Items)
             {

@@ -81,11 +81,20 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
             .ThenByDescending(a => a.Id)
             .FirstOrDefault();
 
-        // WFP map keyed by OfficeId (for the primary AIP only).
+        // WFP map keyed by OfficeId (for the primary AIP only). One office can have MULTIPLE
+        // WfpRecord rows — one per division (division is the data-entry scope; §1) — so this
+        // picks one representative record per office for the summary table: prefer Final (any
+        // division finalizing is enough to surface "Final" here), else the most recently
+        // updated Draft. The full per-division breakdown lives on the WFP page itself.
         Dictionary<int, WfpRecord> wfpMap = primaryAip is null
             ? []
             : wfps.Where(w => w.AipRecordId == primaryAip.Id)
-                  .ToDictionary(w => w.OfficeId);
+                  .GroupBy(w => w.OfficeId)
+                  .ToDictionary(
+                      g => g.Key,
+                      g => g.OrderByDescending(w => w.Status == PlanningStatus.Final)
+                            .ThenByDescending(w => w.UpdatedAt)
+                            .First());
 
         // Active offices left-joined to WFP map → status rows, sorted Not started → Draft → Final.
         List<Office> activeOffices = offices.Where(o => o.IsActive).ToList();
