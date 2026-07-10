@@ -164,4 +164,42 @@ public sealed class AipFunctions
 
         return await ConfigHttp.FromResultAsync(req, await _aip.UnlockAsync(id, ct), ct);
     }
+
+    // ── PUT /api/budget-planning/aip/programs/{id:int}/function-band ─────────
+    // v1.4 Q1: captured during WFP data entry (wfp/entry context picker), not AIP import.
+    [Function("AipUpdateProgramFunctionBand")]
+    public async Task<HttpResponseData> UpdateProgramFunctionBand(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "budget-planning/aip/programs/{id:int}/function-band")] HttpRequestData req,
+        int id, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        UpdateAipProgramFunctionBandDto? body = await ConfigHttp.ReadBodyAsync<UpdateAipProgramFunctionBandDto>(req, ct);
+        if (body is null)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<AipProgramDto>.Fail("Request body is missing or malformed."), ct);
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _aip.UpdateProgramFunctionBandAsync(id, body.FunctionBand, ct), ct);
+    }
+
+    // ── PUT /api/budget-planning/aip/activities/{id:int}/is-creation ─────────
+    // v1.4 Q2: captured during WFP data entry (wfp/entry context picker), not AIP import.
+    [Function("AipUpdateActivityIsCreation")]
+    public async Task<HttpResponseData> UpdateActivityIsCreation(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "budget-planning/aip/activities/{id:int}/is-creation")] HttpRequestData req,
+        int id, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        UpdateAipActivityIsCreationDto? body = await ConfigHttp.ReadBodyAsync<UpdateAipActivityIsCreationDto>(req, ct);
+        if (body is null)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<AipActivityDto>.Fail("Request body is missing or malformed."), ct);
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _aip.UpdateActivityIsCreationAsync(id, body.IsCreation, ct), ct);
+    }
 }

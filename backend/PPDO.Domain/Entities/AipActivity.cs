@@ -64,6 +64,13 @@ public sealed class AipActivity
     /// <summary>Climate change typology code. Max 50 characters.</summary>
     public string? CcTypologyCode { get; set; }
 
+    /// <summary>
+    /// True when this activity's PS expenditures should be treated as "…-CREATION" (v1.4 WFP
+    /// Rework open question Q2 — General-Fund, Personal-Services, position-creation activities
+    /// only). Default false. Captured during WFP data entry, not AIP import.
+    /// </summary>
+    public bool IsCreation { get; set; }
+
     // ── Navigation ────────────────────────────────────────────────────────────
 
     /// <summary>The parent AIP project.</summary>

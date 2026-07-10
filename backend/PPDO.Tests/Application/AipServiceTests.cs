@@ -105,6 +105,12 @@ public sealed class AipServiceTests
             .ReturnsAsync((IReadOnlyList<int> ids, CancellationToken _) =>
                 (IReadOnlyList<AipActivity>)actList.Where(a => ids.Contains(a.ProjectId)).ToList());
 
+        aipRepo.Setup(r => r.GetProgramByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int id, CancellationToken _) => programList.FirstOrDefault(p => p.Id == id));
+
+        aipRepo.Setup(r => r.GetActivityByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int id, CancellationToken _) => actList.FirstOrDefault(a => a.Id == id));
+
         // ── Config repos ──────────────────────────────────────────────────────────
 
         fsRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(fsSeed);
@@ -654,5 +660,103 @@ public sealed class AipServiceTests
         Assert.Equal(50m,  dto.Co);
         Assert.Equal(350m, dto.Total);
         Assert.Equal(2,    dto.FundingSourceId);
+    }
+
+    // ── UpdateProgramFunctionBandAsync (v1.4 Q1) ─────────────────────────────
+
+    [Fact]
+    public async Task UpdateProgramFunctionBand_ValidValue_PersistsCanonicalizedValue()
+    {
+        AipProgram prog = new() { Id = 301, OfficeId = 201, RefCode = "P", Name = "Prog" };
+        var (sut, _, _, _, _, _) = Build([], [], programSeed: [prog]);
+
+        ServiceResult<AipProgramDto> result =
+            await sut.UpdateProgramFunctionBandAsync(301, "core", CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("CORE", result.Value!.FunctionBand);
+        Assert.Equal("CORE", prog.FunctionBand);
+    }
+
+    [Fact]
+    public async Task UpdateProgramFunctionBand_NullOrEmpty_ClearsValue()
+    {
+        AipProgram prog = new() { Id = 302, OfficeId = 201, RefCode = "P", Name = "Prog", FunctionBand = "SUPPORT" };
+        var (sut, _, _, _, _, _) = Build([], [], programSeed: [prog]);
+
+        ServiceResult<AipProgramDto> result =
+            await sut.UpdateProgramFunctionBandAsync(302, "", CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Value!.FunctionBand);
+        Assert.Null(prog.FunctionBand);
+    }
+
+    [Fact]
+    public async Task UpdateProgramFunctionBand_InvalidValue_ReturnsBadRequest()
+    {
+        AipProgram prog = new() { Id = 303, OfficeId = 201, RefCode = "P", Name = "Prog" };
+        var (sut, _, _, _, _, _) = Build([], [], programSeed: [prog]);
+
+        ServiceResult<AipProgramDto> result =
+            await sut.UpdateProgramFunctionBandAsync(303, "BOGUS", CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Null(prog.FunctionBand);
+    }
+
+    [Fact]
+    public async Task UpdateProgramFunctionBand_UnknownId_ReturnsNotFound()
+    {
+        var (sut, _, _, _, _, _) = Build([], []);
+
+        ServiceResult<AipProgramDto> result =
+            await sut.UpdateProgramFunctionBandAsync(999, "CORE", CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    // ── UpdateActivityIsCreationAsync (v1.4 Q2) ──────────────────────────────
+
+    [Fact]
+    public async Task UpdateActivityIsCreation_True_Persists()
+    {
+        AipActivity act = new() { Id = 501, ProjectId = 401, RefCode = "A", Name = "Act" };
+        var (sut, _, _, _, _, _) = Build([], [], actSeed: [act]);
+
+        ServiceResult<AipActivityDto> result =
+            await sut.UpdateActivityIsCreationAsync(501, true, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value!.IsCreation);
+        Assert.True(act.IsCreation);
+    }
+
+    [Fact]
+    public async Task UpdateActivityIsCreation_False_Persists()
+    {
+        AipActivity act = new() { Id = 502, ProjectId = 401, RefCode = "A", Name = "Act", IsCreation = true };
+        var (sut, _, _, _, _, _) = Build([], [], actSeed: [act]);
+
+        ServiceResult<AipActivityDto> result =
+            await sut.UpdateActivityIsCreationAsync(502, false, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value!.IsCreation);
+        Assert.False(act.IsCreation);
+    }
+
+    [Fact]
+    public async Task UpdateActivityIsCreation_UnknownId_ReturnsNotFound()
+    {
+        var (sut, _, _, _, _, _) = Build([], []);
+
+        ServiceResult<AipActivityDto> result =
+            await sut.UpdateActivityIsCreationAsync(999, true, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
     }
 }

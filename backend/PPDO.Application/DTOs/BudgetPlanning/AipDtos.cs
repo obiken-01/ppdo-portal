@@ -20,7 +20,8 @@ public record AipActivityDto(
     decimal? Total,
     decimal? CcAdaptation,
     decimal? CcMitigation,
-    string?  CcTypologyCode);
+    string?  CcTypologyCode,
+    bool     IsCreation);
 
 public record AipProjectDto(
     int    Id,
@@ -30,11 +31,12 @@ public record AipProjectDto(
     IReadOnlyList<AipActivityDto> Activities);
 
 public record AipProgramDto(
-    int    Id,
-    int    OfficeId,
-    string RefCode,
-    string Name,
-    IReadOnlyList<AipProjectDto> Projects);
+    int     Id,
+    int     OfficeId,
+    string  RefCode,
+    string  Name,
+    IReadOnlyList<AipProjectDto> Projects,
+    string? FunctionBand);
 
 public record AipOfficeDto(
     int    Id,
@@ -150,7 +152,8 @@ public record AipActivitySummaryDto(
     decimal? Co,
     decimal? Total,
     int?     FundingSourceId,
-    string?  FundingSourceSnapshot);
+    string?  FundingSourceSnapshot,
+    bool     IsCreation);
 
 public record AipProjectSummaryDto(
     int    Id,
@@ -159,10 +162,11 @@ public record AipProjectSummaryDto(
     IReadOnlyList<AipActivitySummaryDto> Activities);
 
 public record AipProgramSummaryDto(
-    int    Id,
-    string RefCode,
-    string Name,
-    IReadOnlyList<AipProjectSummaryDto> Projects);
+    int     Id,
+    string  RefCode,
+    string  Name,
+    IReadOnlyList<AipProjectSummaryDto> Projects,
+    string? FunctionBand);
 
 public record AipOfficeSummaryDto(
     int    Id,
@@ -175,3 +179,9 @@ public record AipRecordSummaryDto(
     int    Id,
     int    FiscalYear,
     IReadOnlyList<AipOfficeSummaryDto> Offices);
+
+// ── Field update DTOs (v1.4 Q1/Q2 — captured during WFP data entry) ────────────
+
+public record UpdateAipProgramFunctionBandDto(string? FunctionBand);
+
+public record UpdateAipActivityIsCreationDto(bool IsCreation);

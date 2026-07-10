@@ -94,7 +94,7 @@ public sealed class AipService : IAipService
                         .Select(j => new AipProjectDto(j.Id, j.ProgramId, j.RefCode, j.Name,
                             acts.Where(a => a.ProjectId == j.Id).Select(MapActivityToDto).ToList()))
                         .ToList();
-                    return new AipProgramDto(p.Id, p.OfficeId, p.RefCode, p.Name, projDtos);
+                    return new AipProgramDto(p.Id, p.OfficeId, p.RefCode, p.Name, projDtos, p.FunctionBand);
                 })
                 .ToList();
             return new AipOfficeDto(o.Id, o.AipRecordId, o.RefCode, o.Name, o.Sector, progDtos);
@@ -135,10 +135,10 @@ public sealed class AipService : IAipService
                                 .Select(a => new AipActivitySummaryDto(
                                     a.Id, a.RefCode, a.Name,
                                     a.Ps, a.Mooe, a.Co, a.Total,
-                                    a.FundingSourceId, a.FundingSourceSnapshot))
+                                    a.FundingSourceId, a.FundingSourceSnapshot, a.IsCreation))
                                 .ToList()))
                         .ToList();
-                    return new AipProgramSummaryDto(p.Id, p.RefCode, p.Name, projDtos);
+                    return new AipProgramSummaryDto(p.Id, p.RefCode, p.Name, projDtos, p.FunctionBand);
                 })
                 .ToList();
             return new AipOfficeSummaryDto(o.Id, o.RefCode, o.Name, o.Sector, progDtos);
@@ -370,6 +370,47 @@ public sealed class AipService : IAipService
         return ServiceResult<AipRecordDto>.Ok(MapToDto(rec));
     }
 
+    // ── Field updates (v1.4 Q1/Q2 — captured during WFP data entry) ────────────
+
+    public async Task<ServiceResult<AipProgramDto>> UpdateProgramFunctionBandAsync(
+        int programId, string? functionBand, CancellationToken ct = default)
+    {
+        AipProgram? program = await _aipRepo.GetProgramByIdAsync(programId, ct);
+        if (program is null)
+            return ServiceResult<AipProgramDto>.NotFound($"AIP program {programId} not found.");
+
+        if (!TryCanonicalizeFunctionBand(functionBand, out string? canonical, out string? error))
+            return ServiceResult<AipProgramDto>.BadRequest(error!);
+
+        string? oldValue = program.FunctionBand;
+        program.FunctionBand = canonical;
+        await _aipRepo.SaveChangesAsync(ct);
+        await _audit.LogAsync("aip_programs", program.Id, AuditAction.Update,
+            new { FunctionBand = oldValue }, new { FunctionBand = canonical }, ct);
+
+        // Field-update response — Projects intentionally omitted (not re-fetched here); callers
+        // must patch their own local state by field, not by replacing the whole program node.
+        return ServiceResult<AipProgramDto>.Ok(new AipProgramDto(
+            program.Id, program.OfficeId, program.RefCode, program.Name,
+            Array.Empty<AipProjectDto>(), program.FunctionBand));
+    }
+
+    public async Task<ServiceResult<AipActivityDto>> UpdateActivityIsCreationAsync(
+        int activityId, bool isCreation, CancellationToken ct = default)
+    {
+        AipActivity? activity = await _aipRepo.GetActivityByIdAsync(activityId, ct);
+        if (activity is null)
+            return ServiceResult<AipActivityDto>.NotFound($"AIP activity {activityId} not found.");
+
+        bool oldValue = activity.IsCreation;
+        activity.IsCreation = isCreation;
+        await _aipRepo.SaveChangesAsync(ct);
+        await _audit.LogAsync("aip_activities", activity.Id, AuditAction.Update,
+            new { IsCreation = oldValue }, new { IsCreation = isCreation }, ct);
+
+        return ServiceResult<AipActivityDto>.Ok(MapActivityToDto(activity));
+    }
+
     // ── Purge (dev/test only) ─────────────────────────────────────────────────
 
     public async Task<int> PurgeAllAsync(CancellationToken ct = default)
@@ -401,5 +442,34 @@ public sealed class AipService : IAipService
     private static AipActivityDto MapActivityToDto(AipActivity a) => new(
         a.Id, a.ProjectId, a.RefCode, a.Name, a.EsreCode, a.ImplementingOffice,
         a.StartDate, a.EndDate, a.ExpectedOutputs, a.FundingSourceId, a.FundingSourceSnapshot,
-        a.Ps, a.Mooe, a.Co, a.Total, a.CcAdaptation, a.CcMitigation, a.CcTypologyCode);
+        a.Ps, a.Mooe, a.Co, a.Total, a.CcAdaptation, a.CcMitigation, a.CcTypologyCode,
+        a.IsCreation);
+
+    /// <summary>The only 3 values <c>function_band</c> may hold (case-insensitive on input, canonicalized on save).</summary>
+    private static readonly string[] AllowedFunctionBands =
+        { AipFunctionBand.Core, AipFunctionBand.Strategic, AipFunctionBand.Support };
+
+    private static bool TryCanonicalizeFunctionBand(string? input, out string? canonical, out string? error)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            canonical = null;
+            error = null;
+            return true;
+        }
+
+        string trimmed = input.Trim();
+        string? match = AllowedFunctionBands.FirstOrDefault(
+            b => b.Equals(trimmed, StringComparison.OrdinalIgnoreCase));
+        if (match is null)
+        {
+            canonical = null;
+            error = $"function_band must be one of: {string.Join(", ", AllowedFunctionBands)}.";
+            return false;
+        }
+
+        canonical = match;
+        error = null;
+        return true;
+    }
 }

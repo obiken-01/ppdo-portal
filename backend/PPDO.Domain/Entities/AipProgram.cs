@@ -18,6 +18,12 @@ public sealed class AipProgram
     /// <summary>Program name. Max 500 characters.</summary>
     public string Name { get; set; } = string.Empty;
 
+    /// <summary>
+    /// WFP report function band — "CORE" | "STRATEGIC" | "SUPPORT" (v1.4 WFP Rework open
+    /// question Q1). Null = not yet set. Captured during WFP data entry, not AIP import.
+    /// </summary>
+    public string? FunctionBand { get; set; }
+
     // ── Navigation ────────────────────────────────────────────────────────────
 
     /// <summary>The parent AIP office.</summary>

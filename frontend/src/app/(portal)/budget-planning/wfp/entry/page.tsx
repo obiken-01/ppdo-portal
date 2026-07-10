@@ -31,7 +31,13 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMe } from "@/lib/me-cache";
-import { getAipSummary, listAip } from "@/lib/aip";
+import {
+  getAipSummary,
+  listAip,
+  updateAipProgramFunctionBand,
+  updateAipActivityIsCreation,
+  aipErrorMessage,
+} from "@/lib/aip";
 import { listAccounts, listDivisions, listFundingSources, listOffices, listPriceIndex } from "@/lib/config";
 import { getAllocations, getCeilingStatus, getPrograms, getSetupStatus } from "@/lib/allocation";
 import {
@@ -561,6 +567,11 @@ function WfpEntryPageInner() {
   const [selectedProgramId, setSelectedProgramId] = useState<number | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [selectedActivityId, setSelectedActivityId] = useState<number | null>(null);
+
+  // ── Function band / Creation flag (v1.4 Q1/Q2 — captured here, during WFP entry) ──
+
+  const [savingProgramId, setSavingProgramId] = useState<number | null>(null);
+  const [savingActivityId, setSavingActivityId] = useState<number | null>(null);
   const [projectFieldsOpen, setProjectFieldsOpen] = useState(false);
   const [projectFields, setProjectFields] = useState<Record<string, string>>({});
 
@@ -687,6 +698,88 @@ function WfpEntryPageInner() {
   const selectedProject = projects.find((p) => p.id === selectedProjectId) ?? null;
   const activities: AipActivitySummary[] = selectedProject?.activities ?? [];
   const selectedActivity = activities.find((a) => a.id === selectedActivityId) ?? null;
+
+  // ── Function band / Creation flag (v1.4 Q1/Q2) — optimistic patch of aipDetail ──
+
+  async function handleFunctionBandChange(programId: number, value: string) {
+    const nextBand = value || null;
+    let prevBand: string | null = null;
+    setAipDetail((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        offices: prev.offices.map((o) => ({
+          ...o,
+          programs: o.programs.map((p) => {
+            if (p.id !== programId) return p;
+            prevBand = p.functionBand;
+            return { ...p, functionBand: nextBand };
+          }),
+        })),
+      };
+    });
+    setSavingProgramId(programId);
+    try {
+      await updateAipProgramFunctionBand(programId, nextBand);
+    } catch (err) {
+      setAipDetail((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          offices: prev.offices.map((o) => ({
+            ...o,
+            programs: o.programs.map((p) => (p.id === programId ? { ...p, functionBand: prevBand } : p)),
+          })),
+        };
+      });
+      toast.error("Failed", aipErrorMessage(err, "Could not update function band."));
+    } finally {
+      setSavingProgramId(null);
+    }
+  }
+
+  async function handleIsCreationChange(activityId: number, checked: boolean) {
+    setAipDetail((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        offices: prev.offices.map((o) => ({
+          ...o,
+          programs: o.programs.map((p) => ({
+            ...p,
+            projects: p.projects.map((j) => ({
+              ...j,
+              activities: j.activities.map((a) => (a.id === activityId ? { ...a, isCreation: checked } : a)),
+            })),
+          })),
+        })),
+      };
+    });
+    setSavingActivityId(activityId);
+    try {
+      await updateAipActivityIsCreation(activityId, checked);
+    } catch (err) {
+      setAipDetail((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          offices: prev.offices.map((o) => ({
+            ...o,
+            programs: o.programs.map((p) => ({
+              ...p,
+              projects: p.projects.map((j) => ({
+                ...j,
+                activities: j.activities.map((a) => (a.id === activityId ? { ...a, isCreation: !checked } : a)),
+              })),
+            })),
+          })),
+        };
+      });
+      toast.error("Failed", aipErrorMessage(err, "Could not update creation flag."));
+    } finally {
+      setSavingActivityId(null);
+    }
+  }
 
   // ── Project descriptive fields — localStorage only (no backend yet, §3) ──
 
@@ -992,6 +1085,41 @@ function WfpEntryPageInner() {
               />
             </div>
           </div>
+
+          {/* Function Band (Q1) / Creation flag (Q2) — v1.4 WFP Rework, captured here during entry */}
+          {(selectedProgram || selectedActivity) && (
+            <div className="flex flex-wrap items-center gap-6 mb-4 px-3 py-2 bg-slate-50 border border-slate-200 text-xs">
+              {selectedProgram && (
+                <label className="flex items-center gap-2">
+                  <span className="font-medium text-slate-500 uppercase tracking-wide">Function Band</span>
+                  <select
+                    value={selectedProgram.functionBand ?? ""}
+                    onChange={(e) => handleFunctionBandChange(selectedProgram.id, e.target.value)}
+                    disabled={savingProgramId === selectedProgram.id}
+                    className="border border-slate-300 text-xs px-2 py-1 bg-white disabled:opacity-50"
+                  >
+                    <option value="">— none —</option>
+                    <option value="CORE">Core</option>
+                    <option value="STRATEGIC">Strategic</option>
+                    <option value="SUPPORT">Support</option>
+                  </select>
+                </label>
+              )}
+              {selectedActivity && (
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedActivity.isCreation}
+                    onChange={(e) => handleIsCreationChange(selectedActivity.id, e.target.checked)}
+                    disabled={savingActivityId === selectedActivity.id}
+                  />
+                  <span className="font-medium text-slate-500 uppercase tracking-wide">
+                    Mark as &ldquo;…-CREATION&rdquo; (GF, PS, position-creation only)
+                  </span>
+                </label>
+              )}
+            </div>
+          )}
 
           {/* Project descriptive fields accordion — optional, §3 (localStorage only for now) */}
           {selectedProject && (
