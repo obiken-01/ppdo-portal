@@ -4,7 +4,8 @@ namespace PPDO.Domain.Entities;
 /// One procurement line item under a WFP expenditure, for one period (v1.4 WFP Rework —
 /// RAL-120). Name/Unit/UnitPrice are snapshotted from <see cref="PriceIndexItem"/> at save
 /// time (editable after) — later price-index updates must never silently change a saved WFP.
-/// LineTotal is always computed server-side (Qty × UnitPrice), never accepted as client input.
+/// LineTotal is always computed server-side (Qty × UnitPrice × NumberOfDays), never accepted as
+/// client input.
 /// Items can differ per period (carry-forward across periods is a UI convenience, not a
 /// schema constraint).
 /// </summary>
@@ -37,7 +38,13 @@ public sealed class WfpProcurementItem
     /// <summary>Quantity for this period.</summary>
     public decimal Qty { get; set; }
 
-    /// <summary>Computed on save: Qty × UnitPrice. Never accepted as client input.</summary>
+    /// <summary>
+    /// Number of days this item runs for (v1.4 — RAL-127). Multiplies into the line total for
+    /// day-based procurement (venue rental, per-diem, honoraria). Defaults to 1 (non-day items).
+    /// </summary>
+    public decimal NumberOfDays { get; set; } = 1m;
+
+    /// <summary>Computed on save: Qty × UnitPrice × NumberOfDays. Never accepted as client input.</summary>
     public decimal LineTotal { get; set; }
 
     // ── Navigation ────────────────────────────────────────────────────────────

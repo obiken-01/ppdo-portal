@@ -132,9 +132,9 @@ public sealed class WfpExpenditureCalculatorTests
         var typedPeriods = Array.Empty<(int PeriodNo, decimal Amount)>();
         var items = new[]
         {
-            (PeriodNo: 1, Qty: 10m, UnitPrice: 25m),  // 250
-            (PeriodNo: 1, Qty: 2m,  UnitPrice: 100m), // 200 -> period 1 total 450
-            (PeriodNo: 2, Qty: 5m,  UnitPrice: 40m),  // 200
+            (PeriodNo: 1, Qty: 10m, UnitPrice: 25m,  NumberOfDays: 1m),  // 250
+            (PeriodNo: 1, Qty: 2m,  UnitPrice: 100m, NumberOfDays: 1m),  // 200 -> period 1 total 450
+            (PeriodNo: 2, Qty: 5m,  UnitPrice: 40m,  NumberOfDays: 1m),  // 200
         };
 
         Dictionary<int, decimal> merged = WfpExpenditureCalculator.MergePeriodAmounts(typedPeriods, items);
@@ -144,11 +144,27 @@ public sealed class WfpExpenditureCalculatorTests
     }
 
     [Fact]
+    public void MergePeriodAmounts_MultiplesByNumberOfDays()
+    {
+        // RAL-127: line total = qty × unitPrice × days. 2 pax × ₱1,500/day × 3 days = 9,000.
+        var typedPeriods = Array.Empty<(int PeriodNo, decimal Amount)>();
+        var items = new[]
+        {
+            (PeriodNo: 1, Qty: 2m, UnitPrice: 1500m, NumberOfDays: 3m), // 9,000
+            (PeriodNo: 1, Qty: 1m, UnitPrice: 500m,  NumberOfDays: 5m), // 2,500 -> period 1 total 11,500
+        };
+
+        Dictionary<int, decimal> merged = WfpExpenditureCalculator.MergePeriodAmounts(typedPeriods, items);
+
+        Assert.Equal(11_500m, merged[1]);
+    }
+
+    [Fact]
     public void MergePeriodAmounts_CombinedTypedAndProcurement_SumsBothForSamePeriod()
     {
         // "Combined" nature: a typed non-procurement amount AND procurement items share period 1.
         var typedPeriods = new[] { (PeriodNo: 1, Amount: 1000m) };
-        var items = new[] { (PeriodNo: 1, Qty: 3m, UnitPrice: 50m) }; // 150
+        var items = new[] { (PeriodNo: 1, Qty: 3m, UnitPrice: 50m, NumberOfDays: 1m) }; // 150
 
         Dictionary<int, decimal> merged = WfpExpenditureCalculator.MergePeriodAmounts(typedPeriods, items);
 
@@ -162,8 +178,8 @@ public sealed class WfpExpenditureCalculatorTests
         var typedPeriods = Array.Empty<(int PeriodNo, decimal Amount)>();
         var items = new[]
         {
-            (PeriodNo: 1, Qty: 10m, UnitPrice: 25m),
-            (PeriodNo: 1, Qty: 2m,  UnitPrice: 100m),
+            (PeriodNo: 1, Qty: 10m, UnitPrice: 25m,  NumberOfDays: 1m),
+            (PeriodNo: 1, Qty: 2m,  UnitPrice: 100m, NumberOfDays: 1m),
         };
         Dictionary<int, decimal> merged = WfpExpenditureCalculator.MergePeriodAmounts(typedPeriods, items);
 

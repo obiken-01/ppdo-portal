@@ -245,10 +245,10 @@ export function computeWfpRollUpPreview(
 }
 
 /**
- * Merges typed period amounts with Σ(qty x unitPrice) per period from procurement items —
- * mirrors WfpExpenditureCalculator.MergePeriodAmounts (RAL-125). Works uniformly for
- * Procurement (periods empty), Non-Procurement (procurementItems empty), or Combined (both
- * present, summed) — matches the backend's no-nature-branching design (§5.3).
+ * Merges typed period amounts with Σ(qty × unitPrice × numberOfDays) per period from procurement
+ * items — mirrors WfpExpenditureCalculator.MergePeriodAmounts (RAL-125, days factor RAL-127).
+ * Works uniformly for Procurement (periods empty), Non-Procurement (procurementItems empty), or
+ * Combined (both present, summed) — matches the backend's no-nature-branching design (§5.3).
  */
 export function mergeWfpPeriodAndItemAmounts(
   periods: SaveWfpExpenditurePeriodRequest[],
@@ -257,7 +257,7 @@ export function mergeWfpPeriodAndItemAmounts(
   const merged = new Map<number, number>();
   for (const p of periods) merged.set(p.periodNo, (merged.get(p.periodNo) ?? 0) + p.amount);
   for (const i of procurementItems) {
-    merged.set(i.periodNo, (merged.get(i.periodNo) ?? 0) + i.qty * i.unitPrice);
+    merged.set(i.periodNo, (merged.get(i.periodNo) ?? 0) + i.qty * i.unitPrice * i.numberOfDays);
   }
   return Array.from(merged, ([periodNo, amount]) => ({ periodNo, amount }));
 }

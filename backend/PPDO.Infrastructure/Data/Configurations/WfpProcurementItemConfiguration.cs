@@ -44,6 +44,12 @@ public sealed class WfpProcurementItemConfiguration : IEntityTypeConfiguration<W
             .HasColumnType("decimal(18,2)")
             .IsRequired();
 
+        builder.Property(e => e.NumberOfDays)
+            .HasColumnName("number_of_days")
+            .HasColumnType("decimal(18,2)")
+            .IsRequired()
+            .HasDefaultValue(1m);
+
         builder.Property(e => e.LineTotal)
             .HasColumnName("line_total")
             .HasColumnType("decimal(18,2)")

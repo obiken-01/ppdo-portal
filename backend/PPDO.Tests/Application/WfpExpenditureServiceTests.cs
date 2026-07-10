@@ -328,6 +328,41 @@ public sealed class WfpExpenditureServiceTests
     }
 
     [Fact]
+    public async Task Save_ProcurementItem_WithNumberOfDays_MultipliesLineTotalAndRollup()
+    {
+        // RAL-127: 2 pax × ₱1,500/day × 3 days = ₱9,000, and it drives the period roll-up.
+        var (sut, _, _, _, _, _) = Build([], []);
+
+        SaveWfpExpenditureDto dto = new(
+            null, 10, null, WfpNature.Procurement, WfpFrequency.Quarterly, null,
+            false, 0m, null, [],
+            [new SaveWfpProcurementItemDto(1, null, "Venue rental", "day", 1500m, 2m, NumberOfDays: 3m)]);
+
+        ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(dto, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(3m, result.Value!.ProcurementItems[0].NumberOfDays);
+        Assert.Equal(9000m, result.Value.ProcurementItems[0].LineTotal); // 2 × 1500 × 3
+        Assert.Equal(9000m, result.Value.Q1);
+        Assert.Equal(9000m, result.Value.NetAppropriation);
+    }
+
+    [Fact]
+    public async Task Save_ProcurementItem_ZeroDays_ReturnsBadRequest()
+    {
+        var (sut, _, _, _, _, _) = Build([], []);
+
+        SaveWfpExpenditureDto dto = new(
+            null, 10, null, WfpNature.Procurement, WfpFrequency.Quarterly, null,
+            false, 0m, null, [],
+            [new SaveWfpProcurementItemDto(1, null, "Bond paper", "ream", 250m, 4m, NumberOfDays: 0m)]);
+
+        ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(dto, CancellationToken.None);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
     public async Task Save_NeverAcceptsClientLineTotal_AlwaysComputesFromQtyAndPrice()
     {
         // SaveWfpProcurementItemDto has no LineTotal field at all — architecturally the

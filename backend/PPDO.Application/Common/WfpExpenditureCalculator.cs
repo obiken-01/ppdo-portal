@@ -69,19 +69,20 @@ public static class WfpExpenditureCalculator
     }
 
     /// <summary>
-    /// Merges typed period amounts with Σ(qty × unitPrice) per period from procurement items.
-    /// Works uniformly for Procurement (periods empty), Non-Procurement (items empty), or
-    /// Combined (both present, summed) — no nature-specific branching (§5.3).
+    /// Merges typed period amounts with Σ(qty × unitPrice × numberOfDays) per period from
+    /// procurement items (RAL-127 added the days factor). Works uniformly for Procurement
+    /// (periods empty), Non-Procurement (items empty), or Combined (both present, summed) — no
+    /// nature-specific branching (§5.3).
     /// </summary>
     public static Dictionary<int, decimal> MergePeriodAmounts(
         IEnumerable<(int PeriodNo, decimal Amount)> typedPeriods,
-        IEnumerable<(int PeriodNo, decimal Qty, decimal UnitPrice)> procurementItems)
+        IEnumerable<(int PeriodNo, decimal Qty, decimal UnitPrice, decimal NumberOfDays)> procurementItems)
     {
         Dictionary<int, decimal> merged = new();
         foreach ((int periodNo, decimal amount) in typedPeriods)
             merged[periodNo] = merged.GetValueOrDefault(periodNo) + amount;
-        foreach ((int periodNo, decimal qty, decimal unitPrice) in procurementItems)
-            merged[periodNo] = merged.GetValueOrDefault(periodNo) + (qty * unitPrice);
+        foreach ((int periodNo, decimal qty, decimal unitPrice, decimal numberOfDays) in procurementItems)
+            merged[periodNo] = merged.GetValueOrDefault(periodNo) + (qty * unitPrice * numberOfDays);
         return merged;
     }
 

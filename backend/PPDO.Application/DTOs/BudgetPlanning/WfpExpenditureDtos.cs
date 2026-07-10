@@ -11,6 +11,7 @@ public record WfpProcurementItemDto(
     string   Unit,
     decimal  UnitPrice,
     decimal  Qty,
+    decimal  NumberOfDays,
     decimal  LineTotal);
 
 /// <summary>Read model for a WFP expenditure — Q1–Q4/Net/Total are always server-computed (RAL-120).</summary>
@@ -47,7 +48,8 @@ public record SaveWfpProcurementItemDto(
     string   Name,
     string   Unit,
     decimal  UnitPrice,
-    decimal  Qty);
+    decimal  Qty,
+    decimal  NumberOfDays = 1m);
 
 /// <summary>
 /// Create/update body for a WFP expenditure. Id null = create; Id provided = replace an
