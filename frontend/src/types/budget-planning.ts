@@ -97,6 +97,7 @@ export interface AipActivityDetail {
   ccAdaptation: number | null;
   ccMitigation: number | null;
   ccTypologyCode: string | null;
+  isCreation: boolean;
 }
 
 export interface AipProjectDetail {
@@ -113,6 +114,7 @@ export interface AipProgramDetail {
   refCode: string;
   name: string;
   projects: AipProjectDetail[];
+  functionBand: string | null;
 }
 
 export interface AipOfficeDetail {
@@ -149,6 +151,7 @@ export interface AipActivitySummary {
   total: number | null;
   fundingSourceId: number | null;
   fundingSourceSnapshot: string | null;
+  isCreation: boolean;
 }
 
 export interface AipProjectSummary {
@@ -163,6 +166,7 @@ export interface AipProgramSummary {
   refCode: string;
   name: string;
   projects: AipProjectSummary[];
+  functionBand: string | null;
 }
 
 export interface AipOfficeSummary {

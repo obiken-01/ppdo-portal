@@ -24,6 +24,9 @@ public interface IAipRepository : IRepository<AipRecord>
     /// <summary>AipProgram rows WHERE office_id IN (<paramref name="officeIds"/>).</summary>
     Task<IReadOnlyList<AipProgram>> GetProgramsByOfficeIdsAsync(IReadOnlyList<int> officeIds, CancellationToken ct = default);
 
+    /// <summary>Returns the single AipProgram whose PK equals <paramref name="id"/>, or null (v1.4 Q1 function-band edit).</summary>
+    Task<AipProgram?> GetProgramByIdAsync(int id, CancellationToken ct = default);
+
     /// <summary>AipProject rows WHERE program_id IN (<paramref name="programIds"/>).</summary>
     Task<IReadOnlyList<AipProject>> GetProjectsByProgramIdsAsync(IReadOnlyList<int> programIds, CancellationToken ct = default);
 

@@ -52,6 +52,10 @@ public sealed class AipRepository : Repository<AipRecord>, IAipRepository
     }
 
     /// <inheritdoc />
+    public async Task<AipProgram?> GetProgramByIdAsync(int id, CancellationToken ct = default)
+        => await _context.Set<AipProgram>().FirstOrDefaultAsync(p => p.Id == id, ct);
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<AipProject>> GetProjectsByProgramIdsAsync(
         IReadOnlyList<int> programIds, CancellationToken ct = default)
     {
