@@ -381,6 +381,7 @@ export interface WfpProcurementItemDto {
   unit: string;
   unitPrice: number;
   qty: number;
+  numberOfDays: number;
   lineTotal: number;
 }
 
@@ -420,6 +421,7 @@ export interface SaveWfpProcurementItemRequest {
   unit: string;
   unitPrice: number;
   qty: number;
+  numberOfDays: number;
 }
 
 /** ReserveAmount null = "not specified" — server defaults to the reserve rate × Net. */

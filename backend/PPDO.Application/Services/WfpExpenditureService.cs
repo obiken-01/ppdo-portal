@@ -116,7 +116,7 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
 
         Dictionary<int, decimal> merged = WfpExpenditureCalculator.MergePeriodAmounts(
             dto.Periods.Select(p => (p.PeriodNo, p.Amount)),
-            dto.ProcurementItems.Select(i => (i.PeriodNo, i.Qty, i.UnitPrice)));
+            dto.ProcurementItems.Select(i => (i.PeriodNo, i.Qty, i.UnitPrice, i.NumberOfDays)));
 
         // Q1–Q4/Net never depend on reserve (reserve is excluded from the release plan) —
         // compute them first so the reserve rule below can be applied against the real Net.
@@ -241,7 +241,8 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
                 Unit             = i.Unit,
                 UnitPrice        = i.UnitPrice,
                 Qty              = i.Qty,
-                LineTotal        = Math.Round(i.Qty * i.UnitPrice, 2),
+                NumberOfDays     = i.NumberOfDays,
+                LineTotal        = Math.Round(i.Qty * i.UnitPrice * i.NumberOfDays, 2),
             }, ct);
         }
 
@@ -300,6 +301,8 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
                 return "Procurement item unit price cannot be negative.";
             if (i.Qty < 0)
                 return "Procurement item quantity cannot be negative.";
+            if (i.NumberOfDays <= 0)
+                return "Procurement item number of days must be greater than zero.";
         }
 
         return null;
@@ -317,5 +320,5 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
         entity.Q1, entity.Q2, entity.Q3, entity.Q4, entity.NetAppropriation, entity.TotalAppropriation,
         periods.Select(p => new WfpExpenditurePeriodDto(p.PeriodNo, p.Amount)).ToList(),
         items.Select(i => new WfpProcurementItemDto(
-            i.PeriodNo, i.PriceIndexItemId, i.Name, i.Unit, i.UnitPrice, i.Qty, i.LineTotal)).ToList());
+            i.PeriodNo, i.PriceIndexItemId, i.Name, i.Unit, i.UnitPrice, i.Qty, i.NumberOfDays, i.LineTotal)).ToList());
 }

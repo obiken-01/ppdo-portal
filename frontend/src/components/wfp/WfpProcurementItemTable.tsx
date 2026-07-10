@@ -122,7 +122,7 @@ export default function WfpProcurementItemTable({
   function addRow() {
     replaceActiveRows([
       ...activeRows,
-      { periodNo: activePeriod, priceIndexItemId: null, name: "", unit: "", unitPrice: 0, qty: 1 },
+      { periodNo: activePeriod, priceIndexItemId: null, name: "", unit: "", unitPrice: 0, qty: 1, numberOfDays: 1 },
     ]);
   }
 
@@ -183,6 +183,8 @@ export default function WfpProcurementItemTable({
   }
 
   function loadPreset(preset: ProcurementPresetResponse) {
+    // Presets don't carry a day count (RAL-119 templates are name/unit/price/qty only) —
+    // days is event-specific, entered per use, so a loaded row starts at 1 day (RAL-127).
     replaceActiveRows(
       preset.items.map((i) => ({
         periodNo: activePeriod,
@@ -191,6 +193,7 @@ export default function WfpProcurementItemTable({
         unit: i.unit,
         unitPrice: i.unitPrice,
         qty: i.defaultQty,
+        numberOfDays: 1,
       })),
     );
     setLoadPresetOpen(false);
@@ -229,7 +232,7 @@ export default function WfpProcurementItemTable({
 
   // ── Totals ────────────────────────────────────────────────────────────────────
 
-  const activeTotal = activeRows.reduce((sum, r) => sum + r.qty * r.unitPrice, 0);
+  const activeTotal = activeRows.reduce((sum, r) => sum + r.qty * r.unitPrice * r.numberOfDays, 0);
   const merged = mergeWfpPeriodAndItemAmounts([], procurementItems);
   const preview = computeWfpRollUpPreview(frequency, merged, 0, annualQuarterChoice);
   const resolvedReserve = applyReserve ? reserveAmount ?? preview.net * reserveRate : 0;
@@ -326,7 +329,7 @@ export default function WfpProcurementItemTable({
           </p>
         )}
         {activeRows.map((row, index) => {
-          const lineTotal = row.qty * row.unitPrice;
+          const lineTotal = row.qty * row.unitPrice * row.numberOfDays;
           return (
             <div key={index} className="border border-slate-200 p-3 space-y-2">
               <div className="flex items-center justify-between gap-2">
@@ -350,6 +353,7 @@ export default function WfpProcurementItemTable({
                 </button>
               </div>
 
+              {/* Name (full width) + Unit */}
               <div className="flex items-end gap-2">
                 <div className="flex-1 min-w-0">
                   <label className="block text-[11px] text-slate-400 mb-0.5">Name</label>
@@ -360,7 +364,7 @@ export default function WfpProcurementItemTable({
                     className="w-full px-2 py-1.5 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
                   />
                 </div>
-                <div className="w-28 shrink-0">
+                <div className="w-32 shrink-0">
                   <label className="block text-[11px] text-slate-400 mb-0.5">Unit</label>
                   <input
                     value={row.unit}
@@ -369,7 +373,11 @@ export default function WfpProcurementItemTable({
                     className="w-full px-2 py-1.5 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
                   />
                 </div>
-                <div className="w-32 shrink-0">
+              </div>
+
+              {/* Unit Price · Qty · Days · Line Total */}
+              <div className="flex items-end gap-2">
+                <div className="w-36 shrink-0">
                   <label className="block text-[11px] text-slate-400 mb-0.5">Unit Price</label>
                   <MoneyInput
                     value={row.unitPrice}
@@ -388,7 +396,18 @@ export default function WfpProcurementItemTable({
                     className="w-full px-2 py-1.5 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
                   />
                 </div>
-                <div className="w-32 shrink-0">
+                <div className="w-20 shrink-0">
+                  <label className="block text-[11px] text-slate-400 mb-0.5">Days</label>
+                  <input
+                    type="number"
+                    min={1}
+                    step="1"
+                    value={row.numberOfDays}
+                    onChange={(e) => updateRow(index, { numberOfDays: Number(e.target.value) || 1 })}
+                    className="w-full px-2 py-1.5 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
                   <label className="block text-[11px] text-slate-400 mb-0.5">Line Total</label>
                   <div className="w-full px-2 py-1.5 text-sm text-right font-mono tabular-nums text-slate-700 bg-slate-50 border border-slate-200">
                     ₱{formatMoney(lineTotal)}
