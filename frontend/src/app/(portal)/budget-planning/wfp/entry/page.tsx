@@ -42,6 +42,7 @@ import { listAccounts, listDivisions, listFundingSources, listOffices, listPrice
 import { getAllocations, getCeilingStatus, getPrograms, getSetupStatus } from "@/lib/allocation";
 import {
   computeWfpRollUpPreview,
+  deleteWfpExpenditure,
   ensureWfpActivity,
   getReserveRate,
   listWfpExpenditures,
@@ -147,7 +148,13 @@ function useCeilingStatus(
   divisionId: number | null,
   fiscalYear: number | null,
   pendingTotal: number,
-  refreshKey: number
+  refreshKey: number,
+  // When editing an existing expenditure, `status.aipUsed`/`divisionAllocation - divisionRemaining`
+  // already include that expenditure's OLD total (RAL-122's ledger/aggregate is a snapshot of
+  // everything saved so far). Subtract it here so the preview reflects OLD -> NEW, not OLD + NEW
+  // double-counted — the server's ValidateExpenditureSaveAsync already excludes it via
+  // excludeExpenditureId; this mirrors that exclusion client-side for the live preview (RAL-129).
+  excludeCurrentTotal = 0
 ) {
   const [status, setStatus] = useState<WfpCeilingStatusDto | null>(null);
   const [checking, setChecking] = useState(false);
@@ -181,9 +188,11 @@ function useCeilingStatus(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aipActivityId, divisionId, fiscalYear, pendingTotal, refreshKey]);
 
-  const wouldBeAipUsed = status != null ? status.aipUsed + pendingTotal : null;
+  const wouldBeAipUsed = status != null ? status.aipUsed - excludeCurrentTotal + pendingTotal : null;
   const wouldBeDivisionUsed =
-    status != null ? status.divisionAllocation - status.divisionRemaining + pendingTotal : null;
+    status != null
+      ? status.divisionAllocation - status.divisionRemaining - excludeCurrentTotal + pendingTotal
+      : null;
   const overAip = status != null && wouldBeAipUsed != null && wouldBeAipUsed > status.aipBudget;
   const overDivision =
     status != null && wouldBeDivisionUsed != null && wouldBeDivisionUsed > status.divisionAllocation;
@@ -206,6 +215,7 @@ interface ExpenditureWizardProps {
   fundingSources: FundingSourceResponse[];
   priceIndex: PriceIndexItemResponse[];
   reserveRate: number;
+  editingExpenditure: WfpExpenditureDto | null;
   onSaved: (saved: WfpExpenditureDto) => void;
   onClose: () => void;
 }
@@ -220,20 +230,41 @@ function ExpenditureWizard({
   fundingSources,
   priceIndex,
   reserveRate,
+  editingExpenditure,
   onSaved,
   onClose,
 }: ExpenditureWizardProps) {
   const { toast } = useToast();
+  const isEditing = editingExpenditure != null;
 
-  const [accountId, setAccountId] = useState<number | null>(null);
-  const [nature, setNature] = useState<WfpExpenditureNature>("Non-Procurement");
-  const [frequency, setFrequency] = useState<WfpExpenditureFrequency>("Q");
-  const [fundingSourceId, setFundingSourceId] = useState<number | null>(defaultFundingSourceId);
-  const [applyReserve, setApplyReserve] = useState(false);
-  const [reserveAmount, setReserveAmount] = useState<number | null>(null);
-  const [annualQuarterChoice, setAnnualQuarterChoice] = useState(1);
-  const [periods, setPeriods] = useState<SaveWfpExpenditurePeriodRequest[]>([]);
-  const [procurementItems, setProcurementItems] = useState<SaveWfpProcurementItemRequest[]>([]);
+  // Seed state from the expenditure being edited, else the Add-new defaults. Read once at
+  // mount — a new ExpenditureWizard instance is mounted per open (wizardOpen gates it), so
+  // there's no stale-prop risk from editingExpenditure changing under an already-open modal.
+  const [accountId, setAccountId] = useState<number | null>(editingExpenditure?.accountId ?? null);
+  const [nature, setNature] = useState<WfpExpenditureNature>(editingExpenditure?.nature ?? "Non-Procurement");
+  const [frequency, setFrequency] = useState<WfpExpenditureFrequency>(editingExpenditure?.frequency ?? "Q");
+  const [fundingSourceId, setFundingSourceId] = useState<number | null>(
+    editingExpenditure?.fundingSourceId ?? defaultFundingSourceId
+  );
+  const [applyReserve, setApplyReserve] = useState(editingExpenditure?.applyReserve ?? false);
+  const [reserveAmount, setReserveAmount] = useState<number | null>(
+    editingExpenditure?.applyReserve ? editingExpenditure.reserveAmount : null
+  );
+  const [annualQuarterChoice, setAnnualQuarterChoice] = useState(editingExpenditure?.annualQuarterChoice ?? 1);
+  const [periods, setPeriods] = useState<SaveWfpExpenditurePeriodRequest[]>(
+    editingExpenditure?.periods.map((p) => ({ periodNo: p.periodNo, amount: p.amount })) ?? []
+  );
+  const [procurementItems, setProcurementItems] = useState<SaveWfpProcurementItemRequest[]>(
+    editingExpenditure?.procurementItems.map((i) => ({
+      periodNo: i.periodNo,
+      priceIndexItemId: i.priceIndexItemId,
+      name: i.name,
+      unit: i.unit,
+      unitPrice: i.unitPrice,
+      qty: i.qty,
+      numberOfDays: i.numberOfDays,
+    })) ?? []
+  );
   const [saving, setSaving] = useState(false);
   const [confirm, setConfirm] = useState<ConfirmDialogProps | null>(null);
 
@@ -249,7 +280,10 @@ function ExpenditureWizard({
     annualQuarterChoice
   ).total;
   const { status, checking, overAip, overDivision, wouldBeAipUsed, wouldBeDivisionUsed } =
-    useCeilingStatus(aipActivityId, divisionId, fiscalYear, pendingTotal, 0);
+    useCeilingStatus(
+      aipActivityId, divisionId, fiscalYear, pendingTotal, 0,
+      editingExpenditure?.totalAppropriation ?? 0
+    );
 
   function handleAccountChange(id: number | null) {
     setAccountId(id);
@@ -303,7 +337,7 @@ function ExpenditureWizard({
     setSaving(true);
     try {
       const saved = await saveWfpExpenditure({
-        id: null,
+        id: editingExpenditure?.id ?? null,
         wfpActivityId: activityRef.wfpActivityId,
         accountId,
         nature,
@@ -316,7 +350,7 @@ function ExpenditureWizard({
         procurementItems,
       });
       toast.success(
-        "Expenditure saved",
+        isEditing ? "Expenditure updated" : "Expenditure saved",
         nature === "Combined"
           ? `Total: ₱${formatMoney(saved.totalAppropriation)} (periods only — procurement items for Combined are pending definition).`
           : `Total: ₱${formatMoney(saved.totalAppropriation)}.`
@@ -333,14 +367,14 @@ function ExpenditureWizard({
 
   return (
     <Modal
-      title="Add Expenditure"
+      title={isEditing ? "Edit Expenditure" : "Add Expenditure"}
       size="lg"
       onClose={onClose}
       footer={
         <>
           <Modal.SecondaryButton onClick={onClose}>Cancel</Modal.SecondaryButton>
           <Modal.PrimaryButton onClick={handleSave} disabled={!canSave} loading={saving}>
-            Save Expenditure
+            {isEditing ? "Save Changes" : "Save Expenditure"}
           </Modal.PrimaryButton>
         </>
       }
@@ -582,6 +616,9 @@ function WfpEntryPageInner() {
   const [loadingActivity, setLoadingActivity] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [ceilingRefresh, setCeilingRefresh] = useState(0);
+  const [editingExpenditure, setEditingExpenditure] = useState<WfpExpenditureDto | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<ConfirmDialogProps | null>(null);
 
   const [loading, setLoading] = useState(false);
 
@@ -698,6 +735,10 @@ function WfpEntryPageInner() {
   const selectedProject = projects.find((p) => p.id === selectedProjectId) ?? null;
   const activities: AipActivitySummary[] = selectedProject?.activities ?? [];
   const selectedActivity = activities.find((a) => a.id === selectedActivityId) ?? null;
+
+  // A Final WFP record is locked — the server rejects add/edit/delete on its expenditures
+  // (RAL-129); mirror that client-side so the affordances are disabled, not just error toasts.
+  const isWfpLocked = activityRef?.wfpStatus === "Final";
 
   // ── Function band / Creation flag (v1.4 Q1/Q2) — optimistic patch of aipDetail ──
 
@@ -855,9 +896,53 @@ function WfpEntryPageInner() {
   );
 
   function handleExpenditureSaved(saved: WfpExpenditureDto) {
-    setExpenditures((prev) => [...prev, saved]);
+    setExpenditures((prev) => {
+      const idx = prev.findIndex((e) => e.id === saved.id);
+      if (idx === -1) return [...prev, saved];
+      const next = [...prev];
+      next[idx] = saved;
+      return next;
+    });
     setWizardOpen(false);
+    setEditingExpenditure(null);
     setCeilingRefresh((n) => n + 1);
+  }
+
+  function handleEditExpenditure(e: WfpExpenditureDto) {
+    setEditingExpenditure(e);
+    setWizardOpen(true);
+  }
+
+  function handleCloseWizard() {
+    setWizardOpen(false);
+    setEditingExpenditure(null);
+  }
+
+  function handleDeleteExpenditure(e: WfpExpenditureDto) {
+    setDeleteConfirm({
+      title: "Delete Expenditure?",
+      message: `Delete this ${e.accountTitleSnapshot ?? "expenditure"} entry (₱${formatMoney(
+        e.totalAppropriation
+      )})? This cannot be undone.`,
+      confirmLabel: "Delete",
+      cancelLabel: "Cancel",
+      variant: "danger",
+      onConfirm: async () => {
+        setDeletingId(e.id);
+        try {
+          await deleteWfpExpenditure(e.id);
+          setExpenditures((prev) => prev.filter((x) => x.id !== e.id));
+          setCeilingRefresh((n) => n + 1);
+          toast.success("Expenditure deleted", `Removed the ${e.accountTitleSnapshot ?? "entry"}.`);
+        } catch (err) {
+          toast.error("Delete failed", wfpErrorMessage(err, "Could not delete this expenditure."));
+        } finally {
+          setDeletingId(null);
+          setDeleteConfirm(null);
+        }
+      },
+      onClose: () => setDeleteConfirm(null),
+    });
   }
 
   function handleChangeActivity() {
@@ -1167,6 +1252,13 @@ function WfpEntryPageInner() {
                 )}
               </div>
 
+              {isWfpLocked && (
+                <p className="px-3 py-2 text-xs text-amber-700 bg-amber-50 border-b border-amber-200">
+                  This WFP is Final and locked. An admin must Unlock it before expenditures can be
+                  added, edited, or deleted.
+                </p>
+              )}
+
               {expenditures.length === 0 ? (
                 <p className="px-3 py-6 text-sm text-slate-400 text-center">
                   No expenditures added yet.
@@ -1179,6 +1271,7 @@ function WfpEntryPageInner() {
                       <th className="px-3 py-1.5">Nature</th>
                       <th className="px-3 py-1.5">Frequency</th>
                       <th className="px-3 py-1.5 text-right">Total</th>
+                      <th className="px-3 py-1.5 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -1190,6 +1283,23 @@ function WfpEntryPageInner() {
                         <td className="px-3 py-1.5 text-right tabular-nums">
                           {formatMoney(e.totalAppropriation)}
                         </td>
+                        <td className="px-3 py-1.5 text-right whitespace-nowrap">
+                          <button
+                            onClick={() => handleEditExpenditure(e)}
+                            disabled={isWfpLocked || deletingId === e.id}
+                            className="text-green-700 hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            Edit
+                          </button>
+                          <span className="mx-1.5 text-slate-300">·</span>
+                          <button
+                            onClick={() => handleDeleteExpenditure(e)}
+                            disabled={isWfpLocked || deletingId === e.id}
+                            className="text-danger-500 hover:text-red-600 hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            {deletingId === e.id ? "Deleting…" : "Delete"}
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1198,8 +1308,11 @@ function WfpEntryPageInner() {
 
               <div className="px-3 py-2.5 border-t border-slate-200 flex items-center justify-between">
                 <button
-                  onClick={() => setWizardOpen(true)}
-                  disabled={activityRef == null}
+                  onClick={() => {
+                    setEditingExpenditure(null);
+                    setWizardOpen(true);
+                  }}
+                  disabled={activityRef == null || isWfpLocked}
                   className="text-sm font-medium text-green-700 hover:underline disabled:opacity-50"
                 >
                   + Add expenditure
@@ -1229,10 +1342,13 @@ function WfpEntryPageInner() {
           fundingSources={fundingSources}
           priceIndex={priceIndex}
           reserveRate={reserveRate}
+          editingExpenditure={editingExpenditure}
           onSaved={handleExpenditureSaved}
-          onClose={() => setWizardOpen(false)}
+          onClose={handleCloseWizard}
         />
       )}
+
+      {deleteConfirm && <ConfirmDialog {...deleteConfirm} />}
     </div>
   );
 }

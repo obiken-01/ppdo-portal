@@ -160,6 +160,14 @@ export async function saveWfpExpenditure(body: SaveWfpExpenditureRequest): Promi
   return unwrap(data);
 }
 
+/** Deletes an expenditure and its child periods/procurement items (RAL-129). Forbidden when the parent WFP record is Final. */
+export async function deleteWfpExpenditure(id: number): Promise<void> {
+  const { data } = await api.delete<ApiResponse<boolean>>(
+    `/budget-planning/wfp/expenditures/${id}`
+  );
+  unwrap(data);
+}
+
 /** The current reserve rate (e.g. 0.10) — never hard-code "10%" client-side. */
 export async function getReserveRate(): Promise<WfpReserveRateDto> {
   const { data } = await api.get<ApiResponse<WfpReserveRateDto>>(

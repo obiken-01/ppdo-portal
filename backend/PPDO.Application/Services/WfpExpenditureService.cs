@@ -28,6 +28,7 @@ namespace PPDO.Application.Services;
 public sealed class WfpExpenditureService : IWfpExpenditureService
 {
     private readonly IWfpExpenditureRepository            _repo;
+    private readonly IWfpRepository                       _wfpRepo;
     private readonly IRepository<WfpExpenditurePeriod>    _periodRepo;
     private readonly IRepository<WfpProcurementItem>      _itemRepo;
     private readonly IRepository<Account>                 _accountRepo;
@@ -37,6 +38,7 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
 
     public WfpExpenditureService(
         IWfpExpenditureRepository         repo,
+        IWfpRepository                    wfpRepo,
         IRepository<WfpExpenditurePeriod> periodRepo,
         IRepository<WfpProcurementItem>   itemRepo,
         IRepository<Account>              accountRepo,
@@ -45,6 +47,7 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
         IAuditService                     audit)
     {
         _repo        = repo;
+        _wfpRepo     = wfpRepo;
         _periodRepo  = periodRepo;
         _itemRepo    = itemRepo;
         _accountRepo = accountRepo;
@@ -92,6 +95,10 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
         string? validationError = ValidateDto(dto);
         if (validationError is not null)
             return ServiceResult<WfpExpenditureDto>.BadRequest(validationError);
+
+        string? lockError = await GetFinalLockErrorAsync(dto.WfpActivityId, ct);
+        if (lockError is not null)
+            return ServiceResult<WfpExpenditureDto>.Forbidden(lockError);
 
         WfpExpenditure? existing = null;
         if (dto.Id.HasValue)
@@ -259,6 +266,51 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
         IReadOnlyList<WfpExpenditurePeriod> savedPeriods = await _repo.GetPeriodsByExpenditureIdAsync(entity.Id, ct);
         IReadOnlyList<WfpProcurementItem>   savedItems   = await _repo.GetProcurementItemsByExpenditureIdAsync(entity.Id, ct);
         return ServiceResult<WfpExpenditureDto>.Ok(MapToDto(entity, savedPeriods, savedItems));
+    }
+
+    // ── Delete (RAL-129) ─────────────────────────────────────────────────────
+
+    public async Task<ServiceResult<bool>> DeleteExpenditureAsync(int id, CancellationToken ct = default)
+    {
+        WfpExpenditure? existing = await _repo.GetByIntIdAsync(id, ct);
+        if (existing is null)
+            return ServiceResult<bool>.NotFound($"WFP expenditure {id} not found.");
+
+        string? lockError = await GetFinalLockErrorAsync(existing.WfpActivityId, ct);
+        if (lockError is not null)
+            return ServiceResult<bool>.Forbidden(lockError);
+
+        foreach (WfpExpenditurePeriod p in await _repo.GetPeriodsByExpenditureIdAsync(existing.Id, ct))
+            await _periodRepo.DeleteAsync(p, ct);
+        foreach (WfpProcurementItem i in await _repo.GetProcurementItemsByExpenditureIdAsync(existing.Id, ct))
+            await _itemRepo.DeleteAsync(i, ct);
+        await _repo.DeleteAsync(existing, ct);
+        await _repo.SaveChangesAsync(ct);
+
+        // Recompute the division-allocation ledger now that this expenditure is gone.
+        await _ceiling.UpsertLedgerForActivityAsync(existing.WfpActivityId, ct);
+
+        await _audit.LogAsync("wfp_expenditures", existing.Id, AuditAction.Delete,
+            oldValues: new { existing.Nature, existing.Frequency, existing.TotalAppropriation },
+            newValues: null, ct);
+
+        return ServiceResult<bool>.Ok(true);
+    }
+
+    // ── Final-lock guard (RAL-129) ───────────────────────────────────────────
+    // Editing/deleting an expenditure under a WFP record that has already been finalized is
+    // blocked, mirroring WfpService.SaveAsync's "Cannot edit a finalized WFP." rule — a
+    // finalized WFP is locked; an admin must Unlock it first (same as the record-level flow).
+
+    private async Task<string?> GetFinalLockErrorAsync(int wfpActivityId, CancellationToken ct)
+    {
+        WfpExpenditureContext? context = await _repo.GetActivityContextAsync(wfpActivityId, ct);
+        if (context is null) return null; // unknown activity — the FK constraint will reject the write
+
+        WfpRecord? record = await _wfpRepo.GetByIntIdAsync(context.WfpRecordId, ct);
+        if (record is null || record.Status != PlanningStatus.Final) return null;
+
+        return "Cannot edit or delete an expenditure under a finalized WFP. Unlock the WFP record first.";
     }
 
     // ── Validation ────────────────────────────────────────────────────────────
