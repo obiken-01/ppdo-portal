@@ -84,6 +84,21 @@ public sealed class WfpExpenditureFunctions
             result.IsSuccess ? HttpStatusCode.OK : HttpStatusCode.BadRequest);
     }
 
+    // ── DELETE /api/budget-planning/wfp/expenditures/{id} ────────────────────
+    // RAL-129: removes the expenditure + child periods/procurement items, recomputes the
+    // division-allocation ledger. Forbidden when the parent WFP record is Final.
+    [Function("WfpExpenditureDelete")]
+    public async Task<HttpResponseData> Delete(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete",
+            Route = "budget-planning/wfp/expenditures/{id:int}")] HttpRequestData req,
+        int id, CancellationToken ct)
+    {
+        (User? _, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        return await ConfigHttp.FromResultAsync(req, await _expenditures.DeleteExpenditureAsync(id, ct), ct);
+    }
+
     // ── GET /api/budget-planning/wfp/reserve-rate ────────────────────────────
     // Surfaces WfpReserveRule.Rate (RAL-121) so the entry UI (ticket #9) never hard-codes "10%".
     [Function("WfpReserveRateGet")]

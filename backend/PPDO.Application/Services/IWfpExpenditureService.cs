@@ -32,6 +32,12 @@ public interface IWfpExpenditureService
     Task<ServiceResult<WfpExpenditureDto>> SaveExpenditureAsync(
         SaveWfpExpenditureDto dto, CancellationToken ct = default);
 
+    /// <summary>
+    /// Deletes an expenditure and its child periods/procurement items, then recomputes the
+    /// division-allocation ledger (RAL-129). Forbidden when the parent WFP record is Final.
+    /// </summary>
+    Task<ServiceResult<bool>> DeleteExpenditureAsync(int id, CancellationToken ct = default);
+
     /// <summary>The current reserve rate, for the frontend to display without hard-coding it.</summary>
     WfpReserveRateDto GetReserveRate();
 }

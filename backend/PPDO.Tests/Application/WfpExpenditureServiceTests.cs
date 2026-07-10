@@ -56,7 +56,8 @@ public sealed class WfpExpenditureServiceTests
         Mock<IRepository<WfpExpenditurePeriod>> periodRepo,
         Mock<IRepository<WfpProcurementItem>> itemRepo,
         Mock<IAuditService> audit,
-        Mock<IWfpCeilingService> ceiling)
+        Mock<IWfpCeilingService> ceiling,
+        Mock<IWfpRepository> wfpRepo)
         Build(List<Account> accountSeed, List<FundingSource> fsSeed, Mock<IWfpCeilingService>? ceilingMock = null)
     {
         List<WfpExpenditure> expSeed = [];
@@ -64,12 +65,18 @@ public sealed class WfpExpenditureServiceTests
         List<WfpProcurementItem> itemSeed = [];
 
         Mock<IWfpExpenditureRepository> repo = new();
+        Mock<IWfpRepository> wfpRepo = new();
         Mock<IRepository<WfpExpenditurePeriod>> periodRepo = new();
         Mock<IRepository<WfpProcurementItem>> itemRepo = new();
         Mock<IRepository<Account>> accountRepo = new();
         Mock<IRepository<FundingSource>> fsRepo = new();
         Mock<IAuditService> audit = new();
         Mock<IWfpCeilingService> ceiling = ceilingMock ?? new();
+
+        // Default: no WFP-record context resolvable -> the Final-lock guard no-ops (RAL-129).
+        // Tests that need to exercise the lock override this setup explicitly.
+        repo.Setup(r => r.GetActivityContextAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((WfpExpenditureContext?)null);
 
         // Default: no ceiling error (RAL-120's own tests don't exercise ceilings) and a no-op ledger upsert.
         if (ceilingMock is null)
@@ -92,6 +99,9 @@ public sealed class WfpExpenditureServiceTests
             .Callback<WfpExpenditure, CancellationToken>((e, _) => { e.Id = nextExpId++; expSeed.Add(e); })
             .Returns(Task.CompletedTask);
         repo.Setup(r => r.UpdateAsync(It.IsAny<WfpExpenditure>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        repo.Setup(r => r.DeleteAsync(It.IsAny<WfpExpenditure>(), It.IsAny<CancellationToken>()))
+            .Callback<WfpExpenditure, CancellationToken>((e, _) => expSeed.RemoveAll(x => x.Id == e.Id))
             .Returns(Task.CompletedTask);
         repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
         repo.Setup(r => r.GetPeriodsByExpenditureIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
@@ -128,10 +138,10 @@ public sealed class WfpExpenditureServiceTests
             .Returns(Task.CompletedTask);
 
         WfpExpenditureService sut = new(
-            repo.Object, periodRepo.Object, itemRepo.Object, accountRepo.Object, fsRepo.Object,
+            repo.Object, wfpRepo.Object, periodRepo.Object, itemRepo.Object, accountRepo.Object, fsRepo.Object,
             ceiling.Object, audit.Object);
 
-        return (sut, repo, periodRepo, itemRepo, audit, ceiling);
+        return (sut, repo, periodRepo, itemRepo, audit, ceiling, wfpRepo);
     }
 
     // ── Create vs update ──────────────────────────────────────────────────────
@@ -139,7 +149,7 @@ public sealed class WfpExpenditureServiceTests
     [Fact]
     public async Task Save_NewExpenditure_CreatesRecord_WithComputedTotals()
     {
-        var (sut, repo, _, _, _, _) = Build([], []);
+        var (sut, repo, _, _, _, _, _) = Build([], []);
 
         ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
             QuarterlyDto(q1: 100, q2: 200, q3: 300, q4: 400), CancellationToken.None);
@@ -157,7 +167,7 @@ public sealed class WfpExpenditureServiceTests
     [Fact]
     public async Task Save_UpdateNonexistentId_ReturnsNotFound()
     {
-        var (sut, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _) = Build([], []);
 
         ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
             QuarterlyDto(id: 999), CancellationToken.None);
@@ -170,7 +180,7 @@ public sealed class WfpExpenditureServiceTests
     {
         // Server always recomputes even if the persisted row previously had different (stale)
         // totals — resaving with a new period set must NOT merge with or retain the old values.
-        var (sut, repo, _, _, _, _) = Build([], []);
+        var (sut, repo, _, _, _, _, _) = Build([], []);
 
         ServiceResult<WfpExpenditureDto> created = await sut.SaveExpenditureAsync(
             QuarterlyDto(q1: 100, q2: 100, q3: 100, q4: 100), CancellationToken.None);
@@ -200,7 +210,7 @@ public sealed class WfpExpenditureServiceTests
     public async Task Save_PopulatesAccountSnapshot()
     {
         Account acct = Acct(5, "5-02-03-010", "Office Supplies Expenses");
-        var (sut, _, _, _, _, _) = Build([acct], []);
+        var (sut, _, _, _, _, _, _) = Build([acct], []);
 
         ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
             QuarterlyDto(accountId: 5), CancellationToken.None);
@@ -214,7 +224,7 @@ public sealed class WfpExpenditureServiceTests
     public async Task Save_PopulatesFundingSourceSnapshot()
     {
         FundingSource fs = Fs(7, "GF");
-        var (sut, _, _, _, _, _) = Build([], [fs]);
+        var (sut, _, _, _, _, _, _) = Build([], [fs]);
 
         ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
             QuarterlyDto(fsId: 7), CancellationToken.None);
@@ -229,7 +239,7 @@ public sealed class WfpExpenditureServiceTests
     [Fact]
     public async Task Save_InvalidNature_ReturnsBadRequest()
     {
-        var (sut, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _) = Build([], []);
 
         ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
             QuarterlyDto() with { Nature = "Bogus" }, CancellationToken.None);
@@ -240,7 +250,7 @@ public sealed class WfpExpenditureServiceTests
     [Fact]
     public async Task Save_InvalidFrequency_ReturnsBadRequest()
     {
-        var (sut, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _) = Build([], []);
 
         ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
             QuarterlyDto() with { Frequency = "X" }, CancellationToken.None);
@@ -251,7 +261,7 @@ public sealed class WfpExpenditureServiceTests
     [Fact]
     public async Task Save_PeriodOutOfRangeForFrequency_ReturnsBadRequest()
     {
-        var (sut, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _) = Build([], []);
 
         SaveWfpExpenditureDto dto = new(
             null, 10, null, WfpNature.NonProcurement, WfpFrequency.Quarterly, null,
@@ -267,7 +277,7 @@ public sealed class WfpExpenditureServiceTests
     [Fact]
     public async Task Save_DuplicatePeriodNumber_ReturnsBadRequest()
     {
-        var (sut, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _) = Build([], []);
 
         SaveWfpExpenditureDto dto = new(
             null, 10, null, WfpNature.NonProcurement, WfpFrequency.Quarterly, null,
@@ -283,7 +293,7 @@ public sealed class WfpExpenditureServiceTests
     [Fact]
     public async Task Save_NegativePeriodAmount_ReturnsBadRequest()
     {
-        var (sut, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _) = Build([], []);
 
         ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
             QuarterlyDto(q1: -50m), CancellationToken.None);
@@ -294,7 +304,7 @@ public sealed class WfpExpenditureServiceTests
     [Fact]
     public async Task Save_ProcurementItemMissingName_ReturnsBadRequest()
     {
-        var (sut, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _) = Build([], []);
 
         SaveWfpExpenditureDto dto = new(
             null, 10, null, WfpNature.Procurement, WfpFrequency.Quarterly, null,
@@ -311,7 +321,7 @@ public sealed class WfpExpenditureServiceTests
     [Fact]
     public async Task Save_ProcurementItem_ComputesLineTotalAsQtyTimesUnitPrice()
     {
-        var (sut, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _) = Build([], []);
 
         SaveWfpExpenditureDto dto = new(
             null, 10, null, WfpNature.Procurement, WfpFrequency.Quarterly, null,
@@ -331,7 +341,7 @@ public sealed class WfpExpenditureServiceTests
     public async Task Save_ProcurementItem_WithNumberOfDays_MultipliesLineTotalAndRollup()
     {
         // RAL-127: 2 pax × ₱1,500/day × 3 days = ₱9,000, and it drives the period roll-up.
-        var (sut, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _) = Build([], []);
 
         SaveWfpExpenditureDto dto = new(
             null, 10, null, WfpNature.Procurement, WfpFrequency.Quarterly, null,
@@ -350,7 +360,7 @@ public sealed class WfpExpenditureServiceTests
     [Fact]
     public async Task Save_ProcurementItem_ZeroDays_ReturnsBadRequest()
     {
-        var (sut, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _) = Build([], []);
 
         SaveWfpExpenditureDto dto = new(
             null, 10, null, WfpNature.Procurement, WfpFrequency.Quarterly, null,
@@ -368,7 +378,7 @@ public sealed class WfpExpenditureServiceTests
         // SaveWfpProcurementItemDto has no LineTotal field at all — architecturally the
         // client cannot send one. This test locks in that the persisted value is always
         // Qty x UnitPrice, regardless of how large/small those inputs are.
-        var (sut, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _) = Build([], []);
 
         SaveWfpExpenditureDto dto = new(
             null, 10, null, WfpNature.Procurement, WfpFrequency.Quarterly, null,
@@ -386,7 +396,7 @@ public sealed class WfpExpenditureServiceTests
     [Fact]
     public async Task Save_ApplyReserveTrue_ExcludedFromNet_ButAddsToTotal()
     {
-        var (sut, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _) = Build([], []);
 
         // Net = 1000, rate 10% -> cap = 100. Explicit 100 is exactly at the cap.
         ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
@@ -402,7 +412,7 @@ public sealed class WfpExpenditureServiceTests
     [Fact]
     public async Task Save_ApplyReserveFalse_ForcesReserveAmountToZero_EvenIfDtoSuppliesOne()
     {
-        var (sut, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _) = Build([], []);
 
         // ApplyReserve=false skips the cap check entirely — 999 would otherwise be way over cap.
         ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
@@ -422,7 +432,7 @@ public sealed class WfpExpenditureServiceTests
         // No eligibility gate (RAL-117/121): toggling reserve on succeeds whether the account's
         // own default_apply_reserve agrees or disagrees with the caller's choice.
         Account acct = Acct(1, "5-02-03-010", "Office Supplies", accountDefaultApplyReserve);
-        var (sut, _, _, _, _, _) = Build([acct], []);
+        var (sut, _, _, _, _, _, _) = Build([acct], []);
 
         // Net = 400 (default q1..q4=100 each) -> cap = 40. Stay within cap.
         ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
@@ -437,7 +447,7 @@ public sealed class WfpExpenditureServiceTests
     {
         // The opposite override direction must also be unrestricted.
         Account acct = Acct(2, "5-02-13-020", "Repairs and Maintenance", defaultApplyReserve: true);
-        var (sut, _, _, _, _, _) = Build([acct], []);
+        var (sut, _, _, _, _, _, _) = Build([acct], []);
 
         ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
             QuarterlyDto(accountId: 2, applyReserve: false), CancellationToken.None);
@@ -449,7 +459,7 @@ public sealed class WfpExpenditureServiceTests
     [Fact]
     public async Task Save_ApplyReserveTrue_NoAmountGiven_DefaultsToRateTimesNet()
     {
-        var (sut, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _) = Build([], []);
 
         // Net = 2000 (500 x 4 quarters), no ReserveAmount supplied -> default = 10% x 2000 = 200.
         ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
@@ -465,7 +475,7 @@ public sealed class WfpExpenditureServiceTests
     [Fact]
     public async Task Save_ApplyReserveTrue_ExplicitAmountExceedsCap_ReturnsBadRequest()
     {
-        var (sut, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _) = Build([], []);
 
         // Net = 400 -> cap = 40. Explicit 41 exceeds it.
         ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
@@ -480,7 +490,7 @@ public sealed class WfpExpenditureServiceTests
     {
         // The cap is a flat rate rule, independent of any account eligibility flag.
         Account acct = Acct(3, "5-02-13-020", "Repairs and Maintenance", defaultApplyReserve: true);
-        var (sut, _, _, _, _, _) = Build([acct], []);
+        var (sut, _, _, _, _, _, _) = Build([acct], []);
 
         ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
             QuarterlyDto(accountId: 3, applyReserve: true, reserveAmount: 500m), // way over the 40 cap
@@ -492,7 +502,7 @@ public sealed class WfpExpenditureServiceTests
     [Fact]
     public async Task Save_ApplyReserveTrue_ExplicitValidAmount_IsRespected_NotOverriddenByDefault()
     {
-        var (sut, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _) = Build([], []);
 
         // Net = 400 -> default/cap would be 40, but an explicit, lower, valid amount (25) must
         // be kept exactly as given — never silently replaced by the 40 default.
@@ -507,7 +517,7 @@ public sealed class WfpExpenditureServiceTests
     public async Task Save_ApplyReserveTrue_ExplicitZero_IsRespectedAsZero_NotOverriddenByDefault()
     {
         // Distinguishes "0 given" from "nothing given" — only the latter triggers the default.
-        var (sut, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _) = Build([], []);
 
         ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
             QuarterlyDto(applyReserve: true, reserveAmount: 0m), CancellationToken.None);
@@ -519,7 +529,7 @@ public sealed class WfpExpenditureServiceTests
     [Fact]
     public void GetReserveRate_ReturnsTenPercent()
     {
-        var (sut, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _) = Build([], []);
 
         WfpReserveRateDto rate = sut.GetReserveRate();
 
@@ -531,7 +541,7 @@ public sealed class WfpExpenditureServiceTests
     [Fact]
     public async Task Save_CombinedNature_MergesTypedPeriodAndProcurementItemsForSamePeriod()
     {
-        var (sut, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _) = Build([], []);
 
         SaveWfpExpenditureDto dto = new(
             null, 10, null, WfpNature.Combined, WfpFrequency.Quarterly, null,
@@ -550,7 +560,7 @@ public sealed class WfpExpenditureServiceTests
     [Fact]
     public async Task GetById_UnknownId_ReturnsNotFound()
     {
-        var (sut, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _) = Build([], []);
 
         ServiceResult<WfpExpenditureDto> result = await sut.GetByIdAsync(999, CancellationToken.None);
 
@@ -567,7 +577,7 @@ public sealed class WfpExpenditureServiceTests
                 It.IsAny<int>(), It.IsAny<decimal>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("This save would exceed the AIP budget by ₱1,000.00.");
 
-        var (sut, repo, periodRepo, _, _, _) = Build([], [], ceilingMock);
+        var (sut, repo, periodRepo, _, _, _, _) = Build([], [], ceilingMock);
 
         ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(QuarterlyDto(), CancellationToken.None);
 
@@ -587,7 +597,7 @@ public sealed class WfpExpenditureServiceTests
         ceilingMock.Setup(c => c.UpsertLedgerForActivityAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
-        var (sut, _, _, _, _, _) = Build([], [], ceilingMock);
+        var (sut, _, _, _, _, _, _) = Build([], [], ceilingMock);
 
         ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
             QuarterlyDto(wfpActivityId: 42), CancellationToken.None);
@@ -602,7 +612,7 @@ public sealed class WfpExpenditureServiceTests
     [Fact]
     public async Task GetByActivityId_NoExpenditures_ReturnsEmptyList()
     {
-        var (sut, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _) = Build([], []);
 
         IReadOnlyList<WfpExpenditureDto> result = await sut.GetByActivityIdAsync(999, CancellationToken.None);
 
@@ -612,7 +622,7 @@ public sealed class WfpExpenditureServiceTests
     [Fact]
     public async Task GetByActivityId_ReturnsSavedExpendituresWithPeriodsAndItems()
     {
-        var (sut, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _) = Build([], []);
 
         await sut.SaveExpenditureAsync(QuarterlyDto(wfpActivityId: 7, q1: 100, q2: 100, q3: 100, q4: 100), CancellationToken.None);
         await sut.SaveExpenditureAsync(QuarterlyDto(wfpActivityId: 7, q1: 50, q2: 50, q3: 50, q4: 50), CancellationToken.None);
@@ -623,5 +633,130 @@ public sealed class WfpExpenditureServiceTests
         Assert.Equal(2, result.Count);
         Assert.All(result, e => Assert.Equal(4, e.Periods.Count));
         Assert.DoesNotContain(result, e => e.NetAppropriation == 999m);
+    }
+
+    // ── Final-lock guard (RAL-129) ────────────────────────────────────────────
+
+    private static void SetUpFinalLock(
+        Mock<IWfpExpenditureRepository> repo, Mock<IWfpRepository> wfpRepo,
+        int wfpActivityId, int wfpRecordId, string status)
+    {
+        repo.Setup(r => r.GetActivityContextAsync(wfpActivityId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WfpExpenditureContext(wfpRecordId, DivisionId: 1, OfficeId: 1, FiscalYear: 2027, AipActivityId: 900));
+        wfpRepo.Setup(r => r.GetByIntIdAsync(wfpRecordId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WfpRecord { Id = wfpRecordId, Status = status, OfficeId = 1, FiscalYear = 2027 });
+    }
+
+    [Fact]
+    public async Task Save_NewExpenditure_UnderFinalizedWfp_ReturnsForbidden()
+    {
+        var (sut, repo, _, _, _, _, wfpRepo) = Build([], []);
+        SetUpFinalLock(repo, wfpRepo, wfpActivityId: 10, wfpRecordId: 500, status: PlanningStatus.Final);
+
+        ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
+            QuarterlyDto(wfpActivityId: 10), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
+        repo.Verify(r => r.AddAsync(It.IsAny<WfpExpenditure>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Save_ExistingExpenditure_UnderFinalizedWfp_ReturnsForbidden()
+    {
+        var (sut, repo, _, _, _, _, wfpRepo) = Build([], []);
+
+        // Create while Draft, then the record gets finalized before the edit attempt.
+        ServiceResult<WfpExpenditureDto> created = await sut.SaveExpenditureAsync(
+            QuarterlyDto(wfpActivityId: 11), CancellationToken.None);
+        SetUpFinalLock(repo, wfpRepo, wfpActivityId: 11, wfpRecordId: 501, status: PlanningStatus.Final);
+
+        ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
+            QuarterlyDto(id: created.Value!.Id, wfpActivityId: 11, q1: 999), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
+    }
+
+    [Fact]
+    public async Task Save_UnderDraftWfp_Succeeds()
+    {
+        var (sut, repo, _, _, _, _, wfpRepo) = Build([], []);
+        SetUpFinalLock(repo, wfpRepo, wfpActivityId: 12, wfpRecordId: 502, status: PlanningStatus.Draft);
+
+        ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
+            QuarterlyDto(wfpActivityId: 12), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+    }
+
+    // ── DeleteExpenditureAsync (RAL-129) ──────────────────────────────────────
+
+    [Fact]
+    public async Task Delete_ExistingExpenditure_RemovesRecordAndChildren()
+    {
+        var (sut, repo, periodRepo, itemRepo, _, ceiling, _) = Build([], []);
+
+        ServiceResult<WfpExpenditureDto> created = await sut.SaveExpenditureAsync(
+            QuarterlyDto(wfpActivityId: 20), CancellationToken.None);
+        int id = created.Value!.Id;
+
+        ServiceResult<bool> result = await sut.DeleteExpenditureAsync(id, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value);
+        repo.Verify(r => r.DeleteAsync(It.Is<WfpExpenditure>(e => e.Id == id), It.IsAny<CancellationToken>()), Times.Once);
+        periodRepo.Verify(r => r.DeleteAsync(It.IsAny<WfpExpenditurePeriod>(), It.IsAny<CancellationToken>()), Times.Exactly(4));
+
+        IReadOnlyList<WfpExpenditureDto> remaining = await sut.GetByActivityIdAsync(20, CancellationToken.None);
+        Assert.Empty(remaining);
+    }
+
+    [Fact]
+    public async Task Delete_NonexistentId_ReturnsNotFound()
+    {
+        var (sut, _, _, _, _, _, _) = Build([], []);
+
+        ServiceResult<bool> result = await sut.DeleteExpenditureAsync(999, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Fact]
+    public async Task Delete_UnderFinalizedWfp_ReturnsForbidden()
+    {
+        var (sut, repo, _, _, _, _, wfpRepo) = Build([], []);
+
+        ServiceResult<WfpExpenditureDto> created = await sut.SaveExpenditureAsync(
+            QuarterlyDto(wfpActivityId: 21), CancellationToken.None);
+        SetUpFinalLock(repo, wfpRepo, wfpActivityId: 21, wfpRecordId: 503, status: PlanningStatus.Final);
+
+        ServiceResult<bool> result = await sut.DeleteExpenditureAsync(created.Value!.Id, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
+        repo.Verify(r => r.DeleteAsync(It.IsAny<WfpExpenditure>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Delete_RefreshesLedger_AfterRemoval()
+    {
+        Mock<IWfpCeilingService> ceilingMock = new();
+        ceilingMock.Setup(c => c.ValidateExpenditureSaveAsync(
+                It.IsAny<int>(), It.IsAny<decimal>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
+        ceilingMock.Setup(c => c.UpsertLedgerForActivityAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var (sut, _, _, _, _, _, _) = Build([], [], ceilingMock);
+
+        ServiceResult<WfpExpenditureDto> created = await sut.SaveExpenditureAsync(
+            QuarterlyDto(wfpActivityId: 22), CancellationToken.None);
+        ceilingMock.Invocations.Clear();
+
+        await sut.DeleteExpenditureAsync(created.Value!.Id, CancellationToken.None);
+
+        ceilingMock.Verify(c => c.UpsertLedgerForActivityAsync(22, It.IsAny<CancellationToken>()), Times.Once);
     }
 }
