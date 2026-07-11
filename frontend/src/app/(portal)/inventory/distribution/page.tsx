@@ -69,7 +69,7 @@ function SectionHeading({ title, action }: { title: string; action?: React.React
 function StatCell({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
     <div className="text-center px-4 py-3 border-r border-slate-100 last:border-0">
-      <p className="text-xs text-slate-500 mb-0.5">{label}</p>
+      <p className="text-xs text-slate-600 mb-0.5">{label}</p>
       <p className={`text-lg font-bold tabular-nums ${accent ?? "text-slate-800"}`}>{value}</p>
     </div>
   );
@@ -135,7 +135,7 @@ function DistributeForm({
       </div>
 
       {/* Column headers */}
-      <div className="grid grid-cols-12 gap-2 text-xs font-medium text-slate-500 px-1">
+      <div className="grid grid-cols-12 gap-2 text-xs font-medium text-slate-600 px-1">
         <span className="col-span-2">Division *</span>
         <span className="col-span-2">Qty *</span>
         <span className="col-span-3">Issued To (Name) *</span>
@@ -200,7 +200,7 @@ function DistributeForm({
                 <button
                   onClick={() => removeRow(row._id)}
                   disabled={rows.length === 1}
-                  className="text-slate-300 hover:text-red-400 disabled:opacity-20 transition-colors text-sm"
+                  className="text-slate-600 hover:text-red-400 disabled:opacity-20 transition-colors text-sm"
                   title="Remove row"
                 >✕</button>
               </div>
@@ -423,7 +423,7 @@ export default function DistributionPage() {
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-xs text-slate-600">{item.stockNo}</span>
                       <span className="text-slate-800">{item.description}</span>
-                      <span className="text-xs text-slate-400 ml-auto">{item.unit}</span>
+                      <span className="text-xs text-slate-600 ml-auto">{item.unit}</span>
                     </div>
                   </li>
                 ))}
@@ -433,7 +433,7 @@ export default function DistributionPage() {
           {selectedStockNo && summary && (
             <button
               onClick={() => { setSelectedStockNo(""); setSummary(null); setSearchTerm(""); setFormOpen(false); }}
-              className="text-xs text-slate-400 hover:text-slate-600"
+              className="text-xs text-slate-600 hover:text-slate-600"
             >
               ✕ Clear selection
             </button>
@@ -502,7 +502,7 @@ export default function DistributionPage() {
             <div className="bg-white border border-slate-200 shadow-sm overflow-hidden">
               <SectionHeading title="Stock Sources" />
               {summary.deliveryItems.length === 0 ? (
-                <div className="text-center py-12 text-slate-400 text-sm">No delivery batches found.</div>
+                <div className="text-center py-12 text-slate-600 text-sm">No delivery batches found.</div>
               ) : (
                 <div className="divide-y divide-slate-100">
                   {summary.deliveryItems.map((batch) => (
@@ -511,27 +511,27 @@ export default function DistributionPage() {
                       <div className="flex items-center gap-4 px-5 py-3 flex-wrap">
                         <div className="flex-1 min-w-0 grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
                           <div>
-                            <p className="text-xs text-slate-400">Delivery Ref</p>
+                            <p className="text-xs text-slate-600">Delivery Ref</p>
                             <p className="font-mono font-semibold text-slate-800">{batch.deliveryRef}</p>
                           </div>
                           <div>
-                            <p className="text-xs text-slate-400">PR No.</p>
+                            <p className="text-xs text-slate-600">PR No.</p>
                             <p className="font-mono text-xs text-slate-600">{batch.prNo}</p>
                           </div>
                           <div>
-                            <p className="text-xs text-slate-400">Date</p>
+                            <p className="text-xs text-slate-600">Date</p>
                             <p className="text-slate-700">{fmtDate(batch.deliveryDate)}</p>
                           </div>
                           <div>
-                            <p className="text-xs text-slate-400">Delivered / Distributed</p>
+                            <p className="text-xs text-slate-600">Delivered / Distributed</p>
                             <p className="tabular-nums text-slate-700">
                               {fmt(batch.qtyDelivered)} / {fmt(batch.qtyDistributed)}
                             </p>
                           </div>
                           <div>
-                            <p className="text-xs text-slate-400">Available from batch</p>
+                            <p className="text-xs text-slate-600">Available from batch</p>
                             <p className={`font-bold tabular-nums ${
-                              batch.qtyAvailable > 0 ? "text-green-700" : "text-slate-400"
+                              batch.qtyAvailable > 0 ? "text-green-700" : "text-slate-600"
                             }`}>
                               {batch.qtyAvailable > 0 ? fmt(batch.qtyAvailable) : "None"}
                             </p>
@@ -571,7 +571,7 @@ export default function DistributionPage() {
               {filtersOpen && (
                 <div className="px-5 py-4 border-b border-slate-100 bg-slate-50 flex flex-wrap gap-4">
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-slate-500">Division</label>
+                    <label className="text-xs font-medium text-slate-600">Division</label>
                     <select
                       value={filterDivision}
                       onChange={(e) => setFilterDivision(e.target.value)}
@@ -582,7 +582,7 @@ export default function DistributionPage() {
                     </select>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-slate-500">Date Issued — From</label>
+                    <label className="text-xs font-medium text-slate-600">Date Issued — From</label>
                     <input
                       type="date" value={filterDateFrom}
                       onChange={(e) => setFilterDateFrom(e.target.value)}
@@ -590,7 +590,7 @@ export default function DistributionPage() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-slate-500">To</label>
+                    <label className="text-xs font-medium text-slate-600">To</label>
                     <input
                       type="date" value={filterDateTo}
                       onChange={(e) => setFilterDateTo(e.target.value)}
@@ -601,7 +601,7 @@ export default function DistributionPage() {
                     <div className="flex items-end">
                       <button
                         onClick={() => { setFilterDivision(""); setFilterDateFrom(""); setFilterDateTo(""); }}
-                        className="px-3 py-1.5 text-xs border border-slate-200 text-slate-500 hover:bg-white transition-colors"
+                        className="px-3 py-1.5 text-xs border border-slate-200 text-slate-600 hover:bg-white transition-colors"
                       >
                         ✕ Clear filters
                       </button>
@@ -611,7 +611,7 @@ export default function DistributionPage() {
               )}
 
               {filteredDistributions.length === 0 ? (
-                <div className="text-center py-10 text-slate-400 text-sm">
+                <div className="text-center py-10 text-slate-600 text-sm">
                   {summary.deliveryItems.flatMap((b) => b.distributions).length === 0
                     ? "No distributions recorded yet for this item."
                     : "No distributions match your filters."}
@@ -620,7 +620,7 @@ export default function DistributionPage() {
                 <div className="overflow-x-auto overflow-y-hidden">
                   <table className="w-full text-sm border-collapse">
                     <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500 uppercase tracking-wide">
+                      <tr className="bg-slate-50 border-b border-slate-200 text-xs text-slate-600 uppercase tracking-wide">
                         <th className="text-left px-4 py-2.5 font-medium">Issue Ref</th>
                         <th className="text-left px-4 py-2.5 font-medium">Delivery Ref</th>
                         <th className="text-left px-4 py-2.5 font-medium">PR No.</th>
@@ -647,12 +647,12 @@ export default function DistributionPage() {
                           </td>
                           <td className="px-4 py-2.5 text-slate-600">{fmtDate(d.dateIssued)}</td>
                           <td className="px-4 py-2.5 text-slate-700">{d.issuedBy}</td>
-                          <td className="px-4 py-2.5 text-slate-400">{d.remarks ?? "—"}</td>
+                          <td className="px-4 py-2.5 text-slate-600">{d.remarks ?? "—"}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                  <div className="px-4 py-2 border-t border-slate-100 text-xs text-slate-400 flex items-center justify-between">
+                  <div className="px-4 py-2 border-t border-slate-100 text-xs text-slate-600 flex items-center justify-between">
                     <span>{filteredDistributions.length} distribution{filteredDistributions.length !== 1 ? "s" : ""}</span>
                     <span className="font-semibold text-slate-600 tabular-nums">
                       Total Issued: {fmt(filteredDistributions.reduce((s, d) => s + d.qtyIssued, 0))}

@@ -127,7 +127,7 @@ export default function WfpFrequencyGrid({
       {/* Annual "charge to" selector (§2 ★REC) */}
       {frequency === "A" && (
         <div>
-          <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">
+          <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide mb-1">
             Charge to
           </label>
           <div className="flex items-center border border-slate-200 overflow-hidden w-fit">
@@ -139,7 +139,7 @@ export default function WfpFrequencyGrid({
                 className={`px-3 py-1.5 text-sm font-medium transition-colors ${
                   annualQuarterChoice === q
                     ? "bg-green-600 text-white"
-                    : "bg-white text-slate-500 hover:bg-slate-50"
+                    : "bg-white text-slate-600 hover:bg-slate-50"
                 }`}
               >
                 Q{q}
@@ -167,14 +167,14 @@ export default function WfpFrequencyGrid({
           return (
             <div key={periodNo}>
               <div className="flex items-center justify-between mb-0.5">
-                <label className="text-[11px] text-slate-400">{label}</label>
+                <label className="text-[11px] text-slate-600">{label}</label>
                 {periodNo > 1 && (
                   <button
                     type="button"
                     onClick={() => copyPrevious(periodNo)}
                     disabled={amountAt(periodNo - 1) == null}
                     title="Copy previous period's amount"
-                    className="text-[10px] text-slate-400 hover:text-green-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                    className="text-[10px] text-slate-600 hover:text-green-700 disabled:opacity-30 disabled:cursor-not-allowed"
                   >
                     ↵ copy prev
                   </button>
@@ -194,17 +194,17 @@ export default function WfpFrequencyGrid({
       <div className="grid grid-cols-4 gap-2 pt-2 border-t border-slate-200 text-center">
         {(["q1", "q2", "q3", "q4"] as const).map((q, i) => (
           <div key={q}>
-            <div className="text-[10px] text-slate-400 uppercase tracking-wide">Q{i + 1}</div>
+            <div className="text-[10px] text-slate-600 uppercase tracking-wide">Q{i + 1}</div>
             <div className="text-sm font-mono tabular-nums text-slate-700">₱{formatMoney(preview[q])}</div>
           </div>
         ))}
       </div>
       <div className="flex items-center justify-end gap-4 text-sm">
-        <span className="text-slate-500">
+        <span className="text-slate-600">
           Net <span className="font-mono tabular-nums text-slate-700">₱{formatMoney(preview.net)}</span>
         </span>
         {applyReserve && (
-          <span className="text-slate-500">
+          <span className="text-slate-600">
             Reserved <span className="font-mono tabular-nums text-slate-700">₱{formatMoney(resolvedReserve)}</span>
           </span>
         )}

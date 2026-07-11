@@ -243,7 +243,7 @@ export default function WfpProcurementItemTable({
       {/* Annual "charge to" selector — same as the frequency grid, frequency is nature-independent */}
       {frequency === "A" && (
         <div>
-          <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">
+          <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide mb-1">
             Charge to
           </label>
           <div className="flex items-center border border-slate-200 overflow-hidden w-fit">
@@ -253,7 +253,7 @@ export default function WfpProcurementItemTable({
                 type="button"
                 onClick={() => onAnnualQuarterChoiceChange(q)}
                 className={`px-3 py-1.5 text-sm font-medium transition-colors ${
-                  annualQuarterChoice === q ? "bg-green-600 text-white" : "bg-white text-slate-500 hover:bg-slate-50"
+                  annualQuarterChoice === q ? "bg-green-600 text-white" : "bg-white text-slate-600 hover:bg-slate-50"
                 }`}
               >
                 Q{q}
@@ -275,7 +275,7 @@ export default function WfpProcurementItemTable({
                 type="button"
                 onClick={() => setActivePeriod(periodNo)}
                 className={`px-3 py-1.5 text-sm font-medium transition-colors flex items-center gap-1 ${
-                  activePeriod === periodNo ? "bg-green-600 text-white" : "bg-white text-slate-500 hover:bg-slate-50"
+                  activePeriod === periodNo ? "bg-green-600 text-white" : "bg-white text-slate-600 hover:bg-slate-50"
                 }`}
               >
                 {label}
@@ -324,7 +324,7 @@ export default function WfpProcurementItemTable({
       {/* Item rows for the active period */}
       <div className="space-y-2">
         {activeRows.length === 0 && (
-          <p className="text-xs text-slate-400 border border-dashed border-slate-300 px-3 py-4 text-center">
+          <p className="text-xs text-slate-600 border border-dashed border-slate-300 px-3 py-4 text-center">
             No items for {labels[activePeriod - 1]} yet.
           </p>
         )}
@@ -356,7 +356,7 @@ export default function WfpProcurementItemTable({
               {/* Name (full width) + Unit */}
               <div className="flex items-end gap-2">
                 <div className="flex-1 min-w-0">
-                  <label className="block text-[11px] text-slate-400 mb-0.5">Name</label>
+                  <label className="block text-[11px] text-slate-600 mb-0.5">Name</label>
                   <input
                     value={row.name}
                     onChange={(e) => updateRow(index, { name: e.target.value })}
@@ -365,7 +365,7 @@ export default function WfpProcurementItemTable({
                   />
                 </div>
                 <div className="w-32 shrink-0">
-                  <label className="block text-[11px] text-slate-400 mb-0.5">Unit</label>
+                  <label className="block text-[11px] text-slate-600 mb-0.5">Unit</label>
                   <input
                     value={row.unit}
                     onChange={(e) => updateRow(index, { unit: e.target.value })}
@@ -378,7 +378,7 @@ export default function WfpProcurementItemTable({
               {/* Unit Price · Qty · Days · Line Total */}
               <div className="flex items-end gap-2">
                 <div className="w-36 shrink-0">
-                  <label className="block text-[11px] text-slate-400 mb-0.5">Unit Price</label>
+                  <label className="block text-[11px] text-slate-600 mb-0.5">Unit Price</label>
                   <MoneyInput
                     value={row.unitPrice}
                     onChange={(v) => updateRow(index, { unitPrice: v ?? 0 })}
@@ -386,7 +386,7 @@ export default function WfpProcurementItemTable({
                   />
                 </div>
                 <div className="w-20 shrink-0">
-                  <label className="block text-[11px] text-slate-400 mb-0.5">Qty</label>
+                  <label className="block text-[11px] text-slate-600 mb-0.5">Qty</label>
                   <input
                     type="number"
                     min={0}
@@ -397,7 +397,7 @@ export default function WfpProcurementItemTable({
                   />
                 </div>
                 <div className="w-20 shrink-0">
-                  <label className="block text-[11px] text-slate-400 mb-0.5">Days</label>
+                  <label className="block text-[11px] text-slate-600 mb-0.5">Days</label>
                   <input
                     type="number"
                     min={1}
@@ -408,7 +408,7 @@ export default function WfpProcurementItemTable({
                   />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <label className="block text-[11px] text-slate-400 mb-0.5">Line Total</label>
+                  <label className="block text-[11px] text-slate-600 mb-0.5">Line Total</label>
                   <div className="w-full px-2 py-1.5 text-sm text-right font-mono tabular-nums text-slate-700 bg-slate-50 border border-slate-200">
                     ₱{formatMoney(lineTotal)}
                   </div>
@@ -424,7 +424,7 @@ export default function WfpProcurementItemTable({
 
       {/* Active period total */}
       <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200 text-sm">
-        <span className="text-slate-500">{labels[activePeriod - 1]} total</span>
+        <span className="text-slate-600">{labels[activePeriod - 1]} total</span>
         <span className="font-mono tabular-nums font-medium text-slate-800">₱{formatMoney(activeTotal)}</span>
       </div>
 
@@ -432,17 +432,17 @@ export default function WfpProcurementItemTable({
       <div className="grid grid-cols-4 gap-2 pt-2 border-t border-slate-200 text-center">
         {(["q1", "q2", "q3", "q4"] as const).map((q, i) => (
           <div key={q}>
-            <div className="text-[10px] text-slate-400 uppercase tracking-wide">Q{i + 1}</div>
+            <div className="text-[10px] text-slate-600 uppercase tracking-wide">Q{i + 1}</div>
             <div className="text-sm font-mono tabular-nums text-slate-700">₱{formatMoney(preview[q])}</div>
           </div>
         ))}
       </div>
       <div className="flex items-center justify-end gap-4 text-sm">
-        <span className="text-slate-500">
+        <span className="text-slate-600">
           Net <span className="font-mono tabular-nums text-slate-700">₱{formatMoney(preview.net)}</span>
         </span>
         {applyReserve && (
-          <span className="text-slate-500">
+          <span className="text-slate-600">
             Reserved <span className="font-mono tabular-nums text-slate-700">₱{formatMoney(resolvedReserve)}</span>
           </span>
         )}
@@ -455,7 +455,7 @@ export default function WfpProcurementItemTable({
       {loadPresetOpen && (
         <Modal title="Load Preset" size="md" onClose={() => setLoadPresetOpen(false)}>
           {presets.length === 0 ? (
-            <p className="text-sm text-slate-400 text-center py-6">
+            <p className="text-sm text-slate-600 text-center py-6">
               No presets for this account yet. Build the item list below, then use
               &quot;Save as preset&quot; to create one.
             </p>
@@ -469,7 +469,7 @@ export default function WfpProcurementItemTable({
                     className="w-full text-left px-1 py-2.5 hover:bg-green-50 transition-colors"
                   >
                     <span className="font-medium text-slate-800">{p.name}</span>
-                    <span className="text-xs text-slate-400 ml-2">
+                    <span className="text-xs text-slate-600 ml-2">
                       {p.items.length} item{p.items.length === 1 ? "" : "s"}
                     </span>
                   </button>
@@ -506,7 +506,7 @@ export default function WfpProcurementItemTable({
               placeholder="Standard Office Supplies Kit"
               className="w-full px-3 py-1.5 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
             />
-            <p className="text-[11px] text-slate-400">
+            <p className="text-[11px] text-slate-600">
               Saves the {activeRows.length} item{activeRows.length === 1 ? "" : "s"} currently in{" "}
               {labels[activePeriod - 1]}.
             </p>

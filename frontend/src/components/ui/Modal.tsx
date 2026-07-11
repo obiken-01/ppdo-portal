@@ -90,7 +90,7 @@ export default function Modal({ title, children, footer, size = "md", fixedHeigh
           <h2 className="text-base font-semibold text-slate-800">{title}</h2>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 transition-colors text-xl leading-none"
+            className="text-slate-600 hover:text-slate-600 transition-colors text-xl leading-none"
             aria-label="Close"
           >
             ×

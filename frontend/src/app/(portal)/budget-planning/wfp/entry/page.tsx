@@ -424,7 +424,7 @@ function ExpenditureWizard({
 
         {/* 4. Account */}
         <div>
-          <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">
+          <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide mb-1">
             Account
           </label>
           <Lookup
@@ -455,7 +455,7 @@ function ExpenditureWizard({
         {/* 5. Nature */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">
+            <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide mb-1">
               Nature
             </label>
             <select
@@ -471,7 +471,7 @@ function ExpenditureWizard({
 
           {/* 6. Frequency */}
           <div>
-            <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">
+            <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide mb-1">
               Frequency
             </label>
             <select
@@ -488,7 +488,7 @@ function ExpenditureWizard({
 
         {/* 7. Fund source */}
         <div>
-          <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">
+          <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide mb-1">
             Fund Source
           </label>
           <Lookup
@@ -518,7 +518,7 @@ function ExpenditureWizard({
             <label htmlFor="applyReserve" className="text-sm text-slate-700 font-medium cursor-pointer">
               Apply reserve
             </label>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-600">
               Rate: {(reserveRate * 100).toFixed(0)}% of net appropriation. Leave amount blank to
               use the default.
             </p>
@@ -561,7 +561,7 @@ function ExpenditureWizard({
             </div>
 
             {!showProcurementSection && !showNonProcurementSection && (
-              <p className="px-4 py-6 border border-dashed border-slate-300 bg-slate-50 text-center text-sm text-slate-400">
+              <p className="px-4 py-6 border border-dashed border-slate-300 bg-slate-50 text-center text-sm text-slate-600">
                 Add procurement items, non-procurement amounts, or both under this expenditure.
               </p>
             )}
@@ -569,7 +569,7 @@ function ExpenditureWizard({
             {showProcurementSection && (
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide">
+                  <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide">
                     Procurement Items
                   </label>
                   <button
@@ -601,7 +601,7 @@ function ExpenditureWizard({
             {showNonProcurementSection && (
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide">
+                  <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide">
                     Non-Procurement Amounts
                   </label>
                   <button
@@ -630,14 +630,14 @@ function ExpenditureWizard({
 
             {(showProcurementSection || showNonProcurementSection) && (
               <div className="flex items-center justify-end gap-4 pt-2 border-t border-slate-200 text-sm">
-                <span className="text-slate-500">
+                <span className="text-slate-600">
                   Net{" "}
                   <span className="font-mono tabular-nums text-slate-700">
                     ₱{formatMoney(combinedNet)}
                   </span>
                 </span>
                 {applyReserve && (
-                  <span className="text-slate-500">
+                  <span className="text-slate-600">
                     Reserved{" "}
                     <span className="font-mono tabular-nums text-slate-700">
                       ₱{formatMoney(combinedResolvedReserve)}
@@ -653,7 +653,7 @@ function ExpenditureWizard({
           </div>
         ) : nature === "Procurement" ? (
           <div>
-            <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">
+            <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide mb-1">
               Items
             </label>
             <WfpProcurementItemTable
@@ -671,7 +671,7 @@ function ExpenditureWizard({
           </div>
         ) : (
           <div>
-            <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">
+            <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide mb-1">
               Amounts
             </label>
             <WfpFrequencyGrid
@@ -687,7 +687,7 @@ function ExpenditureWizard({
           </div>
         )}
 
-        {checking && <p className="text-xs text-slate-400">Checking ceilings…</p>}
+        {checking && <p className="text-xs text-slate-600">Checking ceilings…</p>}
       </div>
 
       {confirm && <ConfirmDialog {...confirm} />}
@@ -1110,7 +1110,7 @@ function WfpEntryPageInner() {
           <h1 className="text-xl font-bold text-slate-800">WFP Entry Wizard</h1>
           <span className="px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700">v1.4 preview</span>
         </div>
-        <p className="text-sm text-slate-500 mt-0.5">
+        <p className="text-sm text-slate-600 mt-0.5">
           New context picker + expenditure wizard.{" "}
           <a href="/budget-planning/wfp" className="text-green-700 hover:underline">
             Switch to classic view
@@ -1175,7 +1175,7 @@ function WfpEntryPageInner() {
       </div>
 
       {selectedDivisionId == null ? (
-        <p className="text-slate-400 text-sm py-8">
+        <p className="text-slate-600 text-sm py-8">
           Select an AIP, office, and division to start entering WFP expenditures. This wizard is
           division-scoped — a specific division must be chosen even for admin/finance users.
         </p>
@@ -1185,7 +1185,7 @@ function WfpEntryPageInner() {
           first.
         </div>
       ) : loading ? (
-        <div className="flex items-center gap-2 text-slate-500 text-sm py-8">
+        <div className="flex items-center gap-2 text-slate-600 text-sm py-8">
           <span className="w-4 h-4 border-2 border-slate-300 border-t-green-600 rounded-full animate-spin" />
           Loading…
         </div>
@@ -1232,7 +1232,7 @@ function WfpEntryPageInner() {
           {/* Context picker (§4.1 steps 1-3) */}
           <div className="grid grid-cols-3 gap-3 mb-4">
             <div>
-              <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">
+              <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide mb-1">
                 Program
               </label>
               <Lookup
@@ -1248,7 +1248,7 @@ function WfpEntryPageInner() {
                 getSearchText={(p) => `${p.name} ${p.refCode}`}
                 renderOption={(p) => (
                   <>
-                    <span className="font-mono text-xs text-slate-400 mr-2">{p.refCode}</span>
+                    <span className="font-mono text-xs text-slate-600 mr-2">{p.refCode}</span>
                     {p.name}
                   </>
                 )}
@@ -1256,7 +1256,7 @@ function WfpEntryPageInner() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">
+              <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide mb-1">
                 Project
               </label>
               <Lookup
@@ -1271,7 +1271,7 @@ function WfpEntryPageInner() {
                 getSearchText={(p) => `${p.name} ${p.refCode}`}
                 renderOption={(p) => (
                   <>
-                    <span className="font-mono text-xs text-slate-400 mr-2">{p.refCode}</span>
+                    <span className="font-mono text-xs text-slate-600 mr-2">{p.refCode}</span>
                     {p.name}
                   </>
                 )}
@@ -1280,7 +1280,7 @@ function WfpEntryPageInner() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">
+              <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide mb-1">
                 Activity
               </label>
               <Lookup
@@ -1292,7 +1292,7 @@ function WfpEntryPageInner() {
                 getSearchText={(a) => `${a.name} ${a.refCode}`}
                 renderOption={(a) => (
                   <>
-                    <span className="font-mono text-xs text-slate-400 mr-2">{a.refCode}</span>
+                    <span className="font-mono text-xs text-slate-600 mr-2">{a.refCode}</span>
                     {a.name}
                   </>
                 )}
@@ -1307,7 +1307,7 @@ function WfpEntryPageInner() {
             <div className="flex flex-wrap items-center gap-6 mb-4 px-3 py-2 bg-slate-50 border border-slate-200 text-xs">
               {selectedProgram && (
                 <label className="flex items-center gap-2">
-                  <span className="font-medium text-slate-500 uppercase tracking-wide">
+                  <span className="font-medium text-slate-600 uppercase tracking-wide">
                     Function Band <span className="text-red-500">*</span>
                   </span>
                   <select
@@ -1331,7 +1331,7 @@ function WfpEntryPageInner() {
                     onChange={(e) => handleIsCreationChange(selectedActivity.id, e.target.checked)}
                     disabled={savingActivityId === selectedActivity.id}
                   />
-                  <span className="font-medium text-slate-500 uppercase tracking-wide">
+                  <span className="font-medium text-slate-600 uppercase tracking-wide">
                     Mark as &ldquo;…-CREATION&rdquo; (GF, PS, position-creation only)
                   </span>
                 </label>
@@ -1353,7 +1353,7 @@ function WfpEntryPageInner() {
                 <div className="grid grid-cols-2 gap-3 px-3 py-3 border-t border-slate-100">
                   {PROJECT_FIELDS.map(([key, label]) => (
                     <div key={key}>
-                      <label className="block text-[10px] font-medium text-slate-400 uppercase tracking-wide mb-0.5">
+                      <label className="block text-[10px] font-medium text-slate-600 uppercase tracking-wide mb-0.5">
                         {label}
                       </label>
                       <input
@@ -1364,7 +1364,7 @@ function WfpEntryPageInner() {
                       />
                     </div>
                   ))}
-                  <p className="col-span-2 text-[10px] text-slate-400">
+                  <p className="col-span-2 text-[10px] text-slate-600">
                     Saved locally in this browser for now — no backend field exists for
                     project-level descriptive data yet.
                   </p>
@@ -1393,13 +1393,13 @@ function WfpEntryPageInner() {
               )}
 
               {expenditures.length === 0 ? (
-                <p className="px-3 py-6 text-sm text-slate-400 text-center">
+                <p className="px-3 py-6 text-sm text-slate-600 text-center">
                   No expenditures added yet.
                 </p>
               ) : (
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="bg-slate-50 text-slate-500 text-left border-b border-slate-100">
+                    <tr className="bg-slate-50 text-slate-600 text-left border-b border-slate-100">
                       <th className="px-3 py-1.5">Account</th>
                       <th className="px-3 py-1.5">Nature</th>
                       <th className="px-3 py-1.5">Frequency</th>
@@ -1451,10 +1451,10 @@ function WfpEntryPageInner() {
                   + Add expenditure
                 </button>
                 <div className="flex gap-3">
-                  <button onClick={handleChangeActivity} className="text-sm text-slate-500 hover:underline">
+                  <button onClick={handleChangeActivity} className="text-sm text-slate-600 hover:underline">
                     Change activity
                   </button>
-                  <button onClick={handleDone} className="text-sm text-slate-500 hover:underline">
+                  <button onClick={handleDone} className="text-sm text-slate-600 hover:underline">
                     Done
                   </button>
                 </div>
@@ -1492,7 +1492,7 @@ function WfpEntryPageInner() {
 
 export default function WfpEntryPage() {
   return (
-    <Suspense fallback={<div className="p-6 text-slate-500 text-sm">Loading…</div>}>
+    <Suspense fallback={<div className="p-6 text-slate-600 text-sm">Loading…</div>}>
       <WfpEntryPageInner />
     </Suspense>
   );

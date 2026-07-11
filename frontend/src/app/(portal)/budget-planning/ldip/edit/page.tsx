@@ -45,7 +45,7 @@ function LdipEditInner() {
 
   if (!record) {
     return (
-      <div className="p-6 flex items-center gap-2 text-slate-500 text-sm">
+      <div className="p-6 flex items-center gap-2 text-slate-600 text-sm">
         <span className="w-4 h-4 border-2 border-slate-300 border-t-green-600 rounded-full animate-spin" />
         Loading…
       </div>

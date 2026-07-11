@@ -404,7 +404,7 @@ export default function ProcurementPresetsConfigPage() {
         <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className="text-lg font-bold text-slate-800">Procurement Presets</h1>
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-slate-600">
               Account-scoped, reusable procurement line-item templates for WFP entry. Shared
               across all offices and divisions.
             </p>
@@ -440,7 +440,7 @@ export default function ProcurementPresetsConfigPage() {
                 key={s}
                 onClick={() => setStatusFilter(s)}
                 className={`px-3 py-2 text-sm font-medium transition-colors ${
-                  statusFilter === s ? "bg-green-600 text-white" : "bg-white text-slate-500 hover:bg-slate-50"
+                  statusFilter === s ? "bg-green-600 text-white" : "bg-white text-slate-600 hover:bg-slate-50"
                 }`}
               >
                 {s}
@@ -463,7 +463,7 @@ export default function ProcurementPresetsConfigPage() {
               </button>
             </div>
           ) : presets.length === 0 ? (
-            <div className="py-16 flex flex-col items-center justify-center gap-2 text-slate-400">
+            <div className="py-16 flex flex-col items-center justify-center gap-2 text-slate-600">
               <span className="text-3xl">📭</span>
               <p className="text-sm">
                 {accountId == null ? "No presets yet." : "No presets for this account yet."}
@@ -478,7 +478,7 @@ export default function ProcurementPresetsConfigPage() {
                     <div className="flex items-center gap-3 px-4 py-3 hover:bg-green-50 transition-colors">
                       <button
                         onClick={() => toggleExpand(preset.id)}
-                        className="w-5 h-5 shrink-0 flex items-center justify-center text-slate-400 hover:text-slate-600"
+                        className="w-5 h-5 shrink-0 flex items-center justify-center text-slate-600 hover:text-slate-800"
                         aria-label={isOpen ? "Collapse" : "Expand"}
                       >
                         <span className={`inline-block transition-transform ${isOpen ? "rotate-90" : ""}`}>▸</span>
@@ -489,7 +489,7 @@ export default function ProcurementPresetsConfigPage() {
                           <span className="font-medium text-slate-800">{preset.name}</span>
                           <StatusBadge active={preset.isActive} />
                         </div>
-                        <p className="text-xs text-slate-400 mt-0.5">
+                        <p className="text-xs text-slate-600 mt-0.5">
                           {preset.accountNumber ?? "—"} — {preset.accountTitle ?? "Unknown account"} ·{" "}
                           {preset.items.length} item{preset.items.length === 1 ? "" : "s"} · created by{" "}
                           {preset.createdByName ?? "—"}
@@ -517,7 +517,7 @@ export default function ProcurementPresetsConfigPage() {
                       <div className="bg-slate-50 border-t border-slate-100 px-4 py-3 pl-12">
                         <table className="w-full text-sm">
                           <thead>
-                            <tr className="text-xs text-slate-400 uppercase tracking-wide">
+                            <tr className="text-xs text-slate-600 uppercase tracking-wide">
                               <th className="text-left font-medium py-1">Item</th>
                               <th className="text-left font-medium py-1">Unit</th>
                               <th className="text-right font-medium py-1">Unit Price</th>
@@ -529,7 +529,7 @@ export default function ProcurementPresetsConfigPage() {
                             {preset.items.map((item) => (
                               <tr key={item.id} className="border-t border-slate-200">
                                 <td className="py-1.5 text-slate-700">{item.name}</td>
-                                <td className="py-1.5 text-slate-500">{item.unit}</td>
+                                <td className="py-1.5 text-slate-600">{item.unit}</td>
                                 <td className="py-1.5 text-right font-mono tabular-nums text-slate-700">
                                   ₱{formatMoney(item.unitPrice)}
                                 </td>
@@ -629,7 +629,7 @@ export default function ProcurementPresetsConfigPage() {
                 ))}
               </div>
               <div className="flex items-center justify-end gap-2 mt-2 px-1">
-                <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">Preset Total</span>
+                <span className="text-xs font-medium text-slate-600 uppercase tracking-wide">Preset Total</span>
                 <span className="text-base font-mono tabular-nums font-semibold text-slate-800">
                   ₱{formatMoney(sumItemTotals(form.items))}
                 </span>
@@ -694,7 +694,7 @@ function ItemRow({
 
       <div className="flex items-end gap-2">
         <div className="flex-1 min-w-0">
-          <label className="block text-[11px] text-slate-400 mb-0.5">Name</label>
+          <label className="block text-[11px] text-slate-600 mb-0.5">Name</label>
           <input
             value={row.name}
             onChange={(e) => onChange({ name: e.target.value })}
@@ -704,7 +704,7 @@ function ItemRow({
           />
         </div>
         <div className="w-28 shrink-0">
-          <label className="block text-[11px] text-slate-400 mb-0.5">Unit</label>
+          <label className="block text-[11px] text-slate-600 mb-0.5">Unit</label>
           <input
             value={row.unit}
             onChange={(e) => onChange({ unit: e.target.value })}
@@ -714,7 +714,7 @@ function ItemRow({
           />
         </div>
         <div className="w-32 shrink-0">
-          <label className="block text-[11px] text-slate-400 mb-0.5">Unit Price</label>
+          <label className="block text-[11px] text-slate-600 mb-0.5">Unit Price</label>
           <MoneyInput
             value={row.unitPrice}
             onChange={(v) => onChange({ unitPrice: v })}
@@ -723,7 +723,7 @@ function ItemRow({
           />
         </div>
         <div className="w-20 shrink-0">
-          <label className="block text-[11px] text-slate-400 mb-0.5">Qty</label>
+          <label className="block text-[11px] text-slate-600 mb-0.5">Qty</label>
           <input
             type="number"
             min={0}
@@ -734,7 +734,7 @@ function ItemRow({
           />
         </div>
         <div className="w-32 shrink-0">
-          <label className="block text-[11px] text-slate-400 mb-0.5">Total</label>
+          <label className="block text-[11px] text-slate-600 mb-0.5">Total</label>
           <div className="w-full px-2 py-1.5 text-sm text-right font-mono tabular-nums text-slate-700 bg-slate-50 border border-slate-200">
             ₱{formatMoney(total)}
           </div>

@@ -62,7 +62,7 @@ function StatusBadge({ status }: { status: string }) {
   const cls =
     status === "Final"  ? "bg-green-100 text-green-700" :
     status === "Draft"  ? "bg-amber-100 text-amber-700" :
-                          "bg-slate-100 text-slate-500";
+                          "bg-slate-100 text-slate-600";
   return <span className={`px-2 py-0.5 text-xs font-medium ${cls}`}>{status}</span>;
 }
 
@@ -210,7 +210,7 @@ export default function AipDetailPage() {
     );
 
   if (loading)
-    return <div className="p-8 text-slate-500 text-sm">Loading AIP record…</div>;
+    return <div className="p-8 text-slate-600 text-sm">Loading AIP record…</div>;
 
   if (error || !record)
     return (
@@ -234,12 +234,12 @@ export default function AipDetailPage() {
             </h1>
             <StatusBadge status={record.status} />
           </div>
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-slate-600">
             {record.offices.length} office records &middot; {programCount} programs &middot;{" "}
             {projectCount} projects &middot; {activityCount} activities
           </p>
           {record.originalFilename && (
-            <p className="text-xs text-slate-400 mt-0.5">Source: {record.originalFilename}</p>
+            <p className="text-xs text-slate-600 mt-0.5">Source: {record.originalFilename}</p>
           )}
         </div>
         <Link href="/budget-planning/aip" className="text-sm text-green-700 hover:underline whitespace-nowrap">
@@ -262,7 +262,7 @@ export default function AipDetailPage() {
               className={`px-5 py-2.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition-colors whitespace-nowrap ${
                 isActive
                   ? "border-green-700 text-green-700 bg-green-50"
-                  : "border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50"
+                  : "border-transparent text-slate-600 hover:text-slate-700 hover:bg-slate-50"
               }`}
             >
               {sector}
@@ -333,7 +333,7 @@ export default function AipDetailPage() {
                 <>
                   {/* ── Office row ──────────────────────────────── */}
                   <tr key={`office-${office.id}`} className="bg-green-700 border-t-2 border-green-800">
-                    <td className="px-2 py-2 font-mono text-xs text-slate-500 align-top">
+                    <td className="px-2 py-2 font-mono text-xs text-slate-600 align-top">
                       <button onClick={() => toggleOffice(office.id)} className="flex items-center gap-1.5 text-left">
                         <Chevron open={officeOpen} className="text-green-200" />
                         <span className="text-green-100">{office.refCode}</span>
@@ -362,7 +362,7 @@ export default function AipDetailPage() {
                     return (
                       <>
                         <tr key={`prog-${prog.id}`} className="bg-white border-t-2 border-slate-200">
-                          <td className="px-2 py-1.5 pl-5 font-mono text-xs text-slate-400 border-l-4 border-green-400">
+                          <td className="px-2 py-1.5 pl-5 font-mono text-xs text-slate-600 border-l-4 border-green-400">
                             <button onClick={() => toggleProgram(prog.id)} className="flex items-center gap-1.5 text-left">
                               <Chevron open={progOpen} className="text-green-500" />
                               {prog.refCode}
@@ -371,7 +371,7 @@ export default function AipDetailPage() {
                           <td colSpan={14} className="px-2 py-1.5 font-semibold text-xs italic text-slate-700 uppercase tracking-wide">
                             {prog.name}
                             {!progOpen && (
-                              <span className="ml-2 font-normal not-italic text-[10px] text-slate-400">
+                              <span className="ml-2 font-normal not-italic text-[10px] text-slate-600">
                                 {prog.projects.length} projects ·{" "}
                                 {prog.projects.flatMap((p) => p.activities).length} activities
                               </span>
@@ -386,7 +386,7 @@ export default function AipDetailPage() {
                           return (
                             <>
                               <tr key={`proj-${proj.id}`} className="bg-slate-50 border-t border-slate-200">
-                                <td className="px-2 py-1.5 pl-9 font-mono text-xs text-slate-400 border-l-4 border-slate-300">
+                                <td className="px-2 py-1.5 pl-9 font-mono text-xs text-slate-600 border-l-4 border-slate-300">
                                   <button onClick={() => toggleProject(proj.id)} className="flex items-center gap-1.5 text-left">
                                     <Chevron open={projOpen} className="text-slate-400" />
                                     {proj.refCode}
@@ -395,7 +395,7 @@ export default function AipDetailPage() {
                                 <td colSpan={14} className="px-2 py-1.5 text-xs font-medium text-slate-600">
                                   {proj.name}
                                   {!projOpen && (
-                                    <span className="ml-2 font-normal text-[10px] text-slate-400">
+                                    <span className="ml-2 font-normal text-[10px] text-slate-600">
                                       {proj.activities.length} activities
                                     </span>
                                   )}
@@ -405,7 +405,7 @@ export default function AipDetailPage() {
                               {/* ── Activities (only in DOM when project is expanded) ── */}
                               {projOpen && proj.activities.map((act) => (
                                 <tr key={`act-${act.id}`} className="bg-white border-t border-slate-100 hover:bg-green-50 transition-colors">
-                                  <td className="px-2 py-1.5 pl-12 font-mono text-[11px] text-slate-400 align-top border-l-4 border-transparent">
+                                  <td className="px-2 py-1.5 pl-12 font-mono text-[11px] text-slate-600 align-top border-l-4 border-transparent">
                                     {act.refCode}
                                   </td>
                                   <td className="px-2 py-1.5 pl-12 text-xs text-slate-900 align-top leading-snug">
@@ -423,7 +423,7 @@ export default function AipDetailPage() {
                                   <AmtTD value={act.total} />
                                   <AmtTD value={act.ccAdaptation} />
                                   <AmtTD value={act.ccMitigation} />
-                                  <td className="px-2 py-1.5 text-center text-xs text-slate-500">{act.ccTypologyCode ?? "—"}</td>
+                                  <td className="px-2 py-1.5 text-center text-xs text-slate-600">{act.ccTypologyCode ?? "—"}</td>
                                 </tr>
                               ))}
                             </>
@@ -439,7 +439,7 @@ export default function AipDetailPage() {
         </table>
       </div>
 
-      <p className="text-xs text-slate-400 mt-2 text-right">
+      <p className="text-xs text-slate-600 mt-2 text-right">
         {activityCount} activities across {record.offices.length} office records
       </p>
     </div>

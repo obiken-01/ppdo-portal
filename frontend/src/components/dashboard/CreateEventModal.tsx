@@ -143,7 +143,7 @@ export default function CreateEventModal({
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
-              End Date <span className="text-slate-400 font-normal">(optional)</span>
+              End Date <span className="text-slate-600 font-normal">(optional)</span>
             </label>
             <input
               type="date"

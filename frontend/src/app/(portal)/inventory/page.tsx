@@ -65,7 +65,7 @@ function SortableHeader({
     >
       <span className="inline-flex items-center gap-1">
         {label}
-        <span className={`text-xs transition-colors ${isActive && dir ? "text-green-600" : "text-slate-300 group-hover:text-slate-400"}`}>
+        <span className={`text-xs transition-colors ${isActive && dir ? "text-green-600" : "text-slate-300 group-hover:text-slate-600"}`}>
           {icon}
         </span>
       </span>
@@ -120,9 +120,9 @@ function StatCard({
     <div className={`flex-1 min-w-0 p-4 min-h-[110px] ${bg} border border-white/60`}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-xs font-medium text-slate-500 truncate">{label}</p>
+          <p className="text-xs font-medium text-slate-600 truncate">{label}</p>
           <p className={`text-2xl font-bold mt-1 ${textColor}`}>{value}</p>
-          {sub && <p className="text-xs text-slate-400 mt-0.5">{sub}</p>}
+          {sub && <p className="text-xs text-slate-600 mt-0.5">{sub}</p>}
         </div>
         <span className="text-xl shrink-0 opacity-70">{icon}</span>
       </div>
@@ -185,7 +185,7 @@ function FulfillmentBar({
           style={{ width: `${pct}%` }}
         />
       </div>
-      <span className="text-xs text-slate-500 w-8 text-right">{pct}%</span>
+      <span className="text-xs text-slate-600 w-8 text-right">{pct}%</span>
     </div>
   );
 }
@@ -333,7 +333,7 @@ export default function InventoryDashboardPage() {
           <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
             <span>📦</span> Inventory Dashboard
           </h1>
-          <p className="text-sm text-slate-500 mt-0.5">
+          <p className="text-sm text-slate-600 mt-0.5">
             Overview of purchase requests, delivery status, and stock levels.
           </p>
         </div>
@@ -458,14 +458,14 @@ export default function InventoryDashboardPage() {
             <span className="w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
           </div>
         ) : prs.length === 0 ? (
-          <div className="py-12 text-center text-sm text-slate-400">
+          <div className="py-12 text-center text-sm text-slate-600">
             No purchase requests found.
           </div>
         ) : (
           <div className="overflow-x-auto overflow-y-hidden">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-slate-50 text-xs text-slate-500 uppercase tracking-wide border-b border-slate-100">
+                <tr className="bg-slate-50 text-xs text-slate-600 uppercase tracking-wide border-b border-slate-100">
                   <SortableHeader label="PR No."       col="prNo"        active={prSortCol} dir={prSortDir} onClick={handlePrSort} />
                   <SortableHeader label="Division"     col="division"    active={prSortCol} dir={prSortDir} onClick={handlePrSort} />
                   <SortableHeader label="Requested By" col="requestedBy" active={prSortCol} dir={prSortDir} onClick={handlePrSort} />
@@ -491,7 +491,7 @@ export default function InventoryDashboardPage() {
                     <td className="px-4 py-2.5 text-slate-600 text-xs max-w-[160px] truncate">
                       {pr.requestedBy}
                     </td>
-                    <td className="px-4 py-2.5 text-slate-500 text-xs whitespace-nowrap">
+                    <td className="px-4 py-2.5 text-slate-600 text-xs whitespace-nowrap">
                       {fmtDate(pr.prDate)}
                     </td>
                     <td className="px-4 py-2.5">
@@ -555,13 +555,13 @@ export default function InventoryDashboardPage() {
         ) : alertItems.length === 0 ? (
           <div className="py-10 text-center">
             <p className="text-sm text-green-600 font-medium">✅ All items are sufficiently stocked.</p>
-            <p className="text-xs text-slate-400 mt-1">No low or out-of-stock items detected.</p>
+            <p className="text-xs text-slate-600 mt-1">No low or out-of-stock items detected.</p>
           </div>
         ) : (
           <div className="overflow-x-auto overflow-y-hidden">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-slate-50 text-xs text-slate-500 uppercase tracking-wide border-b border-slate-100">
+                <tr className="bg-slate-50 text-xs text-slate-600 uppercase tracking-wide border-b border-slate-100">
                   <SortableHeader label="Stock No."    col="stockNo"     active={alSortCol} dir={alSortDir} onClick={handleAlSort} />
                   <SortableHeader label="Description"  col="description" active={alSortCol} dir={alSortDir} onClick={handleAlSort} />
                   <SortableHeader label="Unit"         col="unit"        active={alSortCol} dir={alSortDir} onClick={handleAlSort} />
@@ -584,11 +584,11 @@ export default function InventoryDashboardPage() {
                     <td className="px-4 py-2.5 text-slate-700 text-xs max-w-[240px] truncate">
                       {item.description}
                     </td>
-                    <td className="px-4 py-2.5 text-slate-500 text-xs">{item.unit}</td>
+                    <td className="px-4 py-2.5 text-slate-600 text-xs">{item.unit}</td>
                     <td className="px-4 py-2.5 text-center text-xs font-semibold text-slate-800">
                       {item.onHand}
                     </td>
-                    <td className="px-4 py-2.5 text-center text-xs text-slate-500">
+                    <td className="px-4 py-2.5 text-center text-xs text-slate-600">
                       {item.reorderQty}
                     </td>
                     <td className="px-4 py-2.5 text-center">

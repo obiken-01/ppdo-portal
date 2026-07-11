@@ -119,7 +119,7 @@ export default function DashboardCalendar({
           {LEGEND_ENTRIES.map(({ key, label }) => (
             <div key={key} className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded-sm inline-block" style={{ backgroundColor: EVENT_COLORS[key].bg }} />
-              <span className="text-xs text-slate-500">{label}</span>
+              <span className="text-xs text-slate-600">{label}</span>
             </div>
           ))}
         </div>

@@ -36,7 +36,7 @@ interface ImportMeta {
 function StatTile({ label, value }: { label: string; value: number }) {
   return (
     <div className="bg-white border border-slate-200 px-5 py-4">
-      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{label}</p>
+      <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">{label}</p>
       <p className="mt-1.5 text-2xl font-bold text-slate-800 tabular-nums">{value.toLocaleString()}</p>
     </div>
   );
@@ -45,7 +45,7 @@ function StatTile({ label, value }: { label: string; value: number }) {
 function Chevron({ open }: { open: boolean }) {
   return (
     <svg
-      className={`w-4 h-4 text-slate-500 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+      className={`w-4 h-4 text-slate-600 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
       fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
     >
       <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
@@ -134,7 +134,7 @@ export default function LdipImportPreviewPage() {
 
   if (!preview || !me) {
     return (
-      <div className="p-6 flex items-center gap-3 text-sm text-slate-500">
+      <div className="p-6 flex items-center gap-3 text-sm text-slate-600">
         <span className="inline-block w-4 h-4 border-2 border-slate-300 border-t-transparent rounded-full animate-spin" />
         Loading preview…
       </div>
@@ -150,7 +150,7 @@ export default function LdipImportPreviewPage() {
             {meta?.replaceId != null ? "Re-upload Preview" : "Import Preview"} — LDIP{" "}
             {preview.fiscalYearStart}–{preview.fiscalYearEnd}
           </h1>
-          <p className="text-sm text-slate-500 mt-0.5">
+          <p className="text-sm text-slate-600 mt-0.5">
             {meta?.replaceId != null
               ? "Review the data before confirming. This replaces the existing record's programs with the file's contents. This cannot be undone."
               : "Review the data before confirming. One Draft record is created, spanning every office found. This cannot be undone."}
@@ -196,7 +196,7 @@ export default function LdipImportPreviewPage() {
           </div>
 
           <div>
-            <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+            <h2 className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">
               Programs Parsed by Sector
             </h2>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -207,7 +207,7 @@ export default function LdipImportPreviewPage() {
           </div>
 
           <div>
-            <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+            <h2 className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">
               Breakdown by Office
             </h2>
             <div className="border border-slate-200 divide-y divide-slate-100 bg-white">
@@ -219,17 +219,17 @@ export default function LdipImportPreviewPage() {
                     <span className="font-medium text-slate-700 col-span-1">
                       {office.officeCode} — {office.officeName}
                     </span>
-                    <span className="text-slate-500 text-xs text-right">
+                    <span className="text-slate-600 text-xs text-right">
                       {groupCount} group{groupCount !== 1 ? "s" : ""}
                     </span>
-                    <span className="text-slate-500 text-xs text-right">
+                    <span className="text-slate-600 text-xs text-right">
                       {progCount} program{progCount !== 1 ? "s" : ""}
                     </span>
                   </div>
                 );
               })}
               {preview.offices.length === 0 && (
-                <p className="px-4 py-6 text-center text-sm text-slate-400">
+                <p className="px-4 py-6 text-center text-sm text-slate-600">
                   No office in the file matched a configured office_ref_code.
                 </p>
               )}
@@ -240,16 +240,16 @@ export default function LdipImportPreviewPage() {
         {/* ── Right column: file info + warnings ── */}
         <div className="lg:col-span-2 space-y-4">
           <div className="bg-slate-50 border border-slate-200 p-5">
-            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">File Info</h3>
+            <h3 className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-3">File Info</h3>
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between gap-2">
-                <dt className="text-slate-500">Filename</dt>
+                <dt className="text-slate-600">Filename</dt>
                 <dd className="text-slate-700 font-medium truncate text-right max-w-[60%]" title={meta?.originalFilename}>
                   {meta?.originalFilename ?? "—"}
                 </dd>
               </div>
               <div className="flex justify-between gap-2">
-                <dt className="text-slate-500">Period</dt>
+                <dt className="text-slate-600">Period</dt>
                 <dd className="text-slate-700 font-medium">
                   {preview.fiscalYearStart}–{preview.fiscalYearEnd}
                 </dd>

@@ -77,7 +77,7 @@ function LinkFormModal({
       <div className="bg-white shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
           <h2 className="text-sm font-semibold text-slate-800">{title}</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
+          <button onClick={onClose} className="text-slate-600 hover:text-slate-600 text-xl leading-none">×</button>
         </div>
 
         <div className="px-6 py-5 space-y-4">
@@ -332,7 +332,7 @@ export default function ResourceLinksPage() {
           className="flex-1 px-4 py-2.5 text-sm border border-slate-200 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-green-600"
         />
         {search && (
-          <button onClick={() => setSearch("")} className="text-sm text-slate-400 hover:text-slate-600 px-2">
+          <button onClick={() => setSearch("")} className="text-sm text-slate-600 hover:text-slate-600 px-2">
             Clear
           </button>
         )}
@@ -358,7 +358,7 @@ export default function ResourceLinksPage() {
           <button onClick={loadData} className="text-sm text-green-600 hover:underline">Retry</button>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 gap-2 text-slate-400">
+        <div className="flex flex-col items-center justify-center py-20 gap-2 text-slate-600">
           <span className="text-3xl">🔗</span>
           <p className="text-sm">{search ? "No links match your search." : "No resource links found."}</p>
         </div>
@@ -388,7 +388,7 @@ export default function ResourceLinksPage() {
                       <span className="text-slate-300 group-hover/row:text-green-400 shrink-0 transition-colors text-xs">↗</span>
                       <span className="truncate">{link.title}</span>
                       {!link.isAdminCreated && (
-                        <span className="text-xs text-slate-400 shrink-0">(staff)</span>
+                        <span className="text-xs text-slate-600 shrink-0">(staff)</span>
                       )}
                     </a>
 
@@ -398,7 +398,7 @@ export default function ResourceLinksPage() {
                         <button
                           title="Edit"
                           onClick={() => { setFormError(null); setEditTarget(link); }}
-                          className="p-1 rounded text-slate-400 hover:text-green-700 hover:bg-green-50 transition-colors"
+                          className="p-1 rounded text-slate-600 hover:text-green-700 hover:bg-green-50 transition-colors"
                         >
                           ✏️
                         </button>
@@ -407,7 +407,7 @@ export default function ResourceLinksPage() {
                         <button
                           title="Delete"
                           onClick={() => setDeleteTarget(link)}
-                          className="p-1 rounded text-slate-400 hover:text-danger-500 hover:bg-danger-100 transition-colors"
+                          className="p-1 rounded text-slate-600 hover:text-danger-500 hover:bg-danger-100 transition-colors"
                         >
                           🗑️
                         </button>

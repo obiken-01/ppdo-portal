@@ -142,7 +142,7 @@ export default function DataTable<T>({
               {columns.map((col) => (
                 <th
                   key={col.key}
-                  className={`px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wide ${ALIGN_CLASS[col.align ?? "left"]}`}
+                  className={`px-4 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wide ${ALIGN_CLASS[col.align ?? "left"]}`}
                 >
                   {col.header}
                 </th>
@@ -183,7 +183,7 @@ export default function DataTable<T>({
 
   if (sortedRows.length === 0) {
     return (
-      <div className="bg-white border border-slate-200 flex flex-col items-center justify-center py-16 gap-2 text-slate-400">
+      <div className="bg-white border border-slate-200 flex flex-col items-center justify-center py-16 gap-2 text-slate-600">
         <span className="text-3xl">📭</span>
         <p className="text-sm">{emptyMessage}</p>
       </div>
@@ -197,7 +197,7 @@ export default function DataTable<T>({
       <div className="overflow-x-auto overflow-y-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500 uppercase tracking-wide">
+            <tr className="bg-slate-50 border-b border-slate-200 text-xs text-slate-600 uppercase tracking-wide">
               {columns.map((col) => {
                 const active = sortKey === col.key;
                 return (
@@ -244,7 +244,7 @@ export default function DataTable<T>({
       </div>
 
       {/* Footer: row count + pagination */}
-      <div className="flex items-center justify-between px-4 py-2 border-t border-slate-100 text-xs text-slate-400">
+      <div className="flex items-center justify-between px-4 py-2 border-t border-slate-100 text-xs text-slate-600">
         <span>
           {sortedRows.length} {sortedRows.length === 1 ? rowNoun[0] : rowNoun[1]}
         </span>
@@ -254,17 +254,17 @@ export default function DataTable<T>({
             <button
               onClick={() => setPage((p) => Math.max(0, p - 1))}
               disabled={safePage === 0}
-              className="px-2 py-1 border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="px-2 py-1 border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               ‹ Prev
             </button>
-            <span className="text-slate-500">
+            <span className="text-slate-600">
               Page {safePage + 1} of {pageCount}
             </span>
             <button
               onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
               disabled={safePage >= pageCount - 1}
-              className="px-2 py-1 border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="px-2 py-1 border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Next ›
             </button>

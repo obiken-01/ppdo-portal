@@ -33,7 +33,7 @@ export default function AccountPage() {
     return `px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
       activeTab === tab
         ? "border-green-600 text-green-700"
-        : "border-transparent text-slate-500 hover:text-slate-700"
+        : "border-transparent text-slate-600 hover:text-slate-700"
     }`;
   }
 
@@ -185,7 +185,7 @@ function ProfileTab({
 
         {/* Read-only fields — managed by User Management only */}
         <div className="pt-2 border-t border-slate-100">
-          <p className="text-xs text-slate-400 mb-3">
+          <p className="text-xs text-slate-600 mb-3">
             Role and division are managed by administrators.
           </p>
           <div className="grid grid-cols-2 gap-4">
@@ -291,7 +291,7 @@ function SecurityTab() {
             onChange={(e) => { setNewPw(e.target.value); setError(null); }}
             autoComplete="new-password"
           />
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-slate-600 mt-1">
             Min. 8 characters · at least 1 uppercase letter · at least 1 digit
           </p>
         </Field>
