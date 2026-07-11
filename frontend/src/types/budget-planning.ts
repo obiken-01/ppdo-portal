@@ -511,18 +511,30 @@ export interface WfpReportProjectDto {
   refCode: string;
   name: string;
   activities: WfpReportActivityDto[];
+  grandTotal: WfpReportAmountsDto;
 }
 
 export interface WfpReportProgramDto {
   refCode: string;
   name: string;
   projects: WfpReportProjectDto[];
+  grandTotal: WfpReportAmountsDto;
+}
+
+export interface WfpReportSectionBreakdownDto {
+  personalServices: WfpReportAmountsDto;
+  mooeExcludingCreation: WfpReportAmountsDto;
+  capitalOutlay: WfpReportAmountsDto;
+  personalServicesCreation: WfpReportAmountsDto;
+  mooeCreation: WfpReportAmountsDto;
+  grandTotal: WfpReportAmountsDto;
 }
 
 export interface WfpReportFunctionBandSectionDto {
   functionBand: string;
   functionBandLabel: string;
   programs: WfpReportProgramDto[];
+  breakdown: WfpReportSectionBreakdownDto;
 }
 
 export interface WfpReportDto {

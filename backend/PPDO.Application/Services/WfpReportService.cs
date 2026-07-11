@@ -140,7 +140,9 @@ public sealed class WfpReportService : IWfpReportService
             }
             if (activityDtos.Count == 0) continue;
 
-            WfpReportProjectDto projectDto = new(project.RefCode, project.Name, activityDtos);
+            WfpReportAmountsDto projectTotal = activityDtos.Aggregate(
+                WfpReportAmountsDto.Zero, (acc, a) => acc + a.GrandTotal);
+            WfpReportProjectDto projectDto = new(project.RefCode, project.Name, activityDtos, projectTotal);
             if (!projectDtosByProgramId.TryGetValue(project.ProgramId, out List<WfpReportProjectDto>? list))
                 projectDtosByProgramId[project.ProgramId] = list = [];
             list.Add(projectDto);
@@ -152,7 +154,9 @@ public sealed class WfpReportService : IWfpReportService
             if (!projectDtosByProgramId.TryGetValue(program.Id, out List<WfpReportProjectDto>? projectDtos))
                 continue;
 
-            WfpReportProgramDto programDto = new(program.RefCode, program.Name, projectDtos);
+            WfpReportAmountsDto programTotal = projectDtos.Aggregate(
+                WfpReportAmountsDto.Zero, (acc, p) => acc + p.GrandTotal);
+            WfpReportProgramDto programDto = new(program.RefCode, program.Name, projectDtos, programTotal);
             string band = string.IsNullOrWhiteSpace(program.FunctionBand)
                 ? UnassignedFunctionBand
                 : program.FunctionBand;
@@ -165,7 +169,7 @@ public sealed class WfpReportService : IWfpReportService
         List<WfpReportFunctionBandSectionDto> sections = bandOrder
             .Where(programsByBand.ContainsKey)
             .Select(band => new WfpReportFunctionBandSectionDto(
-                band, FunctionBandLabels[band], programsByBand[band]))
+                band, FunctionBandLabels[band], programsByBand[band], BuildSectionBreakdown(programsByBand[band])))
             .ToList();
 
         return ServiceResult<WfpReportDto>.Ok(new WfpReportDto(
@@ -221,6 +225,46 @@ public sealed class WfpReportService : IWfpReportService
         }
 
         return new WfpReportActivityDto(activity.RefCode, activity.Name, activity.IsCreation, groups, grandTotal);
+    }
+
+    /// <summary>
+    /// Section-closing breakdown (WFP FINAL sheet rows "TOTAL - PERSONAL SERVICES" through
+    /// "GRAND-TOTAL"): every activity's expense-class sub-totals bucketed into PS / MOOE
+    /// (excl. creation) / CO / PS-creation / MOOE-creation. GrandTotal is summed from the
+    /// programs' own grand totals (not from the five buckets) so it stays correct even if an
+    /// expenditure's account maps to neither PS, MOOE, nor CO (ExpenseClassFor's "OTHER"
+    /// fallback) — that activity still counts toward the section total, it just isn't
+    /// itemised in one of the five labelled buckets.
+    /// </summary>
+    private static WfpReportSectionBreakdownDto BuildSectionBreakdown(IReadOnlyList<WfpReportProgramDto> programs)
+    {
+        WfpReportAmountsDto ps = WfpReportAmountsDto.Zero, mooe = WfpReportAmountsDto.Zero, co = WfpReportAmountsDto.Zero;
+        WfpReportAmountsDto psCreation = WfpReportAmountsDto.Zero, mooeCreation = WfpReportAmountsDto.Zero;
+
+        foreach (WfpReportActivityDto activity in programs.SelectMany(p => p.Projects).SelectMany(p => p.Activities))
+        {
+            foreach (WfpReportExpenseClassGroupDto group in activity.ExpenseClasses)
+            {
+                switch (group.ExpenseClass)
+                {
+                    case "PS":
+                        if (activity.IsCreation) psCreation += group.SubTotal; else ps += group.SubTotal;
+                        break;
+                    case "MOOE":
+                        if (activity.IsCreation) mooeCreation += group.SubTotal; else mooe += group.SubTotal;
+                        break;
+                    case "CO":
+                        co += group.SubTotal;
+                        break;
+                    // "OTHER" (no account, or an account outside PS/MOOE/CO) has no labelled
+                    // bucket in the sheet — deliberately excluded from the five totals below,
+                    // but still folded into GrandTotal via the programs' totals.
+                }
+            }
+        }
+
+        WfpReportAmountsDto grandTotal = programs.Aggregate(WfpReportAmountsDto.Zero, (acc, p) => acc + p.GrandTotal);
+        return new WfpReportSectionBreakdownDto(ps, mooe, co, psCreation, mooeCreation, grandTotal);
     }
 
     private static string ExpenseClassFor(WfpExpenditureDto e, IReadOnlyDictionary<int, Account> accountsById) =>

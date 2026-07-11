@@ -63,15 +63,34 @@ public record WfpReportActivityDto(
     IReadOnlyList<WfpReportExpenseClassGroupDto> ExpenseClasses,
     WfpReportAmountsDto GrandTotal);
 
+/// <summary>PROJECT GRAND TOTAL — sums every activity under the project (the WFP FINAL sheet's row of the same name).</summary>
 public record WfpReportProjectDto(
     string   RefCode,
     string   Name,
-    IReadOnlyList<WfpReportActivityDto> Activities);
+    IReadOnlyList<WfpReportActivityDto> Activities,
+    WfpReportAmountsDto GrandTotal);
 
+/// <summary>PROGRAM GRAND TOTAL — sums every project under the program.</summary>
 public record WfpReportProgramDto(
     string   RefCode,
     string   Name,
-    IReadOnlyList<WfpReportProjectDto> Projects);
+    IReadOnlyList<WfpReportProjectDto> Projects,
+    WfpReportAmountsDto GrandTotal);
+
+/// <summary>
+/// The function-band section's closing summary block (WFP FINAL sheet rows "TOTAL - PERSONAL
+/// SERVICES" through "GRAND-TOTAL") — every activity in the section split by expense class,
+/// with Personal Services and MOOE further split by the activity's IsCreation flag (RAL-126;
+/// the checkbox is documented as "GF, PS, position-creation only", so Capital Outlay has no
+/// creation split). GrandTotal sums all five buckets and equals the section's overall total.
+/// </summary>
+public record WfpReportSectionBreakdownDto(
+    WfpReportAmountsDto PersonalServices,
+    WfpReportAmountsDto MooeExcludingCreation,
+    WfpReportAmountsDto CapitalOutlay,
+    WfpReportAmountsDto PersonalServicesCreation,
+    WfpReportAmountsDto MooeCreation,
+    WfpReportAmountsDto GrandTotal);
 
 /// <summary>
 /// One function-band section (CORE FUNCTIONS / STRATEGIC FUNCTIONS / SUPPORT FUNCTIONS /
@@ -80,7 +99,8 @@ public record WfpReportProgramDto(
 public record WfpReportFunctionBandSectionDto(
     string   FunctionBand,
     string   FunctionBandLabel,
-    IReadOnlyList<WfpReportProgramDto> Programs);
+    IReadOnlyList<WfpReportProgramDto> Programs,
+    WfpReportSectionBreakdownDto Breakdown);
 
 /// <summary>The full WFP report preview for one office + fiscal year (RAL-132).</summary>
 public record WfpReportDto(

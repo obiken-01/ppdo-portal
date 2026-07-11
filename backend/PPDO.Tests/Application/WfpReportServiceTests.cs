@@ -431,4 +431,124 @@ public sealed class WfpReportServiceTests
         Assert.Equal("PPDO", result.Value!.OfficeCode);
         Assert.Equal(FiscalYear, result.Value!.FiscalYear);
     }
+
+    [Fact]
+    public async Task GetReportAsync_ComputesProjectAndProgramGrandTotals_AcrossMultipleActivitiesAndProjects()
+    {
+        Fixture f = Build();
+        f.Offices.Add(MakeOffice(1, "PPDO", "013"));
+        f.AipRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipRecord>)[MakeAip(100, FiscalYear, PlanningStatus.Draft)]);
+        f.AipRepo.Setup(r => r.GetOfficesByAipIdAsync(100, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipOffice>)[MakeAipOffice(1, 100, "3000-000-1-01-013")]);
+
+        AipProgram program = MakeProgram(1, 1, "PGM-1", "CORE");
+        f.AipRepo.Setup(r => r.GetProgramsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipProgram>)[program]);
+
+        // Two projects; the first has two activities, the second has one.
+        AipProject project1 = MakeProject(10, 1, "PRJ-1");
+        AipProject project2 = MakeProject(11, 1, "PRJ-2");
+        f.AipRepo.Setup(r => r.GetProjectsByProgramIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipProject>)[project1, project2]);
+
+        AipActivity act1 = MakeActivity(100, 10, "ACT-1");
+        AipActivity act2 = MakeActivity(101, 10, "ACT-2");
+        AipActivity act3 = MakeActivity(102, 11, "ACT-3");
+        f.AipRepo.Setup(r => r.GetActivitiesByProjectIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipActivity>)[act1, act2, act3]);
+
+        f.WfpRepo.Setup(r => r.GetFilteredAsync(100, 1, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpRecord>)[
+                new WfpRecord { Id = 1000, AipRecordId = 100, OfficeId = 1, DivisionId = 1, FiscalYear = FiscalYear, Status = PlanningStatus.Draft },
+            ]);
+        f.WfpRepo.Setup(r => r.GetActivitiesByWfpIdAsync(1000, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpActivity>)[
+                new WfpActivity { Id = 500, WfpId = 1000, AipActivityId = 100 },
+                new WfpActivity { Id = 501, WfpId = 1000, AipActivityId = 101 },
+                new WfpActivity { Id = 502, WfpId = 1000, AipActivityId = 102 },
+            ]);
+        f.Accounts.Add(MakeAccount(1, "5-02-03-010", "Office Supplies Expenses", "MOOE"));
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[MakeExpenditure(1, 500, 1, "5-02-03-010", "Office Supplies Expenses", net: 1000, total: 1000)]);
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(501, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[MakeExpenditure(2, 501, 1, "5-02-03-010", "Office Supplies Expenses", net: 2000, total: 2000)]);
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(502, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[MakeExpenditure(3, 502, 1, "5-02-03-010", "Office Supplies Expenses", net: 4000, total: 4000)]);
+
+        ServiceResult<WfpReportDto> result = await f.Sut.GetReportAsync(1, FiscalYear);
+
+        Assert.True(result.IsSuccess);
+        WfpReportProgramDto programDto = result.Value!.Sections.Single().Programs.Single();
+        WfpReportProjectDto projectDto1 = programDto.Projects.Single(p => p.RefCode == "PRJ-1");
+        WfpReportProjectDto projectDto2 = programDto.Projects.Single(p => p.RefCode == "PRJ-2");
+
+        // PROJECT GRAND TOTAL — sums its own activities only.
+        Assert.Equal(3000, projectDto1.GrandTotal.NetAppropriation);
+        Assert.Equal(4000, projectDto2.GrandTotal.NetAppropriation);
+        // PROGRAM GRAND TOTAL — sums every project under it.
+        Assert.Equal(7000, programDto.GrandTotal.NetAppropriation);
+    }
+
+    [Fact]
+    public async Task GetReportAsync_SectionBreakdown_SplitsPersonalServicesAndMooeByCreationFlag()
+    {
+        Fixture f = Build();
+        f.Offices.Add(MakeOffice(1, "PPDO", "013"));
+        f.AipRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipRecord>)[MakeAip(100, FiscalYear, PlanningStatus.Draft)]);
+        f.AipRepo.Setup(r => r.GetOfficesByAipIdAsync(100, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipOffice>)[MakeAipOffice(1, 100, "3000-000-1-01-013")]);
+        AipProgram program = MakeProgram(1, 1, "PGM-1", "SUPPORT");
+        f.AipRepo.Setup(r => r.GetProgramsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipProgram>)[program]);
+        AipProject project = MakeProject(10, 1, "PRJ-1");
+        f.AipRepo.Setup(r => r.GetProjectsByProgramIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipProject>)[project]);
+
+        // One ordinary activity (PS + MOOE + CO), one Creation-flagged activity (PS + MOOE).
+        AipActivity ordinary = MakeActivity(100, 10, "ACT-ORDINARY", isCreation: false);
+        AipActivity creation = MakeActivity(101, 10, "ACT-CREATION", isCreation: true);
+        f.AipRepo.Setup(r => r.GetActivitiesByProjectIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipActivity>)[ordinary, creation]);
+
+        f.WfpRepo.Setup(r => r.GetFilteredAsync(100, 1, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpRecord>)[
+                new WfpRecord { Id = 1000, AipRecordId = 100, OfficeId = 1, DivisionId = 1, FiscalYear = FiscalYear, Status = PlanningStatus.Draft },
+            ]);
+        f.WfpRepo.Setup(r => r.GetActivitiesByWfpIdAsync(1000, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpActivity>)[
+                new WfpActivity { Id = 500, WfpId = 1000, AipActivityId = 100 },
+                new WfpActivity { Id = 501, WfpId = 1000, AipActivityId = 101 },
+            ]);
+
+        f.Accounts.Add(MakeAccount(1, "5-01-01-010", "Salaries and Wages - Regular", "PS"));
+        f.Accounts.Add(MakeAccount(2, "5-02-03-010", "Office Supplies Expenses", "MOOE"));
+        f.Accounts.Add(MakeAccount(3, "1-07-05-010", "Machinery", "CO"));
+
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
+                MakeExpenditure(1, 500, 1, "5-01-01-010", "Salaries and Wages - Regular", net: 10000, total: 10000),
+                MakeExpenditure(2, 500, 2, "5-02-03-010", "Office Supplies Expenses", net: 3000, total: 3000),
+                MakeExpenditure(3, 500, 3, "1-07-05-010", "Machinery", net: 5000, total: 5000),
+            ]);
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(501, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
+                MakeExpenditure(4, 501, 1, "5-01-01-010", "Salaries and Wages - Regular", net: 20000, total: 20000),
+                MakeExpenditure(5, 501, 2, "5-02-03-010", "Office Supplies Expenses", net: 1000, total: 1000),
+            ]);
+
+        ServiceResult<WfpReportDto> result = await f.Sut.GetReportAsync(1, FiscalYear);
+
+        Assert.True(result.IsSuccess);
+        WfpReportSectionBreakdownDto breakdown = result.Value!.Sections.Single().Breakdown;
+
+        Assert.Equal(10000, breakdown.PersonalServices.NetAppropriation);
+        Assert.Equal(3000, breakdown.MooeExcludingCreation.NetAppropriation);
+        Assert.Equal(5000, breakdown.CapitalOutlay.NetAppropriation);
+        Assert.Equal(20000, breakdown.PersonalServicesCreation.NetAppropriation);
+        Assert.Equal(1000, breakdown.MooeCreation.NetAppropriation);
+        // GrandTotal = 10000 + 3000 + 5000 + 20000 + 1000 = 39000, matching both activities' totals.
+        Assert.Equal(39000, breakdown.GrandTotal.NetAppropriation);
+    }
 }
