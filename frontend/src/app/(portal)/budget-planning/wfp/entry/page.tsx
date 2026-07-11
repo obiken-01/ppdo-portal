@@ -1224,7 +1224,7 @@ function WfpEntryPageInner() {
                     entered: {formatMoney(ceilingStatus.aipUsed)}
                   </span>
                 </div>
-                {progressBar(ceilingStatus.aipUsed, ceilingStatus.aipBudget)}
+                {progressBar(ceilingStatus.aipUsed, ceilingStatus.aipBudget, "bg-red-500", "bg-info-500")}
               </div>
             )}
           </div>
