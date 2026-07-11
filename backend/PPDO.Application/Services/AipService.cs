@@ -269,8 +269,12 @@ public sealed class AipService : IAipService
                     Sector   = officeDto.Sector,
                     Programs = officeDto.Programs.Select(progDto => new AipProgram
                     {
-                        RefCode  = progDto.RefCode,
-                        Name     = progDto.Name,
+                        RefCode      = progDto.RefCode,
+                        Name         = progDto.Name,
+                        // Function band is required going forward (UpdateProgramFunctionBandAsync
+                        // rejects null/empty) — default new imports to Core rather than leaving
+                        // them unset; whoever enters the WFP can change it via the entry wizard.
+                        FunctionBand = AipFunctionBand.Core,
                         Projects = progDto.Projects.Select(projDto => new AipProject
                         {
                             RefCode    = projDto.RefCode,
@@ -454,8 +458,8 @@ public sealed class AipService : IAipService
         if (string.IsNullOrWhiteSpace(input))
         {
             canonical = null;
-            error = null;
-            return true;
+            error = $"function_band is required and must be one of: {string.Join(", ", AllowedFunctionBands)}.";
+            return false;
         }
 
         string trimmed = input.Trim();

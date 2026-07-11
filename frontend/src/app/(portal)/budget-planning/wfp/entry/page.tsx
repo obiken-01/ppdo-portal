@@ -1307,14 +1307,16 @@ function WfpEntryPageInner() {
             <div className="flex flex-wrap items-center gap-6 mb-4 px-3 py-2 bg-slate-50 border border-slate-200 text-xs">
               {selectedProgram && (
                 <label className="flex items-center gap-2">
-                  <span className="font-medium text-slate-500 uppercase tracking-wide">Function Band</span>
+                  <span className="font-medium text-slate-500 uppercase tracking-wide">
+                    Function Band <span className="text-red-500">*</span>
+                  </span>
                   <select
-                    value={selectedProgram.functionBand ?? ""}
+                    required
+                    value={selectedProgram.functionBand ?? "CORE"}
                     onChange={(e) => handleFunctionBandChange(selectedProgram.id, e.target.value)}
                     disabled={savingProgramId === selectedProgram.id}
                     className="border border-slate-300 text-xs px-2 py-1 bg-white disabled:opacity-50"
                   >
-                    <option value="">— none —</option>
                     <option value="CORE">Core</option>
                     <option value="STRATEGIC">Strategic</option>
                     <option value="SUPPORT">Support</option>

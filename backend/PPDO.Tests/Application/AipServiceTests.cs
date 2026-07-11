@@ -424,6 +424,9 @@ public sealed class AipServiceTests
         AipOffice office = insertedGraph.Offices.First();
         Assert.Single(office.Programs);
         AipProgram program = office.Programs.First();
+        // Function band is required going forward — new programs default to Core at import
+        // time rather than being left unset (AipService.ConfirmImportAsync).
+        Assert.Equal("CORE", program.FunctionBand);
         Assert.Single(program.Projects);
         AipProject project = program.Projects.First();
         Assert.Single(project.Activities);
@@ -679,17 +682,19 @@ public sealed class AipServiceTests
     }
 
     [Fact]
-    public async Task UpdateProgramFunctionBand_NullOrEmpty_ClearsValue()
+    public async Task UpdateProgramFunctionBand_NullOrEmpty_ReturnsBadRequest()
     {
+        // Function band is required (v1.4 follow-up) — clearing it back to null/empty is no
+        // longer a valid operation; the existing value is left untouched.
         AipProgram prog = new() { Id = 302, OfficeId = 201, RefCode = "P", Name = "Prog", FunctionBand = "SUPPORT" };
         var (sut, _, _, _, _, _) = Build([], [], programSeed: [prog]);
 
         ServiceResult<AipProgramDto> result =
             await sut.UpdateProgramFunctionBandAsync(302, "", CancellationToken.None);
 
-        Assert.True(result.IsSuccess);
-        Assert.Null(result.Value!.FunctionBand);
-        Assert.Null(prog.FunctionBand);
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Equal("SUPPORT", prog.FunctionBand);
     }
 
     [Fact]
