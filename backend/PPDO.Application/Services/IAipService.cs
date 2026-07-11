@@ -45,8 +45,10 @@ public interface IAipService
     Task<ServiceResult<AipRecordDto>> ArchiveAsync(int id, CancellationToken ct = default);
 
     /// <summary>
-    /// Sets/clears a program's WFP report function band (v1.4 Q1). Null/empty clears it.
-    /// Captured during WFP data entry, not AIP import — see wfp/entry context picker.
+    /// Sets a program's WFP report function band (v1.4 Q1) — required, one of CORE/STRATEGIC/
+    /// SUPPORT; null/empty is rejected with BadRequest. Captured during WFP data entry, not AIP
+    /// import — see wfp/entry context picker. New programs default to CORE at import time
+    /// (AipService.ConfirmImportAsync) so the field is never left unset.
     /// </summary>
     Task<ServiceResult<AipProgramDto>> UpdateProgramFunctionBandAsync(
         int programId, string? functionBand, CancellationToken ct = default);

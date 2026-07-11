@@ -141,6 +141,7 @@ var host = new HostBuilder()
         services.AddScoped<IProcurementPresetService, ProcurementPresetService>();
         services.AddScoped<IAuditService, AuditService>();
         services.AddScoped<IBudgetPlanningDashboardService, BudgetPlanningDashboardService>();
+        services.AddScoped<IWfpReportService, WfpReportService>();
 
         // -- v1.1.1 services -------------------------------------------------
         services.AddScoped<IAnnouncementService, AnnouncementService>();

@@ -18,6 +18,8 @@ import type {
   WfpExpenditureFrequency,
   WfpRecord,
   WfpRecordDetail,
+  WfpReportDto,
+  WfpReportOfficeDto,
   WfpReserveRateDto,
 } from "@/types";
 
@@ -172,6 +174,28 @@ export async function deleteWfpExpenditure(id: number): Promise<void> {
 export async function getReserveRate(): Promise<WfpReserveRateDto> {
   const { data } = await api.get<ApiResponse<WfpReserveRateDto>>(
     "/budget-planning/wfp/reserve-rate"
+  );
+  return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// WFP Report preview (RAL-132)
+// ---------------------------------------------------------------------------
+
+/** Offices with at least a Draft WFP for the fiscal year — the Report page's office picker. */
+export async function getWfpReportOffices(fiscalYear: number): Promise<WfpReportOfficeDto[]> {
+  const { data } = await api.get<ApiResponse<WfpReportOfficeDto[]>>(
+    "/budget-planning/wfp/report/offices",
+    { params: { fiscalYear } }
+  );
+  return unwrap(data);
+}
+
+/** The full WFP report preview for one office + fiscal year. */
+export async function getWfpReportPreview(officeId: number, fiscalYear: number): Promise<WfpReportDto> {
+  const { data } = await api.get<ApiResponse<WfpReportDto>>(
+    "/budget-planning/wfp/report/preview",
+    { params: { officeId, fiscalYear } }
   );
   return unwrap(data);
 }
