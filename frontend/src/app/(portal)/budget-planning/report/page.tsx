@@ -18,9 +18,10 @@
  *   PERSONAL SERVICES CREATION / MOOE - CREATION / GRAND-TOTAL breakdown — not once per section
  *   (Personal Services and MOOE are split by the activity's "…-CREATION" flag — RAL-126; the
  *   flag is documented as "GF, PS, position-creation only", so Capital Outlay has no creation
- *   split, matching the reference sheet). ACTIVITY/PROJECT/PROGRAM GRAND TOTAL labels align
- *   under the "Nature" column header with their ref code in the "Account Code" column; the
- *   TOTAL - * breakdown labels align under "Account Code", matching the reference sheet.
+ *   split, matching the reference sheet). ACTIVITY/PROJECT/PROGRAM GRAND TOTAL rows merge their
+ *   label + ref code into one no-wrap cell spanning Nature through Object of Expenditure
+ *   (matching the reference sheet's merged cell over those same three columns); the TOTAL - *
+ *   breakdown labels align under "Account Code", matching the reference sheet.
  *
  * The sheet's SECTOR column is included (AipOffice.Sector, mapped to the sheet's exact labels
  * server-side — WfpReportService), but its five narrative columns (Resources Needed,
@@ -266,9 +267,9 @@ function ReportTable({ sections, breakdown }: { sections: WfpReportFundSourceDto
                 return (
                   <tr key={i} className="bg-green-50 font-semibold text-green-800">
                     <td colSpan={3} className="border border-slate-200" />
-                    <td className="px-2 py-1 border border-slate-200">ACTIVITY GRAND TOTAL</td>
-                    <td className="px-2 py-1 font-mono border border-slate-200 break-words">{row.refCode}</td>
-                    <td className="border border-slate-200" />
+                    <td colSpan={3} className="px-2 py-1 border border-slate-200 whitespace-nowrap overflow-visible">
+                      ACTIVITY GRAND TOTAL — {row.refCode}
+                    </td>
                     <AmountsCells amounts={row.amounts} className="border border-slate-200" />
                   </tr>
                 );
@@ -276,9 +277,9 @@ function ReportTable({ sections, breakdown }: { sections: WfpReportFundSourceDto
                 return (
                   <tr key={i} className="bg-green-100 font-semibold text-green-800">
                     <td colSpan={3} className="border border-slate-200" />
-                    <td className="px-2 py-1 border border-slate-200">PROJECT GRAND TOTAL</td>
-                    <td className="px-2 py-1 font-mono border border-slate-200 break-words">{row.refCode}</td>
-                    <td className="border border-slate-200" />
+                    <td colSpan={3} className="px-2 py-1 border border-slate-200 whitespace-nowrap overflow-visible">
+                      PROJECT GRAND TOTAL — {row.refCode}
+                    </td>
                     <AmountsCells amounts={row.amounts} className="border border-slate-200" />
                   </tr>
                 );
@@ -286,9 +287,9 @@ function ReportTable({ sections, breakdown }: { sections: WfpReportFundSourceDto
                 return (
                   <tr key={i} className="bg-green-200 font-semibold text-green-900">
                     <td colSpan={3} className="border border-slate-200" />
-                    <td className="px-2 py-1 border border-slate-200">PROGRAM GRAND TOTAL</td>
-                    <td className="px-2 py-1 font-mono border border-slate-200 break-words">{row.refCode}</td>
-                    <td className="border border-slate-200" />
+                    <td colSpan={3} className="px-2 py-1 border border-slate-200 whitespace-nowrap overflow-visible">
+                      PROGRAM GRAND TOTAL — {row.refCode}
+                    </td>
                     <AmountsCells amounts={row.amounts} className="border border-slate-200" />
                   </tr>
                 );
