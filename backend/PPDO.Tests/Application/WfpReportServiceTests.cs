@@ -237,8 +237,25 @@ public sealed class WfpReportServiceTests
         f.AipRepo.Setup(r => r.GetActivitiesByProjectIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipActivity>)[coreActivity, unbandedActivity]);
 
+        // Both activities need at least one expenditure to appear in the report at all.
         f.WfpRepo.Setup(r => r.GetFilteredAsync(100, 1, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IReadOnlyList<WfpRecord>)[]);
+            .ReturnsAsync((IReadOnlyList<WfpRecord>)[
+                new WfpRecord { Id = 1000, AipRecordId = 100, OfficeId = 1, DivisionId = 1, FiscalYear = FiscalYear, Status = PlanningStatus.Draft },
+            ]);
+        f.WfpRepo.Setup(r => r.GetActivitiesByWfpIdAsync(1000, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpActivity>)[
+                new WfpActivity { Id = 500, WfpId = 1000, AipActivityId = 100 },
+                new WfpActivity { Id = 501, WfpId = 1000, AipActivityId = 101 },
+            ]);
+        f.Accounts.Add(MakeAccount(1, "5-02-03-010", "Office Supplies Expenses", "MOOE"));
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
+                MakeExpenditure(1, 500, 1, "5-02-03-010", "Office Supplies Expenses", net: 1000, total: 1000),
+            ]);
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(501, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
+                MakeExpenditure(2, 501, 1, "5-02-03-010", "Office Supplies Expenses", net: 500, total: 500),
+            ]);
 
         ServiceResult<WfpReportDto> result = await f.Sut.GetReportAsync(1, FiscalYear);
 
@@ -319,7 +336,7 @@ public sealed class WfpReportServiceTests
     }
 
     [Fact]
-    public async Task GetReportAsync_ActivityWithNoExpenditures_StillIncludedWithZeroTotal()
+    public async Task GetReportAsync_ActivityWithNoExpenditures_IsExcluded()
     {
         Fixture f = Build();
         f.Offices.Add(MakeOffice(1, "PPDO", "013"));
@@ -342,9 +359,55 @@ public sealed class WfpReportServiceTests
         ServiceResult<WfpReportDto> result = await f.Sut.GetReportAsync(1, FiscalYear);
 
         Assert.True(result.IsSuccess);
-        WfpReportActivityDto activityDto = result.Value!.Sections.Single().Programs.Single().Projects.Single().Activities.Single();
-        Assert.Empty(activityDto.ExpenseClasses);
-        Assert.Equal(WfpReportAmountsDto.Zero, activityDto.GrandTotal);
+        // The activity, its project, and its program all have zero expenditures — none appear.
+        Assert.Empty(result.Value!.Sections);
+    }
+
+    [Fact]
+    public async Task GetReportAsync_OnlyOneActivityHasExpenditures_SiblingsWithNoneAreExcluded()
+    {
+        Fixture f = Build();
+        f.Offices.Add(MakeOffice(1, "PPDO", "013"));
+        f.AipRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipRecord>)[MakeAip(100, FiscalYear, PlanningStatus.Draft)]);
+        f.AipRepo.Setup(r => r.GetOfficesByAipIdAsync(100, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipOffice>)[MakeAipOffice(1, 100, "3000-000-1-01-013")]);
+        AipProgram programWithData = MakeProgram(1, 1, "PGM-1", "SUPPORT");
+        AipProgram emptyProgram = MakeProgram(2, 1, "PGM-2", "SUPPORT");
+        f.AipRepo.Setup(r => r.GetProgramsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipProgram>)[programWithData, emptyProgram]);
+        AipProject projectWithData = MakeProject(10, 1, "PRJ-1");
+        AipProject emptyProject = MakeProject(11, 1, "PRJ-2");
+        AipProject projectUnderEmptyProgram = MakeProject(12, 2, "PRJ-3");
+        f.AipRepo.Setup(r => r.GetProjectsByProgramIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipProject>)[projectWithData, emptyProject, projectUnderEmptyProgram]);
+        AipActivity activityWithData = MakeActivity(100, 10, "ACT-1");
+        AipActivity activityWithoutData = MakeActivity(101, 11, "ACT-2");
+        AipActivity activityUnderEmptyProgram = MakeActivity(102, 12, "ACT-3");
+        f.AipRepo.Setup(r => r.GetActivitiesByProjectIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipActivity>)[activityWithData, activityWithoutData, activityUnderEmptyProgram]);
+
+        f.WfpRepo.Setup(r => r.GetFilteredAsync(100, 1, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpRecord>)[
+                new WfpRecord { Id = 1000, AipRecordId = 100, OfficeId = 1, DivisionId = 1, FiscalYear = FiscalYear, Status = PlanningStatus.Draft },
+            ]);
+        f.WfpRepo.Setup(r => r.GetActivitiesByWfpIdAsync(1000, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpActivity>)[new WfpActivity { Id = 500, WfpId = 1000, AipActivityId = 100 }]);
+        f.Accounts.Add(MakeAccount(1, "5-02-03-010", "Office Supplies Expenses", "MOOE"));
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
+                MakeExpenditure(1, 500, 1, "5-02-03-010", "Office Supplies Expenses", net: 1000, total: 1000),
+            ]);
+
+        ServiceResult<WfpReportDto> result = await f.Sut.GetReportAsync(1, FiscalYear);
+
+        Assert.True(result.IsSuccess);
+        WfpReportProgramDto onlyProgram = result.Value!.Sections.Single().Programs.Single();
+        Assert.Equal("PGM-1", onlyProgram.RefCode);
+        WfpReportProjectDto onlyProject = onlyProgram.Projects.Single();
+        Assert.Equal("PRJ-1", onlyProject.RefCode);
+        WfpReportActivityDto onlyActivity = onlyProject.Activities.Single();
+        Assert.Equal("ACT-1", onlyActivity.RefCode);
     }
 
     [Fact]

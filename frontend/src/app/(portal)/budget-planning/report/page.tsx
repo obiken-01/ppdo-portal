@@ -115,23 +115,19 @@ function ActivityBlock({ activity }: { activity: WfpReportActivityDto }) {
         )}
       </div>
 
-      {activity.expenseClasses.length === 0 ? (
-        <p className="text-xs text-slate-400 italic mb-3">No WFP expenditures entered yet for this activity.</p>
-      ) : (
-        <>
-          {activity.expenseClasses.map((group) => (
-            <ExpenseClassTable key={group.expenseClass} group={group} />
-          ))}
-          <table className="w-full text-xs border border-slate-300 bg-green-50">
-            <tbody>
-              <tr className="font-semibold text-green-800">
-                <td className="px-2 py-1.5" colSpan={3}>ACTIVITY GRAND TOTAL</td>
-                <AmountsCells amounts={activity.grandTotal} emphasis />
-              </tr>
-            </tbody>
-          </table>
-        </>
-      )}
+      {/* Activities with zero expenditures are excluded server-side — every activity here
+          has at least one expense-class group. */}
+      {activity.expenseClasses.map((group) => (
+        <ExpenseClassTable key={group.expenseClass} group={group} />
+      ))}
+      <table className="w-full text-xs border border-slate-300 bg-green-50">
+        <tbody>
+          <tr className="font-semibold text-green-800">
+            <td className="px-2 py-1.5" colSpan={3}>ACTIVITY GRAND TOTAL</td>
+            <AmountsCells amounts={activity.grandTotal} emphasis />
+          </tr>
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -298,7 +294,7 @@ export default function WfpReportPage() {
           <div className="p-5">
             {report.sections.length === 0 ? (
               <p className="text-slate-400 text-sm text-center py-6">
-                No AIP programs found for this office under FY {report.fiscalYear}.
+                No WFP expenditures entered yet for this office under FY {report.fiscalYear}.
               </p>
             ) : (
               report.sections.map((section) => (

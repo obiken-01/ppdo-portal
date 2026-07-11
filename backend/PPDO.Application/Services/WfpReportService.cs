@@ -130,6 +130,12 @@ public sealed class WfpReportService : IWfpReportService
                 foreach (int wfpActivityId in wfpActivityIds)
                     expenditures.AddRange(await _expenditures.GetByActivityIdAsync(wfpActivityId, cancellationToken));
 
+                // Skip activities with nothing entered yet — they aren't part of the WFP report
+                // (the sheet only lists PPAs that actually have appropriations). This naturally
+                // cascades: a project left with zero activities, or a program left with zero
+                // projects, is dropped below too.
+                if (expenditures.Count == 0) continue;
+
                 activityDtos.Add(BuildActivityDto(activity, expenditures, accountsById));
             }
             if (activityDtos.Count == 0) continue;
