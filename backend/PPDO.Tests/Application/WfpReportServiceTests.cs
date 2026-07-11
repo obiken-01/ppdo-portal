@@ -60,9 +60,9 @@ public sealed class WfpReportServiceTests
 
     private static WfpExpenditureDto MakeExpenditure(
         int id, int wfpActivityId, int? accountId, string? accountNumber, string? accountTitle,
-        decimal net, decimal total) => new(
+        decimal net, decimal total, string? fundSourceName = null) => new(
         id, wfpActivityId, accountId, accountNumber, accountTitle,
-        WfpNature.NonProcurement, WfpFrequency.Quarterly, null, null, null,
+        WfpNature.NonProcurement, WfpFrequency.Quarterly, null, null, fundSourceName,
         total > net, total - net, null,
         net, 0, 0, 0, net, total,
         [], []);
@@ -260,12 +260,12 @@ public sealed class WfpReportServiceTests
         ServiceResult<WfpReportDto> result = await f.Sut.GetReportAsync(1, FiscalYear);
 
         Assert.True(result.IsSuccess);
-        WfpReportDto dto = result.Value!;
-        Assert.Equal(2, dto.Sections.Count);
-        Assert.Equal("CORE", dto.Sections[0].FunctionBand);
-        Assert.Equal("CORE FUNCTIONS", dto.Sections[0].FunctionBandLabel);
-        Assert.Equal("UNASSIGNED", dto.Sections[1].FunctionBand);
-        Assert.Equal("UNASSIGNED FUNCTIONS", dto.Sections[1].FunctionBandLabel);
+        IReadOnlyList<WfpReportFunctionBandSectionDto> sections = result.Value!.FundSourceReports.Single().Sections;
+        Assert.Equal(2, sections.Count);
+        Assert.Equal("CORE", sections[0].FunctionBand);
+        Assert.Equal("CORE FUNCTIONS", sections[0].FunctionBandLabel);
+        Assert.Equal("UNASSIGNED", sections[1].FunctionBand);
+        Assert.Equal("UNASSIGNED FUNCTIONS", sections[1].FunctionBandLabel);
     }
 
     [Fact]
@@ -314,8 +314,7 @@ public sealed class WfpReportServiceTests
         ServiceResult<WfpReportDto> result = await f.Sut.GetReportAsync(1, FiscalYear);
 
         Assert.True(result.IsSuccess);
-        WfpReportDto dto = result.Value!;
-        WfpReportActivityDto activityDto = dto.Sections
+        WfpReportActivityDto activityDto = result.Value!.FundSourceReports.Single().Sections
             .Single().Programs.Single().Projects.Single().Activities.Single();
 
         Assert.True(activityDto.IsCreation);
@@ -359,8 +358,9 @@ public sealed class WfpReportServiceTests
         ServiceResult<WfpReportDto> result = await f.Sut.GetReportAsync(1, FiscalYear);
 
         Assert.True(result.IsSuccess);
-        // The activity, its project, and its program all have zero expenditures — none appear.
-        Assert.Empty(result.Value!.Sections);
+        // No expenditures anywhere in the office — there's nothing to report under ANY fund
+        // source, so the fund-source list itself is empty (not one empty-sections entry).
+        Assert.Empty(result.Value!.FundSourceReports);
     }
 
     [Fact]
@@ -402,7 +402,7 @@ public sealed class WfpReportServiceTests
         ServiceResult<WfpReportDto> result = await f.Sut.GetReportAsync(1, FiscalYear);
 
         Assert.True(result.IsSuccess);
-        WfpReportProgramDto onlyProgram = result.Value!.Sections.Single().Programs.Single();
+        WfpReportProgramDto onlyProgram = result.Value!.FundSourceReports.Single().Sections.Single().Programs.Single();
         Assert.Equal("PGM-1", onlyProgram.RefCode);
         WfpReportProjectDto onlyProject = onlyProgram.Projects.Single();
         Assert.Equal("PRJ-1", onlyProject.RefCode);
@@ -479,7 +479,7 @@ public sealed class WfpReportServiceTests
         ServiceResult<WfpReportDto> result = await f.Sut.GetReportAsync(1, FiscalYear);
 
         Assert.True(result.IsSuccess);
-        WfpReportProgramDto programDto = result.Value!.Sections.Single().Programs.Single();
+        WfpReportProgramDto programDto = result.Value!.FundSourceReports.Single().Sections.Single().Programs.Single();
         WfpReportProjectDto projectDto1 = programDto.Projects.Single(p => p.RefCode == "PRJ-1");
         WfpReportProjectDto projectDto2 = programDto.Projects.Single(p => p.RefCode == "PRJ-2");
 
@@ -541,7 +541,7 @@ public sealed class WfpReportServiceTests
         ServiceResult<WfpReportDto> result = await f.Sut.GetReportAsync(1, FiscalYear);
 
         Assert.True(result.IsSuccess);
-        WfpReportSectionBreakdownDto breakdown = result.Value!.Sections.Single().Breakdown;
+        WfpReportSectionBreakdownDto breakdown = result.Value!.FundSourceReports.Single().Sections.Single().Breakdown;
 
         Assert.Equal(10000, breakdown.PersonalServices.NetAppropriation);
         Assert.Equal(3000, breakdown.MooeExcludingCreation.NetAppropriation);
@@ -550,5 +550,96 @@ public sealed class WfpReportServiceTests
         Assert.Equal(1000, breakdown.MooeCreation.NetAppropriation);
         // GrandTotal = 10000 + 3000 + 5000 + 20000 + 1000 = 39000, matching both activities' totals.
         Assert.Equal(39000, breakdown.GrandTotal.NetAppropriation);
+    }
+
+    [Fact]
+    public async Task GetReportAsync_SegmentsByFundSource_SameActivityAppearsInBothFundBlocks()
+    {
+        Fixture f = Build();
+        f.Offices.Add(MakeOffice(1, "PPDO", "013"));
+        f.AipRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipRecord>)[MakeAip(100, FiscalYear, PlanningStatus.Draft)]);
+        f.AipRepo.Setup(r => r.GetOfficesByAipIdAsync(100, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipOffice>)[MakeAipOffice(1, 100, "3000-000-1-01-013")]);
+        AipProgram program = MakeProgram(1, 1, "PGM-1", "CORE");
+        f.AipRepo.Setup(r => r.GetProgramsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipProgram>)[program]);
+        AipProject project = MakeProject(10, 1, "PRJ-1");
+        f.AipRepo.Setup(r => r.GetProjectsByProgramIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipProject>)[project]);
+        AipActivity activity = MakeActivity(100, 10, "ACT-1");
+        f.AipRepo.Setup(r => r.GetActivitiesByProjectIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipActivity>)[activity]);
+
+        f.WfpRepo.Setup(r => r.GetFilteredAsync(100, 1, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpRecord>)[
+                new WfpRecord { Id = 1000, AipRecordId = 100, OfficeId = 1, DivisionId = 1, FiscalYear = FiscalYear, Status = PlanningStatus.Draft },
+            ]);
+        f.WfpRepo.Setup(r => r.GetActivitiesByWfpIdAsync(1000, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpActivity>)[new WfpActivity { Id = 500, WfpId = 1000, AipActivityId = 100 }]);
+        f.Accounts.Add(MakeAccount(1, "5-02-03-010", "Office Supplies Expenses", "MOOE"));
+
+        // The SAME activity has two expenditure rows under two different fund sources — one
+        // with no fund source set at all (defaults to General Fund), one explicitly GAD Fund.
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
+                MakeExpenditure(1, 500, 1, "5-02-03-010", "Office Supplies Expenses", net: 1000, total: 1000, fundSourceName: null),
+                MakeExpenditure(2, 500, 1, "5-02-03-010", "Office Supplies Expenses", net: 500, total: 500, fundSourceName: "5% GAD Fund"),
+            ]);
+
+        ServiceResult<WfpReportDto> result = await f.Sut.GetReportAsync(1, FiscalYear);
+
+        Assert.True(result.IsSuccess);
+        IReadOnlyList<WfpReportFundSourceDto> fundReports = result.Value!.FundSourceReports;
+        Assert.Equal(2, fundReports.Count);
+        // General Fund (the default) sorts first.
+        Assert.Equal("GENERAL FUND", fundReports[0].FundSourceName);
+        Assert.Equal("5% GAD FUND", fundReports[1].FundSourceName);
+
+        WfpReportActivityDto gfActivity = fundReports[0].Sections.Single().Programs.Single().Projects.Single().Activities.Single();
+        Assert.Equal(1000, gfActivity.GrandTotal.NetAppropriation);
+
+        WfpReportActivityDto gadActivity = fundReports[1].Sections.Single().Programs.Single().Projects.Single().Activities.Single();
+        Assert.Equal(500, gadActivity.GrandTotal.NetAppropriation);
+    }
+
+    [Fact]
+    public async Task GetReportAsync_Row_CarriesSectorFromAipOfficeSector()
+    {
+        Fixture f = Build();
+        f.Offices.Add(MakeOffice(1, "PPDO", "013"));
+        f.AipRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipRecord>)[MakeAip(100, FiscalYear, PlanningStatus.Draft)]);
+        AipOffice aipOffice = MakeAipOffice(1, 100, "3000-000-1-01-013");
+        aipOffice.Sector = "SOCIAL";
+        f.AipRepo.Setup(r => r.GetOfficesByAipIdAsync(100, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipOffice>)[aipOffice]);
+        AipProgram program = MakeProgram(1, 1, "PGM-1", "CORE");
+        f.AipRepo.Setup(r => r.GetProgramsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipProgram>)[program]);
+        AipProject project = MakeProject(10, 1, "PRJ-1");
+        f.AipRepo.Setup(r => r.GetProjectsByProgramIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipProject>)[project]);
+        AipActivity activity = MakeActivity(100, 10, "ACT-1");
+        f.AipRepo.Setup(r => r.GetActivitiesByProjectIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipActivity>)[activity]);
+        f.WfpRepo.Setup(r => r.GetFilteredAsync(100, 1, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpRecord>)[
+                new WfpRecord { Id = 1000, AipRecordId = 100, OfficeId = 1, DivisionId = 1, FiscalYear = FiscalYear, Status = PlanningStatus.Draft },
+            ]);
+        f.WfpRepo.Setup(r => r.GetActivitiesByWfpIdAsync(1000, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpActivity>)[new WfpActivity { Id = 500, WfpId = 1000, AipActivityId = 100 }]);
+        f.Accounts.Add(MakeAccount(1, "5-02-03-010", "Office Supplies Expenses", "MOOE"));
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
+                MakeExpenditure(1, 500, 1, "5-02-03-010", "Office Supplies Expenses", net: 1000, total: 1000),
+            ]);
+
+        ServiceResult<WfpReportDto> result = await f.Sut.GetReportAsync(1, FiscalYear);
+
+        Assert.True(result.IsSuccess);
+        WfpReportRowDto row = result.Value!.FundSourceReports.Single().Sections.Single()
+            .Programs.Single().Projects.Single().Activities.Single().ExpenseClasses.Single().Rows.Single();
+        Assert.Equal("SOCIAL SERVICES", row.Sector);
     }
 }

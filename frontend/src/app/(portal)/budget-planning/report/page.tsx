@@ -6,7 +6,10 @@
  * Prelude to a full report generator: pick a report type (only "WFP" wired up for now),
  * fiscal year, and office (scoped to offices with at least a Draft WFP for that year — see
  * getWfpReportOffices), then preview a read-only layout modeled one-to-one on the province's
- * "WFP FINAL" reference sheet (WFP-Copy_NEW.xlsx) — a single continuous table:
+ * "WFP FINAL" reference sheet (WFP-Copy_NEW.xlsx). The sheet repeats its ENTIRE header +
+ * hierarchy + totals block once per fund source (a separate block for e.g. "5% GAD Fund"
+ * after the "General Fund" block) rather than mixing funds into one table — this page mirrors
+ * that: one full ReportTable per `report.fundSourceReports` entry. Within each fund's table:
  *   function band section -> program -> project -> activity -> expense-class subsection
  *   (PERSONAL SERVICES / MAINTENANCE AND OTHER OPERATING EXPENSES / CAPITAL OUTLAY) with a
  *   SUB-TOTAL row -> ACTIVITY GRAND TOTAL -> PROJECT GRAND TOTAL -> PROGRAM GRAND TOTAL, and
@@ -16,10 +19,11 @@
  *   flag is documented as "GF, PS, position-creation only", so Capital Outlay has no creation
  *   split, matching the reference sheet).
  *
- * The sheet's six narrative columns (Resources Needed, Responsible Person/Unit, Success
- * Indicator, Means of Verification, Outcome Indicator, Target Beneficiaries) are NOT captured
- * anywhere in AipActivity today (flagged when this page shipped) — omitted here rather than
- * rendered blank; see backend/PPDO.Application/Services/WfpReportService.cs.
+ * The sheet's SECTOR column is included (AipOffice.Sector, mapped to the sheet's exact labels
+ * server-side — WfpReportService), but its five narrative columns (Resources Needed,
+ * Responsible Person/Unit, Success Indicator, Means of Verification, Outcome Indicator, Target
+ * Beneficiaries) are NOT captured anywhere in AipActivity today (flagged when this page
+ * shipped) — omitted here rather than rendered blank.
  *
  * Preview only — no Excel export yet (follow-up scope). The classic WFP page's per-record
  * Excel export (`downloadWfpReport`) is untouched and unrelated: it exports the OLD
@@ -42,6 +46,7 @@ import { formatMoney } from "@/lib/money";
 import type {
   WfpReportAmountsDto,
   WfpReportDto,
+  WfpReportFundSourceDto,
   WfpReportOfficeDto,
   WfpReportRowDto,
 } from "@/types";
@@ -53,8 +58,9 @@ import type {
 const REPORT_TYPES = [{ value: "WFP", label: "Work and Financial Plan (WFP)" }] as const;
 
 // ---------------------------------------------------------------------------
-// Flatten the nested report DTO into one row per Excel line (WFP FINAL sheet
-// layout) so the whole report renders as a single continuous <table>.
+// Flatten one fund source's nested sections into one row per Excel line (WFP
+// FINAL sheet layout) so each fund's block renders as a single continuous
+// <table>.
 // ---------------------------------------------------------------------------
 
 type ReportRow =
@@ -70,9 +76,9 @@ type ReportRow =
   | { type: "programGrandTotal"; refCode: string; amounts: WfpReportAmountsDto }
   | { type: "breakdownLine"; label: string; amounts: WfpReportAmountsDto; emphasis?: boolean };
 
-function flattenReport(report: WfpReportDto): ReportRow[] {
+function flattenSections(sections: WfpReportFundSourceDto["sections"]): ReportRow[] {
   const rows: ReportRow[] = [];
-  for (const section of report.sections) {
+  for (const section of sections) {
     rows.push({ type: "sectionHeader", label: section.functionBandLabel });
     for (const program of section.programs) {
       rows.push({ type: "program", refCode: program.refCode, name: program.name });
@@ -105,14 +111,21 @@ function flattenReport(report: WfpReportDto): ReportRow[] {
 }
 
 // ---------------------------------------------------------------------------
-// Table
+// Table — 14 columns total. table-layout: fixed + colgroup is load-bearing:
+// rows range from a bare ref code to a multi-hundred-character activity name,
+// and different row types span different numbers of columns — table-layout:
+// auto lets the browser compute different column widths per row in that
+// situation, which visibly shifts data out from under its header. Fixed
+// layout pins every row to the same 14-column grid regardless of content.
 // ---------------------------------------------------------------------------
 
 const COLUMN_HEADERS = [
-  "AIP Ref Code", "Programs, Projects and Activities", "Nature", "Account Code", "Object of Expenditure",
+  "AIP Ref Code", "Programs, Projects and Activities", "Sector", "Nature", "Account Code", "Object of Expenditure",
   "Total Appropriation", "Reserved", "Net Appropriation",
   "Q1", "Q2", "Q3", "Q4", "Amount to be Released",
 ];
+
+const COLUMN_WIDTHS = ["10%", "15%", "7%", "5%", "7%", "13%", "6%", "5%", "6%", "5%", "5%", "5%", "5%", "6%"];
 
 function money(n: number) {
   return formatMoney(n);
@@ -135,33 +148,28 @@ function AmountsCells({ amounts, className = "" }: { amounts: WfpReportAmountsDt
   );
 }
 
-function ReportTable({ report }: { report: WfpReportDto }) {
-  const rows = flattenReport(report);
+/** Ref-code cell used in program/project/activity rows — wraps instead of overflowing into the next column (some ref codes run 25-30+ characters). */
+function RefCodeCell({ refCode, indent }: { refCode: string; indent: number }) {
+  return (
+    <td
+      className="px-2 py-1.5 font-mono text-slate-500 border border-slate-200 break-words align-top"
+      style={{ paddingLeft: `${8 + indent * 16}px` }}
+    >
+      {refCode}
+    </td>
+  );
+}
+
+function ReportTable({ sections }: { sections: WfpReportFundSourceDto["sections"] }) {
+  const rows = flattenSections(sections);
 
   return (
-    <div className="overflow-x-auto border border-slate-300">
-      {/* table-layout: fixed + an explicit colgroup — with 13 columns whose content length
-          varies wildly by row (a bare ref code vs. a multi-hundred-character activity name),
-          table-layout: auto lets different rows disagree on where column boundaries fall,
-          especially once cells in different rows span different numbers of columns. Fixed
-          layout forces every row onto the exact same 13-column grid regardless of content. */}
-      <table className="w-full text-xs border-collapse min-w-[1500px]" style={{ tableLayout: "fixed" }}>
+    <div className="border border-slate-300 max-h-[70vh] overflow-auto">
+      <table className="w-full text-xs border-collapse min-w-[1600px]" style={{ tableLayout: "fixed" }}>
         <colgroup>
-          <col style={{ width: "9%" }} />
-          <col style={{ width: "17%" }} />
-          <col style={{ width: "6%" }} />
-          <col style={{ width: "8%" }} />
-          <col style={{ width: "13%" }} />
-          <col style={{ width: "6.5%" }} />
-          <col style={{ width: "5.5%" }} />
-          <col style={{ width: "6.5%" }} />
-          <col style={{ width: "5.5%" }} />
-          <col style={{ width: "5.5%" }} />
-          <col style={{ width: "5.5%" }} />
-          <col style={{ width: "5.5%" }} />
-          <col style={{ width: "6.5%" }} />
+          {COLUMN_WIDTHS.map((w, i) => <col key={i} style={{ width: w }} />)}
         </colgroup>
-        <thead>
+        <thead className="sticky top-0 z-10">
           <tr className="bg-green-800 text-white">
             {COLUMN_HEADERS.map((h) => (
               <th key={h} className="px-2 py-2 text-left font-medium whitespace-nowrap border border-green-700">
@@ -176,7 +184,7 @@ function ReportTable({ report }: { report: WfpReportDto }) {
               case "sectionHeader":
                 return (
                   <tr key={i}>
-                    <td colSpan={13} className="px-2 py-2 bg-green-700 text-white font-semibold uppercase tracking-wide border border-slate-300">
+                    <td colSpan={14} className="px-2 py-2 bg-green-700 text-white font-semibold uppercase tracking-wide border border-slate-300">
                       {row.label}
                     </td>
                   </tr>
@@ -184,8 +192,8 @@ function ReportTable({ report }: { report: WfpReportDto }) {
               case "program":
                 return (
                   <tr key={i} className="bg-slate-100">
-                    <td className="px-2 py-1.5 font-mono text-slate-500 border border-slate-200 whitespace-nowrap">{row.refCode}</td>
-                    <td colSpan={12} className="px-2 py-1.5 font-semibold text-slate-800 border border-slate-200">
+                    <RefCodeCell refCode={row.refCode} indent={0} />
+                    <td colSpan={13} className="px-2 py-1.5 font-semibold text-slate-800 border border-slate-200">
                       {row.name}
                     </td>
                   </tr>
@@ -193,8 +201,8 @@ function ReportTable({ report }: { report: WfpReportDto }) {
               case "project":
                 return (
                   <tr key={i} className="bg-slate-50">
-                    <td className="px-2 py-1.5 pl-4 font-mono text-slate-500 border border-slate-200 whitespace-nowrap">{row.refCode}</td>
-                    <td colSpan={12} className="px-2 py-1.5 pl-4 font-medium text-slate-700 border border-slate-200">
+                    <RefCodeCell refCode={row.refCode} indent={1} />
+                    <td colSpan={13} className="px-2 py-1.5 pl-4 font-medium text-slate-700 border border-slate-200">
                       {row.name}
                     </td>
                   </tr>
@@ -202,8 +210,8 @@ function ReportTable({ report }: { report: WfpReportDto }) {
               case "activity":
                 return (
                   <tr key={i}>
-                    <td className="px-2 py-1.5 pl-8 font-mono text-slate-400 border border-slate-200 whitespace-nowrap">{row.refCode}</td>
-                    <td colSpan={12} className="px-2 py-1.5 pl-8 text-slate-700 border border-slate-200">
+                    <RefCodeCell refCode={row.refCode} indent={2} />
+                    <td colSpan={13} className="px-2 py-1.5 pl-8 text-slate-700 border border-slate-200">
                       {row.name}
                       {row.isCreation && (
                         <span className="ml-2 px-1.5 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-700 align-middle">
@@ -217,7 +225,7 @@ function ReportTable({ report }: { report: WfpReportDto }) {
                 return (
                   <tr key={i}>
                     <td className="border border-slate-200" />
-                    <td colSpan={3} className="px-2 py-1 pl-10 font-semibold text-slate-600 border border-slate-200">
+                    <td colSpan={4} className="px-2 py-1 pl-10 font-semibold text-slate-600 border border-slate-200">
                       {row.label}
                     </td>
                     <td colSpan={9} className="border border-slate-200" />
@@ -228,6 +236,7 @@ function ReportTable({ report }: { report: WfpReportDto }) {
                   <tr key={i}>
                     <td className="border border-slate-200" />
                     <td className="border border-slate-200" />
+                    <td className="px-2 py-1 text-slate-600 border border-slate-200 break-words">{row.row.sector}</td>
                     <td className="px-2 py-1 text-slate-600 border border-slate-200 whitespace-nowrap">{row.row.nature}</td>
                     <td className="px-2 py-1 font-mono text-slate-500 border border-slate-200 whitespace-nowrap">
                       {row.row.accountNumber ?? "—"}
@@ -240,14 +249,14 @@ function ReportTable({ report }: { report: WfpReportDto }) {
                 return (
                   <tr key={i} className="bg-slate-50 font-medium">
                     <td className="border border-slate-200" />
-                    <td colSpan={4} className="px-2 py-1 pl-10 text-slate-600 border border-slate-200">SUB-TOTAL</td>
+                    <td colSpan={5} className="px-2 py-1 pl-10 text-slate-600 border border-slate-200">SUB-TOTAL</td>
                     <AmountsCells amounts={row.amounts} className="border border-slate-200 text-slate-700 font-semibold" />
                   </tr>
                 );
               case "activityGrandTotal":
                 return (
                   <tr key={i} className="bg-green-50 font-semibold text-green-800">
-                    <td colSpan={5} className="px-2 py-1 pl-8 border border-slate-200">
+                    <td colSpan={6} className="px-2 py-1 pl-8 border border-slate-200">
                       ACTIVITY GRAND TOTAL — {row.refCode}
                     </td>
                     <AmountsCells amounts={row.amounts} className="border border-slate-200" />
@@ -256,7 +265,7 @@ function ReportTable({ report }: { report: WfpReportDto }) {
               case "projectGrandTotal":
                 return (
                   <tr key={i} className="bg-green-100 font-semibold text-green-800">
-                    <td colSpan={5} className="px-2 py-1 pl-4 border border-slate-200">
+                    <td colSpan={6} className="px-2 py-1 pl-4 border border-slate-200">
                       PROJECT GRAND TOTAL — {row.refCode}
                     </td>
                     <AmountsCells amounts={row.amounts} className="border border-slate-200" />
@@ -265,7 +274,7 @@ function ReportTable({ report }: { report: WfpReportDto }) {
               case "programGrandTotal":
                 return (
                   <tr key={i} className="bg-green-200 font-semibold text-green-900">
-                    <td colSpan={5} className="px-2 py-1 border border-slate-200">
+                    <td colSpan={6} className="px-2 py-1 border border-slate-200">
                       PROGRAM GRAND TOTAL — {row.refCode}
                     </td>
                     <AmountsCells amounts={row.amounts} className="border border-slate-200" />
@@ -274,7 +283,7 @@ function ReportTable({ report }: { report: WfpReportDto }) {
               case "breakdownLine":
                 return (
                   <tr key={i} className={row.emphasis ? "bg-slate-800 text-white font-bold" : "bg-slate-100 font-medium text-slate-700"}>
-                    <td colSpan={5} className="px-2 py-1.5 border border-slate-200">{row.label}</td>
+                    <td colSpan={6} className="px-2 py-1.5 border border-slate-200">{row.label}</td>
                     <AmountsCells amounts={row.amounts} className={`border border-slate-200 ${row.emphasis ? "" : "text-slate-700"}`} />
                   </tr>
                 );
@@ -282,6 +291,27 @@ function ReportTable({ report }: { report: WfpReportDto }) {
           })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/** One fund source's full report block — its own header (matching the sheet's per-fund "SOURCE OF FUND:" block) plus its own table. */
+function FundSourceBlock({ report, fundReport }: { report: WfpReportDto; fundReport: WfpReportFundSourceDto }) {
+  return (
+    <div className="mb-8 last:mb-0">
+      <div className="px-5 py-4 border-b border-slate-200 text-center space-y-0.5 bg-white border-x border-t">
+        <p className="text-base font-bold text-slate-800">
+          WORK AND FINANCIAL PLAN FY {report.fiscalYear}
+        </p>
+        <p className="text-sm text-slate-600">
+          DEPARTMENT/OFFICE: {report.officeCode} — {report.officeName}
+        </p>
+        <p className="text-sm text-slate-600">SOURCE OF FUND: {fundReport.fundSourceName}</p>
+        <p className="text-xs text-slate-400">
+          Equiv. to {(report.reserveRate * 100).toFixed(0)}% of Operational Expenses
+        </p>
+      </div>
+      <ReportTable sections={fundReport.sections} />
     </div>
   );
 }
@@ -428,33 +458,20 @@ export default function WfpReportPage() {
         </div>
       )}
 
-      {/* Report */}
+      {/* Report — one full block per fund source (WFP FINAL sheet repeats the whole header +
+          table per fund, e.g. General Fund then 5% GAD Fund) */}
       {report && !reportLoading && (
-        <div className="bg-white border border-slate-200">
-          {/* Report header block — mirrors the WFP FINAL sheet's header */}
-          <div className="px-5 py-4 border-b border-slate-200 text-center space-y-0.5">
-            <p className="text-base font-bold text-slate-800">
-              WORK AND FINANCIAL PLAN FY {report.fiscalYear}
-            </p>
-            <p className="text-sm text-slate-600">
-              DEPARTMENT/OFFICE: {report.officeCode} — {report.officeName}
-            </p>
-            <p className="text-sm text-slate-600">SOURCE OF FUND: GENERAL FUND</p>
-            <p className="text-xs text-slate-400">
-              Equiv. to {(report.reserveRate * 100).toFixed(0)}% of Operational Expenses
+        report.fundSourceReports.length === 0 ? (
+          <div className="bg-white border border-slate-200 p-6">
+            <p className="text-slate-400 text-sm text-center">
+              No WFP expenditures entered yet for this office under FY {report.fiscalYear}.
             </p>
           </div>
-
-          <div className="p-5">
-            {report.sections.length === 0 ? (
-              <p className="text-slate-400 text-sm text-center py-6">
-                No WFP expenditures entered yet for this office under FY {report.fiscalYear}.
-              </p>
-            ) : (
-              <ReportTable report={report} />
-            )}
-          </div>
-        </div>
+        ) : (
+          report.fundSourceReports.map((fundReport) => (
+            <FundSourceBlock key={fundReport.fundSourceName} report={report} fundReport={fundReport} />
+          ))
+        )
       )}
     </div>
   );

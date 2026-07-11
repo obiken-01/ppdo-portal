@@ -486,6 +486,7 @@ export interface WfpReportAmountsDto {
 }
 
 export interface WfpReportRowDto {
+  sector: string;
   nature: string;
   accountNumber: string | null;
   accountTitle: string | null;
@@ -537,12 +538,17 @@ export interface WfpReportFunctionBandSectionDto {
   breakdown: WfpReportSectionBreakdownDto;
 }
 
+export interface WfpReportFundSourceDto {
+  fundSourceName: string;
+  sections: WfpReportFunctionBandSectionDto[];
+}
+
 export interface WfpReportDto {
   fiscalYear: number;
   officeCode: string;
   officeName: string;
   reserveRate: number;
-  sections: WfpReportFunctionBandSectionDto[];
+  fundSourceReports: WfpReportFundSourceDto[];
 }
 
 // ── Allocation (RAL-99/101) ───────────────────────────────────────────────────

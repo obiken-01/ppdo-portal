@@ -33,8 +33,14 @@ public record WfpReportAmountsDto(
         a.AmountToBeReleased + b.AmountToBeReleased);
 }
 
-/// <summary>One WfpExpenditure, flattened for the report table.</summary>
+/// <summary>
+/// One WfpExpenditure, flattened for the report table. Sector is the owning AIP office's
+/// sector ("GENERAL PUBLIC SERVICES" / "SOCIAL SERVICES" / "ECONOMIC SERVICES" / "OTHER
+/// SERVICES" — AipOffice.Sector, mapped to the WFP FINAL sheet's exact labels), repeated on
+/// every row the same way the reference sheet does.
+/// </summary>
 public record WfpReportRowDto(
+    string   Sector,
     string   Nature,
     string?  AccountNumber,
     string?  AccountTitle,
@@ -102,10 +108,21 @@ public record WfpReportFunctionBandSectionDto(
     IReadOnlyList<WfpReportProgramDto> Programs,
     WfpReportSectionBreakdownDto Breakdown);
 
+/// <summary>
+/// One fund source's full report block — the WFP FINAL sheet repeats the ENTIRE header +
+/// hierarchy + totals structure once per fund source (e.g. a separate block for "5% GAD Fund"
+/// after the "General Fund" block), rather than mixing funds into one table. An activity with
+/// expenditures under more than one fund source appears once per fund, each block showing only
+/// that fund's rows/totals.
+/// </summary>
+public record WfpReportFundSourceDto(
+    string   FundSourceName,
+    IReadOnlyList<WfpReportFunctionBandSectionDto> Sections);
+
 /// <summary>The full WFP report preview for one office + fiscal year (RAL-132).</summary>
 public record WfpReportDto(
     int      FiscalYear,
     string   OfficeCode,
     string   OfficeName,
     decimal  ReserveRate,
-    IReadOnlyList<WfpReportFunctionBandSectionDto> Sections);
+    IReadOnlyList<WfpReportFundSourceDto> FundSourceReports);
