@@ -337,7 +337,7 @@ export default function PriceIndexConfigPage() {
       key: "category",
       header: "Category",
       sortable: true,
-      render: (p) => p.category ?? <span className="text-slate-300">—</span>,
+      render: (p) => p.category ?? <span className="text-slate-600">—</span>,
     },
     {
       key: "unitPrice",
@@ -350,7 +350,7 @@ export default function PriceIndexConfigPage() {
       key: "priceUpdatedAt",
       header: "Price Updated",
       sortable: true,
-      render: (p) => <span className="text-xs text-slate-400">{formatDate(p.priceUpdatedAt)}</span>,
+      render: (p) => <span className="text-xs text-slate-600">{formatDate(p.priceUpdatedAt)}</span>,
     },
     {
       key: "isActive",
@@ -400,7 +400,7 @@ export default function PriceIndexConfigPage() {
         <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className="text-lg font-bold text-slate-800">Price Index</h1>
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-slate-600">
               Procurement item catalogue searched from WFP procurement entries. Data comes from
               GSO&apos;s own price lists — upload a CSV to seed or refresh it.
             </p>
@@ -440,7 +440,7 @@ export default function PriceIndexConfigPage() {
                 className={`px-3 py-2 text-sm font-medium transition-colors ${
                   statusFilter === s
                     ? "bg-green-600 text-white"
-                    : "bg-white text-slate-500 hover:bg-slate-50"
+                    : "bg-white text-slate-600 hover:bg-slate-50"
                 }`}
               >
                 {s}
@@ -454,7 +454,7 @@ export default function PriceIndexConfigPage() {
                 setSearch("");
                 setStatusFilter("Active");
               }}
-              className="text-sm text-slate-400 hover:text-slate-600 transition-colors px-1"
+              className="text-sm text-slate-600 hover:text-slate-600 transition-colors px-1"
             >
               Reset
             </button>
@@ -517,7 +517,7 @@ export default function PriceIndexConfigPage() {
                 placeholder="ream, box, piece, liter…"
                 className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
               />
-              <p className="mt-1 text-[11px] text-slate-400">
+              <p className="mt-1 text-[11px] text-slate-600">
                 Name + unit together must be unique (e.g. &quot;Bond Paper&quot; can exist per ream AND per box).
               </p>
             </div>
@@ -542,7 +542,7 @@ export default function PriceIndexConfigPage() {
                 className="w-40"
               />
               {editTarget && (
-                <p className="mt-1 text-[11px] text-slate-400">
+                <p className="mt-1 text-[11px] text-slate-600">
                   Changing this updates &quot;Price Updated&quot; to today.
                 </p>
               )}
@@ -582,7 +582,7 @@ export default function PriceIndexConfigPage() {
               Rows are matched by <span className="font-mono text-xs">name + unit</span>: new
               combinations are added and existing ones are updated. Nothing is deleted.
             </p>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-600">
               Expected columns: name, unit, unit_price, category, is_active.
             </p>
           </div>
@@ -608,7 +608,7 @@ export default function PriceIndexConfigPage() {
                 <p className="text-xs font-semibold text-amber-500 uppercase tracking-wide mb-1">
                   {importResult.errors.length} row{importResult.errors.length === 1 ? "" : "s"} skipped
                 </p>
-                <ul className="max-h-40 overflow-y-auto text-xs text-slate-500 list-disc pl-4 space-y-0.5">
+                <ul className="max-h-40 overflow-y-auto text-xs text-slate-600 list-disc pl-4 space-y-0.5">
                   {importResult.errors.map((e, i) => (
                     <li key={i}>{e}</li>
                   ))}
@@ -654,12 +654,12 @@ function Stat({ label, value, tone }: { label: string; value: number; tone: "gre
   const cls: Record<typeof tone, string> = {
     green: "text-green-700",
     blue: "text-info-500",
-    slate: "text-slate-500",
+    slate: "text-slate-600",
   };
   return (
     <div className="flex-1 border border-slate-200 px-3 py-2 text-center">
       <div className={`text-2xl font-bold ${cls[tone]}`}>{value}</div>
-      <div className="text-[11px] text-slate-400 uppercase tracking-wide">{label}</div>
+      <div className="text-[11px] text-slate-600 uppercase tracking-wide">{label}</div>
     </div>
   );
 }

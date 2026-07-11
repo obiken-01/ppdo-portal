@@ -164,7 +164,7 @@ export default function ConfigDashboardPage() {
         {/* Header */}
         <div>
           <h1 className="text-lg font-bold text-slate-800">Configuration</h1>
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-slate-600">
             Manage reference data used across AIP and WFP planning entries.
           </p>
         </div>
@@ -185,7 +185,7 @@ export default function ConfigDashboardPage() {
                   <CountBadge value={counts[tile.key]} />
                 </div>
                 <h2 className="mt-4 text-base font-semibold text-slate-800">{tile.name}</h2>
-                <p className="mt-1 text-sm text-slate-500 leading-relaxed">{tile.caption}</p>
+                <p className="mt-1 text-sm text-slate-600 leading-relaxed">{tile.caption}</p>
               </div>
               <div className="px-5 py-3 border-t border-slate-100 flex items-center justify-end">
                 <span className="text-sm font-medium text-green-600 group-hover:text-green-700 inline-flex items-center gap-1">
@@ -210,7 +210,7 @@ function CountBadge({ value }: { value: number | "error" | null }) {
     return <span className="w-5 h-5 border-2 border-slate-300 border-t-transparent rounded-full animate-spin" />;
   }
   if (value === "error") {
-    return <span className="text-2xl font-bold text-slate-300" title="Could not load count">—</span>;
+    return <span className="text-2xl font-bold text-slate-600" title="Could not load count">—</span>;
   }
   return <span className="text-2xl font-bold text-slate-800 tabular-nums">{value}</span>;
 }

@@ -46,7 +46,7 @@ export default function InventoryBreadcrumb() {
   return (
     <nav
       aria-label="breadcrumb"
-      className="flex items-center gap-1.5 px-6 py-2.5 bg-white border-b border-slate-200 text-xs text-slate-500"
+      className="flex items-center gap-1.5 px-6 py-2.5 bg-white border-b border-slate-200 text-xs text-slate-600"
     >
       {crumbs.map((crumb, i) => {
         const isLast = i === crumbs.length - 1;

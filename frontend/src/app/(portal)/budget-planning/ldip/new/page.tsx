@@ -121,7 +121,7 @@ function UploadTab({ replaceId }: { replaceId: number | null }) {
           period, and history — only its programs change.
         </div>
       )}
-      <p className="text-sm text-slate-500 mb-4">
+      <p className="text-sm text-slate-600 mb-4">
         Upload an .xlsx file to import an LDIP document, or enter programs manually.
       </p>
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
@@ -168,7 +168,7 @@ function UploadTab({ replaceId }: { replaceId: number | null }) {
               <div className="border border-slate-200 bg-slate-50 px-4 py-3 flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-slate-700">{file.name}</p>
-                  <p className="text-xs text-slate-500">{formatBytes(file.size)}</p>
+                  <p className="text-xs text-slate-600">{formatBytes(file.size)}</p>
                 </div>
                 <button
                   onClick={() => { setFile(null); setFileError(null); }}
@@ -188,11 +188,11 @@ function UploadTab({ replaceId }: { replaceId: number | null }) {
               >
                 <span className="text-3xl mb-2">📁</span>
                 <p className="text-sm text-slate-600 mb-1">Drag &amp; drop your .xlsx file here</p>
-                <p className="text-xs text-slate-400 mb-3">or</p>
+                <p className="text-xs text-slate-600 mb-3">or</p>
                 <span className="px-4 py-1.5 border border-slate-300 text-sm text-slate-600 bg-white hover:bg-slate-50">
                   Browse File
                 </span>
-                <p className="text-xs text-slate-400 mt-3">Accepts .xlsx files up to 20 MB</p>
+                <p className="text-xs text-slate-600 mt-3">Accepts .xlsx files up to 20 MB</p>
                 <input ref={fileInputRef} type="file" accept=".xlsx" className="hidden" onChange={handleFileInput} />
               </label>
             )}
@@ -228,7 +228,7 @@ function UploadTab({ replaceId }: { replaceId: number | null }) {
         {/* ── Right column: help panel ── */}
         <div className="lg:col-span-2 space-y-3">
           <div className="bg-slate-50 border border-slate-200 p-4">
-            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2.5">How it works</h3>
+            <h3 className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2.5">How it works</h3>
             <ol className="space-y-2">
               {[
                 ["Set the year range", "Choose the planning period this document covers."],
@@ -242,7 +242,7 @@ function UploadTab({ replaceId }: { replaceId: number | null }) {
                   </span>
                   <div>
                     <p className="text-sm font-medium text-slate-700">{title}</p>
-                    <p className="text-xs text-slate-500 mt-0.5">{desc}</p>
+                    <p className="text-xs text-slate-600 mt-0.5">{desc}</p>
                   </div>
                 </li>
               ))}
@@ -250,7 +250,7 @@ function UploadTab({ replaceId }: { replaceId: number | null }) {
           </div>
 
           <div className="bg-slate-50 border border-slate-200 p-4">
-            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2.5">File Requirements</h3>
+            <h3 className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2.5">File Requirements</h3>
             <ul className="space-y-1.5">
               {[
                 "Must be an Excel file (.xlsx)",
@@ -283,7 +283,7 @@ function TabBar({
           className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
             activeTab === "upload"
               ? "border-green-700 text-green-700"
-              : "border-transparent text-slate-500 hover:text-slate-700"
+              : "border-transparent text-slate-600 hover:text-slate-700"
           }`}
         >
           Upload File
@@ -302,7 +302,7 @@ function TabBar({
           className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
             activeTab === "manual"
               ? "border-green-700 text-green-700"
-              : "border-transparent text-slate-500 hover:text-slate-700"
+              : "border-transparent text-slate-600 hover:text-slate-700"
           }`}
         >
           Manual Entry

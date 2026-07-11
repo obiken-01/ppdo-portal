@@ -77,7 +77,7 @@ function itemsFromPR(pr: PRResponse): ItemRow[] {
 
 function FieldLabel({ children, required }: { children: React.ReactNode; required?: boolean }) {
   return (
-    <label className="block text-xs font-medium text-slate-500 mb-1">
+    <label className="block text-xs font-medium text-slate-600 mb-1">
       {children}{required && <span className="text-red-500 ml-0.5">*</span>}
     </label>
   );
@@ -103,7 +103,7 @@ function GrayInput({ value }: { value: string }) {
   return (
     <input
       readOnly tabIndex={-1} value={value}
-      className="w-full px-3 py-2 text-sm border border-slate-200 bg-cell-auto text-slate-500 cursor-default"
+      className="w-full px-3 py-2 text-sm border border-slate-200 bg-cell-auto text-slate-600 cursor-default"
     />
   );
 }
@@ -163,7 +163,7 @@ function PRCombobox({
       {open && (
         <ul className="absolute z-50 top-full left-0 right-0 bg-white border border-slate-200 shadow-xl max-h-64 overflow-y-auto text-sm">
           {suggestions.length === 0 ? (
-            <li className="px-4 py-3 text-slate-400 text-xs">No PRs match.</li>
+            <li className="px-4 py-3 text-slate-600 text-xs">No PRs match.</li>
           ) : suggestions.map((pr) => (
             <li
               key={pr.id}
@@ -177,10 +177,10 @@ function PRCombobox({
                 <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${STATUS_BADGE[pr.status] ?? "bg-slate-100 text-slate-600"}`}>
                   {pr.status}
                 </span>
-                <span className="text-xs text-slate-400">{pr.division}</span>
+                <span className="text-xs text-slate-600">{pr.division}</span>
                 {pr.id === selectedId && <span className="ml-auto text-green-600 text-xs">✓</span>}
               </div>
-              <div className="text-xs text-slate-500 mt-0.5 truncate">{pr.requestedBy}</div>
+              <div className="text-xs text-slate-600 mt-0.5 truncate">{pr.requestedBy}</div>
             </li>
           ))}
         </ul>
@@ -385,24 +385,24 @@ export default function ReceiveDeliveryPage() {
         <div className="bg-white border border-slate-200 shadow-sm p-10 max-w-md w-full text-center space-y-4">
           <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mx-auto text-2xl">✅</div>
           <h2 className="text-lg font-bold text-slate-800">Delivery Recorded</h2>
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-slate-600">
             Go to <span className="font-semibold text-green-700">Distribution</span> to record who received the items.
           </p>
           <div className="bg-slate-50 border border-slate-200 px-4 py-3 text-left space-y-1 text-sm">
             <div className="flex justify-between">
-              <span className="text-slate-500">Delivery Ref</span>
+              <span className="text-slate-600">Delivery Ref</span>
               <span className="font-mono font-semibold text-slate-800">{submitted.deliveryRef}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-500">Items received</span>
+              <span className="text-slate-600">Items received</span>
               <span className="text-slate-700">{submitted.items.length}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-500">Delivery Date</span>
+              <span className="text-slate-600">Delivery Date</span>
               <span className="text-slate-700">{submitted.deliveryDate}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-500">Received By</span>
+              <span className="text-slate-600">Received By</span>
               <span className="text-slate-700">{submitted.receivedBy}</span>
             </div>
           </div>
@@ -472,7 +472,7 @@ export default function ReceiveDeliveryPage() {
               {selectedPRId && (
                 <div className="mt-1.5 flex items-center gap-2">
                   <span className="text-xs text-green-600 font-medium">✓ Selected</span>
-                  <button onClick={clearPR} className="text-xs text-slate-400 hover:text-slate-600">Change PR</button>
+                  <button onClick={clearPR} className="text-xs text-slate-600 hover:text-slate-600">Change PR</button>
                 </div>
               )}
             </div>
@@ -519,7 +519,7 @@ export default function ReceiveDeliveryPage() {
               <div className="overflow-x-auto overflow-y-hidden">
                 <table className="w-full text-xs border-collapse">
                   <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wide">
+                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase tracking-wide">
                       <th className="px-3 py-2.5 text-center font-medium w-10">#</th>
                       <th className="px-3 py-2.5 text-left font-medium w-32">Stock No.</th>
                       <th className="px-3 py-2.5 text-left font-medium">Description</th>
@@ -533,7 +533,7 @@ export default function ReceiveDeliveryPage() {
                   <tbody className="divide-y divide-slate-100">
                     {items.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="text-center py-12 text-slate-400">No items on this PR.</td>
+                        <td colSpan={8} className="text-center py-12 text-slate-600">No items on this PR.</td>
                       </tr>
                     ) : items.map((row, i) => {
                       const already    = deliveredQty[row.prItemId] ?? 0;
@@ -543,17 +543,17 @@ export default function ReceiveDeliveryPage() {
                       const overQty    = thisQty > remaining && remaining > 0;
                       return (
                         <tr key={row.prItemId} className={i % 2 === 1 ? "bg-slate-50" : "bg-white"}>
-                          <td className="px-3 py-2 text-center text-slate-400">{row.itemNo}</td>
+                          <td className="px-3 py-2 text-center text-slate-600">{row.itemNo}</td>
                           <td className="px-3 py-2 font-mono text-slate-600">{row.stockNo ?? "—"}</td>
                           <td className="px-3 py-2 text-slate-800">{row.description}</td>
                           <td className="px-3 py-2 text-slate-600">{row.unit}</td>
                           <td className="px-3 py-2">
-                            <div className="px-2 py-1.5 border border-slate-200 bg-cell-auto text-slate-500 text-right">
+                            <div className="px-2 py-1.5 border border-slate-200 bg-cell-auto text-slate-600 text-right">
                               {fmt(row.qtyOrdered)}
                             </div>
                           </td>
                           <td className="px-3 py-2">
-                            <div className="px-2 py-1.5 border border-slate-200 bg-cell-auto text-slate-500 text-right">
+                            <div className="px-2 py-1.5 border border-slate-200 bg-cell-auto text-slate-600 text-right">
                               {already > 0 ? fmt(already) : "—"}
                             </div>
                           </td>
@@ -584,7 +584,7 @@ export default function ReceiveDeliveryPage() {
                   </tbody>
                 </table>
 
-                <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
                   <span>{activeItemCount} of {items.length} item{items.length !== 1 ? "s" : ""} with delivery qty</span>
                   {formError && <span className="text-red-500 font-medium">{formError}</span>}
                   <span className="font-semibold text-slate-700">

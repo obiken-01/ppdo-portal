@@ -18,7 +18,7 @@ export default function StatCard({ label, value, bgClass, valueClass, icon }: St
     <div className={`rounded-xl px-4 py-3 flex flex-col gap-1 min-w-[110px] ${bgClass}`}>
       <div className="flex items-center gap-1.5">
         {icon && <span className="text-sm leading-none">{icon}</span>}
-        <p className="text-xs text-slate-500 font-medium leading-tight">{label}</p>
+        <p className="text-xs text-slate-600 font-medium leading-tight">{label}</p>
       </div>
       <p className={`text-2xl font-bold leading-tight ${valueClass}`}>{value}</p>
     </div>

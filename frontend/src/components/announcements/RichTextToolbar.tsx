@@ -120,7 +120,7 @@ export default function RichTextToolbar({ editor }: RichTextToolbarProps) {
         <button
           type="button"
           onClick={() => editor.chain().focus().unsetColor().run()}
-          className="ml-0.5 px-1.5 py-0.5 text-xs border border-slate-200 text-slate-400 hover:bg-slate-50"
+          className="ml-0.5 px-1.5 py-0.5 text-xs border border-slate-200 text-slate-600 hover:bg-slate-50"
           title="Remove color"
         >
           ✕
@@ -156,7 +156,7 @@ export default function RichTextToolbar({ editor }: RichTextToolbarProps) {
       <button
         type="button"
         onClick={() => editor.chain().focus().clearNodes().unsetAllMarks().run()}
-        className="px-2 py-1 text-xs border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+        className="px-2 py-1 text-xs border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
         title="Clear formatting"
       >
         Clear

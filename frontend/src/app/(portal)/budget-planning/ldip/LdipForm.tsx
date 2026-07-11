@@ -137,14 +137,14 @@ function ProgramDetailPanel({ program: p }: { program: LdipProgram }) {
     <div className="px-4 py-3 pl-11 bg-slate-50 border-t border-slate-100">
       {p.expectedOutputs && (
         <div className="mb-3">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Expected Outputs</p>
+          <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">Expected Outputs</p>
           <p className="text-xs text-slate-600 whitespace-pre-wrap mt-0.5">{p.expectedOutputs}</p>
         </div>
       )}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2">
         {fields.map(([label, value]) => (
           <div key={label}>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{label}</p>
+            <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">{label}</p>
             <p className="text-xs text-slate-600 mt-0.5">{value}</p>
           </div>
         ))}
@@ -160,7 +160,7 @@ function SectionHead({ num, title, hint }: { num: number; title: string; hint?: 
         {num}
       </span>
       <span className="text-sm font-semibold text-slate-700">{title}</span>
-      {hint && <span className="text-xs text-slate-400">{hint}</span>}
+      {hint && <span className="text-xs text-slate-600">{hint}</span>}
     </div>
   );
 }
@@ -430,7 +430,7 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
           </h1>
           {isEdit && <StatusBadge status={record.status} />}
         </div>
-        <p className="text-sm text-slate-500 mt-0.5">
+        <p className="text-sm text-slate-600 mt-0.5">
           {isReadOnly
             ? "This record is read-only."
             : "One office, multiple programs across sectors — grouped like the AIP hierarchy."}
@@ -439,11 +439,11 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
 
       {/* Legend + ribbon */}
       <div className="flex items-center gap-4 flex-wrap bg-white border border-slate-200 px-4 py-2.5 mb-4">
-        <span className="flex items-center gap-1.5 text-xs text-slate-500">
+        <span className="flex items-center gap-1.5 text-xs text-slate-600">
           <span className="w-2.5 h-2.5 bg-yellow-50 border border-slate-200 inline-block" />
           User input
         </span>
-        <span className="flex items-center gap-1.5 text-xs text-slate-500">
+        <span className="flex items-center gap-1.5 text-xs text-slate-600">
           <span className="w-2.5 h-2.5 bg-slate-100 border border-slate-200 inline-block" />
           Auto-filled
         </span>
@@ -490,7 +490,7 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
         )}
         <Link
           href="/budget-planning/ldip"
-          className="px-4 py-1.5 text-sm font-medium border border-slate-200 text-slate-500 bg-white hover:bg-slate-50 transition-colors"
+          className="px-4 py-1.5 text-sm font-medium border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 transition-colors"
         >
           {isReadOnly ? "Back" : "Cancel"}
         </Link>
@@ -600,7 +600,7 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
             <div className="sm:col-span-2">
               <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
                 Office / Sub-office Name <span className="text-red-500">*</span>
-                <span className="ml-1 font-normal normal-case text-slate-400">
+                <span className="ml-1 font-normal normal-case text-slate-600">
                   {targetsExistingGroup
                     ? "— adds to this existing group"
                     : "— starts a new group (a sector can hold several sub-offices)"}
@@ -645,7 +645,7 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
             <div>
               <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
                 Budget — {yearStart}–{yearEnd} total{" "}
-                <span className="font-normal normal-case text-slate-400">(₱000)</span>{" "}
+                <span className="font-normal normal-case text-slate-600">(₱000)</span>{" "}
                 <span className="text-red-500">*</span>
               </label>
               <MoneyInput value={programBudget} onChange={setProgramBudget} className="w-48" />
@@ -671,7 +671,7 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
       {/* ── Section 3: Created programs ─────────────────────────────────────── */}
       <div className="bg-white border border-slate-200">
         <SectionHead num={isReadOnly ? 2 : 3} title="Created Programs" />
-        <div className="grid grid-cols-[24px_130px_1fr_120px_90px] gap-2 px-4 py-2 bg-slate-100 text-[10px] font-bold text-slate-500 uppercase tracking-wide">
+        <div className="grid grid-cols-[24px_130px_1fr_120px_90px] gap-2 px-4 py-2 bg-slate-100 text-[10px] font-bold text-slate-600 uppercase tracking-wide">
           <span />
           <span>AIP Ref Code</span>
           <span>Program</span>
@@ -679,7 +679,7 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
           <span>{!isReadOnly ? "Actions" : ""}</span>
         </div>
         {totalPrograms === 0 ? (
-          <p className="px-4 py-6 text-center text-sm text-slate-400">No programs added yet.</p>
+          <p className="px-4 py-6 text-center text-sm text-slate-600">No programs added yet.</p>
         ) : (
           groups.map((group, groupIndex) => {
             if (group.programs.length === 0) return null;
@@ -712,7 +712,7 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
                             <button
                               onClick={() => toggleExpanded(p.key)}
                               title={expanded ? "Hide uploaded detail" : "Show uploaded detail"}
-                              className="w-4 h-4 flex items-center justify-center text-slate-400 hover:text-slate-700"
+                              className="w-4 h-4 flex items-center justify-center text-slate-600 hover:text-slate-700"
                             >
                               <span
                                 className={`inline-block text-xs transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
@@ -722,7 +722,7 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
                             </button>
                           )}
                         </span>
-                        <span className="font-mono text-xs text-slate-500">
+                        <span className="font-mono text-xs text-slate-600">
                           {programRef}
                         </span>
                         <span className="italic font-semibold text-slate-800">{p.name}</span>

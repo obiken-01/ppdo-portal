@@ -159,7 +159,7 @@ function NewToggleCell({
       className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border transition-colors whitespace-nowrap ${
         value
           ? "bg-amber-100 border-amber-300 text-amber-700"
-          : "bg-slate-100 border-slate-300 text-slate-500"
+          : "bg-slate-100 border-slate-300 text-slate-600"
       }`}
     >
       ★ {value ? "NEW" : "—"}
@@ -372,7 +372,7 @@ export default function ItemsMasterPage() {
         enableSorting: false,
         cell: ({ row }) =>
           row.original.id === editingId ? null : (
-            <span className="text-slate-400 text-xs">{row.index + 1}</span>
+            <span className="text-slate-600 text-xs">{row.index + 1}</span>
           ),
       },
       // Stock No.
@@ -518,7 +518,7 @@ export default function ItemsMasterPage() {
             />
           ) : (
             <span
-              className="text-slate-500 text-xs truncate block max-w-[230px]"
+              className="text-slate-600 text-xs truncate block max-w-[230px]"
               title={getValue<string | null>() ?? ""}
             >
               {getValue<string | null>() ?? "—"}
@@ -594,7 +594,7 @@ export default function ItemsMasterPage() {
                 title="Edit row"
                 disabled={!!editingId}
                 onClick={() => startEdit(item)}
-                className="p-1.5 rounded-lg text-xs transition-colors hover:bg-green-50 text-slate-400 hover:text-green-700 disabled:opacity-40"
+                className="p-1.5 rounded-lg text-xs transition-colors hover:bg-green-50 text-slate-600 hover:text-green-700 disabled:opacity-40"
               >
                 ✏️
               </button>
@@ -659,7 +659,7 @@ export default function ItemsMasterPage() {
           {searchInput && (
             <button
               onClick={() => { setSearchInput(""); setGlobalFilter(""); }}
-              className="text-sm text-slate-400 hover:text-slate-600 px-2"
+              className="text-sm text-slate-600 hover:text-slate-600 px-2"
             >
               Clear
             </button>
@@ -713,7 +713,7 @@ export default function ItemsMasterPage() {
                 {/* ── Header ── */}
                 <thead>
                   {table.getHeaderGroups().map((hg) => (
-                    <tr key={hg.id} className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500 uppercase tracking-wide">
+                    <tr key={hg.id} className="bg-slate-50 border-b border-slate-200 text-xs text-slate-600 uppercase tracking-wide">
                       {hg.headers.map((h) => (
                         <th key={h.id} style={{ width: h.getSize() }} className="text-left px-3 py-2.5 font-medium select-none">
                           {h.isPlaceholder ? null : (
@@ -757,7 +757,7 @@ export default function ItemsMasterPage() {
                 <tbody className="divide-y divide-slate-100">
                   {table.getRowModel().rows.length === 0 ? (
                     <tr>
-                      <td colSpan={columns.length} className="text-center py-16 text-slate-400 text-sm">
+                      <td colSpan={columns.length} className="text-center py-16 text-slate-600 text-sm">
                         {globalFilter || columnFilters.length > 0 || showNewOnly
                           ? "No items match your filters."
                           : "No items in the catalog yet."}
@@ -802,7 +802,7 @@ export default function ItemsMasterPage() {
               </table>
 
               {/* ── Status bar + pagination ── */}
-              <div className="flex items-center justify-between px-4 py-2 border-t border-slate-100 text-xs text-slate-400 flex-wrap gap-2">
+              <div className="flex items-center justify-between px-4 py-2 border-t border-slate-100 text-xs text-slate-600 flex-wrap gap-2">
                 <span>
                   {visibleRows === totalFiltered
                     ? `${totalFiltered} item${totalFiltered !== 1 ? "s" : ""}`
@@ -832,7 +832,7 @@ export default function ItemsMasterPage() {
         </div>
 
         {editingId && (
-          <p className="text-xs text-slate-400 text-right">
+          <p className="text-xs text-slate-600 text-right">
             Press <kbd className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 font-mono">✕</kbd> to cancel without saving
           </p>
         )}

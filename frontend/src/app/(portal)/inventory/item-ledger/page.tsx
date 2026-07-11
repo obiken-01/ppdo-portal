@@ -295,7 +295,7 @@ export default function StockOverviewPage() {
   const columns = useMemo<ColumnDef<ItemLedgerRowResponse>[]>(() => [
     {
       id: "rowNo", header: "#", size: 40, enableSorting: false,
-      cell: ({ row }) => <span className="text-slate-400 text-xs">{row.index + 1}</span>,
+      cell: ({ row }) => <span className="text-slate-600 text-xs">{row.index + 1}</span>,
     },
     {
       accessorKey: "stockNo", header: "Stock No.", size: 120,
@@ -312,13 +312,13 @@ export default function StockOverviewPage() {
     {
       accessorKey: "category", header: "Category", size: 120,
       cell: ({ getValue }) => (
-        <span className="text-slate-500 text-xs">{getValue<string | null>() ?? "—"}</span>
+        <span className="text-slate-600 text-xs">{getValue<string | null>() ?? "—"}</span>
       ),
     },
     {
       accessorKey: "itemType", header: "Type", size: 90,
       cell: ({ getValue }) => (
-        <span className="text-slate-500 text-xs">{getValue<string | null>() ?? "—"}</span>
+        <span className="text-slate-600 text-xs">{getValue<string | null>() ?? "—"}</span>
       ),
     },
     {
@@ -357,7 +357,7 @@ export default function StockOverviewPage() {
     {
       accessorKey: "reorderQty", header: "Reorder", size: 72,
       cell: ({ getValue }) => (
-        <span className="text-slate-500 text-sm tabular-nums">{getValue<number>()}</span>
+        <span className="text-slate-600 text-sm tabular-nums">{getValue<number>()}</span>
       ),
     },
     {
@@ -466,7 +466,7 @@ export default function StockOverviewPage() {
 
             {/* Quick presets */}
             <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Quick Presets</p>
+              <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">Quick Presets</p>
               <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => {
@@ -512,7 +512,7 @@ export default function StockOverviewPage() {
                 {filterCount > 0 && (
                   <button
                     onClick={() => { setFilters(EMPTY_FILTERS); setReceivedInQuarter(""); }}
-                    className="px-3 py-1.5 text-xs font-medium border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors"
+                    className="px-3 py-1.5 text-xs font-medium border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
                   >
                     ✕ Clear all filters
                   </button>
@@ -524,9 +524,9 @@ export default function StockOverviewPage() {
 
             {/* Received in Quarter */}
             <div className="space-y-2">
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+              <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
                 Received in Quarter
-                <span className="ml-1 font-normal normal-case text-slate-400">— re-fetches from server</span>
+                <span className="ml-1 font-normal normal-case text-slate-600">— re-fetches from server</span>
               </p>
               <div className="flex items-center gap-3">
                 <select
@@ -542,7 +542,7 @@ export default function StockOverviewPage() {
                 {receivedInQuarter && (
                   <button
                     onClick={() => setReceivedInQuarter("")}
-                    className="text-xs text-slate-400 hover:text-slate-600"
+                    className="text-xs text-slate-600 hover:text-slate-600"
                   >
                     ✕ Clear
                   </button>
@@ -560,7 +560,7 @@ export default function StockOverviewPage() {
             {/* Category */}
             {categoryOptions.length > 0 && (
               <div className="space-y-2">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Category</p>
+                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Category</p>
                 <div className="flex flex-wrap gap-2">
                   {categoryOptions.map((cat) => (
                     <MultiChip
@@ -572,7 +572,7 @@ export default function StockOverviewPage() {
                   ))}
                 </div>
                 {filters.categories.length > 0 && (
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-slate-600">
                     {filters.categories.length} selected — click to deselect
                   </p>
                 )}
@@ -587,7 +587,7 @@ export default function StockOverviewPage() {
               {/* Item Type */}
               {itemTypeOptions.length > 0 && (
                 <div className="space-y-2">
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Item Type</p>
+                  <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Item Type</p>
                   <div className="flex flex-wrap gap-2">
                     {itemTypeOptions.map((t) => (
                       <MultiChip
@@ -603,7 +603,7 @@ export default function StockOverviewPage() {
 
               {/* Unit */}
               <div className="space-y-2">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Unit</p>
+                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Unit</p>
                 <select
                   value={filters.unit}
                   onChange={(e) => setF("unit", e.target.value)}
@@ -616,7 +616,7 @@ export default function StockOverviewPage() {
 
               {/* On Hand range */}
               <div className="space-y-2">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">On Hand</p>
+                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">On Hand</p>
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
@@ -626,7 +626,7 @@ export default function StockOverviewPage() {
                     placeholder="Min"
                     className="flex-1 px-2.5 py-1.5 text-xs border border-slate-200 focus:outline-none focus:ring-1 focus:ring-green-500"
                   />
-                  <span className="text-slate-400 text-xs">to</span>
+                  <span className="text-slate-600 text-xs">to</span>
                   <input
                     type="number"
                     min="0"
@@ -643,7 +643,7 @@ export default function StockOverviewPage() {
         )}
 
         {/* ── Result count ─────────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between text-xs text-slate-500">
+        <div className="flex items-center justify-between text-xs text-slate-600">
           <span>
             Showing <span className="font-semibold text-slate-700">{totalFiltered}</span> of{" "}
             <span className="font-semibold text-slate-700">{rows.length}</span> items
@@ -683,7 +683,7 @@ export default function StockOverviewPage() {
               <table className="w-full text-sm border-collapse">
                 <thead>
                   {table.getHeaderGroups().map((hg) => (
-                    <tr key={hg.id} className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500 uppercase tracking-wide">
+                    <tr key={hg.id} className="bg-slate-50 border-b border-slate-200 text-xs text-slate-600 uppercase tracking-wide">
                       {hg.headers.map((h) => (
                         <th key={h.id} style={{ width: h.getSize() }} className="text-left px-3 py-2.5 font-medium select-none">
                           {h.isPlaceholder ? null : (
@@ -707,7 +707,7 @@ export default function StockOverviewPage() {
                 <tbody className="divide-y divide-slate-100">
                   {table.getRowModel().rows.length === 0 ? (
                     <tr>
-                      <td colSpan={columns.length} className="text-center py-16 text-slate-400 text-sm">
+                      <td colSpan={columns.length} className="text-center py-16 text-slate-600 text-sm">
                         {rows.length === 0 ? "No items in the ledger yet." : "No items match your filters."}
                       </td>
                     </tr>
@@ -726,7 +726,7 @@ export default function StockOverviewPage() {
               </table>
 
               {/* Pagination */}
-              <div className="flex items-center justify-between px-4 py-2 border-t border-slate-100 text-xs text-slate-400 flex-wrap gap-2">
+              <div className="flex items-center justify-between px-4 py-2 border-t border-slate-100 text-xs text-slate-600 flex-wrap gap-2">
                 <span>
                   {visibleRows === totalFiltered
                     ? `${totalFiltered} item${totalFiltered !== 1 ? "s" : ""}`

@@ -35,7 +35,7 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api";
 function StatusDot({ status }: { status: ApiStatus }) {
   if (status === "checking") {
     return (
-      <span className="flex items-center gap-1.5 text-xs text-slate-400">
+      <span className="flex items-center gap-1.5 text-xs text-slate-600">
         <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
         Connecting to server…
       </span>
@@ -199,7 +199,7 @@ export default function LoginPage() {
           <h2 className="text-2xl font-bold text-slate-800 mb-1">
             Welcome back
           </h2>
-          <p className="text-slate-500 text-sm mb-8">
+          <p className="text-slate-600 text-sm mb-8">
             Sign in to your PPDO staff account
           </p>
 
@@ -285,7 +285,7 @@ export default function LoginPage() {
           <div className="mt-6 flex items-center justify-between">
             <Link
               href="/"
-              className="text-sm text-slate-400 hover:text-green-700 transition-colors"
+              className="text-sm text-slate-600 hover:text-green-700 transition-colors"
             >
               ← Back to home
             </Link>

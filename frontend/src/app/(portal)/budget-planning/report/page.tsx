@@ -162,7 +162,7 @@ function AmountsCells({ amounts, className = "" }: { amounts: WfpReportAmountsDt
 function RefCodeCell({ refCode, indent }: { refCode: string; indent: number }) {
   return (
     <td
-      className="px-2 py-1.5 font-mono text-slate-500 border border-slate-200 break-words align-top"
+      className="px-2 py-1.5 font-mono text-slate-600 border border-slate-200 break-words align-top"
       style={{ paddingLeft: `${8 + indent * 16}px` }}
     >
       {refCode}
@@ -248,7 +248,7 @@ function ReportTable({ sections, breakdown }: { sections: WfpReportFundSourceDto
                     <td className="border border-slate-200" />
                     <td className="px-2 py-1 text-slate-600 border border-slate-200 break-words">{row.row.sector}</td>
                     <td className="px-2 py-1 text-slate-600 border border-slate-200 whitespace-nowrap">{row.row.nature}</td>
-                    <td className="px-2 py-1 font-mono text-slate-500 border border-slate-200 whitespace-nowrap">
+                    <td className="px-2 py-1 font-mono text-slate-600 border border-slate-200 whitespace-nowrap">
                       {row.row.accountNumber ?? "—"}
                     </td>
                     <td className="px-2 py-1 text-slate-700 border border-slate-200">{row.row.accountTitle ?? "—"}</td>
@@ -318,7 +318,7 @@ function FundSourceBlock({ report, fundReport }: { report: WfpReportDto; fundRep
           DEPARTMENT/OFFICE: {report.officeCode} — {report.officeName}
         </p>
         <p className="text-sm text-slate-600">SOURCE OF FUND: {fundReport.fundSourceName}</p>
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-slate-600">
           Equiv. to {(report.reserveRate * 100).toFixed(0)}% of Operational Expenses
         </p>
       </div>
@@ -386,7 +386,7 @@ export default function WfpReportPage() {
       {/* Header */}
       <div className="mb-5">
         <h1 className="text-xl font-bold text-slate-800">Report</h1>
-        <p className="text-sm text-slate-500 mt-0.5">
+        <p className="text-sm text-slate-600 mt-0.5">
           Select a report type, fiscal year, and office to preview.
         </p>
       </div>
@@ -394,7 +394,7 @@ export default function WfpReportPage() {
       {/* Selector row */}
       <div className="flex flex-wrap items-end gap-3 mb-6 px-4 py-3 bg-white border border-slate-200">
         <div>
-          <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">
+          <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide mb-1">
             Report Type
           </label>
           <select
@@ -409,7 +409,7 @@ export default function WfpReportPage() {
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">
+          <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide mb-1">
             Fiscal Year
           </label>
           <select
@@ -427,7 +427,7 @@ export default function WfpReportPage() {
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">
+          <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide mb-1">
             Office
           </label>
           <select
@@ -458,12 +458,12 @@ export default function WfpReportPage() {
 
       {/* Empty / loading state */}
       {!report && !reportLoading && (
-        <p className="text-slate-400 text-sm py-10 text-center">
+        <p className="text-slate-600 text-sm py-10 text-center">
           Select an office and click &quot;Generate Preview&quot; to view its WFP report.
         </p>
       )}
       {reportLoading && (
-        <div className="flex items-center justify-center gap-2 text-slate-500 text-sm py-10">
+        <div className="flex items-center justify-center gap-2 text-slate-600 text-sm py-10">
           <span className="w-4 h-4 border-2 border-slate-300 border-t-green-600 rounded-full animate-spin" />
           Generating preview…
         </div>
@@ -474,7 +474,7 @@ export default function WfpReportPage() {
       {report && !reportLoading && (
         report.fundSourceReports.length === 0 ? (
           <div className="bg-white border border-slate-200 p-6">
-            <p className="text-slate-400 text-sm text-center">
+            <p className="text-slate-600 text-sm text-center">
               No WFP expenditures entered yet for this office under FY {report.fiscalYear}.
             </p>
           </div>

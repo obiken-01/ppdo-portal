@@ -240,7 +240,7 @@ function AccountCombobox({
               }}
               className="w-full text-left px-3 py-1.5 text-xs hover:bg-green-50 hover:text-green-800 border-b border-slate-50 last:border-0"
             >
-              <span className="font-mono text-slate-400 mr-2">{a.accountNumber}</span>
+              <span className="font-mono text-slate-600 mr-2">{a.accountNumber}</span>
               {a.accountTitle}
             </button>
           ))}
@@ -338,7 +338,7 @@ function ExpenditurePopup({
     <Modal
       title={
         <div>
-          <div className="font-mono text-xs font-normal text-slate-500 mb-0.5 tracking-wide">
+          <div className="font-mono text-xs font-normal text-slate-600 mb-0.5 tracking-wide">
             {activity.refCode}
           </div>
           <div className="text-base font-semibold text-slate-800 truncate max-w-2xl">
@@ -386,7 +386,7 @@ function ExpenditurePopup({
             className={`px-5 py-2 text-sm font-medium border-b-2 transition-colors ${
               activeTab === tab
                 ? TAB_COLORS[tab].active
-                : "border-transparent text-slate-500 hover:text-slate-700"
+                : "border-transparent text-slate-600 hover:text-slate-700"
             }`}
           >
             {tab}
@@ -417,7 +417,7 @@ function ExpenditurePopup({
           <tbody className="divide-y divide-slate-100">
             {tabLines.length === 0 ? (
               <tr>
-                <td colSpan={colCount} className="px-3 py-6 text-slate-400 text-center">
+                <td colSpan={colCount} className="px-3 py-6 text-slate-600 text-center">
                   No {activeTab} lines.{!readonly && ' Click "+ Add Line" to add one.'}
                 </td>
               </tr>
@@ -538,7 +538,7 @@ function ExpenditurePopup({
                         <td className="px-2 py-1.5 text-center">
                           <button
                             onClick={() => removeLine(idx)}
-                            className="text-slate-400 hover:text-red-500 transition-colors text-base leading-none"
+                            className="text-slate-600 hover:text-red-500 transition-colors text-base leading-none"
                             title="Remove line"
                           >
                             ×
@@ -553,7 +553,7 @@ function ExpenditurePopup({
                         <div className="grid grid-cols-2 gap-x-6 gap-y-2">
                           {CF_FIELDS.map(([key, label]) => (
                             <div key={key} className="flex flex-col gap-0.5">
-                              <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">
+                              <span className="text-[10px] font-medium text-slate-600 uppercase tracking-wide">
                                 {label}
                               </span>
                               {readonly ? (
@@ -1070,7 +1070,7 @@ function WfpPageInner() {
               </a>
             </div>
             {aipDetail && selectedConfigOffice && (
-              <p className="text-sm text-slate-500 mt-0.5">
+              <p className="text-sm text-slate-600 mt-0.5">
                 AIP FY{aipDetail.fiscalYear} — {selectedConfigOffice.officeName}
                 {wfp && (
                   <span
@@ -1214,20 +1214,20 @@ function WfpPageInner() {
 
         {/* Grid area */}
         {loading ? (
-          <div className="flex items-center gap-2 text-slate-500 text-sm py-8">
+          <div className="flex items-center gap-2 text-slate-600 text-sm py-8">
             <span className="w-4 h-4 border-2 border-slate-300 border-t-green-600 rounded-full animate-spin" />
             Loading…
           </div>
         ) : !selectedAipId || !selectedOfficeId ? (
-          <p className="text-slate-400 text-sm py-8">
+          <p className="text-slate-600 text-sm py-8">
             Select an AIP and an office to view the WFP grid.
           </p>
         ) : !setupComplete ? (
-          <p className="text-slate-400 text-sm py-8">
+          <p className="text-slate-600 text-sm py-8">
             Complete the allocation setup for this division to start entering WFP data.
           </p>
         ) : aipOffices.length === 0 ? (
-          <p className="text-slate-400 text-sm py-8">
+          <p className="text-slate-600 text-sm py-8">
             {aipDetail
               ? selectedConfigOffice?.officeRefCode
                 ? "This office has no activities in the selected AIP."
@@ -1268,7 +1268,7 @@ function WfpPageInner() {
                         >
                           <button
                             onClick={() => toggleCollapse(sKey)}
-                            className="mr-2 text-slate-500 hover:text-slate-700 leading-none"
+                            className="mr-2 text-slate-600 hover:text-slate-700 leading-none"
                           >
                             {collapsed.has(sKey) ? "▶" : "▼"}
                           </button>
@@ -1287,7 +1287,7 @@ function WfpPageInner() {
                             <td className="px-3 py-2 font-semibold text-slate-800">
                               <button
                                 onClick={() => toggleCollapse(oKey)}
-                                className="mr-1.5 text-slate-400 hover:text-slate-600 leading-none"
+                                className="mr-1.5 text-slate-600 hover:text-slate-800 leading-none"
                               >
                                 {collapsed.has(oKey) ? "▶" : "▼"}
                               </button>
@@ -1295,7 +1295,7 @@ function WfpPageInner() {
                             </td>
                             <td className="px-3 py-2" />
                             {Array.from({ length: 9 }, (_, i) => (
-                              <td key={i} className="px-3 py-2 text-right text-slate-400 text-xs">—</td>
+                              <td key={i} className="px-3 py-2 text-right text-slate-600 text-xs">—</td>
                             ))}
                             <td className="sticky right-0 bg-slate-100 border-l border-slate-200" />
                           </tr>
@@ -1313,7 +1313,7 @@ function WfpPageInner() {
                                     <div className="flex items-start gap-1">
                                       <button
                                         onClick={() => toggleCollapse(pKey)}
-                                        className="mt-0.5 shrink-0 text-slate-400 hover:text-slate-600 leading-none"
+                                        className="mt-0.5 shrink-0 text-slate-600 hover:text-slate-800 leading-none"
                                       >
                                         {collapsed.has(pKey) ? "▶" : "▼"}
                                       </button>
@@ -1322,7 +1322,7 @@ function WfpPageInner() {
                                   </td>
                                   <td className="px-3 py-2" />
                                   {Array.from({ length: 9 }, (_, i) => (
-                                    <td key={i} className="px-3 py-2 text-right text-slate-400 text-xs">—</td>
+                                    <td key={i} className="px-3 py-2 text-right text-slate-600 text-xs">—</td>
                                   ))}
                                   <td className="sticky right-0 bg-blue-50 border-l border-slate-200" />
                                 </tr>
@@ -1339,7 +1339,7 @@ function WfpPageInner() {
                                           <div className="flex items-start gap-1">
                                             <button
                                               onClick={() => toggleCollapse(prKey)}
-                                              className="mt-0.5 shrink-0 text-slate-400 hover:text-slate-600 leading-none"
+                                              className="mt-0.5 shrink-0 text-slate-600 hover:text-slate-800 leading-none"
                                             >
                                               {collapsed.has(prKey) ? "▶" : "▼"}
                                             </button>
@@ -1348,7 +1348,7 @@ function WfpPageInner() {
                                         </td>
                                         <td className="px-3 py-2" />
                                         {Array.from({ length: 9 }, (_, i) => (
-                                          <td key={i} className="px-3 py-2 text-right text-slate-400 text-xs">—</td>
+                                          <td key={i} className="px-3 py-2 text-right text-slate-600 text-xs">—</td>
                                         ))}
                                         <td className="sticky right-0 bg-green-50 border-l border-slate-200" />
                                       </tr>
@@ -1362,13 +1362,13 @@ function WfpPageInner() {
 
                                         return (
                                           <tr key={activity.id} className="group bg-white hover:bg-slate-50">
-                                            <td className="px-3 py-2 font-mono text-xs text-slate-500 leading-tight whitespace-nowrap">
+                                            <td className="px-3 py-2 font-mono text-xs text-slate-600 leading-tight whitespace-nowrap">
                                               {activity.refCode}
                                             </td>
                                             <td className="px-3 py-2 pl-14 text-slate-700">
                                               <ClampedName name={activity.name} />
                                             </td>
-                                            <td className="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">
+                                            <td className="px-3 py-2 text-xs text-slate-600 whitespace-nowrap">
                                               {activity.fundingSourceSnapshot ?? "—"}
                                             </td>
                                             <td className="px-3 py-2 text-right tabular-nums">
@@ -1383,7 +1383,7 @@ function WfpPageInner() {
                                             <td className="px-3 py-2 text-right tabular-nums font-medium">
                                               {fmtCurrency(total)}
                                             </td>
-                                            <td className="px-3 py-2 text-right tabular-nums text-slate-400 text-xs">
+                                            <td className="px-3 py-2 text-right tabular-nums text-slate-600 text-xs">
                                               {activity.total != null ? formatMoney(activity.total * 1000) : "—"}
                                             </td>
                                             <td className="px-3 py-2 text-right tabular-nums">
@@ -1409,7 +1409,7 @@ function WfpPageInner() {
                                               ) : hasLines ? (
                                                 <button
                                                   onClick={() => setPopupActivityId(activity.id)}
-                                                  className="text-slate-500 text-sm hover:underline"
+                                                  className="text-slate-600 text-sm hover:underline"
                                                 >
                                                   View
                                                 </button>
@@ -1477,7 +1477,7 @@ function WfpPageInner() {
 
 export default function WfpPage() {
   return (
-    <Suspense fallback={<div className="p-6 text-slate-500 text-sm">Loading…</div>}>
+    <Suspense fallback={<div className="p-6 text-slate-600 text-sm">Loading…</div>}>
       <WfpPageInner />
     </Suspense>
   );

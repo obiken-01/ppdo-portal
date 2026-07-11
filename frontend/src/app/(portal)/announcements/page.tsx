@@ -26,7 +26,7 @@ const STATUS_BADGE_CLS: Record<string, string> = {
 function StatusBadge({ status }: { status: string }) {
   return (
     <span
-      className={`inline-block px-2 py-0.5 text-xs font-medium rounded-full ${STATUS_BADGE_CLS[status] ?? "bg-slate-100 text-slate-500"}`}
+      className={`inline-block px-2 py-0.5 text-xs font-medium rounded-full ${STATUS_BADGE_CLS[status] ?? "bg-slate-100 text-slate-600"}`}
     >
       {status}
     </span>
@@ -34,7 +34,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function fmtDate(iso: string | null | undefined): React.ReactNode {
-  if (!iso) return <span className="text-slate-400 text-xs">—</span>;
+  if (!iso) return <span className="text-slate-600 text-xs">—</span>;
   return new Date(iso).toLocaleDateString("en-PH", {
     year: "numeric",
     month: "short",
@@ -243,7 +243,7 @@ export default function AnnouncementsPage() {
               <button
                 onClick={() => handleArchive(row)}
                 disabled={busy}
-                className="text-xs text-slate-500 hover:text-slate-700 disabled:opacity-50"
+                className="text-xs text-slate-600 hover:text-slate-700 disabled:opacity-50"
               >
                 Archive
               </button>
@@ -273,7 +273,7 @@ export default function AnnouncementsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-slate-800">📢 Announcements</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
+          <p className="text-sm text-slate-600 mt-0.5">
             Manage announcements displayed on the public landing page.
           </p>
         </div>

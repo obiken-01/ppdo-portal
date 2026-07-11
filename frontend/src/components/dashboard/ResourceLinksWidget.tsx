@@ -50,13 +50,13 @@ export default function ResourceLinksWidget() {
         )}
 
         {!loading && unavailable && (
-          <p className="text-xs text-slate-400 text-center py-4">
+          <p className="text-xs text-slate-600 text-center py-4">
             Resource links unavailable.
           </p>
         )}
 
         {!loading && !unavailable && categories.length === 0 && (
-          <p className="text-xs text-slate-400 text-center py-4">
+          <p className="text-xs text-slate-600 text-center py-4">
             No resource links found.
           </p>
         )}
@@ -73,7 +73,7 @@ export default function ResourceLinksWidget() {
                 onClick={() => toggleCategory(cat.category)}
                 className="w-full flex items-center justify-between px-1 py-0.5 group"
               >
-                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide group-hover:text-slate-600 transition-colors text-left">
+                <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide group-hover:text-slate-600 transition-colors text-left">
                   {cat.category}
                 </span>
                 <span className={`text-base text-slate-400 transition-transform duration-200 leading-none ${isCollapsed ? "" : "rotate-90"}`}>
@@ -99,7 +99,7 @@ export default function ResourceLinksWidget() {
                   {hiddenCount > 0 && (
                     <Link
                       href="/resource-links"
-                      className="block px-2 py-1 text-xs text-slate-400 hover:text-green-600 transition-colors"
+                      className="block px-2 py-1 text-xs text-slate-600 hover:text-green-600 transition-colors"
                     >
                       +{hiddenCount} more…
                     </Link>

@@ -145,7 +145,7 @@ export default function MoneyInput({
         disabled ? "opacity-60 cursor-not-allowed" : ""
       } ${className ?? ""}`}
     >
-      <span className="shrink-0 border-r border-slate-200 bg-slate-50 flex items-center px-1.5 text-slate-500 select-none text-[0.65rem] leading-none">
+      <span className="shrink-0 border-r border-slate-200 bg-slate-50 flex items-center px-1.5 text-slate-600 select-none text-[0.65rem] leading-none">
         ₱
       </span>
       <input

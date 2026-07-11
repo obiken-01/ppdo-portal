@@ -102,7 +102,7 @@ function Field({
 }) {
   return (
     <div className={span2 ? "md:col-span-2" : ""}>
-      <p className="text-xs font-medium text-slate-500 mb-1">{label}</p>
+      <p className="text-xs font-medium text-slate-600 mb-1">{label}</p>
       {pre ? (
         <div className="w-full px-3 py-2 text-sm border border-slate-200 bg-cell-auto text-slate-700 min-h-[44px] whitespace-pre-wrap">
           {value || "—"}
@@ -159,7 +159,7 @@ function PRCombobox({
       {open && (
         <ul className="absolute z-50 top-full left-0 right-0 bg-white border border-slate-200 shadow-xl max-h-64 overflow-y-auto text-sm">
           {suggestions.length === 0 ? (
-            <li className="px-4 py-3 text-slate-400 text-xs">No PRs match your search.</li>
+            <li className="px-4 py-3 text-slate-600 text-xs">No PRs match your search.</li>
           ) : suggestions.map((pr) => (
             <li
               key={pr.id}
@@ -173,10 +173,10 @@ function PRCombobox({
                 <span className={`text-xs px-1.5 py-0.5 font-medium ${STATUS_BADGE[pr.status] ?? "bg-slate-100 text-slate-600"}`}>
                   {pr.status}
                 </span>
-                <span className="text-xs text-slate-400">{pr.division}</span>
+                <span className="text-xs text-slate-600">{pr.division}</span>
                 {pr.id === selectedId && <span className="ml-auto text-green-600 text-xs font-medium">✓ Selected</span>}
               </div>
-              <div className="text-xs text-slate-500 mt-0.5 truncate">{pr.requestedBy}</div>
+              <div className="text-xs text-slate-600 mt-0.5 truncate">{pr.requestedBy}</div>
             </li>
           ))}
         </ul>
@@ -361,7 +361,7 @@ export default function PRReportPage() {
           {selectedId && (
             <button
               onClick={clearPR}
-              className="text-sm text-slate-400 hover:text-slate-600 transition-colors"
+              className="text-sm text-slate-600 hover:text-slate-600 transition-colors"
             >
               Clear
             </button>
@@ -384,7 +384,7 @@ export default function PRReportPage() {
 
         {/* ── Empty / loading state ─────────────────────────────────────────── */}
         {!selectedId && (
-          <div className="bg-white border border-slate-200 shadow-sm flex flex-col items-center justify-center py-20 gap-3 text-slate-400">
+          <div className="bg-white border border-slate-200 shadow-sm flex flex-col items-center justify-center py-20 gap-3 text-slate-600">
             <span className="text-4xl">📋</span>
             <p className="text-sm font-medium">Select a Purchase Request to view its report</p>
             <p className="text-xs">Search by PR number, division, or status above</p>
@@ -409,7 +409,7 @@ export default function PRReportPage() {
                 {/* Row 1 */}
                 <Field label="PR No." value={pr.prNo} mono />
                 <div>
-                  <p className="text-xs font-medium text-slate-500 mb-1">Status</p>
+                  <p className="text-xs font-medium text-slate-600 mb-1">Status</p>
                   <div className="px-3 py-2">
                     <span className={`text-xs font-semibold px-3 py-1 ${PR_STATUS_BADGE[pr.status] ?? "bg-slate-100 text-slate-600"}`}>
                       {pr.status}
@@ -507,7 +507,7 @@ export default function PRReportPage() {
                   <tbody className="divide-y divide-slate-100">
                     {pr.items.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="text-center py-10 text-slate-400 text-sm">
+                        <td colSpan={8} className="text-center py-10 text-slate-600 text-sm">
                           No line items on this PR.
                         </td>
                       </tr>
@@ -522,7 +522,7 @@ export default function PRReportPage() {
                           key={item.id}
                           className={i % 2 === 1 ? "bg-slate-50" : "bg-white"}
                         >
-                          <td className="px-3 py-2.5 text-center text-slate-500 font-medium">{item.itemNo}</td>
+                          <td className="px-3 py-2.5 text-center text-slate-600 font-medium">{item.itemNo}</td>
                           <td className="px-3 py-2.5 text-slate-800 font-bold">{item.description}</td>
                           <td className="px-3 py-2.5 font-mono text-xs text-slate-600">{item.stockNo ?? "—"}</td>
                           <td className="px-3 py-2.5 text-center text-slate-600">{item.unit}</td>
@@ -532,11 +532,11 @@ export default function PRReportPage() {
                           </td>
                           {/* Qty Delivered — blue */}
                           <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-blue-600">
-                            {delivered > 0 ? fmt(delivered) : <span className="text-slate-300">0</span>}
+                            {delivered > 0 ? fmt(delivered) : <span className="text-slate-600">0</span>}
                           </td>
                           {/* Qty Distributed — amber */}
                           <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-amber-600">
-                            {distributed > 0 ? fmt(distributed) : <span className="text-slate-300">0</span>}
+                            {distributed > 0 ? fmt(distributed) : <span className="text-slate-600">0</span>}
                           </td>
                           {/* Remaining — green if > 0, red if fully delivered */}
                           <td className={`px-3 py-2.5 text-right tabular-nums font-bold ${
@@ -544,7 +544,7 @@ export default function PRReportPage() {
                               ? "text-red-500 bg-red-50"
                               : remaining > 0
                               ? "text-green-600"
-                              : "text-slate-400"
+                              : "text-slate-600"
                           }`}>
                             {isFull ? "0" : fmt(remaining)}
                           </td>
@@ -561,7 +561,7 @@ export default function PRReportPage() {
               <SectionHeading number="3" title="Distribution" />
 
               {report!.distributions.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-14 gap-2 text-slate-400">
+                <div className="flex flex-col items-center justify-center py-14 gap-2 text-slate-600">
                   <span className="text-3xl">📭</span>
                   <p className="text-sm">No deliveries recorded yet for this PR.</p>
                 </div>
@@ -590,7 +590,7 @@ export default function PRReportPage() {
                           key={`${dist.issueRef}-${i}`}
                           className={i % 2 === 1 ? "bg-slate-50" : "bg-white"}
                         >
-                          <td className="px-3 py-2 text-center text-slate-400">{dist.itemNo}</td>
+                          <td className="px-3 py-2 text-center text-slate-600">{dist.itemNo}</td>
                           <td className="px-3 py-2 text-slate-800 max-w-xs">
                             <span className="truncate block font-bold" title={dist.description}>{dist.description}</span>
                           </td>
@@ -604,17 +604,17 @@ export default function PRReportPage() {
                             </span>
                           </td>
                           <td className="px-3 py-2 text-right tabular-nums font-bold text-slate-800">{fmt(dist.qtyIssued)}</td>
-                          <td className="px-3 py-2 font-mono text-slate-500">{dist.issueRef}</td>
+                          <td className="px-3 py-2 font-mono text-slate-600">{dist.issueRef}</td>
                           <td className="px-3 py-2 text-slate-600">{fmtDate(dist.dateIssued)}</td>
                           <td className="px-3 py-2 text-slate-700">{dist.issuedBy}</td>
-                          <td className="px-3 py-2 text-slate-500">{dist.remarks ?? "—"}</td>
+                          <td className="px-3 py-2 text-slate-600">{dist.remarks ?? "—"}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
 
                   {/* Section 3 footer */}
-                  <div className="px-4 py-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
+                  <div className="px-4 py-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
                     <span>{report!.distributions.length} distribution row{report!.distributions.length !== 1 ? "s" : ""}</span>
                     <span className="font-semibold text-slate-600 tabular-nums">
                       Total Issued: {fmt(report!.distributions.reduce((s, d) => s + d.qtyIssued, 0))}

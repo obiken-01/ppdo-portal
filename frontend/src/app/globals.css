@@ -128,9 +128,9 @@
 }
 
 .tiptap-editor blockquote {
-  border-left: 3px solid #e2e8f0;
+  border-left: 3px solid #E9ECEF; /* slate-200 */
   padding-left: 0.75rem;
-  color: #64748b;
+  color: #6C757D; /* slate-600 — RAL-133, was a hardcoded too-light gray */
   margin: 0.5rem 0;
 }
 
@@ -145,9 +145,9 @@
 .announcement-content h3 { font-size: 1.1rem;  font-weight: 600; color: #1e293b; margin: 0.5rem 0 0.25rem; }
 .announcement-content p  { margin: 0.2rem 0; }
 .announcement-content blockquote {
-  border-left: 3px solid #e2e8f0;
+  border-left: 3px solid #E9ECEF; /* slate-200 */
   padding-left: 0.75rem;
-  color: #64748b;
+  color: #6C757D; /* slate-600 — RAL-133, was a hardcoded too-light gray */
   margin: 0.5rem 0;
 }
 

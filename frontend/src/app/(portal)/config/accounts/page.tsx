@@ -90,7 +90,7 @@ const TYPE_BADGE: Record<AccountType, string> = {
   PS: "bg-info-100 text-info-500",
   MOOE: "bg-amber-100 text-amber-500",
   CO: "bg-green-100 text-green-700",
-  Other: "bg-slate-100 text-slate-500",
+  Other: "bg-slate-100 text-slate-600",
 };
 
 function TypeBadge({ type }: { type: AccountType }) {
@@ -396,7 +396,7 @@ export default function AccountConfigPage() {
       render: (a) => (
         <div>
           <div className="font-medium text-slate-800">{a.accountTitle}</div>
-          {a.description && <div className="text-xs text-slate-400 truncate max-w-md">{a.description}</div>}
+          {a.description && <div className="text-xs text-slate-600 truncate max-w-md">{a.description}</div>}
         </div>
       ),
     },
@@ -404,7 +404,7 @@ export default function AccountConfigPage() {
       key: "normalBalance",
       header: "Normal Balance",
       sortable: true,
-      render: (a) => a.normalBalance ?? <span className="text-slate-300">—</span>,
+      render: (a) => a.normalBalance ?? <span className="text-slate-600">—</span>,
     },
     {
       key: "isActive",
@@ -444,7 +444,7 @@ export default function AccountConfigPage() {
         <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className="text-lg font-bold text-slate-800">Chart of Accounts</h1>
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-slate-600">
               Expense accounts (PS / MOOE / CO) used across AIP and WFP budget planning.
             </p>
           </div>
@@ -476,7 +476,7 @@ export default function AccountConfigPage() {
 
           {/* Type dropdown */}
           <div className="flex items-center gap-2">
-            <label className="text-xs font-medium text-slate-500">Type</label>
+            <label className="text-xs font-medium text-slate-600">Type</label>
             <select
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
@@ -499,7 +499,7 @@ export default function AccountConfigPage() {
                 className={`px-3 py-2 text-sm font-medium transition-colors ${
                   statusFilter === s
                     ? "bg-green-600 text-white"
-                    : "bg-white text-slate-500 hover:bg-slate-50"
+                    : "bg-white text-slate-600 hover:bg-slate-50"
                 }`}
               >
                 {s}
@@ -514,7 +514,7 @@ export default function AccountConfigPage() {
                 setTypeFilter("All");
                 setStatusFilter("Active");
               }}
-              className="text-sm text-slate-400 hover:text-slate-600 transition-colors px-1"
+              className="text-sm text-slate-600 hover:text-slate-600 transition-colors px-1"
             >
               Reset
             </button>
@@ -593,7 +593,7 @@ export default function AccountConfigPage() {
               {numberError ? (
                 <p className="mt-1 text-xs text-danger-500">{numberError}</p>
               ) : (
-                <p className="mt-1 text-[11px] text-slate-400">
+                <p className="mt-1 text-[11px] text-slate-600">
                   Prefix sets the type: 5-01- = PS · 5-02- = MOOE · 5-03- = CO.
                 </p>
               )}
@@ -624,7 +624,7 @@ export default function AccountConfigPage() {
                   </option>
                 ))}
               </select>
-              <p className="mt-1 text-[11px] text-slate-400">
+              <p className="mt-1 text-[11px] text-slate-600">
                 Stored directly — no longer derived from the account number prefix.
               </p>
             </div>
@@ -643,7 +643,7 @@ export default function AccountConfigPage() {
                   </option>
                 ))}
               </select>
-              <p className="mt-1 text-[11px] text-slate-400">
+              <p className="mt-1 text-[11px] text-slate-600">
                 Pre-fills the WFP expenditure&apos;s Nature field when this account is picked — always editable there.
               </p>
             </div>
@@ -658,7 +658,7 @@ export default function AccountConfigPage() {
               />
               <span>
                 <span className="block text-sm font-medium text-slate-700">Reserve applies by default</span>
-                <span className="block text-[11px] text-slate-400">
+                <span className="block text-[11px] text-slate-600">
                   Pre-fills the WFP reserve toggle for this account. Any account may still have the reserve
                   toggle turned on regardless of this setting — it is a default, not an eligibility gate.
                 </span>
@@ -711,7 +711,7 @@ export default function AccountConfigPage() {
               Rows are matched by <span className="font-mono text-xs">account_number</span>: new numbers are
               added and existing ones are updated. Nothing is deleted.
             </p>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-600">
               Expected columns: account_title, account_number, normal_balance, description, is_active.
             </p>
           </div>
@@ -737,7 +737,7 @@ export default function AccountConfigPage() {
                 <p className="text-xs font-semibold text-amber-500 uppercase tracking-wide mb-1">
                   {importResult.errors.length} row{importResult.errors.length === 1 ? "" : "s"} skipped
                 </p>
-                <ul className="max-h-40 overflow-y-auto text-xs text-slate-500 list-disc pl-4 space-y-0.5">
+                <ul className="max-h-40 overflow-y-auto text-xs text-slate-600 list-disc pl-4 space-y-0.5">
                   {importResult.errors.map((e, i) => (
                     <li key={i}>{e}</li>
                   ))}
@@ -783,12 +783,12 @@ function Stat({ label, value, tone }: { label: string; value: number; tone: "gre
   const cls: Record<typeof tone, string> = {
     green: "text-green-700",
     blue: "text-info-500",
-    slate: "text-slate-500",
+    slate: "text-slate-600",
   };
   return (
     <div className="flex-1 border border-slate-200 px-3 py-2 text-center">
       <div className={`text-2xl font-bold ${cls[tone]}`}>{value}</div>
-      <div className="text-[11px] text-slate-400 uppercase tracking-wide">{label}</div>
+      <div className="text-[11px] text-slate-600 uppercase tracking-wide">{label}</div>
     </div>
   );
 }

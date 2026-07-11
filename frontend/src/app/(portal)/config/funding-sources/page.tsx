@@ -363,11 +363,11 @@ export default function FundingSourceConfigPage() {
       header: "Description",
       render: (s) =>
         s.description ? (
-          <span className="text-slate-500" title={s.description}>
+          <span className="text-slate-600" title={s.description}>
             {s.description.length > DESC_MAX ? `${s.description.slice(0, DESC_MAX)}…` : s.description}
           </span>
         ) : (
-          <span className="text-slate-300">—</span>
+          <span className="text-slate-600">—</span>
         ),
     },
     {
@@ -418,7 +418,7 @@ export default function FundingSourceConfigPage() {
         <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className="text-lg font-bold text-slate-800">Funding Sources</h1>
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-slate-600">
               Budget funding sources used as the Source of Fund across AIP and WFP entries.
             </p>
           </div>
@@ -457,7 +457,7 @@ export default function FundingSourceConfigPage() {
                 className={`px-3 py-2 text-sm font-medium transition-colors ${
                   statusFilter === s
                     ? "bg-green-600 text-white"
-                    : "bg-white text-slate-500 hover:bg-slate-50"
+                    : "bg-white text-slate-600 hover:bg-slate-50"
                 }`}
               >
                 {s}
@@ -471,7 +471,7 @@ export default function FundingSourceConfigPage() {
                 setSearch("");
                 setStatusFilter("Active");
               }}
-              className="text-sm text-slate-400 hover:text-slate-600 transition-colors px-1"
+              className="text-sm text-slate-600 hover:text-slate-600 transition-colors px-1"
             >
               Reset
             </button>
@@ -540,11 +540,11 @@ export default function FundingSourceConfigPage() {
               {codeError ? (
                 <p className="mt-1 text-xs text-danger-500">{codeError}</p>
               ) : editTarget ? (
-                <p className="mt-1 text-[11px] text-slate-400">
+                <p className="mt-1 text-[11px] text-slate-600">
                   The code is the unique key and cannot be changed.
                 </p>
               ) : (
-                <p className="mt-1 text-[11px] text-slate-400">e.g. GF, GAD, LDRRMF, SEF, 20DF, TF.</p>
+                <p className="mt-1 text-[11px] text-slate-600">e.g. GF, GAD, LDRRMF, SEF, 20DF, TF.</p>
               )}
             </div>
 
@@ -574,7 +574,7 @@ export default function FundingSourceConfigPage() {
             {/* Color */}
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">
-                Color <span className="text-slate-400 font-normal">(for WFP report total groups)</span>
+                Color <span className="text-slate-600 font-normal">(for WFP report total groups)</span>
               </label>
               <div className="flex items-center gap-3">
                 <input
@@ -585,7 +585,7 @@ export default function FundingSourceConfigPage() {
                   className="w-10 h-9 p-0.5 border border-slate-200 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 />
                 {!form.noColor && (
-                  <span className="font-mono text-xs text-slate-500">{form.color}</span>
+                  <span className="font-mono text-xs text-slate-600">{form.color}</span>
                 )}
                 <label className="flex items-center gap-1.5 text-sm text-slate-600 cursor-pointer select-none">
                   <input
@@ -633,7 +633,7 @@ export default function FundingSourceConfigPage() {
               Rows are matched by <span className="font-mono text-xs">code</span>: new codes are added
               and existing ones are updated. Nothing is deleted.
             </p>
-            <p className="text-xs text-slate-400">Expected columns: code, name, description, color, is_active.</p>
+            <p className="text-xs text-slate-600">Expected columns: code, name, description, color, is_active.</p>
           </div>
         </Modal>
       )}
@@ -657,7 +657,7 @@ export default function FundingSourceConfigPage() {
                 <p className="text-xs font-semibold text-amber-500 uppercase tracking-wide mb-1">
                   {importResult.errors.length} row{importResult.errors.length === 1 ? "" : "s"} skipped
                 </p>
-                <ul className="max-h-40 overflow-y-auto text-xs text-slate-500 list-disc pl-4 space-y-0.5">
+                <ul className="max-h-40 overflow-y-auto text-xs text-slate-600 list-disc pl-4 space-y-0.5">
                   {importResult.errors.map((e, i) => (
                     <li key={i}>{e}</li>
                   ))}
@@ -703,12 +703,12 @@ function Stat({ label, value, tone }: { label: string; value: number; tone: "gre
   const cls: Record<typeof tone, string> = {
     green: "text-green-700",
     blue: "text-info-500",
-    slate: "text-slate-500",
+    slate: "text-slate-600",
   };
   return (
     <div className="flex-1 border border-slate-200 px-3 py-2 text-center">
       <div className={`text-2xl font-bold ${cls[tone]}`}>{value}</div>
-      <div className="text-[11px] text-slate-400 uppercase tracking-wide">{label}</div>
+      <div className="text-[11px] text-slate-600 uppercase tracking-wide">{label}</div>
     </div>
   );
 }
