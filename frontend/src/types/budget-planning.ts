@@ -464,6 +464,75 @@ export interface WfpActivityRefDto {
   wfpStatus: "Draft" | "Final";
 }
 
+// ── WFP Report preview (RAL-132) ───────────────────────────────────────────────
+// Mirrors PPDO.Application/DTOs/BudgetPlanning/WfpReportDtos.cs.
+
+export interface WfpReportOfficeDto {
+  officeId: number;
+  officeCode: string;
+  officeName: string;
+  wfpStatus: "Draft" | "Final";
+}
+
+export interface WfpReportAmountsDto {
+  totalAppropriation: number;
+  reserved: number;
+  netAppropriation: number;
+  q1: number;
+  q2: number;
+  q3: number;
+  q4: number;
+  amountToBeReleased: number;
+}
+
+export interface WfpReportRowDto {
+  nature: string;
+  accountNumber: string | null;
+  accountTitle: string | null;
+  amounts: WfpReportAmountsDto;
+}
+
+export interface WfpReportExpenseClassGroupDto {
+  expenseClass: string;
+  expenseClassLabel: string;
+  rows: WfpReportRowDto[];
+  subTotal: WfpReportAmountsDto;
+}
+
+export interface WfpReportActivityDto {
+  refCode: string;
+  name: string;
+  isCreation: boolean;
+  expenseClasses: WfpReportExpenseClassGroupDto[];
+  grandTotal: WfpReportAmountsDto;
+}
+
+export interface WfpReportProjectDto {
+  refCode: string;
+  name: string;
+  activities: WfpReportActivityDto[];
+}
+
+export interface WfpReportProgramDto {
+  refCode: string;
+  name: string;
+  projects: WfpReportProjectDto[];
+}
+
+export interface WfpReportFunctionBandSectionDto {
+  functionBand: string;
+  functionBandLabel: string;
+  programs: WfpReportProgramDto[];
+}
+
+export interface WfpReportDto {
+  fiscalYear: number;
+  officeCode: string;
+  officeName: string;
+  reserveRate: number;
+  sections: WfpReportFunctionBandSectionDto[];
+}
+
 // ── Allocation (RAL-99/101) ───────────────────────────────────────────────────
 
 export interface BudgetCeilingDto {
