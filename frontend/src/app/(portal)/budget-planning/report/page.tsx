@@ -140,7 +140,27 @@ function ReportTable({ report }: { report: WfpReportDto }) {
 
   return (
     <div className="overflow-x-auto border border-slate-300">
-      <table className="w-full text-xs border-collapse min-w-[1400px]">
+      {/* table-layout: fixed + an explicit colgroup — with 13 columns whose content length
+          varies wildly by row (a bare ref code vs. a multi-hundred-character activity name),
+          table-layout: auto lets different rows disagree on where column boundaries fall,
+          especially once cells in different rows span different numbers of columns. Fixed
+          layout forces every row onto the exact same 13-column grid regardless of content. */}
+      <table className="w-full text-xs border-collapse min-w-[1500px]" style={{ tableLayout: "fixed" }}>
+        <colgroup>
+          <col style={{ width: "9%" }} />
+          <col style={{ width: "17%" }} />
+          <col style={{ width: "6%" }} />
+          <col style={{ width: "8%" }} />
+          <col style={{ width: "13%" }} />
+          <col style={{ width: "6.5%" }} />
+          <col style={{ width: "5.5%" }} />
+          <col style={{ width: "6.5%" }} />
+          <col style={{ width: "5.5%" }} />
+          <col style={{ width: "5.5%" }} />
+          <col style={{ width: "5.5%" }} />
+          <col style={{ width: "5.5%" }} />
+          <col style={{ width: "6.5%" }} />
+        </colgroup>
         <thead>
           <tr className="bg-green-800 text-white">
             {COLUMN_HEADERS.map((h) => (
@@ -207,7 +227,7 @@ function ReportTable({ report }: { report: WfpReportDto }) {
                 return (
                   <tr key={i}>
                     <td className="border border-slate-200" />
-                    <td colSpan={2} className="border border-slate-200" />
+                    <td className="border border-slate-200" />
                     <td className="px-2 py-1 text-slate-600 border border-slate-200 whitespace-nowrap">{row.row.nature}</td>
                     <td className="px-2 py-1 font-mono text-slate-500 border border-slate-200 whitespace-nowrap">
                       {row.row.accountNumber ?? "—"}
