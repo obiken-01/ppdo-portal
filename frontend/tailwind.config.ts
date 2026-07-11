@@ -83,7 +83,7 @@ const config: Config = {
         // visually lighter than slate-600.
         slate: {
           800: "#343A40", // Footer
-          600: "#6C757D", // Body text, labels — the only AA-safe token, ~4.7:1 on white
+          600: "#5A636B", // Body text, labels — the only AA-safe token, ~6.1:1 on white (darkened per Ralph's live review)
           500: "#7D858C", // Secondary/decorative tone only (~3.8:1) — NOT for label/body text
           400: "#ADB5BD", // Disabled, muted — NOT for readable text
           300: "#C7CFD6", // Decorative only (dividers, chevrons) — NOT for readable text
