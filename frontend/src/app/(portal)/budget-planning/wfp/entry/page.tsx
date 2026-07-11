@@ -1027,16 +1027,19 @@ function WfpEntryPageInner() {
               <select
                 value={selectedDivisionId ?? ""}
                 onChange={(e) => setSelectedDivisionId(e.target.value ? Number(e.target.value) : null)}
-                className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600"
+                className="w-48 truncate border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600"
               >
                 <option value="">— select division —</option>
                 {divisionList.map((d) => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
+                  <option key={d.id} value={d.id}>{d.code ? `${d.code} — ${d.name}` : d.name}</option>
                 ))}
               </select>
             ) : (
-              <span className="text-sm text-slate-700 px-2 py-1.5 border border-slate-200 bg-slate-50">
-                {divisionList.find((d) => d.id === selectedDivisionId)?.name ?? me?.division ?? "—"}
+              <span className="w-48 truncate text-sm text-slate-700 px-2 py-1.5 border border-slate-200 bg-slate-50">
+                {(() => {
+                  const div = divisionList.find((d) => d.id === selectedDivisionId);
+                  return div ? (div.code ? `${div.code} — ${div.name}` : div.name) : me?.division ?? "—";
+                })()}
               </span>
             )}
           </div>
