@@ -522,7 +522,14 @@ export interface WfpReportProgramDto {
   grandTotal: WfpReportAmountsDto;
 }
 
-export interface WfpReportSectionBreakdownDto {
+export interface WfpReportFunctionBandSectionDto {
+  functionBand: string;
+  functionBandLabel: string;
+  programs: WfpReportProgramDto[];
+}
+
+/** Appears once per fund source (after its last section), not once per function-band section. */
+export interface WfpReportBreakdownDto {
   personalServices: WfpReportAmountsDto;
   mooeExcludingCreation: WfpReportAmountsDto;
   capitalOutlay: WfpReportAmountsDto;
@@ -531,16 +538,10 @@ export interface WfpReportSectionBreakdownDto {
   grandTotal: WfpReportAmountsDto;
 }
 
-export interface WfpReportFunctionBandSectionDto {
-  functionBand: string;
-  functionBandLabel: string;
-  programs: WfpReportProgramDto[];
-  breakdown: WfpReportSectionBreakdownDto;
-}
-
 export interface WfpReportFundSourceDto {
   fundSourceName: string;
   sections: WfpReportFunctionBandSectionDto[];
+  breakdown: WfpReportBreakdownDto;
 }
 
 export interface WfpReportDto {

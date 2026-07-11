@@ -541,7 +541,7 @@ public sealed class WfpReportServiceTests
         ServiceResult<WfpReportDto> result = await f.Sut.GetReportAsync(1, FiscalYear);
 
         Assert.True(result.IsSuccess);
-        WfpReportSectionBreakdownDto breakdown = result.Value!.FundSourceReports.Single().Sections.Single().Breakdown;
+        WfpReportBreakdownDto breakdown = result.Value!.FundSourceReports.Single().Breakdown;
 
         Assert.Equal(10000, breakdown.PersonalServices.NetAppropriation);
         Assert.Equal(3000, breakdown.MooeExcludingCreation.NetAppropriation);
@@ -550,6 +550,60 @@ public sealed class WfpReportServiceTests
         Assert.Equal(1000, breakdown.MooeCreation.NetAppropriation);
         // GrandTotal = 10000 + 3000 + 5000 + 20000 + 1000 = 39000, matching both activities' totals.
         Assert.Equal(39000, breakdown.GrandTotal.NetAppropriation);
+    }
+
+    [Fact]
+    public async Task GetReportAsync_Breakdown_IsOnePerFundSource_NotOnePerFunctionBandSection()
+    {
+        Fixture f = Build();
+        f.Offices.Add(MakeOffice(1, "PPDO", "013"));
+        f.AipRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipRecord>)[MakeAip(100, FiscalYear, PlanningStatus.Draft)]);
+        f.AipRepo.Setup(r => r.GetOfficesByAipIdAsync(100, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipOffice>)[MakeAipOffice(1, 100, "3000-000-1-01-013")]);
+
+        // Two programs in TWO DIFFERENT function-band sections (CORE and STRATEGIC).
+        AipProgram coreProgram = MakeProgram(1, 1, "PGM-CORE", "CORE");
+        AipProgram strategicProgram = MakeProgram(2, 1, "PGM-STRATEGIC", "STRATEGIC");
+        f.AipRepo.Setup(r => r.GetProgramsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipProgram>)[coreProgram, strategicProgram]);
+        AipProject coreProject = MakeProject(10, 1, "PRJ-CORE");
+        AipProject strategicProject = MakeProject(11, 2, "PRJ-STRATEGIC");
+        f.AipRepo.Setup(r => r.GetProjectsByProgramIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipProject>)[coreProject, strategicProject]);
+        AipActivity coreActivity = MakeActivity(100, 10, "ACT-CORE");
+        AipActivity strategicActivity = MakeActivity(101, 11, "ACT-STRATEGIC");
+        f.AipRepo.Setup(r => r.GetActivitiesByProjectIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipActivity>)[coreActivity, strategicActivity]);
+
+        f.WfpRepo.Setup(r => r.GetFilteredAsync(100, 1, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpRecord>)[
+                new WfpRecord { Id = 1000, AipRecordId = 100, OfficeId = 1, DivisionId = 1, FiscalYear = FiscalYear, Status = PlanningStatus.Draft },
+            ]);
+        f.WfpRepo.Setup(r => r.GetActivitiesByWfpIdAsync(1000, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpActivity>)[
+                new WfpActivity { Id = 500, WfpId = 1000, AipActivityId = 100 },
+                new WfpActivity { Id = 501, WfpId = 1000, AipActivityId = 101 },
+            ]);
+        f.Accounts.Add(MakeAccount(1, "5-02-03-010", "Office Supplies Expenses", "MOOE"));
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
+                MakeExpenditure(1, 500, 1, "5-02-03-010", "Office Supplies Expenses", net: 1000, total: 1000),
+            ]);
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(501, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
+                MakeExpenditure(2, 501, 1, "5-02-03-010", "Office Supplies Expenses", net: 2000, total: 2000),
+            ]);
+
+        ServiceResult<WfpReportDto> result = await f.Sut.GetReportAsync(1, FiscalYear);
+
+        Assert.True(result.IsSuccess);
+        WfpReportFundSourceDto fundReport = result.Value!.FundSourceReports.Single();
+        // Two sections (CORE + STRATEGIC), but exactly ONE breakdown for the whole fund source,
+        // combining both sections' MOOE totals (1000 + 2000 = 3000) — not one breakdown each.
+        Assert.Equal(2, fundReport.Sections.Count);
+        Assert.Equal(3000, fundReport.Breakdown.MooeExcludingCreation.NetAppropriation);
+        Assert.Equal(3000, fundReport.Breakdown.GrandTotal.NetAppropriation);
     }
 
     [Fact]

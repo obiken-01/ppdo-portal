@@ -84,29 +84,32 @@ public record WfpReportProgramDto(
     WfpReportAmountsDto GrandTotal);
 
 /// <summary>
-/// The function-band section's closing summary block (WFP FINAL sheet rows "TOTAL - PERSONAL
-/// SERVICES" through "GRAND-TOTAL") — every activity in the section split by expense class,
-/// with Personal Services and MOOE further split by the activity's IsCreation flag (RAL-126;
-/// the checkbox is documented as "GF, PS, position-creation only", so Capital Outlay has no
-/// creation split). GrandTotal sums all five buckets and equals the section's overall total.
-/// </summary>
-public record WfpReportSectionBreakdownDto(
-    WfpReportAmountsDto PersonalServices,
-    WfpReportAmountsDto MooeExcludingCreation,
-    WfpReportAmountsDto CapitalOutlay,
-    WfpReportAmountsDto PersonalServicesCreation,
-    WfpReportAmountsDto MooeCreation,
-    WfpReportAmountsDto GrandTotal);
-
-/// <summary>
 /// One function-band section (CORE FUNCTIONS / STRATEGIC FUNCTIONS / SUPPORT FUNCTIONS /
 /// UNASSIGNED FUNCTIONS for programs with no band set — RAL-126).
 /// </summary>
 public record WfpReportFunctionBandSectionDto(
     string   FunctionBand,
     string   FunctionBandLabel,
-    IReadOnlyList<WfpReportProgramDto> Programs,
-    WfpReportSectionBreakdownDto Breakdown);
+    IReadOnlyList<WfpReportProgramDto> Programs);
+
+/// <summary>
+/// The closing summary block (WFP FINAL sheet rows "TOTAL - PERSONAL SERVICES" through
+/// "GRAND-TOTAL") for one fund source — every activity across ALL of that fund's function-band
+/// sections, split by expense class, with Personal Services and MOOE further split by the
+/// activity's IsCreation flag (RAL-126; the checkbox is documented as "GF, PS,
+/// position-creation only", so Capital Outlay has no creation split). This appears ONCE per
+/// fund source block, after its last section — NOT once per function-band section, matching
+/// the reference sheet (WFP-Copy_NEW.xlsx confirmed: the breakdown sits right before the next
+/// fund source's own header, after CORE/STRATEGIC/SUPPORT have all been listed). GrandTotal
+/// sums all five buckets and equals the fund source's overall total.
+/// </summary>
+public record WfpReportBreakdownDto(
+    WfpReportAmountsDto PersonalServices,
+    WfpReportAmountsDto MooeExcludingCreation,
+    WfpReportAmountsDto CapitalOutlay,
+    WfpReportAmountsDto PersonalServicesCreation,
+    WfpReportAmountsDto MooeCreation,
+    WfpReportAmountsDto GrandTotal);
 
 /// <summary>
 /// One fund source's full report block — the WFP FINAL sheet repeats the ENTIRE header +
@@ -117,7 +120,8 @@ public record WfpReportFunctionBandSectionDto(
 /// </summary>
 public record WfpReportFundSourceDto(
     string   FundSourceName,
-    IReadOnlyList<WfpReportFunctionBandSectionDto> Sections);
+    IReadOnlyList<WfpReportFunctionBandSectionDto> Sections,
+    WfpReportBreakdownDto Breakdown);
 
 /// <summary>The full WFP report preview for one office + fiscal year (RAL-132).</summary>
 public record WfpReportDto(

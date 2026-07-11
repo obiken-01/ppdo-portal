@@ -12,12 +12,15 @@
  * that: one full ReportTable per `report.fundSourceReports` entry. Within each fund's table:
  *   function band section -> program -> project -> activity -> expense-class subsection
  *   (PERSONAL SERVICES / MAINTENANCE AND OTHER OPERATING EXPENSES / CAPITAL OUTLAY) with a
- *   SUB-TOTAL row -> ACTIVITY GRAND TOTAL -> PROJECT GRAND TOTAL -> PROGRAM GRAND TOTAL, and
- *   each section closes with the sheet's TOTAL - PERSONAL SERVICES / MOOE (Excluding Creation)
- *   / CAPITAL OUTLAY / PERSONAL SERVICES CREATION / MOOE - CREATION / GRAND-TOTAL breakdown
+ *   SUB-TOTAL row -> ACTIVITY GRAND TOTAL -> PROJECT GRAND TOTAL -> PROGRAM GRAND TOTAL. The
+ *   fund source's whole table (every CORE/STRATEGIC/SUPPORT/UNASSIGNED section) closes ONCE
+ *   with the sheet's TOTAL - PERSONAL SERVICES / MOOE (Excluding Creation) / CAPITAL OUTLAY /
+ *   PERSONAL SERVICES CREATION / MOOE - CREATION / GRAND-TOTAL breakdown — not once per section
  *   (Personal Services and MOOE are split by the activity's "…-CREATION" flag — RAL-126; the
  *   flag is documented as "GF, PS, position-creation only", so Capital Outlay has no creation
- *   split, matching the reference sheet).
+ *   split, matching the reference sheet). ACTIVITY/PROJECT/PROGRAM GRAND TOTAL labels align
+ *   under the "Nature" column header with their ref code in the "Account Code" column; the
+ *   TOTAL - * breakdown labels align under "Account Code", matching the reference sheet.
  *
  * The sheet's SECTOR column is included (AipOffice.Sector, mapped to the sheet's exact labels
  * server-side — WfpReportService), but its five narrative columns (Resources Needed,
@@ -45,6 +48,7 @@ import { useToast } from "@/components/ui/Toast";
 import { formatMoney } from "@/lib/money";
 import type {
   WfpReportAmountsDto,
+  WfpReportBreakdownDto,
   WfpReportDto,
   WfpReportFundSourceDto,
   WfpReportOfficeDto,
@@ -99,15 +103,20 @@ function flattenSections(sections: WfpReportFundSourceDto["sections"]): ReportRo
       }
       rows.push({ type: "programGrandTotal", refCode: program.refCode, amounts: program.grandTotal });
     }
-    const b = section.breakdown;
-    rows.push({ type: "breakdownLine", label: "TOTAL - PERSONAL SERVICES", amounts: b.personalServices });
-    rows.push({ type: "breakdownLine", label: "TOTAL - MOOE (Excluding Creation)", amounts: b.mooeExcludingCreation });
-    rows.push({ type: "breakdownLine", label: "TOTAL - CAPITAL OUTLAY", amounts: b.capitalOutlay });
-    rows.push({ type: "breakdownLine", label: "TOTAL - PERSONAL SERVICES CREATION", amounts: b.personalServicesCreation });
-    rows.push({ type: "breakdownLine", label: "TOTAL - MOOE - CREATION", amounts: b.mooeCreation });
-    rows.push({ type: "breakdownLine", label: "GRAND-TOTAL", amounts: b.grandTotal, emphasis: true });
   }
   return rows;
+}
+
+/** The fund source's closing summary — appears once, after every section, not once per section. */
+function flattenBreakdown(b: WfpReportBreakdownDto): ReportRow[] {
+  return [
+    { type: "breakdownLine", label: "TOTAL - PERSONAL SERVICES", amounts: b.personalServices },
+    { type: "breakdownLine", label: "TOTAL - MOOE (Excluding Creation)", amounts: b.mooeExcludingCreation },
+    { type: "breakdownLine", label: "TOTAL - CAPITAL OUTLAY", amounts: b.capitalOutlay },
+    { type: "breakdownLine", label: "TOTAL - PERSONAL SERVICES CREATION", amounts: b.personalServicesCreation },
+    { type: "breakdownLine", label: "TOTAL - MOOE - CREATION", amounts: b.mooeCreation },
+    { type: "breakdownLine", label: "GRAND-TOTAL", amounts: b.grandTotal, emphasis: true },
+  ];
 }
 
 // ---------------------------------------------------------------------------
@@ -160,8 +169,8 @@ function RefCodeCell({ refCode, indent }: { refCode: string; indent: number }) {
   );
 }
 
-function ReportTable({ sections }: { sections: WfpReportFundSourceDto["sections"] }) {
-  const rows = flattenSections(sections);
+function ReportTable({ sections, breakdown }: { sections: WfpReportFundSourceDto["sections"]; breakdown: WfpReportBreakdownDto }) {
+  const rows = [...flattenSections(sections), ...flattenBreakdown(breakdown)];
 
   return (
     <div className="border border-slate-300 max-h-[70vh] overflow-auto">
@@ -256,34 +265,38 @@ function ReportTable({ sections }: { sections: WfpReportFundSourceDto["sections"
               case "activityGrandTotal":
                 return (
                   <tr key={i} className="bg-green-50 font-semibold text-green-800">
-                    <td colSpan={6} className="px-2 py-1 pl-8 border border-slate-200">
-                      ACTIVITY GRAND TOTAL — {row.refCode}
-                    </td>
+                    <td colSpan={3} className="border border-slate-200" />
+                    <td className="px-2 py-1 border border-slate-200">ACTIVITY GRAND TOTAL</td>
+                    <td className="px-2 py-1 font-mono border border-slate-200 break-words">{row.refCode}</td>
+                    <td className="border border-slate-200" />
                     <AmountsCells amounts={row.amounts} className="border border-slate-200" />
                   </tr>
                 );
               case "projectGrandTotal":
                 return (
                   <tr key={i} className="bg-green-100 font-semibold text-green-800">
-                    <td colSpan={6} className="px-2 py-1 pl-4 border border-slate-200">
-                      PROJECT GRAND TOTAL — {row.refCode}
-                    </td>
+                    <td colSpan={3} className="border border-slate-200" />
+                    <td className="px-2 py-1 border border-slate-200">PROJECT GRAND TOTAL</td>
+                    <td className="px-2 py-1 font-mono border border-slate-200 break-words">{row.refCode}</td>
+                    <td className="border border-slate-200" />
                     <AmountsCells amounts={row.amounts} className="border border-slate-200" />
                   </tr>
                 );
               case "programGrandTotal":
                 return (
                   <tr key={i} className="bg-green-200 font-semibold text-green-900">
-                    <td colSpan={6} className="px-2 py-1 border border-slate-200">
-                      PROGRAM GRAND TOTAL — {row.refCode}
-                    </td>
+                    <td colSpan={3} className="border border-slate-200" />
+                    <td className="px-2 py-1 border border-slate-200">PROGRAM GRAND TOTAL</td>
+                    <td className="px-2 py-1 font-mono border border-slate-200 break-words">{row.refCode}</td>
+                    <td className="border border-slate-200" />
                     <AmountsCells amounts={row.amounts} className="border border-slate-200" />
                   </tr>
                 );
               case "breakdownLine":
                 return (
                   <tr key={i} className={row.emphasis ? "bg-slate-800 text-white font-bold" : "bg-slate-100 font-medium text-slate-700"}>
-                    <td colSpan={6} className="px-2 py-1.5 border border-slate-200">{row.label}</td>
+                    <td colSpan={4} className="border border-slate-200" />
+                    <td colSpan={2} className="px-2 py-1.5 border border-slate-200">{row.label}</td>
                     <AmountsCells amounts={row.amounts} className={`border border-slate-200 ${row.emphasis ? "" : "text-slate-700"}`} />
                   </tr>
                 );
@@ -311,7 +324,7 @@ function FundSourceBlock({ report, fundReport }: { report: WfpReportDto; fundRep
           Equiv. to {(report.reserveRate * 100).toFixed(0)}% of Operational Expenses
         </p>
       </div>
-      <ReportTable sections={fundReport.sections} />
+      <ReportTable sections={fundReport.sections} breakdown={fundReport.breakdown} />
     </div>
   );
 }
