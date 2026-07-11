@@ -265,6 +265,14 @@ function ExpenditureWizard({
       numberOfDays: i.numberOfDays,
     })) ?? []
   );
+  // Combined-nature entry toggles (RAL-131) — which of the two sub-sections are open. Default
+  // open when editing an expenditure that already has data in that section.
+  const [showProcurementSection, setShowProcurementSection] = useState(
+    (editingExpenditure?.procurementItems.length ?? 0) > 0
+  );
+  const [showNonProcurementSection, setShowNonProcurementSection] = useState(
+    (editingExpenditure?.periods.length ?? 0) > 0
+  );
   const [saving, setSaving] = useState(false);
   const [confirm, setConfirm] = useState<ConfirmDialogProps | null>(null);
 
@@ -279,6 +287,19 @@ function ExpenditureWizard({
     applyReserve ? reserveAmount ?? 0 : 0,
     annualQuarterChoice
   ).total;
+
+  // Combined-nature summary strip (RAL-131) — same merge as pendingTotal above, but resolves
+  // an unset reserveAmount to the rate x Net default for display, matching how
+  // WfpFrequencyGrid/WfpProcurementItemTable each already display their own (partial) totals.
+  const combinedNet = computeWfpRollUpPreview(
+    frequency,
+    mergeWfpPeriodAndItemAmounts(periods, procurementItems),
+    0,
+    annualQuarterChoice
+  ).net;
+  const combinedResolvedReserve = applyReserve ? reserveAmount ?? combinedNet * reserveRate : 0;
+  const combinedTotal = combinedNet + combinedResolvedReserve;
+
   const { status, checking, overAip, overDivision, wouldBeAipUsed, wouldBeDivisionUsed } =
     useCeilingStatus(
       aipActivityId, divisionId, fiscalYear, pendingTotal, 0,
@@ -319,11 +340,15 @@ function ExpenditureWizard({
           setNature(next);
           setPeriods([]);
           setProcurementItems([]);
+          setShowProcurementSection(false);
+          setShowNonProcurementSection(false);
         },
         onClose: () => setConfirm(null),
       });
     } else {
       setNature(next);
+      setShowProcurementSection(false);
+      setShowNonProcurementSection(false);
     }
   }
 
@@ -351,9 +376,7 @@ function ExpenditureWizard({
       });
       toast.success(
         isEditing ? "Expenditure updated" : "Expenditure saved",
-        nature === "Combined"
-          ? `Total: ₱${formatMoney(saved.totalAppropriation)} (periods only — procurement items for Combined are pending definition).`
-          : `Total: ₱${formatMoney(saved.totalAppropriation)}.`
+        `Total: ₱${formatMoney(saved.totalAppropriation)}.`
       );
       onSaved(saved);
     } catch (err) {
@@ -511,17 +534,122 @@ function ExpenditureWizard({
         </div>
 
         {/* 9. Amounts — frequency grid (RAL-124) for Non-Procurement periods; procurement item
-               table (RAL-125) for Procurement. Combined is a placeholder either way (§5.3 —
-               what "Combined" means operationally is still an open question for the team, epic
-               RAL-116; we don't guess at it here). */}
+               table (RAL-125) for Procurement. Combined (RAL-131, resolving §11 Q2) lets the
+               user open either or both sections under one expenditure — the backend already
+               merges periods + procurement items unconditionally (WfpExpenditureCalculator). */}
         {nature === "Combined" ? (
-          <div className="px-4 py-6 border border-dashed border-slate-300 bg-slate-50 text-center">
-            <p className="text-sm text-slate-500">Combined entry — pending definition, contact PPDO.</p>
-            <p className="mt-1 text-xs text-slate-400">
-              What &quot;Combined&quot; nature means operationally is still an open question
-              (epic RAL-116). Saving now creates a ₱0 placeholder expenditure you can edit once
-              that&apos;s resolved.
-            </p>
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              {!showProcurementSection && (
+                <button
+                  type="button"
+                  onClick={() => setShowProcurementSection(true)}
+                  className="px-3 py-1.5 text-sm font-medium text-green-700 border border-green-600 hover:bg-green-50"
+                >
+                  + Add Procurement Items
+                </button>
+              )}
+              {!showNonProcurementSection && (
+                <button
+                  type="button"
+                  onClick={() => setShowNonProcurementSection(true)}
+                  className="px-3 py-1.5 text-sm font-medium text-green-700 border border-green-600 hover:bg-green-50"
+                >
+                  + Add Non-Procurement Amounts
+                </button>
+              )}
+            </div>
+
+            {!showProcurementSection && !showNonProcurementSection && (
+              <p className="px-4 py-6 border border-dashed border-slate-300 bg-slate-50 text-center text-sm text-slate-400">
+                Add procurement items, non-procurement amounts, or both under this expenditure.
+              </p>
+            )}
+
+            {showProcurementSection && (
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide">
+                    Procurement Items
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowProcurementSection(false);
+                      setProcurementItems([]);
+                    }}
+                    className="text-xs text-danger-500 hover:underline"
+                  >
+                    Remove section
+                  </button>
+                </div>
+                <WfpProcurementItemTable
+                  frequency={frequency}
+                  accountId={accountId}
+                  procurementItems={procurementItems}
+                  onProcurementItemsChange={setProcurementItems}
+                  priceIndex={priceIndex}
+                  annualQuarterChoice={annualQuarterChoice}
+                  onAnnualQuarterChoiceChange={setAnnualQuarterChoice}
+                  applyReserve={applyReserve}
+                  reserveAmount={reserveAmount}
+                  reserveRate={reserveRate}
+                />
+              </div>
+            )}
+
+            {showNonProcurementSection && (
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide">
+                    Non-Procurement Amounts
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowNonProcurementSection(false);
+                      setPeriods([]);
+                    }}
+                    className="text-xs text-danger-500 hover:underline"
+                  >
+                    Remove section
+                  </button>
+                </div>
+                <WfpFrequencyGrid
+                  frequency={frequency}
+                  periods={periods}
+                  onPeriodsChange={setPeriods}
+                  annualQuarterChoice={annualQuarterChoice}
+                  onAnnualQuarterChoiceChange={setAnnualQuarterChoice}
+                  applyReserve={applyReserve}
+                  reserveAmount={reserveAmount}
+                  reserveRate={reserveRate}
+                />
+              </div>
+            )}
+
+            {(showProcurementSection || showNonProcurementSection) && (
+              <div className="flex items-center justify-end gap-4 pt-2 border-t border-slate-200 text-sm">
+                <span className="text-slate-500">
+                  Net{" "}
+                  <span className="font-mono tabular-nums text-slate-700">
+                    ₱{formatMoney(combinedNet)}
+                  </span>
+                </span>
+                {applyReserve && (
+                  <span className="text-slate-500">
+                    Reserved{" "}
+                    <span className="font-mono tabular-nums text-slate-700">
+                      ₱{formatMoney(combinedResolvedReserve)}
+                    </span>
+                  </span>
+                )}
+                <span className="font-semibold text-slate-800">
+                  Combined Total{" "}
+                  <span className="font-mono tabular-nums">₱{formatMoney(combinedTotal)}</span>
+                </span>
+              </div>
+            )}
           </div>
         ) : nature === "Procurement" ? (
           <div>
@@ -1096,7 +1224,7 @@ function WfpEntryPageInner() {
                     entered: {formatMoney(ceilingStatus.aipUsed)}
                   </span>
                 </div>
-                {progressBar(ceilingStatus.aipUsed, ceilingStatus.aipBudget)}
+                {progressBar(ceilingStatus.aipUsed, ceilingStatus.aipBudget, "bg-red-500", "bg-info-500")}
               </div>
             )}
           </div>
