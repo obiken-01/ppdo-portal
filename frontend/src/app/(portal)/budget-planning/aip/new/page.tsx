@@ -85,7 +85,7 @@ export default function AipNewPage() {
     <div className="px-6 py-4">
       {/* Header */}
       <h1 className="text-xl font-bold text-slate-800 mb-0.5">Create New AIP</h1>
-      <p className="text-sm text-slate-500 mb-4">Upload an .xlsm file to import an Annual Investment Program.</p>
+      <p className="text-sm text-slate-600 mb-4">Upload an .xlsm file to import an Annual Investment Program.</p>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
         {/* ── Left column: form ── */}
@@ -97,7 +97,7 @@ export default function AipNewPage() {
               className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
                 activeTab === "upload"
                   ? "border-green-700 text-green-700"
-                  : "border-transparent text-slate-500 hover:text-slate-700"
+                  : "border-transparent text-slate-600 hover:text-slate-700"
               }`}
             >
               Upload File
@@ -130,7 +130,7 @@ export default function AipNewPage() {
               {/* Link to LDIP */}
               <div>
                 <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
-                  Link to LDIP <span className="text-slate-400 font-normal normal-case">(optional)</span>
+                  Link to LDIP <span className="text-slate-600 font-normal normal-case">(optional)</span>
                 </label>
                 <select
                   disabled
@@ -150,7 +150,7 @@ export default function AipNewPage() {
                   <div className="border border-slate-200 bg-slate-50 px-4 py-3 flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-slate-700">{file.name}</p>
-                      <p className="text-xs text-slate-500">{formatBytes(file.size)}</p>
+                      <p className="text-xs text-slate-600">{formatBytes(file.size)}</p>
                     </div>
                     <button
                       onClick={() => { setFile(null); setFileError(null); }}
@@ -170,11 +170,11 @@ export default function AipNewPage() {
                   >
                     <span className="text-3xl mb-2">📁</span>
                     <p className="text-sm text-slate-600 mb-1">Drag &amp; drop your .xlsm file here</p>
-                    <p className="text-xs text-slate-400 mb-3">or</p>
+                    <p className="text-xs text-slate-600 mb-3">or</p>
                     <span className="px-4 py-1.5 border border-slate-300 text-sm text-slate-600 bg-white hover:bg-slate-50">
                       Browse File
                     </span>
-                    <p className="text-xs text-slate-400 mt-3">Accepts .xlsm files up to 20 MB</p>
+                    <p className="text-xs text-slate-600 mt-3">Accepts .xlsm files up to 20 MB</p>
                     <input ref={fileInputRef} type="file" accept=".xlsm" className="hidden" onChange={handleFileInput} />
                   </label>
                 )}
@@ -213,7 +213,7 @@ export default function AipNewPage() {
         <div className="lg:col-span-2 space-y-3">
           {/* Steps */}
           <div className="bg-slate-50 border border-slate-200 p-4">
-            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2.5">How it works</h3>
+            <h3 className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2.5">How it works</h3>
             <ol className="space-y-2">
               {[
                 ["Select fiscal year", "Choose the year this AIP covers."],
@@ -227,7 +227,7 @@ export default function AipNewPage() {
                   </span>
                   <div>
                     <p className="text-sm font-medium text-slate-700">{title}</p>
-                    <p className="text-xs text-slate-500 mt-0.5">{desc}</p>
+                    <p className="text-xs text-slate-600 mt-0.5">{desc}</p>
                   </div>
                 </li>
               ))}
@@ -236,7 +236,7 @@ export default function AipNewPage() {
 
           {/* File requirements */}
           <div className="bg-slate-50 border border-slate-200 p-4">
-            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2.5">File Requirements</h3>
+            <h3 className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2.5">File Requirements</h3>
             <ul className="space-y-1.5">
               {[
                 "Must be an Excel macro file (.xlsm)",

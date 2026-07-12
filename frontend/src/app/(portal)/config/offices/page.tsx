@@ -329,7 +329,7 @@ export default function OfficeConfigPage() {
       key: "officeRefCode",
       header: "AIP Ref",
       render: (o) => (
-        <span className="font-mono text-xs text-slate-500">{o.officeRefCode ?? "—"}</span>
+        <span className="font-mono text-xs text-slate-600">{o.officeRefCode ?? "—"}</span>
       ),
     },
     {
@@ -386,7 +386,7 @@ export default function OfficeConfigPage() {
         <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className="text-lg font-bold text-slate-800">Offices</h1>
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-slate-600">
               Provincial government offices used as planning scope across AIP and WFP.
             </p>
           </div>
@@ -425,7 +425,7 @@ export default function OfficeConfigPage() {
                 className={`px-3 py-2 text-sm font-medium transition-colors ${
                   statusFilter === s
                     ? "bg-green-600 text-white"
-                    : "bg-white text-slate-500 hover:bg-slate-50"
+                    : "bg-white text-slate-600 hover:bg-slate-50"
                 }`}
               >
                 {s}
@@ -439,7 +439,7 @@ export default function OfficeConfigPage() {
                 setSearch("");
                 setStatusFilter("Active");
               }}
-              className="text-sm text-slate-400 hover:text-slate-600 transition-colors px-1"
+              className="text-sm text-slate-600 hover:text-slate-600 transition-colors px-1"
             >
               Reset
             </button>
@@ -508,11 +508,11 @@ export default function OfficeConfigPage() {
               {codeError ? (
                 <p className="mt-1 text-xs text-danger-500">{codeError}</p>
               ) : editTarget ? (
-                <p className="mt-1 text-[11px] text-slate-400">
+                <p className="mt-1 text-[11px] text-slate-600">
                   The office code is the unique key and cannot be changed.
                 </p>
               ) : (
-                <p className="mt-1 text-[11px] text-slate-400">
+                <p className="mt-1 text-[11px] text-slate-600">
                   Short code shown as stored, e.g. PGO, SPO, PPDO.
                 </p>
               )}
@@ -532,7 +532,7 @@ export default function OfficeConfigPage() {
             {/* AIP Ref Code Suffix */}
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">
-                AIP Ref Code Suffix <span className="font-normal text-slate-400">(optional)</span>
+                AIP Ref Code Suffix <span className="font-normal text-slate-600">(optional)</span>
               </label>
               <input
                 value={form.officeRefCode}
@@ -540,7 +540,7 @@ export default function OfficeConfigPage() {
                 placeholder="01-010"
                 className="w-full px-3 py-2 text-sm font-mono border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
               />
-              <p className="mt-1 text-[11px] text-slate-400">
+              <p className="mt-1 text-[11px] text-slate-600">
                 Last two segments of the AIP office ref code (e.g. <span className="font-mono">01-010</span> from{" "}
                 <span className="font-mono">8000-000-1-01-010</span>). Used to link this office to AIP entries in the WFP page.
               </p>
@@ -580,7 +580,7 @@ export default function OfficeConfigPage() {
               Rows are matched by <span className="font-mono text-xs">office_code</span>: new codes are
               added and existing ones are updated. Nothing is deleted.
             </p>
-            <p className="text-xs text-slate-400">Expected columns: office_code, office_name, is_active, office_ref_code (optional).</p>
+            <p className="text-xs text-slate-600">Expected columns: office_code, office_name, is_active, office_ref_code (optional).</p>
           </div>
         </Modal>
       )}
@@ -604,7 +604,7 @@ export default function OfficeConfigPage() {
                 <p className="text-xs font-semibold text-amber-500 uppercase tracking-wide mb-1">
                   {importResult.errors.length} row{importResult.errors.length === 1 ? "" : "s"} skipped
                 </p>
-                <ul className="max-h-40 overflow-y-auto text-xs text-slate-500 list-disc pl-4 space-y-0.5">
+                <ul className="max-h-40 overflow-y-auto text-xs text-slate-600 list-disc pl-4 space-y-0.5">
                   {importResult.errors.map((e, i) => (
                     <li key={i}>{e}</li>
                   ))}
@@ -650,12 +650,12 @@ function Stat({ label, value, tone }: { label: string; value: number; tone: "gre
   const cls: Record<typeof tone, string> = {
     green: "text-green-700",
     blue: "text-info-500",
-    slate: "text-slate-500",
+    slate: "text-slate-600",
   };
   return (
     <div className="flex-1 border border-slate-200 px-3 py-2 text-center">
       <div className={`text-2xl font-bold ${cls[tone]}`}>{value}</div>
-      <div className="text-[11px] text-slate-400 uppercase tracking-wide">{label}</div>
+      <div className="text-[11px] text-slate-600 uppercase tracking-wide">{label}</div>
     </div>
   );
 }

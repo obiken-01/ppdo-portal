@@ -125,7 +125,7 @@ function OverrideToggle({
   disabled?: boolean;
 }) {
   const states: Array<{ v: boolean | null; label: string; cls: string }> = [
-    { v: null,  label: "Inherit", cls: "bg-slate-100 text-slate-500" },
+    { v: null,  label: "Inherit", cls: "bg-slate-100 text-slate-600" },
     { v: true,  label: "Grant",   cls: "bg-green-600 text-white" },
     { v: false, label: "Deny",    cls: "bg-danger-500 text-white" },
   ];
@@ -215,7 +215,7 @@ function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFor
         <div className="col-span-2">
           <label className="block text-xs font-medium text-slate-600 mb-1">
             Email
-            <span className="ml-1 font-normal text-slate-400">(optional)</span>
+            <span className="ml-1 font-normal text-slate-600">(optional)</span>
           </label>
           <input
             type="email"
@@ -238,7 +238,7 @@ function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFor
             ))}
           </select>
           {isOfficeUser && (
-            <p className="mt-1 text-[11px] text-slate-400">Office users are Staff (encoder).</p>
+            <p className="mt-1 text-[11px] text-slate-600">Office users are Staff (encoder).</p>
           )}
         </div>
 
@@ -260,7 +260,7 @@ function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFor
             ))}
           </select>
           {!isPpdoDivisionUser && (
-            <p className="mt-1 text-[11px] text-slate-400">SuperAdmin / Admin have no division.</p>
+            <p className="mt-1 text-[11px] text-slate-600">SuperAdmin / Admin have no division.</p>
           )}
         </div>
 
@@ -268,7 +268,7 @@ function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFor
         <div className="col-span-2">
           <label className="block text-xs font-medium text-slate-600 mb-1">
             Office
-            <span className="ml-1 font-normal text-slate-400">(non-PPDO user — clears Division)</span>
+            <span className="ml-1 font-normal text-slate-600">(non-PPDO user — clears Division)</span>
           </label>
           <OfficeSelect
             offices={offices}
@@ -313,7 +313,7 @@ function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFor
                 (form as UpdateUserRequest).isActive ? "translate-x-6" : "translate-x-1"
               }`} />
             </button>
-            <span className="text-xs text-slate-500">
+            <span className="text-xs text-slate-600">
               {(form as UpdateUserRequest).isActive ? "Active" : "Inactive"}
             </span>
           </div>
@@ -323,9 +323,9 @@ function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFor
       {/* Permission overrides — Staff: all flags; Admin: adminOnly flags only */}
       {isEdit && showOverrides && (
         <div>
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+          <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">
             Permission Overrides
-            <span className="ml-1 font-normal normal-case tracking-normal text-slate-400">
+            <span className="ml-1 font-normal normal-case tracking-normal text-slate-600">
               (inherits from division unless overridden)
             </span>
           </p>
@@ -344,10 +344,10 @@ function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFor
 
       {isEdit && showAdminOverrides && adminOnlyKeys.length > 0 && (
         <div>
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+          <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
             Permission Overrides
           </p>
-          <p className="text-xs text-slate-400 mb-2">
+          <p className="text-xs text-slate-600 mb-2">
             Admin has full access to all features except the flags below — these must be granted explicitly.
           </p>
           <div className="space-y-2">
@@ -365,14 +365,14 @@ function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFor
 
       {/* SuperAdmin note — Edit only */}
       {isEdit && form.role === "SuperAdmin" && (
-        <p className="text-xs text-slate-400 bg-slate-50 px-3 py-2">
+        <p className="text-xs text-slate-600 bg-slate-50 px-3 py-2">
           SuperAdmin always has full access — permission overrides do not apply.
         </p>
       )}
 
       {/* Admin full-access note — only when no adminOnly overrides exist */}
       {isEdit && showAdminOverrides && adminOnlyKeys.length === 0 && (
-        <p className="text-xs text-slate-400 bg-slate-50 px-3 py-2">
+        <p className="text-xs text-slate-600 bg-slate-50 px-3 py-2">
           Admin always has full access — permission overrides do not apply.
         </p>
       )}
@@ -695,7 +695,7 @@ export default function UsersPage() {
           {search && (
             <button
               onClick={() => setSearch("")}
-              className="text-sm text-slate-400 hover:text-slate-600 transition-colors px-2"
+              className="text-sm text-slate-600 hover:text-slate-600 transition-colors px-2"
             >
               Clear
             </button>
@@ -726,7 +726,7 @@ export default function UsersPage() {
               </button>
             </div>
           ) : filteredUsers.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-2 text-slate-400">
+            <div className="flex flex-col items-center justify-center py-16 gap-2 text-slate-600">
               <span className="text-3xl">👤</span>
               <p className="text-sm">
                 {search ? "No users match your search." : "No users found."}
@@ -736,7 +736,7 @@ export default function UsersPage() {
             <div className="overflow-x-auto overflow-y-hidden">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500 uppercase tracking-wide">
+                  <tr className="bg-slate-50 border-b border-slate-200 text-xs text-slate-600 uppercase tracking-wide">
                     <th className="text-left px-4 py-3 font-medium">Name</th>
                     <th className="text-left px-4 py-3 font-medium">Username / Email</th>
                     <th className="text-left px-4 py-3 font-medium">Role</th>
@@ -754,13 +754,13 @@ export default function UsersPage() {
                       <td className="px-4 py-3">
                         <div className="font-medium text-slate-800">{user.fullName}</div>
                         {user.position && (
-                          <div className="text-xs text-slate-400">{user.position}</div>
+                          <div className="text-xs text-slate-600">{user.position}</div>
                         )}
                       </td>
                       <td className="px-4 py-3">
                         <div className="font-mono text-sm text-slate-700">{user.username}</div>
                         {user.email && (
-                          <div className="text-xs text-slate-400">{user.email}</div>
+                          <div className="text-xs text-slate-600">{user.email}</div>
                         )}
                       </td>
                       <td className="px-4 py-3">{roleBadge(user.role)}</td>
@@ -799,7 +799,7 @@ export default function UsersPage() {
               </table>
 
               {/* Row count */}
-              <div className="px-4 py-2 border-t border-slate-100 text-xs text-slate-400">
+              <div className="px-4 py-2 border-t border-slate-100 text-xs text-slate-600">
                 {filteredUsers.length} {filteredUsers.length === 1 ? "user" : "users"}
                 {search && ` matching "${search}"`}
               </div>
@@ -824,7 +824,7 @@ export default function UsersPage() {
             </>
           }
         >
-          <p className="text-xs text-slate-400 mb-4">
+          <p className="text-xs text-slate-600 mb-4">
             Default password <span className="font-mono bg-slate-100 px-1">TamarawUser2026!</span> is set automatically. The user must change it on first login.
           </p>
           <UserForm
@@ -916,8 +916,8 @@ function ActionButton({
       onClick={onClick}
       className={`p-1.5 text-sm transition-colors ${
         danger
-          ? "hover:bg-danger-100 text-slate-400 hover:text-danger-500"
-          : "hover:bg-green-50 text-slate-400 hover:text-green-700"
+          ? "hover:bg-danger-100 text-slate-600 hover:text-danger-500"
+          : "hover:bg-green-50 text-slate-600 hover:text-green-700"
       }`}
     >
       {icon}

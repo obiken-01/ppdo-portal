@@ -51,7 +51,7 @@ function WfpStatusBadge({ status }: { status: string }) {
       ? "bg-green-100 text-green-700"
       : status === "Draft"
       ? "bg-amber-100 text-amber-700"
-      : "bg-slate-100 text-slate-500";
+      : "bg-slate-100 text-slate-600";
   return <span className={`px-2 py-0.5 text-xs font-medium ${cls}`}>{status}</span>;
 }
 
@@ -76,8 +76,8 @@ const WFP_COLUMNS: Column<WfpOfficeStatus>[] = [
     header: "ACTION",
     align: "right",
     render: (r) => {
-      if (r.aipRecordId == null || r.wfpStatus === "Not started") return <span className="text-slate-300">—</span>;
-      const href = `/budget-planning/wfp?aipId=${r.aipRecordId}&officeId=${r.officeId}`;
+      if (r.aipRecordId == null || r.wfpStatus === "Not started") return <span className="text-slate-600">—</span>;
+      const href = `/budget-planning/wfp/entry?aipId=${r.aipRecordId}&officeId=${r.officeId}`;
       const label = r.wfpStatus === "Final" ? "View" : "Open";
       return (
         <Link href={href} className="text-sm font-medium text-green-600 hover:text-green-700">
@@ -104,7 +104,7 @@ function ReadinessPanel({
   return (
     <div className="bg-white border border-slate-200 p-4 flex flex-col">
       <div className="flex items-center justify-between mb-2">
-        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{title}</h3>
+        <h3 className="text-xs font-semibold text-slate-600 uppercase tracking-wide">{title}</h3>
         <Link href={href} className="text-xs font-medium text-green-600 hover:text-green-700">
           Open →
         </Link>
@@ -119,7 +119,7 @@ function ReadinessSkeleton() {
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       {["Allocation Setup", "LDIP", "AIP", "WFP"].map((t) => (
         <div key={t} className="bg-white border border-slate-200 p-4">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">{t}</p>
+          <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">{t}</p>
           <Spinner />
         </div>
       ))}
@@ -155,34 +155,34 @@ function GlobalReadinessPanels({
         <p className="font-medium">
           {allocation.fullySetupCount} of {allocation.totalOffices} office(s) fully set up
         </p>
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-slate-600">
           {allocation.incompleteCount} incomplete · {allocation.notStartedCount} not started
         </p>
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-slate-600">
           Pick a specific office above for its ceiling/allocation/PPA-assignment detail.
         </p>
       </ReadinessPanel>
 
       <ReadinessPanel title="LDIP" href="/budget-planning/ldip">
         <p className="font-medium">{ldip.total} program(s) · all offices</p>
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-slate-600">
           {ldip.breakdown.map((b) => `${b.count} ${b.status}`).join(" · ") || "No records yet"}
         </p>
       </ReadinessPanel>
 
       <ReadinessPanel title="AIP" href="/budget-planning/aip">
         <p className="font-medium">{aip.total} record(s) · all offices</p>
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-slate-600">
           {aipDraftCount} Draft · {aipFinalCount} Final
           {aipArchivedCount > 0 && ` · ${aipArchivedCount} Archived`}
         </p>
       </ReadinessPanel>
 
-      <ReadinessPanel title="WFP" href="/budget-planning/wfp">
+      <ReadinessPanel title="WFP" href="/budget-planning/wfp/entry">
         <p className="font-medium">
           {wfpFinalCount} Final · {wfpDraftCount} Draft
         </p>
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-slate-600">
           {wfpNotStartedCount} not started · {wfp.activeOfficeCount} active offices — FY {fiscalYear ?? "…"}
         </p>
       </ReadinessPanel>
@@ -228,8 +228,8 @@ function OfficeReadinessPanels({
 
   const wfpHref =
     wfpRow?.aipRecordId != null
-      ? `/budget-planning/wfp?aipId=${wfpRow.aipRecordId}&officeId=${officeId}`
-      : `/budget-planning/wfp${qs}`;
+      ? `/budget-planning/wfp/entry?aipId=${wfpRow.aipRecordId}&officeId=${officeId}`
+      : `/budget-planning/wfp/entry${qs}`;
   const wfpActionLabel =
     wfpRow?.wfpStatus === "Final" ? "View" : wfpRow?.wfpStatus === "Draft" ? "Continue" : "Start";
 
@@ -259,7 +259,7 @@ function OfficeReadinessPanels({
             {allocation.isOverAllocated && " (over)"}
           </p>
         )}
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-slate-600">
           PPAs: {allocation.assignedProgramCount} assigned
           {allocation.unassignedProgramCount > 0 && (
             <span className="ml-1 text-amber-600 font-medium">
@@ -274,12 +274,12 @@ function OfficeReadinessPanels({
         {ldip.scopingSupported ? (
           <>
             <p className="font-medium">{ldip.total} record(s) · this office</p>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-600">
               {ldip.breakdown.map((b) => `${b.count} ${b.status}`).join(" · ") || "No records yet"}
             </p>
           </>
         ) : (
-          <p className="text-xs text-slate-400">Office scoping pending (RAL-61).</p>
+          <p className="text-xs text-slate-600">Office scoping pending (RAL-61).</p>
         )}
       </ReadinessPanel>
 
@@ -288,35 +288,35 @@ function OfficeReadinessPanels({
         {aip.exists ? (
           <>
             <p className="font-medium">
-              AIP created {aip.status && <span className="text-slate-400 font-normal">({aip.status})</span>}
+              AIP created {aip.status && <span className="text-slate-600 font-normal">({aip.status})</span>}
             </p>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-600">
               {aip.programCount} program(s) · {aip.projectCount} project(s) · {aip.activityCount} activity(ies)
             </p>
           </>
         ) : (
-          <p className="text-slate-400 text-xs">
+          <p className="text-slate-600 text-xs">
             No AIP for this office yet {fiscalYear ? `(FY ${fiscalYear})` : ""}.
           </p>
         )}
       </ReadinessPanel>
 
       {/* WFP */}
-      <ReadinessPanel title="WFP" href={`/budget-planning/wfp${qs}`}>
+      <ReadinessPanel title="WFP" href={`/budget-planning/wfp/entry${qs}`}>
         {wfpRow && wfpRow.wfpStatus !== "Not started" ? (
           <>
             <p className="font-medium">
               WFP {wfpRow.wfpStatus === "Final" ? "finalized" : "in progress"}{" "}
-              <span className="text-slate-400 font-normal">({wfpRow.wfpStatus})</span>
+              <span className="text-slate-600 font-normal">({wfpRow.wfpStatus})</span>
             </p>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-600">
               <Link href={wfpHref} className="font-medium text-green-600 hover:text-green-700">
                 {wfpActionLabel} →
               </Link>
             </p>
           </>
         ) : (
-          <p className="text-slate-400 text-xs">
+          <p className="text-slate-600 text-xs">
             No WFP started for this office yet {fiscalYear ? `(FY ${fiscalYear})` : ""}.
           </p>
         )}
@@ -446,7 +446,7 @@ export default function BudgetPlanningPage() {
         {/* Header */}
         <div>
           <h1 className="text-lg font-bold text-slate-800">Budget Planning Dashboard</h1>
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-slate-600">
             {isPpdo
               ? "FY overview · PPDO view — all offices"
               : `FY overview · Office view — ${ownOfficeLabel}`}
@@ -457,7 +457,7 @@ export default function BudgetPlanningPage() {
         <div className="flex flex-wrap items-center gap-3">
           {/* FY selector */}
           <div className="flex items-center gap-2">
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+            <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
               Fiscal Year
             </label>
             <select
@@ -482,7 +482,7 @@ export default function BudgetPlanningPage() {
           {/* PPDO: office filter selector / Office user: locked display */}
           {isPpdo ? (
             <div className="flex items-center gap-2">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+              <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
                 Office
               </label>
               <OfficeSelect
@@ -496,7 +496,7 @@ export default function BudgetPlanningPage() {
             </div>
           ) : (
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+              <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
                 Office
               </span>
               <span className="text-sm text-slate-700 bg-white border border-slate-200 px-3 py-1.5">
@@ -511,7 +511,7 @@ export default function BudgetPlanningPage() {
           {[
             { label: "LDIP", href: navHref("/budget-planning/ldip") },
             { label: "AIP",  href: navHref("/budget-planning/aip")  },
-            { label: "WFP",  href: navHref("/budget-planning/wfp")  },
+            { label: "WFP",  href: navHref("/budget-planning/wfp/entry")  },
           ].map(({ label, href }) => (
             <Link
               key={label}
@@ -546,7 +546,7 @@ export default function BudgetPlanningPage() {
               <h2 className="text-sm font-semibold text-slate-700">
                 WFP Status by Office — FY {fiscalYear ?? "…"}
               </h2>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-xs text-slate-600 mt-0.5">
                 Sorted: Not started → Draft → Final · No appropriation amounts shown
               </p>
             </div>
@@ -566,31 +566,31 @@ export default function BudgetPlanningPage() {
         <div className="bg-white border border-slate-200">
           <div className="px-5 py-4 border-b border-slate-100">
             <h2 className="text-sm font-semibold text-slate-700">Recent Activity</h2>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-xs text-slate-600 mt-0.5">
               {isPpdo ? "All offices (PPDO view)" : `${ownOfficeLabel} only`}
             </p>
           </div>
           <div className="divide-y divide-slate-50">
             {activityLoading ? (
-              <div className="px-5 py-6 flex items-center gap-2 text-sm text-slate-400">
+              <div className="px-5 py-6 flex items-center gap-2 text-sm text-slate-600">
                 <Spinner />
                 <span>Loading activity…</span>
               </div>
             ) : activityError ? (
               <div className="px-5 py-4 text-sm text-red-500">{activityError}</div>
             ) : activity.length === 0 ? (
-              <div className="px-5 py-6 text-sm text-slate-400">No recent activity yet.</div>
+              <div className="px-5 py-6 text-sm text-slate-600">No recent activity yet.</div>
             ) : (
               activity.map((entry) => (
                 <div key={entry.id} className="px-5 py-3 flex items-start justify-between gap-4">
                   <div className="text-sm text-slate-700">
                     <span className="font-medium">{entry.actorName}</span>
                     {" — "}
-                    <span className="text-slate-500">
+                    <span className="text-slate-600">
                       {entry.action.toLowerCase()} on {entry.tableName} #{entry.recordId}
                     </span>
                   </div>
-                  <span className="text-xs text-slate-400 whitespace-nowrap flex-shrink-0">
+                  <span className="text-xs text-slate-600 whitespace-nowrap flex-shrink-0">
                     {new Date(entry.changedAt).toLocaleString()}
                   </span>
                 </div>

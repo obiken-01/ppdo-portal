@@ -22,12 +22,15 @@ namespace PPDO.Functions.Functions;
 public sealed class WfpFunctions
 {
     private readonly IWfpService         _wfp;
+    private readonly IWfpCeilingService  _ceilings;
     private readonly IJwtMiddleware      _jwt;
     private readonly IPermissionService  _permissions;
 
-    public WfpFunctions(IWfpService wfp, IJwtMiddleware jwt, IPermissionService permissions)
+    public WfpFunctions(
+        IWfpService wfp, IWfpCeilingService ceilings, IJwtMiddleware jwt, IPermissionService permissions)
     {
         _wfp         = wfp;
+        _ceilings    = ceilings;
         _jwt         = jwt;
         _permissions = permissions;
     }
@@ -52,6 +55,30 @@ public sealed class WfpFunctions
         IReadOnlyList<WfpRecordDto> data = await _wfp.GetAllAsync(aipId, officeId, divisionId, ct);
         return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK,
             ApiResponse<IReadOnlyList<WfpRecordDto>>.Ok(data), ct);
+    }
+
+    // ── GET /api/budget-planning/wfp/ceilings?activityId=&divisionId=&fiscalYear= ─
+    // Ceiling status (§8, RAL-122) — same computation the block-on-save/finalize checks use.
+    // Consumed by ticket #9's live client-side validation, not built here.
+    [Function("WfpCeilingsGet")]
+    public async Task<HttpResponseData> GetCeilings(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get",
+            Route = "budget-planning/wfp/ceilings")] HttpRequestData req,
+        CancellationToken ct)
+    {
+        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        if (!int.TryParse(req.Query["activityId"], out int activityId)   ||
+            !int.TryParse(req.Query["divisionId"], out int divisionId)   ||
+            !int.TryParse(req.Query["fiscalYear"], out int fiscalYear))
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<WfpCeilingStatusDto>.Fail(
+                    "activityId, divisionId, and fiscalYear query parameters are required."), ct);
+
+        WfpCeilingStatusDto status = await _ceilings.GetStatusAsync(activityId, divisionId, fiscalYear, ct);
+        return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK,
+            ApiResponse<WfpCeilingStatusDto>.Ok(status), ct);
     }
 
     // ── GET /api/budget-planning/wfp/{id} ────────────────────────────────────
@@ -81,6 +108,30 @@ public sealed class WfpFunctions
                 ApiResponse<WfpRecordDto>.Fail("Request body is missing or malformed."), ct);
 
         ServiceResult<WfpRecordDto> result = await _wfp.SaveAsync(body, caller!.Id, ct);
+        return await ConfigHttp.FromResultAsync(req, result, ct,
+            result.IsSuccess ? HttpStatusCode.OK : HttpStatusCode.BadRequest);
+    }
+
+    // ── POST /api/budget-planning/wfp/activities/ensure ──────────────────────
+    // Find-or-create the WFP record + activity for (aipRecordId, officeId, divisionId,
+    // aipActivityId) — the v1.4 entry wizard's (RAL-123) way to obtain a wfp_activity_id
+    // without RAL-102's SaveAsync destructive replace-all semantics.
+    [Function("WfpActivityEnsure")]
+    public async Task<HttpResponseData> EnsureActivity(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post",
+            Route = "budget-planning/wfp/activities/ensure")] HttpRequestData req,
+        CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        EnsureWfpActivityDto? body = await ConfigHttp.ReadBodyAsync<EnsureWfpActivityDto>(req, ct);
+        if (body is null)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<WfpActivityRefDto>.Fail("Request body is missing or malformed."), ct);
+
+        ServiceResult<WfpActivityRefDto> result = await _wfp.EnsureActivityAsync(
+            body.AipRecordId, body.OfficeId, body.DivisionId, body.FiscalYear, body.AipActivityId, caller!.Id, ct);
         return await ConfigHttp.FromResultAsync(req, result, ct,
             result.IsSuccess ? HttpStatusCode.OK : HttpStatusCode.BadRequest);
     }

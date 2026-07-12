@@ -71,7 +71,8 @@ public sealed class WfpServiceTests
             List<WfpActivity>   actSeed,
             List<Account>       accountSeed,
             List<FundingSource> fsSeed,
-            Mock<IAllocationService>? allocationMock = null)
+            Mock<IAllocationService>? allocationMock = null,
+            Mock<IWfpCeilingService>? ceilingMock = null)
     {
         Mock<IWfpRepository>                  wfpRepo     = new();
         Mock<IRepository<WfpActivity>>        actRepo     = new();
@@ -178,9 +179,14 @@ public sealed class WfpServiceTests
                 new DivisionAllocationDto(1, 99, "Default Division", 2027, decimal.MaxValue),
             ]);
 
+        Mock<IWfpCeilingService> ceilingSvc = ceilingMock ?? new();
+        if (ceilingMock is null)
+            ceilingSvc.Setup(c => c.ValidateRecordForFinalizeAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((string?)null);
+
         WfpService sut = new(wfpRepo.Object, actRepo.Object, lineRepo.Object,
             accountRepo.Object, fsRepo.Object, audit.Object, ctx,
-            aipSvc.Object, officeSvc.Object, excelSvc.Object, allocSvc.Object);
+            aipSvc.Object, officeSvc.Object, excelSvc.Object, allocSvc.Object, ceilingSvc.Object);
 
         return (sut, wfpRepo, actRepo, lineRepo, audit);
     }
@@ -395,6 +401,41 @@ public sealed class WfpServiceTests
         ServiceResult<WfpRecordDto> result = await sut.FinalizeAsync(1, CancellationToken.None);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    // ── Finalize — ceiling backstop (RAL-122) ─────────────────────────────────
+
+    [Fact]
+    public async Task Finalize_CeilingServiceReportsOverBudget_ReturnsBadRequest_AndDoesNotTransition()
+    {
+        WfpRecord rec = WfpRec(1, PlanningStatus.Draft);
+        Mock<IWfpCeilingService> ceilingMock = new();
+        ceilingMock.Setup(c => c.ValidateRecordForFinalizeAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync("AIP activity X is over its AIP budget (₱60,000.00 used vs ₱50,000.00 budgeted).");
+        var (sut, _, _, _, _) = Build([rec], [], [], [], ceilingMock: ceilingMock);
+
+        ServiceResult<WfpRecordDto> result = await sut.FinalizeAsync(1, CancellationToken.None);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("AIP budget", result.Error);
+        Assert.Equal(PlanningStatus.Draft, rec.Status); // never transitioned
+        Assert.Null(rec.FinalizedAt);
+    }
+
+    [Fact]
+    public async Task Finalize_CeilingServiceApproves_TransitionsNormally()
+    {
+        WfpRecord rec = WfpRec(1, PlanningStatus.Draft);
+        Mock<IWfpCeilingService> ceilingMock = new();
+        ceilingMock.Setup(c => c.ValidateRecordForFinalizeAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
+        var (sut, _, _, _, _) = Build([rec], [], [], [], ceilingMock: ceilingMock);
+
+        ServiceResult<WfpRecordDto> result = await sut.FinalizeAsync(1, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(PlanningStatus.Final, rec.Status);
+        ceilingMock.Verify(c => c.ValidateRecordForFinalizeAsync(1, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     // ── Unlock ────────────────────────────────────────────────────────────────
@@ -751,14 +792,92 @@ public sealed class WfpServiceTests
         allocSvc.Setup(s => s.GetAllocationsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)[]);
 
+        Mock<IWfpCeilingService> ceilingSvc = new();
+
         WfpService sut = new(wfpRepo.Object, actRepo.Object, lineRepo.Object,
             accountRepo.Object, fsRepo.Object, audit.Object, ctx,
-            aipSvc.Object, officeSvc.Object, excelSvc.Object, allocSvc.Object);
+            aipSvc.Object, officeSvc.Object, excelSvc.Object, allocSvc.Object, ceilingSvc.Object);
 
         ServiceResult<byte[]> result = await sut.ExportReportAsync(42, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(expectedBytes, result.Value!);
         excelSvc.Verify(s => s.GenerateWfpReport(It.IsAny<WfpExcelReportData>()), Times.Once);
+    }
+
+    // ── EnsureActivityAsync (RAL-123 entry-wizard enabler) ───────────────────
+
+    [Fact]
+    public async Task EnsureActivity_NoExistingRecord_CreatesRecordAndActivity()
+    {
+        var (sut, wfpRepo, actRepo, _, _) = Build([], [], [], []);
+
+        ServiceResult<WfpActivityRefDto> result =
+            await sut.EnsureActivityAsync(2, 3, 5, 2027, 99, UserId, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(PlanningStatus.Draft, result.Value!.WfpStatus);
+        wfpRepo.Verify(r => r.AddAsync(It.IsAny<WfpRecord>(), It.IsAny<CancellationToken>()), Times.Once);
+        actRepo.Verify(r => r.AddAsync(It.IsAny<WfpActivity>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task EnsureActivity_ExistingRecordNoMatchingActivity_ReusesRecord_CreatesActivity()
+    {
+        WfpRecord existing = WfpRec(1, PlanningStatus.Draft, aipId: 2, officeId: 3, divisionId: 5);
+        var (sut, wfpRepo, actRepo, _, _) = Build([existing], [], [], []);
+
+        ServiceResult<WfpActivityRefDto> result =
+            await sut.EnsureActivityAsync(2, 3, 5, 2027, 99, UserId, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, result.Value!.WfpRecordId);
+        wfpRepo.Verify(r => r.AddAsync(It.IsAny<WfpRecord>(), It.IsAny<CancellationToken>()), Times.Never);
+        actRepo.Verify(r => r.AddAsync(It.IsAny<WfpActivity>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task EnsureActivity_ExistingRecordAndActivity_ReusesBoth_NeverDeletesAnything()
+    {
+        WfpRecord existing = WfpRec(1, PlanningStatus.Draft, aipId: 2, officeId: 3, divisionId: 5);
+        WfpActivity existingAct = WfpAct(10, 1); // AipActivityId = 99 per the WfpAct helper
+        var (sut, wfpRepo, actRepo, _, _) = Build([existing], [existingAct], [], []);
+
+        ServiceResult<WfpActivityRefDto> result =
+            await sut.EnsureActivityAsync(2, 3, 5, 2027, 99, UserId, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, result.Value!.WfpRecordId);
+        Assert.Equal(10, result.Value.WfpActivityId);
+        wfpRepo.Verify(r => r.AddAsync(It.IsAny<WfpRecord>(), It.IsAny<CancellationToken>()), Times.Never);
+        actRepo.Verify(r => r.AddAsync(It.IsAny<WfpActivity>(), It.IsAny<CancellationToken>()), Times.Never);
+        actRepo.Verify(r => r.DeleteAsync(It.IsAny<WfpActivity>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task EnsureActivity_ExistingRecordIsFinal_ReturnsForbidden()
+    {
+        WfpRecord finalRec = WfpRec(1, PlanningStatus.Final, aipId: 2, officeId: 3, divisionId: 5);
+        var (sut, _, actRepo, _, _) = Build([finalRec], [], [], []);
+
+        ServiceResult<WfpActivityRefDto> result =
+            await sut.EnsureActivityAsync(2, 3, 5, 2027, 99, UserId, CancellationToken.None);
+
+        Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
+        actRepo.Verify(r => r.AddAsync(It.IsAny<WfpActivity>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task EnsureActivity_DifferentDivisionsSameAipOffice_GetIndependentRecords()
+    {
+        var (sut, wfpRepo, _, _, _) = Build([], [], [], []);
+
+        ServiceResult<WfpActivityRefDto> div1 =
+            await sut.EnsureActivityAsync(2, 3, 1, 2027, 99, UserId, CancellationToken.None);
+        ServiceResult<WfpActivityRefDto> div2 =
+            await sut.EnsureActivityAsync(2, 3, 2, 2027, 99, UserId, CancellationToken.None);
+
+        Assert.NotEqual(div1.Value!.WfpRecordId, div2.Value!.WfpRecordId);
+        wfpRepo.Verify(r => r.AddAsync(It.IsAny<WfpRecord>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
 }

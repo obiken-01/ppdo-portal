@@ -70,10 +70,23 @@ const config: Config = {
         },
 
         // ── PPDO Slate — Neutral ───────────────────────────────────────────
+        // slate-500 and slate-300 are explicit PPDO values now (RAL-133) —
+        // previously undefined, so they silently fell back to stock Tailwind
+        // (#64748b / #cbd5e1), which nobody had reviewed for contrast.
+        // slate-600 (~4.7:1 on white) is the one AA-safe token for real
+        // readable content (labels, headers, helper text) — RAL-133 redirects
+        // every `text-slate-400`/`text-slate-500` site that carries real
+        // content onto it. slate-400 stays reserved for genuinely
+        // disabled/inactive controls (WCAG's contrast minimum doesn't apply
+        // there); slate-500/300 are secondary/decorative tones only — do NOT
+        // use them for label or body text, they can't reach AA while staying
+        // visually lighter than slate-600.
         slate: {
           800: "#343A40", // Footer
-          600: "#6C757D", // Body text, labels
-          400: "#ADB5BD", // Disabled, muted
+          600: "#5A636B", // Body text, labels — the only AA-safe token, ~6.1:1 on white (darkened per Ralph's live review)
+          500: "#7D858C", // Secondary/decorative tone only (~3.8:1) — NOT for label/body text
+          400: "#ADB5BD", // Disabled, muted — NOT for readable text
+          300: "#C7CFD6", // Decorative only (dividers, chevrons) — NOT for readable text
           200: "#E9ECEF", // Input borders
           100: "#F1F3F5", // Page background
           50: "#F8F9FA",  // Zebra rows

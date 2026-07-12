@@ -119,3 +119,32 @@ export async function archiveAip(id: number): Promise<AipRecordResponse> {
   );
   return unwrap(data);
 }
+
+// ---------------------------------------------------------------------------
+// Field updates (v1.4 WFP Rework Q1/Q2) — captured during WFP data entry.
+// Response only confirms success; callers should trust their own request value
+// for optimistic local state, not the response body (the service's field-update
+// DTO omits nested collections by design — see AipService.UpdateProgramFunctionBandAsync).
+// ---------------------------------------------------------------------------
+
+export async function updateAipProgramFunctionBand(
+  programId: number,
+  functionBand: string | null
+): Promise<void> {
+  const { data } = await api.put<ApiResponse<unknown>>(
+    `/budget-planning/aip/programs/${programId}/function-band`,
+    { functionBand }
+  );
+  unwrap(data);
+}
+
+export async function updateAipActivityIsCreation(
+  activityId: number,
+  isCreation: boolean
+): Promise<void> {
+  const { data } = await api.put<ApiResponse<unknown>>(
+    `/budget-planning/aip/activities/${activityId}/is-creation`,
+    { isCreation }
+  );
+  unwrap(data);
+}

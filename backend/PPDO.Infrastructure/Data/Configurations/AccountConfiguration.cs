@@ -35,6 +35,20 @@ public sealed class AccountConfiguration : IEntityTypeConfiguration<Account>
             .IsRequired()
             .HasDefaultValue(true);
 
+        builder.Property(a => a.ExpenseClass)
+            .HasColumnName("expense_class")
+            .IsRequired()
+            .HasMaxLength(20);
+
+        builder.Property(a => a.DefaultNature)
+            .HasColumnName("default_nature")
+            .HasMaxLength(20);
+
+        builder.Property(a => a.DefaultApplyReserve)
+            .HasColumnName("default_apply_reserve")
+            .IsRequired()
+            .HasDefaultValue(false);
+
         builder.Property(a => a.CreatedAt)
             .HasColumnName("created_at")
             .HasDefaultValueSql("GETUTCDATE()");

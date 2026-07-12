@@ -30,7 +30,7 @@ const SECTOR_LABEL: Record<string, string> = {
 function StatTile({ label, value }: { label: string; value: number }) {
   return (
     <div className="bg-white border border-slate-200 px-5 py-4">
-      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{label}</p>
+      <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">{label}</p>
       <p className="mt-1.5 text-2xl font-bold text-slate-800 tabular-nums">{value.toLocaleString()}</p>
     </div>
   );
@@ -39,7 +39,7 @@ function StatTile({ label, value }: { label: string; value: number }) {
 function Chevron({ open }: { open: boolean }) {
   return (
     <svg
-      className={`w-4 h-4 text-slate-500 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+      className={`w-4 h-4 text-slate-600 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
       fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
     >
       <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
@@ -122,7 +122,7 @@ export default function AipImportPreviewPage() {
 
   if (!preview || !me) {
     return (
-      <div className="p-6 flex items-center gap-3 text-sm text-slate-500">
+      <div className="p-6 flex items-center gap-3 text-sm text-slate-600">
         <span className="inline-block w-4 h-4 border-2 border-slate-300 border-t-transparent rounded-full animate-spin" />
         Loading preview…
       </div>
@@ -135,7 +135,7 @@ export default function AipImportPreviewPage() {
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-xl font-bold text-slate-800">Import Preview — AIP FY{preview.fiscalYear}</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Review the data before confirming. This cannot be undone.</p>
+          <p className="text-sm text-slate-600 mt-0.5">Review the data before confirming. This cannot be undone.</p>
         </div>
         <div className="flex items-center gap-3 shrink-0 ml-6">
           <button
@@ -176,7 +176,7 @@ export default function AipImportPreviewPage() {
 
           {/* Sector breakdown */}
           <div>
-            <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+            <h2 className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">
               Breakdown by Sector
             </h2>
             <div className="border border-slate-200 divide-y divide-slate-100 bg-white">
@@ -189,13 +189,13 @@ export default function AipImportPreviewPage() {
                     <span className="font-medium text-slate-700 col-span-1">
                       {SECTOR_LABEL[sector] ?? sector}
                     </span>
-                    <span className="text-slate-500 text-xs text-right">
+                    <span className="text-slate-600 text-xs text-right">
                       {officeCount} office{officeCount !== 1 ? "s" : ""}
                     </span>
-                    <span className="text-slate-500 text-xs text-right">
+                    <span className="text-slate-600 text-xs text-right">
                       {stats.programs} program{stats.programs !== 1 ? "s" : ""}
                     </span>
-                    <span className="text-slate-500 text-xs text-right">
+                    <span className="text-slate-600 text-xs text-right">
                       {stats.activities.toLocaleString()} activit{stats.activities !== 1 ? "ies" : "y"}
                     </span>
                   </div>
@@ -209,21 +209,21 @@ export default function AipImportPreviewPage() {
         <div className="lg:col-span-2 space-y-4">
           {/* File info */}
           <div className="bg-slate-50 border border-slate-200 p-5">
-            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">File Info</h3>
+            <h3 className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-3">File Info</h3>
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between gap-2">
-                <dt className="text-slate-500">Filename</dt>
+                <dt className="text-slate-600">Filename</dt>
                 <dd className="text-slate-700 font-medium truncate text-right max-w-[60%]" title={meta?.originalFilename}>
                   {meta?.originalFilename ?? "—"}
                 </dd>
               </div>
               <div className="flex justify-between gap-2">
-                <dt className="text-slate-500">Fiscal Year</dt>
+                <dt className="text-slate-600">Fiscal Year</dt>
                 <dd className="text-slate-700 font-medium">FY {preview.fiscalYear}</dd>
               </div>
               <div className="flex justify-between gap-2">
-                <dt className="text-slate-500">LDIP Link</dt>
-                <dd className="text-slate-400">None</dd>
+                <dt className="text-slate-600">LDIP Link</dt>
+                <dd className="text-slate-600">None</dd>
               </div>
             </dl>
           </div>

@@ -19,10 +19,14 @@ import type {
   DivisionResponse,
   FundingSourceResponse,
   OfficeResponse,
+  PriceIndexItemResponse,
+  ProcurementPresetResponse,
   UpsertAccountRequest,
   UpsertDivisionRequest,
   UpsertFundingSourceRequest,
   UpsertOfficeRequest,
+  UpsertPriceIndexItemRequest,
+  UpsertProcurementPresetRequest,
 } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -119,6 +123,73 @@ export async function listOffices(params: OfficeListParams = {}): Promise<Office
 /** POST /api/config/offices — create a new office. */
 export async function createOffice(body: UpsertOfficeRequest): Promise<OfficeResponse> {
   const { data } = await api.post<ApiResponse<OfficeResponse>>("/config/offices", body);
+  return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// Price Index — /api/config/price-index (v1.4 RAL-118)
+// ---------------------------------------------------------------------------
+
+export interface PriceIndexListParams {
+  search?: string;
+  active?: ActiveFilter;
+}
+
+/** GET /api/config/price-index — list with optional search / status filters. */
+export async function listPriceIndex(
+  params: PriceIndexListParams = {},
+): Promise<PriceIndexItemResponse[]> {
+  const query: Record<string, string> = {};
+  if (params.search?.trim()) query.search = params.search.trim();
+  if (params.active) query.active = params.active;
+
+  const { data } = await api.get<ApiResponse<PriceIndexItemResponse[]>>("/config/price-index", {
+    params: query,
+  });
+  return unwrap(data);
+}
+
+/** POST /api/config/price-index — create a new price index item. */
+export async function createPriceIndexItem(
+  body: UpsertPriceIndexItemRequest,
+): Promise<PriceIndexItemResponse> {
+  const { data } = await api.post<ApiResponse<PriceIndexItemResponse>>("/config/price-index", body);
+  return unwrap(data);
+}
+
+/** PUT /api/config/price-index/{id} — update an existing price index item. */
+export async function updatePriceIndexItem(
+  id: number,
+  body: UpsertPriceIndexItemRequest,
+): Promise<PriceIndexItemResponse> {
+  const { data } = await api.put<ApiResponse<PriceIndexItemResponse>>(
+    `/config/price-index/${id}`,
+    body,
+  );
+  return unwrap(data);
+}
+
+/** DELETE /api/config/price-index/{id} — soft delete (isActive = false). */
+export async function deactivatePriceIndexItem(id: number): Promise<PriceIndexItemResponse> {
+  const { data } = await api.delete<ApiResponse<PriceIndexItemResponse>>(
+    `/config/price-index/${id}`,
+  );
+  return unwrap(data);
+}
+
+/** GET /api/config/price-index/csv — raw CSV text in seed column order. */
+export async function exportPriceIndexCsv(): Promise<string> {
+  const { data } = await api.get<string>("/config/price-index/csv", { responseType: "text" });
+  return data;
+}
+
+/** POST /api/config/price-index/csv — upsert by (name, unit); returns counts. */
+export async function importPriceIndexCsv(csvText: string): Promise<CsvImportResult> {
+  const { data } = await api.post<ApiResponse<CsvImportResult>>(
+    "/config/price-index/csv",
+    csvText,
+    { headers: { "Content-Type": "text/csv" } },
+  );
   return unwrap(data);
 }
 
@@ -262,6 +333,97 @@ export async function importFundingSourcesCsv(csvText: string): Promise<CsvImpor
     "/config/funding-sources/csv",
     csvText,
     { headers: { "Content-Type": "text/csv" } },
+  );
+  return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// Procurement Presets — /api/config/procurement-presets (v1.4 RAL-119)
+// ---------------------------------------------------------------------------
+
+export interface ProcurementPresetListParams {
+  /** Omit (or null) to list presets across ALL accounts. */
+  accountId?: number | null;
+  active?: ActiveFilter;
+}
+
+/**
+ * GET /api/config/procurement-presets?accountId=&active= — presets scoped to one account, or
+ * across all accounts when accountId is omitted.
+ */
+export async function listProcurementPresets(
+  params: ProcurementPresetListParams = {},
+): Promise<ProcurementPresetResponse[]> {
+  const query: Record<string, string> = {};
+  if (params.accountId != null) query.accountId = String(params.accountId);
+  if (params.active) query.active = params.active;
+
+  const { data } = await api.get<ApiResponse<ProcurementPresetResponse[]>>(
+    "/config/procurement-presets",
+    { params: query },
+  );
+  return unwrap(data);
+}
+
+/** POST /api/config/procurement-presets — create a new preset. */
+export async function createProcurementPreset(
+  body: UpsertProcurementPresetRequest,
+): Promise<ProcurementPresetResponse> {
+  const { data } = await api.post<ApiResponse<ProcurementPresetResponse>>(
+    "/config/procurement-presets",
+    body,
+  );
+  return unwrap(data);
+}
+
+/** PUT /api/config/procurement-presets/{id} — update an existing preset (replaces its items). */
+export async function updateProcurementPreset(
+  id: number,
+  body: UpsertProcurementPresetRequest,
+): Promise<ProcurementPresetResponse> {
+  const { data } = await api.put<ApiResponse<ProcurementPresetResponse>>(
+    `/config/procurement-presets/${id}`,
+    body,
+  );
+  return unwrap(data);
+}
+
+/** DELETE /api/config/procurement-presets/{id} — soft delete (isActive = false). */
+export async function deactivateProcurementPreset(id: number): Promise<ProcurementPresetResponse> {
+  const { data } = await api.delete<ApiResponse<ProcurementPresetResponse>>(
+    `/config/procurement-presets/${id}`,
+  );
+  return unwrap(data);
+}
+
+/**
+ * GET /api/config/procurement-presets/for-entry?accountId=&active= — presets scoped to one
+ * account, readable by any CanAccessBudgetPlanning user (not just CanManageConfig). This is
+ * what the WFP entry wizard's "Load preset" uses — listProcurementPresets above requires
+ * CanManageConfig and is for the standalone config page only.
+ */
+export async function listProcurementPresetsForEntry(
+  accountId: number,
+  active: ActiveFilter = "true",
+): Promise<ProcurementPresetResponse[]> {
+  const { data } = await api.get<ApiResponse<ProcurementPresetResponse[]>>(
+    "/config/procurement-presets/for-entry",
+    { params: { accountId: String(accountId), active } },
+  );
+  return unwrap(data);
+}
+
+/**
+ * POST /api/config/procurement-presets/quick-save — create a preset from the WFP entry wizard's
+ * "Save as preset" action. Same permission gate as listProcurementPresetsForEntry
+ * (CanAccessBudgetPlanning) — no CanManageConfig required.
+ */
+export async function quickSaveProcurementPreset(
+  body: UpsertProcurementPresetRequest,
+): Promise<ProcurementPresetResponse> {
+  const { data } = await api.post<ApiResponse<ProcurementPresetResponse>>(
+    "/config/procurement-presets/quick-save",
+    body,
   );
   return unwrap(data);
 }

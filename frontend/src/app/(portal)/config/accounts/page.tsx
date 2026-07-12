@@ -51,6 +51,7 @@ import type {
   AccountType,
   ActiveFilter,
   CsvImportResult,
+  DefaultNature,
   UpsertAccountRequest,
 } from "@/types";
 
@@ -63,6 +64,17 @@ type StatusFilter = "Active" | "Inactive" | "All";
 
 const TYPE_OPTIONS: TypeFilter[] = ["All", "PS", "MOOE", "CO"];
 const STATUS_OPTIONS: StatusFilter[] = ["Active", "Inactive", "All"];
+
+// Expense class options for the Add/Edit form — mirrors the accountType enum (RAL-117).
+const EXPENSE_CLASS_OPTIONS: AccountType[] = ["PS", "MOOE", "CO", "Other"];
+
+// Default-nature options for the Add/Edit form (RAL-117 §5.3) — "" = no default set.
+const DEFAULT_NATURE_OPTIONS: Array<{ value: DefaultNature | ""; label: string }> = [
+  { value: "", label: "No default — user chooses" },
+  { value: "Procurement", label: "Procurement" },
+  { value: "Non-Procurement", label: "Non-Procurement" },
+  { value: "Combined", label: "Combined" },
+];
 
 const STATUS_TO_ACTIVE: Record<StatusFilter, ActiveFilter> = {
   Active: "true",
@@ -78,7 +90,7 @@ const TYPE_BADGE: Record<AccountType, string> = {
   PS: "bg-info-100 text-info-500",
   MOOE: "bg-amber-100 text-amber-500",
   CO: "bg-green-100 text-green-700",
-  Other: "bg-slate-100 text-slate-500",
+  Other: "bg-slate-100 text-slate-600",
 };
 
 function TypeBadge({ type }: { type: AccountType }) {
@@ -101,6 +113,15 @@ function StatusBadge({ active }: { active: boolean }) {
   );
 }
 
+function ReserveBadge({ applies }: { applies: boolean }) {
+  if (!applies) return <span className="text-slate-400">—</span>;
+  return (
+    <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold bg-green-100 text-green-700">
+      Yes
+    </span>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Form state
 // ---------------------------------------------------------------------------
@@ -110,6 +131,9 @@ interface FormState {
   accountNumber: string;
   normalBalance: string;
   description: string;
+  expenseClass: AccountType;
+  defaultNature: DefaultNature | "";
+  defaultApplyReserve: boolean;
 }
 
 const blankForm = (): FormState => ({
@@ -117,6 +141,9 @@ const blankForm = (): FormState => ({
   accountNumber: "",
   normalBalance: "",
   description: "",
+  expenseClass: "MOOE",
+  defaultNature: "",
+  defaultApplyReserve: false,
 });
 
 // ---------------------------------------------------------------------------
@@ -213,6 +240,9 @@ export default function AccountConfigPage() {
       accountNumber: account.accountNumber,
       normalBalance: account.normalBalance ?? "",
       description: account.description ?? "",
+      expenseClass: account.expenseClass as AccountType,
+      defaultNature: account.defaultNature ?? "",
+      defaultApplyReserve: account.defaultApplyReserve,
     });
     setFormError(null);
     setNumberError(null);
@@ -265,6 +295,9 @@ export default function AccountConfigPage() {
       description: form.description.trim() || null,
       // Modal does not edit status; preserve it on update, default active on create.
       isActive: editTarget ? editTarget.isActive : true,
+      expenseClass: form.expenseClass,
+      defaultNature: form.defaultNature || null,
+      defaultApplyReserve: form.defaultApplyReserve,
     };
 
     setSaving(true);
@@ -317,6 +350,9 @@ export default function AccountConfigPage() {
         normalBalance: account.normalBalance,
         description: account.description,
         isActive: true,
+        expenseClass: account.expenseClass,
+        defaultNature: account.defaultNature,
+        defaultApplyReserve: account.defaultApplyReserve,
       });
       toast.success("Account reactivated", `${account.accountNumber} is now active.`);
       await load();
@@ -369,15 +405,22 @@ export default function AccountConfigPage() {
       render: (a) => (
         <div>
           <div className="font-medium text-slate-800">{a.accountTitle}</div>
-          {a.description && <div className="text-xs text-slate-400 truncate max-w-md">{a.description}</div>}
+          {a.description && <div className="text-xs text-slate-600 truncate max-w-md">{a.description}</div>}
         </div>
       ),
     },
     {
-      key: "normalBalance",
-      header: "Normal Balance",
+      key: "defaultNature",
+      header: "Default Nature",
       sortable: true,
-      render: (a) => a.normalBalance ?? <span className="text-slate-300">—</span>,
+      render: (a) => a.defaultNature ?? <span className="text-slate-400">—</span>,
+    },
+    {
+      key: "defaultApplyReserve",
+      header: "Reserve",
+      sortable: true,
+      sortValue: (a) => (a.defaultApplyReserve ? 1 : 0),
+      render: (a) => <ReserveBadge applies={a.defaultApplyReserve} />,
     },
     {
       key: "isActive",
@@ -417,7 +460,7 @@ export default function AccountConfigPage() {
         <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className="text-lg font-bold text-slate-800">Chart of Accounts</h1>
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-slate-600">
               Expense accounts (PS / MOOE / CO) used across AIP and WFP budget planning.
             </p>
           </div>
@@ -449,7 +492,7 @@ export default function AccountConfigPage() {
 
           {/* Type dropdown */}
           <div className="flex items-center gap-2">
-            <label className="text-xs font-medium text-slate-500">Type</label>
+            <label className="text-xs font-medium text-slate-600">Type</label>
             <select
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
@@ -472,7 +515,7 @@ export default function AccountConfigPage() {
                 className={`px-3 py-2 text-sm font-medium transition-colors ${
                   statusFilter === s
                     ? "bg-green-600 text-white"
-                    : "bg-white text-slate-500 hover:bg-slate-50"
+                    : "bg-white text-slate-600 hover:bg-slate-50"
                 }`}
               >
                 {s}
@@ -487,7 +530,7 @@ export default function AccountConfigPage() {
                 setTypeFilter("All");
                 setStatusFilter("Active");
               }}
-              className="text-sm text-slate-400 hover:text-slate-600 transition-colors px-1"
+              className="text-sm text-slate-600 hover:text-slate-600 transition-colors px-1"
             >
               Reset
             </button>
@@ -566,7 +609,7 @@ export default function AccountConfigPage() {
               {numberError ? (
                 <p className="mt-1 text-xs text-danger-500">{numberError}</p>
               ) : (
-                <p className="mt-1 text-[11px] text-slate-400">
+                <p className="mt-1 text-[11px] text-slate-600">
                   Prefix sets the type: 5-01- = PS · 5-02- = MOOE · 5-03- = CO.
                 </p>
               )}
@@ -582,6 +625,61 @@ export default function AccountConfigPage() {
                 className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
               />
             </div>
+
+            {/* Expense Class */}
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Expense Class *</label>
+              <select
+                value={form.expenseClass}
+                onChange={(e) => setForm((f) => ({ ...f, expenseClass: e.target.value as AccountType }))}
+                className="w-full px-3 py-2 text-sm border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-green-600"
+              >
+                {EXPENSE_CLASS_OPTIONS.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-[11px] text-slate-600">
+                Stored directly — no longer derived from the account number prefix.
+              </p>
+            </div>
+
+            {/* Default Nature (RAL-117 — default-only, never enforced) */}
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Default Nature</label>
+              <select
+                value={form.defaultNature}
+                onChange={(e) => setForm((f) => ({ ...f, defaultNature: e.target.value as DefaultNature | "" }))}
+                className="w-full px-3 py-2 text-sm border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-green-600"
+              >
+                {DEFAULT_NATURE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-[11px] text-slate-600">
+                Pre-fills the WFP expenditure&apos;s Nature field when this account is picked — always editable there.
+              </p>
+            </div>
+
+            {/* Reserve applies by default (RAL-117 — default-only, never a gate) */}
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.defaultApplyReserve}
+                onChange={(e) => setForm((f) => ({ ...f, defaultApplyReserve: e.target.checked }))}
+                className="mt-0.5 h-4 w-4 accent-green-600"
+              />
+              <span>
+                <span className="block text-sm font-medium text-slate-700">Reserve applies by default</span>
+                <span className="block text-[11px] text-slate-600">
+                  Pre-fills the WFP reserve toggle for this account. Any account may still have the reserve
+                  toggle turned on regardless of this setting — it is a default, not an eligibility gate.
+                </span>
+              </span>
+            </label>
 
             {/* Description */}
             <div>
@@ -629,7 +727,7 @@ export default function AccountConfigPage() {
               Rows are matched by <span className="font-mono text-xs">account_number</span>: new numbers are
               added and existing ones are updated. Nothing is deleted.
             </p>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-600">
               Expected columns: account_title, account_number, normal_balance, description, is_active.
             </p>
           </div>
@@ -655,7 +753,7 @@ export default function AccountConfigPage() {
                 <p className="text-xs font-semibold text-amber-500 uppercase tracking-wide mb-1">
                   {importResult.errors.length} row{importResult.errors.length === 1 ? "" : "s"} skipped
                 </p>
-                <ul className="max-h-40 overflow-y-auto text-xs text-slate-500 list-disc pl-4 space-y-0.5">
+                <ul className="max-h-40 overflow-y-auto text-xs text-slate-600 list-disc pl-4 space-y-0.5">
                   {importResult.errors.map((e, i) => (
                     <li key={i}>{e}</li>
                   ))}
@@ -701,12 +799,12 @@ function Stat({ label, value, tone }: { label: string; value: number; tone: "gre
   const cls: Record<typeof tone, string> = {
     green: "text-green-700",
     blue: "text-info-500",
-    slate: "text-slate-500",
+    slate: "text-slate-600",
   };
   return (
     <div className="flex-1 border border-slate-200 px-3 py-2 text-center">
       <div className={`text-2xl font-bold ${cls[tone]}`}>{value}</div>
-      <div className="text-[11px] text-slate-400 uppercase tracking-wide">{label}</div>
+      <div className="text-[11px] text-slate-600 uppercase tracking-wide">{label}</div>
     </div>
   );
 }

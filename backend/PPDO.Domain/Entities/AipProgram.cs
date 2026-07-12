@@ -18,6 +18,15 @@ public sealed class AipProgram
     /// <summary>Program name. Max 500 characters.</summary>
     public string Name { get; set; } = string.Empty;
 
+    /// <summary>
+    /// WFP report function band — "CORE" | "STRATEGIC" | "SUPPORT" (v1.4 WFP Rework open
+    /// question Q1). Required going forward: AipService rejects null/empty on update, and new
+    /// programs default to "CORE" at AIP import time. Column stays nullable in the DB (never
+    /// backfilled with a hard NOT NULL constraint) — null only means a legacy program created
+    /// before this field existed and not yet touched.
+    /// </summary>
+    public string? FunctionBand { get; set; }
+
     // ── Navigation ────────────────────────────────────────────────────────────
 
     /// <summary>The parent AIP office.</summary>

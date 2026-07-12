@@ -44,6 +44,21 @@ public interface IAipService
     Task<ServiceResult<AipRecordDto>> UnlockAsync(int id, CancellationToken ct = default);
     Task<ServiceResult<AipRecordDto>> ArchiveAsync(int id, CancellationToken ct = default);
 
+    /// <summary>
+    /// Sets a program's WFP report function band (v1.4 Q1) — required, one of CORE/STRATEGIC/
+    /// SUPPORT; null/empty is rejected with BadRequest. Captured during WFP data entry, not AIP
+    /// import — see wfp/entry context picker. New programs default to CORE at import time
+    /// (AipService.ConfirmImportAsync) so the field is never left unset.
+    /// </summary>
+    Task<ServiceResult<AipProgramDto>> UpdateProgramFunctionBandAsync(
+        int programId, string? functionBand, CancellationToken ct = default);
+
+    /// <summary>
+    /// Sets an activity's "…-CREATION" PS flag (v1.4 Q2). No validation beyond existence.
+    /// </summary>
+    Task<ServiceResult<AipActivityDto>> UpdateActivityIsCreationAsync(
+        int activityId, bool isCreation, CancellationToken ct = default);
+
     /// <summary>Wipes all AIP records (cascade removes hierarchy). Returns deleted AipRecord count.</summary>
     Task<int> PurgeAllAsync(CancellationToken ct = default);
 }

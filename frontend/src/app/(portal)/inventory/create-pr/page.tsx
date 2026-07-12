@@ -172,7 +172,7 @@ function LookupInput({
               <span className="font-medium text-slate-800">
                 {displayKey === "stockNo" ? item.stockNo : item.description}
               </span>
-              <span className="ml-2 text-slate-400">
+              <span className="ml-2 text-slate-600">
                 {displayKey === "stockNo" ? item.description : item.stockNo}
               </span>
             </li>
@@ -189,7 +189,7 @@ function LookupInput({
 
 function FieldLabel({ children, required }: { children: React.ReactNode; required?: boolean }) {
   return (
-    <label className="block text-xs font-medium text-slate-500 mb-1">
+    <label className="block text-xs font-medium text-slate-600 mb-1">
       {children}
       {required && <span className="text-red-500 ml-0.5">*</span>}
     </label>
@@ -225,7 +225,7 @@ function GrayInput({ value, className = "" }: { value: string; className?: strin
       value={value}
       readOnly
       tabIndex={-1}
-      className={`w-full px-3 py-2 text-sm border border-slate-200 bg-cell-auto text-slate-500 cursor-default select-none ${className}`}
+      className={`w-full px-3 py-2 text-sm border border-slate-200 bg-cell-auto text-slate-600 cursor-default select-none ${className}`}
     />
   );
 }
@@ -654,19 +654,19 @@ export default function CreatePRPage() {
           </p>
           <div className="bg-slate-50 border border-slate-200 px-4 py-3 text-left space-y-1 text-sm">
             <div className="flex justify-between">
-              <span className="text-slate-500">PR No.</span>
+              <span className="text-slate-600">PR No.</span>
               <span className="font-mono font-semibold text-slate-800">{submitted.prNo}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-500">Division</span>
+              <span className="text-slate-600">Division</span>
               <span className="text-slate-700">{submitted.division}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-500">Items</span>
+              <span className="text-slate-600">Items</span>
               <span className="text-slate-700">{submitted.items.length}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-500">Total Amount</span>
+              <span className="text-slate-600">Total Amount</span>
               <span className="font-semibold text-slate-800">₱{fmt(submitted.totalAmount)}</span>
             </div>
           </div>
@@ -926,7 +926,7 @@ export default function CreatePRPage() {
           <div className="overflow-x-auto overflow-y-hidden">
             <table className="w-full text-xs border-collapse">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wide">
+                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase tracking-wide">
                   <th className="px-3 py-2.5 text-center font-medium w-10">#</th>
                   <th className="px-3 py-2.5 text-left font-medium w-36">Stock No.</th>
                   <th className="px-3 py-2.5 text-left font-medium min-w-56">Description</th>
@@ -946,7 +946,7 @@ export default function CreatePRPage() {
                   return (
                     <tr key={row._id} className={idx % 2 === 1 ? "bg-slate-50" : "bg-white"}>
                       {/* # */}
-                      <td className="px-3 py-1.5 text-center text-slate-400">{idx + 1}</td>
+                      <td className="px-3 py-1.5 text-center text-slate-600">{idx + 1}</td>
 
                       {/* Stock No — yellow, autocomplete */}
                       <td className="px-1.5 py-1.5">
@@ -983,7 +983,7 @@ export default function CreatePRPage() {
                           placeholder="unit"
                           className={`w-full px-2 py-1.5 text-xs border border-slate-200 focus:outline-none focus:ring-1 focus:ring-green-500 transition-colors ${
                             row.unit && row.stockNo
-                              ? "bg-cell-auto text-slate-500"
+                              ? "bg-cell-auto text-slate-600"
                               : "bg-cell-fill"
                           }`}
                         />
@@ -1020,7 +1020,7 @@ export default function CreatePRPage() {
                           tabIndex={row.fromLookup ? -1 : 0}
                           className={`w-full px-2 py-1.5 text-xs border border-slate-200 text-right focus:outline-none focus:ring-1 focus:ring-green-500 transition-colors ${
                             row.fromLookup
-                              ? "bg-cell-auto text-slate-500 cursor-default"
+                              ? "bg-cell-auto text-slate-600 cursor-default"
                               : "bg-cell-fill"
                           }`}
                         />
@@ -1028,14 +1028,14 @@ export default function CreatePRPage() {
 
                       {/* Total Cost — gray, computed */}
                       <td className="px-1.5 py-1.5">
-                        <div className="w-full px-2 py-1.5 text-xs border border-slate-200 bg-cell-auto text-slate-500 text-right select-none">
+                        <div className="w-full px-2 py-1.5 text-xs border border-slate-200 bg-cell-auto text-slate-600 text-right select-none">
                           {total > 0 ? fmt(total) : "—"}
                         </div>
                       </td>
 
                       {/* Item Type — gray (auto-filled) */}
                       <td className="px-1.5 py-1.5">
-                        <div className="w-full px-2 py-1.5 text-xs border border-slate-200 bg-cell-auto text-slate-500 select-none truncate">
+                        <div className="w-full px-2 py-1.5 text-xs border border-slate-200 bg-cell-auto text-slate-600 select-none truncate">
                           {row.itemType ?? "—"}
                         </div>
                       </td>
@@ -1046,7 +1046,7 @@ export default function CreatePRPage() {
                           onClick={() => removeRow(row._id)}
                           disabled={items.length === 1}
                           title="Remove row"
-                          className="text-slate-300 hover:text-red-500 disabled:opacity-20 transition-colors text-base leading-none"
+                          className="text-slate-600 hover:text-red-500 disabled:opacity-20 transition-colors text-base leading-none"
                         >
                           ✕
                         </button>
@@ -1073,7 +1073,7 @@ export default function CreatePRPage() {
             )}
 
             <div className="ml-auto flex items-center gap-3">
-              <span className="text-xs text-slate-500">
+              <span className="text-xs text-slate-600">
                 {filledRows(items).length} item{filledRows(items).length !== 1 ? "s" : ""}
               </span>
               <div className="text-sm font-semibold text-slate-700 tabular-nums">

@@ -405,9 +405,9 @@ public sealed class ExcelServiceTests
             null, null, null, null, null,
             null, null,
             100000m, null, null, 100000m,
-            null, null, null);
+            null, null, null, false);
         AipProjectDto  aipProj   = new(1, 1, "PROJ-01", "Test Project",  [aipAct]);
-        AipProgramDto  aipProg   = new(1, 1, "PROG-01", "Test Program",  [aipProj]);
+        AipProgramDto  aipProg   = new(1, 1, "PROG-01", "Test Program",  [aipProj], null);
         AipOfficeDto   aipOffice = new(1, 1, "01-010",  "Test Office",   "GENERAL", [aipProg]);
         AipRecordDetailDto aip   = new(1, 2027, "upload", null, Guid.NewGuid(),
             DateTime.UtcNow, "Final", null, null, [aipOffice]);

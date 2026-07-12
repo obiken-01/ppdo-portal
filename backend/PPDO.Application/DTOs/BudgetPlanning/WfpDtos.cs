@@ -88,3 +88,19 @@ public record SaveWfpDto(
     int FiscalYear,
     int? DivisionId,
     IReadOnlyList<SaveWfpActivityDto> Activities);
+
+// ── v1.4 entry wizard enabler (RAL-123) ───────────────────────────────────────
+
+/// <summary>Request body for find-or-create WFP record/activity — see <c>IWfpService.EnsureActivityAsync</c>.</summary>
+public record EnsureWfpActivityDto(
+    int AipRecordId,
+    int OfficeId,
+    int? DivisionId,
+    int FiscalYear,
+    int AipActivityId);
+
+/// <summary>The (wfp_record_id, wfp_activity_id) pair the v1.4 entry wizard needs to call RAL-120's expenditure save endpoint.</summary>
+public record WfpActivityRefDto(
+    int WfpRecordId,
+    int WfpActivityId,
+    string WfpStatus);

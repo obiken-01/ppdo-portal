@@ -16,7 +16,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { fetchMe } from "@/lib/me-cache";
-import { listAccounts, listDivisions, listFundingSources, listOffices } from "@/lib/config";
+import {
+  listAccounts,
+  listDivisions,
+  listFundingSources,
+  listOffices,
+  listPriceIndex,
+} from "@/lib/config";
 
 // ---------------------------------------------------------------------------
 // Tile definitions
@@ -28,7 +34,8 @@ interface TileDef {
   name: string;
   caption: string;
   href: string;
-  load: () => Promise<number>;
+  /** Omit when the tile has no meaningful account-agnostic count to show. */
+  load?: () => Promise<number>;
 }
 
 const TILES: TileDef[] = [
@@ -57,12 +64,28 @@ const TILES: TileDef[] = [
     load: async () => (await listFundingSources({ active: "true" })).length,
   },
   {
+    key: "priceIndex",
+    icon: "🏷️",
+    name: "Price Index",
+    caption: "Procurement item catalogue searched from WFP line-item entry.",
+    href: "/config/price-index",
+    load: async () => (await listPriceIndex({ active: "true" })).length,
+  },
+  {
     key: "divisions",
     icon: "🏢",
     name: "Divisions",
     caption: "Per-office divisions that carry data scope and feature-permission flags.",
     href: "/config/divisions",
     load: async () => (await listDivisions({ active: "true" })).length,
+  },
+  {
+    key: "procurementPresets",
+    icon: "📋",
+    name: "Procurement Presets",
+    caption: "Account-scoped, reusable procurement line-item templates for WFP entry.",
+    href: "/config/procurement-presets",
+    // No account-agnostic count endpoint — presets are always scoped to one account.
   },
 ];
 
@@ -92,7 +115,9 @@ export default function ConfigDashboardPage() {
     accounts: null,
     offices: null,
     funding: null,
+    priceIndex: null,
     divisions: null,
+    procurementPresets: "error", // no account-agnostic count — renders as a dash, never fetched
     users: null,
   });
 
@@ -113,6 +138,7 @@ export default function ConfigDashboardPage() {
     if (!authChecked) return;
     const tiles = canManageUsers ? [...TILES, USER_TILE] : TILES;
     for (const tile of tiles) {
+      if (!tile.load) continue;
       tile
         .load()
         .then((n) => setCounts((c) => ({ ...c, [tile.key]: n })))
@@ -138,7 +164,7 @@ export default function ConfigDashboardPage() {
         {/* Header */}
         <div>
           <h1 className="text-lg font-bold text-slate-800">Configuration</h1>
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-slate-600">
             Manage reference data used across AIP and WFP planning entries.
           </p>
         </div>
@@ -159,7 +185,7 @@ export default function ConfigDashboardPage() {
                   <CountBadge value={counts[tile.key]} />
                 </div>
                 <h2 className="mt-4 text-base font-semibold text-slate-800">{tile.name}</h2>
-                <p className="mt-1 text-sm text-slate-500 leading-relaxed">{tile.caption}</p>
+                <p className="mt-1 text-sm text-slate-600 leading-relaxed">{tile.caption}</p>
               </div>
               <div className="px-5 py-3 border-t border-slate-100 flex items-center justify-end">
                 <span className="text-sm font-medium text-green-600 group-hover:text-green-700 inline-flex items-center gap-1">
@@ -184,7 +210,7 @@ function CountBadge({ value }: { value: number | "error" | null }) {
     return <span className="w-5 h-5 border-2 border-slate-300 border-t-transparent rounded-full animate-spin" />;
   }
   if (value === "error") {
-    return <span className="text-2xl font-bold text-slate-300" title="Could not load count">—</span>;
+    return <span className="text-2xl font-bold text-slate-600" title="Could not load count">—</span>;
   }
   return <span className="text-2xl font-bold text-slate-800 tabular-nums">{value}</span>;
 }

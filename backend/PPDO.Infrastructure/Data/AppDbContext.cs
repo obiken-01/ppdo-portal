@@ -60,6 +60,16 @@ public sealed class AppDbContext : DbContext
     public DbSet<DivisionAllocation> DivisionAllocations { get; set; } = null!;
     public DbSet<ProgramDivision>    ProgramDivisions    { get; set; } = null!;
 
+    // ── v1.4 WFP Rework (RAL-116) ─────────────────────────────────────────────
+
+    public DbSet<PriceIndexItem> PriceIndexItems { get; set; } = null!;
+    public DbSet<WfpExpenditure> WfpExpenditures { get; set; } = null!;
+    public DbSet<WfpExpenditurePeriod> WfpExpenditurePeriods { get; set; } = null!;
+    public DbSet<WfpProcurementItem> WfpProcurementItems { get; set; } = null!;
+    public DbSet<WfpDivisionAllocationLedger> WfpDivisionAllocationLedgers { get; set; } = null!;
+    public DbSet<ProcurementPreset> ProcurementPresets { get; set; } = null!;
+    public DbSet<ProcurementPresetItem> ProcurementPresetItems { get; set; } = null!;
+
     // ── Model configuration ───────────────────────────────────────────────────
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

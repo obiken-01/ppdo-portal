@@ -294,7 +294,7 @@ function LdipListInner() {
           <h1 className="text-xl font-bold text-slate-800">
             Local Development Investment Program
           </h1>
-          <p className="text-sm text-slate-500 mt-0.5">
+          <p className="text-sm text-slate-600 mt-0.5">
             Multi-year investment planning records
           </p>
         </div>

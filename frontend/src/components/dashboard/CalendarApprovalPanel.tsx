@@ -89,7 +89,7 @@ export default function CalendarApprovalPanel({
         <div>
           <p className="font-medium text-slate-800 text-sm">{row.title}</p>
           {row.description && (
-            <p className="text-xs text-slate-500 truncate max-w-xs">{row.description}</p>
+            <p className="text-xs text-slate-600 truncate max-w-xs">{row.description}</p>
           )}
         </div>
       ),
@@ -122,7 +122,7 @@ export default function CalendarApprovalPanel({
       sortable: true,
       sortValue: (row) => row.createdAt,
       render: (row) => (
-        <span className="text-xs text-slate-500 whitespace-nowrap">
+        <span className="text-xs text-slate-600 whitespace-nowrap">
           {new Date(row.createdAt).toLocaleDateString("en-PH", {
             year: "numeric",
             month: "short",

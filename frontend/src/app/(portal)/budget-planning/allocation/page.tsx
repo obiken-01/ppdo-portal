@@ -130,7 +130,7 @@ function AllocationBar({
           );
         })}
         {!isOver && total > 0 && (
-          <span className="flex items-center gap-1.5 text-xs text-slate-400">
+          <span className="flex items-center gap-1.5 text-xs text-slate-600">
             <span className="inline-block w-2.5 h-2.5 shrink-0 bg-slate-200" />
             Unallocated: {(((ceiling - total) / ceiling) * 100).toFixed(1)}%
           </span>
@@ -486,7 +486,7 @@ function AllocationPageInner() {
 
         {/* Loading */}
         {loading && (
-          <div className="flex items-center gap-2 text-slate-500 text-sm py-6">
+          <div className="flex items-center gap-2 text-slate-600 text-sm py-6">
             <span className="w-4 h-4 border-2 border-slate-300 border-t-green-600 rounded-full animate-spin" />
             Loading…
           </div>
@@ -494,7 +494,7 @@ function AllocationPageInner() {
 
         {/* Empty state */}
         {!loading && selectedOfficeId == null && (
-          <p className="text-slate-400 text-sm py-6">
+          <p className="text-slate-600 text-sm py-6">
             Select an office to configure allocation.
           </p>
         )}
@@ -511,7 +511,7 @@ function AllocationPageInner() {
                   className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
                     activeTab === tab
                       ? "border-green-600 text-green-700"
-                      : "border-transparent text-slate-500 hover:text-slate-700"
+                      : "border-transparent text-slate-600 hover:text-slate-700"
                   }`}
                 >
                   {tab === "ceiling" ? "Ceiling & Division Allocation" : "PPA → Division"}
@@ -528,7 +528,7 @@ function AllocationPageInner() {
                   <h2 className="text-sm font-semibold text-slate-700 mb-3">
                     PBO Budget Ceiling
                     {selectedOffice && (
-                      <span className="ml-2 font-normal text-slate-400">
+                      <span className="ml-2 font-normal text-slate-600">
                         — {selectedOffice.officeName} · FY{selectedFiscalYear}
                       </span>
                     )}
@@ -551,7 +551,7 @@ function AllocationPageInner() {
                     </button>
                   </div>
                   {ceiling && (
-                    <p className="mt-2 text-xs text-slate-400">
+                    <p className="mt-2 text-xs text-slate-600">
                       Saved ceiling: ₱{formatMoney(ceiling.amount)}
                     </p>
                   )}
@@ -564,7 +564,7 @@ function AllocationPageInner() {
                   </h2>
 
                   {divisions.length === 0 ? (
-                    <p className="text-sm text-slate-400">
+                    <p className="text-sm text-slate-600">
                       No divisions configured for this office. Add divisions in Config → Divisions.
                     </p>
                   ) : (
@@ -598,13 +598,13 @@ function AllocationPageInner() {
                       <table className="w-full mt-4 text-sm border-collapse">
                         <thead>
                           <tr className="border-b border-slate-200">
-                            <th className="text-left py-2 text-xs font-medium text-slate-500 uppercase tracking-wide">
+                            <th className="text-left py-2 text-xs font-medium text-slate-600 uppercase tracking-wide">
                               Division
                             </th>
-                            <th className="text-right py-2 text-xs font-medium text-slate-500 uppercase tracking-wide w-52">
+                            <th className="text-right py-2 text-xs font-medium text-slate-600 uppercase tracking-wide w-52">
                               Amount (₱)
                             </th>
-                            <th className="text-right py-2 text-xs font-medium text-slate-500 uppercase tracking-wide w-20">
+                            <th className="text-right py-2 text-xs font-medium text-slate-600 uppercase tracking-wide w-20">
                               % of Ceiling
                             </th>
                           </tr>
@@ -629,7 +629,7 @@ function AllocationPageInner() {
                                     />
                                     {div.name}
                                     {div.code && (
-                                      <span className="text-xs text-slate-400 font-mono">
+                                      <span className="text-xs text-slate-600 font-mono">
                                         {div.code}
                                       </span>
                                     )}
@@ -649,7 +649,7 @@ function AllocationPageInner() {
                                     />
                                   </div>
                                 </td>
-                                <td className="py-2 text-right text-slate-500 tabular-nums">
+                                <td className="py-2 text-right text-slate-600 tabular-nums">
                                   {pct}
                                   {pct !== "—" ? "%" : ""}
                                 </td>
@@ -667,7 +667,7 @@ function AllocationPageInner() {
                             >
                               ₱{formatMoney(allocationTotal)}
                             </td>
-                            <td className="py-2 text-right text-slate-500 tabular-nums">
+                            <td className="py-2 text-right text-slate-600 tabular-nums">
                               {(ceilingInput ?? 0) > 0
                                 ? `${((allocationTotal / ceilingInput!) * 100).toFixed(1)}%`
                                 : "—"}
@@ -695,7 +695,7 @@ function AllocationPageInner() {
                           {isOverCeiling ? "Over Ceiling — Cannot Save" : "Save Allocations"}
                         </button>
                         {!ceiling && (
-                          <span className="text-xs text-slate-400">
+                          <span className="text-xs text-slate-600">
                             Set a ceiling first before saving allocations.
                           </span>
                         )}
@@ -710,11 +710,11 @@ function AllocationPageInner() {
             {activeTab === "ppa" && (
               <div>
                 {divisions.length === 0 ? (
-                  <p className="text-sm text-slate-400 py-4">
+                  <p className="text-sm text-slate-600 py-4">
                     No divisions configured for this office. Add divisions in Config → Divisions.
                   </p>
                 ) : programs.length === 0 ? (
-                  <p className="text-sm text-slate-400 py-4">
+                  <p className="text-sm text-slate-600 py-4">
                     No programs found for FY{selectedFiscalYear} on this office. Upload an AIP first.
                   </p>
                 ) : (
@@ -774,7 +774,7 @@ function AllocationPageInner() {
                           </button>
                           <button
                             onClick={() => setCheckedPrograms(new Set())}
-                            className="text-xs text-slate-400 hover:text-slate-600"
+                            className="text-xs text-slate-600 hover:text-slate-600"
                           >
                             Clear
                           </button>
@@ -832,7 +832,7 @@ function AllocationPageInner() {
                                   <span className="text-xs leading-tight">
                                     {div.code ?? div.name.split(" ")[0]}
                                   </span>
-                                  <span className="text-[10px] text-slate-400">
+                                  <span className="text-[10px] text-slate-600">
                                     {assignedCountForDiv(div.id)}/{programs.length}
                                   </span>
                                 </div>
@@ -853,12 +853,12 @@ function AllocationPageInner() {
                                   >
                                     <button
                                       onClick={() => toggleSectorCollapse(sector)}
-                                      className="mr-2 text-slate-500 hover:text-slate-700"
+                                      className="mr-2 text-slate-600 hover:text-slate-700"
                                     >
                                       {isCollapsed ? "▶" : "▼"}
                                     </button>
                                     {sector}
-                                    <span className="ml-2 font-normal text-slate-500">
+                                    <span className="ml-2 font-normal text-slate-600">
                                       ({sectorPrograms.length})
                                     </span>
                                   </td>
@@ -898,7 +898,7 @@ function AllocationPageInner() {
                                         </td>
 
                                         {/* Ref Code */}
-                                        <td className="px-3 py-2 font-mono text-xs text-slate-500 whitespace-nowrap align-top">
+                                        <td className="px-3 py-2 font-mono text-xs text-slate-600 whitespace-nowrap align-top">
                                           {p.programRefCode}
                                         </td>
 
@@ -926,7 +926,7 @@ function AllocationPageInner() {
                                             className={`px-2 py-0.5 text-xs font-medium border transition-colors ${
                                               isMulti
                                                 ? "border-blue-300 bg-blue-50 text-blue-700"
-                                                : "border-slate-200 text-slate-500 hover:bg-slate-50"
+                                                : "border-slate-200 text-slate-600 hover:bg-slate-50"
                                             }`}
                                             title={
                                               isMulti
@@ -969,7 +969,7 @@ function AllocationPageInner() {
                     </div>
 
                     {groupedPrograms.length === 0 && (
-                      <p className="text-sm text-slate-400 py-4 text-center">
+                      <p className="text-sm text-slate-600 py-4 text-center">
                         {showUnassignedOnly
                           ? "All programs are assigned."
                           : "No programs to display."}

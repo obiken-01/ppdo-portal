@@ -23,7 +23,7 @@ import { auth } from "@/lib/auth";
 import { clearMeCache } from "@/lib/me-cache";
 import type { MeResponse } from "@/types";
 
-const APP_VERSION = "v1.3.0";
+const APP_VERSION = "v1.4.0";
 
 interface SidebarProps {
   me: MeResponse | null;
@@ -147,6 +147,14 @@ export default function Sidebar({ me }: SidebarProps) {
           <Link href="/dashboard" className={linkCls(isActive("/dashboard"))}>
             <span className="text-base leading-none w-5 text-center">🏠</span>
             <span className="truncate">Dashboard</span>
+          </Link>
+        )}
+
+        {/* Resource Links — PPDO-internal; hidden for office users */}
+        {showResourceLinks && (
+          <Link href="/resource-links" className={linkCls(isActive("/resource-links"))}>
+            <span className="text-base leading-none w-5 text-center">🔗</span>
+            <span className="truncate">Resource Links</span>
           </Link>
         )}
 
@@ -293,9 +301,13 @@ export default function Sidebar({ me }: SidebarProps) {
                     <span className="truncate">Allocation</span>
                   </Link>
                 )}
-                <Link href="/budget-planning/wfp" className={childLinkCls(isActive("/budget-planning/wfp"))}>
+                <Link href="/budget-planning/wfp/entry" className={childLinkCls(isActive("/budget-planning/wfp"))}>
                   <span className="text-xs">•</span>
                   <span className="truncate">WFP</span>
+                </Link>
+                <Link href="/budget-planning/report" className={childLinkCls(isActive("/budget-planning/report"))}>
+                  <span className="text-xs">•</span>
+                  <span className="truncate">Report</span>
                 </Link>
               </div>
             )}
@@ -340,9 +352,17 @@ export default function Sidebar({ me }: SidebarProps) {
                       <span className="text-xs">•</span>
                       <span className="truncate">Funding Sources</span>
                     </Link>
+                    <Link href="/config/price-index" className={childLinkCls(isActive("/config/price-index"))}>
+                      <span className="text-xs">•</span>
+                      <span className="truncate">Price Index</span>
+                    </Link>
                     <Link href="/config/divisions" className={childLinkCls(isActive("/config/divisions"))}>
                       <span className="text-xs">•</span>
                       <span className="truncate">Divisions</span>
+                    </Link>
+                    <Link href="/config/procurement-presets" className={childLinkCls(isActive("/config/procurement-presets"))}>
+                      <span className="text-xs">•</span>
+                      <span className="truncate">Procurement Presets</span>
                     </Link>
                   </>
                 )}
@@ -357,14 +377,6 @@ export default function Sidebar({ me }: SidebarProps) {
           </div>
         )}
 
-        {/* Resource Links — PPDO-internal; hidden for office users */}
-        {showResourceLinks && (
-          <Link href="/resource-links" className={linkCls(isActive("/resource-links"))}>
-            <span className="text-base leading-none w-5 text-center">🔗</span>
-            <span className="truncate">Resource Links</span>
-          </Link>
-        )}
-
       </nav>
 
       {/* ── User strip — click to toggle popup menu ──────────────────────── */}
@@ -376,7 +388,7 @@ export default function Sidebar({ me }: SidebarProps) {
             <div className="absolute bottom-full left-3 right-3 mb-1 bg-white shadow-xl border border-slate-100 overflow-hidden z-50">
               <div className="px-4 py-2.5 border-b border-slate-100">
                 <p className="text-xs font-semibold text-slate-700 truncate">{me.fullName}</p>
-                <p className="text-xs text-slate-400 truncate">{me.username}</p>
+                <p className="text-xs text-slate-600 truncate">{me.username}</p>
               </div>
               <Link
                 href="/account"

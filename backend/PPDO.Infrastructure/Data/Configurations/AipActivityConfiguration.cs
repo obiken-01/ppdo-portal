@@ -81,6 +81,11 @@ public sealed class AipActivityConfiguration : IEntityTypeConfiguration<AipActiv
             .HasColumnName("cc_typology_code")
             .HasMaxLength(50);
 
+        builder.Property(a => a.IsCreation)
+            .HasColumnName("is_creation")
+            .IsRequired()
+            .HasDefaultValue(false);
+
         builder.HasIndex(a => new { a.ProjectId, a.RefCode })
             .IsUnique()
             .HasDatabaseName("UX_aip_activities_project_id_ref_code");

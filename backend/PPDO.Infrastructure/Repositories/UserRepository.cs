@@ -31,7 +31,7 @@ public sealed class UserRepository : Repository<User>, IUserRepository
         => _context.Users
             .Include(u => u.Division)
             .FirstOrDefaultAsync(
-                u => u.Email.ToLower() == email.ToLower() && u.IsActive,
+                u => u.Email != null && u.Email.ToLower() == email.ToLower() && u.IsActive,
                 cancellationToken);
 
     /// <inheritdoc />

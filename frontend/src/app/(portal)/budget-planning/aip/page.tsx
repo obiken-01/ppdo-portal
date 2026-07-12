@@ -58,7 +58,7 @@ function StatusBadge({ status }: { status: string }) {
       ? "bg-green-100 text-green-700"
       : status === "Draft"
       ? "bg-amber-100 text-amber-700"
-      : "bg-slate-100 text-slate-500";
+      : "bg-slate-100 text-slate-600";
   return (
     <span className={`px-2 py-0.5 text-xs font-medium ${cls}`}>{status}</span>
   );
@@ -259,7 +259,7 @@ export default function AipListPage() {
       <div className="flex items-start justify-between mb-5">
         <div>
           <h1 className="text-xl font-bold text-slate-800">Annual Investment Program</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
+          <p className="text-sm text-slate-600 mt-0.5">
             Yearly investment allocations per sector and office
           </p>
         </div>

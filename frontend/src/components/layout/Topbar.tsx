@@ -128,9 +128,9 @@ export default function Topbar({ me, title }: TopbarProps) {
       )}
 
       {me && (
-        <span className="text-sm text-slate-500 hidden sm:block">
+        <span className="text-sm text-slate-600 hidden sm:block">
           {me.fullName}
-          <span className="ml-1.5 text-xs text-slate-400">({me.role})</span>
+          <span className="ml-1.5 text-xs text-slate-600">({me.role})</span>
         </span>
       )}
     </header>

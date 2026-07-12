@@ -73,7 +73,7 @@ export default function AnnouncementsSection() {
 
       {selected && (
         <Modal title={selected.title} size="lg" onClose={() => setSelected(null)}>
-          <time className="block text-xs text-slate-400 mb-4" dateTime={selected.publishedAt}>
+          <time className="block text-xs text-slate-600 mb-4" dateTime={selected.publishedAt}>
             {new Date(selected.publishedAt).toLocaleDateString("en-US", {
               month: "long", day: "numeric", year: "numeric",
             })}
@@ -109,7 +109,7 @@ function SkeletonBars({ warming }: { warming: boolean }) {
         </div>
       ))}
       {warming && (
-        <p className="text-xs text-slate-400 text-center pt-1">
+        <p className="text-xs text-slate-600 text-center pt-1">
           Server is waking up, this may take a moment…
         </p>
       )}
@@ -128,7 +128,7 @@ function EmptyState() {
         <MegaphoneIcon />
       </div>
       <p className="text-slate-600 font-medium">No announcements yet</p>
-      <p className="text-slate-400 text-sm mt-1">
+      <p className="text-slate-600 text-sm mt-1">
         Check back later for updates from the office.
       </p>
     </div>
@@ -156,7 +156,7 @@ function AnnouncementCard({
     <article className="bg-white border border-slate-200 px-6 py-5">
       <div className="flex items-start justify-between gap-4 mb-3">
         <h3 className="text-lg font-semibold text-slate-800">{item.title}</h3>
-        <time className="text-sm text-slate-400 shrink-0" dateTime={item.publishedAt}>
+        <time className="text-sm text-slate-600 shrink-0" dateTime={item.publishedAt}>
           {formattedDate}
         </time>
       </div>

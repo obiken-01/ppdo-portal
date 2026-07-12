@@ -189,7 +189,7 @@ export default function DashboardPage() {
               </div>
               <button
                 onClick={() => setSelectedEvent(null)}
-                className="text-slate-400 hover:text-slate-600 text-xl leading-none shrink-0"
+                className="text-slate-600 hover:text-slate-600 text-xl leading-none shrink-0"
               >
                 ×
               </button>
@@ -207,7 +207,7 @@ export default function DashboardPage() {
               </div>
             )}
 
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-600">
               {new Date(selectedEvent.startDate).toLocaleDateString("en-PH", {
                 weekday: "long", year: "numeric", month: "long", day: "numeric",
                 timeZone: "Asia/Manila",

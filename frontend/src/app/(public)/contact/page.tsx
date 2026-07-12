@@ -9,10 +9,10 @@ export default function ContactPage() {
       <main className="flex-1 bg-slate-100">
         <div className="max-w-6xl mx-auto px-6 py-16 text-center">
           <h1 className="text-3xl font-bold text-slate-800 mb-3">Contact Us</h1>
-          <p className="text-slate-500 mb-8">
+          <p className="text-slate-600 mb-8">
             Reach out to the Provincial Planning and Development Office.
           </p>
-          <div className="inline-block bg-white border border-slate-200 rounded-xl px-12 py-10 text-slate-400">
+          <div className="inline-block bg-white border border-slate-200 rounded-xl px-12 py-10 text-slate-600">
             <p className="text-sm font-medium">Content coming soon</p>
             <p className="text-xs mt-1">Contact details will be added in a future release.</p>
           </div>

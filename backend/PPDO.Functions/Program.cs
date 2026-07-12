@@ -135,8 +135,13 @@ var host = new HostBuilder()
         services.AddScoped<IDivisionService, DivisionService>();
         services.AddScoped<IAccountService, AccountService>();
         services.AddScoped<IFundingSourceService, FundingSourceService>();
+        services.AddScoped<IPriceIndexService, PriceIndexService>();
+        services.AddScoped<IProcurementPresetRepository, ProcurementPresetRepository>();
+        services.AddScoped<IRepository<ProcurementPresetItem>, Repository<ProcurementPresetItem>>();
+        services.AddScoped<IProcurementPresetService, ProcurementPresetService>();
         services.AddScoped<IAuditService, AuditService>();
         services.AddScoped<IBudgetPlanningDashboardService, BudgetPlanningDashboardService>();
+        services.AddScoped<IWfpReportService, WfpReportService>();
 
         // -- v1.1.1 services -------------------------------------------------
         services.AddScoped<IAnnouncementService, AnnouncementService>();
@@ -153,6 +158,16 @@ var host = new HostBuilder()
         services.AddScoped<IRepository<DivisionAllocation>, Repository<DivisionAllocation>>();
         services.AddScoped<IAllocationRepository, AllocationRepository>();
         services.AddScoped<IAllocationService, AllocationService>();
+
+        // -- v1.4 WFP expenditure schema + computation pipeline (RAL-120) -----
+        services.AddScoped<IRepository<WfpExpenditurePeriod>, Repository<WfpExpenditurePeriod>>();
+        services.AddScoped<IRepository<WfpProcurementItem>, Repository<WfpProcurementItem>>();
+        services.AddScoped<IWfpExpenditureRepository, WfpExpenditureRepository>();
+        services.AddScoped<IWfpExpenditureService, WfpExpenditureService>();
+
+        // -- v1.4 WFP ceiling monitoring + division-allocation ledger (RAL-122) --
+        services.AddScoped<IWfpAllocationLedgerRepository, WfpAllocationLedgerRepository>();
+        services.AddScoped<IWfpCeilingService, WfpCeilingService>();
     })
     .Build();
 

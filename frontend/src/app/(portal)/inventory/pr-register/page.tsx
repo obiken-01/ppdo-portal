@@ -254,7 +254,7 @@ function FilterInput({
 }) {
   return (
     <div className="space-y-1">
-      <label className="block text-xs font-medium text-slate-500">{label}</label>
+      <label className="block text-xs font-medium text-slate-600">{label}</label>
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -431,7 +431,7 @@ export default function PRListPage() {
     {
       id: "rowNo", header: "#", size: 44,
       enableSorting: false,
-      cell: ({ row }) => <span className="text-slate-400 text-xs">{row.index + 1}</span>,
+      cell: ({ row }) => <span className="text-slate-600 text-xs">{row.index + 1}</span>,
     },
     {
       accessorKey: "prNo", header: "PR No.", size: 220,
@@ -595,7 +595,7 @@ export default function PRListPage() {
 
             {/* Quick presets */}
             <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Quick Presets</p>
+              <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">Quick Presets</p>
               <div className="flex flex-wrap gap-2">
                 {([
                   ["pending-this-q",  "Pending This Quarter",   "bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100"],
@@ -614,7 +614,7 @@ export default function PRListPage() {
                 {filterCount > 0 && (
                   <button
                     onClick={() => setFilters(EMPTY_FILTERS)}
-                    className="px-3 py-1.5 text-xs font-medium border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors"
+                    className="px-3 py-1.5 text-xs font-medium border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
                   >
                     ✕ Clear all filters
                   </button>
@@ -629,7 +629,7 @@ export default function PRListPage() {
 
               {/* PR Date */}
               <div className="space-y-2">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">PR Date</p>
+                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">PR Date</p>
                 <div className="flex gap-3 flex-wrap">
                   {(["any", "single", "range", "quarter"] as DateMode[]).map((m) => (
                     <label key={m} className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer">
@@ -657,7 +657,7 @@ export default function PRListPage() {
                       onChange={(e) => setF("dateFrom", e.target.value)}
                       className="flex-1 px-2.5 py-1.5 text-xs border border-slate-200 focus:outline-none focus:ring-1 focus:ring-green-500"
                     />
-                    <span className="text-slate-400 text-xs">to</span>
+                    <span className="text-slate-600 text-xs">to</span>
                     <input type="date" value={filters.dateTo}
                       onChange={(e) => setF("dateTo", e.target.value)}
                       className="flex-1 px-2.5 py-1.5 text-xs border border-slate-200 focus:outline-none focus:ring-1 focus:ring-green-500"
@@ -681,7 +681,7 @@ export default function PRListPage() {
 
               {/* Status */}
               <div className="space-y-2">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</p>
+                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Status</p>
                 <div className="flex flex-wrap gap-2">
                   {(["Open", "PartiallyDelivered", "FullyDelivered", "Completed"] as PRStatus[]).map((s) => {
                     const active = filters.statuses.includes(s);
@@ -702,7 +702,7 @@ export default function PRListPage() {
                     );
                   })}
                 </div>
-                <p className="text-xs text-slate-400">Select multiple to combine (e.g. Open + Partially Delivered = all pending)</p>
+                <p className="text-xs text-slate-600">Select multiple to combine (e.g. Open + Partially Delivered = all pending)</p>
               </div>
             </div>
 
@@ -712,7 +712,7 @@ export default function PRListPage() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {isAdmin && (
                 <div className="space-y-1">
-                  <label className="block text-xs font-medium text-slate-500">Division</label>
+                  <label className="block text-xs font-medium text-slate-600">Division</label>
                   <select
                     value={filters.division}
                     onChange={(e) => setF("division", e.target.value)}
@@ -734,7 +734,7 @@ export default function PRListPage() {
 
             {/* Row 3 — Long text fields */}
             <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Program / Project / Activity <span className="font-normal normal-case">(partial match)</span></p>
+              <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-3">Program / Project / Activity <span className="font-normal normal-case">(partial match)</span></p>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <FilterInput label="Program" value={filters.program} onChange={(v) => setF("program", v)} placeholder="Partial match…" />
                 <FilterInput label="Project" value={filters.project} onChange={(v) => setF("project", v)} placeholder="Partial match…" />
@@ -746,7 +746,7 @@ export default function PRListPage() {
         )}
 
         {/* ── Result count + active filter summary ─────────────────────────── */}
-        <div className="flex items-center justify-between text-xs text-slate-500">
+        <div className="flex items-center justify-between text-xs text-slate-600">
           <span>
             Showing <span className="font-semibold text-slate-700">{totalFiltered}</span> of{" "}
             <span className="font-semibold text-slate-700">{prs.length}</span> PRs
@@ -780,7 +780,7 @@ export default function PRListPage() {
               <table className="w-full text-sm border-collapse">
                 <thead>
                   {table.getHeaderGroups().map((hg) => (
-                    <tr key={hg.id} className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500 uppercase tracking-wide">
+                    <tr key={hg.id} className="bg-slate-50 border-b border-slate-200 text-xs text-slate-600 uppercase tracking-wide">
                       {hg.headers.map((h) => (
                         <th key={h.id} style={{ width: h.getSize() }} className="text-left px-3 py-2.5 font-medium select-none">
                           {h.isPlaceholder ? null : (
@@ -804,7 +804,7 @@ export default function PRListPage() {
                 <tbody className="divide-y divide-slate-100">
                   {table.getRowModel().rows.length === 0 ? (
                     <tr>
-                      <td colSpan={columns.length} className="text-center py-16 text-slate-400 text-sm">
+                      <td colSpan={columns.length} className="text-center py-16 text-slate-600 text-sm">
                         {prs.length === 0 ? "No purchase requests found." : "No PRs match your filters."}
                       </td>
                     </tr>
@@ -823,7 +823,7 @@ export default function PRListPage() {
               </table>
 
               {/* Pagination */}
-              <div className="flex items-center justify-between px-4 py-2 border-t border-slate-100 text-xs text-slate-400 flex-wrap gap-2">
+              <div className="flex items-center justify-between px-4 py-2 border-t border-slate-100 text-xs text-slate-600 flex-wrap gap-2">
                 <span>
                   {visibleRows === totalFiltered
                     ? `${totalFiltered} PR${totalFiltered !== 1 ? "s" : ""}`

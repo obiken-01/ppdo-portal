@@ -97,6 +97,7 @@ export interface AipActivityDetail {
   ccAdaptation: number | null;
   ccMitigation: number | null;
   ccTypologyCode: string | null;
+  isCreation: boolean;
 }
 
 export interface AipProjectDetail {
@@ -113,6 +114,7 @@ export interface AipProgramDetail {
   refCode: string;
   name: string;
   projects: AipProjectDetail[];
+  functionBand: string | null;
 }
 
 export interface AipOfficeDetail {
@@ -149,6 +151,7 @@ export interface AipActivitySummary {
   total: number | null;
   fundingSourceId: number | null;
   fundingSourceSnapshot: string | null;
+  isCreation: boolean;
 }
 
 export interface AipProjectSummary {
@@ -163,6 +166,7 @@ export interface AipProgramSummary {
   refCode: string;
   name: string;
   projects: AipProjectSummary[];
+  functionBand: string | null;
 }
 
 export interface AipOfficeSummary {
@@ -356,6 +360,196 @@ export interface SaveWfpRequest {
   fiscalYear: number;
   divisionId: number | null;
   activities: SaveWfpActivityRequest[];
+}
+
+// ── v1.4 WFP expenditure (RAL-120/121/122/123) ───────────────────────────────
+// Replaces the WfpExpenditureLine model above for new entries — schema+math live
+// server-side (WfpExpenditureCalculator); Q1-4/Net/Total are always server-computed.
+
+export type WfpExpenditureNature = "Procurement" | "Non-Procurement" | "Combined";
+export type WfpExpenditureFrequency = "M" | "Q" | "B" | "A";
+
+export interface WfpExpenditurePeriodDto {
+  periodNo: number;
+  amount: number;
+}
+
+export interface WfpProcurementItemDto {
+  periodNo: number;
+  priceIndexItemId: number | null;
+  name: string;
+  unit: string;
+  unitPrice: number;
+  qty: number;
+  numberOfDays: number;
+  lineTotal: number;
+}
+
+export interface WfpExpenditureDto {
+  id: number;
+  wfpActivityId: number;
+  accountId: number | null;
+  accountNumberSnapshot: string | null;
+  accountTitleSnapshot: string | null;
+  nature: WfpExpenditureNature;
+  frequency: WfpExpenditureFrequency;
+  fundingSourceId: number | null;
+  fundingSourceSnapshot: string | null;
+  fundingSourceNameSnapshot: string | null;
+  applyReserve: boolean;
+  reserveAmount: number;
+  annualQuarterChoice: number | null;
+  q1: number;
+  q2: number;
+  q3: number;
+  q4: number;
+  netAppropriation: number;
+  totalAppropriation: number;
+  periods: WfpExpenditurePeriodDto[];
+  procurementItems: WfpProcurementItemDto[];
+}
+
+export interface SaveWfpExpenditurePeriodRequest {
+  periodNo: number;
+  amount: number;
+}
+
+export interface SaveWfpProcurementItemRequest {
+  periodNo: number;
+  priceIndexItemId: number | null;
+  name: string;
+  unit: string;
+  unitPrice: number;
+  qty: number;
+  numberOfDays: number;
+}
+
+/** ReserveAmount null = "not specified" — server defaults to the reserve rate × Net. */
+export interface SaveWfpExpenditureRequest {
+  id: number | null;
+  wfpActivityId: number;
+  accountId: number | null;
+  nature: WfpExpenditureNature;
+  frequency: WfpExpenditureFrequency;
+  fundingSourceId: number | null;
+  applyReserve: boolean;
+  reserveAmount: number | null;
+  annualQuarterChoice: number | null;
+  periods: SaveWfpExpenditurePeriodRequest[];
+  procurementItems: SaveWfpProcurementItemRequest[];
+}
+
+export interface WfpReserveRateDto {
+  rate: number;
+}
+
+export interface WfpCeilingStatusDto {
+  aipBudget: number;
+  aipUsed: number;
+  divisionAllocation: number;
+  divisionRemaining: number;
+}
+
+export interface EnsureWfpActivityRequest {
+  aipRecordId: number;
+  officeId: number;
+  divisionId: number | null;
+  fiscalYear: number;
+  aipActivityId: number;
+}
+
+export interface WfpActivityRefDto {
+  wfpRecordId: number;
+  wfpActivityId: number;
+  wfpStatus: "Draft" | "Final";
+}
+
+// ── WFP Report preview (RAL-132) ───────────────────────────────────────────────
+// Mirrors PPDO.Application/DTOs/BudgetPlanning/WfpReportDtos.cs.
+
+export interface WfpReportOfficeDto {
+  officeId: number;
+  officeCode: string;
+  officeName: string;
+  wfpStatus: "Draft" | "Final";
+}
+
+export interface WfpReportAmountsDto {
+  totalAppropriation: number;
+  reserved: number;
+  netAppropriation: number;
+  q1: number;
+  q2: number;
+  q3: number;
+  q4: number;
+  amountToBeReleased: number;
+}
+
+export interface WfpReportRowDto {
+  sector: string;
+  nature: string;
+  accountNumber: string | null;
+  accountTitle: string | null;
+  amounts: WfpReportAmountsDto;
+}
+
+export interface WfpReportExpenseClassGroupDto {
+  expenseClass: string;
+  expenseClassLabel: string;
+  rows: WfpReportRowDto[];
+  subTotal: WfpReportAmountsDto;
+}
+
+export interface WfpReportActivityDto {
+  refCode: string;
+  name: string;
+  isCreation: boolean;
+  expenseClasses: WfpReportExpenseClassGroupDto[];
+  grandTotal: WfpReportAmountsDto;
+}
+
+export interface WfpReportProjectDto {
+  refCode: string;
+  name: string;
+  activities: WfpReportActivityDto[];
+  grandTotal: WfpReportAmountsDto;
+}
+
+export interface WfpReportProgramDto {
+  refCode: string;
+  name: string;
+  projects: WfpReportProjectDto[];
+  grandTotal: WfpReportAmountsDto;
+}
+
+export interface WfpReportFunctionBandSectionDto {
+  functionBand: string;
+  functionBandLabel: string;
+  programs: WfpReportProgramDto[];
+}
+
+/** Appears once per fund source (after its last section), not once per function-band section. */
+export interface WfpReportBreakdownDto {
+  personalServices: WfpReportAmountsDto;
+  mooeExcludingCreation: WfpReportAmountsDto;
+  capitalOutlay: WfpReportAmountsDto;
+  personalServicesCreation: WfpReportAmountsDto;
+  mooeCreation: WfpReportAmountsDto;
+  grandTotal: WfpReportAmountsDto;
+}
+
+export interface WfpReportFundSourceDto {
+  fundSourceName: string;
+  sections: WfpReportFunctionBandSectionDto[];
+  breakdown: WfpReportBreakdownDto;
+}
+
+export interface WfpReportDto {
+  fiscalYear: number;
+  officeCode: string;
+  officeName: string;
+  reserveRate: number;
+  fundSourceReports: WfpReportFundSourceDto[];
 }
 
 // ── Allocation (RAL-99/101) ───────────────────────────────────────────────────
