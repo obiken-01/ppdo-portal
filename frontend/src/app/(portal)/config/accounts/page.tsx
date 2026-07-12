@@ -113,6 +113,15 @@ function StatusBadge({ active }: { active: boolean }) {
   );
 }
 
+function ReserveBadge({ applies }: { applies: boolean }) {
+  if (!applies) return <span className="text-slate-400">—</span>;
+  return (
+    <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold bg-green-100 text-green-700">
+      Yes
+    </span>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Form state
 // ---------------------------------------------------------------------------
@@ -401,10 +410,17 @@ export default function AccountConfigPage() {
       ),
     },
     {
-      key: "normalBalance",
-      header: "Normal Balance",
+      key: "defaultNature",
+      header: "Default Nature",
       sortable: true,
-      render: (a) => a.normalBalance ?? <span className="text-slate-600">—</span>,
+      render: (a) => a.defaultNature ?? <span className="text-slate-400">—</span>,
+    },
+    {
+      key: "defaultApplyReserve",
+      header: "Reserve",
+      sortable: true,
+      sortValue: (a) => (a.defaultApplyReserve ? 1 : 0),
+      render: (a) => <ReserveBadge applies={a.defaultApplyReserve} />,
     },
     {
       key: "isActive",
