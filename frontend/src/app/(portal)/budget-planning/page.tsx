@@ -77,7 +77,7 @@ const WFP_COLUMNS: Column<WfpOfficeStatus>[] = [
     align: "right",
     render: (r) => {
       if (r.aipRecordId == null || r.wfpStatus === "Not started") return <span className="text-slate-600">—</span>;
-      const href = `/budget-planning/wfp?aipId=${r.aipRecordId}&officeId=${r.officeId}`;
+      const href = `/budget-planning/wfp/entry?aipId=${r.aipRecordId}&officeId=${r.officeId}`;
       const label = r.wfpStatus === "Final" ? "View" : "Open";
       return (
         <Link href={href} className="text-sm font-medium text-green-600 hover:text-green-700">
@@ -178,7 +178,7 @@ function GlobalReadinessPanels({
         </p>
       </ReadinessPanel>
 
-      <ReadinessPanel title="WFP" href="/budget-planning/wfp">
+      <ReadinessPanel title="WFP" href="/budget-planning/wfp/entry">
         <p className="font-medium">
           {wfpFinalCount} Final · {wfpDraftCount} Draft
         </p>
@@ -228,8 +228,8 @@ function OfficeReadinessPanels({
 
   const wfpHref =
     wfpRow?.aipRecordId != null
-      ? `/budget-planning/wfp?aipId=${wfpRow.aipRecordId}&officeId=${officeId}`
-      : `/budget-planning/wfp${qs}`;
+      ? `/budget-planning/wfp/entry?aipId=${wfpRow.aipRecordId}&officeId=${officeId}`
+      : `/budget-planning/wfp/entry${qs}`;
   const wfpActionLabel =
     wfpRow?.wfpStatus === "Final" ? "View" : wfpRow?.wfpStatus === "Draft" ? "Continue" : "Start";
 
@@ -302,7 +302,7 @@ function OfficeReadinessPanels({
       </ReadinessPanel>
 
       {/* WFP */}
-      <ReadinessPanel title="WFP" href={`/budget-planning/wfp${qs}`}>
+      <ReadinessPanel title="WFP" href={`/budget-planning/wfp/entry${qs}`}>
         {wfpRow && wfpRow.wfpStatus !== "Not started" ? (
           <>
             <p className="font-medium">
@@ -511,7 +511,7 @@ export default function BudgetPlanningPage() {
           {[
             { label: "LDIP", href: navHref("/budget-planning/ldip") },
             { label: "AIP",  href: navHref("/budget-planning/aip")  },
-            { label: "WFP",  href: navHref("/budget-planning/wfp")  },
+            { label: "WFP",  href: navHref("/budget-planning/wfp/entry")  },
           ].map(({ label, href }) => (
             <Link
               key={label}

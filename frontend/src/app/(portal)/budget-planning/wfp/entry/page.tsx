@@ -1106,16 +1106,8 @@ function WfpEntryPageInner() {
     <div className="p-6 max-w-screen-lg mx-auto w-full">
       {/* Header */}
       <div className="mb-5">
-        <div className="flex items-center gap-2">
-          <h1 className="text-xl font-bold text-slate-800">WFP Entry Wizard</h1>
-          <span className="px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700">v1.4 preview</span>
-        </div>
-        <p className="text-sm text-slate-600 mt-0.5">
-          New context picker + expenditure wizard.{" "}
-          <a href="/budget-planning/wfp" className="text-green-700 hover:underline">
-            Switch to classic view
-          </a>
-        </p>
+        <h1 className="text-xl font-bold text-slate-800">WFP Entry Wizard</h1>
+        <p className="text-sm text-slate-600 mt-0.5">New context picker + expenditure wizard.</p>
       </div>
 
       {/* Selector row */}
