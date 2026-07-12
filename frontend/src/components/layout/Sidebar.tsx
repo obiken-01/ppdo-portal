@@ -301,7 +301,7 @@ export default function Sidebar({ me }: SidebarProps) {
                     <span className="truncate">Allocation</span>
                   </Link>
                 )}
-                <Link href="/budget-planning/wfp" className={childLinkCls(isActive("/budget-planning/wfp"))}>
+                <Link href="/budget-planning/wfp/entry" className={childLinkCls(isActive("/budget-planning/wfp"))}>
                   <span className="text-xs">•</span>
                   <span className="truncate">WFP</span>
                 </Link>
