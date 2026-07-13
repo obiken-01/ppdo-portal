@@ -175,7 +175,7 @@ function ReportTable({ sections, breakdown }: { sections: WfpReportFundSourceDto
   const rows = [...flattenSections(sections), ...flattenBreakdown(breakdown)];
 
   return (
-    <div className="border border-slate-300 max-h-[70vh] overflow-auto">
+    <div className="border border-slate-300 overflow-x-auto">
       <table className="w-full text-xs border-collapse min-w-[1600px]" style={{ tableLayout: "fixed" }}>
         <colgroup>
           {COLUMN_WIDTHS.map((w, i) => <col key={i} style={{ width: w }} />)}
