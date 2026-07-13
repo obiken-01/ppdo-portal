@@ -575,8 +575,9 @@ out-of-scope → commit message). `RAL-81` is the reference example.
 | Token storage | Access token: in-memory only (`auth.ts`). Refresh token: `localStorage["ppdo_rt"]`. |
 | Default user password | `TamarawUser2026!` — set on `UserService.CreateAsync` and `ResetPasswordAsync`. |
 | Distribution as standalone | Distribution separated from Receive Delivery — `POST /api/distributions` creates standalone distribution records. FIFO batch allocation done on the frontend. |
-| Version indicator | `APP_VERSION` const in `frontend/src/components/layout/Sidebar.tsx` — update this string for each new release (e.g. `"v1.2"`). Also update `Portal vX.Y.Z` in `frontend/src/components/landing/Footer.tsx`. |
+| Version indicator | `APP_VERSION` const in three places — `frontend/src/components/layout/Sidebar.tsx` (portal sidebar), `frontend/src/components/landing/Footer.tsx` (`Portal vX.Y.Z`, public landing page), and `frontend/src/app/(public)/login/page.tsx` (login page). All three must be updated together — they've drifted out of sync before. |
 | Version scheme | Patch releases (bug fixes, optimizations, no new features) use `vX.Y.Z` (e.g. `v1.0.1`). Feature milestones use `vX.Y` (e.g. `v1.2`). |
+| **Version bump timing** | Bump `APP_VERSION` in all three places **at the start of a new version's development** — i.e. right after cutting its `release/X.Y.Z` branch, as the first commit on that branch — not at the end when merging/deploying. This way the displayed version always reflects what's actually running in that environment throughout development, including on preview/local builds. |
 | Cold start mitigation | `GET /api/health` (no auth) runs `SELECT 1` against Azure SQL — called on login page mount to warm up both Azure Functions (cold start ~10 min) and Azure SQL (auto-pause ~1 hr) before user clicks Sign In. |
 | Health endpoint | `HealthFunctions.cs` — `GET /api/health`. Returns `{ status, api, database, utc }`. 200 OK when DB is reachable, 503 when DB is down. No auth required. |
 
