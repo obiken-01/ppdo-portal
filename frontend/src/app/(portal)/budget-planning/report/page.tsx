@@ -195,7 +195,7 @@ function ReportTable({ sections, breakdown }: { sections: WfpReportFundSourceDto
         <thead className="sticky top-0 z-10">
           <tr className="bg-green-800 text-white">
             {COLUMN_HEADERS.map((h) => (
-              <th key={h} className="px-2 py-2 text-left font-medium whitespace-nowrap border border-green-700">
+              <th key={h} className="px-2 py-2 text-left font-medium break-words border border-green-700 align-bottom">
                 {h}
               </th>
             ))}
