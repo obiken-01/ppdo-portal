@@ -915,6 +915,18 @@ function WfpEntryPageInner() {
     }
   }
 
+  // Auto-persist the CORE default the moment a program with no saved FunctionBand is selected.
+  // The <select> below always displays a value (falls back to "CORE" for null), but that's
+  // purely visual — a user who never touches the dropdown never fires its onChange, so the real
+  // value stays null in the DB while the UI shows "Core" selected. The WFP report then buckets
+  // that program under UNASSIGNED instead of CORE, contradicting what the entry wizard showed.
+  useEffect(() => {
+    if (selectedProgram && selectedProgram.functionBand == null && savingProgramId !== selectedProgram.id) {
+      handleFunctionBandChange(selectedProgram.id, "CORE");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProgram?.id, selectedProgram?.functionBand]);
+
   async function handleIsCreationChange(activityId: number, checked: boolean) {
     setAipDetail((prev) => {
       if (!prev) return prev;
