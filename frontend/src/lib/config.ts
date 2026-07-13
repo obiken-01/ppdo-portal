@@ -120,6 +120,14 @@ export async function listOffices(params: OfficeListParams = {}): Promise<Office
   return unwrap(data);
 }
 
+/** office_code of PPDO itself — the default office for PPDO-internal budget-planning users (those with no me.officeId). */
+export const PPDO_OFFICE_CODE = "PPDO";
+
+/** Finds the PPDO office row in an already-loaded office list, or null if not configured/loaded yet. */
+export function findPpdoOffice(offices: OfficeResponse[]): OfficeResponse | null {
+  return offices.find((o) => o.officeCode === PPDO_OFFICE_CODE) ?? null;
+}
+
 /** POST /api/config/offices — create a new office. */
 export async function createOffice(body: UpsertOfficeRequest): Promise<OfficeResponse> {
   const { data } = await api.post<ApiResponse<OfficeResponse>>("/config/offices", body);
