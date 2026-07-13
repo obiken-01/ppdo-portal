@@ -175,12 +175,15 @@ function ReportTable({ sections, breakdown }: { sections: WfpReportFundSourceDto
   const rows = [...flattenSections(sections), ...flattenBreakdown(breakdown)];
 
   return (
-    <div className="border border-slate-300 overflow-x-auto">
-      <table className="w-full text-xs border-collapse min-w-[1600px]" style={{ tableLayout: "fixed" }}>
+    <div className="border border-slate-300 print:border-0">
+      <table
+        className="w-full text-xs border-collapse min-w-[1600px] print:min-w-0 print:text-[8px]"
+        style={{ tableLayout: "fixed" }}
+      >
         <colgroup>
           {COLUMN_WIDTHS.map((w, i) => <col key={i} style={{ width: w }} />)}
         </colgroup>
-        <thead className="sticky top-0 z-10">
+        <thead className="sticky top-0 z-10 print:static">
           <tr className="bg-green-800 text-white">
             {COLUMN_HEADERS.map((h) => (
               <th key={h} className="px-2 py-2 text-left font-medium whitespace-nowrap border border-green-700">
@@ -258,7 +261,7 @@ function ReportTable({ sections, breakdown }: { sections: WfpReportFundSourceDto
                 );
               case "subTotal":
                 return (
-                  <tr key={i} className="bg-slate-50 font-medium">
+                  <tr key={i} className="bg-slate-50 font-medium print:break-inside-avoid">
                     <td className="border border-slate-200" />
                     <td colSpan={5} className="px-2 py-1 pl-10 text-slate-600 border border-slate-200">SUB-TOTAL</td>
                     <AmountsCells amounts={row.amounts} className="border border-slate-200 text-slate-700 font-semibold" />
@@ -266,7 +269,7 @@ function ReportTable({ sections, breakdown }: { sections: WfpReportFundSourceDto
                 );
               case "activityGrandTotal":
                 return (
-                  <tr key={i} className="bg-green-50 font-semibold text-green-800">
+                  <tr key={i} className="bg-green-50 font-semibold text-green-800 print:break-inside-avoid">
                     <td colSpan={3} className="border border-slate-200" />
                     <td colSpan={2} className="px-2 py-1 border border-slate-200 whitespace-nowrap">ACTIVITY GRAND TOTAL</td>
                     <td className="px-2 py-1 font-mono border border-slate-200 whitespace-nowrap">{row.refCode}</td>
@@ -275,7 +278,7 @@ function ReportTable({ sections, breakdown }: { sections: WfpReportFundSourceDto
                 );
               case "projectGrandTotal":
                 return (
-                  <tr key={i} className="bg-green-100 font-semibold text-green-800">
+                  <tr key={i} className="bg-green-100 font-semibold text-green-800 print:break-inside-avoid">
                     <td colSpan={3} className="border border-slate-200" />
                     <td colSpan={2} className="px-2 py-1 border border-slate-200 whitespace-nowrap">PROJECT GRAND TOTAL</td>
                     <td className="px-2 py-1 font-mono border border-slate-200 whitespace-nowrap">{row.refCode}</td>
@@ -284,7 +287,7 @@ function ReportTable({ sections, breakdown }: { sections: WfpReportFundSourceDto
                 );
               case "programGrandTotal":
                 return (
-                  <tr key={i} className="bg-green-200 font-semibold text-green-900">
+                  <tr key={i} className="bg-green-200 font-semibold text-green-900 print:break-inside-avoid">
                     <td colSpan={3} className="border border-slate-200" />
                     <td colSpan={2} className="px-2 py-1 border border-slate-200 whitespace-nowrap">PROGRAM GRAND TOTAL</td>
                     <td className="px-2 py-1 font-mono border border-slate-200 whitespace-nowrap">{row.refCode}</td>
@@ -293,7 +296,10 @@ function ReportTable({ sections, breakdown }: { sections: WfpReportFundSourceDto
                 );
               case "breakdownLine":
                 return (
-                  <tr key={i} className={row.emphasis ? "bg-slate-800 text-white font-bold" : "bg-slate-100 font-medium text-slate-700"}>
+                  <tr
+                    key={i}
+                    className={`print:break-inside-avoid ${row.emphasis ? "bg-slate-800 text-white font-bold" : "bg-slate-100 font-medium text-slate-700"}`}
+                  >
                     <td colSpan={4} className="border border-slate-200" />
                     <td colSpan={2} className="px-2 py-1.5 border border-slate-200">{row.label}</td>
                     <AmountsCells amounts={row.amounts} className={`border border-slate-200 ${row.emphasis ? "" : "text-slate-700"}`} />
@@ -307,10 +313,14 @@ function ReportTable({ sections, breakdown }: { sections: WfpReportFundSourceDto
   );
 }
 
-/** One fund source's full report block — its own header (matching the sheet's per-fund "SOURCE OF FUND:" block) plus its own table. */
-function FundSourceBlock({ report, fundReport }: { report: WfpReportDto; fundReport: WfpReportFundSourceDto }) {
+/** One fund source's full report block — its own header (matching the sheet's per-fund "SOURCE OF FUND:" block) plus its own table. `printPageBreakAfter` starts the next block on a fresh printed page (every block except the last). */
+function FundSourceBlock({
+  report, fundReport, printPageBreakAfter,
+}: {
+  report: WfpReportDto; fundReport: WfpReportFundSourceDto; printPageBreakAfter: boolean;
+}) {
   return (
-    <div className="mb-8 last:mb-0">
+    <div className={`mb-8 last:mb-0 ${printPageBreakAfter ? "print:break-after-page" : ""}`}>
       <div className="px-5 py-4 border-b border-slate-200 text-center space-y-0.5 bg-white border-x border-t">
         <p className="text-base font-bold text-slate-800">
           WORK AND FINANCIAL PLAN FY {report.fiscalYear}
@@ -392,9 +402,17 @@ export default function WfpReportPage() {
   }
 
   return (
-    <div className="p-6 max-w-screen-2xl mx-auto w-full">
+    <div className="p-6 max-w-screen-2xl mx-auto w-full print:p-0 print:max-w-none">
+      {/* Print-only page setup — scoped to this route: the <style> tag only exists in the
+          DOM while this page is mounted, so it never affects printing from any other page. */}
+      <style>{`
+        @media print {
+          @page { size: landscape; margin: 10mm; }
+        }
+      `}</style>
+
       {/* Header */}
-      <div className="mb-5">
+      <div className="mb-5 print:hidden">
         <h1 className="text-xl font-bold text-slate-800">Report</h1>
         <p className="text-sm text-slate-600 mt-0.5">
           Select a report type, fiscal year, and office to preview.
@@ -402,7 +420,7 @@ export default function WfpReportPage() {
       </div>
 
       {/* Selector row */}
-      <div className="flex flex-wrap items-end gap-3 mb-6 px-4 py-3 bg-white border border-slate-200">
+      <div className="flex flex-wrap items-end gap-3 mb-6 px-4 py-3 bg-white border border-slate-200 print:hidden">
         <div>
           <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide mb-1">
             Report Type
@@ -464,23 +482,33 @@ export default function WfpReportPage() {
         >
           {reportLoading ? "Generating…" : "Generate Preview"}
         </button>
+
+        {report && !reportLoading && (
+          <button
+            onClick={() => window.print()}
+            className="px-4 py-1.5 text-sm font-medium border border-slate-300 text-slate-700 bg-white hover:bg-slate-50"
+          >
+            Print / Save as PDF
+          </button>
+        )}
       </div>
 
       {/* Empty / loading state */}
       {!report && !reportLoading && (
-        <p className="text-slate-600 text-sm py-10 text-center">
+        <p className="text-slate-600 text-sm py-10 text-center print:hidden">
           Select an office and click &quot;Generate Preview&quot; to view its WFP report.
         </p>
       )}
       {reportLoading && (
-        <div className="flex items-center justify-center gap-2 text-slate-600 text-sm py-10">
+        <div className="flex items-center justify-center gap-2 text-slate-600 text-sm py-10 print:hidden">
           <span className="w-4 h-4 border-2 border-slate-300 border-t-green-600 rounded-full animate-spin" />
           Generating preview…
         </div>
       )}
 
       {/* Report — one full block per fund source (WFP FINAL sheet repeats the whole header +
-          table per fund, e.g. General Fund then 5% GAD Fund) */}
+          table per fund, e.g. General Fund then 5% GAD Fund). Every block but the last starts
+          the next one on a fresh printed page. */}
       {report && !reportLoading && (
         report.fundSourceReports.length === 0 ? (
           <div className="bg-white border border-slate-200 p-6">
@@ -489,8 +517,13 @@ export default function WfpReportPage() {
             </p>
           </div>
         ) : (
-          report.fundSourceReports.map((fundReport) => (
-            <FundSourceBlock key={fundReport.fundSourceName} report={report} fundReport={fundReport} />
+          report.fundSourceReports.map((fundReport, i) => (
+            <FundSourceBlock
+              key={fundReport.fundSourceName}
+              report={report}
+              fundReport={fundReport}
+              printPageBreakAfter={i < report.fundSourceReports.length - 1}
+            />
           ))
         )
       )}
