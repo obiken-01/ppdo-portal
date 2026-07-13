@@ -28,7 +28,7 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useMe } from "@/lib/me-cache";
-import { listOffices, listDivisions } from "@/lib/config";
+import { findPpdoOffice, listOffices, listDivisions } from "@/lib/config";
 import {
   allocationErrorMessage,
   getAllocations,
@@ -230,12 +230,19 @@ function AllocationPageInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Pre-fill office for non-PPDO (office-locked) users ───────────────────
+  // ── Pre-fill office: non-PPDO users get their own office; PPDO-internal ──
+  // finance officers default to the PPDO office itself, but remain free to
+  // switch to another office (Allocation manages ceilings across offices).
 
   useEffect(() => {
-    if (!me || me.officeId == null) return;
-    setSelectedOfficeId(me.officeId);
-  }, [me]);
+    if (!me) return;
+    if (me.officeId != null) {
+      setSelectedOfficeId(me.officeId);
+    } else {
+      const ppdo = findPpdoOffice(officeList);
+      if (ppdo) setSelectedOfficeId(ppdo.id);
+    }
+  }, [me, officeList]);
 
   // ── Load allocation data when office or FY changes ────────────────────────
 

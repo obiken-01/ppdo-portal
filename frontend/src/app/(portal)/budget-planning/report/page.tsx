@@ -43,6 +43,7 @@
 
 import { useEffect, useState } from "react";
 import { useMe } from "@/lib/me-cache";
+import { PPDO_OFFICE_CODE } from "@/lib/config";
 import { getDashboard } from "@/lib/budget-planning";
 import { getWfpReportOffices, getWfpReportPreview, wfpErrorMessage } from "@/lib/wfp";
 import { useToast } from "@/components/ui/Toast";
@@ -332,7 +333,7 @@ function FundSourceBlock({ report, fundReport }: { report: WfpReportDto; fundRep
 // ---------------------------------------------------------------------------
 
 export default function WfpReportPage() {
-  useMe((m) => m.canAccessBudgetPlanning);
+  const me = useMe((m) => m.canAccessBudgetPlanning);
   const { toast } = useToast();
 
   const [reportType, setReportType] = useState<string>("WFP");
@@ -365,11 +366,20 @@ export default function WfpReportPage() {
     setReport(null);
     setOfficesLoading(true);
     getWfpReportOffices(fiscalYear)
-      .then(setOffices)
+      .then((offices) => {
+        setOffices(offices);
+        // Default to the caller's own office; PPDO-internal users (me.officeId == null)
+        // default to PPDO itself, if it has a WFP for this fiscal year.
+        const preferredId =
+          me?.officeId ?? offices.find((o) => o.officeCode === PPDO_OFFICE_CODE)?.officeId ?? null;
+        if (preferredId != null && offices.some((o) => o.officeId === preferredId)) {
+          setOfficeId(preferredId);
+        }
+      })
       .catch(() => toast.error("Load failed", "Could not load offices for this fiscal year."))
       .finally(() => setOfficesLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fiscalYear]);
+  }, [fiscalYear, me]);
 
   function handleGeneratePreview() {
     if (officeId == null || fiscalYear == null) return;

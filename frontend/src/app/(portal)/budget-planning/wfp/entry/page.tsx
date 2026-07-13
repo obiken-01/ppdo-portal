@@ -38,7 +38,7 @@ import {
   updateAipActivityIsCreation,
   aipErrorMessage,
 } from "@/lib/aip";
-import { listAccounts, listDivisions, listFundingSources, listOffices, listPriceIndex } from "@/lib/config";
+import { findPpdoOffice, listAccounts, listDivisions, listFundingSources, listOffices, listPriceIndex } from "@/lib/config";
 import { getAllocations, getCeilingStatus, getPrograms, getSetupStatus } from "@/lib/allocation";
 import {
   computeWfpRollUpPreview,
@@ -771,9 +771,17 @@ function WfpEntryPageInner() {
 
   useEffect(() => {
     if (!me) return;
-    if (me.officeId != null && !searchParams.get("officeId")) setSelectedOfficeId(me.officeId);
+    if (!searchParams.get("officeId")) {
+      if (me.officeId != null) {
+        setSelectedOfficeId(me.officeId);
+      } else {
+        // PPDO-internal users (me.officeId is null by design) default to PPDO itself.
+        const ppdo = findPpdoOffice(officeList);
+        if (ppdo) setSelectedOfficeId(ppdo.id);
+      }
+    }
     if (me.divisionId != null) setSelectedDivisionId(me.divisionId);
-  }, [me, searchParams]);
+  }, [me, searchParams, officeList]);
 
   useEffect(() => {
     if (selectedOfficeId == null) {
@@ -1136,7 +1144,7 @@ function WfpEntryPageInner() {
               setSelectedDivisionId(null);
             }}
             placeholder="— select office —"
-            disabled={isOfficeUser}
+            disabled={isOfficeUser || !canBypassDivision}
           />
         </div>
 
