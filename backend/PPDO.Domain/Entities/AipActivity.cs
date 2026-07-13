@@ -52,7 +52,12 @@ public sealed class AipActivity
     /// <summary>Capital Outlay amount.</summary>
     public decimal? Co { get; set; }
 
-    /// <summary>Auto-computed: Ps + Mooe + Co. Stored to match source file and for faster queries.</summary>
+    /// <summary>
+    /// Ps + Mooe + Co, computed at import time (RAL-144) — never read from the source file's own
+    /// Total column, since a blank/stale source cell there would desync from the real components
+    /// (WfpCeilingService treats this as the activity's whole AIP budget). Null only when
+    /// Ps/Mooe/Co are all blank (no budget entered for this activity at all).
+    /// </summary>
     public decimal? Total { get; set; }
 
     /// <summary>Climate change adaptation amount.</summary>
