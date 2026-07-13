@@ -28,7 +28,7 @@
  * Access: canAccessBudgetPlanning, same as the classic page.
  */
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMe } from "@/lib/me-cache";
 import {
@@ -276,6 +276,15 @@ function ExpenditureWizard({
   const [saving, setSaving] = useState(false);
   const [confirm, setConfirm] = useState<ConfirmDialogProps | null>(null);
 
+  // Snapshot of the form's starting values (empty for Add, editingExpenditure's data for Edit) —
+  // compared against on close to warn only when the user actually changed something.
+  const initialSnapshotRef = useRef(
+    JSON.stringify({
+      accountId, nature, frequency, fundingSourceId,
+      applyReserve, reserveAmount, annualQuarterChoice, periods, procurementItems,
+    })
+  );
+
   const selectedAccount = accounts.find((a) => a.id === accountId) ?? null;
 
   // The frequency grid (RAL-124) drives typed periods; the procurement item table (RAL-125)
@@ -388,14 +397,40 @@ function ExpenditureWizard({
 
   const canSave = accountId != null && !overAip && !overDivision && !saving;
 
+  // Warn before losing entered-but-unsaved data (RAL-14x — backdrop click / Esc / Cancel are
+  // easy to hit by accident). Compares the current form values against a snapshot taken at
+  // mount, so editing an existing expenditure without changing anything closes silently, but
+  // any actual edit (new or existing) is protected.
+  const dirty =
+    JSON.stringify({
+      accountId, nature, frequency, fundingSourceId,
+      applyReserve, reserveAmount, annualQuarterChoice, periods, procurementItems,
+    }) !== initialSnapshotRef.current;
+
+  function handleRequestClose() {
+    if (!dirty) {
+      onClose();
+      return;
+    }
+    setConfirm({
+      title: "Discard unsaved changes?",
+      message: "You have unsaved changes to this expenditure. Closing now will lose them.",
+      confirmLabel: "Discard",
+      cancelLabel: "Keep Editing",
+      variant: "warning",
+      onConfirm: onClose,
+      onClose: () => setConfirm(null),
+    });
+  }
+
   return (
     <Modal
       title={isEditing ? "Edit Expenditure" : "Add Expenditure"}
       size="lg"
-      onClose={onClose}
+      onClose={handleRequestClose}
       footer={
         <>
-          <Modal.SecondaryButton onClick={onClose}>Cancel</Modal.SecondaryButton>
+          <Modal.SecondaryButton onClick={handleRequestClose}>Cancel</Modal.SecondaryButton>
           <Modal.PrimaryButton onClick={handleSave} disabled={!canSave} loading={saving}>
             {isEditing ? "Save Changes" : "Save Expenditure"}
           </Modal.PrimaryButton>
@@ -914,6 +949,18 @@ function WfpEntryPageInner() {
       setSavingProgramId(null);
     }
   }
+
+  // Auto-persist the CORE default the moment a program with no saved FunctionBand is selected.
+  // The <select> below always displays a value (falls back to "CORE" for null), but that's
+  // purely visual — a user who never touches the dropdown never fires its onChange, so the real
+  // value stays null in the DB while the UI shows "Core" selected. The WFP report then buckets
+  // that program under UNASSIGNED instead of CORE, contradicting what the entry wizard showed.
+  useEffect(() => {
+    if (selectedProgram && selectedProgram.functionBand == null && savingProgramId !== selectedProgram.id) {
+      handleFunctionBandChange(selectedProgram.id, "CORE");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProgram?.id, selectedProgram?.functionBand]);
 
   async function handleIsCreationChange(activityId: number, checked: boolean) {
     setAipDetail((prev) => {

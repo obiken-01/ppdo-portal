@@ -123,6 +123,85 @@ public sealed class AipXlsmParserTests
         Assert.Equal(700000m,            act.Total);
     }
 
+    // ── Total is computed, never trusted from the source column (RAL-144) ──────
+
+    [Fact]
+    public void Parse_BlankSourceTotal_ComputesFromPsMooeCo()
+    {
+        using Stream s = BuildStream(wb =>
+        {
+            IXLWorksheet ws = wb.Worksheets.Add("OTHERS_FY2027");
+            ws.Cell(14, 1).Value = "A-B-C-D-1";
+            ws.Cell(14, 2).Value = "Office";
+            ws.Cell(15, 1).Value = "A-B-C-D-1-1";
+            ws.Cell(15, 3).Value = "Program";
+            ws.Cell(16, 1).Value = "A-B-C-D-1-1-1";
+            ws.Cell(16, 4).Value = "Project";
+            ws.Cell(17, 1).Value = "A-B-C-D-1-1-1-1";
+            ws.Cell(17, 5).Value = "Hiring of additional manpower";
+            // col 12 (Ps) and col 14 (Co) left blank; col 15 (Total) also left blank.
+            ws.Cell(17, 13).Value = 2320.50;  // MOOE only
+        });
+
+        Dictionary<string, List<ParsedAipOffice>> result = _sut.Parse(s);
+
+        ParsedAipActivity act = result["OTHERS"][0].Programs[0].Projects[0].Activities[0];
+        Assert.Null(act.Ps);
+        Assert.Equal(2320.50m, act.Mooe);
+        Assert.Null(act.Co);
+        Assert.Equal(2320.50m, act.Total);
+    }
+
+    [Fact]
+    public void Parse_ZeroSourceTotal_IgnoresStaleZero_ComputesFromComponents()
+    {
+        using Stream s = BuildStream(wb =>
+        {
+            IXLWorksheet ws = wb.Worksheets.Add("OTHERS_FY2027");
+            ws.Cell(14, 1).Value = "A-B-C-D-1";
+            ws.Cell(14, 2).Value = "Office";
+            ws.Cell(15, 1).Value = "A-B-C-D-1-1";
+            ws.Cell(15, 3).Value = "Program";
+            ws.Cell(16, 1).Value = "A-B-C-D-1-1-1";
+            ws.Cell(16, 4).Value = "Project";
+            ws.Cell(17, 1).Value = "A-B-C-D-1-1-1-1";
+            ws.Cell(17, 5).Value = "Conduct of research studies";
+            ws.Cell(17, 13).Value = 1875.00;  // MOOE
+            ws.Cell(17, 15).Value = 0.0;      // Total — stale/literal zero in source
+        });
+
+        Dictionary<string, List<ParsedAipOffice>> result = _sut.Parse(s);
+
+        ParsedAipActivity act = result["OTHERS"][0].Programs[0].Projects[0].Activities[0];
+        Assert.Equal(1875.00m, act.Total);
+    }
+
+    [Fact]
+    public void Parse_NoBudgetComponentsAtAll_TotalStaysNull()
+    {
+        using Stream s = BuildStream(wb =>
+        {
+            IXLWorksheet ws = wb.Worksheets.Add("OTHERS_FY2027");
+            ws.Cell(14, 1).Value = "A-B-C-D-1";
+            ws.Cell(14, 2).Value = "Office";
+            ws.Cell(15, 1).Value = "A-B-C-D-1-1";
+            ws.Cell(15, 3).Value = "Program";
+            ws.Cell(16, 1).Value = "A-B-C-D-1-1-1";
+            ws.Cell(16, 4).Value = "Project";
+            ws.Cell(17, 1).Value = "A-B-C-D-1-1-1-1";
+            ws.Cell(17, 5).Value = "Activity with no budget line item";
+            // Ps/Mooe/Co/Total all left blank.
+        });
+
+        Dictionary<string, List<ParsedAipOffice>> result = _sut.Parse(s);
+
+        ParsedAipActivity act = result["OTHERS"][0].Programs[0].Projects[0].Activities[0];
+        Assert.Null(act.Ps);
+        Assert.Null(act.Mooe);
+        Assert.Null(act.Co);
+        Assert.Null(act.Total);
+    }
+
     [Fact]
     public void Parse_BlankRefCode_AfterActivity_AppendsColEToName()
     {
