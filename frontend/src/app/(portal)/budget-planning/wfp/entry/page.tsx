@@ -1193,10 +1193,20 @@ function WfpEntryPageInner() {
         <>
           {/* Sticky ceiling header (§4.2) */}
           <div className="sticky top-0 z-10 mb-5 bg-white border border-slate-200 px-4 py-3 space-y-2 shadow-sm">
-            <p className="text-sm font-semibold text-slate-700">
-              FY {aipDetail?.fiscalYear} · {selectedConfigOffice?.officeName} ·{" "}
-              {divisionList.find((d) => d.id === selectedDivisionId)?.name ?? me?.division}
-            </p>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-slate-700">
+                FY {aipDetail?.fiscalYear} · {selectedConfigOffice?.officeName} ·{" "}
+                {divisionList.find((d) => d.id === selectedDivisionId)?.name ?? me?.division}
+              </p>
+              {aipDetail && selectedOfficeId != null && selectedDivisionId != null && (
+                <a
+                  href={`/budget-planning/report?officeId=${selectedOfficeId}&fiscalYear=${aipDetail.fiscalYear}&divisionId=${selectedDivisionId}`}
+                  className="shrink-0 px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors whitespace-nowrap"
+                >
+                  WFP Preview →
+                </a>
+              )}
+            </div>
 
             {divisionAllocation && (
               <div>

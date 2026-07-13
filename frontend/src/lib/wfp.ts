@@ -191,11 +191,17 @@ export async function getWfpReportOffices(fiscalYear: number): Promise<WfpReport
   return unwrap(data);
 }
 
-/** The full WFP report preview for one office + fiscal year. */
-export async function getWfpReportPreview(officeId: number, fiscalYear: number): Promise<WfpReportDto> {
+/**
+ * The full WFP report preview for one office + fiscal year. divisionId is only honored for
+ * finance officers (CanManageAllocation) — division-scoped callers are always forced server-side
+ * to their own division regardless of what's passed here (RAL-136).
+ */
+export async function getWfpReportPreview(
+  officeId: number, fiscalYear: number, divisionId?: number
+): Promise<WfpReportDto> {
   const { data } = await api.get<ApiResponse<WfpReportDto>>(
     "/budget-planning/wfp/report/preview",
-    { params: { officeId, fiscalYear } }
+    { params: { officeId, fiscalYear, ...(divisionId != null ? { divisionId } : {}) } }
   );
   return unwrap(data);
 }

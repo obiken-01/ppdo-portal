@@ -89,7 +89,7 @@ public sealed class WfpReportService : IWfpReportService
 
     /// <inheritdoc />
     public async Task<ServiceResult<WfpReportDto>> GetReportAsync(
-        int officeId, int fiscalYear, CancellationToken cancellationToken = default)
+        int officeId, int fiscalYear, int? divisionId = null, CancellationToken cancellationToken = default)
     {
         Office? office = (await _officeRepo.GetAllAsync(cancellationToken))
             .FirstOrDefault(o => o.Id == officeId);
@@ -128,10 +128,11 @@ public sealed class WfpReportService : IWfpReportService
         List<int> projectIds = projects.Select(p => p.Id).ToList();
         IReadOnlyList<AipActivity> activities = await _aipRepo.GetActivitiesByProjectIdsAsync(projectIds, cancellationToken);
 
-        // AipActivityId -> every wfp_activity row for it, across ALL of the office's divisions
-        // (a WfpRecord is scoped to one division; the report merges them — WfpRecord.cs).
+        // AipActivityId -> every wfp_activity row for it. When divisionId is null this spans
+        // ALL of the office's divisions (a WfpRecord is scoped to one division; the report
+        // merges them — WfpRecord.cs); when provided, only that division's WfpRecord (RAL-136).
         Dictionary<int, List<int>> wfpActivityIdsByAipActivityId = await BuildWfpActivityMapAsync(
-            aipRecord.Id, officeId, cancellationToken);
+            aipRecord.Id, officeId, divisionId, cancellationToken);
 
         Dictionary<int, Account> accountsById = (await _accountRepo.GetAllAsync(cancellationToken))
             .ToDictionary(a => a.Id);
@@ -176,9 +177,9 @@ public sealed class WfpReportService : IWfpReportService
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private async Task<Dictionary<int, List<int>>> BuildWfpActivityMapAsync(
-        int aipRecordId, int officeId, CancellationToken ct)
+        int aipRecordId, int officeId, int? divisionId, CancellationToken ct)
     {
-        IReadOnlyList<WfpRecord> wfpRecords = await _wfpRepo.GetFilteredAsync(aipRecordId, officeId, null, ct);
+        IReadOnlyList<WfpRecord> wfpRecords = await _wfpRepo.GetFilteredAsync(aipRecordId, officeId, divisionId, ct);
 
         Dictionary<int, List<int>> map = [];
         foreach (WfpRecord record in wfpRecords)
