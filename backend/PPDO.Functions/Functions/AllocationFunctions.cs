@@ -12,10 +12,14 @@ namespace PPDO.Functions.Functions;
 /// <summary>
 /// Allocation endpoints under <c>/api/budget-planning/allocation</c> (RAL-99).
 ///
-/// Mutations (ceiling/allocation/assignment upserts) and the division + program
-/// reads are gated on CanManageAllocation (finance officer only). The ceiling GET
-/// and the setup-status check are gated on CanAccessBudgetPlanning so that regular
-/// WFP users can read whether a ceiling exists and query the setup gate before entry.
+/// Mutations (ceiling/allocation/assignment upserts) stay gated on CanManageAllocation
+/// (finance officer only). All GET reads are gated on the broader CanAccessBudgetPlanning
+/// so that regular WFP users — not just finance officers — can load the context the WFP
+/// entry wizard needs (ceiling exists?, own division's allocation, assigned programs, setup
+/// gate). GetDivisions additionally scopes non-finance callers to their own division's row —
+/// other divisions' peso amounts stay finance-officer-only (v1.4.1, RAL-135-adjacent fix:
+/// the entry wizard 403'd for every non-finance Staff user once the office/division
+/// auto-select bug was fixed and they could actually reach this call).
 ///
 /// Amounts are in PESOS — no ×1000 conversion here (that lives in the WFP page layer).
 /// </summary>
@@ -81,14 +85,19 @@ public sealed class AllocationFunctions
     }
 
     // ── GET /api/budget-planning/allocation/divisions?officeId=&fiscalYear= ───
+    // Gated on CanAccessBudgetPlanning (not CanManageAllocation): the WFP entry
+    // wizard needs a regular division-scoped user's own allocation amount to show
+    // the budget banner. Non-finance callers only ever see their own division's
+    // row — other divisions' peso amounts are finance-officer-only.
     [Function("AllocationGetDivisions")]
     public async Task<HttpResponseData> GetDivisions(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get",
             Route = "budget-planning/allocation/divisions")] HttpRequestData req,
         CancellationToken ct)
     {
-        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanManageAllocation, ct);
-        if (denied is not null) return denied;
+        (User? caller, HttpResponseData? denied) =
+            await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccessBudgetPlanning, ct);
+        if (denied is not null || caller is null) return denied!;
 
         if (!int.TryParse(req.Query["officeId"], out int officeId) ||
             !int.TryParse(req.Query["fiscalYear"], out int fiscalYear))
@@ -98,6 +107,10 @@ public sealed class AllocationFunctions
 
         IReadOnlyList<DivisionAllocationDto> data =
             await _allocation.GetAllocationsAsync(officeId, fiscalYear, ct);
+
+        if (!await CanManageAllocation(caller))
+            data = data.Where(a => a.DivisionId == caller.DivisionId).ToList();
+
         return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK,
             ApiResponse<IReadOnlyList<DivisionAllocationDto>>.Ok(data), ct);
     }
@@ -124,13 +137,17 @@ public sealed class AllocationFunctions
     }
 
     // ── GET /api/budget-planning/allocation/programs?officeId=&fiscalYear= ────
+    // Gated on CanAccessBudgetPlanning (not CanManageAllocation): the WFP entry
+    // wizard needs this to know which programs are assigned to the current
+    // division. No monetary data here (just a PPA → division-id mapping), unlike
+    // GetDivisions above, so no further per-caller filtering is needed.
     [Function("AllocationGetPrograms")]
     public async Task<HttpResponseData> GetPrograms(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get",
             Route = "budget-planning/allocation/programs")] HttpRequestData req,
         CancellationToken ct)
     {
-        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanManageAllocation, ct);
+        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccessBudgetPlanning, ct);
         if (denied is not null) return denied;
 
         if (!int.TryParse(req.Query["officeId"], out int officeId) ||
