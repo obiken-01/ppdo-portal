@@ -51,4 +51,15 @@ public interface IWfpService
 
     /// <summary>Wipes all WFP records (cascade removes activities/lines). Returns deleted count.</summary>
     Task<int> PurgeAllAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Deletes the single WFP record for (officeId, divisionId, fiscalYear) — and everything
+    /// under it (activities, v1.4 expenditures + their periods/procurement items, legacy
+    /// expenditure lines, division-allocation ledger rows) via DB cascade. Unconditional: deletes
+    /// Draft or Final records alike (RAL-137 — a live-testing reset tool, same category as
+    /// <see cref="PurgeAllAsync"/>, which is also unconditional). Returns null if no record
+    /// exists for that scope.
+    /// </summary>
+    Task<WfpCleanupResultDto?> CleanupScopedAsync(
+        int officeId, int? divisionId, int fiscalYear, CancellationToken ct = default);
 }
