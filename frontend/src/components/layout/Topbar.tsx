@@ -120,7 +120,7 @@ export default function Topbar({ me, title }: TopbarProps) {
   const section  = SECTIONS.find((s) => matchesPrefix(pathname, s.root));
 
   return (
-    <header className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0 shadow-sm">
+    <header className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0 shadow-sm print:hidden">
       {section ? (
         <SectionBreadcrumb section={section} pathname={pathname} />
       ) : (

@@ -117,7 +117,7 @@ export default function Sidebar({ me }: SidebarProps) {
   }
 
   return (
-    <aside className="w-56 shrink-0 bg-green-700 flex flex-col h-full">
+    <aside className="w-56 shrink-0 bg-green-700 flex flex-col h-full print:hidden">
 
       {/* ── Logo / brand — click to go to Dashboard ─────────────────────── */}
       <Link
