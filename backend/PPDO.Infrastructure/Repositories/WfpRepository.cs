@@ -44,6 +44,18 @@ public sealed class WfpRepository : Repository<WfpRecord>, IWfpRepository
     }
 
     /// <inheritdoc />
+    public async Task<WfpRecord?> FindByOfficeDivisionFiscalYearAsync(
+        int officeId, int? divisionId, int fiscalYear, CancellationToken ct = default)
+    {
+        IQueryable<WfpRecord> query = _context.Set<WfpRecord>()
+            .Where(r => r.OfficeId == officeId && r.FiscalYear == fiscalYear);
+        query = divisionId.HasValue
+            ? query.Where(r => r.DivisionId == divisionId.Value)
+            : query.Where(r => r.DivisionId == null);
+        return await query.FirstOrDefaultAsync(ct);
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<WfpActivity>> GetActivitiesByWfpIdAsync(
         int wfpId, CancellationToken ct = default)
         => await _context.Set<WfpActivity>()

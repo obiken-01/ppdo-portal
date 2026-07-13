@@ -32,6 +32,16 @@ public interface IWfpRepository : IRepository<WfpRecord>
     Task<WfpRecord?> FindByAipOfficeAndDivisionAsync(
         int aipRecordId, int officeId, int? divisionId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Finds the single WFP record for the given (OfficeId, DivisionId, FiscalYear) triplet, or
+    /// null. Unlike <see cref="FindByAipOfficeAndDivisionAsync"/> this resolves directly off the
+    /// denormalized FiscalYear column on WfpRecord, without needing the caller to first look up
+    /// an AipRecordId — used by the scoped cleanup endpoint (RAL-137).
+    /// A null <paramref name="divisionId"/> matches rows WHERE division_id IS NULL.
+    /// </summary>
+    Task<WfpRecord?> FindByOfficeDivisionFiscalYearAsync(
+        int officeId, int? divisionId, int fiscalYear, CancellationToken ct = default);
+
     /// <summary>WfpActivity rows WHERE wfp_id = <paramref name="wfpId"/>.</summary>
     Task<IReadOnlyList<WfpActivity>> GetActivitiesByWfpIdAsync(int wfpId, CancellationToken ct = default);
 
