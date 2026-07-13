@@ -160,6 +160,9 @@ public sealed class AipXlsmParser : IAipXlsmParser
                 {
                     if (currentProject is null) break;
                     currentActivityList = (List<ParsedAipActivity>)currentProject.Activities;
+                    decimal? ps   = ParseDecimal(ws.Cell(row, 12));
+                    decimal? mooe = ParseDecimal(ws.Cell(row, 13));
+                    decimal? co   = ParseDecimal(ws.Cell(row, 14));
                     ParsedAipActivity activity = new(
                         RefCode:           storedRefCode,
                         Name:              ws.Cell(row, 5).GetString().Trim(),
@@ -169,10 +172,17 @@ public sealed class AipXlsmParser : IAipXlsmParser
                         EndDate:           NullIfBlank(ws.Cell(row, 9).GetString()),
                         ExpectedOutputs:   NullIfBlank(ws.Cell(row, 10).GetString()),
                         FundingSourceRaw:  NullIfBlank(ws.Cell(row, 11).GetString()),
-                        Ps:                ParseDecimal(ws.Cell(row, 12)),
-                        Mooe:              ParseDecimal(ws.Cell(row, 13)),
-                        Co:                ParseDecimal(ws.Cell(row, 14)),
-                        Total:             ParseDecimal(ws.Cell(row, 15)),
+                        Ps:                ps,
+                        Mooe:              mooe,
+                        Co:                co,
+                        // Computed, NOT read from the source Total column (col 15) — a blank or
+                        // stale/mismatched source Total cell must never desync from Ps+Mooe+Co,
+                        // since WfpCeilingService treats Total as the activity's whole AIP budget.
+                        // Null only when Ps/Mooe/Co are ALL blank (no budget entered at all);
+                        // otherwise missing components count as 0 in the sum.
+                        Total:             (ps.HasValue || mooe.HasValue || co.HasValue)
+                                               ? (ps ?? 0m) + (mooe ?? 0m) + (co ?? 0m)
+                                               : null,
                         CcAdaptation:      ParseDecimal(ws.Cell(row, 16)),
                         CcMitigation:      ParseDecimal(ws.Cell(row, 17)),
                         CcTypologyCode:    NullIfBlank(ws.Cell(row, 18).GetString()));
