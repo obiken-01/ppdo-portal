@@ -34,7 +34,7 @@ import {
   unlockWfp,
   wfpErrorMessage,
 } from "@/lib/wfp";
-import { listAccounts, listDivisions, listFundingSources, listOffices } from "@/lib/config";
+import { findPpdoOffice, listAccounts, listDivisions, listFundingSources, listOffices } from "@/lib/config";
 import { getCeiling, getSetupStatus, getAllocations, getPrograms } from "@/lib/allocation";
 import Modal from "@/components/ui/Modal";
 import MoneyInput from "@/components/ui/MoneyInput";
@@ -685,9 +685,17 @@ function WfpPageInner() {
 
   useEffect(() => {
     if (!me) return;
-    if (me.officeId != null && !searchParams.get("officeId")) setSelectedOfficeId(me.officeId);
+    if (!searchParams.get("officeId")) {
+      if (me.officeId != null) {
+        setSelectedOfficeId(me.officeId);
+      } else {
+        // PPDO-internal users (me.officeId is null by design) default to PPDO itself.
+        const ppdo = findPpdoOffice(officeList);
+        if (ppdo) setSelectedOfficeId(ppdo.id);
+      }
+    }
     if (me.divisionId != null) setSelectedDivisionId(me.divisionId);
-  }, [me, searchParams]);
+  }, [me, searchParams, officeList]);
 
   // ── Effect A3: Load division list when office changes ─────────────────────
 
@@ -1156,7 +1164,7 @@ function WfpPageInner() {
                 setSelectedDivisionId(null);
               }}
               placeholder="— select office —"
-              disabled={isFinal || isOfficeUser}
+              disabled={isFinal || isOfficeUser || !canBypassDivision}
             />
           </div>
 
