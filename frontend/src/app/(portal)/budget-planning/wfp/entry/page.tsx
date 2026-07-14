@@ -93,6 +93,15 @@ function officeRefSuffix(refCode: string): string {
   return parts.length >= 2 ? parts.slice(-2).join("-") : refCode;
 }
 
+// Project/Activity ref codes share almost their whole prefix (they're nested under the
+// same Program/Project), so the Lookup selectors show only the last dash-segment for
+// readability (RAL-141) — full search text and the expenditure section header still use
+// the complete ref code.
+function lastRefCodeSegment(refCode: string): string {
+  const parts = refCode.split("-");
+  return parts[parts.length - 1] || refCode;
+}
+
 function resolveDefaultFundingSourceId(
   snapshot: string | null,
   fundingSources: FundingSourceResponse[]
@@ -1345,11 +1354,11 @@ function WfpEntryPageInner() {
                   setSelectedActivityId(null);
                 }}
                 getId={(p) => p.id}
-                getLabel={(p) => `${p.refCode} — ${p.name}`}
+                getLabel={(p) => `${lastRefCodeSegment(p.refCode)} — ${p.name}`}
                 getSearchText={(p) => `${p.name} ${p.refCode}`}
                 renderOption={(p) => (
                   <>
-                    <span className="font-mono text-xs text-slate-600 mr-2">{p.refCode}</span>
+                    <span className="font-mono text-xs text-slate-600 mr-2">{lastRefCodeSegment(p.refCode)}</span>
                     {p.name}
                   </>
                 )}
@@ -1366,11 +1375,11 @@ function WfpEntryPageInner() {
                 value={selectedActivityId}
                 onChange={setSelectedActivityId}
                 getId={(a) => a.id}
-                getLabel={(a) => `${a.refCode} — ${a.name}`}
+                getLabel={(a) => `${lastRefCodeSegment(a.refCode)} — ${a.name}`}
                 getSearchText={(a) => `${a.name} ${a.refCode}`}
                 renderOption={(a) => (
                   <>
-                    <span className="font-mono text-xs text-slate-600 mr-2">{a.refCode}</span>
+                    <span className="font-mono text-xs text-slate-600 mr-2">{lastRefCodeSegment(a.refCode)}</span>
                     {a.name}
                   </>
                 )}
@@ -1456,7 +1465,7 @@ function WfpEntryPageInner() {
             <div className="border border-slate-200">
               <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
                 <span className="text-sm font-semibold text-slate-700">
-                  Expenditures — {selectedActivity?.name}
+                  Expenditures — {selectedActivity?.refCode} — {selectedActivity?.name}
                 </span>
                 {loadingActivity && (
                   <span className="w-3.5 h-3.5 border-2 border-slate-300 border-t-green-600 rounded-full animate-spin" />
