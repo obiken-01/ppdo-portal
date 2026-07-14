@@ -242,6 +242,14 @@ export default function WfpProcurementItemTable({
     }
   }
 
+  // Duplicate items WITHIN this same expenditure's active period (RAL-153). Scoped to the
+  // active period only: the same item recurring across different periods/quarters is normal
+  // (e.g. a monthly office-supplies purchase), so only same-period repeats are flagged.
+  const activePeriodItemCounts = activeRows.reduce<Record<number, number>>((counts, r) => {
+    if (r.priceIndexItemId != null) counts[r.priceIndexItemId] = (counts[r.priceIndexItemId] ?? 0) + 1;
+    return counts;
+  }, {});
+
   // ── Totals ────────────────────────────────────────────────────────────────────
 
   const activeTotal = activeRows.reduce((sum, r) => sum + r.qty * r.unitPrice * r.numberOfDays, 0);
@@ -365,6 +373,12 @@ export default function WfpProcurementItemTable({
                   Remove
                 </button>
               </div>
+
+              {row.priceIndexItemId != null && activePeriodItemCounts[row.priceIndexItemId] > 1 && (
+                <p className="text-[11px] text-amber-600">
+                  ⚠ This item is already added to this expenditure.
+                </p>
+              )}
 
               {/* Name (full width) + Unit */}
               <div className="flex items-end gap-2">
