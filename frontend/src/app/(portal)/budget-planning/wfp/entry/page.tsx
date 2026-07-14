@@ -246,9 +246,13 @@ function ExpenditureWizard({
   const [fundingSourceId, setFundingSourceId] = useState<number | null>(
     editingExpenditure?.fundingSourceId ?? defaultFundingSourceId
   );
-  const [applyReserve, setApplyReserve] = useState(editingExpenditure?.applyReserve ?? false);
+  // Apply reserve is account-driven, not a free user choice (RAL-139) — no independent state
+  // for it; derived below (`applyReserve` const) from the selected account's
+  // `defaultApplyReserve` once `accountId` is known, so an edited expenditure always reflects
+  // the account's CURRENT default rather than a stale stored bool.
+  const initialAccount = accounts.find((a) => a.id === accountId) ?? null;
   const [reserveAmount, setReserveAmount] = useState<number | null>(
-    editingExpenditure?.applyReserve ? editingExpenditure.reserveAmount : null
+    initialAccount?.defaultApplyReserve ? editingExpenditure?.reserveAmount ?? null : null
   );
   const [annualQuarterChoice, setAnnualQuarterChoice] = useState(editingExpenditure?.annualQuarterChoice ?? 1);
   const [periods, setPeriods] = useState<SaveWfpExpenditurePeriodRequest[]>(
@@ -276,6 +280,16 @@ function ExpenditureWizard({
   const [saving, setSaving] = useState(false);
   const [confirm, setConfirm] = useState<ConfirmDialogProps | null>(null);
 
+  const selectedAccount = accounts.find((a) => a.id === accountId) ?? null;
+  const applyReserve = selectedAccount?.defaultApplyReserve ?? false;
+
+  // Reserve amount is only meaningful when the account defaults to reserve — clear any stale
+  // amount left over from a previous account the instant it no longer applies (RAL-139).
+  useEffect(() => {
+    if (!applyReserve) setReserveAmount(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [applyReserve]);
+
   // Snapshot of the form's starting values (empty for Add, editingExpenditure's data for Edit) —
   // compared against on close to warn only when the user actually changed something.
   const initialSnapshotRef = useRef(
@@ -284,8 +298,6 @@ function ExpenditureWizard({
       applyReserve, reserveAmount, annualQuarterChoice, periods, procurementItems,
     })
   );
-
-  const selectedAccount = accounts.find((a) => a.id === accountId) ?? null;
 
   // The frequency grid (RAL-124) drives typed periods; the procurement item table (RAL-125)
   // drives procurementItems — merged the same way the backend does (§5.3: no nature-specific
@@ -320,7 +332,8 @@ function ExpenditureWizard({
     const acct = accounts.find((a) => a.id === id);
     if (acct) {
       if (acct.defaultNature) setNature(acct.defaultNature);
-      setApplyReserve(acct.defaultApplyReserve);
+      // applyReserve is derived from the account itself (see `selectedAccount` above) — no
+      // separate set here; the reserveAmount-clearing effect handles the reset when it flips off.
     }
   }
 
@@ -537,25 +550,24 @@ function ExpenditureWizard({
           />
         </div>
 
-        {/* 8. Reserve — shown for EVERY account, no eligibility gate (RAL-117/121) */}
+        {/* 8. Reserve — read-only, driven entirely by the selected account's defaultApplyReserve;
+               shown for every account regardless of its value, never a free user choice (RAL-139). */}
         <div className="flex items-start gap-2 px-3 py-2 bg-slate-50 border border-slate-200">
           <input
             type="checkbox"
             id="applyReserve"
             checked={applyReserve}
-            onChange={(e) => {
-              setApplyReserve(e.target.checked);
-              if (!e.target.checked) setReserveAmount(null);
-            }}
+            disabled
+            readOnly
             className="mt-0.5"
           />
           <div className="flex-1">
-            <label htmlFor="applyReserve" className="text-sm text-slate-700 font-medium cursor-pointer">
+            <label htmlFor="applyReserve" className="text-sm text-slate-700 font-medium">
               Apply reserve
             </label>
             <p className="text-xs text-slate-600">
-              Rate: {(reserveRate * 100).toFixed(0)}% of net appropriation. Leave amount blank to
-              use the default.
+              Set by the selected account — rate: {(reserveRate * 100).toFixed(0)}% of net
+              appropriation.{applyReserve && " Leave amount blank to use the default."}
             </p>
             {applyReserve && (
               <MoneyInput
