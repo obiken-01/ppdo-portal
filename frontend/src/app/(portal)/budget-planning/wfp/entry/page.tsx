@@ -1146,6 +1146,15 @@ function WfpEntryPageInner() {
     setExpenditures([]);
   }
 
+  // Steps back to the Project picker while keeping the Program selected — between
+  // "Change activity" (activity only) and "Done" (Program+Project+Activity) (RAL-140).
+  function handleChangeProject() {
+    setSelectedProjectId(null);
+    setSelectedActivityId(null);
+    setActivityRef(null);
+    setExpenditures([]);
+  }
+
   function handleDone() {
     setSelectedProgramId(null);
     setSelectedProjectId(null);
@@ -1520,6 +1529,9 @@ function WfpEntryPageInner() {
                   + Add expenditure
                 </button>
                 <div className="flex gap-3">
+                  <button onClick={handleChangeProject} className="text-sm text-slate-600 hover:underline">
+                    Change Project
+                  </button>
                   <button onClick={handleChangeActivity} className="text-sm text-slate-600 hover:underline">
                     Change activity
                   </button>
