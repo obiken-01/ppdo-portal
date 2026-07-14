@@ -148,7 +148,12 @@ const COLUMN_HEADERS = [
   "Q1", "Q2", "Q3", "Q4", "Amount to be Released",
 ];
 
-const COLUMN_WIDTHS = ["10%", "15%", "7%", "5%", "7%", "13%", "6%", "5%", "6%", "5%", "5%", "5%", "5%", "6%"];
+// AIP Ref Code widened 10% -> 14%, taken from "Programs, Projects and Activities" (15% -> 11%):
+// that column never renders standalone text (it's either the start of the Program/Project/
+// Activity name's colSpan=13 merge, or a blank placeholder cell in expenditure/total rows), so
+// narrowing its individual allocation doesn't squeeze any independently-rendered cell — unlike
+// Sector/Nature/Account Code, which do hold real unmerged text in expenditure rows (RAL-149 follow-up).
+const COLUMN_WIDTHS = ["14%", "11%", "7%", "5%", "7%", "13%", "6%", "5%", "6%", "5%", "5%", "5%", "5%", "6%"];
 
 function money(n: number) {
   return formatMoney(n);
@@ -333,8 +338,9 @@ function FundSourceBlock({
 }) {
   return (
     <div className={`mb-8 last:mb-0 ${printPageBreakAfter ? "print:break-after-page" : ""}`}>
-      <div className="px-5 py-4 border-b border-slate-200 text-center space-y-0.5 bg-white border-x border-t">
-        <p className="text-base font-bold text-slate-800">
+      <div className="h-1.5 bg-green-800 border-x border-t border-slate-200" />
+      <div className="px-5 py-4 border-b border-slate-200 text-center space-y-0.5 bg-white border-x">
+        <p className="text-base font-bold text-green-800">
           WORK AND FINANCIAL PLAN FY {report.fiscalYear}
         </p>
         <p className="text-sm text-slate-600">
@@ -484,6 +490,15 @@ function WfpReportPageInner() {
       <style>{`
         @media print {
           @page { size: landscape; margin: 10mm; }
+          /* Browsers strip background colors from print output by default (RAL-147 deliberately
+             left this out since the ask then was just "printer-friendly", not "match the site" —
+             RAL-149 reverses that: the report's row shading — fund-source headers, grand-total
+             rows, the section-closing breakdown — is load-bearing for reading the hierarchy, not
+             decorative, so it must survive printing/PDF export.) */
+          * {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
         }
       `}</style>
 
