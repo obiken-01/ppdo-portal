@@ -705,6 +705,88 @@ public sealed class WfpReportServiceTests
         Assert.Equal(500, gadActivity.GrandTotal.NetAppropriation);
     }
 
+    // ── Program/Project/Activity ordering (RAL-150) ───────────────────────────
+
+    [Fact]
+    public async Task GetReportAsync_SortsProgramsProjectsActivities_ByRefCodeSequence_RegardlessOfInputOrder()
+    {
+        Fixture f = Build();
+        f.Offices.Add(MakeOffice(1, "PPDO", "013"));
+        f.AipRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipRecord>)[MakeAip(100, FiscalYear, PlanningStatus.Draft)]);
+        f.AipRepo.Setup(r => r.GetOfficesByAipIdAsync(100, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipOffice>)[MakeAipOffice(1, 100, "3000-000-1-01-013")]);
+
+        // Programs, projects, and activities are all handed back OUT OF numeric order (as if a
+        // user saved WFP expenditures against activity "-003" before "-001") — the repository
+        // layer makes no ordering guarantee, so the service itself must sort by ref-code
+        // sequence rather than trusting whatever order it received them in.
+        AipProgram program2 = MakeProgram(2, 1, "1000-000-1-01-010-002", "CORE");
+        AipProgram program1 = MakeProgram(1, 1, "1000-000-1-01-010-001", "CORE");
+        f.AipRepo.Setup(r => r.GetProgramsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipProgram>)[program2, program1]);
+
+        AipProject project1b = MakeProject(11, 1, "1000-000-1-01-010-001-002");
+        AipProject project1a = MakeProject(10, 1, "1000-000-1-01-010-001-001");
+        // A lone project/activity under program2 too, so it actually has expenditure data and
+        // appears in the report at all (a program with nothing entered under it is excluded —
+        // unrelated existing behavior this test must respect, not what's under test here).
+        AipProject project2a = MakeProject(20, 2, "1000-000-1-01-010-002-001");
+        f.AipRepo.Setup(r => r.GetProjectsByProgramIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipProject>)[project1b, project1a, project2a]);
+
+        AipActivity act3 = MakeActivity(103, 10, "1000-000-1-01-010-001-001-003");
+        AipActivity act1 = MakeActivity(101, 10, "1000-000-1-01-010-001-001-001");
+        AipActivity act2 = MakeActivity(102, 10, "1000-000-1-01-010-001-001-002");
+        // Lone activity under project1b too, so it appears in the report (same reasoning as
+        // program2's lone activity above), letting the project-level sort actually be exercised.
+        AipActivity actUnderProject1b = MakeActivity(110, 11, "1000-000-1-01-010-001-002-001");
+        AipActivity actUnderProgram2 = MakeActivity(200, 20, "1000-000-1-01-010-002-001-001");
+        f.AipRepo.Setup(r => r.GetActivitiesByProjectIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipActivity>)[act3, act1, act2, actUnderProject1b, actUnderProgram2]);
+
+        f.WfpRepo.Setup(r => r.GetFilteredAsync(100, 1, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpRecord>)[
+                new WfpRecord { Id = 1000, AipRecordId = 100, OfficeId = 1, DivisionId = 1, FiscalYear = FiscalYear, Status = PlanningStatus.Draft },
+            ]);
+        f.WfpRepo.Setup(r => r.GetActivitiesByWfpIdAsync(1000, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpActivity>)[
+                new WfpActivity { Id = 500, WfpId = 1000, AipActivityId = 103 },
+                new WfpActivity { Id = 501, WfpId = 1000, AipActivityId = 101 },
+                new WfpActivity { Id = 502, WfpId = 1000, AipActivityId = 102 },
+                new WfpActivity { Id = 504, WfpId = 1000, AipActivityId = 110 },
+                new WfpActivity { Id = 503, WfpId = 1000, AipActivityId = 200 },
+            ]);
+        f.Accounts.Add(MakeAccount(1, "5-02-03-010", "Office Supplies Expenses", "MOOE"));
+        foreach (int wfpActivityId in new[] { 500, 501, 502, 503, 504 })
+        {
+            f.Expenditures.Setup(e => e.GetByActivityIdAsync(wfpActivityId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
+                    MakeExpenditure(wfpActivityId, wfpActivityId, 1, "5-02-03-010", "Office Supplies Expenses", net: 100, total: 100),
+                ]);
+        }
+
+        ServiceResult<WfpReportDto> result = await f.Sut.GetReportAsync(1, FiscalYear);
+
+        Assert.True(result.IsSuccess);
+        List<WfpReportProgramDto> programs = result.Value!.FundSourceReports.Single().Sections.Single().Programs.ToList();
+        Assert.Equal(["1000-000-1-01-010-001", "1000-000-1-01-010-002"], programs.Select(p => p.RefCode));
+
+        List<WfpReportProjectDto> projects = programs[0].Projects.ToList();
+        Assert.Equal(
+            ["1000-000-1-01-010-001-001", "1000-000-1-01-010-001-002"],
+            projects.Select(p => p.RefCode));
+
+        List<WfpReportActivityDto> activities = projects[0].Activities.ToList();
+        Assert.Equal(
+            [
+                "1000-000-1-01-010-001-001-001",
+                "1000-000-1-01-010-001-001-002",
+                "1000-000-1-01-010-001-001-003",
+            ],
+            activities.Select(a => a.RefCode));
+    }
+
     [Fact]
     public async Task GetReportAsync_Row_CarriesSectorFromAipOfficeSector()
     {
