@@ -29,6 +29,7 @@ function fmtDate(iso: string): string {
     year: "numeric",
     month: "short",
     day: "numeric",
+    timeZone: "Asia/Manila",
   });
 }
 

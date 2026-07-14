@@ -21,10 +21,10 @@ public sealed class PriceIndexServiceTests
 
     private static PriceIndexItem Item(
         int id, string name, string unit, decimal price, string? category = null,
-        bool active = true, DateTime? priceUpdatedAt = null) => new()
+        bool active = true, DateTime? priceUpdatedAt = null, bool daysEnabled = false) => new()
     {
         Id = id, Name = name, Unit = unit, UnitPrice = price, Category = category,
-        IsActive = active, PriceUpdatedAt = priceUpdatedAt ?? FixedNow,
+        IsActive = active, DaysEnabled = daysEnabled, PriceUpdatedAt = priceUpdatedAt ?? FixedNow,
         CreatedAt = FixedNow, UpdatedAt = FixedNow,
     };
 
@@ -102,6 +102,29 @@ public sealed class PriceIndexServiceTests
         ServiceResult<PriceIndexItemDto> result =
             await sut.CreateAsync(new UpsertPriceIndexItemDto("  ", "piece", 15m, null));
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task CreateAsync_DaysEnabledTrue_RoundTrips()
+    {
+        (PriceIndexService sut, _) = Build([]);
+        ServiceResult<PriceIndexItemDto> result = await sut.CreateAsync(
+            new UpsertPriceIndexItemDto("Venue Rental", "day", 5000m, "Venue", DaysEnabled: true));
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value!.DaysEnabled);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_TogglesDaysEnabled()
+    {
+        PriceIndexItem target = Item(1, "Venue Rental", "day", 5000m, daysEnabled: false);
+        (PriceIndexService sut, _) = Build([target]);
+
+        ServiceResult<PriceIndexItemDto> result = await sut.UpdateAsync(
+            1, new UpsertPriceIndexItemDto("Venue Rental", "day", 5000m, null, DaysEnabled: true));
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value!.DaysEnabled);
     }
 
     [Fact]
@@ -266,6 +289,38 @@ public sealed class PriceIndexServiceTests
         Assert.Contains("unit_price", csv);
         Assert.Contains("Ballpen", csv);
         Assert.Contains("Office Supplies", csv);
+        Assert.Contains("days_enabled", csv);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_DaysEnabledColumn_RoundTrips()
+    {
+        (PriceIndexService sut, _) = Build([]);
+
+        string csv = string.Join("\r\n",
+            "name,unit,unit_price,category,is_active,days_enabled",
+            "Venue Rental,day,5000,Venue,true,true");
+
+        await sut.ImportCsvAsync(csv);
+
+        IReadOnlyList<PriceIndexItemDto> all = await sut.GetAllAsync(null, ActiveFilter.All);
+        Assert.True(all.Single(p => p.Name == "Venue Rental").DaysEnabled);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_DaysEnabledChangedOnly_CountsAsUpdated()
+    {
+        List<PriceIndexItem> seed = [Item(1, "Venue Rental", "day", 5000m, "Venue", daysEnabled: false)];
+        (PriceIndexService sut, _) = Build(seed);
+
+        string csv = string.Join("\r\n",
+            "name,unit,unit_price,category,is_active,days_enabled",
+            "Venue Rental,day,5000,Venue,true,true");
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv);
+
+        Assert.Equal(1, result.Value!.Updated);
+        Assert.True(seed.Single().DaysEnabled);
     }
 
     // ── search ───────────────────────────────────────────────────────────────

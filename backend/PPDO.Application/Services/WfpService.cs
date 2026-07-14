@@ -36,6 +36,7 @@ public sealed class WfpService : IWfpService
     private readonly IWfpExcelService                _excel;
     private readonly IAllocationService              _allocation;
     private readonly IWfpCeilingService              _ceiling;
+    private readonly IWfpExpenditureRepository       _expenditureRepo;
 
     public WfpService(
         IWfpRepository                  wfpRepo,
@@ -49,7 +50,8 @@ public sealed class WfpService : IWfpService
         IOfficeService                  office,
         IWfpExcelService                excel,
         IAllocationService              allocation,
-        IWfpCeilingService              ceiling)
+        IWfpCeilingService              ceiling,
+        IWfpExpenditureRepository       expenditureRepo)
     {
         _wfpRepo    = wfpRepo;
         _actRepo    = actRepo;
@@ -63,6 +65,7 @@ public sealed class WfpService : IWfpService
         _excel      = excel;
         _allocation = allocation;
         _ceiling    = ceiling;
+        _expenditureRepo = expenditureRepo;
     }
 
     // ── Read ──────────────────────────────────────────────────────────────────
@@ -392,6 +395,39 @@ public sealed class WfpService : IWfpService
         if (all.Count > 0)
             await _wfpRepo.SaveChangesAsync(ct);
         return all.Count;
+    }
+
+    public async Task<WfpCleanupResultDto?> CleanupScopedAsync(
+        int officeId, int? divisionId, int fiscalYear, CancellationToken ct = default)
+    {
+        WfpRecord? record = await _wfpRepo.FindByOfficeDivisionFiscalYearAsync(officeId, divisionId, fiscalYear, ct);
+        if (record is null) return null;
+
+        // Capture counts before deletion — DB cascade removes the child rows, so nothing is left
+        // to count afterward.
+        IReadOnlyList<WfpActivity> activities = await _wfpRepo.GetActivitiesByWfpIdAsync(record.Id, ct);
+
+        int expenditureCount = 0;
+        foreach (WfpActivity activity in activities)
+            expenditureCount += (await _expenditureRepo.GetByWfpActivityIdAsync(activity.Id, ct)).Count;
+
+        List<int> activityIds = activities.Select(a => a.Id).ToList();
+        int legacyLineCount = (await _wfpRepo.GetLinesByActivityIdsAsync(activityIds, ct)).Count;
+
+        bool wasFinal = record.Status == PlanningStatus.Final;
+
+        // Unconditional — this is a live-testing reset tool (same category as PurgeAllAsync),
+        // deliberately bypassing the normal Final-lock guard so a finalized WFP can be reset too.
+        // No _audit.LogAsync here: audit entries require an authenticated CallerContext.UserId,
+        // but this endpoint (like PurgeAllAsync/BudgetPlanningCleanup) is deliberately reachable
+        // without a JWT — gated by the DevCleanupKey header instead. Same no-audit precedent as
+        // PurgeAllAsync above.
+        await _wfpRepo.DeleteAsync(record, ct);
+        await _wfpRepo.SaveChangesAsync(ct);
+
+        return new WfpCleanupResultDto(
+            record.Id, officeId, divisionId, fiscalYear, wasFinal,
+            activities.Count, expenditureCount, legacyLineCount);
     }
 
     // ── Mapping ───────────────────────────────────────────────────────────────

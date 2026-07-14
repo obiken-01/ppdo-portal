@@ -591,7 +591,7 @@ export default function BudgetPlanningPage() {
                     </span>
                   </div>
                   <span className="text-xs text-slate-600 whitespace-nowrap flex-shrink-0">
-                    {new Date(entry.changedAt).toLocaleString()}
+                    {new Date(entry.changedAt).toLocaleString("en-PH", { timeZone: "Asia/Manila" })}
                   </span>
                 </div>
               ))

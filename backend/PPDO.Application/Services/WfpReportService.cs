@@ -89,7 +89,7 @@ public sealed class WfpReportService : IWfpReportService
 
     /// <inheritdoc />
     public async Task<ServiceResult<WfpReportDto>> GetReportAsync(
-        int officeId, int fiscalYear, CancellationToken cancellationToken = default)
+        int officeId, int fiscalYear, int? divisionId = null, CancellationToken cancellationToken = default)
     {
         Office? office = (await _officeRepo.GetAllAsync(cancellationToken))
             .FirstOrDefault(o => o.Id == officeId);
@@ -128,10 +128,11 @@ public sealed class WfpReportService : IWfpReportService
         List<int> projectIds = projects.Select(p => p.Id).ToList();
         IReadOnlyList<AipActivity> activities = await _aipRepo.GetActivitiesByProjectIdsAsync(projectIds, cancellationToken);
 
-        // AipActivityId -> every wfp_activity row for it, across ALL of the office's divisions
-        // (a WfpRecord is scoped to one division; the report merges them — WfpRecord.cs).
+        // AipActivityId -> every wfp_activity row for it. When divisionId is null this spans
+        // ALL of the office's divisions (a WfpRecord is scoped to one division; the report
+        // merges them — WfpRecord.cs); when provided, only that division's WfpRecord (RAL-136).
         Dictionary<int, List<int>> wfpActivityIdsByAipActivityId = await BuildWfpActivityMapAsync(
-            aipRecord.Id, officeId, cancellationToken);
+            aipRecord.Id, officeId, divisionId, cancellationToken);
 
         Dictionary<int, Account> accountsById = (await _accountRepo.GetAllAsync(cancellationToken))
             .ToDictionary(a => a.Id);
@@ -176,9 +177,9 @@ public sealed class WfpReportService : IWfpReportService
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private async Task<Dictionary<int, List<int>>> BuildWfpActivityMapAsync(
-        int aipRecordId, int officeId, CancellationToken ct)
+        int aipRecordId, int officeId, int? divisionId, CancellationToken ct)
     {
-        IReadOnlyList<WfpRecord> wfpRecords = await _wfpRepo.GetFilteredAsync(aipRecordId, officeId, null, ct);
+        IReadOnlyList<WfpRecord> wfpRecords = await _wfpRepo.GetFilteredAsync(aipRecordId, officeId, divisionId, ct);
 
         Dictionary<int, List<int>> map = [];
         foreach (WfpRecord record in wfpRecords)
@@ -205,7 +206,7 @@ public sealed class WfpReportService : IWfpReportService
         IReadOnlyDictionary<int, string> sectorLabelByAipOfficeId)
     {
         Dictionary<int, List<WfpReportProjectDto>> projectDtosByProgramId = [];
-        foreach (AipProject project in projects.OrderBy(p => p.RefCode))
+        foreach (AipProject project in projects.OrderBy(p => RefCodeSequence(p.RefCode)).ThenBy(p => p.RefCode))
         {
             AipProgram? parentProgram = programs.FirstOrDefault(p => p.Id == project.ProgramId);
             string sector = parentProgram is not null
@@ -213,7 +214,8 @@ public sealed class WfpReportService : IWfpReportService
                 : "";
 
             List<WfpReportActivityDto> activityDtos = [];
-            foreach (AipActivity activity in activities.Where(a => a.ProjectId == project.Id).OrderBy(a => a.RefCode))
+            foreach (AipActivity activity in activities.Where(a => a.ProjectId == project.Id)
+                         .OrderBy(a => RefCodeSequence(a.RefCode)).ThenBy(a => a.RefCode))
             {
                 if (!expendituresByAipActivityId.TryGetValue(activity.Id, out List<WfpExpenditureDto>? allExpenditures))
                     continue;
@@ -238,7 +240,7 @@ public sealed class WfpReportService : IWfpReportService
         }
 
         Dictionary<string, List<WfpReportProgramDto>> programsByBand = [];
-        foreach (AipProgram program in programs.OrderBy(p => p.RefCode))
+        foreach (AipProgram program in programs.OrderBy(p => RefCodeSequence(p.RefCode)).ThenBy(p => p.RefCode))
         {
             if (!projectDtosByProgramId.TryGetValue(program.Id, out List<WfpReportProjectDto>? projectDtos))
                 continue;
@@ -333,6 +335,19 @@ public sealed class WfpReportService : IWfpReportService
 
         WfpReportAmountsDto grandTotal = allPrograms.Aggregate(WfpReportAmountsDto.Zero, (acc, p) => acc + p.GrandTotal);
         return new WfpReportBreakdownDto(ps, mooe, co, psCreation, mooeCreation, grandTotal);
+    }
+
+    /// <summary>
+    /// Parses a Program/Project/Activity's own sequence number — the last dash-separated segment
+    /// of its ref code (e.g. "001" in "1000-000-1-01-010-002-001") — so siblings sort by AIP
+    /// numbering (RAL-150) regardless of the order a user happened to enter/save WFP expenditures
+    /// in. Falls back to <see cref="int.MaxValue"/> for a ref code that doesn't parse (sorts last,
+    /// never crashes the report) — every real AIP ref code segment is numeric today.
+    /// </summary>
+    private static int RefCodeSequence(string refCode)
+    {
+        string lastSegment = refCode.Split('-')[^1];
+        return int.TryParse(lastSegment, out int seq) ? seq : int.MaxValue;
     }
 
     private static string ExpenseClassFor(WfpExpenditureDto e, IReadOnlyDictionary<int, Account> accountsById) =>

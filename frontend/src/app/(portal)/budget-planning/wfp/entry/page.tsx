@@ -93,6 +93,15 @@ function officeRefSuffix(refCode: string): string {
   return parts.length >= 2 ? parts.slice(-2).join("-") : refCode;
 }
 
+// Project/Activity ref codes share almost their whole prefix (they're nested under the
+// same Program/Project), so the Lookup selectors show only the last dash-segment for
+// readability (RAL-141) — full search text and the expenditure section header still use
+// the complete ref code.
+function lastRefCodeSegment(refCode: string): string {
+  const parts = refCode.split("-");
+  return parts[parts.length - 1] || refCode;
+}
+
 function resolveDefaultFundingSourceId(
   snapshot: string | null,
   fundingSources: FundingSourceResponse[]
@@ -246,9 +255,13 @@ function ExpenditureWizard({
   const [fundingSourceId, setFundingSourceId] = useState<number | null>(
     editingExpenditure?.fundingSourceId ?? defaultFundingSourceId
   );
-  const [applyReserve, setApplyReserve] = useState(editingExpenditure?.applyReserve ?? false);
+  // Apply reserve is account-driven, not a free user choice (RAL-139) — no independent state
+  // for it; derived below (`applyReserve` const) from the selected account's
+  // `defaultApplyReserve` once `accountId` is known, so an edited expenditure always reflects
+  // the account's CURRENT default rather than a stale stored bool.
+  const initialAccount = accounts.find((a) => a.id === accountId) ?? null;
   const [reserveAmount, setReserveAmount] = useState<number | null>(
-    editingExpenditure?.applyReserve ? editingExpenditure.reserveAmount : null
+    initialAccount?.defaultApplyReserve ? editingExpenditure?.reserveAmount ?? null : null
   );
   const [annualQuarterChoice, setAnnualQuarterChoice] = useState(editingExpenditure?.annualQuarterChoice ?? 1);
   const [periods, setPeriods] = useState<SaveWfpExpenditurePeriodRequest[]>(
@@ -276,6 +289,16 @@ function ExpenditureWizard({
   const [saving, setSaving] = useState(false);
   const [confirm, setConfirm] = useState<ConfirmDialogProps | null>(null);
 
+  const selectedAccount = accounts.find((a) => a.id === accountId) ?? null;
+  const applyReserve = selectedAccount?.defaultApplyReserve ?? false;
+
+  // Reserve amount is only meaningful when the account defaults to reserve — clear any stale
+  // amount left over from a previous account the instant it no longer applies (RAL-139).
+  useEffect(() => {
+    if (!applyReserve) setReserveAmount(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [applyReserve]);
+
   // Snapshot of the form's starting values (empty for Add, editingExpenditure's data for Edit) —
   // compared against on close to warn only when the user actually changed something.
   const initialSnapshotRef = useRef(
@@ -284,8 +307,6 @@ function ExpenditureWizard({
       applyReserve, reserveAmount, annualQuarterChoice, periods, procurementItems,
     })
   );
-
-  const selectedAccount = accounts.find((a) => a.id === accountId) ?? null;
 
   // The frequency grid (RAL-124) drives typed periods; the procurement item table (RAL-125)
   // drives procurementItems — merged the same way the backend does (§5.3: no nature-specific
@@ -320,7 +341,8 @@ function ExpenditureWizard({
     const acct = accounts.find((a) => a.id === id);
     if (acct) {
       if (acct.defaultNature) setNature(acct.defaultNature);
-      setApplyReserve(acct.defaultApplyReserve);
+      // applyReserve is derived from the account itself (see `selectedAccount` above) — no
+      // separate set here; the reserveAmount-clearing effect handles the reset when it flips off.
     }
   }
 
@@ -537,25 +559,24 @@ function ExpenditureWizard({
           />
         </div>
 
-        {/* 8. Reserve — shown for EVERY account, no eligibility gate (RAL-117/121) */}
+        {/* 8. Reserve — read-only, driven entirely by the selected account's defaultApplyReserve;
+               shown for every account regardless of its value, never a free user choice (RAL-139). */}
         <div className="flex items-start gap-2 px-3 py-2 bg-slate-50 border border-slate-200">
           <input
             type="checkbox"
             id="applyReserve"
             checked={applyReserve}
-            onChange={(e) => {
-              setApplyReserve(e.target.checked);
-              if (!e.target.checked) setReserveAmount(null);
-            }}
+            disabled
+            readOnly
             className="mt-0.5"
           />
           <div className="flex-1">
-            <label htmlFor="applyReserve" className="text-sm text-slate-700 font-medium cursor-pointer">
+            <label htmlFor="applyReserve" className="text-sm text-slate-700 font-medium">
               Apply reserve
             </label>
             <p className="text-xs text-slate-600">
-              Rate: {(reserveRate * 100).toFixed(0)}% of net appropriation. Leave amount blank to
-              use the default.
+              Set by the selected account — rate: {(reserveRate * 100).toFixed(0)}% of net
+              appropriation.{applyReserve && " Leave amount blank to use the default."}
             </p>
             {applyReserve && (
               <MoneyInput
@@ -1134,6 +1155,15 @@ function WfpEntryPageInner() {
     setExpenditures([]);
   }
 
+  // Steps back to the Project picker while keeping the Program selected — between
+  // "Change activity" (activity only) and "Done" (Program+Project+Activity) (RAL-140).
+  function handleChangeProject() {
+    setSelectedProjectId(null);
+    setSelectedActivityId(null);
+    setActivityRef(null);
+    setExpenditures([]);
+  }
+
   function handleDone() {
     setSelectedProgramId(null);
     setSelectedProjectId(null);
@@ -1240,10 +1270,20 @@ function WfpEntryPageInner() {
         <>
           {/* Sticky ceiling header (§4.2) */}
           <div className="sticky top-0 z-10 mb-5 bg-white border border-slate-200 px-4 py-3 space-y-2 shadow-sm">
-            <p className="text-sm font-semibold text-slate-700">
-              FY {aipDetail?.fiscalYear} · {selectedConfigOffice?.officeName} ·{" "}
-              {divisionList.find((d) => d.id === selectedDivisionId)?.name ?? me?.division}
-            </p>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-slate-700">
+                FY {aipDetail?.fiscalYear} · {selectedConfigOffice?.officeName} ·{" "}
+                {divisionList.find((d) => d.id === selectedDivisionId)?.name ?? me?.division}
+              </p>
+              {aipDetail && selectedOfficeId != null && selectedDivisionId != null && (
+                <a
+                  href={`/budget-planning/report?officeId=${selectedOfficeId}&fiscalYear=${aipDetail.fiscalYear}&divisionId=${selectedDivisionId}`}
+                  className="shrink-0 px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors whitespace-nowrap"
+                >
+                  WFP Preview →
+                </a>
+              )}
+            </div>
 
             {divisionAllocation && (
               <div>
@@ -1314,11 +1354,11 @@ function WfpEntryPageInner() {
                   setSelectedActivityId(null);
                 }}
                 getId={(p) => p.id}
-                getLabel={(p) => `${p.refCode} — ${p.name}`}
+                getLabel={(p) => `${lastRefCodeSegment(p.refCode)} — ${p.name}`}
                 getSearchText={(p) => `${p.name} ${p.refCode}`}
                 renderOption={(p) => (
                   <>
-                    <span className="font-mono text-xs text-slate-600 mr-2">{p.refCode}</span>
+                    <span className="font-mono text-xs text-slate-600 mr-2">{lastRefCodeSegment(p.refCode)}</span>
                     {p.name}
                   </>
                 )}
@@ -1335,11 +1375,11 @@ function WfpEntryPageInner() {
                 value={selectedActivityId}
                 onChange={setSelectedActivityId}
                 getId={(a) => a.id}
-                getLabel={(a) => `${a.refCode} — ${a.name}`}
+                getLabel={(a) => `${lastRefCodeSegment(a.refCode)} — ${a.name}`}
                 getSearchText={(a) => `${a.name} ${a.refCode}`}
                 renderOption={(a) => (
                   <>
-                    <span className="font-mono text-xs text-slate-600 mr-2">{a.refCode}</span>
+                    <span className="font-mono text-xs text-slate-600 mr-2">{lastRefCodeSegment(a.refCode)}</span>
                     {a.name}
                   </>
                 )}
@@ -1425,7 +1465,7 @@ function WfpEntryPageInner() {
             <div className="border border-slate-200">
               <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
                 <span className="text-sm font-semibold text-slate-700">
-                  Expenditures — {selectedActivity?.name}
+                  Expenditures — {selectedActivity?.refCode} — {selectedActivity?.name}
                 </span>
                 {loadingActivity && (
                   <span className="w-3.5 h-3.5 border-2 border-slate-300 border-t-green-600 rounded-full animate-spin" />
@@ -1498,6 +1538,9 @@ function WfpEntryPageInner() {
                   + Add expenditure
                 </button>
                 <div className="flex gap-3">
+                  <button onClick={handleChangeProject} className="text-sm text-slate-600 hover:underline">
+                    Change Project
+                  </button>
                   <button onClick={handleChangeActivity} className="text-sm text-slate-600 hover:underline">
                     Change activity
                   </button>

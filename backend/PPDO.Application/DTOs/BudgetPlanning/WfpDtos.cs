@@ -104,3 +104,19 @@ public record WfpActivityRefDto(
     int WfpRecordId,
     int WfpActivityId,
     string WfpStatus);
+
+/// <summary>
+/// Result of a scoped WFP cleanup (RAL-137, live-testing reset tool). Row counts are captured
+/// before deletion — the actual removal relies on DB cascade (WfpActivity → WfpExpenditure →
+/// WfpExpenditurePeriod/WfpProcurementItem, plus WfpDivisionAllocationLedger, all cascade off
+/// WfpRecord).
+/// </summary>
+public record WfpCleanupResultDto(
+    int WfpRecordId,
+    int OfficeId,
+    int? DivisionId,
+    int FiscalYear,
+    bool WasFinal,
+    int ActivitiesDeleted,
+    int ExpendituresDeleted,
+    int LegacyLinesDeleted);

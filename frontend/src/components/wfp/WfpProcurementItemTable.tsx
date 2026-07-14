@@ -145,7 +145,19 @@ export default function WfpProcurementItemTable({
       name: source?.name ?? activeRows[index]?.name ?? "",
       unit: source?.unit ?? activeRows[index]?.unit ?? "",
       unitPrice: source?.unitPrice ?? activeRows[index]?.unitPrice ?? 0,
+      // Reset to 1 when the newly-picked item doesn't use the Days multiplier — clears any
+      // leftover value from a previously-picked days-enabled item in the same row (RAL-138).
+      numberOfDays: source?.daysEnabled ? activeRows[index]?.numberOfDays ?? 1 : 1,
     });
+  }
+
+  // Resolved live from the current Price Index list rather than snapshotted onto the row
+  // (RAL-138) — the flag only gates a UI affordance, never affects LineTotal math, so there's
+  // no correctness reason to persist it. Free-typed rows (no price-index link) have no config
+  // record to gate off, so they keep the pre-RAL-138 always-editable behavior.
+  function daysEnabledFor(row: SaveWfpProcurementItemRequest): boolean {
+    if (row.priceIndexItemId == null) return true;
+    return priceIndex.find((p) => p.id === row.priceIndexItemId)?.daysEnabled ?? false;
   }
 
   // ── Explicit carry-forward (§5.2, same rule as RAL-124's frequency grid) ────────────────
@@ -229,6 +241,14 @@ export default function WfpProcurementItemTable({
       setSavingPreset(false);
     }
   }
+
+  // Duplicate items WITHIN this same expenditure's active period (RAL-153). Scoped to the
+  // active period only: the same item recurring across different periods/quarters is normal
+  // (e.g. a monthly office-supplies purchase), so only same-period repeats are flagged.
+  const activePeriodItemCounts = activeRows.reduce<Record<number, number>>((counts, r) => {
+    if (r.priceIndexItemId != null) counts[r.priceIndexItemId] = (counts[r.priceIndexItemId] ?? 0) + 1;
+    return counts;
+  }, {});
 
   // ── Totals ────────────────────────────────────────────────────────────────────
 
@@ -330,6 +350,7 @@ export default function WfpProcurementItemTable({
         )}
         {activeRows.map((row, index) => {
           const lineTotal = row.qty * row.unitPrice * row.numberOfDays;
+          const daysEnabled = daysEnabledFor(row);
           return (
             <div key={index} className="border border-slate-200 p-3 space-y-2">
               <div className="flex items-center justify-between gap-2">
@@ -352,6 +373,12 @@ export default function WfpProcurementItemTable({
                   Remove
                 </button>
               </div>
+
+              {row.priceIndexItemId != null && activePeriodItemCounts[row.priceIndexItemId] > 1 && (
+                <p className="text-[11px] text-amber-600">
+                  ⚠ This item is already added to this expenditure.
+                </p>
+              )}
 
               {/* Name (full width) + Unit */}
               <div className="flex items-end gap-2">
@@ -402,9 +429,11 @@ export default function WfpProcurementItemTable({
                     type="number"
                     min={1}
                     step="1"
-                    value={row.numberOfDays}
+                    value={daysEnabled ? row.numberOfDays : 1}
+                    disabled={!daysEnabled}
+                    title={daysEnabled ? undefined : "Enable “Days” for this item in Price Index config"}
                     onChange={(e) => updateRow(index, { numberOfDays: Number(e.target.value) || 1 })}
-                    className="w-full px-2 py-1.5 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
+                    className="w-full px-2 py-1.5 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 disabled:bg-slate-50 disabled:text-slate-400"
                   />
                 </div>
                 <div className="flex-1 min-w-0">

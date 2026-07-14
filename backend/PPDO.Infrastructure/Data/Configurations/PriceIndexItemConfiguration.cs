@@ -41,6 +41,11 @@ public sealed class PriceIndexItemConfiguration : IEntityTypeConfiguration<Price
             .IsRequired()
             .HasDefaultValue(true);
 
+        builder.Property(p => p.DaysEnabled)
+            .HasColumnName("days_enabled")
+            .IsRequired()
+            .HasDefaultValue(false);
+
         builder.Property(p => p.CreatedAt)
             .HasColumnName("created_at")
             .HasDefaultValueSql("GETUTCDATE()");

@@ -36,19 +36,31 @@
  *
  * API endpoints (RAL-132, { data, error, message } envelope):
  *   GET /api/budget-planning/wfp/report/offices?fiscalYear=
- *   GET /api/budget-planning/wfp/report/preview?officeId=&fiscalYear=
+ *   GET /api/budget-planning/wfp/report/preview?officeId=&fiscalYear=&divisionId=
  *
  * Access: canAccessBudgetPlanning, same as the rest of Budget Planning.
+ *
+ * Division scoping (RAL-136): a division-scoped caller (not CanManageAllocation) is always
+ * forced server-side to their own division regardless of the divisionId query param — the
+ * Division select below is locked to it, matching the Office select. Finance officers get an
+ * optional Division filter (blank = consolidated across every division of the office, the
+ * original RAL-132 behavior).
+ *
+ * Supports arriving via query params (?officeId=&fiscalYear=&divisionId=) from the WFP entry
+ * wizard's "WFP Preview" link — when officeId is present in the URL, the preview auto-generates
+ * once office/fiscalYear/division have all resolved, instead of requiring another click.
  */
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useMe } from "@/lib/me-cache";
-import { PPDO_OFFICE_CODE } from "@/lib/config";
+import { PPDO_OFFICE_CODE, listDivisions } from "@/lib/config";
 import { getDashboard } from "@/lib/budget-planning";
 import { getWfpReportOffices, getWfpReportPreview, wfpErrorMessage } from "@/lib/wfp";
 import { useToast } from "@/components/ui/Toast";
 import { formatMoney } from "@/lib/money";
 import type {
+  DivisionResponse,
   WfpReportAmountsDto,
   WfpReportBreakdownDto,
   WfpReportDto,
@@ -136,7 +148,12 @@ const COLUMN_HEADERS = [
   "Q1", "Q2", "Q3", "Q4", "Amount to be Released",
 ];
 
-const COLUMN_WIDTHS = ["10%", "15%", "7%", "5%", "7%", "13%", "6%", "5%", "6%", "5%", "5%", "5%", "5%", "6%"];
+// AIP Ref Code widened 10% -> 14%, taken from "Programs, Projects and Activities" (15% -> 11%):
+// that column never renders standalone text (it's either the start of the Program/Project/
+// Activity name's colSpan=13 merge, or a blank placeholder cell in expenditure/total rows), so
+// narrowing its individual allocation doesn't squeeze any independently-rendered cell — unlike
+// Sector/Nature/Account Code, which do hold real unmerged text in expenditure rows (RAL-149 follow-up).
+const COLUMN_WIDTHS = ["14%", "11%", "7%", "5%", "7%", "13%", "6%", "5%", "6%", "5%", "5%", "5%", "5%", "6%"];
 
 function money(n: number) {
   return formatMoney(n);
@@ -186,7 +203,7 @@ function ReportTable({ sections, breakdown }: { sections: WfpReportFundSourceDto
         <thead className="sticky top-0 z-10 print:static">
           <tr className="bg-green-800 text-white">
             {COLUMN_HEADERS.map((h) => (
-              <th key={h} className="px-2 py-2 text-left font-medium whitespace-nowrap border border-green-700">
+              <th key={h} className="px-2 py-2 text-left font-medium break-words border border-green-700 align-bottom">
                 {h}
               </th>
             ))}
@@ -321,8 +338,9 @@ function FundSourceBlock({
 }) {
   return (
     <div className={`mb-8 last:mb-0 ${printPageBreakAfter ? "print:break-after-page" : ""}`}>
-      <div className="px-5 py-4 border-b border-slate-200 text-center space-y-0.5 bg-white border-x border-t">
-        <p className="text-base font-bold text-slate-800">
+      <div className="h-1.5 bg-green-800 border-x border-t border-slate-200" />
+      <div className="px-5 py-4 border-b border-slate-200 text-center space-y-0.5 bg-white border-x">
+        <p className="text-base font-bold text-green-800">
           WORK AND FINANCIAL PLAN FY {report.fiscalYear}
         </p>
         <p className="text-sm text-slate-600">
@@ -342,9 +360,20 @@ function FundSourceBlock({
 // Page
 // ---------------------------------------------------------------------------
 
-export default function WfpReportPage() {
+function WfpReportPageInner() {
+  const searchParams = useSearchParams();
   const me = useMe((m) => m.canAccessBudgetPlanning);
   const { toast } = useToast();
+
+  // Division-scoped users (not finance/admin) must always be locked to their own division —
+  // both here and on the Office select, since a division only exists under its own office and
+  // showing a different office's division picker to a locked user would be meaningless (RAL-136).
+  const canBypassDivision =
+    me?.role === "SuperAdmin" || me?.role === "Admin" || me?.canManageAllocation === true;
+
+  const urlOfficeId = searchParams.get("officeId");
+  const urlDivisionId = searchParams.get("divisionId");
+  const urlFiscalYear = searchParams.get("fiscalYear");
 
   const [reportType, setReportType] = useState<string>("WFP");
   const [fiscalYear, setFiscalYear] = useState<number | null>(null);
@@ -352,17 +381,23 @@ export default function WfpReportPage() {
   const [officeId, setOfficeId] = useState<number | null>(null);
   const [offices, setOffices] = useState<WfpReportOfficeDto[]>([]);
   const [officesLoading, setOfficesLoading] = useState(false);
+  const [divisionId, setDivisionId] = useState<number | null>(null);
+  const [divisionList, setDivisionList] = useState<DivisionResponse[]>([]);
+  const [divisionsLoaded, setDivisionsLoaded] = useState(false);
 
   const [report, setReport] = useState<WfpReportDto | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
 
+  const autoGeneratedRef = useRef(false);
+
   // ── Fiscal years — reuse the Dashboard's list, no separate endpoint ────────
 
   useEffect(() => {
-    getDashboard()
+    const fy = urlFiscalYear ? Number(urlFiscalYear) : undefined;
+    getDashboard(fy)
       .then((d) => {
         setAvailableFiscalYears(d.availableFiscalYears);
-        setFiscalYear(d.fiscalYear);
+        setFiscalYear(fy ?? d.fiscalYear);
       })
       .catch(() => toast.error("Load failed", "Could not load fiscal years."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -378,10 +413,11 @@ export default function WfpReportPage() {
     getWfpReportOffices(fiscalYear)
       .then((offices) => {
         setOffices(offices);
-        // Default to the caller's own office; PPDO-internal users (me.officeId == null)
-        // default to PPDO itself, if it has a WFP for this fiscal year.
-        const preferredId =
-          me?.officeId ?? offices.find((o) => o.officeCode === PPDO_OFFICE_CODE)?.officeId ?? null;
+        // ?officeId= from the WFP entry wizard's Preview link takes priority; otherwise
+        // default to the caller's own office, falling back to PPDO for PPDO-internal users.
+        const preferredId = urlOfficeId
+          ? Number(urlOfficeId)
+          : me?.officeId ?? offices.find((o) => o.officeCode === PPDO_OFFICE_CODE)?.officeId ?? null;
         if (preferredId != null && offices.some((o) => o.officeId === preferredId)) {
           setOfficeId(preferredId);
         }
@@ -391,15 +427,61 @@ export default function WfpReportPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fiscalYear, me]);
 
-  function handleGeneratePreview() {
-    if (officeId == null || fiscalYear == null) return;
+  function runPreview(office: number, fy: number, division: number | null) {
     setReportLoading(true);
     setReport(null);
-    getWfpReportPreview(officeId, fiscalYear)
+    getWfpReportPreview(office, fy, division ?? undefined)
       .then(setReport)
       .catch((err) => toast.error("Could not generate preview", wfpErrorMessage(err, "Please try again.")))
       .finally(() => setReportLoading(false));
   }
+
+  function handleGeneratePreview() {
+    if (officeId == null || fiscalYear == null) return;
+    runPreview(officeId, fiscalYear, divisionId);
+  }
+
+  // ── Divisions scoped to the selected office (RAL-136) ──────────────────────
+  //
+  // Auto-generate (arriving via the WFP entry wizard's Preview link) is triggered from directly
+  // inside this effect's resolution, using the just-computed `resolvedDivisionId` local — NOT a
+  // separate effect watching a `divisionsLoaded` boolean. That boolean briefly goes true on the
+  // very first render (office still null, before the office-loading effect has resolved from the
+  // URL), then false again once officeId actually resolves — a separate auto-generate effect
+  // reading it as a dependency could see that stale early `true` in the same render officeId
+  // first becomes non-null, firing before this effect's async divisionId resolution completes.
+
+  useEffect(() => {
+    setDivisionsLoaded(false);
+    if (officeId == null) {
+      setDivisionList([]);
+      setDivisionId(null);
+      setDivisionsLoaded(true);
+      return;
+    }
+    listDivisions({ active: "true", officeId })
+      .then((divisions) => {
+        setDivisionList(divisions);
+        let resolvedDivisionId: number | null;
+        if (!canBypassDivision) {
+          // Locked to the caller's own division — never a manual pick.
+          resolvedDivisionId = me?.divisionId ?? null;
+        } else {
+          const preferredId = urlDivisionId ? Number(urlDivisionId) : null;
+          resolvedDivisionId =
+            preferredId != null && divisions.some((d) => d.id === preferredId) ? preferredId : null;
+        }
+        setDivisionId(resolvedDivisionId);
+
+        if (!autoGeneratedRef.current && urlOfficeId && fiscalYear != null) {
+          autoGeneratedRef.current = true;
+          runPreview(officeId, fiscalYear, resolvedDivisionId);
+        }
+      })
+      .catch(() => toast.error("Load failed", "Could not load divisions for this office."))
+      .finally(() => setDivisionsLoaded(true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [officeId, me]);
 
   return (
     <div className="p-6 max-w-screen-2xl mx-auto w-full print:p-0 print:max-w-none">
@@ -408,6 +490,15 @@ export default function WfpReportPage() {
       <style>{`
         @media print {
           @page { size: landscape; margin: 10mm; }
+          /* Browsers strip background colors from print output by default (RAL-147 deliberately
+             left this out since the ask then was just "printer-friendly", not "match the site" —
+             RAL-149 reverses that: the report's row shading — fund-source headers, grand-total
+             rows, the section-closing breakdown — is load-bearing for reading the hierarchy, not
+             decorative, so it must survive printing/PDF export.) */
+          * {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
         }
       `}</style>
 
@@ -415,7 +506,7 @@ export default function WfpReportPage() {
       <div className="mb-5 print:hidden">
         <h1 className="text-xl font-bold text-slate-800">Report</h1>
         <p className="text-sm text-slate-600 mt-0.5">
-          Select a report type, fiscal year, and office to preview.
+          Select a report type, fiscal year, office, and division to preview.
         </p>
       </div>
 
@@ -461,7 +552,7 @@ export default function WfpReportPage() {
           <select
             value={officeId ?? ""}
             onChange={(e) => setOfficeId(e.target.value ? Number(e.target.value) : null)}
-            disabled={officesLoading || offices.length === 0}
+            disabled={officesLoading || offices.length === 0 || !canBypassDivision}
             className="w-64 border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600 disabled:opacity-50"
           >
             <option value="">
@@ -471,6 +562,23 @@ export default function WfpReportPage() {
               <option key={o.officeId} value={o.officeId}>
                 {o.officeCode} — {o.officeName} ({o.wfpStatus})
               </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide mb-1">
+            Division
+          </label>
+          <select
+            value={divisionId ?? ""}
+            onChange={(e) => setDivisionId(e.target.value ? Number(e.target.value) : null)}
+            disabled={officeId == null || !divisionsLoaded || !canBypassDivision}
+            className="w-56 border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600 disabled:opacity-50"
+          >
+            {canBypassDivision && <option value="">— all divisions (consolidated) —</option>}
+            {divisionList.map((d) => (
+              <option key={d.id} value={d.id}>{d.code ? `${d.code} — ${d.name}` : d.name}</option>
             ))}
           </select>
         </div>
@@ -528,5 +636,14 @@ export default function WfpReportPage() {
         )
       )}
     </div>
+  );
+}
+
+// WfpReportPageInner needs useSearchParams -> must be inside a Suspense boundary.
+export default function WfpReportPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-slate-600 text-sm">Loading…</div>}>
+      <WfpReportPageInner />
+    </Suspense>
   );
 }
