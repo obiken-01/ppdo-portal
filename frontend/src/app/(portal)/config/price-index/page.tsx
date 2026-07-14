@@ -95,6 +95,15 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" });
 }
 
+function DaysEnabledBadge({ enabled }: { enabled: boolean }) {
+  if (!enabled) return <span className="text-slate-400">—</span>;
+  return (
+    <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold bg-green-100 text-green-700">
+      Yes
+    </span>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Form state
 // ---------------------------------------------------------------------------
@@ -104,6 +113,7 @@ interface FormState {
   unit: string;
   unitPrice: number | null;
   category: string;
+  daysEnabled: boolean;
 }
 
 const blankForm = (): FormState => ({
@@ -111,6 +121,7 @@ const blankForm = (): FormState => ({
   unit: "",
   unitPrice: null,
   category: "",
+  daysEnabled: false,
 });
 
 // ---------------------------------------------------------------------------
@@ -206,6 +217,7 @@ export default function PriceIndexConfigPage() {
       unit: item.unit,
       unitPrice: item.unitPrice,
       category: item.category ?? "",
+      daysEnabled: item.daysEnabled,
     });
     setFormError(null);
     setShowForm(true);
@@ -235,6 +247,7 @@ export default function PriceIndexConfigPage() {
       category: form.category.trim() || null,
       // Modal does not edit status; preserve it on update, default active on create.
       isActive: editTarget ? editTarget.isActive : true,
+      daysEnabled: form.daysEnabled,
     };
 
     setSaving(true);
@@ -287,6 +300,7 @@ export default function PriceIndexConfigPage() {
         unitPrice: item.unitPrice,
         category: item.category,
         isActive: true,
+        daysEnabled: item.daysEnabled,
       });
       toast.success("Price index item reactivated", `${item.name} is now active.`);
       await load();
@@ -351,6 +365,13 @@ export default function PriceIndexConfigPage() {
       header: "Price Updated",
       sortable: true,
       render: (p) => <span className="text-xs text-slate-600">{formatDate(p.priceUpdatedAt)}</span>,
+    },
+    {
+      key: "daysEnabled",
+      header: "Days Field",
+      sortable: true,
+      sortValue: (p) => (p.daysEnabled ? 1 : 0),
+      render: (p) => <DaysEnabledBadge enabled={p.daysEnabled} />,
     },
     {
       key: "isActive",
@@ -548,6 +569,23 @@ export default function PriceIndexConfigPage() {
               )}
             </div>
 
+            {/* Days field gate (RAL-138 — venue/food/accommodation-type items only) */}
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.daysEnabled}
+                onChange={(e) => setForm((f) => ({ ...f, daysEnabled: e.target.checked }))}
+                className="mt-0.5 h-4 w-4 accent-green-600"
+              />
+              <span>
+                <span className="block text-sm font-medium text-slate-700">Enable &quot;Days&quot; in WFP entry</span>
+                <span className="block text-[11px] text-slate-600">
+                  For multi-day items (venue rental, food, accommodation) where cost scales by the
+                  number of days. Leave off for everything else.
+                </span>
+              </span>
+            </label>
+
             {formError && (
               <div className="bg-danger-100 border border-danger-500/30 px-4 py-3">
                 <p className="text-sm text-danger-500">{formError}</p>
@@ -583,7 +621,7 @@ export default function PriceIndexConfigPage() {
               combinations are added and existing ones are updated. Nothing is deleted.
             </p>
             <p className="text-xs text-slate-600">
-              Expected columns: name, unit, unit_price, category, is_active.
+              Expected columns: name, unit, unit_price, category, is_active, days_enabled.
             </p>
           </div>
         </Modal>
