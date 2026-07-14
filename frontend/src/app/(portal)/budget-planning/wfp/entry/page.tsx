@@ -225,6 +225,9 @@ interface ExpenditureWizardProps {
   priceIndex: PriceIndexItemResponse[];
   reserveRate: number;
   editingExpenditure: WfpExpenditureDto | null;
+  /** Every other expenditure already saved for this activity (RAL-152) — used to warn when a
+   *  procurement item picked here is already used elsewhere, never includes the one being edited. */
+  otherExpenditures: WfpExpenditureDto[];
   onSaved: (saved: WfpExpenditureDto) => void;
   onClose: () => void;
 }
@@ -240,6 +243,7 @@ function ExpenditureWizard({
   priceIndex,
   reserveRate,
   editingExpenditure,
+  otherExpenditures,
   onSaved,
   onClose,
 }: ExpenditureWizardProps) {
@@ -291,6 +295,14 @@ function ExpenditureWizard({
 
   const selectedAccount = accounts.find((a) => a.id === accountId) ?? null;
   const applyReserve = selectedAccount?.defaultApplyReserve ?? false;
+
+  // Price-index item ids already used somewhere in this ACTIVITY's other expenditures (any
+  // account/nature, any period) — a heads-up only, never a save-blocker (RAL-152).
+  const duplicatePriceIndexItemIds = new Set(
+    otherExpenditures.flatMap((e) =>
+      e.procurementItems.map((i) => i.priceIndexItemId).filter((id): id is number => id != null)
+    )
+  );
 
   // Reserve amount is only meaningful when the account defaults to reserve — clear any stale
   // amount left over from a previous account the instant it no longer applies (RAL-139).
@@ -650,6 +662,7 @@ function ExpenditureWizard({
                   applyReserve={applyReserve}
                   reserveAmount={reserveAmount}
                   reserveRate={reserveRate}
+                  duplicatePriceIndexItemIds={duplicatePriceIndexItemIds}
                 />
               </div>
             )}
@@ -723,6 +736,7 @@ function ExpenditureWizard({
               applyReserve={applyReserve}
               reserveAmount={reserveAmount}
               reserveRate={reserveRate}
+              duplicatePriceIndexItemIds={duplicatePriceIndexItemIds}
             />
           </div>
         ) : (
@@ -1566,6 +1580,7 @@ function WfpEntryPageInner() {
           priceIndex={priceIndex}
           reserveRate={reserveRate}
           editingExpenditure={editingExpenditure}
+          otherExpenditures={expenditures.filter((e) => e.id !== editingExpenditure?.id)}
           onSaved={handleExpenditureSaved}
           onClose={handleCloseWizard}
         />

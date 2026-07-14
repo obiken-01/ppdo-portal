@@ -79,6 +79,9 @@ export interface WfpProcurementItemTableProps {
   applyReserve: boolean;
   reserveAmount: number | null;
   reserveRate: number;
+  /** Price-index item ids already used in one of this activity's OTHER expenditures (RAL-152) —
+   *  a picked row whose id is in this set shows a non-blocking heads-up, never disables Save. */
+  duplicatePriceIndexItemIds: Set<number>;
 }
 
 // ---------------------------------------------------------------------------
@@ -96,6 +99,7 @@ export default function WfpProcurementItemTable({
   applyReserve,
   reserveAmount,
   reserveRate,
+  duplicatePriceIndexItemIds,
 }: WfpProcurementItemTableProps) {
   const { toast } = useToast();
   const count = wfpPeriodCount(frequency);
@@ -365,6 +369,12 @@ export default function WfpProcurementItemTable({
                   Remove
                 </button>
               </div>
+
+              {row.priceIndexItemId != null && duplicatePriceIndexItemIds.has(row.priceIndexItemId) && (
+                <p className="text-[11px] text-amber-600">
+                  ⚠ Already used in another expenditure for this activity.
+                </p>
+              )}
 
               {/* Name (full width) + Unit */}
               <div className="flex items-end gap-2">
