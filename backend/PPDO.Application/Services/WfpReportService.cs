@@ -206,7 +206,7 @@ public sealed class WfpReportService : IWfpReportService
         IReadOnlyDictionary<int, string> sectorLabelByAipOfficeId)
     {
         Dictionary<int, List<WfpReportProjectDto>> projectDtosByProgramId = [];
-        foreach (AipProject project in projects.OrderBy(p => p.RefCode))
+        foreach (AipProject project in projects.OrderBy(p => RefCodeSequence(p.RefCode)).ThenBy(p => p.RefCode))
         {
             AipProgram? parentProgram = programs.FirstOrDefault(p => p.Id == project.ProgramId);
             string sector = parentProgram is not null
@@ -214,7 +214,8 @@ public sealed class WfpReportService : IWfpReportService
                 : "";
 
             List<WfpReportActivityDto> activityDtos = [];
-            foreach (AipActivity activity in activities.Where(a => a.ProjectId == project.Id).OrderBy(a => a.RefCode))
+            foreach (AipActivity activity in activities.Where(a => a.ProjectId == project.Id)
+                         .OrderBy(a => RefCodeSequence(a.RefCode)).ThenBy(a => a.RefCode))
             {
                 if (!expendituresByAipActivityId.TryGetValue(activity.Id, out List<WfpExpenditureDto>? allExpenditures))
                     continue;
@@ -239,7 +240,7 @@ public sealed class WfpReportService : IWfpReportService
         }
 
         Dictionary<string, List<WfpReportProgramDto>> programsByBand = [];
-        foreach (AipProgram program in programs.OrderBy(p => p.RefCode))
+        foreach (AipProgram program in programs.OrderBy(p => RefCodeSequence(p.RefCode)).ThenBy(p => p.RefCode))
         {
             if (!projectDtosByProgramId.TryGetValue(program.Id, out List<WfpReportProjectDto>? projectDtos))
                 continue;
@@ -334,6 +335,19 @@ public sealed class WfpReportService : IWfpReportService
 
         WfpReportAmountsDto grandTotal = allPrograms.Aggregate(WfpReportAmountsDto.Zero, (acc, p) => acc + p.GrandTotal);
         return new WfpReportBreakdownDto(ps, mooe, co, psCreation, mooeCreation, grandTotal);
+    }
+
+    /// <summary>
+    /// Parses a Program/Project/Activity's own sequence number — the last dash-separated segment
+    /// of its ref code (e.g. "001" in "1000-000-1-01-010-002-001") — so siblings sort by AIP
+    /// numbering (RAL-150) regardless of the order a user happened to enter/save WFP expenditures
+    /// in. Falls back to <see cref="int.MaxValue"/> for a ref code that doesn't parse (sorts last,
+    /// never crashes the report) — every real AIP ref code segment is numeric today.
+    /// </summary>
+    private static int RefCodeSequence(string refCode)
+    {
+        string lastSegment = refCode.Split('-')[^1];
+        return int.TryParse(lastSegment, out int seq) ? seq : int.MaxValue;
     }
 
     private static string ExpenseClassFor(WfpExpenditureDto e, IReadOnlyDictionary<int, Account> accountsById) =>
