@@ -130,6 +130,8 @@ export interface PriceIndexItemResponse {
   /** Last time unitPrice actually changed — shown so a stale price is visible, not silently trusted. */
   priceUpdatedAt: string;
   isActive: boolean;
+  /** Gates the WFP procurement line-item "Days" field (RAL-138) — only venue/food/accommodation-type items need it. */
+  daysEnabled: boolean;
 }
 
 /** Create/update body for a price index item. (name, unit) is the unique key. */
@@ -139,6 +141,7 @@ export interface UpsertPriceIndexItemRequest {
   unitPrice: number;
   category: string | null;
   isActive: boolean;
+  daysEnabled: boolean;
 }
 
 // ---------------------------------------------------------------------------

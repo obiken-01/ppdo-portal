@@ -40,6 +40,13 @@ public sealed class PriceIndexItem
     /// <summary>Soft-delete flag. Inactive items are hidden from search but kept for history.</summary>
     public bool IsActive { get; set; } = true;
 
+    /// <summary>
+    /// Gates the WFP procurement line-item entry screen's "Days" multiplier (v1.4 — RAL-138):
+    /// only items where a multi-day duration is meaningful (venue rental, food, accommodation)
+    /// enable that field. Default false — most catalogue items don't use it.
+    /// </summary>
+    public bool DaysEnabled { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

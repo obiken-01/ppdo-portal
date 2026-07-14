@@ -8,7 +8,8 @@ public sealed record PriceIndexItemDto(
     decimal  UnitPrice,
     string?  Category,
     DateTime PriceUpdatedAt,
-    bool     IsActive);
+    bool     IsActive,
+    bool     DaysEnabled);
 
 /// <summary>Create/update body for a price index item. (Name, Unit) is the unique key.</summary>
 public sealed record UpsertPriceIndexItemDto(
@@ -16,4 +17,5 @@ public sealed record UpsertPriceIndexItemDto(
     string  Unit,
     decimal UnitPrice,
     string? Category,
-    bool    IsActive = true);
+    bool    IsActive = true,
+    bool    DaysEnabled = false);
