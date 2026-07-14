@@ -39,6 +39,7 @@ function fmtDate(iso: string | null | undefined): React.ReactNode {
     year: "numeric",
     month: "short",
     day: "numeric",
+    timeZone: "Asia/Manila",
   });
 }
 

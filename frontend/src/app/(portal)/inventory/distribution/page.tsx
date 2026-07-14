@@ -49,7 +49,7 @@ function fmt(n: number) {
 function fmtDate(d: string) {
   if (!d) return "—";
   return new Date(d).toLocaleDateString("en-PH", {
-    year: "numeric", month: "short", day: "numeric",
+    year: "numeric", month: "short", day: "numeric", timeZone: "Asia/Manila",
   });
 }
 

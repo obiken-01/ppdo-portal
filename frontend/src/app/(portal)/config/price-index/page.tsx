@@ -92,7 +92,7 @@ function StatusBadge({ active }: { active: boolean }) {
 }
 
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" });
+  return new Date(iso).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric", timeZone: "Asia/Manila" });
 }
 
 function DaysEnabledBadge({ enabled }: { enabled: boolean }) {
