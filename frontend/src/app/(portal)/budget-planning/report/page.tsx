@@ -333,8 +333,9 @@ function FundSourceBlock({
 }) {
   return (
     <div className={`mb-8 last:mb-0 ${printPageBreakAfter ? "print:break-after-page" : ""}`}>
-      <div className="px-5 py-4 border-b border-slate-200 text-center space-y-0.5 bg-white border-x border-t">
-        <p className="text-base font-bold text-slate-800">
+      <div className="h-1.5 bg-green-800 border-x border-t border-slate-200" />
+      <div className="px-5 py-4 border-b border-slate-200 text-center space-y-0.5 bg-white border-x">
+        <p className="text-base font-bold text-green-800">
           WORK AND FINANCIAL PLAN FY {report.fiscalYear}
         </p>
         <p className="text-sm text-slate-600">
@@ -484,6 +485,15 @@ function WfpReportPageInner() {
       <style>{`
         @media print {
           @page { size: landscape; margin: 10mm; }
+          /* Browsers strip background colors from print output by default (RAL-147 deliberately
+             left this out since the ask then was just "printer-friendly", not "match the site" —
+             RAL-149 reverses that: the report's row shading — fund-source headers, grand-total
+             rows, the section-closing breakdown — is load-bearing for reading the hierarchy, not
+             decorative, so it must survive printing/PDF export.) */
+          * {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
         }
       `}</style>
 
