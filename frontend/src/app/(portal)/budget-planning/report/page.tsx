@@ -148,7 +148,12 @@ const COLUMN_HEADERS = [
   "Q1", "Q2", "Q3", "Q4", "Amount to be Released",
 ];
 
-const COLUMN_WIDTHS = ["10%", "15%", "7%", "5%", "7%", "13%", "6%", "5%", "6%", "5%", "5%", "5%", "5%", "6%"];
+// AIP Ref Code widened 10% -> 14%, taken from "Programs, Projects and Activities" (15% -> 11%):
+// that column never renders standalone text (it's either the start of the Program/Project/
+// Activity name's colSpan=13 merge, or a blank placeholder cell in expenditure/total rows), so
+// narrowing its individual allocation doesn't squeeze any independently-rendered cell — unlike
+// Sector/Nature/Account Code, which do hold real unmerged text in expenditure rows (RAL-149 follow-up).
+const COLUMN_WIDTHS = ["14%", "11%", "7%", "5%", "7%", "13%", "6%", "5%", "6%", "5%", "5%", "5%", "5%", "6%"];
 
 function money(n: number) {
   return formatMoney(n);
