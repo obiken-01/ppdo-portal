@@ -102,21 +102,70 @@ function lastRefCodeSegment(refCode: string): string {
   return parts[parts.length - 1] || refCode;
 }
 
+// v1.4.3 (RAL-156, §2 D5). A blank AIP fund-source snapshot defaults to General Fund. An
+// ambiguous one (multiple funds listed) is left unselected by default — flip this flag to
+// fall back to GF for the ambiguous case too, if policy changes; no other refactor needed.
+const DEFAULT_FUND_SOURCE_CODE = "GF";
+const FALLBACK_AMBIGUOUS_TO_DEFAULT = false;
+
+// Normalizes an AIP snapshot / config Code|Name|alias for comparison: trims, collapses
+// internal whitespace/newlines to a single space, ignores spaces around "%", case-insensitive.
+function normalizeFundText(raw: string): string {
+  return raw.trim().replace(/\s+/g, " ").replace(/\s*%\s*/g, "%").toLowerCase();
+}
+
+function matchFundingSourceByText(
+  text: string,
+  fundingSources: FundingSourceResponse[]
+): number | null {
+  const q = normalizeFundText(text);
+  return (
+    fundingSources.find((f) => normalizeFundText(f.code) === q)?.id ??
+    fundingSources.find((f) => normalizeFundText(f.name) === q)?.id ??
+    fundingSources.find((f) =>
+      f.aliases?.split("|").some((alias) => normalizeFundText(alias) === q)
+    )?.id ??
+    null
+  );
+}
+
+/** True when the raw AIP snapshot lists more than one fund source (comma/slash/newline-separated). */
+function isAmbiguousFundSnapshot(trimmed: string): boolean {
+  return /[,/\n]/.test(trimmed);
+}
+
+/**
+ * Resolves the fund source to PRE-FILL the entry form's dropdown with. Single resolvable AIP
+ * fund source → that source; blank/none → General Fund (D5); ambiguous → unselected (unless
+ * FALLBACK_AMBIGUOUS_TO_DEFAULT is flipped on).
+ */
 function resolveDefaultFundingSourceId(
   snapshot: string | null,
   fundingSources: FundingSourceResponse[]
 ): number | null {
-  if (!snapshot?.trim()) return null;
-  if (/[,/]/.test(snapshot)) return null;
-  const q = snapshot.trim().toLowerCase();
-  return (
-    fundingSources.find((f) => f.code.toLowerCase() === q)?.id ??
-    fundingSources.find((f) => f.name.toLowerCase() === q)?.id ??
-    fundingSources.find((f) =>
-      f.description?.split(";").some((alias) => alias.trim().toLowerCase() === q)
-    )?.id ??
-    null
-  );
+  const trimmed = snapshot?.trim() ?? "";
+  if (!trimmed) return matchFundingSourceByText(DEFAULT_FUND_SOURCE_CODE, fundingSources);
+  if (isAmbiguousFundSnapshot(trimmed)) {
+    return FALLBACK_AMBIGUOUS_TO_DEFAULT
+      ? matchFundingSourceByText(DEFAULT_FUND_SOURCE_CODE, fundingSources)
+      : null;
+  }
+  return matchFundingSourceByText(trimmed, fundingSources);
+}
+
+/**
+ * Resolves the fund source the AIP activity itself genuinely and unambiguously assigned —
+ * null when the AIP snapshot was blank, ambiguous, or matched no configured fund. Distinct
+ * from resolveDefaultFundingSourceId above: this is used only to detect "the user's current
+ * selection differs from what AIP assigned" (D9 hint b), never to pre-fill a default.
+ */
+function resolveAipAssignedFundingSourceId(
+  snapshot: string | null,
+  fundingSources: FundingSourceResponse[]
+): number | null {
+  const trimmed = snapshot?.trim() ?? "";
+  if (!trimmed || isAmbiguousFundSnapshot(trimmed)) return null;
+  return matchFundingSourceByText(trimmed, fundingSources);
 }
 
 const FREQUENCIES: { value: WfpExpenditureFrequency; label: string }[] = [
@@ -163,7 +212,12 @@ function useCeilingStatus(
   // everything saved so far). Subtract it here so the preview reflects OLD -> NEW, not OLD + NEW
   // double-counted — the server's ValidateExpenditureSaveAsync already excludes it via
   // excludeExpenditureId; this mirrors that exclusion client-side for the live preview (RAL-129).
-  excludeCurrentTotal = 0
+  excludeCurrentTotal = 0,
+  // v1.4.3 (RAL-156): which fund's allocation to check pendingTotal against. Null falls back
+  // to status's top-level (General Fund) fields — the same null-means-GF resolution the server
+  // uses. The fetch itself doesn't depend on this — GetStatusAsync already returns every fund's
+  // breakdown up front, so switching fund sources re-derives instantly with no extra request.
+  fundingSourceId: number | null = null
 ) {
   const [status, setStatus] = useState<WfpCeilingStatusDto | null>(null);
   const [checking, setChecking] = useState(false);
@@ -197,16 +251,26 @@ function useCeilingStatus(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aipActivityId, divisionId, fiscalYear, pendingTotal, refreshKey]);
 
+  const selectedFund =
+    fundingSourceId != null
+      ? status?.funds.find((f) => f.fundingSourceId === fundingSourceId) ?? null
+      : null;
+  const divisionAllocationForCheck = selectedFund ? selectedFund.allocation : status?.divisionAllocation ?? 0;
+  const divisionRemainingForCheck = selectedFund ? selectedFund.remaining : status?.divisionRemaining ?? 0;
+
   const wouldBeAipUsed = status != null ? status.aipUsed - excludeCurrentTotal + pendingTotal : null;
   const wouldBeDivisionUsed =
     status != null
-      ? status.divisionAllocation - status.divisionRemaining - excludeCurrentTotal + pendingTotal
+      ? divisionAllocationForCheck - divisionRemainingForCheck - excludeCurrentTotal + pendingTotal
       : null;
   const overAip = status != null && wouldBeAipUsed != null && wouldBeAipUsed > status.aipBudget;
   const overDivision =
-    status != null && wouldBeDivisionUsed != null && wouldBeDivisionUsed > status.divisionAllocation;
+    status != null && wouldBeDivisionUsed != null && wouldBeDivisionUsed > divisionAllocationForCheck;
 
-  return { status, checking, overAip, overDivision, wouldBeAipUsed, wouldBeDivisionUsed };
+  return {
+    status, checking, overAip, overDivision, wouldBeAipUsed, wouldBeDivisionUsed,
+    divisionAllocationForCheck,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -220,6 +284,8 @@ interface ExpenditureWizardProps {
   divisionId: number;
   fiscalYear: number;
   defaultFundingSourceId: number | null;
+  /** The fund the AIP activity itself genuinely assigned — null if blank/ambiguous/unmatched (D9 hint b). */
+  aipAssignedFundingSourceId: number | null;
   accounts: AccountResponse[];
   fundingSources: FundingSourceResponse[];
   priceIndex: PriceIndexItemResponse[];
@@ -235,6 +301,7 @@ function ExpenditureWizard({
   divisionId,
   fiscalYear,
   defaultFundingSourceId,
+  aipAssignedFundingSourceId,
   accounts,
   fundingSources,
   priceIndex,
@@ -292,6 +359,18 @@ function ExpenditureWizard({
   const selectedAccount = accounts.find((a) => a.id === accountId) ?? null;
   const applyReserve = selectedAccount?.defaultApplyReserve ?? false;
 
+  // Fund-source hints (v1.4.3 — RAL-156, D9). Display-only, never persisted.
+  // (a) Still on the auto-default because the AIP activity had no fund source assigned.
+  // (b) The user's current selection differs from what the AIP activity DID assign.
+  const wasBlankDefaulted =
+    !isEditing &&
+    aipAssignedFundingSourceId == null &&
+    defaultFundingSourceId != null &&
+    fundingSourceId === defaultFundingSourceId;
+  const differsFromAipAssigned =
+    aipAssignedFundingSourceId != null && fundingSourceId !== aipAssignedFundingSourceId;
+  const aipAssignedFundName = fundingSources.find((f) => f.id === aipAssignedFundingSourceId)?.name ?? null;
+
   // Reserve amount is only meaningful when the account defaults to reserve — clear any stale
   // amount left over from a previous account the instant it no longer applies (RAL-139).
   useEffect(() => {
@@ -330,10 +409,11 @@ function ExpenditureWizard({
   const combinedResolvedReserve = applyReserve ? reserveAmount ?? combinedNet * reserveRate : 0;
   const combinedTotal = combinedNet + combinedResolvedReserve;
 
-  const { status, checking, overAip, overDivision, wouldBeAipUsed, wouldBeDivisionUsed } =
+  const { status, checking, overAip, overDivision, wouldBeAipUsed, wouldBeDivisionUsed, divisionAllocationForCheck } =
     useCeilingStatus(
       aipActivityId, divisionId, fiscalYear, pendingTotal, 0,
-      editingExpenditure?.totalAppropriation ?? 0
+      editingExpenditure?.totalAppropriation ?? 0,
+      fundingSourceId
     );
 
   function handleAccountChange(id: number | null) {
@@ -472,8 +552,8 @@ function ExpenditureWizard({
             {overDivision && status && wouldBeDivisionUsed != null && (
               <p>
                 Exceeds division allocation by{" "}
-                {formatMoney(wouldBeDivisionUsed - status.divisionAllocation)} (allocation{" "}
-                {formatMoney(status.divisionAllocation)}).
+                {formatMoney(wouldBeDivisionUsed - divisionAllocationForCheck)} (allocation{" "}
+                {formatMoney(divisionAllocationForCheck)}).
               </p>
             )}
           </div>
@@ -557,6 +637,16 @@ function ExpenditureWizard({
             getSearchText={(f) => `${f.name} ${f.code}`}
             placeholder="Search fund source…"
           />
+          {wasBlankDefaulted && (
+            <p className="mt-1 text-xs text-slate-600">
+              Defaulted to General Fund — this activity has no fund source assigned in the AIP.
+            </p>
+          )}
+          {differsFromAipAssigned && (
+            <p className="mt-1 text-xs text-amber-600">
+              Different from the AIP-assigned fund source{aipAssignedFundName ? ` (${aipAssignedFundName})` : ""}.
+            </p>
+          )}
         </div>
 
         {/* 8. Reserve — read-only, driven entirely by the selected account's defaultApplyReserve;
@@ -876,8 +966,11 @@ function WfpEntryPageInner() {
         setAccounts(accts);
         setFundingSources(funds);
 
-        // v1.4.3 (RAL-154): allocation is now per fund source. This sticky-header context
-        // defaults to General Fund until RAL-156 adds the per-fund breakdown here.
+        // v1.4.3 (RAL-154/156): allocation is now per fund source. This particular fetch stays
+        // General-Fund-only — it feeds the sticky header's fallback bar shown BEFORE an activity
+        // is selected (no aipActivityId yet, so getCeilingStatus/ceilingStatus.funds can't be
+        // used). Once an activity is picked, the header switches to the real per-fund bars
+        // driven by ceilingStatus.funds (see relevantFunds below).
         const gfId = findGeneralFund(funds)?.id ?? null;
 
         const [status, allocs, assignments] = await Promise.all([
@@ -1188,6 +1281,32 @@ function WfpEntryPageInner() {
   const defaultFundingSourceId = selectedActivity
     ? resolveDefaultFundingSourceId(selectedActivity.fundingSourceSnapshot, fundingSources)
     : null;
+  const aipAssignedFundingSourceId = selectedActivity
+    ? resolveAipAssignedFundingSourceId(selectedActivity.fundingSourceSnapshot, fundingSources)
+    : null;
+
+  // Per-fund allocation bars in the sticky header (v1.4.3 — RAL-156, D6): General Fund always,
+  // plus the activity's own resolved AIP fund source when it's a single non-GF source (e.g. an
+  // activity whose AIP fund is GAD shows GF + GAD), plus any fund actually used by one of this
+  // activity's saved expenditures.
+  const generalFundId = useMemo(() => findGeneralFund(fundingSources)?.id ?? null, [fundingSources]);
+  const relevantFundIds = useMemo(() => {
+    const ids = new Set<number>();
+    if (generalFundId != null) ids.add(generalFundId);
+    if (aipAssignedFundingSourceId != null) ids.add(aipAssignedFundingSourceId);
+    for (const e of expenditures) {
+      if (e.fundingSourceId != null) ids.add(e.fundingSourceId);
+    }
+    return ids;
+  }, [generalFundId, aipAssignedFundingSourceId, expenditures]);
+  const relevantFunds = useMemo(() => {
+    if (!ceilingStatus) return [];
+    return ceilingStatus.funds
+      .filter((f) => relevantFundIds.has(f.fundingSourceId))
+      .sort((a, b) =>
+        a.fundingSourceId === generalFundId ? -1 : b.fundingSourceId === generalFundId ? 1 : 0
+      );
+  }, [ceilingStatus, relevantFundIds, generalFundId]);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -1289,22 +1408,38 @@ function WfpEntryPageInner() {
               )}
             </div>
 
-            {divisionAllocation && (
-              <div>
-                <div className="flex justify-between text-xs text-slate-600">
-                  <span>
-                    Division allocation: {formatMoney(divisionAllocation.amount)} original ·{" "}
-                    {ceilingStatus
-                      ? `${formatMoney(ceilingStatus.divisionRemaining)} remaining`
-                      : "…"}
-                  </span>
-                </div>
-                {ceilingStatus &&
-                  progressBar(
-                    divisionAllocation.amount - ceilingStatus.divisionRemaining,
-                    divisionAllocation.amount
-                  )}
+            {selectedActivity && ceilingStatus ? (
+              <div className="space-y-2">
+                {relevantFunds.map((f) => (
+                  <div key={f.fundingSourceId}>
+                    <div className="flex justify-between text-xs text-slate-600">
+                      <span>
+                        {f.fundingSourceName} allocation: {formatMoney(f.allocation)} original ·{" "}
+                        {formatMoney(f.remaining)} remaining
+                      </span>
+                    </div>
+                    {progressBar(f.allocation - f.remaining, f.allocation)}
+                  </div>
+                ))}
               </div>
+            ) : (
+              divisionAllocation && (
+                <div>
+                  <div className="flex justify-between text-xs text-slate-600">
+                    <span>
+                      Division allocation: {formatMoney(divisionAllocation.amount)} original ·{" "}
+                      {ceilingStatus
+                        ? `${formatMoney(ceilingStatus.divisionRemaining)} remaining`
+                        : "…"}
+                    </span>
+                  </div>
+                  {ceilingStatus &&
+                    progressBar(
+                      divisionAllocation.amount - ceilingStatus.divisionRemaining,
+                      divisionAllocation.amount
+                    )}
+                </div>
+              )
             )}
 
             {selectedActivity && ceilingStatus && (
@@ -1565,6 +1700,7 @@ function WfpEntryPageInner() {
           divisionId={selectedDivisionId}
           fiscalYear={aipDetail.fiscalYear}
           defaultFundingSourceId={defaultFundingSourceId}
+          aipAssignedFundingSourceId={aipAssignedFundingSourceId}
           accounts={accounts}
           fundingSources={fundingSources}
           priceIndex={priceIndex}

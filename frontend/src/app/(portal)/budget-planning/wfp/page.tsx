@@ -756,8 +756,11 @@ function WfpPageInner() {
         if (newFunds) { setFundingSources(newFunds); fundingSourcesLoaded.current = true; }
         if (newAccts) { setAccounts(newAccts); accountsLoaded.current = true; }
 
-        // v1.4.3 (RAL-154): ceiling/allocation are now per fund source. This banner defaults
-        // to General Fund until RAL-156 adds a per-fund breakdown here.
+        // v1.4.3 (RAL-154): ceiling/allocation are now per fund source. This page is the
+        // legacy bulk-line-grid flow, whose backend division-budget check (WfpService's
+        // legacy SaveAsync path) stays General-Fund-only by design — see docs/v1.4.3
+        // §4.1/D3. So this banner is intentionally GF-only, not a RAL-156 stopgap; the
+        // fund-scoped per-fund breakdown lives in the entry wizard (wfp/entry/page.tsx).
         const gfId = findGeneralFund(newFunds ?? fundingSources)?.id ?? null;
 
         // Always check ceiling (applies to all users, all divisions)
