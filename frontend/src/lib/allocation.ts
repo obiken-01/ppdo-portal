@@ -40,15 +40,16 @@ export function allocationErrorMessage(err: unknown, fallback: string): string {
 // Ceiling — GET/PUT /api/budget-planning/allocation/ceiling
 // ---------------------------------------------------------------------------
 
-/** Returns null when no ceiling is set for this office + FY (404). */
+/** Returns null when no ceiling is set for this office + FY + fund (404). */
 export async function getCeiling(
   officeId: number,
-  fiscalYear: number
+  fiscalYear: number,
+  fundingSourceId: number
 ): Promise<BudgetCeilingDto | null> {
   try {
     const { data } = await api.get<ApiResponse<BudgetCeilingDto>>(
       "/budget-planning/allocation/ceiling",
-      { params: { officeId, fiscalYear } }
+      { params: { officeId, fiscalYear, fundingSourceId } }
     );
     return data.data;
   } catch (err: unknown) {
@@ -56,6 +57,18 @@ export async function getCeiling(
     if (status === 404) return null;
     throw err;
   }
+}
+
+/** Every fund source's ceiling for the office + FY (v1.4.3 — RAL-154/155). Funds with none set are absent. */
+export async function getCeilings(
+  officeId: number,
+  fiscalYear: number
+): Promise<BudgetCeilingDto[]> {
+  const { data } = await api.get<ApiResponse<BudgetCeilingDto[]>>(
+    "/budget-planning/allocation/ceilings",
+    { params: { officeId, fiscalYear } }
+  );
+  return unwrap(data);
 }
 
 export async function upsertCeiling(body: UpsertCeilingRequest): Promise<BudgetCeilingDto> {
@@ -72,11 +85,12 @@ export async function upsertCeiling(body: UpsertCeilingRequest): Promise<BudgetC
 
 export async function getAllocations(
   officeId: number,
-  fiscalYear: number
+  fiscalYear: number,
+  fundingSourceId: number
 ): Promise<DivisionAllocationDto[]> {
   const { data } = await api.get<ApiResponse<DivisionAllocationDto[]>>(
     "/budget-planning/allocation/divisions",
-    { params: { officeId, fiscalYear } }
+    { params: { officeId, fiscalYear, fundingSourceId } }
   );
   return unwrap(data);
 }
