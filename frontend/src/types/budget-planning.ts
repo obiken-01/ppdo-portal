@@ -443,11 +443,24 @@ export interface WfpReserveRateDto {
   rate: number;
 }
 
+/** One funding source's division-allocation status (v1.4.3 — RAL-154). */
+export interface WfpFundCeilingDto {
+  fundingSourceId: number;
+  fundingSourceCode: string;
+  fundingSourceName: string;
+  allocation: number;
+  remaining: number;
+}
+
 export interface WfpCeilingStatusDto {
   aipBudget: number;
   aipUsed: number;
+  /** General Fund's allocation specifically (v1.4.3 — RAL-154) — see `funds` for other sources. */
   divisionAllocation: number;
+  /** General Fund's remaining specifically (v1.4.3 — RAL-154) — see `funds` for other sources. */
   divisionRemaining: number;
+  /** One entry per active funding source (v1.4.3 — RAL-154). */
+  funds: WfpFundCeilingDto[];
 }
 
 export interface EnsureWfpActivityRequest {
@@ -558,6 +571,9 @@ export interface BudgetCeilingDto {
   id: number;
   officeId: number;
   fiscalYear: number;
+  fundingSourceId: number;
+  fundingSourceCode: string;
+  fundingSourceName: string;
   amount: number;
 }
 
@@ -566,6 +582,9 @@ export interface DivisionAllocationDto {
   divisionId: number;
   divisionName: string;
   fiscalYear: number;
+  fundingSourceId: number;
+  fundingSourceCode: string;
+  fundingSourceName: string;
   amount: number;
 }
 
@@ -586,6 +605,7 @@ export interface AllocationSetupStatusDto {
 export interface UpsertCeilingRequest {
   officeId: number;
   fiscalYear: number;
+  fundingSourceId: number;
   amount: number;
 }
 
@@ -597,6 +617,7 @@ export interface UpsertDivisionAllocationItem {
 export interface UpsertAllocationsRequest {
   officeId: number;
   fiscalYear: number;
+  fundingSourceId: number;
   allocations: UpsertDivisionAllocationItem[];
 }
 

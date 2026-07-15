@@ -1,10 +1,11 @@
 "use client";
 
 /**
- * Allocation page — RAL-101.
+ * Allocation page — RAL-101. Per-fund-source ceiling & allocation — v1.4.3, RAL-155.
  *
- * Finance-officer-only page for setting the PBO budget ceiling per office,
- * distributing it among divisions, and assigning AIP programs to divisions.
+ * Finance-officer-only page for setting the PBO budget ceiling per office (now per
+ * active funding source, RAL-154/155), distributing it among divisions, and
+ * assigning AIP programs to divisions.
  *
  * Access: canManageAllocation. Hidden in sidebar for everyone else.
  * Route:  /budget-planning/allocation
@@ -12,27 +13,32 @@
  * Amounts are in PESOS — no ×1000 conversion (that lives in WFP only).
  *
  * Tab 1 — Ceiling & Division Allocation:
- *   Set the PBO ceiling → distribute it among divisions → live stacked bar.
+ *   One ceiling + division-allocation section per ACTIVE funding source (config-driven,
+ *   never hardcoded — §2 D1 of docs/v1.4.3/v1.4.3_Requirements.md). General Fund is
+ *   always expanded first; other funds render as collapsible cards with a one-line
+ *   status summary until expanded.
  *
  * Tab 2 — PPA → Division:
  *   Reuses the WFP Sector→Program hierarchy (collapsed at Program level).
  *   Each division gets a checkbox column. Multi-division toggle per program.
  *   Unassigned filter + bulk-assign + per-division assigned counts in headers.
+ *   NOT fund-scoped — unchanged by RAL-155.
  *
  * Endpoints (AllocationFunctions.cs, { data, error, message } envelope):
- *   GET/PUT /api/budget-planning/allocation/ceiling?officeId=&fiscalYear=
- *   GET/PUT /api/budget-planning/allocation/divisions?officeId=&fiscalYear=
+ *   GET/PUT /api/budget-planning/allocation/ceiling?officeId=&fiscalYear=&fundingSourceId=
+ *   GET     /api/budget-planning/allocation/ceilings?officeId=&fiscalYear= (all funds, RAL-154)
+ *   GET/PUT /api/budget-planning/allocation/divisions?officeId=&fiscalYear=&fundingSourceId=
  *   GET/PUT /api/budget-planning/allocation/programs?officeId=&fiscalYear=
  *   GET     /api/budget-planning/allocation/status?officeId=&fiscalYear=&divisionId=
  */
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useMe } from "@/lib/me-cache";
-import { findPpdoOffice, listOffices, listDivisions } from "@/lib/config";
+import { findGeneralFund, findPpdoOffice, listOffices, listDivisions, listFundingSources } from "@/lib/config";
 import {
   allocationErrorMessage,
   getAllocations,
-  getCeiling,
+  getCeilings,
   getPrograms,
   upsertAllocations,
   upsertCeiling,
@@ -44,7 +50,9 @@ import { useToast } from "@/components/ui/Toast";
 import { formatMoney } from "@/lib/money";
 import type {
   BudgetCeilingDto,
+  DivisionAllocationDto,
   DivisionResponse,
+  FundingSourceResponse,
   OfficeResponse,
   ProgramAssignmentDto,
 } from "@/types";
@@ -141,6 +149,257 @@ function AllocationBar({
 }
 
 // ---------------------------------------------------------------------------
+// FundSection — one ceiling + division-allocation block per funding source (RAL-155)
+// ---------------------------------------------------------------------------
+
+function FundSection({
+  fund,
+  isGeneralFund,
+  expanded,
+  onToggleExpand,
+  selectedOffice,
+  selectedFiscalYear,
+  ceiling,
+  ceilingInput,
+  onCeilingInputChange,
+  onSaveCeiling,
+  savingCeiling,
+  divisions,
+  allocationInputs,
+  onAllocationInputChange,
+  onSaveAllocations,
+  savingAllocations,
+}: {
+  fund: FundingSourceResponse;
+  isGeneralFund: boolean;
+  expanded: boolean;
+  onToggleExpand: () => void;
+  selectedOffice: OfficeResponse | null;
+  selectedFiscalYear: number;
+  ceiling: BudgetCeilingDto | null;
+  ceilingInput: number | null;
+  onCeilingInputChange: (v: number | null) => void;
+  onSaveCeiling: () => void;
+  savingCeiling: boolean;
+  divisions: DivisionResponse[];
+  allocationInputs: Record<number, number | null>;
+  onAllocationInputChange: (divisionId: number, v: number | null) => void;
+  onSaveAllocations: () => void;
+  savingAllocations: boolean;
+}) {
+  const allocationTotal = divisions.reduce((sum, d) => sum + (allocationInputs[d.id] ?? 0), 0);
+  const isOverCeiling = (ceilingInput ?? 0) > 0 && allocationTotal > (ceilingInput ?? 0) + 0.001;
+  const remaining = (ceilingInput ?? 0) - allocationTotal;
+
+  const statusLabel = !ceiling ? "Not set" : allocationTotal > 0 ? "Set up" : "Ceiling only";
+  const statusClasses =
+    statusLabel === "Set up"
+      ? "text-green-700 bg-green-100"
+      : statusLabel === "Ceiling only"
+      ? "text-amber-700 bg-amber-100"
+      : "text-slate-600 bg-slate-100 border border-slate-200";
+
+  const body = (
+    <>
+      {/* Ceiling */}
+      <div className="flex items-center gap-3 mb-1">
+        <MoneyInput value={ceilingInput} onChange={onCeilingInputChange} className="w-52" />
+        <button
+          onClick={onSaveCeiling}
+          disabled={savingCeiling || !ceilingInput || ceilingInput <= 0}
+          className="px-4 py-2 bg-green-700 text-white text-sm font-medium hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+        >
+          {savingCeiling && (
+            <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+          )}
+          Set Ceiling
+        </button>
+      </div>
+      {ceiling && (
+        <p className="mb-4 text-xs text-slate-600">Saved ceiling: ₱{formatMoney(ceiling.amount)}</p>
+      )}
+      {!ceiling && <div className="mb-4" />}
+
+      {divisions.length === 0 ? (
+        <p className="text-sm text-slate-600">
+          No divisions configured for this office. Add divisions in Config → Divisions.
+        </p>
+      ) : (
+        <>
+          <div
+            className={`mb-3 text-sm font-medium tabular-nums ${
+              isOverCeiling ? "text-red-600" : "text-slate-700"
+            }`}
+          >
+            Allocated ₱{formatMoney(allocationTotal)} of ₱
+            {formatMoney(ceilingInput ?? 0)} · Remaining ₱
+            {formatMoney(remaining)}
+            {isOverCeiling && (
+              <span className="ml-2 text-xs font-normal text-red-500">
+                (over by ₱{formatMoney(allocationTotal - (ceilingInput ?? 0))})
+              </span>
+            )}
+          </div>
+
+          {(ceilingInput ?? 0) > 0 && (
+            <AllocationBar
+              ceiling={ceilingInput ?? 0}
+              divisions={divisions}
+              allocationInputs={allocationInputs}
+            />
+          )}
+
+          <table className="w-full mt-4 text-sm border-collapse">
+            <thead>
+              <tr className="border-b border-slate-200">
+                <th className="text-left py-2 text-xs font-medium text-slate-600 uppercase tracking-wide">
+                  Division
+                </th>
+                <th className="text-right py-2 text-xs font-medium text-slate-600 uppercase tracking-wide w-52">
+                  Amount (₱)
+                </th>
+                <th className="text-right py-2 text-xs font-medium text-slate-600 uppercase tracking-wide w-20">
+                  % of Ceiling
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {divisions.map((div, i) => {
+                const amount = allocationInputs[div.id] ?? null;
+                const pct =
+                  (ceilingInput ?? 0) > 0 && (amount ?? 0) > 0
+                    ? (((amount ?? 0) / ceilingInput!) * 100).toFixed(1)
+                    : "—";
+                return (
+                  <tr key={div.id} className="hover:bg-slate-50">
+                    <td className="py-2 pr-3">
+                      <span className="flex items-center gap-2">
+                        <span
+                          className="w-2.5 h-2.5 shrink-0"
+                          style={{
+                            backgroundColor: DIVISION_COLORS[i % DIVISION_COLORS.length],
+                          }}
+                        />
+                        {div.name}
+                        {div.code && (
+                          <span className="text-xs text-slate-600 font-mono">{div.code}</span>
+                        )}
+                      </span>
+                    </td>
+                    <td className="py-2 text-right">
+                      <div className="flex justify-end">
+                        <MoneyInput
+                          value={amount}
+                          onChange={(v) => onAllocationInputChange(div.id, v)}
+                          className="w-48 text-sm"
+                        />
+                      </div>
+                    </td>
+                    <td className="py-2 text-right text-slate-600 tabular-nums">
+                      {pct}
+                      {pct !== "—" ? "%" : ""}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="border-t border-slate-300">
+                <td className="py-2 text-sm font-semibold text-slate-700">Total</td>
+                <td
+                  className={`py-2 text-right font-semibold tabular-nums ${
+                    isOverCeiling ? "text-red-600" : "text-slate-700"
+                  }`}
+                >
+                  ₱{formatMoney(allocationTotal)}
+                </td>
+                <td className="py-2 text-right text-slate-600 tabular-nums">
+                  {(ceilingInput ?? 0) > 0
+                    ? `${((allocationTotal / ceilingInput!) * 100).toFixed(1)}%`
+                    : "—"}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+
+          <div className="mt-4 flex items-center gap-3">
+            <button
+              onClick={onSaveAllocations}
+              disabled={savingAllocations || isOverCeiling || !ceiling}
+              className={`px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed flex items-center gap-2 ${
+                isOverCeiling
+                  ? "bg-red-100 text-red-700 border border-red-300"
+                  : "bg-green-700 text-white hover:bg-green-600 disabled:opacity-50"
+              }`}
+            >
+              {savingAllocations && (
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              )}
+              {isOverCeiling ? "Over Ceiling — Cannot Save" : "Save Allocations"}
+            </button>
+            {!ceiling && (
+              <span className="text-xs text-slate-600">
+                Set a ceiling first before saving allocations.
+              </span>
+            )}
+          </div>
+        </>
+      )}
+    </>
+  );
+
+  if (isGeneralFund) {
+    return (
+      <div className="border border-slate-200 p-4">
+        <h2 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+          {fund.name}
+          <span className="text-[10px] font-medium text-green-700 bg-green-100 px-1.5 py-0.5">
+            Required
+          </span>
+          {selectedOffice && (
+            <span className="font-normal text-slate-600">
+              — {selectedOffice.officeName} · FY{selectedFiscalYear}
+            </span>
+          )}
+        </h2>
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <div className="border border-slate-200">
+      <button
+        onClick={onToggleExpand}
+        className="w-full flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-left hover:bg-slate-50 transition-colors"
+      >
+        <span className="flex items-center gap-2 text-sm font-medium text-slate-700">
+          <span className="text-slate-600">{expanded ? "▼" : "▶"}</span>
+          {fund.color && (
+            <span
+              className="w-2.5 h-2.5 shrink-0"
+              style={{ backgroundColor: fund.color }}
+            />
+          )}
+          {fund.name}
+          <span className={`text-[10px] font-medium px-1.5 py-0.5 ${statusClasses}`}>
+            {statusLabel}
+          </span>
+        </span>
+        <span className="text-xs text-slate-600">
+          {ceiling
+            ? `Ceiling ₱${formatMoney(ceiling.amount)} · Allocated ₱${formatMoney(
+                allocationTotal
+              )} · Remaining ₱${formatMoney(remaining)}`
+            : "No ceiling set"}
+        </span>
+      </button>
+      {expanded && <div className="px-4 pb-4">{body}</div>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // AllocationPageInner
 // ---------------------------------------------------------------------------
 
@@ -159,7 +418,7 @@ function AllocationPageInner() {
   // ── Loaded data ────────────────────────────────────────────────────────────
 
   const [divisions, setDivisions] = useState<DivisionResponse[]>([]);
-  const [ceiling, setCeiling] = useState<BudgetCeilingDto | null>(null);
+  const [fundList, setFundList] = useState<FundingSourceResponse[]>([]);
   const [programs, setPrograms] = useState<ProgramAssignmentDto[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -167,12 +426,25 @@ function AllocationPageInner() {
 
   const [activeTab, setActiveTab] = useState<"ceiling" | "ppa">("ceiling");
 
-  // ── Tab 1: Ceiling & Division Allocation ──────────────────────────────────
+  // ── Tab 1: Ceiling & Division Allocation — per fund source (RAL-155) ───────
 
-  const [ceilingInput, setCeilingInput] = useState<number | null>(null);
-  const [allocationInputs, setAllocationInputs] = useState<Record<number, number | null>>({});
-  const [savingCeiling, setSavingCeiling] = useState(false);
-  const [savingAllocations, setSavingAllocations] = useState(false);
+  const [ceilings, setCeilings] = useState<Record<number, BudgetCeilingDto | null>>({});
+  const [ceilingInputs, setCeilingInputs] = useState<Record<number, number | null>>({});
+  const [allocationInputsByFund, setAllocationInputsByFund] =
+    useState<Record<number, Record<number, number | null>>>({});
+  const [savingCeilingFundId, setSavingCeilingFundId] = useState<number | null>(null);
+  const [savingAllocationsFundId, setSavingAllocationsFundId] = useState<number | null>(null);
+  const [expandedFundIds, setExpandedFundIds] = useState<Set<number>>(new Set());
+
+  const generalFund = useMemo(() => findGeneralFund(fundList), [fundList]);
+  const otherFunds = useMemo(
+    () => fundList.filter((f) => f.id !== generalFund?.id),
+    [fundList, generalFund]
+  );
+  const orderedFunds = useMemo(
+    () => (generalFund ? [generalFund, ...otherFunds] : otherFunds),
+    [generalFund, otherFunds]
+  );
 
   // ── Tab 2: PPA → Division ─────────────────────────────────────────────────
 
@@ -188,14 +460,6 @@ function AllocationPageInner() {
 
   const isOfficeUser = me != null && me.officeId != null;
   const selectedOffice = officeList.find((o) => o.id === selectedOfficeId) ?? null;
-
-  const allocationTotal = useMemo(
-    () => divisions.reduce((sum, d) => sum + (allocationInputs[d.id] ?? 0), 0),
-    [allocationInputs, divisions]
-  );
-  const isOverCeiling =
-    ceilingInput != null && ceilingInput > 0 && allocationTotal > ceilingInput + 0.001;
-  const remaining = (ceilingInput ?? 0) - allocationTotal;
 
   const unassignedCount = useMemo(
     () =>
@@ -221,12 +485,17 @@ function AllocationPageInner() {
     return Array.from(map.entries());
   }, [programs, localAssignments, showUnassignedOnly]);
 
-  // ── Load offices on mount ─────────────────────────────────────────────────
+  // ── Load offices + active fund sources on mount ───────────────────────────
+  // Fund sources are global config (not office/FY-scoped) — loaded once here,
+  // never hardcoded (§2 D1).
 
   useEffect(() => {
     listOffices({ active: "true" })
       .then(setOfficeList)
       .catch(() => toast.error("Load failed", "Could not load offices."));
+    listFundingSources({ active: "true" })
+      .then(setFundList)
+      .catch(() => toast.error("Load failed", "Could not load funding sources."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -244,14 +513,16 @@ function AllocationPageInner() {
     }
   }, [me, officeList]);
 
-  // ── Load allocation data when office or FY changes ────────────────────────
+  // ── Load allocation data when office, FY, or the fund list changes ───────
+  // Division allocations have no bulk-across-funds endpoint — one call per
+  // active fund, run in parallel. Ceilings DO have a bulk endpoint (RAL-154).
 
   useEffect(() => {
     if (selectedOfficeId == null) {
       setDivisions([]);
-      setCeiling(null);
-      setCeilingInput(null);
-      setAllocationInputs({});
+      setCeilings({});
+      setCeilingInputs({});
+      setAllocationInputsByFund({});
       setPrograms([]);
       setLocalAssignments({});
       setMultiDivision({});
@@ -264,24 +535,41 @@ function AllocationPageInner() {
     async function load() {
       setLoading(true);
       try {
-        const [divs, ceil, allocs, progs] = await Promise.all([
+        const [divs, ceilingList, progs] = await Promise.all([
           listDivisions({ active: "true", officeId: selectedOfficeId! }),
-          getCeiling(selectedOfficeId!, selectedFiscalYear),
-          getAllocations(selectedOfficeId!, selectedFiscalYear),
+          getCeilings(selectedOfficeId!, selectedFiscalYear),
           getPrograms(selectedOfficeId!, selectedFiscalYear),
         ]);
         if (cancelled) return;
 
         setDivisions(divs);
-        setCeiling(ceil);
-        setCeilingInput(ceil?.amount ?? null);
 
-        const inputs: Record<number, number | null> = {};
-        for (const div of divs) {
-          const saved = allocs.find((a) => a.divisionId === div.id);
-          inputs[div.id] = saved?.amount ?? null;
+        const ceilingsByFund: Record<number, BudgetCeilingDto | null> = {};
+        const ceilingInputsByFund: Record<number, number | null> = {};
+        for (const fund of fundList) {
+          const found = ceilingList.find((c) => c.fundingSourceId === fund.id) ?? null;
+          ceilingsByFund[fund.id] = found;
+          ceilingInputsByFund[fund.id] = found?.amount ?? null;
         }
-        setAllocationInputs(inputs);
+        setCeilings(ceilingsByFund);
+        setCeilingInputs(ceilingInputsByFund);
+
+        const allocLists = await Promise.all(
+          fundList.map((fund) => getAllocations(selectedOfficeId!, selectedFiscalYear, fund.id))
+        );
+        if (cancelled) return;
+
+        const allocInputsByFund: Record<number, Record<number, number | null>> = {};
+        fundList.forEach((fund, i) => {
+          const allocs: DivisionAllocationDto[] = allocLists[i];
+          const inputs: Record<number, number | null> = {};
+          for (const div of divs) {
+            const saved = allocs.find((a) => a.divisionId === div.id);
+            inputs[div.id] = saved?.amount ?? null;
+          }
+          allocInputsByFund[fund.id] = inputs;
+        });
+        setAllocationInputsByFund(allocInputsByFund);
 
         setPrograms(progs);
         const assignments: Record<string, number[]> = {};
@@ -293,6 +581,7 @@ function AllocationPageInner() {
         setCheckedPrograms(new Set());
         setBulkDivisionId(null);
         setCollapsedSectors(new Set());
+        setExpandedFundIds(new Set());
       } catch {
         if (!cancelled) toast.error("Load failed", "Could not load allocation data.");
       } finally {
@@ -303,47 +592,64 @@ function AllocationPageInner() {
     load();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedOfficeId, selectedFiscalYear]);
+  }, [selectedOfficeId, selectedFiscalYear, fundList]);
 
-  // ── Tab 1: Ceiling ────────────────────────────────────────────────────────
+  // ── Tab 1: Ceiling & Allocation — per fund source ─────────────────────────
 
-  async function handleSaveCeiling() {
-    if (selectedOfficeId == null || ceilingInput == null || ceilingInput <= 0) return;
-    setSavingCeiling(true);
+  async function handleSaveCeiling(fundId: number) {
+    const amount = ceilingInputs[fundId];
+    if (selectedOfficeId == null || amount == null || amount <= 0) return;
+    setSavingCeilingFundId(fundId);
     try {
       const result = await upsertCeiling({
         officeId: selectedOfficeId,
         fiscalYear: selectedFiscalYear,
-        amount: ceilingInput,
+        fundingSourceId: fundId,
+        amount,
       });
-      setCeiling(result);
+      setCeilings((prev) => ({ ...prev, [fundId]: result }));
       toast.success("Saved", "Budget ceiling updated.");
     } catch (err) {
       toast.error("Save failed", allocationErrorMessage(err, "Could not save ceiling."));
     } finally {
-      setSavingCeiling(false);
+      setSavingCeilingFundId(null);
     }
   }
 
-  async function handleSaveAllocations() {
-    if (selectedOfficeId == null || isOverCeiling) return;
-    setSavingAllocations(true);
+  async function handleSaveAllocations(fundId: number) {
+    const inputs = allocationInputsByFund[fundId] ?? {};
+    const total = divisions.reduce((sum, d) => sum + (inputs[d.id] ?? 0), 0);
+    const ceilingAmount = ceilingInputs[fundId] ?? 0;
+    const isOver = ceilingAmount > 0 && total > ceilingAmount + 0.001;
+    if (selectedOfficeId == null || isOver) return;
+
+    setSavingAllocationsFundId(fundId);
     try {
       const allocs = divisions.map((d) => ({
         divisionId: d.id,
-        amount: allocationInputs[d.id] ?? 0,
+        amount: inputs[d.id] ?? 0,
       }));
       await upsertAllocations({
         officeId: selectedOfficeId,
         fiscalYear: selectedFiscalYear,
+        fundingSourceId: fundId,
         allocations: allocs,
       });
       toast.success("Saved", "Division allocations saved.");
     } catch (err) {
       toast.error("Save failed", allocationErrorMessage(err, "Could not save allocations."));
     } finally {
-      setSavingAllocations(false);
+      setSavingAllocationsFundId(null);
     }
+  }
+
+  function toggleFundExpanded(fundId: number) {
+    setExpandedFundIds((prev) => {
+      const s = new Set(prev);
+      if (s.has(fundId)) s.delete(fundId);
+      else s.add(fundId);
+      return s;
+    });
   }
 
   // ── Tab 2: PPA → Division ─────────────────────────────────────────────────
@@ -526,190 +832,51 @@ function AllocationPageInner() {
               ))}
             </div>
 
-            {/* ── TAB 1: Ceiling & Division Allocation ─────────────────────── */}
+            {/* ── TAB 1: Ceiling & Division Allocation ───────────────── */}
             {activeTab === "ceiling" && (
-              <div className="max-w-2xl space-y-6">
+              <div className="max-w-2xl space-y-3">
+                <p className="text-xs text-slate-600">
+                  One ceiling and division split per active fund source. General Fund is
+                  required; others are optional.
+                </p>
 
-                {/* PBO Budget Ceiling */}
-                <div className="border border-slate-200 p-4">
-                  <h2 className="text-sm font-semibold text-slate-700 mb-3">
-                    PBO Budget Ceiling
-                    {selectedOffice && (
-                      <span className="ml-2 font-normal text-slate-600">
-                        — {selectedOffice.officeName} · FY{selectedFiscalYear}
-                      </span>
-                    )}
-                  </h2>
-                  <div className="flex items-center gap-3">
-                    <MoneyInput
-                      value={ceilingInput}
-                      onChange={setCeilingInput}
-                      className="w-52"
+                {fundList.length === 0 ? (
+                  <p className="text-sm text-slate-600 py-4">
+                    No active funding sources configured. Add them in Config → Funding Sources.
+                  </p>
+                ) : (
+                  orderedFunds.map((fund) => (
+                    <FundSection
+                      key={fund.id}
+                      fund={fund}
+                      isGeneralFund={generalFund != null && fund.id === generalFund.id}
+                      expanded={
+                        (generalFund != null && fund.id === generalFund.id) ||
+                        expandedFundIds.has(fund.id)
+                      }
+                      onToggleExpand={() => toggleFundExpanded(fund.id)}
+                      selectedOffice={selectedOffice}
+                      selectedFiscalYear={selectedFiscalYear}
+                      ceiling={ceilings[fund.id] ?? null}
+                      ceilingInput={ceilingInputs[fund.id] ?? null}
+                      onCeilingInputChange={(v) =>
+                        setCeilingInputs((prev) => ({ ...prev, [fund.id]: v }))
+                      }
+                      onSaveCeiling={() => handleSaveCeiling(fund.id)}
+                      savingCeiling={savingCeilingFundId === fund.id}
+                      divisions={divisions}
+                      allocationInputs={allocationInputsByFund[fund.id] ?? {}}
+                      onAllocationInputChange={(divId, v) =>
+                        setAllocationInputsByFund((prev) => ({
+                          ...prev,
+                          [fund.id]: { ...(prev[fund.id] ?? {}), [divId]: v },
+                        }))
+                      }
+                      onSaveAllocations={() => handleSaveAllocations(fund.id)}
+                      savingAllocations={savingAllocationsFundId === fund.id}
                     />
-                    <button
-                      onClick={handleSaveCeiling}
-                      disabled={savingCeiling || !ceilingInput || ceilingInput <= 0}
-                      className="px-4 py-2 bg-green-700 text-white text-sm font-medium hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                    >
-                      {savingCeiling && (
-                        <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      )}
-                      Set Ceiling
-                    </button>
-                  </div>
-                  {ceiling && (
-                    <p className="mt-2 text-xs text-slate-600">
-                      Saved ceiling: ₱{formatMoney(ceiling.amount)}
-                    </p>
-                  )}
-                </div>
-
-                {/* Division Allocation */}
-                <div className="border border-slate-200 p-4">
-                  <h2 className="text-sm font-semibold text-slate-700 mb-3">
-                    Division Allocation
-                  </h2>
-
-                  {divisions.length === 0 ? (
-                    <p className="text-sm text-slate-600">
-                      No divisions configured for this office. Add divisions in Config → Divisions.
-                    </p>
-                  ) : (
-                    <>
-                      {/* Live totals */}
-                      <div
-                        className={`mb-3 text-sm font-medium tabular-nums ${
-                          isOverCeiling ? "text-red-600" : "text-slate-700"
-                        }`}
-                      >
-                        Allocated ₱{formatMoney(allocationTotal)} of ₱
-                        {formatMoney(ceilingInput ?? 0)} · Remaining ₱
-                        {formatMoney(remaining)}
-                        {isOverCeiling && (
-                          <span className="ml-2 text-xs font-normal text-red-500">
-                            (over by ₱{formatMoney(allocationTotal - (ceilingInput ?? 0))})
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Stacked bar */}
-                      {(ceilingInput ?? 0) > 0 && (
-                        <AllocationBar
-                          ceiling={ceilingInput ?? 0}
-                          divisions={divisions}
-                          allocationInputs={allocationInputs}
-                        />
-                      )}
-
-                      {/* Division rows */}
-                      <table className="w-full mt-4 text-sm border-collapse">
-                        <thead>
-                          <tr className="border-b border-slate-200">
-                            <th className="text-left py-2 text-xs font-medium text-slate-600 uppercase tracking-wide">
-                              Division
-                            </th>
-                            <th className="text-right py-2 text-xs font-medium text-slate-600 uppercase tracking-wide w-52">
-                              Amount (₱)
-                            </th>
-                            <th className="text-right py-2 text-xs font-medium text-slate-600 uppercase tracking-wide w-20">
-                              % of Ceiling
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {divisions.map((div, i) => {
-                            const amount = allocationInputs[div.id] ?? null;
-                            const pct =
-                              (ceilingInput ?? 0) > 0 && (amount ?? 0) > 0
-                                ? (((amount ?? 0) / ceilingInput!) * 100).toFixed(1)
-                                : "—";
-                            return (
-                              <tr key={div.id} className="hover:bg-slate-50">
-                                <td className="py-2 pr-3">
-                                  <span className="flex items-center gap-2">
-                                    <span
-                                      className="w-2.5 h-2.5 shrink-0"
-                                      style={{
-                                        backgroundColor:
-                                          DIVISION_COLORS[i % DIVISION_COLORS.length],
-                                      }}
-                                    />
-                                    {div.name}
-                                    {div.code && (
-                                      <span className="text-xs text-slate-600 font-mono">
-                                        {div.code}
-                                      </span>
-                                    )}
-                                  </span>
-                                </td>
-                                <td className="py-2 text-right">
-                                  <div className="flex justify-end">
-                                    <MoneyInput
-                                      value={amount}
-                                      onChange={(v) =>
-                                        setAllocationInputs((prev) => ({
-                                          ...prev,
-                                          [div.id]: v,
-                                        }))
-                                      }
-                                      className="w-48 text-sm"
-                                    />
-                                  </div>
-                                </td>
-                                <td className="py-2 text-right text-slate-600 tabular-nums">
-                                  {pct}
-                                  {pct !== "—" ? "%" : ""}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                        <tfoot>
-                          <tr className="border-t border-slate-300">
-                            <td className="py-2 text-sm font-semibold text-slate-700">Total</td>
-                            <td
-                              className={`py-2 text-right font-semibold tabular-nums ${
-                                isOverCeiling ? "text-red-600" : "text-slate-700"
-                              }`}
-                            >
-                              ₱{formatMoney(allocationTotal)}
-                            </td>
-                            <td className="py-2 text-right text-slate-600 tabular-nums">
-                              {(ceilingInput ?? 0) > 0
-                                ? `${((allocationTotal / ceilingInput!) * 100).toFixed(1)}%`
-                                : "—"}
-                            </td>
-                          </tr>
-                        </tfoot>
-                      </table>
-
-                      {/* Save Allocations */}
-                      <div className="mt-4 flex items-center gap-3">
-                        <button
-                          onClick={handleSaveAllocations}
-                          disabled={
-                            savingAllocations || isOverCeiling || !ceiling
-                          }
-                          className={`px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed flex items-center gap-2 ${
-                            isOverCeiling
-                              ? "bg-red-100 text-red-700 border border-red-300"
-                              : "bg-green-700 text-white hover:bg-green-600 disabled:opacity-50"
-                          }`}
-                        >
-                          {savingAllocations && (
-                            <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          )}
-                          {isOverCeiling ? "Over Ceiling — Cannot Save" : "Save Allocations"}
-                        </button>
-                        {!ceiling && (
-                          <span className="text-xs text-slate-600">
-                            Set a ceiling first before saving allocations.
-                          </span>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </div>
+                  ))
+                )}
               </div>
             )}
 

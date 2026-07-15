@@ -38,7 +38,7 @@ import {
   updateAipActivityIsCreation,
   aipErrorMessage,
 } from "@/lib/aip";
-import { findPpdoOffice, listAccounts, listDivisions, listFundingSources, listOffices, listPriceIndex } from "@/lib/config";
+import { findGeneralFund, findPpdoOffice, listAccounts, listDivisions, listFundingSources, listOffices, listPriceIndex } from "@/lib/config";
 import { getAllocations, getCeilingStatus, getPrograms, getSetupStatus } from "@/lib/allocation";
 import {
   computeWfpRollUpPreview,
@@ -876,9 +876,13 @@ function WfpEntryPageInner() {
         setAccounts(accts);
         setFundingSources(funds);
 
+        // v1.4.3 (RAL-154): allocation is now per fund source. This sticky-header context
+        // defaults to General Fund until RAL-156 adds the per-fund breakdown here.
+        const gfId = findGeneralFund(funds)?.id ?? null;
+
         const [status, allocs, assignments] = await Promise.all([
           getSetupStatus(officeId, detail.fiscalYear, divisionId).catch(() => null),
-          getAllocations(officeId, detail.fiscalYear),
+          gfId != null ? getAllocations(officeId, detail.fiscalYear, gfId) : Promise.resolve([]),
           getPrograms(officeId, detail.fiscalYear),
         ]);
         if (cancelled) return;

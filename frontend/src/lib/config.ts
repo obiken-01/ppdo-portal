@@ -301,6 +301,16 @@ export async function listFundingSources(
   return unwrap(data);
 }
 
+/** Code identifying the General Fund row — matches AllocationService's GeneralFundCode (v1.4.3). */
+export const GENERAL_FUND_CODE = "GF";
+
+/** Resolves the General Fund entry from a funding-source list, for callers not yet fund-aware. */
+export function findGeneralFund(
+  fundingSources: FundingSourceResponse[],
+): FundingSourceResponse | null {
+  return fundingSources.find((f) => f.code === GENERAL_FUND_CODE) ?? null;
+}
+
 /** POST /api/config/funding-sources — create a new funding source. */
 export async function createFundingSource(
   body: UpsertFundingSourceRequest,
