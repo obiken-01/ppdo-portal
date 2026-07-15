@@ -138,14 +138,21 @@ public sealed class WfpReportService : IWfpReportService
             .ToDictionary(a => a.Id);
 
         // Fetch every activity's expenditures ONCE (not once per fund source) — each fund
-        // source's hierarchy pass below filters this same in-memory list.
+        // source's hierarchy pass below filters this same in-memory list. Batched across every
+        // division's wfp_activity in a fixed number of queries rather than one-per-activity, and
+        // one-per-expenditure for its periods/items (RAL-158) — the report only ever reads these.
+        List<int> allWfpActivityIds = wfpActivityIdsByAipActivityId.Values.SelectMany(ids => ids).ToList();
+        IReadOnlyDictionary<int, IReadOnlyList<WfpExpenditureDto>> expendituresByWfpActivityId =
+            await _expenditures.GetByActivityIdsAsync(allWfpActivityIds, cancellationToken);
+
         Dictionary<int, List<WfpExpenditureDto>> expendituresByAipActivityId = [];
         foreach (AipActivity activity in activities)
         {
             List<int> wfpActivityIds = wfpActivityIdsByAipActivityId.GetValueOrDefault(activity.Id, []);
             List<WfpExpenditureDto> expenditures = [];
             foreach (int wfpActivityId in wfpActivityIds)
-                expenditures.AddRange(await _expenditures.GetByActivityIdAsync(wfpActivityId, cancellationToken));
+                if (expendituresByWfpActivityId.TryGetValue(wfpActivityId, out IReadOnlyList<WfpExpenditureDto>? e))
+                    expenditures.AddRange(e);
             if (expenditures.Count > 0)
                 expendituresByAipActivityId[activity.Id] = expenditures;
         }
@@ -180,17 +187,18 @@ public sealed class WfpReportService : IWfpReportService
         int aipRecordId, int officeId, int? divisionId, CancellationToken ct)
     {
         IReadOnlyList<WfpRecord> wfpRecords = await _wfpRepo.GetFilteredAsync(aipRecordId, officeId, divisionId, ct);
+        if (wfpRecords.Count == 0) return [];
+
+        // One query for every division's activities instead of one-per-record (RAL-158).
+        IReadOnlyList<WfpActivity> wfpActivities = await _wfpRepo.GetActivitiesByWfpIdsAsync(
+            wfpRecords.Select(r => r.Id).ToList(), ct);
 
         Dictionary<int, List<int>> map = [];
-        foreach (WfpRecord record in wfpRecords)
+        foreach (WfpActivity wfpActivity in wfpActivities)
         {
-            IReadOnlyList<WfpActivity> wfpActivities = await _wfpRepo.GetActivitiesByWfpIdAsync(record.Id, ct);
-            foreach (WfpActivity wfpActivity in wfpActivities)
-            {
-                if (!map.TryGetValue(wfpActivity.AipActivityId, out List<int>? ids))
-                    map[wfpActivity.AipActivityId] = ids = [];
-                ids.Add(wfpActivity.Id);
-            }
+            if (!map.TryGetValue(wfpActivity.AipActivityId, out List<int>? ids))
+                map[wfpActivity.AipActivityId] = ids = [];
+            ids.Add(wfpActivity.Id);
         }
         return map;
     }
