@@ -21,18 +21,28 @@ public sealed class DivisionAllocationConfiguration : IEntityTypeConfiguration<D
             .HasColumnName("fiscal_year")
             .IsRequired();
 
+        builder.Property(a => a.FundingSourceId)
+            .HasColumnName("funding_source_id")
+            .IsRequired();
+
         builder.Property(a => a.Amount)
             .HasColumnName("amount")
             .HasColumnType("decimal(18,2)")
             .IsRequired();
 
-        builder.HasIndex(a => new { a.DivisionId, a.FiscalYear })
+        builder.HasIndex(a => new { a.DivisionId, a.FiscalYear, a.FundingSourceId })
             .IsUnique()
-            .HasDatabaseName("IX_division_allocations_div_fy");
+            .HasDatabaseName("IX_division_allocations_div_fy_fund");
 
         builder.HasOne(a => a.Division)
             .WithMany()
             .HasForeignKey(a => a.DivisionId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(a => a.FundingSource)
+            .WithMany()
+            .HasForeignKey(a => a.FundingSourceId)
+            .HasConstraintName("FK_division_allocations_funding_sources_funding_source_id")
             .OnDelete(DeleteBehavior.Restrict);
     }
 }

@@ -6,10 +6,13 @@ namespace PPDO.Application.Services;
 /// Ceiling monitoring for WFP expenditure entry (v1.4 WFP Rework — §8, RAL-122). Two
 /// independent checks, both computed server-side:
 ///   1. AIP budget (per activity): Σ WFP expenditure totals for the activity, across ALL
-///      divisions of the office, vs. the AIP activity's Total × 1000.
+///      divisions of the office AND ALL funding sources, vs. the AIP activity's Total × 1000
+///      (v1.4.3 §2 D3 — stays aggregate; AIP data has no per-fund breakdown to split against).
 ///   2. Division allocation: read from <c>wfp_division_allocation_ledger</c> (never a live
 ///      SUM across wfp_expenditures) — Remaining = DivisionAllocation.Amount − Σ(used_amount
-///      across that division+FY's ledger rows).
+///      across that division+FY+funding-source's ledger rows). Fund-scoped since v1.4.3 —
+///      RAL-154: each expenditure is checked against its own funding source's allocation, with
+///      a null funding source falling back to General Fund.
 ///
 /// <see cref="ValidateExpenditureSaveAsync"/> is called from RAL-120's
 /// <c>WfpExpenditureService.SaveExpenditureAsync</c> before any write — every save is
@@ -29,13 +32,16 @@ public interface IWfpCeilingService
     /// <summary>
     /// Checks whether saving <paramref name="wfpActivityId"/>'s expenditure with a would-be
     /// total of <paramref name="newExpenditureTotal"/> would exceed either ceiling.
+    /// <paramref name="fundingSourceId"/> is the expenditure's own funding source (v1.4.3 —
+    /// RAL-154) — null when unselected, in which case the division-allocation check falls back
+    /// to General Fund. The AIP-budget check (step 1) stays aggregate regardless (§2 D3).
     /// <paramref name="excludeExpenditureId"/> is the expenditure's own Id when updating (so
     /// its OLD total isn't double-counted against its new, would-be total).
     /// Returns null when both ceilings are satisfied, or an error message naming which
     /// ceiling and by how much otherwise.
     /// </summary>
     Task<string?> ValidateExpenditureSaveAsync(
-        int wfpActivityId, decimal newExpenditureTotal,
+        int wfpActivityId, decimal newExpenditureTotal, int? fundingSourceId,
         int? excludeExpenditureId, CancellationToken ct = default);
 
     /// <summary>

@@ -157,7 +157,7 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
 
         // ── Ceiling check (RAL-122): block on EVERY save, before any write ────
         string? ceilingError = await _ceiling.ValidateExpenditureSaveAsync(
-            dto.WfpActivityId, rollUp.Total, excludeExpenditureId: dto.Id, ct);
+            dto.WfpActivityId, rollUp.Total, dto.FundingSourceId, excludeExpenditureId: dto.Id, ct);
         if (ceilingError is not null)
             return ServiceResult<WfpExpenditureDto>.BadRequest(ceilingError);
 

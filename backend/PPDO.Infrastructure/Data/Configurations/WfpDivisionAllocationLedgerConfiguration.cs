@@ -21,6 +21,10 @@ public sealed class WfpDivisionAllocationLedgerConfiguration : IEntityTypeConfig
             .HasColumnName("fiscal_year")
             .IsRequired();
 
+        builder.Property(e => e.FundingSourceId)
+            .HasColumnName("funding_source_id")
+            .IsRequired();
+
         builder.Property(e => e.WfpRecordId)
             .HasColumnName("wfp_record_id")
             .IsRequired();
@@ -37,15 +41,22 @@ public sealed class WfpDivisionAllocationLedgerConfiguration : IEntityTypeConfig
 
         builder.Property(e => e.UpdatedAt).HasColumnName("updated_at");
 
-        builder.HasIndex(e => new { e.DivisionId, e.FiscalYear, e.WfpRecordId })
+        builder.HasIndex(e => new { e.DivisionId, e.FiscalYear, e.FundingSourceId, e.WfpRecordId })
             .IsUnique()
-            .HasDatabaseName("IX_wfp_division_allocation_ledger_division_fy_wfp_record");
+            .HasDatabaseName("IX_wfp_division_allocation_ledger_division_fy_fund_wfp_record");
 
         // Restrict: divisions are soft-deleted config rows, never hard-deleted while referenced.
         builder.HasOne(e => e.Division)
             .WithMany()
             .HasForeignKey(e => e.DivisionId)
             .HasConstraintName("FK_wfp_division_allocation_ledger_divisions_division_id")
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Restrict: config rows are soft-deleted (is_active), never hard-deleted while referenced.
+        builder.HasOne(e => e.FundingSource)
+            .WithMany()
+            .HasForeignKey(e => e.FundingSourceId)
+            .HasConstraintName("FK_wfp_division_allocation_ledger_funding_sources_funding_source_id")
             .OnDelete(DeleteBehavior.Restrict);
 
         // Cascade: a ledger row's usage is meaningless once its WFP record is gone.

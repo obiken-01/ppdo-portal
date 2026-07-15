@@ -79,13 +79,26 @@ public record SaveWfpExpenditureDto(
 public record WfpReserveRateDto(decimal Rate);
 
 /// <summary>
-/// Ceiling status for one (AIP activity, division, fiscal year) — §8/RAL-122. Both amounts
-/// are in PESOS: AipBudget is the AIP activity's Total × 1000, converted here (the one place
-/// this conversion happens) so the frontend never has to. Consumed by ticket #9's live UI
-/// check and the same computation is reused server-side for the block-on-save/finalize checks.
+/// Ceiling status for one (AIP activity, division, fiscal year) — §8/RAL-122. Amounts are in
+/// PESOS: AipBudget is the AIP activity's Total × 1000, converted here (the one place this
+/// conversion happens) so the frontend never has to. AipBudget/AipUsed stay aggregate across
+/// ALL funding sources (v1.4.3 §2 D3 — the AIP total has no per-fund breakdown to split
+/// against). DivisionAllocation/DivisionRemaining are General Fund's specifically (v1.4.3 —
+/// RAL-154), kept at the top level so existing callers built before the fund-source dimension
+/// keep working unchanged. <see cref="Funds"/> carries every active fund source's allocation/
+/// remaining (v1.4.3 — RAL-154) for callers that render per-fund bars (RAL-156).
 /// </summary>
 public record WfpCeilingStatusDto(
     decimal AipBudget,
     decimal AipUsed,
     decimal DivisionAllocation,
-    decimal DivisionRemaining);
+    decimal DivisionRemaining,
+    IReadOnlyList<WfpFundCeilingDto> Funds);
+
+/// <summary>One funding source's division-allocation status (v1.4.3 — RAL-154).</summary>
+public record WfpFundCeilingDto(
+    int     FundingSourceId,
+    string  FundingSourceCode,
+    string  FundingSourceName,
+    decimal Allocation,
+    decimal Remaining);

@@ -16,6 +16,9 @@ namespace PPDO.Tests.Application;
 /// </summary>
 public sealed class BudgetPlanningDashboardServiceTests
 {
+    // v1.4.3 (RAL-154): the readiness summary reads General Fund only — matches GetGeneralFundIdAsync().
+    private const int GfFundId = 1;
+
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private static LdipRecord Ldip(int id, string status, int? officeId = null,
@@ -147,9 +150,13 @@ public sealed class BudgetPlanningDashboardServiceTests
         Mock<IAllocationService> allocation = allocationMock ?? new Mock<IAllocationService>();
         if (allocationMock is null)
         {
-            allocation.Setup(a => a.GetCeilingAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            allocation.Setup(a => a.GetGeneralFundIdAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync(GfFundId);
+            allocation.Setup(a => a.GetCeilingAsync(
+                    It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(ServiceResult<BudgetCeilingDto>.NotFound("no ceiling"));
-            allocation.Setup(a => a.GetAllocationsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            allocation.Setup(a => a.GetAllocationsAsync(
+                    It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)[]);
             allocation.Setup(a => a.GetProgramAssignmentsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((IReadOnlyList<ProgramAssignmentDto>)[]);
@@ -336,9 +343,12 @@ public sealed class BudgetPlanningDashboardServiceTests
     public async Task GetDashboardAsync_IncludesAllocationOverview_FromAllocationService()
     {
         Mock<IAllocationService> allocation = new();
-        allocation.Setup(a => a.GetCeilingAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        allocation.Setup(a => a.GetGeneralFundIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(GfFundId);
+        allocation.Setup(a => a.GetCeilingAsync(
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(ServiceResult<BudgetCeilingDto>.NotFound("no ceiling"));
-        allocation.Setup(a => a.GetAllocationsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        allocation.Setup(a => a.GetAllocationsAsync(
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)[]);
         allocation.Setup(a => a.GetProgramAssignmentsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<ProgramAssignmentDto>)[]);
@@ -453,9 +463,10 @@ public sealed class BudgetPlanningDashboardServiceTests
     public async Task GetOfficeDashboardAsync_NoCeiling_CeilingAmountAndRemainingAreNull()
     {
         Mock<IAllocationService> allocation = new();
-        allocation.Setup(a => a.GetCeilingAsync(1, 2027, It.IsAny<CancellationToken>()))
+        allocation.Setup(a => a.GetGeneralFundIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(GfFundId);
+        allocation.Setup(a => a.GetCeilingAsync(1, 2027, GfFundId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(ServiceResult<BudgetCeilingDto>.NotFound("no ceiling"));
-        allocation.Setup(a => a.GetAllocationsAsync(1, 2027, It.IsAny<CancellationToken>()))
+        allocation.Setup(a => a.GetAllocationsAsync(1, 2027, GfFundId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)[]);
         allocation.Setup(a => a.GetProgramAssignmentsAsync(1, 2027, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<ProgramAssignmentDto>)[]);
@@ -474,11 +485,12 @@ public sealed class BudgetPlanningDashboardServiceTests
     public async Task GetOfficeDashboardAsync_UnderCeiling_ComputesRemainingAndNotOverAllocated()
     {
         Mock<IAllocationService> allocation = new();
-        allocation.Setup(a => a.GetCeilingAsync(1, 2027, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(ServiceResult<BudgetCeilingDto>.Ok(new BudgetCeilingDto(1, 1, 2027, 100_000m)));
-        allocation.Setup(a => a.GetAllocationsAsync(1, 2027, It.IsAny<CancellationToken>()))
+        allocation.Setup(a => a.GetGeneralFundIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(GfFundId);
+        allocation.Setup(a => a.GetCeilingAsync(1, 2027, GfFundId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ServiceResult<BudgetCeilingDto>.Ok(new BudgetCeilingDto(1, 1, 2027, GfFundId, "GF", "General Fund", 100_000m)));
+        allocation.Setup(a => a.GetAllocationsAsync(1, 2027, GfFundId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)
-                [new DivisionAllocationDto(1, 1, "Div A", 2027, 60_000m)]);
+                [new DivisionAllocationDto(1, 1, "Div A", 2027, GfFundId, "GF", "General Fund", 60_000m)]);
         allocation.Setup(a => a.GetProgramAssignmentsAsync(1, 2027, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<ProgramAssignmentDto>)[]);
         (BudgetPlanningDashboardService sut, _) =
@@ -496,13 +508,14 @@ public sealed class BudgetPlanningDashboardServiceTests
     public async Task GetOfficeDashboardAsync_OverCeiling_FlagsOverAllocated()
     {
         Mock<IAllocationService> allocation = new();
-        allocation.Setup(a => a.GetCeilingAsync(1, 2027, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(ServiceResult<BudgetCeilingDto>.Ok(new BudgetCeilingDto(1, 1, 2027, 100_000m)));
-        allocation.Setup(a => a.GetAllocationsAsync(1, 2027, It.IsAny<CancellationToken>()))
+        allocation.Setup(a => a.GetGeneralFundIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(GfFundId);
+        allocation.Setup(a => a.GetCeilingAsync(1, 2027, GfFundId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ServiceResult<BudgetCeilingDto>.Ok(new BudgetCeilingDto(1, 1, 2027, GfFundId, "GF", "General Fund", 100_000m)));
+        allocation.Setup(a => a.GetAllocationsAsync(1, 2027, GfFundId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)
             [
-                new DivisionAllocationDto(1, 1, "Div A", 2027, 60_000m),
-                new DivisionAllocationDto(2, 2, "Div B", 2027, 50_000m),
+                new DivisionAllocationDto(1, 1, "Div A", 2027, GfFundId, "GF", "General Fund", 60_000m),
+                new DivisionAllocationDto(2, 2, "Div B", 2027, GfFundId, "GF", "General Fund", 50_000m),
             ]);
         allocation.Setup(a => a.GetProgramAssignmentsAsync(1, 2027, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<ProgramAssignmentDto>)[]);
@@ -520,9 +533,10 @@ public sealed class BudgetPlanningDashboardServiceTests
     public async Task GetOfficeDashboardAsync_ProgramAssignments_CountsAssignedAndUnassigned()
     {
         Mock<IAllocationService> allocation = new();
-        allocation.Setup(a => a.GetCeilingAsync(1, 2027, It.IsAny<CancellationToken>()))
+        allocation.Setup(a => a.GetGeneralFundIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(GfFundId);
+        allocation.Setup(a => a.GetCeilingAsync(1, 2027, GfFundId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(ServiceResult<BudgetCeilingDto>.NotFound("no ceiling"));
-        allocation.Setup(a => a.GetAllocationsAsync(1, 2027, It.IsAny<CancellationToken>()))
+        allocation.Setup(a => a.GetAllocationsAsync(1, 2027, GfFundId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)[]);
         allocation.Setup(a => a.GetProgramAssignmentsAsync(1, 2027, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<ProgramAssignmentDto>)
