@@ -107,6 +107,9 @@ function lastRefCodeSegment(refCode: string): string {
 // fall back to GF for the ambiguous case too, if policy changes; no other refactor needed.
 const DEFAULT_FUND_SOURCE_CODE = "GF";
 const FALLBACK_AMBIGUOUS_TO_DEFAULT = false;
+// Non-GF funds with no configured color (funding_sources.color) fall back to this
+// dark gray instead of General Fund's green, so they stay visually distinct.
+const NO_COLOR_FUND_FALLBACK = "#64748b";
 
 // Normalizes an AIP snapshot / config Code|Name|alias for comparison: trims, collapses
 // internal whitespace/newlines to a single space, ignores spaces around "%", case-insensitive.
@@ -1421,7 +1424,11 @@ function WfpEntryPageInner() {
             {selectedActivity && ceilingStatus ? (
               <div className="space-y-2">
                 {relevantFunds.map((f) => {
-                  const fundColor = fundingSources.find((fs) => fs.id === f.fundingSourceId)?.color;
+                  const configuredColor = fundingSources.find((fs) => fs.id === f.fundingSourceId)?.color;
+                  const fundColor =
+                    f.fundingSourceId === generalFundId
+                      ? configuredColor
+                      : configuredColor ?? NO_COLOR_FUND_FALLBACK;
                   return (
                     <div key={f.fundingSourceId}>
                       <div className="flex justify-between text-xs text-slate-600">
