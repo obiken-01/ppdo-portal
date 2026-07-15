@@ -82,7 +82,7 @@ public sealed class WfpExpenditureServiceTests
         if (ceilingMock is null)
         {
             ceiling.Setup(c => c.ValidateExpenditureSaveAsync(
-                    It.IsAny<int>(), It.IsAny<decimal>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+                    It.IsAny<int>(), It.IsAny<decimal>(), It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((string?)null);
         }
         ceiling.Setup(c => c.UpsertLedgerForActivityAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
@@ -574,7 +574,7 @@ public sealed class WfpExpenditureServiceTests
     {
         Mock<IWfpCeilingService> ceilingMock = new();
         ceilingMock.Setup(c => c.ValidateExpenditureSaveAsync(
-                It.IsAny<int>(), It.IsAny<decimal>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+                It.IsAny<int>(), It.IsAny<decimal>(), It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("This save would exceed the AIP budget by ₱1,000.00.");
 
         var (sut, repo, periodRepo, _, _, _, _) = Build([], [], ceilingMock);
@@ -592,7 +592,7 @@ public sealed class WfpExpenditureServiceTests
     {
         Mock<IWfpCeilingService> ceilingMock = new();
         ceilingMock.Setup(c => c.ValidateExpenditureSaveAsync(
-                It.IsAny<int>(), It.IsAny<decimal>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+                It.IsAny<int>(), It.IsAny<decimal>(), It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string?)null);
         ceilingMock.Setup(c => c.UpsertLedgerForActivityAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
@@ -603,8 +603,30 @@ public sealed class WfpExpenditureServiceTests
             QuarterlyDto(wfpActivityId: 42), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        ceilingMock.Verify(c => c.ValidateExpenditureSaveAsync(42, It.IsAny<decimal>(), null, It.IsAny<CancellationToken>()), Times.Once);
+        ceilingMock.Verify(c => c.ValidateExpenditureSaveAsync(42, It.IsAny<decimal>(), null, null, It.IsAny<CancellationToken>()), Times.Once);
         ceilingMock.Verify(c => c.UpsertLedgerForActivityAsync(42, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Save_ForwardsDtoFundingSourceId_ToCeilingCheck()
+    {
+        // v1.4.3 (RAL-154): the expenditure's own selected fund must reach the ceiling check,
+        // not just whatever the AIP activity defaults to — this is the wiring for fund-scoping.
+        Mock<IWfpCeilingService> ceilingMock = new();
+        ceilingMock.Setup(c => c.ValidateExpenditureSaveAsync(
+                It.IsAny<int>(), It.IsAny<decimal>(), It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
+        ceilingMock.Setup(c => c.UpsertLedgerForActivityAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var (sut, _, _, _, _, _, _) = Build([], [], ceilingMock);
+
+        ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
+            QuarterlyDto(wfpActivityId: 42, fsId: 7), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        ceilingMock.Verify(c => c.ValidateExpenditureSaveAsync(
+            42, It.IsAny<decimal>(), 7, null, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     // ── GetByActivityIdAsync (RAL-123 entry-wizard "added so far" list) ──────
@@ -744,7 +766,7 @@ public sealed class WfpExpenditureServiceTests
     {
         Mock<IWfpCeilingService> ceilingMock = new();
         ceilingMock.Setup(c => c.ValidateExpenditureSaveAsync(
-                It.IsAny<int>(), It.IsAny<decimal>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+                It.IsAny<int>(), It.IsAny<decimal>(), It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string?)null);
         ceilingMock.Setup(c => c.UpsertLedgerForActivityAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);

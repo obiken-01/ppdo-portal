@@ -166,13 +166,24 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     private async Task<AllocationSetupSummaryDto> BuildAllocationSummaryAsync(
         int officeId, int fiscalYear, CancellationToken cancellationToken)
     {
-        ServiceResult<BudgetCeilingDto> ceilingResult =
-            await _allocationService.GetCeilingAsync(officeId, fiscalYear, cancellationToken);
-        decimal? ceilingAmount = ceilingResult.IsSuccess ? ceilingResult.Value!.Amount : null;
+        // Readiness summary tracks General Fund only (v1.4.3 — RAL-154) — matches the WFP
+        // setup gate, which is likewise GF-only; other funds are optional and not part of
+        // "is this office ready for WFP entry".
+        int? gfId = await _allocationService.GetGeneralFundIdAsync(cancellationToken);
 
-        IReadOnlyList<DivisionAllocationDto> allocations =
-            await _allocationService.GetAllocationsAsync(officeId, fiscalYear, cancellationToken);
-        decimal allocated = allocations.Sum(a => a.Amount);
+        decimal? ceilingAmount = null;
+        decimal allocated = 0m;
+
+        if (gfId is int generalFundId)
+        {
+            ServiceResult<BudgetCeilingDto> ceilingResult =
+                await _allocationService.GetCeilingAsync(officeId, fiscalYear, generalFundId, cancellationToken);
+            ceilingAmount = ceilingResult.IsSuccess ? ceilingResult.Value!.Amount : null;
+
+            IReadOnlyList<DivisionAllocationDto> allocations =
+                await _allocationService.GetAllocationsAsync(officeId, fiscalYear, generalFundId, cancellationToken);
+            allocated = allocations.Sum(a => a.Amount);
+        }
 
         decimal? remaining = ceilingAmount.HasValue ? ceilingAmount.Value - allocated : null;
         bool isOverAllocated = ceilingAmount.HasValue && allocated > ceilingAmount.Value;

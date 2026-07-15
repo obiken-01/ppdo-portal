@@ -6,6 +6,9 @@ public record BudgetCeilingDto(
     int     Id,
     int     OfficeId,
     int     FiscalYear,
+    int     FundingSourceId,
+    string  FundingSourceCode,
+    string  FundingSourceName,
     decimal Amount);
 
 public record DivisionAllocationDto(
@@ -13,6 +16,9 @@ public record DivisionAllocationDto(
     int     DivisionId,
     string  DivisionName,
     int     FiscalYear,
+    int     FundingSourceId,
+    string  FundingSourceCode,
+    string  FundingSourceName,
     decimal Amount);
 
 /// <summary>
@@ -62,9 +68,11 @@ public record UpsertProgramAssignmentDto(
 public record UpsertCeilingDto(
     int     OfficeId,
     int     FiscalYear,
+    int     FundingSourceId,
     decimal Amount);
 
 public record UpsertAllocationsDto(
     int                                     OfficeId,
     int                                     FiscalYear,
+    int                                     FundingSourceId,
     IReadOnlyList<UpsertDivisionAllocationDto> Allocations);

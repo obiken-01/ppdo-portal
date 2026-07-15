@@ -46,10 +46,24 @@ public interface IWfpExpenditureRepository : IRepository<WfpExpenditure>
 
     /// <summary>
     /// Sum of TotalAppropriation across every wfp_expenditure under the given WFP record
-    /// (all of its activities) — the record-level total the division-allocation ledger tracks.
+    /// (all of its activities) whose EFFECTIVE funding source is <paramref name="fundingSourceId"/>
+    /// — where "effective" means <c>FundingSourceId ?? generalFundId</c> (an expenditure saved
+    /// with no fund selected counts toward General Fund). This is the per-fund total the
+    /// division-allocation ledger tracks (v1.4.3 — RAL-154). <paramref name="generalFundId"/>
+    /// must be resolved by the caller — passing the wrong value here would silently misattribute
+    /// every null-fund expenditure to whatever fund happens to be queried.
     /// </summary>
     Task<decimal> SumTotalByWfpRecordAsync(
-        int wfpRecordId, int? excludeExpenditureId, CancellationToken ct = default);
+        int wfpRecordId, int fundingSourceId, int generalFundId,
+        int? excludeExpenditureId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Distinct FundingSourceId values (including null, for expenditures with none selected)
+    /// among a WFP record's expenditures (v1.4.3 — RAL-154). The caller coalesces null to
+    /// General Fund before using these as ledger keys.
+    /// </summary>
+    Task<IReadOnlyList<int?>> GetDistinctFundingSourceIdsByWfpRecordAsync(
+        int wfpRecordId, CancellationToken ct = default);
 }
 
 /// <summary>

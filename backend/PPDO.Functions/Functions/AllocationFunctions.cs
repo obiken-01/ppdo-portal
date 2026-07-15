@@ -42,7 +42,7 @@ public sealed class AllocationFunctions
     private Task<bool> CanManageAllocation(User u) => _permissions.CanManageAllocationAsync(u);
     private Task<bool> CanAccessBudgetPlanning(User u) => _permissions.CanAccessBudgetPlanningAsync(u);
 
-    // ── GET /api/budget-planning/allocation/ceiling?officeId=&fiscalYear= ─────
+    // ── GET /api/budget-planning/allocation/ceiling?officeId=&fiscalYear=&fundingSourceId= ─────
     // Read is gated on CanAccessBudgetPlanning (not CanManageAllocation): every WFP
     // user — including non-finance office users — needs to know whether a ceiling
     // exists for the setup-complete gate. Mutations below stay finance-only.
@@ -56,12 +56,38 @@ public sealed class AllocationFunctions
         if (denied is not null) return denied;
 
         if (!int.TryParse(req.Query["officeId"], out int officeId) ||
+            !int.TryParse(req.Query["fiscalYear"], out int fiscalYear) ||
+            !int.TryParse(req.Query["fundingSourceId"], out int fundingSourceId))
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<BudgetCeilingDto>.Fail(
+                    "officeId, fiscalYear, and fundingSourceId query parameters are required."), ct);
+
+        ServiceResult<BudgetCeilingDto> result =
+            await _allocation.GetCeilingAsync(officeId, fiscalYear, fundingSourceId, ct);
+        return await ConfigHttp.FromResultAsync(req, result, ct);
+    }
+
+    // ── GET /api/budget-planning/allocation/ceilings?officeId=&fiscalYear= ────
+    // Every fund source's ceiling for the office+FY in one call (v1.4.3 — RAL-154), for the
+    // Allocation page's per-fund-source sections. Same read gate as GetCeiling above.
+    [Function("AllocationGetCeilings")]
+    public async Task<HttpResponseData> GetCeilings(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get",
+            Route = "budget-planning/allocation/ceilings")] HttpRequestData req,
+        CancellationToken ct)
+    {
+        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccessBudgetPlanning, ct);
+        if (denied is not null) return denied;
+
+        if (!int.TryParse(req.Query["officeId"], out int officeId) ||
             !int.TryParse(req.Query["fiscalYear"], out int fiscalYear))
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
-                ApiResponse<BudgetCeilingDto>.Fail("officeId and fiscalYear query parameters are required."), ct);
+                ApiResponse<IReadOnlyList<BudgetCeilingDto>>.Fail(
+                    "officeId and fiscalYear query parameters are required."), ct);
 
-        ServiceResult<BudgetCeilingDto> result = await _allocation.GetCeilingAsync(officeId, fiscalYear, ct);
-        return await ConfigHttp.FromResultAsync(req, result, ct);
+        IReadOnlyList<BudgetCeilingDto> data = await _allocation.GetCeilingsAsync(officeId, fiscalYear, ct);
+        return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK,
+            ApiResponse<IReadOnlyList<BudgetCeilingDto>>.Ok(data), ct);
     }
 
     // ── PUT /api/budget-planning/allocation/ceiling ───────────────────────────
@@ -79,12 +105,12 @@ public sealed class AllocationFunctions
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
                 ApiResponse<BudgetCeilingDto>.Fail("Request body is missing or malformed."), ct);
 
-        ServiceResult<BudgetCeilingDto> result =
-            await _allocation.UpsertCeilingAsync(body.OfficeId, body.FiscalYear, body.Amount, ct);
+        ServiceResult<BudgetCeilingDto> result = await _allocation.UpsertCeilingAsync(
+            body.OfficeId, body.FiscalYear, body.FundingSourceId, body.Amount, ct);
         return await ConfigHttp.FromResultAsync(req, result, ct);
     }
 
-    // ── GET /api/budget-planning/allocation/divisions?officeId=&fiscalYear= ───
+    // ── GET /api/budget-planning/allocation/divisions?officeId=&fiscalYear=&fundingSourceId= ───
     // Gated on CanAccessBudgetPlanning (not CanManageAllocation): the WFP entry
     // wizard needs a regular division-scoped user's own allocation amount to show
     // the budget banner. Non-finance callers only ever see their own division's
@@ -100,13 +126,14 @@ public sealed class AllocationFunctions
         if (denied is not null || caller is null) return denied!;
 
         if (!int.TryParse(req.Query["officeId"], out int officeId) ||
-            !int.TryParse(req.Query["fiscalYear"], out int fiscalYear))
+            !int.TryParse(req.Query["fiscalYear"], out int fiscalYear) ||
+            !int.TryParse(req.Query["fundingSourceId"], out int fundingSourceId))
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
                 ApiResponse<IReadOnlyList<DivisionAllocationDto>>.Fail(
-                    "officeId and fiscalYear query parameters are required."), ct);
+                    "officeId, fiscalYear, and fundingSourceId query parameters are required."), ct);
 
         IReadOnlyList<DivisionAllocationDto> data =
-            await _allocation.GetAllocationsAsync(officeId, fiscalYear, ct);
+            await _allocation.GetAllocationsAsync(officeId, fiscalYear, fundingSourceId, ct);
 
         if (!await CanManageAllocation(caller))
             data = data.Where(a => a.DivisionId == caller.DivisionId).ToList();
@@ -131,8 +158,8 @@ public sealed class AllocationFunctions
                 ApiResponse<IReadOnlyList<DivisionAllocationDto>>.Fail(
                     "Request body is missing or malformed."), ct);
 
-        ServiceResult<IReadOnlyList<DivisionAllocationDto>> result =
-            await _allocation.UpsertAllocationsAsync(body.OfficeId, body.FiscalYear, body.Allocations, ct);
+        ServiceResult<IReadOnlyList<DivisionAllocationDto>> result = await _allocation.UpsertAllocationsAsync(
+            body.OfficeId, body.FiscalYear, body.FundingSourceId, body.Allocations, ct);
         return await ConfigHttp.FromResultAsync(req, result, ct);
     }
 

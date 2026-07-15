@@ -12,21 +12,32 @@ public sealed class WfpAllocationLedgerRepository : Repository<WfpDivisionAlloca
 
     /// <inheritdoc />
     public async Task<WfpDivisionAllocationLedger?> FindAsync(
-        int divisionId, int fiscalYear, int wfpRecordId, CancellationToken ct = default)
+        int divisionId, int fiscalYear, int fundingSourceId, int wfpRecordId, CancellationToken ct = default)
         => await _context.Set<WfpDivisionAllocationLedger>()
             .FirstOrDefaultAsync(l =>
-                l.DivisionId == divisionId && l.FiscalYear == fiscalYear && l.WfpRecordId == wfpRecordId, ct);
+                l.DivisionId == divisionId && l.FiscalYear == fiscalYear
+                && l.FundingSourceId == fundingSourceId && l.WfpRecordId == wfpRecordId, ct);
 
     /// <inheritdoc />
     public async Task<decimal> SumUsedAmountAsync(
-        int divisionId, int fiscalYear, int? excludeWfpRecordId, CancellationToken ct = default)
+        int divisionId, int fiscalYear, int fundingSourceId, int? excludeWfpRecordId, CancellationToken ct = default)
     {
         IQueryable<WfpDivisionAllocationLedger> query = _context.Set<WfpDivisionAllocationLedger>()
-            .Where(l => l.DivisionId == divisionId && l.FiscalYear == fiscalYear);
+            .Where(l => l.DivisionId == divisionId && l.FiscalYear == fiscalYear
+                     && l.FundingSourceId == fundingSourceId);
 
         if (excludeWfpRecordId.HasValue)
             query = query.Where(l => l.WfpRecordId != excludeWfpRecordId.Value);
 
         return await query.SumAsync(l => (decimal?)l.UsedAmount, ct) ?? 0m;
     }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<int>> GetFundingSourceIdsForRecordAsync(
+        int wfpRecordId, CancellationToken ct = default)
+        => await _context.Set<WfpDivisionAllocationLedger>()
+            .Where(l => l.WfpRecordId == wfpRecordId)
+            .Select(l => l.FundingSourceId)
+            .Distinct()
+            .ToListAsync(ct);
 }
