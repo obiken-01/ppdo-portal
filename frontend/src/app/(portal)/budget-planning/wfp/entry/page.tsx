@@ -186,12 +186,22 @@ const PROJECT_FIELDS: [string, string][] = [
   ["targetBeneficiaries", "Target Beneficiaries"],
 ];
 
-function progressBar(used: number, total: number, overClass = "bg-red-500", okClass = "bg-green-600") {
+function progressBar(
+  used: number,
+  total: number,
+  overClass = "bg-red-500",
+  okClass = "bg-green-600",
+  okColor?: string | null
+) {
   const pct = total > 0 ? Math.min(100, (used / total) * 100) : 0;
   const over = total > 0 && used > total;
+  const useInlineColor = !over && !!okColor;
   return (
     <div className="h-1.5 w-full bg-slate-200 overflow-hidden">
-      <div className={`h-full ${over ? overClass : okClass}`} style={{ width: `${pct}%` }} />
+      <div
+        className={`h-full ${over ? overClass : useInlineColor ? "" : okClass}`}
+        style={{ width: `${pct}%`, ...(useInlineColor ? { backgroundColor: okColor } : {}) }}
+      />
     </div>
   );
 }
@@ -1410,17 +1420,26 @@ function WfpEntryPageInner() {
 
             {selectedActivity && ceilingStatus ? (
               <div className="space-y-2">
-                {relevantFunds.map((f) => (
-                  <div key={f.fundingSourceId}>
-                    <div className="flex justify-between text-xs text-slate-600">
-                      <span>
-                        {f.fundingSourceName} allocation: {formatMoney(f.allocation)} original ·{" "}
-                        {formatMoney(f.remaining)} remaining
-                      </span>
+                {relevantFunds.map((f) => {
+                  const fundColor = fundingSources.find((fs) => fs.id === f.fundingSourceId)?.color;
+                  return (
+                    <div key={f.fundingSourceId}>
+                      <div className="flex justify-between text-xs text-slate-600">
+                        <span>
+                          {f.fundingSourceName} allocation: {formatMoney(f.allocation)} original ·{" "}
+                          {formatMoney(f.remaining)} remaining
+                        </span>
+                      </div>
+                      {progressBar(
+                        f.allocation - f.remaining,
+                        f.allocation,
+                        undefined,
+                        undefined,
+                        fundColor
+                      )}
                     </div>
-                    {progressBar(f.allocation - f.remaining, f.allocation)}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               divisionAllocation && (
