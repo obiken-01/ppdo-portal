@@ -6,7 +6,7 @@
 > Working integration branch: `release/1.4.3`. All PRs target `release/1.4.3` (**NOT `main`**).
 
 Linear (milestone *v1.4.3 — Other Fund Source Ceiling & Allocation*, children of epic RAL-116):
-**A = [RAL-154](https://linear.app/ralphoksiprojects/issue/RAL-154), B = [RAL-155](https://linear.app/ralphoksiprojects/issue/RAL-155) (blocked by A), C = [RAL-156](https://linear.app/ralphoksiprojects/issue/RAL-156) (blocked by A).**
+**A = [RAL-154](https://linear.app/ralphoksiprojects/issue/RAL-154), B = [RAL-155](https://linear.app/ralphoksiprojects/issue/RAL-155) (blocked by A), C = [RAL-156](https://linear.app/ralphoksiprojects/issue/RAL-156) (blocked by A + D), D = [RAL-157](https://linear.app/ralphoksiprojects/issue/RAL-157) — funding-source aliases (blocked by A, blocks C).**
 
 ---
 
@@ -137,10 +137,12 @@ Read these files before writing code:
 Working branch: release/1.4.3. Create feature/v1.4.3-ral-XXX-wfp-entry-fund-source off
 release/1.4.3 and open the PR against release/1.4.3 (NOT main).
 
-1. resolveDefaultFundingSourceId: single resolvable AIP fund source → that source; blank/none →
-   General Fund; ambiguous (comma/slash) → null (unselected). Put "blank → GF" behind a named
-   constant (DEFAULT_FUND_SOURCE_CODE = "GF") and a FALLBACK_AMBIGUOUS_TO_DEFAULT = false flag so
-   option-a can be enabled later without a refactor.
+1. resolveDefaultFundingSourceId: match the AIP snapshot against each fund source's Code, Name, AND
+   the new aliases column (RAL-157) after normalizing (trim, collapse whitespace/newlines,
+   case-insensitive, ignore spaces around %). Single resolvable AIP fund source → that source;
+   blank/none → General Fund; ambiguous (comma/slash/newline combination) → null (unselected). Put
+   "blank → GF" behind a named constant (DEFAULT_FUND_SOURCE_CODE = "GF") and a
+   FALLBACK_AMBIGUOUS_TO_DEFAULT = false flag so option-a can be enabled later without a refactor.
 2. Hints (display-only, not persisted): in the expenditure popup's Fund Source field, show a note
    when (a) the value was auto-defaulted to GF because the activity had no fund source, or (b) the
    selected fund source differs from the activity's AIP-assigned fund source.
@@ -156,4 +158,45 @@ save-button-disable behaviour consistent with the server check.
 
 When done, commit with:
 feat(budget-planning): WFP entry fund-source default, hints & per-fund allocation bars (RAL-156)
+```
+
+---
+
+## Ticket D — Funding source config: aliases/other-names column + AIP matching · RAL-157
+
+```
+Read CLAUDE.md, PROJECT_DOCUMENTATION_NET_AZURE.md, and PPDO_PROJECT_CONTEXT.md.
+Read docs/v1.4.3/Funding_Source_Aliases.md FULLY — AIP naming analysis, normalization/matching
+rule, and the seed alias data. Also read docs/v1.4.3/v1.4.3_Requirements.md §5.2 (D5).
+Blocked by RAL-154 (shares backend line). BLOCKS RAL-156 (its resolver consumes these aliases).
+
+Read these files before writing code:
+- backend/PPDO.Domain/Entities/FundingSource.cs (add Aliases, nullable string, pipe-delimited)
+- backend/PPDO.Infrastructure/Data/Configurations/FundingSourceConfiguration.cs (map aliases column)
+- backend/PPDO.Application/DTOs/Config/FundingSourceDto.cs (add Aliases to read + upsert DTOs)
+- backend/PPDO.Application/Services/FundingSourceService.cs (CsvHeaders currently code,name,description,color,is_active — add aliases; Export/Import round-trip; upsert mapping)
+- backend/PPDO.Functions/Functions/ConfigFundingSourceFunctions.cs (DTO passthrough only)
+- frontend/src/app/(portal)/config/funding-sources/page.tsx (add Aliases input + list column)
+- frontend/src/types (FundingSource + upsert request add aliases)
+- backend/PPDO.Tests/Application/FundingSourceServiceTests.cs (extend)
+
+Working branch: release/1.4.3. Create feature/v1.4.3-ral-157-funding-source-aliases off
+release/1.4.3 and open the PR against release/1.4.3 (NOT main).
+
+TDD: extend FundingSourceServiceTests (CSV export includes aliases; import parses pipe-delimited
+aliases; upsert persists/updates aliases), then implement.
+
+1. Migration AddFundingSourceAliases: add nullable aliases column to funding_sources.
+2. Domain + EF: FundingSource.Aliases (string?); map column in FundingSourceConfiguration.
+3. DTOs: add Aliases to FundingSourceDto + UpsertFundingSourceDto.
+4. Service: add aliases to CsvHeaders; round-trip Export/Import; map in create/update.
+5. Config UI: Aliases input (pipe-delimited; hint that /-combinations aren't aliased) + list column.
+6. Seed aliases from Funding_Source_Aliases.md §3 (align Codes with reconciled config per O2).
+
+Do NOT resolve multi-fund (/-separated) AIP values — they stay unselected. Do NOT alias external
+labels (DOH, NGAs, NGA (ER 1-94), TIEZA, TESDA, NDRRMC, DA-BAFE, PHILMEC, Brgy. Aid, Outsource) to
+any PPDO fund. Do NOT touch the Purchase Requests module.
+
+When done, commit with:
+feat(config): add aliases column to funding sources for AIP fund-source matching (RAL-157)
 ```
