@@ -13,7 +13,7 @@ namespace PPDO.Application.Services;
 /// </summary>
 public sealed class FundingSourceService : IFundingSourceService
 {
-    private static readonly string[] CsvHeaders = { "code", "name", "description", "color", "is_active" };
+    private static readonly string[] CsvHeaders = { "code", "name", "description", "color", "is_active", "aliases" };
 
     private readonly IRepository<FundingSource> _repo;
     private readonly ILogger<FundingSourceService> _logger;
@@ -81,6 +81,7 @@ public sealed class FundingSourceService : IFundingSourceService
             Name        = dto.Name.Trim(),
             Description = Blank(dto.Description),
             Color       = Blank(dto.Color),
+            Aliases     = Blank(dto.Aliases),
             IsActive    = dto.IsActive,
             CreatedAt   = now,
             UpdatedAt   = now,
@@ -120,6 +121,7 @@ public sealed class FundingSourceService : IFundingSourceService
         entity.Name        = dto.Name.Trim();
         entity.Description = Blank(dto.Description);
         entity.Color       = Blank(dto.Color);
+        entity.Aliases     = Blank(dto.Aliases);
         entity.IsActive    = dto.IsActive;
         entity.UpdatedAt   = DateTime.UtcNow;
 
@@ -159,7 +161,7 @@ public sealed class FundingSourceService : IFundingSourceService
         IReadOnlyList<FundingSource> all = await _repo.GetAllAsync(cancellationToken);
         IEnumerable<string?[]> rows = all
             .OrderBy(f => f.Code, StringComparer.OrdinalIgnoreCase)
-            .Select(f => new string?[] { f.Code, f.Name, f.Description, f.Color, f.IsActive ? "true" : "false" });
+            .Select(f => new string?[] { f.Code, f.Name, f.Description, f.Color, f.IsActive ? "true" : "false", f.Aliases });
         return Csv.Write(CsvHeaders, rows);
     }
 
@@ -183,11 +185,12 @@ public sealed class FundingSourceService : IFundingSourceService
         for (int i = start; i < parsed.Count; i++)
         {
             string[] f = parsed[i];
-            string code   = Field(f, 0).Trim();
-            string name   = Field(f, 1);
-            string desc   = Field(f, 2);
-            string color  = Field(f, 3);
-            bool   active = Csv.ParseBool(Field(f, 4), fallback: true);
+            string code    = Field(f, 0).Trim();
+            string name    = Field(f, 1);
+            string desc    = Field(f, 2);
+            string color   = Field(f, 3);
+            bool   active  = Csv.ParseBool(Field(f, 4), fallback: true);
+            string aliases = Field(f, 5);
 
             if (code.Length == 0 || name.Trim().Length == 0)
             {
@@ -202,6 +205,7 @@ public sealed class FundingSourceService : IFundingSourceService
                     existing.Name != name.Trim() ||
                     Blank(existing.Description) != Blank(desc) ||
                     Blank(existing.Color) != Blank(color) ||
+                    Blank(existing.Aliases) != Blank(aliases) ||
                     existing.IsActive != active;
 
                 if (!changed) { skipped++; continue; }
@@ -209,6 +213,7 @@ public sealed class FundingSourceService : IFundingSourceService
                 existing.Name        = name.Trim();
                 existing.Description = Blank(desc);
                 existing.Color       = Blank(color);
+                existing.Aliases     = Blank(aliases);
                 existing.IsActive    = active;
                 existing.UpdatedAt   = now;
                 await _repo.UpdateAsync(existing, cancellationToken);
@@ -222,6 +227,7 @@ public sealed class FundingSourceService : IFundingSourceService
                     Name        = name.Trim(),
                     Description = Blank(desc),
                     Color       = Blank(color),
+                    Aliases     = Blank(aliases),
                     IsActive    = active,
                     CreatedAt   = now,
                     UpdatedAt   = now,
@@ -238,7 +244,7 @@ public sealed class FundingSourceService : IFundingSourceService
         return ServiceResult<CsvImportResult>.Ok(new CsvImportResult(created, updated, skipped, errors));
     }
 
-    private static FundingSourceDto MapToDto(FundingSource f) => new(f.Id, f.Code, f.Name, f.Description, f.Color, f.IsActive);
+    private static FundingSourceDto MapToDto(FundingSource f) => new(f.Id, f.Code, f.Name, f.Description, f.Color, f.IsActive, f.Aliases);
 
     private static string? Blank(string? value)
     {

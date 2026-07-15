@@ -207,4 +207,82 @@ public sealed class FundingSourceServiceTests
         Assert.Equal(1, result.Value!.New);
         Assert.Equal("#7B61FF", seed.Single().Color);
     }
+
+    // ── Aliases field (new in migration AddFundingSourceAliases, RAL-157) ──────
+
+    [Fact]
+    public async Task CreateAsync_WithAliases_PersistsAliasesOnEntity()
+    {
+        List<FundingSource> seed = [];
+        (FundingSourceService sut, _) = Build(seed);
+
+        ServiceResult<FundingSourceDto> result = await sut.CreateAsync(
+            new UpsertFundingSourceDto("GAD", "5% GAD Fund", null, null, true,
+                "Gender & Development Fund|GAD FUND|5% GAD"));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Gender & Development Fund|GAD FUND|5% GAD", result.Value!.Aliases);
+        Assert.Equal("Gender & Development Fund|GAD FUND|5% GAD", seed.Single().Aliases);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ChangesAliases()
+    {
+        FundingSource target = Fs(1, "GAD", "5% GAD Fund");
+        target.Aliases = null;
+        (FundingSourceService sut, _) = Build([target]);
+
+        ServiceResult<FundingSourceDto> result = await sut.UpdateAsync(1,
+            new UpsertFundingSourceDto("GAD", "5% GAD Fund", null, null, true, "GAD FUND|5% GAD"));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("GAD FUND|5% GAD", result.Value!.Aliases);
+        Assert.Equal("GAD FUND|5% GAD", target.Aliases);
+    }
+
+    [Fact]
+    public async Task ExportCsvAsync_IncludesAliasesColumn()
+    {
+        FundingSource gad = Fs(1, "GAD", "5% GAD Fund");
+        gad.Aliases = "GAD FUND|5% GAD";
+        (FundingSourceService sut, _) = Build([gad]);
+
+        string csv = await sut.ExportCsvAsync();
+
+        Assert.Contains("aliases", csv);
+        Assert.Contains("GAD FUND|5% GAD", csv);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_RoundtripsAliasesColumn()
+    {
+        List<FundingSource> seed = [];
+        (FundingSourceService sut, _) = Build(seed);
+
+        string csv = string.Join("\r\n",
+            "code,name,description,color,is_active,aliases",
+            "GAD,5% GAD Fund,,#7B61FF,true,Gender & Development Fund|GAD FUND|5% GAD");
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv);
+
+        Assert.Equal(1, result.Value!.New);
+        Assert.Equal("Gender & Development Fund|GAD FUND|5% GAD", seed.Single().Aliases);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_ChangedAliasesOnly_CountsAsUpdated()
+    {
+        List<FundingSource> seed = [Fs(1, "GAD", "5% GAD Fund")];
+        seed[0].Aliases = "GAD";
+        (FundingSourceService sut, _) = Build(seed);
+
+        string csv = string.Join("\r\n",
+            "code,name,description,color,is_active,aliases",
+            "GAD,5% GAD Fund,,,true,GAD|GAD FUND|5% GAD");
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv);
+
+        Assert.Equal(1, result.Value!.Updated);
+        Assert.Equal("GAD|GAD FUND|5% GAD", seed.Single().Aliases);
+    }
 }

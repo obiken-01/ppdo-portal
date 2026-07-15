@@ -104,6 +104,8 @@ export interface FundingSourceResponse {
   /** Hex color (#RRGGBB) for WFP report total groups. Null = default green group. */
   color: string | null;
   isActive: boolean;
+  /** Pipe-delimited alternate names, matched against AIP fund-source labels. Null = none. */
+  aliases: string | null;
 }
 
 /** Create/update body for a funding source. code is the unique key. */
@@ -114,6 +116,8 @@ export interface UpsertFundingSourceRequest {
   /** Hex color (#RRGGBB) for WFP report total groups. Null = default green group. */
   color: string | null;
   isActive: boolean;
+  /** Pipe-delimited alternate names, matched against AIP fund-source labels. Null = none. */
+  aliases: string | null;
 }
 
 // ---------------------------------------------------------------------------
