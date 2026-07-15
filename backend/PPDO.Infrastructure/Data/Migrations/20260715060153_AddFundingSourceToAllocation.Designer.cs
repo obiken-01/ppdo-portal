@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PPDO.Infrastructure.Data;
 
@@ -11,9 +12,11 @@ using PPDO.Infrastructure.Data;
 namespace PPDO.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260715060153_AddFundingSourceToAllocation")]
+    partial class AddFundingSourceToAllocation
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -871,10 +874,6 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasColumnName("id");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Aliases")
-                        .HasColumnType("nvarchar(max)")
-                        .HasColumnName("aliases");
 
                     b.Property<string>("Code")
                         .IsRequired()

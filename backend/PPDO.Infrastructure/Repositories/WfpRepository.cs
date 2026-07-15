@@ -64,6 +64,18 @@ public sealed class WfpRepository : Repository<WfpRecord>, IWfpRepository
             .ToListAsync(ct);
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<WfpActivity>> GetActivitiesByWfpIdsAsync(
+        IReadOnlyList<int> wfpIds, CancellationToken ct = default)
+    {
+        if (wfpIds.Count == 0) return [];
+        return await _context.Set<WfpActivity>()
+            .Where(a => wfpIds.Contains(a.WfpId))
+            .OrderBy(a => a.WfpId)
+            .ThenBy(a => a.AipActivityId)
+            .ToListAsync(ct);
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<WfpExpenditureLine>> GetLinesByActivityIdsAsync(
         IReadOnlyList<int> activityIds, CancellationToken ct = default)
     {

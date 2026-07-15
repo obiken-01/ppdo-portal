@@ -40,6 +40,42 @@ public sealed class WfpExpenditureRepository : Repository<WfpExpenditure>, IWfpE
             .ToListAsync(ct);
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<WfpExpenditure>> GetByWfpActivityIdsAsync(
+        IReadOnlyList<int> wfpActivityIds, CancellationToken ct = default)
+    {
+        if (wfpActivityIds.Count == 0) return [];
+        return await _context.Set<WfpExpenditure>()
+            .Where(e => wfpActivityIds.Contains(e.WfpActivityId))
+            .OrderBy(e => e.WfpActivityId)
+            .ThenBy(e => e.Id)
+            .ToListAsync(ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<WfpExpenditurePeriod>> GetPeriodsByExpenditureIdsAsync(
+        IReadOnlyList<int> expenditureIds, CancellationToken ct = default)
+    {
+        if (expenditureIds.Count == 0) return [];
+        return await _context.Set<WfpExpenditurePeriod>()
+            .Where(p => expenditureIds.Contains(p.ExpenditureId))
+            .OrderBy(p => p.ExpenditureId)
+            .ThenBy(p => p.PeriodNo)
+            .ToListAsync(ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<WfpProcurementItem>> GetProcurementItemsByExpenditureIdsAsync(
+        IReadOnlyList<int> expenditureIds, CancellationToken ct = default)
+    {
+        if (expenditureIds.Count == 0) return [];
+        return await _context.Set<WfpProcurementItem>()
+            .Where(i => expenditureIds.Contains(i.ExpenditureId))
+            .OrderBy(i => i.ExpenditureId)
+            .ThenBy(i => i.PeriodNo)
+            .ToListAsync(ct);
+    }
+
+    /// <inheritdoc />
     public async Task<WfpExpenditureContext?> GetActivityContextAsync(
         int wfpActivityId, CancellationToken ct = default)
         => await (
@@ -71,12 +107,16 @@ public sealed class WfpExpenditureRepository : Repository<WfpExpenditure>, IWfpE
 
     /// <inheritdoc />
     public async Task<decimal> SumTotalByWfpRecordAsync(
-        int wfpRecordId, int? excludeExpenditureId, CancellationToken ct = default)
+        int wfpRecordId, int fundingSourceId, int generalFundId,
+        int? excludeExpenditureId, CancellationToken ct = default)
     {
+        // Effective fund = FundingSourceId ?? generalFundId — a null-fund expenditure counts
+        // toward General Fund specifically, never toward whatever fund happens to be queried.
         IQueryable<WfpExpenditure> query =
             from e in _context.Set<WfpExpenditure>()
             join act in _context.Set<WfpActivity>() on e.WfpActivityId equals act.Id
             where act.WfpId == wfpRecordId
+               && (e.FundingSourceId ?? generalFundId) == fundingSourceId
             select e;
 
         if (excludeExpenditureId.HasValue)
@@ -84,4 +124,14 @@ public sealed class WfpExpenditureRepository : Repository<WfpExpenditure>, IWfpE
 
         return await query.SumAsync(e => (decimal?)e.TotalAppropriation, ct) ?? 0m;
     }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<int?>> GetDistinctFundingSourceIdsByWfpRecordAsync(
+        int wfpRecordId, CancellationToken ct = default)
+        => await (
+            from e in _context.Set<WfpExpenditure>()
+            join act in _context.Set<WfpActivity>() on e.WfpActivityId equals act.Id
+            where act.WfpId == wfpRecordId
+            select e.FundingSourceId
+        ).Distinct().ToListAsync(ct);
 }

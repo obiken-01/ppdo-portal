@@ -34,7 +34,7 @@ import {
   unlockWfp,
   wfpErrorMessage,
 } from "@/lib/wfp";
-import { findPpdoOffice, listAccounts, listDivisions, listFundingSources, listOffices } from "@/lib/config";
+import { findGeneralFund, findPpdoOffice, listAccounts, listDivisions, listFundingSources, listOffices } from "@/lib/config";
 import { getCeiling, getSetupStatus, getAllocations, getPrograms } from "@/lib/allocation";
 import Modal from "@/components/ui/Modal";
 import MoneyInput from "@/components/ui/MoneyInput";
@@ -756,15 +756,22 @@ function WfpPageInner() {
         if (newFunds) { setFundingSources(newFunds); fundingSourcesLoaded.current = true; }
         if (newAccts) { setAccounts(newAccts); accountsLoaded.current = true; }
 
+        // v1.4.3 (RAL-154): ceiling/allocation are now per fund source. This page is the
+        // legacy bulk-line-grid flow, whose backend division-budget check (WfpService's
+        // legacy SaveAsync path) stays General-Fund-only by design — see docs/v1.4.3
+        // §4.1/D3. So this banner is intentionally GF-only, not a RAL-156 stopgap; the
+        // fund-scoped per-fund breakdown lives in the entry wizard (wfp/entry/page.tsx).
+        const gfId = findGeneralFund(newFunds ?? fundingSources)?.id ?? null;
+
         // Always check ceiling (applies to all users, all divisions)
-        const ceilingResult = await getCeiling(officeId, detail.fiscalYear);
+        const ceilingResult = gfId != null ? await getCeiling(officeId, detail.fiscalYear, gfId) : null;
         if (!cancelled) setHasCeiling(ceilingResult != null);
 
         // Load setup gate + division budget + program assignments when a division is selected
         if (divisionId != null) {
           const [status, allocs, assignments] = await Promise.all([
             getSetupStatus(officeId, detail.fiscalYear, divisionId),
-            getAllocations(officeId, detail.fiscalYear),
+            gfId != null ? getAllocations(officeId, detail.fiscalYear, gfId) : Promise.resolve([]),
             getPrograms(officeId, detail.fiscalYear),
           ]);
           if (!cancelled) {

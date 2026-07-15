@@ -17,6 +17,11 @@ public sealed class AllocationServiceTests
 {
     // ── Fixture helpers ───────────────────────────────────────────────────────
 
+    // GF is the well-known General Fund id every fixture defaults to, matching this suite's
+    // pre-v1.4.3 single-fund behavior; GadFundId is used by the fund-independence tests.
+    private const int GfFundId  = 1;
+    private const int GadFundId = 2;
+
     private static Office MakeOffice(int id, string code = "PPDO", string? refCode = "01-010") =>
         new() { Id = id, OfficeCode = code, OfficeName = code, OfficeRefCode = refCode,
                 IsActive = true, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
@@ -25,11 +30,16 @@ public sealed class AllocationServiceTests
         new() { Id = id, OfficeId = officeId, Name = $"Division {id}",
                 IsActive = true, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
 
-    private static BudgetCeiling MakeCeiling(int officeId, int fy, decimal amount) =>
-        new() { Id = 1, OfficeId = officeId, FiscalYear = fy, Amount = amount };
+    private static FundingSource MakeFundingSource(int id, string code, string name) =>
+        new() { Id = id, Code = code, Name = name, IsActive = true,
+                CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
 
-    private static DivisionAllocation MakeAllocation(int id, int divId, int fy, decimal amount) =>
-        new() { Id = id, DivisionId = divId, FiscalYear = fy, Amount = amount };
+    private static BudgetCeiling MakeCeiling(int officeId, int fy, decimal amount, int fundingSourceId = GfFundId) =>
+        new() { Id = 1, OfficeId = officeId, FiscalYear = fy, FundingSourceId = fundingSourceId, Amount = amount };
+
+    private static DivisionAllocation MakeAllocation(
+        int id, int divId, int fy, decimal amount, int fundingSourceId = GfFundId) =>
+        new() { Id = id, DivisionId = divId, FiscalYear = fy, FundingSourceId = fundingSourceId, Amount = amount };
 
     private static AipRecord MakeAipRecord(int id, int fy) =>
         new() { Id = id, FiscalYear = fy, EntrySource = "Upload", Status = "Draft",
@@ -56,14 +66,15 @@ public sealed class AllocationServiceTests
         Mock<IAipRepository>                 aipRepo,
         Mock<IAuditService>                  audit)
         Build(
-            List<BudgetCeiling>?      ceilings    = null,
-            List<DivisionAllocation>? allocations = null,
-            List<ProgramDivision>?    pds         = null,
-            List<Division>?           divisions   = null,
-            List<Office>?             offices     = null,
-            List<AipRecord>?          aipRecords  = null,
-            List<AipOffice>?          aipOffices  = null,
-            List<AipProgram>?         aipPrograms = null)
+            List<BudgetCeiling>?      ceilings       = null,
+            List<DivisionAllocation>? allocations    = null,
+            List<ProgramDivision>?    pds            = null,
+            List<Division>?           divisions      = null,
+            List<Office>?             offices        = null,
+            List<AipRecord>?          aipRecords     = null,
+            List<AipOffice>?          aipOffices     = null,
+            List<AipProgram>?         aipPrograms    = null,
+            List<FundingSource>?      fundingSources = null)
     {
         List<BudgetCeiling>      ceilingList  = ceilings    ?? [];
         List<DivisionAllocation> allocList    = allocations ?? [];
@@ -73,14 +84,20 @@ public sealed class AllocationServiceTests
         List<AipRecord>          aipRecList   = aipRecords  ?? [];
         List<AipOffice>          aipOffList   = aipOffices  ?? [];
         List<AipProgram>         aipProgList  = aipPrograms ?? [];
+        // Every fixture defaults to a GF row so GetGeneralFundIdAsync resolves — matches this
+        // suite's pre-v1.4.3 implicit single-fund (GF-equivalent) behavior.
+        List<FundingSource>      fundList     = fundingSources ?? [MakeFundingSource(GfFundId, "GF", "General Fund")];
 
         Mock<IRepository<BudgetCeiling>>      ceilingRepo = new();
         Mock<IRepository<DivisionAllocation>> allocRepo   = new();
         Mock<IAllocationRepository>           pdRepo      = new();
         Mock<IRepository<Division>>           divRepo     = new();
         Mock<IRepository<Office>>             officeRepo  = new();
+        Mock<IRepository<FundingSource>>      fundingSourceRepo = new();
         Mock<IAipRepository>                  aipRepo     = new();
         Mock<IAuditService>                   audit       = new();
+
+        fundingSourceRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(fundList);
 
         // BudgetCeiling repo
         int nextCeilingId = 10;
@@ -151,7 +168,7 @@ public sealed class AllocationServiceTests
 
         AllocationService sut = new(
             ceilingRepo.Object, allocRepo.Object, pdRepo.Object,
-            divRepo.Object, officeRepo.Object, aipRepo.Object,
+            divRepo.Object, officeRepo.Object, fundingSourceRepo.Object, aipRepo.Object,
             audit.Object, caller);
 
         return (sut, ceilingRepo, allocRepo, pdRepo, divRepo, officeRepo, aipRepo, audit);
@@ -165,7 +182,7 @@ public sealed class AllocationServiceTests
         (AllocationService sut, Mock<IRepository<BudgetCeiling>> ceilingRepo, _, _, _, _, _, _) =
             Build(offices: [MakeOffice(1)]);
 
-        ServiceResult<BudgetCeilingDto> result = await sut.UpsertCeilingAsync(1, 2027, 1_000_000m);
+        ServiceResult<BudgetCeilingDto> result = await sut.UpsertCeilingAsync(1, 2027, GfFundId, 1_000_000m);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(1_000_000m, result.Value!.Amount);
@@ -182,7 +199,7 @@ public sealed class AllocationServiceTests
         (AllocationService sut, Mock<IRepository<BudgetCeiling>> ceilingRepo, _, _, _, _, _, _) =
             Build(ceilings: [existing], offices: [MakeOffice(1)]);
 
-        ServiceResult<BudgetCeilingDto> result = await sut.UpsertCeilingAsync(1, 2027, 1_000_000m);
+        ServiceResult<BudgetCeilingDto> result = await sut.UpsertCeilingAsync(1, 2027, GfFundId, 1_000_000m);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(1_000_000m, result.Value!.Amount);
@@ -195,7 +212,7 @@ public sealed class AllocationServiceTests
     {
         (AllocationService sut, _, _, _, _, _, _, _) = Build(offices: [MakeOffice(1)]);
 
-        ServiceResult<BudgetCeilingDto> result = await sut.GetCeilingAsync(1, 2027);
+        ServiceResult<BudgetCeilingDto> result = await sut.GetCeilingAsync(1, 2027, GfFundId);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
@@ -211,7 +228,7 @@ public sealed class AllocationServiceTests
             Build(divisions: [div1], offices: [MakeOffice(1)]);
 
         ServiceResult<IReadOnlyList<DivisionAllocationDto>> result =
-            await sut.UpsertAllocationsAsync(1, 2027,
+            await sut.UpsertAllocationsAsync(1, 2027, GfFundId,
                 [new UpsertDivisionAllocationDto(1, 500_000m)]);
 
         Assert.False(result.IsSuccess);
@@ -229,7 +246,7 @@ public sealed class AllocationServiceTests
             Build(ceilings: [ceiling], divisions: [div1, div2], offices: [MakeOffice(1)]);
 
         ServiceResult<IReadOnlyList<DivisionAllocationDto>> result =
-            await sut.UpsertAllocationsAsync(1, 2027,
+            await sut.UpsertAllocationsAsync(1, 2027, GfFundId,
                 [new(1, 700_000m), new(2, 600_000m)]);   // 1_300_000 > 1_000_000
 
         Assert.False(result.IsSuccess);
@@ -247,7 +264,7 @@ public sealed class AllocationServiceTests
             Build(ceilings: [ceiling], divisions: [div1, div2], offices: [MakeOffice(1)]);
 
         ServiceResult<IReadOnlyList<DivisionAllocationDto>> result =
-            await sut.UpsertAllocationsAsync(1, 2027,
+            await sut.UpsertAllocationsAsync(1, 2027, GfFundId,
                 [new(1, 600_000m), new(2, 400_000m)]);   // exactly 1_000_000
 
         Assert.True(result.IsSuccess);
@@ -263,11 +280,113 @@ public sealed class AllocationServiceTests
             Build(ceilings: [ceiling], divisions: [div1], offices: [MakeOffice(1)]);
 
         ServiceResult<IReadOnlyList<DivisionAllocationDto>> result =
-            await sut.UpsertAllocationsAsync(1, 2027,
+            await sut.UpsertAllocationsAsync(1, 2027, GfFundId,
                 [new(1, 300_000m)]);   // 300_000 < 1_000_000
 
         Assert.True(result.IsSuccess);
         allocRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // ── Fund-scoping tests (v1.4.3 — RAL-154) ─────────────────────────────────
+
+    [Fact]
+    public async Task UpsertAllocations_GadCeiling_IsIndependentFromGfCeiling()
+    {
+        Division div1 = MakeDivision(1, 1);
+        BudgetCeiling gfCeiling  = MakeCeiling(1, 2027, 1_000_000m, GfFundId);
+        BudgetCeiling gadCeiling = MakeCeiling(1, 2027, 200_000m, GadFundId);
+        (AllocationService sut, _, _, _, _, _, _, _) = Build(
+            ceilings: [gfCeiling, gadCeiling], divisions: [div1], offices: [MakeOffice(1)],
+            fundingSources: [
+                MakeFundingSource(GfFundId, "GF", "General Fund"),
+                MakeFundingSource(GadFundId, "GAD", "5% GAD Fund")]);
+
+        // GAD allocation of 200_000 is within the GAD ceiling (200_000) — should succeed even
+        // though it would blow through nothing GF-related, since the two funds are independent.
+        ServiceResult<IReadOnlyList<DivisionAllocationDto>> gadResult =
+            await sut.UpsertAllocationsAsync(1, 2027, GadFundId, [new(1, 200_000m)]);
+        Assert.True(gadResult.IsSuccess);
+
+        // GF allocation of 900_000 is within the GF ceiling (1_000_000) — independently succeeds.
+        ServiceResult<IReadOnlyList<DivisionAllocationDto>> gfResult =
+            await sut.UpsertAllocationsAsync(1, 2027, GfFundId, [new(1, 900_000m)]);
+        Assert.True(gfResult.IsSuccess);
+    }
+
+    [Fact]
+    public async Task UpsertAllocations_GadSumExceedsGadCeiling_RejectedIndependentlyOfGf()
+    {
+        Division div1 = MakeDivision(1, 1);
+        BudgetCeiling gfCeiling  = MakeCeiling(1, 2027, 1_000_000m, GfFundId);
+        BudgetCeiling gadCeiling = MakeCeiling(1, 2027, 200_000m, GadFundId);
+        (AllocationService sut, _, _, _, _, _, _, _) = Build(
+            ceilings: [gfCeiling, gadCeiling], divisions: [div1], offices: [MakeOffice(1)],
+            fundingSources: [
+                MakeFundingSource(GfFundId, "GF", "General Fund"),
+                MakeFundingSource(GadFundId, "GAD", "5% GAD Fund")]);
+
+        // 250_000 > the GAD ceiling of 200_000 — rejected, even though it's well within GF's
+        // much larger 1_000_000 ceiling, proving the guard checks the GAD ceiling specifically.
+        ServiceResult<IReadOnlyList<DivisionAllocationDto>> result =
+            await sut.UpsertAllocationsAsync(1, 2027, GadFundId, [new(1, 250_000m)]);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("exceeds ceiling", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task UpsertAllocations_NoGadCeiling_RejectedEvenThoughGfCeilingExists()
+    {
+        Division div1 = MakeDivision(1, 1);
+        BudgetCeiling gfCeiling = MakeCeiling(1, 2027, 1_000_000m, GfFundId);
+        (AllocationService sut, _, _, _, _, _, _, _) = Build(
+            ceilings: [gfCeiling], divisions: [div1], offices: [MakeOffice(1)],
+            fundingSources: [
+                MakeFundingSource(GfFundId, "GF", "General Fund"),
+                MakeFundingSource(GadFundId, "GAD", "5% GAD Fund")]);
+
+        ServiceResult<IReadOnlyList<DivisionAllocationDto>> result =
+            await sut.UpsertAllocationsAsync(1, 2027, GadFundId, [new(1, 50_000m)]);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("ceiling", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task GetCeiling_ReturnsFundingSourceCodeAndName()
+    {
+        BudgetCeiling ceiling = MakeCeiling(1, 2027, 500_000m, GadFundId);
+        (AllocationService sut, _, _, _, _, _, _, _) = Build(
+            ceilings: [ceiling], offices: [MakeOffice(1)],
+            fundingSources: [
+                MakeFundingSource(GfFundId, "GF", "General Fund"),
+                MakeFundingSource(GadFundId, "GAD", "5% GAD Fund")]);
+
+        ServiceResult<BudgetCeilingDto> result = await sut.GetCeilingAsync(1, 2027, GadFundId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("GAD", result.Value!.FundingSourceCode);
+        Assert.Equal("5% GAD Fund", result.Value.FundingSourceName);
+    }
+
+    [Fact]
+    public async Task GetCeilings_ReturnsOneRowPerFundingSource()
+    {
+        BudgetCeiling gfCeiling  = MakeCeiling(1, 2027, 1_000_000m, GfFundId);
+        BudgetCeiling gadCeiling = MakeCeiling(1, 2027, 200_000m, GadFundId);
+        (AllocationService sut, _, _, _, _, _, _, _) = Build(
+            ceilings: [gfCeiling, gadCeiling], offices: [MakeOffice(1)],
+            fundingSources: [
+                MakeFundingSource(GfFundId, "GF", "General Fund"),
+                MakeFundingSource(GadFundId, "GAD", "5% GAD Fund")]);
+
+        IReadOnlyList<BudgetCeilingDto> result = await sut.GetCeilingsAsync(1, 2027);
+
+        Assert.Equal(2, result.Count);
+        Assert.Contains(result, c => c.FundingSourceId == GfFundId && c.Amount == 1_000_000m);
+        Assert.Contains(result, c => c.FundingSourceId == GadFundId && c.Amount == 200_000m);
     }
 
     // ── Program assignment tests ──────────────────────────────────────────────
@@ -363,6 +482,37 @@ public sealed class AllocationServiceTests
         Assert.True(status.HasCeiling);
         Assert.True(status.HasAllocation);
         Assert.True(status.HasProgramAssignment);
+    }
+
+    [Fact]
+    public async Task GetSetupStatus_OnlyGeneralFundGates_OtherFundCeilingAloneIsNotEnough()
+    {
+        // A GAD ceiling+allocation exists, but NO General Fund ceiling/allocation — the gate
+        // must stay closed, since only GF is mandatory to unlock WFP entry (§2 D7).
+        const string offRefCode  = "I-PPDO-01-010";
+        const string progRefCode = "I-PPDO-01-010-001";
+        Office office = MakeOffice(1, refCode: "01-010");
+        Division div  = MakeDivision(1, 1);
+        BudgetCeiling gadCeiling = MakeCeiling(1, 2027, 200_000m, GadFundId);
+        DivisionAllocation gadAlloc = MakeAllocation(1, 1, 2027, 100_000m, GadFundId);
+        AipRecord rec     = MakeAipRecord(1, 2027);
+        AipOffice aipOff  = MakeAipOffice(1, 1, offRefCode);
+        AipProgram prog   = MakeAipProgram(1, 1, progRefCode);
+        ProgramDivision pd = MakePD(1, offRefCode, progRefCode, 1);
+
+        (AllocationService sut, _, _, _, _, _, _, _) = Build(
+            ceilings: [gadCeiling], allocations: [gadAlloc], pds: [pd],
+            divisions: [div], offices: [office],
+            aipRecords: [rec], aipOffices: [aipOff], aipPrograms: [prog],
+            fundingSources: [
+                MakeFundingSource(GfFundId, "GF", "General Fund"),
+                MakeFundingSource(GadFundId, "GAD", "5% GAD Fund")]);
+
+        AllocationSetupStatusDto status = await sut.GetSetupStatusAsync(1, 2027, 1);
+
+        Assert.False(status.HasCeiling);
+        Assert.False(status.HasAllocation);
+        Assert.True(status.HasProgramAssignment);   // unrelated to fund scoping
     }
 
     [Fact]

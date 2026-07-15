@@ -95,6 +95,7 @@ interface FormState {
   description: string;
   color: string;
   noColor: boolean;
+  aliases: string;
 }
 
 const blankForm = (): FormState => ({
@@ -103,6 +104,7 @@ const blankForm = (): FormState => ({
   description: "",
   color: "#D5E8D4",
   noColor: true,
+  aliases: "",
 });
 
 // ---------------------------------------------------------------------------
@@ -198,6 +200,7 @@ export default function FundingSourceConfigPage() {
       description: source.description ?? "",
       color: source.color ?? "#D5E8D4",
       noColor: source.color == null,
+      aliases: source.aliases ?? "",
     });
     setFormError(null);
     setCodeError(null);
@@ -247,6 +250,7 @@ export default function FundingSourceConfigPage() {
       color: form.noColor ? null : form.color,
       // Modal does not edit status; preserve it on update, default active on create.
       isActive: editTarget ? editTarget.isActive : true,
+      aliases: form.aliases.trim() || null,
     };
 
     setSaving(true);
@@ -299,6 +303,7 @@ export default function FundingSourceConfigPage() {
         description: source.description,
         color: source.color,
         isActive: true,
+        aliases: source.aliases,
       });
       toast.success("Funding source reactivated", `${source.code} is now active.`);
       await load();
@@ -365,6 +370,18 @@ export default function FundingSourceConfigPage() {
         s.description ? (
           <span className="text-slate-600" title={s.description}>
             {s.description.length > DESC_MAX ? `${s.description.slice(0, DESC_MAX)}…` : s.description}
+          </span>
+        ) : (
+          <span className="text-slate-600">—</span>
+        ),
+    },
+    {
+      key: "aliases",
+      header: "Aliases",
+      render: (s) =>
+        s.aliases ? (
+          <span className="text-slate-600 font-mono text-xs" title={s.aliases}>
+            {s.aliases.length > DESC_MAX ? `${s.aliases.slice(0, DESC_MAX)}…` : s.aliases}
           </span>
         ) : (
           <span className="text-slate-600">—</span>
@@ -599,6 +616,25 @@ export default function FundingSourceConfigPage() {
               </div>
             </div>
 
+            {/* Aliases */}
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">
+                Aliases <span className="text-slate-600 font-normal">(for AIP fund-source matching)</span>
+              </label>
+              <textarea
+                value={form.aliases}
+                onChange={(e) => setForm((f) => ({ ...f, aliases: e.target.value }))}
+                placeholder="Gender & Development Fund | GAD FUND | 5% GAD"
+                rows={2}
+                className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 resize-y min-h-[44px]"
+              />
+              <p className="mt-1 text-[11px] text-slate-600">
+                Pipe-delimited (<span className="font-mono">|</span>) alternate spellings the AIP uses for
+                this fund. Matched in addition to code and name. Multi-fund values like{" "}
+                <span className="font-mono">GF/20% DF</span> are never matched here.
+              </p>
+            </div>
+
             {formError && (
               <div className="bg-danger-100 border border-danger-500/30 px-4 py-3">
                 <p className="text-sm text-danger-500">{formError}</p>
@@ -633,7 +669,7 @@ export default function FundingSourceConfigPage() {
               Rows are matched by <span className="font-mono text-xs">code</span>: new codes are added
               and existing ones are updated. Nothing is deleted.
             </p>
-            <p className="text-xs text-slate-600">Expected columns: code, name, description, color, is_active.</p>
+            <p className="text-xs text-slate-600">Expected columns: code, name, description, color, is_active, aliases.</p>
           </div>
         </Modal>
       )}

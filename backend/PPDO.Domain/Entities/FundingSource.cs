@@ -22,6 +22,15 @@ public sealed class FundingSource
     /// <summary>Optional hex colour (#RRGGBB) for WFP report total groups. Null = default green.</summary>
     public string? Color { get; set; }
 
+    /// <summary>
+    /// Optional pipe-delimited list of alternate names for this fund source (RAL-157).
+    /// Used to map an AIP activity's free-text funding-source label — which has no controlled
+    /// vocabulary (e.g. "GAD FUND", "5% GAD", "GAD" all mean the 5% GAD Fund) — to this canonical
+    /// record. Matched in addition to <see cref="Code"/> and <see cref="Name"/>. Null when none.
+    /// Multi-fund AIP values (slash-separated, e.g. "GF/20% DF") are never resolved via aliases.
+    /// </summary>
+    public string? Aliases { get; set; }
+
     /// <summary>Soft-delete flag. Inactive sources are hidden from pickers but kept for history.</summary>
     public bool IsActive { get; set; } = true;
 

@@ -103,6 +103,30 @@ public sealed class WfpReportServiceTests
         wfpRepo.Setup(r => r.GetActivitiesByWfpIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<WfpActivity>)[]);
 
+        // RAL-158: the report now reads through the batched plural methods. Delegate them to
+        // whatever each test configured on the SINGULAR methods, so every existing per-id setup
+        // and assertion still applies — this proves the batched read path yields identical output
+        // to the old one-query-per-activity/expenditure path without rewriting any test.
+        wfpRepo.Setup(r => r.GetActivitiesByWfpIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .Returns(async (IReadOnlyList<int> wfpIds, CancellationToken ct) =>
+            {
+                List<WfpActivity> all = [];
+                foreach (int id in wfpIds)
+                    all.AddRange(await wfpRepo.Object.GetActivitiesByWfpIdAsync(id, ct));
+                return all;
+            });
+        expenditures.Setup(e => e.GetByActivityIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .Returns(async (IReadOnlyList<int> actIds, CancellationToken ct) =>
+            {
+                Dictionary<int, IReadOnlyList<WfpExpenditureDto>> map = [];
+                foreach (int id in actIds)
+                {
+                    IReadOnlyList<WfpExpenditureDto> e = await expenditures.Object.GetByActivityIdAsync(id, ct);
+                    if (e is { Count: > 0 }) map[id] = e;
+                }
+                return map;
+            });
+
         WfpReportService sut = new(
             dashboard.Object, aipRepo.Object, wfpRepo.Object, expenditures.Object,
             officeRepo.Object, accountRepo.Object);
@@ -825,5 +849,54 @@ public sealed class WfpReportServiceTests
         WfpReportRowDto row = result.Value!.FundSourceReports.Single().Sections.Single()
             .Programs.Single().Projects.Single().Activities.Single().ExpenseClasses.Single().Rows.Single();
         Assert.Equal("SOCIAL SERVICES", row.Sector);
+    }
+
+    // ── N+1 regression guard (RAL-158) ────────────────────────────────────────
+
+    [Fact]
+    public async Task GetReportAsync_ReadsAreBatched_PluralMethodsCalledOncePerReport_NotPerDivisionOrActivity()
+    {
+        Fixture f = Build();
+        f.Offices.Add(MakeOffice(1, "PPDO", "013"));
+        f.AipRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipRecord>)[MakeAip(100, FiscalYear, PlanningStatus.Draft)]);
+        f.AipRepo.Setup(r => r.GetOfficesByAipIdAsync(100, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipOffice>)[MakeAipOffice(1, 100, "3000-000-1-01-013")]);
+        f.AipRepo.Setup(r => r.GetProgramsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipProgram>)[MakeProgram(1, 1, "PGM-1", "CORE")]);
+        f.AipRepo.Setup(r => r.GetProjectsByProgramIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipProject>)[MakeProject(10, 1, "PRJ-1")]);
+        f.AipRepo.Setup(r => r.GetActivitiesByProjectIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipActivity>)[MakeActivity(100, 10, "ACT-1"), MakeActivity(101, 10, "ACT-2")]);
+
+        // THREE WFP records (three divisions), each with wfp_activity rows — the old path would
+        // fire GetActivitiesByWfpIdAsync 3× and GetByActivityIdAsync 6× (2 activities × 3 divisions).
+        f.WfpRepo.Setup(r => r.GetFilteredAsync(100, 1, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpRecord>)[
+                new WfpRecord { Id = 1000, AipRecordId = 100, OfficeId = 1, DivisionId = 1, FiscalYear = FiscalYear, Status = PlanningStatus.Draft },
+                new WfpRecord { Id = 1001, AipRecordId = 100, OfficeId = 1, DivisionId = 2, FiscalYear = FiscalYear, Status = PlanningStatus.Draft },
+                new WfpRecord { Id = 1002, AipRecordId = 100, OfficeId = 1, DivisionId = 3, FiscalYear = FiscalYear, Status = PlanningStatus.Draft },
+            ]);
+        f.WfpRepo.Setup(r => r.GetActivitiesByWfpIdAsync(1000, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpActivity>)[new WfpActivity { Id = 500, WfpId = 1000, AipActivityId = 100 }]);
+        f.WfpRepo.Setup(r => r.GetActivitiesByWfpIdAsync(1001, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpActivity>)[new WfpActivity { Id = 501, WfpId = 1001, AipActivityId = 101 }]);
+        f.WfpRepo.Setup(r => r.GetActivitiesByWfpIdAsync(1002, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpActivity>)[new WfpActivity { Id = 502, WfpId = 1002, AipActivityId = 100 }]);
+
+        f.Accounts.Add(MakeAccount(1, "5-02-03-010", "Office Supplies Expenses", "MOOE"));
+        foreach (int wfpActivityId in new[] { 500, 501, 502 })
+            f.Expenditures.Setup(e => e.GetByActivityIdAsync(wfpActivityId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
+                    MakeExpenditure(wfpActivityId, wfpActivityId, 1, "5-02-03-010", "Office Supplies Expenses", net: 100, total: 100),
+                ]);
+
+        ServiceResult<WfpReportDto> result = await f.Sut.GetReportAsync(1, FiscalYear);
+
+        Assert.True(result.IsSuccess);
+        // The whole report reads activities and expenditures in ONE batched call each, no matter
+        // how many divisions or activities are involved.
+        f.WfpRepo.Verify(r => r.GetActivitiesByWfpIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()), Times.Once);
+        f.Expenditures.Verify(e => e.GetByActivityIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 }

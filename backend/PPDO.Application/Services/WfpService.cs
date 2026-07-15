@@ -125,9 +125,18 @@ public sealed class WfpService : IWfpService
                     "Assign programs in the Allocation page first.");
 
             // 0b. Division-budget validation: Σ GROSS total appropriation ≤ division allocation.
-            IReadOnlyList<DivisionAllocationDto> allocs =
-                await _allocation.GetAllocationsAsync(dto.OfficeId, dto.FiscalYear, ct);
-            DivisionAllocationDto? myAlloc = allocs.FirstOrDefault(a => a.DivisionId == dto.DivisionId.Value);
+            // Legacy bulk-line grid (pre-v1.4.3) has no per-fund split in this gross-total sum,
+            // so it checks against the General Fund allocation specifically (RAL-154) — matching
+            // this path's pre-existing single-fund behavior. The v1.4 rework's per-expenditure
+            // entry flow (WfpExpenditureService/WfpCeilingService) is the fund-scoped path.
+            int? gfId = await _allocation.GetGeneralFundIdAsync(ct);
+            DivisionAllocationDto? myAlloc = null;
+            if (gfId is int generalFundId)
+            {
+                IReadOnlyList<DivisionAllocationDto> allocs =
+                    await _allocation.GetAllocationsAsync(dto.OfficeId, dto.FiscalYear, generalFundId, ct);
+                myAlloc = allocs.FirstOrDefault(a => a.DivisionId == dto.DivisionId.Value);
+            }
 
             if (myAlloc is not null)
             {

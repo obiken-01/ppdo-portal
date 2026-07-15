@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PPDO.Infrastructure.Data;
 
@@ -11,9 +12,11 @@ using PPDO.Infrastructure.Data;
 namespace PPDO.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260715054500_AddFundingSourceAliases")]
+    partial class AddFundingSourceAliases
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -523,21 +526,15 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasColumnType("int")
                         .HasColumnName("fiscal_year");
 
-                    b.Property<int>("FundingSourceId")
-                        .HasColumnType("int")
-                        .HasColumnName("funding_source_id");
-
                     b.Property<int>("OfficeId")
                         .HasColumnType("int")
                         .HasColumnName("office_id");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("FundingSourceId");
-
-                    b.HasIndex("OfficeId", "FiscalYear", "FundingSourceId")
+                    b.HasIndex("OfficeId", "FiscalYear")
                         .IsUnique()
-                        .HasDatabaseName("IX_budget_ceilings_office_fy_fund");
+                        .HasDatabaseName("IX_budget_ceilings_office_fy");
 
                     b.ToTable("budget_ceilings", (string)null);
                 });
@@ -848,17 +845,11 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasColumnType("int")
                         .HasColumnName("fiscal_year");
 
-                    b.Property<int>("FundingSourceId")
-                        .HasColumnType("int")
-                        .HasColumnName("funding_source_id");
-
                     b.HasKey("Id");
 
-                    b.HasIndex("FundingSourceId");
-
-                    b.HasIndex("DivisionId", "FiscalYear", "FundingSourceId")
+                    b.HasIndex("DivisionId", "FiscalYear")
                         .IsUnique()
-                        .HasDatabaseName("IX_division_allocations_div_fy_fund");
+                        .HasDatabaseName("IX_division_allocations_div_fy");
 
                     b.ToTable("division_allocations", (string)null);
                 });
@@ -2177,10 +2168,6 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasColumnType("int")
                         .HasColumnName("fiscal_year");
 
-                    b.Property<int>("FundingSourceId")
-                        .HasColumnType("int")
-                        .HasColumnName("funding_source_id");
-
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2")
                         .HasColumnName("updated_at");
@@ -2195,13 +2182,11 @@ namespace PPDO.Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("FundingSourceId");
-
                     b.HasIndex("WfpRecordId");
 
-                    b.HasIndex("DivisionId", "FiscalYear", "FundingSourceId", "WfpRecordId")
+                    b.HasIndex("DivisionId", "FiscalYear", "WfpRecordId")
                         .IsUnique()
-                        .HasDatabaseName("IX_wfp_division_allocation_ledger_division_fy_fund_wfp_record");
+                        .HasDatabaseName("IX_wfp_division_allocation_ledger_division_fy_wfp_record");
 
                     b.ToTable("wfp_division_allocation_ledger", (string)null);
                 });
@@ -2733,20 +2718,11 @@ namespace PPDO.Infrastructure.Data.Migrations
 
             modelBuilder.Entity("PPDO.Domain.Entities.BudgetCeiling", b =>
                 {
-                    b.HasOne("PPDO.Domain.Entities.FundingSource", "FundingSource")
-                        .WithMany()
-                        .HasForeignKey("FundingSourceId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("FK_budget_ceilings_funding_sources_funding_source_id");
-
                     b.HasOne("PPDO.Domain.Entities.Office", "Office")
                         .WithMany()
                         .HasForeignKey("OfficeId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.Navigation("FundingSource");
 
                     b.Navigation("Office");
                 });
@@ -2845,16 +2821,7 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("PPDO.Domain.Entities.FundingSource", "FundingSource")
-                        .WithMany()
-                        .HasForeignKey("FundingSourceId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("FK_division_allocations_funding_sources_funding_source_id");
-
                     b.Navigation("Division");
-
-                    b.Navigation("FundingSource");
                 });
 
             modelBuilder.Entity("PPDO.Domain.Entities.LdipOffice", b =>
@@ -3062,13 +3029,6 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasConstraintName("FK_wfp_division_allocation_ledger_divisions_division_id");
 
-                    b.HasOne("PPDO.Domain.Entities.FundingSource", "FundingSource")
-                        .WithMany()
-                        .HasForeignKey("FundingSourceId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("FK_wfp_division_allocation_ledger_funding_sources_funding_source_id");
-
                     b.HasOne("PPDO.Domain.Entities.WfpRecord", "WfpRecord")
                         .WithMany()
                         .HasForeignKey("WfpRecordId")
@@ -3077,8 +3037,6 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasConstraintName("FK_wfp_division_allocation_ledger_wfp_records_wfp_record_id");
 
                     b.Navigation("Division");
-
-                    b.Navigation("FundingSource");
 
                     b.Navigation("WfpRecord");
                 });

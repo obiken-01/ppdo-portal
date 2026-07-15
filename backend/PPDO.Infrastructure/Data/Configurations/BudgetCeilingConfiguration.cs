@@ -21,18 +21,28 @@ public sealed class BudgetCeilingConfiguration : IEntityTypeConfiguration<Budget
             .HasColumnName("fiscal_year")
             .IsRequired();
 
+        builder.Property(c => c.FundingSourceId)
+            .HasColumnName("funding_source_id")
+            .IsRequired();
+
         builder.Property(c => c.Amount)
             .HasColumnName("amount")
             .HasColumnType("decimal(18,2)")
             .IsRequired();
 
-        builder.HasIndex(c => new { c.OfficeId, c.FiscalYear })
+        builder.HasIndex(c => new { c.OfficeId, c.FiscalYear, c.FundingSourceId })
             .IsUnique()
-            .HasDatabaseName("IX_budget_ceilings_office_fy");
+            .HasDatabaseName("IX_budget_ceilings_office_fy_fund");
 
         builder.HasOne(c => c.Office)
             .WithMany()
             .HasForeignKey(c => c.OfficeId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(c => c.FundingSource)
+            .WithMany()
+            .HasForeignKey(c => c.FundingSourceId)
+            .HasConstraintName("FK_budget_ceilings_funding_sources_funding_source_id")
             .OnDelete(DeleteBehavior.Restrict);
     }
 }

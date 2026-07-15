@@ -19,6 +19,9 @@ public sealed class WfpServiceTests
 {
     private static readonly Guid UserId = Guid.NewGuid();
 
+    // v1.4.3 (RAL-154): the legacy division-budget check resolves General Fund via GetGeneralFundIdAsync.
+    private const int GfFundId = 1;
+
     // ── Seed helpers ──────────────────────────────────────────────────────────
 
     private static WfpRecord WfpRec(int id, string status, int aipId = 2, int officeId = 3, int? divisionId = null) => new()
@@ -171,6 +174,7 @@ public sealed class WfpServiceTests
         Mock<IOfficeService>     officeSvc  = new();
         Mock<IWfpExcelService>   excelSvc   = new();
         Mock<IAllocationService> allocSvc   = allocationMock ?? new();
+        allocSvc.Setup(s => s.GetGeneralFundIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(GfFundId);
 
         aipSvc.Setup(s => s.GetByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(ServiceResult<AipRecordDetailDto>.NotFound("AIP not found."));
@@ -185,10 +189,9 @@ public sealed class WfpServiceTests
                 It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AllocationSetupStatusDto(true, true, true));
         if (allocationMock is null)
-        allocSvc.Setup(s => s.GetAllocationsAsync(
-                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        allocSvc.Setup(s => s.GetAllocationsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)[
-                new DivisionAllocationDto(1, 99, "Default Division", 2027, decimal.MaxValue),
+                new DivisionAllocationDto(1, 99, "Default Division", 2027, GfFundId, "GF", "General Fund", decimal.MaxValue),
             ]);
 
         Mock<IWfpCeilingService> ceilingSvc = ceilingMock ?? new();
@@ -681,11 +684,11 @@ public sealed class WfpServiceTests
     {
         // A save with divisionId=null should NOT call the allocation service at all.
         Mock<IAllocationService> allocMock = new();
+        allocMock.Setup(s => s.GetGeneralFundIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(GfFundId);
         allocMock.Setup(s => s.GetSetupStatusAsync(
                 It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AllocationSetupStatusDto(false, false, false)); // would fail if called
-        allocMock.Setup(s => s.GetAllocationsAsync(
-                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        allocMock.Setup(s => s.GetAllocationsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)[]);
 
         var (sut, _, _, _, _, _) = Build([], [], [], [], allocMock);
@@ -696,18 +699,18 @@ public sealed class WfpServiceTests
         Assert.True(result.IsSuccess);
         allocMock.Verify(s => s.GetSetupStatusAsync(
             It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
-        allocMock.Verify(s => s.GetAllocationsAsync(
-            It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+        allocMock.Verify(s => s.GetAllocationsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
     public async Task Save_SetupGateMissingCeiling_ReturnsBadRequest()
     {
         Mock<IAllocationService> allocMock = new();
+        allocMock.Setup(s => s.GetGeneralFundIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(GfFundId);
         allocMock.Setup(s => s.GetSetupStatusAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AllocationSetupStatusDto(false, true, true));
         // GetAllocationsAsync won't be called when setup gate fails
-        allocMock.Setup(s => s.GetAllocationsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        allocMock.Setup(s => s.GetAllocationsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)[]);
 
         var (sut, _, _, _, _, _) = Build([], [], [], [], allocMock);
@@ -722,9 +725,10 @@ public sealed class WfpServiceTests
     public async Task Save_SetupGateMissingAllocation_ReturnsBadRequest()
     {
         Mock<IAllocationService> allocMock = new();
+        allocMock.Setup(s => s.GetGeneralFundIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(GfFundId);
         allocMock.Setup(s => s.GetSetupStatusAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AllocationSetupStatusDto(true, false, true));
-        allocMock.Setup(s => s.GetAllocationsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        allocMock.Setup(s => s.GetAllocationsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)[]);
 
         var (sut, _, _, _, _, _) = Build([], [], [], [], allocMock);
@@ -739,9 +743,10 @@ public sealed class WfpServiceTests
     public async Task Save_SetupGateMissingProgramAssignment_ReturnsBadRequest()
     {
         Mock<IAllocationService> allocMock = new();
+        allocMock.Setup(s => s.GetGeneralFundIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(GfFundId);
         allocMock.Setup(s => s.GetSetupStatusAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AllocationSetupStatusDto(true, true, false));
-        allocMock.Setup(s => s.GetAllocationsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        allocMock.Setup(s => s.GetAllocationsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)[]);
 
         var (sut, _, _, _, _, _) = Build([], [], [], [], allocMock);
@@ -757,11 +762,12 @@ public sealed class WfpServiceTests
     {
         // Division 5 has allocation = ₱1,000. Save DTO has totalAppropriation = ₱2,000 (gross).
         Mock<IAllocationService> allocMock = new();
+        allocMock.Setup(s => s.GetGeneralFundIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(GfFundId);
         allocMock.Setup(s => s.GetSetupStatusAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AllocationSetupStatusDto(true, true, true));
-        allocMock.Setup(s => s.GetAllocationsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        allocMock.Setup(s => s.GetAllocationsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)[
-                new DivisionAllocationDto(1, 5, "Division 5", 2027, 1_000m),
+                new DivisionAllocationDto(1, 5, "Division 5", 2027, GfFundId, "GF", "General Fund", 1_000m),
             ]);
 
         var (sut, _, _, _, _, _) = Build([], [], [], [], allocMock);
@@ -779,11 +785,12 @@ public sealed class WfpServiceTests
     public async Task Save_GrossTotalWithinDivisionAllocation_Succeeds()
     {
         Mock<IAllocationService> allocMock = new();
+        allocMock.Setup(s => s.GetGeneralFundIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(GfFundId);
         allocMock.Setup(s => s.GetSetupStatusAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AllocationSetupStatusDto(true, true, true));
-        allocMock.Setup(s => s.GetAllocationsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        allocMock.Setup(s => s.GetAllocationsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)[
-                new DivisionAllocationDto(1, 5, "Division 5", 2027, 5_000m),
+                new DivisionAllocationDto(1, 5, "Division 5", 2027, GfFundId, "GF", "General Fund", 5_000m),
             ]);
 
         var (sut, _, _, _, _, _) = Build([], [], [], [], allocMock);
@@ -853,9 +860,10 @@ public sealed class WfpServiceTests
             .Returns(expectedBytes);
 
         Mock<IAllocationService> allocSvc = new();
+        allocSvc.Setup(s => s.GetGeneralFundIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(GfFundId);
         allocSvc.Setup(s => s.GetSetupStatusAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AllocationSetupStatusDto(true, true, true));
-        allocSvc.Setup(s => s.GetAllocationsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        allocSvc.Setup(s => s.GetAllocationsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)[]);
 
         Mock<IWfpCeilingService> ceilingSvc = new();

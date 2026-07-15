@@ -1,0 +1,8 @@
+code,name,description,color,is_active,aliases
+20%DF,20% Development Fund,20% Development Fund,#79ecea,true,20% DF|20 % DF|DF
+GAD Fund,5% GAD Fund,5% GAD Fund,#e5a4e0,true,Gender & Development Fund|Gender and Development Fund|GAD FUND|GAD fund|5% GAD|GAD
+GF,General Fund,General Fund,,true,General fund|Gen Fund|Gen. Fund
+LDRRMF,5% Local Disaster Risk Reduction and Management Fund,5% Local Disaster Risk Reduction and Management Fund,#e6bf6b,true,LDRRM Fund|5% LDRRMF|Calamity Fund|5% CF|CF
+PCPC,1% Provincial Council for the Protection of Children Fund,1% Provincial Council for the Protection of Children Fund,,true,1% PCPC|Provincial Council for the Protection of Children
+SC/PWD,1% Senior Citizen / Persons with Disability Fund,1% Senior Citizen / Persons with Disability Fund,,true,SC|1% SC|Senior Citizen|PWD|Persons with Disability
+SEF,Special Education Fund,Special Education Fund,,true,

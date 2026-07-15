@@ -87,6 +87,45 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
         return dtos;
     }
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<int, IReadOnlyList<WfpExpenditureDto>>> GetByActivityIdsAsync(
+        IReadOnlyList<int> wfpActivityIds, CancellationToken ct = default)
+    {
+        if (wfpActivityIds.Count == 0)
+            return new Dictionary<int, IReadOnlyList<WfpExpenditureDto>>();
+
+        // Three queries total (not two-per-expenditure): fetch every expenditure across all the
+        // activities, then all of their periods and procurement items in one IN (...) each, and
+        // stitch them back together in memory keyed by ExpenditureId (RAL-158).
+        IReadOnlyList<WfpExpenditure> entities = await _repo.GetByWfpActivityIdsAsync(wfpActivityIds, ct);
+        if (entities.Count == 0)
+            return new Dictionary<int, IReadOnlyList<WfpExpenditureDto>>();
+
+        List<int> expenditureIds = entities.Select(e => e.Id).ToList();
+        IReadOnlyList<WfpExpenditurePeriod> allPeriods = await _repo.GetPeriodsByExpenditureIdsAsync(expenditureIds, ct);
+        IReadOnlyList<WfpProcurementItem>   allItems   = await _repo.GetProcurementItemsByExpenditureIdsAsync(expenditureIds, ct);
+
+        ILookup<int, WfpExpenditurePeriod> periodsByExpId = allPeriods.ToLookup(p => p.ExpenditureId);
+        ILookup<int, WfpProcurementItem>   itemsByExpId   = allItems.ToLookup(i => i.ExpenditureId);
+
+        Dictionary<int, List<WfpExpenditureDto>> byActivity = [];
+        foreach (WfpExpenditure entity in entities)
+        {
+            // Preserve GetByActivityIdAsync's ordering: periods/items already come back ordered by
+            // period_no from SQL; ToLookup keeps source order within each grouping.
+            WfpExpenditureDto dto = MapToDto(
+                entity,
+                periodsByExpId[entity.Id].ToList(),
+                itemsByExpId[entity.Id].ToList());
+            if (!byActivity.TryGetValue(entity.WfpActivityId, out List<WfpExpenditureDto>? list))
+                byActivity[entity.WfpActivityId] = list = [];
+            list.Add(dto);
+        }
+
+        return byActivity.ToDictionary(
+            kv => kv.Key, kv => (IReadOnlyList<WfpExpenditureDto>)kv.Value);
+    }
+
     // ── Save (create or replace) ─────────────────────────────────────────────
 
     public async Task<ServiceResult<WfpExpenditureDto>> SaveExpenditureAsync(
@@ -157,7 +196,7 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
 
         // ── Ceiling check (RAL-122): block on EVERY save, before any write ────
         string? ceilingError = await _ceiling.ValidateExpenditureSaveAsync(
-            dto.WfpActivityId, rollUp.Total, excludeExpenditureId: dto.Id, ct);
+            dto.WfpActivityId, rollUp.Total, dto.FundingSourceId, excludeExpenditureId: dto.Id, ct);
         if (ceilingError is not null)
             return ServiceResult<WfpExpenditureDto>.BadRequest(ceilingError);
 

@@ -14,30 +14,41 @@ public interface IAllocationService
 {
     // ── Budget Ceiling ────────────────────────────────────────────────────────
 
-    /// <summary>Returns the ceiling for (officeId, fiscalYear), or NotFound if unset.</summary>
+    /// <summary>
+    /// Returns the ceiling for (officeId, fiscalYear, fundingSourceId), or NotFound if unset.
+    /// </summary>
     Task<ServiceResult<BudgetCeilingDto>> GetCeilingAsync(
+        int officeId, int fiscalYear, int fundingSourceId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns every fund source's ceiling row for the given office+FY (v1.4.3 — RAL-154).
+    /// A fund source with no ceiling set is simply absent from the result.
+    /// </summary>
+    Task<IReadOnlyList<BudgetCeilingDto>> GetCeilingsAsync(
         int officeId, int fiscalYear, CancellationToken ct = default);
 
-    /// <summary>Creates or updates the ceiling for (officeId, fiscalYear). Audit-logged.</summary>
+    /// <summary>
+    /// Creates or updates the ceiling for (officeId, fiscalYear, fundingSourceId). Audit-logged.
+    /// </summary>
     Task<ServiceResult<BudgetCeilingDto>> UpsertCeilingAsync(
-        int officeId, int fiscalYear, decimal amount, CancellationToken ct = default);
+        int officeId, int fiscalYear, int fundingSourceId, decimal amount, CancellationToken ct = default);
 
     // ── Division Allocations ──────────────────────────────────────────────────
 
     /// <summary>
-    /// Returns all division-allocation rows for the given office+FY.
+    /// Returns the division-allocation rows for the given office+FY+fundingSourceId.
     /// Divisions with no row are simply absent (caller shows ₱0 for them).
     /// </summary>
     Task<IReadOnlyList<DivisionAllocationDto>> GetAllocationsAsync(
-        int officeId, int fiscalYear, CancellationToken ct = default);
+        int officeId, int fiscalYear, int fundingSourceId, CancellationToken ct = default);
 
     /// <summary>
-    /// Upserts the full set of division allocations for an office+FY.
-    /// Returns BadRequest when: no ceiling exists, or Σ amounts exceeds the ceiling.
-    /// Audit-logged per row.
+    /// Upserts the full set of division allocations for an office+FY+fundingSourceId.
+    /// Returns BadRequest when: no ceiling exists for that fund, or Σ amounts exceeds that
+    /// fund's ceiling. Audit-logged per row.
     /// </summary>
     Task<ServiceResult<IReadOnlyList<DivisionAllocationDto>>> UpsertAllocationsAsync(
-        int officeId, int fiscalYear,
+        int officeId, int fiscalYear, int fundingSourceId,
         IReadOnlyList<UpsertDivisionAllocationDto> dtos,
         CancellationToken ct = default);
 
@@ -75,4 +86,12 @@ public interface IAllocationService
     /// </summary>
     Task<AllocationSetupOverviewDto> GetSetupOverviewAsync(
         int fiscalYear, CancellationToken ct = default);
+
+    /// <summary>
+    /// Resolves the General Fund <c>funding_sources.id</c> by Code "GF" (v1.4.3 — RAL-154).
+    /// Shared by every caller that needs to treat a null/unselected fund source as General
+    /// Fund, so the "GF" code string lives in exactly one place. Null if the GF row is
+    /// somehow missing (should never happen post-migration).
+    /// </summary>
+    Task<int?> GetGeneralFundIdAsync(CancellationToken ct = default);
 }
