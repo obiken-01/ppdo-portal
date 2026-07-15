@@ -24,40 +24,34 @@ Six funds, matching the WFP workbook VALIDATION sheet (J3:J8) per `docs/v1.4/WFP
 General Fund · 20% Development Fund · 5% GAD Fund · 5% LDRRMF · 1% PCPC Fund ·
 1% Senior Citizen / PWD Fund · Special Education Fund.
 
-## 3. Reconciled seed (after)
+## 3. Reconciled seed (after) — UPDATED against the live export
 
-| Code | Name | Active | Change | Notes |
-|---|---|---|---|---|
-| `GF` | General Fund | ✅ | keep | — |
-| `20%DF` | 20% Development Fund | ✅ | keep | — |
-| `GAD` | 5% GAD Fund | ✅ | **rename** | Was "Gender & Development Fund"; that name is retained as an alias so old data/AIP labels still match. |
-| `LDRRMF` | 5% Local Disaster Risk Reduction and Management Fund | ✅ | **new (absorbs Calamity)** | LDRRMF is the post-RA 10121 name for the former 5% Calamity Fund. `Calamity Fund` / `5% CF` / `CF` are carried as aliases. Heavily used in the AIP (≈306 rows). |
-| `PCPC` | 1% Provincial Council for the Protection of Children Fund | ✅ | **new** | In the AIP only inside `/`-combinations today; seeded for completeness. |
-| `SCPWD` | 1% Senior Citizen / Persons with Disability Fund | ✅ | **new** | In the AIP only inside `/`-combinations today; seeded for completeness. |
-| `SEF` | Special Education Fund | ✅ | keep | — |
-| ~~`TF`~~ | ~~Trust Fund~~ | ❌ | **deactivate** | Appears in the AIP only inside combinations, never standalone — no purely Trust-funded expenditure. Set `is_active = false` on the existing row. |
-| ~~`CF`~~ | ~~Calamity Fund~~ | ❌ | **deactivate** | Folded into `LDRRMF` (see above). Set `is_active = false` on the existing row. |
+Ralph exported the actual live `funding_sources` table (`20260715_143947_funding_sources_live.csv`,
+2026-07-15) — the reconciliation described in the original version of this section (rename GAD,
+add LDRRMF/PCPC/SCPWD, deactivate Trust/Calamity) had **already been applied directly in the DB**
+before this doc's guesses were written. The live table already matches the 7-fund target exactly,
+with these real Codes (note two differ from my original guess):
 
-Net: **7 active ceiling-managed funds** (GF, 20%DF, GAD, LDRRMF, PCPC, SCPWD, SEF); **Calamity Fund
-and Trust Fund deactivated**.
+| Code (live) | Name | Active | Notes |
+|---|---|---|---|
+| `GF` | General Fund | ✅ | — |
+| `20%DF` | 20% Development Fund | ✅ | — |
+| `GAD Fund` | 5% GAD Fund | ✅ | **Code is `GAD Fund`, not `GAD`** as originally guessed. |
+| `LDRRMF` | 5% Local Disaster Risk Reduction and Management Fund | ✅ | — |
+| `PCPC` | 1% Provincial Council for the Protection of Children Fund | ✅ | — |
+| `SC/PWD` | 1% Senior Citizen / Persons with Disability Fund | ✅ | **Code is `SC/PWD`, not `SCPWD`** as originally guessed. |
+| `SEF` | Special Education Fund | ✅ | — |
 
-## 4. Judgment calls — CONFIRMED (Ralph, 2026-07-15)
+**No Trust Fund or Calamity Fund row exists in the live table at all** — nothing to deactivate;
+the earlier plan's §4 judgment calls are moot (there was never a Calamity/Trust row to merge or
+turn off). Net: **7 active funds, matching the target exactly.** The only remaining gap is the
+`aliases` column itself (RAL-157's schema addition) and populating it — that's what
+`docs/v1.4.3/seed/funding_sources_seed.csv` now does, using these exact live Codes/Names/
+descriptions/colors so importing it only adds aliases and touches nothing else.
 
-1. **Calamity Fund → LDRRMF merge — CONFIRMED.** LDRRMF is the post-RA 10121 name for the former 5%
-   Calamity Fund; `Calamity Fund` / `5% CF` / `CF` stay as LDRRMF aliases and the Calamity row is
-   deactivated.
-2. **Trust Fund — CONFIRMED deactivate.** It appears in the AIP only inside `/`-combinations, never
-   standalone, so no purely Trust-funded expenditure needs it selectable. Set `is_active = false`.
+## 4. How to apply (import safety)
 
-## 5. How to apply (import safety)
-
-The CSV upsert keys on **`Code`** (`FundingSourceService.ImportCsvAsync`), so:
-
-1. **Export the current funding sources CSV first** (Config → Funding Sources → export) and confirm
-   the existing Codes for the 6 seeded rows. If any real Code differs from this file (e.g. GAD is
-   stored as `GADF`, or 20% DF as `DF`), **update this CSV to the existing Code** before importing —
-   otherwise the import creates a duplicate new row instead of updating the existing one.
-2. Confirm the two judgment calls in §4.
-3. The `aliases` column requires **RAL-157** to be merged first (it adds the column). Until then, the
-   rename / new rows / deactivation can be applied without the aliases column; re-import with aliases
-   once RAL-157 ships. This file is the seed referenced by RAL-157 step 6.
+The CSV upsert keys on **`Code`** (`FundingSourceService.ImportCsvAsync`). `funding_sources_seed.csv`
+already uses the live Codes above verbatim (including `GAD Fund` and `SC/PWD`), so importing it after
+RAL-157 merges will update each existing row in place — no duplicates, no other field changes besides
+adding `aliases`.

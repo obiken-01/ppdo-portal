@@ -30,6 +30,9 @@ public sealed class FundingSourceConfiguration : IEntityTypeConfiguration<Fundin
             .HasColumnName("color")
             .HasMaxLength(7);
 
+        builder.Property(f => f.Aliases)
+            .HasColumnName("aliases");  // nvarchar(max), nullable — pipe-delimited alternate names
+
         builder.Property(f => f.IsActive)
             .HasColumnName("is_active")
             .IsRequired()
