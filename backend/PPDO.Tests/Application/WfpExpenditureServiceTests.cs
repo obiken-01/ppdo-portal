@@ -112,6 +112,19 @@ public sealed class WfpExpenditureServiceTests
             .ReturnsAsync((int expId, CancellationToken _) =>
                 (IReadOnlyList<WfpProcurementItem>)itemSeed.Where(i => i.ExpenditureId == expId)
                     .OrderBy(i => i.PeriodNo).ToList());
+        // Batched siblings (RAL-158) — mirror the singular setups against the same in-memory seed.
+        repo.Setup(r => r.GetByWfpActivityIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<int> actIds, CancellationToken _) =>
+                (IReadOnlyList<WfpExpenditure>)expSeed.Where(e => actIds.Contains(e.WfpActivityId))
+                    .OrderBy(e => e.WfpActivityId).ThenBy(e => e.Id).ToList());
+        repo.Setup(r => r.GetPeriodsByExpenditureIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<int> expIds, CancellationToken _) =>
+                (IReadOnlyList<WfpExpenditurePeriod>)periodSeed.Where(p => expIds.Contains(p.ExpenditureId))
+                    .OrderBy(p => p.ExpenditureId).ThenBy(p => p.PeriodNo).ToList());
+        repo.Setup(r => r.GetProcurementItemsByExpenditureIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<int> expIds, CancellationToken _) =>
+                (IReadOnlyList<WfpProcurementItem>)itemSeed.Where(i => expIds.Contains(i.ExpenditureId))
+                    .OrderBy(i => i.ExpenditureId).ThenBy(i => i.PeriodNo).ToList());
 
         periodRepo.Setup(r => r.AddAsync(It.IsAny<WfpExpenditurePeriod>(), It.IsAny<CancellationToken>()))
             .Callback<WfpExpenditurePeriod, CancellationToken>((p, _) => { p.Id = nextPeriodId++; periodSeed.Add(p); })
@@ -655,6 +668,75 @@ public sealed class WfpExpenditureServiceTests
         Assert.Equal(2, result.Count);
         Assert.All(result, e => Assert.Equal(4, e.Periods.Count));
         Assert.DoesNotContain(result, e => e.NetAppropriation == 999m);
+    }
+
+    // ── GetByActivityIdsAsync (RAL-158 batched report read) ──────────────────
+
+    [Fact]
+    public async Task GetByActivityIds_EmptyInput_ReturnsEmpty_WithoutHittingRepo()
+    {
+        var (sut, repo, _, _, _, _, _) = Build([], []);
+
+        IReadOnlyDictionary<int, IReadOnlyList<WfpExpenditureDto>> result =
+            await sut.GetByActivityIdsAsync([], CancellationToken.None);
+
+        Assert.Empty(result);
+        repo.Verify(r => r.GetByWfpActivityIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetByActivityIds_GroupsByActivity_StitchesPeriodsAndItems_MatchingSingularReads()
+    {
+        var (sut, _, _, _, _, _, _) = Build([], []);
+
+        // Two activities: activity 7 has two non-procurement expenditures; activity 8 has one
+        // procurement expenditure (exercises the item-stitching path). Activity 9 has none.
+        await sut.SaveExpenditureAsync(QuarterlyDto(wfpActivityId: 7, q1: 100, q2: 100, q3: 100, q4: 100), CancellationToken.None);
+        await sut.SaveExpenditureAsync(QuarterlyDto(wfpActivityId: 7, q1: 50, q2: 50, q3: 50, q4: 50), CancellationToken.None);
+        SaveWfpExpenditureDto procurement = new(
+            null, 8, null, WfpNature.Procurement, WfpFrequency.Quarterly, null,
+            false, 0m, null, [],
+            [new SaveWfpProcurementItemDto(1, null, "Bond paper", "ream", 250m, 4m)]);
+        await sut.SaveExpenditureAsync(procurement, CancellationToken.None);
+
+        IReadOnlyDictionary<int, IReadOnlyList<WfpExpenditureDto>> batched =
+            await sut.GetByActivityIdsAsync([7, 8, 9], CancellationToken.None);
+
+        // Same shape the report used to build one-activity-at-a-time.
+        Assert.Equal(2, batched.Count); // activity 9 (no expenditures) is absent
+        Assert.Equal(2, batched[7].Count);
+        Assert.All(batched[7], e => Assert.Equal(4, e.Periods.Count));
+        Assert.Single(batched[8]);
+        Assert.Single(batched[8][0].ProcurementItems);
+        Assert.Equal(1000m, batched[8][0].ProcurementItems[0].LineTotal); // 4 × 250
+
+        // Byte-for-byte parity with the per-activity singular read it replaces.
+        IReadOnlyList<WfpExpenditureDto> singular7 = await sut.GetByActivityIdAsync(7, CancellationToken.None);
+        Assert.Equal(singular7.Select(e => e.Id), batched[7].Select(e => e.Id));
+        Assert.Equal(singular7.Select(e => e.NetAppropriation), batched[7].Select(e => e.NetAppropriation));
+    }
+
+    [Fact]
+    public async Task GetByActivityIds_UsesBatchedQueries_NotPerExpenditureLoop()
+    {
+        var (sut, repo, _, _, _, _, _) = Build([], []);
+
+        // Three expenditures across two activities — the old path fired 2 child queries EACH
+        // (6 total); the batched path must fire the two IN(...) child queries exactly once each
+        // and never the singular per-expenditure reads. This is the N+1 regression guard.
+        await sut.SaveExpenditureAsync(QuarterlyDto(wfpActivityId: 7), CancellationToken.None);
+        await sut.SaveExpenditureAsync(QuarterlyDto(wfpActivityId: 7), CancellationToken.None);
+        await sut.SaveExpenditureAsync(QuarterlyDto(wfpActivityId: 8), CancellationToken.None);
+        repo.Invocations.Clear(); // ignore the query traffic from the SaveExpenditureAsync calls above
+
+        await sut.GetByActivityIdsAsync([7, 8], CancellationToken.None);
+
+        repo.Verify(r => r.GetByWfpActivityIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()), Times.Once);
+        repo.Verify(r => r.GetPeriodsByExpenditureIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()), Times.Once);
+        repo.Verify(r => r.GetProcurementItemsByExpenditureIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()), Times.Once);
+        repo.Verify(r => r.GetPeriodsByExpenditureIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+        repo.Verify(r => r.GetProcurementItemsByExpenditureIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+        repo.Verify(r => r.GetByWfpActivityIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     // ── Final-lock guard (RAL-129) ────────────────────────────────────────────

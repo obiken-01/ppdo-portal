@@ -20,6 +20,16 @@ public interface IWfpExpenditureService
     Task<IReadOnlyList<WfpExpenditureDto>> GetByActivityIdAsync(int wfpActivityId, CancellationToken ct = default);
 
     /// <summary>
+    /// Batched sibling of <see cref="GetByActivityIdAsync"/> — every WFP activity's expenditures
+    /// (with periods and procurement items) fetched in a fixed number of queries regardless of how
+    /// many activities or expenditures there are, keyed by wfp_activity_id. The WFP report reads
+    /// every division's expenditures this way to avoid the per-expenditure N+1 (v1.4.3 — RAL-158).
+    /// Activities with no expenditures are absent from the returned map.
+    /// </summary>
+    Task<IReadOnlyDictionary<int, IReadOnlyList<WfpExpenditureDto>>> GetByActivityIdsAsync(
+        IReadOnlyList<int> wfpActivityIds, CancellationToken ct = default);
+
+    /// <summary>
     /// Creates a new expenditure (dto.Id is null) or replaces an existing one's periods and
     /// procurement items in place (dto.Id provided — delete-then-reinsert). Validates
     /// Nature/Frequency/period numbers and negative amounts before any write.

@@ -40,6 +40,42 @@ public sealed class WfpExpenditureRepository : Repository<WfpExpenditure>, IWfpE
             .ToListAsync(ct);
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<WfpExpenditure>> GetByWfpActivityIdsAsync(
+        IReadOnlyList<int> wfpActivityIds, CancellationToken ct = default)
+    {
+        if (wfpActivityIds.Count == 0) return [];
+        return await _context.Set<WfpExpenditure>()
+            .Where(e => wfpActivityIds.Contains(e.WfpActivityId))
+            .OrderBy(e => e.WfpActivityId)
+            .ThenBy(e => e.Id)
+            .ToListAsync(ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<WfpExpenditurePeriod>> GetPeriodsByExpenditureIdsAsync(
+        IReadOnlyList<int> expenditureIds, CancellationToken ct = default)
+    {
+        if (expenditureIds.Count == 0) return [];
+        return await _context.Set<WfpExpenditurePeriod>()
+            .Where(p => expenditureIds.Contains(p.ExpenditureId))
+            .OrderBy(p => p.ExpenditureId)
+            .ThenBy(p => p.PeriodNo)
+            .ToListAsync(ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<WfpProcurementItem>> GetProcurementItemsByExpenditureIdsAsync(
+        IReadOnlyList<int> expenditureIds, CancellationToken ct = default)
+    {
+        if (expenditureIds.Count == 0) return [];
+        return await _context.Set<WfpProcurementItem>()
+            .Where(i => expenditureIds.Contains(i.ExpenditureId))
+            .OrderBy(i => i.ExpenditureId)
+            .ThenBy(i => i.PeriodNo)
+            .ToListAsync(ct);
+    }
+
+    /// <inheritdoc />
     public async Task<WfpExpenditureContext?> GetActivityContextAsync(
         int wfpActivityId, CancellationToken ct = default)
         => await (

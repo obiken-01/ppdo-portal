@@ -45,6 +45,14 @@ public interface IWfpRepository : IRepository<WfpRecord>
     /// <summary>WfpActivity rows WHERE wfp_id = <paramref name="wfpId"/>.</summary>
     Task<IReadOnlyList<WfpActivity>> GetActivitiesByWfpIdAsync(int wfpId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Batched sibling of <see cref="GetActivitiesByWfpIdAsync"/> — WfpActivity rows WHERE
+    /// wfp_id IN (<paramref name="wfpIds"/>), ordered by wfp_id then aip_activity_id. One query
+    /// instead of one-per-record; the WFP report builds its activity map this way across every
+    /// division's WFP record (v1.4.3 — RAL-158). Empty input returns empty without hitting the DB.
+    /// </summary>
+    Task<IReadOnlyList<WfpActivity>> GetActivitiesByWfpIdsAsync(IReadOnlyList<int> wfpIds, CancellationToken ct = default);
+
     /// <summary>WfpExpenditureLine rows WHERE wfp_activity_id IN (<paramref name="activityIds"/>).</summary>
     Task<IReadOnlyList<WfpExpenditureLine>> GetLinesByActivityIdsAsync(IReadOnlyList<int> activityIds, CancellationToken ct = default);
 }
