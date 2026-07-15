@@ -35,22 +35,19 @@ General Fund · 20% Development Fund · 5% GAD Fund · 5% LDRRMF · 1% PCPC Fund
 | `PCPC` | 1% Provincial Council for the Protection of Children Fund | ✅ | **new** | In the AIP only inside `/`-combinations today; seeded for completeness. |
 | `SCPWD` | 1% Senior Citizen / Persons with Disability Fund | ✅ | **new** | In the AIP only inside `/`-combinations today; seeded for completeness. |
 | `SEF` | Special Education Fund | ✅ | keep | — |
-| `TF` | Trust Fund | ✅ | keep, **not a ceiling target** | Real pass-through fund; appears in the AIP only inside combinations. Selectable on an expenditure but not one of the 7 funds that get a ceiling/allocation. |
+| ~~`TF`~~ | ~~Trust Fund~~ | ❌ | **deactivate** | Appears in the AIP only inside combinations, never standalone — no purely Trust-funded expenditure. Set `is_active = false` on the existing row. |
 | ~~`CF`~~ | ~~Calamity Fund~~ | ❌ | **deactivate** | Folded into `LDRRMF` (see above). Set `is_active = false` on the existing row. |
 
-Net: **7 active ceiling-managed funds** (GF, 20%DF, GAD, LDRRMF, PCPC, SCPWD, SEF) + **Trust Fund**
-active as a non-ceiling selectable source; **Calamity Fund deactivated**.
+Net: **7 active ceiling-managed funds** (GF, 20%DF, GAD, LDRRMF, PCPC, SCPWD, SEF); **Calamity Fund
+and Trust Fund deactivated**.
 
-## 4. Two judgment calls — please confirm
+## 4. Judgment calls — CONFIRMED (Ralph, 2026-07-15)
 
-1. **Calamity Fund → LDRRMF merge.** Recommended because the v1.4.3 target list names LDRRMF (not
-   Calamity), and RA 10121 renamed the 5% Calamity Fund to the LDRRMF. Reversible (reactivate the
-   Calamity row) if the office genuinely tracks the 30% Quick Response ("Calamity") portion as a
-   distinct fund. **If they are distinct for you, keep `CF` active and remove `Calamity Fund|5% CF|CF`
-   from the LDRRMF aliases.**
-2. **Trust Fund kept active** (not deactivated). It's a real fund and appears in AIP combinations; it
-   just isn't a ceiling target. Deactivate it instead if you never tag a standalone Trust-funded
-   expenditure.
+1. **Calamity Fund → LDRRMF merge — CONFIRMED.** LDRRMF is the post-RA 10121 name for the former 5%
+   Calamity Fund; `Calamity Fund` / `5% CF` / `CF` stay as LDRRMF aliases and the Calamity row is
+   deactivated.
+2. **Trust Fund — CONFIRMED deactivate.** It appears in the AIP only inside `/`-combinations, never
+   standalone, so no purely Trust-funded expenditure needs it selectable. Set `is_active = false`.
 
 ## 5. How to apply (import safety)
 
