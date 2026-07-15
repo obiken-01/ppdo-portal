@@ -1,0 +1,9 @@
+code,name,description,color,is_active,aliases
+GF,General Fund,Regular general fund appropriations,#16a34a,true,General fund|Gen Fund|Gen. Fund
+20%DF,20% Development Fund,20% of the IRA for development projects,#0891b2,true,20% DF|20 % DF|20%DF|DF|20% Development Fund
+GAD,5% GAD Fund,5% Gender and Development Fund,#be185d,true,Gender & Development Fund|Gender and Development Fund|GAD Fund|GAD FUND|GAD fund|GAD|5% GAD|5% GAD Fund
+LDRRMF,5% Local Disaster Risk Reduction and Management Fund,5% LDRRMF (post-RA 10121 name for the former 5% Calamity Fund),#ea580c,true,LDRRMF|LDRRM Fund|5% LDRRMF|Calamity Fund|5% CF|CF
+PCPC,1% Provincial Council for the Protection of Children Fund,1% PCPC appropriation,#0f766e,true,PCPC|1% PCPC|Provincial Council for the Protection of Children
+SCPWD,1% Senior Citizen / Persons with Disability Fund,1% Senior Citizen and PWD appropriation,#7c3aed,true,SC|1% SC|Senior Citizen|PWD|Persons with Disability
+SEF,Special Education Fund,Special Education Fund (1% real property tax),#2563eb,true,Special Education Fund
+TF,Trust Fund,Trust receipts / pass-through funds (not a ceiling-managed fund),#d97706,true,Trust Fund

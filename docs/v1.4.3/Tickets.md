@@ -191,7 +191,9 @@ aliases; upsert persists/updates aliases), then implement.
 3. DTOs: add Aliases to FundingSourceDto + UpsertFundingSourceDto.
 4. Service: add aliases to CsvHeaders; round-trip Export/Import; map in create/update.
 5. Config UI: Aliases input (pipe-delimited; hint that /-combinations aren't aliased) + list column.
-6. Seed aliases from Funding_Source_Aliases.md §3 (align Codes with reconciled config per O2).
+6. Seed from docs/v1.4.3/seed/funding_sources_seed.csv (the reconciled seed, O2 resolved — see
+   Funding_Source_Seed_Reconciliation.md). Import upserts by Code; export current CSV first to
+   confirm existing Codes before importing.
 
 Do NOT resolve multi-fund (/-separated) AIP values — they stay unselected. Do NOT alias external
 labels (DOH, NGAs, NGA (ER 1-94), TIEZA, TESDA, NDRRMC, DA-BAFE, PHILMEC, Brgy. Aid, Outsource) to
