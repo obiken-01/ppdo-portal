@@ -6,7 +6,7 @@
 > Working integration branch: `release/1.4.3`. All PRs target `release/1.4.3` (**NOT `main`**).
 
 Linear (milestone *v1.4.3 — Other Fund Source Ceiling & Allocation*, children of epic RAL-116):
-**A = [RAL-154](https://linear.app/ralphoksiprojects/issue/RAL-154), B = [RAL-155](https://linear.app/ralphoksiprojects/issue/RAL-155) (blocked by A), C = [RAL-156](https://linear.app/ralphoksiprojects/issue/RAL-156) (blocked by A + D), D = [RAL-157](https://linear.app/ralphoksiprojects/issue/RAL-157) — funding-source aliases (blocked by A, blocks C).**
+**A = [RAL-154](https://linear.app/ralphoksiprojects/issue/RAL-154), B = [RAL-155](https://linear.app/ralphoksiprojects/issue/RAL-155) (blocked by A), C = [RAL-156](https://linear.app/ralphoksiprojects/issue/RAL-156) (blocked by A + D), D = [RAL-157](https://linear.app/ralphoksiprojects/issue/RAL-157) — funding-source aliases (blocked by A, blocks C), E = [RAL-158](https://linear.app/ralphoksiprojects/issue/RAL-158) — WFP report N+1 queries (independent, bundled at Ralph's request — not part of the fund-source scope).**
 
 ---
 
@@ -201,4 +201,64 @@ any PPDO fund. Do NOT touch the Purchase Requests module.
 
 When done, commit with:
 feat(config): add aliases column to funding sources for AIP fund-source matching (RAL-157)
+```
+
+---
+
+## Ticket E — WFP Report: fix N+1 queries in report generation · RAL-158
+
+> Bundled into v1.4.3 at Ralph's request after a live Application Insights trace showed
+> "Generate Preview" (all divisions consolidated) taking ~30s at 100% CPU. Not part of the
+> fund-source scope — independent of tickets A-D, backend-only.
+
+```
+Read CLAUDE.md, PROJECT_DOCUMENTATION_NET_AZURE.md, and PPDO_PROJECT_CONTEXT.md.
+Read docs/PERFORMANCE_GUIDELINES.md FULLY — "query at the database, not in memory" and the
+existing IN-list batching pattern (IWfpRepository.GetLinesByActivityIdsAsync) are the template
+for this fix.
+
+Read these files before writing code:
+- backend/PPDO.Application/Services/WfpReportService.cs (GetReportAsync lines 91-175,
+  BuildWfpActivityMapAsync lines 179-196 — both loops to fix)
+- backend/PPDO.Application/Services/WfpExpenditureService.cs (GetByActivityIdAsync lines 76-88
+  — the innermost N+1; keep the existing singular method, add a batched sibling)
+- backend/PPDO.Infrastructure/Repositories/WfpExpenditureRepository.cs (single-id query methods
+  to mirror as IN (...) versions)
+- backend/PPDO.Domain/Interfaces/IWfpExpenditureRepository.cs and IWfpRepository.cs
+  (GetLinesByActivityIdsAsync — the existing IN-list pattern to copy exactly)
+- backend/PPDO.Domain/Interfaces/IRepository.cs (Query() — use directly for the office/AIP-record
+  in-memory-filter fixes, no new interface method needed)
+- backend/PPDO.Tests/Application/WfpReportServiceTests.cs and WfpExpenditureServiceTests.cs (extend)
+
+Working branch: release/1.4.3. Create fix/v1.4.3-ral-158-wfp-report-nplus1-queries off
+release/1.4.3 and open the PR against release/1.4.3 (NOT main).
+
+TDD: extend WfpExpenditureServiceTests and WfpReportServiceTests with tests asserting the batched
+repo methods are called once (not looped) and report output is unchanged, then implement.
+
+1. IWfpExpenditureRepository + WfpExpenditureRepository: add GetByWfpActivityIdsAsync(ids),
+   GetPeriodsByExpenditureIdsAsync(ids), GetProcurementItemsByExpenditureIdsAsync(ids) — each
+   WHERE ... IN (...), mirroring GetLinesByActivityIdsAsync's shape exactly.
+2. IWfpRepository + WfpRepository: add GetActivitiesByWfpIdsAsync(wfpIds) (WHERE WfpId IN (...)).
+3. WfpExpenditureService: add GetByActivityIdsAsync(wfpActivityIds, ct) — calls the 3 batched
+   repo methods once each, groups periods/items in memory by ExpenditureId, returns expenditures
+   grouped by WfpActivityId. Keep the existing singular GetByActivityIdAsync untouched (entry
+   wizard still uses it).
+4. WfpReportService.BuildWfpActivityMapAsync: one call to GetActivitiesByWfpIdsAsync instead of
+   the per-record loop, then group in memory.
+5. WfpReportService.GetReportAsync: one call to the new GetByActivityIdsAsync across every
+   wfpActivityId instead of the nested per-id loop, then re-key using the existing map.
+6. Same method: replace office GetAllAsync()+FirstOrDefault and AIP-record
+   GetAllAsync()+Where/OrderBy with _officeRepo.Query()/_aipRepo.Query() filtered/ordered in SQL.
+7. Run the full backend test suite; confirm report output is byte-for-byte unchanged.
+8. Verify live: reproduce "Generate Preview" (all divisions consolidated) in Application Insights
+   Live Metrics — confirm the DbCommand burst is gone (~150 → ~5-8 queries) and request duration
+   drops from ~30s to low single digits.
+
+Do NOT change the report's DTO shape/output structure. Do NOT touch PRReportService. Do NOT touch
+the WFP entry wizard's singular GetByActivityIdAsync/GetActivitiesByWfpIdAsync call sites or any
+RAL-154/155/156 fund-scoping logic. Do NOT add a caching layer — this is a query-shape fix.
+
+When done, commit with:
+perf(budget-planning): batch WFP report N+1 queries into IN-list lookups (RAL-158)
 ```
