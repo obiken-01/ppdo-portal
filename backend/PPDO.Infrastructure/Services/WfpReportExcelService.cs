@@ -259,7 +259,7 @@ public sealed class WfpReportExcelService : IWfpReportExcelService
                 row++;
             }
 
-            WriteTotalRow(ws, row, "SUB-TOTAL", group.SubTotal, ClrSubTotal, col: ColAccount);
+            WriteTotalRow(ws, row, "SUB-TOTAL", group.SubTotal, ClrSubTotal, col: ColAccount, fillCD: false);
             row++;
         }
 
@@ -306,15 +306,28 @@ public sealed class WfpReportExcelService : IWfpReportExcelService
 
     private void WriteTotalRow(
         IXLWorksheet ws, int row, string label, WfpReportAmountsDto amounts, XLColor fill,
-        int col = ColAccount)
+        int col = ColAccount, bool fillCD = true)
     {
         ws.Cell(row, col).Value = label;
         WriteAmounts(ws, row, amounts);
         ws.Range(row, ColRef, row, ColRelease).Style
             .Font.SetBold(true)
-            .Fill.SetBackgroundColor(fill)
             .Border.SetTopBorder(XLBorderStyleValues.Thin)
             .Border.SetBottomBorder(XLBorderStyleValues.Thin);
+
+        if (fillCD)
+        {
+            ws.Range(row, ColRef, row, ColRelease).Style.Fill.SetBackgroundColor(fill);
+        }
+        else
+        {
+            // SUB-TOTAL sits inside the activity's B/E vertical merge (unfilled across the
+            // whole block) — filling C/D only on this one interior row reads as a floating
+            // patch of color rather than a highlighted row (Ralph's manual-test feedback,
+            // 2026-07-16). B is skipped too: it's part of that same merge, so styling it here
+            // has no visual effect anyway (the merge's display comes from its anchor cell).
+            ws.Range(row, ColActivity, row, ColRelease).Style.Fill.SetBackgroundColor(fill);
+        }
     }
 
     private static void WriteAmounts(IXLWorksheet ws, int row, WfpReportAmountsDto a)
