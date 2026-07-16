@@ -628,15 +628,6 @@ function WfpReportPageInner() {
 
         {report && !reportLoading && (
           <button
-            onClick={() => window.print()}
-            className="px-4 py-1.5 text-sm font-medium border border-slate-300 text-slate-700 bg-white hover:bg-slate-50"
-          >
-            Print / Save as PDF
-          </button>
-        )}
-
-        {report && !reportLoading && (
-          <button
             onClick={handleExportExcel}
             disabled={excelExporting}
             className="px-4 py-1.5 text-sm font-medium border border-slate-300 text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
