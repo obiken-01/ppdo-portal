@@ -16,13 +16,17 @@ namespace PPDO.Functions.Functions;
 /// </summary>
 public sealed class WfpReportFunctions
 {
-    private readonly IWfpReportService  _report;
-    private readonly IJwtMiddleware     _jwt;
-    private readonly IPermissionService _permissions;
+    private readonly IWfpReportService       _report;
+    private readonly IWfpReportExcelService  _excel;
+    private readonly IJwtMiddleware          _jwt;
+    private readonly IPermissionService      _permissions;
 
-    public WfpReportFunctions(IWfpReportService report, IJwtMiddleware jwt, IPermissionService permissions)
+    public WfpReportFunctions(
+        IWfpReportService report, IWfpReportExcelService excel,
+        IJwtMiddleware jwt, IPermissionService permissions)
     {
         _report      = report;
+        _excel       = excel;
         _jwt         = jwt;
         _permissions = permissions;
     }
@@ -77,5 +81,43 @@ public sealed class WfpReportFunctions
 
         ServiceResult<WfpReportDto> result = await _report.GetReportAsync(officeId, fiscalYear, divisionId, ct);
         return await ConfigHttp.FromResultAsync(req, result, ct);
+    }
+
+    // ── GET /api/budget-planning/wfp/report/export?officeId=&fiscalYear=&divisionId= ─────────
+    // Same scoping rules as GetPreview. Returns the PBO-form-shaped .xlsx (RAL-159/v1.4.4).
+    [Function("WfpReportExport")]
+    public async Task<HttpResponseData> Export(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get",
+            Route = "budget-planning/wfp/report/export")] HttpRequestData req,
+        CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null || caller is null) return denied!;
+
+        if (!int.TryParse(req.Query["officeId"], out int officeId) ||
+            !int.TryParse(req.Query["fiscalYear"], out int fiscalYear))
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<WfpReportDto>.Fail("officeId and fiscalYear query parameters are required."), ct);
+
+        int? divisionId;
+        if (await CanManageAllocation(caller))
+            divisionId = int.TryParse(req.Query["divisionId"], out int did) ? did : null;
+        else
+            divisionId = caller.DivisionId;
+
+        ServiceResult<WfpReportDto> result = await _report.GetReportAsync(officeId, fiscalYear, divisionId, ct);
+        if (!result.IsSuccess)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.NotFound,
+                ApiResponse<WfpReportDto>.Fail(result.Error ?? "Report not found."), ct);
+
+        byte[] bytes = _excel.Export(result.Value!);
+
+        HttpResponseData response = req.CreateResponse(HttpStatusCode.OK);
+        response.Headers.Add("Content-Type",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.Headers.Add("Content-Disposition",
+            $"attachment; filename=\"WFP_{result.Value!.OfficeCode}_{fiscalYear}.xlsx\"");
+        await response.WriteBytesAsync(bytes);
+        return response;
     }
 }
