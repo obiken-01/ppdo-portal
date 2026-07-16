@@ -206,6 +206,34 @@ export async function getWfpReportPreview(
   return unwrap(data);
 }
 
+/**
+ * Downloads the WFP report as an .xlsx matching the PBO's WFP FINAL form (RAL-159/v1.4.4).
+ * Same office/fiscalYear/divisionId scoping as getWfpReportPreview. JWT must be sent via the
+ * Authorization header, so this uses Axios (not a plain link) — mirrors downloadWfpReport above.
+ * Filename is read from the server's Content-Disposition header when present, so it matches
+ * exactly what the backend generated (WFP_{officeCode}_{fiscalYear}.xlsx).
+ */
+export async function downloadWfpReportExcel(
+  officeId: number, fiscalYear: number, divisionId?: number
+): Promise<void> {
+  const response = await api.get("/budget-planning/wfp/report/export", {
+    params: { officeId, fiscalYear, ...(divisionId != null ? { divisionId } : {}) },
+    responseType: "blob",
+  });
+  const disposition = response.headers?.["content-disposition"] as string | undefined;
+  const match = disposition?.match(/filename="?([^"]+)"?/);
+  const filename = match?.[1] ?? `WFP_${officeId}_${fiscalYear}.xlsx`;
+
+  const url = URL.createObjectURL(new Blob([response.data as BlobPart]));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 // ---------------------------------------------------------------------------
 // Client-side roll-up preview (RAL-124) — mirrors WfpExpenditureCalculator.Compute
 // EXACTLY (backend: PPDO.Application/Common/WfpExpenditureCalculator.cs). There is no
