@@ -35,4 +35,18 @@ public interface IAipRepository : IRepository<AipRecord>
 
     /// <summary>Returns the single AipActivity whose PK equals <paramref name="id"/>, or null (RAL-122 ceiling checks).</summary>
     Task<AipActivity?> GetActivityByIdAsync(int id, CancellationToken ct = default);
+
+    /// <summary>
+    /// The single non-Archived AipRecord for <paramref name="fiscalYear"/> (v1.4.5 — RAL-161).
+    /// AIP records aren't office-scoped — one record spans every office via its AipOffice
+    /// children — so this is a plain WHERE FiscalYear = @fy query, not filtered by office.
+    /// Ordered by Id for determinism when more than one non-Archived record exists for the year.
+    /// </summary>
+    Task<AipRecord?> GetLatestByFiscalYearAsync(int fiscalYear, CancellationToken ct = default);
+
+    /// <summary>
+    /// Distinct AipRecord.FiscalYear values, newest first (v1.4.5 — RAL-161) — the Dashboard's
+    /// fiscal-year picker, computed in SQL instead of loading every AipRecord to dedupe in memory.
+    /// </summary>
+    Task<IReadOnlyList<int>> GetDistinctFiscalYearsAsync(CancellationToken ct = default);
 }

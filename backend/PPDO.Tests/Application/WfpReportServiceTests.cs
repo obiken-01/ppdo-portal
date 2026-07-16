@@ -71,7 +71,6 @@ public sealed class WfpReportServiceTests
 
     private sealed record Fixture(
         WfpReportService Sut,
-        Mock<IBudgetPlanningDashboardService> Dashboard,
         Mock<IAipRepository> AipRepo,
         Mock<IWfpRepository> WfpRepo,
         Mock<IWfpExpenditureService> Expenditures,
@@ -80,7 +79,6 @@ public sealed class WfpReportServiceTests
 
     private static Fixture Build()
     {
-        Mock<IBudgetPlanningDashboardService> dashboard = new();
         Mock<IAipRepository> aipRepo = new();
         Mock<IWfpRepository> wfpRepo = new();
         Mock<IWfpExpenditureService> expenditures = new();
@@ -128,10 +126,10 @@ public sealed class WfpReportServiceTests
             });
 
         WfpReportService sut = new(
-            dashboard.Object, aipRepo.Object, wfpRepo.Object, expenditures.Object,
+            aipRepo.Object, wfpRepo.Object, expenditures.Object,
             officeRepo.Object, accountRepo.Object);
 
-        return new Fixture(sut, dashboard, aipRepo, wfpRepo, expenditures, offices, accounts);
+        return new Fixture(sut, aipRepo, wfpRepo, expenditures, offices, accounts);
     }
 
     // ── GetEligibleOfficesAsync ───────────────────────────────────────────────
@@ -140,16 +138,20 @@ public sealed class WfpReportServiceTests
     public async Task GetEligibleOfficesAsync_ExcludesNotStarted_IncludesDraftAndFinal()
     {
         Fixture f = Build();
-        f.Dashboard.Setup(d => d.GetDashboardAsync(FiscalYear, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new PlanningDashboardDto(
-                FiscalYear, [FiscalYear],
-                new LdipSummaryDto(0, []), new AipSummaryDto(0, []), new WfpSummaryDto(0, 3),
-                [
-                    new WfpOfficeStatusDto(1, "PPDO", "PPDO Office", "Draft", 10),
-                    new WfpOfficeStatusDto(2, "PGO", "PGO Office", "Final", 10),
-                    new WfpOfficeStatusDto(3, "PTO", "PTO Office", "Not started", null),
-                ],
-                new AllocationSetupOverviewDto(3, 0, 0, 3)));
+        f.Offices.AddRange(
+        [
+            MakeOffice(1, "PPDO", "010"),
+            MakeOffice(2, "PGO", "020"),
+            MakeOffice(3, "PTO", "030"), // no WfpRecord at all — "Not started", excluded
+        ]);
+        f.AipRepo.Setup(r => r.GetLatestByFiscalYearAsync(FiscalYear, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakeAip(100, FiscalYear, PlanningStatus.Final));
+        f.WfpRepo.Setup(r => r.GetFilteredAsync(100, null, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpRecord>)
+            [
+                new WfpRecord { Id = 1, AipRecordId = 100, OfficeId = 1, FiscalYear = FiscalYear, Status = PlanningStatus.Draft },
+                new WfpRecord { Id = 2, AipRecordId = 100, OfficeId = 2, FiscalYear = FiscalYear, Status = PlanningStatus.Final },
+            ]);
 
         IReadOnlyList<WfpReportOfficeDto> result = await f.Sut.GetEligibleOfficesAsync(FiscalYear);
 

@@ -8,8 +8,10 @@ using PPDO.Domain.Interfaces;
 namespace PPDO.Tests.Application;
 
 /// <summary>
-/// Unit tests for <see cref="BudgetPlanningDashboardService"/> (RAL-80, RAL-92).
-/// All repositories are mocked — no database access occurs.
+/// Unit tests for <see cref="BudgetPlanningDashboardService"/> (RAL-80, RAL-92; PPDO-scoped
+/// rework — v1.4.5, RAL-161). All repositories are mocked — no database access occurs.
+/// GetDashboardAsync always resolves the office whose OfficeCode == "PPDO" — every test must
+/// seed an office with that exact code or GetDashboardAsync throws.
 /// GetRecentActivityAsync tests use <see cref="IAuditRepository.GetRecentAsync"/>; actor
 /// names are read from the <see cref="AuditLog.ChangedBy"/> navigation populated by the mock,
 /// mirroring what the real <see cref="AuditRepository"/> returns via its Include(a=>a.ChangedBy).
@@ -18,6 +20,7 @@ public sealed class BudgetPlanningDashboardServiceTests
 {
     // v1.4.3 (RAL-154): the readiness summary reads General Fund only — matches GetGeneralFundIdAsync().
     private const int GfFundId = 1;
+    private const int PpdoOfficeId = 1;
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -44,10 +47,23 @@ public sealed class BudgetPlanningDashboardServiceTests
         UpdatedAt = updatedAt ?? DateTime.UtcNow,
     };
 
-    private static Office Off(int id, string name, bool active = true, string? refCode = null) => new()
+    private static Office Off(int id, string name, bool active = true, string? refCode = null,
+        string code = "PPDO") => new()
     {
-        Id = id, OfficeCode = $"O{id}", OfficeName = name, IsActive = active,
+        Id = id, OfficeCode = code, OfficeName = name, IsActive = active,
         OfficeRefCode = refCode,
+        CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+    };
+
+    private static Division Div(int id, int officeId, string name, string? code = null, bool active = true) => new()
+    {
+        Id = id, OfficeId = officeId, Name = name, Code = code, IsActive = active,
+        CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+    };
+
+    private static FundingSource Fund(int id, string code, string name, bool active = true) => new()
+    {
+        Id = id, Code = code, Name = name, IsActive = active,
         CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
     };
 
@@ -94,15 +110,9 @@ public sealed class BudgetPlanningDashboardServiceTests
     }
 
     /// <summary>
-    /// Builds a service with mocked dependencies.
-    /// The audit mock is returned so callers can call Verify() on it.
-    /// By default GetRecentAsync returns the supplied <paramref name="audits"/> list
-    /// for any (take, officeId) combination — tests control what's in the list.
-    ///
-    /// <paramref name="aipRepoMock"/> / <paramref name="allocationMock"/> let
-    /// office-dashboard tests inject custom hierarchy/allocation behaviour; when
-    /// omitted, defaults return empty results so existing global-dashboard tests
-    /// are unaffected by the extra constructor dependencies.
+    /// Builds a service with mocked dependencies. The audit mock is returned so callers can call
+    /// Verify() on it. GetDashboardAsync resolves the office via OfficeCode == "PPDO" — tests that
+    /// exercise it must include an office built with the default Off() code ("PPDO").
     /// </summary>
     private static (BudgetPlanningDashboardService svc, Mock<IAuditRepository> auditMock) Build(
         List<LdipRecord> ldips,
@@ -110,11 +120,16 @@ public sealed class BudgetPlanningDashboardServiceTests
         List<WfpRecord> wfps,
         List<Office> offices,
         List<AuditLog> audits,
+        List<Division>? divisions = null,
+        List<FundingSource>? fundingSources = null,
         Mock<IAipRepository>? aipRepoMock = null,
-        Mock<IAllocationService>? allocationMock = null)
+        Mock<IAllocationService>? allocationMock = null,
+        Mock<IWfpExpenditureRepository>? wfpExpRepoMock = null)
     {
+        divisions      ??= [];
+        fundingSources ??= [];
+
         Mock<ILdipRepository> ldipRepo = new();
-        ldipRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(ldips);
         ldipRepo.Setup(r => r.GetListAsync(It.IsAny<int?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((int? officeId, string? status, CancellationToken _) =>
                 (IReadOnlyList<LdipRecord>)ldips
@@ -123,7 +138,14 @@ public sealed class BudgetPlanningDashboardServiceTests
                     .ToList());
 
         Mock<IAipRepository> aipRepo = aipRepoMock ?? new Mock<IAipRepository>();
-        aipRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(aips);
+        aipRepo.Setup(r => r.GetDistinctFiscalYearsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<int>)aips.Select(a => a.FiscalYear).Distinct()
+                .OrderByDescending(y => y).ToList());
+        aipRepo.Setup(r => r.GetLatestByFiscalYearAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int fy, CancellationToken _) => aips
+                .Where(a => a.FiscalYear == fy && a.Status != PlanningStatus.Archived)
+                .OrderBy(a => a.Id)
+                .FirstOrDefault());
         if (aipRepoMock is null)
         {
             aipRepo.Setup(r => r.GetOfficesByAipIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
@@ -136,11 +158,35 @@ public sealed class BudgetPlanningDashboardServiceTests
                 .ReturnsAsync((IReadOnlyList<AipActivity>)[]);
         }
 
-        Mock<IRepository<WfpRecord>> wfpRepo = new();
-        wfpRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(wfps);
+        Mock<IWfpRepository> wfpRepo = new();
+        wfpRepo.Setup(r => r.GetFilteredAsync(
+                It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int? aipRecordId, int? officeId, int? divisionId, CancellationToken _) =>
+                (IReadOnlyList<WfpRecord>)wfps
+                    .Where(w => aipRecordId == null || w.AipRecordId == aipRecordId)
+                    .Where(w => officeId == null || w.OfficeId == officeId)
+                    .Where(w => divisionId == null || w.DivisionId == divisionId)
+                    .ToList());
 
-        Mock<IRepository<Office>> officeRepo = new();
-        officeRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(offices);
+        Mock<IOfficeRepository> officeRepo = new();
+        officeRepo.Setup(r => r.GetByCodeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string code, CancellationToken _) => offices.FirstOrDefault(o => o.OfficeCode == code));
+        officeRepo.Setup(r => r.GetByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int id, CancellationToken _) => offices.FirstOrDefault(o => o.Id == id));
+
+        Mock<IRepository<Division>> divisionRepo = new();
+        divisionRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(divisions);
+
+        Mock<IRepository<FundingSource>> fundingSourceRepo = new();
+        fundingSourceRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(fundingSources);
+
+        Mock<IWfpExpenditureRepository> wfpExpRepo = wfpExpRepoMock ?? new Mock<IWfpExpenditureRepository>();
+        if (wfpExpRepoMock is null)
+        {
+            wfpExpRepo.Setup(r => r.GetActivityCoverageAsync(
+                    It.IsAny<int>(), It.IsAny<int?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new WfpActivityCoverageDto(0, 0));
+        }
 
         Mock<IAuditRepository> auditRepo = new();
         auditRepo
@@ -155,20 +201,45 @@ public sealed class BudgetPlanningDashboardServiceTests
             allocation.Setup(a => a.GetCeilingAsync(
                     It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(ServiceResult<BudgetCeilingDto>.NotFound("no ceiling"));
+            allocation.Setup(a => a.GetCeilingsAsync(
+                    It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((IReadOnlyList<BudgetCeilingDto>)[]);
             allocation.Setup(a => a.GetAllocationsAsync(
                     It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)[]);
             allocation.Setup(a => a.GetProgramAssignmentsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((IReadOnlyList<ProgramAssignmentDto>)[]);
-            allocation.Setup(a => a.GetSetupOverviewAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new AllocationSetupOverviewDto(0, 0, 0, 0));
         }
 
         BudgetPlanningDashboardService svc = new(
-            ldipRepo.Object, aipRepo.Object, wfpRepo.Object,
-            officeRepo.Object, auditRepo.Object, allocation.Object);
+            ldipRepo.Object, aipRepo.Object, wfpRepo.Object, wfpExpRepo.Object,
+            officeRepo.Object, divisionRepo.Object, fundingSourceRepo.Object,
+            auditRepo.Object, allocation.Object);
 
         return (svc, auditRepo);
+    }
+
+    // ── GetDashboardAsync — office resolution ─────────────────────────────
+
+    [Fact]
+    public async Task GetDashboardAsync_NoPpdoOfficeSeeded_Throws()
+    {
+        (BudgetPlanningDashboardService sut, _) = Build([], [], [], [], []);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => sut.GetDashboardAsync(fiscalYear: 2027, divisionId: null));
+    }
+
+    [Fact]
+    public async Task GetDashboardAsync_ResolvesPpdoOfficeByCode_IgnoresOtherOffices()
+    {
+        List<Office> offices = [Off(1, "PPDO", code: "PPDO"), Off(2, "Other Office", code: "OTH")];
+        (BudgetPlanningDashboardService sut, _) = Build([], [], [], offices, []);
+
+        PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027, divisionId: null);
+
+        Assert.Equal(1, result.OfficeId);
+        Assert.Equal("PPDO", result.OfficeCode);
     }
 
     // ── GetDashboardAsync — FY resolution ─────────────────────────────────
@@ -176,9 +247,9 @@ public sealed class BudgetPlanningDashboardServiceTests
     [Fact]
     public async Task GetDashboardAsync_NoAipRecords_DefaultsToNextCalendarYear()
     {
-        (BudgetPlanningDashboardService sut, _) = Build([], [], [], [], []);
+        (BudgetPlanningDashboardService sut, _) = Build([], [], [], [Off(PpdoOfficeId, "PPDO")], []);
 
-        PlanningDashboardDto result = await sut.GetDashboardAsync(fiscalYear: null);
+        PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: null, divisionId: null);
 
         Assert.Equal(DateTime.UtcNow.Year + 1, result.FiscalYear);
         Assert.Empty(result.AvailableFiscalYears);
@@ -188,182 +259,180 @@ public sealed class BudgetPlanningDashboardServiceTests
     public async Task GetDashboardAsync_AipRecords_ReturnsDistinctFiscalYearsDescending()
     {
         List<AipRecord> aips = [Aip(1, 2027), Aip(2, 2026), Aip(3, 2027)];
-        (BudgetPlanningDashboardService sut, _) = Build([], aips, [], [], []);
+        (BudgetPlanningDashboardService sut, _) = Build([], aips, [], [Off(PpdoOfficeId, "PPDO")], []);
 
-        PlanningDashboardDto result = await sut.GetDashboardAsync(fiscalYear: null);
+        PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: null, divisionId: null);
 
         Assert.Equal([2027, 2026], result.AvailableFiscalYears);
     }
 
-    // ── GetDashboardAsync — LDIP / AIP counts ─────────────────────────────
+    // ── GetDashboardAsync — LDIP / AIP counts (reuses the office-scoped builders) ──
 
     [Fact]
-    public async Task GetDashboardAsync_LdipGroupsByStatus()
+    public async Task GetDashboardAsync_LdipScopedToPpdoOffice()
     {
-        List<LdipRecord> ldips = [Ldip(1, "Final"), Ldip(2, "Draft"), Ldip(3, "Archived")];
-        (BudgetPlanningDashboardService sut, _) = Build(ldips, [], [], [], []);
+        List<LdipRecord> ldips =
+        [
+            Ldip(1, "Final", officeId: PpdoOfficeId),
+            Ldip(2, "Draft", officeId: PpdoOfficeId),
+            Ldip(3, "Draft", officeId: 999), // other office — excluded
+        ];
+        (BudgetPlanningDashboardService sut, _) = Build(ldips, [], [], [Off(PpdoOfficeId, "PPDO")], []);
 
-        PlanningDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027);
+        PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027, divisionId: null);
 
-        Assert.Equal(3, result.Ldip.Total);
-        Assert.Equal(3, result.Ldip.Breakdown.Count);
+        Assert.Equal(2, result.Ldip.Total);
     }
 
-    [Fact]
-    public async Task GetDashboardAsync_AipFiltersByFiscalYear()
-    {
-        List<AipRecord> aips = [Aip(1, 2027), Aip(2, 2026)];
-        (BudgetPlanningDashboardService sut, _) = Build([], aips, [], [], []);
-
-        PlanningDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027);
-
-        Assert.Equal(1, result.Aip.Total);
-    }
-
-    // ── GetDashboardAsync — WFP by office ─────────────────────────────────
+    // ── GetDashboardAsync — WFP by division ───────────────────────────────
 
     [Fact]
-    public async Task GetDashboardAsync_ActiveOfficeWithNoWfpRow_StatusIsNotStarted()
+    public async Task GetDashboardAsync_ActiveDivisionWithNoWfpRow_StatusIsNotStarted()
     {
         List<AipRecord> aips = [Aip(10, 2027, "Final")];
-        List<Office> offices = [Off(1, "PPDO")];
-        (BudgetPlanningDashboardService sut, _) = Build([], aips, [], offices, []);
+        List<Office> offices = [Off(PpdoOfficeId, "PPDO")];
+        List<Division> divisions = [Div(1, PpdoOfficeId, "Administrative")];
+        (BudgetPlanningDashboardService sut, _) = Build([], aips, [], offices, [], divisions);
 
-        PlanningDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027);
+        PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027, divisionId: null);
 
-        Assert.Single(result.WfpByOffice);
-        Assert.Equal("Not started", result.WfpByOffice[0].WfpStatus);
-        Assert.Equal("PPDO", result.WfpByOffice[0].OfficeName);
+        Assert.Single(result.WfpByDivision);
+        Assert.Equal("Not started", result.WfpByDivision[0].WfpStatus);
+        Assert.Equal("Administrative", result.WfpByDivision[0].DivisionName);
     }
 
     [Fact]
     public async Task GetDashboardAsync_WfpRecordExists_ShowsItsStatus()
     {
         List<AipRecord> aips = [Aip(10, 2027, "Final")];
-        List<Office> offices = [Off(1, "PPDO")];
-        List<WfpRecord> wfps = [Wfp(1, aipId: 10, officeId: 1, status: "Draft")];
-        (BudgetPlanningDashboardService sut, _) = Build([], aips, wfps, offices, []);
+        List<Office> offices = [Off(PpdoOfficeId, "PPDO")];
+        List<Division> divisions = [Div(1, PpdoOfficeId, "Administrative")];
+        List<WfpRecord> wfps = [Wfp(1, aipId: 10, officeId: PpdoOfficeId, status: "Draft", divisionId: 1)];
+        (BudgetPlanningDashboardService sut, _) = Build([], aips, wfps, offices, [], divisions);
 
-        PlanningDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027);
+        PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027, divisionId: null);
 
-        Assert.Single(result.WfpByOffice);
-        Assert.Equal("Draft", result.WfpByOffice[0].WfpStatus);
-        Assert.Equal(10, result.WfpByOffice[0].AipRecordId);
+        Assert.Single(result.WfpByDivision);
+        Assert.Equal("Draft", result.WfpByDivision[0].WfpStatus);
     }
 
     [Fact]
-    public async Task GetDashboardAsync_WfpByOfficeSorted_NotStartedBeforeDraftBeforeFinal()
+    public async Task GetDashboardAsync_MultipleWfpRecordsSameDivision_AnyFinal_ShowsFinal()
     {
         List<AipRecord> aips = [Aip(10, 2027, "Final")];
-        List<Office> offices = [Off(1, "O1"), Off(2, "O2"), Off(3, "O3")];
+        List<Office> offices = [Off(PpdoOfficeId, "PPDO")];
+        List<Division> divisions = [Div(1, PpdoOfficeId, "Administrative")];
         List<WfpRecord> wfps =
         [
-            Wfp(1, aipId: 10, officeId: 1, status: "Final"),
-            Wfp(2, aipId: 10, officeId: 2, status: "Draft"),
-            // office 3 has no WFP → "Not started"
-        ];
-        (BudgetPlanningDashboardService sut, _) = Build([], aips, wfps, offices, []);
-
-        PlanningDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027);
-
-        Assert.Equal(3, result.WfpByOffice.Count);
-        Assert.Equal("Not started", result.WfpByOffice[0].WfpStatus); // O3
-        Assert.Equal("Draft",       result.WfpByOffice[1].WfpStatus); // O2
-        Assert.Equal("Final",       result.WfpByOffice[2].WfpStatus); // O1
-    }
-
-    // ── GetDashboardAsync — multiple WfpRecords per office (one per division) ────
-    // Regression: a single office can have MULTIPLE WfpRecord rows under the same
-    // AIP — one per division (unique index is AipRecordId+OfficeId+DivisionId, not
-    // AipRecordId+OfficeId). GetDashboardAsync previously did
-    // wfps.ToDictionary(w => w.OfficeId), which throws ArgumentException
-    // ("An item with the same key has already been added") as soon as an office's
-    // second division gets a WfpRecord under the same AIP.
-
-    [Fact]
-    public async Task GetDashboardAsync_MultipleDivisionsSameOffice_DoesNotThrow()
-    {
-        List<AipRecord> aips = [Aip(10, 2027, "Final")];
-        List<Office> offices = [Off(1, "PPDO")];
-        List<WfpRecord> wfps =
-        [
-            Wfp(1, aipId: 10, officeId: 1, status: "Draft", divisionId: 1),
-            Wfp(2, aipId: 10, officeId: 1, status: "Draft", divisionId: 2),
-            Wfp(3, aipId: 10, officeId: 1, status: "Draft", divisionId: null),
-        ];
-        (BudgetPlanningDashboardService sut, _) = Build([], aips, wfps, offices, []);
-
-        PlanningDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027);
-
-        Assert.Single(result.WfpByOffice);
-    }
-
-    [Fact]
-    public async Task GetDashboardAsync_MultipleDivisionsSameOffice_AnyDivisionFinal_ShowsFinal()
-    {
-        List<AipRecord> aips = [Aip(10, 2027, "Final")];
-        List<Office> offices = [Off(1, "PPDO")];
-        List<WfpRecord> wfps =
-        [
-            Wfp(1, aipId: 10, officeId: 1, status: "Draft", divisionId: 1,
-                updatedAt: DateTime.UtcNow), // most recently updated, but not Final
-            Wfp(2, aipId: 10, officeId: 1, status: "Final", divisionId: 2,
+            Wfp(1, aipId: 10, officeId: PpdoOfficeId, status: "Draft", divisionId: 1,
+                updatedAt: DateTime.UtcNow),
+            Wfp(2, aipId: 10, officeId: PpdoOfficeId, status: "Final", divisionId: 1,
                 updatedAt: DateTime.UtcNow.AddDays(-5)),
         ];
-        (BudgetPlanningDashboardService sut, _) = Build([], aips, wfps, offices, []);
+        (BudgetPlanningDashboardService sut, _) = Build([], aips, wfps, offices, [], divisions);
 
-        PlanningDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027);
+        PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027, divisionId: null);
 
-        Assert.Equal("Final", result.WfpByOffice[0].WfpStatus);
+        Assert.Equal("Final", result.WfpByDivision[0].WfpStatus);
     }
 
     [Fact]
-    public async Task GetDashboardAsync_MultipleDivisionsSameOffice_NoneFinal_ShowsMostRecentlyUpdated()
+    public async Task GetDashboardAsync_ActivityCoverage_ReadFromRepository()
     {
         List<AipRecord> aips = [Aip(10, 2027, "Final")];
-        List<Office> offices = [Off(1, "PPDO")];
-        List<WfpRecord> wfps =
-        [
-            Wfp(1, aipId: 10, officeId: 1, status: "Draft", divisionId: 1,
-                updatedAt: DateTime.UtcNow.AddDays(-5)),
-            Wfp(2, aipId: 10, officeId: 1, status: "Draft", divisionId: 2,
-                updatedAt: DateTime.UtcNow), // most recent
-        ];
-        (BudgetPlanningDashboardService sut, _) = Build([], aips, wfps, offices, []);
+        List<Office> offices = [Off(PpdoOfficeId, "PPDO")];
+        List<Division> divisions = [Div(1, PpdoOfficeId, "Administrative")];
+        Mock<IWfpExpenditureRepository> wfpExpRepo = new();
+        wfpExpRepo.Setup(r => r.GetActivityCoverageAsync(
+                PpdoOfficeId, 1, 2027, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WfpActivityCoverageDto(3, 8));
+        (BudgetPlanningDashboardService sut, _) =
+            Build([], aips, [], offices, [], divisions, wfpExpRepoMock: wfpExpRepo);
 
-        PlanningDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027);
+        PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027, divisionId: null);
 
-        Assert.Single(result.WfpByOffice);
-        Assert.Equal("Draft", result.WfpByOffice[0].WfpStatus);
+        Assert.Equal(3, result.WfpByDivision[0].ActivitiesWithExpenditures);
+        Assert.Equal(8, result.WfpByDivision[0].TotalActivities);
     }
 
-    // ── GetDashboardAsync — allocation-setup overview (RAL-60) ────────────
+    // ── GetDashboardAsync — division clamp (RAL-161 / RAL-136 pattern) ────
 
     [Fact]
-    public async Task GetDashboardAsync_IncludesAllocationOverview_FromAllocationService()
+    public async Task GetDashboardAsync_DivisionIdSupplied_OnlyThatDivisionReturned()
     {
+        List<Office> offices = [Off(PpdoOfficeId, "PPDO")];
+        List<Division> divisions =
+        [
+            Div(1, PpdoOfficeId, "Administrative"),
+            Div(2, PpdoOfficeId, "ICT"),
+        ];
+        (BudgetPlanningDashboardService sut, _) = Build([], [], [], offices, [], divisions);
+
+        PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027, divisionId: 2);
+
+        Assert.Single(result.WfpByDivision);
+        Assert.Equal(2, result.WfpByDivision[0].DivisionId);
+        Assert.All(result.CeilingByFund, fund => Assert.Single(fund.ByDivision));
+    }
+
+    [Fact]
+    public async Task GetDashboardAsync_NoDivisionIdSupplied_EveryActiveDivisionReturned()
+    {
+        List<Office> offices = [Off(PpdoOfficeId, "PPDO")];
+        List<Division> divisions =
+        [
+            Div(1, PpdoOfficeId, "Administrative"),
+            Div(2, PpdoOfficeId, "ICT"),
+            Div(3, PpdoOfficeId, "Inactive Division", active: false),
+        ];
+        (BudgetPlanningDashboardService sut, _) = Build([], [], [], offices, [], divisions);
+
+        PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027, divisionId: null);
+
+        Assert.Equal(2, result.WfpByDivision.Count); // inactive division excluded
+    }
+
+    // ── GetDashboardAsync — ceiling/allocation by fund ────────────────────
+
+    [Fact]
+    public async Task GetDashboardAsync_CeilingByFund_ComputesRemainingFromAllDivisions_EvenWhenClamped()
+    {
+        List<Office> offices = [Off(PpdoOfficeId, "PPDO")];
+        List<Division> divisions =
+        [
+            Div(1, PpdoOfficeId, "Administrative"),
+            Div(2, PpdoOfficeId, "ICT"),
+        ];
+        List<FundingSource> funds = [Fund(GfFundId, "GF", "General Fund")];
+
         Mock<IAllocationService> allocation = new();
+        allocation.Setup(a => a.GetCeilingsAsync(PpdoOfficeId, 2027, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<BudgetCeilingDto>)
+                [new BudgetCeilingDto(1, PpdoOfficeId, 2027, GfFundId, "GF", "General Fund", 100_000m)]);
+        allocation.Setup(a => a.GetAllocationsAsync(PpdoOfficeId, 2027, GfFundId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)
+            [
+                new DivisionAllocationDto(1, 1, "Administrative", 2027, GfFundId, "GF", "General Fund", 60_000m),
+                new DivisionAllocationDto(2, 2, "ICT", 2027, GfFundId, "GF", "General Fund", 30_000m),
+            ]);
         allocation.Setup(a => a.GetGeneralFundIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(GfFundId);
-        allocation.Setup(a => a.GetCeilingAsync(
-                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(ServiceResult<BudgetCeilingDto>.NotFound("no ceiling"));
-        allocation.Setup(a => a.GetAllocationsAsync(
-                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)[]);
         allocation.Setup(a => a.GetProgramAssignmentsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<ProgramAssignmentDto>)[]);
-        allocation.Setup(a => a.GetSetupOverviewAsync(2027, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AllocationSetupOverviewDto(TotalOffices: 5, FullySetupCount: 2,
-                IncompleteCount: 1, NotStartedCount: 2));
-        (BudgetPlanningDashboardService sut, _) =
-            Build([], [], [], [], [], allocationMock: allocation);
+        allocation.Setup(a => a.GetCeilingAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ServiceResult<BudgetCeilingDto>.NotFound("n/a"));
 
-        PlanningDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027);
+        (BudgetPlanningDashboardService sut, _) = Build(
+            [], [], [], offices, [], divisions, funds, allocationMock: allocation);
 
-        Assert.Equal(5, result.Allocation.TotalOffices);
-        Assert.Equal(2, result.Allocation.FullySetupCount);
-        Assert.Equal(1, result.Allocation.IncompleteCount);
-        Assert.Equal(2, result.Allocation.NotStartedCount);
+        // Clamped to division 1 only — Remaining must still reflect BOTH divisions' allocations.
+        PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027, divisionId: 1);
+
+        FundCeilingDto gf = Assert.Single(result.CeilingByFund);
+        Assert.Equal(100_000m, gf.Ceiling);
+        Assert.Equal(10_000m, gf.Remaining); // 100,000 - (60,000 + 30,000), not just division 1's 60,000
+        FundDivisionShareDto share = Assert.Single(gf.ByDivision);
+        Assert.Equal(1, share.DivisionId);
+        Assert.Equal(60_000m, share.Amount);
     }
 
     // ── GetRecentActivityAsync ─────────────────────────────────────────────

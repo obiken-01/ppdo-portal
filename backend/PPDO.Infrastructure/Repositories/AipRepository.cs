@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PPDO.Application.Common;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Interfaces;
 using PPDO.Infrastructure.Data;
@@ -80,4 +81,19 @@ public sealed class AipRepository : Repository<AipRecord>, IAipRepository
     /// <inheritdoc />
     public async Task<AipActivity?> GetActivityByIdAsync(int id, CancellationToken ct = default)
         => await _context.Set<AipActivity>().FirstOrDefaultAsync(a => a.Id == id, ct);
+
+    /// <inheritdoc />
+    public async Task<AipRecord?> GetLatestByFiscalYearAsync(int fiscalYear, CancellationToken ct = default)
+        => await _context.Set<AipRecord>()
+            .Where(r => r.FiscalYear == fiscalYear && r.Status != PlanningStatus.Archived)
+            .OrderBy(r => r.Id)
+            .FirstOrDefaultAsync(ct);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<int>> GetDistinctFiscalYearsAsync(CancellationToken ct = default)
+        => await _context.Set<AipRecord>()
+            .Select(r => r.FiscalYear)
+            .Distinct()
+            .OrderByDescending(y => y)
+            .ToListAsync(ct);
 }

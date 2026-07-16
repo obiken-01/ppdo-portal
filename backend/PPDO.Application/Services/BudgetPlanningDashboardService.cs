@@ -6,128 +6,177 @@ using PPDO.Domain.Interfaces;
 namespace PPDO.Application.Services;
 
 /// <summary>
-/// Budget Planning Dashboard data service (RAL-80, RAL-92, RAL-60).
-/// GetDashboardAsync fetches small config tables in full (appropriate for their size).
-/// GetRecentActivityAsync delegates to IAuditRepository.GetRecentAsync so the DB
-/// applies ordering, office filtering, and TAKE — the entire audit_log is never loaded.
-/// GetOfficeDashboardAsync composes the office-scoped readiness hub by calling
-/// IAllocationService for the allocation-setup panel — it never re-implements those queries.
+/// Budget Planning Dashboard data service (RAL-80, RAL-92, RAL-60; PPDO-scoped rework — v1.4.5,
+/// RAL-161). GetDashboardAsync is permanently scoped to the PPDO office — Budget Planning is
+/// effectively PPDO-only in practice — and every query is pushed to SQL via scoped repository
+/// methods; the old fleet-wide "N offices set up" view (AllocationSetupOverviewDto) and its
+/// 8 unfiltered full-table scans are gone. GetRecentActivityAsync delegates to
+/// IAuditRepository.GetRecentAsync so the DB applies ordering, office filtering, and TAKE — the
+/// entire audit_log is never loaded. GetOfficeDashboardAsync composes the office-scoped
+/// readiness hub by calling IAllocationService for the allocation-setup panel — it never
+/// re-implements those queries.
 /// </summary>
 public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardService
 {
-    private readonly ILdipRepository         _ldipRepo;
-    private readonly IAipRepository          _aipRepo;
-    private readonly IRepository<WfpRecord>  _wfpRepo;
-    private readonly IRepository<Office>     _officeRepo;
-    private readonly IAuditRepository        _auditRepo;
-    private readonly IAllocationService      _allocationService;
+    private const string PpdoOfficeCode = "PPDO";
+
+    private readonly ILdipRepository            _ldipRepo;
+    private readonly IAipRepository             _aipRepo;
+    private readonly IWfpRepository             _wfpRepo;
+    private readonly IWfpExpenditureRepository  _wfpExpRepo;
+    private readonly IOfficeRepository          _officeRepo;
+    private readonly IRepository<Division>      _divisionRepo;
+    private readonly IRepository<FundingSource> _fundingSourceRepo;
+    private readonly IAuditRepository           _auditRepo;
+    private readonly IAllocationService         _allocationService;
 
     public BudgetPlanningDashboardService(
-        ILdipRepository         ldipRepo,
-        IAipRepository          aipRepo,
-        IRepository<WfpRecord>  wfpRepo,
-        IRepository<Office>     officeRepo,
-        IAuditRepository        auditRepo,
-        IAllocationService      allocationService)
+        ILdipRepository            ldipRepo,
+        IAipRepository             aipRepo,
+        IWfpRepository             wfpRepo,
+        IWfpExpenditureRepository  wfpExpRepo,
+        IOfficeRepository          officeRepo,
+        IRepository<Division>      divisionRepo,
+        IRepository<FundingSource> fundingSourceRepo,
+        IAuditRepository           auditRepo,
+        IAllocationService         allocationService)
     {
         _ldipRepo          = ldipRepo;
         _aipRepo           = aipRepo;
         _wfpRepo           = wfpRepo;
+        _wfpExpRepo        = wfpExpRepo;
         _officeRepo        = officeRepo;
+        _divisionRepo      = divisionRepo;
+        _fundingSourceRepo = fundingSourceRepo;
         _auditRepo         = auditRepo;
         _allocationService = allocationService;
     }
 
     /// <inheritdoc />
-    public async Task<PlanningDashboardDto> GetDashboardAsync(
-        int? fiscalYear, CancellationToken cancellationToken = default)
+    public async Task<PpdoDashboardDto> GetDashboardAsync(
+        int? fiscalYear, int? divisionId, CancellationToken ct = default)
     {
-        IReadOnlyList<LdipRecord> ldips   = await _ldipRepo.GetAllAsync(cancellationToken);
-        IReadOnlyList<AipRecord>  aips    = await _aipRepo.GetAllAsync(cancellationToken);
-        IReadOnlyList<WfpRecord>  wfps    = await _wfpRepo.GetAllAsync(cancellationToken);
-        IReadOnlyList<Office>     offices = await _officeRepo.GetAllAsync(cancellationToken);
+        Office ppdo = await _officeRepo.GetByCodeAsync(PpdoOfficeCode, ct)
+            ?? throw new InvalidOperationException($"Office '{PpdoOfficeCode}' is not seeded.");
 
-        // Available fiscal years — distinct, newest first.
-        List<int> availableFiscalYears = aips
-            .Select(a => a.FiscalYear)
-            .Distinct()
-            .OrderByDescending(y => y)
-            .ToList();
-
-        // Resolved FY: explicit param → latest AIP year → next calendar year.
+        IReadOnlyList<int> availableFiscalYears = await _aipRepo.GetDistinctFiscalYearsAsync(ct);
         int resolvedFY = fiscalYear
             ?? (availableFiscalYears.Count > 0 ? availableFiscalYears[0] : DateTime.UtcNow.Year + 1);
 
-        // LDIP summary.
-        List<LdipRecord> allLdips = [.. ldips];
-        List<StatusBreakdownDto> ldipBreakdown = allLdips
-            .GroupBy(l => l.Status)
-            .Select(g => new StatusBreakdownDto(g.Key, g.Count()))
-            .ToList();
-        LdipSummaryDto ldipSummary = new(allLdips.Count, ldipBreakdown);
+        OfficeLdipSummaryDto ldip = await BuildOfficeLdipSummaryAsync(ppdo.Id, resolvedFY, ct);
+        OfficeAipSummaryDto  aip  = await BuildOfficeAipSummaryAsync(ppdo.Id, resolvedFY, ct);
 
-        // AIP summary for the resolved FY.
-        List<AipRecord> fyAips = aips.Where(a => a.FiscalYear == resolvedFY).ToList();
-        List<StatusBreakdownDto> aipBreakdown = fyAips
-            .GroupBy(a => a.Status)
-            .Select(g => new StatusBreakdownDto(g.Key, g.Count()))
-            .ToList();
-        AipSummaryDto aipSummary = new(fyAips.Count, aipBreakdown);
-
-        // Primary AIP for the resolved FY: prefer Final, then Draft, then newest by id.
-        static int AipStatusRank(string s) => s == "Final" ? 0 : s == "Draft" ? 1 : 2;
-        AipRecord? primaryAip = fyAips
-            .OrderBy(a => AipStatusRank(a.Status))
-            .ThenByDescending(a => a.Id)
-            .FirstOrDefault();
-
-        // WFP map keyed by OfficeId (for the primary AIP only). One office can have MULTIPLE
-        // WfpRecord rows — one per division (division is the data-entry scope; §1) — so this
-        // picks one representative record per office for the summary table: prefer Final (any
-        // division finalizing is enough to surface "Final" here), else the most recently
-        // updated Draft. The full per-division breakdown lives on the WFP page itself.
-        Dictionary<int, WfpRecord> wfpMap = primaryAip is null
-            ? []
-            : wfps.Where(w => w.AipRecordId == primaryAip.Id)
-                  .GroupBy(w => w.OfficeId)
-                  .ToDictionary(
-                      g => g.Key,
-                      g => g.OrderByDescending(w => w.Status == PlanningStatus.Final)
-                            .ThenByDescending(w => w.UpdatedAt)
-                            .First());
-
-        // Active offices left-joined to WFP map → status rows, sorted Not started → Draft → Final.
-        List<Office> activeOffices = offices.Where(o => o.IsActive).ToList();
-        static int WfpOfficeStatusRank(string s) => s == "Not started" ? 0 : s == "Draft" ? 1 : 2;
-        List<WfpOfficeStatusDto> wfpByOffice = activeOffices
-            .Select(o =>
-            {
-                wfpMap.TryGetValue(o.Id, out WfpRecord? wfp);
-                return new WfpOfficeStatusDto(
-                    o.Id, o.OfficeCode, o.OfficeName,
-                    wfp?.Status ?? "Not started",
-                    wfp?.AipRecordId);
-            })
-            .OrderBy(r => WfpOfficeStatusRank(r.WfpStatus))
+        // Divisions in scope: every active division of PPDO, narrowed to one when the caller
+        // (the Functions layer) has already clamped divisionId for a non-finance caller.
+        List<Division> divisions = (await _divisionRepo.GetAllAsync(ct))
+            .Where(d => d.OfficeId == ppdo.Id && d.IsActive
+                     && (divisionId == null || d.Id == divisionId.Value))
+            .OrderBy(d => d.Name)
             .ToList();
 
-        // WFP summary: Final WFP count across ALL AIPs for the resolved FY vs active offices.
-        int finalWfpCount = wfps.Count(w => w.FiscalYear == resolvedFY && w.Status == "Final");
-        WfpSummaryDto wfpSummary = new(finalWfpCount, activeOffices.Count);
+        IReadOnlyList<DivisionWfpStatusDto> wfpByDivision =
+            await BuildWfpByDivisionAsync(ppdo.Id, resolvedFY, divisions, ct);
+        IReadOnlyList<FundCeilingDto> ceilingByFund =
+            await BuildCeilingByFundAsync(ppdo.Id, resolvedFY, divisions, ct);
 
-        // Allocation-setup counts across all active offices — used by the "All Offices"
-        // dashboard view, where per-office allocation detail can't be shown (RAL-60).
-        AllocationSetupOverviewDto allocationOverview =
-            await _allocationService.GetSetupOverviewAsync(resolvedFY, cancellationToken);
+        return new PpdoDashboardDto(
+            resolvedFY, availableFiscalYears, ppdo.Id, ppdo.OfficeCode, ppdo.OfficeName,
+            ldip, aip, wfpByDivision, ceilingByFund);
+    }
 
-        return new PlanningDashboardDto(
-            resolvedFY,
-            availableFiscalYears,
-            ldipSummary,
-            aipSummary,
-            wfpSummary,
-            wfpByOffice,
-            allocationOverview);
+    private async Task<IReadOnlyList<DivisionWfpStatusDto>> BuildWfpByDivisionAsync(
+        int officeId, int fiscalYear, IReadOnlyList<Division> divisions, CancellationToken ct)
+    {
+        AipRecord? primaryAip = await _aipRepo.GetLatestByFiscalYearAsync(fiscalYear, ct);
+
+        // One representative WfpRecord per division: prefer Final, else most recently updated.
+        Dictionary<int, WfpRecord> wfpByDivisionMap = [];
+        if (primaryAip is not null)
+        {
+            IReadOnlyList<WfpRecord> records =
+                await _wfpRepo.GetFilteredAsync(primaryAip.Id, officeId, divisionId: null, ct);
+            wfpByDivisionMap = records
+                .Where(w => w.DivisionId.HasValue)
+                .GroupBy(w => w.DivisionId!.Value)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderByDescending(w => w.Status == PlanningStatus.Final)
+                          .ThenByDescending(w => w.UpdatedAt)
+                          .First());
+        }
+
+        List<DivisionWfpStatusDto> result = [];
+        foreach (Division division in divisions)
+        {
+            // Sequential — DbContext is not thread-safe, never Task.WhenAll these.
+            WfpActivityCoverageDto coverage =
+                await _wfpExpRepo.GetActivityCoverageAsync(officeId, division.Id, fiscalYear, ct);
+
+            IReadOnlyList<DivisionFundAmountDto> allocationByFund =
+                await GetDivisionAllocationByFundAsync(officeId, fiscalYear, division.Id, ct);
+
+            wfpByDivisionMap.TryGetValue(division.Id, out WfpRecord? wfp);
+
+            result.Add(new DivisionWfpStatusDto(
+                division.Id, division.Code, division.Name,
+                wfp?.Status ?? "Not started",
+                coverage.ActivitiesWithExpenditures, coverage.TotalActivities,
+                allocationByFund.Sum(f => f.Amount),
+                allocationByFund));
+        }
+
+        return result;
+    }
+
+    private async Task<IReadOnlyList<DivisionFundAmountDto>> GetDivisionAllocationByFundAsync(
+        int officeId, int fiscalYear, int divisionId, CancellationToken ct)
+    {
+        IReadOnlyList<FundingSource> activeFunds = (await _fundingSourceRepo.GetAllAsync(ct))
+            .Where(f => f.IsActive)
+            .ToList();
+
+        List<DivisionFundAmountDto> result = [];
+        foreach (FundingSource fund in activeFunds)
+        {
+            IReadOnlyList<DivisionAllocationDto> allocations =
+                await _allocationService.GetAllocationsAsync(officeId, fiscalYear, fund.Id, ct);
+            decimal amount = allocations.FirstOrDefault(a => a.DivisionId == divisionId)?.Amount ?? 0m;
+            if (amount > 0m)
+                result.Add(new DivisionFundAmountDto(fund.Id, fund.Code, fund.Name, amount));
+        }
+
+        return result;
+    }
+
+    private async Task<IReadOnlyList<FundCeilingDto>> BuildCeilingByFundAsync(
+        int officeId, int fiscalYear, IReadOnlyList<Division> divisionsInScope, CancellationToken ct)
+    {
+        IReadOnlyList<FundingSource> activeFunds = (await _fundingSourceRepo.GetAllAsync(ct))
+            .Where(f => f.IsActive)
+            .ToList();
+        IReadOnlyList<BudgetCeilingDto> ceilings = await _allocationService.GetCeilingsAsync(officeId, fiscalYear, ct);
+
+        List<FundCeilingDto> result = [];
+        foreach (FundingSource fund in activeFunds)
+        {
+            decimal ceiling = ceilings.FirstOrDefault(c => c.FundingSourceId == fund.Id)?.Amount ?? 0m;
+
+            // All divisions' amounts (not just the clamped set) — "Remaining" is an office-wide
+            // fact and must reflect the true unallocated portion regardless of who's viewing.
+            IReadOnlyList<DivisionAllocationDto> allocations =
+                await _allocationService.GetAllocationsAsync(officeId, fiscalYear, fund.Id, ct);
+            decimal remaining = ceiling - allocations.Sum(a => a.Amount);
+
+            List<FundDivisionShareDto> byDivision = divisionsInScope
+                .Select(d => new FundDivisionShareDto(
+                    d.Id, d.Code, d.Name,
+                    allocations.FirstOrDefault(a => a.DivisionId == d.Id)?.Amount ?? 0m))
+                .ToList();
+
+            result.Add(new FundCeilingDto(fund.Id, fund.Code, fund.Name, ceiling, remaining, byDivision));
+        }
+
+        return result;
     }
 
     /// <inheritdoc />
@@ -220,14 +269,11 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     private async Task<OfficeAipSummaryDto> BuildOfficeAipSummaryAsync(
         int officeId, int fiscalYear, CancellationToken cancellationToken)
     {
-        IReadOnlyList<Office> offices = await _officeRepo.GetAllAsync(cancellationToken);
-        Office? office = offices.FirstOrDefault(o => o.Id == officeId);
+        Office? office = await _officeRepo.GetByIdAsync(officeId, cancellationToken);
         if (office?.OfficeRefCode is null)
             return new OfficeAipSummaryDto(false, null, 0, 0, 0);
 
-        IReadOnlyList<AipRecord> allAip = await _aipRepo.GetAllAsync(cancellationToken);
-        AipRecord? aipRecord = allAip.FirstOrDefault(
-            r => r.FiscalYear == fiscalYear && r.Status != PlanningStatus.Archived);
+        AipRecord? aipRecord = await _aipRepo.GetLatestByFiscalYearAsync(fiscalYear, cancellationToken);
         if (aipRecord is null)
             return new OfficeAipSummaryDto(false, null, 0, 0, 0);
 

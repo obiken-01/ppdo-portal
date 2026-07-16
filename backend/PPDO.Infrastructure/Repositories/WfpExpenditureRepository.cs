@@ -134,4 +134,24 @@ public sealed class WfpExpenditureRepository : Repository<WfpExpenditure>, IWfpE
             where act.WfpId == wfpRecordId
             select e.FundingSourceId
         ).Distinct().ToListAsync(ct);
+
+    /// <inheritdoc />
+    public async Task<WfpActivityCoverageDto> GetActivityCoverageAsync(
+        int officeId, int? divisionId, int fiscalYear, CancellationToken ct = default)
+    {
+        IQueryable<WfpActivity> scopedActivities =
+            from act in _context.Set<WfpActivity>()
+            join rec in _context.Set<WfpRecord>() on act.WfpId equals rec.Id
+            where rec.OfficeId == officeId
+               && rec.FiscalYear == fiscalYear
+               && (divisionId == null || rec.DivisionId == divisionId)
+            select act;
+
+        int total = await scopedActivities.CountAsync(ct);
+        int withExpenditure = await scopedActivities
+            .Where(act => _context.Set<WfpExpenditure>().Any(e => e.WfpActivityId == act.Id))
+            .CountAsync(ct);
+
+        return new WfpActivityCoverageDto(withExpenditure, total);
+    }
 }
