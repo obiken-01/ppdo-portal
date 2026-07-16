@@ -121,13 +121,28 @@ form repeats once per fund source**, matching `WfpReportDto.FundSourceReports` (
 
 ## 4. Open items to resolve before/early in implementation
 
-1. **F–K descriptive columns are NOT in `WfpReportDto`.** Resources Needed, Responsible Person/Unit,
-   Success Indicator, Means of Verification, Outcome Indicator, Target Beneficiaries. The entry
-   wizard captures some of these ("Project details (optional)": `outcomeIndicator`,
-   `targetBeneficiaries`, …) and the AIP activity may carry others (`expected_outputs`). **Decide:**
-   (a) surface these through `WfpReportService`/DTO and populate them, or (b) ship v1 of the export
-   with F–K blank and add them in a follow-up. Needs a data-availability audit of
-   `WfpActivity`/`AipActivity`/the WFP project-details fields.
+1. **F–K descriptive columns are NOT in `WfpReportDto`, and the existing frontend capture is at the
+   wrong granularity.** The form's Resources Needed / Responsible Person/Unit / Success Indicator /
+   Means of Verification / Outcome Indicator / Target Beneficiaries sit on row 12, the **ACTIVITY**
+   row (alongside `E12 = ACTIVITY`) — i.e. one set of 6 values **per activity**.
+
+   The entry wizard (`frontend/.../wfp/entry/page.tsx`) already has a UI for these 6 fields
+   ("Project details (optional)" accordion, `PROJECT_FIELDS` const ~line 183), but:
+   - it is **localStorage-only** — `saveProjectField()` (~line 1150) writes to
+     `localStorage.setItem(wfp_entry_project_fields_${selectedProjectId}, …)` and is never sent to
+     any API. The accordion's own on-screen note says so explicitly: *"Saved locally in this
+     browser for now — no backend field exists for project-level descriptive data yet."*
+   - it is keyed **per PROJECT** (`selectedProjectId`), not per activity. A project can have
+     multiple activities, each with its own row 12 values in the real form — so this needs to
+     become per-activity storage, not just "add a backend field for the existing project-level UI."
+
+   **Decide:** (a) add an entity/columns for these 6 fields scoped to the activity (likely
+   `WfpActivity` or a new join table keyed by `wfp_activity_id`), migrate the entry wizard's
+   accordion from per-project `localStorage` to per-activity backend persistence, then surface
+   through `WfpReportService`/`WfpReportActivityDto`; or (b) ship v1 of the export with F–K blank
+   and do this properly as a follow-up (recommended default, given it's a real schema + UI rework,
+   not a small addition). Also check `AipActivity.expected_outputs` for overlap before designing
+   new columns — it may already cover one of the six.
 2. **Template packaging.** Bundle a cleaned copy of the PBO form (data rows stripped, one styled
    "template row" per row-type kept) as an embedded resource / content file under
    `PPDO.Infrastructure`. It must contain only the static chrome + a styled exemplar of each row
