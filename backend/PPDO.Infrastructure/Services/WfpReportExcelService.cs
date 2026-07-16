@@ -312,13 +312,9 @@ public sealed class WfpReportExcelService : IWfpReportExcelService
         WriteAmounts(ws, row, amounts);
         ws.Range(row, ColRef, row, ColRelease).Style
             .Font.SetBold(true)
+            .Fill.SetBackgroundColor(fill)
             .Border.SetTopBorder(XLBorderStyleValues.Thin)
             .Border.SetBottomBorder(XLBorderStyleValues.Thin);
-
-        // C/D are blank indent-marker columns at this row (no program/project text here) —
-        // no fill on them, matching Ralph's manual-test feedback (2026-07-16).
-        ws.Cell(row, ColRef).Style.Fill.SetBackgroundColor(fill);
-        ws.Range(row, ColActivity, row, ColRelease).Style.Fill.SetBackgroundColor(fill);
     }
 
     private static void WriteAmounts(IXLWorksheet ws, int row, WfpReportAmountsDto a)
