@@ -159,6 +159,31 @@ function money(n: number) {
   return formatMoney(n);
 }
 
+// ---------------------------------------------------------------------------
+// Export filename — "WFP{fiscalYear}_{officeCode}[_{divisionCode}]_yyyyMMddHHmmss.xlsx"
+// (Ralph's naming convention, 2026-07-16). Falls back to the raw divisionId when the
+// division list hasn't resolved a code for it (shouldn't happen in practice — divisionId
+// is only ever set from an option already present in divisionList).
+// ---------------------------------------------------------------------------
+
+function timestamp(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+}
+
+function buildExportFilename(
+  officeCode: string, fiscalYear: number, divisionId: number | null, divisionList: DivisionResponse[]
+): string {
+  const parts = [`WFP${fiscalYear}`, officeCode];
+  if (divisionId != null) {
+    const division = divisionList.find((d) => d.id === divisionId);
+    parts.push(division?.code || division?.name || String(divisionId));
+  }
+  parts.push(timestamp());
+  return `${parts.join("_")}.xlsx`;
+}
+
 /** Renders the 8 money columns (Total/Reserved/Net/Q1-4/AmountReleased) for any row type. */
 function AmountsCells({ amounts, className = "" }: { amounts: WfpReportAmountsDto; className?: string }) {
   const cls = `px-2 py-1 text-right tabular-nums whitespace-nowrap ${className}`;
@@ -443,9 +468,10 @@ function WfpReportPageInner() {
   }
 
   function handleExportExcel() {
-    if (officeId == null || fiscalYear == null) return;
+    if (officeId == null || fiscalYear == null || report == null) return;
     setExcelExporting(true);
-    downloadWfpReportExcel(officeId, fiscalYear, divisionId ?? undefined)
+    const filename = buildExportFilename(report.officeCode, fiscalYear, divisionId, divisionList);
+    downloadWfpReportExcel(officeId, fiscalYear, filename, divisionId ?? undefined)
       .catch((err) => toast.error("Export failed", wfpErrorMessage(err, "Please try again.")))
       .finally(() => setExcelExporting(false));
   }

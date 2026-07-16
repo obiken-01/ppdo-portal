@@ -210,19 +210,18 @@ export async function getWfpReportPreview(
  * Downloads the WFP report as an .xlsx matching the PBO's WFP FINAL form (RAL-159/v1.4.4).
  * Same office/fiscalYear/divisionId scoping as getWfpReportPreview. JWT must be sent via the
  * Authorization header, so this uses Axios (not a plain link) — mirrors downloadWfpReport above.
- * Filename is read from the server's Content-Disposition header when present, so it matches
- * exactly what the backend generated (WFP_{officeCode}_{fiscalYear}.xlsx).
+ * `filename` is caller-supplied (the Report page builds
+ * "WFP{fiscalYear}_{officeCode}[_{divisionCode}]_yyyyMMddHHmmss.xlsx" — Ralph's naming
+ * convention, 2026-07-16) rather than read from the server's Content-Disposition header, so the
+ * downloaded file always carries the exact office/division context the user picked on-screen.
  */
 export async function downloadWfpReportExcel(
-  officeId: number, fiscalYear: number, divisionId?: number
+  officeId: number, fiscalYear: number, filename: string, divisionId?: number
 ): Promise<void> {
   const response = await api.get("/budget-planning/wfp/report/export", {
     params: { officeId, fiscalYear, ...(divisionId != null ? { divisionId } : {}) },
     responseType: "blob",
   });
-  const disposition = response.headers?.["content-disposition"] as string | undefined;
-  const match = disposition?.match(/filename="?([^"]+)"?/);
-  const filename = match?.[1] ?? `WFP_${officeId}_${fiscalYear}.xlsx`;
 
   const url = URL.createObjectURL(new Blob([response.data as BlobPart]));
   const a = document.createElement("a");

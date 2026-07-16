@@ -62,10 +62,12 @@ public sealed class WfpReportExcelService : IWfpReportExcelService
     private const double FontSize      = 13;
     private const string AccountingFmt = "_(* #,##0.00_);_(* \\(#,##0.00\\);_(* \"-\"??_);_(@_)";
 
-    // index = column number, 0 = unused
+    // index = column number, 0 = unused. C and D are thin indent-marker columns (program/project
+    // titles are merged out to V regardless of their own width) — matching the source form's
+    // narrow C column; D was too wide (Ralph's manual test feedback, 2026-07-16).
     private static readonly double[] ColWidths =
     {
-        0, 0, 37.8, 1.0, 20, 31.5, 12.5, 15.2, 14.3, 13.8, 18.7, 13.8,
+        0, 0, 37.8, 1.0, 1.5, 31.5, 12.5, 15.2, 14.3, 13.8, 18.7, 13.8,
         20, 20, 45.8, 17.5, 17.7, 17.5, 15.7, 15.7, 15.7, 15.7, 18.2,
     };
 
@@ -309,9 +311,13 @@ public sealed class WfpReportExcelService : IWfpReportExcelService
         WriteAmounts(ws, row, amounts);
         ws.Range(row, ColRef, row, ColRelease).Style
             .Font.SetBold(true)
-            .Fill.SetBackgroundColor(fill)
             .Border.SetTopBorder(XLBorderStyleValues.Thin)
             .Border.SetBottomBorder(XLBorderStyleValues.Thin);
+
+        // C/D are blank indent-marker columns at this row (no program/project text here) —
+        // no fill on them, matching Ralph's manual-test feedback (2026-07-16).
+        ws.Cell(row, ColRef).Style.Fill.SetBackgroundColor(fill);
+        ws.Range(row, ColActivity, row, ColRelease).Style.Fill.SetBackgroundColor(fill);
     }
 
     private static void WriteAmounts(IXLWorksheet ws, int row, WfpReportAmountsDto a)
