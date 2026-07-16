@@ -56,6 +56,7 @@ public sealed class WfpReportExcelService : IWfpReportExcelService
     private static readonly XLColor ClrColHeader   = XLColor.FromHtml("#A8D08D");
     private static readonly XLColor ClrSubTotal    = XLColor.FromHtml("#92D050");
     private static readonly XLColor ClrActivityTot = XLColor.FromHtml("#FFFF00");
+    private static readonly XLColor ClrProjectTot  = XLColor.FromHtml("#9DC3E6");
     private static readonly XLColor ClrProgramTot  = XLColor.FromHtml("#FFC000");
     private static readonly XLColor ClrBreakdown   = XLColor.FromHtml("#C5E0B3");
     private const string FontName      = "Arial Narrow";
@@ -232,7 +233,7 @@ public sealed class WfpReportExcelService : IWfpReportExcelService
         foreach (WfpReportActivityDto activity in project.Activities)
             row = WriteActivity(ws, activity, row);
 
-        WriteTotalRow(ws, row, "PROJECT GRAND TOTAL", project.GrandTotal, ClrProgramTot);
+        WriteTotalRow(ws, row, "PROJECT GRAND TOTAL", project.GrandTotal, ClrProjectTot);
         row++;
 
         return row;
