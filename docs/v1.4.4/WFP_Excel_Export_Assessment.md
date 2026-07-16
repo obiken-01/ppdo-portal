@@ -9,6 +9,10 @@
 > generate from scratch — it is an official fixed-layout form, and our current exports
 > (`ExcelService.ExportPRReport`) build cell-by-cell in C#, which would be far more brittle for a
 > government form. This doc records the form's actual structure so implementation can start clean.
+>
+> **v1.4.4 acceptance bar (confirmed 2026-07-16):** hierarchy, activities, and expenditure values
+> populate accurately. The 6 descriptive columns F–K ship **blank** — Ralph is separately
+> clarifying that requirement; see §4. Not a blocker for this feature.
 
 ---
 
@@ -119,31 +123,39 @@ form repeats once per fund source**, matching `WfpReportDto.FundSourceReports` (
   removes the dependency on the `VALIDATION` sheet.
 - **Template population, not scratch.** Confirmed prior decision.
 
-## 4. Open items to resolve before/early in implementation
+## 4. Decided: F–K columns ship blank in v1.4.4
 
-1. **F–K descriptive columns are NOT in `WfpReportDto`, and the existing frontend capture is at the
-   wrong granularity.** The form's Resources Needed / Responsible Person/Unit / Success Indicator /
-   Means of Verification / Outcome Indicator / Target Beneficiaries sit on row 12, the **ACTIVITY**
-   row (alongside `E12 = ACTIVITY`) — i.e. one set of 6 values **per activity**.
+**Decision (2026-07-16, Ralph):** the 6 descriptive columns (Resources Needed, Responsible
+Person/Unit, Success Indicator, Means of Verification, Outcome Indicator, Target Beneficiaries)
+are **project-level** by design (per Ralph's own discussion/intent for the entry wizard — this is
+the authoritative call, overriding my raw reading of the form's row-12 placement below). They stay
+**out of scope for v1.4.4's Excel export**: the generated file ships with F–K **blank**, and PBO
+staff fill them in manually after export, same as they do today. Ralph is separately clarifying the
+requirement; the export's job for now is to get the **hierarchy, activities, and expenditure values
+accurately populated** — that's the acceptance bar, not F–K.
 
-   The entry wizard (`frontend/.../wfp/entry/page.tsx`) already has a UI for these 6 fields
-   ("Project details (optional)" accordion, `PROJECT_FIELDS` const ~line 183), but:
-   - it is **localStorage-only** — `saveProjectField()` (~line 1150) writes to
-     `localStorage.setItem(wfp_entry_project_fields_${selectedProjectId}, …)` and is never sent to
-     any API. The accordion's own on-screen note says so explicitly: *"Saved locally in this
-     browser for now — no backend field exists for project-level descriptive data yet."*
-   - it is keyed **per PROJECT** (`selectedProjectId`), not per activity. A project can have
-     multiple activities, each with its own row 12 values in the real form — so this needs to
-     become per-activity storage, not just "add a backend field for the existing project-level UI."
+Do NOT block implementation on this. Do NOT add backend persistence for these fields as part of
+this feature. Revisit only if/when Ralph's clarification lands and he asks for it explicitly.
 
-   **Decide:** (a) add an entity/columns for these 6 fields scoped to the activity (likely
-   `WfpActivity` or a new join table keyed by `wfp_activity_id`), migrate the entry wizard's
-   accordion from per-project `localStorage` to per-activity backend persistence, then surface
-   through `WfpReportService`/`WfpReportActivityDto`; or (b) ship v1 of the export with F–K blank
-   and do this properly as a follow-up (recommended default, given it's a real schema + UI rework,
-   not a small addition). Also check `AipActivity.expected_outputs` for overlap before designing
-   new columns — it may already cover one of the six.
-2. **Template packaging.** Bundle a cleaned copy of the PBO form (data rows stripped, one styled
+<details>
+<summary>Reference: raw form/UI findings (kept for whenever F–K clarification lands)</summary>
+
+The form's Resources Needed/Responsible Person/Success Indicator/Means of Verification/Outcome
+Indicator/Target Beneficiaries sit on row 12, the same row as `E12 = ACTIVITY` — i.e. the raw
+template places one set of 6 values per activity row, not per project. The entry wizard's existing
+UI for these fields ("Project details (optional)" accordion, `PROJECT_FIELDS` const ~line 183 in
+`frontend/.../wfp/entry/page.tsx`) is (a) **localStorage-only** — `saveProjectField()` (~line 1150)
+writes to `localStorage.setItem(wfp_entry_project_fields_${selectedProjectId}, …)`, never sent to
+any API (the accordion's own on-screen note confirms this) — and (b) keyed per **project**
+(`selectedProjectId`). If backend persistence is ever added, resolve the project-vs-activity
+granularity question against the real requirement first; check `AipActivity.expected_outputs` for
+overlap before designing new columns.
+
+</details>
+
+## 5. Open items to resolve before/early in implementation
+
+1. **Template packaging.** Bundle a cleaned copy of the PBO form (data rows stripped, one styled
    "template row" per row-type kept) as an embedded resource / content file under
    `PPDO.Infrastructure`. It must contain only the static chrome + a styled exemplar of each row
    type (band header, program, project, activity, expense-class header, expenditure row, sub-total,
@@ -158,17 +170,18 @@ form repeats once per fund source**, matching `WfpReportDto.FundSourceReports` (
    action that calls a new `GET …/budget-planning/wfp/report/export` returning the `.xlsx` bytes
    (mirror `ExportPRReport`'s `WfpReportPreview` sibling pattern).
 6. **Scope of "or update it".** The user noted the generated report may *update* the form design
-   rather than match it verbatim — clarify with PBO which columns/labels are fixed vs. adjustable
-   (esp. whether F–K are mandatory on the official submission).
+   rather than match it verbatim — clarify with PBO which columns/labels are fixed vs. adjustable.
+   F–K is now confirmed non-blocking (§4) regardless of this answer.
 
 ## 5. Rough ticket shape (to firm up tomorrow)
 
-- **A (backend, data):** extend `WfpReportService`/DTO with the F–K activity descriptive fields
-  (pending the §4.1 audit) — or explicitly defer.
-- **B (backend, export):** `IWfpExcelService.ExportWfpReport(WfpReportDto)` + embedded template +
+Acceptance bar for v1.4.4 (confirmed): hierarchy, activities, and expenditure values populate
+**accurately**; F–K columns ship blank (§4) — not a blocker.
+
+- **A (backend, export):** `IWfpExcelService.ExportWfpReport(WfpReportDto)` + embedded template +
   row-cloning engine; new `WfpReportExport` function endpoint.
-- **C (frontend):** "Export to Excel" button on the Report page calling the new endpoint.
-- **D (verification):** open the generated file, diff structure/labels against `WFP-NEW.xlsx`;
+- **B (frontend):** "Export to Excel" button on the Report page calling the new endpoint.
+- **C (verification):** open the generated file, diff structure/labels against `WFP-NEW.xlsx`;
   confirm per-fund blocks, subtotals, breakdown, and print layout.
 
 ---
