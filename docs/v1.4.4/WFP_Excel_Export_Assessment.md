@@ -120,8 +120,15 @@ form repeats once per fund source**, matching `WfpReportDto.FundSourceReports` (
 - **Formulas → write computed values.** The form is formula-driven (VLOOKUP + SUM). For a generated
   artifact we **write the computed values directly** from `WfpReportDto` (which already holds every
   subtotal/total/quarter). Avoids the fragile "insert rows and hope SUM ranges extend" problem and
-  removes the dependency on the `VALIDATION` sheet.
+  removes the dependency on the `VALIDATION` sheet. **Confirmed 2026-07-16 (Ralph):** this applies to
+  every formula cell in the form, not just totals — overwrite outright with the computed value, no
+  attempt to preserve or repair the formula.
 - **Template population, not scratch.** Confirmed prior decision.
+- **Freeze panes dropped; everything else visual is preserved exactly.** **Confirmed 2026-07-16
+  (Ralph):** freeze panes (`A9` in the source form) do not need to survive the export — fine to drop.
+  Column widths, cell fill colors (band/subtotal/grand-total/breakdown), border layout, and the
+  merged-cell structure are **not** optional and must match the source form exactly — these carry the
+  form's visual identity and are the main verification criteria for RAL-160.
 
 ## 4. Decided: F–K columns ship blank in v1.4.4
 
