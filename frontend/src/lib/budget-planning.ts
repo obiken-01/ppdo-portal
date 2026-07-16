@@ -8,11 +8,13 @@
  */
 
 import api from "./api";
-import type { ApiResponse, OfficeDashboard, PlanningDashboard, RecentActivity } from "@/types";
+import type { ApiResponse, OfficeDashboard, PpdoDashboard, RecentActivity } from "@/types";
 
-export async function getDashboard(fiscalYear?: number): Promise<PlanningDashboard> {
+/** PPDO-scoped (v1.4.5 — RAL-161) — the server always resolves the PPDO office internally and
+ * clamps wfpByDivision/ceilingByFund to the caller's own division for division-scoped Staff. */
+export async function getDashboard(fiscalYear?: number): Promise<PpdoDashboard> {
   const params = fiscalYear != null ? { fiscalYear } : {};
-  const { data } = await api.get<PlanningDashboard>("/budget-planning/dashboard", { params });
+  const { data } = await api.get<PpdoDashboard>("/budget-planning/dashboard", { params });
   return data;
 }
 

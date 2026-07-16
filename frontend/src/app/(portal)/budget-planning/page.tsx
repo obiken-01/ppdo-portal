@@ -1,38 +1,40 @@
 "use client";
 
 /**
- * Budget Planning Dashboard (RAL-80, RAL-60).
+ * Budget Planning Dashboard (RAL-80, RAL-60; PPDO-scoped rework — v1.4.5, RAL-161/162).
  *
  * The readiness hub (RAL-60) — Allocation setup / LDIP / AIP / WFP, 2×2 — is the
- * primary view for everyone and replaces the old global 3-stat-card row:
- *   - Office user: always locked to their own office (OfficeReadinessPanels).
- *   - PPDO with a specific office picked: same per-office panels.
- *   - PPDO with "All Offices" (the default): GlobalReadinessPanels reuses the
- *     already-loaded global LDIP/AIP/WFP summary — Allocation setup has no
- *     global equivalent (it's inherently per-office) and prompts to pick one.
+ * primary view for everyone:
+ *   - Office user (e.g. GSO): always locked to their own office (OfficeReadinessPanels).
+ *   - PPDO user: the backend's GET /budget-planning/dashboard now always resolves the
+ *     PPDO office internally — there is no "All Offices" mode or office picker any more
+ *     (Budget Planning is effectively PPDO-only in practice). OfficeReadinessPanels is
+ *     driven by dashboard.officeId once the PPDO-scoped dashboard call resolves.
  *
- * PPDO additionally gets the WFP-status-by-office DataTable (all offices at a
- * glance). Recent activity is shown for both views.
+ * PPDO additionally gets two new sections (v1.4.5): "Ceiling and allocation by fund" —
+ * one pie chart per active funding source, one slice per division's allocation plus the
+ * unallocated remainder of that fund's office-wide ceiling — and "WFP status by division"
+ * — one row per division (WFP status, activity coverage, total allocated), expandable to
+ * the per-fund breakdown. Both come back already server-side clamped to the caller's own
+ * division for division-scoped Staff (never trust a client-side filter for this).
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import Chart from "chart.js/auto";
 import { getDashboard, getOfficeDashboard, getRecentActivity } from "@/lib/budget-planning";
-import { listOffices } from "@/lib/config";
 import { useMe } from "@/lib/me-cache";
 import { formatMoney } from "@/lib/money";
-import DataTable, { Column } from "@/components/ui/DataTable";
-import OfficeSelect from "@/components/ui/OfficeSelect";
 import type {
+  DivisionWfpStatus,
+  FundCeiling,
   OfficeDashboard,
-  OfficeResponse,
-  PlanningDashboard,
+  PpdoDashboard,
   RecentActivity,
-  WfpOfficeStatus,
 } from "@/types";
 
 // ---------------------------------------------------------------------------
-// Spinner / error helpers
+// Spinner
 // ---------------------------------------------------------------------------
 
 function Spinner() {
@@ -54,39 +56,6 @@ function WfpStatusBadge({ status }: { status: string }) {
       : "bg-slate-100 text-slate-600";
   return <span className={`px-2 py-0.5 text-xs font-medium ${cls}`}>{status}</span>;
 }
-
-// ---------------------------------------------------------------------------
-// WFP DataTable columns
-// ---------------------------------------------------------------------------
-
-const WFP_COLUMNS: Column<WfpOfficeStatus>[] = [
-  {
-    key: "officeName",
-    header: "OFFICE",
-    sortable: true,
-  },
-  {
-    key: "wfpStatus",
-    header: "STATUS",
-    sortable: true,
-    render: (r) => <WfpStatusBadge status={r.wfpStatus} />,
-  },
-  {
-    key: "action",
-    header: "ACTION",
-    align: "right",
-    render: (r) => {
-      if (r.aipRecordId == null || r.wfpStatus === "Not started") return <span className="text-slate-600">—</span>;
-      const href = `/budget-planning/wfp/entry?aipId=${r.aipRecordId}&officeId=${r.officeId}`;
-      const label = r.wfpStatus === "Final" ? "View" : "Open";
-      return (
-        <Link href={href} className="text-sm font-medium text-green-600 hover:text-green-700">
-          {label}
-        </Link>
-      );
-    },
-  },
-];
 
 // ---------------------------------------------------------------------------
 // Readiness hub — Allocation setup / LDIP / AIP / WFP panels for one office (RAL-60)
@@ -127,84 +96,23 @@ function ReadinessSkeleton() {
   );
 }
 
-/**
- * "All Offices" variant — no single office is selected, so Allocation setup
- * (inherently per-office) can't be shown; LDIP/AIP/WFP reuse the global
- * summary already loaded for the page (no extra request).
- */
-function GlobalReadinessPanels({
-  fiscalYear,
-  dashboard,
-}: {
-  fiscalYear: number | null;
-  dashboard: PlanningDashboard;
-}) {
-  const { ldip, aip, wfp, wfpByOffice, allocation } = dashboard;
-
-  const aipDraftCount = aip.breakdown.find((b) => b.status === "Draft")?.count ?? 0;
-  const aipFinalCount = aip.breakdown.find((b) => b.status === "Final")?.count ?? 0;
-  const aipArchivedCount = aip.breakdown.find((b) => b.status === "Archived")?.count ?? 0;
-
-  const wfpFinalCount = wfpByOffice.filter((r) => r.wfpStatus === "Final").length;
-  const wfpDraftCount = wfpByOffice.filter((r) => r.wfpStatus === "Draft").length;
-  const wfpNotStartedCount = wfpByOffice.filter((r) => r.wfpStatus === "Not started").length;
-
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <ReadinessPanel title="Allocation Setup" href="/budget-planning/allocation">
-        <p className="font-medium">
-          {allocation.fullySetupCount} of {allocation.totalOffices} office(s) fully set up
-        </p>
-        <p className="text-xs text-slate-600">
-          {allocation.incompleteCount} incomplete · {allocation.notStartedCount} not started
-        </p>
-        <p className="text-xs text-slate-600">
-          Pick a specific office above for its ceiling/allocation/PPA-assignment detail.
-        </p>
-      </ReadinessPanel>
-
-      <ReadinessPanel title="LDIP" href="/budget-planning/ldip">
-        <p className="font-medium">{ldip.total} program(s) · all offices</p>
-        <p className="text-xs text-slate-600">
-          {ldip.breakdown.map((b) => `${b.count} ${b.status}`).join(" · ") || "No records yet"}
-        </p>
-      </ReadinessPanel>
-
-      <ReadinessPanel title="AIP" href="/budget-planning/aip">
-        <p className="font-medium">{aip.total} record(s) · all offices</p>
-        <p className="text-xs text-slate-600">
-          {aipDraftCount} Draft · {aipFinalCount} Final
-          {aipArchivedCount > 0 && ` · ${aipArchivedCount} Archived`}
-        </p>
-      </ReadinessPanel>
-
-      <ReadinessPanel title="WFP" href="/budget-planning/wfp/entry">
-        <p className="font-medium">
-          {wfpFinalCount} Final · {wfpDraftCount} Draft
-        </p>
-        <p className="text-xs text-slate-600">
-          {wfpNotStartedCount} not started · {wfp.activeOfficeCount} active offices — FY {fiscalYear ?? "…"}
-        </p>
-      </ReadinessPanel>
-    </div>
-  );
-}
-
-/** Per-office variant — Allocation setup / LDIP / AIP / WFP for one specific office+FY. */
+/** Allocation setup / LDIP / AIP / WFP for one specific office+FY. */
 function OfficeReadinessPanels({
   officeId,
   fiscalYear,
   dashboard,
   loading,
   error,
-  wfpRow,
+  wfpStatus,
+  wfpAipRecordId,
 }: {
   officeId: number;
   fiscalYear: number | null;
   dashboard: OfficeDashboard | null;
   loading: boolean;
   error: string | null;
-  wfpRow: WfpOfficeStatus | null;
+  wfpStatus: string | null;
+  wfpAipRecordId: number | null;
 }) {
   const qs = `?officeId=${officeId}`;
 
@@ -227,11 +135,10 @@ function OfficeReadinessPanels({
   const isSetupComplete = missingSetup.length === 0;
 
   const wfpHref =
-    wfpRow?.aipRecordId != null
-      ? `/budget-planning/wfp/entry?aipId=${wfpRow.aipRecordId}&officeId=${officeId}`
+    wfpAipRecordId != null
+      ? `/budget-planning/wfp/entry?aipId=${wfpAipRecordId}&officeId=${officeId}`
       : `/budget-planning/wfp/entry${qs}`;
-  const wfpActionLabel =
-    wfpRow?.wfpStatus === "Final" ? "View" : wfpRow?.wfpStatus === "Draft" ? "Continue" : "Start";
+  const wfpActionLabel = wfpStatus === "Final" ? "View" : wfpStatus === "Draft" ? "Continue" : "Start";
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -303,11 +210,11 @@ function OfficeReadinessPanels({
 
       {/* WFP */}
       <ReadinessPanel title="WFP" href={`/budget-planning/wfp/entry${qs}`}>
-        {wfpRow && wfpRow.wfpStatus !== "Not started" ? (
+        {wfpStatus != null && wfpStatus !== "Not started" ? (
           <>
             <p className="font-medium">
-              WFP {wfpRow.wfpStatus === "Final" ? "finalized" : "in progress"}{" "}
-              <span className="text-slate-600 font-normal">({wfpRow.wfpStatus})</span>
+              WFP {wfpStatus === "Final" ? "finalized" : "in progress"}{" "}
+              <span className="text-slate-600 font-normal">({wfpStatus})</span>
             </p>
             <p className="text-xs text-slate-600">
               <Link href={wfpHref} className="font-medium text-green-600 hover:text-green-700">
@@ -326,6 +233,189 @@ function OfficeReadinessPanels({
 }
 
 // ---------------------------------------------------------------------------
+// Ceiling and allocation by fund — one pie chart per active funding source (v1.4.5)
+// ---------------------------------------------------------------------------
+
+const DIVISION_COLORS = ["#7F77DD", "#1D9E75", "#D85A30", "#D4537E", "#378ADD", "#BA7517", "#639922", "#993556"];
+const REMAINING_COLOR = "#B4B2A9";
+
+function divisionColor(index: number): string {
+  return DIVISION_COLORS[index % DIVISION_COLORS.length];
+}
+
+function pesoShort(n: number): string {
+  if (Math.abs(n) >= 1_000_000) return `₱${(n / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(n) >= 1_000) return `₱${Math.round(n / 1000)}K`;
+  return `₱${Math.round(n)}`;
+}
+
+const centerTextPlugin = {
+  id: "centerText",
+  afterDraw(chart: Chart) {
+    const total = (chart.config as unknown as { _ceilingTotal?: number })._ceilingTotal;
+    if (total == null) return;
+    const { ctx, chartArea } = chart;
+    const cx = (chartArea.left + chartArea.right) / 2;
+    const cy = (chartArea.top + chartArea.bottom) / 2;
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = "600 14px sans-serif";
+    ctx.fillStyle = "#1e293b";
+    ctx.fillText(pesoShort(total), cx, cy - 8);
+    ctx.font = "400 11px sans-serif";
+    ctx.fillStyle = "#64748b";
+    ctx.fillText("ceiling", cx, cy + 10);
+    ctx.restore();
+  },
+};
+
+const percentLabelPlugin = {
+  id: "percentLabel",
+  afterDatasetsDraw(chart: Chart) {
+    const meta = chart.getDatasetMeta(0);
+    const dataset = chart.data.datasets[0];
+    const total = (dataset.data as number[]).reduce((a, b) => a + b, 0);
+    if (total <= 0) return;
+    const { ctx } = chart;
+    ctx.save();
+    ctx.font = "600 11px sans-serif";
+    ctx.fillStyle = "#fff";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    meta.data.forEach((element, i) => {
+      const value = (dataset.data as number[])[i];
+      const pct = Math.round((value / total) * 100);
+      if (pct < 5) return;
+      const pos = (element as unknown as { tooltipPosition: () => { x: number; y: number } }).tooltipPosition();
+      ctx.fillText(`${pct}%`, pos.x, pos.y);
+    });
+    ctx.restore();
+  },
+};
+
+function FundCeilingCard({ fund }: { fund: FundCeiling }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const chartRef = useRef<Chart | null>(null);
+
+  useEffect(() => {
+    if (!canvasRef.current) return;
+
+    const labels = [...fund.byDivision.map((d) => d.divisionCode ?? d.divisionName), "Remaining"];
+    const data = [...fund.byDivision.map((d) => d.amount), Math.max(fund.remaining, 0)];
+    const colors = [...fund.byDivision.map((_, i) => divisionColor(i)), REMAINING_COLOR];
+
+    chartRef.current?.destroy();
+    const chart = new Chart<"doughnut", number[], string>(canvasRef.current, {
+      type: "doughnut",
+      data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 2, borderColor: "#fff" }] },
+      options: {
+        cutout: "62%",
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: (c) => `${c.label}: ₱${formatMoney(c.raw as number)}` } },
+        },
+      },
+      plugins: [centerTextPlugin, percentLabelPlugin],
+    });
+    (chart.config as unknown as { _ceilingTotal: number })._ceilingTotal = fund.ceiling;
+    chart.update();
+    chartRef.current = chart;
+
+    return () => chart.destroy();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fund.fundingSourceId, fund.ceiling, fund.remaining, JSON.stringify(fund.byDivision)]);
+
+  return (
+    <div className="bg-white border border-slate-200 p-4">
+      <p className="text-sm font-semibold text-slate-700 mb-2">{fund.fundName}</p>
+      <div className="relative h-40 mb-2">
+        <canvas ref={canvasRef} />
+      </div>
+      <p className="text-xs mb-1.5">
+        <span
+          className="inline-block w-2 h-2 mr-1.5 align-middle"
+          style={{ backgroundColor: REMAINING_COLOR, borderRadius: "50%" }}
+        />
+        <span className="text-slate-600">Remaining</span>
+        <span className="float-right font-medium text-slate-700">₱{formatMoney(fund.remaining)}</span>
+      </p>
+      {fund.byDivision.map((d, i) => (
+        <p key={d.divisionId} className="text-xs mb-1">
+          <span
+            className="inline-block w-2 h-2 mr-1.5 align-middle"
+            style={{ backgroundColor: divisionColor(i), borderRadius: "50%" }}
+          />
+          <span className="text-slate-600">{d.divisionCode ?? d.divisionName}</span>
+          <span className="float-right text-slate-700">₱{formatMoney(d.amount)}</span>
+        </p>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// WFP status by division — click a row to see its per-fund allocation breakdown
+// ---------------------------------------------------------------------------
+
+function DivisionRow({ division }: { division: DivisionWfpStatus }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <>
+      <tr
+        className="border-t border-slate-100 cursor-pointer hover:bg-slate-50"
+        onClick={() => setExpanded((e) => !e)}
+      >
+        <td className="px-4 py-2.5 text-sm text-slate-700">
+          <span
+            className={`inline-block mr-1.5 transition-transform text-slate-400 ${expanded ? "rotate-90" : ""}`}
+          >
+            ›
+          </span>
+          {division.divisionName}
+        </td>
+        <td className="px-4 py-2.5">
+          <WfpStatusBadge status={division.wfpStatus} />
+        </td>
+        <td className="px-4 py-2.5 text-sm text-right text-slate-700">
+          {division.activitiesWithExpenditures} / {division.totalActivities}
+        </td>
+        <td className="px-4 py-2.5 text-sm text-right font-medium text-slate-700">
+          ₱{formatMoney(division.totalAllocated)}
+        </td>
+      </tr>
+      {expanded && (
+        <tr>
+          <td colSpan={4} className="p-0">
+            <table className="w-full">
+              <tbody>
+                {division.allocationByFund.length === 0 ? (
+                  <tr className="bg-slate-50">
+                    <td className="px-4 py-2 pl-10 text-xs text-slate-600" colSpan={4}>
+                      No allocation in any fund.
+                    </td>
+                  </tr>
+                ) : (
+                  division.allocationByFund.map((f) => (
+                    <tr key={f.fundingSourceId} className="bg-slate-50 text-xs">
+                      <td className="px-4 py-1.5 pl-10 text-slate-600">{f.fundName}</td>
+                      <td className="px-4 py-1.5" />
+                      <td className="px-4 py-1.5" />
+                      <td className="px-4 py-1.5 text-right text-slate-600">₱{formatMoney(f.amount)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
@@ -340,9 +430,8 @@ export default function BudgetPlanningPage() {
   );
 
   const [fiscalYear, setFiscalYear] = useState<number | null>(null);
-  const [selectedOffice, setSelectedOffice] = useState<number | null>(null);
 
-  const [dashboard, setDashboard] = useState<PlanningDashboard | null>(null);
+  const [dashboard, setDashboard] = useState<PpdoDashboard | null>(null);
   const [activity, setActivity] = useState<RecentActivity[]>([]);
 
   const [dashboardLoading, setDashboardLoading] = useState(true);
@@ -354,15 +443,9 @@ export default function BudgetPlanningPage() {
   const [officeDashboardLoading, setOfficeDashboardLoading] = useState(false);
   const [officeDashboardError, setOfficeDashboardError] = useState<string | null>(null);
 
-  const [officeList, setOfficeList] = useState<OfficeResponse[]>([]);
-
-  // ── Office list load (for the dropdown — OfficeSelect sorts by ref code) ────
-
-  useEffect(() => {
-    listOffices({ active: "true" }).catch(() => []).then(setOfficeList);
-  }, []);
-
   // ── Dashboard load ─────────────────────────────────────────────────────────
+  // For a PPDO user this is now the PPDO-scoped dashboard (no office param — the
+  // backend always resolves PPDO internally and clamps by division server-side).
 
   const loadDashboard = useCallback(
     (fy?: number) => {
@@ -398,24 +481,17 @@ export default function BudgetPlanningPage() {
 
   const isPpdo = user?.officeId == null;
 
-  // The office this readiness hub is scoped to: PPDO picks any via the selector;
-  // an office user is always locked to their own.
-  const effectiveOfficeId = isPpdo ? selectedOffice : user?.officeId ?? null;
+  // Office user: locked to their own office. PPDO user: the PPDO-scoped dashboard
+  // resolves the office server-side — its id/code/name only become known once loaded.
+  const effectiveOfficeId = isPpdo ? dashboard?.officeId ?? null : user?.officeId ?? null;
 
-  const filteredWfpRows =
-    selectedOffice == null
-      ? (dashboard?.wfpByOffice ?? [])
-      : (dashboard?.wfpByOffice ?? []).filter((r) => r.officeId === selectedOffice);
-
-  const effectiveOfficeWfpRow =
-    effectiveOfficeId == null
-      ? null
-      : (dashboard?.wfpByOffice ?? []).find((r) => r.officeId === effectiveOfficeId) ?? null;
-
-  const ownOfficeLabel =
-    user?.officeCode && user?.officeName
-      ? `${user.officeCode} — ${user.officeName}`
-      : user?.officeCode ?? user?.officeName ?? "Your Office";
+  const officeLabel = isPpdo
+    ? dashboard
+      ? `${dashboard.officeCode} — ${dashboard.officeName}`
+      : "PPDO"
+    : user?.officeCode && user?.officeName
+    ? `${user.officeCode} — ${user.officeName}`
+    : user?.officeCode ?? user?.officeName ?? "Your Office";
 
   const navHref = (path: string) =>
     effectiveOfficeId != null ? `${path}?officeId=${effectiveOfficeId}` : path;
@@ -437,6 +513,14 @@ export default function BudgetPlanningPage() {
     return () => { cancelled = true; };
   }, [effectiveOfficeId, fiscalYear]);
 
+  // A PPDO user's own WFP status comes straight from the PPDO-scoped dashboard's
+  // wfpByDivision (their own division's row for Staff, or the "most advanced" status
+  // across divisions for finance/admin — mirroring the old office-status summary).
+  const ownWfpDivision =
+    isPpdo && dashboard
+      ? dashboard.wfpByDivision.find((d) => d.divisionId === user?.divisionId) ?? dashboard.wfpByDivision[0]
+      : null;
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -446,11 +530,7 @@ export default function BudgetPlanningPage() {
         {/* Header */}
         <div>
           <h1 className="text-lg font-bold text-slate-800">Budget Planning Dashboard</h1>
-          <p className="text-sm text-slate-600">
-            {isPpdo
-              ? "FY overview · PPDO view — all offices"
-              : `FY overview · Office view — ${ownOfficeLabel}`}
-          </p>
+          <p className="text-sm text-slate-600">FY overview · {officeLabel}</p>
         </div>
 
         {/* Selectors row */}
@@ -466,7 +546,6 @@ export default function BudgetPlanningPage() {
               onChange={(e) => {
                 const fy = Number(e.target.value);
                 setFiscalYear(fy);
-                setSelectedOffice(null);
                 loadDashboard(fy);
               }}
               disabled={dashboardLoading}
@@ -479,34 +558,17 @@ export default function BudgetPlanningPage() {
             </select>
           </div>
 
-          {/* PPDO: office filter selector / Office user: locked display */}
-          {isPpdo ? (
-            <div className="flex items-center gap-2">
-              <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                Office
-              </label>
-              <OfficeSelect
-                className="w-64"
-                offices={officeList}
-                value={selectedOffice}
-                onChange={setSelectedOffice}
-                allOptionLabel="All Offices"
-                disabled={dashboardLoading || officeList.length === 0}
-              />
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                Office
-              </span>
-              <span className="text-sm text-slate-700 bg-white border border-slate-200 px-3 py-1.5">
-                {ownOfficeLabel}
-              </span>
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+              Office
+            </span>
+            <span className="text-sm text-slate-700 bg-white border border-slate-200 px-3 py-1.5">
+              {officeLabel}
+            </span>
+          </div>
         </div>
 
-        {/* Nav buttons — carry the selected office into each flow */}
+        {/* Nav buttons — carry the office into each flow */}
         <div className="flex gap-2">
           {[
             { label: "LDIP", href: navHref("/budget-planning/ldip") },
@@ -531,34 +593,72 @@ export default function BudgetPlanningPage() {
             dashboard={officeDashboard}
             loading={officeDashboardLoading}
             error={officeDashboardError}
-            wfpRow={effectiveOfficeWfpRow}
+            wfpStatus={ownWfpDivision?.wfpStatus ?? null}
+            wfpAipRecordId={null}
           />
-        ) : dashboardLoading ? (
+        ) : (
           <ReadinessSkeleton />
-        ) : dashboard ? (
-          <GlobalReadinessPanels fiscalYear={fiscalYear} dashboard={dashboard} />
-        ) : null}
+        )}
 
-        {/* ── PPDO-only: WFP status by office ─────────────────────────────── */}
+        {/* ── PPDO-only: Ceiling and allocation by fund ───────────────────── */}
+        {isPpdo && dashboard && dashboard.ceilingByFund.length > 0 && (
+          <div>
+            <h2 className="text-sm font-semibold text-slate-700 mb-2">
+              Ceiling and Allocation by Fund — FY {fiscalYear ?? "…"}
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {dashboard.ceilingByFund.map((fund) => (
+                <FundCeilingCard key={fund.fundingSourceId} fund={fund} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── PPDO-only: WFP status by division ───────────────────────────── */}
         {isPpdo && (
           <div className="bg-white border border-slate-200">
-            <div className="px-5 py-4 border-b border-slate-100">
-              <h2 className="text-sm font-semibold text-slate-700">
-                WFP Status by Office — FY {fiscalYear ?? "…"}
-              </h2>
-              <p className="text-xs text-slate-600 mt-0.5">
-                Sorted: Not started → Draft → Final · No appropriation amounts shown
-              </p>
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-700">
+                  WFP Status by Division — FY {fiscalYear ?? "…"}
+                </h2>
+                <p className="text-xs text-slate-600 mt-0.5">Click a row to see allocation per fund</p>
+              </div>
             </div>
-            <DataTable
-              columns={WFP_COLUMNS}
-              rows={filteredWfpRows}
-              rowKey={(r) => r.officeId}
-              loading={dashboardLoading}
-              error={dashboardError}
-              emptyMessage="No active offices found."
-              pageSize={20}
-            />
+            {dashboardLoading ? (
+              <div className="px-5 py-6 flex items-center gap-2 text-sm text-slate-600">
+                <Spinner />
+                <span>Loading…</span>
+              </div>
+            ) : dashboardError ? (
+              <div className="px-5 py-4 text-sm text-red-500">{dashboardError}</div>
+            ) : !dashboard || dashboard.wfpByDivision.length === 0 ? (
+              <div className="px-5 py-6 text-sm text-slate-600">No active divisions found.</div>
+            ) : (
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-slate-50">
+                    <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                      Division
+                    </th>
+                    <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                      WFP Status
+                    </th>
+                    <th className="px-4 py-2.5 text-right text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                      Activities Covered
+                    </th>
+                    <th className="px-4 py-2.5 text-right text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                      Total Allocated
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dashboard.wfpByDivision.map((division) => (
+                    <DivisionRow key={division.divisionId} division={division} />
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         )}
 
@@ -566,9 +666,7 @@ export default function BudgetPlanningPage() {
         <div className="bg-white border border-slate-200">
           <div className="px-5 py-4 border-b border-slate-100">
             <h2 className="text-sm font-semibold text-slate-700">Recent Activity</h2>
-            <p className="text-xs text-slate-600 mt-0.5">
-              {isPpdo ? "All offices (PPDO view)" : `${ownOfficeLabel} only`}
-            </p>
+            <p className="text-xs text-slate-600 mt-0.5">{officeLabel}</p>
           </div>
           <div className="divide-y divide-slate-50">
             {activityLoading ? (
