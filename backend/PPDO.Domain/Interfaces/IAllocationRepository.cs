@@ -4,8 +4,9 @@ namespace PPDO.Domain.Interfaces;
 
 /// <summary>
 /// Repository contract for <see cref="ProgramDivision"/> with scoped string-keyed reads.
-/// BudgetCeiling and DivisionAllocation are small tables — use plain
-/// <see cref="IRepository{T}"/> for those; in-memory filtering is sufficient.
+/// BudgetCeiling and DivisionAllocation have their own scoped repositories —
+/// <see cref="IBudgetCeilingRepository"/> and <see cref="IDivisionAllocationRepository"/>
+/// (RAL-163) — not plain <see cref="IRepository{T}"/>.
 /// </summary>
 public interface IAllocationRepository : IRepository<ProgramDivision>
 {

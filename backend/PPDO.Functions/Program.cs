@@ -156,8 +156,10 @@ var host = new HostBuilder()
         services.AddScoped<IWfpService, WfpService>();
 
         // -- v1.2 Allocation (RAL-99) -----------------------------------------
-        services.AddScoped<IRepository<BudgetCeiling>, Repository<BudgetCeiling>>();
-        services.AddScoped<IRepository<DivisionAllocation>, Repository<DivisionAllocation>>();
+        // RAL-163: BudgetCeiling/DivisionAllocation moved from generic IRepository<T> to
+        // scoped feature repositories — see docs/Performance_Audit_2026-07-16.md Tier 1.
+        services.AddScoped<IBudgetCeilingRepository, BudgetCeilingRepository>();
+        services.AddScoped<IDivisionAllocationRepository, DivisionAllocationRepository>();
         services.AddScoped<IAllocationRepository, AllocationRepository>();
         services.AddScoped<IAllocationService, AllocationService>();
 
