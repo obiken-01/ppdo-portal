@@ -797,11 +797,22 @@ function AllocationPageInner() {
           </div>
         </div>
 
-        {/* Loading */}
+        {/* Loading — skeleton matches the loaded tabs + card structure/height */}
         {loading && (
-          <div className="flex items-center gap-2 text-slate-600 text-sm py-6">
-            <span className="w-4 h-4 border-2 border-slate-300 border-t-green-600 rounded-full animate-spin" />
-            Loading…
+          <div className="animate-pulse">
+            <div className="flex border-b border-slate-200 mb-6">
+              {[0, 1].map((i) => (
+                <div key={i} className="px-5 py-2.5">
+                  <div className="h-4 bg-slate-200" style={{ width: i === 0 ? "10rem" : "7rem" }} />
+                </div>
+              ))}
+            </div>
+            <div className="max-w-2xl space-y-3">
+              <div className="h-3 bg-slate-100" style={{ width: "70%" }} />
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="h-16 bg-slate-100 border border-slate-200" />
+              ))}
+            </div>
           </div>
         )}
 
