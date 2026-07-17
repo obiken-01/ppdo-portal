@@ -32,4 +32,11 @@ public interface ILdipRepository : IRepository<LdipRecord>
 
     /// <summary>Adds a new sector group (with its Programs attached).</summary>
     Task AddOfficeGroupAsync(LdipOffice group, CancellationToken ct = default);
+
+    /// <summary>
+    /// Count of LDIP records whose FiscalYearStart equals <paramref name="fiscalYearStart"/>,
+    /// computed in SQL (RAL-165 — perf audit Tier 1) — feeds the next ref-code sequence number
+    /// without loading every LdipRecord to count in memory.
+    /// </summary>
+    Task<int> CountByFiscalYearStartAsync(int fiscalYearStart, CancellationToken ct = default);
 }

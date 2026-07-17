@@ -19,7 +19,7 @@ public sealed class AipService : IAipService
 {
     private readonly IAipRepository            _aipRepo;
     private readonly IRepository<FundingSource> _fsRepo;
-    private readonly IRepository<User>         _userRepo;
+    private readonly IUserRepository           _userRepo;
     private readonly IAipXlsmParser _parser;
     private readonly IAuditService  _audit;
     private readonly CallerContext  _caller;
@@ -27,7 +27,7 @@ public sealed class AipService : IAipService
     public AipService(
         IAipRepository             aipRepo,
         IRepository<FundingSource>  fsRepo,
-        IRepository<User>          userRepo,
+        IUserRepository            userRepo,
         IAipXlsmParser parser,
         IAuditService  audit,
         CallerContext  caller)
@@ -59,9 +59,9 @@ public sealed class AipService : IAipService
             .GroupBy(o => o.AipRecordId)
             .ToDictionary(g => g.Key, g => g.Count());
 
-        // Build user name lookup: user_id → full name.
-        IReadOnlyList<User> allUsers = await _userRepo.GetAllAsync(ct);
-        Dictionary<Guid, string> userNames = allUsers.ToDictionary(u => u.Id, u => u.FullName);
+        // Build user name lookup scoped to only the uploader ids in this result set.
+        List<Guid> uploaderIds = records.Select(r => r.UploadedById).Distinct().ToList();
+        IReadOnlyDictionary<Guid, string> userNames = await _userRepo.GetNamesByIdsAsync(uploaderIds, ct);
 
         return records.Select(r => MapToListDto(r, officeCounts, userNames)).ToList();
     }
@@ -226,9 +226,7 @@ public sealed class AipService : IAipService
         AipImportConfirmDto dto, Guid uploadedById, CancellationToken ct = default)
     {
         // Guard: only one active (Draft or Final) AIP per fiscal year.
-        IReadOnlyList<AipRecord> all = await _aipRepo.GetAllAsync(ct);
-        AipRecord? conflict = all.FirstOrDefault(
-            r => r.FiscalYear == dto.FiscalYear && r.Status != PlanningStatus.Archived);
+        AipRecord? conflict = await _aipRepo.GetLatestByFiscalYearAsync(dto.FiscalYear, ct);
         if (conflict is not null)
         {
             string hint = conflict.Status == PlanningStatus.Draft
@@ -437,7 +435,7 @@ public sealed class AipService : IAipService
     private static AipRecordDto MapToListDto(
         AipRecord r,
         Dictionary<int, int> officeCounts,
-        Dictionary<Guid, string> userNames) => new(
+        IReadOnlyDictionary<Guid, string> userNames) => new(
         r.Id, r.FiscalYear, r.EntrySource, r.OriginalFilename,
         r.UploadedById, r.UploadedAt, r.Status, r.LdipId, r.SourceId,
         OfficeCount: officeCounts.GetValueOrDefault(r.Id, 0),
