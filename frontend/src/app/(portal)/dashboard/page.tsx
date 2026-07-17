@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import api from "@/lib/api";
+import { useMe } from "@/lib/me-cache";
 import { getPendingEvents } from "@/lib/dashboard";
-import type { CalendarEventResponse, MeResponse } from "@/types";
+import type { CalendarEventResponse } from "@/types";
 import DashboardCalendar from "@/components/dashboard/DashboardCalendar";
 import ResourceLinksWidget from "@/components/dashboard/ResourceLinksWidget";
 import CalendarApprovalPanel from "@/components/dashboard/CalendarApprovalPanel";
@@ -24,22 +25,17 @@ export default function DashboardPage() {
   const [activeYear, setActiveYear]       = useState(() => new Date().getFullYear());
   const [activeMonth, setActiveMonth]     = useState(() => new Date().getMonth() + 1);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEventResponse | null>(null);
+  const [editingEvent, setEditingEvent]   = useState<CalendarEventResponse | null>(null);
 
-  const [currentUser, setCurrentUser]       = useState<MeResponse | null>(null);
+  // Dashboard has no special access requirement -- every authenticated portal user lands
+  // here, so the permission check always passes. Reads the shared cached /auth/me instead
+  // of fetching it separately (RAL-168).
+  const me = useMe(() => true);
   const [pendingCount, setPendingCount]     = useState(0);
   const [approvalPanelOpen, setApprovalPanelOpen] = useState(false);
   const [createModalDate, setCreateModalDate]     = useState<string | null>(null);
 
-  const isAdmin =
-    currentUser?.role === "Admin" || currentUser?.role === "SuperAdmin";
-
-  // ── Fetch current user ─────────────────────────────────────────────────────
-
-  useEffect(() => {
-    api.get<MeResponse>("/auth/me")
-      .then((r) => setCurrentUser(r.data))
-      .catch(() => {});
-  }, []);
+  const isAdmin = me?.role === "Admin" || me?.role === "SuperAdmin";
 
   // ── Fetch events ───────────────────────────────────────────────────────────
 
@@ -104,6 +100,12 @@ export default function DashboardPage() {
 
   function handleCreated() {
     setCreateModalDate(null);
+    fetchEvents(activeYear, activeMonth);
+    refreshPendingCount();
+  }
+
+  function handleEdited() {
+    setEditingEvent(null);
     fetchEvents(activeYear, activeMonth);
     refreshPendingCount();
   }
@@ -207,12 +209,26 @@ export default function DashboardPage() {
               </div>
             )}
 
-            <p className="text-xs text-slate-600">
-              {new Date(selectedEvent.startDate).toLocaleDateString("en-PH", {
-                weekday: "long", year: "numeric", month: "long", day: "numeric",
-                timeZone: "Asia/Manila",
-              })}
-            </p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs text-slate-600">
+                {new Date(selectedEvent.startDate).toLocaleDateString("en-PH", {
+                  weekday: "long", year: "numeric", month: "long", day: "numeric",
+                  timeZone: "Asia/Manila",
+                })}
+              </p>
+              {/* Owner-only edit — no admin override (RAL-168) */}
+              {me != null && selectedEvent.createdById === me.userId && (
+                <button
+                  onClick={() => {
+                    setEditingEvent(selectedEvent);
+                    setSelectedEvent(null);
+                  }}
+                  className="text-xs font-medium text-green-600 hover:underline shrink-0"
+                >
+                  Edit
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -231,7 +247,19 @@ export default function DashboardPage() {
           initialDate={createModalDate}
           isAdmin={isAdmin}
           onClose={() => setCreateModalDate(null)}
-          onCreated={handleCreated}
+          onSaved={handleCreated}
+        />
+      )}
+
+      {/* Edit event modal — triggered by the owner-only Edit button above */}
+      {editingEvent && (
+        <CreateEventModal
+          open={true}
+          initialDate={editingEvent.startDate.slice(0, 10)}
+          isAdmin={isAdmin}
+          editingEvent={editingEvent}
+          onClose={() => setEditingEvent(null)}
+          onSaved={handleEdited}
         />
       )}
     </div>

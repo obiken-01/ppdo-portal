@@ -78,7 +78,8 @@ public sealed class DashboardService : IDashboardService
                 e.EventType,
                 null,
                 e.Status,
-                e.RejectionReason));
+                e.RejectionReason,
+                e.CreatedById));
 
         // Filter holidays to the requested month only.
         IEnumerable<CalendarEventDto> monthHolidays =
@@ -134,7 +135,8 @@ public sealed class DashboardService : IDashboardService
             entity.EventType,
             null,
             entity.Status,
-            null);
+            null,
+            entity.CreatedById);
 
         return ServiceResult<CalendarEventDto>.Ok(result);
     }
@@ -229,6 +231,50 @@ public sealed class DashboardService : IDashboardService
     }
 
     /// <inheritdoc />
+    public async Task<ServiceResult<CalendarEventDto>> UpdateEventAsync(
+        User caller,
+        Guid id,
+        UpdateCalendarEventDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(dto.Title))
+            return ServiceResult<CalendarEventDto>.BadRequest("Title is required.");
+
+        CalendarEvent? entity = await _events.GetByIdAsync(id, cancellationToken);
+        if (entity is null)
+            return ServiceResult<CalendarEventDto>.NotFound($"Calendar event {id} not found.");
+
+        // Owner-only — no admin override (deliberate difference from DeleteEventAsync).
+        if (entity.CreatedById != caller.Id)
+            return ServiceResult<CalendarEventDto>.Forbidden("You can only edit your own events.");
+
+        entity.Title       = dto.Title.Trim();
+        entity.Description = dto.Description?.Trim();
+        entity.StartDate   = dto.StartDate;
+        entity.EndDate     = dto.EndDate;
+        entity.IsAllDay    = dto.IsAllDay;
+
+        // A non-admin's edit to a reviewed Office event (Approved or Rejected) re-triggers
+        // admin review, mirroring CreateEventAsync's approval rule — the old review no longer
+        // applies to the edited content. An admin editing their own event stays Approved
+        // (matches CreateEventAsync's admin bypass). Personal events never need approval.
+        if (entity.EventType == "Office"
+            && entity.Status != CalendarEventStatus.Pending
+            && !IsAdmin(caller))
+        {
+            entity.Status          = CalendarEventStatus.Pending;
+            entity.RejectionReason = null;
+            entity.ReviewedById    = null;
+            entity.ReviewedAt      = null;
+        }
+
+        await _events.UpdateAsync(entity, cancellationToken);
+        await _events.SaveChangesAsync(cancellationToken);
+
+        return ServiceResult<CalendarEventDto>.Ok(MapToDto(entity));
+    }
+
+    /// <inheritdoc />
     public async Task<DashboardStatsDto> GetStatsAsync(CancellationToken cancellationToken = default)
     {
         IReadOnlyList<PurchaseRequest> prs   = await _prs.GetAllAsync(cancellationToken);
@@ -260,5 +306,6 @@ public sealed class DashboardService : IDashboardService
         e.EventType,
         null,
         e.Status,
-        e.RejectionReason);
+        e.RejectionReason,
+        e.CreatedById);
 }

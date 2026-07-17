@@ -14,6 +14,16 @@ export interface CalendarEventResponse {
   /** null for holidays; "Pending" | "Approved" | "Rejected" for DB events */
   status: 'Pending' | 'Approved' | 'Rejected' | null;
   rejectionReason: string | null;
+  /** FK -> User who created this event. Null for PH holidays. Drives the owner-only edit gate. */
+  createdById: string | null;
+}
+
+export interface UpdateCalendarEventRequest {
+  title: string;
+  description?: string | null;
+  startDate: string;
+  endDate?: string | null;
+  isAllDay: boolean;
 }
 
 export interface PendingCalendarEvent {

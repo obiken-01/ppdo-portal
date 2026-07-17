@@ -22,4 +22,9 @@ public sealed record CalendarEventDto(
     /// <summary>Approval state. Null for holidays.</summary>
     CalendarEventStatus? Status,
     /// <summary>Set when an admin rejects an Office event. Null otherwise.</summary>
-    string?  RejectionReason);
+    string?  RejectionReason,
+    /// <summary>
+    /// FK → User who created this event. Null for PH holidays (not stored in the DB).
+    /// Drives the frontend's owner-only edit gate (RAL-168).
+    /// </summary>
+    Guid?    CreatedById = null);
