@@ -358,7 +358,13 @@ function FundCeilingCard({ fund }: { fund: FundCeiling }) {
 // WFP status by division — click a row to see its per-fund allocation breakdown
 // ---------------------------------------------------------------------------
 
-function DivisionRow({ division }: { division: DivisionWfpStatus }) {
+function DivisionRow({
+  division, fundRemaining,
+}: {
+  division: DivisionWfpStatus;
+  /** fundingSourceId -> that fund's office-wide remaining (from dashboard.ceilingByFund). */
+  fundRemaining: Map<number, number>;
+}) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -384,15 +390,16 @@ function DivisionRow({ division }: { division: DivisionWfpStatus }) {
         <td className="px-4 py-2.5 text-sm text-right font-medium text-slate-700">
           ₱{formatMoney(division.totalAllocated)}
         </td>
+        <td className="px-4 py-2.5" />
       </tr>
       {expanded && (
         <tr>
-          <td colSpan={4} className="p-0">
+          <td colSpan={5} className="p-0">
             <table className="w-full">
               <tbody>
                 {division.allocationByFund.length === 0 ? (
                   <tr className="bg-slate-50">
-                    <td className="px-4 py-2 pl-10 text-xs text-slate-600" colSpan={4}>
+                    <td className="px-4 py-2 pl-10 text-xs text-slate-600" colSpan={5}>
                       No allocation in any fund.
                     </td>
                   </tr>
@@ -403,6 +410,9 @@ function DivisionRow({ division }: { division: DivisionWfpStatus }) {
                       <td className="px-4 py-1.5" />
                       <td className="px-4 py-1.5" />
                       <td className="px-4 py-1.5 text-right text-slate-600">₱{formatMoney(f.amount)}</td>
+                      <td className="px-4 py-1.5 text-right text-slate-600">
+                        ₱{formatMoney(fundRemaining.get(f.fundingSourceId) ?? 0)}
+                      </td>
                     </tr>
                   ))
                 )}
@@ -520,6 +530,12 @@ export default function BudgetPlanningPage() {
     isPpdo && dashboard
       ? dashboard.wfpByDivision.find((d) => d.divisionId === user?.divisionId) ?? dashboard.wfpByDivision[0]
       : null;
+
+  // fundingSourceId -> that fund's office-wide remaining, for the WFP-by-division table's
+  // per-fund breakdown rows (Remaining is a fund/office-level fact, not per-division).
+  const fundRemainingById = new Map(
+    (dashboard?.ceilingByFund ?? []).map((f) => [f.fundingSourceId, f.remaining])
+  );
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -657,11 +673,18 @@ export default function BudgetPlanningPage() {
                     <th className="px-4 py-2.5 text-right text-xs font-semibold text-slate-600 uppercase tracking-wide">
                       Total Allocated
                     </th>
+                    <th className="px-4 py-2.5 text-right text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                      Remaining
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {dashboard.wfpByDivision.map((division) => (
-                    <DivisionRow key={division.divisionId} division={division} />
+                    <DivisionRow
+                      key={division.divisionId}
+                      division={division}
+                      fundRemaining={fundRemainingById}
+                    />
                   ))}
                 </tbody>
               </table>
