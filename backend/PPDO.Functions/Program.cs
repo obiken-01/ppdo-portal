@@ -140,6 +140,9 @@ var host = new HostBuilder()
         services.AddScoped<IPriceIndexService, PriceIndexService>();
         services.AddScoped<IProcurementPresetRepository, ProcurementPresetRepository>();
         services.AddScoped<IRepository<ProcurementPresetItem>, Repository<ProcurementPresetItem>>();
+        // RAL-164: scoped by-ids price-index lookup for ProcurementPresetService, distinct from
+        // the generic IRepository<PriceIndexItem> still used by PriceIndexService itself.
+        services.AddScoped<IPriceIndexItemRepository, PriceIndexItemRepository>();
         services.AddScoped<IProcurementPresetService, ProcurementPresetService>();
         services.AddScoped<IAuditService, AuditService>();
         services.AddScoped<IBudgetPlanningDashboardService, BudgetPlanningDashboardService>();

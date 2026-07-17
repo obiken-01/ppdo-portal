@@ -16,7 +16,7 @@ public sealed class ProcurementPresetService : IProcurementPresetService
     private readonly IProcurementPresetRepository       _repo;
     private readonly IRepository<ProcurementPresetItem> _itemRepo;
     private readonly IRepository<Account>                _accountRepo;
-    private readonly IRepository<PriceIndexItem>         _priceIndexRepo;
+    private readonly IPriceIndexItemRepository            _priceIndexRepo;
     private readonly IAuditService                       _audit;
     private readonly ILogger<ProcurementPresetService>   _logger;
 
@@ -24,7 +24,7 @@ public sealed class ProcurementPresetService : IProcurementPresetService
         IProcurementPresetRepository       repo,
         IRepository<ProcurementPresetItem> itemRepo,
         IRepository<Account>               accountRepo,
-        IRepository<PriceIndexItem>        priceIndexRepo,
+        IPriceIndexItemRepository          priceIndexRepo,
         IAuditService                       audit,
         ILogger<ProcurementPresetService>  logger)
     {
@@ -180,7 +180,15 @@ public sealed class ProcurementPresetService : IProcurementPresetService
         if (dto.Items.Count == 0)
             return "At least one item is required.";
 
-        IReadOnlyList<PriceIndexItem> priceIndex = await _priceIndexRepo.GetAllAsync(ct);
+        List<int> priceIndexIds = dto.Items
+            .Where(i => i.PriceIndexItemId.HasValue)
+            .Select(i => i.PriceIndexItemId!.Value)
+            .Distinct()
+            .ToList();
+        HashSet<int> foundPriceIndexIds = (await _priceIndexRepo.GetByIdsAsync(priceIndexIds, ct))
+            .Select(p => p.Id)
+            .ToHashSet();
+
         foreach (UpsertProcurementPresetItemDto item in dto.Items)
         {
             if (item.DefaultQty < 0)
@@ -188,7 +196,7 @@ public sealed class ProcurementPresetService : IProcurementPresetService
 
             if (item.PriceIndexItemId.HasValue)
             {
-                if (!priceIndex.Any(p => p.Id == item.PriceIndexItemId.Value))
+                if (!foundPriceIndexIds.Contains(item.PriceIndexItemId.Value))
                     return $"Price index item {item.PriceIndexItemId.Value} not found.";
             }
             else
@@ -210,12 +218,18 @@ public sealed class ProcurementPresetService : IProcurementPresetService
     private async Task AddItemsAsync(
         int presetId, IReadOnlyList<UpsertProcurementPresetItemDto> items, CancellationToken ct)
     {
-        IReadOnlyList<PriceIndexItem> priceIndex = await _priceIndexRepo.GetAllAsync(ct);
+        List<int> priceIndexIds = items
+            .Where(i => i.PriceIndexItemId.HasValue)
+            .Select(i => i.PriceIndexItemId!.Value)
+            .Distinct()
+            .ToList();
+        Dictionary<int, PriceIndexItem> priceIndexById = (await _priceIndexRepo.GetByIdsAsync(priceIndexIds, ct))
+            .ToDictionary(p => p.Id);
 
         foreach (UpsertProcurementPresetItemDto item in items)
         {
             PriceIndexItem? source = item.PriceIndexItemId.HasValue
-                ? priceIndex.FirstOrDefault(p => p.Id == item.PriceIndexItemId.Value)
+                ? priceIndexById.GetValueOrDefault(item.PriceIndexItemId.Value)
                 : null;
 
             await _itemRepo.AddAsync(new ProcurementPresetItem
