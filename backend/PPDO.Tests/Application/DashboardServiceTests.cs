@@ -503,8 +503,9 @@ public sealed class DashboardServiceTests
     }
 
     [Fact]
-    public async Task DeleteEventAsync_Admin_CanDeleteAnyEvent()
+    public async Task DeleteEventAsync_Admin_NonOwner_ReturnsForbidden()
     {
+        // RAL-168: delete became owner-only, same rule as UpdateEventAsync -- no admin override.
         User admin = AdminUser();
         CalendarEvent ev = MakePendingOfficeEvent(DateTime.UtcNow, Guid.NewGuid()); // different creator
 
@@ -516,7 +517,7 @@ public sealed class DashboardServiceTests
             await BuildSut(eventRepo, holidays, prRepo, itemRepo)
                 .DeleteEventAsync(admin, ev.Id);
 
-        Assert.True(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
     }
 
     [Fact]
@@ -549,6 +550,180 @@ public sealed class DashboardServiceTests
                 .DeleteEventAsync(user, Guid.NewGuid());
 
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    // ── UpdateEventAsync (RAL-168) ────────────────────────────────────────────
+
+    [Fact]
+    public async Task UpdateEventAsync_Owner_CanEditOwnEvent()
+    {
+        User user = MakeUser();
+        CalendarEvent ev = MakePersonalEvent(DateTime.UtcNow, user.Id);
+        UpdateCalendarEventDto dto = new("Updated Title", "Updated desc",
+            new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc), null, true);
+
+        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        eventRepo.Setup(r => r.GetByIdAsync(ev.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ev);
+
+        ServiceResult<CalendarEventDto> result =
+            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+                .UpdateEventAsync(user, ev.Id, dto);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Updated Title", result.Value!.Title);
+        Assert.Equal("Updated desc", ev.Description);
+    }
+
+    [Fact]
+    public async Task UpdateEventAsync_NonOwner_ReturnsForbidden_EvenForAdmin()
+    {
+        // Deliberate difference from DeleteEventAsync: no admin override.
+        User admin = AdminUser();
+        CalendarEvent ev = MakePersonalEvent(DateTime.UtcNow, Guid.NewGuid()); // different creator
+        UpdateCalendarEventDto dto = new("Hijacked", null, DateTime.UtcNow, null, true);
+
+        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        eventRepo.Setup(r => r.GetByIdAsync(ev.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ev);
+
+        ServiceResult<CalendarEventDto> result =
+            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+                .UpdateEventAsync(admin, ev.Id, dto);
+
+        Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
+    }
+
+    [Fact]
+    public async Task UpdateEventAsync_NotFound_ReturnsNotFound()
+    {
+        User user = MakeUser();
+        UpdateCalendarEventDto dto = new("Title", null, DateTime.UtcNow, null, true);
+        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        // GetByIdAsync returns null (default from EmptyMocks)
+
+        ServiceResult<CalendarEventDto> result =
+            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+                .UpdateEventAsync(user, Guid.NewGuid(), dto);
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Fact]
+    public async Task UpdateEventAsync_EmptyTitle_ReturnsBadRequest()
+    {
+        User user = MakeUser();
+        UpdateCalendarEventDto dto = new("   ", null, DateTime.UtcNow, null, true);
+        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+
+        ServiceResult<CalendarEventDto> result =
+            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+                .UpdateEventAsync(user, Guid.NewGuid(), dto);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task UpdateEventAsync_NonAdminOwner_ApprovedOfficeEvent_ResetsToPending()
+    {
+        User staff = MakeUser(UserRole.Staff);
+        CalendarEvent ev = MakeOfficeEvent(DateTime.UtcNow, staff.Id); // Approved by construction
+        ev.ReviewedById = Guid.NewGuid();
+        ev.ReviewedAt   = DateTime.UtcNow;
+        UpdateCalendarEventDto dto = new("Revised Title", null, DateTime.UtcNow, null, true);
+
+        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        eventRepo.Setup(r => r.GetByIdAsync(ev.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ev);
+
+        ServiceResult<CalendarEventDto> result =
+            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+                .UpdateEventAsync(staff, ev.Id, dto);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(CalendarEventStatus.Pending, result.Value!.Status);
+        Assert.Null(ev.ReviewedById);
+        Assert.Null(ev.ReviewedAt);
+    }
+
+    [Fact]
+    public async Task UpdateEventAsync_NonAdminOwner_RejectedOfficeEvent_ResetsToPending()
+    {
+        User staff = MakeUser(UserRole.Staff);
+        CalendarEvent ev = MakePendingOfficeEvent(DateTime.UtcNow, staff.Id);
+        ev.Status          = CalendarEventStatus.Rejected;
+        ev.RejectionReason = "Conflicts with another event.";
+        UpdateCalendarEventDto dto = new("Fixed Title", null, DateTime.UtcNow, null, true);
+
+        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        eventRepo.Setup(r => r.GetByIdAsync(ev.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ev);
+
+        ServiceResult<CalendarEventDto> result =
+            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+                .UpdateEventAsync(staff, ev.Id, dto);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(CalendarEventStatus.Pending, result.Value!.Status);
+        Assert.Null(ev.RejectionReason);
+    }
+
+    [Fact]
+    public async Task UpdateEventAsync_AdminOwner_ApprovedOfficeEvent_StaysApproved()
+    {
+        User admin = AdminUser();
+        CalendarEvent ev = MakeOfficeEvent(DateTime.UtcNow, admin.Id);
+        UpdateCalendarEventDto dto = new("Admin Revised Title", null, DateTime.UtcNow, null, true);
+
+        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        eventRepo.Setup(r => r.GetByIdAsync(ev.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ev);
+
+        ServiceResult<CalendarEventDto> result =
+            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+                .UpdateEventAsync(admin, ev.Id, dto);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(CalendarEventStatus.Approved, result.Value!.Status);
+    }
+
+    [Fact]
+    public async Task UpdateEventAsync_PersonalEvent_NeverResetsStatus()
+    {
+        User user = MakeUser(UserRole.Staff);
+        CalendarEvent ev = MakePersonalEvent(DateTime.UtcNow, user.Id); // Approved by construction
+        UpdateCalendarEventDto dto = new("Renamed Appointment", null, DateTime.UtcNow, null, true);
+
+        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        eventRepo.Setup(r => r.GetByIdAsync(ev.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ev);
+
+        ServiceResult<CalendarEventDto> result =
+            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+                .UpdateEventAsync(user, ev.Id, dto);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(CalendarEventStatus.Approved, result.Value!.Status);
+    }
+
+    [Fact]
+    public async Task UpdateEventAsync_GetEventsAsync_IncludesCreatedById()
+    {
+        User user = MakeUser();
+        CalendarEvent ev = MakeOfficeEvent(new DateTime(2026, 6, 5, 0, 0, 0, DateTimeKind.Utc), user.Id);
+
+        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        eventRepo.Setup(r => r.GetByDateRangeAsync(
+                It.IsAny<DateTime>(), It.IsAny<DateTime>(),
+                user.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([ev]);
+
+        IReadOnlyList<CalendarEventDto> result =
+            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+                .GetEventsAsync(2026, 6, user.Id);
+
+        Assert.Single(result);
+        Assert.Equal(user.Id, result[0].CreatedById);
     }
 
     // ── GetStatsAsync ─────────────────────────────────────────────────────────

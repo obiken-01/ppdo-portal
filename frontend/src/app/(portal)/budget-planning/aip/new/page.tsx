@@ -1,11 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import api from "@/lib/api";
+import { useMe } from "@/lib/me-cache";
 import { aipErrorMessage, uploadAipFile } from "@/lib/aip";
-import type { MeResponse } from "@/types";
 
 const CURRENT_YEAR = new Date().getFullYear();
 const FY_OPTIONS = [CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1, CURRENT_YEAR + 2];
@@ -32,11 +31,7 @@ export default function AipNewPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    api.get<MeResponse>("/auth/me").then(({ data }) => {
-      if (!data.canUploadAip) router.replace("/budget-planning/aip");
-    });
-  }, [router]);
+  useMe((m) => m.canUploadAip, "/budget-planning/aip");
 
   function validateAndSet(f: File | null) {
     setFileError(null);

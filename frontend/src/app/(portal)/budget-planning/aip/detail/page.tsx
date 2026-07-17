@@ -16,14 +16,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import api from "@/lib/api";
+import { useSearchParams } from "next/navigation";
+import { useMe } from "@/lib/me-cache";
 import { getAipById, aipErrorMessage } from "@/lib/aip";
 import type {
   AipRecordDetail,
   AipOfficeDetail,
   AipActivityDetail,
-  MeResponse,
 } from "@/types";
 
 // ── Chevron ────────────────────────────────────────────────────────────────────
@@ -130,11 +129,10 @@ function allCollapsed(offices: AipOfficeDetail[]) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function AipDetailPage() {
-  const router       = useRouter();
   const searchParams = useSearchParams();
   const id           = parseInt(searchParams.get("id") ?? "", 10);
 
-  const [me,      setMe]      = useState<MeResponse | null>(null);
+  const me = useMe((m) => m.canAccessBudgetPlanning);
   const [record,  setRecord]  = useState<AipRecordDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState<string | null>(null);
@@ -147,13 +145,6 @@ export default function AipDetailPage() {
   const toggleOffice  = useCallback((k: number) => setCollapsedOffices( (p) => toggleSet(p, k)), []);
   const toggleProgram = useCallback((k: number) => setCollapsedPrograms((p) => toggleSet(p, k)), []);
   const toggleProject = useCallback((k: number) => setCollapsedProjects((p) => toggleSet(p, k)), []);
-
-  useEffect(() => {
-    api.get<MeResponse>("/auth/me").then(({ data }) => {
-      if (!data.canAccessBudgetPlanning) { router.replace("/dashboard"); return; }
-      setMe(data);
-    });
-  }, [router]);
 
   useEffect(() => {
     if (!me || isNaN(id)) return;

@@ -2,12 +2,15 @@
 
 import { useCallback, useEffect, useState } from "react";
 import api from "@/lib/api";
-import { getPendingEvents } from "@/lib/dashboard";
-import type { CalendarEventResponse, MeResponse } from "@/types";
+import { useMe } from "@/lib/me-cache";
+import { getPendingEvents, deleteCalendarEvent } from "@/lib/dashboard";
+import type { CalendarEventResponse } from "@/types";
 import DashboardCalendar from "@/components/dashboard/DashboardCalendar";
 import ResourceLinksWidget from "@/components/dashboard/ResourceLinksWidget";
 import CalendarApprovalPanel from "@/components/dashboard/CalendarApprovalPanel";
 import CreateEventModal from "@/components/dashboard/CreateEventModal";
+import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
+import { useToast } from "@/components/ui/Toast";
 
 // Module-level SPA cache: survives route changes within the same tab.
 // Keys are "yyyy-m". First visit populates; return visits show stale data
@@ -24,22 +27,19 @@ export default function DashboardPage() {
   const [activeYear, setActiveYear]       = useState(() => new Date().getFullYear());
   const [activeMonth, setActiveMonth]     = useState(() => new Date().getMonth() + 1);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEventResponse | null>(null);
+  const [editingEvent, setEditingEvent]   = useState<CalendarEventResponse | null>(null);
+  const [dialog, setDialog]               = useState<ConfirmDialogProps | null>(null);
+  const { toast } = useToast();
 
-  const [currentUser, setCurrentUser]       = useState<MeResponse | null>(null);
+  // Dashboard has no special access requirement -- every authenticated portal user lands
+  // here, so the permission check always passes. Reads the shared cached /auth/me instead
+  // of fetching it separately (RAL-168).
+  const me = useMe(() => true);
   const [pendingCount, setPendingCount]     = useState(0);
   const [approvalPanelOpen, setApprovalPanelOpen] = useState(false);
   const [createModalDate, setCreateModalDate]     = useState<string | null>(null);
 
-  const isAdmin =
-    currentUser?.role === "Admin" || currentUser?.role === "SuperAdmin";
-
-  // ── Fetch current user ─────────────────────────────────────────────────────
-
-  useEffect(() => {
-    api.get<MeResponse>("/auth/me")
-      .then((r) => setCurrentUser(r.data))
-      .catch(() => {});
-  }, []);
+  const isAdmin = me?.role === "Admin" || me?.role === "SuperAdmin";
 
   // ── Fetch events ───────────────────────────────────────────────────────────
 
@@ -106,6 +106,34 @@ export default function DashboardPage() {
     setCreateModalDate(null);
     fetchEvents(activeYear, activeMonth);
     refreshPendingCount();
+  }
+
+  function handleEdited() {
+    setEditingEvent(null);
+    fetchEvents(activeYear, activeMonth);
+    refreshPendingCount();
+  }
+
+  function handleDeleteClick(event: CalendarEventResponse) {
+    if (!event.id) return;
+    setDialog({
+      title: "Delete this event?",
+      message: `"${event.title}" will be permanently deleted. This cannot be undone.`,
+      confirmLabel: "Delete",
+      variant: "danger",
+      onConfirm: async () => {
+        try {
+          await deleteCalendarEvent(event.id!);
+          toast.success("Event deleted.");
+          setSelectedEvent(null);
+          fetchEvents(activeYear, activeMonth);
+          refreshPendingCount();
+        } catch {
+          toast.error("Failed to delete event.");
+        }
+      },
+      onClose: () => setDialog(null),
+    });
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -207,12 +235,34 @@ export default function DashboardPage() {
               </div>
             )}
 
-            <p className="text-xs text-slate-600">
-              {new Date(selectedEvent.startDate).toLocaleDateString("en-PH", {
-                weekday: "long", year: "numeric", month: "long", day: "numeric",
-                timeZone: "Asia/Manila",
-              })}
-            </p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs text-slate-600">
+                {new Date(selectedEvent.startDate).toLocaleDateString("en-PH", {
+                  weekday: "long", year: "numeric", month: "long", day: "numeric",
+                  timeZone: "Asia/Manila",
+                })}
+              </p>
+              {/* Owner-only edit/delete — no admin override (RAL-168) */}
+              {me != null && selectedEvent.createdById === me.userId && (
+                <div className="flex items-center gap-3 shrink-0">
+                  <button
+                    onClick={() => {
+                      setEditingEvent(selectedEvent);
+                      setSelectedEvent(null);
+                    }}
+                    className="text-xs font-medium text-green-600 hover:underline"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => handleDeleteClick(selectedEvent)}
+                    className="text-xs font-medium text-danger-500 hover:underline"
+                  >
+                    Delete
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -231,9 +281,24 @@ export default function DashboardPage() {
           initialDate={createModalDate}
           isAdmin={isAdmin}
           onClose={() => setCreateModalDate(null)}
-          onCreated={handleCreated}
+          onSaved={handleCreated}
         />
       )}
+
+      {/* Edit event modal — triggered by the owner-only Edit button above */}
+      {editingEvent && (
+        <CreateEventModal
+          open={true}
+          initialDate={editingEvent.startDate.slice(0, 10)}
+          isAdmin={isAdmin}
+          editingEvent={editingEvent}
+          onClose={() => setEditingEvent(null)}
+          onSaved={handleEdited}
+        />
+      )}
+
+      {/* Delete confirmation — triggered by the owner-only Delete button above */}
+      {dialog && <ConfirmDialog {...dialog} />}
     </div>
   );
 }
