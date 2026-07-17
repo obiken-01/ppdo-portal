@@ -108,6 +108,7 @@ var host = new HostBuilder()
         services.AddScoped<IAipRepository, AipRepository>();
         services.AddScoped<ILdipRepository, LdipRepository>();
         services.AddScoped<IWfpRepository, WfpRepository>();
+        services.AddScoped<IOfficeRepository, OfficeRepository>();
         services.AddScoped<IJwtMiddleware, JwtMiddleware>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<IExcelService, ExcelService>();

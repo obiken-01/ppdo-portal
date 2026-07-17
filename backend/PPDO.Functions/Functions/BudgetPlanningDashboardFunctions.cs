@@ -38,6 +38,10 @@ public sealed class BudgetPlanningDashboardFunctions
     }
 
     // ── GET /api/budget-planning/dashboard?fiscalYear={int?} ──────────────────
+    // divisionId (RAL-161): division-scoped callers (not CanManageAllocation) are ALWAYS
+    // clamped to their own division — mirrors WfpReportFunctions.GetPreview's RAL-136 pattern.
+    // There is no client-supplied divisionId param here at all; a division-scoped caller can
+    // never see another division's data by any query string.
 
     [Function("GetBudgetPlanningDashboard")]
     public async Task<HttpResponseData> GetDashboard(
@@ -53,9 +57,12 @@ public sealed class BudgetPlanningDashboardFunctions
             return req.CreateResponse(HttpStatusCode.Forbidden);
 
         int? fiscalYear = TryParseIntQuery(req, "fiscalYear");
+        int? divisionId = await _permissions.CanManageAllocationAsync(caller, cancellationToken)
+            ? null
+            : caller.DivisionId;
 
-        PlanningDashboardDto result =
-            await _service.GetDashboardAsync(fiscalYear, cancellationToken);
+        PpdoDashboardDto result =
+            await _service.GetDashboardAsync(fiscalYear, divisionId, cancellationToken);
 
         return await OkJson(req, result, cancellationToken);
     }

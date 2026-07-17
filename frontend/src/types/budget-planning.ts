@@ -190,50 +190,64 @@ export interface StatusBreakdown {
   count: number;
 }
 
-export interface LdipSummary {
-  total: number;
-  breakdown: StatusBreakdown[];
+/** One division's allocated amount in one fund (v1.4.5 — RAL-161). */
+export interface DivisionFundAmount {
+  fundingSourceId: number;
+  fundCode: string;
+  fundName: string;
+  amount: number;
 }
 
-export interface AipSummary {
-  total: number;
-  breakdown: StatusBreakdown[];
-}
-
-export interface WfpSummary {
-  finalCount: number;
-  activeOfficeCount: number;
-}
-
-export interface WfpOfficeStatus {
-  officeId: number;
-  officeCode: string;
-  officeName: string;
+/** One division's WFP status + activity coverage + allocation, PPDO-scoped (v1.4.5 — RAL-161). */
+export interface DivisionWfpStatus {
+  divisionId: number;
+  divisionCode: string | null;
+  divisionName: string;
   wfpStatus: "Draft" | "Final" | "Not started";
-  aipRecordId: number | null;
+  activitiesWithExpenditures: number;
+  totalActivities: number;
+  totalAllocated: number;
+  allocationByFund: DivisionFundAmount[];
+}
+
+/** One division's share of a fund's office-wide ceiling. */
+export interface FundDivisionShare {
+  divisionId: number;
+  divisionCode: string | null;
+  divisionName: string;
+  amount: number;
 }
 
 /**
- * Office-level (not per-division) allocation-setup counts across all active offices
- * (RAL-60) — used by the "All Offices" dashboard view, where allocation can't be
- * shown per-office. FullySetup = ceiling + allocation + PPA assignment all present;
- * NotStarted = none present; Incomplete = everything else.
+ * One funding source's office-wide ceiling + per-division allocation breakdown
+ * (v1.4.5 — RAL-161). Ceiling/remaining are office-level figures, NOT per division —
+ * a division's amount inside byDivision is its own allocated share of this same ceiling.
  */
-export interface AllocationSetupOverview {
-  totalOffices: number;
-  fullySetupCount: number;
-  incompleteCount: number;
-  notStartedCount: number;
+export interface FundCeiling {
+  fundingSourceId: number;
+  fundCode: string;
+  fundName: string;
+  ceiling: number;
+  remaining: number;
+  byDivision: FundDivisionShare[];
 }
 
-export interface PlanningDashboard {
+/**
+ * The PPDO-scoped Budget Planning Dashboard (v1.4.5 — RAL-161). Replaces the old
+ * multi-office PlanningDashboard — Budget Planning is permanently scoped to PPDO.
+ * For a division-scoped Staff caller, the server clamps wfpByDivision and every
+ * FundCeiling.byDivision entry to just that caller's own division.
+ */
+export interface PpdoDashboard {
   fiscalYear: number;
   availableFiscalYears: number[];
-  ldip: LdipSummary;
-  aip: AipSummary;
-  wfp: WfpSummary;
-  wfpByOffice: WfpOfficeStatus[];
-  allocation: AllocationSetupOverview;
+  officeId: number;
+  officeCode: string;
+  officeName: string;
+  ldip: OfficeLdipSummary;
+  aip: OfficeAipSummary;
+  wfpByDivision: DivisionWfpStatus[];
+  ceilingByFund: FundCeiling[];
 }
 
 export interface RecentActivity {
