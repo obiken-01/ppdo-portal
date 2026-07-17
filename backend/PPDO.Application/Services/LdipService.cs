@@ -100,8 +100,7 @@ public sealed class LdipService : ILdipService
         if (groupError is not null)
             return ServiceResult<LdipRecordDetailDto>.BadRequest(groupError);
 
-        IReadOnlyList<LdipRecord> all = await _repo.GetAllAsync(ct);
-        int seq = all.Count(r => r.FiscalYearStart == dto.FiscalYearStart) + 1;
+        int seq = await _repo.CountByFiscalYearStartAsync(dto.FiscalYearStart, ct) + 1;
         string refCode = $"LDIP-{dto.FiscalYearStart}-{seq:D3}";
 
         Dictionary<string, FundingSource> fsLookup = await LoadFundingSourceLookupAsync(ct);
@@ -561,8 +560,7 @@ public sealed class LdipService : ILdipService
         if (dto.TargetRecordId is int targetId)
             return await ReplaceImportAsync(targetId, dto, items, fsLookup, ct);
 
-        IReadOnlyList<LdipRecord> all = await _repo.GetAllAsync(ct);
-        int seq = all.Count(r => r.FiscalYearStart == dto.FiscalYearStart) + 1;
+        int seq = await _repo.CountByFiscalYearStartAsync(dto.FiscalYearStart, ct) + 1;
         string refCode = $"LDIP-{dto.FiscalYearStart}-{seq:D3}";
 
         DateTime now = DateTime.UtcNow;

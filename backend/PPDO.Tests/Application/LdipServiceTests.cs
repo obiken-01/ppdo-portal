@@ -101,6 +101,10 @@ public sealed class LdipServiceTests
         repo.Setup(r => r.DeleteAsync(It.IsAny<LdipRecord>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+        // RAL-165: ref-code sequence generation now counts in SQL rather than
+        // GetAllAsync()+Count() in memory — mirror against the same live seed list.
+        repo.Setup(r => r.CountByFiscalYearStartAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int fy, CancellationToken _) => seed.Count(r => r.FiscalYearStart == fy));
 
         Mock<IRepository<Office>> officeRepo = new();
         officeRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
@@ -1015,5 +1019,35 @@ public sealed class LdipServiceTests
         Assert.Null(p.ImplementingOffice);
         Assert.Null(p.Ps);
         Assert.Null(p.FundingSourceId);
+    }
+
+    // ── Scoped-query regression guards (RAL-165 — perf audit Tier 1) ──────────
+
+    [Fact]
+    public async Task Create_UsesScopedFiscalYearCount_NeverFullTableLoad()
+    {
+        (LdipService sut, Mock<ILdipRepository> repo, _, _, _) = Build([]);
+        CreateLdipDto dto = new("My LDIP", 2027, 2029, "New", OfficeId: 1);
+
+        await sut.CreateAsync(dto, UserId);
+
+        repo.Verify(r => r.CountByFiscalYearStartAsync(2027, It.IsAny<CancellationToken>()), Times.Once);
+        repo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ConfirmImport_UsesScopedFiscalYearCount_NeverFullTableLoad()
+    {
+        (LdipService sut, Mock<ILdipRepository> repo, _, _, _) = Build([], offices: [Off()]);
+        LdipImportConfirmDto dto = new(2027, 2029, Offices:
+        [
+            new LdipImportOfficeResultDto(1, "PPDO", "Provincial Planning and Development Office",
+                [SaveGroup("General", "PPDO", ("Program A", 350m))]),
+        ]);
+
+        await sut.ConfirmImportAsync(dto, UserId);
+
+        repo.Verify(r => r.CountByFiscalYearStartAsync(2027, It.IsAny<CancellationToken>()), Times.Once);
+        repo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 }

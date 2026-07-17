@@ -61,4 +61,14 @@ public sealed class UserRepository : Repository<User>, IUserRepository
             .Include(u => u.Office)   // v1.1 — OfficeName for the user list DTO
             .OrderBy(u => u.FullName)
             .ToListAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<Guid, string>> GetNamesByIdsAsync(
+        IReadOnlyList<Guid> ids, CancellationToken cancellationToken = default)
+    {
+        if (ids.Count == 0) return new Dictionary<Guid, string>();
+        return await _context.Users
+            .Where(u => ids.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => u.FullName, cancellationToken);
+    }
 }

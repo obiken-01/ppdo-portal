@@ -41,7 +41,7 @@ public sealed class AipServiceTests
         AipService sut,
         Mock<IAipRepository>           aipRepo,
         Mock<IRepository<FundingSource>> fsRepo,
-        Mock<IRepository<User>>        userRepo,
+        Mock<IUserRepository>           userRepo,
         Mock<IAipXlsmParser> parser,
         Mock<IAuditService>  audit)
         Build(
@@ -56,7 +56,7 @@ public sealed class AipServiceTests
     {
         Mock<IAipRepository>            aipRepo  = new();
         Mock<IRepository<FundingSource>> fsRepo   = new();
-        Mock<IRepository<User>>          userRepo = new();
+        Mock<IUserRepository>            userRepo = new();
         Mock<IAipXlsmParser>  parser = new();
         Mock<IAuditService>   audit  = new();
 
@@ -111,10 +111,23 @@ public sealed class AipServiceTests
         aipRepo.Setup(r => r.GetActivityByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((int id, CancellationToken _) => actList.FirstOrDefault(a => a.Id == id));
 
+        // GetLatestByFiscalYearAsync (RAL-165) — mirrors AipRepository's real implementation:
+        // the single non-Archived record for the year, ordered by Id ascending.
+        aipRepo.Setup(r => r.GetLatestByFiscalYearAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int fy, CancellationToken _) => aipSeed
+                .Where(r => r.FiscalYear == fy && r.Status != PlanningStatus.Archived)
+                .OrderBy(r => r.Id)
+                .FirstOrDefault());
+
         // ── Config repos ──────────────────────────────────────────────────────────
 
         fsRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(fsSeed);
-        userRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(userSeed ?? []);
+        List<User> userList = userSeed ?? [];
+        userRepo.Setup(r => r.GetNamesByIdsAsync(It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<Guid> ids, CancellationToken _) =>
+                (IReadOnlyDictionary<Guid, string>)userList
+                    .Where(u => ids.Contains(u.Id))
+                    .ToDictionary(u => u.Id, u => u.FullName));
 
         // ── Audit ─────────────────────────────────────────────────────────────────
 
@@ -763,5 +776,39 @@ public sealed class AipServiceTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    // ── Scoped-query regression guards (RAL-165 — perf audit Tier 1) ──────────
+
+    [Fact]
+    public async Task GetAll_UsesScopedUserNameLookup_NeverFullUsersTableLoad()
+    {
+        Guid uploaderId = Guid.NewGuid();
+        AipRecord rec = Rec(10);
+        rec.UploadedById = uploaderId;
+        User uploader = MakeUser(uploaderId, "Jane Uploader");
+
+        var (sut, _, _, userRepo, _, _) = Build([rec], [], userSeed: [uploader]);
+
+        IReadOnlyList<AipRecordDto> result = await sut.GetAllAsync(null, null);
+
+        Assert.Equal("Jane Uploader", result[0].UploadedByName);
+        userRepo.Verify(r => r.GetNamesByIdsAsync(
+            It.Is<IReadOnlyList<Guid>>(ids => ids.Count == 1 && ids.Contains(uploaderId)),
+            It.IsAny<CancellationToken>()), Times.Once);
+        userRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ConfirmImport_UsesScopedFiscalYearLookup_NeverFullTableLoad()
+    {
+        var (sut, aipRepo, _, _, _, _) = Build([Rec(1, PlanningStatus.Draft)], []);
+        AipImportConfirmDto dto = new(2027, "aip.xlsm", null,
+            new Dictionary<string, List<ParsedAipOfficeDto>>());
+
+        await sut.ConfirmImportAsync(dto, UserId, CancellationToken.None);
+
+        aipRepo.Verify(r => r.GetLatestByFiscalYearAsync(2027, It.IsAny<CancellationToken>()), Times.Once);
+        aipRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 }
