@@ -647,9 +647,16 @@ function WfpReportPageInner() {
         </p>
       )}
       {reportLoading && (
-        <div className="flex items-center justify-center gap-2 text-slate-600 text-sm py-10 print:hidden">
-          <span className="w-4 h-4 border-2 border-slate-300 border-t-green-600 rounded-full animate-spin" />
-          Generating preview…
+        <div className="bg-white border border-slate-200 overflow-hidden animate-pulse print:hidden">
+          <div className="h-10 bg-green-800/80" />
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="h-8 px-4 flex items-center border-b border-slate-100">
+              <div
+                className="h-3 bg-slate-100"
+                style={{ width: `${45 + ((i * 13) % 35)}%` }}
+              />
+            </div>
+          ))}
         </div>
       )}
 

@@ -45,4 +45,12 @@ public interface IUserRepository : IRepository<User>
     /// <see cref="User.Division"/> and <see cref="User.Office"/> included.
     /// </summary>
     Task<IReadOnlyList<User>> GetAllWithDivisionAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns Id → FullName for the given user ids, computed in SQL (RAL-165 — perf audit
+    /// Tier 1). Used by list endpoints (e.g. <c>AipService.GetAllAsync</c>) that need to
+    /// resolve a handful of "uploaded by" names without loading the whole users table.
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, string>> GetNamesByIdsAsync(
+        IReadOnlyList<Guid> ids, CancellationToken cancellationToken = default);
 }

@@ -53,22 +53,19 @@ public sealed class WfpReportService : IWfpReportService
         ["OTHERS"] = "OTHER SERVICES",
     };
 
-    private readonly IBudgetPlanningDashboardService _dashboard;
-    private readonly IAipRepository                  _aipRepo;
-    private readonly IWfpRepository                  _wfpRepo;
-    private readonly IWfpExpenditureService          _expenditures;
-    private readonly IRepository<Office>             _officeRepo;
-    private readonly IRepository<Account>            _accountRepo;
+    private readonly IAipRepository          _aipRepo;
+    private readonly IWfpRepository          _wfpRepo;
+    private readonly IWfpExpenditureService  _expenditures;
+    private readonly IRepository<Office>     _officeRepo;
+    private readonly IRepository<Account>    _accountRepo;
 
     public WfpReportService(
-        IBudgetPlanningDashboardService dashboard,
-        IAipRepository                  aipRepo,
-        IWfpRepository                  wfpRepo,
-        IWfpExpenditureService          expenditures,
-        IRepository<Office>             officeRepo,
-        IRepository<Account>            accountRepo)
+        IAipRepository          aipRepo,
+        IWfpRepository          wfpRepo,
+        IWfpExpenditureService  expenditures,
+        IRepository<Office>     officeRepo,
+        IRepository<Account>    accountRepo)
     {
-        _dashboard    = dashboard;
         _aipRepo      = aipRepo;
         _wfpRepo      = wfpRepo;
         _expenditures = expenditures;
@@ -77,13 +74,36 @@ public sealed class WfpReportService : IWfpReportService
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Computed directly here rather than via <see cref="IBudgetPlanningDashboardService"/>
+    /// (v1.4.5 — RAL-161): the Dashboard is now permanently scoped to the PPDO office, but this
+    /// picker legitimately spans every office with a WFP, so it can no longer reuse the
+    /// Dashboard's (now PPDO-only) WfpByOffice — same underlying "one representative record per
+    /// office, prefer Final" logic, just resolved independently.
+    /// </remarks>
     public async Task<IReadOnlyList<WfpReportOfficeDto>> GetEligibleOfficesAsync(
         int fiscalYear, CancellationToken cancellationToken = default)
     {
-        PlanningDashboardDto dashboard = await _dashboard.GetDashboardAsync(fiscalYear, cancellationToken);
-        return dashboard.WfpByOffice
-            .Where(o => o.WfpStatus != "Not started")
-            .Select(o => new WfpReportOfficeDto(o.OfficeId, o.OfficeCode, o.OfficeName, o.WfpStatus))
+        AipRecord? primaryAip = await _aipRepo.GetLatestByFiscalYearAsync(fiscalYear, cancellationToken);
+        if (primaryAip is null) return [];
+
+        IReadOnlyList<WfpRecord> records =
+            await _wfpRepo.GetFilteredAsync(primaryAip.Id, officeId: null, divisionId: null, cancellationToken);
+        Dictionary<int, WfpRecord> byOffice = records
+            .GroupBy(w => w.OfficeId)
+            .ToDictionary(
+                g => g.Key,
+                g => g.OrderByDescending(w => w.Status == PlanningStatus.Final)
+                      .ThenByDescending(w => w.UpdatedAt)
+                      .First());
+
+        IReadOnlyList<Office> activeOffices = (await _officeRepo.GetAllAsync(cancellationToken))
+            .Where(o => o.IsActive)
+            .ToList();
+
+        return activeOffices
+            .Where(o => byOffice.ContainsKey(o.Id))
+            .Select(o => new WfpReportOfficeDto(o.Id, o.OfficeCode, o.OfficeName, byOffice[o.Id].Status))
             .ToList();
     }
 
@@ -99,15 +119,12 @@ public sealed class WfpReportService : IWfpReportService
             return ServiceResult<WfpReportDto>.NotFound(
                 $"Office {office.OfficeName} has no AIP reference code configured.");
 
-        // Primary AIP for the fiscal year: prefer Final, then Draft, then newest — same rule
-        // BudgetPlanningDashboardService uses so "the office's current AIP" means the same
-        // thing everywhere in Budget Planning.
-        static int AipStatusRank(string s) => s == "Final" ? 0 : s == "Draft" ? 1 : 2;
-        AipRecord? aipRecord = (await _aipRepo.GetAllAsync(cancellationToken))
-            .Where(a => a.FiscalYear == fiscalYear && a.Status != PlanningStatus.Archived)
-            .OrderBy(a => AipStatusRank(a.Status))
-            .ThenByDescending(a => a.Id)
-            .FirstOrDefault();
+        // Primary AIP for the fiscal year. Only one non-Archived AIP record can exist per
+        // fiscal year (enforced by AipService.ConfirmImportAsync's guard), so resolving it
+        // directly in SQL via GetLatestByFiscalYearAsync is equivalent to the old Final-then-
+        // Draft-then-newest in-memory ranking — that ranking only mattered for a state the
+        // guard never actually allows to occur.
+        AipRecord? aipRecord = await _aipRepo.GetLatestByFiscalYearAsync(fiscalYear, cancellationToken);
         if (aipRecord is null)
             return ServiceResult<WfpReportDto>.NotFound($"No AIP found for fiscal year {fiscalYear}.");
 

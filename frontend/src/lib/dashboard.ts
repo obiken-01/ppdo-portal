@@ -1,5 +1,5 @@
 import api from './api';
-import type { PendingCalendarEvent } from '@/types';
+import type { PendingCalendarEvent, UpdateCalendarEventRequest } from '@/types';
 
 export async function getPendingEvents(): Promise<PendingCalendarEvent[]> {
   const { data } = await api.get<PendingCalendarEvent[]>('/dashboard/events/pending');
@@ -19,6 +19,13 @@ export async function reviewCalendarEvent(
 
 export async function deleteCalendarEvent(id: string): Promise<void> {
   await api.delete(`/dashboard/events/${id}`);
+}
+
+export async function updateCalendarEvent(
+  id: string,
+  payload: UpdateCalendarEventRequest,
+): Promise<void> {
+  await api.put(`/dashboard/events/${id}`, payload);
 }
 
 export async function createCalendarEvent(payload: {

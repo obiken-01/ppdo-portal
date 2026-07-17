@@ -48,6 +48,7 @@ function toFcEvent(e: CalendarEventResponse): EventInput {
       source:          e.source,
       status:          e.status,
       rejectionReason: e.rejectionReason,
+      createdById:     e.createdById,
     },
   };
 }
@@ -85,6 +86,7 @@ export default function DashboardCalendar({
       source: string | null;
       status: "Pending" | "Approved" | "Rejected" | null;
       rejectionReason: string | null;
+      createdById: string | null;
     };
     onEventClick({
       id:              arg.event.id.startsWith("holiday-") ? null : arg.event.id,
@@ -97,6 +99,7 @@ export default function DashboardCalendar({
       source:          ep.source ?? null,
       status:          ep.status,
       rejectionReason: ep.rejectionReason,
+      createdById:     ep.createdById,
     });
   }
 

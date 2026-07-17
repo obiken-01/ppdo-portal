@@ -108,6 +108,7 @@ var host = new HostBuilder()
         services.AddScoped<IAipRepository, AipRepository>();
         services.AddScoped<ILdipRepository, LdipRepository>();
         services.AddScoped<IWfpRepository, WfpRepository>();
+        services.AddScoped<IOfficeRepository, OfficeRepository>();
         services.AddScoped<IJwtMiddleware, JwtMiddleware>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<IExcelService, ExcelService>();
@@ -139,6 +140,9 @@ var host = new HostBuilder()
         services.AddScoped<IPriceIndexService, PriceIndexService>();
         services.AddScoped<IProcurementPresetRepository, ProcurementPresetRepository>();
         services.AddScoped<IRepository<ProcurementPresetItem>, Repository<ProcurementPresetItem>>();
+        // RAL-164: scoped by-ids price-index lookup for ProcurementPresetService, distinct from
+        // the generic IRepository<PriceIndexItem> still used by PriceIndexService itself.
+        services.AddScoped<IPriceIndexItemRepository, PriceIndexItemRepository>();
         services.AddScoped<IProcurementPresetService, ProcurementPresetService>();
         services.AddScoped<IAuditService, AuditService>();
         services.AddScoped<IBudgetPlanningDashboardService, BudgetPlanningDashboardService>();
@@ -155,8 +159,10 @@ var host = new HostBuilder()
         services.AddScoped<IWfpService, WfpService>();
 
         // -- v1.2 Allocation (RAL-99) -----------------------------------------
-        services.AddScoped<IRepository<BudgetCeiling>, Repository<BudgetCeiling>>();
-        services.AddScoped<IRepository<DivisionAllocation>, Repository<DivisionAllocation>>();
+        // RAL-163: BudgetCeiling/DivisionAllocation moved from generic IRepository<T> to
+        // scoped feature repositories — see docs/Performance_Audit_2026-07-16.md Tier 1.
+        services.AddScoped<IBudgetCeilingRepository, BudgetCeilingRepository>();
+        services.AddScoped<IDivisionAllocationRepository, DivisionAllocationRepository>();
         services.AddScoped<IAllocationRepository, AllocationRepository>();
         services.AddScoped<IAllocationService, AllocationService>();
 

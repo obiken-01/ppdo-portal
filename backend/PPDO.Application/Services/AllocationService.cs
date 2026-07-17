@@ -24,8 +24,8 @@ public sealed class AllocationService : IAllocationService
 {
     private const string GeneralFundCode = "GF";
 
-    private readonly IRepository<BudgetCeiling>      _ceilingRepo;
-    private readonly IRepository<DivisionAllocation> _allocationRepo;
+    private readonly IBudgetCeilingRepository        _ceilingRepo;
+    private readonly IDivisionAllocationRepository   _allocationRepo;
     private readonly IAllocationRepository           _pdRepo;
     private readonly IRepository<Division>           _divisionRepo;
     private readonly IRepository<Office>             _officeRepo;
@@ -35,8 +35,8 @@ public sealed class AllocationService : IAllocationService
     private readonly CallerContext                   _caller;
 
     public AllocationService(
-        IRepository<BudgetCeiling>      ceilingRepo,
-        IRepository<DivisionAllocation> allocationRepo,
+        IBudgetCeilingRepository        ceilingRepo,
+        IDivisionAllocationRepository   allocationRepo,
         IAllocationRepository           pdRepo,
         IRepository<Division>           divisionRepo,
         IRepository<Office>             officeRepo,
@@ -61,7 +61,7 @@ public sealed class AllocationService : IAllocationService
     public async Task<ServiceResult<BudgetCeilingDto>> GetCeilingAsync(
         int officeId, int fiscalYear, int fundingSourceId, CancellationToken ct = default)
     {
-        BudgetCeiling? existing = await FindCeilingAsync(officeId, fiscalYear, fundingSourceId, ct);
+        BudgetCeiling? existing = await _ceilingRepo.FindAsync(officeId, fiscalYear, fundingSourceId, ct);
         if (existing is null)
             return ServiceResult<BudgetCeilingDto>.NotFound(
                 $"No budget ceiling set for office {officeId}, FY {fiscalYear}, funding source {fundingSourceId}.");
@@ -76,10 +76,9 @@ public sealed class AllocationService : IAllocationService
     {
         Dictionary<int, FundingSource> fundsById = (await _fundingSourceRepo.GetAllAsync(ct))
             .ToDictionary(f => f.Id);
-        IReadOnlyList<BudgetCeiling> all = await _ceilingRepo.GetAllAsync(ct);
+        IReadOnlyList<BudgetCeiling> scoped = await _ceilingRepo.GetByOfficeAndFiscalYearAsync(officeId, fiscalYear, ct);
 
-        return all
-            .Where(c => c.OfficeId == officeId && c.FiscalYear == fiscalYear)
+        return scoped
             .Select(c => MapCeiling(c, fundsById))
             .ToList();
     }
@@ -89,7 +88,7 @@ public sealed class AllocationService : IAllocationService
     {
         Dictionary<int, FundingSource> fundsById = (await _fundingSourceRepo.GetAllAsync(ct))
             .ToDictionary(f => f.Id);
-        BudgetCeiling? existing = await FindCeilingAsync(officeId, fiscalYear, fundingSourceId, ct);
+        BudgetCeiling? existing = await _ceilingRepo.FindAsync(officeId, fiscalYear, fundingSourceId, ct);
 
         if (existing is not null)
         {
@@ -121,21 +120,21 @@ public sealed class AllocationService : IAllocationService
     public async Task<IReadOnlyList<DivisionAllocationDto>> GetAllocationsAsync(
         int officeId, int fiscalYear, int fundingSourceId, CancellationToken ct = default)
     {
-        IReadOnlyList<Division>           allDivisions   = await _divisionRepo.GetAllAsync(ct);
-        IReadOnlyList<DivisionAllocation> allAllocations = await _allocationRepo.GetAllAsync(ct);
-        Dictionary<int, FundingSource>    fundsById      = (await _fundingSourceRepo.GetAllAsync(ct))
+        IReadOnlyList<Division>        allDivisions = await _divisionRepo.GetAllAsync(ct);
+        Dictionary<int, FundingSource> fundsById    = (await _fundingSourceRepo.GetAllAsync(ct))
             .ToDictionary(f => f.Id);
 
-        HashSet<int> officeDivIds = allDivisions
+        List<int> officeDivIds = allDivisions
             .Where(d => d.OfficeId == officeId && d.IsActive)
             .Select(d => d.Id)
-            .ToHashSet();
+            .ToList();
 
         Dictionary<int, string> divNames = allDivisions.ToDictionary(d => d.Id, d => d.Name);
 
-        return allAllocations
-            .Where(a => officeDivIds.Contains(a.DivisionId) && a.FiscalYear == fiscalYear
-                     && a.FundingSourceId == fundingSourceId)
+        IReadOnlyList<DivisionAllocation> scoped =
+            await _allocationRepo.GetByDivisionIdsAsync(officeDivIds, fiscalYear, fundingSourceId, ct);
+
+        return scoped
             .Select(a => MapAllocation(a, divNames.GetValueOrDefault(a.DivisionId, string.Empty), fundsById))
             .ToList();
     }
@@ -146,7 +145,7 @@ public sealed class AllocationService : IAllocationService
         CancellationToken ct = default)
     {
         // Guard 1 — ceiling must exist for this fund.
-        BudgetCeiling? ceiling = await FindCeilingAsync(officeId, fiscalYear, fundingSourceId, ct);
+        BudgetCeiling? ceiling = await _ceilingRepo.FindAsync(officeId, fiscalYear, fundingSourceId, ct);
         if (ceiling is null)
             return ServiceResult<IReadOnlyList<DivisionAllocationDto>>.BadRequest(
                 $"No budget ceiling set for office {officeId}, FY {fiscalYear}, funding source {fundingSourceId}. Set a ceiling first.");
@@ -162,24 +161,23 @@ public sealed class AllocationService : IAllocationService
 
         // Resolve all divisions of this office to validate ownership.
         IReadOnlyList<Division> allDivisions = await _divisionRepo.GetAllAsync(ct);
-        HashSet<int> officeDivIds = allDivisions
+        List<int> officeDivIds = allDivisions
             .Where(d => d.OfficeId == officeId)
             .Select(d => d.Id)
-            .ToHashSet();
+            .ToList();
+        HashSet<int> officeDivIdSet = officeDivIds.ToHashSet();
         Dictionary<int, string> divNames = allDivisions.ToDictionary(d => d.Id, d => d.Name);
 
         // Load existing allocations for this office+FY+fund.
-        IReadOnlyList<DivisionAllocation> existing = await _allocationRepo.GetAllAsync(ct);
-        Dictionary<int, DivisionAllocation> existingByDiv = existing
-            .Where(a => officeDivIds.Contains(a.DivisionId) && a.FiscalYear == fiscalYear
-                     && a.FundingSourceId == fundingSourceId)
-            .ToDictionary(a => a.DivisionId);
+        IReadOnlyList<DivisionAllocation> existing =
+            await _allocationRepo.GetByDivisionIdsAsync(officeDivIds, fiscalYear, fundingSourceId, ct);
+        Dictionary<int, DivisionAllocation> existingByDiv = existing.ToDictionary(a => a.DivisionId);
 
         List<DivisionAllocationDto> results = [];
 
         foreach (UpsertDivisionAllocationDto dto in dtos)
         {
-            if (!officeDivIds.Contains(dto.DivisionId))
+            if (!officeDivIdSet.Contains(dto.DivisionId))
                 continue;   // silently skip divisions not belonging to this office
 
             if (existingByDiv.TryGetValue(dto.DivisionId, out DivisionAllocation? row))
@@ -332,14 +330,12 @@ public sealed class AllocationService : IAllocationService
         if (gfId is int generalFundId)
         {
             // HasCeiling
-            BudgetCeiling? ceiling = await FindCeilingAsync(officeId, fiscalYear, generalFundId, ct);
+            BudgetCeiling? ceiling = await _ceilingRepo.FindAsync(officeId, fiscalYear, generalFundId, ct);
             hasCeiling = ceiling is not null;
 
             // HasAllocation — requires a positive amount, not just a row
-            IReadOnlyList<DivisionAllocation> allAllocs = await _allocationRepo.GetAllAsync(ct);
-            hasAllocation = allAllocs.Any(a =>
-                a.DivisionId == divisionId && a.FiscalYear == fiscalYear
-                && a.FundingSourceId == generalFundId && a.Amount > 0);
+            hasAllocation = await _allocationRepo.HasPositiveAllocationAsync(
+                divisionId, fiscalYear, generalFundId, ct);
         }
 
         // HasProgramAssignment — at least one program assigned to this division for the office+FY.
@@ -381,18 +377,20 @@ public sealed class AllocationService : IAllocationService
             .Where(o => o.IsActive)
             .ToList();
 
-        HashSet<int> officesWithCeiling = (await _ceilingRepo.GetAllAsync(ct))
-            .Where(c => c.FiscalYear == fiscalYear && gfId is int gf1 && c.FundingSourceId == gf1)
-            .Select(c => c.OfficeId)
-            .ToHashSet();
+        HashSet<int> officesWithCeiling = gfId is int gf1
+            ? (await _ceilingRepo.GetByFiscalYearAndFundingSourceAsync(fiscalYear, gf1, ct))
+                .Select(c => c.OfficeId)
+                .ToHashSet()
+            : [];
 
         IReadOnlyList<Division> allDivisions = await _divisionRepo.GetAllAsync(ct);
         Dictionary<int, int> officeIdByDivisionId = allDivisions.ToDictionary(d => d.Id, d => d.OfficeId);
-        Dictionary<int, decimal> allocatedByOfficeId = (await _allocationRepo.GetAllAsync(ct))
-            .Where(a => a.FiscalYear == fiscalYear && officeIdByDivisionId.ContainsKey(a.DivisionId)
-                     && gfId is int gf2 && a.FundingSourceId == gf2)
-            .GroupBy(a => officeIdByDivisionId[a.DivisionId])
-            .ToDictionary(g => g.Key, g => g.Sum(a => a.Amount));
+        Dictionary<int, decimal> allocatedByOfficeId = gfId is int gf2
+            ? (await _allocationRepo.GetByFiscalYearAndFundingSourceAsync(fiscalYear, gf2, ct))
+                .Where(a => officeIdByDivisionId.ContainsKey(a.DivisionId))
+                .GroupBy(a => officeIdByDivisionId[a.DivisionId])
+                .ToDictionary(g => g.Key, g => g.Sum(a => a.Amount))
+            : [];
 
         HashSet<int> officesWithProgramAssignment =
             await GetOfficesWithProgramAssignmentAsync(activeOffices, fiscalYear, ct);
@@ -465,14 +463,6 @@ public sealed class AllocationService : IAllocationService
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
-
-    private async Task<BudgetCeiling?> FindCeilingAsync(
-        int officeId, int fiscalYear, int fundingSourceId, CancellationToken ct)
-    {
-        IReadOnlyList<BudgetCeiling> all = await _ceilingRepo.GetAllAsync(ct);
-        return all.FirstOrDefault(c =>
-            c.OfficeId == officeId && c.FiscalYear == fiscalYear && c.FundingSourceId == fundingSourceId);
-    }
 
     /// <inheritdoc />
     public async Task<int?> GetGeneralFundIdAsync(CancellationToken ct = default)

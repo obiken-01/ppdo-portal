@@ -1398,9 +1398,22 @@ function WfpEntryPageInner() {
           first.
         </div>
       ) : loading ? (
-        <div className="flex items-center gap-2 text-slate-600 text-sm py-8">
-          <span className="w-4 h-4 border-2 border-slate-300 border-t-green-600 rounded-full animate-spin" />
-          Loading…
+        <div className="animate-pulse">
+          {/* Sticky ceiling header skeleton — matches the loaded header's structure/height */}
+          <div className="mb-5 bg-white border border-slate-200 px-4 py-3 space-y-2 shadow-sm">
+            <div className="h-4 bg-slate-200" style={{ width: "45%" }} />
+            <div className="h-3 bg-slate-100" style={{ width: "60%" }} />
+            <div className="h-2 bg-slate-100 w-full" />
+          </div>
+          {/* Context picker skeleton — 3 labeled lookup fields */}
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i}>
+                <div className="h-3 bg-slate-100 mb-1" style={{ width: "35%" }} />
+                <div className="h-8 bg-slate-100 w-full" />
+              </div>
+            ))}
+          </div>
         </div>
       ) : (
         <>

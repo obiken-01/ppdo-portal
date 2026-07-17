@@ -56,11 +56,30 @@ public interface IDashboardService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Hard-deletes a calendar event. Creator can delete their own; Admin/SuperAdmin can delete any.
+    /// Hard-deletes a calendar event. Owner-only (RAL-168) — no admin override, same rule as
+    /// <see cref="UpdateEventAsync"/>.
     /// </summary>
     Task<ServiceResult<bool>> DeleteEventAsync(
         User caller,
         Guid id,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Updates a calendar event's editable fields (Title, Description, StartDate, EndDate,
+    /// IsAllDay). Owner-only (RAL-168) — no admin override, same rule as
+    /// <see cref="DeleteEventAsync"/>. Editing an Approved Office event resets it to Pending for
+    /// re-review (mirrors the create-flow's non-admin approval rule); Personal events and events
+    /// created by an admin caller are unaffected.
+    ///
+    /// Returns:
+    ///   <see cref="ServiceErrorCode.NotFound"/> — no event with this id.
+    ///   <see cref="ServiceErrorCode.Forbidden"/> — caller did not create this event.
+    ///   <see cref="ServiceErrorCode.BadRequest"/> — title is empty.
+    /// </summary>
+    Task<ServiceResult<CalendarEventDto>> UpdateEventAsync(
+        User caller,
+        Guid id,
+        UpdateCalendarEventDto dto,
         CancellationToken cancellationToken = default);
 
     /// <summary>

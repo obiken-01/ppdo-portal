@@ -71,7 +71,6 @@ public sealed class WfpReportServiceTests
 
     private sealed record Fixture(
         WfpReportService Sut,
-        Mock<IBudgetPlanningDashboardService> Dashboard,
         Mock<IAipRepository> AipRepo,
         Mock<IWfpRepository> WfpRepo,
         Mock<IWfpExpenditureService> Expenditures,
@@ -80,7 +79,6 @@ public sealed class WfpReportServiceTests
 
     private static Fixture Build()
     {
-        Mock<IBudgetPlanningDashboardService> dashboard = new();
         Mock<IAipRepository> aipRepo = new();
         Mock<IWfpRepository> wfpRepo = new();
         Mock<IWfpExpenditureService> expenditures = new();
@@ -96,6 +94,11 @@ public sealed class WfpReportServiceTests
             .ReturnsAsync(() => (IReadOnlyList<Account>)accounts);
 
         // Defaults so tests only need to stub the hierarchy levels they actually populate.
+        // RAL-165: GetReportAsync resolves its AipRecord via GetLatestByFiscalYearAsync
+        // (SQL-scoped) rather than GetAllAsync()+in-memory filter — default null, individual
+        // tests override with the single record they seed.
+        aipRepo.Setup(r => r.GetLatestByFiscalYearAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((AipRecord?)null);
         aipRepo.Setup(r => r.GetProjectsByProgramIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipProject>)[]);
         aipRepo.Setup(r => r.GetActivitiesByProjectIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
@@ -128,10 +131,10 @@ public sealed class WfpReportServiceTests
             });
 
         WfpReportService sut = new(
-            dashboard.Object, aipRepo.Object, wfpRepo.Object, expenditures.Object,
+            aipRepo.Object, wfpRepo.Object, expenditures.Object,
             officeRepo.Object, accountRepo.Object);
 
-        return new Fixture(sut, dashboard, aipRepo, wfpRepo, expenditures, offices, accounts);
+        return new Fixture(sut, aipRepo, wfpRepo, expenditures, offices, accounts);
     }
 
     // ── GetEligibleOfficesAsync ───────────────────────────────────────────────
@@ -140,16 +143,20 @@ public sealed class WfpReportServiceTests
     public async Task GetEligibleOfficesAsync_ExcludesNotStarted_IncludesDraftAndFinal()
     {
         Fixture f = Build();
-        f.Dashboard.Setup(d => d.GetDashboardAsync(FiscalYear, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new PlanningDashboardDto(
-                FiscalYear, [FiscalYear],
-                new LdipSummaryDto(0, []), new AipSummaryDto(0, []), new WfpSummaryDto(0, 3),
-                [
-                    new WfpOfficeStatusDto(1, "PPDO", "PPDO Office", "Draft", 10),
-                    new WfpOfficeStatusDto(2, "PGO", "PGO Office", "Final", 10),
-                    new WfpOfficeStatusDto(3, "PTO", "PTO Office", "Not started", null),
-                ],
-                new AllocationSetupOverviewDto(3, 0, 0, 3)));
+        f.Offices.AddRange(
+        [
+            MakeOffice(1, "PPDO", "010"),
+            MakeOffice(2, "PGO", "020"),
+            MakeOffice(3, "PTO", "030"), // no WfpRecord at all — "Not started", excluded
+        ]);
+        f.AipRepo.Setup(r => r.GetLatestByFiscalYearAsync(FiscalYear, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakeAip(100, FiscalYear, PlanningStatus.Final));
+        f.WfpRepo.Setup(r => r.GetFilteredAsync(100, null, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpRecord>)
+            [
+                new WfpRecord { Id = 1, AipRecordId = 100, OfficeId = 1, FiscalYear = FiscalYear, Status = PlanningStatus.Draft },
+                new WfpRecord { Id = 2, AipRecordId = 100, OfficeId = 2, FiscalYear = FiscalYear, Status = PlanningStatus.Final },
+            ]);
 
         IReadOnlyList<WfpReportOfficeDto> result = await f.Sut.GetEligibleOfficesAsync(FiscalYear);
 
@@ -186,8 +193,7 @@ public sealed class WfpReportServiceTests
     {
         Fixture f = Build();
         f.Offices.Add(MakeOffice(1, "PPDO", "013"));
-        f.AipRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IReadOnlyList<AipRecord>)[]);
+        // No GetLatestByFiscalYearAsync override — Build()'s default (null) applies.
 
         ServiceResult<WfpReportDto> result = await f.Sut.GetReportAsync(1, FiscalYear);
         Assert.False(result.IsSuccess);
@@ -199,8 +205,8 @@ public sealed class WfpReportServiceTests
     {
         Fixture f = Build();
         f.Offices.Add(MakeOffice(1, "PPDO", "013"));
-        f.AipRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IReadOnlyList<AipRecord>)[MakeAip(100, FiscalYear, PlanningStatus.Draft)]);
+        f.AipRepo.Setup(r => r.GetLatestByFiscalYearAsync(FiscalYear, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakeAip(100, FiscalYear, PlanningStatus.Draft));
         f.AipRepo.Setup(r => r.GetOfficesByAipIdAsync(100, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipOffice>)[MakeAipOffice(1, 100, "3000-000-1-01-099")]);
 
@@ -212,28 +218,28 @@ public sealed class WfpReportServiceTests
     // ── GetReportAsync — happy path ───────────────────────────────────────────
 
     [Fact]
-    public async Task GetReportAsync_PrefersFinalAipOverDraft_ForSameFiscalYear()
+    public async Task GetReportAsync_UsesScopedAipLookup_NeverFullTableLoad()
     {
+        // RAL-165: resolves the fiscal year's AipRecord via GetLatestByFiscalYearAsync (SQL-
+        // scoped). Only one non-Archived AipRecord can exist per fiscal year (enforced by
+        // AipService.ConfirmImportAsync's guard, covered in AipServiceTests), so there is no
+        // Final-vs-Draft preference to test here anymore.
         Fixture f = Build();
         f.Offices.Add(MakeOffice(1, "PPDO", "013"));
-        f.AipRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IReadOnlyList<AipRecord>)[
-                MakeAip(100, FiscalYear, PlanningStatus.Draft),
-                MakeAip(101, FiscalYear, PlanningStatus.Final),
-            ]);
-        f.AipRepo.Setup(r => r.GetOfficesByAipIdAsync(101, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IReadOnlyList<AipOffice>)[MakeAipOffice(1, 101, "3000-000-1-01-013")]);
+        f.AipRepo.Setup(r => r.GetLatestByFiscalYearAsync(FiscalYear, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakeAip(100, FiscalYear, PlanningStatus.Draft));
+        f.AipRepo.Setup(r => r.GetOfficesByAipIdAsync(100, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipOffice>)[MakeAipOffice(1, 100, "3000-000-1-01-013")]);
         f.AipRepo.Setup(r => r.GetProgramsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipProgram>)[]);
-        f.WfpRepo.Setup(r => r.GetFilteredAsync(101, 1, null, It.IsAny<CancellationToken>()))
+        f.WfpRepo.Setup(r => r.GetFilteredAsync(100, 1, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<WfpRecord>)[]);
 
         ServiceResult<WfpReportDto> result = await f.Sut.GetReportAsync(1, FiscalYear);
 
         Assert.True(result.IsSuccess);
-        // GetOfficesByAipIdAsync(101, ...) — the Final AIP — was actually called (verifies choice).
-        f.AipRepo.Verify(r => r.GetOfficesByAipIdAsync(101, It.IsAny<CancellationToken>()), Times.Once);
-        f.AipRepo.Verify(r => r.GetOfficesByAipIdAsync(100, It.IsAny<CancellationToken>()), Times.Never);
+        f.AipRepo.Verify(r => r.GetLatestByFiscalYearAsync(FiscalYear, It.IsAny<CancellationToken>()), Times.Once);
+        f.AipRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -241,8 +247,8 @@ public sealed class WfpReportServiceTests
     {
         Fixture f = Build();
         f.Offices.Add(MakeOffice(1, "PPDO", "013"));
-        f.AipRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IReadOnlyList<AipRecord>)[MakeAip(100, FiscalYear, PlanningStatus.Draft)]);
+        f.AipRepo.Setup(r => r.GetLatestByFiscalYearAsync(FiscalYear, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakeAip(100, FiscalYear, PlanningStatus.Draft));
         f.AipRepo.Setup(r => r.GetOfficesByAipIdAsync(100, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipOffice>)[MakeAipOffice(1, 100, "3000-000-1-01-013")]);
 
@@ -297,8 +303,8 @@ public sealed class WfpReportServiceTests
     {
         Fixture f = Build();
         f.Offices.Add(MakeOffice(1, "PPDO", "013"));
-        f.AipRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IReadOnlyList<AipRecord>)[MakeAip(100, FiscalYear, PlanningStatus.Draft)]);
+        f.AipRepo.Setup(r => r.GetLatestByFiscalYearAsync(FiscalYear, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakeAip(100, FiscalYear, PlanningStatus.Draft));
         f.AipRepo.Setup(r => r.GetOfficesByAipIdAsync(100, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipOffice>)[MakeAipOffice(1, 100, "3000-000-1-01-013")]);
 
@@ -365,8 +371,8 @@ public sealed class WfpReportServiceTests
     {
         Fixture f = Build();
         f.Offices.Add(MakeOffice(1, "PPDO", "013"));
-        f.AipRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IReadOnlyList<AipRecord>)[MakeAip(100, FiscalYear, PlanningStatus.Draft)]);
+        f.AipRepo.Setup(r => r.GetLatestByFiscalYearAsync(FiscalYear, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakeAip(100, FiscalYear, PlanningStatus.Draft));
         f.AipRepo.Setup(r => r.GetOfficesByAipIdAsync(100, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipOffice>)[MakeAipOffice(1, 100, "3000-000-1-01-013")]);
 
@@ -411,8 +417,8 @@ public sealed class WfpReportServiceTests
     {
         Fixture f = Build();
         f.Offices.Add(MakeOffice(1, "PPDO", "013"));
-        f.AipRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IReadOnlyList<AipRecord>)[MakeAip(100, FiscalYear, PlanningStatus.Draft)]);
+        f.AipRepo.Setup(r => r.GetLatestByFiscalYearAsync(FiscalYear, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakeAip(100, FiscalYear, PlanningStatus.Draft));
         f.AipRepo.Setup(r => r.GetOfficesByAipIdAsync(100, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipOffice>)[MakeAipOffice(1, 100, "3000-000-1-01-013")]);
         AipProgram program = MakeProgram(1, 1, "PGM-1", "SUPPORT");
@@ -440,8 +446,8 @@ public sealed class WfpReportServiceTests
     {
         Fixture f = Build();
         f.Offices.Add(MakeOffice(1, "PPDO", "013"));
-        f.AipRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IReadOnlyList<AipRecord>)[MakeAip(100, FiscalYear, PlanningStatus.Draft)]);
+        f.AipRepo.Setup(r => r.GetLatestByFiscalYearAsync(FiscalYear, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakeAip(100, FiscalYear, PlanningStatus.Draft));
         f.AipRepo.Setup(r => r.GetOfficesByAipIdAsync(100, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipOffice>)[MakeAipOffice(1, 100, "3000-000-1-01-013")]);
         AipProgram programWithData = MakeProgram(1, 1, "PGM-1", "SUPPORT");
@@ -487,8 +493,8 @@ public sealed class WfpReportServiceTests
     {
         Fixture f = Build();
         f.Offices.Add(MakeOffice(1, "PPDO", "013"));
-        f.AipRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IReadOnlyList<AipRecord>)[MakeAip(100, FiscalYear, PlanningStatus.Draft)]);
+        f.AipRepo.Setup(r => r.GetLatestByFiscalYearAsync(FiscalYear, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakeAip(100, FiscalYear, PlanningStatus.Draft));
         f.AipRepo.Setup(r => r.GetOfficesByAipIdAsync(100, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipOffice>)[MakeAipOffice(1, 100, "3000-000-1-01-013")]);
         f.AipRepo.Setup(r => r.GetProgramsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
@@ -509,8 +515,8 @@ public sealed class WfpReportServiceTests
     {
         Fixture f = Build();
         f.Offices.Add(MakeOffice(1, "PPDO", "013"));
-        f.AipRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IReadOnlyList<AipRecord>)[MakeAip(100, FiscalYear, PlanningStatus.Draft)]);
+        f.AipRepo.Setup(r => r.GetLatestByFiscalYearAsync(FiscalYear, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakeAip(100, FiscalYear, PlanningStatus.Draft));
         f.AipRepo.Setup(r => r.GetOfficesByAipIdAsync(100, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipOffice>)[MakeAipOffice(1, 100, "3000-000-1-01-013")]);
 
@@ -567,8 +573,8 @@ public sealed class WfpReportServiceTests
     {
         Fixture f = Build();
         f.Offices.Add(MakeOffice(1, "PPDO", "013"));
-        f.AipRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IReadOnlyList<AipRecord>)[MakeAip(100, FiscalYear, PlanningStatus.Draft)]);
+        f.AipRepo.Setup(r => r.GetLatestByFiscalYearAsync(FiscalYear, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakeAip(100, FiscalYear, PlanningStatus.Draft));
         f.AipRepo.Setup(r => r.GetOfficesByAipIdAsync(100, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipOffice>)[MakeAipOffice(1, 100, "3000-000-1-01-013")]);
         AipProgram program = MakeProgram(1, 1, "PGM-1", "SUPPORT");
@@ -629,8 +635,8 @@ public sealed class WfpReportServiceTests
     {
         Fixture f = Build();
         f.Offices.Add(MakeOffice(1, "PPDO", "013"));
-        f.AipRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IReadOnlyList<AipRecord>)[MakeAip(100, FiscalYear, PlanningStatus.Draft)]);
+        f.AipRepo.Setup(r => r.GetLatestByFiscalYearAsync(FiscalYear, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakeAip(100, FiscalYear, PlanningStatus.Draft));
         f.AipRepo.Setup(r => r.GetOfficesByAipIdAsync(100, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipOffice>)[MakeAipOffice(1, 100, "3000-000-1-01-013")]);
 
@@ -683,8 +689,8 @@ public sealed class WfpReportServiceTests
     {
         Fixture f = Build();
         f.Offices.Add(MakeOffice(1, "PPDO", "013"));
-        f.AipRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IReadOnlyList<AipRecord>)[MakeAip(100, FiscalYear, PlanningStatus.Draft)]);
+        f.AipRepo.Setup(r => r.GetLatestByFiscalYearAsync(FiscalYear, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakeAip(100, FiscalYear, PlanningStatus.Draft));
         f.AipRepo.Setup(r => r.GetOfficesByAipIdAsync(100, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipOffice>)[MakeAipOffice(1, 100, "3000-000-1-01-013")]);
         AipProgram program = MakeProgram(1, 1, "PGM-1", "CORE");
@@ -736,8 +742,8 @@ public sealed class WfpReportServiceTests
     {
         Fixture f = Build();
         f.Offices.Add(MakeOffice(1, "PPDO", "013"));
-        f.AipRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IReadOnlyList<AipRecord>)[MakeAip(100, FiscalYear, PlanningStatus.Draft)]);
+        f.AipRepo.Setup(r => r.GetLatestByFiscalYearAsync(FiscalYear, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakeAip(100, FiscalYear, PlanningStatus.Draft));
         f.AipRepo.Setup(r => r.GetOfficesByAipIdAsync(100, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipOffice>)[MakeAipOffice(1, 100, "3000-000-1-01-013")]);
 
@@ -816,8 +822,8 @@ public sealed class WfpReportServiceTests
     {
         Fixture f = Build();
         f.Offices.Add(MakeOffice(1, "PPDO", "013"));
-        f.AipRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IReadOnlyList<AipRecord>)[MakeAip(100, FiscalYear, PlanningStatus.Draft)]);
+        f.AipRepo.Setup(r => r.GetLatestByFiscalYearAsync(FiscalYear, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakeAip(100, FiscalYear, PlanningStatus.Draft));
         AipOffice aipOffice = MakeAipOffice(1, 100, "3000-000-1-01-013");
         aipOffice.Sector = "SOCIAL";
         f.AipRepo.Setup(r => r.GetOfficesByAipIdAsync(100, It.IsAny<CancellationToken>()))
@@ -858,8 +864,8 @@ public sealed class WfpReportServiceTests
     {
         Fixture f = Build();
         f.Offices.Add(MakeOffice(1, "PPDO", "013"));
-        f.AipRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IReadOnlyList<AipRecord>)[MakeAip(100, FiscalYear, PlanningStatus.Draft)]);
+        f.AipRepo.Setup(r => r.GetLatestByFiscalYearAsync(FiscalYear, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakeAip(100, FiscalYear, PlanningStatus.Draft));
         f.AipRepo.Setup(r => r.GetOfficesByAipIdAsync(100, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipOffice>)[MakeAipOffice(1, 100, "3000-000-1-01-013")]);
         f.AipRepo.Setup(r => r.GetProgramsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))

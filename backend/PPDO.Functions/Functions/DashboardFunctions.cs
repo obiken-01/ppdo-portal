@@ -130,6 +130,30 @@ public sealed class DashboardFunctions
         return await ToResponse(req, result, HttpStatusCode.OK, cancellationToken);
     }
 
+    // ── PUT /api/dashboard/events/{id} ────────────────────────────────────────
+
+    [Function("UpdateCalendarEvent")]
+    public async Task<HttpResponseData> UpdateEvent(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "dashboard/events/{id:guid}")]
+        HttpRequestData req,
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        User? caller = await _jwt.ValidateAsync(GetAuthHeader(req), cancellationToken);
+        if (caller is null)
+            return req.CreateResponse(HttpStatusCode.Unauthorized);
+
+        UpdateCalendarEventDto? body =
+            await DeserializeAsync<UpdateCalendarEventDto>(req, cancellationToken);
+        if (body is null)
+            return await BadRequest(req, "Request body is missing or malformed.");
+
+        ServiceResult<CalendarEventDto> result =
+            await _dashboard.UpdateEventAsync(caller, id, body, cancellationToken);
+
+        return await ToResponse(req, result, HttpStatusCode.OK, cancellationToken);
+    }
+
     // ── DELETE /api/dashboard/events/{id} ─────────────────────────────────────
 
     [Function("DeleteCalendarEvent")]

@@ -86,7 +86,20 @@ public interface IWfpExpenditureRepository : IRepository<WfpExpenditure>
     /// </summary>
     Task<IReadOnlyList<int?>> GetDistinctFundingSourceIdsByWfpRecordAsync(
         int wfpRecordId, CancellationToken ct = default);
+
+    /// <summary>
+    /// WFP-activity coverage for the Dashboard's "activities with WFP expenditures" stat
+    /// (v1.4.5 — RAL-161): the total WfpActivity count and how many of those have at least
+    /// one WfpExpenditure, both scoped to (officeId, fiscalYear) and optionally one division.
+    /// <paramref name="divisionId"/> null means every division of the office. Both counts are
+    /// computed in SQL — the activity/expenditure tables are never loaded in memory.
+    /// </summary>
+    Task<WfpActivityCoverageDto> GetActivityCoverageAsync(
+        int officeId, int? divisionId, int fiscalYear, CancellationToken ct = default);
 }
+
+/// <summary>Total WfpActivity rows vs. how many have at least one WfpExpenditure, for one scope.</summary>
+public sealed record WfpActivityCoverageDto(int ActivitiesWithExpenditures, int TotalActivities);
 
 /// <summary>
 /// Slim projection of a wfp_activity's parent chain, resolved in one query so ceiling checks

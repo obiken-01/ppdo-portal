@@ -55,4 +55,9 @@ public sealed class LdipRepository : Repository<LdipRecord>, ILdipRepository
     /// <inheritdoc />
     public Task AddOfficeGroupAsync(LdipOffice group, CancellationToken ct = default)
         => _context.Set<LdipOffice>().AddAsync(group, ct).AsTask();
+
+    /// <inheritdoc />
+    public async Task<int> CountByFiscalYearStartAsync(int fiscalYearStart, CancellationToken ct = default)
+        => await _context.Set<LdipRecord>()
+            .CountAsync(r => r.FiscalYearStart == fiscalYearStart, ct);
 }

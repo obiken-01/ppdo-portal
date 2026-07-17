@@ -44,7 +44,8 @@ public sealed class ProcurementPresetServiceTests
         Mock<IProcurementPresetRepository> repo,
         Mock<IRepository<ProcurementPresetItem>> itemRepo,
         List<PriceIndexItem> priceIndexSeed,
-        Mock<IAuditService> audit)
+        Mock<IAuditService> audit,
+        Mock<IPriceIndexItemRepository> priceIndexRepo)
         Build(List<Account> accountSeed, List<PriceIndexItem> priceIndexSeed)
     {
         List<ProcurementPreset> presetSeed = [];
@@ -53,7 +54,7 @@ public sealed class ProcurementPresetServiceTests
         Mock<IProcurementPresetRepository> repo = new();
         Mock<IRepository<ProcurementPresetItem>> itemRepo = new();
         Mock<IRepository<Account>> accountRepo = new();
-        Mock<IRepository<PriceIndexItem>> priceIndexRepo = new();
+        Mock<IPriceIndexItemRepository> priceIndexRepo = new();
         Mock<IAuditService> audit = new();
 
         int nextPresetId = 1, nextItemId = 1000;
@@ -96,7 +97,9 @@ public sealed class ProcurementPresetServiceTests
         itemRepo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
         accountRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(accountSeed);
-        priceIndexRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(priceIndexSeed);
+        priceIndexRepo.Setup(r => r.GetByIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<int> ids, CancellationToken _) =>
+                (IReadOnlyList<PriceIndexItem>)priceIndexSeed.Where(p => ids.Contains(p.Id)).ToList());
 
         audit.Setup(a => a.LogAsync(
                 It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>(),
@@ -107,7 +110,7 @@ public sealed class ProcurementPresetServiceTests
             repo.Object, itemRepo.Object, accountRepo.Object, priceIndexRepo.Object,
             audit.Object, NullLogger<ProcurementPresetService>.Instance);
 
-        return (sut, repo, itemRepo, priceIndexSeed, audit);
+        return (sut, repo, itemRepo, priceIndexSeed, audit, priceIndexRepo);
     }
 
     // ── Create ────────────────────────────────────────────────────────────────
@@ -117,7 +120,7 @@ public sealed class ProcurementPresetServiceTests
     {
         Account acct = Acct(1);
         PriceIndexItem priceItem = PriceItem(10, "Bond paper", "ream", 250m);
-        var (sut, _, _, _, _) = Build([acct], [priceItem]);
+        var (sut, _, _, _, _, _) = Build([acct], [priceItem]);
 
         UpsertProcurementPresetDto dto = new(1, "Office Supplies Kit", true,
             [new UpsertProcurementPresetItemDto(10, null, null, null, 4m)]);
@@ -138,7 +141,7 @@ public sealed class ProcurementPresetServiceTests
     {
         Account acct = Acct(1);
         PriceIndexItem priceItem = PriceItem(10, "Bond paper", "ream", 250m);
-        var (sut, _, _, priceIndexSeed, _) = Build([acct], [priceItem]);
+        var (sut, _, _, priceIndexSeed, _, _) = Build([acct], [priceItem]);
 
         UpsertProcurementPresetDto dto = new(1, "Office Supplies Kit", true,
             [new UpsertProcurementPresetItemDto(10, null, null, null, 4m)]);
@@ -159,7 +162,7 @@ public sealed class ProcurementPresetServiceTests
     public async Task CreateAsync_FreeTypedItem_NoPriceIndexItemId_UsesProvidedValues()
     {
         Account acct = Acct(1);
-        var (sut, _, _, _, _) = Build([acct], []);
+        var (sut, _, _, _, _, _) = Build([acct], []);
 
         UpsertProcurementPresetDto dto = new(1, "Custom Kit", true,
             [new UpsertProcurementPresetItemDto(null, "Whiteboard marker", "box", 120m, 2m)]);
@@ -178,7 +181,7 @@ public sealed class ProcurementPresetServiceTests
     public async Task CreateAsync_FreeTypedItem_MissingUnitPrice_ReturnsBadRequest()
     {
         Account acct = Acct(1);
-        var (sut, _, _, _, _) = Build([acct], []);
+        var (sut, _, _, _, _, _) = Build([acct], []);
 
         UpsertProcurementPresetDto dto = new(1, "Custom Kit", true,
             [new UpsertProcurementPresetItemDto(null, "Whiteboard marker", "box", null, 2m)]);
@@ -192,7 +195,7 @@ public sealed class ProcurementPresetServiceTests
     public async Task CreateAsync_UnknownPriceIndexItemId_ReturnsBadRequest()
     {
         Account acct = Acct(1);
-        var (sut, _, _, _, _) = Build([acct], []);
+        var (sut, _, _, _, _, _) = Build([acct], []);
 
         UpsertProcurementPresetDto dto = new(1, "Kit", true,
             [new UpsertProcurementPresetItemDto(999, null, null, null, 1m)]);
@@ -205,7 +208,7 @@ public sealed class ProcurementPresetServiceTests
     [Fact]
     public async Task CreateAsync_UnknownAccountId_ReturnsBadRequest()
     {
-        var (sut, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _) = Build([], []);
 
         UpsertProcurementPresetDto dto = new(404, "Kit", true,
             [new UpsertProcurementPresetItemDto(null, "Marker", "box", 100m, 1m)]);
@@ -219,7 +222,7 @@ public sealed class ProcurementPresetServiceTests
     public async Task CreateAsync_NoItems_ReturnsBadRequest()
     {
         Account acct = Acct(1);
-        var (sut, _, _, _, _) = Build([acct], []);
+        var (sut, _, _, _, _, _) = Build([acct], []);
 
         UpsertProcurementPresetDto dto = new(1, "Empty Kit", true, []);
 
@@ -232,7 +235,7 @@ public sealed class ProcurementPresetServiceTests
     public async Task CreateAsync_StampsCallerAsCreatedBy()
     {
         Account acct = Acct(1);
-        var (sut, _, _, _, _) = Build([acct], []);
+        var (sut, _, _, _, _, _) = Build([acct], []);
         User caller = Caller();
 
         UpsertProcurementPresetDto dto = new(1, "Kit", true,
@@ -248,7 +251,7 @@ public sealed class ProcurementPresetServiceTests
     public async Task CreateAsync_CallsAuditLog_WithCreateAction()
     {
         Account acct = Acct(1);
-        var (sut, _, _, _, audit) = Build([acct], []);
+        var (sut, _, _, _, audit, _) = Build([acct], []);
 
         UpsertProcurementPresetDto dto = new(1, "Kit", true,
             [new UpsertProcurementPresetItemDto(null, "Marker", "box", 100m, 1m)]);
@@ -266,7 +269,7 @@ public sealed class ProcurementPresetServiceTests
     public async Task UpdateAsync_ReplacesItemSet_DeleteThenReinsert()
     {
         Account acct = Acct(1);
-        var (sut, _, _, _, _) = Build([acct], []);
+        var (sut, _, _, _, _, _) = Build([acct], []);
 
         ServiceResult<ProcurementPresetDto> created = await sut.CreateAsync(Caller(), new UpsertProcurementPresetDto(
             1, "Kit", true, [new UpsertProcurementPresetItemDto(null, "Marker", "box", 100m, 1m)]));
@@ -289,7 +292,7 @@ public sealed class ProcurementPresetServiceTests
     public async Task UpdateAsync_DoesNotChangeCreatedBy()
     {
         Account acct = Acct(1);
-        var (sut, _, _, _, _) = Build([acct], []);
+        var (sut, _, _, _, _, _) = Build([acct], []);
         User caller = Caller();
 
         ServiceResult<ProcurementPresetDto> created = await sut.CreateAsync(caller, new UpsertProcurementPresetDto(
@@ -305,7 +308,7 @@ public sealed class ProcurementPresetServiceTests
     [Fact]
     public async Task UpdateAsync_UnknownId_ReturnsNotFound()
     {
-        var (sut, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _) = Build([], []);
 
         ServiceResult<ProcurementPresetDto> result = await sut.UpdateAsync(999, new UpsertProcurementPresetDto(
             1, "Kit", true, [new UpsertProcurementPresetItemDto(null, "Marker", "box", 100m, 1m)]));
@@ -319,7 +322,7 @@ public sealed class ProcurementPresetServiceTests
     public async Task DeleteAsync_SoftDeletes()
     {
         Account acct = Acct(1);
-        var (sut, _, _, _, _) = Build([acct], []);
+        var (sut, _, _, _, _, _) = Build([acct], []);
 
         ServiceResult<ProcurementPresetDto> created = await sut.CreateAsync(Caller(), new UpsertProcurementPresetDto(
             1, "Kit", true, [new UpsertProcurementPresetItemDto(null, "Marker", "box", 100m, 1m)]));
@@ -333,7 +336,7 @@ public sealed class ProcurementPresetServiceTests
     [Fact]
     public async Task DeleteAsync_UnknownId_ReturnsNotFound()
     {
-        var (sut, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _) = Build([], []);
 
         ServiceResult<ProcurementPresetDto> result = await sut.DeleteAsync(999);
 
@@ -347,7 +350,7 @@ public sealed class ProcurementPresetServiceTests
     {
         Account acct1 = Acct(1);
         Account acct2 = Acct(2, "5-02-01-010", "Traveling Expenses");
-        var (sut, _, _, _, _) = Build([acct1, acct2], []);
+        var (sut, _, _, _, _, _) = Build([acct1, acct2], []);
 
         await sut.CreateAsync(Caller(), new UpsertProcurementPresetDto(
             1, "Kit A", true, [new UpsertProcurementPresetItemDto(null, "Marker", "box", 100m, 1m)]));
@@ -365,7 +368,7 @@ public sealed class ProcurementPresetServiceTests
     {
         Account acct1 = Acct(1);
         Account acct2 = Acct(2, "5-02-01-010", "Traveling Expenses");
-        var (sut, _, _, _, _) = Build([acct1, acct2], []);
+        var (sut, _, _, _, _, _) = Build([acct1, acct2], []);
 
         await sut.CreateAsync(Caller(), new UpsertProcurementPresetDto(
             1, "Kit A", true, [new UpsertProcurementPresetItemDto(null, "Marker", "box", 100m, 1m)]));
@@ -383,7 +386,7 @@ public sealed class ProcurementPresetServiceTests
     public async Task GetByAccountAsync_ActiveFilter_ExcludesDeactivated()
     {
         Account acct = Acct(1);
-        var (sut, _, _, _, _) = Build([acct], []);
+        var (sut, _, _, _, _, _) = Build([acct], []);
 
         ServiceResult<ProcurementPresetDto> created = await sut.CreateAsync(Caller(), new UpsertProcurementPresetDto(
             1, "Kit", true, [new UpsertProcurementPresetItemDto(null, "Marker", "box", 100m, 1m)]));
@@ -399,10 +402,68 @@ public sealed class ProcurementPresetServiceTests
     [Fact]
     public async Task GetByIdAsync_UnknownId_ReturnsNotFound()
     {
-        var (sut, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _) = Build([], []);
 
         ServiceResult<ProcurementPresetDto> result = await sut.GetByIdAsync(999);
 
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    // ── Scoped-query regression guards (RAL-164 — perf audit Tier 1) ──────────
+    // Assert the by-ids scoped lookup is used, and the old full-table GetAllAsync()
+    // is never called, on both call sites the audit flagged (validate + snapshot).
+
+    [Fact]
+    public async Task CreateAsync_UsesScopedPriceIndexLookup_NeverFullTableLoad()
+    {
+        Account acct = Acct(1);
+        PriceIndexItem priceItem = PriceItem(10, "Bond paper", "ream", 250m);
+        var (sut, _, _, _, _, priceIndexRepo) = Build([acct], [priceItem]);
+
+        UpsertProcurementPresetDto dto = new(1, "Office Supplies Kit", true,
+            [new UpsertProcurementPresetItemDto(10, null, null, null, 4m)]);
+
+        await sut.CreateAsync(Caller(), dto);
+
+        priceIndexRepo.Verify(r => r.GetByIdsAsync(
+            It.Is<IReadOnlyList<int>>(ids => ids.Count == 1 && ids.Contains(10)), It.IsAny<CancellationToken>()),
+            Times.AtLeastOnce);
+        priceIndexRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_UsesScopedPriceIndexLookup_NeverFullTableLoad()
+    {
+        Account acct = Acct(1);
+        PriceIndexItem priceItem = PriceItem(10, "Bond paper", "ream", 250m);
+        var (sut, _, _, _, _, priceIndexRepo) = Build([acct], [priceItem]);
+
+        ServiceResult<ProcurementPresetDto> created = await sut.CreateAsync(Caller(), new UpsertProcurementPresetDto(
+            1, "Kit", true, [new UpsertProcurementPresetItemDto(10, null, null, null, 1m)]));
+        priceIndexRepo.Invocations.Clear();
+
+        await sut.UpdateAsync(created.Value!.Id, new UpsertProcurementPresetDto(
+            1, "Kit", true, [new UpsertProcurementPresetItemDto(10, null, null, null, 2m)]));
+
+        priceIndexRepo.Verify(r => r.GetByIdsAsync(
+            It.Is<IReadOnlyList<int>>(ids => ids.Count == 1 && ids.Contains(10)), It.IsAny<CancellationToken>()),
+            Times.AtLeastOnce);
+        priceIndexRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateAsync_FreeTypedItemOnly_NeverQueriesPriceIndex()
+    {
+        // No item references a PriceIndexItemId — the scoped lookup should receive an empty
+        // id list (or not be meaningfully invoked), never fall back to a full-table load.
+        Account acct = Acct(1);
+        var (sut, _, _, _, _, priceIndexRepo) = Build([acct], []);
+
+        UpsertProcurementPresetDto dto = new(1, "Custom Kit", true,
+            [new UpsertProcurementPresetItemDto(null, "Whiteboard marker", "box", 120m, 2m)]);
+
+        await sut.CreateAsync(Caller(), dto);
+
+        priceIndexRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 }

@@ -58,8 +58,8 @@ public sealed class AllocationServiceTests
 
     private static (
         AllocationService                    sut,
-        Mock<IRepository<BudgetCeiling>>     ceilingRepo,
-        Mock<IRepository<DivisionAllocation>> allocRepo,
+        Mock<IBudgetCeilingRepository>       ceilingRepo,
+        Mock<IDivisionAllocationRepository>  allocRepo,
         Mock<IAllocationRepository>          pdRepo,
         Mock<IRepository<Division>>          divRepo,
         Mock<IRepository<Office>>            officeRepo,
@@ -88,8 +88,8 @@ public sealed class AllocationServiceTests
         // suite's pre-v1.4.3 implicit single-fund (GF-equivalent) behavior.
         List<FundingSource>      fundList     = fundingSources ?? [MakeFundingSource(GfFundId, "GF", "General Fund")];
 
-        Mock<IRepository<BudgetCeiling>>      ceilingRepo = new();
-        Mock<IRepository<DivisionAllocation>> allocRepo   = new();
+        Mock<IBudgetCeilingRepository>       ceilingRepo = new();
+        Mock<IDivisionAllocationRepository>  allocRepo   = new();
         Mock<IAllocationRepository>           pdRepo      = new();
         Mock<IRepository<Division>>           divRepo     = new();
         Mock<IRepository<Office>>             officeRepo  = new();
@@ -99,25 +99,46 @@ public sealed class AllocationServiceTests
 
         fundingSourceRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(fundList);
 
-        // BudgetCeiling repo
+        // BudgetCeiling repo — all reads scoped in SQL (RAL-163), mirrored here as lazy
+        // in-memory filters over the same live list so Add-then-Get flows still see new rows.
         int nextCeilingId = 10;
-        ceilingRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(ceilingList);
         ceilingRepo.Setup(r => r.AddAsync(It.IsAny<BudgetCeiling>(), It.IsAny<CancellationToken>()))
             .Callback<BudgetCeiling, CancellationToken>((e, _) => { e.Id = nextCeilingId++; ceilingList.Add(e); })
             .Returns(Task.CompletedTask);
         ceilingRepo.Setup(r => r.UpdateAsync(It.IsAny<BudgetCeiling>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         ceilingRepo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+        ceilingRepo.Setup(r => r.FindAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int officeId, int fy, int fundId, CancellationToken _) =>
+                ceilingList.FirstOrDefault(c => c.OfficeId == officeId && c.FiscalYear == fy && c.FundingSourceId == fundId));
+        ceilingRepo.Setup(r => r.GetByOfficeAndFiscalYearAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int officeId, int fy, CancellationToken _) =>
+                (IReadOnlyList<BudgetCeiling>)ceilingList.Where(c => c.OfficeId == officeId && c.FiscalYear == fy).ToList());
+        ceilingRepo.Setup(r => r.GetByFiscalYearAndFundingSourceAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int fy, int fundId, CancellationToken _) =>
+                (IReadOnlyList<BudgetCeiling>)ceilingList.Where(c => c.FiscalYear == fy && c.FundingSourceId == fundId).ToList());
 
-        // DivisionAllocation repo
+        // DivisionAllocation repo — same lazy-lookup-over-live-list approach as ceilingRepo.
         int nextAllocId = 20;
-        allocRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(allocList);
         allocRepo.Setup(r => r.AddAsync(It.IsAny<DivisionAllocation>(), It.IsAny<CancellationToken>()))
             .Callback<DivisionAllocation, CancellationToken>((e, _) => { e.Id = nextAllocId++; allocList.Add(e); })
             .Returns(Task.CompletedTask);
         allocRepo.Setup(r => r.UpdateAsync(It.IsAny<DivisionAllocation>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         allocRepo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+        allocRepo.Setup(r => r.GetByDivisionIdsAsync(
+                It.IsAny<IReadOnlyList<int>>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<int> divIds, int fy, int fundId, CancellationToken _) =>
+                (IReadOnlyList<DivisionAllocation>)allocList
+                    .Where(a => divIds.Contains(a.DivisionId) && a.FiscalYear == fy && a.FundingSourceId == fundId)
+                    .ToList());
+        allocRepo.Setup(r => r.HasPositiveAllocationAsync(
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int divId, int fy, int fundId, CancellationToken _) =>
+                allocList.Any(a => a.DivisionId == divId && a.FiscalYear == fy && a.FundingSourceId == fundId && a.Amount > 0));
+        allocRepo.Setup(r => r.GetByFiscalYearAndFundingSourceAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int fy, int fundId, CancellationToken _) =>
+                (IReadOnlyList<DivisionAllocation>)allocList.Where(a => a.FiscalYear == fy && a.FundingSourceId == fundId).ToList());
 
         // ProgramDivision repo (IAllocationRepository)
         int nextPdId = 30;
@@ -179,7 +200,7 @@ public sealed class AllocationServiceTests
     [Fact]
     public async Task UpsertCeiling_CreatesNewRow_WhenNoneExists()
     {
-        (AllocationService sut, Mock<IRepository<BudgetCeiling>> ceilingRepo, _, _, _, _, _, _) =
+        (AllocationService sut, Mock<IBudgetCeilingRepository> ceilingRepo, _, _, _, _, _, _) =
             Build(offices: [MakeOffice(1)]);
 
         ServiceResult<BudgetCeilingDto> result = await sut.UpsertCeilingAsync(1, 2027, GfFundId, 1_000_000m);
@@ -196,7 +217,7 @@ public sealed class AllocationServiceTests
     public async Task UpsertCeiling_UpdatesExistingRow_WhenAlreadyExists()
     {
         BudgetCeiling existing = MakeCeiling(1, 2027, 500_000m);
-        (AllocationService sut, Mock<IRepository<BudgetCeiling>> ceilingRepo, _, _, _, _, _, _) =
+        (AllocationService sut, Mock<IBudgetCeilingRepository> ceilingRepo, _, _, _, _, _, _) =
             Build(ceilings: [existing], offices: [MakeOffice(1)]);
 
         ServiceResult<BudgetCeilingDto> result = await sut.UpsertCeilingAsync(1, 2027, GfFundId, 1_000_000m);
@@ -276,7 +297,7 @@ public sealed class AllocationServiceTests
     {
         Division div1 = MakeDivision(1, 1);
         BudgetCeiling ceiling = MakeCeiling(1, 2027, 1_000_000m);
-        (AllocationService sut, _, Mock<IRepository<DivisionAllocation>> allocRepo, _, _, _, _, _) =
+        (AllocationService sut, _, Mock<IDivisionAllocationRepository> allocRepo, _, _, _, _, _) =
             Build(ceilings: [ceiling], divisions: [div1], offices: [MakeOffice(1)]);
 
         ServiceResult<IReadOnlyList<DivisionAllocationDto>> result =
@@ -754,5 +775,116 @@ public sealed class AllocationServiceTests
         AllocationSetupOverviewDto result = await sut.GetSetupOverviewAsync(2027);
 
         Assert.Equal(1, result.NotStartedCount);
+    }
+
+    // ── Scoped-query regression guards (RAL-163 — perf audit Tier 1) ─────────
+    // Assert the SQL-scoped repo methods are actually used, and the old full-table
+    // GetAllAsync() is never called, on every call site the audit flagged.
+
+    [Fact]
+    public async Task GetCeilings_UsesScopedQuery_NeverFullTableLoad()
+    {
+        BudgetCeiling ceiling = MakeCeiling(1, 2027, 1_000_000m);
+        (AllocationService sut, Mock<IBudgetCeilingRepository> ceilingRepo, _, _, _, _, _, _) =
+            Build(ceilings: [ceiling], offices: [MakeOffice(1)]);
+
+        await sut.GetCeilingsAsync(1, 2027);
+
+        ceilingRepo.Verify(r => r.GetByOfficeAndFiscalYearAsync(1, 2027, It.IsAny<CancellationToken>()), Times.Once);
+        ceilingRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetCeiling_UsesFindAsync_NeverFullTableLoad()
+    {
+        BudgetCeiling ceiling = MakeCeiling(1, 2027, 1_000_000m);
+        (AllocationService sut, Mock<IBudgetCeilingRepository> ceilingRepo, _, _, _, _, _, _) =
+            Build(ceilings: [ceiling], offices: [MakeOffice(1)]);
+
+        await sut.GetCeilingAsync(1, 2027, GfFundId);
+
+        ceilingRepo.Verify(r => r.FindAsync(1, 2027, GfFundId, It.IsAny<CancellationToken>()), Times.Once);
+        ceilingRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetAllocations_UsesScopedQuery_NeverFullTableLoad()
+    {
+        Division div1 = MakeDivision(1, 1);
+        DivisionAllocation alloc = MakeAllocation(1, 1, 2027, 500_000m);
+        (AllocationService sut, _, Mock<IDivisionAllocationRepository> allocRepo, _, _, _, _, _) =
+            Build(allocations: [alloc], divisions: [div1], offices: [MakeOffice(1)]);
+
+        await sut.GetAllocationsAsync(1, 2027, GfFundId);
+
+        allocRepo.Verify(r => r.GetByDivisionIdsAsync(
+            It.Is<IReadOnlyList<int>>(ids => ids.Contains(1)), 2027, GfFundId, It.IsAny<CancellationToken>()),
+            Times.Once);
+        allocRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpsertAllocations_UsesScopedQueryForExistingLookup_NeverFullTableLoad()
+    {
+        Division div1 = MakeDivision(1, 1);
+        BudgetCeiling ceiling = MakeCeiling(1, 2027, 1_000_000m);
+        (AllocationService sut, _, Mock<IDivisionAllocationRepository> allocRepo, _, _, _, _, _) =
+            Build(ceilings: [ceiling], divisions: [div1], offices: [MakeOffice(1)]);
+
+        await sut.UpsertAllocationsAsync(1, 2027, GfFundId, [new(1, 300_000m)]);
+
+        allocRepo.Verify(r => r.GetByDivisionIdsAsync(
+            It.IsAny<IReadOnlyList<int>>(), 2027, GfFundId, It.IsAny<CancellationToken>()), Times.Once);
+        allocRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetSetupStatus_UsesHasPositiveAllocation_NeverFullTableLoad()
+    {
+        Office office = MakeOffice(1, refCode: "01-010");
+        Division div  = MakeDivision(1, 1);
+        BudgetCeiling ceil = MakeCeiling(1, 2027, 1_000_000m);
+        DivisionAllocation alloc = MakeAllocation(1, 1, 2027, 500_000m);
+        (AllocationService sut, _, Mock<IDivisionAllocationRepository> allocRepo, _, _, _, _, _) =
+            Build(ceilings: [ceil], allocations: [alloc], divisions: [div], offices: [office]);
+
+        await sut.GetSetupStatusAsync(1, 2027, 1);
+
+        allocRepo.Verify(r => r.HasPositiveAllocationAsync(1, 2027, GfFundId, It.IsAny<CancellationToken>()), Times.Once);
+        allocRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetSetupOverview_UsesScopedQueries_NeverFullTableLoad()
+    {
+        Office office = MakeOffice(1, refCode: "01-010");
+        BudgetCeiling ceiling = MakeCeiling(1, 2027, 1_000_000m);
+        (AllocationService sut, Mock<IBudgetCeilingRepository> ceilingRepo, Mock<IDivisionAllocationRepository> allocRepo, _, _, _, _, _) =
+            Build(ceilings: [ceiling], offices: [office]);
+
+        await sut.GetSetupOverviewAsync(2027);
+
+        ceilingRepo.Verify(r => r.GetByFiscalYearAndFundingSourceAsync(2027, GfFundId, It.IsAny<CancellationToken>()), Times.Once);
+        allocRepo.Verify(r => r.GetByFiscalYearAndFundingSourceAsync(2027, GfFundId, It.IsAny<CancellationToken>()), Times.Once);
+        ceilingRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
+        allocRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetSetupOverview_NoGeneralFundConfigured_SkipsAllocationQuery()
+    {
+        // No FundingSource seeded at all → GetGeneralFundIdAsync resolves null — the ceiling/
+        // allocation scoped queries must be skipped entirely rather than called with a bogus id.
+        Office office = MakeOffice(1, refCode: "01-010");
+        (AllocationService sut, Mock<IBudgetCeilingRepository> ceilingRepo, Mock<IDivisionAllocationRepository> allocRepo, _, _, _, _, _) =
+            Build(offices: [office], fundingSources: []);
+
+        AllocationSetupOverviewDto result = await sut.GetSetupOverviewAsync(2027);
+
+        Assert.Equal(1, result.NotStartedCount);
+        ceilingRepo.Verify(r => r.GetByFiscalYearAndFundingSourceAsync(
+            It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+        allocRepo.Verify(r => r.GetByFiscalYearAndFundingSourceAsync(
+            It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

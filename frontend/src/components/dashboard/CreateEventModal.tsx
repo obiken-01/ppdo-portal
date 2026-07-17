@@ -3,35 +3,44 @@
 import { useState } from "react";
 import Modal from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
-import { createCalendarEvent } from "@/lib/dashboard";
+import { createCalendarEvent, updateCalendarEvent } from "@/lib/dashboard";
+import type { CalendarEventResponse } from "@/types";
 
 interface CreateEventModalProps {
   open: boolean;
   initialDate: string;
   isAdmin: boolean;
+  /** When set, the modal edits this event instead of creating a new one. EventType is
+   *  fixed at creation and cannot be changed here. */
+  editingEvent?: CalendarEventResponse | null;
   onClose: () => void;
-  onCreated: () => void;
+  onSaved: () => void;
 }
 
 export default function CreateEventModal({
   open,
   initialDate,
   isAdmin,
+  editingEvent,
   onClose,
-  onCreated,
+  onSaved,
 }: CreateEventModalProps) {
   const { toast } = useToast();
+  const isEditing = editingEvent != null;
 
-  const [title, setTitle]         = useState("");
-  const [description, setDesc]    = useState("");
-  const [startDate, setStartDate] = useState(initialDate);
-  const [endDate, setEndDate]     = useState("");
-  const [isAllDay, setIsAllDay]   = useState(true);
-  const [eventType, setEventType] = useState<"Office" | "Personal">("Office");
+  const [title, setTitle]         = useState(editingEvent?.title ?? "");
+  const [description, setDesc]    = useState(editingEvent?.description ?? "");
+  const [startDate, setStartDate] = useState(editingEvent?.startDate.slice(0, 10) ?? initialDate);
+  const [endDate, setEndDate]     = useState(editingEvent?.endDate?.slice(0, 10) ?? "");
+  const [isAllDay, setIsAllDay]   = useState(editingEvent?.isAllDay ?? true);
+  const [eventType, setEventType] = useState<"Office" | "Personal">(
+    (editingEvent?.eventType as "Office" | "Personal") ?? "Office"
+  );
   const [saving, setSaving]       = useState(false);
 
-  const submitLabel =
-    eventType === "Office" && !isAdmin ? "Submit for Approval" : "Save Event";
+  const submitLabel = isEditing
+    ? "Save Changes"
+    : eventType === "Office" && !isAdmin ? "Submit for Approval" : "Save Event";
 
   async function handleSubmit() {
     if (!title.trim()) {
@@ -44,20 +53,35 @@ export default function CreateEventModal({
     }
     setSaving(true);
     try {
-      await createCalendarEvent({
-        title: title.trim(),
-        description: description.trim() || null,
-        startDate,
-        endDate: endDate || null,
-        isAllDay,
-        eventType,
-      });
-      toast.success(
-        eventType === "Office" && !isAdmin
-          ? "Event submitted for approval."
-          : "Event saved."
-      );
-      onCreated();
+      if (isEditing && editingEvent?.id) {
+        await updateCalendarEvent(editingEvent.id, {
+          title: title.trim(),
+          description: description.trim() || null,
+          startDate,
+          endDate: endDate || null,
+          isAllDay,
+        });
+        toast.success(
+          eventType === "Office" && editingEvent.status !== "Pending" && !isAdmin
+            ? "Event updated — resubmitted for admin approval."
+            : "Event updated."
+        );
+      } else {
+        await createCalendarEvent({
+          title: title.trim(),
+          description: description.trim() || null,
+          startDate,
+          endDate: endDate || null,
+          isAllDay,
+          eventType,
+        });
+        toast.success(
+          eventType === "Office" && !isAdmin
+            ? "Event submitted for approval."
+            : "Event saved."
+        );
+      }
+      onSaved();
       resetForm();
     } catch {
       toast.error("Failed to save event.");
@@ -84,7 +108,7 @@ export default function CreateEventModal({
 
   return (
     <Modal
-      title="Add Calendar Event"
+      title={isEditing ? "Edit Calendar Event" : "Add Calendar Event"}
       size="sm"
       onClose={handleClose}
       footer={
@@ -167,28 +191,42 @@ export default function CreateEventModal({
           <label htmlFor="isAllDay" className="text-sm text-slate-700">All day</label>
         </div>
 
-        {/* Event type */}
+        {/* Event type — fixed at creation, not editable */}
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-2">Type</label>
-          <div className="flex gap-4">
-            {(["Office", "Personal"] as const).map((t) => (
-              <label key={t} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-                <input
-                  type="radio"
-                  name="eventType"
-                  value={t}
-                  checked={eventType === t}
-                  onChange={() => setEventType(t)}
-                  className="accent-green-600"
-                />
-                {t}
-              </label>
-            ))}
-          </div>
+          {isEditing ? (
+            <span className="inline-block px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-700">
+              {eventType}
+            </span>
+          ) : (
+            <div className="flex gap-4">
+              {(["Office", "Personal"] as const).map((t) => (
+                <label key={t} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="eventType"
+                    value={t}
+                    checked={eventType === t}
+                    onChange={() => setEventType(t)}
+                    className="accent-green-600"
+                  />
+                  {t}
+                </label>
+              ))}
+            </div>
+          )}
           {eventType === "Office" && !isAdmin && (
-            <p className="mt-1.5 text-xs text-amber-600">
-              Office events require admin approval before they appear to others.
-            </p>
+            isEditing ? (
+              editingEvent!.status !== "Pending" && (
+                <p className="mt-1.5 text-xs text-amber-600">
+                  Saving will resubmit this event for admin approval.
+                </p>
+              )
+            ) : (
+              <p className="mt-1.5 text-xs text-amber-600">
+                Office events require admin approval before they appear to others.
+              </p>
+            )
           )}
         </div>
       </div>

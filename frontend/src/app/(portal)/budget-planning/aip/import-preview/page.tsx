@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import api from "@/lib/api";
+import { useMe } from "@/lib/me-cache";
 import { aipErrorMessage, confirmAipImport } from "@/lib/aip";
 import { useToast } from "@/components/ui/Toast";
-import type { AipImportPreviewResponse, MeResponse } from "@/types";
+import type { AipImportPreviewResponse } from "@/types";
 
 const PREVIEW_KEY = "aip_import_preview";
 const META_KEY    = "aip_import_meta";
@@ -55,7 +55,7 @@ export default function AipImportPreviewPage() {
   const router = useRouter();
   const { toast } = useToast();
 
-  const [me, setMe]                       = useState<MeResponse | null>(null);
+  const me = useMe((m) => m.canUploadAip, "/budget-planning/aip");
   const [preview, setPreview]             = useState<AipImportPreviewResponse | null>(null);
   const [meta, setMeta]                   = useState<ImportMeta | null>(null);
   const [confirming, setConfirming]       = useState(false);
@@ -63,11 +63,6 @@ export default function AipImportPreviewPage() {
   const [warningsOpen, setWarningsOpen]   = useState(false);
 
   useEffect(() => {
-    api.get<MeResponse>("/auth/me").then(({ data }) => {
-      if (!data.canUploadAip) { router.replace("/budget-planning/aip"); return; }
-      setMe(data);
-    });
-
     const rawPreview = sessionStorage.getItem(PREVIEW_KEY);
     const rawMeta   = sessionStorage.getItem(META_KEY);
     if (!rawPreview || !rawMeta) { router.replace("/budget-planning/aip/new"); return; }
