@@ -503,8 +503,9 @@ public sealed class DashboardServiceTests
     }
 
     [Fact]
-    public async Task DeleteEventAsync_Admin_CanDeleteAnyEvent()
+    public async Task DeleteEventAsync_Admin_NonOwner_ReturnsForbidden()
     {
+        // RAL-168: delete became owner-only, same rule as UpdateEventAsync -- no admin override.
         User admin = AdminUser();
         CalendarEvent ev = MakePendingOfficeEvent(DateTime.UtcNow, Guid.NewGuid()); // different creator
 
@@ -516,7 +517,7 @@ public sealed class DashboardServiceTests
             await BuildSut(eventRepo, holidays, prRepo, itemRepo)
                 .DeleteEventAsync(admin, ev.Id);
 
-        Assert.True(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
     }
 
     [Fact]

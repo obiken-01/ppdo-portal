@@ -218,10 +218,8 @@ public sealed class DashboardService : IDashboardService
         if (entity is null)
             return ServiceResult<bool>.NotFound($"Calendar event {id} not found.");
 
-        bool isAdmin  = IsAdmin(caller);
-        bool isCreator = entity.CreatedById == caller.Id;
-
-        if (!isAdmin && !isCreator)
+        // Owner-only — no admin override (RAL-168, same rule as UpdateEventAsync).
+        if (entity.CreatedById != caller.Id)
             return ServiceResult<bool>.Forbidden("You can only delete your own events.");
 
         await _events.DeleteAsync(entity, cancellationToken);
