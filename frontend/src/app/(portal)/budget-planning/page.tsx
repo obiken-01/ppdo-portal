@@ -601,18 +601,25 @@ export default function BudgetPlanningPage() {
         )}
 
         {/* ── PPDO-only: Ceiling and allocation by fund ───────────────────── */}
-        {isPpdo && dashboard && dashboard.ceilingByFund.length > 0 && (
-          <div>
-            <h2 className="text-sm font-semibold text-slate-700 mb-2">
-              Ceiling and Allocation by Fund — FY {fiscalYear ?? "…"}
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {dashboard.ceilingByFund.map((fund) => (
-                <FundCeilingCard key={fund.fundingSourceId} fund={fund} />
-              ))}
+        {/* Funds with no ceiling AND no allocation set up yet are hidden — an
+            all-zero pie chart is noise, not information (Ralph's call). */}
+        {isPpdo && dashboard && (() => {
+          const setUpFunds = dashboard.ceilingByFund.filter(
+            (fund) => fund.ceiling > 0 || fund.byDivision.some((d) => d.amount > 0)
+          );
+          return setUpFunds.length > 0 && (
+            <div>
+              <h2 className="text-sm font-semibold text-slate-700 mb-2">
+                Ceiling and Allocation by Fund — FY {fiscalYear ?? "…"}
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {setUpFunds.map((fund) => (
+                  <FundCeilingCard key={fund.fundingSourceId} fund={fund} />
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* ── PPDO-only: WFP status by division ───────────────────────────── */}
         {isPpdo && (
