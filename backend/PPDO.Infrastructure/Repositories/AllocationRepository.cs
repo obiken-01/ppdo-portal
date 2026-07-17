@@ -8,9 +8,9 @@ namespace PPDO.Infrastructure.Repositories;
 /// <summary>
 /// EF Core implementation of <see cref="IAllocationRepository"/>.
 /// Adds scoped string-keyed reads for program_divisions on top of the generic
-/// <see cref="Repository{T}"/> base. BudgetCeiling and DivisionAllocation are
-/// accessed via plain <see cref="IRepository{T}"/> (tables are small; in-memory
-/// filtering is sufficient, mirroring the OfficeService pattern).
+/// <see cref="Repository{T}"/> base. BudgetCeiling and DivisionAllocation have their
+/// own scoped repositories (<see cref="BudgetCeilingRepository"/>,
+/// <see cref="DivisionAllocationRepository"/> — RAL-163).
 /// </summary>
 public sealed class AllocationRepository : Repository<ProgramDivision>, IAllocationRepository
 {
