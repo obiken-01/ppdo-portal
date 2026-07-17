@@ -12,9 +12,16 @@
 | v0.1 | Project Setup & Foundation | ✅ Done |
 | v1.0 | Core Portal & Inventory Monitoring | ✅ Done |
 | v1.0.1 | Security Hardening | ✅ Done |
-| v1.1 | Budget Planning — LDIP / AIP / WFP | 🚧 In Progress |
-| v1.2 | Employee Profiles | 📋 Planned |
-| v1.3 | Calendar & Announcements | 📋 Planned |
+| v1.1 | Inventory UI Refinements + Distribution | ✅ Done |
+| v1.1.1 | Calendar Approval, Announcements, User Profile | ✅ Done |
+| v1.2 | Divisions & Permission Model Rework | ✅ Done |
+| v1.3 | LDIP Upload + Dashboard Readiness Hub | ✅ Done |
+| v1.4 | Budget Planning — WFP Rework (epic) | ✅ Done |
+| v1.4.1 – v1.4.3 | WFP Rework follow-ups — fund-scoped ceiling & allocation | ✅ Done |
+| v1.4.4 | WFP Report → Excel export (matches PBO form) | ✅ Done |
+| v1.4.5 | Budget Planning Dashboard — PPDO-scoped, per-division view | ✅ Done |
+
+See [`CLAUDE.md`](CLAUDE.md) for the full delivery history and current architecture rules.
 
 ---
 
@@ -141,14 +148,21 @@ Domain → Infrastructure → Application → Functions → Frontend
 
 ## User Roles
 
+Roles: **SuperAdmin**, **Admin**, **Staff**. (The `Observer` role and the old `PermissionGroup`
+table were both retired in v1.2 — see below.)
+
 | Role | Who | Access |
 |---|---|---|
 | SuperAdmin | Developer / MIS | Full access — bypasses all permission checks |
-| Admin | All 5 division heads | All features by default |
-| Staff | Any PPDO employee | Access via PermissionGroup (per division) + individual overrides |
-| Observer | Provincial admin / read-only users | Read-only on granted features |
+| Admin | Division heads | All features by default |
+| Staff | Any PPDO employee | Access via their Division's feature flags + individual overrides |
 
-**Divisions:** Administrative, Planning, Research Monitoring & Evaluation (RM), MIS, Special Program (SPD)
+**Divisions are configurable** (v1.2, RAL-97) — a `divisions` table (FK `users.division_id`)
+replaces the old fixed `Division` enum and the `PermissionGroup` table. Each division carries
+both a **data-scoping** dimension (which office's/division's budget-planning and inventory data a
+Staff user may see) and **feature-permission flags** (`CanAccessInventory`, `CanAccessBudgetPlanning`,
+`CanManageUsers`, etc.) — a Staff user's effective access resolves from their division's flags plus
+any per-user overrides.
 
 ---
 
@@ -222,6 +236,37 @@ See [`docs/v1.1/DB_Model.md`](docs/v1.1/DB_Model.md) for the full schema.
 - 🎨 **UI refinements** — flat design system across all inventory pages
 - 🔐 **Security hardening (v1.0.1)** — login rate limiting, httpOnly refresh token cookie, CORS origin whitelist
 
+## What's New in v1.2 – v1.4.5 — Divisions, WFP Rework & PPDO-Scoped Dashboard
+
+- 📅 **v1.1.1 — Calendar approval workflow + Announcements** — calendar events gain an approval
+  workflow; public/admin Announcements (CRUD, public landing page); user profile page.
+- 🏢 **v1.2 — Configurable Divisions** — replaced the fixed `Division` enum and `PermissionGroup`
+  table with a `divisions` table carrying both data-scope and feature-permission flags per
+  division; roles simplified to SuperAdmin / Admin / Staff (Observer retired).
+- 📈 **v1.3 — LDIP upload + Dashboard readiness hub** — LDIP `.xlsm` upload/re-upload creates one
+  record spanning all offices; new 2×2 Allocation/LDIP/AIP/WFP readiness hub on the Budget
+  Planning Dashboard.
+- 🔁 **v1.4 — WFP Rework (epic)** — Chart of Accounts rework, Price Index config, function-band +
+  activity-creation flags on AIP programs/activities, procurement line-item entry with quantity ×
+  unit price × days, quarterly frequency grids, a dedicated WFP Report preview page mirroring the
+  province's official "WFP FINAL" reference sheet.
+- 💰 **v1.4.3 — Multi-fund ceiling & allocation** — budget ceilings and division allocations
+  extended from General-Fund-only to every active funding source (GAD, LDRRM, 20% Development
+  Fund, etc.), with fund-source aliasing so AIP's inconsistent free-text fund labels resolve to
+  the right canonical fund.
+- 📤 **v1.4.4 — WFP Report → Excel export** — one-click `.xlsx` export of the WFP Report matching
+  the PBO's official "WFP FINAL" form layout (one worksheet per fund source, full function-band →
+  program → project → activity → expense-class hierarchy with sub-totals/grand-totals), built with
+  ClosedXML.
+- 📊 **v1.4.5 — PPDO-scoped Budget Planning Dashboard** — the Dashboard is now permanently scoped
+  to PPDO (Budget Planning is effectively PPDO-only in practice) with a per-division WFP status
+  view and per-fund ceiling/allocation pie charts; the underlying queries were also reworked from
+  several unfiltered full-table scans down to properly scoped SQL queries.
+
+See [`docs/v1.4.4/WFP_Excel_Export_Assessment.md`](docs/v1.4.4/WFP_Excel_Export_Assessment.md) for
+the design decisions behind v1.4.4's Excel export (the v1.4.5 Dashboard-scoping assessment doc
+ships on the `release/1.4.5` branch, pending its merge to `main`).
+
 ---
 
 ## Development Standards
@@ -232,8 +277,13 @@ See [`docs/v1.1/DB_Model.md`](docs/v1.1/DB_Model.md) for the full schema.
 | Testing conventions | `docs/TEST_CONVENTIONS.md` |
 | Git conventions | `docs/GIT_CONVENTIONS.md` |
 | Bug reporting | `docs/BUG_REPORT_STANDARD.md` |
+| Ticket prompt standard | `docs/TICKET_PROMPT_STANDARD.md` |
+| Performance & scalability guidelines | `docs/PERFORMANCE_GUIDELINES.md` |
 | Claude Code instructions | `CLAUDE.md` |
 | Full technical spec | `PROJECT_DOCUMENTATION_NET_AZURE.md` |
+
+Full-application performance audit (2026-07-16, findings + prioritization, not yet all actioned):
+[`docs/Performance_Audit_2026-07-16.md`](docs/Performance_Audit_2026-07-16.md)
 
 ### v1.1 Budget Planning Docs
 
