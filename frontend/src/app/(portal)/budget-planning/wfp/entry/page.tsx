@@ -915,17 +915,28 @@ function WfpEntryPageInner() {
     const urlAipId = searchParams.get("aipId");
     const urlOfficeId = searchParams.get("officeId");
 
-    Promise.all([listAip(), listOffices({ active: "true" }), getReserveRate(), listPriceIndex({ active: "true" })])
-      .then(([aips, offices, rate, items]) => {
+    Promise.all([listAip(), listOffices({ active: "true" }), getReserveRate()])
+      .then(([aips, offices, rate]) => {
         setAipList(aips);
         setOfficeList(offices);
         setReserveRate(rate.rate);
-        setPriceIndex(items);
-        if (urlAipId) setSelectedAipId(Number(urlAipId));
+        if (urlAipId) {
+          setSelectedAipId(Number(urlAipId));
+        } else if (aips.length === 1) {
+          // Only one AIP to pick from — skip the manual selection step.
+          setSelectedAipId(aips[0].id);
+        }
         if (urlOfficeId) setSelectedOfficeId(Number(urlOfficeId));
       })
       .catch(() => toast.error("Load failed", "Could not load AIP / office data."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Price index (procurement item catalogue, ~6,400 rows) is only needed once the user opens
+  // the expenditure wizard for a Procurement/Combined entry — fetched independently of the AIP/
+  // Office/Division selectors above so its payload never blocks them from appearing.
+  useEffect(() => {
+    listPriceIndex({ active: "true" }).then(setPriceIndex).catch(() => {});
   }, []);
 
   useEffect(() => {
