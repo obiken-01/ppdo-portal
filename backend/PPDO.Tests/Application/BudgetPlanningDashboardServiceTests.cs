@@ -207,6 +207,9 @@ public sealed class BudgetPlanningDashboardServiceTests
             allocation.Setup(a => a.GetAllocationsAsync(
                     It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)[]);
+            allocation.Setup(a => a.GetAllocationsForAllFundsAsync(
+                    It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)[]);
             allocation.Setup(a => a.GetProgramAssignmentsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((IReadOnlyList<ProgramAssignmentDto>)[]);
         }
@@ -457,7 +460,7 @@ public sealed class BudgetPlanningDashboardServiceTests
         allocation.Setup(a => a.GetCeilingsAsync(PpdoOfficeId, 2027, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<BudgetCeilingDto>)
                 [new BudgetCeilingDto(1, PpdoOfficeId, 2027, GfFundId, "GF", "General Fund", 100_000m)]);
-        allocation.Setup(a => a.GetAllocationsAsync(PpdoOfficeId, 2027, GfFundId, It.IsAny<CancellationToken>()))
+        allocation.Setup(a => a.GetAllocationsForAllFundsAsync(PpdoOfficeId, 2027, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)
             [
                 new DivisionAllocationDto(1, 1, "Administrative", 2027, GfFundId, "GF", "General Fund", 60_000m),
@@ -481,6 +484,44 @@ public sealed class BudgetPlanningDashboardServiceTests
         FundDivisionShareDto share = Assert.Single(gf.ByDivision);
         Assert.Equal(1, share.DivisionId);
         Assert.Equal(60_000m, share.Amount);
+    }
+
+    [Fact]
+    public async Task GetDashboardAsync_MultipleFunds_CallsGetAllocationsForAllFundsOnce_NeverPerFundLoop()
+    {
+        // RAL-166 follow-up, round 2: GetAllocationsByFundAsync used to call GetAllocationsAsync
+        // once PER active fund (3 queries each, so 3N total). With 3 funds here, the fixed path
+        // must call the batched GetAllocationsForAllFundsAsync exactly once and never fall back
+        // to the per-fund singular read.
+        List<Office> offices = [Off(PpdoOfficeId, "PPDO")];
+        List<Division> divisions = [Div(1, PpdoOfficeId, "Administrative")];
+        List<FundingSource> funds =
+        [
+            Fund(GfFundId, "GF", "General Fund"),
+            Fund(2, "GAD", "5% GAD Fund"),
+            Fund(3, "LDRRM", "5% LDRRM Fund"),
+        ];
+
+        Mock<IAllocationService> allocation = new();
+        allocation.Setup(a => a.GetCeilingsAsync(PpdoOfficeId, 2027, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<BudgetCeilingDto>)[]);
+        allocation.Setup(a => a.GetAllocationsForAllFundsAsync(PpdoOfficeId, 2027, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)[]);
+        allocation.Setup(a => a.GetGeneralFundIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(GfFundId);
+        allocation.Setup(a => a.GetProgramAssignmentsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<ProgramAssignmentDto>)[]);
+        allocation.Setup(a => a.GetCeilingAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ServiceResult<BudgetCeilingDto>.NotFound("n/a"));
+
+        (BudgetPlanningDashboardService sut, _) = Build(
+            [], [], [], offices, [], divisions, funds, allocationMock: allocation);
+
+        await sut.GetDashboardAsync(fiscalYear: 2027, divisionId: null);
+
+        allocation.Verify(a => a.GetAllocationsForAllFundsAsync(
+            PpdoOfficeId, 2027, It.IsAny<CancellationToken>()), Times.Once);
+        allocation.Verify(a => a.GetAllocationsAsync(
+            It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     // ── GetRecentActivityAsync ─────────────────────────────────────────────
