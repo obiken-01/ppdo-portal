@@ -54,6 +54,7 @@ import WfpFrequencyGrid from "@/components/wfp/WfpFrequencyGrid";
 import WfpProcurementItemTable from "@/components/wfp/WfpProcurementItemTable";
 import Lookup from "@/components/ui/Lookup";
 import OfficeSelect from "@/components/ui/OfficeSelect";
+import LoadingState from "@/components/ui/LoadingState";
 import Modal from "@/components/ui/Modal";
 import MoneyInput from "@/components/ui/MoneyInput";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
@@ -1345,21 +1346,12 @@ function WfpEntryPageInner() {
         <p className="text-sm text-slate-600 mt-0.5">New context picker + expenditure wizard.</p>
       </div>
 
-      {/* Selector row — a skeleton + notice while the mount-time resources (AIP/office list,
-          reserve rate, price index) are still loading, so the wait is communicated instead of
-          the real dropdowns sitting empty/interactive-but-incomplete. */}
+      {/* Selector row — a centered spinner + message while the mount-time resources (AIP/office
+          list, reserve rate, price index) are still loading, so the wait is communicated instead
+          of the real dropdowns sitting empty/interactive-but-incomplete. minHeightClassName
+          matches the selector row's own height so swapping to the real row doesn't shift the page. */}
       {resourcesLoading ? (
-        <div className="mb-5 animate-pulse">
-          <p className="text-xs text-slate-500 mb-2">Loading resources…</p>
-          <div className="flex flex-wrap items-center gap-3">
-            {["AIP", "Office"].map((label) => (
-              <div key={label}>
-                <div className="h-3 bg-slate-100 mb-1" style={{ width: "32px" }} />
-                <div className="h-8 bg-slate-100" style={{ width: "180px" }} />
-              </div>
-            ))}
-          </div>
-        </div>
+        <LoadingState message="Loading resources…" minHeightClassName="min-h-16" className="mb-5" />
       ) : (
         <div className="flex flex-wrap items-center gap-3 mb-5">
           <div className="flex items-center gap-2">
