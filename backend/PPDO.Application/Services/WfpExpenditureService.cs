@@ -76,15 +76,23 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
     public async Task<IReadOnlyList<WfpExpenditureDto>> GetByActivityIdAsync(
         int wfpActivityId, CancellationToken ct = default)
     {
+        // Three queries total regardless of expenditure count — was one query per expenditure
+        // for its periods AND its procurement items (2N), the same N+1 GetByActivityIdsAsync
+        // below was already fixed for under RAL-158, just never applied to this singular path
+        // even though it's the one the live entry wizard calls on every Activity click.
         IReadOnlyList<WfpExpenditure> entities = await _repo.GetByWfpActivityIdAsync(wfpActivityId, ct);
-        List<WfpExpenditureDto> dtos = new(entities.Count);
-        foreach (WfpExpenditure entity in entities)
-        {
-            IReadOnlyList<WfpExpenditurePeriod> periods = await _repo.GetPeriodsByExpenditureIdAsync(entity.Id, ct);
-            IReadOnlyList<WfpProcurementItem>   items   = await _repo.GetProcurementItemsByExpenditureIdAsync(entity.Id, ct);
-            dtos.Add(MapToDto(entity, periods, items));
-        }
-        return dtos;
+        if (entities.Count == 0) return [];
+
+        List<int> expenditureIds = entities.Select(e => e.Id).ToList();
+        IReadOnlyList<WfpExpenditurePeriod> allPeriods = await _repo.GetPeriodsByExpenditureIdsAsync(expenditureIds, ct);
+        IReadOnlyList<WfpProcurementItem>   allItems   = await _repo.GetProcurementItemsByExpenditureIdsAsync(expenditureIds, ct);
+
+        ILookup<int, WfpExpenditurePeriod> periodsByExpId = allPeriods.ToLookup(p => p.ExpenditureId);
+        ILookup<int, WfpProcurementItem>   itemsByExpId   = allItems.ToLookup(i => i.ExpenditureId);
+
+        return entities
+            .Select(entity => MapToDto(entity, periodsByExpId[entity.Id].ToList(), itemsByExpId[entity.Id].ToList()))
+            .ToList();
     }
 
     /// <inheritdoc />

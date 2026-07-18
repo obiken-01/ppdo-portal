@@ -43,6 +43,16 @@ public interface IAllocationService
         int officeId, int fiscalYear, int fundingSourceId, CancellationToken ct = default);
 
     /// <summary>
+    /// Every fund's division-allocation rows for the given office+FY in one query (RAL-166
+    /// follow-up) — for the Allocation page's per-fund-source panels, which previously fired
+    /// one GetAllocationsAsync call per active fund in parallel. Shape mirrors
+    /// <see cref="GetCeilingsAsync"/>: a flat list where each <see cref="DivisionAllocationDto"/>
+    /// already carries its own FundingSourceId, so the caller groups by fund itself.
+    /// </summary>
+    Task<IReadOnlyList<DivisionAllocationDto>> GetAllocationsForAllFundsAsync(
+        int officeId, int fiscalYear, CancellationToken ct = default);
+
+    /// <summary>
     /// Upserts the full set of division allocations for an office+FY+fundingSourceId.
     /// Returns BadRequest when: no ceiling exists for that fund, or Σ amounts exceeds that
     /// fund's ceiling. Audit-logged per row.

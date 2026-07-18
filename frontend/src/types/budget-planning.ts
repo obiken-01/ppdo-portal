@@ -232,6 +232,12 @@ export interface FundCeiling {
   byDivision: FundDivisionShare[];
 }
 
+/** Just the fiscal-year picker (RAL-166 follow-up) — see GET /budget-planning/fiscal-years. */
+export interface FiscalYears {
+  fiscalYear: number;
+  availableFiscalYears: number[];
+}
+
 /**
  * The PPDO-scoped Budget Planning Dashboard (v1.4.5 — RAL-161). Replaces the old
  * multi-office PlanningDashboard — Budget Planning is permanently scoped to PPDO.

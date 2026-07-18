@@ -22,6 +22,16 @@ public sealed class DivisionAllocationRepository : Repository<DivisionAllocation
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<DivisionAllocation>> GetByDivisionIdsAsync(
+        IReadOnlyList<int> divisionIds, int fiscalYear, CancellationToken ct = default)
+    {
+        if (divisionIds.Count == 0) return [];
+        return await _context.Set<DivisionAllocation>()
+            .Where(a => divisionIds.Contains(a.DivisionId) && a.FiscalYear == fiscalYear)
+            .ToListAsync(ct);
+    }
+
+    /// <inheritdoc />
     public async Task<bool> HasPositiveAllocationAsync(
         int divisionId, int fiscalYear, int fundingSourceId, CancellationToken ct = default)
         => await _context.Set<DivisionAllocation>()

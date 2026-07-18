@@ -16,6 +16,14 @@ public interface IBudgetPlanningDashboardService
     Task<PpdoDashboardDto> GetDashboardAsync(
         int? fiscalYear, int? divisionId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The fiscal-year picker alone (RAL-166 follow-up) — for callers (the Report page) that
+    /// only need <see cref="PpdoDashboardDto.FiscalYear"/>/<see cref="PpdoDashboardDto.AvailableFiscalYears"/>
+    /// and would otherwise pay for the full Dashboard build just to read two fields off it.
+    /// </summary>
+    Task<FiscalYearsDto> GetFiscalYearsAsync(
+        int? fiscalYear, CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<RecentActivityDto>> GetRecentActivityAsync(
         int? officeId, CancellationToken cancellationToken = default);
 

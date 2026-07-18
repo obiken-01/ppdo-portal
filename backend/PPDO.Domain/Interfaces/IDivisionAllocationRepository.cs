@@ -17,6 +17,14 @@ public interface IDivisionAllocationRepository : IRepository<DivisionAllocation>
     Task<IReadOnlyList<DivisionAllocation>> GetByDivisionIdsAsync(
         IReadOnlyList<int> divisionIds, int fiscalYear, int fundingSourceId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Same as the fund-scoped overload above but spans every fund — one query for every
+    /// fund's allocation rows instead of one query per fund (RAL-166 follow-up: the Allocation
+    /// page used to fire one GetByDivisionIdsAsync call per active fund in parallel).
+    /// </summary>
+    Task<IReadOnlyList<DivisionAllocation>> GetByDivisionIdsAsync(
+        IReadOnlyList<int> divisionIds, int fiscalYear, CancellationToken ct = default);
+
     /// <summary>True if a positive-amount allocation row exists for (divisionId, fiscalYear, fundingSourceId).</summary>
     Task<bool> HasPositiveAllocationAsync(
         int divisionId, int fiscalYear, int fundingSourceId, CancellationToken ct = default);

@@ -132,6 +132,13 @@ public sealed class AllocationServiceTests
                 (IReadOnlyList<DivisionAllocation>)allocList
                     .Where(a => divIds.Contains(a.DivisionId) && a.FiscalYear == fy && a.FundingSourceId == fundId)
                     .ToList());
+        // All-funds overload (RAL-166 follow-up) — same divIds/fiscalYear filter, no fund filter.
+        allocRepo.Setup(r => r.GetByDivisionIdsAsync(
+                It.IsAny<IReadOnlyList<int>>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<int> divIds, int fy, CancellationToken _) =>
+                (IReadOnlyList<DivisionAllocation>)allocList
+                    .Where(a => divIds.Contains(a.DivisionId) && a.FiscalYear == fy)
+                    .ToList());
         allocRepo.Setup(r => r.HasPositiveAllocationAsync(
                 It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((int divId, int fy, int fundId, CancellationToken _) =>
@@ -820,6 +827,62 @@ public sealed class AllocationServiceTests
         allocRepo.Verify(r => r.GetByDivisionIdsAsync(
             It.Is<IReadOnlyList<int>>(ids => ids.Contains(1)), 2027, GfFundId, It.IsAny<CancellationToken>()),
             Times.Once);
+        allocRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // ── GetAllocationsForAllFundsAsync (RAL-166 follow-up) ────────────────────
+
+    [Fact]
+    public async Task GetAllocationsForAllFunds_ReturnsRowsAcrossEveryFund()
+    {
+        Division div1 = MakeDivision(1, 1);
+        DivisionAllocation gfAlloc  = MakeAllocation(1, 1, 2027, 600_000m, GfFundId);
+        DivisionAllocation gadAlloc = MakeAllocation(2, 1, 2027, 50_000m, GadFundId);
+        (AllocationService sut, _, _, _, _, _, _, _) = Build(
+            allocations: [gfAlloc, gadAlloc], divisions: [div1], offices: [MakeOffice(1)],
+            fundingSources: [
+                MakeFundingSource(GfFundId, "GF", "General Fund"),
+                MakeFundingSource(GadFundId, "GAD", "5% GAD Fund")]);
+
+        IReadOnlyList<DivisionAllocationDto> result = await sut.GetAllocationsForAllFundsAsync(1, 2027);
+
+        Assert.Equal(2, result.Count);
+        Assert.Contains(result, a => a.FundingSourceId == GfFundId && a.Amount == 600_000m);
+        Assert.Contains(result, a => a.FundingSourceId == GadFundId && a.Amount == 50_000m);
+    }
+
+    [Fact]
+    public async Task GetAllocationsForAllFunds_ExcludesOtherOfficesDivisions()
+    {
+        Division ownDiv   = MakeDivision(1, 1);
+        Division otherDiv = MakeDivision(2, 2);   // belongs to a different office
+        DivisionAllocation ownAlloc   = MakeAllocation(1, 1, 2027, 600_000m);
+        DivisionAllocation otherAlloc = MakeAllocation(2, 2, 2027, 900_000m);
+        (AllocationService sut, _, _, _, _, _, _, _) = Build(
+            allocations: [ownAlloc, otherAlloc], divisions: [ownDiv, otherDiv], offices: [MakeOffice(1)]);
+
+        IReadOnlyList<DivisionAllocationDto> result = await sut.GetAllocationsForAllFundsAsync(1, 2027);
+
+        Assert.Single(result);
+        Assert.Equal(1, result[0].DivisionId);
+    }
+
+    [Fact]
+    public async Task GetAllocationsForAllFunds_UsesOneScopedQuery_NeverFullTableLoad()
+    {
+        Division div1 = MakeDivision(1, 1);
+        DivisionAllocation alloc = MakeAllocation(1, 1, 2027, 500_000m);
+        (AllocationService sut, _, Mock<IDivisionAllocationRepository> allocRepo, _, _, _, _, _) =
+            Build(allocations: [alloc], divisions: [div1], offices: [MakeOffice(1)]);
+
+        await sut.GetAllocationsForAllFundsAsync(1, 2027);
+
+        allocRepo.Verify(r => r.GetByDivisionIdsAsync(
+            It.Is<IReadOnlyList<int>>(ids => ids.Contains(1)), 2027, It.IsAny<CancellationToken>()),
+            Times.Once);
+        allocRepo.Verify(r => r.GetByDivisionIdsAsync(
+            It.IsAny<IReadOnlyList<int>>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
+            Times.Never);
         allocRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 

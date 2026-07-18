@@ -266,6 +266,54 @@ public sealed class BudgetPlanningDashboardServiceTests
         Assert.Equal([2027, 2026], result.AvailableFiscalYears);
     }
 
+    // ── GetFiscalYearsAsync (RAL-166 follow-up) ───────────────────────────
+
+    [Fact]
+    public async Task GetFiscalYearsAsync_NoAipRecords_DefaultsToNextCalendarYear()
+    {
+        (BudgetPlanningDashboardService sut, _) = Build([], [], [], [], []);
+
+        FiscalYearsDto result = await sut.GetFiscalYearsAsync(fiscalYear: null);
+
+        Assert.Equal(DateTime.UtcNow.Year + 1, result.FiscalYear);
+        Assert.Empty(result.AvailableFiscalYears);
+    }
+
+    [Fact]
+    public async Task GetFiscalYearsAsync_AipRecords_ReturnsDistinctFiscalYearsDescending()
+    {
+        List<AipRecord> aips = [Aip(1, 2027), Aip(2, 2026), Aip(3, 2027)];
+        (BudgetPlanningDashboardService sut, _) = Build([], aips, [], [], []);
+
+        FiscalYearsDto result = await sut.GetFiscalYearsAsync(fiscalYear: null);
+
+        Assert.Equal(2027, result.FiscalYear);
+        Assert.Equal([2027, 2026], result.AvailableFiscalYears);
+    }
+
+    [Fact]
+    public async Task GetFiscalYearsAsync_ExplicitFiscalYear_OverridesDefault()
+    {
+        List<AipRecord> aips = [Aip(1, 2027)];
+        (BudgetPlanningDashboardService sut, _) = Build([], aips, [], [], []);
+
+        FiscalYearsDto result = await sut.GetFiscalYearsAsync(fiscalYear: 2025);
+
+        Assert.Equal(2025, result.FiscalYear);
+    }
+
+    [Fact]
+    public async Task GetFiscalYearsAsync_DoesNotRequirePpdoOfficeSeeded()
+    {
+        // Unlike GetDashboardAsync, this must not throw when no "PPDO" office exists — it
+        // never resolves an office at all.
+        (BudgetPlanningDashboardService sut, _) = Build([], [], [], [], []);
+
+        FiscalYearsDto result = await sut.GetFiscalYearsAsync(fiscalYear: 2027);
+
+        Assert.Equal(2027, result.FiscalYear);
+    }
+
     // ── GetDashboardAsync — LDIP / AIP counts (reuses the office-scoped builders) ──
 
     [Fact]

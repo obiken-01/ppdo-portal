@@ -670,6 +670,27 @@ public sealed class WfpExpenditureServiceTests
         Assert.DoesNotContain(result, e => e.NetAppropriation == 999m);
     }
 
+    [Fact]
+    public async Task GetByActivityId_UsesBatchedQueries_NotPerExpenditureLoop()
+    {
+        var (sut, repo, _, _, _, _, _) = Build([], []);
+
+        // Two expenditures under one activity — the old path fired 2 child queries EACH
+        // (4 total); the fixed path must fire the two IN(...) child queries exactly once each
+        // and never the old per-expenditure singular reads (RAL-166 follow-up).
+        await sut.SaveExpenditureAsync(QuarterlyDto(wfpActivityId: 7), CancellationToken.None);
+        await sut.SaveExpenditureAsync(QuarterlyDto(wfpActivityId: 7), CancellationToken.None);
+        repo.Invocations.Clear(); // ignore the query traffic from the SaveExpenditureAsync calls above
+
+        await sut.GetByActivityIdAsync(7, CancellationToken.None);
+
+        repo.Verify(r => r.GetByWfpActivityIdAsync(7, It.IsAny<CancellationToken>()), Times.Once);
+        repo.Verify(r => r.GetPeriodsByExpenditureIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()), Times.Once);
+        repo.Verify(r => r.GetProcurementItemsByExpenditureIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()), Times.Once);
+        repo.Verify(r => r.GetPeriodsByExpenditureIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+        repo.Verify(r => r.GetProcurementItemsByExpenditureIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     // ── GetByActivityIdsAsync (RAL-158 batched report read) ──────────────────
 
     [Fact]

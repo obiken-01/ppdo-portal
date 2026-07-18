@@ -43,6 +43,16 @@ public record FundCeilingDto(
     IReadOnlyList<FundDivisionShareDto> ByDivision);
 
 /// <summary>
+/// Just the fiscal-year picker data (RAL-166 follow-up) — the resolved fiscal year plus every
+/// year with an AIP. Split out of <see cref="PpdoDashboardDto"/> so callers that only need the
+/// picker (e.g. the Report page) don't pay for the LDIP/AIP/WFP-by-division/ceiling-by-fund
+/// build on every page load.
+/// </summary>
+public record FiscalYearsDto(
+    int FiscalYear,
+    IReadOnlyList<int> AvailableFiscalYears);
+
+/// <summary>
 /// The PPDO-scoped Budget Planning Dashboard (v1.4.5 — RAL-161). Replaces the old multi-office
 /// <see cref="PlanningDashboardDto"/>: Budget Planning is permanently scoped to PPDO in practice,
 /// so this carries PPDO's own LDIP/AIP counts plus a per-division WFP + per-fund ceiling/allocation

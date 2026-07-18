@@ -120,6 +120,36 @@ public sealed class AllocationService : IAllocationService
     public async Task<IReadOnlyList<DivisionAllocationDto>> GetAllocationsAsync(
         int officeId, int fiscalYear, int fundingSourceId, CancellationToken ct = default)
     {
+        (List<int> officeDivIds, Dictionary<int, string> divNames, Dictionary<int, FundingSource> fundsById) =
+            await ResolveActiveDivisionsAndFundsAsync(officeId, ct);
+
+        IReadOnlyList<DivisionAllocation> scoped =
+            await _allocationRepo.GetByDivisionIdsAsync(officeDivIds, fiscalYear, fundingSourceId, ct);
+
+        return scoped
+            .Select(a => MapAllocation(a, divNames.GetValueOrDefault(a.DivisionId, string.Empty), fundsById))
+            .ToList();
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<DivisionAllocationDto>> GetAllocationsForAllFundsAsync(
+        int officeId, int fiscalYear, CancellationToken ct = default)
+    {
+        (List<int> officeDivIds, Dictionary<int, string> divNames, Dictionary<int, FundingSource> fundsById) =
+            await ResolveActiveDivisionsAndFundsAsync(officeId, ct);
+
+        IReadOnlyList<DivisionAllocation> scoped =
+            await _allocationRepo.GetByDivisionIdsAsync(officeDivIds, fiscalYear, ct);
+
+        return scoped
+            .Select(a => MapAllocation(a, divNames.GetValueOrDefault(a.DivisionId, string.Empty), fundsById))
+            .ToList();
+    }
+
+    /// <summary>Divisions/funding-source lookups shared by GetAllocationsAsync and GetAllocationsForAllFundsAsync.</summary>
+    private async Task<(List<int> OfficeDivIds, Dictionary<int, string> DivNames, Dictionary<int, FundingSource> FundsById)>
+        ResolveActiveDivisionsAndFundsAsync(int officeId, CancellationToken ct)
+    {
         IReadOnlyList<Division>        allDivisions = await _divisionRepo.GetAllAsync(ct);
         Dictionary<int, FundingSource> fundsById    = (await _fundingSourceRepo.GetAllAsync(ct))
             .ToDictionary(f => f.Id);
@@ -131,12 +161,7 @@ public sealed class AllocationService : IAllocationService
 
         Dictionary<int, string> divNames = allDivisions.ToDictionary(d => d.Id, d => d.Name);
 
-        IReadOnlyList<DivisionAllocation> scoped =
-            await _allocationRepo.GetByDivisionIdsAsync(officeDivIds, fiscalYear, fundingSourceId, ct);
-
-        return scoped
-            .Select(a => MapAllocation(a, divNames.GetValueOrDefault(a.DivisionId, string.Empty), fundsById))
-            .ToList();
+        return (officeDivIds, divNames, fundsById);
     }
 
     public async Task<ServiceResult<IReadOnlyList<DivisionAllocationDto>>> UpsertAllocationsAsync(
