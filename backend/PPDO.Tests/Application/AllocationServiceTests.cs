@@ -950,4 +950,91 @@ public sealed class AllocationServiceTests
         allocRepo.Verify(r => r.GetByFiscalYearAndFundingSourceAsync(
             It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
     }
+
+    // ── Request-scoped reference-data caching (RAL-166 follow-up, round 3) ───
+    // AllocationService is registered Scoped — one instance per request — so divisions/funding
+    // sources/offices/AIP records only need fetching once per instance, no matter how many of
+    // the methods below get called back to back within that same request (as the Budget
+    // Planning Dashboard's GetOfficeDashboard call chain does: GetGeneralFundIdAsync ->
+    // GetCeilingAsync -> GetAllocationsAsync -> GetProgramAssignmentsAsync, all on one instance).
+    // Uses its own minimal mock setup (not the shared Build() factory) so it stays independent
+    // of that factory's tuple shape.
+
+    [Fact]
+    public async Task MultipleCallsOnSameInstance_FetchFundingSourcesOnlyOnce()
+    {
+        List<FundingSource> fundList = [MakeFundingSource(GfFundId, "GF", "General Fund")];
+
+        Mock<IBudgetCeilingRepository>       ceilingRepo       = new();
+        Mock<IDivisionAllocationRepository>  allocRepo         = new();
+        Mock<IAllocationRepository>          pdRepo            = new();
+        Mock<IRepository<Division>>          divRepo           = new();
+        Mock<IRepository<Office>>            officeRepo        = new();
+        Mock<IRepository<FundingSource>>     fundingSourceRepo = new();
+        Mock<IAipRepository>                 aipRepo           = new();
+        Mock<IAuditService>                  audit             = new();
+
+        fundingSourceRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(fundList);
+        divRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync((IReadOnlyList<Division>)[]);
+        ceilingRepo.Setup(r => r.GetByOfficeAndFiscalYearAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<BudgetCeiling>)[]);
+        allocRepo.Setup(r => r.GetByDivisionIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<DivisionAllocation>)[]);
+
+        CallerContext caller = new();
+        caller.SetUserId(Guid.NewGuid());
+
+        AllocationService sut = new(
+            ceilingRepo.Object, allocRepo.Object, pdRepo.Object,
+            divRepo.Object, officeRepo.Object, fundingSourceRepo.Object, aipRepo.Object,
+            audit.Object, caller);
+
+        // Three different methods on the same instance, each of which independently used to
+        // re-fetch every funding source from scratch.
+        await sut.GetGeneralFundIdAsync();
+        await sut.GetCeilingsAsync(1, 2027);
+        await sut.GetAllocationsForAllFundsAsync(1, 2027);
+
+        fundingSourceRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task MultipleCallsOnSameInstance_FetchOfficesAndAipRecordsOnlyOnce()
+    {
+        Office office = MakeOffice(1, refCode: "01-010");
+        AipRecord aip = MakeAipRecord(1, 2027);
+
+        Mock<IBudgetCeilingRepository>       ceilingRepo       = new();
+        Mock<IDivisionAllocationRepository>  allocRepo         = new();
+        Mock<IAllocationRepository>          pdRepo            = new();
+        Mock<IRepository<Division>>          divRepo           = new();
+        Mock<IRepository<Office>>            officeRepo        = new();
+        Mock<IRepository<FundingSource>>     fundingSourceRepo = new();
+        Mock<IAipRepository>                 aipRepo           = new();
+        Mock<IAuditService>                  audit             = new();
+
+        officeRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([office]);
+        aipRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([aip]);
+        aipRepo.Setup(r => r.GetOfficesByAipIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipOffice>)[]);
+        pdRepo.Setup(r => r.GetProgramDivisionsByOfficeRefCodesAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<ProgramDivision>)[]);
+        fundingSourceRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+
+        CallerContext caller = new();
+        caller.SetUserId(Guid.NewGuid());
+
+        AllocationService sut = new(
+            ceilingRepo.Object, allocRepo.Object, pdRepo.Object,
+            divRepo.Object, officeRepo.Object, fundingSourceRepo.Object, aipRepo.Object,
+            audit.Object, caller);
+
+        // GetProgramAssignmentsAsync and GetSetupStatusAsync each independently used to
+        // re-fetch every office and every AIP record from scratch.
+        await sut.GetProgramAssignmentsAsync(1, 2027);
+        await sut.GetSetupStatusAsync(1, 2027, divisionId: 1);
+
+        officeRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Once);
+        aipRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
 }

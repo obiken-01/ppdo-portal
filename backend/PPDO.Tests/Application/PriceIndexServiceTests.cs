@@ -28,11 +28,29 @@ public sealed class PriceIndexServiceTests
         CreatedAt = FixedNow, UpdatedAt = FixedNow,
     };
 
-    private static (PriceIndexService sut, Mock<IRepository<PriceIndexItem>> repo) Build(
+    private static (PriceIndexService sut, Mock<IPriceIndexItemRepository> repo) Build(
         List<PriceIndexItem> seed, IAuditService? audit = null)
     {
-        Mock<IRepository<PriceIndexItem>> repo = new();
+        Mock<IPriceIndexItemRepository> repo = new();
         repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(seed);
+        // Lazy in-memory filter over the same live seed list, mirroring the real SQL-pushed
+        // WHERE (RAL-166 follow-up) — mocks GetFilteredAsync rather than the old GetAllAsync()
+        // full-table read so Create/Update-then-Get flows still see new rows.
+        repo.Setup(r => r.GetFilteredAsync(
+                It.IsAny<bool?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((bool? isActive, string? search, CancellationToken _) =>
+            {
+                IEnumerable<PriceIndexItem> q = seed;
+                if (isActive.HasValue) q = q.Where(p => p.IsActive == isActive.Value);
+                if (!string.IsNullOrWhiteSpace(search))
+                {
+                    string s = search.Trim();
+                    q = q.Where(p =>
+                        p.Name.Contains(s, StringComparison.OrdinalIgnoreCase) ||
+                        (p.Category != null && p.Category.Contains(s, StringComparison.OrdinalIgnoreCase)));
+                }
+                return (IReadOnlyList<PriceIndexItem>)q.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ToList();
+            });
         repo.Setup(r => r.AddAsync(It.IsAny<PriceIndexItem>(), It.IsAny<CancellationToken>()))
             .Callback<PriceIndexItem, CancellationToken>((p, _) => seed.Add(p))
             .Returns(Task.CompletedTask);
@@ -42,7 +60,7 @@ public sealed class PriceIndexServiceTests
             audit ?? Mock.Of<IAuditService>()), repo);
     }
 
-    private static (PriceIndexService sut, Mock<IRepository<PriceIndexItem>> repo, Mock<IAuditService> audit)
+    private static (PriceIndexService sut, Mock<IPriceIndexItemRepository> repo, Mock<IAuditService> audit)
         BuildWithAudit(List<PriceIndexItem> seed)
     {
         Mock<IAuditService> audit = new();
@@ -50,7 +68,7 @@ public sealed class PriceIndexServiceTests
             It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>(),
             It.IsAny<object?>(), It.IsAny<object?>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
-        (PriceIndexService sut, Mock<IRepository<PriceIndexItem>> repo) = Build(seed, audit.Object);
+        (PriceIndexService sut, Mock<IPriceIndexItemRepository> repo) = Build(seed, audit.Object);
         return (sut, repo, audit);
     }
 
@@ -355,6 +373,21 @@ public sealed class PriceIndexServiceTests
         IReadOnlyList<PriceIndexItemDto> active = await sut.GetAllAsync(null, ActiveFilter.Active);
         Assert.Single(active);
         Assert.Equal("Bond Paper", active[0].Name);
+    }
+
+    [Fact]
+    public async Task GetAllAsync_UsesScopedQuery_NeverFullTableLoad()
+    {
+        // RAL-166 follow-up: the catalogue runs to ~6,400 rows in practice — GetAllAsync must
+        // push the active/search filter to SQL via GetFilteredAsync, never materialize+filter
+        // the whole table in memory.
+        List<PriceIndexItem> seed = [Item(1, "Bond Paper", "ream", 250m)];
+        (PriceIndexService sut, Mock<IPriceIndexItemRepository> repo) = Build(seed);
+
+        await sut.GetAllAsync("bond", ActiveFilter.Active);
+
+        repo.Verify(r => r.GetFilteredAsync(true, "bond", It.IsAny<CancellationToken>()), Times.Once);
+        repo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     // ── audit logging ────────────────────────────────────────────────────────

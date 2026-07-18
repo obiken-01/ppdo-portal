@@ -116,13 +116,20 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     private async Task<Dictionary<int, IReadOnlyList<DivisionAllocationDto>>> GetAllocationsByFundAsync(
         int officeId, int fiscalYear, IReadOnlyList<FundingSource> activeFunds, CancellationToken ct)
     {
-        Dictionary<int, IReadOnlyList<DivisionAllocationDto>> result = [];
-        foreach (FundingSource fund in activeFunds)
-        {
-            // Sequential — DbContext is not thread-safe, never Task.WhenAll these.
-            result[fund.Id] = await _allocationService.GetAllocationsAsync(officeId, fiscalYear, fund.Id, ct);
-        }
-        return result;
+        // One call for every fund's allocations (RAL-166 follow-up, round 2) — was one
+        // GetAllocationsAsync call per fund, each of which itself re-resolves the office's
+        // divisions and every funding source from scratch, so N funds meant 3N queries just for
+        // this. GetAllocationsForAllFundsAsync (built for the Allocation page's own batch
+        // endpoint) already does the resolve-once-query-once version; grouping its flat result
+        // by FundingSourceId here is free.
+        IReadOnlyList<DivisionAllocationDto> allAllocations =
+            await _allocationService.GetAllocationsForAllFundsAsync(officeId, fiscalYear, ct);
+
+        return activeFunds.ToDictionary(
+            fund => fund.Id,
+            fund => (IReadOnlyList<DivisionAllocationDto>)allAllocations
+                .Where(a => a.FundingSourceId == fund.Id)
+                .ToList());
     }
 
     private async Task<IReadOnlyList<DivisionWfpStatusDto>> BuildWfpByDivisionAsync(

@@ -871,6 +871,9 @@ function WfpEntryPageInner() {
   const [selectedAipId, setSelectedAipId] = useState<number | null>(null);
   const [selectedOfficeId, setSelectedOfficeId] = useState<number | null>(null);
   const [selectedDivisionId, setSelectedDivisionId] = useState<number | null>(null);
+  // True until every mount-time resource (AIP/office list, reserve rate, price index) is
+  // in memory — gates the selector row with a skeleton + notice (see render below).
+  const [resourcesLoading, setResourcesLoading] = useState(true);
 
   // ── Loaded reference data ────────────────────────────────────────────────
 
@@ -911,6 +914,11 @@ function WfpEntryPageInner() {
 
   // ── Effect A: load selector lists on mount ───────────────────────────────
 
+  // Deliberately loaded together (not split apart to unblock the selectors sooner): once every
+  // resource this page could need is in memory — including the price-index catalogue used later
+  // by the Procurement/Combined item entry — the rest of the session never waits on a fetch for
+  // this data again. resourcesLoading gates the selector row with a skeleton + notice below so
+  // the wait is communicated instead of the dropdowns silently sitting empty.
   useEffect(() => {
     const urlAipId = searchParams.get("aipId");
     const urlOfficeId = searchParams.get("officeId");
@@ -921,10 +929,16 @@ function WfpEntryPageInner() {
         setOfficeList(offices);
         setReserveRate(rate.rate);
         setPriceIndex(items);
-        if (urlAipId) setSelectedAipId(Number(urlAipId));
+        if (urlAipId) {
+          setSelectedAipId(Number(urlAipId));
+        } else if (aips.length === 1) {
+          // Only one AIP to pick from — skip the manual selection step.
+          setSelectedAipId(aips[0].id);
+        }
         if (urlOfficeId) setSelectedOfficeId(Number(urlOfficeId));
       })
-      .catch(() => toast.error("Load failed", "Could not load AIP / office data."));
+      .catch(() => toast.error("Load failed", "Could not load AIP / office data."))
+      .finally(() => setResourcesLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1331,63 +1345,79 @@ function WfpEntryPageInner() {
         <p className="text-sm text-slate-600 mt-0.5">New context picker + expenditure wizard.</p>
       </div>
 
-      {/* Selector row */}
-      <div className="flex flex-wrap items-center gap-3 mb-5">
-        <div className="flex items-center gap-2">
-          <label className="text-sm text-slate-600 font-medium whitespace-nowrap">AIP</label>
-          <select
-            value={selectedAipId ?? ""}
-            onChange={(e) => setSelectedAipId(e.target.value ? Number(e.target.value) : null)}
-            className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600"
-          >
-            <option value="">— select AIP —</option>
-            {aipList.map((a) => (
-              <option key={a.id} value={a.id}>AIP FY{a.fiscalYear} ({a.status})</option>
+      {/* Selector row — a skeleton + notice while the mount-time resources (AIP/office list,
+          reserve rate, price index) are still loading, so the wait is communicated instead of
+          the real dropdowns sitting empty/interactive-but-incomplete. */}
+      {resourcesLoading ? (
+        <div className="mb-5 animate-pulse">
+          <p className="text-xs text-slate-500 mb-2">Loading resources…</p>
+          <div className="flex flex-wrap items-center gap-3">
+            {["AIP", "Office"].map((label) => (
+              <div key={label}>
+                <div className="h-3 bg-slate-100 mb-1" style={{ width: "32px" }} />
+                <div className="h-8 bg-slate-100" style={{ width: "180px" }} />
+              </div>
             ))}
-          </select>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <label className="text-sm text-slate-600 font-medium whitespace-nowrap">Office</label>
-          <OfficeSelect
-            offices={officeList}
-            value={selectedOfficeId}
-            onChange={(officeId) => {
-              setSelectedOfficeId(officeId);
-              setSelectedDivisionId(null);
-            }}
-            placeholder="— select office —"
-            disabled={isOfficeUser || !canBypassDivision}
-          />
-        </div>
-
-        {selectedOfficeId != null && (
-          <div className="flex items-center gap-2">
-            <label className="text-sm text-slate-600 font-medium whitespace-nowrap">Division</label>
-            {canBypassDivision ? (
-              <select
-                value={selectedDivisionId ?? ""}
-                onChange={(e) => setSelectedDivisionId(e.target.value ? Number(e.target.value) : null)}
-                className="w-48 truncate border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600"
-              >
-                <option value="">— select division —</option>
-                {divisionList.map((d) => (
-                  <option key={d.id} value={d.id}>{d.code ? `${d.code} — ${d.name}` : d.name}</option>
-                ))}
-              </select>
-            ) : (
-              <span className="w-48 truncate text-sm text-slate-700 px-2 py-1.5 border border-slate-200 bg-slate-50">
-                {(() => {
-                  const div = divisionList.find((d) => d.id === selectedDivisionId);
-                  return div ? (div.code ? `${div.code} — ${div.name}` : div.name) : me?.division ?? "—";
-                })()}
-              </span>
-            )}
           </div>
-        )}
-      </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-3 mb-5">
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-slate-600 font-medium whitespace-nowrap">AIP</label>
+            <select
+              value={selectedAipId ?? ""}
+              onChange={(e) => setSelectedAipId(e.target.value ? Number(e.target.value) : null)}
+              className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600"
+            >
+              <option value="">— select AIP —</option>
+              {aipList.map((a) => (
+                <option key={a.id} value={a.id}>AIP FY{a.fiscalYear} ({a.status})</option>
+              ))}
+            </select>
+          </div>
 
-      {selectedDivisionId == null ? (
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-slate-600 font-medium whitespace-nowrap">Office</label>
+            <OfficeSelect
+              offices={officeList}
+              value={selectedOfficeId}
+              onChange={(officeId) => {
+                setSelectedOfficeId(officeId);
+                setSelectedDivisionId(null);
+              }}
+              placeholder="— select office —"
+              disabled={isOfficeUser || !canBypassDivision}
+            />
+          </div>
+
+          {selectedOfficeId != null && (
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-slate-600 font-medium whitespace-nowrap">Division</label>
+              {canBypassDivision ? (
+                <select
+                  value={selectedDivisionId ?? ""}
+                  onChange={(e) => setSelectedDivisionId(e.target.value ? Number(e.target.value) : null)}
+                  className="w-48 truncate border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600"
+                >
+                  <option value="">— select division —</option>
+                  {divisionList.map((d) => (
+                    <option key={d.id} value={d.id}>{d.code ? `${d.code} — ${d.name}` : d.name}</option>
+                  ))}
+                </select>
+              ) : (
+                <span className="w-48 truncate text-sm text-slate-700 px-2 py-1.5 border border-slate-200 bg-slate-50">
+                  {(() => {
+                    const div = divisionList.find((d) => d.id === selectedDivisionId);
+                    return div ? (div.code ? `${div.code} — ${div.name}` : div.name) : me?.division ?? "—";
+                  })()}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {resourcesLoading ? null : selectedDivisionId == null ? (
         <p className="text-slate-600 text-sm py-8">
           Select an AIP, office, and division to start entering WFP expenditures. This wizard is
           division-scoped — a specific division must be chosen even for admin/finance users.

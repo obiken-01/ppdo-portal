@@ -3,6 +3,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using PPDO.Application.Common;
 using PPDO.Application.Services;
 using PPDO.Application.Settings;
@@ -175,6 +176,18 @@ var host = new HostBuilder()
         // -- v1.4 WFP ceiling monitoring + division-allocation ledger (RAL-122) --
         services.AddScoped<IWfpAllocationLedgerRepository, WfpAllocationLedgerRepository>();
         services.AddScoped<IWfpCeilingService, WfpCeilingService>();
+    })
+    .ConfigureLogging((context, logging) =>
+    {
+        // Local dev only (RAL-166 follow-up): surface EF Core's per-command SQL log
+        // ("Executed DbCommand (Nms) [...]") in the func host console, the same trace shape
+        // Application Insights Live Metrics already shows in prod. Lets you count exactly how
+        // many DB round trips one action fires locally — start the backend, hit an endpoint,
+        // then grep the console output for "Executed DbCommand" between the request's start
+        // and finish. Gated on a blank connection string so this never changes what's captured
+        // in prod (App Insights already surfaces these regardless of this filter).
+        if (string.IsNullOrWhiteSpace(context.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]))
+            logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.Information);
     })
     .Build();
 
