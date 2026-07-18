@@ -19,4 +19,22 @@ public sealed class PriceIndexItemRepository : Repository<PriceIndexItem>, IPric
             .Where(p => ids.Contains(p.Id))
             .ToListAsync(ct);
     }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<PriceIndexItem>> GetFilteredAsync(
+        bool? isActive, string? search, CancellationToken ct = default)
+    {
+        IQueryable<PriceIndexItem> query = _context.Set<PriceIndexItem>();
+
+        if (isActive.HasValue)
+            query = query.Where(p => p.IsActive == isActive.Value);
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            string s = search.Trim();
+            query = query.Where(p => p.Name.Contains(s) || (p.Category != null && p.Category.Contains(s)));
+        }
+
+        return await query.OrderBy(p => p.Name).ToListAsync(ct);
+    }
 }

@@ -25,11 +25,11 @@ public sealed class PriceIndexService : IPriceIndexService
 {
     private static readonly string[] CsvHeaders = { "name", "unit", "unit_price", "category", "is_active", "days_enabled" };
 
-    private readonly IRepository<PriceIndexItem> _repo;
+    private readonly IPriceIndexItemRepository _repo;
     private readonly ILogger<PriceIndexService> _logger;
     private readonly IAuditService _audit;
 
-    public PriceIndexService(IRepository<PriceIndexItem> repo, ILogger<PriceIndexService> logger, IAuditService audit)
+    public PriceIndexService(IPriceIndexItemRepository repo, ILogger<PriceIndexService> logger, IAuditService audit)
     {
         _repo   = repo;
         _logger = logger;
@@ -42,26 +42,15 @@ public sealed class PriceIndexService : IPriceIndexService
     public async Task<IReadOnlyList<PriceIndexItemDto>> GetAllAsync(
         string? search, ActiveFilter active, CancellationToken cancellationToken = default)
     {
-        IEnumerable<PriceIndexItem> q = await _repo.GetAllAsync(cancellationToken);
-
-        q = active switch
+        bool? isActive = active switch
         {
-            ActiveFilter.Active   => q.Where(p => p.IsActive),
-            ActiveFilter.Inactive => q.Where(p => !p.IsActive),
-            _                     => q,
+            ActiveFilter.Active   => true,
+            ActiveFilter.Inactive => false,
+            _                     => null,
         };
 
-        if (!string.IsNullOrWhiteSpace(search))
-        {
-            string s = search.Trim();
-            q = q.Where(p =>
-                p.Name.Contains(s, StringComparison.OrdinalIgnoreCase) ||
-                (p.Category != null && p.Category.Contains(s, StringComparison.OrdinalIgnoreCase)));
-        }
-
-        return q.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
-                .Select(MapToDto)
-                .ToList();
+        IReadOnlyList<PriceIndexItem> items = await _repo.GetFilteredAsync(isActive, search, cancellationToken);
+        return items.Select(MapToDto).ToList();
     }
 
     /// <inheritdoc />

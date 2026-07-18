@@ -15,4 +15,14 @@ public interface IPriceIndexItemRepository : IRepository<PriceIndexItem>
     /// <summary>Returns the price index items matching any of the given ids.</summary>
     Task<IReadOnlyList<PriceIndexItem>> GetByIdsAsync(
         IReadOnlyList<int> ids, CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns items filtered by active flag (null = both) and/or a name/category search term,
+    /// ordered by name — pushed to SQL (RAL-166 follow-up). The catalogue actually runs to
+    /// ~6,400 rows in practice, contradicting the "genuinely small (tens to a few hundred rows)"
+    /// assumption the 2026-07-16 perf audit carved this table out under; the WFP Entry Wizard's
+    /// mount-time list call was materializing and filtering the whole table in memory.
+    /// </summary>
+    Task<IReadOnlyList<PriceIndexItem>> GetFilteredAsync(
+        bool? isActive, string? search, CancellationToken ct = default);
 }
