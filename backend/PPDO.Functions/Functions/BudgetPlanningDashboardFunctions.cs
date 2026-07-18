@@ -67,6 +67,30 @@ public sealed class BudgetPlanningDashboardFunctions
         return await OkJson(req, result, cancellationToken);
     }
 
+    // ── GET /api/budget-planning/fiscal-years?fiscalYear={int?} ──────────────
+    // RAL-166 follow-up: the fiscal-year picker alone, for callers (the Report page) that
+    // don't need the rest of the Dashboard payload — same auth/permission gate as GetDashboard.
+
+    [Function("GetBudgetPlanningFiscalYears")]
+    public async Task<HttpResponseData> GetFiscalYears(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "budget-planning/fiscal-years")]
+        HttpRequestData req,
+        CancellationToken cancellationToken)
+    {
+        User? caller = await _jwt.ValidateAsync(GetAuthHeader(req), cancellationToken);
+        if (caller is null)
+            return req.CreateResponse(HttpStatusCode.Unauthorized);
+
+        if (!await _permissions.CanAccessBudgetPlanningAsync(caller, cancellationToken))
+            return req.CreateResponse(HttpStatusCode.Forbidden);
+
+        int? fiscalYear = TryParseIntQuery(req, "fiscalYear");
+
+        FiscalYearsDto result = await _service.GetFiscalYearsAsync(fiscalYear, cancellationToken);
+
+        return await OkJson(req, result, cancellationToken);
+    }
+
     // ── GET /api/budget-planning/activity?officeId={int?} ────────────────────
 
     [Function("GetBudgetPlanningActivity")]

@@ -8,13 +8,21 @@
  */
 
 import api from "./api";
-import type { ApiResponse, OfficeDashboard, PpdoDashboard, RecentActivity } from "@/types";
+import type { ApiResponse, FiscalYears, OfficeDashboard, PpdoDashboard, RecentActivity } from "@/types";
 
 /** PPDO-scoped (v1.4.5 — RAL-161) — the server always resolves the PPDO office internally and
  * clamps wfpByDivision/ceilingByFund to the caller's own division for division-scoped Staff. */
 export async function getDashboard(fiscalYear?: number): Promise<PpdoDashboard> {
   const params = fiscalYear != null ? { fiscalYear } : {};
   const { data } = await api.get<PpdoDashboard>("/budget-planning/dashboard", { params });
+  return data;
+}
+
+/** Fiscal-year picker only (RAL-166 follow-up) — use this instead of getDashboard() when a page
+ * only needs the fiscal year list (e.g. the Report page), not the full Dashboard payload. */
+export async function getFiscalYears(fiscalYear?: number): Promise<FiscalYears> {
+  const params = fiscalYear != null ? { fiscalYear } : {};
+  const { data } = await api.get<FiscalYears>("/budget-planning/fiscal-years", { params });
   return data;
 }
 

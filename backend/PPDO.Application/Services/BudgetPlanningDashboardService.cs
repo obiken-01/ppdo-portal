@@ -59,9 +59,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         Office ppdo = await _officeRepo.GetByCodeAsync(PpdoOfficeCode, ct)
             ?? throw new InvalidOperationException($"Office '{PpdoOfficeCode}' is not seeded.");
 
-        IReadOnlyList<int> availableFiscalYears = await _aipRepo.GetDistinctFiscalYearsAsync(ct);
-        int resolvedFY = fiscalYear
-            ?? (availableFiscalYears.Count > 0 ? availableFiscalYears[0] : DateTime.UtcNow.Year + 1);
+        (int resolvedFY, IReadOnlyList<int> availableFiscalYears) = await ResolveFiscalYearsAsync(fiscalYear, ct);
 
         OfficeLdipSummaryDto ldip = await BuildOfficeLdipSummaryAsync(ppdo.Id, resolvedFY, ct);
         OfficeAipSummaryDto  aip  = await BuildOfficeAipSummaryAsync(ppdo.Id, resolvedFY, ct);
@@ -74,18 +72,64 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
             .OrderBy(d => d.Name)
             .ToList();
 
+        // Active funds and their office-wide allocations are fetched once per request and
+        // reused by both panels below — GetAllocationsAsync already returns every division's
+        // amount for a fund, so calling it once per fund (not once per fund PER division) is
+        // enough. This replaced an N+1 that fired ~60 sequential DbCommands for a 5-division,
+        // 3-fund office (RAL-166 follow-up — v1.4.5 Live Metrics showed the dashboard
+        // dominated by repeated GetAllocationsAsync queries).
+        IReadOnlyList<FundingSource> activeFunds = (await _fundingSourceRepo.GetAllAsync(ct))
+            .Where(f => f.IsActive)
+            .ToList();
+        Dictionary<int, IReadOnlyList<DivisionAllocationDto>> allocationsByFund =
+            await GetAllocationsByFundAsync(ppdo.Id, resolvedFY, activeFunds, ct);
+
         IReadOnlyList<DivisionWfpStatusDto> wfpByDivision =
-            await BuildWfpByDivisionAsync(ppdo.Id, resolvedFY, divisions, ct);
+            await BuildWfpByDivisionAsync(ppdo.Id, resolvedFY, divisions, activeFunds, allocationsByFund, ct);
         IReadOnlyList<FundCeilingDto> ceilingByFund =
-            await BuildCeilingByFundAsync(ppdo.Id, resolvedFY, divisions, ct);
+            await BuildCeilingByFundAsync(
+                ppdo.Id, resolvedFY, divisions, activeFunds, allocationsByFund, _allocationService, ct);
 
         return new PpdoDashboardDto(
             resolvedFY, availableFiscalYears, ppdo.Id, ppdo.OfficeCode, ppdo.OfficeName,
             ldip, aip, wfpByDivision, ceilingByFund);
     }
 
+    /// <inheritdoc />
+    public async Task<FiscalYearsDto> GetFiscalYearsAsync(
+        int? fiscalYear, CancellationToken cancellationToken = default)
+    {
+        (int resolvedFY, IReadOnlyList<int> availableFiscalYears) =
+            await ResolveFiscalYearsAsync(fiscalYear, cancellationToken);
+        return new FiscalYearsDto(resolvedFY, availableFiscalYears);
+    }
+
+    private async Task<(int ResolvedFY, IReadOnlyList<int> AvailableFiscalYears)> ResolveFiscalYearsAsync(
+        int? fiscalYear, CancellationToken ct)
+    {
+        IReadOnlyList<int> availableFiscalYears = await _aipRepo.GetDistinctFiscalYearsAsync(ct);
+        int resolvedFY = fiscalYear
+            ?? (availableFiscalYears.Count > 0 ? availableFiscalYears[0] : DateTime.UtcNow.Year + 1);
+        return (resolvedFY, availableFiscalYears);
+    }
+
+    private async Task<Dictionary<int, IReadOnlyList<DivisionAllocationDto>>> GetAllocationsByFundAsync(
+        int officeId, int fiscalYear, IReadOnlyList<FundingSource> activeFunds, CancellationToken ct)
+    {
+        Dictionary<int, IReadOnlyList<DivisionAllocationDto>> result = [];
+        foreach (FundingSource fund in activeFunds)
+        {
+            // Sequential — DbContext is not thread-safe, never Task.WhenAll these.
+            result[fund.Id] = await _allocationService.GetAllocationsAsync(officeId, fiscalYear, fund.Id, ct);
+        }
+        return result;
+    }
+
     private async Task<IReadOnlyList<DivisionWfpStatusDto>> BuildWfpByDivisionAsync(
-        int officeId, int fiscalYear, IReadOnlyList<Division> divisions, CancellationToken ct)
+        int officeId, int fiscalYear, IReadOnlyList<Division> divisions,
+        IReadOnlyList<FundingSource> activeFunds,
+        IReadOnlyDictionary<int, IReadOnlyList<DivisionAllocationDto>> allocationsByFund,
+        CancellationToken ct)
     {
         AipRecord? primaryAip = await _aipRepo.GetLatestByFiscalYearAsync(fiscalYear, ct);
 
@@ -112,8 +156,12 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
             WfpActivityCoverageDto coverage =
                 await _wfpExpRepo.GetActivityCoverageAsync(officeId, division.Id, fiscalYear, ct);
 
-            IReadOnlyList<DivisionFundAmountDto> allocationByFund =
-                await GetDivisionAllocationByFundAsync(officeId, fiscalYear, division.Id, ct);
+            List<DivisionFundAmountDto> allocationByFund = activeFunds
+                .Select(fund => new DivisionFundAmountDto(
+                    fund.Id, fund.Code, fund.Name,
+                    allocationsByFund[fund.Id].FirstOrDefault(a => a.DivisionId == division.Id)?.Amount ?? 0m))
+                .Where(f => f.Amount > 0m)
+                .ToList();
 
             wfpByDivisionMap.TryGetValue(division.Id, out WfpRecord? wfp);
 
@@ -128,33 +176,13 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         return result;
     }
 
-    private async Task<IReadOnlyList<DivisionFundAmountDto>> GetDivisionAllocationByFundAsync(
-        int officeId, int fiscalYear, int divisionId, CancellationToken ct)
+    private static async Task<IReadOnlyList<FundCeilingDto>> BuildCeilingByFundAsync(
+        int officeId, int fiscalYear, IReadOnlyList<Division> divisionsInScope,
+        IReadOnlyList<FundingSource> activeFunds,
+        IReadOnlyDictionary<int, IReadOnlyList<DivisionAllocationDto>> allocationsByFund,
+        IAllocationService allocationService, CancellationToken ct)
     {
-        IReadOnlyList<FundingSource> activeFunds = (await _fundingSourceRepo.GetAllAsync(ct))
-            .Where(f => f.IsActive)
-            .ToList();
-
-        List<DivisionFundAmountDto> result = [];
-        foreach (FundingSource fund in activeFunds)
-        {
-            IReadOnlyList<DivisionAllocationDto> allocations =
-                await _allocationService.GetAllocationsAsync(officeId, fiscalYear, fund.Id, ct);
-            decimal amount = allocations.FirstOrDefault(a => a.DivisionId == divisionId)?.Amount ?? 0m;
-            if (amount > 0m)
-                result.Add(new DivisionFundAmountDto(fund.Id, fund.Code, fund.Name, amount));
-        }
-
-        return result;
-    }
-
-    private async Task<IReadOnlyList<FundCeilingDto>> BuildCeilingByFundAsync(
-        int officeId, int fiscalYear, IReadOnlyList<Division> divisionsInScope, CancellationToken ct)
-    {
-        IReadOnlyList<FundingSource> activeFunds = (await _fundingSourceRepo.GetAllAsync(ct))
-            .Where(f => f.IsActive)
-            .ToList();
-        IReadOnlyList<BudgetCeilingDto> ceilings = await _allocationService.GetCeilingsAsync(officeId, fiscalYear, ct);
+        IReadOnlyList<BudgetCeilingDto> ceilings = await allocationService.GetCeilingsAsync(officeId, fiscalYear, ct);
 
         List<FundCeilingDto> result = [];
         foreach (FundingSource fund in activeFunds)
@@ -163,8 +191,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
 
             // All divisions' amounts (not just the clamped set) — "Remaining" is an office-wide
             // fact and must reflect the true unallocated portion regardless of who's viewing.
-            IReadOnlyList<DivisionAllocationDto> allocations =
-                await _allocationService.GetAllocationsAsync(officeId, fiscalYear, fund.Id, ct);
+            IReadOnlyList<DivisionAllocationDto> allocations = allocationsByFund[fund.Id];
             decimal remaining = ceiling - allocations.Sum(a => a.Amount);
 
             List<FundDivisionShareDto> byDivision = divisionsInScope
