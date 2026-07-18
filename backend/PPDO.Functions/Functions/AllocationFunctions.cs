@@ -142,6 +142,36 @@ public sealed class AllocationFunctions
             ApiResponse<IReadOnlyList<DivisionAllocationDto>>.Ok(data), ct);
     }
 
+    // ── GET /api/budget-planning/allocation/divisions/all-funds?officeId=&fiscalYear= ─
+    // RAL-166 follow-up: batches what was previously one GetDivisions call per active fund,
+    // fired in parallel by the Allocation page, into a single request. Same read gate + the
+    // same per-caller division clamp as GetDivisions above.
+    [Function("AllocationGetDivisionsAllFunds")]
+    public async Task<HttpResponseData> GetDivisionsAllFunds(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get",
+            Route = "budget-planning/allocation/divisions/all-funds")] HttpRequestData req,
+        CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) =
+            await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccessBudgetPlanning, ct);
+        if (denied is not null || caller is null) return denied!;
+
+        if (!int.TryParse(req.Query["officeId"], out int officeId) ||
+            !int.TryParse(req.Query["fiscalYear"], out int fiscalYear))
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<IReadOnlyList<DivisionAllocationDto>>.Fail(
+                    "officeId and fiscalYear query parameters are required."), ct);
+
+        IReadOnlyList<DivisionAllocationDto> data =
+            await _allocation.GetAllocationsForAllFundsAsync(officeId, fiscalYear, ct);
+
+        if (!await CanManageAllocation(caller))
+            data = data.Where(a => a.DivisionId == caller.DivisionId).ToList();
+
+        return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK,
+            ApiResponse<IReadOnlyList<DivisionAllocationDto>>.Ok(data), ct);
+    }
+
     // ── PUT /api/budget-planning/allocation/divisions ─────────────────────────
     [Function("AllocationUpsertDivisions")]
     public async Task<HttpResponseData> UpsertDivisions(

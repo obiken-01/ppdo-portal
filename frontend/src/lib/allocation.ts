@@ -95,6 +95,19 @@ export async function getAllocations(
   return unwrap(data);
 }
 
+/** Every fund's division-allocation rows for the office + FY in one call (RAL-166 follow-up) —
+ * replaces N parallel getAllocations() calls (one per active fund) the Allocation page used to fire. */
+export async function getAllocationsAllFunds(
+  officeId: number,
+  fiscalYear: number
+): Promise<DivisionAllocationDto[]> {
+  const { data } = await api.get<ApiResponse<DivisionAllocationDto[]>>(
+    "/budget-planning/allocation/divisions/all-funds",
+    { params: { officeId, fiscalYear } }
+  );
+  return unwrap(data);
+}
+
 export async function upsertAllocations(
   body: UpsertAllocationsRequest
 ): Promise<DivisionAllocationDto[]> {

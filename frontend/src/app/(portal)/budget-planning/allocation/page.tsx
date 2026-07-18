@@ -37,7 +37,7 @@ import { useMe } from "@/lib/me-cache";
 import { findGeneralFund, findPpdoOffice, listOffices, listDivisions, listFundingSources } from "@/lib/config";
 import {
   allocationErrorMessage,
-  getAllocations,
+  getAllocationsAllFunds,
   getCeilings,
   getPrograms,
   upsertAllocations,
@@ -50,7 +50,6 @@ import { useToast } from "@/components/ui/Toast";
 import { formatMoney } from "@/lib/money";
 import type {
   BudgetCeilingDto,
-  DivisionAllocationDto,
   DivisionResponse,
   FundingSourceResponse,
   OfficeResponse,
@@ -514,8 +513,8 @@ function AllocationPageInner() {
   }, [me, officeList]);
 
   // ── Load allocation data when office, FY, or the fund list changes ───────
-  // Division allocations have no bulk-across-funds endpoint — one call per
-  // active fund, run in parallel. Ceilings DO have a bulk endpoint (RAL-154).
+  // Division allocations now have a bulk-across-funds endpoint too (RAL-166 follow-up),
+  // same shape as the ceilings one (RAL-154) — one call instead of one per active fund.
 
   useEffect(() => {
     if (selectedOfficeId == null) {
@@ -554,21 +553,20 @@ function AllocationPageInner() {
         setCeilings(ceilingsByFund);
         setCeilingInputs(ceilingInputsByFund);
 
-        const allocLists = await Promise.all(
-          fundList.map((fund) => getAllocations(selectedOfficeId!, selectedFiscalYear, fund.id))
-        );
+        const allAllocations = await getAllocationsAllFunds(selectedOfficeId!, selectedFiscalYear);
         if (cancelled) return;
 
         const allocInputsByFund: Record<number, Record<number, number | null>> = {};
-        fundList.forEach((fund, i) => {
-          const allocs: DivisionAllocationDto[] = allocLists[i];
+        for (const fund of fundList) {
           const inputs: Record<number, number | null> = {};
           for (const div of divs) {
-            const saved = allocs.find((a) => a.divisionId === div.id);
+            const saved = allAllocations.find(
+              (a) => a.fundingSourceId === fund.id && a.divisionId === div.id
+            );
             inputs[div.id] = saved?.amount ?? null;
           }
           allocInputsByFund[fund.id] = inputs;
-        });
+        }
         setAllocationInputsByFund(allocInputsByFund);
 
         setPrograms(progs);
