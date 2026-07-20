@@ -604,6 +604,23 @@ public sealed class BudgetPlanningDashboardServiceTests
             Times.Once);
     }
 
+    [Fact]
+    public async Task GetRecentActivityAsync_ChangedAtHasUnspecifiedKind_DtoStampsItUtc()
+    {
+        // Mirrors what EF Core actually returns after a SQL Server datetime2 round-trip —
+        // DateTimeKind.Unspecified, even though AuditService always writes DateTime.UtcNow.
+        DateTime unspecified = DateTime.SpecifyKind(new DateTime(2026, 7, 17, 7, 58, 41), DateTimeKind.Unspecified);
+        AuditLog audit = Audit(1, at: unspecified);
+        (BudgetPlanningDashboardService sut, _) = Build([], [], [], [], [audit]);
+
+        IReadOnlyList<RecentActivityDto> result = await sut.GetRecentActivityAsync(officeId: null);
+
+        // Without the Utc re-stamp, System.Text.Json omits the "Z" suffix and the browser's
+        // new Date(...) misparses the value as local time instead of UTC.
+        Assert.Equal(DateTimeKind.Utc, result[0].ChangedAt.Kind);
+        Assert.Equal(unspecified, result[0].ChangedAt, TimeSpan.FromSeconds(1));
+    }
+
     // ── GetOfficeDashboardAsync — allocation-setup summary (RAL-60) ───────────
 
     [Fact]

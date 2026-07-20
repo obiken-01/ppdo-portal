@@ -224,7 +224,12 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         return audits
             .Select(a => new RecentActivityDto(
                 a.Id,
-                a.ChangedAt,
+                // EF Core loses DateTimeKind on the SQL Server round-trip (datetime2 columns don't
+                // store it), so a.ChangedAt reads back as Kind=Unspecified even though AuditService
+                // always writes DateTime.UtcNow. Without re-stamping Utc here, System.Text.Json
+                // serializes it without a trailing "Z", and the browser's `new Date(...)` then
+                // misparses it as local time instead of UTC — displaying a time 8 hours off Manila.
+                DateTime.SpecifyKind(a.ChangedAt, DateTimeKind.Utc),
                 a.TableName,
                 a.Action,
                 a.RecordId,
