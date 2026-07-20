@@ -27,17 +27,20 @@ public sealed class UserService : IUserService
     private readonly IRepository<Office> _offices;
     private readonly IRepository<Division> _divisions;
     private readonly ILogger<UserService> _logger;
+    private readonly IAuditService _audit;
 
     public UserService(
         IUserRepository users,
         IRepository<Office> offices,
         IRepository<Division> divisions,
-        ILogger<UserService> logger)
+        ILogger<UserService> logger,
+        IAuditService audit)
     {
         _users     = users;
         _offices   = offices;
         _divisions = divisions;
         _logger    = logger;
+        _audit     = audit;
     }
 
     // ── Queries ────────────────────────────────────────────────────────────────
@@ -161,6 +164,10 @@ public sealed class UserService : IUserService
             user.Id, user.Role, user.DivisionId, requester.Id);
 
         User created = (await _users.GetByIdWithDivisionAsync(user.Id, cancellationToken))!;
+        await _audit.LogAsync("users", created.Id, AuditAction.Create,
+            oldValues: null,
+            newValues: AuditSnapshot(created),
+            cancellationToken);
         return ServiceResult<UserResponseDto>.Ok(MapToDto(created));
     }
 
@@ -183,6 +190,8 @@ public sealed class UserService : IUserService
             return ServiceResult<UserResponseDto>.Forbidden(
                 "You do not have permission to modify this user.");
         }
+
+        object oldSnapshot = AuditSnapshot(target);
 
         if (dto.FullName is not null)  target.FullName  = dto.FullName.Trim();
         if (dto.Position is not null)  target.Position  = dto.Position.Trim();
@@ -303,6 +312,10 @@ public sealed class UserService : IUserService
             target.Id, requester.Id);
 
         User updated = (await _users.GetByIdWithDivisionAsync(target.Id, cancellationToken))!;
+        await _audit.LogAsync("users", updated.Id, AuditAction.Update,
+            oldValues: oldSnapshot,
+            newValues: AuditSnapshot(updated),
+            cancellationToken);
         return ServiceResult<UserResponseDto>.Ok(MapToDto(updated));
     }
 
@@ -331,6 +344,12 @@ public sealed class UserService : IUserService
             "Password reset. TargetUserId: {TargetUserId}, ResetBy: {ResetBy}",
             target.Id, requester.Id);
 
+        // Never snapshot PasswordHash — just record that a reset happened.
+        await _audit.LogAsync("users", target.Id, AuditAction.Update,
+            oldValues: null,
+            newValues: new { PasswordReset = true },
+            cancellationToken);
+
         return ServiceResult<UserResponseDto>.Ok(MapToDto(target));
     }
 
@@ -354,6 +373,8 @@ public sealed class UserService : IUserService
         if (target is null)
             return ServiceResult<UserResponseDto>.NotFound($"User {targetId} not found.");
 
+        object oldSnapshot = AuditSnapshot(target);
+
         target.OverrideCanAccessInventory      = dto.OverrideCanAccessInventory;
         target.OverrideCanAccessReports        = dto.OverrideCanAccessReports;
         target.OverrideCanManageUsers          = dto.OverrideCanManageUsers;
@@ -365,6 +386,11 @@ public sealed class UserService : IUserService
 
         await _users.UpdateAsync(target, cancellationToken);
         await _users.SaveChangesAsync(cancellationToken);
+
+        await _audit.LogAsync("users", target.Id, AuditAction.Update,
+            oldValues: oldSnapshot,
+            newValues: AuditSnapshot(target),
+            cancellationToken);
 
         return ServiceResult<UserResponseDto>.Ok(MapToDto(target));
     }
@@ -403,6 +429,12 @@ public sealed class UserService : IUserService
             "User deactivated. TargetUserId: {TargetUserId}, DeactivatedBy: {DeactivatedBy}",
             target.Id, requester.Id);
 
+        // Mirrors the soft-delete audit convention used by Division/Account/Office services.
+        await _audit.LogAsync("users", target.Id, AuditAction.Delete,
+            oldValues: new { IsActive = true },
+            newValues: null,
+            cancellationToken);
+
         return ServiceResult<UserResponseDto>.Ok(MapToDto(target));
     }
 
@@ -436,6 +468,11 @@ public sealed class UserService : IUserService
         _logger.LogInformation(
             "User reactivated. TargetUserId: {TargetUserId}, ReactivatedBy: {ReactivatedBy}",
             target.Id, requester.Id);
+
+        await _audit.LogAsync("users", target.Id, AuditAction.Update,
+            oldValues: new { IsActive = false },
+            newValues: new { IsActive = true },
+            cancellationToken);
 
         return ServiceResult<UserResponseDto>.Ok(MapToDto(target));
     }
@@ -609,5 +646,19 @@ public sealed class UserService : IUserService
         OverrideCanManageAllocation     = u.OverrideCanManageAllocation,
         CreatedAt                     = u.CreatedAt,
         UpdatedAt                     = u.UpdatedAt,
+    };
+
+    /// <summary>
+    /// Audit snapshot of the business-relevant fields on a user. Deliberately excludes
+    /// PasswordHash/RefreshToken/RefreshTokenExpiry — never persist those to audit_log,
+    /// which is read back and displayed in the Recent Activity UI.
+    /// </summary>
+    private static object AuditSnapshot(User u) => new
+    {
+        u.FullName, u.Username, u.Email, Role = u.Role.ToString(),
+        u.DivisionId, u.OfficeId, u.Position, u.ContactNo, u.IsActive,
+        u.OverrideCanAccessInventory, u.OverrideCanAccessReports, u.OverrideCanManageUsers,
+        u.OverrideCanManageResourceLinks, u.OverrideCanAccessBudgetPlanning,
+        u.OverrideCanUploadAip, u.OverrideCanManageConfig, u.OverrideCanManageAllocation,
     };
 }

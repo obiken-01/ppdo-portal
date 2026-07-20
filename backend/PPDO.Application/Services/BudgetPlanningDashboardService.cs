@@ -233,6 +233,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
                 a.TableName,
                 a.Action,
                 a.RecordId,
+                a.RecordGuid,
                 a.ChangedBy?.FullName ?? "Unknown"))
             .ToList();
     }

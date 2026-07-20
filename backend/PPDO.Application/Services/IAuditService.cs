@@ -8,9 +8,10 @@ namespace PPDO.Application.Services;
 public interface IAuditService
 {
     /// <summary>
-    /// Persists one audit row for a create, update, or soft-delete operation.
+    /// Persists one audit row for a create, update, or soft-delete operation, for an
+    /// int-keyed table (e.g. "accounts", "wfp_expenditure_lines").
     /// </summary>
-    /// <param name="tableName">Physical table name (e.g. "accounts", "wfp_expenditure_lines").</param>
+    /// <param name="tableName">Physical table name.</param>
     /// <param name="recordId">PK of the affected row.</param>
     /// <param name="action">One of <see cref="Common.AuditAction"/> constants: CREATE / UPDATE / DELETE.</param>
     /// <param name="oldValues">Anonymous object with field values before the change. Null for CREATE.</param>
@@ -18,6 +19,25 @@ public interface IAuditService
     Task LogAsync(
         string tableName,
         int recordId,
+        string action,
+        object? oldValues,
+        object? newValues,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Persists one audit row for a create, update, or soft-delete operation, for a
+    /// Guid-keyed table (e.g. "users"). Never pass password hashes, tokens, or other
+    /// sensitive fields in <paramref name="oldValues"/>/<paramref name="newValues"/> —
+    /// these are persisted and surfaced in the Recent Activity UI.
+    /// </summary>
+    /// <param name="tableName">Physical table name.</param>
+    /// <param name="recordId">PK of the affected row.</param>
+    /// <param name="action">One of <see cref="Common.AuditAction"/> constants: CREATE / UPDATE / DELETE.</param>
+    /// <param name="oldValues">Anonymous object with field values before the change. Null for CREATE.</param>
+    /// <param name="newValues">Anonymous object with field values after the change. Null for DELETE.</param>
+    Task LogAsync(
+        string tableName,
+        Guid recordId,
         string action,
         object? oldValues,
         object? newValues,

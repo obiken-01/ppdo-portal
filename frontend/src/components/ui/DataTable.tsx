@@ -60,10 +60,25 @@ export interface DataTableProps<T> {
   error?: string | null;
   onRetry?: () => void;
   emptyMessage?: string;
-  /** When set, paginate client-side at this page size. Omit to show all rows. */
+  /** When set (and serverPagination is not), paginate client-side at this page size.
+   * Omit both to show all rows on one page. */
   pageSize?: number;
   /** Singular/plural noun for the row-count footer (default "row"/"rows"). */
   rowNoun?: [singular: string, plural: string];
+  /**
+   * Opt into server-side pagination: `rows` is assumed to already be just the current page
+   * (the caller re-fetches on page change), and the footer's count/Prev/Next are driven from
+   * these values instead of `rows.length`/internal page state. Takes precedence over `pageSize`.
+   * Client-side sorting is still applied, but only within the current page — pair with
+   * non-sortable columns (or server-side sort params) for large/unbounded tables.
+   */
+  serverPagination?: {
+    /** 1-based current page. */
+    page: number;
+    pageSize: number;
+    totalCount: number;
+    onPageChange: (page: number) => void;
+  };
 }
 
 const ALIGN_CLASS: Record<Align, string> = {
@@ -82,6 +97,7 @@ export default function DataTable<T>({
   emptyMessage = "No records found.",
   pageSize,
   rowNoun = ["row", "rows"],
+  serverPagination,
 }: DataTableProps<T>) {
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -116,9 +132,18 @@ export default function DataTable<T>({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, columns, sortKey, sortDir]);
 
-  const pageCount = pageSize ? Math.max(1, Math.ceil(sortedRows.length / pageSize)) : 1;
-  const safePage = Math.min(page, pageCount - 1);
-  const pagedRows = pageSize ? sortedRows.slice(safePage * pageSize, safePage * pageSize + pageSize) : sortedRows;
+  const pageCount = serverPagination
+    ? Math.max(1, Math.ceil(serverPagination.totalCount / serverPagination.pageSize))
+    : pageSize
+      ? Math.max(1, Math.ceil(sortedRows.length / pageSize))
+      : 1;
+  const safePage = serverPagination ? serverPagination.page - 1 : Math.min(page, pageCount - 1);
+  // Server-paginated: `rows` IS the current page already, nothing to slice.
+  const pagedRows = serverPagination
+    ? sortedRows
+    : pageSize
+      ? sortedRows.slice(safePage * pageSize, safePage * pageSize + pageSize)
+      : sortedRows;
 
   function toggleSort(col: Column<T>) {
     if (!col.sortable) return;
@@ -133,7 +158,7 @@ export default function DataTable<T>({
   // ── States ────────────────────────────────────────────────────────────────
 
   if (loading) {
-    const skeletonCount = Math.min(pageSize ?? 8, 10);
+    const skeletonCount = Math.min(serverPagination?.pageSize ?? pageSize ?? 8, 10);
     return (
       <div className="bg-white border border-slate-200 overflow-hidden">
         <table className="w-full text-sm border-collapse">
@@ -246,13 +271,21 @@ export default function DataTable<T>({
       {/* Footer: row count + pagination */}
       <div className="flex items-center justify-between px-4 py-2 border-t border-slate-100 text-xs text-slate-600">
         <span>
-          {sortedRows.length} {sortedRows.length === 1 ? rowNoun[0] : rowNoun[1]}
+          {serverPagination ? (
+            <>{serverPagination.totalCount} {serverPagination.totalCount === 1 ? rowNoun[0] : rowNoun[1]}</>
+          ) : (
+            <>{sortedRows.length} {sortedRows.length === 1 ? rowNoun[0] : rowNoun[1]}</>
+          )}
         </span>
 
-        {pageSize && pageCount > 1 && (
+        {((serverPagination && pageCount > 1) || (!serverPagination && pageSize && pageCount > 1)) && (
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              onClick={() =>
+                serverPagination
+                  ? serverPagination.onPageChange(serverPagination.page - 1)
+                  : setPage((p) => Math.max(0, p - 1))
+              }
               disabled={safePage === 0}
               className="px-2 py-1 border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
             >
@@ -262,7 +295,11 @@ export default function DataTable<T>({
               Page {safePage + 1} of {pageCount}
             </span>
             <button
-              onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+              onClick={() =>
+                serverPagination
+                  ? serverPagination.onPageChange(serverPagination.page + 1)
+                  : setPage((p) => Math.min(pageCount - 1, p + 1))
+              }
               disabled={safePage >= pageCount - 1}
               className="px-2 py-1 border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
             >

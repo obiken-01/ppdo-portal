@@ -26,7 +26,8 @@ public record RecentActivityDto(
     DateTime ChangedAt,
     string TableName,
     string Action,
-    int RecordId,
+    int? RecordId,
+    Guid? RecordGuid,
     string ActorName
 );
 

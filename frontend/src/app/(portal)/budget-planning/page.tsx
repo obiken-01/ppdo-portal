@@ -249,6 +249,15 @@ function pesoShort(n: number): string {
   return `₱${Math.round(n)}`;
 }
 
+// Exactly one of recordId/recordGuid is set on a RecentActivity entry, depending on
+// whether the affected table has an int or Guid PK (e.g. wfp_expenditures vs users).
+// Guids are shortened to their first segment to keep the activity row compact.
+function recordLabel(entry: RecentActivity): string {
+  if (entry.recordId != null) return `#${entry.recordId}`;
+  if (entry.recordGuid != null) return `#${entry.recordGuid.split("-")[0]}`;
+  return "";
+}
+
 const centerTextPlugin = {
   id: "centerText",
   afterDraw(chart: Chart) {
@@ -715,7 +724,7 @@ export default function BudgetPlanningPage() {
                     <span className="font-medium">{entry.actorName}</span>
                     {" — "}
                     <span className="text-slate-600">
-                      {entry.action.toLowerCase()} on {entry.tableName} #{entry.recordId}
+                      {entry.action.toLowerCase()} on {entry.tableName} {recordLabel(entry)}
                     </span>
                   </div>
                   <span className="text-xs text-slate-600 whitespace-nowrap flex-shrink-0">

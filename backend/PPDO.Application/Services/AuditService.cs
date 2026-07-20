@@ -31,13 +31,33 @@ public sealed class AuditService : IAuditService
     }
 
     /// <inheritdoc />
-    public async Task LogAsync(
+    public Task LogAsync(
         string tableName,
         int recordId,
         string action,
         object? oldValues,
         object? newValues,
         CancellationToken cancellationToken = default)
+        => PersistAsync(tableName, recordId, null, action, oldValues, newValues, cancellationToken);
+
+    /// <inheritdoc />
+    public Task LogAsync(
+        string tableName,
+        Guid recordId,
+        string action,
+        object? oldValues,
+        object? newValues,
+        CancellationToken cancellationToken = default)
+        => PersistAsync(tableName, null, recordId, action, oldValues, newValues, cancellationToken);
+
+    private async Task PersistAsync(
+        string tableName,
+        int? recordId,
+        Guid? recordGuid,
+        string action,
+        object? oldValues,
+        object? newValues,
+        CancellationToken cancellationToken)
     {
         Guid userId = _caller.UserId
             ?? throw new InvalidOperationException("Audit requires an authenticated user.");
@@ -46,6 +66,7 @@ public sealed class AuditService : IAuditService
         {
             TableName   = tableName,
             RecordId    = recordId,
+            RecordGuid  = recordGuid,
             Action      = action,
             ChangedById = userId,
             ChangedAt   = DateTime.UtcNow,
