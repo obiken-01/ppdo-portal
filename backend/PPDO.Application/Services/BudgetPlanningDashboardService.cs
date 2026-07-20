@@ -12,13 +12,27 @@ namespace PPDO.Application.Services;
 /// methods; the old fleet-wide "N offices set up" view (AllocationSetupOverviewDto) and its
 /// 8 unfiltered full-table scans are gone. GetRecentActivityAsync delegates to
 /// IAuditRepository.GetRecentAsync so the DB applies ordering, office filtering, and TAKE — the
-/// entire audit_log is never loaded. GetOfficeDashboardAsync composes the office-scoped
+/// entire audit_log is never loaded, and results are scoped to Budget Planning's own tables
+/// (BudgetPlanningTableNames) so unrelated activity (User Management, Config) doesn't show up
+/// here — see the dedicated Audit Log page (RAL-174) for the unfiltered, all-tables view.
+/// GetOfficeDashboardAsync composes the office-scoped
 /// readiness hub by calling IAllocationService for the allocation-setup panel — it never
 /// re-implements those queries.
 /// </summary>
 public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardService
 {
     private const string PpdoOfficeCode = "PPDO";
+
+    /// <summary>Scopes GetRecentActivityAsync to Budget Planning's own tables (AIP, LDIP, WFP,
+    /// Allocation) — excludes "users" and Config tables (accounts, divisions, offices, etc.),
+    /// which surface instead on the dedicated Audit Log page (SuperAdmin-only, RAL-174).</summary>
+    private static readonly string[] BudgetPlanningTableNames =
+    [
+        "aip_records", "aip_programs", "aip_activities",
+        "ldip_records",
+        "wfp_records", "wfp_expenditures",
+        "budget_ceilings", "division_allocations", "program_divisions",
+    ];
 
     private readonly ILdipRepository            _ldipRepo;
     private readonly IAipRepository             _aipRepo;
@@ -217,9 +231,10 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     public async Task<IReadOnlyList<RecentActivityDto>> GetRecentActivityAsync(
         int? officeId, CancellationToken cancellationToken = default)
     {
-        // GetRecentAsync pushes ORDER BY, WHERE (office filter), and TOP(10) to SQL.
+        // GetRecentAsync pushes ORDER BY, WHERE (office filter + table scope), and TOP(10) to SQL.
         // Actor name is read from the pre-loaded ChangedBy navigation (one JOIN, no second query).
-        IReadOnlyList<AuditLog> audits = await _auditRepo.GetRecentAsync(10, officeId, cancellationToken);
+        IReadOnlyList<AuditLog> audits = await _auditRepo.GetRecentAsync(
+            10, officeId, BudgetPlanningTableNames, cancellationToken);
 
         return audits
             .Select(a => new RecentActivityDto(
