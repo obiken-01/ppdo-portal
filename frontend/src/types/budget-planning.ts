@@ -261,7 +261,10 @@ export interface RecentActivity {
   changedAt: string; // ISO 8601
   tableName: string;
   action: string;
-  recordId: number;
+  // Exactly one of recordId/recordGuid is set, depending on the table's PK type
+  // (int-keyed tables like wfp_expenditures vs Guid-keyed tables like users).
+  recordId: number | null;
+  recordGuid: string | null;
   actorName: string;
 }
 

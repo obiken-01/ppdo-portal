@@ -199,4 +199,18 @@ public sealed class PermissionServiceTests
     [Fact]
     public async Task CanManageAllocation_Staff_NoOverride_ReturnsFalse()
         => Assert.False(await _sut.CanManageAllocationAsync(MakeUser(UserRole.Staff)));
+
+    // ── CanViewAuditLog — SuperAdmin-only, feature-flag gated ─────────────────
+
+    [Fact]
+    public async Task CanViewAuditLog_SuperAdmin_ReturnsTrue()
+        => Assert.True(await _sut.CanViewAuditLogAsync(MakeUser(UserRole.SuperAdmin)));
+
+    [Fact]
+    public async Task CanViewAuditLog_Admin_ReturnsFalse()
+        => Assert.False(await _sut.CanViewAuditLogAsync(MakeUser(UserRole.Admin)));
+
+    [Fact]
+    public async Task CanViewAuditLog_Staff_ReturnsFalse()
+        => Assert.False(await _sut.CanViewAuditLogAsync(MakeUser(UserRole.Staff)));
 }

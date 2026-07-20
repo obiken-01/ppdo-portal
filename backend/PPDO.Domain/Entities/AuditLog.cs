@@ -13,8 +13,12 @@ public sealed class AuditLog
     /// <summary>Physical table name — e.g. "aip_activities", "wfp_expenditure_lines". Max 100 characters.</summary>
     public string TableName { get; set; } = string.Empty;
 
-    /// <summary>PK of the affected row in TableName.</summary>
-    public int RecordId { get; set; }
+    /// <summary>PK of the affected row in TableName, for int-keyed tables. Exactly one of
+    /// <see cref="RecordId"/>/<see cref="RecordGuid"/> is set, depending on the table's PK type.</summary>
+    public int? RecordId { get; set; }
+
+    /// <summary>PK of the affected row in TableName, for Guid-keyed tables (e.g. "users").</summary>
+    public Guid? RecordGuid { get; set; }
 
     /// <summary>"CREATE", "UPDATE", or "DELETE". Max 10 characters.</summary>
     public string Action { get; set; } = string.Empty;

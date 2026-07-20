@@ -38,4 +38,51 @@ public sealed class AuditRepository : Repository<AuditLog>, IAuditRepository
 
         return await query.Take(take).ToListAsync(cancellationToken);
     }
+
+    /// <inheritdoc />
+    public async Task<(IReadOnlyList<AuditLog> Items, int TotalCount)> GetPagedAsync(
+        int page,
+        int pageSize,
+        string? tableName,
+        string? action,
+        string? actorSearch,
+        DateTime? from,
+        DateTime? to,
+        CancellationToken cancellationToken = default)
+    {
+        IQueryable<AuditLog> query = _context.AuditLogs.Include(a => a.ChangedBy);
+
+        if (!string.IsNullOrWhiteSpace(tableName))
+            query = query.Where(a => a.TableName == tableName);
+        if (!string.IsNullOrWhiteSpace(action))
+            query = query.Where(a => a.Action == action);
+        if (!string.IsNullOrWhiteSpace(actorSearch))
+        {
+            string s = actorSearch.Trim();
+            query = query.Where(a =>
+                a.ChangedBy != null &&
+                (a.ChangedBy.FullName.Contains(s) || a.ChangedBy.Username.Contains(s)));
+        }
+        if (from.HasValue)
+            query = query.Where(a => a.ChangedAt >= from.Value);
+        if (to.HasValue)
+            query = query.Where(a => a.ChangedAt <= to.Value);
+
+        int total = await query.CountAsync(cancellationToken);
+        List<AuditLog> items = await query
+            .OrderByDescending(a => a.ChangedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+
+        return (items, total);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<string>> GetDistinctTableNamesAsync(CancellationToken cancellationToken = default)
+        => await _context.AuditLogs
+            .Select(a => a.TableName)
+            .Distinct()
+            .OrderBy(t => t)
+            .ToListAsync(cancellationToken);
 }

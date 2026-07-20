@@ -1,3 +1,4 @@
+using PPDO.Application.Common;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Enums;
 using PPDO.Domain.Interfaces;
@@ -98,6 +99,13 @@ public sealed class PermissionService : IPermissionService
         // Per-user grant only — Admin is NOT auto-granted. SuperAdmin bypasses for support.
         if (user.Role is UserRole.SuperAdmin) return Task.FromResult(true);
         return Task.FromResult(user.OverrideCanManageAllocation ?? false);
+    }
+
+    /// <inheritdoc />
+    public Task<bool> CanViewAuditLogAsync(User user, CancellationToken cancellationToken = default)
+    {
+        if (!FeatureFlags.AuditLogPageEnabled) return Task.FromResult(false);
+        return Task.FromResult(user.Role is UserRole.SuperAdmin);
     }
 
     /// <summary>SuperAdmin and Admin get all standard feature flags by default.</summary>

@@ -19,4 +19,25 @@ public interface IAuditRepository : IRepository<AuditLog>
         int take,
         int? officeId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns one page of audit entries (newest first) matching the given filters, plus the
+    /// total matching row count for pagination controls. Filtering and paging are pushed to
+    /// SQL — the full audit_log table is never materialised in memory. ActorSearch matches
+    /// against the changing user's FullName or Username (case-insensitive contains).
+    /// <see cref="AuditLog.ChangedBy"/> is always populated.
+    /// </summary>
+    Task<(IReadOnlyList<AuditLog> Items, int TotalCount)> GetPagedAsync(
+        int page,
+        int pageSize,
+        string? tableName,
+        string? action,
+        string? actorSearch,
+        DateTime? from,
+        DateTime? to,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Distinct table_name values present in audit_log, alphabetical — drives the
+    /// Audit Log page's table filter dropdown without a hardcoded list that could drift.</summary>
+    Task<IReadOnlyList<string>> GetDistinctTableNamesAsync(CancellationToken cancellationToken = default);
 }

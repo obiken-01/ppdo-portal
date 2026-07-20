@@ -233,3 +233,27 @@ export interface UpsertDivisionRequest {
   canManageUsers: boolean;
   canManageResourceLinks: boolean;
 }
+
+// ── Audit Log (SuperAdmin-only) ───────────────────────────────────────────────
+
+/** One row of the Audit Log page. Exactly one of recordId/recordGuid is set, depending
+ * on whether the affected table has an int or Guid PK (e.g. accounts vs users). */
+export interface AuditLogEntry {
+  id: number;
+  changedAt: string; // ISO 8601
+  tableName: string;
+  action: string; // "CREATE" | "UPDATE" | "DELETE"
+  recordId: number | null;
+  recordGuid: string | null;
+  actorName: string;
+  /** Human-readable, possibly multi-line ("\n"-joined) summary of what changed. */
+  description: string;
+}
+
+/** One filtered/paginated page of audit log entries. */
+export interface AuditLogPage {
+  items: AuditLogEntry[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}

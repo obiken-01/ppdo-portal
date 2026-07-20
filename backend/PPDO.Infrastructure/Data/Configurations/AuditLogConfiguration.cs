@@ -18,10 +18,13 @@ public sealed class AuditLogConfiguration : IEntityTypeConfiguration<AuditLog>
             .IsRequired()
             .HasMaxLength(100);
 
-        // Not a real FK — points into whichever table TableName names.
+        // Not a real FK — points into whichever table TableName names. Nullable because
+        // exactly one of RecordId/RecordGuid is set, depending on the table's PK type.
         builder.Property(a => a.RecordId)
-            .HasColumnName("record_id")
-            .IsRequired();
+            .HasColumnName("record_id");
+
+        builder.Property(a => a.RecordGuid)
+            .HasColumnName("record_guid");
 
         builder.Property(a => a.Action)
             .HasColumnName("action")
@@ -44,6 +47,9 @@ public sealed class AuditLogConfiguration : IEntityTypeConfiguration<AuditLog>
 
         builder.HasIndex(a => new { a.TableName, a.RecordId })
             .HasDatabaseName("IX_audit_log_table_record");
+
+        builder.HasIndex(a => new { a.TableName, a.RecordGuid })
+            .HasDatabaseName("IX_audit_log_table_record_guid");
 
         builder.HasIndex(a => a.ChangedAt)
             .HasDatabaseName("IX_audit_log_changed_at");

@@ -23,7 +23,7 @@ import { auth } from "@/lib/auth";
 import { clearMeCache } from "@/lib/me-cache";
 import type { MeResponse } from "@/types";
 
-const APP_VERSION = "v1.4.7";
+const APP_VERSION = "v1.4.9";
 
 interface SidebarProps {
   me: MeResponse | null;
@@ -94,6 +94,7 @@ export default function Sidebar({ me }: SidebarProps) {
   const showInventoryGroup = !isOfficeUser && (hasInventory || hasReport);
   const isAdmin            = me?.role === "Admin" || me?.role === "SuperAdmin";
   const showManageUsers    = !isOfficeUser && me?.canManageUsers === true;
+  const showAuditLog       = !isOfficeUser && me?.role === "SuperAdmin";
   const showBudgetPlanning = me?.canAccessBudgetPlanning === true;
   const showConfig         = !isOfficeUser && me?.canManageConfig === true;
   const showResourceLinks  = !isOfficeUser;
@@ -315,7 +316,7 @@ export default function Sidebar({ me }: SidebarProps) {
         )}
 
         {/* Configuration — collapsible group; PPDO users with CanManageConfig or CanManageUsers */}
-        {(showConfig || showManageUsers) && (
+        {(showConfig || showManageUsers || showAuditLog) && (
           <div>
             <button
               onClick={() => setConfigOpen((o) => !o)}
@@ -370,6 +371,12 @@ export default function Sidebar({ me }: SidebarProps) {
                   <Link href="/admin/users" className={childLinkCls(isActive("/admin/users"))}>
                     <span className="text-xs">•</span>
                     <span className="truncate">User Management</span>
+                  </Link>
+                )}
+                {showAuditLog && (
+                  <Link href="/config/audit-log" className={childLinkCls(isActive("/config/audit-log"))}>
+                    <span className="text-xs">•</span>
+                    <span className="truncate">Audit Log</span>
                   </Link>
                 )}
               </div>
