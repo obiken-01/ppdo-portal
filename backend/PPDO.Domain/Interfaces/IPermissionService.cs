@@ -74,4 +74,11 @@ public interface IPermissionService
     /// Admin is NOT auto-granted this — only the designated finance officer holds it.
     /// </summary>
     Task<bool> CanManageAllocationAsync(User user, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// True when the user may view the Audit Log config page. Gated behind a feature flag
+    /// (see the implementation) and, while that flag is on, SuperAdmin-only — no
+    /// per-user/division override yet (add one here if that's ever needed).
+    /// </summary>
+    Task<bool> CanViewAuditLogAsync(User user, CancellationToken cancellationToken = default);
 }

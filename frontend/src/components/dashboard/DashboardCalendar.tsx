@@ -23,6 +23,17 @@ const LEGEND_ENTRIES: Array<{ key: string; label: string }> = [
   { key: "Holiday",  label: "Holiday" },
 ];
 
+/**
+ * Adds `days` to an ISO date(-time) string's calendar date (ignoring any time component),
+ * returning a bare "YYYY-MM-DD". Uses UTC-based arithmetic throughout so it never depends on
+ * (or drifts with) the browser's local timezone -- this is pure calendar-date math, not a
+ * timestamp shift.
+ */
+function shiftIsoDate(iso: string, days: number): string {
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
 function colorKey(e: CalendarEventResponse): string {
   if (e.eventType === "Office") {
     if (e.status === "Pending") return "Pending";
@@ -37,7 +48,10 @@ function toFcEvent(e: CalendarEventResponse): EventInput {
     id:              e.id ?? `holiday-${e.title}-${e.startDate}`,
     title:           e.title,
     start:           e.startDate,
-    end:             e.endDate ?? undefined,
+    // FullCalendar treats `end` as EXCLUSIVE for all-day events -- an event whose last real
+    // day is e.endDate needs end = the day AFTER e.endDate, or the event renders one day short
+    // (e.g. a Jul 13-17 event would stop highlighting after Jul 16).
+    end:             e.isAllDay && e.endDate ? shiftIsoDate(e.endDate, 1) : (e.endDate ?? undefined),
     allDay:          e.isAllDay,
     backgroundColor: color.bg,
     borderColor:     color.border,
@@ -93,7 +107,11 @@ export default function DashboardCalendar({
       title:           arg.event.title,
       description:     ep.description ?? null,
       startDate:       arg.event.startStr,
-      endDate:         arg.event.endStr || null,
+      // Mirror image of the +1 day applied in toFcEvent: FullCalendar's own endStr is
+      // exclusive, so shift back by 1 day to recover the inclusive end date this app stores.
+      endDate:         arg.event.allDay && arg.event.endStr
+        ? shiftIsoDate(arg.event.endStr, -1)
+        : (arg.event.endStr || null),
       isAllDay:        arg.event.allDay,
       eventType:       ep.eventType,
       source:          ep.source ?? null,

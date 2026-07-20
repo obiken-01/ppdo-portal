@@ -15,6 +15,7 @@ import type {
   AccountType,
   ApiResponse,
   ActiveFilter,
+  AuditLogPage,
   CsvImportResult,
   DivisionResponse,
   FundingSourceResponse,
@@ -443,5 +444,42 @@ export async function quickSaveProcurementPreset(
     "/config/procurement-presets/quick-save",
     body,
   );
+  return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// Audit Log (SuperAdmin-only) — /api/config/audit-log
+// ---------------------------------------------------------------------------
+
+export interface AuditLogListParams {
+  page?: number;
+  pageSize?: number;
+  tableName?: string;
+  action?: string;
+  /** Matches the acting user's full name or username (server-side contains). */
+  actor?: string;
+  /** ISO 8601. Inclusive range. */
+  from?: string;
+  to?: string;
+}
+
+/** GET /api/config/audit-log — filtered, paginated audit trail. SuperAdmin-only. */
+export async function listAuditLog(params: AuditLogListParams = {}): Promise<AuditLogPage> {
+  const query: Record<string, string> = {};
+  if (params.page) query.page = String(params.page);
+  if (params.pageSize) query.pageSize = String(params.pageSize);
+  if (params.tableName) query.tableName = params.tableName;
+  if (params.action) query.action = params.action;
+  if (params.actor?.trim()) query.actor = params.actor.trim();
+  if (params.from) query.from = params.from;
+  if (params.to) query.to = params.to;
+
+  const { data } = await api.get<ApiResponse<AuditLogPage>>("/config/audit-log", { params: query });
+  return unwrap(data);
+}
+
+/** GET /api/config/audit-log/tables — distinct table names, drives the table filter dropdown. */
+export async function listAuditLogTableNames(): Promise<string[]> {
+  const { data } = await api.get<ApiResponse<string[]>>("/config/audit-log/tables");
   return unwrap(data);
 }

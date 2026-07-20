@@ -72,11 +72,13 @@ public sealed class UserServiceTests
     private static UserService BuildSut(
         Mock<IUserRepository> repoMock,
         Mock<IRepository<Office>>? officeMock = null,
-        Mock<IRepository<Division>>? divisionMock = null) =>
+        Mock<IRepository<Division>>? divisionMock = null,
+        Mock<IAuditService>? auditMock = null) =>
         new(repoMock.Object,
             (officeMock ?? new Mock<IRepository<Office>>()).Object,
             (divisionMock ?? DefaultDivisions()).Object,
-            NullLogger<UserService>.Instance);
+            NullLogger<UserService>.Instance,
+            (auditMock ?? new Mock<IAuditService>()).Object);
 
     private static Mock<IUserRepository> RepoThatSaves()
     {
@@ -223,6 +225,39 @@ public sealed class UserServiceTests
         ServiceResult<UserResponseDto> result = await BuildSut(repo).CreateAsync(MakeAdmin(), dto);
 
         Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ValidStaff_LogsAuditCreate_WithoutPasswordHash()
+    {
+        User created = MakeStaff(2);
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByUsernameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+        repo.Setup(r => r.FindByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+        repo.Setup(r => r.AddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+        repo.Setup(r => r.GetByIdWithDivisionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(created);
+
+        Mock<IAuditService> audit = new();
+        CreateUserDto dto = new("Jane Doe", "janedoe", "jane@ppdo.gov.ph", "Staff", 2, null, null);
+
+        await BuildSut(repo, auditMock: audit).CreateAsync(MakeAdmin(), dto);
+
+        audit.Verify(a => a.LogAsync(
+            "users",
+            created.Id,
+            AuditAction.Create,
+            null,
+            It.Is<object>(v =>
+                v.GetType().GetProperty("PasswordHash") == null &&
+                v.GetType().GetProperty("RefreshToken") == null),
+            It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
@@ -397,6 +432,31 @@ public sealed class UserServiceTests
     }
 
     [Fact]
+    public async Task UpdateAsync_ValidProfileFields_LogsAuditUpdate_WithOldAndNewSnapshots()
+    {
+        User target = MakeStaff();
+        target.FullName = "Original Name";
+        Mock<IUserRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByIdWithDivisionAsync(target.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(target);
+
+        Mock<IAuditService> audit = new();
+        UpdateUserDto dto = new("Updated Name", null, null, null, null, null, null,
+            null, null, null, null);
+
+        await BuildSut(repo, auditMock: audit).UpdateAsync(MakeAdmin(), target.Id, dto);
+
+        audit.Verify(a => a.LogAsync(
+            "users",
+            target.Id,
+            AuditAction.Update,
+            It.Is<object>(v => (string?)v.GetType().GetProperty("FullName")!.GetValue(v) == "Original Name"),
+            It.Is<object>(v => (string?)v.GetType().GetProperty("FullName")!.GetValue(v) == "Updated Name"),
+            It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
     public async Task UpdateAsync_UsernameSaved()
     {
         User target = MakeStaff();
@@ -472,6 +532,51 @@ public sealed class UserServiceTests
         Assert.True(target.OverrideCanManageResourceLinks);
     }
 
+    // ── SetPermissionsAsync ───────────────────────────────────────────────────
+
+    [Fact]
+    public async Task SetPermissionsAsync_NonSuperAdmin_ReturnsForbidden_AndDoesNotLogAudit()
+    {
+        User target = MakeStaff();
+        Mock<IUserRepository> repo = new();
+        Mock<IAuditService> audit = new();
+        SetPermissionsDto dto = new() { OverrideCanAccessInventory = true };
+
+        ServiceResult<UserResponseDto> result =
+            await BuildSut(repo, auditMock: audit).SetPermissionsAsync(MakeAdmin(), target.Id, dto);
+
+        Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
+        audit.Verify(a => a.LogAsync(
+            It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<string>(),
+            It.IsAny<object>(), It.IsAny<object>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task SetPermissionsAsync_ValidTarget_LogsAuditUpdate()
+    {
+        User target = MakeStaff();
+        Mock<IUserRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByIdWithDivisionAsync(target.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(target);
+
+        Mock<IAuditService> audit = new();
+        SetPermissionsDto dto = new() { OverrideCanAccessInventory = true };
+
+        ServiceResult<UserResponseDto> result =
+            await BuildSut(repo, auditMock: audit).SetPermissionsAsync(MakeSuperAdmin(), target.Id, dto);
+
+        Assert.True(result.IsSuccess);
+        audit.Verify(a => a.LogAsync(
+            "users",
+            target.Id,
+            AuditAction.Update,
+            It.IsAny<object>(),
+            It.Is<object>(v => (bool?)v.GetType().GetProperty("OverrideCanAccessInventory")!.GetValue(v) == true),
+            It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
     // ── ResetPasswordAsync ────────────────────────────────────────────────────
 
     [Fact]
@@ -518,6 +623,29 @@ public sealed class UserServiceTests
 
         Assert.NotEqual(originalHash, target.PasswordHash);
         Assert.True(BCrypt.Net.BCrypt.Verify("TamarawUser2026!", target.PasswordHash));
+    }
+
+    [Fact]
+    public async Task ResetPasswordAsync_ValidTarget_LogsAuditUpdate_WithoutPasswordHash()
+    {
+        User target = MakeStaff();
+        Mock<IUserRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByIdWithDivisionAsync(target.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(target);
+
+        Mock<IAuditService> audit = new();
+
+        await BuildSut(repo, auditMock: audit).ResetPasswordAsync(MakeAdmin(), target.Id);
+
+        // No PasswordHash snapshot at all -- just a marker that a reset happened.
+        audit.Verify(a => a.LogAsync(
+            "users",
+            target.Id,
+            AuditAction.Update,
+            null,
+            It.Is<object>(v => v.GetType().GetProperty("PasswordHash") == null),
+            It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     // ── DeactivateAsync ───────────────────────────────────────────────────────
@@ -567,6 +695,29 @@ public sealed class UserServiceTests
         Assert.Null(target.RefreshTokenExpiry);
     }
 
+    [Fact]
+    public async Task DeactivateAsync_ValidTarget_LogsAuditDelete()
+    {
+        User target = MakeStaff();
+        Mock<IUserRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByIdWithDivisionAsync(target.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(target);
+
+        Mock<IAuditService> audit = new();
+
+        await BuildSut(repo, auditMock: audit).DeactivateAsync(MakeAdmin(), target.Id);
+
+        // Mirrors the soft-delete audit convention used by Division/Account/Office services.
+        audit.Verify(a => a.LogAsync(
+            "users",
+            target.Id,
+            AuditAction.Delete,
+            It.Is<object>(v => (bool)v.GetType().GetProperty("IsActive")!.GetValue(v)! == true),
+            null,
+            It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
     // ── ReactivateAsync ───────────────────────────────────────────────────────
 
     [Fact]
@@ -613,6 +764,30 @@ public sealed class UserServiceTests
 
         Assert.True(result.IsSuccess);
         Assert.True(target.IsActive);
+    }
+
+    [Fact]
+    public async Task ReactivateAsync_InactiveTarget_LogsAuditUpdate()
+    {
+        User target = MakeStaff();
+        target.IsActive = false;
+
+        Mock<IUserRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByIdWithDivisionAsync(target.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(target);
+
+        Mock<IAuditService> audit = new();
+
+        await BuildSut(repo, auditMock: audit).ReactivateAsync(MakeAdmin(), target.Id);
+
+        audit.Verify(a => a.LogAsync(
+            "users",
+            target.Id,
+            AuditAction.Update,
+            It.Is<object>(v => (bool)v.GetType().GetProperty("IsActive")!.GetValue(v)! == false),
+            It.Is<object>(v => (bool)v.GetType().GetProperty("IsActive")!.GetValue(v)! == true),
+            It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]

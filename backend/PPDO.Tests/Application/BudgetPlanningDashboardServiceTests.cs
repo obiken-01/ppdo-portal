@@ -190,7 +190,8 @@ public sealed class BudgetPlanningDashboardServiceTests
 
         Mock<IAuditRepository> auditRepo = new();
         auditRepo
-            .Setup(r => r.GetRecentAsync(It.IsAny<int>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .Setup(r => r.GetRecentAsync(
+                It.IsAny<int>(), It.IsAny<int?>(), It.IsAny<IReadOnlyList<string>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(audits);
 
         Mock<IAllocationService> allocation = allocationMock ?? new Mock<IAllocationService>();
@@ -552,7 +553,7 @@ public sealed class BudgetPlanningDashboardServiceTests
 
         // Service must forward officeId=5 and take=10 to the repository.
         auditMock.Verify(
-            r => r.GetRecentAsync(10, 5, It.IsAny<CancellationToken>()),
+            r => r.GetRecentAsync(10, 5, It.IsAny<IReadOnlyList<string>?>(), It.IsAny<CancellationToken>()),
             Times.Once);
     }
 
@@ -600,8 +601,49 @@ public sealed class BudgetPlanningDashboardServiceTests
         await sut.GetRecentActivityAsync(officeId: null);
 
         auditMock.Verify(
-            r => r.GetRecentAsync(10, null, It.IsAny<CancellationToken>()),
+            r => r.GetRecentAsync(10, null, It.IsAny<IReadOnlyList<string>?>(), It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task GetRecentActivityAsync_ScopesToBudgetPlanningTables_ExcludingUsersAndConfig()
+    {
+        (BudgetPlanningDashboardService sut, Mock<IAuditRepository> auditMock) = Build([], [], [], [], []);
+
+        await sut.GetRecentActivityAsync(officeId: null);
+
+        // Recent Activity is Budget Planning-only -- User Management and Config activity
+        // surface instead on the dedicated Audit Log page (RAL-174), not here.
+        auditMock.Verify(
+            r => r.GetRecentAsync(
+                10, null,
+                It.Is<IReadOnlyList<string>?>(names =>
+                    names != null &&
+                    names.Contains("wfp_records") &&
+                    names.Contains("aip_records") &&
+                    names.Contains("ldip_records") &&
+                    names.Contains("division_allocations") &&
+                    !names.Contains("users") &&
+                    !names.Contains("accounts")),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task GetRecentActivityAsync_ChangedAtHasUnspecifiedKind_DtoStampsItUtc()
+    {
+        // Mirrors what EF Core actually returns after a SQL Server datetime2 round-trip —
+        // DateTimeKind.Unspecified, even though AuditService always writes DateTime.UtcNow.
+        DateTime unspecified = DateTime.SpecifyKind(new DateTime(2026, 7, 17, 7, 58, 41), DateTimeKind.Unspecified);
+        AuditLog audit = Audit(1, at: unspecified);
+        (BudgetPlanningDashboardService sut, _) = Build([], [], [], [], [audit]);
+
+        IReadOnlyList<RecentActivityDto> result = await sut.GetRecentActivityAsync(officeId: null);
+
+        // Without the Utc re-stamp, System.Text.Json omits the "Z" suffix and the browser's
+        // new Date(...) misparses the value as local time instead of UTC.
+        Assert.Equal(DateTimeKind.Utc, result[0].ChangedAt.Kind);
+        Assert.Equal(unspecified, result[0].ChangedAt, TimeSpan.FromSeconds(1));
     }
 
     // ── GetOfficeDashboardAsync — allocation-setup summary (RAL-60) ───────────
