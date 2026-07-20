@@ -18,6 +18,7 @@ public sealed class AuditRepository : Repository<AuditLog>, IAuditRepository
     public async Task<IReadOnlyList<AuditLog>> GetRecentAsync(
         int take,
         int? officeId,
+        IReadOnlyList<string>? tableNames = null,
         CancellationToken cancellationToken = default)
     {
         IQueryable<AuditLog> query = _context.AuditLogs
@@ -35,6 +36,9 @@ public sealed class AuditRepository : Repository<AuditLog>, IAuditRepository
 
             query = query.Where(a => officeUserIds.Contains(a.ChangedById));
         }
+
+        if (tableNames is { Count: > 0 })
+            query = query.Where(a => tableNames.Contains(a.TableName));
 
         return await query.Take(take).ToListAsync(cancellationToken);
     }

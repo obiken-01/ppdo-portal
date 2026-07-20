@@ -12,12 +12,16 @@ public interface IAuditRepository : IRepository<AuditLog>
     /// <summary>
     /// Returns the most recent <paramref name="take"/> audit entries, newest first.
     /// When <paramref name="officeId"/> is provided, only entries made by users who
-    /// belong to that office are returned. The navigation property
+    /// belong to that office are returned. When <paramref name="tableNames"/> is provided
+    /// (non-null, non-empty), only entries whose TableName is in that set are returned —
+    /// e.g. the Budget Planning Dashboard scopes this to AIP/LDIP/WFP/Allocation tables only,
+    /// excluding "users" and Config tables. The navigation property
     /// <see cref="AuditLog.ChangedBy"/> is always populated (via JOIN/Include).
     /// </summary>
     Task<IReadOnlyList<AuditLog>> GetRecentAsync(
         int take,
         int? officeId,
+        IReadOnlyList<string>? tableNames = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
