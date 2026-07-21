@@ -147,6 +147,8 @@ export interface AipRecordDetail {
   ldipId: number | null;
   sourceId: number | null;
   offices: AipOfficeDetail[];
+  /** True when a WFP has been built from this AIP — re-upload is blocked in that case. */
+  hasWfpUsage: boolean;
 }
 
 // ── AIP summary — slim WFP-grid types (RAL-89) ───────────────────────────────

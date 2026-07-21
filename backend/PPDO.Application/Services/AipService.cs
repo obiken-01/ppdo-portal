@@ -24,6 +24,7 @@ public sealed class AipService : IAipService
     private readonly IAuditService  _audit;
     private readonly CallerContext  _caller;
     private readonly IRepository<AipOffice> _officeRepo;
+    private readonly IWfpRepository _wfpRepo;
 
     public AipService(
         IAipRepository             aipRepo,
@@ -32,7 +33,8 @@ public sealed class AipService : IAipService
         IAipXlsmParser parser,
         IAuditService  audit,
         CallerContext  caller,
-        IRepository<AipOffice> officeRepo)
+        IRepository<AipOffice> officeRepo,
+        IWfpRepository wfpRepo)
     {
         _aipRepo    = aipRepo;
         _fsRepo     = fsRepo;
@@ -41,6 +43,7 @@ public sealed class AipService : IAipService
         _audit      = audit;
         _caller     = caller;
         _officeRepo = officeRepo;
+        _wfpRepo    = wfpRepo;
     }
 
     // ── Read ──────────────────────────────────────────────────────────────────
@@ -104,9 +107,13 @@ public sealed class AipService : IAipService
             return new AipOfficeDto(o.Id, o.AipRecordId, o.RefCode, o.Name, o.Sector, progDtos);
         }).ToList();
 
+        // Drives the frontend's Re-upload button gating — see ReplaceImportAsync's guard below.
+        bool hasWfpUsage = await _wfpRepo.AnyForAipRecordAsync(id, ct);
+
         AipRecordDetailDto detail = new(
             rec.Id, rec.FiscalYear, rec.EntrySource, rec.OriginalFilename,
-            rec.UploadedById, rec.UploadedAt, rec.Status, rec.LdipId, rec.SourceId, officeDtos);
+            rec.UploadedById, rec.UploadedAt, rec.Status, rec.LdipId, rec.SourceId, officeDtos,
+            hasWfpUsage);
 
         return ServiceResult<AipRecordDetailDto>.Ok(detail);
     }
@@ -318,6 +325,14 @@ public sealed class AipService : IAipService
         if (rec.EntrySource != "Upload")
             return ServiceResult<AipRecordDto>.BadRequest(
                 "Only uploaded AIP records can be re-uploaded. This record was created through manual entry.");
+        // A WFP built from this AIP holds FK-restricted references (aip_activity_id) into the
+        // exact AipActivity rows the replace below would delete — the delete fails at the DB
+        // constraint if we don't stop first, and even if it didn't, replacing the hierarchy
+        // would orphan the WFP's line items against activity ids that no longer exist.
+        if (await _wfpRepo.AnyForAipRecordAsync(targetId, ct))
+            return ServiceResult<AipRecordDto>.BadRequest(
+                "Cannot re-upload — a Work Financial Plan has already been built from this AIP. " +
+                "Archive this record and upload the corrected file as a new AIP instead.");
 
         IReadOnlyList<AipOffice> existing = await _aipRepo.GetOfficesByAipIdAsync(targetId, ct);
         object old = new { rec.FiscalYear, rec.OriginalFilename, OfficeCount = existing.Count };

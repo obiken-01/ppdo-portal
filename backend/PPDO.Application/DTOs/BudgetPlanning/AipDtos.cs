@@ -71,7 +71,8 @@ public record AipRecordDetailDto(
     string   Status,
     int?     LdipId,
     int?     SourceId,
-    IReadOnlyList<AipOfficeDto> Offices);
+    IReadOnlyList<AipOfficeDto> Offices,
+    bool     HasWfpUsage = false);
 
 // ── Import counts ─────────────────────────────────────────────────────────────
 
