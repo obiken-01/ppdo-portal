@@ -126,7 +126,11 @@ export default function DashboardCalendar({
   }
 
   return (
-    <div className="relative bg-white border border-slate-200 shadow-sm overflow-hidden">
+    // No overflow-hidden (RAL-175): FullCalendar's rendered day-grid table can land a hair wider
+    // than this container due to fractional per-column-width rounding, and overflow-hidden was
+    // clipping a sliver of the rightmost (Saturday) column as a result. Nothing here relies on
+    // clipping — no rounded corners, no intentional overflow content.
+    <div className="relative bg-white border border-slate-200 shadow-sm">
       {/* Loading overlay */}
       {loading && (
         <div className="absolute inset-0 bg-white/70 z-10 flex items-center justify-center">
@@ -162,7 +166,12 @@ export default function DashboardCalendar({
           eventClick={handleEventClick}
           dateClick={handleDateClick}
           height="auto"
-          dayMaxEvents={3}
+          // dayMaxEvents caps the LEVEL COUNT for the whole week row, not per-day independently —
+          // one heavily-populated day forces every day in that row onto the same reduced cap, so
+          // lowering this from 3 (RAL-175: measured week-row heights of 73.8-127.8px, a jagged
+          // month grid) to 2 (measured 73.8-104.4px) meaningfully tightens the worst-case row
+          // height. Full event lists remain reachable via the "+N more" popover either way.
+          dayMaxEvents={2}
           eventDisplay="block"
         />
       </div>
