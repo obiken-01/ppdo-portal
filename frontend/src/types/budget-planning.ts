@@ -78,6 +78,8 @@ export interface AipImportConfirmRequest {
   originalFilename: string;
   ldipId: number | null;
   sectorOffices: Record<string, ParsedAipOfficeResponse[]>;
+  /** RAL-178: when set, the confirm re-uploads into this existing record instead of creating a new one. */
+  targetRecordId?: number | null;
 }
 
 // ── AIP detail (stored hierarchy) ────────────────────────────────────────────

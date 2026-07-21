@@ -233,9 +233,22 @@ export default function AipDetailPage() {
             <p className="text-xs text-slate-600 mt-0.5">Source: {record.originalFilename}</p>
           )}
         </div>
-        <Link href="/budget-planning/aip" className="text-sm text-green-700 hover:underline whitespace-nowrap">
-          ← Back to AIP list
-        </Link>
+        <div className="flex items-center gap-4 shrink-0">
+          {/* Re-upload (RAL-178): correct an uploaded AIP by importing a fixed file into THIS
+              same record. Draft + Upload-entry-source only (Final needs admin Unlock first),
+              and only for PPDO uploaders. */}
+          {record.status === "Draft" && record.entrySource === "Upload" && me?.canUploadAip === true && (
+            <Link
+              href={`/budget-planning/aip/new?replaceId=${record.id}`}
+              className="px-3 py-1.5 text-sm font-medium text-white bg-green-700 hover:bg-green-800 transition-colors whitespace-nowrap"
+            >
+              Re-upload File
+            </Link>
+          )}
+          <Link href="/budget-planning/aip" className="text-sm text-green-700 hover:underline whitespace-nowrap">
+            ← Back to AIP list
+          </Link>
+        </div>
       </div>
 
       {/* ── Sector tabs ────────────────────────────────────────────── */}

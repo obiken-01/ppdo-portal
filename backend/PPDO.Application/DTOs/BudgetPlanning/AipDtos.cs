@@ -132,12 +132,15 @@ public record ParsedAipActivityDto(
 /// <summary>
 /// Body of POST /api/budget-planning/aip/confirm.
 /// The client sends back the exact SectorOffices payload returned by /upload.
+/// <see cref="TargetRecordId"/> (RAL-178): when set, ConfirmImportAsync full-replaces that
+/// existing record's hierarchy (re-upload a corrected file) instead of creating a new record.
 /// </summary>
 public record AipImportConfirmDto(
     int    FiscalYear,
     string OriginalFilename,
     int?   LdipId,
-    Dictionary<string, List<ParsedAipOfficeDto>> SectorOffices);
+    Dictionary<string, List<ParsedAipOfficeDto>> SectorOffices,
+    int?   TargetRecordId = null);
 
 // ── Slim WFP-grid DTOs (RAL-89) ───────────────────────────────────────────────
 
