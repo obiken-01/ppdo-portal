@@ -143,6 +143,40 @@ public record AipImportConfirmDto(
     Dictionary<string, List<ParsedAipOfficeDto>> SectorOffices,
     int?   TargetRecordId = null);
 
+// ── Manual entry (RAL-62) ────────────────────────────────────────────────────
+// One node at a time — mirrors the "Entry Level" tabs (Office/Program/Project/Activity) UI.
+// Each Add* call persists immediately; ref codes are auto-derived server-side, never supplied
+// by the client (see AipService.NextRefCode / the AipSector prefix map).
+
+/// <summary>Body of POST /api/budget-planning/aip — creates a blank Manual-entry AipRecord.</summary>
+public record CreateAipRecordDto(int FiscalYear);
+
+/// <summary>
+/// Body of POST /api/budget-planning/aip/{aipId}/offices. <see cref="OfficeConfigId"/> is the
+/// config <c>Office</c> row (RefCode/Name are pulled from it, not user-typed); <see cref="Sector"/>
+/// is a separate choice — the same office can appear under more than one sector.
+/// </summary>
+public record CreateAipOfficeDto(int OfficeConfigId, string Sector);
+
+public record CreateAipProgramDto(string Name, string? FunctionBand = null);
+
+public record CreateAipProjectDto(string Name);
+
+public record CreateAipActivityDto(
+    string   Name,
+    string?  EsreCode,
+    string?  ImplementingOffice,
+    string?  StartDate,
+    string?  EndDate,
+    string?  ExpectedOutputs,
+    string?  FundingSourceRaw,
+    decimal? Ps,
+    decimal? Mooe,
+    decimal? Co,
+    decimal? CcAdaptation,
+    decimal? CcMitigation,
+    string?  CcTypologyCode);
+
 // ── Slim WFP-grid DTOs (RAL-89) ───────────────────────────────────────────────
 
 /// <summary>

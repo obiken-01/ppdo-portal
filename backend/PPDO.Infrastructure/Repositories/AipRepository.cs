@@ -31,6 +31,10 @@ public sealed class AipRepository : Repository<AipRecord>, IAipRepository
             .ToListAsync(ct);
 
     /// <inheritdoc />
+    public async Task<AipOffice?> GetOfficeByIdAsync(int id, CancellationToken ct = default)
+        => await _context.Set<AipOffice>().FirstOrDefaultAsync(o => o.Id == id, ct);
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<AipOffice>> GetOfficesByAipIdsAsync(
         IReadOnlyList<int> aipIds, CancellationToken ct = default)
     {
@@ -66,6 +70,10 @@ public sealed class AipRepository : Repository<AipRecord>, IAipRepository
             .OrderBy(j => j.RefCode)
             .ToListAsync(ct);
     }
+
+    /// <inheritdoc />
+    public async Task<AipProject?> GetProjectByIdAsync(int id, CancellationToken ct = default)
+        => await _context.Set<AipProject>().FirstOrDefaultAsync(j => j.Id == id, ct);
 
     /// <inheritdoc />
     public async Task<IReadOnlyList<AipActivity>> GetActivitiesByProjectIdsAsync(

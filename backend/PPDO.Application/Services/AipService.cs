@@ -25,6 +25,10 @@ public sealed class AipService : IAipService
     private readonly CallerContext  _caller;
     private readonly IRepository<AipOffice> _officeRepo;
     private readonly IWfpRepository _wfpRepo;
+    private readonly IOfficeRepository _officeConfigRepo;
+    private readonly IRepository<AipProgram>  _programRepo;
+    private readonly IRepository<AipProject>  _projectRepo;
+    private readonly IRepository<AipActivity> _activityRepo;
 
     public AipService(
         IAipRepository             aipRepo,
@@ -34,7 +38,11 @@ public sealed class AipService : IAipService
         IAuditService  audit,
         CallerContext  caller,
         IRepository<AipOffice> officeRepo,
-        IWfpRepository wfpRepo)
+        IWfpRepository wfpRepo,
+        IOfficeRepository officeConfigRepo,
+        IRepository<AipProgram>  programRepo,
+        IRepository<AipProject>  projectRepo,
+        IRepository<AipActivity> activityRepo)
     {
         _aipRepo    = aipRepo;
         _fsRepo     = fsRepo;
@@ -44,6 +52,10 @@ public sealed class AipService : IAipService
         _caller     = caller;
         _officeRepo = officeRepo;
         _wfpRepo    = wfpRepo;
+        _officeConfigRepo = officeConfigRepo;
+        _programRepo      = programRepo;
+        _projectRepo      = projectRepo;
+        _activityRepo     = activityRepo;
     }
 
     // ── Read ──────────────────────────────────────────────────────────────────
@@ -367,6 +379,252 @@ public sealed class AipService : IAipService
                 Sector   = officeDto.Sector,
                 Programs = BuildPrograms(officeDto.Programs, fsDict),
             }).ToList();
+
+    // ── Manual entry (RAL-62) — one node at a time ────────────────────────────
+
+    public async Task<ServiceResult<AipRecordDto>> CreateManualRecordAsync(
+        CreateAipRecordDto dto, Guid createdById, CancellationToken ct = default)
+    {
+        // Same guard as ConfirmImportAsync's create path — one active AIP per fiscal year,
+        // regardless of whether it originated from an upload or manual entry.
+        AipRecord? conflict = await _aipRepo.GetLatestByFiscalYearAsync(dto.FiscalYear, ct);
+        if (conflict is not null)
+        {
+            string hint = conflict.Status == PlanningStatus.Draft
+                ? "Archive the existing record first before creating a new one."
+                : "The existing record must be unlocked by an admin before a new one is allowed.";
+            return ServiceResult<AipRecordDto>.BadRequest(
+                $"An AIP for FY {dto.FiscalYear} already exists with status '{conflict.Status}'. {hint}");
+        }
+
+        AipRecord rec = new()
+        {
+            FiscalYear   = dto.FiscalYear,
+            EntrySource  = "Manual",
+            UploadedById = createdById,
+            UploadedAt   = DateTime.UtcNow,
+            Status       = PlanningStatus.Draft,
+        };
+        await _aipRepo.AddAsync(rec, ct);
+        await _aipRepo.SaveChangesAsync(ct);
+        await _audit.LogAsync("aip_records", rec.Id, AuditAction.Create,
+            null, new { rec.FiscalYear, rec.EntrySource, rec.Status }, ct);
+
+        return ServiceResult<AipRecordDto>.Ok(MapToDto(rec));
+    }
+
+    public async Task<ServiceResult<AipOfficeDto>> AddOfficeAsync(
+        int aipRecordId, CreateAipOfficeDto dto, CancellationToken ct = default)
+    {
+        AipRecord? rec = await _aipRepo.GetByIntIdAsync(aipRecordId, ct);
+        if (rec is null)
+            return ServiceResult<AipOfficeDto>.NotFound($"AIP record {aipRecordId} not found.");
+        if (rec.Status != PlanningStatus.Draft)
+            return ServiceResult<AipOfficeDto>.BadRequest(
+                $"Cannot add to a '{rec.Status}' record. Unlock it back to Draft first.");
+
+        if (!AipSector.Prefixes.TryGetValue(dto.Sector?.Trim() ?? string.Empty, out string? prefix))
+            return ServiceResult<AipOfficeDto>.BadRequest(
+                $"Sector must be one of: {string.Join(", ", AipSector.Prefixes.Keys)}.");
+
+        Office? office = await _officeConfigRepo.GetByIdAsync(dto.OfficeConfigId, ct);
+        if (office is null || !office.IsActive)
+            return ServiceResult<AipOfficeDto>.NotFound($"Office {dto.OfficeConfigId} not found or inactive.");
+        if (string.IsNullOrWhiteSpace(office.OfficeRefCode))
+            return ServiceResult<AipOfficeDto>.BadRequest(
+                $"Office '{office.OfficeName}' has no AIP reference code configured. Set it in Office Config first.");
+
+        string sector  = dto.Sector!.Trim().ToUpperInvariant();
+        string refCode = $"{prefix}-000-1-{office.OfficeRefCode}";
+
+        IReadOnlyList<AipOffice> siblings = await _aipRepo.GetOfficesByAipIdAsync(aipRecordId, ct);
+        if (siblings.Any(o => o.RefCode == refCode))
+            return ServiceResult<AipOfficeDto>.BadRequest(
+                $"'{office.OfficeName}' is already added to this AIP under {sector}.");
+
+        AipOffice entity = new()
+        {
+            AipRecordId = aipRecordId,
+            RefCode     = refCode,
+            Name        = office.OfficeName,
+            Sector      = sector,
+        };
+        await _officeRepo.AddAsync(entity, ct);
+        await _officeRepo.SaveChangesAsync(ct);
+        await _audit.LogAsync("aip_offices", entity.Id, AuditAction.Create,
+            null, new { entity.AipRecordId, entity.RefCode, entity.Name, entity.Sector }, ct);
+
+        return ServiceResult<AipOfficeDto>.Ok(
+            new AipOfficeDto(entity.Id, entity.AipRecordId, entity.RefCode, entity.Name, entity.Sector,
+                Array.Empty<AipProgramDto>()));
+    }
+
+    public async Task<ServiceResult<AipProgramDto>> AddProgramAsync(
+        int officeId, CreateAipProgramDto dto, CancellationToken ct = default)
+    {
+        AipOffice? office = await _aipRepo.GetOfficeByIdAsync(officeId, ct);
+        if (office is null)
+            return ServiceResult<AipProgramDto>.NotFound($"AIP office {officeId} not found.");
+
+        ServiceResult<AipProgramDto>? statusError = await CheckDraftAsync<AipProgramDto>(office.AipRecordId, ct);
+        if (statusError is not null) return statusError;
+
+        if (string.IsNullOrWhiteSpace(dto.Name))
+            return ServiceResult<AipProgramDto>.BadRequest("Program name is required.");
+
+        string functionBand;
+        if (string.IsNullOrWhiteSpace(dto.FunctionBand))
+        {
+            functionBand = AipFunctionBand.Core; // new programs default to Core, same as import
+        }
+        else if (!TryCanonicalizeFunctionBand(dto.FunctionBand, out string? canonical, out string? error))
+        {
+            return ServiceResult<AipProgramDto>.BadRequest(error!);
+        }
+        else
+        {
+            functionBand = canonical!;
+        }
+
+        IReadOnlyList<AipProgram> siblings = await _aipRepo.GetProgramsByOfficeIdsAsync([officeId], ct);
+        string refCode = NextRefCode(office.RefCode, siblings.Select(p => p.RefCode));
+
+        AipProgram entity = new()
+        {
+            OfficeId     = officeId,
+            RefCode      = refCode,
+            Name         = dto.Name.Trim(),
+            FunctionBand = functionBand,
+        };
+        await _programRepo.AddAsync(entity, ct);
+        await _programRepo.SaveChangesAsync(ct);
+        await _audit.LogAsync("aip_programs", entity.Id, AuditAction.Create,
+            null, new { entity.OfficeId, entity.RefCode, entity.Name, entity.FunctionBand }, ct);
+
+        return ServiceResult<AipProgramDto>.Ok(
+            new AipProgramDto(entity.Id, entity.OfficeId, entity.RefCode, entity.Name,
+                Array.Empty<AipProjectDto>(), entity.FunctionBand));
+    }
+
+    public async Task<ServiceResult<AipProjectDto>> AddProjectAsync(
+        int programId, CreateAipProjectDto dto, CancellationToken ct = default)
+    {
+        AipProgram? program = await _aipRepo.GetProgramByIdAsync(programId, ct);
+        if (program is null)
+            return ServiceResult<AipProjectDto>.NotFound($"AIP program {programId} not found.");
+
+        AipOffice? office = await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
+        if (office is null)
+            return ServiceResult<AipProjectDto>.NotFound($"AIP office {program.OfficeId} not found.");
+
+        ServiceResult<AipProjectDto>? statusError = await CheckDraftAsync<AipProjectDto>(office.AipRecordId, ct);
+        if (statusError is not null) return statusError;
+
+        if (string.IsNullOrWhiteSpace(dto.Name))
+            return ServiceResult<AipProjectDto>.BadRequest("Project name is required.");
+
+        IReadOnlyList<AipProject> siblings = await _aipRepo.GetProjectsByProgramIdsAsync([programId], ct);
+        string refCode = NextRefCode(program.RefCode, siblings.Select(j => j.RefCode));
+
+        AipProject entity = new() { ProgramId = programId, RefCode = refCode, Name = dto.Name.Trim() };
+        await _projectRepo.AddAsync(entity, ct);
+        await _projectRepo.SaveChangesAsync(ct);
+        await _audit.LogAsync("aip_projects", entity.Id, AuditAction.Create,
+            null, new { entity.ProgramId, entity.RefCode, entity.Name }, ct);
+
+        return ServiceResult<AipProjectDto>.Ok(
+            new AipProjectDto(entity.Id, entity.ProgramId, entity.RefCode, entity.Name,
+                Array.Empty<AipActivityDto>()));
+    }
+
+    public async Task<ServiceResult<AipActivityDto>> AddActivityAsync(
+        int projectId, CreateAipActivityDto dto, CancellationToken ct = default)
+    {
+        AipProject? project = await _aipRepo.GetProjectByIdAsync(projectId, ct);
+        if (project is null)
+            return ServiceResult<AipActivityDto>.NotFound($"AIP project {projectId} not found.");
+
+        AipProgram? program = await _aipRepo.GetProgramByIdAsync(project.ProgramId, ct);
+        if (program is null)
+            return ServiceResult<AipActivityDto>.NotFound($"AIP program {project.ProgramId} not found.");
+
+        AipOffice? office = await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
+        if (office is null)
+            return ServiceResult<AipActivityDto>.NotFound($"AIP office {program.OfficeId} not found.");
+
+        ServiceResult<AipActivityDto>? statusError = await CheckDraftAsync<AipActivityDto>(office.AipRecordId, ct);
+        if (statusError is not null) return statusError;
+
+        if (string.IsNullOrWhiteSpace(dto.Name))
+            return ServiceResult<AipActivityDto>.BadRequest("Activity name is required.");
+        if (!string.IsNullOrWhiteSpace(dto.EsreCode) && !AipEsreCode.AllowedValues.Contains(dto.EsreCode.Trim().ToUpperInvariant()))
+            return ServiceResult<AipActivityDto>.BadRequest(
+                $"eSRE code must be one of: {string.Join(", ", AipEsreCode.AllowedValues)}.");
+
+        IReadOnlyList<FundingSource> fsList = await _fsRepo.GetAllAsync(ct);
+        FundingSource? fs = string.IsNullOrWhiteSpace(dto.FundingSourceRaw)
+            ? null
+            : fsList.FirstOrDefault(f => f.Code.Equals(dto.FundingSourceRaw, StringComparison.OrdinalIgnoreCase));
+
+        IReadOnlyList<AipActivity> siblings = await _aipRepo.GetActivitiesByProjectIdsAsync([projectId], ct);
+        string refCode = NextRefCode(project.RefCode, siblings.Select(a => a.RefCode));
+
+        decimal? total = dto.Ps is null && dto.Mooe is null && dto.Co is null
+            ? null
+            : (dto.Ps ?? 0) + (dto.Mooe ?? 0) + (dto.Co ?? 0);
+
+        AipActivity entity = new()
+        {
+            ProjectId             = projectId,
+            RefCode               = refCode,
+            Name                  = dto.Name.Trim(),
+            EsreCode              = string.IsNullOrWhiteSpace(dto.EsreCode) ? null : dto.EsreCode.Trim().ToUpperInvariant(),
+            ImplementingOffice    = dto.ImplementingOffice,
+            StartDate             = dto.StartDate,
+            EndDate               = dto.EndDate,
+            ExpectedOutputs       = dto.ExpectedOutputs,
+            FundingSourceId       = fs?.Id,
+            FundingSourceSnapshot = fs?.Code ?? dto.FundingSourceRaw,
+            Ps                    = dto.Ps,
+            Mooe                  = dto.Mooe,
+            Co                    = dto.Co,
+            Total                 = total,
+            CcAdaptation          = dto.CcAdaptation,
+            CcMitigation          = dto.CcMitigation,
+            CcTypologyCode        = dto.CcTypologyCode,
+        };
+        await _activityRepo.AddAsync(entity, ct);
+        await _activityRepo.SaveChangesAsync(ct);
+        await _audit.LogAsync("aip_activities", entity.Id, AuditAction.Create,
+            null, new { entity.ProjectId, entity.RefCode, entity.Name, entity.Total }, ct);
+
+        return ServiceResult<AipActivityDto>.Ok(MapActivityToDto(entity));
+    }
+
+    /// <summary>Shared Draft-status guard for the manual-entry Add* methods, keyed off the
+    /// AipRecord reached by walking up from whichever node the caller is adding under.</summary>
+    private async Task<ServiceResult<T>?> CheckDraftAsync<T>(int aipRecordId, CancellationToken ct)
+    {
+        AipRecord? rec = await _aipRepo.GetByIntIdAsync(aipRecordId, ct);
+        if (rec is null)
+            return ServiceResult<T>.NotFound($"AIP record {aipRecordId} not found.");
+        if (rec.Status != PlanningStatus.Draft)
+            return ServiceResult<T>.BadRequest(
+                $"Cannot add to a '{rec.Status}' record. Unlock it back to Draft first.");
+        return null;
+    }
+
+    /// <summary>Next zero-padded 3-digit segment appended to <paramref name="parentRefCode"/>,
+    /// one past the highest existing sibling suffix (e.g. "...-001-001-002-001" then "...-002").</summary>
+    private static string NextRefCode(string parentRefCode, IEnumerable<string> siblingRefCodes)
+    {
+        int next = siblingRefCodes
+            .Select(rc => rc.Split('-')[^1])
+            .Select(s => int.TryParse(s, out int n) ? n : 0)
+            .DefaultIfEmpty(0)
+            .Max() + 1;
+        return $"{parentRefCode}-{next:D3}";
+    }
 
     // ── Status transitions ────────────────────────────────────────────────────
 

@@ -12,6 +12,15 @@ import type {
   AipRecordSummary,
   AipImportPreviewResponse,
   AipImportConfirmRequest,
+  CreateAipRecordRequest,
+  CreateAipOfficeRequest,
+  CreateAipProgramRequest,
+  CreateAipProjectRequest,
+  CreateAipActivityRequest,
+  AipOfficeDetail,
+  AipProgramDetail,
+  AipProjectDetail,
+  AipActivityDetail,
   ApiResponse,
 } from "@/types";
 
@@ -75,6 +84,43 @@ export async function confirmAipImport(body: AipImportConfirmRequest): Promise<A
   const { data } = await api.post<ApiResponse<AipRecordResponse>>(
     "/budget-planning/aip/confirm",
     body
+  );
+  return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// AIP manual entry (RAL-62) — one node at a time
+// ---------------------------------------------------------------------------
+
+export async function createManualAipRecord(body: CreateAipRecordRequest): Promise<AipRecordResponse> {
+  const { data } = await api.post<ApiResponse<AipRecordResponse>>("/budget-planning/aip", body);
+  return unwrap(data);
+}
+
+export async function addAipOffice(aipId: number, body: CreateAipOfficeRequest): Promise<AipOfficeDetail> {
+  const { data } = await api.post<ApiResponse<AipOfficeDetail>>(
+    `/budget-planning/aip/${aipId}/offices`, body
+  );
+  return unwrap(data);
+}
+
+export async function addAipProgram(officeId: number, body: CreateAipProgramRequest): Promise<AipProgramDetail> {
+  const { data } = await api.post<ApiResponse<AipProgramDetail>>(
+    `/budget-planning/aip/offices/${officeId}/programs`, body
+  );
+  return unwrap(data);
+}
+
+export async function addAipProject(programId: number, body: CreateAipProjectRequest): Promise<AipProjectDetail> {
+  const { data } = await api.post<ApiResponse<AipProjectDetail>>(
+    `/budget-planning/aip/programs/${programId}/projects`, body
+  );
+  return unwrap(data);
+}
+
+export async function addAipActivity(projectId: number, body: CreateAipActivityRequest): Promise<AipActivityDetail> {
+  const { data } = await api.post<ApiResponse<AipActivityDetail>>(
+    `/budget-planning/aip/projects/${projectId}/activities`, body
   );
   return unwrap(data);
 }

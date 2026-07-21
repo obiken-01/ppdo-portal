@@ -82,6 +82,42 @@ export interface AipImportConfirmRequest {
   targetRecordId?: number | null;
 }
 
+// ── AIP manual entry (RAL-62) — one node at a time ────────────────────────────
+
+export interface CreateAipRecordRequest {
+  fiscalYear: number;
+}
+
+export interface CreateAipOfficeRequest {
+  officeConfigId: number;
+  sector: string;
+}
+
+export interface CreateAipProgramRequest {
+  name: string;
+  functionBand?: string | null;
+}
+
+export interface CreateAipProjectRequest {
+  name: string;
+}
+
+export interface CreateAipActivityRequest {
+  name: string;
+  esreCode?: string | null;
+  implementingOffice?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  expectedOutputs?: string | null;
+  fundingSourceRaw?: string | null;
+  ps?: number | null;
+  mooe?: number | null;
+  co?: number | null;
+  ccAdaptation?: number | null;
+  ccMitigation?: number | null;
+  ccTypologyCode?: string | null;
+}
+
 // ── AIP detail (stored hierarchy) ────────────────────────────────────────────
 
 export interface AipActivityDetail {
