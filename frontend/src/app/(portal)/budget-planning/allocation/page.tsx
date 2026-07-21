@@ -571,11 +571,21 @@ function AllocationPageInner() {
 
         setPrograms(progs);
         const assignments: Record<string, number[]> = {};
+        // Multi/Single is a derived UI-only concept — nothing is persisted server-side beyond
+        // divisionIds (see ProgramAssignmentDto) — so it must be re-derived from the loaded data
+        // on every load, not reset to blank. A program with >1 division assigned MUST be Multi
+        // (Single mode's radio input can only ever represent one selection); otherwise default to
+        // Single. Previously this always reset to {} (-> Single) regardless of how many divisions
+        // were actually saved, so a program correctly saved as multi-division kept flipping its
+        // toggle back to "Single" on refresh even though the real assignment was untouched.
+        const multi: Record<string, boolean> = {};
         for (const p of progs) {
-          assignments[`${p.officeRefCode}:${p.programRefCode}`] = [...p.divisionIds];
+          const key = `${p.officeRefCode}:${p.programRefCode}`;
+          assignments[key] = [...p.divisionIds];
+          multi[key] = p.divisionIds.length > 1;
         }
         setLocalAssignments(assignments);
-        setMultiDivision({});
+        setMultiDivision(multi);
         setCheckedPrograms(new Set());
         setBulkDivisionId(null);
         setCollapsedSectors(new Set());
