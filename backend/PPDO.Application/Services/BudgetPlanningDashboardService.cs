@@ -34,31 +34,34 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         "budget_ceilings", "division_allocations", "program_divisions",
     ];
 
-    private readonly ILdipRepository            _ldipRepo;
-    private readonly IAipRepository             _aipRepo;
-    private readonly IWfpRepository             _wfpRepo;
-    private readonly IWfpExpenditureRepository  _wfpExpRepo;
-    private readonly IOfficeRepository          _officeRepo;
-    private readonly IRepository<Division>      _divisionRepo;
-    private readonly IRepository<FundingSource> _fundingSourceRepo;
-    private readonly IAuditRepository           _auditRepo;
-    private readonly IAllocationService         _allocationService;
+    private readonly ILdipRepository                _ldipRepo;
+    private readonly IAipRepository                 _aipRepo;
+    private readonly IWfpRepository                 _wfpRepo;
+    private readonly IWfpExpenditureRepository      _wfpExpRepo;
+    private readonly IWfpAllocationLedgerRepository _ledgerRepo;
+    private readonly IOfficeRepository              _officeRepo;
+    private readonly IRepository<Division>          _divisionRepo;
+    private readonly IRepository<FundingSource>     _fundingSourceRepo;
+    private readonly IAuditRepository               _auditRepo;
+    private readonly IAllocationService             _allocationService;
 
     public BudgetPlanningDashboardService(
-        ILdipRepository            ldipRepo,
-        IAipRepository             aipRepo,
-        IWfpRepository             wfpRepo,
-        IWfpExpenditureRepository  wfpExpRepo,
-        IOfficeRepository          officeRepo,
-        IRepository<Division>      divisionRepo,
-        IRepository<FundingSource> fundingSourceRepo,
-        IAuditRepository           auditRepo,
-        IAllocationService         allocationService)
+        ILdipRepository                ldipRepo,
+        IAipRepository                 aipRepo,
+        IWfpRepository                 wfpRepo,
+        IWfpExpenditureRepository      wfpExpRepo,
+        IWfpAllocationLedgerRepository ledgerRepo,
+        IOfficeRepository              officeRepo,
+        IRepository<Division>          divisionRepo,
+        IRepository<FundingSource>     fundingSourceRepo,
+        IAuditRepository               auditRepo,
+        IAllocationService             allocationService)
     {
         _ldipRepo          = ldipRepo;
         _aipRepo           = aipRepo;
         _wfpRepo           = wfpRepo;
         _wfpExpRepo        = wfpExpRepo;
+        _ledgerRepo        = ledgerRepo;
         _officeRepo        = officeRepo;
         _divisionRepo      = divisionRepo;
         _fundingSourceRepo = fundingSourceRepo;
@@ -170,6 +173,16 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
                           .First());
         }
 
+        // One grouped query for every division's ledger usage across every fund (RAL-176) —
+        // was previously not queried at all here, and the naive fix would be one
+        // SumUsedAmountAsync call per division per fund inside the loop below (an N+1 of the
+        // same shape GetAllocationsByFundAsync was written to avoid). Fetch once, look up
+        // in-memory per division+fund instead.
+        IReadOnlyList<DivisionFundUsedAmountDto> usedAmounts = await _ledgerRepo.SumUsedAmountsByDivisionsAsync(
+            divisions.Select(d => d.Id).ToList(), fiscalYear, ct);
+        Dictionary<(int DivisionId, int FundingSourceId), decimal> usedByDivisionFund =
+            usedAmounts.ToDictionary(u => (u.DivisionId, u.FundingSourceId), u => u.UsedAmount);
+
         List<DivisionWfpStatusDto> result = [];
         foreach (Division division in divisions)
         {
@@ -178,9 +191,13 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
                 await _wfpExpRepo.GetActivityCoverageAsync(officeId, division.Id, fiscalYear, ct);
 
             List<DivisionFundAmountDto> allocationByFund = activeFunds
-                .Select(fund => new DivisionFundAmountDto(
-                    fund.Id, fund.Code, fund.Name,
-                    allocationsByFund[fund.Id].FirstOrDefault(a => a.DivisionId == division.Id)?.Amount ?? 0m))
+                .Select(fund =>
+                {
+                    decimal amount = allocationsByFund[fund.Id]
+                        .FirstOrDefault(a => a.DivisionId == division.Id)?.Amount ?? 0m;
+                    decimal used = usedByDivisionFund.GetValueOrDefault((division.Id, fund.Id));
+                    return new DivisionFundAmountDto(fund.Id, fund.Code, fund.Name, amount, used, amount - used);
+                })
                 .Where(f => f.Amount > 0m)
                 .ToList();
 

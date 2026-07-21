@@ -40,4 +40,13 @@ public sealed class WfpAllocationLedgerRepository : Repository<WfpDivisionAlloca
             .Select(l => l.FundingSourceId)
             .Distinct()
             .ToListAsync(ct);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<DivisionFundUsedAmountDto>> SumUsedAmountsByDivisionsAsync(
+        IReadOnlyList<int> divisionIds, int fiscalYear, CancellationToken ct = default)
+        => await _context.Set<WfpDivisionAllocationLedger>()
+            .Where(l => divisionIds.Contains(l.DivisionId) && l.FiscalYear == fiscalYear)
+            .GroupBy(l => new { l.DivisionId, l.FundingSourceId })
+            .Select(g => new DivisionFundUsedAmountDto(g.Key.DivisionId, g.Key.FundingSourceId, g.Sum(l => l.UsedAmount)))
+            .ToListAsync(ct);
 }

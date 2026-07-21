@@ -32,4 +32,18 @@ public interface IWfpAllocationLedgerRepository : IRepository<WfpDivisionAllocat
     /// recomputed down to zero, rather than left stale at its last positive amount.
     /// </summary>
     Task<IReadOnlyList<int>> GetFundingSourceIdsForRecordAsync(int wfpRecordId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Sum of UsedAmount grouped by (DivisionId, FundingSourceId) across ALL of the given
+    /// divisions for one fiscal year, in a single GROUP BY query (RAL-176). Feeds the Budget
+    /// Planning Dashboard's per-division "Remaining" column — must be called once per dashboard
+    /// load with the full division list, never once per division/fund inside a loop, or it
+    /// reintroduces the N+1 pattern <c>AllocationService.GetAllocationsForAllFundsAsync</c>
+    /// (RAL-166 follow-up) was written to eliminate for the sibling allocation query.
+    /// </summary>
+    Task<IReadOnlyList<DivisionFundUsedAmountDto>> SumUsedAmountsByDivisionsAsync(
+        IReadOnlyList<int> divisionIds, int fiscalYear, CancellationToken ct = default);
 }
+
+/// <summary>One division+fund's total ledger usage for a fiscal year (RAL-176).</summary>
+public sealed record DivisionFundUsedAmountDto(int DivisionId, int FundingSourceId, decimal UsedAmount);
