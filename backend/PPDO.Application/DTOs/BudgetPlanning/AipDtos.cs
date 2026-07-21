@@ -21,14 +21,16 @@ public record AipActivityDto(
     decimal? CcAdaptation,
     decimal? CcMitigation,
     string?  CcTypologyCode,
-    bool     IsCreation);
+    bool     IsCreation,
+    bool     IsSynthetic = false);
 
 public record AipProjectDto(
     int    Id,
     int    ProgramId,
     string RefCode,
     string Name,
-    IReadOnlyList<AipActivityDto> Activities);
+    IReadOnlyList<AipActivityDto> Activities,
+    bool   IsSynthetic = false);
 
 public record AipProgramDto(
     int     Id,
@@ -101,12 +103,14 @@ public record ParsedAipOfficeDto(
 public record ParsedAipProgramDto(
     string RefCode,
     string Name,
-    List<ParsedAipProjectDto> Projects);
+    List<ParsedAipProjectDto> Projects,
+    ParsedAipActivityDto? LineItem = null);
 
 public record ParsedAipProjectDto(
     string RefCode,
     string Name,
-    List<ParsedAipActivityDto> Activities);
+    List<ParsedAipActivityDto> Activities,
+    ParsedAipActivityDto? LineItem = null);
 
 public record ParsedAipActivityDto(
     string   RefCode,

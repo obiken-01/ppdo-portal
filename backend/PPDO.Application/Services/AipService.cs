@@ -92,7 +92,8 @@ public sealed class AipService : IAipService
                     IReadOnlyList<AipProjectDto> projDtos = projects
                         .Where(j => j.ProgramId == p.Id)
                         .Select(j => new AipProjectDto(j.Id, j.ProgramId, j.RefCode, j.Name,
-                            acts.Where(a => a.ProjectId == j.Id).Select(MapActivityToDto).ToList()))
+                            acts.Where(a => a.ProjectId == j.Id).Select(MapActivityToDto).ToList(),
+                            j.IsSynthetic))
                         .ToList();
                     return new AipProgramDto(p.Id, p.OfficeId, p.RefCode, p.Name, projDtos, p.FunctionBand);
                 })
@@ -173,6 +174,24 @@ public sealed class AipService : IAipService
         Dictionary<string, List<ParsedAipOfficeDto>> sectorDtos =
             new(StringComparer.OrdinalIgnoreCase);
 
+        // RAL-108: shared mapping for both real activity rows and program/project LineItems —
+        // both become a real AipActivity row at confirm time, so both count toward activityCount
+        // and both get the unmatched-funding-source warning.
+        ParsedAipActivityDto MapActivity(ParsedAipActivity act)
+        {
+            activityCount++;
+            if (!string.IsNullOrWhiteSpace(act.FundingSourceRaw) &&
+                !fsDict.ContainsKey(act.FundingSourceRaw))
+            {
+                warnings.Add($"Activity {act.RefCode}: unmatched funding source '{act.FundingSourceRaw}'.");
+            }
+            return new ParsedAipActivityDto(
+                act.RefCode, act.Name, act.EsreCode, act.ImplementingOffice,
+                act.StartDate, act.EndDate, act.ExpectedOutputs, act.FundingSourceRaw,
+                act.Ps, act.Mooe, act.Co, act.Total,
+                act.CcAdaptation, act.CcMitigation, act.CcTypologyCode);
+        }
+
         foreach ((string sector, List<ParsedAipOffice> offices) in parsed)
         {
             List<ParsedAipOfficeDto> officeDtos = [];
@@ -187,25 +206,19 @@ public sealed class AipService : IAipService
                     foreach (ParsedAipProject proj in prog.Projects)
                     {
                         projectCount++;
-                        List<ParsedAipActivityDto> actDtos = [];
-                        foreach (ParsedAipActivity act in proj.Activities)
-                        {
-                            activityCount++;
-                            if (!string.IsNullOrWhiteSpace(act.FundingSourceRaw) &&
-                                !fsDict.ContainsKey(act.FundingSourceRaw))
-                            {
-                                warnings.Add(
-                                    $"Activity {act.RefCode}: unmatched funding source '{act.FundingSourceRaw}'.");
-                            }
-                            actDtos.Add(new ParsedAipActivityDto(
-                                act.RefCode, act.Name, act.EsreCode, act.ImplementingOffice,
-                                act.StartDate, act.EndDate, act.ExpectedOutputs, act.FundingSourceRaw,
-                                act.Ps, act.Mooe, act.Co, act.Total,
-                                act.CcAdaptation, act.CcMitigation, act.CcTypologyCode));
-                        }
-                        projDtos.Add(new ParsedAipProjectDto(proj.RefCode, proj.Name, actDtos));
+                        List<ParsedAipActivityDto> actDtos = proj.Activities.Select(MapActivity).ToList();
+                        ParsedAipActivityDto? projLineItem = proj.LineItem is null ? null : MapActivity(proj.LineItem);
+                        projDtos.Add(new ParsedAipProjectDto(proj.RefCode, proj.Name, actDtos, projLineItem));
                     }
-                    progDtos.Add(new ParsedAipProgramDto(prog.RefCode, prog.Name, projDtos));
+                    ParsedAipActivityDto? progLineItem = null;
+                    if (prog.LineItem is not null)
+                    {
+                        // A program-level line item is materialized as a synthetic child project
+                        // at confirm time — count it here so preview counts match what gets saved.
+                        projectCount++;
+                        progLineItem = MapActivity(prog.LineItem);
+                    }
+                    progDtos.Add(new ParsedAipProgramDto(prog.RefCode, prog.Name, projDtos, progLineItem));
                 }
                 officeDtos.Add(new ParsedAipOfficeDto(off.RefCode, off.Name, off.Sector, progDtos));
             }
@@ -265,44 +278,7 @@ public sealed class AipService : IAipService
                     RefCode  = officeDto.RefCode,
                     Name     = officeDto.Name,
                     Sector   = officeDto.Sector,
-                    Programs = officeDto.Programs.Select(progDto => new AipProgram
-                    {
-                        RefCode      = progDto.RefCode,
-                        Name         = progDto.Name,
-                        // Function band is required going forward (UpdateProgramFunctionBandAsync
-                        // rejects null/empty) — default new imports to Core rather than leaving
-                        // them unset; whoever enters the WFP can change it via the entry wizard.
-                        FunctionBand = AipFunctionBand.Core,
-                        Projects = progDto.Projects.Select(projDto => new AipProject
-                        {
-                            RefCode    = projDto.RefCode,
-                            Name       = projDto.Name,
-                            Activities = projDto.Activities.Select(actDto =>
-                            {
-                                fsDict.TryGetValue(actDto.FundingSourceRaw ?? string.Empty,
-                                    out FundingSource? fs);
-                                return new AipActivity
-                                {
-                                    RefCode               = actDto.RefCode,
-                                    Name                  = actDto.Name,
-                                    EsreCode              = actDto.EsreCode,
-                                    ImplementingOffice    = actDto.ImplementingOffice,
-                                    StartDate             = actDto.StartDate,
-                                    EndDate               = actDto.EndDate,
-                                    ExpectedOutputs       = actDto.ExpectedOutputs,
-                                    FundingSourceId       = fs?.Id,
-                                    FundingSourceSnapshot = fs?.Code ?? actDto.FundingSourceRaw,
-                                    Ps                    = actDto.Ps,
-                                    Mooe                  = actDto.Mooe,
-                                    Co                    = actDto.Co,
-                                    Total                 = actDto.Total,
-                                    CcAdaptation          = actDto.CcAdaptation,
-                                    CcMitigation          = actDto.CcMitigation,
-                                    CcTypologyCode        = actDto.CcTypologyCode,
-                                };
-                            }).ToList(),
-                        }).ToList(),
-                    }).ToList(),
+                    Programs = BuildPrograms(officeDto.Programs, fsDict),
                 }).ToList(),
         };
 
@@ -425,6 +401,79 @@ public sealed class AipService : IAipService
         return all.Count;
     }
 
+    // ── Confirm-import entity builders (RAL-108) ─────────────────────────────
+    //
+    // A program/project row that also carries its own amounts (e.g. a program with no child
+    // project that still records a budget) is materialized here as a synthetic project and/or
+    // activity — IsSynthetic = true — rather than as new columns on AipProgram/AipProject.
+    // Financial data must always live on an AipActivity so it reaches WFP, reports, and the
+    // external AIP API the same way every other activity does.
+
+    private static List<AipProgram> BuildPrograms(
+        List<ParsedAipProgramDto> progDtos, Dictionary<string, FundingSource> fsDict) =>
+        progDtos.Select(progDto =>
+        {
+            List<AipProject> projects = BuildProjects(progDto.Projects, fsDict);
+            if (progDto.LineItem is not null)
+            {
+                projects.Add(new AipProject
+                {
+                    RefCode     = progDto.RefCode,
+                    Name        = progDto.Name,
+                    IsSynthetic = true,
+                    Activities  = [BuildActivity(progDto.LineItem, fsDict, isSynthetic: true)],
+                });
+            }
+            return new AipProgram
+            {
+                RefCode      = progDto.RefCode,
+                Name         = progDto.Name,
+                // Function band is required going forward (UpdateProgramFunctionBandAsync
+                // rejects null/empty) — default new imports to Core rather than leaving them
+                // unset; whoever enters the WFP can change it via the entry wizard.
+                FunctionBand = AipFunctionBand.Core,
+                Projects     = projects,
+            };
+        }).ToList();
+
+    private static List<AipProject> BuildProjects(
+        List<ParsedAipProjectDto> projDtos, Dictionary<string, FundingSource> fsDict) =>
+        projDtos.Select(projDto =>
+        {
+            List<AipActivity> activities = projDto.Activities
+                .Select(actDto => BuildActivity(actDto, fsDict, isSynthetic: false)).ToList();
+            if (projDto.LineItem is not null)
+                activities.Add(BuildActivity(projDto.LineItem, fsDict, isSynthetic: true));
+
+            return new AipProject { RefCode = projDto.RefCode, Name = projDto.Name, Activities = activities };
+        }).ToList();
+
+    private static AipActivity BuildActivity(
+        ParsedAipActivityDto actDto, Dictionary<string, FundingSource> fsDict, bool isSynthetic)
+    {
+        fsDict.TryGetValue(actDto.FundingSourceRaw ?? string.Empty, out FundingSource? fs);
+        return new AipActivity
+        {
+            RefCode               = actDto.RefCode,
+            Name                  = actDto.Name,
+            EsreCode              = actDto.EsreCode,
+            ImplementingOffice    = actDto.ImplementingOffice,
+            StartDate             = actDto.StartDate,
+            EndDate               = actDto.EndDate,
+            ExpectedOutputs       = actDto.ExpectedOutputs,
+            FundingSourceId       = fs?.Id,
+            FundingSourceSnapshot = fs?.Code ?? actDto.FundingSourceRaw,
+            Ps                    = actDto.Ps,
+            Mooe                  = actDto.Mooe,
+            Co                    = actDto.Co,
+            Total                 = actDto.Total,
+            CcAdaptation          = actDto.CcAdaptation,
+            CcMitigation          = actDto.CcMitigation,
+            CcTypologyCode        = actDto.CcTypologyCode,
+            IsSynthetic           = isSynthetic,
+        };
+    }
+
     // ── Mapping ───────────────────────────────────────────────────────────────
 
     private static AipRecordDto MapToDto(AipRecord r) => new(
@@ -445,7 +494,7 @@ public sealed class AipService : IAipService
         a.Id, a.ProjectId, a.RefCode, a.Name, a.EsreCode, a.ImplementingOffice,
         a.StartDate, a.EndDate, a.ExpectedOutputs, a.FundingSourceId, a.FundingSourceSnapshot,
         a.Ps, a.Mooe, a.Co, a.Total, a.CcAdaptation, a.CcMitigation, a.CcTypologyCode,
-        a.IsCreation);
+        a.IsCreation, a.IsSynthetic);
 
     /// <summary>The only 3 values <c>function_band</c> may hold (case-insensitive on input, canonicalized on save).</summary>
     private static readonly string[] AllowedFunctionBands =

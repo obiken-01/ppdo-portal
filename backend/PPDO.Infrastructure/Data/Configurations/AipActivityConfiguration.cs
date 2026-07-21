@@ -86,6 +86,11 @@ public sealed class AipActivityConfiguration : IEntityTypeConfiguration<AipActiv
             .IsRequired()
             .HasDefaultValue(false);
 
+        builder.Property(a => a.IsSynthetic)
+            .HasColumnName("is_synthetic")
+            .IsRequired()
+            .HasDefaultValue(false);
+
         builder.HasIndex(a => new { a.ProjectId, a.RefCode })
             .IsUnique()
             .HasDatabaseName("UX_aip_activities_project_id_ref_code");

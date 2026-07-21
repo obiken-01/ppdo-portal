@@ -378,6 +378,31 @@ public sealed class AipServiceTests
         Assert.NotEmpty(result.Value!.Warnings);
     }
 
+    [Fact]
+    public async Task ParsePreview_ProgramLineItem_EchoedInDto_AndCountedAsProjectAndActivity()
+    {
+        ParsedAipActivity lineItem = new("A-B-C-D-1-1", "Program 1", null, null, null, null, null, "GF",
+            50000m, null, null, 50000m, null, null, null);
+        ParsedAipProgram prog = new("A-B-C-D-1-1", "Program 1", [], lineItem);
+        ParsedAipOffice  off  = new("A-B-C-D-1", "Office 1", "GENERAL", [prog]);
+
+        var (sut, _, _, _, parser, _) = Build([], []);
+        parser.Setup(p => p.Parse(It.IsAny<Stream>()))
+            .Returns(new Dictionary<string, List<ParsedAipOffice>> { ["GENERAL"] = [off] });
+
+        using MemoryStream ms = new();
+        ServiceResult<AipImportPreviewDto> result =
+            await sut.ParsePreviewAsync(ms, 2027, [Fs(1, "GF")], CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        ParsedAipProgramDto progDto = result.Value!.SectorOffices["GENERAL"][0].Programs[0];
+        Assert.NotNull(progDto.LineItem);
+        Assert.Equal(50000m, progDto.LineItem!.Total);
+        // The synthetic project + activity it will become at confirm time count toward the totals.
+        Assert.Equal(1, result.Value.Counts.Projects);
+        Assert.Equal(1, result.Value.Counts.Activities);
+    }
+
     // ── ConfirmImportAsync ────────────────────────────────────────────────────
 
     [Fact]
@@ -479,6 +504,136 @@ public sealed class AipServiceTests
         AipActivity act = insertedGraph!.Offices.First().Programs.First().Projects.First().Activities.First();
         Assert.Equal(7, act.FundingSourceId);
         Assert.Equal("GF", act.FundingSourceSnapshot);
+    }
+
+    // ── Program/project-level line items (RAL-108) ───────────────────────────
+
+    [Fact]
+    public async Task ConfirmImport_ProgramLineItem_MaterializesSyntheticProjectAndActivity()
+    {
+        AipRecord? insertedGraph = null;
+        var (sut, aipRepo, _, _, _, _) = Build([], [Fs(1, "GF")]);
+        aipRepo.Setup(r => r.AddAsync(It.IsAny<AipRecord>(), It.IsAny<CancellationToken>()))
+            .Callback<AipRecord, CancellationToken>((e, _) => { e.Id = 100; insertedGraph = e; })
+            .Returns(Task.CompletedTask);
+
+        ParsedAipActivityDto lineItem = new(
+            "1000-000-1-01-011-004", "DISASTER RESILIENT HUMAN RIGHTS AND JUSTICE PROGRAM",
+            "ID", "PLO", "January", "December", "Human rights protected", "GF",
+            50000m, null, null, 50000m, null, null, null);
+
+        AipImportConfirmDto dto = new(2027, "aip.xlsm", null,
+            new Dictionary<string, List<ParsedAipOfficeDto>>
+            {
+                ["GENERAL"] =
+                [
+                    new ParsedAipOfficeDto("1000-000-1-01-011", "Provincial Legal Office", "GENERAL",
+                    [
+                        new ParsedAipProgramDto("1000-000-1-01-011-004",
+                            "DISASTER RESILIENT HUMAN RIGHTS AND JUSTICE PROGRAM",
+                            [], lineItem),
+                    ]),
+                ],
+            });
+
+        await sut.ConfirmImportAsync(dto, UserId, CancellationToken.None);
+
+        AipProgram program = insertedGraph!.Offices.First().Programs.First();
+        AipProject syntheticProject = Assert.Single(program.Projects);
+        Assert.True(syntheticProject.IsSynthetic);
+        Assert.Equal(program.RefCode, syntheticProject.RefCode);
+
+        AipActivity syntheticActivity = Assert.Single(syntheticProject.Activities);
+        Assert.True(syntheticActivity.IsSynthetic);
+        Assert.Equal("1000-000-1-01-011-004", syntheticActivity.RefCode);
+        Assert.Equal(50000m, syntheticActivity.Ps);
+        Assert.Equal(50000m, syntheticActivity.Total);
+        Assert.Equal(1, syntheticActivity.FundingSourceId);
+        Assert.Equal("GF", syntheticActivity.FundingSourceSnapshot);
+    }
+
+    [Fact]
+    public async Task ConfirmImport_ProjectLineItem_MaterializesSyntheticActivity_AlongsideRealActivities()
+    {
+        AipRecord? insertedGraph = null;
+        var (sut, aipRepo, _, _, _, _) = Build([], [Fs(1, "GF")]);
+        aipRepo.Setup(r => r.AddAsync(It.IsAny<AipRecord>(), It.IsAny<CancellationToken>()))
+            .Callback<AipRecord, CancellationToken>((e, _) => { e.Id = 100; insertedGraph = e; })
+            .Returns(Task.CompletedTask);
+
+        ParsedAipActivityDto realActivity = new(
+            "A-B-C-D-1-1-1-1", "Real activity", null, null, null, null, null, null,
+            null, null, null, null, null, null, null);
+        ParsedAipActivityDto lineItem = new(
+            "A-B-C-D-1-1-1", "Project with its own line item", null, null, null, null, null, "GF",
+            null, 25000m, null, 25000m, null, null, null);
+
+        AipImportConfirmDto dto = new(2027, "aip.xlsm", null,
+            new Dictionary<string, List<ParsedAipOfficeDto>>
+            {
+                ["SOCIAL"] =
+                [
+                    new ParsedAipOfficeDto("A-B-C-D-1", "Office", "SOCIAL",
+                    [
+                        new ParsedAipProgramDto("A-B-C-D-1-1", "Program",
+                        [
+                            new ParsedAipProjectDto("A-B-C-D-1-1-1", "Project with its own line item",
+                                [realActivity], lineItem),
+                        ]),
+                    ]),
+                ],
+            });
+
+        await sut.ConfirmImportAsync(dto, UserId, CancellationToken.None);
+
+        AipProject project = insertedGraph!.Offices.First().Programs.First().Projects.First();
+        Assert.False(project.IsSynthetic);
+        Assert.Equal(2, project.Activities.Count);
+
+        AipActivity real = project.Activities.Single(a => a.RefCode == "A-B-C-D-1-1-1-1");
+        Assert.False(real.IsSynthetic);
+
+        AipActivity synthetic = project.Activities.Single(a => a.RefCode == "A-B-C-D-1-1-1");
+        Assert.True(synthetic.IsSynthetic);
+        Assert.Equal(25000m, synthetic.Mooe);
+        Assert.Equal(25000m, synthetic.Total);
+    }
+
+    [Fact]
+    public async Task ConfirmImport_NoLineItem_NoSyntheticNodesCreated()
+    {
+        AipRecord? insertedGraph = null;
+        var (sut, aipRepo, _, _, _, _) = Build([], [Fs(1, "GF")]);
+        aipRepo.Setup(r => r.AddAsync(It.IsAny<AipRecord>(), It.IsAny<CancellationToken>()))
+            .Callback<AipRecord, CancellationToken>((e, _) => { e.Id = 100; insertedGraph = e; })
+            .Returns(Task.CompletedTask);
+
+        AipImportConfirmDto dto = new(2027, "aip.xlsm", null,
+            new Dictionary<string, List<ParsedAipOfficeDto>>
+            {
+                ["GENERAL"] =
+                [
+                    new ParsedAipOfficeDto("A-B-C-D-1", "Office 1", "GENERAL",
+                    [
+                        new ParsedAipProgramDto("A-B-C-D-1-1", "Program 1",
+                        [
+                            new ParsedAipProjectDto("A-B-C-D-1-1-1", "Project 1",
+                            [
+                                new ParsedAipActivityDto("A-B-C-D-1-1-1-1", "Activity 1",
+                                    null, null, null, null, null, "GF",
+                                    1000m, 2000m, null, 3000m, null, null, null),
+                            ]),
+                        ]),
+                    ]),
+                ],
+            });
+
+        await sut.ConfirmImportAsync(dto, UserId, CancellationToken.None);
+
+        AipProgram program = insertedGraph!.Offices.First().Programs.First();
+        Assert.Single(program.Projects);
+        Assert.All(program.Projects, p => Assert.False(p.IsSynthetic));
+        Assert.All(program.Projects.SelectMany(p => p.Activities), a => Assert.False(a.IsSynthetic));
     }
 
     [Fact]

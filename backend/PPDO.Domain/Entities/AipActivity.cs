@@ -76,6 +76,14 @@ public sealed class AipActivity
     /// </summary>
     public bool IsCreation { get; set; }
 
+    /// <summary>
+    /// True when this activity was materialized to hold a line item recorded directly on its
+    /// parent program or project row (RAL-108) — it has no corresponding row of its own in the
+    /// source file. Financial data must always live on an activity so it flows into WFP,
+    /// reports, and the external AIP API the same way every other activity does.
+    /// </summary>
+    public bool IsSynthetic { get; set; }
+
     // ── Navigation ────────────────────────────────────────────────────────────
 
     /// <summary>The parent AIP project.</summary>
