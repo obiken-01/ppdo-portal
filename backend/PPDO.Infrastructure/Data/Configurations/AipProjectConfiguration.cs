@@ -26,6 +26,11 @@ public sealed class AipProjectConfiguration : IEntityTypeConfiguration<AipProjec
             .HasColumnName("name")
             .IsRequired();  // nvarchar(max) — AIP names are unbounded free-text
 
+        builder.Property(p => p.IsSynthetic)
+            .HasColumnName("is_synthetic")
+            .IsRequired()
+            .HasDefaultValue(false);
+
         builder.HasIndex(p => new { p.ProgramId, p.RefCode })
             .IsUnique()
             .HasDatabaseName("UX_aip_projects_program_id_ref_code");
