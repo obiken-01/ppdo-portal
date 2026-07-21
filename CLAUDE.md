@@ -572,7 +572,7 @@ out-of-scope → commit message). `RAL-81` is the reference example.
 | Decision | Detail |
 |---|---|
 | `ServiceResult<T>` | Shared result type in `PPDO.Application/Common/` — services return this instead of throwing exceptions for flow control. |
-| Token storage | Access token: in-memory only (`auth.ts`). Refresh token: `localStorage["ppdo_rt"]`. |
+| Token storage | Access token: in-memory only (`auth.ts`), cleared on reload. Refresh token: httpOnly, Secure, SameSite=Strict cookie set by the backend on `/auth/login` and `/auth/refresh` (scoped to `/api/auth/refresh`) — not accessible to JS, never in localStorage/sessionStorage. Browser sends it automatically (axios `withCredentials: true`); refresh flow is a credentialed `POST /api/auth/refresh`. (RAL-58) |
 | Default user password | `TamarawUser2026!` — set on `UserService.CreateAsync` and `ResetPasswordAsync`. |
 | Distribution as standalone | Distribution separated from Receive Delivery — `POST /api/distributions` creates standalone distribution records. FIFO batch allocation done on the frontend. |
 | Version indicator | `APP_VERSION` const in three places — `frontend/src/components/layout/Sidebar.tsx` (portal sidebar), `frontend/src/components/landing/Footer.tsx` (`Portal vX.Y.Z`, public landing page), and `frontend/src/app/(public)/login/page.tsx` (login page). All three must be updated together — they've drifted out of sync before. |
