@@ -190,12 +190,20 @@ export interface StatusBreakdown {
   count: number;
 }
 
-/** One division's allocated amount in one fund (v1.4.5 — RAL-161). */
+/**
+ * One division's allocated amount in one fund, plus how much of it this division has actually
+ * used in WFP so far and how much is left (v1.4.5 — RAL-161; used/remaining added RAL-176).
+ * remaining = amount - used — the same division-scoped figure the WFP Entry Wizard shows, NOT
+ * FundCeiling.remaining (that one is an office-wide unallocated-ceiling fact, intentionally
+ * identical across every division).
+ */
 export interface DivisionFundAmount {
   fundingSourceId: number;
   fundCode: string;
   fundName: string;
   amount: number;
+  used: number;
+  remaining: number;
 }
 
 /** One division's WFP status + activity coverage + allocation, PPDO-scoped (v1.4.5 — RAL-161). */

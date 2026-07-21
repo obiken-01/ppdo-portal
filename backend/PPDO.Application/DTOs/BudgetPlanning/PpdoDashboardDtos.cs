@@ -1,11 +1,20 @@
 namespace PPDO.Application.DTOs.BudgetPlanning;
 
-/// <summary>One division's allocated amount in one fund (v1.4.5 — RAL-161).</summary>
+/// <summary>
+/// One division's allocated amount in one fund, plus how much of it this division has actually
+/// used in WFP so far and how much is left (v1.4.5 — RAL-161; Used/Remaining added RAL-176).
+/// Remaining = Amount − Used — the SAME division-scoped ledger calculation the WFP Entry Wizard
+/// uses (<c>WfpCeilingService.GetStatusAsync</c>), not the office-wide unallocated-ceiling figure
+/// on <see cref="FundCeilingDto.Remaining"/> (that one is intentionally identical across every
+/// division and answers a different question — see its own doc comment).
+/// </summary>
 public record DivisionFundAmountDto(
     int    FundingSourceId,
     string FundCode,
     string FundName,
-    decimal Amount);
+    decimal Amount,
+    decimal Used,
+    decimal Remaining);
 
 /// <summary>
 /// One division's WFP status + activity coverage + allocation, scoped to the Dashboard's
