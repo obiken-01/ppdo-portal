@@ -124,7 +124,8 @@ public sealed class BudgetPlanningDashboardServiceTests
         List<FundingSource>? fundingSources = null,
         Mock<IAipRepository>? aipRepoMock = null,
         Mock<IAllocationService>? allocationMock = null,
-        Mock<IWfpExpenditureRepository>? wfpExpRepoMock = null)
+        Mock<IWfpExpenditureRepository>? wfpExpRepoMock = null,
+        Mock<IWfpAllocationLedgerRepository>? ledgerRepoMock = null)
     {
         divisions      ??= [];
         fundingSources ??= [];
@@ -188,6 +189,14 @@ public sealed class BudgetPlanningDashboardServiceTests
                 .ReturnsAsync(new WfpActivityCoverageDto(0, 0));
         }
 
+        Mock<IWfpAllocationLedgerRepository> ledgerRepo = ledgerRepoMock ?? new Mock<IWfpAllocationLedgerRepository>();
+        if (ledgerRepoMock is null)
+        {
+            ledgerRepo.Setup(r => r.SumUsedAmountsByDivisionsAsync(
+                    It.IsAny<IReadOnlyList<int>>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((IReadOnlyList<DivisionFundUsedAmountDto>)[]);
+        }
+
         Mock<IAuditRepository> auditRepo = new();
         auditRepo
             .Setup(r => r.GetRecentAsync(
@@ -216,7 +225,7 @@ public sealed class BudgetPlanningDashboardServiceTests
         }
 
         BudgetPlanningDashboardService svc = new(
-            ldipRepo.Object, aipRepo.Object, wfpRepo.Object, wfpExpRepo.Object,
+            ldipRepo.Object, aipRepo.Object, wfpRepo.Object, wfpExpRepo.Object, ledgerRepo.Object,
             officeRepo.Object, divisionRepo.Object, fundingSourceRepo.Object,
             auditRepo.Object, allocation.Object);
 
@@ -523,6 +532,90 @@ public sealed class BudgetPlanningDashboardServiceTests
             PpdoOfficeId, 2027, It.IsAny<CancellationToken>()), Times.Once);
         allocation.Verify(a => a.GetAllocationsAsync(
             It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // ── GetDashboardAsync — WFP-by-division per-fund Remaining (RAL-176) ─────
+
+    [Fact]
+    public async Task GetDashboardAsync_DivisionFundAmount_RemainingIsAllocationMinusLedgerUsage()
+    {
+        // The dashboard's per-division Remaining must match what the WFP Entry Wizard shows for
+        // the same division+fund (WfpCeilingService.GetStatusAsync: allocation - usedForFund) —
+        // NOT the office-wide unallocated-ceiling figure on FundCeilingDto.Remaining.
+        List<Office> offices = [Off(PpdoOfficeId, "PPDO")];
+        List<Division> divisions = [Div(1, PpdoOfficeId, "Administrative")];
+        List<FundingSource> funds = [Fund(GfFundId, "GF", "General Fund")];
+
+        Mock<IAllocationService> allocation = new();
+        allocation.Setup(a => a.GetCeilingsAsync(PpdoOfficeId, 2027, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<BudgetCeilingDto>)[]);
+        allocation.Setup(a => a.GetAllocationsForAllFundsAsync(PpdoOfficeId, 2027, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)
+                [new DivisionAllocationDto(1, 1, "Administrative", 2027, GfFundId, "GF", "General Fund", 100_000m)]);
+        allocation.Setup(a => a.GetGeneralFundIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(GfFundId);
+        allocation.Setup(a => a.GetProgramAssignmentsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<ProgramAssignmentDto>)[]);
+        allocation.Setup(a => a.GetCeilingAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ServiceResult<BudgetCeilingDto>.NotFound("n/a"));
+
+        Mock<IWfpAllocationLedgerRepository> ledger = new();
+        ledger.Setup(l => l.SumUsedAmountsByDivisionsAsync(
+                It.IsAny<IReadOnlyList<int>>(), 2027, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<DivisionFundUsedAmountDto>)
+                [new DivisionFundUsedAmountDto(1, GfFundId, 35_000m)]);
+
+        (BudgetPlanningDashboardService sut, _) = Build(
+            [], [], [], offices, [], divisions, funds, allocationMock: allocation, ledgerRepoMock: ledger);
+
+        PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027, divisionId: null);
+
+        DivisionFundAmountDto fund = Assert.Single(result.WfpByDivision[0].AllocationByFund);
+        Assert.Equal(100_000m, fund.Amount);
+        Assert.Equal(35_000m, fund.Used);
+        Assert.Equal(65_000m, fund.Remaining); // 100,000 - 35,000, independent of any fund ceiling
+    }
+
+    [Fact]
+    public async Task GetDashboardAsync_MultipleDivisionsAndFunds_CallsSumUsedAmountsByDivisionsOnce_NeverPerDivisionFundLoop()
+    {
+        // N+1 guard: the naive fix would call SumUsedAmountAsync once per division per fund
+        // (2 divisions x 3 funds = 6 queries here). Must be exactly one batched call instead.
+        List<Office> offices = [Off(PpdoOfficeId, "PPDO")];
+        List<Division> divisions =
+        [
+            Div(1, PpdoOfficeId, "Administrative"),
+            Div(2, PpdoOfficeId, "ICT"),
+        ];
+        List<FundingSource> funds =
+        [
+            Fund(GfFundId, "GF", "General Fund"),
+            Fund(2, "GAD", "5% GAD Fund"),
+            Fund(3, "LDRRM", "5% LDRRM Fund"),
+        ];
+
+        Mock<IAllocationService> allocation = new();
+        allocation.Setup(a => a.GetCeilingsAsync(PpdoOfficeId, 2027, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<BudgetCeilingDto>)[]);
+        allocation.Setup(a => a.GetAllocationsForAllFundsAsync(PpdoOfficeId, 2027, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)[]);
+        allocation.Setup(a => a.GetGeneralFundIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(GfFundId);
+        allocation.Setup(a => a.GetProgramAssignmentsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<ProgramAssignmentDto>)[]);
+        allocation.Setup(a => a.GetCeilingAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ServiceResult<BudgetCeilingDto>.NotFound("n/a"));
+
+        Mock<IWfpAllocationLedgerRepository> ledger = new();
+        ledger.Setup(l => l.SumUsedAmountsByDivisionsAsync(
+                It.IsAny<IReadOnlyList<int>>(), 2027, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<DivisionFundUsedAmountDto>)[]);
+
+        (BudgetPlanningDashboardService sut, _) = Build(
+            [], [], [], offices, [], divisions, funds, allocationMock: allocation, ledgerRepoMock: ledger);
+
+        await sut.GetDashboardAsync(fiscalYear: 2027, divisionId: null);
+
+        ledger.Verify(l => l.SumUsedAmountsByDivisionsAsync(
+            It.IsAny<IReadOnlyList<int>>(), 2027, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     // ── GetRecentActivityAsync ─────────────────────────────────────────────

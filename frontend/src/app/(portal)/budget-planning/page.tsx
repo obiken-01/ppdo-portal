@@ -367,14 +367,10 @@ function FundCeilingCard({ fund }: { fund: FundCeiling }) {
 // WFP status by division — click a row to see its per-fund allocation breakdown
 // ---------------------------------------------------------------------------
 
-function DivisionRow({
-  division, fundRemaining,
-}: {
-  division: DivisionWfpStatus;
-  /** fundingSourceId -> that fund's office-wide remaining (from dashboard.ceilingByFund). */
-  fundRemaining: Map<number, number>;
-}) {
+function DivisionRow({ division }: { division: DivisionWfpStatus }) {
   const [expanded, setExpanded] = useState(false);
+
+  const totalRemaining = division.allocationByFund.reduce((sum, f) => sum + f.remaining, 0);
 
   return (
     <>
@@ -399,7 +395,9 @@ function DivisionRow({
         <td className="px-4 py-2.5 text-sm text-right font-medium text-slate-700">
           ₱{formatMoney(division.totalAllocated)}
         </td>
-        <td className="px-4 py-2.5" />
+        <td className="px-4 py-2.5 text-sm text-right font-medium text-slate-700">
+          ₱{formatMoney(totalRemaining)}
+        </td>
       </tr>
       {expanded && (
         <tr>
@@ -419,9 +417,7 @@ function DivisionRow({
                       <td className="px-4 py-1.5" />
                       <td className="px-4 py-1.5" />
                       <td className="px-4 py-1.5 text-right text-slate-600">₱{formatMoney(f.amount)}</td>
-                      <td className="px-4 py-1.5 text-right text-slate-600">
-                        ₱{formatMoney(fundRemaining.get(f.fundingSourceId) ?? 0)}
-                      </td>
+                      <td className="px-4 py-1.5 text-right text-slate-600">₱{formatMoney(f.remaining)}</td>
                     </tr>
                   ))
                 )}
@@ -539,12 +535,6 @@ export default function BudgetPlanningPage() {
     isPpdo && dashboard
       ? dashboard.wfpByDivision.find((d) => d.divisionId === user?.divisionId) ?? dashboard.wfpByDivision[0]
       : null;
-
-  // fundingSourceId -> that fund's office-wide remaining, for the WFP-by-division table's
-  // per-fund breakdown rows (Remaining is a fund/office-level fact, not per-division).
-  const fundRemainingById = new Map(
-    (dashboard?.ceilingByFund ?? []).map((f) => [f.fundingSourceId, f.remaining])
-  );
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -689,11 +679,7 @@ export default function BudgetPlanningPage() {
                 </thead>
                 <tbody>
                   {dashboard.wfpByDivision.map((division) => (
-                    <DivisionRow
-                      key={division.divisionId}
-                      division={division}
-                      fundRemaining={fundRemainingById}
-                    />
+                    <DivisionRow key={division.divisionId} division={division} />
                   ))}
                 </tbody>
               </table>
