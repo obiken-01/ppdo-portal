@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useMe } from "@/lib/me-cache";
-import { aipErrorMessage, uploadAipFile } from "@/lib/aip";
+import { aipErrorMessage, getAipById, uploadAipFile } from "@/lib/aip";
 
 const CURRENT_YEAR = new Date().getFullYear();
 const FY_OPTIONS = [CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1, CURRENT_YEAR + 2];
@@ -18,10 +18,14 @@ function formatBytes(bytes: number): string {
 
 type Tab = "upload" | "manual";
 
-export default function AipNewPage() {
+/**
+ * @param replaceId  RAL-178 — when set, the confirmed import full-replaces this existing
+ *   record's hierarchy (re-upload a corrected file) instead of creating a new record.
+ *   Threaded to import-preview via the sessionStorage meta.
+ */
+function UploadTab({ replaceId }: { replaceId: number | null }) {
   const router = useRouter();
 
-  const [activeTab, setActiveTab] = useState<Tab>("upload");
   const [fiscalYear, setFiscalYear] = useState<number>(CURRENT_YEAR);
   const [file, setFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -31,7 +35,15 @@ export default function AipNewPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useMe((m) => m.canUploadAip, "/budget-planning/aip");
+  // Re-upload (RAL-178): lock the fiscal year to the record's ORIGINAL year — a re-upload
+  // corrects the file's contents, not the fiscal year. Pre-fill from the target record so the
+  // confirmed year matches what the record already stores.
+  useEffect(() => {
+    if (replaceId == null) return;
+    getAipById(replaceId)
+      .then((rec) => setFiscalYear(rec.fiscalYear))
+      .catch(() => { /* leave default; the confirm still guards the target server-side */ });
+  }, [replaceId]);
 
   function validateAndSet(f: File | null) {
     setFileError(null);
@@ -68,7 +80,10 @@ export default function AipNewPage() {
     try {
       const preview = await uploadAipFile(file, fiscalYear);
       sessionStorage.setItem("aip_import_preview", JSON.stringify(preview));
-      sessionStorage.setItem("aip_import_meta", JSON.stringify({ originalFilename: file.name, ldipId: null }));
+      sessionStorage.setItem(
+        "aip_import_meta",
+        JSON.stringify({ originalFilename: file.name, ldipId: null, replaceId })
+      );
       router.push("/budget-planning/aip/import-preview");
     } catch (err) {
       setUploadError(aipErrorMessage(err, "Upload failed. Please check the file and try again."));
@@ -77,10 +92,140 @@ export default function AipNewPage() {
   }
 
   return (
+    <div className="space-y-3">
+      {replaceId != null && (
+        <div className="border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span className="font-semibold">Re-upload mode.</span>{" "}
+          Confirming replaces the existing record&apos;s offices, programs, projects, and
+          activities with this file&apos;s contents. The record keeps its ID and history — only
+          its hierarchy changes.
+        </div>
+      )}
+
+      {/* Fiscal Year */}
+      <div>
+        <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
+          Fiscal Year
+        </label>
+        {replaceId != null ? (
+          <p className="text-sm text-slate-700 px-3 py-2 bg-slate-100 border border-slate-200 w-40">
+            FY {fiscalYear}
+          </p>
+        ) : (
+          <select
+            value={fiscalYear}
+            onChange={(e) => setFiscalYear(Number(e.target.value))}
+            className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600 w-40"
+          >
+            {FY_OPTIONS.map((y) => <option key={y} value={y}>{y}</option>)}
+          </select>
+        )}
+      </div>
+
+      {/* Link to LDIP */}
+      <div>
+        <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
+          Link to LDIP <span className="text-slate-600 font-normal normal-case">(optional)</span>
+        </label>
+        <select
+          disabled
+          className="border border-slate-200 bg-slate-50 text-sm px-3 py-2 text-slate-400 w-64 cursor-not-allowed"
+        >
+          <option>No LDIP records available</option>
+        </select>
+      </div>
+
+      {/* Dropzone */}
+      <div>
+        <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
+          AIP File
+        </label>
+
+        {file ? (
+          <div className="border border-slate-200 bg-slate-50 px-4 py-3 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-slate-700">{file.name}</p>
+              <p className="text-xs text-slate-600">{formatBytes(file.size)}</p>
+            </div>
+            <button
+              onClick={() => { setFile(null); setFileError(null); }}
+              className="text-xs text-danger-500 hover:underline ml-4"
+            >
+              ✕ Remove
+            </button>
+          </div>
+        ) : (
+          <label
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            className={`flex flex-col items-center justify-center border-2 border-dashed px-6 py-8 cursor-pointer transition-colors ${
+              dragging ? "border-green-500 bg-green-50" : "border-slate-300 hover:border-slate-400"
+            }`}
+          >
+            <span className="text-3xl mb-2">📁</span>
+            <p className="text-sm text-slate-600 mb-1">Drag &amp; drop your .xlsm file here</p>
+            <p className="text-xs text-slate-600 mb-3">or</p>
+            <span className="px-4 py-1.5 border border-slate-300 text-sm text-slate-600 bg-white hover:bg-slate-50">
+              Browse File
+            </span>
+            <p className="text-xs text-slate-600 mt-3">Accepts .xlsm files up to 20 MB</p>
+            <input ref={fileInputRef} type="file" accept=".xlsm" className="hidden" onChange={handleFileInput} />
+          </label>
+        )}
+
+        {fileError && <p className="text-xs text-danger-500 mt-1.5">{fileError}</p>}
+      </div>
+
+      {uploadError && (
+        <div className="border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">
+          {uploadError}
+        </div>
+      )}
+
+      <div className="flex items-center gap-3">
+        <button
+          onClick={handleUpload}
+          disabled={uploading || !file}
+          className={`px-5 py-2 text-sm font-medium text-white transition-colors ${
+            uploading || !file ? "bg-green-300 cursor-not-allowed" : "bg-green-700 hover:bg-green-800"
+          }`}
+        >
+          {uploading ? "Uploading…" : "Upload & Preview"}
+        </button>
+        <Link
+          href={replaceId != null ? `/budget-planning/aip/detail?id=${replaceId}` : "/budget-planning/aip"}
+          className="px-5 py-2 text-sm font-medium border border-slate-300 text-slate-600 hover:bg-slate-50 transition-colors"
+        >
+          Cancel
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+function AipNewInner() {
+  const [activeTab, setActiveTab] = useState<Tab>("upload");
+
+  // RAL-178 — re-upload into an existing record (?replaceId=). Upload-only, so it pins the
+  // Upload tab and is passed through to the confirm step.
+  const searchParams = useSearchParams();
+  const rawReplaceId = searchParams.get("replaceId");
+  const replaceId = rawReplaceId != null && /^\d+$/.test(rawReplaceId) ? Number(rawReplaceId) : null;
+
+  useMe((m) => m.canUploadAip, "/budget-planning/aip");
+
+  return (
     <div className="px-6 py-4">
       {/* Header */}
-      <h1 className="text-xl font-bold text-slate-800 mb-0.5">Create New AIP</h1>
-      <p className="text-sm text-slate-600 mb-4">Upload an .xlsm file to import an Annual Investment Program.</p>
+      <h1 className="text-xl font-bold text-slate-800 mb-0.5">
+        {replaceId != null ? "Re-upload AIP" : "Create New AIP"}
+      </h1>
+      <p className="text-sm text-slate-600 mb-4">
+        {replaceId != null
+          ? "Upload a corrected .xlsm file to replace this AIP's hierarchy."
+          : "Upload an .xlsm file to import an Annual Investment Program."}
+      </p>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
         {/* ── Left column: form ── */}
@@ -97,111 +242,18 @@ export default function AipNewPage() {
             >
               Upload File
             </button>
-            <button
-              disabled
-              title="Manual entry is coming soon"
-              className="px-5 py-2.5 text-sm font-medium border-b-2 border-transparent text-slate-300 cursor-not-allowed opacity-60"
-            >
-              Manual Entry
-            </button>
+            {replaceId == null && (
+              <button
+                disabled
+                title="Manual entry is coming soon"
+                className="px-5 py-2.5 text-sm font-medium border-b-2 border-transparent text-slate-300 cursor-not-allowed opacity-60"
+              >
+                Manual Entry
+              </button>
+            )}
           </div>
 
-          {activeTab === "upload" && (
-            <div className="space-y-3">
-              {/* Fiscal Year */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
-                  Fiscal Year
-                </label>
-                <select
-                  value={fiscalYear}
-                  onChange={(e) => setFiscalYear(Number(e.target.value))}
-                  className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600 w-40"
-                >
-                  {FY_OPTIONS.map((y) => <option key={y} value={y}>{y}</option>)}
-                </select>
-              </div>
-
-              {/* Link to LDIP */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
-                  Link to LDIP <span className="text-slate-600 font-normal normal-case">(optional)</span>
-                </label>
-                <select
-                  disabled
-                  className="border border-slate-200 bg-slate-50 text-sm px-3 py-2 text-slate-400 w-64 cursor-not-allowed"
-                >
-                  <option>No LDIP records available</option>
-                </select>
-              </div>
-
-              {/* Dropzone */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
-                  AIP File
-                </label>
-
-                {file ? (
-                  <div className="border border-slate-200 bg-slate-50 px-4 py-3 flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-slate-700">{file.name}</p>
-                      <p className="text-xs text-slate-600">{formatBytes(file.size)}</p>
-                    </div>
-                    <button
-                      onClick={() => { setFile(null); setFileError(null); }}
-                      className="text-xs text-danger-500 hover:underline ml-4"
-                    >
-                      ✕ Remove
-                    </button>
-                  </div>
-                ) : (
-                  <label
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
-                    className={`flex flex-col items-center justify-center border-2 border-dashed px-6 py-8 cursor-pointer transition-colors ${
-                      dragging ? "border-green-500 bg-green-50" : "border-slate-300 hover:border-slate-400"
-                    }`}
-                  >
-                    <span className="text-3xl mb-2">📁</span>
-                    <p className="text-sm text-slate-600 mb-1">Drag &amp; drop your .xlsm file here</p>
-                    <p className="text-xs text-slate-600 mb-3">or</p>
-                    <span className="px-4 py-1.5 border border-slate-300 text-sm text-slate-600 bg-white hover:bg-slate-50">
-                      Browse File
-                    </span>
-                    <p className="text-xs text-slate-600 mt-3">Accepts .xlsm files up to 20 MB</p>
-                    <input ref={fileInputRef} type="file" accept=".xlsm" className="hidden" onChange={handleFileInput} />
-                  </label>
-                )}
-
-                {fileError && <p className="text-xs text-danger-500 mt-1.5">{fileError}</p>}
-              </div>
-
-              {uploadError && (
-                <div className="border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">
-                  {uploadError}
-                </div>
-              )}
-
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={handleUpload}
-                  disabled={uploading || !file}
-                  className={`px-5 py-2 text-sm font-medium text-white transition-colors ${
-                    uploading || !file ? "bg-green-300 cursor-not-allowed" : "bg-green-700 hover:bg-green-800"
-                  }`}
-                >
-                  {uploading ? "Uploading…" : "Upload & Preview"}
-                </button>
-                <Link
-                  href="/budget-planning/aip"
-                  className="px-5 py-2 text-sm font-medium border border-slate-300 text-slate-600 hover:bg-slate-50 transition-colors"
-                >
-                  Cancel
-                </Link>
-              </div>
-            </div>
-          )}
+          {activeTab === "upload" && <UploadTab replaceId={replaceId} />}
         </div>
 
         {/* ── Right column: help panel ── */}
@@ -210,12 +262,20 @@ export default function AipNewPage() {
           <div className="bg-slate-50 border border-slate-200 p-4">
             <h3 className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2.5">How it works</h3>
             <ol className="space-y-2">
-              {[
-                ["Select fiscal year", "Choose the year this AIP covers."],
-                ["Upload your file",   "Drop the .xlsm file into the dropzone or browse to select it."],
-                ["Review the preview", "Check the import counts and any warnings before committing."],
-                ["Confirm import",     "Once confirmed, the AIP is saved as a Draft record."],
-              ].map(([title, desc], i) => (
+              {(replaceId != null
+                ? [
+                    ["Fiscal year is locked", "Re-upload corrects this AIP's contents — the fiscal year cannot change."],
+                    ["Upload the corrected file", "Drop the .xlsm file into the dropzone or browse to select it."],
+                    ["Review the preview", "Check the import counts and any warnings before committing."],
+                    ["Confirm re-upload", "Once confirmed, this record's hierarchy is replaced — same ID, corrected content."],
+                  ]
+                : [
+                    ["Select fiscal year", "Choose the year this AIP covers."],
+                    ["Upload your file",   "Drop the .xlsm file into the dropzone or browse to select it."],
+                    ["Review the preview", "Check the import counts and any warnings before committing."],
+                    ["Confirm import",     "Once confirmed, the AIP is saved as a Draft record."],
+                  ]
+              ).map(([title, desc], i) => (
                 <li key={i} className="flex gap-3">
                   <span className="shrink-0 w-5 h-5 rounded-full bg-green-700 text-white text-xs font-bold flex items-center justify-center mt-0.5">
                     {i + 1}
@@ -249,5 +309,14 @@ export default function AipNewPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// useSearchParams requires a Suspense boundary during prerender (Next.js app router).
+export default function AipNewPage() {
+  return (
+    <Suspense fallback={null}>
+      <AipNewInner />
+    </Suspense>
   );
 }

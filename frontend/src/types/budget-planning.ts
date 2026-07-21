@@ -78,6 +78,8 @@ export interface AipImportConfirmRequest {
   originalFilename: string;
   ldipId: number | null;
   sectorOffices: Record<string, ParsedAipOfficeResponse[]>;
+  /** RAL-178: when set, the confirm re-uploads into this existing record instead of creating a new one. */
+  targetRecordId?: number | null;
 }
 
 // ── AIP detail (stored hierarchy) ────────────────────────────────────────────
@@ -145,6 +147,8 @@ export interface AipRecordDetail {
   ldipId: number | null;
   sourceId: number | null;
   offices: AipOfficeDetail[];
+  /** True when a WFP has been built from this AIP — re-upload is blocked in that case. */
+  hasWfpUsage: boolean;
 }
 
 // ── AIP summary — slim WFP-grid types (RAL-89) ───────────────────────────────

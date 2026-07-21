@@ -233,10 +233,42 @@ export default function AipDetailPage() {
             <p className="text-xs text-slate-600 mt-0.5">Source: {record.originalFilename}</p>
           )}
         </div>
-        <Link href="/budget-planning/aip" className="text-sm text-green-700 hover:underline whitespace-nowrap">
-          ← Back to AIP list
-        </Link>
+        <div className="flex items-center gap-4 shrink-0">
+          {/* Re-upload (RAL-178): correct an uploaded AIP by importing a fixed file into THIS
+              same record. Draft + Upload-entry-source only (Final needs admin Unlock first),
+              only for PPDO uploaders, and blocked once a WFP has been built from this AIP —
+              replacing the hierarchy would delete AipActivity rows the WFP's activities still
+              reference (FK Restrict), so the backend rejects it; hide the button instead of
+              letting the user hit that error. */}
+          {record.status === "Draft" && record.entrySource === "Upload" && me?.canUploadAip === true && (
+            record.hasWfpUsage ? (
+              <span
+                className="px-3 py-1.5 text-sm font-medium text-slate-400 bg-slate-100 border border-slate-200 whitespace-nowrap cursor-not-allowed"
+                title="A Work Financial Plan has already been built from this AIP. Archive this record and upload the corrected file as a new AIP instead."
+              >
+                Re-upload File
+              </span>
+            ) : (
+              <Link
+                href={`/budget-planning/aip/new?replaceId=${record.id}`}
+                className="px-3 py-1.5 text-sm font-medium text-white bg-green-700 hover:bg-green-800 transition-colors whitespace-nowrap"
+              >
+                Re-upload File
+              </Link>
+            )
+          )}
+          <Link href="/budget-planning/aip" className="text-sm text-green-700 hover:underline whitespace-nowrap">
+            ← Back to AIP list
+          </Link>
+        </div>
       </div>
+      {record.status === "Draft" && record.entrySource === "Upload" && me?.canUploadAip === true &&
+        record.hasWfpUsage && (
+        <div className="mb-4 -mt-2 border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
+          Re-upload is disabled — a Work Financial Plan has already been built from this AIP. Archive
+          this record and upload the corrected file as a new AIP instead.
+        </div>
+      )}
 
       {/* ── Sector tabs ────────────────────────────────────────────── */}
       <div className="flex border-b border-slate-200 mb-0">

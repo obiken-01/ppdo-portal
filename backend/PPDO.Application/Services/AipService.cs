@@ -23,6 +23,8 @@ public sealed class AipService : IAipService
     private readonly IAipXlsmParser _parser;
     private readonly IAuditService  _audit;
     private readonly CallerContext  _caller;
+    private readonly IRepository<AipOffice> _officeRepo;
+    private readonly IWfpRepository _wfpRepo;
 
     public AipService(
         IAipRepository             aipRepo,
@@ -30,14 +32,18 @@ public sealed class AipService : IAipService
         IUserRepository            userRepo,
         IAipXlsmParser parser,
         IAuditService  audit,
-        CallerContext  caller)
+        CallerContext  caller,
+        IRepository<AipOffice> officeRepo,
+        IWfpRepository wfpRepo)
     {
-        _aipRepo  = aipRepo;
-        _fsRepo   = fsRepo;
-        _userRepo = userRepo;
-        _parser   = parser;
-        _audit    = audit;
-        _caller   = caller;
+        _aipRepo    = aipRepo;
+        _fsRepo     = fsRepo;
+        _userRepo   = userRepo;
+        _parser     = parser;
+        _audit      = audit;
+        _caller     = caller;
+        _officeRepo = officeRepo;
+        _wfpRepo    = wfpRepo;
     }
 
     // ── Read ──────────────────────────────────────────────────────────────────
@@ -101,9 +107,13 @@ public sealed class AipService : IAipService
             return new AipOfficeDto(o.Id, o.AipRecordId, o.RefCode, o.Name, o.Sector, progDtos);
         }).ToList();
 
+        // Drives the frontend's Re-upload button gating — see ReplaceImportAsync's guard below.
+        bool hasWfpUsage = await _wfpRepo.AnyForAipRecordAsync(id, ct);
+
         AipRecordDetailDto detail = new(
             rec.Id, rec.FiscalYear, rec.EntrySource, rec.OriginalFilename,
-            rec.UploadedById, rec.UploadedAt, rec.Status, rec.LdipId, rec.SourceId, officeDtos);
+            rec.UploadedById, rec.UploadedAt, rec.Status, rec.LdipId, rec.SourceId, officeDtos,
+            hasWfpUsage);
 
         return ServiceResult<AipRecordDetailDto>.Ok(detail);
     }
@@ -238,6 +248,18 @@ public sealed class AipService : IAipService
     public async Task<ServiceResult<AipRecordDto>> ConfirmImportAsync(
         AipImportConfirmDto dto, Guid uploadedById, CancellationToken ct = default)
     {
+        // Load funding source lookup for snapshot population — needed by both paths below.
+        IReadOnlyList<FundingSource> fsList = await _fsRepo.GetAllAsync(ct);
+        Dictionary<string, FundingSource> fsDict =
+            fsList.ToDictionary(f => f.Code, StringComparer.OrdinalIgnoreCase);
+
+        // Re-upload path (RAL-178) — replace an existing record's hierarchy in place.
+        // Bypasses the one-active-AIP-per-fiscal-year guard below entirely: that guard exists
+        // to stop a SECOND competing record for the year, not the record being replaced (which
+        // GetLatestByFiscalYearAsync would otherwise find as a false "conflict" — itself).
+        if (dto.TargetRecordId is int targetId)
+            return await ReplaceImportAsync(targetId, dto, fsDict, ct);
+
         // Guard: only one active (Draft or Final) AIP per fiscal year.
         AipRecord? conflict = await _aipRepo.GetLatestByFiscalYearAsync(dto.FiscalYear, ct);
         if (conflict is not null)
@@ -248,11 +270,6 @@ public sealed class AipService : IAipService
             return ServiceResult<AipRecordDto>.BadRequest(
                 $"An AIP for FY {dto.FiscalYear} already exists with status '{conflict.Status}'. {hint}");
         }
-
-        // Load funding source lookup for snapshot population.
-        IReadOnlyList<FundingSource> fsList = await _fsRepo.GetAllAsync(ct);
-        Dictionary<string, FundingSource> fsDict =
-            fsList.ToDictionary(f => f.Code, StringComparer.OrdinalIgnoreCase);
 
         DateTime now = DateTime.UtcNow;
 
@@ -271,15 +288,7 @@ public sealed class AipService : IAipService
             UploadedAt       = now,
             Status           = PlanningStatus.Draft,
             LdipId           = dto.LdipId,
-            Offices          = dto.SectorOffices
-                .SelectMany(kvp => kvp.Value)
-                .Select(officeDto => new AipOffice
-                {
-                    RefCode  = officeDto.RefCode,
-                    Name     = officeDto.Name,
-                    Sector   = officeDto.Sector,
-                    Programs = BuildPrograms(officeDto.Programs, fsDict),
-                }).ToList(),
+            Offices          = BuildOffices(dto.SectorOffices, fsDict),
         };
 
         await _aipRepo.AddAsync(aipRecord, ct);
@@ -290,6 +299,74 @@ public sealed class AipService : IAipService
 
         return ServiceResult<AipRecordDto>.Ok(MapToDto(aipRecord));
     }
+
+    /// <summary>
+    /// RAL-178 — re-upload a corrected file into an EXISTING record. Full-replaces the
+    /// hierarchy in two SaveChanges rounds (delete existing top-level AipOffice rows first,
+    /// then insert the freshly parsed ones) so the ref-code indexes never see old+new rows
+    /// side by side. DB-level cascade (AipRecord -&gt; AipOffice -&gt; AipProgram -&gt; AipProject
+    /// -&gt; AipActivity, all DeleteBehavior.Cascade) removes each old office's whole subtree
+    /// once its top-level row is deleted — no need to load the deep tree first.
+    ///
+    /// Id/UploadedById/original creation semantics are preserved — same document, corrected
+    /// content, audit trail intact; only OriginalFilename, UploadedAt, and the hierarchy change.
+    /// Guards: the target must exist, be Draft, and be an Upload-entry-source record.
+    /// Logged as an Update (not a Create).
+    /// </summary>
+    private async Task<ServiceResult<AipRecordDto>> ReplaceImportAsync(
+        int targetId, AipImportConfirmDto dto, Dictionary<string, FundingSource> fsDict, CancellationToken ct)
+    {
+        AipRecord? rec = await _aipRepo.GetByIntIdAsync(targetId, ct);
+        if (rec is null)
+            return ServiceResult<AipRecordDto>.NotFound($"AIP record {targetId} not found.");
+        if (rec.Status != PlanningStatus.Draft)
+            return ServiceResult<AipRecordDto>.BadRequest(
+                $"Cannot re-upload into a '{rec.Status}' record. Unlock it back to Draft first.");
+        if (rec.EntrySource != "Upload")
+            return ServiceResult<AipRecordDto>.BadRequest(
+                "Only uploaded AIP records can be re-uploaded. This record was created through manual entry.");
+        // A WFP built from this AIP holds FK-restricted references (aip_activity_id) into the
+        // exact AipActivity rows the replace below would delete — the delete fails at the DB
+        // constraint if we don't stop first, and even if it didn't, replacing the hierarchy
+        // would orphan the WFP's line items against activity ids that no longer exist.
+        if (await _wfpRepo.AnyForAipRecordAsync(targetId, ct))
+            return ServiceResult<AipRecordDto>.BadRequest(
+                "Cannot re-upload — a Work Financial Plan has already been built from this AIP. " +
+                "Archive this record and upload the corrected file as a new AIP instead.");
+
+        IReadOnlyList<AipOffice> existing = await _aipRepo.GetOfficesByAipIdAsync(targetId, ct);
+        object old = new { rec.FiscalYear, rec.OriginalFilename, OfficeCount = existing.Count };
+        foreach (AipOffice office in existing)
+            await _officeRepo.DeleteAsync(office, ct);
+        await _officeRepo.SaveChangesAsync(ct);
+
+        rec.FiscalYear       = dto.FiscalYear;
+        rec.OriginalFilename = dto.OriginalFilename;
+        rec.UploadedAt       = DateTime.UtcNow;
+        rec.Offices          = BuildOffices(dto.SectorOffices, fsDict);
+
+        await _aipRepo.UpdateAsync(rec, ct);
+        await _aipRepo.SaveChangesAsync(ct);
+
+        await _audit.LogAsync("aip_records", rec.Id, AuditAction.Update,
+            old,
+            new { rec.FiscalYear, rec.OriginalFilename, OfficeCount = rec.Offices.Count },
+            ct);
+
+        return ServiceResult<AipRecordDto>.Ok(MapToDto(rec));
+    }
+
+    private static List<AipOffice> BuildOffices(
+        Dictionary<string, List<ParsedAipOfficeDto>> sectorOffices, Dictionary<string, FundingSource> fsDict) =>
+        sectorOffices
+            .SelectMany(kvp => kvp.Value)
+            .Select(officeDto => new AipOffice
+            {
+                RefCode  = officeDto.RefCode,
+                Name     = officeDto.Name,
+                Sector   = officeDto.Sector,
+                Programs = BuildPrograms(officeDto.Programs, fsDict),
+            }).ToList();
 
     // ── Status transitions ────────────────────────────────────────────────────
 
