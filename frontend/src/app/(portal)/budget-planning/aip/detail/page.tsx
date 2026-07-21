@@ -14,7 +14,7 @@
  * Access: canAccessBudgetPlanning.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMe } from "@/lib/me-cache";
@@ -321,7 +321,7 @@ export default function AipDetailPage() {
               const actCount    = office.programs.flatMap((p) => p.projects).flatMap((p) => p.activities).length;
 
               return (
-                <>
+                <Fragment key={`office-frag-${office.id}`}>
                   {/* ── Office row ──────────────────────────────── */}
                   <tr key={`office-${office.id}`} className="bg-green-700 border-t-2 border-green-800">
                     <td className="px-2 py-2 font-mono text-xs text-slate-600 align-top">
@@ -351,7 +351,7 @@ export default function AipDetailPage() {
                     const progOpen = !collapsedPrograms.has(prog.id);
 
                     return (
-                      <>
+                      <Fragment key={`prog-frag-${prog.id}`}>
                         <tr key={`prog-${prog.id}`} className="bg-white border-t-2 border-slate-200">
                           <td className="px-2 py-1.5 pl-5 font-mono text-xs text-slate-600 border-l-4 border-green-400">
                             <button onClick={() => toggleProgram(prog.id)} className="flex items-center gap-1.5 text-left">
@@ -375,7 +375,7 @@ export default function AipDetailPage() {
                           const projOpen = !collapsedProjects.has(proj.id);
 
                           return (
-                            <>
+                            <Fragment key={`proj-frag-${proj.id}`}>
                               <tr key={`proj-${proj.id}`} className="bg-slate-50 border-t border-slate-200">
                                 <td className="px-2 py-1.5 pl-9 font-mono text-xs text-slate-600 border-l-4 border-slate-300">
                                   <button onClick={() => toggleProject(proj.id)} className="flex items-center gap-1.5 text-left">
@@ -433,13 +433,13 @@ export default function AipDetailPage() {
                                   <td className="px-2 py-1.5 text-center text-xs text-slate-600">{act.ccTypologyCode ?? "—"}</td>
                                 </tr>
                               ))}
-                            </>
+                            </Fragment>
                           );
                         })}
-                      </>
+                      </Fragment>
                     );
                   })}
-                </>
+                </Fragment>
               );
             })}
           </tbody>
