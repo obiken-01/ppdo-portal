@@ -125,6 +125,22 @@ export async function addAipActivity(projectId: number, body: CreateAipActivityR
   return unwrap(data);
 }
 
+// Mistakes happen (e.g. data entered under the wrong level) — Draft-only, cascades to children.
+export async function deleteAipProgram(programId: number): Promise<void> {
+  const { data } = await api.delete<ApiResponse<boolean>>(`/budget-planning/aip/programs/${programId}`);
+  unwrap(data);
+}
+
+export async function deleteAipProject(projectId: number): Promise<void> {
+  const { data } = await api.delete<ApiResponse<boolean>>(`/budget-planning/aip/projects/${projectId}`);
+  unwrap(data);
+}
+
+export async function deleteAipActivity(activityId: number): Promise<void> {
+  const { data } = await api.delete<ApiResponse<boolean>>(`/budget-planning/aip/activities/${activityId}`);
+  unwrap(data);
+}
+
 // ---------------------------------------------------------------------------
 // AIP detail — GET /api/budget-planning/aip/{id}
 // ---------------------------------------------------------------------------

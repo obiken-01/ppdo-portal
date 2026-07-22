@@ -88,17 +88,26 @@ public sealed class AipServiceTests
         programRepo.Setup(r => r.AddAsync(It.IsAny<AipProgram>(), It.IsAny<CancellationToken>()))
             .Callback<AipProgram, CancellationToken>((p, _) => { if (p.Id == 0) p.Id = nextChildId++; programList.Add(p); })
             .Returns(Task.CompletedTask);
+        programRepo.Setup(r => r.DeleteAsync(It.IsAny<AipProgram>(), It.IsAny<CancellationToken>()))
+            .Callback<AipProgram, CancellationToken>((p, _) => programList.Remove(p))
+            .Returns(Task.CompletedTask);
         programRepo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
         Mock<IRepository<AipProject>> projectRepo = new();
         projectRepo.Setup(r => r.AddAsync(It.IsAny<AipProject>(), It.IsAny<CancellationToken>()))
             .Callback<AipProject, CancellationToken>((p, _) => { if (p.Id == 0) p.Id = nextChildId++; projectList.Add(p); })
             .Returns(Task.CompletedTask);
+        projectRepo.Setup(r => r.DeleteAsync(It.IsAny<AipProject>(), It.IsAny<CancellationToken>()))
+            .Callback<AipProject, CancellationToken>((p, _) => projectList.Remove(p))
+            .Returns(Task.CompletedTask);
         projectRepo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
         Mock<IRepository<AipActivity>> activityRepo = new();
         activityRepo.Setup(r => r.AddAsync(It.IsAny<AipActivity>(), It.IsAny<CancellationToken>()))
             .Callback<AipActivity, CancellationToken>((a, _) => { if (a.Id == 0) a.Id = nextChildId++; actList.Add(a); })
+            .Returns(Task.CompletedTask);
+        activityRepo.Setup(r => r.DeleteAsync(It.IsAny<AipActivity>(), It.IsAny<CancellationToken>()))
+            .Callback<AipActivity, CancellationToken>((a, _) => actList.Remove(a))
             .Returns(Task.CompletedTask);
         activityRepo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
@@ -1549,5 +1558,140 @@ public sealed class AipServiceTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    // ── Delete Program / Project / Activity ───────────────────────────────────
+
+    private static (AipRecord rec, List<AipOffice> offices, List<AipProgram> programs,
+        List<AipProject> projects, List<AipActivity> activities) SeedDeleteTree(
+        string recordStatus = PlanningStatus.Draft)
+    {
+        AipRecord rec = Rec(1, recordStatus);
+        List<AipOffice> offices = [new() { Id = 20, AipRecordId = 1, RefCode = "1000-000-1-01-010", Name = "PPDO", Sector = "GENERAL" }];
+        List<AipProgram> programs = [new() { Id = 30, OfficeId = 20, RefCode = "1000-000-1-01-010-001", Name = "Program" }];
+        List<AipProject> projects = [new() { Id = 40, ProgramId = 30, RefCode = "1000-000-1-01-010-001-001", Name = "Project" }];
+        List<AipActivity> activities = [new() { Id = 50, ProjectId = 40, RefCode = "1000-000-1-01-010-001-001-001", Name = "Activity" }];
+        return (rec, offices, programs, projects, activities);
+    }
+
+    [Fact]
+    public async Task DeleteProgram_ExistingDraftProgram_RemovesIt()
+    {
+        var (rec, offices, programs, projects, activities) = SeedDeleteTree();
+        var (sut, _, _, _, _, _, _, _, _, programRepo, _, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
+
+        ServiceResult<bool> result = await sut.DeleteProgramAsync(30);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value);
+        programRepo.Verify(r => r.DeleteAsync(
+            It.Is<AipProgram>(p => p.Id == 30), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.DoesNotContain(programs, p => p.Id == 30);
+    }
+
+    [Fact]
+    public async Task DeleteProgram_NotFound_ReturnsNotFound()
+    {
+        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
+
+        ServiceResult<bool> result = await sut.DeleteProgramAsync(999);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Fact]
+    public async Task DeleteProgram_ParentRecordNotDraft_ReturnsBadRequest()
+    {
+        var (rec, offices, programs, projects, activities) = SeedDeleteTree(PlanningStatus.Final);
+        var (sut, _, _, _, _, _, _, _, _, programRepo, _, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
+
+        ServiceResult<bool> result = await sut.DeleteProgramAsync(30);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        programRepo.Verify(r => r.DeleteAsync(It.IsAny<AipProgram>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DeleteProject_ExistingDraftProject_RemovesIt()
+    {
+        var (rec, offices, programs, projects, activities) = SeedDeleteTree();
+        var (sut, _, _, _, _, _, _, _, _, _, projectRepo, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
+
+        ServiceResult<bool> result = await sut.DeleteProjectAsync(40);
+
+        Assert.True(result.IsSuccess);
+        projectRepo.Verify(r => r.DeleteAsync(
+            It.Is<AipProject>(p => p.Id == 40), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.DoesNotContain(projects, p => p.Id == 40);
+    }
+
+    [Fact]
+    public async Task DeleteProject_NotFound_ReturnsNotFound()
+    {
+        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
+
+        ServiceResult<bool> result = await sut.DeleteProjectAsync(999);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Fact]
+    public async Task DeleteProject_ParentRecordNotDraft_ReturnsBadRequest()
+    {
+        var (rec, offices, programs, projects, activities) = SeedDeleteTree(PlanningStatus.Final);
+        var (sut, _, _, _, _, _, _, _, _, _, projectRepo, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
+
+        ServiceResult<bool> result = await sut.DeleteProjectAsync(40);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        projectRepo.Verify(r => r.DeleteAsync(It.IsAny<AipProject>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DeleteActivity_ExistingDraftActivity_RemovesIt()
+    {
+        var (rec, offices, programs, projects, activities) = SeedDeleteTree();
+        var (sut, _, _, _, _, _, _, _, _, _, _, activityRepo) =
+            Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
+
+        ServiceResult<bool> result = await sut.DeleteActivityAsync(50);
+
+        Assert.True(result.IsSuccess);
+        activityRepo.Verify(r => r.DeleteAsync(
+            It.Is<AipActivity>(a => a.Id == 50), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.DoesNotContain(activities, a => a.Id == 50);
+    }
+
+    [Fact]
+    public async Task DeleteActivity_NotFound_ReturnsNotFound()
+    {
+        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
+
+        ServiceResult<bool> result = await sut.DeleteActivityAsync(999);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Fact]
+    public async Task DeleteActivity_ParentRecordNotDraft_ReturnsBadRequest()
+    {
+        var (rec, offices, programs, projects, activities) = SeedDeleteTree(PlanningStatus.Final);
+        var (sut, _, _, _, _, _, _, _, _, _, _, activityRepo) =
+            Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
+
+        ServiceResult<bool> result = await sut.DeleteActivityAsync(50);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        activityRepo.Verify(r => r.DeleteAsync(It.IsAny<AipActivity>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

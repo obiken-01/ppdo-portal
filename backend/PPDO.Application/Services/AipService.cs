@@ -601,16 +601,92 @@ public sealed class AipService : IAipService
         return ServiceResult<AipActivityDto>.Ok(MapActivityToDto(entity));
     }
 
-    /// <summary>Shared Draft-status guard for the manual-entry Add* methods, keyed off the
-    /// AipRecord reached by walking up from whichever node the caller is adding under.</summary>
-    private async Task<ServiceResult<T>?> CheckDraftAsync<T>(int aipRecordId, CancellationToken ct)
+    // ── Delete (mistakes happen — mirrors the Add* guard chain) ───────────────
+
+    public async Task<ServiceResult<bool>> DeleteProgramAsync(int programId, CancellationToken ct = default)
+    {
+        AipProgram? program = await _aipRepo.GetProgramByIdAsync(programId, ct);
+        if (program is null)
+            return ServiceResult<bool>.NotFound($"AIP program {programId} not found.");
+
+        AipOffice? office = await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
+        if (office is null)
+            return ServiceResult<bool>.NotFound($"AIP office {program.OfficeId} not found.");
+
+        ServiceResult<bool>? statusError = await CheckDraftAsync<bool>(office.AipRecordId, ct, "delete from");
+        if (statusError is not null) return statusError;
+
+        // DB cascade (AipProgram -> AipProject -> AipActivity) removes the whole subtree.
+        await _programRepo.DeleteAsync(program, ct);
+        await _programRepo.SaveChangesAsync(ct);
+        await _audit.LogAsync("aip_programs", program.Id, AuditAction.Delete,
+            new { program.OfficeId, program.RefCode, program.Name }, null, ct);
+
+        return ServiceResult<bool>.Ok(true);
+    }
+
+    public async Task<ServiceResult<bool>> DeleteProjectAsync(int projectId, CancellationToken ct = default)
+    {
+        AipProject? project = await _aipRepo.GetProjectByIdAsync(projectId, ct);
+        if (project is null)
+            return ServiceResult<bool>.NotFound($"AIP project {projectId} not found.");
+
+        AipProgram? program = await _aipRepo.GetProgramByIdAsync(project.ProgramId, ct);
+        if (program is null)
+            return ServiceResult<bool>.NotFound($"AIP program {project.ProgramId} not found.");
+        AipOffice? office = await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
+        if (office is null)
+            return ServiceResult<bool>.NotFound($"AIP office {program.OfficeId} not found.");
+
+        ServiceResult<bool>? statusError = await CheckDraftAsync<bool>(office.AipRecordId, ct, "delete from");
+        if (statusError is not null) return statusError;
+
+        // DB cascade (AipProject -> AipActivity) removes the activities under it.
+        await _projectRepo.DeleteAsync(project, ct);
+        await _projectRepo.SaveChangesAsync(ct);
+        await _audit.LogAsync("aip_projects", project.Id, AuditAction.Delete,
+            new { project.ProgramId, project.RefCode, project.Name }, null, ct);
+
+        return ServiceResult<bool>.Ok(true);
+    }
+
+    public async Task<ServiceResult<bool>> DeleteActivityAsync(int activityId, CancellationToken ct = default)
+    {
+        AipActivity? activity = await _aipRepo.GetActivityByIdAsync(activityId, ct);
+        if (activity is null)
+            return ServiceResult<bool>.NotFound($"AIP activity {activityId} not found.");
+
+        AipProject? project = await _aipRepo.GetProjectByIdAsync(activity.ProjectId, ct);
+        if (project is null)
+            return ServiceResult<bool>.NotFound($"AIP project {activity.ProjectId} not found.");
+        AipProgram? program = await _aipRepo.GetProgramByIdAsync(project.ProgramId, ct);
+        if (program is null)
+            return ServiceResult<bool>.NotFound($"AIP program {project.ProgramId} not found.");
+        AipOffice? office = await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
+        if (office is null)
+            return ServiceResult<bool>.NotFound($"AIP office {program.OfficeId} not found.");
+
+        ServiceResult<bool>? statusError = await CheckDraftAsync<bool>(office.AipRecordId, ct, "delete from");
+        if (statusError is not null) return statusError;
+
+        await _activityRepo.DeleteAsync(activity, ct);
+        await _activityRepo.SaveChangesAsync(ct);
+        await _audit.LogAsync("aip_activities", activity.Id, AuditAction.Delete,
+            new { activity.ProjectId, activity.RefCode, activity.Name }, null, ct);
+
+        return ServiceResult<bool>.Ok(true);
+    }
+
+    /// <summary>Shared Draft-status guard for the manual-entry Add*/Delete* methods, keyed off
+    /// the AipRecord reached by walking up from whichever node the caller is touching.</summary>
+    private async Task<ServiceResult<T>?> CheckDraftAsync<T>(int aipRecordId, CancellationToken ct, string action = "add to")
     {
         AipRecord? rec = await _aipRepo.GetByIntIdAsync(aipRecordId, ct);
         if (rec is null)
             return ServiceResult<T>.NotFound($"AIP record {aipRecordId} not found.");
         if (rec.Status != PlanningStatus.Draft)
             return ServiceResult<T>.BadRequest(
-                $"Cannot add to a '{rec.Status}' record. Unlock it back to Draft first.");
+                $"Cannot {action} a '{rec.Status}' record. Unlock it back to Draft first.");
         return null;
     }
 

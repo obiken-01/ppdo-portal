@@ -218,6 +218,44 @@ public sealed class AipFunctions
             await _aip.AddActivityAsync(projectId, body, ct), ct, HttpStatusCode.Created);
     }
 
+    // ── DELETE /api/budget-planning/aip/programs/{programId} ─────────────────
+    // Mistakes happen (e.g. data entered under the wrong level) — Draft-only, cascades
+    // to the program's projects/activities.
+    [Function("AipDeleteProgram")]
+    public async Task<HttpResponseData> DeleteProgram(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "budget-planning/aip/programs/{programId:int}")] HttpRequestData req,
+        int programId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        return await ConfigHttp.FromResultAsync(req, await _aip.DeleteProgramAsync(programId, ct), ct);
+    }
+
+    // ── DELETE /api/budget-planning/aip/projects/{projectId} ─────────────────
+    [Function("AipDeleteProject")]
+    public async Task<HttpResponseData> DeleteProject(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "budget-planning/aip/projects/{projectId:int}")] HttpRequestData req,
+        int projectId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        return await ConfigHttp.FromResultAsync(req, await _aip.DeleteProjectAsync(projectId, ct), ct);
+    }
+
+    // ── DELETE /api/budget-planning/aip/activities/{activityId} ──────────────
+    [Function("AipDeleteActivity")]
+    public async Task<HttpResponseData> DeleteActivity(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "budget-planning/aip/activities/{activityId:int}")] HttpRequestData req,
+        int activityId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        return await ConfigHttp.FromResultAsync(req, await _aip.DeleteActivityAsync(activityId, ct), ct);
+    }
+
     // ── DELETE /api/budget-planning/aip/{id}  (archive) ──────────────────────
     [Function("AipArchive")]
     public async Task<HttpResponseData> Archive(
