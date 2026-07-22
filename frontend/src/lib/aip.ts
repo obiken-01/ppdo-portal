@@ -18,6 +18,9 @@ import type {
   CreateAipProjectRequest,
   CreateAipActivityRequest,
   UpdateAipActivityRequest,
+  UpdateAipOfficeRequest,
+  UpdateAipProgramRequest,
+  UpdateAipProjectRequest,
   AipOfficeDetail,
   AipProgramDetail,
   AipProjectDetail,
@@ -127,6 +130,11 @@ export async function addAipActivity(projectId: number, body: CreateAipActivityR
 }
 
 // Mistakes happen (e.g. data entered under the wrong level) — Draft-only, cascades to children.
+export async function deleteAipOffice(officeId: number): Promise<void> {
+  const { data } = await api.delete<ApiResponse<boolean>>(`/budget-planning/aip/offices/${officeId}`);
+  unwrap(data);
+}
+
 export async function deleteAipProgram(programId: number): Promise<void> {
   const { data } = await api.delete<ApiResponse<boolean>>(`/budget-planning/aip/programs/${programId}`);
   unwrap(data);
@@ -152,6 +160,25 @@ export async function updateAipActivity(
   const { data } = await api.put<ApiResponse<AipActivityDetail>>(
     `/budget-planning/aip/${aipRecordId}/activities/${activityId}`, body
   );
+  return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// AIP inline office/program/project edit (detail-page CRUD)
+// ---------------------------------------------------------------------------
+
+export async function updateAipOffice(officeId: number, body: UpdateAipOfficeRequest): Promise<AipOfficeDetail> {
+  const { data } = await api.put<ApiResponse<AipOfficeDetail>>(`/budget-planning/aip/offices/${officeId}`, body);
+  return unwrap(data);
+}
+
+export async function updateAipProgram(programId: number, body: UpdateAipProgramRequest): Promise<AipProgramDetail> {
+  const { data } = await api.put<ApiResponse<AipProgramDetail>>(`/budget-planning/aip/programs/${programId}`, body);
+  return unwrap(data);
+}
+
+export async function updateAipProject(projectId: number, body: UpdateAipProjectRequest): Promise<AipProjectDetail> {
+  const { data } = await api.put<ApiResponse<AipProjectDetail>>(`/budget-planning/aip/projects/${projectId}`, body);
   return unwrap(data);
 }
 

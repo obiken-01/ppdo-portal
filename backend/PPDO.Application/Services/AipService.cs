@@ -607,6 +607,118 @@ public sealed class AipService : IAipService
         return ServiceResult<AipActivityDto>.Ok(MapActivityToDto(entity));
     }
 
+    // ── Inline office/program/project edit (detail-page CRUD follow-up to RAL-179) ──
+
+    public async Task<ServiceResult<AipOfficeDto>> UpdateOfficeAsync(
+        int officeId, UpdateAipOfficeDto dto, CancellationToken ct = default)
+    {
+        AipOffice? office = await _aipRepo.GetOfficeByIdAsync(officeId, ct);
+        if (office is null)
+            return ServiceResult<AipOfficeDto>.NotFound($"AIP office {officeId} not found.");
+
+        ServiceResult<AipOfficeDto>? statusError = await CheckDraftAsync<AipOfficeDto>(office.AipRecordId, ct, "edit");
+        if (statusError is not null) return statusError;
+
+        if (string.IsNullOrWhiteSpace(dto.Name))
+            return ServiceResult<AipOfficeDto>.BadRequest("Office name is required.");
+
+        string newName = dto.Name.Trim();
+
+        // Same RefCode+Name collision guard as AddOfficeAsync — a rename can't land on another
+        // sibling's exact (RefCode, Name), but same-RefCode-different-name (sub-offices) is fine.
+        IReadOnlyList<AipOffice> siblings = await _aipRepo.GetOfficesByAipIdAsync(office.AipRecordId, ct);
+        if (siblings.Any(o => o.Id != officeId && o.RefCode == office.RefCode
+            && o.Name.Equals(newName, StringComparison.OrdinalIgnoreCase)))
+            return ServiceResult<AipOfficeDto>.BadRequest(
+                $"'{newName}' already exists under this AIP for that ref code.");
+
+        string oldName = office.Name;
+        office.Name = newName;
+        await _officeRepo.SaveChangesAsync(ct);
+        await _audit.LogAsync("aip_offices", office.Id, AuditAction.Update,
+            new { Name = oldName }, new { office.Name }, ct);
+
+        return ServiceResult<AipOfficeDto>.Ok(
+            new AipOfficeDto(office.Id, office.AipRecordId, office.RefCode, office.Name, office.Sector,
+                Array.Empty<AipProgramDto>()));
+    }
+
+    public async Task<ServiceResult<AipProgramDto>> UpdateProgramAsync(
+        int programId, UpdateAipProgramDto dto, CancellationToken ct = default)
+    {
+        AipProgram? program = await _aipRepo.GetProgramByIdAsync(programId, ct);
+        if (program is null)
+            return ServiceResult<AipProgramDto>.NotFound($"AIP program {programId} not found.");
+
+        AipOffice? office = await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
+        if (office is null)
+            return ServiceResult<AipProgramDto>.NotFound($"AIP office {program.OfficeId} not found.");
+
+        ServiceResult<AipProgramDto>? statusError = await CheckDraftAsync<AipProgramDto>(office.AipRecordId, ct, "edit");
+        if (statusError is not null) return statusError;
+
+        if (string.IsNullOrWhiteSpace(dto.Name))
+            return ServiceResult<AipProgramDto>.BadRequest("Program name is required.");
+
+        string functionBand;
+        if (string.IsNullOrWhiteSpace(dto.FunctionBand))
+        {
+            functionBand = program.FunctionBand ?? AipFunctionBand.Core;
+        }
+        else if (!TryCanonicalizeFunctionBand(dto.FunctionBand, out string? canonical, out string? error))
+        {
+            return ServiceResult<AipProgramDto>.BadRequest(error!);
+        }
+        else
+        {
+            functionBand = canonical!;
+        }
+
+        object old = new { program.Name, program.FunctionBand };
+        program.Name         = dto.Name.Trim();
+        program.FunctionBand = functionBand;
+        await _aipRepo.SaveChangesAsync(ct);
+        await _audit.LogAsync("aip_programs", program.Id, AuditAction.Update,
+            old, new { program.Name, program.FunctionBand }, ct);
+
+        // Field-update response — Projects intentionally omitted, same convention as
+        // UpdateProgramFunctionBandAsync (callers patch their own local state by field).
+        return ServiceResult<AipProgramDto>.Ok(new AipProgramDto(
+            program.Id, program.OfficeId, program.RefCode, program.Name,
+            Array.Empty<AipProjectDto>(), program.FunctionBand));
+    }
+
+    public async Task<ServiceResult<AipProjectDto>> UpdateProjectAsync(
+        int projectId, UpdateAipProjectDto dto, CancellationToken ct = default)
+    {
+        AipProject? project = await _aipRepo.GetProjectByIdAsync(projectId, ct);
+        if (project is null)
+            return ServiceResult<AipProjectDto>.NotFound($"AIP project {projectId} not found.");
+
+        AipProgram? program = await _aipRepo.GetProgramByIdAsync(project.ProgramId, ct);
+        if (program is null)
+            return ServiceResult<AipProjectDto>.NotFound($"AIP program {project.ProgramId} not found.");
+        AipOffice? office = await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
+        if (office is null)
+            return ServiceResult<AipProjectDto>.NotFound($"AIP office {program.OfficeId} not found.");
+
+        ServiceResult<AipProjectDto>? statusError = await CheckDraftAsync<AipProjectDto>(office.AipRecordId, ct, "edit");
+        if (statusError is not null) return statusError;
+
+        if (string.IsNullOrWhiteSpace(dto.Name))
+            return ServiceResult<AipProjectDto>.BadRequest("Project name is required.");
+
+        string oldName = project.Name;
+        project.Name = dto.Name.Trim();
+        await _aipRepo.SaveChangesAsync(ct);
+        await _audit.LogAsync("aip_projects", project.Id, AuditAction.Update,
+            new { Name = oldName }, new { project.Name }, ct);
+
+        return ServiceResult<AipProjectDto>.Ok(
+            new AipProjectDto(project.Id, project.ProgramId, project.RefCode, project.Name,
+                Array.Empty<AipActivityDto>(), project.IsSynthetic));
+    }
+
     // ── Inline activity edit (RAL-179) ────────────────────────────────────────
 
     public async Task<ServiceResult<AipActivityDto>> UpdateActivityAsync(
@@ -689,6 +801,24 @@ public sealed class AipService : IAipService
     }
 
     // ── Delete (mistakes happen — mirrors the Add* guard chain) ───────────────
+
+    public async Task<ServiceResult<bool>> DeleteOfficeAsync(int officeId, CancellationToken ct = default)
+    {
+        AipOffice? office = await _aipRepo.GetOfficeByIdAsync(officeId, ct);
+        if (office is null)
+            return ServiceResult<bool>.NotFound($"AIP office {officeId} not found.");
+
+        ServiceResult<bool>? statusError = await CheckDraftAsync<bool>(office.AipRecordId, ct, "delete from");
+        if (statusError is not null) return statusError;
+
+        // DB cascade (AipOffice -> AipProgram -> AipProject -> AipActivity) removes the whole subtree.
+        await _officeRepo.DeleteAsync(office, ct);
+        await _officeRepo.SaveChangesAsync(ct);
+        await _audit.LogAsync("aip_offices", office.Id, AuditAction.Delete,
+            new { office.AipRecordId, office.RefCode, office.Name, office.Sector }, null, ct);
+
+        return ServiceResult<bool>.Ok(true);
+    }
 
     public async Task<ServiceResult<bool>> DeleteProgramAsync(int programId, CancellationToken ct = default)
     {

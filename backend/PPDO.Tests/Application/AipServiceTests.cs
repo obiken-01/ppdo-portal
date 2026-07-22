@@ -1915,4 +1915,252 @@ public sealed class AipServiceTests
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
         activityRepo.Verify(r => r.DeleteAsync(It.IsAny<AipActivity>(), It.IsAny<CancellationToken>()), Times.Never);
     }
+
+    // ── UpdateOfficeAsync / UpdateProgramAsync / UpdateProjectAsync / DeleteOfficeAsync ──
+
+    [Fact]
+    public async Task UpdateOffice_ValidName_UpdatesInPlace()
+    {
+        var (rec, offices, programs, projects, activities) = SeedDeleteTree();
+        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
+
+        ServiceResult<AipOfficeDto> result = await sut.UpdateOfficeAsync(20, new UpdateAipOfficeDto("New Office Name"));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("New Office Name", result.Value!.Name);
+        Assert.Equal("1000-000-1-01-010", result.Value.RefCode);
+    }
+
+    [Fact]
+    public async Task UpdateOffice_EmptyName_ReturnsBadRequest()
+    {
+        var (rec, offices, programs, projects, activities) = SeedDeleteTree();
+        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
+
+        ServiceResult<AipOfficeDto> result = await sut.UpdateOfficeAsync(20, new UpdateAipOfficeDto("   "));
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task UpdateOffice_SameRefCodeDifferentNameSibling_Allowed()
+    {
+        var (rec, offices, programs, projects, activities) = SeedDeleteTree();
+        offices.Add(new AipOffice { Id = 21, AipRecordId = 1, RefCode = "1000-000-1-01-010", Name = "Sibling Sub-Office", Sector = "GENERAL" });
+        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
+
+        ServiceResult<AipOfficeDto> result = await sut.UpdateOfficeAsync(20, new UpdateAipOfficeDto("A Different Name"));
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task UpdateOffice_SameRefCodeSameNameAsSibling_ReturnsBadRequest()
+    {
+        var (rec, offices, programs, projects, activities) = SeedDeleteTree();
+        offices.Add(new AipOffice { Id = 21, AipRecordId = 1, RefCode = "1000-000-1-01-010", Name = "Sibling Sub-Office", Sector = "GENERAL" });
+        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
+
+        ServiceResult<AipOfficeDto> result = await sut.UpdateOfficeAsync(20, new UpdateAipOfficeDto("Sibling Sub-Office"));
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task UpdateOffice_NotFound_ReturnsNotFound()
+    {
+        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
+
+        ServiceResult<AipOfficeDto> result = await sut.UpdateOfficeAsync(999, new UpdateAipOfficeDto("Name"));
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Fact]
+    public async Task UpdateOffice_ParentRecordNotDraft_ReturnsBadRequest()
+    {
+        var (rec, offices, programs, projects, activities) = SeedDeleteTree(PlanningStatus.Final);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
+
+        ServiceResult<AipOfficeDto> result = await sut.UpdateOfficeAsync(20, new UpdateAipOfficeDto("Name"));
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task UpdateProgram_ValidNameAndFunctionBand_UpdatesInPlace()
+    {
+        var (rec, offices, programs, projects, activities) = SeedDeleteTree();
+        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
+
+        ServiceResult<AipProgramDto> result = await sut.UpdateProgramAsync(30, new UpdateAipProgramDto("New Program Name", "STRATEGIC"));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("New Program Name", result.Value!.Name);
+        Assert.Equal("STRATEGIC", result.Value.FunctionBand);
+    }
+
+    [Fact]
+    public async Task UpdateProgram_BlankFunctionBand_KeepsExisting()
+    {
+        var (rec, offices, programs, projects, activities) = SeedDeleteTree();
+        programs[0].FunctionBand = "SUPPORT";
+        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
+
+        ServiceResult<AipProgramDto> result = await sut.UpdateProgramAsync(30, new UpdateAipProgramDto("New Name", null));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("SUPPORT", result.Value!.FunctionBand);
+    }
+
+    [Fact]
+    public async Task UpdateProgram_EmptyName_ReturnsBadRequest()
+    {
+        var (rec, offices, programs, projects, activities) = SeedDeleteTree();
+        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
+
+        ServiceResult<AipProgramDto> result = await sut.UpdateProgramAsync(30, new UpdateAipProgramDto("  ", null));
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task UpdateProgram_InvalidFunctionBand_ReturnsBadRequest()
+    {
+        var (rec, offices, programs, projects, activities) = SeedDeleteTree();
+        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
+
+        ServiceResult<AipProgramDto> result = await sut.UpdateProgramAsync(30, new UpdateAipProgramDto("Name", "BOGUS"));
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task UpdateProgram_NotFound_ReturnsNotFound()
+    {
+        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
+
+        ServiceResult<AipProgramDto> result = await sut.UpdateProgramAsync(999, new UpdateAipProgramDto("Name", null));
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Fact]
+    public async Task UpdateProgram_ParentRecordNotDraft_ReturnsBadRequest()
+    {
+        var (rec, offices, programs, projects, activities) = SeedDeleteTree(PlanningStatus.Final);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
+
+        ServiceResult<AipProgramDto> result = await sut.UpdateProgramAsync(30, new UpdateAipProgramDto("Name", null));
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task UpdateProject_ValidName_UpdatesInPlace()
+    {
+        var (rec, offices, programs, projects, activities) = SeedDeleteTree();
+        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
+
+        ServiceResult<AipProjectDto> result = await sut.UpdateProjectAsync(40, new UpdateAipProjectDto("New Project Name"));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("New Project Name", result.Value!.Name);
+    }
+
+    [Fact]
+    public async Task UpdateProject_EmptyName_ReturnsBadRequest()
+    {
+        var (rec, offices, programs, projects, activities) = SeedDeleteTree();
+        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
+
+        ServiceResult<AipProjectDto> result = await sut.UpdateProjectAsync(40, new UpdateAipProjectDto(" "));
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task UpdateProject_NotFound_ReturnsNotFound()
+    {
+        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
+
+        ServiceResult<AipProjectDto> result = await sut.UpdateProjectAsync(999, new UpdateAipProjectDto("Name"));
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Fact]
+    public async Task UpdateProject_ParentRecordNotDraft_ReturnsBadRequest()
+    {
+        var (rec, offices, programs, projects, activities) = SeedDeleteTree(PlanningStatus.Final);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
+
+        ServiceResult<AipProjectDto> result = await sut.UpdateProjectAsync(40, new UpdateAipProjectDto("Name"));
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task DeleteOffice_ExistingDraftOffice_RemovesIt()
+    {
+        var (rec, offices, programs, projects, activities) = SeedDeleteTree();
+        var (sut, _, _, _, _, _, officeRepo, _, _, _, _, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
+
+        ServiceResult<bool> result = await sut.DeleteOfficeAsync(20);
+
+        Assert.True(result.IsSuccess);
+        officeRepo.Verify(r => r.DeleteAsync(
+            It.Is<AipOffice>(o => o.Id == 20), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.DoesNotContain(offices, o => o.Id == 20);
+    }
+
+    [Fact]
+    public async Task DeleteOffice_NotFound_ReturnsNotFound()
+    {
+        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
+
+        ServiceResult<bool> result = await sut.DeleteOfficeAsync(999);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Fact]
+    public async Task DeleteOffice_ParentRecordNotDraft_ReturnsBadRequest()
+    {
+        var (rec, offices, programs, projects, activities) = SeedDeleteTree(PlanningStatus.Final);
+        var (sut, _, _, _, _, _, officeRepo, _, _, _, _, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
+
+        ServiceResult<bool> result = await sut.DeleteOfficeAsync(20);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        officeRepo.Verify(r => r.DeleteAsync(It.IsAny<AipOffice>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
 }

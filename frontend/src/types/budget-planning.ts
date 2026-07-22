@@ -140,6 +140,21 @@ export interface UpdateAipActivityRequest {
   ccTypologyCode?: string | null;
 }
 
+// ── AIP inline office/program/project edit (detail-page CRUD) ────────────────
+
+export interface UpdateAipOfficeRequest {
+  name: string;
+}
+
+export interface UpdateAipProgramRequest {
+  name: string;
+  functionBand?: string | null;
+}
+
+export interface UpdateAipProjectRequest {
+  name: string;
+}
+
 // ── AIP detail (stored hierarchy) ────────────────────────────────────────────
 
 export interface AipActivityDetail {

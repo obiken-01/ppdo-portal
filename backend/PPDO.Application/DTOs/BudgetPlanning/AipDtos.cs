@@ -205,6 +205,23 @@ public record UpdateAipActivityDto(
     decimal? CcMitigation,
     string?  CcTypologyCode);
 
+// ── Inline office/program/project edit (detail-page CRUD follow-up to RAL-179) ─
+// RefCode/Sector/hierarchy position stay immutable through these endpoints, same
+// principle as UpdateAipActivityDto — only the human-facing fields are editable.
+
+/// <summary>Body of PUT /api/budget-planning/aip/offices/{officeId}. Only Name is editable —
+/// RefCode/Sector stay fixed (changing sector would change the ref-code prefix, a structural
+/// move, not a field correction).</summary>
+public record UpdateAipOfficeDto(string Name);
+
+/// <summary>Body of PUT /api/budget-planning/aip/programs/{programId}. Separate from the
+/// narrower PUT .../programs/{id}/function-band endpoint (v1.4 WFP entry context picker,
+/// unchanged) — this one is the detail page's full name+band edit.</summary>
+public record UpdateAipProgramDto(string Name, string? FunctionBand);
+
+/// <summary>Body of PUT /api/budget-planning/aip/projects/{projectId}. Only Name is editable.</summary>
+public record UpdateAipProjectDto(string Name);
+
 // ── Slim WFP-grid DTOs (RAL-89) ───────────────────────────────────────────────
 
 /// <summary>

@@ -10,7 +10,9 @@ import {
   deleteAipProgram, deleteAipProject, deleteAipActivity,
 } from "@/lib/aip";
 import { listOffices, listFundingSources } from "@/lib/config";
-import { AIP_MONTHS, AIP_ESRE_OPTIONS } from "@/lib/aipConstants";
+import {
+  AIP_MONTHS, AIP_ESRE_OPTIONS, AIP_SECTOR_OPTIONS, AIP_SECTOR_PREFIX, AIP_FUNCTION_BANDS,
+} from "@/lib/aipConstants";
 import MoneyInput from "@/components/ui/MoneyInput";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import type {
@@ -21,15 +23,6 @@ import type {
 const CURRENT_YEAR = new Date().getFullYear();
 const FY_OPTIONS = [CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1, CURRENT_YEAR + 2];
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
-
-// ── Manual entry constants (RAL-62) ───────────────────────────────────────────
-
-const SECTOR_OPTIONS = ["GENERAL", "SOCIAL", "ECONOMIC", "OTHERS"] as const;
-// Numeric prefix each sector contributes to an office-level (5-segment) AIP ref code —
-// {prefix}-000-1-{Office.OfficeRefCode}. Client-side mirror of AipSector.Prefixes on the
-// backend, used only for the live ref-code preview; the server computes the real value.
-const SECTOR_PREFIX: Record<string, string> = { GENERAL: "1000", SOCIAL: "3000", ECONOMIC: "8000", OTHERS: "9000" };
-const FUNCTION_BAND_OPTIONS = ["CORE", "STRATEGIC", "SUPPORT"];
 
 /** Next zero-padded 3-digit segment after the highest existing sibling suffix — a client-side
  * preview only; the server (AipService.NextRefCode) computes the value actually persisted. */
@@ -653,7 +646,7 @@ function ManualEntryTab() {
                 onChange={(e) => setSector(e.target.value)}
                 className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
               >
-                {SECTOR_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                {AIP_SECTOR_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
           </div>
@@ -679,7 +672,7 @@ function ManualEntryTab() {
             <p className="text-xs text-slate-600">
               Ref code preview:{" "}
               <span className="font-mono text-slate-700">
-                {SECTOR_PREFIX[sector]}-000-1-{officeConfigs.find((o) => String(o.id) === officeConfigId)?.officeRefCode ?? "…"}
+                {AIP_SECTOR_PREFIX[sector]}-000-1-{officeConfigs.find((o) => String(o.id) === officeConfigId)?.officeRefCode ?? "…"}
               </span>
             </p>
           )}
@@ -721,7 +714,7 @@ function ManualEntryTab() {
                   onChange={(e) => setFunctionBand(e.target.value)}
                   className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
                 >
-                  {FUNCTION_BAND_OPTIONS.map((b) => <option key={b} value={b}>{b}</option>)}
+                  {AIP_FUNCTION_BANDS.map((b) => <option key={b} value={b}>{b}</option>)}
                 </select>
               </div>
             </div>
