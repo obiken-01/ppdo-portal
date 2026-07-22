@@ -1312,13 +1312,18 @@ export default function AipDetailPage() {
   }, [me]);
 
   const sectors = useMemo(() => record ? groupBySector(record.offices) : [], [record]);
+  // Stable key (not `sectors` itself, a new array reference on every edit) — only changes when
+  // the actual set of sector tabs changes, e.g. the first office ever added to a blank Draft
+  // record built from scratch on this page, or the last office of a sector being deleted.
+  const sectorKeys = useMemo(() => sectors.map(([s]) => s).join(","), [sectors]);
 
-  // On record load: activate first sector tab, collapse everything. Keyed off record?.id (not
-  // `sectors`, which is a new array reference on every render since RAL-179 started calling
-  // setRecord for in-place activity edits) — otherwise saving one activity's edit would reset
-  // the whole tab/expand state back to the first sector, fully collapsed, every time.
+  // Activate the first sector tab whenever the current tab no longer exists — on initial load,
+  // and whenever a sector appears/disappears (e.g. adding the first office to an empty record).
+  // Deliberately NOT keyed off every `sectors` change — otherwise saving one activity's edit
+  // would reset the whole tab/expand state back to the first sector, fully collapsed, every time.
   useEffect(() => {
-    if (!sectors.length) return;
+    if (!sectors.length) { setActiveTab(""); return; }
+    if (sectors.some(([s]) => s === activeTab)) return;
     const [firstSector, firstOffices] = sectors[0];
     setActiveTab(firstSector);
     const c = allCollapsed(firstOffices);
@@ -1326,7 +1331,7 @@ export default function AipDetailPage() {
     setCollapsedPrograms(c.programs);
     setCollapsedProjects(c.projects);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [record?.id]);
+  }, [sectorKeys]);
 
   // On tab switch: collapse all nodes in the new sector so only office rows render.
   const handleTabChange = useCallback((sector: string, offices: AipOfficeDetail[]) => {
