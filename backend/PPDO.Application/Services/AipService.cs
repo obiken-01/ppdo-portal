@@ -436,17 +436,23 @@ public sealed class AipService : IAipService
 
         string sector  = dto.Sector!.Trim().ToUpperInvariant();
         string refCode = $"{prefix}-000-1-{office.OfficeRefCode}";
+        string name    = string.IsNullOrWhiteSpace(dto.Name) ? office.OfficeName : dto.Name.Trim();
 
+        // Same RefCode CAN legitimately repeat for the same office (real AIP files list several
+        // sub-office/program-cluster rows under one physical office, e.g. "OFFICE OF THE GOVERNOR
+        // - WARDEN" and "OFFICE OF THE GOVERNOR - AKAP-HUB" both under ref code 3000-000-1-01-001)
+        // — so only reject a RefCode+Name pair that's an exact repeat (an accidental double-add),
+        // not every repeat of the RefCode alone.
         IReadOnlyList<AipOffice> siblings = await _aipRepo.GetOfficesByAipIdAsync(aipRecordId, ct);
-        if (siblings.Any(o => o.RefCode == refCode))
+        if (siblings.Any(o => o.RefCode == refCode && o.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
             return ServiceResult<AipOfficeDto>.BadRequest(
-                $"'{office.OfficeName}' is already added to this AIP under {sector}.");
+                $"'{name}' is already added to this AIP under {sector}.");
 
         AipOffice entity = new()
         {
             AipRecordId = aipRecordId,
             RefCode     = refCode,
-            Name        = office.OfficeName,
+            Name        = name,
             Sector      = sector,
         };
         await _officeRepo.AddAsync(entity, ct);

@@ -1278,6 +1278,71 @@ public sealed class AipServiceTests
     }
 
     [Fact]
+    public async Task AddOffice_WithNameOverride_UsesProvidedNameNotConfigName()
+    {
+        AipRecord rec = Rec(1, PlanningStatus.Draft);
+        List<Office> offices = [MakeOffice(7, "PPDO", "01-010")];
+        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
+
+        ServiceResult<AipOfficeDto> result = await sut.AddOfficeAsync(
+            1, new CreateAipOfficeDto(7, "ECONOMIC", "Provincial Planning and Development Office - Special Projects"));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Provincial Planning and Development Office - Special Projects", result.Value!.Name);
+        Assert.Equal("8000-000-1-01-010", result.Value.RefCode);
+    }
+
+    [Fact]
+    public async Task AddOffice_BlankNameOverride_FallsBackToConfigOfficeName()
+    {
+        AipRecord rec = Rec(1, PlanningStatus.Draft);
+        List<Office> offices = [MakeOffice(7, "PPDO", "01-010")];
+        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
+
+        ServiceResult<AipOfficeDto> result = await sut.AddOfficeAsync(
+            1, new CreateAipOfficeDto(7, "GENERAL", "   "));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("PPDO", result.Value!.Name);
+    }
+
+    [Fact]
+    public async Task AddOffice_SameRefCodeDifferentName_BothAllowed_SubOfficePattern()
+    {
+        // Real AIP data: "OFFICE OF THE GOVERNOR - WARDEN" and "OFFICE OF THE GOVERNOR - AKAP-HUB"
+        // both appear under the SAME ref code (sub-office / program-cluster rows sharing one
+        // physical office) — the guard must key off RefCode+Name, not RefCode alone.
+        AipRecord rec = Rec(1, PlanningStatus.Draft);
+        List<Office> offices = [MakeOffice(7, "Office of the Governor", "01-001")];
+        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
+
+        ServiceResult<AipOfficeDto> first  = await sut.AddOfficeAsync(
+            1, new CreateAipOfficeDto(7, "SOCIAL", "Office of the Governor - Warden"));
+        ServiceResult<AipOfficeDto> second = await sut.AddOfficeAsync(
+            1, new CreateAipOfficeDto(7, "SOCIAL", "Office of the Governor - AKAP-HUB"));
+
+        Assert.True(first.IsSuccess);
+        Assert.True(second.IsSuccess);
+        Assert.Equal(first.Value!.RefCode, second.Value!.RefCode);
+        Assert.NotEqual(first.Value.Name, second.Value.Name);
+    }
+
+    [Fact]
+    public async Task AddOffice_SameRefCodeSameNameTwice_ReturnsBadRequest()
+    {
+        AipRecord rec = Rec(1, PlanningStatus.Draft);
+        List<Office> offices = [MakeOffice(7, "Office of the Governor", "01-001")];
+        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
+
+        await sut.AddOfficeAsync(1, new CreateAipOfficeDto(7, "SOCIAL", "Office of the Governor - Warden"));
+        ServiceResult<AipOfficeDto> second = await sut.AddOfficeAsync(
+            1, new CreateAipOfficeDto(7, "SOCIAL", "office of the governor - warden"));
+
+        Assert.False(second.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, second.Code);
+    }
+
+    [Fact]
     public async Task AddOffice_InvalidSector_ReturnsBadRequest()
     {
         AipRecord rec = Rec(1, PlanningStatus.Draft);
