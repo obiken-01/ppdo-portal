@@ -121,6 +121,40 @@ export interface CreateAipActivityRequest {
   ccTypologyCode?: string | null;
 }
 
+// ── AIP inline activity edit (RAL-179) ────────────────────────────────────────
+
+export interface UpdateAipActivityRequest {
+  name: string;
+  esreCode?: string | null;
+  implementingOffice?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  expectedOutputs?: string | null;
+  /** Direct FK to a config FundingSource row — the UI offers a dropdown, so there's nothing to match. */
+  fundingSourceId?: number | null;
+  ps?: number | null;
+  mooe?: number | null;
+  co?: number | null;
+  ccAdaptation?: number | null;
+  ccMitigation?: number | null;
+  ccTypologyCode?: string | null;
+}
+
+// ── AIP inline office/program/project edit (detail-page CRUD) ────────────────
+
+export interface UpdateAipOfficeRequest {
+  name: string;
+}
+
+export interface UpdateAipProgramRequest {
+  name: string;
+  functionBand?: string | null;
+}
+
+export interface UpdateAipProjectRequest {
+  name: string;
+}
+
 // ── AIP detail (stored hierarchy) ────────────────────────────────────────────
 
 export interface AipActivityDetail {

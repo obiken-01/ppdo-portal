@@ -65,6 +65,30 @@ public interface IAipService
     Task<ServiceResult<AipActivityDto>> AddActivityAsync(
         int projectId, CreateAipActivityDto dto, CancellationToken ct = default);
 
+    /// <summary>RAL-179 — updates an existing activity's editable fields in place. RefCode,
+    /// ProjectId, and identity are immutable; FundingSourceId re-resolves FundingSourceSnapshot.
+    /// Only allowed while the parent AipRecord is Draft. <paramref name="aipRecordId"/> is a
+    /// defensive cross-check that the activity actually belongs to that record.</summary>
+    Task<ServiceResult<AipActivityDto>> UpdateActivityAsync(
+        int aipRecordId, int activityId, UpdateAipActivityDto dto, CancellationToken ct = default);
+
+    /// <summary>Renames an office (only Name is editable — RefCode/Sector are immutable).
+    /// Draft-only.</summary>
+    Task<ServiceResult<AipOfficeDto>> UpdateOfficeAsync(
+        int officeId, UpdateAipOfficeDto dto, CancellationToken ct = default);
+
+    /// <summary>Updates a program's Name and FunctionBand together (detail-page full edit,
+    /// distinct from the narrower UpdateProgramFunctionBandAsync used by WFP entry). Draft-only.</summary>
+    Task<ServiceResult<AipProgramDto>> UpdateProgramAsync(
+        int programId, UpdateAipProgramDto dto, CancellationToken ct = default);
+
+    /// <summary>Renames a project (only Name is editable). Draft-only.</summary>
+    Task<ServiceResult<AipProjectDto>> UpdateProjectAsync(
+        int projectId, UpdateAipProjectDto dto, CancellationToken ct = default);
+
+    /// <summary>Deletes an office and its whole subtree (programs, projects, activities). Draft-only.</summary>
+    Task<ServiceResult<bool>> DeleteOfficeAsync(int officeId, CancellationToken ct = default);
+
     /// <summary>Deletes a program and its whole subtree (projects, activities). Draft-only.</summary>
     Task<ServiceResult<bool>> DeleteProgramAsync(int programId, CancellationToken ct = default);
 

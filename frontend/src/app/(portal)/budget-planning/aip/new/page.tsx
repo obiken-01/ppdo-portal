@@ -4,53 +4,11 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useMe } from "@/lib/me-cache";
-import {
-  aipErrorMessage, getAipById, uploadAipFile,
-  createManualAipRecord, addAipOffice, addAipProgram, addAipProject, addAipActivity,
-  deleteAipProgram, deleteAipProject, deleteAipActivity,
-} from "@/lib/aip";
-import { listOffices, listFundingSources } from "@/lib/config";
-import MoneyInput from "@/components/ui/MoneyInput";
-import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
-import type {
-  AipRecordResponse, AipOfficeDetail, AipProgramDetail, AipProjectDetail,
-  OfficeResponse, FundingSourceResponse,
-} from "@/types";
+import { aipErrorMessage, getAipById, uploadAipFile, createManualAipRecord } from "@/lib/aip";
 
 const CURRENT_YEAR = new Date().getFullYear();
 const FY_OPTIONS = [CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1, CURRENT_YEAR + 2];
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
-
-// ── Manual entry constants (RAL-62) ───────────────────────────────────────────
-
-const SECTOR_OPTIONS = ["GENERAL", "SOCIAL", "ECONOMIC", "OTHERS"] as const;
-// Numeric prefix each sector contributes to an office-level (5-segment) AIP ref code —
-// {prefix}-000-1-{Office.OfficeRefCode}. Client-side mirror of AipSector.Prefixes on the
-// backend, used only for the live ref-code preview; the server computes the real value.
-const SECTOR_PREFIX: Record<string, string> = { GENERAL: "1000", SOCIAL: "3000", ECONOMIC: "8000", OTHERS: "9000" };
-const ESRE_OPTIONS = [
-  { value: "SS", label: "SS — Social Services" },
-  { value: "ES", label: "ES — Economic Services" },
-  { value: "ID", label: "ID — Infrastructure Development" },
-  { value: "EN", label: "EN — Environment" },
-];
-const FUNCTION_BAND_OPTIONS = ["CORE", "STRATEGIC", "SUPPORT"];
-const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
-
-/** Next zero-padded 3-digit segment after the highest existing sibling suffix — a client-side
- * preview only; the server (AipService.NextRefCode) computes the value actually persisted. */
-function previewNextRefCode(parentRefCode: string, siblingRefCodes: string[]): string {
-  const max = siblingRefCodes.reduce((m, rc) => {
-    const n = parseInt(rc.split("-").pop() ?? "", 10);
-    return Number.isFinite(n) && n > m ? n : m;
-  }, 0);
-  return `${parentRefCode}-${String(max + 1).padStart(3, "0")}`;
-}
-
-type EntryLevel = "office" | "program" | "project" | "activity";
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -246,776 +204,67 @@ function UploadTab({ replaceId }: { replaceId: number | null }) {
   );
 }
 
-// ── Manual Entry tab (RAL-62) ────────────────────────────────────────────────
-// One node at a time: pick an Entry Level tab, pick the parent (for Program/Project/
-// Activity), fill the level's fields, Add. The tree below shows everything added so far
-// and doubles as the parent picker (click a node to select it).
+// ── Manual Entry tab (RAL-62, folded into the detail page for this session's Add/Edit/Delete
+// follow-up) — this used to be its own multi-step wizard for building the whole hierarchy.
+// It now only creates the blank Draft record; building it out (Add Office/Program/Project/
+// Activity, plus editing) happens on the detail page's own inline table controls, so adding
+// and editing an AIP share one UI instead of two.
 
 function ManualEntryTab() {
   const router = useRouter();
 
   const [fiscalYear, setFiscalYear] = useState<number>(CURRENT_YEAR);
-  const [aip, setAip] = useState<AipRecordResponse | null>(null);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-
-  const [offices, setOffices] = useState<AipOfficeDetail[]>([]);
-  const [officeConfigs, setOfficeConfigs] = useState<OfficeResponse[]>([]);
-  const [fundingSources, setFundingSources] = useState<FundingSourceResponse[]>([]);
-
-  const [level, setLevel] = useState<EntryLevel>("office");
-  const [selectedOfficeId, setSelectedOfficeId]   = useState<number | null>(null);
-  const [selectedProgramId, setSelectedProgramId] = useState<number | null>(null);
-  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
-
-  // Office fields
-  const [officeConfigId, setOfficeConfigId] = useState<string>("");
-  const [officeName, setOfficeName] = useState<string>("");
-  const [sector, setSector] = useState<string>("GENERAL");
-  // Program fields
-  const [programName, setProgramName]   = useState("");
-  const [functionBand, setFunctionBand] = useState("CORE");
-  // Project fields
-  const [projectName, setProjectName] = useState("");
-  // Activity fields
-  const [activityName, setActivityName]             = useState("");
-  const [esreCode, setEsreCode]                     = useState("");
-  const [implementingOffice, setImplementingOffice] = useState("");
-  const [startMonth, setStartMonth]                 = useState("");
-  const [endMonth, setEndMonth]                     = useState("");
-  const [expectedOutputs, setExpectedOutputs]       = useState("");
-  const [fundingSourceRaw, setFundingSourceRaw]     = useState("");
-  const [ps, setPs]                     = useState<number | null>(null);
-  const [mooe, setMooe]                 = useState<number | null>(null);
-  const [co, setCo]                     = useState<number | null>(null);
-  const [ccAdaptation, setCcAdaptation] = useState<number | null>(null);
-  const [ccMitigation, setCcMitigation] = useState<number | null>(null);
-  const [ccTypologyCode, setCcTypologyCode] = useState("");
-
-  const [saving, setSaving]       = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [deletingId, setDeletingId]     = useState<number | null>(null);
-  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogProps | null>(null);
-
-  useEffect(() => {
-    listOffices({ active: "true" }).then(setOfficeConfigs).catch(() => {});
-    listFundingSources({ active: "true" }).then(setFundingSources).catch(() => {});
-  }, []);
 
   async function handleStart() {
     setCreating(true);
     setCreateError(null);
     try {
       const rec = await createManualAipRecord({ fiscalYear });
-      setAip(rec);
+      router.push(`/budget-planning/aip/detail?id=${rec.id}`);
     } catch (err) {
       setCreateError(aipErrorMessage(err, "Could not start a new AIP. Please try again."));
-    } finally {
       setCreating(false);
     }
   }
 
-  const selectedOffice  = offices.find((o) => o.id === selectedOfficeId) ?? null;
-  const selectedProgram = selectedOffice?.programs.find((p) => p.id === selectedProgramId) ?? null;
-  const selectedProject = selectedProgram?.projects.find((p) => p.id === selectedProjectId) ?? null;
-
-  const totalProgramCount  = offices.reduce((n, o) => n + o.programs.length, 0);
-  const totalProjectCount  = offices.flatMap((o) => o.programs).reduce((n, p) => n + p.projects.length, 0);
-  const totalActivityCount = offices.flatMap((o) => o.programs).flatMap((p) => p.projects)
-    .reduce((n, p) => n + p.activities.length, 0);
-
-  function selectOffice(o: AipOfficeDetail) {
-    setSelectedOfficeId(o.id);
-    setSelectedProgramId(null);
-    setSelectedProjectId(null);
-  }
-  function selectProgram(o: AipOfficeDetail, p: AipProgramDetail) {
-    setSelectedOfficeId(o.id);
-    setSelectedProgramId(p.id);
-    setSelectedProjectId(null);
-  }
-  function selectProject(o: AipOfficeDetail, p: AipProgramDetail, j: AipProjectDetail) {
-    setSelectedOfficeId(o.id);
-    setSelectedProgramId(p.id);
-    setSelectedProjectId(j.id);
-  }
-
-  // ── Delete (mistakes happen — e.g. data entered under the wrong level) ────
-
-  async function handleDeleteProgram(o: AipOfficeDetail, p: AipProgramDetail) {
-    setDeletingId(p.id);
-    setSaveError(null);
-    try {
-      await deleteAipProgram(p.id);
-      setOffices((prev) => prev.map((off) =>
-        off.id !== o.id ? off : { ...off, programs: off.programs.filter((pr) => pr.id !== p.id) }
-      ));
-      if (selectedProgramId === p.id) { setSelectedProgramId(null); setSelectedProjectId(null); }
-    } catch (err) {
-      setSaveError(aipErrorMessage(err, "Could not delete program."));
-    } finally {
-      setDeletingId(null);
-    }
-  }
-
-  async function handleDeleteProject(o: AipOfficeDetail, p: AipProgramDetail, j: AipProjectDetail) {
-    setDeletingId(j.id);
-    setSaveError(null);
-    try {
-      await deleteAipProject(j.id);
-      setOffices((prev) => prev.map((off) =>
-        off.id !== o.id ? off : {
-          ...off,
-          programs: off.programs.map((pr) =>
-            pr.id !== p.id ? pr : { ...pr, projects: pr.projects.filter((proj) => proj.id !== j.id) }
-          ),
-        }
-      ));
-      if (selectedProjectId === j.id) setSelectedProjectId(null);
-    } catch (err) {
-      setSaveError(aipErrorMessage(err, "Could not delete project."));
-    } finally {
-      setDeletingId(null);
-    }
-  }
-
-  async function handleDeleteActivity(o: AipOfficeDetail, p: AipProgramDetail, j: AipProjectDetail, activityId: number) {
-    setDeletingId(activityId);
-    setSaveError(null);
-    try {
-      await deleteAipActivity(activityId);
-      setOffices((prev) => prev.map((off) =>
-        off.id !== o.id ? off : {
-          ...off,
-          programs: off.programs.map((pr) =>
-            pr.id !== p.id ? pr : {
-              ...pr,
-              projects: pr.projects.map((proj) =>
-                proj.id !== j.id ? proj : { ...proj, activities: proj.activities.filter((a) => a.id !== activityId) }
-              ),
-            }
-          ),
-        }
-      ));
-    } catch (err) {
-      setSaveError(aipErrorMessage(err, "Could not delete activity."));
-    } finally {
-      setDeletingId(null);
-    }
-  }
-
-  function confirmDeleteProgram(o: AipOfficeDetail, p: AipProgramDetail) {
-    const activityCount = p.projects.reduce((n, j) => n + j.activities.length, 0);
-    setConfirmDialog({
-      title: "Delete Program?",
-      message: `This removes "${p.name}" and everything under it (${p.projects.length} project${p.projects.length !== 1 ? "s" : ""}, ${activityCount} activit${activityCount !== 1 ? "ies" : "y"}). This cannot be undone.`,
-      confirmLabel: "Delete",
-      variant: "danger",
-      onConfirm: () => handleDeleteProgram(o, p),
-      onClose: () => setConfirmDialog(null),
-    });
-  }
-
-  function confirmDeleteProject(o: AipOfficeDetail, p: AipProgramDetail, j: AipProjectDetail) {
-    setConfirmDialog({
-      title: "Delete Project?",
-      message: `This removes "${j.name}" and its ${j.activities.length} activit${j.activities.length !== 1 ? "ies" : "y"}. This cannot be undone.`,
-      confirmLabel: "Delete",
-      variant: "danger",
-      onConfirm: () => handleDeleteProject(o, p, j),
-      onClose: () => setConfirmDialog(null),
-    });
-  }
-
-  function confirmDeleteActivity(o: AipOfficeDetail, p: AipProgramDetail, j: AipProjectDetail, activityId: number, activityName: string) {
-    setConfirmDialog({
-      title: "Delete Activity?",
-      message: `This removes "${activityName}". This cannot be undone.`,
-      confirmLabel: "Delete",
-      variant: "danger",
-      onConfirm: () => handleDeleteActivity(o, p, j, activityId),
-      onClose: () => setConfirmDialog(null),
-    });
-  }
-
-  async function handleAddOffice() {
-    if (!aip || !officeConfigId) return;
-    setSaving(true);
-    setSaveError(null);
-    try {
-      const off = await addAipOffice(aip.id, {
-        officeConfigId: Number(officeConfigId), sector, name: officeName.trim() || null,
-      });
-      setOffices((prev) => [...prev, off]);
-      selectOffice(off);
-      setOfficeConfigId("");
-      setOfficeName("");
-      setLevel("program");
-    } catch (err) {
-      setSaveError(aipErrorMessage(err, "Could not add office."));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleAddProgram() {
-    if (!selectedOffice || !programName.trim()) return;
-    setSaving(true);
-    setSaveError(null);
-    try {
-      const prog = await addAipProgram(selectedOffice.id, { name: programName.trim(), functionBand });
-      setOffices((prev) => prev.map((o) =>
-        o.id === selectedOffice.id ? { ...o, programs: [...o.programs, prog] } : o
-      ));
-      selectProgram(selectedOffice, prog);
-      setProgramName("");
-      setLevel("project");
-    } catch (err) {
-      setSaveError(aipErrorMessage(err, "Could not add program."));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleAddProject() {
-    if (!selectedOffice || !selectedProgram || !projectName.trim()) return;
-    setSaving(true);
-    setSaveError(null);
-    try {
-      const proj = await addAipProject(selectedProgram.id, { name: projectName.trim() });
-      setOffices((prev) => prev.map((o) =>
-        o.id !== selectedOffice.id ? o : {
-          ...o,
-          programs: o.programs.map((p) =>
-            p.id !== selectedProgram.id ? p : { ...p, projects: [...p.projects, proj] }
-          ),
-        }
-      ));
-      selectProject(selectedOffice, selectedProgram, proj);
-      setProjectName("");
-      setLevel("activity");
-    } catch (err) {
-      setSaveError(aipErrorMessage(err, "Could not add project."));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleAddActivity() {
-    if (!selectedOffice || !selectedProgram || !selectedProject || !activityName.trim()) return;
-    setSaving(true);
-    setSaveError(null);
-    try {
-      const act = await addAipActivity(selectedProject.id, {
-        name: activityName.trim(),
-        esreCode: esreCode || null,
-        implementingOffice: implementingOffice.trim() || null,
-        startDate: startMonth || null,
-        endDate: endMonth || null,
-        expectedOutputs: expectedOutputs.trim() || null,
-        fundingSourceRaw: fundingSourceRaw || null,
-        ps, mooe, co, ccAdaptation, ccMitigation,
-        ccTypologyCode: ccTypologyCode.trim() || null,
-      });
-      setOffices((prev) => prev.map((o) =>
-        o.id !== selectedOffice.id ? o : {
-          ...o,
-          programs: o.programs.map((p) =>
-            p.id !== selectedProgram.id ? p : {
-              ...p,
-              projects: p.projects.map((j) =>
-                j.id !== selectedProject.id ? j : { ...j, activities: [...j.activities, act] }
-              ),
-            }
-          ),
-        }
-      ));
-      setActivityName("");
-      setEsreCode("");
-      setImplementingOffice("");
-      setStartMonth("");
-      setEndMonth("");
-      setExpectedOutputs("");
-      setFundingSourceRaw("");
-      setPs(null); setMooe(null); setCo(null);
-      setCcAdaptation(null); setCcMitigation(null); setCcTypologyCode("");
-    } catch (err) {
-      setSaveError(aipErrorMessage(err, "Could not add activity."));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  // ── Step 1: fiscal year + start ──────────────────────────────────────────
-  if (!aip) {
-    return (
-      <div className="space-y-3">
-        <div>
-          <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
-            Fiscal Year
-          </label>
-          <select
-            value={fiscalYear}
-            onChange={(e) => setFiscalYear(Number(e.target.value))}
-            className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600 w-40"
-          >
-            {FY_OPTIONS.map((y) => <option key={y} value={y}>{y}</option>)}
-          </select>
-        </div>
-        {createError && (
-          <div className="border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">
-            {createError}
-          </div>
-        )}
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleStart}
-            disabled={creating}
-            className={`px-5 py-2 text-sm font-medium text-white transition-colors ${
-              creating ? "bg-green-300 cursor-not-allowed" : "bg-green-700 hover:bg-green-800"
-            }`}
-          >
-            {creating ? "Starting…" : "Start New AIP"}
-          </button>
-          <Link
-            href="/budget-planning/aip"
-            className="px-5 py-2 text-sm font-medium border border-slate-300 text-slate-600 hover:bg-slate-50 transition-colors"
-          >
-            Cancel
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Step 2: build the hierarchy ──────────────────────────────────────────
   return (
-    <div className="space-y-4">
-      <div className="border border-green-200 bg-green-50 px-4 py-2.5 text-sm text-green-800 flex items-center justify-between">
-        <span>
-          Building AIP FY {aip.fiscalYear} — {offices.length} office{offices.length !== 1 ? "s" : ""} ·{" "}
-          {totalProgramCount} program{totalProgramCount !== 1 ? "s" : ""} ·{" "}
-          {totalProjectCount} project{totalProjectCount !== 1 ? "s" : ""} ·{" "}
-          {totalActivityCount} activit{totalActivityCount !== 1 ? "ies" : "y"}
-        </span>
-        <button
-          onClick={() => router.push(`/budget-planning/aip/detail?id=${aip.id}`)}
-          className="px-3 py-1 text-xs font-medium text-white bg-green-700 hover:bg-green-800 transition-colors whitespace-nowrap"
+    <div className="space-y-3">
+      <div>
+        <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
+          Fiscal Year
+        </label>
+        <select
+          value={fiscalYear}
+          onChange={(e) => setFiscalYear(Number(e.target.value))}
+          className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600 w-40"
         >
-          Done — View Record
-        </button>
+          {FY_OPTIONS.map((y) => <option key={y} value={y}>{y}</option>)}
+        </select>
       </div>
-
-      {/* Entry Level tabs */}
-      <div className="flex border-b border-slate-200">
-        {([
-          ["office",   "Office"],
-          ["program",  "Program"],
-          ["project",  "Project"],
-          ["activity", "Activity"],
-        ] as [EntryLevel, string][]).map(([lv, label]) => (
-          <button
-            key={lv}
-            onClick={() => setLevel(lv)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-              level === lv ? "border-green-700 text-green-700" : "border-transparent text-slate-600 hover:text-slate-700"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {saveError && (
+      {createError && (
         <div className="border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">
-          {saveError}
+          {createError}
         </div>
       )}
-
-      {/* Office form */}
-      {level === "office" && (
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Office</label>
-              <select
-                value={officeConfigId}
-                onChange={(e) => {
-                  setOfficeConfigId(e.target.value);
-                  const picked = officeConfigs.find((o) => String(o.id) === e.target.value);
-                  if (picked) setOfficeName(picked.officeName);
-                }}
-                className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
-              >
-                <option value="">Select an office…</option>
-                {officeConfigs.map((o) => (
-                  <option key={o.id} value={o.id} disabled={!o.officeRefCode}>
-                    {o.officeName}{!o.officeRefCode ? " (no AIP ref code configured)" : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Sector</label>
-              <select
-                value={sector}
-                onChange={(e) => setSector(e.target.value)}
-                className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
-              >
-                {SECTOR_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-          </div>
-          {officeConfigId && (
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
-                Office Name <span className="text-slate-600 font-normal normal-case">(editable — e.g. for a sub-office/program cluster)</span>
-              </label>
-              <input
-                value={officeName}
-                onChange={(e) => setOfficeName(e.target.value)}
-                placeholder="e.g. Office of the Governor - Warden"
-                className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
-              />
-              <p className="text-xs text-slate-600 mt-1">
-                Defaults to the office&apos;s configured name. Override it when this AIP entry represents a
-                sub-office or program cluster under the same office — the ref code stays the same either
-                way, so you can add the same office more than once with a different name.
-              </p>
-            </div>
-          )}
-          {officeConfigId && (
-            <p className="text-xs text-slate-600">
-              Ref code preview:{" "}
-              <span className="font-mono text-slate-700">
-                {SECTOR_PREFIX[sector]}-000-1-{officeConfigs.find((o) => String(o.id) === officeConfigId)?.officeRefCode ?? "…"}
-              </span>
-            </p>
-          )}
-          <button
-            onClick={handleAddOffice}
-            disabled={saving || !officeConfigId}
-            className={`px-4 py-1.5 text-sm font-medium text-white transition-colors ${
-              saving || !officeConfigId ? "bg-green-300 cursor-not-allowed" : "bg-green-700 hover:bg-green-800"
-            }`}
-          >
-            {saving ? "Adding…" : "Add Office"}
-          </button>
-        </div>
-      )}
-
-      {/* Program form */}
-      {level === "program" && (
-        !selectedOffice ? (
-          <p className="text-sm text-slate-600">Add or select an office in the tree below first.</p>
-        ) : (
-          <div className="space-y-3">
-            <p className="text-xs text-slate-600">
-              Under office <span className="font-medium text-slate-700">{selectedOffice.name}</span>{" "}
-              (<span className="font-mono">{selectedOffice.refCode}</span>)
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Program Name</label>
-                <input
-                  value={programName}
-                  onChange={(e) => setProgramName(e.target.value)}
-                  className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Function Band</label>
-                <select
-                  value={functionBand}
-                  onChange={(e) => setFunctionBand(e.target.value)}
-                  className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
-                >
-                  {FUNCTION_BAND_OPTIONS.map((b) => <option key={b} value={b}>{b}</option>)}
-                </select>
-              </div>
-            </div>
-            <p className="text-xs text-slate-600">
-              Ref code preview:{" "}
-              <span className="font-mono text-slate-700">
-                {previewNextRefCode(selectedOffice.refCode, selectedOffice.programs.map((p) => p.refCode))}
-              </span>
-            </p>
-            <button
-              onClick={handleAddProgram}
-              disabled={saving || !programName.trim()}
-              className={`px-4 py-1.5 text-sm font-medium text-white transition-colors ${
-                saving || !programName.trim() ? "bg-green-300 cursor-not-allowed" : "bg-green-700 hover:bg-green-800"
-              }`}
-            >
-              {saving ? "Adding…" : "Add Program"}
-            </button>
-          </div>
-        )
-      )}
-
-      {/* Project form */}
-      {level === "project" && (
-        !selectedProgram ? (
-          <p className="text-sm text-slate-600">Add or select a program in the tree below first.</p>
-        ) : (
-          <div className="space-y-3">
-            <p className="text-xs text-slate-600">
-              Under program <span className="font-medium text-slate-700">{selectedProgram.name}</span>{" "}
-              (<span className="font-mono">{selectedProgram.refCode}</span>)
-            </p>
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Project Name</label>
-              <input
-                value={projectName}
-                onChange={(e) => setProjectName(e.target.value)}
-                className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
-              />
-            </div>
-            <p className="text-xs text-slate-600">
-              Ref code preview:{" "}
-              <span className="font-mono text-slate-700">
-                {previewNextRefCode(selectedProgram.refCode, selectedProgram.projects.map((p) => p.refCode))}
-              </span>
-            </p>
-            <button
-              onClick={handleAddProject}
-              disabled={saving || !projectName.trim()}
-              className={`px-4 py-1.5 text-sm font-medium text-white transition-colors ${
-                saving || !projectName.trim() ? "bg-green-300 cursor-not-allowed" : "bg-green-700 hover:bg-green-800"
-              }`}
-            >
-              {saving ? "Adding…" : "Add Project"}
-            </button>
-          </div>
-        )
-      )}
-
-      {/* Activity form */}
-      {level === "activity" && (
-        !selectedProject ? (
-          <p className="text-sm text-slate-600">Add or select a project in the tree below first.</p>
-        ) : (
-          <div className="space-y-3">
-            <p className="text-xs text-slate-600">
-              Under project <span className="font-medium text-slate-700">{selectedProject.name}</span>{" "}
-              (<span className="font-mono">{selectedProject.refCode}</span>)
-            </p>
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Activity Description</label>
-              <input
-                value={activityName}
-                onChange={(e) => setActivityName(e.target.value)}
-                className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
-              />
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">eSRE Code</label>
-                <select
-                  value={esreCode}
-                  onChange={(e) => setEsreCode(e.target.value)}
-                  className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
-                >
-                  <option value="">—</option>
-                  {ESRE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Funding Source</label>
-                <select
-                  value={fundingSourceRaw}
-                  onChange={(e) => setFundingSourceRaw(e.target.value)}
-                  className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
-                >
-                  <option value="">—</option>
-                  {fundingSources.map((f) => <option key={f.id} value={f.code}>{f.code} — {f.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Implementing Office</label>
-                <input
-                  value={implementingOffice}
-                  onChange={(e) => setImplementingOffice(e.target.value)}
-                  className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Start Month</label>
-                <select
-                  value={startMonth}
-                  onChange={(e) => setStartMonth(e.target.value)}
-                  className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
-                >
-                  <option value="">—</option>
-                  {MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">End Month</label>
-                <select
-                  value={endMonth}
-                  onChange={(e) => setEndMonth(e.target.value)}
-                  className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
-                >
-                  <option value="">—</option>
-                  {MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
-                </select>
-              </div>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Expected Outputs</label>
-              <textarea
-                value={expectedOutputs}
-                onChange={(e) => setExpectedOutputs(e.target.value)}
-                rows={2}
-                className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600 resize-vertical"
-                style={{ minHeight: 44, maxHeight: 88 }}
-              />
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">PS (₱000)</label>
-                <MoneyInput value={ps} onChange={setPs} className="w-full" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">MOOE (₱000)</label>
-                <MoneyInput value={mooe} onChange={setMooe} className="w-full" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">CO (₱000)</label>
-                <MoneyInput value={co} onChange={setCo} className="w-full" />
-              </div>
-            </div>
-            <details className="text-xs">
-              <summary className="cursor-pointer text-slate-600 font-medium uppercase tracking-wide">
-                Climate Change Tagging (optional)
-              </summary>
-              <div className="grid grid-cols-3 gap-3 mt-2">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">CC Adaptation (₱000)</label>
-                  <MoneyInput value={ccAdaptation} onChange={setCcAdaptation} className="w-full" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">CC Mitigation (₱000)</label>
-                  <MoneyInput value={ccMitigation} onChange={setCcMitigation} className="w-full" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">CC Typology Code</label>
-                  <input
-                    value={ccTypologyCode}
-                    onChange={(e) => setCcTypologyCode(e.target.value)}
-                    className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
-                  />
-                </div>
-              </div>
-            </details>
-            <p className="text-xs text-slate-600">
-              Ref code preview:{" "}
-              <span className="font-mono text-slate-700">
-                {previewNextRefCode(selectedProject.refCode, selectedProject.activities.map((a) => a.refCode))}
-              </span>
-              {" · "}Total: ₱{((ps ?? 0) + (mooe ?? 0) + (co ?? 0)).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
-            </p>
-            <button
-              onClick={handleAddActivity}
-              disabled={saving || !activityName.trim()}
-              className={`px-4 py-1.5 text-sm font-medium text-white transition-colors ${
-                saving || !activityName.trim() ? "bg-green-300 cursor-not-allowed" : "bg-green-700 hover:bg-green-800"
-              }`}
-            >
-              {saving ? "Adding…" : "Add Activity"}
-            </button>
-          </div>
-        )
-      )}
-
-      {/* Tree — everything added so far; click a node to select it as the parent, ✕ to delete
-          (mistakes happen — e.g. data entered under the wrong level). Draft-only, same as adding. */}
-      {offices.length > 0 && (
-        <div className="border border-slate-200">
-          <p className="px-3 py-2 text-xs font-semibold text-slate-600 uppercase tracking-wide bg-slate-50 border-b border-slate-200">
-            Added so far
-          </p>
-          <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
-            {offices.map((o) => (
-              <div key={o.id} className="px-3 py-1.5">
-                <button
-                  onClick={() => selectOffice(o)}
-                  className={`text-left text-sm w-full px-1.5 py-1 ${
-                    selectedOfficeId === o.id && !selectedProgramId ? "bg-green-50 text-green-800 font-medium" : "text-slate-700 hover:bg-slate-50"
-                  }`}
-                >
-                  🏢 {o.name} <span className="text-xs text-slate-600 font-mono">{o.refCode}</span>{" "}
-                  <span className="text-xs text-slate-600">({o.sector})</span>
-                </button>
-                {o.programs.map((p) => (
-                  <div key={p.id} className="ml-5">
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => selectProgram(o, p)}
-                        className={`text-left text-sm flex-1 min-w-0 px-1.5 py-1 ${
-                          selectedProgramId === p.id && !selectedProjectId ? "bg-green-50 text-green-800 font-medium" : "text-slate-700 hover:bg-slate-50"
-                        }`}
-                      >
-                        📋 {p.name} <span className="text-xs text-slate-600 font-mono">{p.refCode}</span>
-                      </button>
-                      <button
-                        onClick={() => confirmDeleteProgram(o, p)}
-                        disabled={deletingId === p.id}
-                        title="Delete program"
-                        className="shrink-0 px-1.5 py-1 text-xs text-danger-500 hover:text-danger-700 hover:underline disabled:opacity-50"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                    {p.projects.map((j) => (
-                      <div key={j.id} className="ml-5">
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => selectProject(o, p, j)}
-                            className={`text-left text-sm flex-1 min-w-0 px-1.5 py-1 ${
-                              selectedProjectId === j.id ? "bg-green-50 text-green-800 font-medium" : "text-slate-700 hover:bg-slate-50"
-                            }`}
-                          >
-                            📁 {j.name} <span className="text-xs text-slate-600 font-mono">{j.refCode}</span>
-                          </button>
-                          <button
-                            onClick={() => confirmDeleteProject(o, p, j)}
-                            disabled={deletingId === j.id}
-                            title="Delete project"
-                            className="shrink-0 px-1.5 py-1 text-xs text-danger-500 hover:text-danger-700 hover:underline disabled:opacity-50"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                        {j.activities.map((a) => (
-                          <div key={a.id} className="ml-5 flex items-center gap-1">
-                            <p className="flex-1 min-w-0 px-1.5 py-0.5 text-xs text-slate-600 truncate">
-                              🧾 {a.name} <span className="font-mono">{a.refCode}</span>
-                            </p>
-                            <button
-                              onClick={() => confirmDeleteActivity(o, p, j, a.id, a.name)}
-                              disabled={deletingId === a.id}
-                              title="Delete activity"
-                              className="shrink-0 px-1.5 py-0.5 text-xs text-danger-500 hover:text-danger-700 hover:underline disabled:opacity-50"
-                            >
-                              ✕
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {confirmDialog && <ConfirmDialog {...confirmDialog} />}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={handleStart}
+          disabled={creating}
+          className={`px-5 py-2 text-sm font-medium text-white transition-colors ${
+            creating ? "bg-green-300 cursor-not-allowed" : "bg-green-700 hover:bg-green-800"
+          }`}
+        >
+          {creating ? "Starting…" : "Start New AIP"}
+        </button>
+        <Link
+          href="/budget-planning/aip"
+          className="px-5 py-2 text-sm font-medium border border-slate-300 text-slate-600 hover:bg-slate-50 transition-colors"
+        >
+          Cancel
+        </Link>
+      </div>
     </div>
   );
 }
@@ -1096,10 +345,10 @@ function AipNewInner() {
               <h3 className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2.5">How it works</h3>
               <ol className="space-y-2">
                 {([
-                  ["Start the record", "Pick a fiscal year — this creates a blank Draft AIP you'll build by hand."],
-                  ["Add an office", "Pick a configured office and sector; the AIP ref code is derived automatically."],
-                  ["Add programs, projects, activities", "Work down each Entry Level tab — every node is saved as soon as you Add it."],
-                  ["Finish anytime", "Click \"Done — View Record\" to open the detail page; Finalize is available there once ready."],
+                  ["Start the record", "Pick a fiscal year — this creates a blank Draft AIP."],
+                  ["You're taken to the record", "Building it out happens on the AIP's own page."],
+                  ["Add offices, programs, projects, activities", "Use the same + Add and Edit controls you'll use later to make changes — one UI for building and editing."],
+                  ["Finish anytime", "Finalize is available on that page once the AIP is ready."],
                 ] as [string, string][]).map(([title, desc], i) => (
                   <li key={i} className="flex gap-3">
                     <span className="shrink-0 w-5 h-5 rounded-full bg-green-700 text-white text-xs font-bold flex items-center justify-center mt-0.5">
