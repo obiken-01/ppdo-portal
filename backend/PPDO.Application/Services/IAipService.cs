@@ -40,6 +40,31 @@ public interface IAipService
         Guid uploadedById,
         CancellationToken ct = default);
 
+    // ── Manual entry (RAL-62) — one node at a time, Office → Program → Project → Activity ──
+
+    /// <summary>Creates a blank Manual-entry AipRecord. Subject to the same one-active-AIP-per-
+    /// fiscal-year guard as ConfirmImportAsync's create path.</summary>
+    Task<ServiceResult<AipRecordDto>> CreateManualRecordAsync(
+        CreateAipRecordDto dto, Guid createdById, CancellationToken ct = default);
+
+    /// <summary>Adds an office (level 1) to a Draft AipRecord. RefCode is auto-derived from
+    /// the sector prefix + the config Office's OfficeRefCode.</summary>
+    Task<ServiceResult<AipOfficeDto>> AddOfficeAsync(
+        int aipRecordId, CreateAipOfficeDto dto, CancellationToken ct = default);
+
+    /// <summary>Adds a program (level 2) under an office. RefCode auto-increments within the office.</summary>
+    Task<ServiceResult<AipProgramDto>> AddProgramAsync(
+        int officeId, CreateAipProgramDto dto, CancellationToken ct = default);
+
+    /// <summary>Adds a project (level 3) under a program. RefCode auto-increments within the program.</summary>
+    Task<ServiceResult<AipProjectDto>> AddProjectAsync(
+        int programId, CreateAipProjectDto dto, CancellationToken ct = default);
+
+    /// <summary>Adds an activity (level 4, leaf) under a project. RefCode auto-increments within
+    /// the project; Total is computed as Ps+Mooe+Co (null only when all three are blank).</summary>
+    Task<ServiceResult<AipActivityDto>> AddActivityAsync(
+        int projectId, CreateAipActivityDto dto, CancellationToken ct = default);
+
     Task<ServiceResult<AipRecordDto>> FinalizeAsync(int id, CancellationToken ct = default);
     Task<ServiceResult<AipRecordDto>> UnlockAsync(int id, CancellationToken ct = default);
     Task<ServiceResult<AipRecordDto>> ArchiveAsync(int id, CancellationToken ct = default);
