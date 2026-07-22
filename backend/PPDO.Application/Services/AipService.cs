@@ -601,6 +601,87 @@ public sealed class AipService : IAipService
         return ServiceResult<AipActivityDto>.Ok(MapActivityToDto(entity));
     }
 
+    // ── Inline activity edit (RAL-179) ────────────────────────────────────────
+
+    public async Task<ServiceResult<AipActivityDto>> UpdateActivityAsync(
+        int aipRecordId, int activityId, UpdateAipActivityDto dto, CancellationToken ct = default)
+    {
+        AipActivity? activity = await _aipRepo.GetActivityByIdAsync(activityId, ct);
+        if (activity is null)
+            return ServiceResult<AipActivityDto>.NotFound($"AIP activity {activityId} not found.");
+
+        AipProject? project = await _aipRepo.GetProjectByIdAsync(activity.ProjectId, ct);
+        if (project is null)
+            return ServiceResult<AipActivityDto>.NotFound($"AIP project {activity.ProjectId} not found.");
+        AipProgram? program = await _aipRepo.GetProgramByIdAsync(project.ProgramId, ct);
+        if (program is null)
+            return ServiceResult<AipActivityDto>.NotFound($"AIP program {project.ProgramId} not found.");
+        AipOffice? office = await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
+        if (office is null)
+            return ServiceResult<AipActivityDto>.NotFound($"AIP office {program.OfficeId} not found.");
+        if (office.AipRecordId != aipRecordId)
+            return ServiceResult<AipActivityDto>.NotFound(
+                $"AIP activity {activityId} does not belong to AIP record {aipRecordId}.");
+
+        ServiceResult<AipActivityDto>? statusError = await CheckDraftAsync<AipActivityDto>(office.AipRecordId, ct);
+        if (statusError is not null) return statusError;
+
+        if (string.IsNullOrWhiteSpace(dto.Name))
+            return ServiceResult<AipActivityDto>.BadRequest("Activity name is required.");
+        if (!string.IsNullOrWhiteSpace(dto.EsreCode) && !AipEsreCode.AllowedValues.Contains(dto.EsreCode.Trim().ToUpperInvariant()))
+            return ServiceResult<AipActivityDto>.BadRequest(
+                $"eSRE code must be one of: {string.Join(", ", AipEsreCode.AllowedValues)}.");
+
+        FundingSource? fs = null;
+        if (dto.FundingSourceId is int fsId)
+        {
+            IReadOnlyList<FundingSource> fsList = await _fsRepo.GetAllAsync(ct);
+            fs = fsList.FirstOrDefault(f => f.Id == fsId);
+            if (fs is null)
+                return ServiceResult<AipActivityDto>.BadRequest($"Funding source {fsId} not found.");
+        }
+
+        decimal? total = dto.Ps is null && dto.Mooe is null && dto.Co is null
+            ? null
+            : (dto.Ps ?? 0) + (dto.Mooe ?? 0) + (dto.Co ?? 0);
+
+        object old = new
+        {
+            activity.Name, activity.EsreCode, activity.ImplementingOffice, activity.StartDate, activity.EndDate,
+            activity.ExpectedOutputs, activity.FundingSourceId, activity.FundingSourceSnapshot,
+            activity.Ps, activity.Mooe, activity.Co, activity.Total,
+            activity.CcAdaptation, activity.CcMitigation, activity.CcTypologyCode,
+        };
+
+        activity.Name                  = dto.Name.Trim();
+        activity.EsreCode              = string.IsNullOrWhiteSpace(dto.EsreCode) ? null : dto.EsreCode.Trim().ToUpperInvariant();
+        activity.ImplementingOffice    = dto.ImplementingOffice;
+        activity.StartDate             = dto.StartDate;
+        activity.EndDate               = dto.EndDate;
+        activity.ExpectedOutputs       = dto.ExpectedOutputs;
+        activity.FundingSourceId       = fs?.Id;
+        activity.FundingSourceSnapshot = fs?.Code;
+        activity.Ps                    = dto.Ps;
+        activity.Mooe                  = dto.Mooe;
+        activity.Co                    = dto.Co;
+        activity.Total                 = total;
+        activity.CcAdaptation          = dto.CcAdaptation;
+        activity.CcMitigation          = dto.CcMitigation;
+        activity.CcTypologyCode        = dto.CcTypologyCode;
+
+        await _aipRepo.SaveChangesAsync(ct);
+        await _audit.LogAsync("aip_activities", activity.Id, AuditAction.Update, old,
+            new
+            {
+                activity.Name, activity.EsreCode, activity.ImplementingOffice, activity.StartDate, activity.EndDate,
+                activity.ExpectedOutputs, activity.FundingSourceId, activity.FundingSourceSnapshot,
+                activity.Ps, activity.Mooe, activity.Co, activity.Total,
+                activity.CcAdaptation, activity.CcMitigation, activity.CcTypologyCode,
+            }, ct);
+
+        return ServiceResult<AipActivityDto>.Ok(MapActivityToDto(activity));
+    }
+
     /// <summary>Shared Draft-status guard for the manual-entry Add* methods, keyed off the
     /// AipRecord reached by walking up from whichever node the caller is adding under.</summary>
     private async Task<ServiceResult<T>?> CheckDraftAsync<T>(int aipRecordId, CancellationToken ct)

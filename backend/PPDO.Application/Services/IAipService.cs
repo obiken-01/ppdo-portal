@@ -65,6 +65,13 @@ public interface IAipService
     Task<ServiceResult<AipActivityDto>> AddActivityAsync(
         int projectId, CreateAipActivityDto dto, CancellationToken ct = default);
 
+    /// <summary>RAL-179 — updates an existing activity's editable fields in place. RefCode,
+    /// ProjectId, and identity are immutable; FundingSourceId re-resolves FundingSourceSnapshot.
+    /// Only allowed while the parent AipRecord is Draft. <paramref name="aipRecordId"/> is a
+    /// defensive cross-check that the activity actually belongs to that record.</summary>
+    Task<ServiceResult<AipActivityDto>> UpdateActivityAsync(
+        int aipRecordId, int activityId, UpdateAipActivityDto dto, CancellationToken ct = default);
+
     Task<ServiceResult<AipRecordDto>> FinalizeAsync(int id, CancellationToken ct = default);
     Task<ServiceResult<AipRecordDto>> UnlockAsync(int id, CancellationToken ct = default);
     Task<ServiceResult<AipRecordDto>> ArchiveAsync(int id, CancellationToken ct = default);

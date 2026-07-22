@@ -17,6 +17,7 @@ import type {
   CreateAipProgramRequest,
   CreateAipProjectRequest,
   CreateAipActivityRequest,
+  UpdateAipActivityRequest,
   AipOfficeDetail,
   AipProgramDetail,
   AipProjectDetail,
@@ -121,6 +122,19 @@ export async function addAipProject(programId: number, body: CreateAipProjectReq
 export async function addAipActivity(projectId: number, body: CreateAipActivityRequest): Promise<AipActivityDetail> {
   const { data } = await api.post<ApiResponse<AipActivityDetail>>(
     `/budget-planning/aip/projects/${projectId}/activities`, body
+  );
+  return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// AIP inline activity edit (RAL-179) — PUT /api/budget-planning/aip/{id}/activities/{activityId}
+// ---------------------------------------------------------------------------
+
+export async function updateAipActivity(
+  aipRecordId: number, activityId: number, body: UpdateAipActivityRequest
+): Promise<AipActivityDetail> {
+  const { data } = await api.put<ApiResponse<AipActivityDetail>>(
+    `/budget-planning/aip/${aipRecordId}/activities/${activityId}`, body
   );
   return unwrap(data);
 }

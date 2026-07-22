@@ -218,6 +218,26 @@ public sealed class AipFunctions
             await _aip.AddActivityAsync(projectId, body, ct), ct, HttpStatusCode.Created);
     }
 
+    // ── PUT /api/budget-planning/aip/{id}/activities/{activityId} ────────────
+    // RAL-179 — inline per-activity edit. CanAccessBudgetPlanning, not CanUploadAip: editing an
+    // already-imported/created record's fields is a correction, not a new import.
+    [Function("AipUpdateActivity")]
+    public async Task<HttpResponseData> UpdateActivity(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "budget-planning/aip/{id:int}/activities/{activityId:int}")] HttpRequestData req,
+        int id, int activityId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        UpdateAipActivityDto? body = await ConfigHttp.ReadBodyAsync<UpdateAipActivityDto>(req, ct);
+        if (body is null)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<AipActivityDto>.Fail("Request body is missing or malformed."), ct);
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _aip.UpdateActivityAsync(id, activityId, body, ct), ct);
+    }
+
     // ── DELETE /api/budget-planning/aip/{id}  (archive) ──────────────────────
     [Function("AipArchive")]
     public async Task<HttpResponseData> Archive(

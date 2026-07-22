@@ -177,6 +177,30 @@ public record CreateAipActivityDto(
     decimal? CcMitigation,
     string?  CcTypologyCode);
 
+// ── Inline activity edit (RAL-179) ───────────────────────────────────────────
+
+/// <summary>
+/// Body of PUT /api/budget-planning/aip/{id}/activities/{activityId}. Editable field set only —
+/// RefCode, ProjectId, and activity identity are immutable through this endpoint (moving a node
+/// is a structural change, not a field correction). <see cref="FundingSourceId"/> is a direct FK
+/// to a config FundingSource row (not a raw code string like <see cref="CreateAipActivityDto"/>'s
+/// import-time matching) — the UI offers a dropdown of known sources, so there's nothing to match.
+/// </summary>
+public record UpdateAipActivityDto(
+    string   Name,
+    string?  EsreCode,
+    string?  ImplementingOffice,
+    string?  StartDate,
+    string?  EndDate,
+    string?  ExpectedOutputs,
+    int?     FundingSourceId,
+    decimal? Ps,
+    decimal? Mooe,
+    decimal? Co,
+    decimal? CcAdaptation,
+    decimal? CcMitigation,
+    string?  CcTypologyCode);
+
 // ── Slim WFP-grid DTOs (RAL-89) ───────────────────────────────────────────────
 
 /// <summary>

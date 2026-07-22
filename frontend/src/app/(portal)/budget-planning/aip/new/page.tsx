@@ -9,6 +9,7 @@ import {
   createManualAipRecord, addAipOffice, addAipProgram, addAipProject, addAipActivity,
 } from "@/lib/aip";
 import { listOffices, listFundingSources } from "@/lib/config";
+import { AIP_MONTHS, AIP_ESRE_OPTIONS } from "@/lib/aipConstants";
 import MoneyInput from "@/components/ui/MoneyInput";
 import type {
   AipRecordResponse, AipOfficeDetail, AipProgramDetail, AipProjectDetail,
@@ -26,17 +27,7 @@ const SECTOR_OPTIONS = ["GENERAL", "SOCIAL", "ECONOMIC", "OTHERS"] as const;
 // {prefix}-000-1-{Office.OfficeRefCode}. Client-side mirror of AipSector.Prefixes on the
 // backend, used only for the live ref-code preview; the server computes the real value.
 const SECTOR_PREFIX: Record<string, string> = { GENERAL: "1000", SOCIAL: "3000", ECONOMIC: "8000", OTHERS: "9000" };
-const ESRE_OPTIONS = [
-  { value: "SS", label: "SS — Social Services" },
-  { value: "ES", label: "ES — Economic Services" },
-  { value: "ID", label: "ID — Infrastructure Development" },
-  { value: "EN", label: "EN — Environment" },
-];
 const FUNCTION_BAND_OPTIONS = ["CORE", "STRATEGIC", "SUPPORT"];
-const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
 
 /** Next zero-padded 3-digit segment after the highest existing sibling suffix — a client-side
  * preview only; the server (AipService.NextRefCode) computes the value actually persisted. */
@@ -689,7 +680,7 @@ function ManualEntryTab() {
                   className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
                 >
                   <option value="">—</option>
-                  {ESRE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  {AIP_ESRE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
               <div>
@@ -721,7 +712,7 @@ function ManualEntryTab() {
                   className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
                 >
                   <option value="">—</option>
-                  {MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
+                  {AIP_MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
                 </select>
               </div>
               <div>
@@ -732,7 +723,7 @@ function ManualEntryTab() {
                   className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
                 >
                   <option value="">—</option>
-                  {MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
+                  {AIP_MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
                 </select>
               </div>
             </div>
