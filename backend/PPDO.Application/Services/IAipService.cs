@@ -72,6 +72,15 @@ public interface IAipService
     Task<ServiceResult<AipActivityDto>> UpdateActivityAsync(
         int aipRecordId, int activityId, UpdateAipActivityDto dto, CancellationToken ct = default);
 
+    /// <summary>Deletes a program and its whole subtree (projects, activities). Draft-only.</summary>
+    Task<ServiceResult<bool>> DeleteProgramAsync(int programId, CancellationToken ct = default);
+
+    /// <summary>Deletes a project and its activities. Draft-only.</summary>
+    Task<ServiceResult<bool>> DeleteProjectAsync(int projectId, CancellationToken ct = default);
+
+    /// <summary>Deletes a single activity. Draft-only.</summary>
+    Task<ServiceResult<bool>> DeleteActivityAsync(int activityId, CancellationToken ct = default);
+
     Task<ServiceResult<AipRecordDto>> FinalizeAsync(int id, CancellationToken ct = default);
     Task<ServiceResult<AipRecordDto>> UnlockAsync(int id, CancellationToken ct = default);
     Task<ServiceResult<AipRecordDto>> ArchiveAsync(int id, CancellationToken ct = default);

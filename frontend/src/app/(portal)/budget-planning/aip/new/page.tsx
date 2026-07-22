@@ -7,10 +7,12 @@ import { useMe } from "@/lib/me-cache";
 import {
   aipErrorMessage, getAipById, uploadAipFile,
   createManualAipRecord, addAipOffice, addAipProgram, addAipProject, addAipActivity,
+  deleteAipProgram, deleteAipProject, deleteAipActivity,
 } from "@/lib/aip";
 import { listOffices, listFundingSources } from "@/lib/config";
 import { AIP_MONTHS, AIP_ESRE_OPTIONS } from "@/lib/aipConstants";
 import MoneyInput from "@/components/ui/MoneyInput";
+import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import type {
   AipRecordResponse, AipOfficeDetail, AipProgramDetail, AipProjectDetail,
   OfficeResponse, FundingSourceResponse,
@@ -259,6 +261,7 @@ function ManualEntryTab() {
 
   // Office fields
   const [officeConfigId, setOfficeConfigId] = useState<string>("");
+  const [officeName, setOfficeName] = useState<string>("");
   const [sector, setSector] = useState<string>("GENERAL");
   // Program fields
   const [programName, setProgramName]   = useState("");
@@ -282,6 +285,8 @@ function ManualEntryTab() {
 
   const [saving, setSaving]       = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [deletingId, setDeletingId]     = useState<number | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogProps | null>(null);
 
   useEffect(() => {
     listOffices({ active: "true" }).then(setOfficeConfigs).catch(() => {});
@@ -326,15 +331,116 @@ function ManualEntryTab() {
     setSelectedProjectId(j.id);
   }
 
+  // ── Delete (mistakes happen — e.g. data entered under the wrong level) ────
+
+  async function handleDeleteProgram(o: AipOfficeDetail, p: AipProgramDetail) {
+    setDeletingId(p.id);
+    setSaveError(null);
+    try {
+      await deleteAipProgram(p.id);
+      setOffices((prev) => prev.map((off) =>
+        off.id !== o.id ? off : { ...off, programs: off.programs.filter((pr) => pr.id !== p.id) }
+      ));
+      if (selectedProgramId === p.id) { setSelectedProgramId(null); setSelectedProjectId(null); }
+    } catch (err) {
+      setSaveError(aipErrorMessage(err, "Could not delete program."));
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  async function handleDeleteProject(o: AipOfficeDetail, p: AipProgramDetail, j: AipProjectDetail) {
+    setDeletingId(j.id);
+    setSaveError(null);
+    try {
+      await deleteAipProject(j.id);
+      setOffices((prev) => prev.map((off) =>
+        off.id !== o.id ? off : {
+          ...off,
+          programs: off.programs.map((pr) =>
+            pr.id !== p.id ? pr : { ...pr, projects: pr.projects.filter((proj) => proj.id !== j.id) }
+          ),
+        }
+      ));
+      if (selectedProjectId === j.id) setSelectedProjectId(null);
+    } catch (err) {
+      setSaveError(aipErrorMessage(err, "Could not delete project."));
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  async function handleDeleteActivity(o: AipOfficeDetail, p: AipProgramDetail, j: AipProjectDetail, activityId: number) {
+    setDeletingId(activityId);
+    setSaveError(null);
+    try {
+      await deleteAipActivity(activityId);
+      setOffices((prev) => prev.map((off) =>
+        off.id !== o.id ? off : {
+          ...off,
+          programs: off.programs.map((pr) =>
+            pr.id !== p.id ? pr : {
+              ...pr,
+              projects: pr.projects.map((proj) =>
+                proj.id !== j.id ? proj : { ...proj, activities: proj.activities.filter((a) => a.id !== activityId) }
+              ),
+            }
+          ),
+        }
+      ));
+    } catch (err) {
+      setSaveError(aipErrorMessage(err, "Could not delete activity."));
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  function confirmDeleteProgram(o: AipOfficeDetail, p: AipProgramDetail) {
+    const activityCount = p.projects.reduce((n, j) => n + j.activities.length, 0);
+    setConfirmDialog({
+      title: "Delete Program?",
+      message: `This removes "${p.name}" and everything under it (${p.projects.length} project${p.projects.length !== 1 ? "s" : ""}, ${activityCount} activit${activityCount !== 1 ? "ies" : "y"}). This cannot be undone.`,
+      confirmLabel: "Delete",
+      variant: "danger",
+      onConfirm: () => handleDeleteProgram(o, p),
+      onClose: () => setConfirmDialog(null),
+    });
+  }
+
+  function confirmDeleteProject(o: AipOfficeDetail, p: AipProgramDetail, j: AipProjectDetail) {
+    setConfirmDialog({
+      title: "Delete Project?",
+      message: `This removes "${j.name}" and its ${j.activities.length} activit${j.activities.length !== 1 ? "ies" : "y"}. This cannot be undone.`,
+      confirmLabel: "Delete",
+      variant: "danger",
+      onConfirm: () => handleDeleteProject(o, p, j),
+      onClose: () => setConfirmDialog(null),
+    });
+  }
+
+  function confirmDeleteActivity(o: AipOfficeDetail, p: AipProgramDetail, j: AipProjectDetail, activityId: number, activityName: string) {
+    setConfirmDialog({
+      title: "Delete Activity?",
+      message: `This removes "${activityName}". This cannot be undone.`,
+      confirmLabel: "Delete",
+      variant: "danger",
+      onConfirm: () => handleDeleteActivity(o, p, j, activityId),
+      onClose: () => setConfirmDialog(null),
+    });
+  }
+
   async function handleAddOffice() {
     if (!aip || !officeConfigId) return;
     setSaving(true);
     setSaveError(null);
     try {
-      const off = await addAipOffice(aip.id, { officeConfigId: Number(officeConfigId), sector });
+      const off = await addAipOffice(aip.id, {
+        officeConfigId: Number(officeConfigId), sector, name: officeName.trim() || null,
+      });
       setOffices((prev) => [...prev, off]);
       selectOffice(off);
       setOfficeConfigId("");
+      setOfficeName("");
       setLevel("program");
     } catch (err) {
       setSaveError(aipErrorMessage(err, "Could not add office."));
@@ -525,7 +631,11 @@ function ManualEntryTab() {
               <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Office</label>
               <select
                 value={officeConfigId}
-                onChange={(e) => setOfficeConfigId(e.target.value)}
+                onChange={(e) => {
+                  setOfficeConfigId(e.target.value);
+                  const picked = officeConfigs.find((o) => String(o.id) === e.target.value);
+                  if (picked) setOfficeName(picked.officeName);
+                }}
                 className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
               >
                 <option value="">Select an office…</option>
@@ -547,6 +657,24 @@ function ManualEntryTab() {
               </select>
             </div>
           </div>
+          {officeConfigId && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
+                Office Name <span className="text-slate-600 font-normal normal-case">(editable — e.g. for a sub-office/program cluster)</span>
+              </label>
+              <input
+                value={officeName}
+                onChange={(e) => setOfficeName(e.target.value)}
+                placeholder="e.g. Office of the Governor - Warden"
+                className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
+              />
+              <p className="text-xs text-slate-600 mt-1">
+                Defaults to the office&apos;s configured name. Override it when this AIP entry represents a
+                sub-office or program cluster under the same office — the ref code stays the same either
+                way, so you can add the same office more than once with a different name.
+              </p>
+            </div>
+          )}
           {officeConfigId && (
             <p className="text-xs text-slate-600">
               Ref code preview:{" "}
@@ -794,7 +922,8 @@ function ManualEntryTab() {
         )
       )}
 
-      {/* Tree — everything added so far; click a node to select it as the parent */}
+      {/* Tree — everything added so far; click a node to select it as the parent, ✕ to delete
+          (mistakes happen — e.g. data entered under the wrong level). Draft-only, same as adding. */}
       {offices.length > 0 && (
         <div className="border border-slate-200">
           <p className="px-3 py-2 text-xs font-semibold text-slate-600 uppercase tracking-wide bg-slate-50 border-b border-slate-200">
@@ -814,29 +943,59 @@ function ManualEntryTab() {
                 </button>
                 {o.programs.map((p) => (
                   <div key={p.id} className="ml-5">
-                    <button
-                      onClick={() => selectProgram(o, p)}
-                      className={`text-left text-sm w-full px-1.5 py-1 ${
-                        selectedProgramId === p.id && !selectedProjectId ? "bg-green-50 text-green-800 font-medium" : "text-slate-700 hover:bg-slate-50"
-                      }`}
-                    >
-                      📋 {p.name} <span className="text-xs text-slate-600 font-mono">{p.refCode}</span>
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => selectProgram(o, p)}
+                        className={`text-left text-sm flex-1 min-w-0 px-1.5 py-1 ${
+                          selectedProgramId === p.id && !selectedProjectId ? "bg-green-50 text-green-800 font-medium" : "text-slate-700 hover:bg-slate-50"
+                        }`}
+                      >
+                        📋 {p.name} <span className="text-xs text-slate-600 font-mono">{p.refCode}</span>
+                      </button>
+                      <button
+                        onClick={() => confirmDeleteProgram(o, p)}
+                        disabled={deletingId === p.id}
+                        title="Delete program"
+                        className="shrink-0 px-1.5 py-1 text-xs text-danger-500 hover:text-danger-700 hover:underline disabled:opacity-50"
+                      >
+                        ✕
+                      </button>
+                    </div>
                     {p.projects.map((j) => (
                       <div key={j.id} className="ml-5">
-                        <button
-                          onClick={() => selectProject(o, p, j)}
-                          className={`text-left text-sm w-full px-1.5 py-1 ${
-                            selectedProjectId === j.id ? "bg-green-50 text-green-800 font-medium" : "text-slate-700 hover:bg-slate-50"
-                          }`}
-                        >
-                          📁 {j.name} <span className="text-xs text-slate-600 font-mono">{j.refCode}</span>
-                        </button>
-                        {j.activities.length > 0 && (
-                          <p className="ml-5 text-xs text-slate-600 py-0.5">
-                            {j.activities.length} activit{j.activities.length !== 1 ? "ies" : "y"} added
-                          </p>
-                        )}
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => selectProject(o, p, j)}
+                            className={`text-left text-sm flex-1 min-w-0 px-1.5 py-1 ${
+                              selectedProjectId === j.id ? "bg-green-50 text-green-800 font-medium" : "text-slate-700 hover:bg-slate-50"
+                            }`}
+                          >
+                            📁 {j.name} <span className="text-xs text-slate-600 font-mono">{j.refCode}</span>
+                          </button>
+                          <button
+                            onClick={() => confirmDeleteProject(o, p, j)}
+                            disabled={deletingId === j.id}
+                            title="Delete project"
+                            className="shrink-0 px-1.5 py-1 text-xs text-danger-500 hover:text-danger-700 hover:underline disabled:opacity-50"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                        {j.activities.map((a) => (
+                          <div key={a.id} className="ml-5 flex items-center gap-1">
+                            <p className="flex-1 min-w-0 px-1.5 py-0.5 text-xs text-slate-600 truncate">
+                              🧾 {a.name} <span className="font-mono">{a.refCode}</span>
+                            </p>
+                            <button
+                              onClick={() => confirmDeleteActivity(o, p, j, a.id, a.name)}
+                              disabled={deletingId === a.id}
+                              title="Delete activity"
+                              className="shrink-0 px-1.5 py-0.5 text-xs text-danger-500 hover:text-danger-700 hover:underline disabled:opacity-50"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
                       </div>
                     ))}
                   </div>
@@ -846,6 +1005,8 @@ function ManualEntryTab() {
           </div>
         </div>
       )}
+
+      {confirmDialog && <ConfirmDialog {...confirmDialog} />}
     </div>
   );
 }

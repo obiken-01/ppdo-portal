@@ -153,10 +153,14 @@ public record CreateAipRecordDto(int FiscalYear);
 
 /// <summary>
 /// Body of POST /api/budget-planning/aip/{aipId}/offices. <see cref="OfficeConfigId"/> is the
-/// config <c>Office</c> row (RefCode/Name are pulled from it, not user-typed); <see cref="Sector"/>
-/// is a separate choice — the same office can appear under more than one sector.
+/// config <c>Office</c> row (RefCode is always derived from it; <see cref="Name"/> defaults to
+/// its <c>OfficeName</c> but can be overridden — real AIP files often label a sub-office/program
+/// cluster under the same physical office differently, e.g. "PROVINCIAL PLANNING AND DEVELOPMENT
+/// OFFICE - SPECIAL PROJECTS" or "OFFICE OF THE GOVERNOR - WARDEN", sharing the same RefCode as
+/// the office's other entries but with a distinguishing name). <see cref="Sector"/> is a separate
+/// choice — the same office can appear under more than one sector.
 /// </summary>
-public record CreateAipOfficeDto(int OfficeConfigId, string Sector);
+public record CreateAipOfficeDto(int OfficeConfigId, string Sector, string? Name = null);
 
 public record CreateAipProgramDto(string Name, string? FunctionBand = null);
 

@@ -91,6 +91,9 @@ export interface CreateAipRecordRequest {
 export interface CreateAipOfficeRequest {
   officeConfigId: number;
   sector: string;
+  /** Defaults to the config office's name server-side when omitted/blank — override for
+   * sub-office/program-cluster rows sharing the same office (e.g. "...- SPECIAL PROJECTS"). */
+  name?: string | null;
 }
 
 export interface CreateAipProgramRequest {
