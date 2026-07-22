@@ -576,7 +576,7 @@ function ManualEntryTab() {
                 className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
               />
               <p className="text-xs text-slate-600 mt-1">
-                Defaults to the office's configured name. Override it when this AIP entry represents a
+                Defaults to the office&apos;s configured name. Override it when this AIP entry represents a
                 sub-office or program cluster under the same office — the ref code stays the same either
                 way, so you can add the same office more than once with a different name.
               </p>
