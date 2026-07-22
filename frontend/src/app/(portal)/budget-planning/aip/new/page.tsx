@@ -268,6 +268,7 @@ function ManualEntryTab() {
 
   // Office fields
   const [officeConfigId, setOfficeConfigId] = useState<string>("");
+  const [officeName, setOfficeName] = useState<string>("");
   const [sector, setSector] = useState<string>("GENERAL");
   // Program fields
   const [programName, setProgramName]   = useState("");
@@ -340,10 +341,13 @@ function ManualEntryTab() {
     setSaving(true);
     setSaveError(null);
     try {
-      const off = await addAipOffice(aip.id, { officeConfigId: Number(officeConfigId), sector });
+      const off = await addAipOffice(aip.id, {
+        officeConfigId: Number(officeConfigId), sector, name: officeName.trim() || null,
+      });
       setOffices((prev) => [...prev, off]);
       selectOffice(off);
       setOfficeConfigId("");
+      setOfficeName("");
       setLevel("program");
     } catch (err) {
       setSaveError(aipErrorMessage(err, "Could not add office."));
@@ -534,7 +538,11 @@ function ManualEntryTab() {
               <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Office</label>
               <select
                 value={officeConfigId}
-                onChange={(e) => setOfficeConfigId(e.target.value)}
+                onChange={(e) => {
+                  setOfficeConfigId(e.target.value);
+                  const picked = officeConfigs.find((o) => String(o.id) === e.target.value);
+                  if (picked) setOfficeName(picked.officeName);
+                }}
                 className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
               >
                 <option value="">Select an office…</option>
@@ -556,6 +564,24 @@ function ManualEntryTab() {
               </select>
             </div>
           </div>
+          {officeConfigId && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
+                Office Name <span className="text-slate-600 font-normal normal-case">(editable — e.g. for a sub-office/program cluster)</span>
+              </label>
+              <input
+                value={officeName}
+                onChange={(e) => setOfficeName(e.target.value)}
+                placeholder="e.g. Office of the Governor - Warden"
+                className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
+              />
+              <p className="text-xs text-slate-600 mt-1">
+                Defaults to the office's configured name. Override it when this AIP entry represents a
+                sub-office or program cluster under the same office — the ref code stays the same either
+                way, so you can add the same office more than once with a different name.
+              </p>
+            </div>
+          )}
           {officeConfigId && (
             <p className="text-xs text-slate-600">
               Ref code preview:{" "}
