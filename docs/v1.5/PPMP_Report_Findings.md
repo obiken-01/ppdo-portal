@@ -215,11 +215,57 @@ v1.4.4) rather than inventing a new pattern:
    entry surface for the missing fields.
 4. **Then** — a `PpmpProjectDetail` table keyed to the chosen grain to hold Cols 2, 4, 5, 6, 7, 11,
    12 + the header's PPMP No./Indicative-Final, and an entry screen for it.
-5. **Later** — Excel export against the official form layout, reusing the programmatic-build
-   approach proven in v1.4.4's `WfpReportExcelService`.
+5. **Then** — **`.xlsx` export** (confirmed requirement, see §6.1 below).
 
 Splitting 3 from 4 matters: step 3 is cheap, has zero schema cost, and de-risks step 4's schema
 decision by getting the grain validated against a real filed document first.
+
+### 6.1 Excel export — confirmed
+
+The PPMP report **will export to `.xlsx`**, same as WFP. It is not a print-only view. This is
+confirmed scope, not a maybe, and it changes two things about the earlier steps:
+
+- **The DTO must serve both surfaces from day one.** The preview and the export read the same
+  `PpmpReportDto`; the preview's columns should map **1:1 onto the official form's 12 columns**
+  rather than being a convenient web-shaped subset. Getting this wrong means reshaping the DTO
+  later.
+- **Row grain (§5) is now load-bearing for the export too.** A filed `.xlsx` has to be a document
+  a BAC will accept — which is a much harder constraint than a browser preview, and another reason
+  to validate Option A against a real filed PPMP before building.
+
+**Reuse v1.4.4's approach, and its hard-won lesson.** `WfpReportExcelService` deliberately does
+**not** clone rows out of a reference workbook — the province's `WFP-NEW.xlsx` turned out to be a
+*filled sample*, not a blank template (293 merged ranges, borders hand-touched row-to-row), and
+cloning from it was a merge-corruption risk. The shipped design instead **builds the sheet
+programmatically in ClosedXML** from a documented style catalog (fills/fonts/borders/number-formats/
+column-widths as C# constants) applied per row type, with merges computed from each block's actual
+emitted row count. **Do the same for PPMP** — assume any PPMP sample the province hands over is
+likewise a filled sample, not a template.
+
+Conventions to carry over:
+
+- New interface `IPpmpReportExcelService` in Application, implementation in Infrastructure —
+  **named distinctly on purpose**, the same way `IWfpReportExcelService` was named to avoid
+  colliding with the older legacy `IWfpExcelService`.
+- Endpoint `GET /api/budget-planning/ppmp/report/export`, sibling of the preview endpoint, same
+  office/fiscalYear/divisionId scoping and the same division clamp.
+- Filename built **client-side**, not read from `Content-Disposition` — matching
+  `buildExportFilename` in [report/page.tsx](frontend/src/app/(portal)/budget-planning/report/page.tsx).
+  Proposed: `PPMP{fiscalYear}_{officeCode}[_{divisionCode}]_{ppmpNo}_yyyyMMddHHmmss.xlsx` — needs
+  Ralph's call on whether the PPMP No. belongs in the name.
+- Unit tests against the **structural** logic (row counts, merge spans, totals, no formulas), not
+  the styling — v1.4.4's 7 tests stayed green through every colour/width iteration precisely
+  because they tested structure. Expect the same iterate-on-styling loop here.
+
+Form-specific things the WFP exporter did not have to handle:
+
+- The header block's **checkbox pair** (Indicative / Final) — a checked box in a cell, plus the
+  PPMP No.
+- The **agency letterhead with logo** the form calls for at the top.
+- The three **column group headings** (PROCUREMENT PROJECT DETAILS / PROJECTED TIMELINE (MM/YYYY) /
+  FUNDING DETAILS) spanning cols 1–5, 6–8, 9–10 — merged header cells above the 12 column names.
+- The **signatory footer** (Prepared by / Submitted by), which the WFP export did not render at all.
+- `MM/YYYY` text formatting in cols 6–8, including the range form (`06/2026 to 06/2028`).
 
 ---
 
@@ -235,6 +281,8 @@ decision by getting the grain validated against a real filed document first.
 | **Q6** | Should the RA 12009 **modes of procurement** be a seeded config table (like `funding_sources` / `accounts`) or a hardcoded enum? | Config table is consistent with the rest of the app; enum is cheaper. Leaning config table. |
 | **Q7** | Column 11 — text list of attachment names for now, or real file upload from the start? | Text is the cheap draft; upload is a much bigger ticket. |
 | **Q8** | Is PPMP scope **procurement items only**, or must non-procurement expenditures appear too? `WfpExpenditure.Nature` is `Procurement` / `Non-Procurement` / `Combined` — the natural filter is `Nature != "Non-Procurement"`, but a by-administration project still belongs on a PPMP (the form has explicit `N/A` handling for it). | Decides the base query's filter. |
+| **Q9** | How exact does the `.xlsx` need to be — a **faithful reproduction of the GPPB form** (letterhead, checkboxes, merged group headings, signatory block) that gets printed and signed as-is, or a clean data export the unit pastes into their own copy of the form? | Large effort difference. v1.4.4's WFP export went faithful; assuming the same here unless told otherwise. |
+| **Q10** | Export filename — include the PPMP No.? Proposed `PPMP{FY}_{office}[_{division}]_{ppmpNo}_{timestamp}.xlsx`. | Cosmetic, but the WFP convention was Ralph's own call so this should be too. |
 
 ---
 
