@@ -283,6 +283,17 @@ Form-specific things the WFP exporter did not have to handle:
 | **Q8** | Is PPMP scope **procurement items only**, or must non-procurement expenditures appear too? `WfpExpenditure.Nature` is `Procurement` / `Non-Procurement` / `Combined` — the natural filter is `Nature != "Non-Procurement"`, but a by-administration project still belongs on a PPMP (the form has explicit `N/A` handling for it). | Decides the base query's filter. |
 | **Q9** | How exact does the `.xlsx` need to be — a **faithful reproduction of the GPPB form** (letterhead, checkboxes, merged group headings, signatory block) that gets printed and signed as-is, or a clean data export the unit pastes into their own copy of the form? | Large effort difference. v1.4.4's WFP export went faithful; assuming the same here unless told otherwise. |
 | **Q10** | Export filename — include the PPMP No.? Proposed `PPMP{FY}_{office}[_{division}]_{ppmpNo}_{timestamp}.xlsx`. | Cosmetic, but the WFP convention was Ralph's own call so this should be too. |
+| **Q11** | **Column 10 — items total or total appropriation?** Where a WFP reserve is applied the two differ: `SUM(WfpProcurementItem.LineTotal)` is the true cost of the goods, while `WfpExpenditure.TotalAppropriation` adds the reserve on top. Found live in the sample: ₱30,000.00 vs ₱33,000.00 and ₱41,991.00 vs ₱46,190.10. | Changes every budget figure and the TOTAL BUDGET. The sample uses the **items total** (the ABC basis) — needs confirming. |
+
+### Worked sample
+
+A sample of this form was built from real local dev data (`wfp_records.id = 6`, PPDO / Planning
+Division, FY2027, Draft) to test the §5 recommendation concretely. It confirmed that **44
+procurement line items collapse to 5 filable rows** at the Option A grain, and it is what surfaced
+Q11.
+
+The sample workbook is deliberately NOT committed — this is a public repository and the file
+carried real (draft, unapproved) budget figures. Regenerate it locally if needed.
 
 ---
 
