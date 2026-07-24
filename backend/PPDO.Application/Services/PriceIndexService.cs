@@ -23,7 +23,10 @@ namespace PPDO.Application.Services;
 /// </summary>
 public sealed class PriceIndexService : IPriceIndexService
 {
-    private static readonly string[] CsvHeaders = { "name", "unit", "unit_price", "category", "is_active", "days_enabled" };
+    // stock_card_no is appended LAST on purpose (v1.5): the importer reads columns positionally,
+    // so a CSV exported before this column existed still imports cleanly — Field() returns "" for
+    // the missing index rather than shifting every other column.
+    private static readonly string[] CsvHeaders = { "name", "unit", "unit_price", "category", "is_active", "days_enabled", "stock_card_no" };
 
     private readonly IPriceIndexItemRepository _repo;
     private readonly ILogger<PriceIndexService> _logger;
@@ -84,6 +87,7 @@ public sealed class PriceIndexService : IPriceIndexService
             Unit           = unit,
             UnitPrice      = dto.UnitPrice,
             Category       = Blank(dto.Category),
+            StockCardNo    = Blank(dto.StockCardNo),
             PriceUpdatedAt = now,
             IsActive       = dto.IsActive,
             DaysEnabled    = dto.DaysEnabled,
@@ -97,7 +101,7 @@ public sealed class PriceIndexService : IPriceIndexService
         _logger.LogInformation("Price index item created. Name: {Name}, Unit: {Unit}", entity.Name, entity.Unit);
         await _audit.LogAsync("price_index_items", entity.Id, AuditAction.Create,
             oldValues: null,
-            newValues: new { entity.Name, entity.Unit, entity.UnitPrice, entity.IsActive, entity.DaysEnabled },
+            newValues: new { entity.Name, entity.Unit, entity.UnitPrice, entity.IsActive, entity.DaysEnabled, entity.StockCardNo },
             cancellationToken);
         return ServiceResult<PriceIndexItemDto>.Ok(MapToDto(entity));
     }
@@ -119,12 +123,13 @@ public sealed class PriceIndexService : IPriceIndexService
         if (all.Any(p => p.Id != id && SameKey(p, name, unit)))
             return ServiceResult<PriceIndexItemDto>.Conflict($"A price index item named '{name}' ({unit}) already exists.");
 
-        var oldSnapshot = new { entity.Name, entity.Unit, entity.UnitPrice, entity.IsActive, entity.DaysEnabled };
+        var oldSnapshot = new { entity.Name, entity.Unit, entity.UnitPrice, entity.IsActive, entity.DaysEnabled, entity.StockCardNo };
         DateTime now = DateTime.UtcNow;
 
         entity.Name        = name;
         entity.Unit        = unit;
         entity.Category    = Blank(dto.Category);
+        entity.StockCardNo = Blank(dto.StockCardNo);
         entity.IsActive    = dto.IsActive;
         entity.DaysEnabled = dto.DaysEnabled;
         entity.UpdatedAt   = now;
@@ -138,7 +143,7 @@ public sealed class PriceIndexService : IPriceIndexService
         await _repo.SaveChangesAsync(cancellationToken);
         await _audit.LogAsync("price_index_items", entity.Id, AuditAction.Update,
             oldValues: oldSnapshot,
-            newValues: new { entity.Name, entity.Unit, entity.UnitPrice, entity.IsActive, entity.DaysEnabled },
+            newValues: new { entity.Name, entity.Unit, entity.UnitPrice, entity.IsActive, entity.DaysEnabled, entity.StockCardNo },
             cancellationToken);
         return ServiceResult<PriceIndexItemDto>.Ok(MapToDto(entity));
     }
@@ -175,7 +180,7 @@ public sealed class PriceIndexService : IPriceIndexService
             .Select(p => new string?[]
             {
                 p.Name, p.Unit, p.UnitPrice.ToString(CultureInfo.InvariantCulture), p.Category,
-                p.IsActive ? "true" : "false", p.DaysEnabled ? "true" : "false",
+                p.IsActive ? "true" : "false", p.DaysEnabled ? "true" : "false", p.StockCardNo,
             });
         return Csv.Write(CsvHeaders, rows);
     }
@@ -207,6 +212,12 @@ public sealed class PriceIndexService : IPriceIndexService
             string category = Field(f, 3);
             bool active = Csv.ParseBool(Field(f, 4), fallback: true);
             bool daysEnabled = Csv.ParseBool(Field(f, 5), fallback: false);
+            string stockCardNo = Field(f, 6);
+            // A CSV exported before stock_card_no existed has only 6 columns. Treat the absent
+            // column as "leave alone" rather than "clear" — otherwise re-importing an older file
+            // would silently wipe every stock card number already recorded. A row that HAS the
+            // column but leaves it blank still clears it, matching how category behaves.
+            bool hasStockCardNoColumn = f.Length > 6;
 
             if (name.Length == 0 || unit.Length == 0)
             {
@@ -237,7 +248,8 @@ public sealed class PriceIndexService : IPriceIndexService
                     priceChanged ||
                     Blank(existing.Category) != Blank(category) ||
                     existing.IsActive != active ||
-                    existing.DaysEnabled != daysEnabled;
+                    existing.DaysEnabled != daysEnabled ||
+                    (hasStockCardNoColumn && Blank(existing.StockCardNo) != Blank(stockCardNo));
 
                 if (!changed) { skipped++; continue; }
 
@@ -246,6 +258,7 @@ public sealed class PriceIndexService : IPriceIndexService
                 existing.Category    = Blank(category);
                 existing.IsActive    = active;
                 existing.DaysEnabled = daysEnabled;
+                if (hasStockCardNoColumn) existing.StockCardNo = Blank(stockCardNo);
                 existing.UpdatedAt   = now;
                 await _repo.UpdateAsync(existing, cancellationToken);
                 updated++;
@@ -258,6 +271,7 @@ public sealed class PriceIndexService : IPriceIndexService
                     Unit           = unit,
                     UnitPrice      = price,
                     Category       = Blank(category),
+                    StockCardNo    = Blank(stockCardNo),
                     PriceUpdatedAt = now,
                     IsActive       = active,
                     DaysEnabled    = daysEnabled,
@@ -293,7 +307,7 @@ public sealed class PriceIndexService : IPriceIndexService
     private static string Key(string name, string unit) => $"{name}|{unit}";
 
     private static PriceIndexItemDto MapToDto(PriceIndexItem p) =>
-        new(p.Id, p.Name, p.Unit, p.UnitPrice, p.Category, p.PriceUpdatedAt, p.IsActive, p.DaysEnabled);
+        new(p.Id, p.Name, p.Unit, p.UnitPrice, p.Category, p.PriceUpdatedAt, p.IsActive, p.DaysEnabled, p.StockCardNo);
 
     /// <summary>Trims and converts blank to null so "" and null compare equal during upsert.</summary>
     private static string? Blank(string? value)

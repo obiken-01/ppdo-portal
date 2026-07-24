@@ -114,6 +114,7 @@ interface FormState {
   unitPrice: number | null;
   category: string;
   daysEnabled: boolean;
+  stockCardNo: string;
 }
 
 const blankForm = (): FormState => ({
@@ -122,6 +123,7 @@ const blankForm = (): FormState => ({
   unitPrice: null,
   category: "",
   daysEnabled: false,
+  stockCardNo: "",
 });
 
 // ---------------------------------------------------------------------------
@@ -218,6 +220,7 @@ export default function PriceIndexConfigPage() {
       unitPrice: item.unitPrice,
       category: item.category ?? "",
       daysEnabled: item.daysEnabled,
+      stockCardNo: item.stockCardNo ?? "",
     });
     setFormError(null);
     setShowForm(true);
@@ -248,6 +251,7 @@ export default function PriceIndexConfigPage() {
       // Modal does not edit status; preserve it on update, default active on create.
       isActive: editTarget ? editTarget.isActive : true,
       daysEnabled: form.daysEnabled,
+      stockCardNo: form.stockCardNo.trim() || null,
     };
 
     setSaving(true);
@@ -301,6 +305,7 @@ export default function PriceIndexConfigPage() {
         category: item.category,
         isActive: true,
         daysEnabled: item.daysEnabled,
+        stockCardNo: item.stockCardNo,
       });
       toast.success("Price index item reactivated", `${item.name} is now active.`);
       await load();
@@ -346,6 +351,15 @@ export default function PriceIndexConfigPage() {
       header: "Unit",
       sortable: true,
       render: (p) => <span className="text-slate-600">{p.unit}</span>,
+    },
+    {
+      key: "stockCardNo",
+      header: "Stock Card No.",
+      sortable: true,
+      render: (p) =>
+        p.stockCardNo
+          ? <span className="font-mono text-xs text-slate-700">{p.stockCardNo}</span>
+          : <span className="text-slate-600">—</span>,
     },
     {
       key: "category",
@@ -448,7 +462,7 @@ export default function PriceIndexConfigPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name or category…"
+            placeholder="Search by name, category, or stock card no.…"
             className="flex-1 min-w-[220px] px-3 py-2 text-sm border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-green-600"
           />
 
@@ -543,6 +557,22 @@ export default function PriceIndexConfigPage() {
               </p>
             </div>
 
+            {/* Stock Card No. */}
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Stock Card No.</label>
+              <input
+                value={form.stockCardNo}
+                onChange={(e) => setForm((f) => ({ ...f, stockCardNo: e.target.value }))}
+                placeholder="OS-PAP-0000004"
+                maxLength={50}
+                className="w-full px-3 py-2 text-sm font-mono border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
+              />
+              <p className="mt-1 text-[11px] text-slate-600">
+                GSO item code, reproduced per line item in the PPMP report. Optional — leave blank
+                if the item has none.
+              </p>
+            </div>
+
             {/* Category */}
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Category</label>
@@ -621,7 +651,9 @@ export default function PriceIndexConfigPage() {
               combinations are added and existing ones are updated. Nothing is deleted.
             </p>
             <p className="text-xs text-slate-600">
-              Expected columns: name, unit, unit_price, category, is_active, days_enabled.
+              Expected columns: name, unit, unit_price, category, is_active, days_enabled,
+              stock_card_no. A file without the last column still imports — existing stock card
+              numbers are left untouched.
             </p>
           </div>
         </Modal>
