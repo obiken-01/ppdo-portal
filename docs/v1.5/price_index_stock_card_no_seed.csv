@@ -1,5 +1,6 @@
 name,unit,unit_price,category,is_active,days_enabled,stock_card_no
 "Battery AA, 1.5Volts, Alkaline, no mercury&cadmium added",pc.,63.00,Other Supplies and Materials for Distribution,true,false,OS-BAT-0000001
+"Battery AAA, 1.5Volts, Max Alkaline, no mercury&cadmium added, 4pieces per pack, well-known brand",pack,220.00,Other Supplies and Materials Expenses,true,false,OS-BAT-0000002
 Fastener standard (Plastic),box,66.00,Office Supplies Expenses,true,false,OS-FAS-0000003
 Bond paper A4 80gsm,ream,494.00,Office Supplies Expenses,true,false,OS-PAP-0000004
 Bond paper long S20/80 gsm,ream,495.00,Training Expenses,true,false,OS-PAP-0000006
