@@ -168,25 +168,51 @@ Column H can be populated from config rather than retyped per plan.
 
 - **Optional and not unique** — only a minority of catalogue items have one, and enforcing
   uniqueness would fail the CSV import that is this table's primary ingestion path.
-- **Editable in the config UI**, shown as its own sortable column, and **searchable** — typing
-  `OS-PEN` filters to the pen items.
+- **Editable in the config UI**, shown as its own sortable column, and **searchable** — typing a
+  code prefix (e.g. `OSE-`) filters the catalogue to matching items.
 - **CSV round-trips**, with `stock_card_no` appended **last** so a file exported before the column
   existed still imports cleanly. A CSV *without* the column leaves existing values untouched; a row
   *with* the column but blank clears it (matching how `category` behaves). Both cases are covered
   by tests.
 
-**Seeded from the reference file**: `docs/v1.5/price_index_stock_card_no_seed.csv` — all 22 stock
-card numbers, matched to their catalogue items by normalised name and verified against the live
-price index (6,398 items). Imported cleanly.
+### Which code goes in the field — DECIDED: the GSO Item Code
 
-Two needed judgement:
+There are **two different coding schemes** in play, and this caused a false start:
 
-- `OS-PAP-0000034` "Sticky Notes (Sign Here) **(pack)**" → matched to "Sticky Notes (Sign Here)";
-  the plan file had appended the unit to the name. Confident.
-- `OS-BAT-0000002` "Battery AAA…" → two candidates: id 2906 `Battery AAA, 1.5Volts, Alkaline …
-  (Lubang)` [pc] matched by name, id 4297 `Battery AAA, 1.5Volts, Max Alkaline, …, 4pieces per pack`
-  [pack] matched by unit. Left out of the first import and **resolved by Ralph (2026-07-24): id 4297,
-  the pack** — now in the seed.
+- The **PPMP working file's "Stock Card No."** column uses codes like `OS-PAP-0000004` (22 of them
+  in the Admin Division file). The first seed used these.
+- GSO's authoritative **Items Export ("Item Code")** uses a different scheme entirely —
+  `OSE-1714343441`, `OSAMFD-3025181986`, `TREX-…`, etc. **Zero `OS-…` codes exist in it.**
+
+**Decision (Ralph, 2026-07-24): `stock_card_no` holds the GSO Items-Export Item Code**, not the
+`OS-` code hand-typed on the PPMP working file. The 22 `OS-` codes from the first seed were
+overwritten. (So the PPMP form's "Stock Card No." column, when the report renders it, will show the
+GSO Item Code — the two labels refer to the same underlying identifier; the `OS-` values on the
+paper form were a local shorthand, not the system code.)
+
+**Merge method (reproducible):** match each price-index row to the Items Export on
+**`name` + `unit` + `category`**, where the export's **Account Name** is the category. Falling back
+to `name` + `unit` alone. Only rows with **exactly one** candidate code are filled; anything
+ambiguous or unmatched is left blank rather than guessed.
+
+Result over the full 6,398-row price index (imported via the standard CSV endpoint —
+*6,099 updated, 299 skipped, 0 errors*):
+
+| Outcome | Count | Handling |
+|---|---|---|
+| Unambiguous code (name+unit+category) | 6,097 | filled |
+| Unambiguous code (name+unit only) | 2 | filled |
+| **Ambiguous** — same name+unit+category → multiple codes | 177 | left blank |
+| **No match** in the export | 122 | left blank |
+
+The `name`+`unit` key alone was ambiguous for 2,340 rows (the same item is coded differently per
+account — e.g. "Battery AA" is `OSAME-…` as an expense, `OSAMFD-…` for distribution, `TREX-…` under
+training); adding `category`=Account Name resolved all but 177 of those. The 299 blanks can be
+filled manually in config, or by a later, smarter match. **Do not auto-fill them by loosening the
+match** — a wrong GSO code on an item is worse than a blank.
+
+The 22-row `OS-` seed file was removed once this superseded it. Re-seeding is done by re-running the
+export→match→import above against a fresh Items Export, not from a committed file.
 
 ### How the code reaches the report — DECIDED: join live
 
@@ -215,8 +241,9 @@ GSO code by definition. Do NOT fall back to fuzzy-matching on name to fill it in
 
 Answered by the reference file: ~~Q1~~ (which form), ~~Q2~~ (row grain), ~~Q9~~ (export fidelity —
 match the province's own form), ~~Q10~~ (filename — no PPMP No.; the real form has no such field).
-Answered by Ralph 2026-07-24: ~~Q14~~ (`OS-BAT-0000002` = id 4297, the pack — seeded), ~~Q15~~
-(join live via `PriceIndexItemId`, see §6).
+Answered by Ralph 2026-07-24: ~~Q14~~ (moot — the `OS-` seed it belonged to was superseded by the
+GSO Item Code merge, see §6), ~~Q15~~ (join live via `PriceIndexItemId`, see §6), ~~Q16~~ (which
+coding scheme `stock_card_no` holds — the GSO Items-Export Item Code, see §6).
 
 | # | Question | Why it matters |
 |---|---|---|
@@ -227,10 +254,10 @@ Answered by Ralph 2026-07-24: ~~Q14~~ (`OS-BAT-0000002` = id 4297, the pack — 
 | **Q11** | The account section rows carry a total (e.g. ₱700,000 for Office Supplies). Is that the **AIP/WFP appropriation** for that account, or the sum of the items below it? In the reference they don't always agree. | Determines whether that cell is computed or fetched. |
 | **Q12** | **Mode of Procurement** — blank in all 104 rows. Do you want the field at all? If yes, seeded config list or free text? | The only genuinely missing column. Deferring it costs nothing. |
 | **Q13** | Generate the **Summary sheet** (AIP vs actual budget reconciliation) as a second sheet of the export? The portal already has both sides. | Nice-to-have; could ship free. |
-**Resolved:** ~~Q14~~ — `OS-BAT-0000002` is **id 4297** ("Battery AAA … 4pieces per pack", unit
-`pack`), not id 2906. Added to the seed and imported (Ralph, 2026-07-24). ~~Q15~~ — join Stock Card
-No./Category live via `PriceIndexItemId`, no snapshot (Ralph, 2026-07-24). Rationale and consequences
-in §6.
+**Resolved:** ~~Q15~~ — join Stock Card No./Category live via `PriceIndexItemId`, no snapshot
+(Ralph, 2026-07-24). ~~Q16~~ — `stock_card_no` holds the **GSO Items-Export Item Code**, not the
+PPMP form's `OS-` code; merged over the whole price index by name+unit+category. ~~Q14~~ was the
+`OS-BAT-0000002` disambiguation — now moot, that whole seed was replaced. All in §6.
 
 ---
 
