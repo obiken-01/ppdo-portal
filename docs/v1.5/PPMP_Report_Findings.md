@@ -2,314 +2,297 @@
 
 > Research + gap analysis for adding a **Project Procurement Management Plan (PPMP)** report to
 > Budget Planning › Report, alongside the existing WFP report.
-> Status: **findings only** — no tickets cut yet. Open questions at the end need Ralph's / the
-> PBO's answers before implementation scope is fixed.
-> Date: 2026-07-23 · Milestone: `v1.5 — PPMP Report` · Branch: `release/1.5.0-ppmp`
+> Milestone: `v1.5 — PPMP Report` · Branch: `release/1.5.0-ppmp`
+>
+> **Revised 2026-07-24** after Ralph supplied a real filed PPMP (`ppmp admin2027.xlsx`, PPDO
+> Administrative Division, GENERAL FUND). That file **answered Q1 and Q2 and overturned this
+> document's original two main conclusions.** The superseded GPPB-form analysis is kept as
+> Appendix A — it is still the national standard and still matters, just not for what we build first.
 
 ---
 
-## 1. Headline finding
+## 1. Headline findings
 
-**The portal already stores real procurement line items.** The v1.4 WFP Rework
-(RAL-118/119/120/125/127/138) shipped `WfpProcurementItem` — name, unit, unit price, quantity,
-number of days, and a computed line total — snapshotted from the GSO price index at save time and
-hanging off every WFP expenditure.
+**1. The province files its own working format, not the GPPB form.** The original draft assumed the
+official GPPB PPMP form under RA 12009 (12 numbered columns, Indicative/Final flag, per-project
+rows). The real file uses a **different, item-level layout** with an AIP-anchored hierarchy and a
+quarterly schedule. Build against the real one. *(Q1 — answered.)*
 
-That means the PPMP is **not a new data-entry module**. It is largely a **re-projection of data the
-WFP entry wizard already captures**, regrouped from "by expense class / account" into "by
-procurement project", plus a small set of genuinely procurement-specific fields that nothing in the
-portal records today (mode of procurement, procurement timeline, pre-proc conference flag).
+**2. The row grain is one row per procurement ITEM, not per procurement project.** The original
+draft recommended "Option A" — one row per WFP expenditure. The real file puts **every catalogue
+item on its own row** (104 item rows in one division's file), with hierarchy and account rows as
+interleaved section headers. Option A is wrong for this form. *(Q2 — answered.)*
 
-Rough split against the official 12-column form: **5 columns fully derivable, 2 partially
-derivable, 5 genuinely new.** Detail in §4.
+**3. This makes the report substantially cheaper.** The real form's columns line up almost exactly
+with `WfpProcurementItem` — including the quarterly qty/amount split, which maps directly onto
+`PeriodNo`. **11 of 13 columns are derivable from data the portal already holds.** The remaining
+two are Stock Card No. (added this round — see §6) and Mode of Procurement (which is **blank in
+every one of the 104 rows** of the reference file).
 
----
-
-## 2. What the PPMP is, in the Philippine setting
-
-The PPMP is the **end-user unit's** procurement plan for its own programs, activities and projects
-(PAPs). Each implementing unit prepares one; the BAC/Procurement Unit then **consolidates all the
-units' PPMPs into the agency's Annual Procurement Plan (APP)**. The PPMP is therefore the *input*
-document, the APP the *output* — they are not the same form, and this ticket is about the PPMP.
-
-Two flavours, distinguished by a checkbox on the form itself:
-
-| Flavour | When | Budget column means |
-|---|---|---|
-| **Indicative** | Prepared alongside the budget proposal, before the appropriation is approved | "Estimated Budget" |
-| **Final** | Prepared after the General Appropriations Act / appropriation ordinance is passed | "Authorized Budgetary Allocation" |
-
-For a provincial LGU like Occidental Mindoro the approving instrument is the **appropriation
-ordinance**, not the GAA — the form's Column 9 guidance explicitly allows for this.
-
-Each successive submission is numbered: the first Indicative PPMP is **No. 1**, the next
-update/Final is **No. 2**, and so on. That numbering is per end-user unit, per fiscal year.
-
-### Legal basis — use RA 12009, not RA 9184
-
-Procurement moved from **RA 9184** (Government Procurement Reform Act) to **RA 12009** (New
-Government Procurement Act) — its IRR was issued via **GPPB Resolution No. 02-2025**. The PPMP
-requirements now sit in **IRR §7.7**, and GPPB has published a new NGPA PPMP form to match.
-
-**This draft is based on the RA 12009 form**, not the older RA 9184 one. The two differ materially:
-the new form adds the Indicative/Final flag, the PPMP number, the pre-procurement conference
-column, the "Attached Supporting Document/s" column (with a **mandatory Market Scoping Checklist**),
-and it drops the old form's PS/MOOE/CO budget split in favour of a single budget column.
-
-⚠️ Worth confirming with the PBO/BAC which form the province is actually filing on right now — some
-LGUs are still on the RA 9184 layout during the transition. See Q1 in §7.
+The PPMP is a **re-projection of WFP data**, grouped by procurement item instead of by expense
+class. It is not a new data-entry module.
 
 ---
 
-## 3. The official form structure (RA 12009 / IRR §7.7)
-
-Source: <https://www.gppb.gov.ph/wp-content/uploads/2025/08/NGPA_PPMP.pdf>
+## 2. The real form (`ppmp admin2027.xlsx`)
 
 ### Header
 
 ```
-[Agency Letterhead with Logo]
-PROJECT PROCUREMENT MANAGEMENT PLAN (PPMP) NO. ___        [ ] INDICATIVE   [ ] FINAL
-Fiscal Year : ______
-End-User or Implementing Unit : ______
+PROJECT PROCUREMENT MANAGEMENT PLAN (PPMP)
+CY 2025                                          ← note: file is the FY2027 plan (see §5)
+END-USER/UNIT :  PROVINCIAL PLANNING AND DEVELOPMENT OFFICE (PPDO)
+Charged to: GENERAL FUND                         ← one file per fund source
 ```
 
-### Table — 12 numbered columns under 3 group headings
+### Columns (two-tier header; cols L–W sit under "SCHEDULE/MILESTONE OF ACTIVITIES")
 
-| # | Column heading (verbatim) | Group |
+| Col | Heading | Source in the portal |
 |---|---|---|
-| 1 | General Description and Objective of the Project to be Procured | PROCUREMENT PROJECT DETAILS |
-| 2 | Type of the Project to be Procured (whether Goods, Infrastructure and Consulting Services) | PROCUREMENT PROJECT DETAILS |
-| 3 | Quantity and Size of the Project to be Procured | PROCUREMENT PROJECT DETAILS |
-| 4 | Recommended Mode of Procurement | PROCUREMENT PROJECT DETAILS |
-| 5 | Pre-Procurement Conference, if applicable (Yes/No) | PROCUREMENT PROJECT DETAILS |
-| 6 | Start of Procurement Activity | PROJECTED TIMELINE (MM/YYYY) |
-| 7 | End of Procurement Activity | PROJECTED TIMELINE (MM/YYYY) |
-| 8 | Expected Delivery/Implementation Period | PROJECTED TIMELINE (MM/YYYY) |
-| 9 | Source of Funds | FUNDING DETAILS |
-| 10 | Estimated Budget / Authorized Budgetary Allocation (PhP) | FUNDING DETAILS |
-| 11 | Attached Supporting Document/s | — |
-| 12 | Remarks | — |
+| E | Item No. | ✅ derived (row counter) — blank in 93 of 104 reference rows anyway |
+| F | AIP REFERENCE CODE | ✅ `aip_programs` / `aip_projects` / `aip_activities` `.ref_code` |
+| G | DESCRIPTION | ✅ dual-purpose — hierarchy/account name on section rows, `wfp_procurement_items.name` on item rows |
+| H | Stock Card No. | ✅ **added this round** — `price_index_items.stock_card_no` (§6) |
+| I | Short Category | ✅ `price_index_items.category` |
+| J | Unit | ✅ `wfp_procurement_items.unit` |
+| K | Unit price | ✅ `wfp_procurement_items.unit_price` |
+| L | QTY. | ✅ `wfp_procurement_items.qty` |
+| M | Est. Budget | ✅ `wfp_procurement_items.line_total` (= qty × unit price × days) |
+| N | Mode of Proc. | ❌ not stored — **and blank in all 104 reference rows** |
+| O–V | 1ST / 1ST QRTR AMOUNT … 4TH / 4TH QRTR AMOUNT | ✅ `wfp_procurement_items.period_no` + qty + line_total |
+| W | TOTAL | ✅ computed — never filled in the reference file |
 
-Closing row: **`TOTAL BUDGET:`** — sum of Column 10.
+### Row structure
 
-### Footer
+Section rows carry no unit price; item rows do. That single rule cleanly separates them:
 
 ```
-Prepared by:                              Submitted by:
-_______________________________           _______________________________
-Signature over Printed Name               Signature over Printed Name
-Position/Designation                      Position/Designation
-[End-User or Implementing Unit]           [Head of the End-User or Implementing Unit]
-Date : ______                             Date : ______
+ADMINISTRATIVE DIVISION GEN. FUND              ← division banner
+  1000-000-1-01-010-002-001   Project name     ← AIP project (7-segment ref)
+    1000-…-002-001-001        Activity name    ← AIP activity (8-segment ref)
+      Office supplies expenses 5-02-03-010     ← account (WfpExpenditure), M = account total
+        Bond paper A4 80gsm | OS-PAP-0000004 | Paper | ream | 494 | 40 | 19,760 | …quarters
+        Bond Paper Short 80 gsm …
+      Other Supplies and Materials 5-02-03-990 ← next account
+        …
+TOTAL ADMINISTRATIVE DIVISION GEN. FUND
+Prepared by: …   NOTED BY: …
 ```
 
-### Per-column rules worth encoding
+Six-segment refs appear too (e.g. `1000-000-1-01-010-004` = program), so the full
+Program → Project → Activity → Account → Items nesting is present — exactly the WFP report's
+hierarchy, one level deeper.
 
-- **Col 1** — concise description *and* intended purpose. Must state whether the project is
-  implemented **through procurement or by administration**.
-- **Col 2** — `Goods` / `Infrastructure Projects` / `Consulting Services`. General Support Services
-  is filed as `Goods (General Support Services)`.
-- **Col 3** — *both* quantity and size. **Each lot goes on its own row.** If the item list is too
-  long for the cell, the form explicitly permits a separate attachment.
-- **Col 4** — a mode valid under RA 12009. Competitive Bidding is the default; the alternative
-  methods (Limited Source Bidding, Direct Contracting, Repeat Order, Shopping, Negotiated
-  Procurement and its sub-types) are exceptional. By-administration rows are filled `N/A`.
-- **Col 5** — `Yes` / `No` / `N/A`.
-- **Cols 6–8** — `MM/YYYY`. Col 7 is specifically the projected month of **Notice of Award / Purchase
-  Order issuance**. Col 8 accepts a range (`06/2026 to 06/2028`).
-- **Col 10** — Estimated Budget on an Indicative PPMP, Authorized Budgetary Allocation on a Final one.
-- **Col 11** — the **Market Scoping Checklist is a mandatory attachment for every project**; plus
-  Technical Specifications / Detailed Engineering / Scope of Work / Terms of Reference as applicable.
+### Confirmed by arithmetic
+
+- **Est. Budget = Qty × Unit Price × Days.** 98 of 104 rows are a plain qty × price; the 6
+  "exceptions" are day-multiplied (e.g. ₱295 × 26 × 4 days = ₱30,680) — which is precisely what
+  `WfpProcurementItem.NumberOfDays` (RAL-127/138) exists for. No mismatches once days are included.
+- **The quarterly pairs are `PeriodNo` under quarterly frequency.** O/P = Q1 qty/amount, Q/R = Q2,
+  S/T = Q3, U/V = Q4 — a direct projection of the portal's period rows.
 
 ---
 
-## 4. Column-by-column gap analysis against the current schema
+## 3. The Summary sheet
 
-Relevant chain already in the database:
+A second sheet reconciles, per AIP activity, **PER AIP (MOOE / CO)** against **ACTUAL BUDGET
+(MOOE / CO)** — i.e. the AIP allocation versus what the PPMP actually plans to spend, with the
+variance visible per line and a grand total.
 
-```
-AipRecord → AipOffice → AipProgram → AipProject → AipActivity
-                                                       ↑
-                                            WfpRecord → WfpActivity  (FK AipActivityId)
-                                                             ↓
-                                                       WfpExpenditure          (Account, FundingSource,
-                                                             ↓                  Nature, Frequency, Q1–Q4)
-                                                       WfpProcurementItem      (PeriodNo, Name, Unit,
-                                                                                UnitPrice, Qty,
-                                                                                NumberOfDays, LineTotal)
-```
-
-Legend: ✅ derivable today · ⚠️ partially derivable · ❌ not stored anywhere
-
-| # | Column | Status | Source / what's missing |
-|---|---|---|---|
-| — | Fiscal Year | ✅ | `WfpRecord.FiscalYear` / `AipRecord` |
-| — | End-User or Implementing Unit | ✅ | `Office` + `Division` (also `AipActivity.ImplementingOffice`) — see Q3 |
-| — | PPMP No. | ❌ | New. Per (unit, FY) sequence |
-| — | Indicative / Final | ❌ | New. Could map off `WfpRecord` status (Draft→Indicative, Finalized→Final) — see Q4 |
-| 1 | General Description and Objective | ⚠️ | `AipActivity.Name` + program/project names + `ExpectedOutputs` give a description; **objective** and the *procurement vs. by-administration* statement are not captured |
-| 2 | Type (Goods / Infra / Consulting) | ❌ | New field. Could be *suggested* from the account's expense class (MOOE→Goods, CO→Infrastructure) but that is a guess, not data — must be user-set |
-| 3 | Quantity and Size | ⚠️ | **Quantity ✅** — `WfpProcurementItem.Qty` + `.Unit`. **Size ❌** — no spec field; `PriceIndexItem.Name` often embeds it as free text ("15-inch monitor"), which is not reliably parseable |
-| 4 | Recommended Mode of Procurement | ❌ | New field + a config list of RA 12009 modes |
-| 5 | Pre-Procurement Conference | ❌ | New field (Yes/No/N/A) |
-| 6 | Start of Procurement Activity | ❌ | New field. Not inferable — depends on the mode's prescribed timeline |
-| 7 | End of Procurement Activity | ❌ | New field. Same |
-| 8 | Expected Delivery/Implementation Period | ✅ | Derivable from `WfpProcurementItem.PeriodNo` + `WfpExpenditure.Frequency` (M=1–12, Q=1–4, B=1–2, A=1). `AipActivity.StartDate`/`EndDate` are a fallback but are month-name strings ("January"), not dates |
-| 9 | Source of Funds | ✅ | `WfpExpenditure.FundingSourceNameSnapshot` — already fund-scoped since v1.4.3 |
-| 10 | Estimated Budget / Authorized Allocation | ✅ | `SUM(WfpProcurementItem.LineTotal)` at whatever grain a row ends up being |
-| 11 | Attached Supporting Document/s | ❌ | New. Text list for the draft; real file upload is a later call |
-| 12 | Remarks | ❌ | New free text |
-| — | TOTAL BUDGET | ✅ | Computed |
-| — | Prepared by / Submitted by | ⚠️ | `User.FullName` + `Position` exist; who signs as "Submitted by" (head of unit) is not modelled — see Q5 |
-
-**Summary: 5 ✅ · 3 ⚠️ · 7 ❌** (counting header/footer rows). The five ❌ table columns (2, 4, 5, 6,
-7) plus 11 and 12 are all **procurement-officer judgement fields** — they can't be computed from
-budget data no matter what, so some entry surface is unavoidable.
+This is a working/reconciliation aid rather than part of the PPMP proper, but it is worth noting
+that **the portal already computes both sides** (`AipActivity.Ps/Mooe/Co` and the WFP expenditure
+rollups that `WfpCeilingService` uses). It could be generated for free as a second sheet of the
+export. Whether it should be is Q13.
 
 ---
 
-## 5. The central design question: what is one PPMP row?
-
-The form's row grain is **one procurement project (or one lot)**. The portal's finest grain is
-**one `WfpProcurementItem`, per period**. Dumping items 1:1 would produce thousands of rows for a
-single office — a monthly-frequency expenditure with 12 items yields 144 rows on its own.
-
-Three candidate groupings:
-
-| Option | Row = | Rows/office (rough) | Notes |
-|---|---|---|---|
-| **A (recommended)** | one `WfpExpenditure` (= one activity × one account × one fund source) | tens | Account title becomes the natural Col 1 description; the expenditure's items are aggregated into Col 3; budget = the expenditure's own total. Aligns with how a procurement *package* is actually let. |
-| B | one `AipActivity` | few | Too coarse — one activity mixes goods, training, and CO, which need different modes and types in Cols 2/4. |
-| C | one `WfpProcurementItem` | hundreds–thousands | Matches no real procurement project; unusable as a filed document. |
-
-**Recommendation: Option A.** It lands on the same grain the procurement-specific fields (mode,
-type, pre-proc conference, timeline) naturally attach to, keeps the row count filable, and the
-form's own Col 3 guidance — *"If the number of items is too large to fit in this column, a separate
-attachment may be used"* — anticipates exactly the many-items-in-one-row shape it produces.
-
-Where an expenditure genuinely needs splitting into lots, that is an explicit user action (a
-"split into lots" affordance), not an automatic rule.
-
----
-
-## 6. Proposed shape of the initial draft
-
-Deliberately mirroring how the WFP report was built (RAL-132 preview first, Excel export later in
-v1.4.4) rather than inventing a new pattern:
+## 4. Revised implementation plan
 
 1. **Report page** — add `{ value: "PPMP", label: "Project Procurement Management Plan (PPMP)" }`
-   to the existing `REPORT_TYPES` array in
+   to `REPORT_TYPES` in
    [report/page.tsx](frontend/src/app/(portal)/budget-planning/report/page.tsx). **WFP stays the
-   default.** Same fiscal-year / office / division selectors, same division-clamp rule (RAL-136:
-   a division-scoped caller is forced server-side to their own division), same
+   default.** Same fiscal-year / office / division selectors, same RAL-136 division clamp, same
    `canAccessBudgetPlanning` gate.
-2. **Backend** — `PpmpReportService` + `GET /api/budget-planning/ppmp/report/preview`, following
-   `WfpReportService`'s shape and the `{ data, error, message }` envelope. Slim DTO, server-side
-   aggregation, **no `GetAllAsync()`-then-filter** (`docs/PERFORMANCE_GUIDELINES.md`) — the v1.4.6
-   round of N+1 fixes is recent enough that this must be right the first time.
-3. **Read-only first pass** — render the 5 ✅/⚠️ derivable columns with real data and leave the 7
-   procurement-officer columns visibly blank (an em-dash placeholder), exactly as the WFP report
-   omitted its uncaptured narrative columns rather than faking them. This gets a reviewable
-   artefact in front of the PBO/BAC fast and lets *them* confirm the row grain before we build an
-   entry surface for the missing fields.
-4. **Then** — a `PpmpProjectDetail` table keyed to the chosen grain to hold Cols 2, 4, 5, 6, 7, 11,
-   12 + the header's PPMP No./Indicative-Final, and an entry screen for it.
-5. **Then** — **`.xlsx` export** (confirmed requirement, see §6.1 below).
+2. **One report per fund source**, mirroring the reference file's "Charged to: GENERAL FUND" header
+   — and mirroring what the WFP report already does with `fundSourceReports`.
+3. **Backend** — `PpmpReportService` + `GET /api/budget-planning/ppmp/report/preview`, shaped like
+   `WfpReportService`, `{ data, error, message }` envelope. Slim DTO, server-side aggregation, no
+   `GetAllAsync()`-then-filter (`docs/PERFORMANCE_GUIDELINES.md`) — the v1.4.6 N+1 round is recent.
+4. **`.xlsx` export** — confirmed scope (§4.1).
+5. **Mode of Procurement** — deliberately last. It is the only genuinely missing column, and the
+   province has never filled it in. Ship the report without it, confirm whether it is actually
+   wanted (Q12), and only then add the field.
 
-Splitting 3 from 4 matters: step 3 is cheap, has zero schema cost, and de-risks step 4's schema
-decision by getting the grain validated against a real filed document first.
+### 4.1 Excel export — confirmed
 
-### 6.1 Excel export — confirmed
+The report exports to `.xlsx`, same as WFP; it is not print-only. Preview and export read the same
+`PpmpReportDto`, so the preview's columns should map 1:1 onto the real form's columns rather than
+being a convenient web-shaped subset.
 
-The PPMP report **will export to `.xlsx`**, same as WFP. It is not a print-only view. This is
-confirmed scope, not a maybe, and it changes two things about the earlier steps:
-
-- **The DTO must serve both surfaces from day one.** The preview and the export read the same
-  `PpmpReportDto`; the preview's columns should map **1:1 onto the official form's 12 columns**
-  rather than being a convenient web-shaped subset. Getting this wrong means reshaping the DTO
-  later.
-- **Row grain (§5) is now load-bearing for the export too.** A filed `.xlsx` has to be a document
-  a BAC will accept — which is a much harder constraint than a browser preview, and another reason
-  to validate Option A against a real filed PPMP before building.
-
-**Reuse v1.4.4's approach, and its hard-won lesson.** `WfpReportExcelService` deliberately does
+**Reuse v1.4.4's approach and its hard-won lesson.** `WfpReportExcelService` deliberately does
 **not** clone rows out of a reference workbook — the province's `WFP-NEW.xlsx` turned out to be a
-*filled sample*, not a blank template (293 merged ranges, borders hand-touched row-to-row), and
-cloning from it was a merge-corruption risk. The shipped design instead **builds the sheet
-programmatically in ClosedXML** from a documented style catalog (fills/fonts/borders/number-formats/
-column-widths as C# constants) applied per row type, with merges computed from each block's actual
-emitted row count. **Do the same for PPMP** — assume any PPMP sample the province hands over is
-likewise a filled sample, not a template.
+*filled sample*, not a blank template (293 merged ranges, borders hand-touched row-to-row).
+`ppmp admin2027.xlsx` is likewise a filled working file, with hand-maintained quirks (§5). Build the
+sheet **programmatically in ClosedXML** from a documented style catalog.
 
-Conventions to carry over:
+Conventions to carry over: `IPpmpReportExcelService` (named distinctly, as `IWfpReportExcelService`
+was, to avoid colliding with the legacy `IWfpExcelService`); endpoint
+`GET /api/budget-planning/ppmp/report/export`; filename built client-side, matching
+`buildExportFilename`; unit tests against **structure** (row counts, section nesting, totals), not
+styling — that is why v1.4.4's tests survived every colour iteration.
 
-- New interface `IPpmpReportExcelService` in Application, implementation in Infrastructure —
-  **named distinctly on purpose**, the same way `IWfpReportExcelService` was named to avoid
-  colliding with the older legacy `IWfpExcelService`.
-- Endpoint `GET /api/budget-planning/ppmp/report/export`, sibling of the preview endpoint, same
-  office/fiscalYear/divisionId scoping and the same division clamp.
-- Filename built **client-side**, not read from `Content-Disposition` — matching
-  `buildExportFilename` in [report/page.tsx](frontend/src/app/(portal)/budget-planning/report/page.tsx).
-  Proposed: `PPMP{fiscalYear}_{officeCode}[_{divisionCode}]_{ppmpNo}_yyyyMMddHHmmss.xlsx` — needs
-  Ralph's call on whether the PPMP No. belongs in the name.
-- Unit tests against the **structural** logic (row counts, merge spans, totals, no formulas), not
-  the styling — v1.4.4's 7 tests stayed green through every colour/width iteration precisely
-  because they tested structure. Expect the same iterate-on-styling loop here.
+---
 
-Form-specific things the WFP exporter did not have to handle:
+## 5. Data-quality observations from the reference file
 
-- The header block's **checkbox pair** (Indicative / Final) — a checked box in a cell, plus the
-  PPMP No.
-- The **agency letterhead with logo** the form calls for at the top.
-- The three **column group headings** (PROCUREMENT PROJECT DETAILS / PROJECTED TIMELINE (MM/YYYY) /
-  FUNDING DETAILS) spanning cols 1–5, 6–8, 9–10 — merged header cells above the 12 column names.
-- The **signatory footer** (Prepared by / Submitted by), which the WFP export did not render at all.
-- `MM/YYYY` text formatting in cols 6–8, including the range form (`06/2026 to 06/2028`).
+These are arguments *for* generating the PPMP rather than maintaining it by hand — each is a class
+of error the portal removes by construction.
+
+| Observation | Detail |
+|---|---|
+| Stale header | The FY2027 file's title block still reads **"CY 2025"** — copied forward and not updated. |
+| Quarterly splits don't reconcile | In **31 of 104 rows** the quarterly quantities don't sum to the row's total QTY. |
+| `TOTAL` column never filled | Column W is empty in all 104 rows. |
+| `Mode of Proc.` never filled | Column N is empty in all 104 rows. |
+| `Item No.` mostly abandoned | Populated in 11 of 104 rows, non-contiguously. |
+| Free-text categories drift | `Meals and Snacks` vs `Meals and nacks`; `Pen` / `pen` / `ballpen`; `Paper` / `paper`. The config table's `category` fixes this by construction. |
+| Stock Card No. partially adopted | Only **22 of 104** rows carry one (§6). |
+| Duplicated ref code | `1000-000-1-01-010-002-002-003` appears twice, on two differently-named activity rows. |
+
+---
+
+## 6. Stock Card No. — shipped this round
+
+Added `price_index_items.stock_card_no` (migration `AddPriceIndexItemStockCardNo`) so the report's
+Column H can be populated from config rather than retyped per plan.
+
+- **Optional and not unique** — only a minority of catalogue items have one, and enforcing
+  uniqueness would fail the CSV import that is this table's primary ingestion path.
+- **Editable in the config UI**, shown as its own sortable column, and **searchable** — typing a
+  code prefix (e.g. `OSE-`) filters the catalogue to matching items.
+- **CSV round-trips**, with `stock_card_no` appended **last** so a file exported before the column
+  existed still imports cleanly. A CSV *without* the column leaves existing values untouched; a row
+  *with* the column but blank clears it (matching how `category` behaves). Both cases are covered
+  by tests.
+
+### Which code goes in the field — DECIDED: the GSO Item Code
+
+There are **two different coding schemes** in play, and this caused a false start:
+
+- The **PPMP working file's "Stock Card No."** column uses codes like `OS-PAP-0000004` (22 of them
+  in the Admin Division file). The first seed used these.
+- GSO's authoritative **Items Export ("Item Code")** uses a different scheme entirely —
+  `OSE-1714343441`, `OSAMFD-3025181986`, `TREX-…`, etc. **Zero `OS-…` codes exist in it.**
+
+**Decision (Ralph, 2026-07-24): `stock_card_no` holds the GSO Items-Export Item Code**, not the
+`OS-` code hand-typed on the PPMP working file. The 22 `OS-` codes from the first seed were
+overwritten. (So the PPMP form's "Stock Card No." column, when the report renders it, will show the
+GSO Item Code — the two labels refer to the same underlying identifier; the `OS-` values on the
+paper form were a local shorthand, not the system code.)
+
+**Merge method (reproducible):** match each price-index row to the Items Export on
+**`name` + `unit` + `category`**, where the export's **Account Name** is the category. Falling back
+to `name` + `unit` alone. Only rows with **exactly one** candidate code are filled; anything
+ambiguous or unmatched is left blank rather than guessed.
+
+Result over the full 6,398-row price index (imported via the standard CSV endpoint —
+*6,099 updated, 299 skipped, 0 errors*):
+
+| Outcome | Count | Handling |
+|---|---|---|
+| Unambiguous code (name+unit+category) | 6,097 | filled |
+| Unambiguous code (name+unit only) | 2 | filled |
+| **Ambiguous** — same name+unit+category → multiple codes | 177 | left blank |
+| **No match** in the export | 122 | left blank |
+
+The `name`+`unit` key alone was ambiguous for 2,340 rows (the same item is coded differently per
+account — e.g. "Battery AA" is `OSAME-…` as an expense, `OSAMFD-…` for distribution, `TREX-…` under
+training); adding `category`=Account Name resolved all but 177 of those. The 299 blanks can be
+filled manually in config, or by a later, smarter match. **Do not auto-fill them by loosening the
+match** — a wrong GSO code on an item is worse than a blank.
+
+The 22-row `OS-` seed file was removed once this superseded it. Re-seeding is done by re-running the
+export→match→import above against a fresh Items Export, not from a committed file.
+
+### How the code reaches the report — DECIDED: join live
+
+`WfpProcurementItem` snapshots `Name`/`Unit`/`UnitPrice` at save time but **not** `Category`, and
+now not `StockCardNo` either. So the report either joins live via `PriceIndexItemId` or snapshots
+these too.
+
+**Decision (Ralph, 2026-07-24): join live via `PriceIndexItemId`.** No schema change on
+`WfpProcurementItem`.
+
+The reasoning, worth keeping because it looks inconsistent with the snapshot rule next to it: a
+stock card number is an **identifier**, not a value. If GSO corrects it, or someone fixes a typo in
+config, every report should immediately show the corrected code — including for WFPs saved last
+year. A unit *price* is the opposite: it must never drift retroactively, because a saved WFP is a
+budget commitment at the price that was current when it was made. Same table, opposite requirements,
+hence the deliberate asymmetry. `Category` follows the same logic as the stock card number.
+
+Consequence to handle in the report: a **free-typed** procurement item has `PriceIndexItemId = null`
+and therefore no stock card number and no category — those cells render blank. Currently **64 of 72**
+local items are linked; 8 are free-typed. That is expected, not a bug: an item typed by hand has no
+GSO code by definition. Do NOT fall back to fuzzy-matching on name to fill it in.
 
 ---
 
 ## 7. Open questions
 
-| # | Question | Why it blocks |
+Answered by the reference file: ~~Q1~~ (which form), ~~Q2~~ (row grain), ~~Q9~~ (export fidelity —
+match the province's own form), ~~Q10~~ (filename — no PPMP No.; the real form has no such field).
+Answered by Ralph 2026-07-24: ~~Q14~~ (moot — the `OS-` seed it belonged to was superseded by the
+GSO Item Code merge, see §6), ~~Q15~~ (join live via `PriceIndexItemId`, see §6), ~~Q16~~ (which
+coding scheme `stock_card_no` holds — the GSO Items-Export Item Code, see §6).
+
+| # | Question | Why it matters |
 |---|---|---|
-| **Q1** | Is the province filing on the **RA 12009** form or still on the older **RA 9184** layout? Can we get a real filled-in provincial PPMP to check against? | Different columns. This draft assumes RA 12009. A real sample would settle Q2/Q3 too. |
-| **Q2** | Confirm the row grain — is **Option A** (one row per activity × account × fund source) what the BAC expects? | Drives the whole DTO and the new table's key. |
-| **Q3** | Is the "End-User or Implementing Unit" the **Office** (PPDO) or the **Division**? Does each division file its own PPMP, or does PPDO file one consolidated? | Decides whether division is a filter or part of the report's identity. |
-| **Q4** | Should Indicative/Final derive from the WFP record's Draft/Finalized status, or be an explicit user choice per submission? | Affects whether PPMP No. can be auto-sequenced. |
-| **Q5** | Who signs "Submitted by" — is the head of the end-user unit derivable from `Division`/`Office`, or free text? | Small, but it's on the form. |
-| **Q6** | Should the RA 12009 **modes of procurement** be a seeded config table (like `funding_sources` / `accounts`) or a hardcoded enum? | Config table is consistent with the rest of the app; enum is cheaper. Leaning config table. |
-| **Q7** | Column 11 — text list of attachment names for now, or real file upload from the start? | Text is the cheap draft; upload is a much bigger ticket. |
-| **Q8** | Is PPMP scope **procurement items only**, or must non-procurement expenditures appear too? `WfpExpenditure.Nature` is `Procurement` / `Non-Procurement` / `Combined` — the natural filter is `Nature != "Non-Procurement"`, but a by-administration project still belongs on a PPMP (the form has explicit `N/A` handling for it). | Decides the base query's filter. |
-| **Q9** | How exact does the `.xlsx` need to be — a **faithful reproduction of the GPPB form** (letterhead, checkboxes, merged group headings, signatory block) that gets printed and signed as-is, or a clean data export the unit pastes into their own copy of the form? | Large effort difference. v1.4.4's WFP export went faithful; assuming the same here unless told otherwise. |
-| **Q10** | Export filename — include the PPMP No.? Proposed `PPMP{FY}_{office}[_{division}]_{ppmpNo}_{timestamp}.xlsx`. | Cosmetic, but the WFP convention was Ralph's own call so this should be too. |
-| **Q11** | **Column 10 — items total or total appropriation?** Where a WFP reserve is applied the two differ: `SUM(WfpProcurementItem.LineTotal)` is the true cost of the goods, while `WfpExpenditure.TotalAppropriation` adds the reserve on top. Found live in the sample: ₱30,000.00 vs ₱33,000.00 and ₱41,991.00 vs ₱46,190.10. | Changes every budget figure and the TOTAL BUDGET. The sample uses the **items total** (the ABC basis) — needs confirming. |
-
-### Worked sample
-
-A sample of this form was built from real local dev data (`wfp_records.id = 6`, PPDO / Planning
-Division, FY2027, Draft) to test the §5 recommendation concretely. It confirmed that **44
-procurement line items collapse to 5 filable rows** at the Option A grain, and it is what surfaced
-Q11.
-
-The sample workbook is deliberately NOT committed — this is a public repository and the file
-carried real (draft, unapproved) budget figures. Regenerate it locally if needed.
+| **Q3** | Is the end-user unit the **Office** or the **Division**? The reference file is one division ("ADMINISTRATIVE DIVISION GEN. FUND") — does each division file its own, or does PPDO consolidate? | Decides whether division is a filter or part of the report's identity. The file suggests per-division. |
+| **Q4** | One file **per fund source** — confirmed by "Charged to: GENERAL FUND"? So a division with GF + LDRRM money files two PPMPs? | Drives whether the report loops fund sources like the WFP report does. |
+| **Q5** | Signatories — "Prepared by" (Admin. Assist. III) and "NOTED BY" (PPDC). Derivable from `User`/`Division`, or free text? | Small, but it's on the form. |
+| **Q8** | Include **non-procurement** expenditures? `WfpExpenditure.Nature` is Procurement / Non-Procurement / Combined. The reference file has account rows with a total but no item rows beneath (e.g. "Travelling Expenses"), suggesting non-procurement lines DO appear as section rows without detail. | Decides the base query's filter. |
+| **Q11** | The account section rows carry a total (e.g. ₱700,000 for Office Supplies). Is that the **AIP/WFP appropriation** for that account, or the sum of the items below it? In the reference they don't always agree. | Determines whether that cell is computed or fetched. |
+| **Q12** | **Mode of Procurement** — blank in all 104 rows. Do you want the field at all? If yes, seeded config list or free text? | The only genuinely missing column. Deferring it costs nothing. |
+| **Q13** | Generate the **Summary sheet** (AIP vs actual budget reconciliation) as a second sheet of the export? The portal already has both sides. | Nice-to-have; could ship free. |
+**Resolved:** ~~Q15~~ — join Stock Card No./Category live via `PriceIndexItemId`, no snapshot
+(Ralph, 2026-07-24). ~~Q16~~ — `stock_card_no` holds the **GSO Items-Export Item Code**, not the
+PPMP form's `OS-` code; merged over the whole price index by name+unit+category. ~~Q14~~ was the
+`OS-BAT-0000002` disambiguation — now moot, that whole seed was replaced. All in §6.
 
 ---
 
-## 8. References
+## Appendix A — the official GPPB form (RA 12009)
 
-- GPPB — official NGPA PPMP form (RA 12009): <https://www.gppb.gov.ph/wp-content/uploads/2025/08/NGPA_PPMP.pdf>
-- RA No. 12009, New Government Procurement Act: <https://ps-philgeps.gov.ph/home/images/legalbases/2025/New%20Government%20Procurement%20Act%20_%20Republic%20Act%20No.%2012009.pdf>
-- IRR of RA 12009, GPPB Resolution No. 02-2025: <https://www.dbm.gov.ph/wp-content/uploads/Issuances/2025/GPPB-Resolution/IRR-RA-12009-Resolution-No-02-2025.pdf>
-- GPPB-TSO — Fit-for-Purpose Procurement Modalities under RA 12009: <https://www.gppb.gov.ph/fit-for-purpose-procurement-modalities-under-ra-12009/>
-- GPPB-TSO — Understanding Competitive Bidding under RA 12009: <https://www.gppb.gov.ph/understanding-competitive-bidding-under-ra-12009/>
+Superseded for *what we build first*, but still the national standard, and the province may have to
+migrate to it. Procurement moved from RA 9184 to **RA 12009** (New Government Procurement Act), IRR
+via **GPPB Resolution No. 02-2025**; PPMP requirements now sit in **IRR §7.7**.
+
+The official form is **project**-grained (not item-grained) with 12 numbered columns under three
+group headings — PROCUREMENT PROJECT DETAILS (1–5), PROJECTED TIMELINE MM/YYYY (6–8), FUNDING
+DETAILS (9–10), then Attached Supporting Document/s (11) and Remarks (12) — plus an Indicative/Final
+checkbox, a PPMP number, a TOTAL BUDGET row, and Prepared by / Submitted by signatories. It also
+mandates a **Market Scoping Checklist** as a supporting document for every project.
+
+A worked sample against this form was built from local dev data on 2026-07-23, before the real
+reference file arrived. It is **not committed** — this is a public repository and the workbook
+carried real, still-unapproved FY2027 budget figures. Regenerate it locally if the GPPB layout ever
+becomes relevant.
+
+**If the province ever has to file the GPPB form**, most of the work carries over: the same
+`WfpProcurementItem` data, aggregated up to the expenditure grain instead of listed per item.
+
+### References
+
+- GPPB — official NGPA PPMP form: <https://www.gppb.gov.ph/wp-content/uploads/2025/08/NGPA_PPMP.pdf>
+- RA No. 12009: <https://ps-philgeps.gov.ph/home/images/legalbases/2025/New%20Government%20Procurement%20Act%20_%20Republic%20Act%20No.%2012009.pdf>
+- IRR of RA 12009 (GPPB Res. 02-2025): <https://www.dbm.gov.ph/wp-content/uploads/Issuances/2025/GPPB-Resolution/IRR-RA-12009-Resolution-No-02-2025.pdf>
+- GPPB-TSO — Fit-for-Purpose Procurement Modalities: <https://www.gppb.gov.ph/fit-for-purpose-procurement-modalities-under-ra-12009/>
 
 ### Internal
 
 - `frontend/src/app/(portal)/budget-planning/report/page.tsx` — the page PPMP plugs into
 - `backend/PPDO.Domain/Entities/WfpProcurementItem.cs` — the line items PPMP is built from
-- `backend/PPDO.Domain/Entities/WfpExpenditure.cs` — proposed row grain (Option A)
+- `backend/PPDO.Domain/Entities/PriceIndexItem.cs` — now carries `StockCardNo`
 - `docs/PERFORMANCE_GUIDELINES.md` — query rules for the new endpoint
-- `docs/v1.4.4/WFP_Excel_Export_Assessment.md` — the export approach to reuse later
-- `docs/TICKET_PROMPT_STANDARD.md` — structure for the tickets once Q1–Q8 are answered
+- `docs/v1.4.4/WFP_Excel_Export_Assessment.md` — the export approach to reuse
+- `docs/TICKET_PROMPT_STANDARD.md` — structure for the tickets once Q3–Q15 are answered

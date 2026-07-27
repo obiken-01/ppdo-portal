@@ -32,6 +32,10 @@ public sealed class PriceIndexItemConfiguration : IEntityTypeConfiguration<Price
             .HasColumnName("category")
             .HasMaxLength(100);
 
+        builder.Property(p => p.StockCardNo)
+            .HasColumnName("stock_card_no")
+            .HasMaxLength(50);
+
         builder.Property(p => p.PriceUpdatedAt)
             .HasColumnName("price_updated_at")
             .HasDefaultValueSql("GETUTCDATE()");

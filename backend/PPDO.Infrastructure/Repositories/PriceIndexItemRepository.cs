@@ -32,7 +32,10 @@ public sealed class PriceIndexItemRepository : Repository<PriceIndexItem>, IPric
         if (!string.IsNullOrWhiteSpace(search))
         {
             string s = search.Trim();
-            query = query.Where(p => p.Name.Contains(s) || (p.Category != null && p.Category.Contains(s)));
+            query = query.Where(p =>
+                p.Name.Contains(s) ||
+                (p.Category != null && p.Category.Contains(s)) ||
+                (p.StockCardNo != null && p.StockCardNo.Contains(s)));
         }
 
         return await query.OrderBy(p => p.Name).ToListAsync(ct);
