@@ -119,10 +119,11 @@ function FundBlock({
                 case "program":
                   return (
                     <tr key={i} className="bg-slate-100">
+                      <td className="border border-slate-200" />
                       <td className="px-2 py-1.5 font-mono text-slate-600 border border-slate-200 break-words align-top">
                         {row.refCode}
                       </td>
-                      <td colSpan={17} className="px-2 py-1.5 font-semibold text-slate-800 border border-slate-200">
+                      <td colSpan={16} className="px-2 py-1.5 font-semibold text-slate-800 border border-slate-200">
                         {row.name}
                       </td>
                     </tr>
@@ -130,10 +131,11 @@ function FundBlock({
                 case "project":
                   return (
                     <tr key={i} className="bg-slate-50">
+                      <td className="border border-slate-200" />
                       <td className="px-2 py-1.5 font-mono text-slate-600 border border-slate-200 break-words align-top">
                         {row.refCode}
                       </td>
-                      <td colSpan={17} className="px-2 py-1.5 pl-4 font-medium text-slate-700 border border-slate-200">
+                      <td colSpan={16} className="px-2 py-1.5 pl-4 font-medium text-slate-700 border border-slate-200">
                         {row.name}
                       </td>
                     </tr>
@@ -141,10 +143,11 @@ function FundBlock({
                 case "activity":
                   return (
                     <tr key={i}>
+                      <td className="border border-slate-200" />
                       <td className="px-2 py-1.5 font-mono text-slate-600 border border-slate-200 break-words align-top">
                         {row.refCode}
                       </td>
-                      <td colSpan={17} className="px-2 py-1.5 pl-8 text-slate-700 border border-slate-200">
+                      <td colSpan={16} className="px-2 py-1.5 pl-8 text-slate-700 border border-slate-200">
                         {row.name}
                       </td>
                     </tr>
