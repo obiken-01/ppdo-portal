@@ -25,3 +25,27 @@ export async function getPpmpReportPreview(
   if (data.data == null) throw new Error(data.error ?? "Unexpected empty response.");
   return data.data;
 }
+
+/**
+ * Downloads the PPMP report as an .xlsx matching the province's PPMP form (RAL-184). Same
+ * office/fiscalYear/divisionId scoping as the preview. JWT must be sent via the Authorization
+ * header, so this uses Axios (not a plain link) — mirrors downloadWfpReportExcel. `filename` is
+ * caller-supplied (built client-side) rather than read from Content-Disposition.
+ */
+export async function downloadPpmpReportExcel(
+  officeId: number, fiscalYear: number, filename: string, divisionId?: number
+): Promise<void> {
+  const response = await api.get("/budget-planning/ppmp/report/export", {
+    params: { officeId, fiscalYear, ...(divisionId != null ? { divisionId } : {}) },
+    responseType: "blob",
+  });
+
+  const url = URL.createObjectURL(new Blob([response.data as BlobPart]));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}

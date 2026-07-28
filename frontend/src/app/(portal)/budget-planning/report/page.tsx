@@ -57,7 +57,7 @@ import { useMe } from "@/lib/me-cache";
 import { PPDO_OFFICE_CODE, listDivisions } from "@/lib/config";
 import { getFiscalYears } from "@/lib/budget-planning";
 import { downloadWfpReportExcel, getWfpReportOffices, getWfpReportPreview, wfpErrorMessage } from "@/lib/wfp";
-import { getPpmpReportPreview } from "@/lib/ppmp";
+import { downloadPpmpReportExcel, getPpmpReportPreview } from "@/lib/ppmp";
 import PpmpReportView from "./PpmpReportView";
 import { useToast } from "@/components/ui/Toast";
 import { formatMoney } from "@/lib/money";
@@ -179,9 +179,10 @@ function timestamp(): string {
 }
 
 function buildExportFilename(
-  officeCode: string, fiscalYear: number, divisionId: number | null, divisionList: DivisionResponse[]
+  officeCode: string, fiscalYear: number, divisionId: number | null, divisionList: DivisionResponse[],
+  prefix: "WFP" | "PPMP" = "WFP"
 ): string {
-  const parts = [`WFP${fiscalYear}`, officeCode];
+  const parts = [`${prefix}${fiscalYear}`, officeCode];
   if (divisionId != null) {
     const division = divisionList.find((d) => d.id === divisionId);
     parts.push(division?.code || division?.name || String(divisionId));
@@ -491,6 +492,15 @@ function WfpReportPageInner() {
       .finally(() => setExcelExporting(false));
   }
 
+  function handlePpmpExportExcel() {
+    if (officeId == null || fiscalYear == null || ppmpReport == null) return;
+    setExcelExporting(true);
+    const filename = buildExportFilename(ppmpReport.officeCode, fiscalYear, divisionId, divisionList, "PPMP");
+    downloadPpmpReportExcel(officeId, fiscalYear, filename, divisionId ?? undefined)
+      .catch((err) => toast.error("Export failed", wfpErrorMessage(err, "Please try again.")))
+      .finally(() => setExcelExporting(false));
+  }
+
   // ── Divisions scoped to the selected office (RAL-136) ──────────────────────
   //
   // Auto-generate (arriving via the WFP entry wizard's Preview link) is triggered from directly
@@ -646,10 +656,9 @@ function WfpReportPageInner() {
           {reportLoading ? "Generating…" : "Generate Preview"}
         </button>
 
-        {/* Excel export is WFP-only for now — the PPMP export is a separate follow-up (RAL-184). */}
-        {reportType === "WFP" && report && !reportLoading && (
+        {((reportType === "WFP" && report) || (reportType === "PPMP" && ppmpReport)) && !reportLoading && (
           <button
-            onClick={handleExportExcel}
+            onClick={reportType === "PPMP" ? handlePpmpExportExcel : handleExportExcel}
             disabled={excelExporting}
             className="px-4 py-1.5 text-sm font-medium border border-slate-300 text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
           >

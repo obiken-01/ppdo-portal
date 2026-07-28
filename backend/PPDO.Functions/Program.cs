@@ -115,6 +115,7 @@ var host = new HostBuilder()
         services.AddScoped<IExcelService, ExcelService>();
         services.AddScoped<IWfpExcelService, ExcelService>();
         services.AddScoped<IWfpReportExcelService, WfpReportExcelService>();
+        services.AddScoped<IPpmpReportExcelService, PpmpReportExcelService>();
 
         // NagerHolidayProvider uses a typed HttpClient. Timeout is short so a slow
         // Nager.Date response fails fast and falls back to static data or empty list.
