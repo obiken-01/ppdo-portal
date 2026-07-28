@@ -21,11 +21,12 @@ public sealed class PriceIndexServiceTests
 
     private static PriceIndexItem Item(
         int id, string name, string unit, decimal price, string? category = null,
-        bool active = true, DateTime? priceUpdatedAt = null, bool daysEnabled = false) => new()
+        bool active = true, DateTime? priceUpdatedAt = null, bool daysEnabled = false,
+        string? stockCardNo = null) => new()
     {
         Id = id, Name = name, Unit = unit, UnitPrice = price, Category = category,
         IsActive = active, DaysEnabled = daysEnabled, PriceUpdatedAt = priceUpdatedAt ?? FixedNow,
-        CreatedAt = FixedNow, UpdatedAt = FixedNow,
+        StockCardNo = stockCardNo, CreatedAt = FixedNow, UpdatedAt = FixedNow,
     };
 
     private static (PriceIndexService sut, Mock<IPriceIndexItemRepository> repo) Build(
@@ -47,7 +48,8 @@ public sealed class PriceIndexServiceTests
                     string s = search.Trim();
                     q = q.Where(p =>
                         p.Name.Contains(s, StringComparison.OrdinalIgnoreCase) ||
-                        (p.Category != null && p.Category.Contains(s, StringComparison.OrdinalIgnoreCase)));
+                        (p.Category != null && p.Category.Contains(s, StringComparison.OrdinalIgnoreCase)) ||
+                        (p.StockCardNo != null && p.StockCardNo.Contains(s, StringComparison.OrdinalIgnoreCase)));
                 }
                 return (IReadOnlyList<PriceIndexItem>)q.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ToList();
             });
@@ -339,6 +341,141 @@ public sealed class PriceIndexServiceTests
 
         Assert.Equal(1, result.Value!.Updated);
         Assert.True(seed.Single().DaysEnabled);
+    }
+
+    // ── stock card no. (v1.5 — PPMP report) ──────────────────────────────────
+
+    [Fact]
+    public async Task CreateAsync_WithStockCardNo_PersistsIt()
+    {
+        (PriceIndexService sut, _) = Build([]);
+
+        ServiceResult<PriceIndexItemDto> result = await sut.CreateAsync(
+            new UpsertPriceIndexItemDto("Bond paper A4 80gsm", "ream", 494m, "Paper",
+                StockCardNo: "OS-PAP-0000004"));
+
+        Assert.Equal("OS-PAP-0000004", result.Value!.StockCardNo);
+    }
+
+    [Fact]
+    public async Task CreateAsync_BlankStockCardNo_StoredAsNull()
+    {
+        (PriceIndexService sut, _) = Build([]);
+
+        ServiceResult<PriceIndexItemDto> result = await sut.CreateAsync(
+            new UpsertPriceIndexItemDto("Ballpen", "piece", 9m, null, StockCardNo: "   "));
+
+        Assert.Null(result.Value!.StockCardNo);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ChangesStockCardNo()
+    {
+        List<PriceIndexItem> seed = [Item(1, "Bond paper A4 80gsm", "ream", 494m, "Paper", stockCardNo: "OS-PAP-0000001")];
+        (PriceIndexService sut, _) = Build(seed);
+
+        await sut.UpdateAsync(1, new UpsertPriceIndexItemDto(
+            "Bond paper A4 80gsm", "ream", 494m, "Paper", StockCardNo: "OS-PAP-0000004"));
+
+        Assert.Equal("OS-PAP-0000004", seed.Single().StockCardNo);
+    }
+
+    [Fact]
+    public async Task ExportCsvAsync_IncludesStockCardNo()
+    {
+        (PriceIndexService sut, _) = Build(
+            [Item(1, "Bond paper A4 80gsm", "ream", 494m, "Paper", stockCardNo: "OS-PAP-0000004")]);
+
+        string csv = await sut.ExportCsvAsync();
+
+        Assert.Contains("stock_card_no", csv);
+        Assert.Contains("OS-PAP-0000004", csv);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_StockCardNoColumn_RoundTrips()
+    {
+        (PriceIndexService sut, _) = Build([]);
+
+        string csv = string.Join("\r\n",
+            "name,unit,unit_price,category,is_active,days_enabled,stock_card_no",
+            "Bond paper A4 80gsm,ream,494,Paper,true,false,OS-PAP-0000004");
+
+        await sut.ImportCsvAsync(csv);
+
+        IReadOnlyList<PriceIndexItemDto> all = await sut.GetAllAsync(null, ActiveFilter.All);
+        Assert.Equal("OS-PAP-0000004", all.Single().StockCardNo);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_StockCardNoChangedOnly_CountsAsUpdated()
+    {
+        List<PriceIndexItem> seed = [Item(1, "Bond paper A4 80gsm", "ream", 494m, "Paper", stockCardNo: "OS-PAP-0000001")];
+        (PriceIndexService sut, _) = Build(seed);
+
+        string csv = string.Join("\r\n",
+            "name,unit,unit_price,category,is_active,days_enabled,stock_card_no",
+            "Bond paper A4 80gsm,ream,494,Paper,true,false,OS-PAP-0000004");
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv);
+
+        Assert.Equal(1, result.Value!.Updated);
+        Assert.Equal("OS-PAP-0000004", seed.Single().StockCardNo);
+    }
+
+    /// <summary>
+    /// The backward-compatibility rule: a CSV exported before stock_card_no existed has only
+    /// six columns. That absent column must mean "leave alone", NOT "clear" — otherwise
+    /// re-importing an older price list silently wipes every stock card number on file.
+    /// </summary>
+    [Fact]
+    public async Task ImportCsvAsync_LegacySixColumnFile_PreservesExistingStockCardNo()
+    {
+        List<PriceIndexItem> seed = [Item(1, "Bond paper A4 80gsm", "ream", 494m, "Paper", stockCardNo: "OS-PAP-0000004")];
+        (PriceIndexService sut, _) = Build(seed);
+
+        string csv = string.Join("\r\n",
+            "name,unit,unit_price,category,is_active,days_enabled",
+            "Bond paper A4 80gsm,ream,520,Paper,true,false");
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv);
+
+        Assert.Equal(1, result.Value!.Updated);       // the price change still applies
+        Assert.Equal(520m, seed.Single().UnitPrice);
+        Assert.Equal("OS-PAP-0000004", seed.Single().StockCardNo);
+    }
+
+    /// <summary>
+    /// The other half of that rule: a row that HAS the column but leaves it blank does clear
+    /// it — matching how category already behaves, so a value can still be removed via CSV.
+    /// </summary>
+    [Fact]
+    public async Task ImportCsvAsync_BlankStockCardNoInPresentColumn_ClearsIt()
+    {
+        List<PriceIndexItem> seed = [Item(1, "Bond paper A4 80gsm", "ream", 494m, "Paper", stockCardNo: "OS-PAP-0000004")];
+        (PriceIndexService sut, _) = Build(seed);
+
+        string csv = string.Join("\r\n",
+            "name,unit,unit_price,category,is_active,days_enabled,stock_card_no",
+            "Bond paper A4 80gsm,ream,494,Paper,true,false,");
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv);
+
+        Assert.Equal(1, result.Value!.Updated);
+        Assert.Null(seed.Single().StockCardNo);
+    }
+
+    [Fact]
+    public async Task GetAllAsync_SearchByStockCardNo_MatchesItem()
+    {
+        (PriceIndexService sut, _) = Build([
+            Item(1, "Bond paper A4 80gsm", "ream", 494m, "Paper", stockCardNo: "OS-PAP-0000004"),
+            Item(2, "Ballpen", "piece", 9m, "Pen", stockCardNo: "OS-PEN-0000015"),
+        ]);
+
+        IReadOnlyList<PriceIndexItemDto> found = await sut.GetAllAsync("OS-PEN", ActiveFilter.All);
+
+        Assert.Equal("Ballpen", Assert.Single(found).Name);
     }
 
     // ── search ───────────────────────────────────────────────────────────────

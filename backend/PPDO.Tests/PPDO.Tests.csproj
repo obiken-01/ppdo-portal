@@ -23,6 +23,10 @@
   <ItemGroup>
     <ProjectReference Include="..\PPDO.Application\PPDO.Application.csproj" />
     <ProjectReference Include="..\PPDO.Infrastructure\PPDO.Infrastructure.csproj" />
+    <!-- Endpoint tests (PPDO.Tests/Functions) exercise the handlers' auth + division-clamp logic,
+         which lives above the service layer. Referencing the worker project is enough — the
+         isolated worker's HttpRequestData/HttpResponseData are faked in FunctionHttpHarness.cs. -->
+    <ProjectReference Include="..\PPDO.Functions\PPDO.Functions.csproj" />
   </ItemGroup>
 
 </Project>

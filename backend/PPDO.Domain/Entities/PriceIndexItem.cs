@@ -31,6 +31,17 @@ public sealed class PriceIndexItem
     public string? Category { get; set; }
 
     /// <summary>
+    /// GSO stock card number / item code (v1.5 — PPMP report). Mirrors the "Stock Card No."
+    /// column in the province's own PPMP working form, which the PPMP report has to reproduce
+    /// per procurement line item. Format is GSO's own — e.g. "OS-PAP-0000004" (category-coded
+    /// prefix + 7-digit sequence) — so it is stored as free text, not parsed.
+    /// Optional and NOT unique: only a minority of catalogue items carry one today (22 of 104
+    /// rows in the FY2027 Admin Division reference file), and enforcing uniqueness would fail
+    /// the CSV import that is this table's primary ingestion path. Max 50 characters.
+    /// </summary>
+    public string? StockCardNo { get; set; }
+
+    /// <summary>
     /// UTC timestamp of the last time <see cref="UnitPrice"/> actually changed — surfaced in
     /// search results (RAL-125) so a stale price is visible to the user, not silently trusted.
     /// Set on create and whenever an update changes UnitPrice; untouched by unrelated edits.

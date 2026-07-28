@@ -21,7 +21,7 @@
  *   GET /api/config/audit-log/tables
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { fetchMe } from "@/lib/me-cache";
 import { configErrorMessage, listAuditLog, listAuditLogTableNames } from "@/lib/config";
@@ -30,6 +30,11 @@ import type { AuditLogEntry } from "@/types";
 
 const PAGE_SIZE = 50;
 const ACTIONS = ["CREATE", "UPDATE", "DELETE"] as const;
+
+// Auto-refresh (RAL-182): keep the grid fresh without a manual reload.
+const POLL_MS = 15 * 60 * 1000;          // steady 15-minute heartbeat
+const RETURN_THROTTLE_MS = 60 * 1000;    // min gap between focus/visibility-driven refreshes (alt-tab spam guard)
+const BG_REFRESH_KEY = "ppdo_audit_bg_refresh"; // localStorage: poll even while the tab is hidden
 
 // ---------------------------------------------------------------------------
 // Formatting helpers
@@ -40,6 +45,12 @@ function formatTimestamp(iso: string): string {
     year: "numeric", month: "short", day: "numeric",
     hour: "numeric", minute: "2-digit", second: "2-digit",
     timeZone: "Asia/Manila",
+  });
+}
+
+function formatClock(d: Date): string {
+  return d.toLocaleTimeString("en-PH", {
+    hour: "numeric", minute: "2-digit", second: "2-digit", timeZone: "Asia/Manila",
   });
 }
 
@@ -82,6 +93,15 @@ export default function AuditLogPage() {
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+
+  // Auto-refresh (RAL-182)
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [bgRefresh, setBgRefresh] = useState(false); // hydrated from localStorage after mount (SSR-safe)
+  const inFlightRef = useRef(false);                 // don't stack silent refreshes
+  const reqSeqRef = useRef(0);                        // supersede a stale in-flight result on filter/page change
+  const lastReturnRefreshRef = useRef(0);            // throttle focus/visibility refreshes
+  const loadRef = useRef<(opts?: { silent?: boolean }) => void>(() => {}); // latest load, for stable listeners
+  const bgRefreshRef = useRef(false);                // latest toggle, read inside the interval tick
 
   // Filters
   const [tableNames, setTableNames] = useState<string[]>([]);
@@ -131,9 +151,20 @@ export default function AuditLogPage() {
 
   // ── Load (server-side filter + page) ──────────────────────────────────────────
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setFetchError(null);
+  // A `silent` load refetches the current page + filters WITHOUT flashing the loading
+  // skeleton, clearing the grid, or surfacing a transient error — used by the auto-refresh
+  // triggers so the visible rows never blink. A non-silent load (initial mount, filter/page
+  // change, manual retry) behaves as before. A monotonic request sequence drops a stale
+  // in-flight result when a newer load supersedes it (e.g. a filter change lands mid-poll).
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent ?? false;
+    if (silent && inFlightRef.current) return; // a refresh is already running — skip this tick
+    const seq = ++reqSeqRef.current;
+    inFlightRef.current = true;
+    if (!silent) {
+      setLoading(true);
+      setFetchError(null);
+    }
     try {
       const result = await listAuditLog({
         page,
@@ -145,18 +176,79 @@ export default function AuditLogPage() {
         // Inclusive end-of-day for the "to" date, since a bare date parses to midnight.
         to: toDate ? new Date(`${toDate}T23:59:59.999`).toISOString() : undefined,
       });
+      if (seq !== reqSeqRef.current) return; // superseded by a newer load — drop this result
       setEntries(result.items);
       setTotalCount(result.totalCount);
+      setLastUpdated(new Date());
+      setFetchError(null);
     } catch (err) {
-      setFetchError(configErrorMessage(err, "Failed to load the audit log. Please try again."));
+      if (seq !== reqSeqRef.current) return;
+      // A failed silent refresh leaves the current grid untouched (the next tick may succeed);
+      // only a user-initiated load surfaces the error banner.
+      if (!silent) setFetchError(configErrorMessage(err, "Failed to load the audit log. Please try again."));
     } finally {
-      setLoading(false);
+      if (seq === reqSeqRef.current) {
+        if (!silent) setLoading(false);
+        inFlightRef.current = false;
+      }
     }
   }, [page, tableFilter, actionFilter, debouncedActorSearch, fromDate, toDate]);
+
+  // Keep refs pointed at the latest values so the interval/visibility listeners can stay
+  // registered once (deps: [authChecked]) instead of re-subscribing on every filter change.
+  useEffect(() => { loadRef.current = load; }, [load]);
+  useEffect(() => { bgRefreshRef.current = bgRefresh; }, [bgRefresh]);
 
   useEffect(() => {
     if (authChecked) load();
   }, [authChecked, load]);
+
+  // Hydrate the background-refresh preference from localStorage (client-only, post-mount).
+  useEffect(() => {
+    setBgRefresh(localStorage.getItem(BG_REFRESH_KEY) === "true");
+  }, []);
+
+  function toggleBgRefresh() {
+    setBgRefresh((v) => {
+      const next = !v;
+      try { localStorage.setItem(BG_REFRESH_KEY, String(next)); } catch { /* private mode — in-memory only */ }
+      return next;
+    });
+  }
+
+  // ── Auto-refresh: 15-min heartbeat + refetch-on-return (RAL-182) ──────────────
+  //
+  // The interval always ticks, but only refetches when the tab is visible OR the
+  // background-refresh toggle is on — so an idle background tab costs nothing by
+  // default, while an opted-in tab keeps Functions + SQL warm. Returning to the tab
+  // (visibilitychange → visible, or window focus) refetches immediately, throttled so
+  // rapid alt-tabbing doesn't spam the server.
+
+  useEffect(() => {
+    if (!authChecked) return;
+
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible" || bgRefreshRef.current) {
+        loadRef.current({ silent: true });
+      }
+    }, POLL_MS);
+
+    const onReturn = () => {
+      if (document.visibilityState !== "visible") return;
+      const now = Date.now();
+      if (now - lastReturnRefreshRef.current < RETURN_THROTTLE_MS) return;
+      lastReturnRefreshRef.current = now;
+      loadRef.current({ silent: true });
+    };
+    document.addEventListener("visibilitychange", onReturn);
+    window.addEventListener("focus", onReturn);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onReturn);
+      window.removeEventListener("focus", onReturn);
+    };
+  }, [authChecked]);
 
   // ── Columns ───────────────────────────────────────────────────────────────────
 
@@ -303,6 +395,33 @@ export default function AuditLogPage() {
               Reset
             </button>
           )}
+
+          {/* Auto-refresh controls (RAL-182) — right-aligned; wraps below the filters on narrow screens */}
+          <div className="ml-auto flex items-end gap-3 pb-1">
+            {lastUpdated && (
+              <span className="text-[11px] text-slate-500 pb-1" title="Grid refreshes automatically every 15 minutes and whenever you return to this tab.">
+                Updated {formatClock(lastUpdated)}
+              </span>
+            )}
+            <label className="flex items-center gap-2 pb-1 text-xs text-slate-600 cursor-pointer select-none whitespace-nowrap">
+              <input
+                type="checkbox"
+                checked={bgRefresh}
+                onChange={toggleBgRefresh}
+                className="accent-green-600"
+              />
+              Keep refreshing when tab is hidden
+            </label>
+            {bgRefresh && (
+              <span
+                className="flex items-center gap-1 pb-1 text-[11px] text-amber-600 whitespace-nowrap"
+                title="This tab keeps polling while hidden, so the server stays awake (and won't scale to sleep) until you turn this off or close the tab."
+              >
+                <span className="w-1.5 h-1.5 bg-amber-500 rounded-full" aria-hidden />
+                keeps the server awake
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Table */}
@@ -312,7 +431,7 @@ export default function AuditLogPage() {
           rowKey={(e) => e.id}
           loading={loading}
           error={fetchError}
-          onRetry={load}
+          onRetry={() => load()}
           emptyMessage={filtersActive ? "No audit entries match your filters." : "No audit entries yet."}
           rowNoun={["entry", "entries"]}
           serverPagination={{ page, pageSize: PAGE_SIZE, totalCount, onPageChange: setPage }}
