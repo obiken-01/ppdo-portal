@@ -596,6 +596,69 @@ export interface WfpReportDto {
   fundSourceReports: WfpReportFundSourceDto[];
 }
 
+// ── PPMP Report preview (RAL-183) ──────────────────────────────────────────────
+// Mirrors PPDO.Application/DTOs/BudgetPlanning/PpmpReportDtos.cs. Item-grained (one row per
+// procurement item), procurement-only; a separate table per fund source. Office picker + the
+// division-scope rules are shared with the WFP report above.
+
+export interface PpmpReportItemDto {
+  stockCardNo: string | null;
+  category: string | null;
+  description: string;
+  unit: string;
+  unitPrice: number;
+  qty: number;
+  estBudget: number;
+  q1Qty: number; q1Amount: number;
+  q2Qty: number; q2Amount: number;
+  q3Qty: number; q3Amount: number;
+  q4Qty: number; q4Amount: number;
+}
+
+export interface PpmpReportAccountDto {
+  accountNumber: string | null;
+  accountTitle: string | null;
+  items: PpmpReportItemDto[];
+  /** Sum of the items' est. budget (Q11 — never the AIP appropriation). */
+  total: number;
+}
+
+export interface PpmpReportActivityDto {
+  refCode: string;
+  name: string;
+  accounts: PpmpReportAccountDto[];
+  total: number;
+}
+
+export interface PpmpReportProjectDto {
+  refCode: string;
+  name: string;
+  activities: PpmpReportActivityDto[];
+  total: number;
+}
+
+export interface PpmpReportProgramDto {
+  refCode: string;
+  name: string;
+  projects: PpmpReportProjectDto[];
+  total: number;
+}
+
+export interface PpmpReportFundSourceDto {
+  fundSourceName: string;
+  programs: PpmpReportProgramDto[];
+  total: number;
+}
+
+export interface PpmpReportDto {
+  fiscalYear: number;
+  officeCode: string;
+  officeName: string;
+  /** Set when scoped to one division; null for the office-consolidated view. */
+  divisionName: string | null;
+  fundSourceReports: PpmpReportFundSourceDto[];
+}
+
 // ── Allocation (RAL-99/101) ───────────────────────────────────────────────────
 
 export interface BudgetCeilingDto {

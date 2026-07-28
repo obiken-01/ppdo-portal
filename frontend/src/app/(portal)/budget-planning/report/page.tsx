@@ -57,10 +57,13 @@ import { useMe } from "@/lib/me-cache";
 import { PPDO_OFFICE_CODE, listDivisions } from "@/lib/config";
 import { getFiscalYears } from "@/lib/budget-planning";
 import { downloadWfpReportExcel, getWfpReportOffices, getWfpReportPreview, wfpErrorMessage } from "@/lib/wfp";
+import { downloadPpmpReportExcel, getPpmpReportPreview } from "@/lib/ppmp";
+import PpmpReportView from "./PpmpReportView";
 import { useToast } from "@/components/ui/Toast";
 import { formatMoney } from "@/lib/money";
 import type {
   DivisionResponse,
+  PpmpReportDto,
   WfpReportAmountsDto,
   WfpReportBreakdownDto,
   WfpReportDto,
@@ -73,7 +76,10 @@ import type {
 // Report-type dropdown — only "WFP" is wired up; the shape allows more later.
 // ---------------------------------------------------------------------------
 
-const REPORT_TYPES = [{ value: "WFP", label: "Work and Financial Plan (WFP)" }] as const;
+const REPORT_TYPES = [
+  { value: "WFP", label: "Work and Financial Plan (WFP)" },
+  { value: "PPMP", label: "Project Procurement Management Plan (PPMP)" },
+] as const;
 
 // ---------------------------------------------------------------------------
 // Flatten one fund source's nested sections into one row per Excel line (WFP
@@ -173,9 +179,10 @@ function timestamp(): string {
 }
 
 function buildExportFilename(
-  officeCode: string, fiscalYear: number, divisionId: number | null, divisionList: DivisionResponse[]
+  officeCode: string, fiscalYear: number, divisionId: number | null, divisionList: DivisionResponse[],
+  prefix: "WFP" | "PPMP" = "WFP"
 ): string {
-  const parts = [`WFP${fiscalYear}`, officeCode];
+  const parts = [`${prefix}${fiscalYear}`, officeCode];
   if (divisionId != null) {
     const division = divisionList.find((d) => d.id === divisionId);
     parts.push(division?.code || division?.name || String(divisionId));
@@ -411,6 +418,7 @@ function WfpReportPageInner() {
   const [divisionsLoaded, setDivisionsLoaded] = useState(false);
 
   const [report, setReport] = useState<WfpReportDto | null>(null);
+  const [ppmpReport, setPpmpReport] = useState<PpmpReportDto | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
   const [excelExporting, setExcelExporting] = useState(false);
 
@@ -437,6 +445,7 @@ function WfpReportPageInner() {
     if (fiscalYear == null) return;
     setOfficeId(null);
     setReport(null);
+    setPpmpReport(null);
     setOfficesLoading(true);
     getWfpReportOffices(fiscalYear)
       .then((offices) => {
@@ -458,8 +467,13 @@ function WfpReportPageInner() {
   function runPreview(office: number, fy: number, division: number | null) {
     setReportLoading(true);
     setReport(null);
-    getWfpReportPreview(office, fy, division ?? undefined)
-      .then(setReport)
+    setPpmpReport(null);
+    // The PPMP report shares the WFP report's scoping/endpoint shape — only the preview payload
+    // differs (item-grained, procurement-only). WFP stays the default report type.
+    const request = reportType === "PPMP"
+      ? getPpmpReportPreview(office, fy, division ?? undefined).then(setPpmpReport)
+      : getWfpReportPreview(office, fy, division ?? undefined).then(setReport);
+    request
       .catch((err) => toast.error("Could not generate preview", wfpErrorMessage(err, "Please try again.")))
       .finally(() => setReportLoading(false));
   }
@@ -474,6 +488,15 @@ function WfpReportPageInner() {
     setExcelExporting(true);
     const filename = buildExportFilename(report.officeCode, fiscalYear, divisionId, divisionList);
     downloadWfpReportExcel(officeId, fiscalYear, filename, divisionId ?? undefined)
+      .catch((err) => toast.error("Export failed", wfpErrorMessage(err, "Please try again.")))
+      .finally(() => setExcelExporting(false));
+  }
+
+  function handlePpmpExportExcel() {
+    if (officeId == null || fiscalYear == null || ppmpReport == null) return;
+    setExcelExporting(true);
+    const filename = buildExportFilename(ppmpReport.officeCode, fiscalYear, divisionId, divisionList, "PPMP");
+    downloadPpmpReportExcel(officeId, fiscalYear, filename, divisionId ?? undefined)
       .catch((err) => toast.error("Export failed", wfpErrorMessage(err, "Please try again.")))
       .finally(() => setExcelExporting(false));
   }
@@ -555,7 +578,12 @@ function WfpReportPageInner() {
           </label>
           <select
             value={reportType}
-            onChange={(e) => setReportType(e.target.value)}
+            onChange={(e) => {
+              setReportType(e.target.value);
+              // Clear any generated preview so switching type never shows the other report's data.
+              setReport(null);
+              setPpmpReport(null);
+            }}
             className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600"
           >
             {REPORT_TYPES.map((t) => (
@@ -628,9 +656,9 @@ function WfpReportPageInner() {
           {reportLoading ? "Generating…" : "Generate Preview"}
         </button>
 
-        {report && !reportLoading && (
+        {((reportType === "WFP" && report) || (reportType === "PPMP" && ppmpReport)) && !reportLoading && (
           <button
-            onClick={handleExportExcel}
+            onClick={reportType === "PPMP" ? handlePpmpExportExcel : handleExportExcel}
             disabled={excelExporting}
             className="px-4 py-1.5 text-sm font-medium border border-slate-300 text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
           >
@@ -643,9 +671,9 @@ function WfpReportPageInner() {
       </div>
 
       {/* Empty / loading state */}
-      {!report && !reportLoading && (
+      {!report && !ppmpReport && !reportLoading && (
         <p className="text-slate-600 text-sm py-10 text-center print:hidden">
-          Select an office and click &quot;Generate Preview&quot; to view its WFP report.
+          Select an office and click &quot;Generate Preview&quot; to view the report.
         </p>
       )}
       {reportLoading && (
@@ -665,7 +693,7 @@ function WfpReportPageInner() {
       {/* Report — one full block per fund source (WFP FINAL sheet repeats the whole header +
           table per fund, e.g. General Fund then 5% GAD Fund). Every block but the last starts
           the next one on a fresh printed page. */}
-      {report && !reportLoading && (
+      {reportType === "WFP" && report && !reportLoading && (
         report.fundSourceReports.length === 0 ? (
           <div className="bg-white border border-slate-200 p-6">
             <p className="text-slate-600 text-sm text-center">
@@ -682,6 +710,11 @@ function WfpReportPageInner() {
             />
           ))
         )
+      )}
+
+      {/* PPMP — item-grained, one table per fund source (RAL-183). Preview only; export is RAL-184. */}
+      {reportType === "PPMP" && ppmpReport && !reportLoading && (
+        <PpmpReportView report={ppmpReport} />
       )}
     </div>
   );
