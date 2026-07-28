@@ -239,25 +239,74 @@ GSO code by definition. Do NOT fall back to fuzzy-matching on name to fill it in
 
 ## 7. Open questions
 
+**All resolved as of 2026-07-27** — the design is locked; see §8 for the resulting build spec.
+
 Answered by the reference file: ~~Q1~~ (which form), ~~Q2~~ (row grain), ~~Q9~~ (export fidelity —
 match the province's own form), ~~Q10~~ (filename — no PPMP No.; the real form has no such field).
-Answered by Ralph 2026-07-24: ~~Q14~~ (moot — the `OS-` seed it belonged to was superseded by the
-GSO Item Code merge, see §6), ~~Q15~~ (join live via `PriceIndexItemId`, see §6), ~~Q16~~ (which
-coding scheme `stock_card_no` holds — the GSO Items-Export Item Code, see §6).
 
-| # | Question | Why it matters |
+Answered by Ralph 2026-07-24: ~~Q14~~ (moot — the `OS-` seed it belonged to was superseded by the
+GSO Item Code merge), ~~Q15~~ (join live via `PriceIndexItemId`), ~~Q16~~ (`stock_card_no` holds the
+GSO Items-Export Item Code). All in §6.
+
+Answered by Ralph 2026-07-27 (against the re-supplied `ppmp admin2027.xlsx`):
+
+| # | Question | Decision |
 |---|---|---|
-| **Q3** | Is the end-user unit the **Office** or the **Division**? The reference file is one division ("ADMINISTRATIVE DIVISION GEN. FUND") — does each division file its own, or does PPDO consolidate? | Decides whether division is a filter or part of the report's identity. The file suggests per-division. |
-| **Q4** | One file **per fund source** — confirmed by "Charged to: GENERAL FUND"? So a division with GF + LDRRM money files two PPMPs? | Drives whether the report loops fund sources like the WFP report does. |
-| **Q5** | Signatories — "Prepared by" (Admin. Assist. III) and "NOTED BY" (PPDC). Derivable from `User`/`Division`, or free text? | Small, but it's on the form. |
-| **Q8** | Include **non-procurement** expenditures? `WfpExpenditure.Nature` is Procurement / Non-Procurement / Combined. The reference file has account rows with a total but no item rows beneath (e.g. "Travelling Expenses"), suggesting non-procurement lines DO appear as section rows without detail. | Decides the base query's filter. |
-| **Q11** | The account section rows carry a total (e.g. ₱700,000 for Office Supplies). Is that the **AIP/WFP appropriation** for that account, or the sum of the items below it? In the reference they don't always agree. | Determines whether that cell is computed or fetched. |
-| **Q12** | **Mode of Procurement** — blank in all 104 rows. Do you want the field at all? If yes, seeded config list or free text? | The only genuinely missing column. Deferring it costs nothing. |
-| **Q13** | Generate the **Summary sheet** (AIP vs actual budget reconciliation) as a second sheet of the export? The portal already has both sides. | Nice-to-have; could ship free. |
-**Resolved:** ~~Q15~~ — join Stock Card No./Category live via `PriceIndexItemId`, no snapshot
-(Ralph, 2026-07-24). ~~Q16~~ — `stock_card_no` holds the **GSO Items-Export Item Code**, not the
-PPMP form's `OS-` code; merged over the whole price index by name+unit+category. ~~Q14~~ was the
-`OS-BAT-0000002` disambiguation — now moot, that whole seed was replaced. All in §6.
+| **Q3** | End-user unit = Office or Division? | **Both.** Division-scoped users print their own division's PPMP; an **Allocation user (`CanManageAllocation`) or SuperAdmin** can also print the **office-level** (all divisions consolidated) PPMP. Mirrors the WFP report's RAL-136 scoping. *(Note: WFP's `canBypassDivision` also allows plain **Admin** — confirm whether Admin should get office-level here too; the ticket assumes yes, to match WFP.)* |
+| **Q4** | One PPMP file per fund source? | **No.** Copy the WFP report's grouping: **one report, a separate table per fund source** stacked within it (reuse the `fundSourceReports` shape). Not one download per fund. |
+| **Q5** | Signatories derivable or free text? | Follow the reference file's block ("Prepared by" / "NOTED BY"). Not a blocker for the preview; treat as static/free-text labels for now. |
+| **Q8** | Include non-procurement expenditures? | **Procurement only.** Base the report on `WfpProcurementItem` rows. Exclude `Nature = "Non-Procurement"` expenditures entirely; a `"Combined"` expenditure contributes its procurement items only (its typed-period non-proc portion is omitted). |
+| **Q11** | Account section-row total = AIP appropriation or sum of items? | **Sum of the items below it.** Computed from the procurement item line totals, never fetched from AIP. |
+| **Q12** | Mode of Procurement column? | **No.** Drop column N entirely — no new field, no config list. |
+| **Q13** | Generate the Summary sheet? | **No.** The AIP-vs-actual reconciliation sheet is out of scope. |
+
+---
+
+## 8. Locked build spec (2026-07-27)
+
+Follow the province's own `ppmp admin2027.xlsx` layout, with the decisions above applied. Build like
+the WFP report did: **preview first** (RAL-132 pattern), **`.xlsx` export second** (v1.4.4 pattern).
+
+### Columns (Mode of Procurement dropped per Q12)
+
+| # | Column | Source |
+|---|---|---|
+| 1 | Item No. | derived row counter (blank is acceptable — mostly blank in the reference) |
+| 2 | AIP Reference Code | `aip_programs`/`aip_projects`/`aip_activities` `.ref_code` (on section rows) |
+| 3 | Description | hierarchy/account name on section rows; `wfp_procurement_items.name` on item rows |
+| 4 | Stock Card No. | `price_index_items.stock_card_no` via `WfpProcurementItem.PriceIndexItemId` (**live join**, Q15) — blank for free-typed items |
+| 5 | Short Category | `price_index_items.category` (same live join) |
+| 6 | Unit | `wfp_procurement_items.unit` |
+| 7 | Unit price | `wfp_procurement_items.unit_price` |
+| 8 | QTY | `wfp_procurement_items.qty` |
+| 9 | Est. Budget | `wfp_procurement_items.line_total` |
+| 10–17 | 1ST / 1ST QRTR AMOUNT … 4TH / 4TH QRTR AMOUNT | `period_no` (mapped to quarter) + qty + line_total |
+| 18 | TOTAL | computed |
+
+### Structure & rules
+
+- **Row grain (Q2):** one row per `WfpProcurementItem`. Hierarchy (program → project → activity →
+  account) renders as interleaved section rows; the section rule is "no unit price = section row".
+- **Procurement only (Q8):** source only `WfpProcurementItem` rows. Skip `Nature = "Non-Procurement"`
+  expenditures; a `"Combined"` expenditure contributes its procurement items only.
+- **Account section total (Q11):** SUM of the item line totals beneath it. Computed.
+- **Fund-source grouping (Q4):** a separate table per fund source within one report — reuse the WFP
+  report's `fundSourceReports` shape and per-fund block rendering.
+- **Scope (Q3):** division-scoped callers forced to their own division (RAL-136); `CanManageAllocation`
+  or `SuperAdmin` (and Admin — see Q3 note) may pick a division OR office-consolidated (all divisions).
+- **No Mode of Procurement (Q12); no Summary sheet (Q13).**
+
+### Build order / tickets
+
+1. **Preview** — `PpmpReportService` + `GET /api/budget-planning/ppmp/report/preview`
+   (`{ data, error, message }`; slim DTO; server-side aggregation; **no `GetAllAsync()`-then-filter**,
+   per `docs/PERFORMANCE_GUIDELINES.md`). Frontend: add `PPMP` to `REPORT_TYPES` in
+   [report/page.tsx](frontend/src/app/(portal)/budget-planning/report/page.tsx) (WFP stays default);
+   render the item-grained grid with per-fund tables, reusing the WFP report's scoping controls.
+2. **`.xlsx` export** — `IPpmpReportExcelService` (named distinctly, as `IWfpReportExcelService` was) +
+   `GET /api/budget-planning/ppmp/report/export`; programmatic ClosedXML build from a style catalog,
+   **not** row-cloning from a reference workbook (the province's files are filled samples, not
+   templates); client-side filename. Structural unit tests (row counts, section totals, no formulas).
 
 ---
 
