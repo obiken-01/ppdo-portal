@@ -186,6 +186,27 @@ public sealed class AipFunctions
             await _aip.CopyOfficeFromPriorYearAsync(body, caller!.Id, ct), ct, HttpStatusCode.Created);
     }
 
+    // ── POST /api/budget-planning/aip/seed-programs-from-ldip ─────────────────
+    // RAL-181 — seed an office's AIP programs (Name+RefCode only, bare shells) from that
+    // office's existing LDIP for the given sector. CanAccessBudgetPlanning, same reasoning as
+    // CopyOffice/manual entry — not a new file import.
+    [Function("AipSeedProgramsFromLdip")]
+    public async Task<HttpResponseData> SeedProgramsFromLdip(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/aip/seed-programs-from-ldip")] HttpRequestData req,
+        CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        SeedAipProgramsFromLdipDto? body = await ConfigHttp.ReadBodyAsync<SeedAipProgramsFromLdipDto>(req, ct);
+        if (body is null)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<AipOfficeDto>.Fail("Request body is missing or malformed."), ct);
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _aip.SeedProgramsFromLdipAsync(body, caller!.Id, ct), ct, HttpStatusCode.Created);
+    }
+
     // ── POST /api/budget-planning/aip/offices/{officeId}/programs ────────────
     [Function("AipAddProgram")]
     public async Task<HttpResponseData> AddProgram(

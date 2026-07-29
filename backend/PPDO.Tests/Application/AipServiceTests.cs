@@ -49,7 +49,8 @@ public sealed class AipServiceTests
         Mock<IOfficeRepository> officeConfigRepo,
         Mock<IRepository<AipProgram>> programRepo,
         Mock<IRepository<AipProject>> projectRepo,
-        Mock<IRepository<AipActivity>> activityRepo)
+        Mock<IRepository<AipActivity>> activityRepo,
+        Mock<ILdipRepository> ldipRepo)
         Build(
             List<AipRecord>    aipSeed,
             List<FundingSource> fsSeed,
@@ -60,7 +61,9 @@ public sealed class AipServiceTests
             List<AipActivity>? actSeed     = null,
             IAipXlsmParser?    parserImpl  = null,
             IReadOnlyCollection<int>? aipIdsWithWfp = null,
-            List<Office>? officeConfigSeed = null)
+            List<Office>? officeConfigSeed = null,
+            List<LdipRecord>? ldipRecordSeed = null,
+            List<LdipOffice>? ldipOfficeSeed = null)
     {
         Mock<IAipRepository>            aipRepo  = new();
         Mock<IRepository<FundingSource>> fsRepo   = new();
@@ -181,6 +184,22 @@ public sealed class AipServiceTests
                 .OrderBy(r => r.Id)
                 .FirstOrDefault());
 
+        // ── LDIP repo (RAL-181 — seed AIP programs from an office's LDIP) ────────────
+
+        List<LdipRecord> ldipRecordList = ldipRecordSeed ?? [];
+        List<LdipOffice> ldipOfficeList = ldipOfficeSeed ?? [];
+        Mock<ILdipRepository> ldipRepo = new();
+        ldipRepo.Setup(r => r.GetListAsync(It.IsAny<int?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int? officeId, string? status, CancellationToken _) =>
+                (IReadOnlyList<LdipRecord>)ldipRecordList
+                    .Where(r => officeId is null || r.OfficeId == officeId)
+                    .Where(r => string.IsNullOrWhiteSpace(status) || r.Status == status)
+                    .OrderByDescending(r => r.CreatedAt)
+                    .ToList());
+        ldipRepo.Setup(r => r.GetOfficeGroupsAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int ldipRecordId, CancellationToken _) =>
+                (IReadOnlyList<LdipOffice>)ldipOfficeList.Where(o => o.LdipRecordId == ldipRecordId).ToList());
+
         // ── Config repos ──────────────────────────────────────────────────────────
 
         fsRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(fsSeed);
@@ -207,10 +226,11 @@ public sealed class AipServiceTests
         AipService sut = new(
             aipRepo.Object, fsRepo.Object, userRepo.Object,
             parser.Object, audit.Object, ctx, officeRepo.Object, wfpRepo.Object,
-            officeConfigRepo.Object, programRepo.Object, projectRepo.Object, activityRepo.Object);
+            officeConfigRepo.Object, programRepo.Object, projectRepo.Object, activityRepo.Object,
+            ldipRepo.Object);
 
         return (sut, aipRepo, fsRepo, userRepo, parser, audit, officeRepo, wfpRepo,
-            officeConfigRepo, programRepo, projectRepo, activityRepo);
+            officeConfigRepo, programRepo, projectRepo, activityRepo, ldipRepo);
     }
 
     // ── GetAllAsync ───────────────────────────────────────────────────────────
@@ -228,7 +248,7 @@ public sealed class AipServiceTests
             new() { Id = 2, AipRecordId = 10, RefCode = "B", Name = "Off2", Sector = "SOCIAL" },
         ];
 
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeSeed: offices);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeSeed: offices);
 
         IReadOnlyList<AipRecordDto> result = await sut.GetAllAsync(null, null);
 
@@ -245,7 +265,7 @@ public sealed class AipServiceTests
 
         List<User> users = [ MakeUser(uploaderId, "Ralph Alcaide") ];
 
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], userSeed: users);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], userSeed: users);
 
         IReadOnlyList<AipRecordDto> result = await sut.GetAllAsync(null, null);
 
@@ -259,7 +279,7 @@ public sealed class AipServiceTests
         AipRecord rec = new() { Id = 12, FiscalYear = 2027, EntrySource = "Upload",
             UploadedById = Guid.NewGuid(), UploadedAt = DateTime.UtcNow, Status = "Draft" };
 
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], []);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], []);
 
         IReadOnlyList<AipRecordDto> result = await sut.GetAllAsync(null, null);
 
@@ -278,7 +298,7 @@ public sealed class AipServiceTests
                 UploadedById = Guid.NewGuid(), UploadedAt = DateTime.UtcNow, Status = "Final" },
         ];
 
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build(seed, []);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build(seed, []);
 
         IReadOnlyList<AipRecordDto> result = await sut.GetAllAsync(2027, null);
 
@@ -292,7 +312,7 @@ public sealed class AipServiceTests
     public async Task GetById_UsesGetByIntIdAsync_NotGetAllAsync()
     {
         AipRecord rec = Rec(5);
-        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _) = Build([rec], []);
+        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], []);
 
         await sut.GetByIdAsync(5, CancellationToken.None);
 
@@ -306,7 +326,7 @@ public sealed class AipServiceTests
     {
         AipRecord rec = Rec(7);
         List<AipOffice> offices = [new() { Id = 1, AipRecordId = 7, RefCode = "X", Name = "O", Sector = "GENERAL" }];
-        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeSeed: offices);
+        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeSeed: offices);
 
         await sut.GetByIdAsync(7, CancellationToken.None);
 
@@ -317,7 +337,7 @@ public sealed class AipServiceTests
     public async Task GetById_WfpBuiltFromRecord_HasWfpUsageIsTrue()
     {
         AipRecord rec = Rec(8);
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], aipIdsWithWfp: [8]);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], aipIdsWithWfp: [8]);
 
         ServiceResult<AipRecordDetailDto> result = await sut.GetByIdAsync(8, CancellationToken.None);
 
@@ -329,7 +349,7 @@ public sealed class AipServiceTests
     public async Task GetById_NoWfpBuiltFromRecord_HasWfpUsageIsFalse()
     {
         AipRecord rec = Rec(9);
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], []);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], []);
 
         ServiceResult<AipRecordDetailDto> result = await sut.GetByIdAsync(9, CancellationToken.None);
 
@@ -341,7 +361,7 @@ public sealed class AipServiceTests
     public async Task GetSummaryById_UsesGetByIntIdAsync_NotGetAllAsync()
     {
         AipRecord rec = Rec(9);
-        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _) = Build([rec], []);
+        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], []);
 
         await sut.GetSummaryByIdAsync(9, CancellationToken.None);
 
@@ -353,7 +373,7 @@ public sealed class AipServiceTests
     public async Task Finalize_UsesGetByIntIdAsync_NotGetAllAsync()
     {
         AipRecord rec = Rec(3, PlanningStatus.Draft);
-        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _) = Build([rec], []);
+        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], []);
 
         await sut.FinalizeAsync(3, CancellationToken.None);
 
@@ -365,7 +385,7 @@ public sealed class AipServiceTests
     public async Task Unlock_UsesGetByIntIdAsync_NotGetAllAsync()
     {
         AipRecord rec = Rec(4, PlanningStatus.Final);
-        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _) = Build([rec], []);
+        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], []);
 
         await sut.UnlockAsync(4, CancellationToken.None);
 
@@ -383,7 +403,7 @@ public sealed class AipServiceTests
             new() { Id = 1, AipRecordId = 10, RefCode = "A", Name = "O1", Sector = "G" },
             new() { Id = 2, AipRecordId = 11, RefCode = "B", Name = "O2", Sector = "G" },
         ];
-        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _) = Build(recs, [], officeSeed: allOffices);
+        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _, _) = Build(recs, [], officeSeed: allOffices);
 
         IReadOnlyList<AipRecordDto> result = await sut.GetAllAsync(null, null);
 
@@ -408,7 +428,7 @@ public sealed class AipServiceTests
         ParsedAipProgram prog  = new("A-B-C-D-1-1", "Program 1", [proj]);
         ParsedAipOffice  off   = new("A-B-C-D-1", "Office 1", "GENERAL", [prog]);
 
-        var (sut, _, _, _, parser, _, _, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, parser, _, _, _, _, _, _, _, _) = Build([], []);
         parser.Setup(p => p.Parse(It.IsAny<Stream>()))
             .Returns(new Dictionary<string, List<ParsedAipOffice>>
                 { ["GENERAL"] = [off] });
@@ -433,7 +453,7 @@ public sealed class AipServiceTests
         ParsedAipProgram prog = new("A-B-C-D-1-1", "Prog", [proj]);
         ParsedAipOffice  off  = new("A-B-C-D-1", "Office", "GENERAL", [prog]);
 
-        var (sut, _, _, _, parser, _, _, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, parser, _, _, _, _, _, _, _, _) = Build([], []);
         parser.Setup(p => p.Parse(It.IsAny<Stream>()))
             .Returns(new Dictionary<string, List<ParsedAipOffice>> { ["GENERAL"] = [off] });
 
@@ -454,7 +474,7 @@ public sealed class AipServiceTests
         ParsedAipProgram prog = new("A-B-C-D-1-1", "Prog", [proj]);
         ParsedAipOffice  off  = new("A-B-C-D-1", "Office", "GENERAL", [prog]);
 
-        var (sut, _, _, _, parser, _, _, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, parser, _, _, _, _, _, _, _, _) = Build([], []);
         parser.Setup(p => p.Parse(It.IsAny<Stream>()))
             .Returns(new Dictionary<string, List<ParsedAipOffice>> { ["GENERAL"] = [off] });
 
@@ -474,7 +494,7 @@ public sealed class AipServiceTests
         ParsedAipProgram prog = new("A-B-C-D-1-1", "Program 1", [], lineItem);
         ParsedAipOffice  off  = new("A-B-C-D-1", "Office 1", "GENERAL", [prog]);
 
-        var (sut, _, _, _, parser, _, _, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, parser, _, _, _, _, _, _, _, _) = Build([], []);
         parser.Setup(p => p.Parse(It.IsAny<Stream>()))
             .Returns(new Dictionary<string, List<ParsedAipOffice>> { ["GENERAL"] = [off] });
 
@@ -497,7 +517,7 @@ public sealed class AipServiceTests
     public async Task ConfirmImport_SetsEntrySourceUpload()
     {
         AipRecord? created = null;
-        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _) = Build([], [Fs(1, "GF")]);
+        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _, _) = Build([], [Fs(1, "GF")]);
         aipRepo.Setup(r => r.AddAsync(It.IsAny<AipRecord>(), It.IsAny<CancellationToken>()))
             .Callback<AipRecord, CancellationToken>((e, _) => { e.Id = 1; created = e; })
             .Returns(Task.CompletedTask);
@@ -517,7 +537,7 @@ public sealed class AipServiceTests
     public async Task ConfirmImport_PersistsAllFourHierarchyLevels()
     {
         AipRecord? insertedGraph = null;
-        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _) = Build([], [Fs(1, "GF")]);
+        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _, _) = Build([], [Fs(1, "GF")]);
         aipRepo.Setup(r => r.AddAsync(It.IsAny<AipRecord>(), It.IsAny<CancellationToken>()))
             .Callback<AipRecord, CancellationToken>((e, _) => { e.Id = 100; insertedGraph = e; })
             .Returns(Task.CompletedTask);
@@ -562,7 +582,7 @@ public sealed class AipServiceTests
     public async Task ConfirmImport_SetsActivityFundingSourceSnapshot_WhenCodeMatches()
     {
         AipRecord? insertedGraph = null;
-        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _) = Build([], [Fs(7, "GF")]);
+        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _, _) = Build([], [Fs(7, "GF")]);
         aipRepo.Setup(r => r.AddAsync(It.IsAny<AipRecord>(), It.IsAny<CancellationToken>()))
             .Callback<AipRecord, CancellationToken>((e, _) => { e.Id = 100; insertedGraph = e; })
             .Returns(Task.CompletedTask);
@@ -600,7 +620,7 @@ public sealed class AipServiceTests
     public async Task ConfirmImport_ProgramLineItem_MaterializesSyntheticProjectAndActivity()
     {
         AipRecord? insertedGraph = null;
-        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _) = Build([], [Fs(1, "GF")]);
+        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _, _) = Build([], [Fs(1, "GF")]);
         aipRepo.Setup(r => r.AddAsync(It.IsAny<AipRecord>(), It.IsAny<CancellationToken>()))
             .Callback<AipRecord, CancellationToken>((e, _) => { e.Id = 100; insertedGraph = e; })
             .Returns(Task.CompletedTask);
@@ -644,7 +664,7 @@ public sealed class AipServiceTests
     public async Task ConfirmImport_ProjectLineItem_MaterializesSyntheticActivity_AlongsideRealActivities()
     {
         AipRecord? insertedGraph = null;
-        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _) = Build([], [Fs(1, "GF")]);
+        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _, _) = Build([], [Fs(1, "GF")]);
         aipRepo.Setup(r => r.AddAsync(It.IsAny<AipRecord>(), It.IsAny<CancellationToken>()))
             .Callback<AipRecord, CancellationToken>((e, _) => { e.Id = 100; insertedGraph = e; })
             .Returns(Task.CompletedTask);
@@ -691,7 +711,7 @@ public sealed class AipServiceTests
     public async Task ConfirmImport_NoLineItem_NoSyntheticNodesCreated()
     {
         AipRecord? insertedGraph = null;
-        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _) = Build([], [Fs(1, "GF")]);
+        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _, _) = Build([], [Fs(1, "GF")]);
         aipRepo.Setup(r => r.AddAsync(It.IsAny<AipRecord>(), It.IsAny<CancellationToken>()))
             .Callback<AipRecord, CancellationToken>((e, _) => { e.Id = 100; insertedGraph = e; })
             .Returns(Task.CompletedTask);
@@ -729,7 +749,7 @@ public sealed class AipServiceTests
     [Fact]
     public async Task ConfirmImport_TargetRecordId_NotFound_ReturnsNotFound()
     {
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
         AipImportConfirmDto dto = new(2027, "aip.xlsm", null,
             new Dictionary<string, List<ParsedAipOfficeDto>>(), TargetRecordId: 999);
 
@@ -742,7 +762,7 @@ public sealed class AipServiceTests
     [Fact]
     public async Task ConfirmImport_TargetRecordId_NotDraft_ReturnsBadRequest()
     {
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([Rec(1, PlanningStatus.Final)], []);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([Rec(1, PlanningStatus.Final)], []);
         AipImportConfirmDto dto = new(2027, "aip.xlsm", null,
             new Dictionary<string, List<ParsedAipOfficeDto>>(), TargetRecordId: 1);
 
@@ -761,7 +781,7 @@ public sealed class AipServiceTests
             Id = 1, FiscalYear = 2027, EntrySource = "Manual",
             UploadedById = UserId, UploadedAt = DateTime.UtcNow, Status = PlanningStatus.Draft,
         };
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([manual], []);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([manual], []);
         AipImportConfirmDto dto = new(2027, "aip.xlsm", null,
             new Dictionary<string, List<ParsedAipOfficeDto>>(), TargetRecordId: 1);
 
@@ -776,7 +796,7 @@ public sealed class AipServiceTests
     public async Task ConfirmImport_TargetRecordId_WfpBuiltFromRecord_ReturnsBadRequest()
     {
         AipRecord target = Rec(1, PlanningStatus.Draft);
-        var (sut, _, _, _, _, _, officeRepo, _, _, _, _, _) =
+        var (sut, _, _, _, _, _, officeRepo, _, _, _, _, _, _) =
             Build([target], [Fs(1, "GF")], aipIdsWithWfp: [1]);
         AipImportConfirmDto dto = new(2027, "aip-corrected.xlsm", null,
             new Dictionary<string, List<ParsedAipOfficeDto>>(), TargetRecordId: 1);
@@ -796,7 +816,7 @@ public sealed class AipServiceTests
         // The target record itself is the "conflict" GetLatestByFiscalYearAsync would find —
         // the replace path must bypass that guard entirely, not reject itself.
         AipRecord target = Rec(1, PlanningStatus.Draft);
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([target], [Fs(1, "GF")]);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([target], [Fs(1, "GF")]);
         AipImportConfirmDto dto = new(2027, "aip-corrected.xlsm", null,
             new Dictionary<string, List<ParsedAipOfficeDto>>(), TargetRecordId: 1);
 
@@ -819,7 +839,7 @@ public sealed class AipServiceTests
         [
             new() { Id = 50, AipRecordId = 1, RefCode = "OLD-1", Name = "Old Office", Sector = "GENERAL" },
         ];
-        var (sut, aipRepo, _, _, _, _, officeRepo, _, _, _, _, _) =
+        var (sut, aipRepo, _, _, _, _, officeRepo, _, _, _, _, _, _) =
             Build([target], [Fs(1, "GF")], officeSeed: existingOffices);
 
         ParsedAipActivityDto act = new("A-B-C-D-1-1-1-1", "Activity", null, null, null, null, null, "GF",
@@ -859,7 +879,7 @@ public sealed class AipServiceTests
     [Fact]
     public async Task ConfirmImport_DuplicateDraftYear_ReturnsBadRequest()
     {
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([Rec(1, PlanningStatus.Draft)], []);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([Rec(1, PlanningStatus.Draft)], []);
         AipImportConfirmDto dto = new(2027, "aip.xlsm", null,
             new Dictionary<string, List<ParsedAipOfficeDto>>());
 
@@ -873,7 +893,7 @@ public sealed class AipServiceTests
     [Fact]
     public async Task ConfirmImport_DuplicateFinalYear_ReturnsBadRequest()
     {
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([Rec(1, PlanningStatus.Final)], []);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([Rec(1, PlanningStatus.Final)], []);
         AipImportConfirmDto dto = new(2027, "aip.xlsm", null,
             new Dictionary<string, List<ParsedAipOfficeDto>>());
 
@@ -887,7 +907,7 @@ public sealed class AipServiceTests
     public async Task ConfirmImport_OnlyArchivedForYear_Succeeds()
     {
         AipRecord archived = Rec(1, PlanningStatus.Archived);
-        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _) = Build([archived], []);
+        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _, _) = Build([archived], []);
         aipRepo.Setup(r => r.AddAsync(It.IsAny<AipRecord>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
@@ -905,7 +925,7 @@ public sealed class AipServiceTests
     public async Task Finalize_Draft_TransitionsToFinal()
     {
         AipRecord rec = Rec(1, PlanningStatus.Draft);
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], []);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], []);
 
         ServiceResult<AipRecordDto> result = await sut.FinalizeAsync(1, CancellationToken.None);
 
@@ -917,7 +937,7 @@ public sealed class AipServiceTests
     [Fact]
     public async Task Finalize_AlreadyFinal_ReturnsBadRequest()
     {
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([Rec(1, PlanningStatus.Final)], []);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([Rec(1, PlanningStatus.Final)], []);
 
         ServiceResult<AipRecordDto> result = await sut.FinalizeAsync(1, CancellationToken.None);
 
@@ -928,7 +948,7 @@ public sealed class AipServiceTests
     public async Task Unlock_Final_TransitionsToDraft()
     {
         AipRecord rec = Rec(1, PlanningStatus.Final);
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], []);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], []);
 
         ServiceResult<AipRecordDto> result = await sut.UnlockAsync(1, CancellationToken.None);
 
@@ -943,7 +963,7 @@ public sealed class AipServiceTests
     public async Task PurgeAll_DeletesAllAipRecords_ReturnsCount()
     {
         List<AipRecord> seed = [Rec(1, PlanningStatus.Draft), Rec(2, PlanningStatus.Final)];
-        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _) = Build(seed, []);
+        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _, _) = Build(seed, []);
 
         int count = await sut.PurgeAllAsync(CancellationToken.None);
 
@@ -956,7 +976,7 @@ public sealed class AipServiceTests
     [Fact]
     public async Task GetSummaryById_MissingId_ReturnsNotFound()
     {
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
         ServiceResult<AipRecordSummaryDto> result = await sut.GetSummaryByIdAsync(99, CancellationToken.None);
 
@@ -968,7 +988,7 @@ public sealed class AipServiceTests
     public async Task GetSummaryById_ExistingId_ReturnsOkWithCorrectFiscalYear()
     {
         AipRecord rec = Rec(5);
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], []);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], []);
 
         ServiceResult<AipRecordSummaryDto> result = await sut.GetSummaryByIdAsync(5, CancellationToken.None);
 
@@ -995,7 +1015,7 @@ public sealed class AipServiceTests
             ExpectedOutputs = "Some output",
         };
 
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build(
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build(
             [rec], [],
             officeSeed:  [office],
             programSeed: [prog],
@@ -1035,7 +1055,7 @@ public sealed class AipServiceTests
             FundingSourceId = 2, FundingSourceSnapshot = "20DF",
         };
 
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build(
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build(
             [rec], [],
             officeSeed:  [office],
             programSeed: [prog],
@@ -1059,7 +1079,7 @@ public sealed class AipServiceTests
     public async Task UpdateProgramFunctionBand_ValidValue_PersistsCanonicalizedValue()
     {
         AipProgram prog = new() { Id = 301, OfficeId = 201, RefCode = "P", Name = "Prog" };
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], programSeed: [prog]);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], programSeed: [prog]);
 
         ServiceResult<AipProgramDto> result =
             await sut.UpdateProgramFunctionBandAsync(301, "core", CancellationToken.None);
@@ -1075,7 +1095,7 @@ public sealed class AipServiceTests
         // Function band is required (v1.4 follow-up) — clearing it back to null/empty is no
         // longer a valid operation; the existing value is left untouched.
         AipProgram prog = new() { Id = 302, OfficeId = 201, RefCode = "P", Name = "Prog", FunctionBand = "SUPPORT" };
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], programSeed: [prog]);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], programSeed: [prog]);
 
         ServiceResult<AipProgramDto> result =
             await sut.UpdateProgramFunctionBandAsync(302, "", CancellationToken.None);
@@ -1089,7 +1109,7 @@ public sealed class AipServiceTests
     public async Task UpdateProgramFunctionBand_InvalidValue_ReturnsBadRequest()
     {
         AipProgram prog = new() { Id = 303, OfficeId = 201, RefCode = "P", Name = "Prog" };
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], programSeed: [prog]);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], programSeed: [prog]);
 
         ServiceResult<AipProgramDto> result =
             await sut.UpdateProgramFunctionBandAsync(303, "BOGUS", CancellationToken.None);
@@ -1102,7 +1122,7 @@ public sealed class AipServiceTests
     [Fact]
     public async Task UpdateProgramFunctionBand_UnknownId_ReturnsNotFound()
     {
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
         ServiceResult<AipProgramDto> result =
             await sut.UpdateProgramFunctionBandAsync(999, "CORE", CancellationToken.None);
@@ -1117,7 +1137,7 @@ public sealed class AipServiceTests
     public async Task UpdateActivityIsCreation_True_Persists()
     {
         AipActivity act = new() { Id = 501, ProjectId = 401, RefCode = "A", Name = "Act" };
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], actSeed: [act]);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], actSeed: [act]);
 
         ServiceResult<AipActivityDto> result =
             await sut.UpdateActivityIsCreationAsync(501, true, CancellationToken.None);
@@ -1131,7 +1151,7 @@ public sealed class AipServiceTests
     public async Task UpdateActivityIsCreation_False_Persists()
     {
         AipActivity act = new() { Id = 502, ProjectId = 401, RefCode = "A", Name = "Act", IsCreation = true };
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], actSeed: [act]);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], actSeed: [act]);
 
         ServiceResult<AipActivityDto> result =
             await sut.UpdateActivityIsCreationAsync(502, false, CancellationToken.None);
@@ -1144,7 +1164,7 @@ public sealed class AipServiceTests
     [Fact]
     public async Task UpdateActivityIsCreation_UnknownId_ReturnsNotFound()
     {
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
         ServiceResult<AipActivityDto> result =
             await sut.UpdateActivityIsCreationAsync(999, true, CancellationToken.None);
@@ -1163,7 +1183,7 @@ public sealed class AipServiceTests
         rec.UploadedById = uploaderId;
         User uploader = MakeUser(uploaderId, "Jane Uploader");
 
-        var (sut, _, _, userRepo, _, _, _, _, _, _, _, _) = Build([rec], [], userSeed: [uploader]);
+        var (sut, _, _, userRepo, _, _, _, _, _, _, _, _, _) = Build([rec], [], userSeed: [uploader]);
 
         IReadOnlyList<AipRecordDto> result = await sut.GetAllAsync(null, null);
 
@@ -1177,7 +1197,7 @@ public sealed class AipServiceTests
     [Fact]
     public async Task ConfirmImport_UsesScopedFiscalYearLookup_NeverFullTableLoad()
     {
-        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _) = Build([Rec(1, PlanningStatus.Draft)], []);
+        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _, _) = Build([Rec(1, PlanningStatus.Draft)], []);
         AipImportConfirmDto dto = new(2027, "aip.xlsm", null,
             new Dictionary<string, List<ParsedAipOfficeDto>>());
 
@@ -1199,7 +1219,7 @@ public sealed class AipServiceTests
     [Fact]
     public async Task CreateManualRecord_NoConflict_CreatesDraftManualRecord()
     {
-        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _) = Build([], []);
+        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
         ServiceResult<AipRecordDto> result = await sut.CreateManualRecordAsync(new CreateAipRecordDto(2028), UserId);
 
@@ -1213,7 +1233,7 @@ public sealed class AipServiceTests
     [Fact]
     public async Task CreateManualRecord_ActiveRecordExistsForYear_ReturnsBadRequest()
     {
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([Rec(1, PlanningStatus.Draft)], []);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([Rec(1, PlanningStatus.Draft)], []);
 
         ServiceResult<AipRecordDto> result = await sut.CreateManualRecordAsync(new CreateAipRecordDto(2027), UserId);
 
@@ -1226,7 +1246,7 @@ public sealed class AipServiceTests
     {
         AipRecord rec = Rec(1, PlanningStatus.Draft);
         List<Office> offices = [MakeOffice(7, "PPDO", "01-010")];
-        var (sut, _, _, _, _, _, officeRepo, _, _, _, _, _) =
+        var (sut, _, _, _, _, _, officeRepo, _, _, _, _, _, _) =
             Build([rec], [], officeConfigSeed: offices);
 
         ServiceResult<AipOfficeDto> result =
@@ -1247,7 +1267,7 @@ public sealed class AipServiceTests
     {
         AipRecord rec = Rec(1, PlanningStatus.Draft);
         List<Office> offices = [MakeOffice(7, "PPDO", "01-010")];
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
 
         ServiceResult<AipOfficeDto> result =
             await sut.AddOfficeAsync(1, new CreateAipOfficeDto(7, sector));
@@ -1262,7 +1282,7 @@ public sealed class AipServiceTests
         // A physical office can legitimately run programs under more than one sector.
         AipRecord rec = Rec(1, PlanningStatus.Draft);
         List<Office> offices = [MakeOffice(7, "PPDO", "01-010")];
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
 
         ServiceResult<AipOfficeDto> first  = await sut.AddOfficeAsync(1, new CreateAipOfficeDto(7, "GENERAL"));
         ServiceResult<AipOfficeDto> second = await sut.AddOfficeAsync(1, new CreateAipOfficeDto(7, "SOCIAL"));
@@ -1277,7 +1297,7 @@ public sealed class AipServiceTests
     {
         AipRecord rec = Rec(1, PlanningStatus.Draft);
         List<Office> offices = [MakeOffice(7, "PPDO", "01-010")];
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
 
         await sut.AddOfficeAsync(1, new CreateAipOfficeDto(7, "GENERAL"));
         ServiceResult<AipOfficeDto> second = await sut.AddOfficeAsync(1, new CreateAipOfficeDto(7, "GENERAL"));
@@ -1291,7 +1311,7 @@ public sealed class AipServiceTests
     {
         AipRecord rec = Rec(1, PlanningStatus.Draft);
         List<Office> offices = [MakeOffice(7, "PPDO", "01-010")];
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
 
         ServiceResult<AipOfficeDto> result = await sut.AddOfficeAsync(
             1, new CreateAipOfficeDto(7, "ECONOMIC", "Provincial Planning and Development Office - Special Projects"));
@@ -1306,7 +1326,7 @@ public sealed class AipServiceTests
     {
         AipRecord rec = Rec(1, PlanningStatus.Draft);
         List<Office> offices = [MakeOffice(7, "PPDO", "01-010")];
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
 
         ServiceResult<AipOfficeDto> result = await sut.AddOfficeAsync(
             1, new CreateAipOfficeDto(7, "GENERAL", "   "));
@@ -1323,7 +1343,7 @@ public sealed class AipServiceTests
         // physical office) — the guard must key off RefCode+Name, not RefCode alone.
         AipRecord rec = Rec(1, PlanningStatus.Draft);
         List<Office> offices = [MakeOffice(7, "Office of the Governor", "01-001")];
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
 
         ServiceResult<AipOfficeDto> first  = await sut.AddOfficeAsync(
             1, new CreateAipOfficeDto(7, "SOCIAL", "Office of the Governor - Warden"));
@@ -1341,7 +1361,7 @@ public sealed class AipServiceTests
     {
         AipRecord rec = Rec(1, PlanningStatus.Draft);
         List<Office> offices = [MakeOffice(7, "Office of the Governor", "01-001")];
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
 
         await sut.AddOfficeAsync(1, new CreateAipOfficeDto(7, "SOCIAL", "Office of the Governor - Warden"));
         ServiceResult<AipOfficeDto> second = await sut.AddOfficeAsync(
@@ -1356,7 +1376,7 @@ public sealed class AipServiceTests
     {
         AipRecord rec = Rec(1, PlanningStatus.Draft);
         List<Office> offices = [MakeOffice(7, "PPDO", "01-010")];
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
 
         ServiceResult<AipOfficeDto> result = await sut.AddOfficeAsync(1, new CreateAipOfficeDto(7, "MADEUP"));
 
@@ -1369,7 +1389,7 @@ public sealed class AipServiceTests
     {
         AipRecord rec = Rec(1, PlanningStatus.Draft);
         List<Office> offices = [MakeOffice(7, "PPDO", null)];
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
 
         ServiceResult<AipOfficeDto> result = await sut.AddOfficeAsync(1, new CreateAipOfficeDto(7, "GENERAL"));
 
@@ -1382,7 +1402,7 @@ public sealed class AipServiceTests
     {
         AipRecord rec = Rec(1, PlanningStatus.Draft);
         List<Office> offices = [MakeOffice(7, "PPDO", "01-010", isActive: false)];
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
 
         ServiceResult<AipOfficeDto> result = await sut.AddOfficeAsync(1, new CreateAipOfficeDto(7, "GENERAL"));
 
@@ -1395,7 +1415,7 @@ public sealed class AipServiceTests
     {
         AipRecord rec = Rec(1, PlanningStatus.Final);
         List<Office> offices = [MakeOffice(7, "PPDO", "01-010")];
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
 
         ServiceResult<AipOfficeDto> result = await sut.AddOfficeAsync(1, new CreateAipOfficeDto(7, "GENERAL"));
 
@@ -1440,7 +1460,7 @@ public sealed class AipServiceTests
         AipProgram progA = SourceProgramA();
         AipProject proj = SourceProject(40, 30, "1000-000-1-01-010-001-001");
         AipActivity act = SourceActivity(50, 40, "1000-000-1-01-010-001-001-001");
-        var (sut, aipRepo, _, _, _, audit, officeRepo, _, _, _, _, _) = Build(
+        var (sut, aipRepo, _, _, _, audit, officeRepo, _, _, _, _, _, _) = Build(
             [sourceRec], [], officeSeed: [office], programSeed: [progA],
             projectSeed: [proj], actSeed: [act]);
 
@@ -1468,7 +1488,7 @@ public sealed class AipServiceTests
         AipProgram progA = SourceProgramA();
         AipProject proj = SourceProject(40, 30, "1000-000-1-01-010-001-001");
         AipActivity act = SourceActivity(50, 40, "1000-000-1-01-010-001-001-001");
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build(
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build(
             [sourceRec], [], officeSeed: [office], programSeed: [progA],
             projectSeed: [proj], actSeed: [act]);
 
@@ -1515,7 +1535,7 @@ public sealed class AipServiceTests
         };
         AipOffice office = SourceOffice();
         AipProgram progA = SourceProgramA();
-        var (sut, aipRepo, _, _, _, _, officeRepo, _, _, _, _, _) = Build(
+        var (sut, aipRepo, _, _, _, _, officeRepo, _, _, _, _, _, _) = Build(
             [sourceRec, targetRec], [], officeSeed: [office], programSeed: [progA]);
 
         ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
@@ -1541,7 +1561,7 @@ public sealed class AipServiceTests
         };
         AipOffice office = SourceOffice();
         AipProgram progA = SourceProgramA();
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build(
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build(
             [sourceRec, targetRec], [], officeSeed: [office], programSeed: [progA]);
 
         ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
@@ -1566,7 +1586,7 @@ public sealed class AipServiceTests
         };
         AipOffice office = SourceOffice();
         AipProgram progA = SourceProgramA();
-        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _) = Build(
+        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _, _) = Build(
             [sourceRec, archivedTargetRec], [], officeSeed: [office], programSeed: [progA]);
 
         ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
@@ -1592,7 +1612,7 @@ public sealed class AipServiceTests
         // Same RefCode already present under the target record — this IS the office to reuse.
         AipOffice targetOff = new() { Id = 21, AipRecordId = 2, RefCode = "1000-000-1-01-010", Name = "PPDO", Sector = "GENERAL" };
         AipProgram progA = SourceProgramA(); // under source office 20
-        var (sut, _, _, _, _, _, officeRepo, _, _, programRepo, _, _) = Build(
+        var (sut, _, _, _, _, _, officeRepo, _, _, programRepo, _, _, _) = Build(
             [sourceRec, targetRec], [], officeSeed: [sourceOff, targetOff], programSeed: [progA]);
 
         ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
@@ -1625,7 +1645,7 @@ public sealed class AipServiceTests
         AipProgram preExisting = new()
         { Id = 61, OfficeId = 21, RefCode = "1000-000-1-01-010-005", Name = "Already there", FunctionBand = "CORE" };
         AipProgram progA = SourceProgramA(); // to be copied in, RefCode "...-001"
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build(
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build(
             [sourceRec, targetRec], [], officeSeed: [sourceOff, targetOff],
             programSeed: [progA, preExisting]);
 
@@ -1644,7 +1664,7 @@ public sealed class AipServiceTests
         AipRecord sourceRec = Rec(1, PlanningStatus.Final);
         AipOffice office = SourceOffice();
         AipProgram progA = SourceProgramA(); // Id 30, belongs to office 20
-        var (sut, _, _, _, _, _, officeRepo, _, _, _, _, _) = Build(
+        var (sut, _, _, _, _, _, officeRepo, _, _, _, _, _, _) = Build(
             [sourceRec], [], officeSeed: [office], programSeed: [progA]);
 
         // 999 does not belong to office 20.
@@ -1672,7 +1692,7 @@ public sealed class AipServiceTests
         AipProgram existingTargetProgram = new()
         { Id = 60, OfficeId = 21, RefCode = "1000-000-1-01-010-001", Name = "Already here", FunctionBand = "CORE" };
         AipProgram progA = SourceProgramA(); // same RefCode "1000-000-1-01-010-001", under source office 20
-        var (sut, _, _, _, _, _, officeRepo, _, _, programRepo, _, _) = Build(
+        var (sut, _, _, _, _, _, officeRepo, _, _, programRepo, _, _, _) = Build(
             [sourceRec, targetRec], [], officeSeed: [sourceOff, targetOff],
             programSeed: [progA, existingTargetProgram]);
 
@@ -1690,7 +1710,7 @@ public sealed class AipServiceTests
     public async Task CopyOfficeFromPriorYear_SourceOfficeNotFound_ReturnsNotFound()
     {
         AipRecord sourceRec = Rec(1, PlanningStatus.Final);
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([sourceRec], []);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([sourceRec], []);
 
         ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
             new CopyAipOfficeDto(999, 2028, [30]), UserId);
@@ -1704,7 +1724,7 @@ public sealed class AipServiceTests
     {
         AipRecord sourceRec = Rec(1, PlanningStatus.Final);
         AipOffice office = SourceOffice();
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([sourceRec], [], officeSeed: [office]);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([sourceRec], [], officeSeed: [office]);
 
         ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
             new CopyAipOfficeDto(20, 2028, []), UserId);
@@ -1726,7 +1746,7 @@ public sealed class AipServiceTests
         AipOffice targetOff = new() { Id = 21, AipRecordId = 2, RefCode = "1000-000-1-01-010", Name = "PPDO", Sector = "GENERAL" };
         AipProgram progA = SourceProgramA();
         AipProgram progB = SourceProgramB();
-        var (sut, _, _, _, _, _, officeRepo, _, _, programRepo, _, _) = Build(
+        var (sut, _, _, _, _, _, officeRepo, _, _, programRepo, _, _, _) = Build(
             [sourceRec, targetRec], [], officeSeed: [sourceOff, targetOff], programSeed: [progA, progB]);
 
         ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
@@ -1739,12 +1759,352 @@ public sealed class AipServiceTests
         programRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    // ── SeedProgramsFromLdipAsync (RAL-181) ──────────────────────────────────────
+    //
+    // Fixture shape shared by these tests: config Office id 7 ("PPDO", OfficeRefCode "01-010")
+    // with a Final LDIP record (id 5) holding one sector group (id 70, RefCode
+    // "1000-000-1-01-010", Sector "General" — LDIP's own title-case convention, distinct from
+    // AIP's "GENERAL") with two programs (80 "LDIP Program A", 81 "LDIP Program B").
+
+    private static LdipRecord LdipRec(int id, int officeId, string status = "Final") => new()
+    {
+        Id = id, OfficeId = officeId, RefCode = $"LDIP-2025-{id:D3}", Title = "LDIP",
+        FiscalYearStart = 2025, FiscalYearEnd = 2030, EntryMode = "New", Status = status,
+        CreatedById = UserId, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+    };
+
+    private static LdipOffice LdipGroup(
+        int id, int ldipRecordId, string refCode = "1000-000-1-01-010",
+        string sector = "General", string name = "PPDO") => new()
+    { Id = id, LdipRecordId = ldipRecordId, RefCode = refCode, Name = name, Sector = sector };
+
+    private static LdipProgram LdipProg(int id, int ldipOfficeId, string refCode, string name) => new()
+    {
+        Id = id, LdipOfficeId = ldipOfficeId, RefCode = refCode, Name = name, Budget = 500m,
+        FundingSourceId = 5, FundingSourceSnapshot = "GF", Ps = 100m, Mooe = 50m, Co = 25m,
+        StartDate = "2025", EndDate = "2030", ExpectedOutputs = "Some outputs",
+        CcAdaptation = 10m, CcMitigation = 5m, CcTypologyCode = "TYP1",
+    };
+
+    [Fact]
+    public async Task SeedFromLdip_TargetRecordMissing_CreatesManualDraftRecordAndOffice()
+    {
+        List<Office> officeConfigs = [MakeOffice(7, "PPDO", "01-010")];
+        LdipRecord ldipRec = LdipRec(5, 7);
+        LdipOffice group = LdipGroup(70, 5);
+        LdipProgram progA = LdipProg(80, 70, "1000-000-1-01-010-001", "LDIP Program A");
+        group.Programs.Add(progA);
+        var (sut, aipRepo, _, _, _, audit, officeRepo, _, officeConfigRepo, _, _, _, _) = Build(
+            [], [], officeConfigSeed: officeConfigs, ldipRecordSeed: [ldipRec], ldipOfficeSeed: [group]);
+
+        ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
+            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("1000-000-1-01-010", result.Value!.RefCode);
+        Assert.Equal("PPDO", result.Value.Name);
+        Assert.Equal("GENERAL", result.Value.Sector);
+        Assert.Single(result.Value.Programs);
+        aipRepo.Verify(r => r.AddAsync(
+            It.Is<AipRecord>(r => r.FiscalYear == 2028 && r.EntrySource == "Manual" && r.Status == PlanningStatus.Draft),
+            It.IsAny<CancellationToken>()), Times.Once);
+        officeRepo.Verify(r => r.AddAsync(It.IsAny<AipOffice>(), It.IsAny<CancellationToken>()), Times.Once);
+        audit.Verify(a => a.LogAsync("aip_offices", It.IsAny<int>(), AuditAction.Create,
+            null, It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SeedFromLdip_SeedsBareShellPrograms_NameAndRefCodeOnly_FunctionBandCore()
+    {
+        List<Office> officeConfigs = [MakeOffice(7, "PPDO", "01-010")];
+        LdipRecord ldipRec = LdipRec(5, 7);
+        LdipOffice group = LdipGroup(70, 5);
+        LdipProgram progA = LdipProg(80, 70, "1000-000-1-01-010-001", "LDIP Program A");
+        group.Programs.Add(progA);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build(
+            [], [], officeConfigSeed: officeConfigs, ldipRecordSeed: [ldipRec], ldipOfficeSeed: [group]);
+
+        ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
+            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId);
+
+        Assert.True(result.IsSuccess);
+        AipProgramDto seeded = result.Value!.Programs.Single();
+        Assert.NotEqual(80, seeded.Id); // fresh identity, not the LdipProgram's own id
+        Assert.Equal("1000-000-1-01-010-001", seeded.RefCode); // RefCode reused verbatim
+        Assert.Equal("LDIP Program A", seeded.Name);
+        Assert.Equal("CORE", seeded.FunctionBand); // LDIP has no FunctionBand — defaults to Core
+        Assert.Empty(seeded.Projects); // bare shell — no Project/Activity rows created
+    }
+
+    [Fact]
+    public async Task SeedFromLdip_TargetRecordExistsAsManualDraft_ReusesRecord_CreatesOffice()
+    {
+        AipRecord targetRec = new()
+        {
+            Id = 2, FiscalYear = 2028, EntrySource = "Manual",
+            UploadedById = UserId, UploadedAt = DateTime.UtcNow, Status = PlanningStatus.Draft,
+        };
+        List<Office> officeConfigs = [MakeOffice(7, "PPDO", "01-010")];
+        LdipRecord ldipRec = LdipRec(5, 7);
+        LdipOffice group = LdipGroup(70, 5);
+        LdipProgram progA = LdipProg(80, 70, "1000-000-1-01-010-001", "LDIP Program A");
+        group.Programs.Add(progA);
+        var (sut, aipRepo, _, _, _, _, officeRepo, _, _, _, _, _, _) = Build(
+            [targetRec], [], officeConfigSeed: officeConfigs, ldipRecordSeed: [ldipRec], ldipOfficeSeed: [group]);
+
+        ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
+            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Value!.AipRecordId); // reused the existing target record, not a new one
+        aipRepo.Verify(r => r.AddAsync(It.IsAny<AipRecord>(), It.IsAny<CancellationToken>()), Times.Never);
+        officeRepo.Verify(r => r.AddAsync(It.IsAny<AipOffice>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Theory]
+    [InlineData("Upload", PlanningStatus.Draft)]
+    [InlineData("Manual", PlanningStatus.Final)]
+    public async Task SeedFromLdip_TargetRecordNotDraftManual_ReturnsBadRequest(string entrySource, string status)
+    {
+        AipRecord targetRec = new()
+        {
+            Id = 2, FiscalYear = 2028, EntrySource = entrySource,
+            UploadedById = UserId, UploadedAt = DateTime.UtcNow, Status = status,
+        };
+        List<Office> officeConfigs = [MakeOffice(7, "PPDO", "01-010")];
+        LdipRecord ldipRec = LdipRec(5, 7);
+        LdipOffice group = LdipGroup(70, 5);
+        LdipProgram progA = LdipProg(80, 70, "1000-000-1-01-010-001", "LDIP Program A");
+        group.Programs.Add(progA);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build(
+            [targetRec], [], officeConfigSeed: officeConfigs, ldipRecordSeed: [ldipRec], ldipOfficeSeed: [group]);
+
+        ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
+            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task SeedFromLdip_TargetOfficeAlreadyExists_AddsProgramsToIt_NoNewOffice()
+    {
+        AipRecord targetRec = new()
+        {
+            Id = 2, FiscalYear = 2028, EntrySource = "Manual",
+            UploadedById = UserId, UploadedAt = DateTime.UtcNow, Status = PlanningStatus.Draft,
+        };
+        AipOffice targetOff = new() { Id = 21, AipRecordId = 2, RefCode = "1000-000-1-01-010", Name = "PPDO", Sector = "GENERAL" };
+        List<Office> officeConfigs = [MakeOffice(7, "PPDO", "01-010")];
+        LdipRecord ldipRec = LdipRec(5, 7);
+        LdipOffice group = LdipGroup(70, 5);
+        LdipProgram progA = LdipProg(80, 70, "1000-000-1-01-010-001", "LDIP Program A");
+        group.Programs.Add(progA);
+        var (sut, _, _, _, _, _, officeRepo, _, _, programRepo, _, _, _) = Build(
+            [targetRec], [], officeSeed: [targetOff], officeConfigSeed: officeConfigs,
+            ldipRecordSeed: [ldipRec], ldipOfficeSeed: [group]);
+
+        ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
+            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(21, result.Value!.Id); // reused the existing target office, not a new one
+        officeRepo.Verify(r => r.AddAsync(It.IsAny<AipOffice>(), It.IsAny<CancellationToken>()), Times.Never);
+        programRepo.Verify(r => r.AddAsync(
+            It.Is<AipProgram>(p => p.OfficeId == 21 && p.RefCode == "1000-000-1-01-010-001"),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SeedFromLdip_TargetOfficeAlreadyHasOtherPrograms_ResponseIncludesBoth()
+    {
+        AipRecord targetRec = new()
+        {
+            Id = 2, FiscalYear = 2028, EntrySource = "Manual",
+            UploadedById = UserId, UploadedAt = DateTime.UtcNow, Status = PlanningStatus.Draft,
+        };
+        AipOffice targetOff = new() { Id = 21, AipRecordId = 2, RefCode = "1000-000-1-01-010", Name = "PPDO", Sector = "GENERAL" };
+        AipProgram preExisting = new()
+        { Id = 61, OfficeId = 21, RefCode = "1000-000-1-01-010-005", Name = "Already there", FunctionBand = "CORE" };
+        List<Office> officeConfigs = [MakeOffice(7, "PPDO", "01-010")];
+        LdipRecord ldipRec = LdipRec(5, 7);
+        LdipOffice group = LdipGroup(70, 5);
+        LdipProgram progA = LdipProg(80, 70, "1000-000-1-01-010-001", "LDIP Program A");
+        group.Programs.Add(progA);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build(
+            [targetRec], [], officeSeed: [targetOff], programSeed: [preExisting],
+            officeConfigSeed: officeConfigs, ldipRecordSeed: [ldipRec], ldipOfficeSeed: [group]);
+
+        ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
+            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Value!.Programs.Count);
+        Assert.Contains(result.Value.Programs, p => p.RefCode == "1000-000-1-01-010-005"); // pre-existing survived
+        Assert.Contains(result.Value.Programs, p => p.RefCode == "1000-000-1-01-010-001"); // newly seeded present
+    }
+
+    [Fact]
+    public async Task SeedFromLdip_LdipProgramNotBelongingToGroup_ReturnsBadRequest()
+    {
+        List<Office> officeConfigs = [MakeOffice(7, "PPDO", "01-010")];
+        LdipRecord ldipRec = LdipRec(5, 7);
+        LdipOffice group = LdipGroup(70, 5);
+        LdipProgram progA = LdipProg(80, 70, "1000-000-1-01-010-001", "LDIP Program A"); // Id 80, belongs to group 70
+        group.Programs.Add(progA);
+        var (sut, _, _, _, _, _, officeRepo, _, _, _, _, _, _) = Build(
+            [], [], officeConfigSeed: officeConfigs, ldipRecordSeed: [ldipRec], ldipOfficeSeed: [group]);
+
+        // 999 does not belong to group 70.
+        ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
+            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80, 999]), UserId);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("999", result.Error);
+        officeRepo.Verify(r => r.AddAsync(It.IsAny<AipOffice>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SeedFromLdip_ProgramRefCodeAlreadyExistsUnderTargetOffice_ReturnsBadRequest_NoSideEffects()
+    {
+        AipRecord targetRec = new()
+        {
+            Id = 2, FiscalYear = 2028, EntrySource = "Manual",
+            UploadedById = UserId, UploadedAt = DateTime.UtcNow, Status = PlanningStatus.Draft,
+        };
+        AipOffice targetOff = new() { Id = 21, AipRecordId = 2, RefCode = "1000-000-1-01-010", Name = "PPDO", Sector = "GENERAL" };
+        AipProgram existingTargetProgram = new()
+        { Id = 60, OfficeId = 21, RefCode = "1000-000-1-01-010-001", Name = "Already here", FunctionBand = "CORE" };
+        List<Office> officeConfigs = [MakeOffice(7, "PPDO", "01-010")];
+        LdipRecord ldipRec = LdipRec(5, 7);
+        LdipOffice group = LdipGroup(70, 5);
+        LdipProgram progA = LdipProg(80, 70, "1000-000-1-01-010-001", "LDIP Program A"); // same RefCode as existing
+        group.Programs.Add(progA);
+        var (sut, _, _, _, _, _, officeRepo, _, _, programRepo, _, _, _) = Build(
+            [targetRec], [], officeSeed: [targetOff], programSeed: [existingTargetProgram],
+            officeConfigSeed: officeConfigs, ldipRecordSeed: [ldipRec], ldipOfficeSeed: [group]);
+
+        ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
+            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("1000-000-1-01-010-001", result.Error);
+        officeRepo.Verify(r => r.AddAsync(It.IsAny<AipOffice>(), It.IsAny<CancellationToken>()), Times.Never);
+        programRepo.Verify(r => r.AddAsync(It.IsAny<AipProgram>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SeedFromLdip_NoMatchingLdipOfficeForSector_ReturnsBadRequest()
+    {
+        List<Office> officeConfigs = [MakeOffice(7, "PPDO", "01-010")];
+        LdipRecord ldipRec = LdipRec(5, 7);
+        // The office's only LDIP group is under "General" — requesting "SOCIAL" has no match.
+        LdipOffice group = LdipGroup(70, 5, sector: "General");
+        LdipProgram progA = LdipProg(80, 70, "1000-000-1-01-010-001", "LDIP Program A");
+        group.Programs.Add(progA);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build(
+            [], [], officeConfigSeed: officeConfigs, ldipRecordSeed: [ldipRec], ldipOfficeSeed: [group]);
+
+        ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
+            new SeedAipProgramsFromLdipDto(2028, 7, "SOCIAL", [80]), UserId);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("SOCIAL", result.Error);
+    }
+
+    [Fact]
+    public async Task SeedFromLdip_EmptyLdipProgramIds_ReturnsBadRequest()
+    {
+        List<Office> officeConfigs = [MakeOffice(7, "PPDO", "01-010")];
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], officeConfigSeed: officeConfigs);
+
+        ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
+            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", []), UserId);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task SeedFromLdip_OfficeConfigNotFound_ReturnsNotFound()
+    {
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
+
+        ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
+            new SeedAipProgramsFromLdipDto(2028, 999, "GENERAL", [80]), UserId);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Fact]
+    public async Task SeedFromLdip_SectorMatchIsCaseInsensitive_LdipStoresTitleCase_AipStoresUppercase()
+    {
+        List<Office> officeConfigs = [MakeOffice(7, "PPDO", "01-010")];
+        LdipRecord ldipRec = LdipRec(5, 7);
+        LdipOffice group = LdipGroup(70, 5, sector: "General"); // title-case, LDIP's own convention
+        LdipProgram progA = LdipProg(80, 70, "1000-000-1-01-010-001", "LDIP Program A");
+        group.Programs.Add(progA);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build(
+            [], [], officeConfigSeed: officeConfigs, ldipRecordSeed: [ldipRec], ldipOfficeSeed: [group]);
+
+        // Request uses uppercase "GENERAL" (AIP's own convention) — must still match.
+        ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
+            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("GENERAL", result.Value!.Sector); // stored uppercase on the AIP side
+    }
+
+    [Fact]
+    public async Task SeedFromLdip_PicksNewestNonArchivedLdipRecord_MatchingSectorAcrossMultipleRecords()
+    {
+        List<Office> officeConfigs = [MakeOffice(7, "PPDO", "01-010")];
+        // Older record has no matching sector group; a newer Archived record has one that must be
+        // skipped; the newest non-Archived record's group is the one that should be used.
+        LdipRecord olderRec = new()
+        {
+            Id = 4, OfficeId = 7, RefCode = "LDIP-2024-001", Title = "Older", FiscalYearStart = 2020,
+            FiscalYearEnd = 2024, EntryMode = "New", Status = PlanningStatus.Final,
+            CreatedById = UserId, CreatedAt = DateTime.UtcNow.AddDays(-30), UpdatedAt = DateTime.UtcNow.AddDays(-30),
+        };
+        LdipOffice olderGroup = LdipGroup(71, 4, sector: "Social");
+        olderGroup.Programs.Add(LdipProg(90, 71, "3000-000-1-01-010-001", "Old Social Program"));
+
+        LdipRecord archivedRec = new()
+        {
+            Id = 6, OfficeId = 7, RefCode = "LDIP-2026-001", Title = "Archived", FiscalYearStart = 2025,
+            FiscalYearEnd = 2030, EntryMode = "New", Status = PlanningStatus.Archived,
+            CreatedById = UserId, CreatedAt = DateTime.UtcNow.AddDays(-5), UpdatedAt = DateTime.UtcNow.AddDays(-5),
+        };
+        LdipOffice archivedGroup = LdipGroup(72, 6, sector: "General");
+        archivedGroup.Programs.Add(LdipProg(91, 72, "1000-000-1-01-010-001", "Archived Program"));
+
+        LdipRecord newestRec = LdipRec(5, 7); // CreatedAt = UtcNow, newest of the three
+        LdipOffice newestGroup = LdipGroup(70, 5, sector: "General");
+        newestGroup.Programs.Add(LdipProg(80, 70, "1000-000-1-01-010-001", "Newest Program"));
+
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build(
+            [], [], officeConfigSeed: officeConfigs,
+            ldipRecordSeed: [olderRec, archivedRec, newestRec],
+            ldipOfficeSeed: [olderGroup, archivedGroup, newestGroup]);
+
+        ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
+            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Newest Program", result.Value!.Programs.Single().Name);
+    }
+
     [Fact]
     public async Task AddProgram_FirstUnderOffice_RefCodeAppends001()
     {
         AipRecord rec = Rec(1, PlanningStatus.Draft);
         List<AipOffice> offices = [new() { Id = 20, AipRecordId = 1, RefCode = "1000-000-1-01-010", Name = "PPDO", Sector = "GENERAL" }];
-        var (sut, _, _, _, _, _, _, _, _, programRepo, _, _) = Build([rec], [], officeSeed: offices);
+        var (sut, _, _, _, _, _, _, _, _, programRepo, _, _, _) = Build([rec], [], officeSeed: offices);
 
         ServiceResult<AipProgramDto> result =
             await sut.AddProgramAsync(20, new CreateAipProgramDto("Program One", null));
@@ -1761,7 +2121,7 @@ public sealed class AipServiceTests
         AipRecord rec = Rec(1, PlanningStatus.Draft);
         List<AipOffice> offices = [new() { Id = 20, AipRecordId = 1, RefCode = "1000-000-1-01-010", Name = "PPDO", Sector = "GENERAL" }];
         List<AipProgram> programs = [new() { Id = 30, OfficeId = 20, RefCode = "1000-000-1-01-010-003", Name = "Existing" }];
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeSeed: offices, programSeed: programs);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeSeed: offices, programSeed: programs);
 
         ServiceResult<AipProgramDto> result =
             await sut.AddProgramAsync(20, new CreateAipProgramDto("Program Two", "STRATEGIC"));
@@ -1776,7 +2136,7 @@ public sealed class AipServiceTests
     {
         AipRecord rec = Rec(1, PlanningStatus.Draft);
         List<AipOffice> offices = [new() { Id = 20, AipRecordId = 1, RefCode = "1000-000-1-01-010", Name = "PPDO", Sector = "GENERAL" }];
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeSeed: offices);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeSeed: offices);
 
         ServiceResult<AipProgramDto> result = await sut.AddProgramAsync(20, new CreateAipProgramDto("  ", null));
 
@@ -1789,7 +2149,7 @@ public sealed class AipServiceTests
     {
         AipRecord rec = Rec(1, PlanningStatus.Final);
         List<AipOffice> offices = [new() { Id = 20, AipRecordId = 1, RefCode = "1000-000-1-01-010", Name = "PPDO", Sector = "GENERAL" }];
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeSeed: offices);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeSeed: offices);
 
         ServiceResult<AipProgramDto> result = await sut.AddProgramAsync(20, new CreateAipProgramDto("X", null));
 
@@ -1800,7 +2160,7 @@ public sealed class AipServiceTests
     [Fact]
     public async Task AddProgram_OfficeNotFound_ReturnsNotFound()
     {
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
         ServiceResult<AipProgramDto> result = await sut.AddProgramAsync(999, new CreateAipProgramDto("X", null));
 
@@ -1814,7 +2174,7 @@ public sealed class AipServiceTests
         AipRecord rec = Rec(1, PlanningStatus.Draft);
         List<AipOffice> offices = [new() { Id = 20, AipRecordId = 1, RefCode = "1000-000-1-01-010", Name = "PPDO", Sector = "GENERAL" }];
         List<AipProgram> programs = [new() { Id = 30, OfficeId = 20, RefCode = "1000-000-1-01-010-001", Name = "Program" }];
-        var (sut, _, _, _, _, _, _, _, _, _, projectRepo, _) =
+        var (sut, _, _, _, _, _, _, _, _, _, projectRepo, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs);
 
         ServiceResult<AipProjectDto> result =
@@ -1828,7 +2188,7 @@ public sealed class AipServiceTests
     [Fact]
     public async Task AddProject_ProgramNotFound_ReturnsNotFound()
     {
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
         ServiceResult<AipProjectDto> result = await sut.AddProjectAsync(999, new CreateAipProjectDto("X"));
 
@@ -1842,7 +2202,7 @@ public sealed class AipServiceTests
         AipRecord rec = Rec(1, PlanningStatus.Final);
         List<AipOffice> offices = [new() { Id = 20, AipRecordId = 1, RefCode = "1000-000-1-01-010", Name = "PPDO", Sector = "GENERAL" }];
         List<AipProgram> programs = [new() { Id = 30, OfficeId = 20, RefCode = "1000-000-1-01-010-001", Name = "Program" }];
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeSeed: offices, programSeed: programs);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeSeed: offices, programSeed: programs);
 
         ServiceResult<AipProjectDto> result = await sut.AddProjectAsync(30, new CreateAipProjectDto("X"));
 
@@ -1857,7 +2217,7 @@ public sealed class AipServiceTests
         List<AipOffice> offices = [new() { Id = 20, AipRecordId = 1, RefCode = "1000-000-1-01-010", Name = "PPDO", Sector = "GENERAL" }];
         List<AipProgram> programs = [new() { Id = 30, OfficeId = 20, RefCode = "1000-000-1-01-010-001", Name = "Program" }];
         List<AipProject> projects = [new() { Id = 40, ProgramId = 30, RefCode = "1000-000-1-01-010-001-001", Name = "Project" }];
-        var (sut, _, _, _, _, _, _, _, _, _, _, activityRepo) =
+        var (sut, _, _, _, _, _, _, _, _, _, _, activityRepo, _) =
             Build([rec], [Fs(1, "GF")], officeSeed: offices, programSeed: programs, projectSeed: projects);
 
         CreateAipActivityDto dto = new(
@@ -1881,7 +2241,7 @@ public sealed class AipServiceTests
         List<AipOffice> offices = [new() { Id = 20, AipRecordId = 1, RefCode = "1000-000-1-01-010", Name = "PPDO", Sector = "GENERAL" }];
         List<AipProgram> programs = [new() { Id = 30, OfficeId = 20, RefCode = "1000-000-1-01-010-001", Name = "Program" }];
         List<AipProject> projects = [new() { Id = 40, ProgramId = 30, RefCode = "1000-000-1-01-010-001-001", Name = "Project" }];
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects);
 
         CreateAipActivityDto dto = new(
@@ -1900,7 +2260,7 @@ public sealed class AipServiceTests
         List<AipOffice> offices = [new() { Id = 20, AipRecordId = 1, RefCode = "1000-000-1-01-010", Name = "PPDO", Sector = "GENERAL" }];
         List<AipProgram> programs = [new() { Id = 30, OfficeId = 20, RefCode = "1000-000-1-01-010-001", Name = "Program" }];
         List<AipProject> projects = [new() { Id = 40, ProgramId = 30, RefCode = "1000-000-1-01-010-001-001", Name = "Project" }];
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects);
 
         CreateAipActivityDto dto = new(
@@ -1919,7 +2279,7 @@ public sealed class AipServiceTests
         List<AipOffice> offices = [new() { Id = 20, AipRecordId = 1, RefCode = "1000-000-1-01-010", Name = "PPDO", Sector = "GENERAL" }];
         List<AipProgram> programs = [new() { Id = 30, OfficeId = 20, RefCode = "1000-000-1-01-010-001", Name = "Program" }];
         List<AipProject> projects = [new() { Id = 40, ProgramId = 30, RefCode = "1000-000-1-01-010-001-001", Name = "Project" }];
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects);
 
         CreateAipActivityDto dto = new(
@@ -1935,7 +2295,7 @@ public sealed class AipServiceTests
     [Fact]
     public async Task AddActivity_ProjectNotFound_ReturnsNotFound()
     {
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
         CreateAipActivityDto dto = new("X", null, null, null, null, null, null, null, null, null, null, null, null);
         ServiceResult<AipActivityDto> result = await sut.AddActivityAsync(999, dto);
@@ -1951,7 +2311,7 @@ public sealed class AipServiceTests
         List<AipOffice> offices = [new() { Id = 20, AipRecordId = 1, RefCode = "1000-000-1-01-010", Name = "PPDO", Sector = "GENERAL" }];
         List<AipProgram> programs = [new() { Id = 30, OfficeId = 20, RefCode = "1000-000-1-01-010-001", Name = "Program" }];
         List<AipProject> projects = [new() { Id = 40, ProgramId = 30, RefCode = "1000-000-1-01-010-001-001", Name = "Project" }];
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects);
 
         CreateAipActivityDto dto = new("X", null, null, null, null, null, null, null, null, null, null, null, null);
@@ -1996,7 +2356,7 @@ public sealed class AipServiceTests
     public async Task UpdateActivity_ValidFields_UpdatesInPlaceAndRecomputesTotal()
     {
         var (rec, offices, programs, projects, activities) = SeedActivityTree();
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [Fs(1, "GF")], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         UpdateAipActivityDto dto = new(
@@ -2022,7 +2382,7 @@ public sealed class AipServiceTests
         var (rec, offices, programs, projects, activities) = SeedActivityTree();
         activities[0].FundingSourceId = 1;
         activities[0].FundingSourceSnapshot = "GF";
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [Fs(1, "GF")], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         UpdateAipActivityDto dto = new(
@@ -2039,7 +2399,7 @@ public sealed class AipServiceTests
     public async Task UpdateActivity_AllAmountsBlank_TotalIsNull()
     {
         var (rec, offices, programs, projects, activities) = SeedActivityTree();
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         UpdateAipActivityDto dto = new("Name", null, null, null, null, null, null, null, null, null, null, null, null);
@@ -2053,7 +2413,7 @@ public sealed class AipServiceTests
     public async Task UpdateActivity_EmptyName_ReturnsBadRequest()
     {
         var (rec, offices, programs, projects, activities) = SeedActivityTree();
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         UpdateAipActivityDto dto = new("   ", null, null, null, null, null, null, null, null, null, null, null, null);
@@ -2067,7 +2427,7 @@ public sealed class AipServiceTests
     public async Task UpdateActivity_InvalidEsreCode_ReturnsBadRequest()
     {
         var (rec, offices, programs, projects, activities) = SeedActivityTree();
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         UpdateAipActivityDto dto = new("Name", "ZZ", null, null, null, null, null, null, null, null, null, null, null);
@@ -2081,7 +2441,7 @@ public sealed class AipServiceTests
     public async Task UpdateActivity_UnknownFundingSourceId_ReturnsBadRequest()
     {
         var (rec, offices, programs, projects, activities) = SeedActivityTree();
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [Fs(1, "GF")], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         UpdateAipActivityDto dto = new("Name", null, null, null, null, null, 999, null, null, null, null, null, null);
@@ -2095,7 +2455,7 @@ public sealed class AipServiceTests
     public async Task UpdateActivity_ParentRecordNotDraft_ReturnsBadRequest()
     {
         var (rec, offices, programs, projects, activities) = SeedActivityTree(PlanningStatus.Final);
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         UpdateAipActivityDto dto = new("Name", null, null, null, null, null, null, null, null, null, null, null, null);
@@ -2108,7 +2468,7 @@ public sealed class AipServiceTests
     [Fact]
     public async Task UpdateActivity_ActivityNotFound_ReturnsNotFound()
     {
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
         UpdateAipActivityDto dto = new("Name", null, null, null, null, null, null, null, null, null, null, null, null);
         ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 999, dto);
@@ -2121,7 +2481,7 @@ public sealed class AipServiceTests
     public async Task UpdateActivity_MismatchedAipRecordId_ReturnsNotFound()
     {
         var (rec, offices, programs, projects, activities) = SeedActivityTree();
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         UpdateAipActivityDto dto = new("Name", null, null, null, null, null, null, null, null, null, null, null, null);
@@ -2135,7 +2495,7 @@ public sealed class AipServiceTests
     public async Task DeleteProgram_ExistingDraftProgram_RemovesIt()
     {
         var (rec, offices, programs, projects, activities) = SeedDeleteTree();
-        var (sut, _, _, _, _, _, _, _, _, programRepo, _, _) =
+        var (sut, _, _, _, _, _, _, _, _, programRepo, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         ServiceResult<bool> result = await sut.DeleteProgramAsync(30);
@@ -2150,7 +2510,7 @@ public sealed class AipServiceTests
     [Fact]
     public async Task DeleteProgram_NotFound_ReturnsNotFound()
     {
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
         ServiceResult<bool> result = await sut.DeleteProgramAsync(999);
 
@@ -2162,7 +2522,7 @@ public sealed class AipServiceTests
     public async Task DeleteProgram_ParentRecordNotDraft_ReturnsBadRequest()
     {
         var (rec, offices, programs, projects, activities) = SeedDeleteTree(PlanningStatus.Final);
-        var (sut, _, _, _, _, _, _, _, _, programRepo, _, _) =
+        var (sut, _, _, _, _, _, _, _, _, programRepo, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         ServiceResult<bool> result = await sut.DeleteProgramAsync(30);
@@ -2176,7 +2536,7 @@ public sealed class AipServiceTests
     public async Task DeleteProject_ExistingDraftProject_RemovesIt()
     {
         var (rec, offices, programs, projects, activities) = SeedDeleteTree();
-        var (sut, _, _, _, _, _, _, _, _, _, projectRepo, _) =
+        var (sut, _, _, _, _, _, _, _, _, _, projectRepo, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         ServiceResult<bool> result = await sut.DeleteProjectAsync(40);
@@ -2190,7 +2550,7 @@ public sealed class AipServiceTests
     [Fact]
     public async Task DeleteProject_NotFound_ReturnsNotFound()
     {
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
         ServiceResult<bool> result = await sut.DeleteProjectAsync(999);
 
@@ -2202,7 +2562,7 @@ public sealed class AipServiceTests
     public async Task DeleteProject_ParentRecordNotDraft_ReturnsBadRequest()
     {
         var (rec, offices, programs, projects, activities) = SeedDeleteTree(PlanningStatus.Final);
-        var (sut, _, _, _, _, _, _, _, _, _, projectRepo, _) =
+        var (sut, _, _, _, _, _, _, _, _, _, projectRepo, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         ServiceResult<bool> result = await sut.DeleteProjectAsync(40);
@@ -2216,7 +2576,7 @@ public sealed class AipServiceTests
     public async Task DeleteActivity_ExistingDraftActivity_RemovesIt()
     {
         var (rec, offices, programs, projects, activities) = SeedDeleteTree();
-        var (sut, _, _, _, _, _, _, _, _, _, _, activityRepo) =
+        var (sut, _, _, _, _, _, _, _, _, _, _, activityRepo, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         ServiceResult<bool> result = await sut.DeleteActivityAsync(50);
@@ -2230,7 +2590,7 @@ public sealed class AipServiceTests
     [Fact]
     public async Task DeleteActivity_NotFound_ReturnsNotFound()
     {
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
         ServiceResult<bool> result = await sut.DeleteActivityAsync(999);
 
@@ -2242,7 +2602,7 @@ public sealed class AipServiceTests
     public async Task DeleteActivity_ParentRecordNotDraft_ReturnsBadRequest()
     {
         var (rec, offices, programs, projects, activities) = SeedDeleteTree(PlanningStatus.Final);
-        var (sut, _, _, _, _, _, _, _, _, _, _, activityRepo) =
+        var (sut, _, _, _, _, _, _, _, _, _, _, activityRepo, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         ServiceResult<bool> result = await sut.DeleteActivityAsync(50);
@@ -2258,7 +2618,7 @@ public sealed class AipServiceTests
     public async Task UpdateOffice_ValidName_UpdatesInPlace()
     {
         var (rec, offices, programs, projects, activities) = SeedDeleteTree();
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         ServiceResult<AipOfficeDto> result = await sut.UpdateOfficeAsync(20, new UpdateAipOfficeDto("New Office Name"));
@@ -2272,7 +2632,7 @@ public sealed class AipServiceTests
     public async Task UpdateOffice_EmptyName_ReturnsBadRequest()
     {
         var (rec, offices, programs, projects, activities) = SeedDeleteTree();
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         ServiceResult<AipOfficeDto> result = await sut.UpdateOfficeAsync(20, new UpdateAipOfficeDto("   "));
@@ -2286,7 +2646,7 @@ public sealed class AipServiceTests
     {
         var (rec, offices, programs, projects, activities) = SeedDeleteTree();
         offices.Add(new AipOffice { Id = 21, AipRecordId = 1, RefCode = "1000-000-1-01-010", Name = "Sibling Sub-Office", Sector = "GENERAL" });
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         ServiceResult<AipOfficeDto> result = await sut.UpdateOfficeAsync(20, new UpdateAipOfficeDto("A Different Name"));
@@ -2299,7 +2659,7 @@ public sealed class AipServiceTests
     {
         var (rec, offices, programs, projects, activities) = SeedDeleteTree();
         offices.Add(new AipOffice { Id = 21, AipRecordId = 1, RefCode = "1000-000-1-01-010", Name = "Sibling Sub-Office", Sector = "GENERAL" });
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         ServiceResult<AipOfficeDto> result = await sut.UpdateOfficeAsync(20, new UpdateAipOfficeDto("Sibling Sub-Office"));
@@ -2311,7 +2671,7 @@ public sealed class AipServiceTests
     [Fact]
     public async Task UpdateOffice_NotFound_ReturnsNotFound()
     {
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
         ServiceResult<AipOfficeDto> result = await sut.UpdateOfficeAsync(999, new UpdateAipOfficeDto("Name"));
 
@@ -2323,7 +2683,7 @@ public sealed class AipServiceTests
     public async Task UpdateOffice_ParentRecordNotDraft_ReturnsBadRequest()
     {
         var (rec, offices, programs, projects, activities) = SeedDeleteTree(PlanningStatus.Final);
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         ServiceResult<AipOfficeDto> result = await sut.UpdateOfficeAsync(20, new UpdateAipOfficeDto("Name"));
@@ -2336,7 +2696,7 @@ public sealed class AipServiceTests
     public async Task UpdateProgram_ValidNameAndFunctionBand_UpdatesInPlace()
     {
         var (rec, offices, programs, projects, activities) = SeedDeleteTree();
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         ServiceResult<AipProgramDto> result = await sut.UpdateProgramAsync(30, new UpdateAipProgramDto("New Program Name", "STRATEGIC"));
@@ -2351,7 +2711,7 @@ public sealed class AipServiceTests
     {
         var (rec, offices, programs, projects, activities) = SeedDeleteTree();
         programs[0].FunctionBand = "SUPPORT";
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         ServiceResult<AipProgramDto> result = await sut.UpdateProgramAsync(30, new UpdateAipProgramDto("New Name", null));
@@ -2364,7 +2724,7 @@ public sealed class AipServiceTests
     public async Task UpdateProgram_EmptyName_ReturnsBadRequest()
     {
         var (rec, offices, programs, projects, activities) = SeedDeleteTree();
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         ServiceResult<AipProgramDto> result = await sut.UpdateProgramAsync(30, new UpdateAipProgramDto("  ", null));
@@ -2377,7 +2737,7 @@ public sealed class AipServiceTests
     public async Task UpdateProgram_InvalidFunctionBand_ReturnsBadRequest()
     {
         var (rec, offices, programs, projects, activities) = SeedDeleteTree();
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         ServiceResult<AipProgramDto> result = await sut.UpdateProgramAsync(30, new UpdateAipProgramDto("Name", "BOGUS"));
@@ -2389,7 +2749,7 @@ public sealed class AipServiceTests
     [Fact]
     public async Task UpdateProgram_NotFound_ReturnsNotFound()
     {
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
         ServiceResult<AipProgramDto> result = await sut.UpdateProgramAsync(999, new UpdateAipProgramDto("Name", null));
 
@@ -2401,7 +2761,7 @@ public sealed class AipServiceTests
     public async Task UpdateProgram_ParentRecordNotDraft_ReturnsBadRequest()
     {
         var (rec, offices, programs, projects, activities) = SeedDeleteTree(PlanningStatus.Final);
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         ServiceResult<AipProgramDto> result = await sut.UpdateProgramAsync(30, new UpdateAipProgramDto("Name", null));
@@ -2414,7 +2774,7 @@ public sealed class AipServiceTests
     public async Task UpdateProject_ValidName_UpdatesInPlace()
     {
         var (rec, offices, programs, projects, activities) = SeedDeleteTree();
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         ServiceResult<AipProjectDto> result = await sut.UpdateProjectAsync(40, new UpdateAipProjectDto("New Project Name"));
@@ -2427,7 +2787,7 @@ public sealed class AipServiceTests
     public async Task UpdateProject_EmptyName_ReturnsBadRequest()
     {
         var (rec, offices, programs, projects, activities) = SeedDeleteTree();
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         ServiceResult<AipProjectDto> result = await sut.UpdateProjectAsync(40, new UpdateAipProjectDto(" "));
@@ -2439,7 +2799,7 @@ public sealed class AipServiceTests
     [Fact]
     public async Task UpdateProject_NotFound_ReturnsNotFound()
     {
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
         ServiceResult<AipProjectDto> result = await sut.UpdateProjectAsync(999, new UpdateAipProjectDto("Name"));
 
@@ -2451,7 +2811,7 @@ public sealed class AipServiceTests
     public async Task UpdateProject_ParentRecordNotDraft_ReturnsBadRequest()
     {
         var (rec, offices, programs, projects, activities) = SeedDeleteTree(PlanningStatus.Final);
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) =
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         ServiceResult<AipProjectDto> result = await sut.UpdateProjectAsync(40, new UpdateAipProjectDto("Name"));
@@ -2464,7 +2824,7 @@ public sealed class AipServiceTests
     public async Task DeleteOffice_ExistingDraftOffice_RemovesIt()
     {
         var (rec, offices, programs, projects, activities) = SeedDeleteTree();
-        var (sut, _, _, _, _, _, officeRepo, _, _, _, _, _) =
+        var (sut, _, _, _, _, _, officeRepo, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         ServiceResult<bool> result = await sut.DeleteOfficeAsync(20);
@@ -2478,7 +2838,7 @@ public sealed class AipServiceTests
     [Fact]
     public async Task DeleteOffice_NotFound_ReturnsNotFound()
     {
-        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
         ServiceResult<bool> result = await sut.DeleteOfficeAsync(999);
 
@@ -2490,7 +2850,7 @@ public sealed class AipServiceTests
     public async Task DeleteOffice_ParentRecordNotDraft_ReturnsBadRequest()
     {
         var (rec, offices, programs, projects, activities) = SeedDeleteTree(PlanningStatus.Final);
-        var (sut, _, _, _, _, _, officeRepo, _, _, _, _, _) =
+        var (sut, _, _, _, _, _, officeRepo, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         ServiceResult<bool> result = await sut.DeleteOfficeAsync(20);

@@ -169,6 +169,14 @@ public record CreateAipOfficeDto(int OfficeConfigId, string Sector, string? Name
 /// </summary>
 public record CopyAipOfficeDto(int SourceOfficeId, int TargetFiscalYear, IReadOnlyList<int> ProgramIds);
 
+/// <summary>
+/// RAL-181 — seed an AIP office's programs (Name+RefCode only, no Project/Activity rows) from
+/// that office's existing LDIP for <see cref="Sector"/>. Target AipRecord/AipOffice are
+/// found-or-created by the service using the same rule as <see cref="CopyAipOfficeDto"/>.
+/// </summary>
+public record SeedAipProgramsFromLdipDto(
+    int TargetFiscalYear, int OfficeConfigId, string Sector, IReadOnlyList<int> LdipProgramIds);
+
 public record CreateAipProgramDto(string Name, string? FunctionBand = null);
 
 public record CreateAipProjectDto(string Name);
