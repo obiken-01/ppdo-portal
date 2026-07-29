@@ -149,6 +149,44 @@ rather than raw `<img>` to large PNGs. Reserves layout space (helps §6) and cut
 
 ---
 
+## 8. Cache read-often, write-rarely config data (Azure-tier note)
+
+Added 2026-07-28 after a query-efficiency audit of the Budget Planning features (before merging the
+v1.5 PPMP report). Two conclusions worth writing down:
+
+**On the current Azure subscription, the DB is the constrained resource — not the query logic.**
+Azure SQL runs on the serverless/free tier: it bills **vCore-seconds** against a capped free
+allocation and bills while it is "active," and it **auto-pauses after ~1 hr** idle. Azure Functions
+(Consumption) scales to zero after ~10 min → **cold start**. So on this tier:
+
+- **Perceived page latency is dominated by cold start + SQL auto-resume (tens of seconds), not query
+  time (single-digit ms).** Query micro-optimisation does not move what users feel. The levers for
+  *felt* speed are keep-warm pings or a higher tier — cost decisions, not code.
+- **Reducing DB work still matters — for the vCore-second budget and active-time, not speed.** Fewer
+  reads = less billed compute and less time the DB is awake and working. That is the real payoff of
+  the rules in §1–§4 on *this* subscription.
+
+**Where caching fits.** The four config/reference tables — `offices`, `divisions`, `accounts`,
+`funding_sources` (all tiny: 19 / 10 / 148 / 16 rows) — are read on nearly every Budget Planning
+request but change rarely. That is the textbook "cache this" profile. Cache the full active list per
+table in `IMemoryCache` (already registered — `AddMemoryCache()` in `Program.cs`, `AuthService` uses
+it) and **invalidate on write** in the config services' Create/Update/Delete. `AllocationService`
+already memoises these *within a request* (`_xCache ??= await …GetAllAsync()`); the cross-request
+version is specced in **RAL-185** (backlog).
+
+Do **not** cache transactional/report data (WFP expenditures, AIP hierarchy, report DTOs — changes,
+request-specific, low reuse) or the 6,398-row `price_index_items` (read via SQL-filtered search, not
+full-loaded). Do **not** reach for a distributed cache (Redis) at this scale — `IMemoryCache` is
+per-instance (dies on cold start, not shared across scaled-out instances), which is fine for a
+single-region, low-traffic app.
+
+> Indexes are already healthy: every FK/join column the batched Budget Planning queries use is
+> indexed (`wfp_activities.aip_activity_id`/`wfp_id`, `wfp_expenditures.wfp_activity_id`,
+> `wfp_procurement_items.expenditure_id`/`price_index_item_id`, the `wfp_records` composite, the AIP
+> FK columns). No missing-index work outstanding as of the 2026-07-28 audit.
+
+---
+
 ## Quick checklist for any new feature
 
 Backend:

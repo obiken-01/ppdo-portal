@@ -136,6 +136,12 @@ export interface PriceIndexItemResponse {
   isActive: boolean;
   /** Gates the WFP procurement line-item "Days" field (RAL-138) — only venue/food/accommodation-type items need it. */
   daysEnabled: boolean;
+  /**
+   * GSO stock card number / item code (v1.5) — e.g. "OS-PAP-0000004". Reproduced per line item
+   * in the PPMP report's "Stock Card No." column. Optional and not unique; most catalogue items
+   * don't carry one.
+   */
+  stockCardNo: string | null;
 }
 
 /** Create/update body for a price index item. (name, unit) is the unique key. */
@@ -146,6 +152,7 @@ export interface UpsertPriceIndexItemRequest {
   category: string | null;
   isActive: boolean;
   daysEnabled: boolean;
+  stockCardNo: string | null;
 }
 
 // ---------------------------------------------------------------------------
