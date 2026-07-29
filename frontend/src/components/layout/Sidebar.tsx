@@ -171,8 +171,8 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
         <Image
           src="/images/ppdo-logo-placeholder.webp"
           alt="PPDO"
-          width={32}
-          height={32}
+          width={48}
+          height={48}
           className="rounded-full object-contain shrink-0"
         />
         <div className="min-w-0">
