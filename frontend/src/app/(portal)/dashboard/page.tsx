@@ -156,10 +156,10 @@ export default function DashboardPage() {
   ) : null;
 
   return (
-    <div className="p-5 h-full flex flex-col">
-      {/* Calendar + Resource Links */}
-      <div className="flex gap-4 flex-1 min-h-0">
-        {/* Calendar — takes most of the horizontal space */}
+    <div className="p-3 sm:p-5 h-full flex flex-col">
+      {/* Calendar + Resource Links — stacked below lg (RAL-188), side-by-side at lg+ */}
+      <div className="flex flex-col gap-4 lg:flex-row lg:flex-1 lg:min-h-0">
+        {/* Calendar — takes most of the horizontal space at lg+ */}
         <div className="flex-1 min-w-0">
           <DashboardCalendar
             events={events}
@@ -171,8 +171,8 @@ export default function DashboardPage() {
           />
         </div>
 
-        {/* Resource Links — narrow right panel */}
-        <div className="w-60 shrink-0">
+        {/* Resource Links — full width below lg, narrow right panel at lg+ */}
+        <div className="w-full lg:w-60 lg:shrink-0">
           <ResourceLinksWidget />
         </div>
       </div>
