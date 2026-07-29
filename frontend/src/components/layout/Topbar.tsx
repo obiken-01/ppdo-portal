@@ -7,6 +7,8 @@ import type { MeResponse } from "@/types";
 interface TopbarProps {
   me: MeResponse | null;
   title: string;
+  /** Opens the sidebar drawer below `lg` (RAL-187). */
+  onMenuClick: () => void;
 }
 
 // A breadcrumb section: a root page plus its sub-pages (longest prefix wins).
@@ -115,17 +117,28 @@ function SectionBreadcrumb({ section, pathname }: { section: Section; pathname: 
   );
 }
 
-export default function Topbar({ me, title }: TopbarProps) {
+export default function Topbar({ me, title, onMenuClick }: TopbarProps) {
   const pathname = usePathname();
   const section  = SECTIONS.find((s) => matchesPrefix(pathname, s.root));
 
   return (
-    <header className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0 shadow-sm print:hidden">
-      {section ? (
-        <SectionBreadcrumb section={section} pathname={pathname} />
-      ) : (
-        <h1 className="text-sm font-semibold text-slate-700">{title}</h1>
-      )}
+    <header className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-3 sm:px-6 shrink-0 shadow-sm print:hidden">
+      <div className="flex items-center gap-3 min-w-0">
+        {/* Sidebar drawer trigger — below lg only (RAL-187) */}
+        <button
+          onClick={onMenuClick}
+          className="lg:hidden shrink-0 w-11 h-11 -ml-1 flex items-center justify-center text-xl text-slate-600 hover:bg-slate-100 transition-colors"
+          aria-label="Open menu"
+        >
+          ☰
+        </button>
+
+        {section ? (
+          <SectionBreadcrumb section={section} pathname={pathname} />
+        ) : (
+          <h1 className="text-sm font-semibold text-slate-700 truncate">{title}</h1>
+        )}
+      </div>
 
       {me && (
         <span className="text-sm text-slate-600 hidden sm:block">

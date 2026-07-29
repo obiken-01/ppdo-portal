@@ -12,6 +12,12 @@
  *   - "Inventory Dashboard" child shown if canAccessInventory
  *   - "Inventory Report"    child shown if canAccessReports
  *   - Parent auto-expands when the current path is under /inventory
+ *
+ * Responsive (RAL-187): below `lg`, the aside is a fixed off-canvas drawer
+ * driven by the `open`/`onClose` props (owned by the portal layout) — hidden
+ * off-screen via a transform, sliding in over a backdrop when open. At `lg`
+ * and above it reverts to the original static column; `open`/`onClose` have
+ * no visual effect there, since the drawer classes are only active below `lg`.
  */
 
 import { useState, useEffect, useRef } from "react";
@@ -27,9 +33,13 @@ const APP_VERSION = "v1.6.0";
 
 interface SidebarProps {
   me: MeResponse | null;
+  /** Drawer open state below `lg`. Ignored (always visible) at `lg` and above. */
+  open: boolean;
+  /** Called on backdrop click, Escape, a nav link click, or route change. */
+  onClose: () => void;
 }
 
-export default function Sidebar({ me }: SidebarProps) {
+export default function Sidebar({ me, open, onClose }: SidebarProps) {
   const pathname  = usePathname();
   const router    = useRouter();
   const menuRef   = useRef<HTMLDivElement>(null);
@@ -71,6 +81,23 @@ export default function Sidebar({ me }: SidebarProps) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [userMenuOpen]);
 
+  // Drawer (below lg): close on Escape while open
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  // Drawer (below lg): close on route change. No-op at lg+ — `open` doesn't
+  // affect rendering there — so this is safe to run unconditionally.
+  useEffect(() => {
+    onClose();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
   async function handleLogout() {
     setUserMenuOpen(false);
     try { await api.post("/auth/logout"); } catch { /* ignore */ }
@@ -102,7 +129,8 @@ export default function Sidebar({ me }: SidebarProps) {
   const showAnnouncements  = !isOfficeUser && isAdmin;
 
   function linkCls(active: boolean) {
-    return `flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition-colors ${
+    // py-3 (not py-2.5) so the row clears a 44px touch target in the mobile drawer.
+    return `flex items-center gap-3 px-3 py-3 text-sm font-medium transition-colors ${
       active
         ? "bg-green-800 text-white"
         : "text-green-100 hover:bg-green-600 hover:text-white"
@@ -118,7 +146,22 @@ export default function Sidebar({ me }: SidebarProps) {
   }
 
   return (
-    <aside className="w-56 shrink-0 bg-green-700 flex flex-col h-full print:hidden">
+    <>
+      {/* Backdrop — below lg only, shown while the drawer is open */}
+      {open && (
+        <div
+          className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm lg:hidden print:hidden"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 w-56 bg-green-700 flex flex-col transition-transform duration-200 ease-in-out
+          lg:static lg:z-auto lg:h-full lg:shrink-0 lg:transition-none
+          ${open ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0
+          print:hidden`}
+      >
 
       {/* ── Logo / brand — click to go to Dashboard ─────────────────────── */}
       <Link
@@ -172,7 +215,7 @@ export default function Sidebar({ me }: SidebarProps) {
           <div>
             <button
               onClick={() => setInventoryOpen((o) => !o)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition-colors ${
+              className={`w-full flex items-center gap-3 px-3 py-3 text-sm font-medium transition-colors ${
                 isActive("/inventory")
                   ? "bg-green-800 text-white"
                   : "text-green-100 hover:bg-green-600 hover:text-white"
@@ -269,7 +312,7 @@ export default function Sidebar({ me }: SidebarProps) {
           <div>
             <button
               onClick={() => setBudgetPlanningOpen((o) => !o)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition-colors ${
+              className={`w-full flex items-center gap-3 px-3 py-3 text-sm font-medium transition-colors ${
                 isActive("/budget-planning")
                   ? "bg-green-800 text-white"
                   : "text-green-100 hover:bg-green-600 hover:text-white"
@@ -320,7 +363,7 @@ export default function Sidebar({ me }: SidebarProps) {
           <div>
             <button
               onClick={() => setConfigOpen((o) => !o)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition-colors ${
+              className={`w-full flex items-center gap-3 px-3 py-3 text-sm font-medium transition-colors ${
                 (isActive("/config") || isActive("/admin/users"))
                   ? "bg-green-800 text-white"
                   : "text-green-100 hover:bg-green-600 hover:text-white"
@@ -434,5 +477,6 @@ export default function Sidebar({ me }: SidebarProps) {
         </div>
       )}
     </aside>
+    </>
   );
 }
