@@ -29,28 +29,31 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
     // ── Layout constants ──────────────────────────────────────────────────────
     // Section 1 — col A = label, col B = value.
 
-    internal const int ROW_DEPARTMENT         = 3;
-    internal const int ROW_DIVISION           = 4;
-    internal const int ROW_FUND               = 5;
-    internal const int ROW_REQUESTED_BY       = 6;
-    internal const int ROW_POSITION           = 7;
-    internal const int ROW_PR_DATE            = 8;
-    internal const int ROW_APPROVED_BY        = 9;
-    internal const int ROW_APPROVING_POSITION = 10;
-    internal const int ROW_AIP_CODE           = 11;
-    internal const int ROW_ACCOUNT_NO         = 12;
-    internal const int ROW_ACCOUNT_TITLE      = 13;
-    internal const int ROW_PROGRAM            = 14;
-    internal const int ROW_PROJECT            = 15;
-    internal const int ROW_ACTIVITY           = 16;
-    internal const int ROW_SAI_NO             = 17;
-    internal const int ROW_ALOBS_NO           = 18;
+    // PR No. is optional — left blank, the backend auto-generates one (same as the
+    // manual Create PR form). Sits first so it reads like the GSO paper form.
+    internal const int ROW_PR_NO              = 3;
+    internal const int ROW_DEPARTMENT         = 4;
+    internal const int ROW_DIVISION           = 5;
+    internal const int ROW_FUND               = 6;
+    internal const int ROW_REQUESTED_BY       = 7;
+    internal const int ROW_POSITION           = 8;
+    internal const int ROW_PR_DATE            = 9;
+    internal const int ROW_APPROVED_BY        = 10;
+    internal const int ROW_APPROVING_POSITION = 11;
+    internal const int ROW_AIP_CODE           = 12;
+    internal const int ROW_ACCOUNT_NO         = 13;
+    internal const int ROW_ACCOUNT_TITLE      = 14;
+    internal const int ROW_PROGRAM            = 15;
+    internal const int ROW_PROJECT            = 16;
+    internal const int ROW_ACTIVITY           = 17;
+    internal const int ROW_SAI_NO             = 18;
+    internal const int ROW_ALOBS_NO           = 19;
 
     // Section 2 — items grid.
-    internal const int ROW_SECTION2_HEADER = 20;
-    internal const int ROW_ITEMS_HEADER    = 21;
-    internal const int ROW_ITEMS_START     = 22;
-    internal const int ROW_ITEMS_END       = 51;   // 30 rows
+    internal const int ROW_SECTION2_HEADER = 21;
+    internal const int ROW_ITEMS_HEADER    = 22;
+    internal const int ROW_ITEMS_START     = 23;
+    internal const int ROW_ITEMS_END       = 52;   // 30 rows
 
     // Section 2 columns (1-based).
     internal const int COL_ITEM_NO     = 1; // A
@@ -563,6 +566,7 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
             string divisionRaw   = ws.Cell(ROW_DIVISION,     2).GetString().Trim();
             string requestedBy   = ws.Cell(ROW_REQUESTED_BY, 2).GetString().Trim();
             string prDateRaw     = ws.Cell(ROW_PR_DATE,      2).GetString().Trim();
+            string prNoRaw       = ws.Cell(ROW_PR_NO,        2).GetString().Trim(); // optional
 
             if (string.IsNullOrWhiteSpace(divisionRaw))
                 sheetErrors.Add($"[{ws.Name}] Division is required.");
@@ -643,6 +647,7 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
                 results.Add(new PurchaseRequestImportRow
                 {
                     SheetName           = ws.Name,
+                    PrNo                = NullIfBlank(prNoRaw),
                     DivisionName        = divisionRaw,
                     RequestedBy         = requestedBy,
                     PRDate              = prDate,
@@ -703,6 +708,7 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
                     .Border.SetOutsideBorderColor(XLColor.FromHtml("#ADB5BD"));
         }
 
+        Label(ROW_PR_NO,              "PR No.");
         Label(ROW_DEPARTMENT,         "Department");
         Label(ROW_DIVISION,           "Division *");
         Label(ROW_FUND,               "Fund");
@@ -721,10 +727,13 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
         Label(ROW_ALOBS_NO,           "ALOBS No.");
 
         // Style labels
-        for (int r = ROW_DEPARTMENT; r <= ROW_ALOBS_NO; r++)
+        for (int r = ROW_PR_NO; r <= ROW_ALOBS_NO; r++)
             ws.Cell(r, 1).Style.Font.SetBold(true).Fill.SetBackgroundColor(Gray);
 
         // ── Section 1 values ──────────────────────────────────────────────────
+        // PR No. is optional — not isAuto, so it gets the same yellow fillable
+        // treatment as Fund/Position/ApprovedBy, just without the required-field asterisk.
+        Value(ROW_PR_NO,              prefilled ? pr!.PRNo        : null);
         Value(ROW_DEPARTMENT,         prefilled ? pr!.Department  : "PPDO",   isAuto: true);
         Value(ROW_DIVISION,           prefilled ? (pr!.Division?.Name ?? "")      : null);
         Value(ROW_FUND,               prefilled ? pr!.Fund                     : null);
@@ -741,15 +750,6 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
         Value(ROW_ACTIVITY,           prefilled ? pr!.Activity                 : null);
         Value(ROW_SAI_NO,             prefilled ? pr!.SAINo                    : null);
         Value(ROW_ALOBS_NO,           prefilled ? pr!.ALOBSNo                  : null);
-
-        // PR No. shown in report mode
-        if (prefilled)
-        {
-            ws.Cell(ROW_DEPARTMENT - 1, 4).Value = "PR No.";
-            ws.Cell(ROW_DEPARTMENT - 1, 5).Value = pr!.PRNo;
-            ws.Cell(ROW_DEPARTMENT - 1, 4).Style.Font.SetBold(true).Fill.SetBackgroundColor(Gray);
-            ws.Cell(ROW_DEPARTMENT - 1, 5).Style.Fill.SetBackgroundColor(Gray);
-        }
 
         // ── Section 2 header ──────────────────────────────────────────────────
         ws.Cell(ROW_SECTION2_HEADER, 1).Value = "SECTION 2 — ITEMS";
@@ -908,7 +908,10 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
             "",
             "SECTION 1 — PR HEADER:",
             "  Fields marked with * are required: Division, Requested By, PR Date.",
-            "  Division must be one of: Admin, Planning, RM, MIS, SPD.",
+            "  Division must match one of your office's configured divisions — see",
+            "    Config → Divisions in the portal for the exact name or short code.",
+            "  PR No. is optional — leave it blank and the portal auto-generates one",
+            "    in the standard format (101-1041-GF-YYYY-MM-DD-XXX).",
             "  PR Date format: DD/MM/YYYY  (e.g. 01/06/2026)",
             "",
             "SECTION 2 — ITEMS:",

@@ -403,6 +403,42 @@ public sealed class PurchaseRequestServiceTests
     }
 
     /// <summary>
+    /// PR No. on the import sheet is optional. When the sheet supplies one, it should be
+    /// used verbatim — the same "supplied value wins, blank auto-generates" contract as the
+    /// manual Create PR form's PrNo field.
+    /// </summary>
+    [Fact]
+    public async Task ImportFromExcelAsync_SheetSuppliesPrNo_UsesSuppliedValue()
+    {
+        IReadOnlyList<PurchaseRequestImportRow> rows = new List<PurchaseRequestImportRow>
+        {
+            new()
+            {
+                SheetName    = "PR-001",
+                PrNo         = "101-1041-GF-2026-06-01-099",
+                DivisionName = "Administrative Division",
+                RequestedBy  = "Test",
+                PRDate       = DateOnly.FromDateTime(DateTime.UtcNow),
+                Items        = new List<PRItemImportRow>
+                {
+                    new() { Description = "Bond Paper", Unit = "ream", Quantity = 1m },
+                },
+            },
+        };
+
+        Mock<IExcelService> excel = new();
+        excel.Setup(e => e.ParsePRImport(It.IsAny<Stream>())).Returns(rows);
+
+        Mock<IPurchaseRequestRepository> prRepo = RepoPRThatSaves();
+
+        ServiceResult<IReadOnlyList<PRResponseDto>> result =
+            await BuildSut(prRepo, excelService: excel).ImportFromExcelAsync(MakeAdmin(), Stream.Null);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("101-1041-GF-2026-06-01-099", result.Value![0].PRNo);
+    }
+
+    /// <summary>
     /// The sheet's Division cell is free text and may carry the division's short code rather
     /// than its full name. The Staff pre-check must resolve before comparing, not string-match
     /// the raw cell against the user's division name.

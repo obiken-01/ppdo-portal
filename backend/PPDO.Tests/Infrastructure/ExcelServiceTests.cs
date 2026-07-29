@@ -60,6 +60,19 @@ public sealed class ExcelServiceTests
         Assert.Contains("Requested By", allText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("PR Date",      allText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Description",  allText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("PR No.",       allText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void GeneratePRTemplate_PRNoLabel_HasNoRequiredAsterisk()
+    {
+        byte[] result = _sut.GeneratePRTemplate();
+        using IXLWorkbook wb = new XLWorkbook(new MemoryStream(result));
+        IXLWorksheet ws = wb.Worksheets.First(w => w.Name.StartsWith("PR-"));
+
+        // PR No. is optional — unlike Division/Requested By/PR Date, it must not carry
+        // the required-field asterisk.
+        Assert.Equal("PR No.", ws.Cell(ExcelService.ROW_PR_NO, 1).GetString());
     }
 
     // ── ParsePRImport ─────────────────────────────────────────────────────────
@@ -124,6 +137,39 @@ public sealed class ExcelServiceTests
         Assert.Equal("Planning", result[0].DivisionName);
         Assert.Equal("Juan dela Cruz", result[0].RequestedBy);
         Assert.Equal(new DateOnly(2026, 6, 1), result[0].PRDate);
+    }
+
+    [Fact]
+    public void ParsePRImport_PRNoLeftBlank_IsNull()
+    {
+        // BuildValidTemplate never sets the PR No. cell — proves the field is optional,
+        // not merely absent-tolerant on one path.
+        using Stream stream = BuildValidTemplate();
+        IReadOnlyList<PurchaseRequestImportRow> result = _sut.ParsePRImport(stream);
+
+        Assert.Null(result[0].PrNo);
+    }
+
+    [Fact]
+    public void ParsePRImport_PRNoSupplied_IsParsedThrough()
+    {
+        using XLWorkbook wb = new();
+        IXLWorksheet ws = wb.AddWorksheet("PR-001");
+        ws.Cell(ExcelService.ROW_PR_NO,        2).Value = "101-1041-GF-2026-06-01-099";
+        ws.Cell(ExcelService.ROW_DIVISION,     2).Value = "Planning";
+        ws.Cell(ExcelService.ROW_REQUESTED_BY, 2).Value = "Juan dela Cruz";
+        ws.Cell(ExcelService.ROW_PR_DATE,      2).Value = new DateTime(2026, 6, 1);
+        ws.Cell(ExcelService.ROW_ITEMS_START,  ExcelService.COL_DESCRIPTION).Value = "Bond Paper A4";
+        ws.Cell(ExcelService.ROW_ITEMS_START,  ExcelService.COL_UNIT)       .Value = "ream";
+        ws.Cell(ExcelService.ROW_ITEMS_START,  ExcelService.COL_QTY)        .Value = 5m;
+
+        MemoryStream ms = new();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+
+        IReadOnlyList<PurchaseRequestImportRow> result = _sut.ParsePRImport(ms);
+
+        Assert.Equal("101-1041-GF-2026-06-01-099", result[0].PrNo);
     }
 
     [Fact]

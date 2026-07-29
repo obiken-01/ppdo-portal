@@ -624,6 +624,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
     /// <summary>Maps a parsed Excel import row to a CreatePRDto.</summary>
     private static CreatePRDto MapImportRowToDto(PurchaseRequestImportRow row) => new()
     {
+        PrNo              = row.PrNo,
         PRDate            = row.PRDate,
         Department        = row.Department,
         Division          = row.DivisionName,

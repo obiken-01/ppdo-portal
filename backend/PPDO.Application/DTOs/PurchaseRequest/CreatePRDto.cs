@@ -2,8 +2,9 @@ namespace PPDO.Application.DTOs.PurchaseRequest;
 
 /// <summary>
 /// Request body for POST /api/purchase-requests.
-/// Division is accepted as a string name (e.g. "Admin") — parsed to the Division enum
-/// in PurchaseRequestService, matching the pattern used by CreateUserDto.
+/// Division is accepted as a string — the configurable division's Name or Code (v1.2 —
+/// RAL-97) — resolved in PurchaseRequestService.ResolveDivisionByNameAsync, scoped to PPDO's
+/// own divisions.
 /// Staff can only submit a PR for their own division — enforced in PurchaseRequestService.
 /// </summary>
 public sealed record CreatePRDto
@@ -15,7 +16,7 @@ public sealed record CreatePRDto
     /// </summary>
     public string? PrNo { get; init; }
     public string Department { get; init; } = "PPDO";
-    /// <summary>"Admin" | "Planning" | "RM" | "MIS" | "SPD"</summary>
+    /// <summary>The division's configurable Name or Code, e.g. "Administrative Division" or "ADMIN".</summary>
     public required string Division { get; init; }
     public required string Fund { get; init; }
     public required string RequestedBy { get; init; }

@@ -61,6 +61,12 @@ public sealed record PurchaseRequestImportRow
     /// <summary>The worksheet tab name — used as the PR reference during import.</summary>
     public required string SheetName { get; init; }
 
+    /// <summary>
+    /// Optional PR No. supplied by the sheet. Null when left blank — the backend then
+    /// auto-generates one, exactly like leaving PR No. blank on the manual Create PR form.
+    /// </summary>
+    public string? PrNo { get; init; }
+
     // ── Section 1 — PR header ─────────────────────────────────────────────────
 
     /// <summary>Raw division text parsed from the sheet — resolved to a division id at import time.</summary>
