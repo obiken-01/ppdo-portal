@@ -191,8 +191,16 @@ fix(ui): make inventory tables scroll and stat cards wrap on mobile (RAL-C)
 
 ## RAL-D — Replace the retired hard-coded division list in Inventory
 
-**Milestone:** v1.7.0 (candidate for v1.6.0 — small, and it is a correctness bug)
-**No backend changes** — the endpoint already exists
+> ✅ **DONE — implemented directly on `release/1.6.0` on 2026-07-29**, once it turned out to be
+> the cause of "I can't upload a PR to inventory" rather than a latent inconsistency. The
+> prompt below is kept for the ticket record; see `Mobile_And_Inventory_Findings.md` §4.1.1
+> for what actually shipped. Note step 1's question was answered by implementation: the
+> endpoints bind a division **name string**, and resolution now accepts Name *or* Code scoped
+> to the PPDO office, so no id migration was needed.
+
+**Milestone:** ~~v1.7.0~~ → **shipped in v1.6.0**
+**Backend changes were required after all** — `ResolveDivisionByNameAsync` was ambiguous
+across offices and rejected division codes.
 
 ```
 Read CLAUDE.md, PROJECT_DOCUMENTATION_NET_AZURE.md, and PPDO_PROJECT_CONTEXT.md.

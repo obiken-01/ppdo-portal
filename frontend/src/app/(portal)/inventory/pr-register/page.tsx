@@ -25,6 +25,7 @@ import {
 } from "@tanstack/react-table";
 import api from "@/lib/api";
 import { fetchMe } from "@/lib/me-cache";
+import { useInventoryDivisions } from "@/lib/inventory-divisions";
 import { useToast } from "@/components/ui/Toast";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import type { MeResponse, PRSummaryResponse } from "@/types";
@@ -66,7 +67,8 @@ const EMPTY_FILTERS: Filters = {
 // Constants
 // ---------------------------------------------------------------------------
 
-const DIVISIONS = ["Admin", "Planning", "RM", "MIS", "SPD"];
+// Divisions come from the configurable divisions table (v1.2 — RAL-97), never a
+// hard-coded list. See @/lib/inventory-divisions.
 
 const STATUS_LABEL: Record<string, string> = {
   Open:               "Open",
@@ -275,6 +277,10 @@ export default function PRListPage() {
 
   const [authChecked] = useState(true);
   const [me, setMe]                   = useState<MeResponse | null>(null);
+
+  // Division filter options — the real configurable divisions, not the retired enum.
+  // Declared here (not beside isAdmin below) because the loading guard early-returns.
+  const { divisions: divisionOptions } = useInventoryDivisions();
 
   const [prs, setPRs]               = useState<PRSummaryResponse[]>([]);
   const [loading, setLoading]       = useState(true);
@@ -719,7 +725,7 @@ export default function PRListPage() {
                     className="w-full px-2.5 py-1.5 text-xs border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-green-500"
                   >
                     <option value="">All divisions</option>
-                    {DIVISIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+                    {divisionOptions.map((d) => <option key={d} value={d}>{d}</option>)}
                   </select>
                 </div>
               )}

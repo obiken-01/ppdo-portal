@@ -19,7 +19,7 @@
 | 2 | Main Dashboard is a non-wrapping flex row with a hard-coded `w-60` side panel. | High | `(portal)/dashboard/page.tsx:161-177` |
 | 3 | Inventory tables squash instead of scrolling — `overflow-x-auto` is present but the table is `w-full` with 8–12 columns. | High | all 7 inventory pages |
 | 4 | `GeneratePRNoAsync` full-scans `purchase_requests` **on every PR creation**. | **High (write path)** | `PurchaseRequestService.cs:443-465` |
-| 5 | Retired v1.2 division list still hard-coded in 3 Inventory pages. | High (correctness) | see §4.1 |
+| 5 | Retired v1.2 division list still hard-coded in 3 Inventory pages — **broke PR creation and Excel import outright**. ✅ fixed in v1.6.0 | **Blocker** | see §4.1, §4.1.1 |
 | 6 | `InventoryService` loads the entire item catalog + all PRs and filters in memory. | Medium | `InventoryService.cs:63, 78, 147` |
 | 7 | No opening-balance / warehouse-stock concept exists anywhere in the domain. | n/a — new feature | §5 |
 
@@ -171,7 +171,11 @@ lookup, and push the PR counts to `CountAsync`/`SumAsync` per `docs/PERFORMANCE_
 
 ## 4. Distribution page
 
-### 4.1 Retired division list — a real correctness bug
+### 4.1 Retired division list — a real correctness bug ✅ FIXED in v1.6.0
+
+> **Shipped 2026-07-29 on `release/1.6.0`.** This turned out to be the cause of "I can't
+> upload a PR to inventory" — not merely a latent inconsistency. See §4.1.1 below for what
+> the live data showed and what was changed.
 
 The `Division` enum was retired in **v1.2 / RAL-97** and replaced by the configurable
 `divisions` table (`backend/PPDO.Domain/Entities/Division.cs`). Three Inventory pages never
@@ -193,6 +197,54 @@ Distribution can therefore be recorded against a division that isn't in the tabl
 
 The replacement already exists: `listDivisions()` in `frontend/src/lib/config.ts:214`
 (`GET /api/config/divisions`), which is what the user form already uses.
+
+### 4.1.1 Why PR creation and import were completely broken
+
+Querying the dev database settled it. The seeded PPDO divisions (`office_id = 7`) are:
+
+| code | name |
+|---|---|
+| ADMIN | Administrative Division |
+| PLANNING | Sectoral Planning Division |
+| SMED | Statistics Monitoring and Evaluation Division |
+| MIS | Information and Communications Technology Division |
+| FPIP | Fiscal Planning and Investment Programming Division |
+| OG-CSO | Open Governance and Civil Society Organization Engagement Division |
+
+**Not one of the five hard-coded names — `Admin`, `Planning`, `RM`, `MIS`, `SPD` — matches
+any of these.** `PurchaseRequestService.ResolveDivisionByNameAsync` matches on `Name` only,
+so every submission from the Create PR form resolved to `null` and came back
+`Division 'Admin' was not found.` The codes `ADMIN`/`PLANNING`/`MIS` do exist, but resolution
+never looked at `Code`.
+
+Two further defects surfaced while fixing it:
+
+1. **Cross-office ambiguity.** `ResolveDivisionByNameAsync` ran `GetAllAsync()` then
+   `FirstOrDefault` on name across **every office**. `"Administrative"` exists under both
+   office 3 (PTO) and office 12 (PHO); whichever came back first won. A PPDO purchase request
+   could silently be attached to another office's division.
+2. **The Excel import's Staff pre-check** compared `row.DivisionName` as a raw string against
+   `requester.Division.Name`, so a sheet saying `ADMIN` was rejected as "another division"
+   before any resolution happened.
+
+**What changed (all on `release/1.6.0`):**
+
+- `frontend/src/lib/inventory-divisions.ts` — new shared, module-level-cached source of the
+  active PPDO divisions, matching the `me-cache` idiom so the Inventory pages share one
+  `GET /api/config/divisions` request rather than each firing their own.
+- The three hard-coded arrays are gone. Create PR clamps Staff to their own division (the
+  backend rejects anything else anyway); PR List and Distribution offer all PPDO divisions.
+- `ResolveDivisionByNameAsync` now scopes to PPDO's own divisions via
+  `IOfficeRepository.GetByCodeAsync("PPDO")` and accepts **Name or Code** (case-insensitive,
+  trimmed; Name wins). Falls back to all active divisions if the PPDO office row is missing,
+  so a misconfiguration degrades rather than blocking every create.
+- The import's Staff pre-check resolves before comparing, and compares division **ids**.
+- The "not found" error now lists the valid division names instead of a generic message.
+- 6 new tests in `PurchaseRequestServiceTests` cover code-matching, case/whitespace,
+  cross-office rejection, inactive divisions, and the error message contents.
+
+**Not verified in a live browser session** — the Inventory pages sit behind login. Backend
+behaviour is covered by the test suite (874 passing); the UI change needs a manual check.
 
 ### 4.2 Other Distribution improvements
 
@@ -294,7 +346,7 @@ Proposed split:
 | RAL-A | Responsive portal shell — sidebar drawer + hamburger | **v1.6.0** |
 | RAL-B | Main Dashboard responsive stacking | **v1.6.0** |
 | RAL-C | Inventory tables — mobile scroll + card fallback | v1.7.0 |
-| RAL-D | Replace hard-coded division list in 3 Inventory pages | v1.7.0 (or v1.6.0 — it's a correctness bug, small) |
+| RAL-D | Replace hard-coded division list in 3 Inventory pages | ✅ **DONE — shipped in v1.6.0** (see §4.1.1) |
 | RAL-E | `GeneratePRNoAsync` — push sequence lookup to SQL | v1.7.0 |
 | RAL-F | `InventoryService` scoped queries + list pagination | v1.7.0 |
 | RAL-G | Warehouse stock input — entity, API, page, Excel bulk upload | v1.7.0 — **blocked on §5.3** |
