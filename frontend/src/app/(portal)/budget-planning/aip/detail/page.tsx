@@ -19,10 +19,11 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMe } from "@/lib/me-cache";
 import {
-  getAipById, aipErrorMessage,
+  getAipById, aipErrorMessage, listAip,
   addAipOffice, addAipProgram, addAipProject, addAipActivity,
   updateAipOffice, updateAipProgram, updateAipProject, updateAipActivity,
   deleteAipOffice, deleteAipProgram, deleteAipProject, deleteAipActivity,
+  copyAipOfficeFromPriorYear,
 } from "@/lib/aip";
 import { listOffices, listFundingSources } from "@/lib/config";
 import {
@@ -32,6 +33,7 @@ import MoneyInput from "@/components/ui/MoneyInput";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import type {
   AipRecordDetail,
+  AipRecordResponse,
   AipOfficeDetail,
   AipProgramDetail,
   AipProjectDetail,
@@ -1222,6 +1224,260 @@ function AddOfficePanel({
   );
 }
 
+// ── Carry Forward Office (RAL-180) ──────────────────────────────────────────────
+//
+// Copies selected programs (full project/activity subtrees) from a prior fiscal year's
+// office into THIS record's fiscal year. Placement decision: lives on the detail page
+// (an existing target record), not as a third tab on aip/new/page.tsx — covers the main
+// use case ("this year's record already exists, seed one more office into it") including
+// "an office that doesn't exist yet in the current year." The backend also supports
+// auto-creating the target record itself when none exists yet, but that path isn't reached
+// from this UI — a user hits Manual Entry first (two seconds) to get a Draft record, then
+// uses this panel, same as adding an office by hand.
+function CarryForwardOfficePanel({
+  targetFiscalYear, onCopied,
+}: {
+  targetFiscalYear: number;
+  onCopied: (office: AipOfficeDetail) => void;
+}) {
+  const [open, setOpen]                     = useState(false);
+  const [sourceFiscalYear, setSourceFiscalYear] = useState(String(targetFiscalYear - 1));
+  const [sourceRecords, setSourceRecords]   = useState<AipRecordResponse[]>([]);
+  const [sourceRecordId, setSourceRecordId] = useState("");
+  const [sourceRecord, setSourceRecord]     = useState<AipRecordDetail | null>(null);
+  const [sourceOfficeId, setSourceOfficeId] = useState("");
+  const [checkedProgramIds, setCheckedProgramIds] = useState<Set<number>>(new Set());
+  const [loadingYear, setLoadingYear]       = useState(false);
+  const [loadingOffices, setLoadingOffices] = useState(false);
+  const [saving, setSaving]                 = useState(false);
+  const [error, setError]                   = useState<string | null>(null);
+
+  const selectedSourceOffice = sourceRecord?.offices.find((o) => String(o.id) === sourceOfficeId) ?? null;
+
+  async function handleLoadYear() {
+    const fy = Number(sourceFiscalYear);
+    if (!fy) { setError("Enter a fiscal year."); return; }
+    setLoadingYear(true);
+    setError(null);
+    setSourceRecords([]);
+    setSourceRecordId("");
+    setSourceRecord(null);
+    setSourceOfficeId("");
+    setCheckedProgramIds(new Set());
+    try {
+      const records = await listAip({ fiscalYear: fy });
+      if (records.length === 0) setError(`No AIP found for FY ${fy}.`);
+      setSourceRecords(records);
+    } catch (err) {
+      setError(aipErrorMessage(err, "Could not load that fiscal year."));
+    } finally {
+      setLoadingYear(false);
+    }
+  }
+
+  async function handlePickRecord(id: string) {
+    setSourceRecordId(id);
+    setSourceRecord(null);
+    setSourceOfficeId("");
+    setCheckedProgramIds(new Set());
+    if (!id) return;
+    setLoadingOffices(true);
+    setError(null);
+    try {
+      setSourceRecord(await getAipById(Number(id)));
+    } catch (err) {
+      setError(aipErrorMessage(err, "Could not load that AIP record."));
+    } finally {
+      setLoadingOffices(false);
+    }
+  }
+
+  function handlePickOffice(id: string) {
+    setSourceOfficeId(id);
+    const office = sourceRecord?.offices.find((o) => String(o.id) === id);
+    // Select All checked by default (matches the ticket's UX default).
+    setCheckedProgramIds(new Set(office?.programs.map((p) => p.id) ?? []));
+  }
+
+  function toggleProgram(id: number) {
+    setCheckedProgramIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (!selectedSourceOffice) return;
+    setCheckedProgramIds((prev) =>
+      prev.size === selectedSourceOffice.programs.length
+        ? new Set()
+        : new Set(selectedSourceOffice.programs.map((p) => p.id))
+    );
+  }
+
+  function resetAndClose() {
+    setOpen(false);
+    setSourceRecords([]);
+    setSourceRecordId("");
+    setSourceRecord(null);
+    setSourceOfficeId("");
+    setCheckedProgramIds(new Set());
+    setError(null);
+  }
+
+  async function handleConfirm() {
+    if (!selectedSourceOffice || checkedProgramIds.size === 0) {
+      setError("Pick a source office and at least one program.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const copied = await copyAipOfficeFromPriorYear({
+        sourceOfficeId: selectedSourceOffice.id,
+        targetFiscalYear,
+        programIds: Array.from(checkedProgramIds),
+      });
+      onCopied(copied);
+      resetAndClose();
+    } catch (err) {
+      setError(aipErrorMessage(err, "Could not carry forward that office."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="px-3 py-1.5 text-sm font-medium text-white bg-green-700 hover:bg-green-800 transition-colors whitespace-nowrap"
+      >
+        + Carry Forward Office
+      </button>
+    );
+  }
+
+  return (
+    <div className="border border-slate-200 bg-slate-50 p-4 mb-4 space-y-3">
+      <div className="grid grid-cols-3 gap-3 items-end">
+        <div>
+          <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
+            Source Fiscal Year
+          </label>
+          <div className="flex gap-2">
+            <input
+              type="number"
+              value={sourceFiscalYear}
+              onChange={(e) => setSourceFiscalYear(e.target.value)}
+              className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
+            />
+            <button
+              onClick={handleLoadYear}
+              disabled={loadingYear}
+              className="px-3 py-2 text-sm font-medium border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors disabled:opacity-50 whitespace-nowrap"
+            >
+              {loadingYear ? "Loading…" : "Load"}
+            </button>
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
+            Source AIP Record
+          </label>
+          <select
+            value={sourceRecordId}
+            onChange={(e) => handlePickRecord(e.target.value)}
+            disabled={sourceRecords.length === 0}
+            className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600 disabled:bg-slate-100"
+          >
+            <option value="">Select…</option>
+            {sourceRecords.map((r) => (
+              <option key={r.id} value={r.id}>FY {r.fiscalYear} — {r.status} ({r.entrySource})</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
+            Source Office
+          </label>
+          <select
+            value={sourceOfficeId}
+            onChange={(e) => handlePickOffice(e.target.value)}
+            disabled={!sourceRecord || loadingOffices}
+            className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600 disabled:bg-slate-100"
+          >
+            <option value="">{loadingOffices ? "Loading…" : "Select…"}</option>
+            {sourceRecord?.offices.map((o) => (
+              <option key={o.id} value={o.id}>{o.name} ({o.sector})</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {selectedSourceOffice && (
+        <div className="border border-slate-200 bg-white">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-slate-200">
+            <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 uppercase tracking-wide cursor-pointer">
+              <input
+                type="checkbox"
+                checked={checkedProgramIds.size === selectedSourceOffice.programs.length && selectedSourceOffice.programs.length > 0}
+                onChange={toggleSelectAll}
+                className="accent-green-600"
+              />
+              Select All ({selectedSourceOffice.programs.length} programs)
+            </label>
+          </div>
+          <div className="max-h-56 overflow-y-auto divide-y divide-slate-100">
+            {selectedSourceOffice.programs.map((p) => {
+              const activityCount = p.projects.flatMap((j) => j.activities).length;
+              return (
+                <label key={p.id} className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 cursor-pointer hover:bg-slate-50">
+                  <input
+                    type="checkbox"
+                    checked={checkedProgramIds.has(p.id)}
+                    onChange={() => toggleProgram(p.id)}
+                    className="accent-green-600 shrink-0"
+                  />
+                  <span className="flex-1 truncate">{p.name}</span>
+                  <span className="text-xs text-slate-600 whitespace-nowrap">
+                    {p.projects.length} project{p.projects.length === 1 ? "" : "s"}, {activityCount} activit{activityCount === 1 ? "y" : "ies"}
+                  </span>
+                </label>
+              );
+            })}
+            {selectedSourceOffice.programs.length === 0 && (
+              <p className="px-3 py-2 text-xs text-slate-600">This office has no programs to copy.</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {error && <p className="text-xs text-danger-600">{error}</p>}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={handleConfirm}
+          disabled={saving || !selectedSourceOffice || checkedProgramIds.size === 0}
+          className={`px-4 py-1.5 text-sm font-medium text-white transition-colors ${
+            saving || !selectedSourceOffice || checkedProgramIds.size === 0
+              ? "bg-green-300 cursor-not-allowed" : "bg-green-700 hover:bg-green-800"
+          }`}
+        >
+          {saving ? "Copying…" : `Copy ${checkedProgramIds.size || ""} Program${checkedProgramIds.size === 1 ? "" : "s"}`}
+        </button>
+        <button
+          onClick={resetAndClose}
+          disabled={saving}
+          className="px-4 py-1.5 text-sm font-medium border border-slate-300 text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Sector grouping ────────────────────────────────────────────────────────────
 
 const SECTOR_ORDER = ["GENERAL", "SOCIAL", "ECONOMIC", "OTHERS"];
@@ -1276,6 +1532,16 @@ export default function AipDetailPage() {
   const handleOfficeUpdated  = useCallback((updated: AipOfficeDetail)  => setRecord((prev) => prev && replaceOffice(prev, updated)), []);
   const handleOfficeDeleted  = useCallback((officeId: number)         => setRecord((prev) => prev && removeOfficeFromTree(prev, officeId)), []);
   const handleOfficeAdded    = useCallback((newOffice: AipOfficeDetail) => setRecord((prev) => prev && addOfficeToTree(prev, newOffice)), []);
+  // RAL-180 — the copy-office response may be a brand-new office OR an existing one with
+  // programs merged in; replace if it's already in the tree, otherwise append.
+  const handleOfficeCarriedForward = useCallback((office: AipOfficeDetail) => {
+    setRecord((prev) => {
+      if (!prev) return prev;
+      return prev.offices.some((o) => o.id === office.id)
+        ? replaceOffice(prev, office)
+        : addOfficeToTree(prev, office);
+    });
+  }, []);
   const handleProgramAdded   = useCallback((officeId: number, p: AipProgramDetail) => setRecord((prev) => prev && addProgramToTree(prev, officeId, p)), []);
   const handleProgramUpdated = useCallback((updated: AipProgramDetail) => setRecord((prev) => prev && replaceProgram(prev, updated)), []);
   const handleProgramDeleted = useCallback((officeId: number, programId: number) => setRecord((prev) => prev && removeProgramFromTree(prev, officeId, programId)), []);
@@ -1452,10 +1718,12 @@ export default function AipDetailPage() {
         </div>
       )}
 
-      {/* Add Office (detail-page CRUD follow-up to RAL-179) — Draft-only, same gate as everything below. */}
+      {/* Add Office (detail-page CRUD follow-up to RAL-179) + Carry Forward Office (RAL-180) —
+          Draft-only, same gate as everything below. */}
       {record.status === "Draft" && (
-        <div className="mb-4">
+        <div className="flex flex-wrap items-start gap-3 mb-4">
           <AddOfficePanel aipRecordId={record.id} officeConfigs={officeConfigs} onAdded={handleOfficeAdded} />
+          <CarryForwardOfficePanel targetFiscalYear={record.fiscalYear} onCopied={handleOfficeCarriedForward} />
         </div>
       )}
 

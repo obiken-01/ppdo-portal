@@ -98,6 +98,20 @@ public interface IAipService
     /// <summary>Deletes a single activity. Draft-only.</summary>
     Task<ServiceResult<bool>> DeleteActivityAsync(int activityId, CancellationToken ct = default);
 
+    /// <summary>
+    /// RAL-180 — copies selected programs (with their full project/activity subtrees) from a
+    /// source office into a target fiscal year's office, carrying every field forward except
+    /// Id (fresh identity) and Activity.IsCreation (resets to false — a WFP-entry-time
+    /// classification, not something that should silently persist across fiscal years).
+    /// Find-or-creates the target AipRecord (Manual, Draft) and the target AipOffice (matched
+    /// by RefCode) as needed. Rejects if the target record exists but isn't a Draft
+    /// Manual-entry record, if any requested program doesn't belong to the source office, or
+    /// if any selected program's RefCode already exists under the target office (no silent
+    /// skip/overwrite). No lineage is recorded between the two years' rows.
+    /// </summary>
+    Task<ServiceResult<AipOfficeDto>> CopyOfficeFromPriorYearAsync(
+        CopyAipOfficeDto dto, Guid createdById, CancellationToken ct = default);
+
     Task<ServiceResult<AipRecordDto>> FinalizeAsync(int id, CancellationToken ct = default);
     Task<ServiceResult<AipRecordDto>> UnlockAsync(int id, CancellationToken ct = default);
     Task<ServiceResult<AipRecordDto>> ArchiveAsync(int id, CancellationToken ct = default);

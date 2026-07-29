@@ -14,6 +14,7 @@ import type {
   AipImportConfirmRequest,
   CreateAipRecordRequest,
   CreateAipOfficeRequest,
+  CopyAipOfficeRequest,
   CreateAipProgramRequest,
   CreateAipProjectRequest,
   CreateAipActivityRequest,
@@ -104,6 +105,17 @@ export async function createManualAipRecord(body: CreateAipRecordRequest): Promi
 export async function addAipOffice(aipId: number, body: CreateAipOfficeRequest): Promise<AipOfficeDetail> {
   const { data } = await api.post<ApiResponse<AipOfficeDetail>>(
     `/budget-planning/aip/${aipId}/offices`, body
+  );
+  return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// AIP carry-forward (RAL-180) — copy selected programs from a prior fiscal year's office
+// ---------------------------------------------------------------------------
+
+export async function copyAipOfficeFromPriorYear(body: CopyAipOfficeRequest): Promise<AipOfficeDetail> {
+  const { data } = await api.post<ApiResponse<AipOfficeDetail>>(
+    "/budget-planning/aip/copy-office", body
   );
   return unwrap(data);
 }

@@ -164,6 +164,28 @@ public sealed class AipFunctions
             await _aip.AddOfficeAsync(aipId, body, ct), ct, HttpStatusCode.Created);
     }
 
+    // ── POST /api/budget-planning/aip/copy-office ─────────────────────────────
+    // RAL-180 — carry forward selected programs (with full subtrees) from a prior fiscal
+    // year's office into the target fiscal year, creating the target record/office if needed.
+    // CanAccessBudgetPlanning, not CanUploadAip — same reasoning as manual entry (RAL-62/179):
+    // this isn't a new file import, office users should be able to do it too.
+    [Function("AipCopyOffice")]
+    public async Task<HttpResponseData> CopyOffice(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/aip/copy-office")] HttpRequestData req,
+        CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        CopyAipOfficeDto? body = await ConfigHttp.ReadBodyAsync<CopyAipOfficeDto>(req, ct);
+        if (body is null)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<AipOfficeDto>.Fail("Request body is missing or malformed."), ct);
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _aip.CopyOfficeFromPriorYearAsync(body, caller!.Id, ct), ct, HttpStatusCode.Created);
+    }
+
     // ── POST /api/budget-planning/aip/offices/{officeId}/programs ────────────
     [Function("AipAddProgram")]
     public async Task<HttpResponseData> AddProgram(

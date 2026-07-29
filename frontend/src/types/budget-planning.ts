@@ -96,6 +96,14 @@ export interface CreateAipOfficeRequest {
   name?: string | null;
 }
 
+/** RAL-180 — carry forward selected programs (with full subtrees) from a prior fiscal
+ * year's office into the target fiscal year. Target record/office are found-or-created. */
+export interface CopyAipOfficeRequest {
+  sourceOfficeId: number;
+  targetFiscalYear: number;
+  programIds: number[];
+}
+
 export interface CreateAipProgramRequest {
   name: string;
   functionBand?: string | null;

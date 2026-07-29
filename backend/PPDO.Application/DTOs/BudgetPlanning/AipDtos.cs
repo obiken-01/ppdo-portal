@@ -162,6 +162,13 @@ public record CreateAipRecordDto(int FiscalYear);
 /// </summary>
 public record CreateAipOfficeDto(int OfficeConfigId, string Sector, string? Name = null);
 
+/// <summary>
+/// RAL-180 — carry forward selected programs (with full project/activity subtrees) from
+/// <see cref="SourceOfficeId"/> into the target fiscal year. Target AipRecord/AipOffice are
+/// found-or-created by the service.
+/// </summary>
+public record CopyAipOfficeDto(int SourceOfficeId, int TargetFiscalYear, IReadOnlyList<int> ProgramIds);
+
 public record CreateAipProgramDto(string Name, string? FunctionBand = null);
 
 public record CreateAipProjectDto(string Name);

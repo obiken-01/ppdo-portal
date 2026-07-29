@@ -465,6 +465,202 @@ public sealed class AipService : IAipService
                 Array.Empty<AipProgramDto>()));
     }
 
+    public async Task<ServiceResult<AipOfficeDto>> CopyOfficeFromPriorYearAsync(
+        CopyAipOfficeDto dto, Guid createdById, CancellationToken ct = default)
+    {
+        if (dto.ProgramIds is null || dto.ProgramIds.Count == 0)
+            return ServiceResult<AipOfficeDto>.BadRequest("Select at least one program to copy.");
+
+        AipOffice? sourceOffice = await _aipRepo.GetOfficeByIdAsync(dto.SourceOfficeId, ct);
+        if (sourceOffice is null)
+            return ServiceResult<AipOfficeDto>.NotFound($"AIP office {dto.SourceOfficeId} not found.");
+
+        // Every requested program must actually belong to the source office.
+        IReadOnlyList<AipProgram> sourcePrograms =
+            await _aipRepo.GetProgramsByOfficeIdsAsync([dto.SourceOfficeId], ct);
+        Dictionary<int, AipProgram> sourceProgramsById = sourcePrograms.ToDictionary(p => p.Id);
+        List<int> unknownIds = dto.ProgramIds.Where(id => !sourceProgramsById.ContainsKey(id)).ToList();
+        if (unknownIds.Count > 0)
+            return ServiceResult<AipOfficeDto>.BadRequest(
+                $"Program id(s) {string.Join(", ", unknownIds)} do not belong to office {dto.SourceOfficeId}.");
+
+        List<AipProgram> programsToCopy = dto.ProgramIds.Select(id => sourceProgramsById[id]).ToList();
+
+        // Find-or-create the target AipRecord. Unlike CreateManualRecordAsync (which rejects
+        // outright if any active record exists), carry-forward specifically targets an existing
+        // Draft Manual record if one is already there — only creates fresh when none exists.
+        AipRecord? targetRecord = await _aipRepo.GetLatestByFiscalYearAsync(dto.TargetFiscalYear, ct);
+        bool creatingRecord = targetRecord is null;
+        if (targetRecord is not null
+            && (targetRecord.EntrySource != "Manual" || targetRecord.Status != PlanningStatus.Draft))
+        {
+            return ServiceResult<AipOfficeDto>.BadRequest(
+                $"An AIP for FY {dto.TargetFiscalYear} already exists (entry source " +
+                $"'{targetRecord.EntrySource}', status '{targetRecord.Status}'). Carry-forward " +
+                "requires a Draft Manual-entry record for the target year.");
+        }
+
+        if (creatingRecord)
+        {
+            targetRecord = new AipRecord
+            {
+                FiscalYear   = dto.TargetFiscalYear,
+                EntrySource  = "Manual",
+                UploadedById = createdById,
+                UploadedAt   = DateTime.UtcNow,
+                Status       = PlanningStatus.Draft,
+            };
+            await _aipRepo.AddAsync(targetRecord, ct);
+            await _aipRepo.SaveChangesAsync(ct);
+        }
+
+        // Find-or-create the target AipOffice — same RefCode as the source office. RefCode is
+        // year-independent (derived from sector prefix + the config Office's OfficeRefCode), so
+        // reusing it verbatim is correct, not a coincidence.
+        IReadOnlyList<AipOffice> targetOffices = await _aipRepo.GetOfficesByAipIdAsync(targetRecord!.Id, ct);
+        AipOffice? targetOffice = targetOffices.FirstOrDefault(o => o.RefCode == sourceOffice.RefCode);
+        bool creatingOffice = targetOffice is null;
+
+        // Collision guard — reject the whole request if any selected program's RefCode already
+        // exists under the target office (already carried forward once). Never silently skip.
+        if (!creatingOffice)
+        {
+            IReadOnlyList<AipProgram> existingTargetPrograms =
+                await _aipRepo.GetProgramsByOfficeIdsAsync([targetOffice!.Id], ct);
+            List<string> collisions = programsToCopy
+                .Select(p => p.RefCode)
+                .Intersect(existingTargetPrograms.Select(p => p.RefCode))
+                .ToList();
+            if (collisions.Count > 0)
+                return ServiceResult<AipOfficeDto>.BadRequest(
+                    "The following program ref codes are already copied into this office: " +
+                    string.Join(", ", collisions) + ".");
+        }
+
+        // Load the full subtree under the selected programs.
+        List<int> programIdsToCopy = programsToCopy.Select(p => p.Id).ToList();
+        IReadOnlyList<AipProject> sourceProjects =
+            await _aipRepo.GetProjectsByProgramIdsAsync(programIdsToCopy, ct);
+        List<int> sourceProjectIds = sourceProjects.Select(j => j.Id).ToList();
+        IReadOnlyList<AipActivity> sourceActivities =
+            await _aipRepo.GetActivitiesByProjectIdsAsync(sourceProjectIds, ct);
+
+        // Clone Program -> Projects -> Activities with fresh identity throughout. IsCreation
+        // resets to false — it's captured during WFP data entry, not an AIP-import-time fact,
+        // so it must not silently carry over from last year's WFP decisions (RAL-180 acceptance
+        // criteria). IsSynthetic is copied as-is since it reflects structural shape from the
+        // original import, not a WFP decision.
+        List<AipProgram> clonedPrograms = programsToCopy.Select(p => new AipProgram
+        {
+            RefCode      = p.RefCode,
+            Name         = p.Name,
+            FunctionBand = p.FunctionBand,
+            Projects = sourceProjects.Where(j => j.ProgramId == p.Id).Select(j => new AipProject
+            {
+                RefCode     = j.RefCode,
+                Name        = j.Name,
+                IsSynthetic = j.IsSynthetic,
+                Activities = sourceActivities.Where(a => a.ProjectId == j.Id).Select(a => new AipActivity
+                {
+                    RefCode               = a.RefCode,
+                    Name                  = a.Name,
+                    EsreCode              = a.EsreCode,
+                    ImplementingOffice    = a.ImplementingOffice,
+                    StartDate             = a.StartDate,
+                    EndDate               = a.EndDate,
+                    ExpectedOutputs       = a.ExpectedOutputs,
+                    FundingSourceId       = a.FundingSourceId,
+                    FundingSourceSnapshot = a.FundingSourceSnapshot,
+                    Ps                    = a.Ps,
+                    Mooe                  = a.Mooe,
+                    Co                    = a.Co,
+                    Total                 = a.Total,
+                    CcAdaptation          = a.CcAdaptation,
+                    CcMitigation          = a.CcMitigation,
+                    CcTypologyCode        = a.CcTypologyCode,
+                    IsCreation            = false,
+                    IsSynthetic           = a.IsSynthetic,
+                }).ToList(),
+            }).ToList(),
+        }).ToList();
+
+        if (creatingOffice)
+        {
+            targetOffice = new AipOffice
+            {
+                AipRecordId = targetRecord.Id,
+                RefCode     = sourceOffice.RefCode,
+                Name        = sourceOffice.Name,
+                Sector      = sourceOffice.Sector,
+                Programs    = clonedPrograms,
+            };
+            await _officeRepo.AddAsync(targetOffice, ct);
+            await _officeRepo.SaveChangesAsync(ct);
+        }
+        else
+        {
+            // Office already exists — queue each cloned program (with its nested subtree) and
+            // flush them together in one SaveChangesAsync, so an N-program copy is one transaction.
+            foreach (AipProgram program in clonedPrograms)
+            {
+                program.OfficeId = targetOffice!.Id;
+                await _programRepo.AddAsync(program, ct);
+            }
+            await _programRepo.SaveChangesAsync(ct);
+        }
+
+        await _audit.LogAsync("aip_offices", targetOffice!.Id, AuditAction.Create, null, new
+        {
+            targetOffice.AipRecordId,
+            targetOffice.RefCode,
+            targetOffice.Name,
+            SourceAipOfficeId = dto.SourceOfficeId,
+            SourceAipRecordId = sourceOffice.AipRecordId,
+            CopiedProgramIds  = dto.ProgramIds,
+        }, ct);
+
+        // Build the response from the target office's COMPLETE current program list — not just
+        // clonedPrograms. The frontend replaces the whole office node in its tree with this
+        // response; if the office already existed and the response only carried the newly-added
+        // slice, its pre-existing programs would silently vanish from the UI. A brand-new office
+        // has no pre-existing programs, so clonedPrograms (already fully populated in memory) is
+        // already the complete list there — no need to round-trip through the repository.
+        IReadOnlyList<AipProgramDto> programDtos;
+        if (creatingOffice)
+        {
+            programDtos = clonedPrograms.Select(p => new AipProgramDto(
+                p.Id, targetOffice.Id, p.RefCode, p.Name,
+                p.Projects.Select(j => new AipProjectDto(
+                    j.Id, p.Id, j.RefCode, j.Name,
+                    j.Activities.Select(MapActivityToDto).ToList(),
+                    j.IsSynthetic)).ToList(),
+                p.FunctionBand)).ToList();
+        }
+        else
+        {
+            IReadOnlyList<AipProgram> allTargetPrograms =
+                await _aipRepo.GetProgramsByOfficeIdsAsync([targetOffice.Id], ct);
+            List<int> allTargetProgramIds = allTargetPrograms.Select(p => p.Id).ToList();
+            IReadOnlyList<AipProject> allTargetProjects =
+                await _aipRepo.GetProjectsByProgramIdsAsync(allTargetProgramIds, ct);
+            List<int> allTargetProjectIds = allTargetProjects.Select(j => j.Id).ToList();
+            IReadOnlyList<AipActivity> allTargetActivities =
+                await _aipRepo.GetActivitiesByProjectIdsAsync(allTargetProjectIds, ct);
+
+            programDtos = allTargetPrograms.Select(p => new AipProgramDto(
+                p.Id, targetOffice.Id, p.RefCode, p.Name,
+                allTargetProjects.Where(j => j.ProgramId == p.Id).Select(j => new AipProjectDto(
+                    j.Id, p.Id, j.RefCode, j.Name,
+                    allTargetActivities.Where(a => a.ProjectId == j.Id).Select(MapActivityToDto).ToList(),
+                    j.IsSynthetic)).ToList(),
+                p.FunctionBand)).ToList();
+        }
+
+        return ServiceResult<AipOfficeDto>.Ok(
+            new AipOfficeDto(targetOffice.Id, targetOffice.AipRecordId, targetOffice.RefCode,
+                targetOffice.Name, targetOffice.Sector, programDtos));
+    }
+
     public async Task<ServiceResult<AipProgramDto>> AddProgramAsync(
         int officeId, CreateAipProgramDto dto, CancellationToken ct = default)
     {

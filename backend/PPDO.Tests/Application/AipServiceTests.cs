@@ -1403,6 +1403,342 @@ public sealed class AipServiceTests
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
     }
 
+    // ── CopyOfficeFromPriorYearAsync (RAL-180) ──────────────────────────────────
+    //
+    // Fixture shape shared by these tests: a source FY2027 record (id 1, Upload-sourced,
+    // Final — carry-forward reads from a historical record, it never needs to be Draft) with
+    // one office (id 20, RefCode "1000-000-1-01-010") holding two programs (30 "Program A",
+    // 31 "Program B"), each with one project/one activity, built via helpers below.
+
+    private static AipOffice SourceOffice() => new()
+    { Id = 20, AipRecordId = 1, RefCode = "1000-000-1-01-010", Name = "PPDO", Sector = "GENERAL" };
+
+    private static AipProgram SourceProgramA() => new()
+    { Id = 30, OfficeId = 20, RefCode = "1000-000-1-01-010-001", Name = "Program A", FunctionBand = "CORE" };
+
+    private static AipProgram SourceProgramB() => new()
+    { Id = 31, OfficeId = 20, RefCode = "1000-000-1-01-010-002", Name = "Program B", FunctionBand = "STRATEGIC" };
+
+    private static AipProject SourceProject(int id, int programId, string refCode) => new()
+    { Id = id, ProgramId = programId, RefCode = refCode, Name = "Project X", IsSynthetic = false };
+
+    private static AipActivity SourceActivity(int id, int projectId, string refCode) => new()
+    {
+        Id = id, ProjectId = projectId, RefCode = refCode, Name = "Activity Z",
+        EsreCode = "SS", ImplementingOffice = "PPDO", StartDate = "January", EndDate = "December",
+        ExpectedOutputs = "Outputs", FundingSourceId = 5, FundingSourceSnapshot = "GF",
+        Ps = 100m, Mooe = 200m, Co = 50m, Total = 350m,
+        CcAdaptation = 10m, CcMitigation = 5m, CcTypologyCode = "TYP1",
+        IsCreation = true, IsSynthetic = false,
+    };
+
+    [Fact]
+    public async Task CopyOfficeFromPriorYear_TargetRecordMissing_CreatesManualDraftRecordAndOffice()
+    {
+        AipRecord sourceRec = Rec(1, PlanningStatus.Final);
+        AipOffice office = SourceOffice();
+        AipProgram progA = SourceProgramA();
+        AipProject proj = SourceProject(40, 30, "1000-000-1-01-010-001-001");
+        AipActivity act = SourceActivity(50, 40, "1000-000-1-01-010-001-001-001");
+        var (sut, aipRepo, _, _, _, audit, officeRepo, _, _, _, _, _) = Build(
+            [sourceRec], [], officeSeed: [office], programSeed: [progA],
+            projectSeed: [proj], actSeed: [act]);
+
+        ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
+            new CopyAipOfficeDto(20, 2028, [30]), UserId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("1000-000-1-01-010", result.Value!.RefCode);
+        Assert.Equal("PPDO", result.Value.Name);
+        Assert.Equal("GENERAL", result.Value.Sector);
+        Assert.Single(result.Value.Programs);
+        aipRepo.Verify(r => r.AddAsync(
+            It.Is<AipRecord>(r => r.FiscalYear == 2028 && r.EntrySource == "Manual" && r.Status == PlanningStatus.Draft),
+            It.IsAny<CancellationToken>()), Times.Once);
+        officeRepo.Verify(r => r.AddAsync(It.IsAny<AipOffice>(), It.IsAny<CancellationToken>()), Times.Once);
+        audit.Verify(a => a.LogAsync("aip_offices", It.IsAny<int>(), AuditAction.Create,
+            null, It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CopyOfficeFromPriorYear_ClonesFullSubtree_PreservesFieldsExceptIdAndIsCreation()
+    {
+        AipRecord sourceRec = Rec(1, PlanningStatus.Final);
+        AipOffice office = SourceOffice();
+        AipProgram progA = SourceProgramA();
+        AipProject proj = SourceProject(40, 30, "1000-000-1-01-010-001-001");
+        AipActivity act = SourceActivity(50, 40, "1000-000-1-01-010-001-001-001");
+        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build(
+            [sourceRec], [], officeSeed: [office], programSeed: [progA],
+            projectSeed: [proj], actSeed: [act]);
+
+        ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
+            new CopyAipOfficeDto(20, 2028, [30]), UserId);
+
+        Assert.True(result.IsSuccess);
+        AipProgramDto copiedProgram = result.Value!.Programs.Single();
+        Assert.NotEqual(30, copiedProgram.Id); // fresh identity
+        Assert.Equal("1000-000-1-01-010-001", copiedProgram.RefCode); // RefCode preserved verbatim
+        Assert.Equal("Program A", copiedProgram.Name);
+        Assert.Equal("CORE", copiedProgram.FunctionBand);
+
+        AipProjectDto copiedProject = copiedProgram.Projects.Single();
+        Assert.NotEqual(40, copiedProject.Id);
+        Assert.Equal("1000-000-1-01-010-001-001", copiedProject.RefCode);
+        Assert.Equal("Project X", copiedProject.Name);
+
+        AipActivityDto copiedActivity = copiedProject.Activities.Single();
+        Assert.NotEqual(50, copiedActivity.Id);
+        Assert.Equal("1000-000-1-01-010-001-001-001", copiedActivity.RefCode);
+        Assert.Equal("Activity Z", copiedActivity.Name);
+        Assert.Equal(100m, copiedActivity.Ps);
+        Assert.Equal(200m, copiedActivity.Mooe);
+        Assert.Equal(50m, copiedActivity.Co);
+        Assert.Equal(350m, copiedActivity.Total);
+        Assert.Equal(5, copiedActivity.FundingSourceId);
+        Assert.Equal("GF", copiedActivity.FundingSourceSnapshot);
+        Assert.Equal(10m, copiedActivity.CcAdaptation);
+        Assert.Equal(5m, copiedActivity.CcMitigation);
+        Assert.Equal("TYP1", copiedActivity.CcTypologyCode);
+        Assert.False(copiedActivity.IsSynthetic == true && false); // sanity — IsSynthetic copied as-is (false here)
+        Assert.False(copiedActivity.IsCreation); // source had IsCreation = true — must reset to false on copy
+    }
+
+    [Fact]
+    public async Task CopyOfficeFromPriorYear_TargetRecordExistsAsManualDraft_ReusesRecord_CreatesOffice()
+    {
+        AipRecord sourceRec = Rec(1, PlanningStatus.Final);
+        AipRecord targetRec = new()
+        {
+            Id = 2, FiscalYear = 2028, EntrySource = "Manual",
+            UploadedById = UserId, UploadedAt = DateTime.UtcNow, Status = PlanningStatus.Draft,
+        };
+        AipOffice office = SourceOffice();
+        AipProgram progA = SourceProgramA();
+        var (sut, aipRepo, _, _, _, _, officeRepo, _, _, _, _, _) = Build(
+            [sourceRec, targetRec], [], officeSeed: [office], programSeed: [progA]);
+
+        ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
+            new CopyAipOfficeDto(20, 2028, [30]), UserId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Value!.AipRecordId); // reused the existing target record, not a new one
+        aipRepo.Verify(r => r.AddAsync(It.IsAny<AipRecord>(), It.IsAny<CancellationToken>()), Times.Never);
+        officeRepo.Verify(r => r.AddAsync(It.IsAny<AipOffice>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Theory]
+    [InlineData("Upload", PlanningStatus.Draft)]
+    [InlineData("Manual", PlanningStatus.Final)]
+    public async Task CopyOfficeFromPriorYear_TargetRecordNotDraftManual_ReturnsBadRequest(
+        string entrySource, string status)
+    {
+        AipRecord sourceRec = Rec(1, PlanningStatus.Final);
+        AipRecord targetRec = new()
+        {
+            Id = 2, FiscalYear = 2028, EntrySource = entrySource,
+            UploadedById = UserId, UploadedAt = DateTime.UtcNow, Status = status,
+        };
+        AipOffice office = SourceOffice();
+        AipProgram progA = SourceProgramA();
+        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build(
+            [sourceRec, targetRec], [], officeSeed: [office], programSeed: [progA]);
+
+        ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
+            new CopyAipOfficeDto(20, 2028, [30]), UserId);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task CopyOfficeFromPriorYear_TargetRecordArchived_DoesNotBlock_CreatesNewRecordInstead()
+    {
+        // Archived records never count as "the active record for a fiscal year" anywhere in
+        // AipService (GetLatestByFiscalYearAsync filters them out — same rule
+        // CreateManualRecordAsync relies on) — carry-forward is no different: an Archived target
+        // year is treated as if nothing exists yet, and a fresh Manual Draft record is created.
+        AipRecord sourceRec = Rec(1, PlanningStatus.Final);
+        AipRecord archivedTargetRec = new()
+        {
+            Id = 2, FiscalYear = 2028, EntrySource = "Manual",
+            UploadedById = UserId, UploadedAt = DateTime.UtcNow, Status = PlanningStatus.Archived,
+        };
+        AipOffice office = SourceOffice();
+        AipProgram progA = SourceProgramA();
+        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _) = Build(
+            [sourceRec, archivedTargetRec], [], officeSeed: [office], programSeed: [progA]);
+
+        ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
+            new CopyAipOfficeDto(20, 2028, [30]), UserId);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotEqual(2, result.Value!.AipRecordId); // a new record, not the archived one
+        aipRepo.Verify(r => r.AddAsync(
+            It.Is<AipRecord>(r => r.FiscalYear == 2028 && r.Status == PlanningStatus.Draft),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CopyOfficeFromPriorYear_TargetOfficeAlreadyExists_AddsProgramsToIt_NoNewOffice()
+    {
+        AipRecord sourceRec = Rec(1, PlanningStatus.Final);
+        AipRecord targetRec = new()
+        {
+            Id = 2, FiscalYear = 2028, EntrySource = "Manual",
+            UploadedById = UserId, UploadedAt = DateTime.UtcNow, Status = PlanningStatus.Draft,
+        };
+        AipOffice sourceOff = SourceOffice();
+        // Same RefCode already present under the target record — this IS the office to reuse.
+        AipOffice targetOff = new() { Id = 21, AipRecordId = 2, RefCode = "1000-000-1-01-010", Name = "PPDO", Sector = "GENERAL" };
+        AipProgram progA = SourceProgramA(); // under source office 20
+        var (sut, _, _, _, _, _, officeRepo, _, _, programRepo, _, _) = Build(
+            [sourceRec, targetRec], [], officeSeed: [sourceOff, targetOff], programSeed: [progA]);
+
+        ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
+            new CopyAipOfficeDto(20, 2028, [30]), UserId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(21, result.Value!.Id); // reused the existing target office, not a new one
+        officeRepo.Verify(r => r.AddAsync(It.IsAny<AipOffice>(), It.IsAny<CancellationToken>()), Times.Never);
+        programRepo.Verify(r => r.AddAsync(
+            It.Is<AipProgram>(p => p.OfficeId == 21 && p.RefCode == "1000-000-1-01-010-001"),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CopyOfficeFromPriorYear_TargetOfficeAlreadyHasOtherPrograms_ResponseIncludesBoth()
+    {
+        // Regression guard: the response must reflect the office's COMPLETE program list after
+        // the copy, not just the newly-added slice — the frontend replaces the whole office node
+        // in its tree with this response, so a partial list would silently drop the office's
+        // pre-existing programs from the UI.
+        AipRecord sourceRec = Rec(1, PlanningStatus.Final);
+        AipRecord targetRec = new()
+        {
+            Id = 2, FiscalYear = 2028, EntrySource = "Manual",
+            UploadedById = UserId, UploadedAt = DateTime.UtcNow, Status = PlanningStatus.Draft,
+        };
+        AipOffice sourceOff = SourceOffice();
+        AipOffice targetOff = new() { Id = 21, AipRecordId = 2, RefCode = "1000-000-1-01-010", Name = "PPDO", Sector = "GENERAL" };
+        // Pre-existing program already under the target office, unrelated RefCode — no collision.
+        AipProgram preExisting = new()
+        { Id = 61, OfficeId = 21, RefCode = "1000-000-1-01-010-005", Name = "Already there", FunctionBand = "CORE" };
+        AipProgram progA = SourceProgramA(); // to be copied in, RefCode "...-001"
+        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build(
+            [sourceRec, targetRec], [], officeSeed: [sourceOff, targetOff],
+            programSeed: [progA, preExisting]);
+
+        ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
+            new CopyAipOfficeDto(20, 2028, [30]), UserId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Value!.Programs.Count);
+        Assert.Contains(result.Value.Programs, p => p.RefCode == "1000-000-1-01-010-005"); // pre-existing survived
+        Assert.Contains(result.Value.Programs, p => p.RefCode == "1000-000-1-01-010-001"); // newly copied present
+    }
+
+    [Fact]
+    public async Task CopyOfficeFromPriorYear_ProgramNotBelongingToSourceOffice_ReturnsBadRequest()
+    {
+        AipRecord sourceRec = Rec(1, PlanningStatus.Final);
+        AipOffice office = SourceOffice();
+        AipProgram progA = SourceProgramA(); // Id 30, belongs to office 20
+        var (sut, _, _, _, _, _, officeRepo, _, _, _, _, _) = Build(
+            [sourceRec], [], officeSeed: [office], programSeed: [progA]);
+
+        // 999 does not belong to office 20.
+        ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
+            new CopyAipOfficeDto(20, 2028, [30, 999]), UserId);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("999", result.Error);
+        officeRepo.Verify(r => r.AddAsync(It.IsAny<AipOffice>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CopyOfficeFromPriorYear_ProgramRefCodeAlreadyExistsUnderTargetOffice_ReturnsBadRequest_NoSideEffects()
+    {
+        AipRecord sourceRec = Rec(1, PlanningStatus.Final);
+        AipRecord targetRec = new()
+        {
+            Id = 2, FiscalYear = 2028, EntrySource = "Manual",
+            UploadedById = UserId, UploadedAt = DateTime.UtcNow, Status = PlanningStatus.Draft,
+        };
+        AipOffice sourceOff = SourceOffice();
+        AipOffice targetOff = new() { Id = 21, AipRecordId = 2, RefCode = "1000-000-1-01-010", Name = "PPDO", Sector = "GENERAL" };
+        // Target office already has a program at the exact RefCode we're about to copy.
+        AipProgram existingTargetProgram = new()
+        { Id = 60, OfficeId = 21, RefCode = "1000-000-1-01-010-001", Name = "Already here", FunctionBand = "CORE" };
+        AipProgram progA = SourceProgramA(); // same RefCode "1000-000-1-01-010-001", under source office 20
+        var (sut, _, _, _, _, _, officeRepo, _, _, programRepo, _, _) = Build(
+            [sourceRec, targetRec], [], officeSeed: [sourceOff, targetOff],
+            programSeed: [progA, existingTargetProgram]);
+
+        ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
+            new CopyAipOfficeDto(20, 2028, [30]), UserId);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("1000-000-1-01-010-001", result.Error);
+        officeRepo.Verify(r => r.AddAsync(It.IsAny<AipOffice>(), It.IsAny<CancellationToken>()), Times.Never);
+        programRepo.Verify(r => r.AddAsync(It.IsAny<AipProgram>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CopyOfficeFromPriorYear_SourceOfficeNotFound_ReturnsNotFound()
+    {
+        AipRecord sourceRec = Rec(1, PlanningStatus.Final);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([sourceRec], []);
+
+        ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
+            new CopyAipOfficeDto(999, 2028, [30]), UserId);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Fact]
+    public async Task CopyOfficeFromPriorYear_EmptyProgramIds_ReturnsBadRequest()
+    {
+        AipRecord sourceRec = Rec(1, PlanningStatus.Final);
+        AipOffice office = SourceOffice();
+        var (sut, _, _, _, _, _, _, _, _, _, _, _) = Build([sourceRec], [], officeSeed: [office]);
+
+        ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
+            new CopyAipOfficeDto(20, 2028, []), UserId);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task CopyOfficeFromPriorYear_ExistingTargetOffice_TwoProgramsSelected_BothAddedInOneTransaction()
+    {
+        AipRecord sourceRec = Rec(1, PlanningStatus.Final);
+        AipRecord targetRec = new()
+        {
+            Id = 2, FiscalYear = 2028, EntrySource = "Manual",
+            UploadedById = UserId, UploadedAt = DateTime.UtcNow, Status = PlanningStatus.Draft,
+        };
+        AipOffice sourceOff = SourceOffice();
+        AipOffice targetOff = new() { Id = 21, AipRecordId = 2, RefCode = "1000-000-1-01-010", Name = "PPDO", Sector = "GENERAL" };
+        AipProgram progA = SourceProgramA();
+        AipProgram progB = SourceProgramB();
+        var (sut, _, _, _, _, _, officeRepo, _, _, programRepo, _, _) = Build(
+            [sourceRec, targetRec], [], officeSeed: [sourceOff, targetOff], programSeed: [progA, progB]);
+
+        ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
+            new CopyAipOfficeDto(20, 2028, [30, 31]), UserId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Value!.Programs.Count);
+        officeRepo.Verify(r => r.AddAsync(It.IsAny<AipOffice>(), It.IsAny<CancellationToken>()), Times.Never);
+        programRepo.Verify(r => r.AddAsync(It.IsAny<AipProgram>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+        programRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     [Fact]
     public async Task AddProgram_FirstUnderOffice_RefCodeAppends001()
     {
