@@ -11,9 +11,11 @@ import type {
   CreateLdipRequest,
   LdipImportConfirmRequest,
   LdipImportPreviewResponse,
+  LdipProgram,
   LdipRecord,
   LdipRecordDetail,
   LdipStatus,
+  SaveLdipProgram,
   UpdateLdipRequest,
 } from "@/types";
 
@@ -74,6 +76,19 @@ export async function createLdip(body: CreateLdipRequest): Promise<LdipRecordDet
 
 export async function updateLdip(id: number, body: UpdateLdipRequest): Promise<LdipRecordDetail> {
   const { data } = await api.put<ApiResponse<LdipRecordDetail>>(`/budget-planning/ldip/${id}`, body);
+  return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// Inline per-program edit (RAL-115) — PUT /api/budget-planning/ldip/{id}/programs/{programId}
+// ---------------------------------------------------------------------------
+
+export async function updateLdipProgram(
+  ldipRecordId: number, programId: number, body: SaveLdipProgram
+): Promise<LdipProgram> {
+  const { data } = await api.put<ApiResponse<LdipProgram>>(
+    `/budget-planning/ldip/${ldipRecordId}/programs/${programId}`, body
+  );
   return unwrap(data);
 }
 

@@ -193,6 +193,74 @@ public sealed class LdipService : ILdipService
         return ServiceResult<LdipRecordDetailDto>.Ok(MapToDetail(rec, rebuilt));
     }
 
+    // ── Inline per-program edit (RAL-115) ─────────────────────────────────────
+
+    public async Task<ServiceResult<LdipProgramDto>> UpdateProgramAsync(
+        int ldipRecordId, int programId, SaveLdipProgramDto dto, CancellationToken ct = default)
+    {
+        LdipProgram? program = await _repo.GetProgramByIdAsync(programId, ct);
+        if (program is null)
+            return ServiceResult<LdipProgramDto>.NotFound($"LDIP program {programId} not found.");
+
+        LdipRecord? rec = await _repo.GetByIntIdAsync(program.Office.LdipRecordId, ct);
+        if (rec is null)
+            return ServiceResult<LdipProgramDto>.NotFound($"LDIP record {program.Office.LdipRecordId} not found.");
+        if (rec.Id != ldipRecordId)
+            return ServiceResult<LdipProgramDto>.NotFound(
+                $"LDIP program {programId} does not belong to LDIP record {ldipRecordId}.");
+        if (rec.Status != PlanningStatus.Draft)
+            return ServiceResult<LdipProgramDto>.BadRequest("Cannot edit a Final or Archived LDIP record.");
+
+        if (string.IsNullOrWhiteSpace(dto.Name))
+            return ServiceResult<LdipProgramDto>.BadRequest("Program name is required.");
+
+        Dictionary<string, FundingSource> fsLookup = await LoadFundingSourceLookupAsync(ct);
+        fsLookup.TryGetValue(dto.FundingSourceRaw ?? string.Empty, out FundingSource? fs);
+
+        object old = new
+        {
+            program.Name, program.Budget, program.ImplementingOffice, program.StartDate, program.EndDate,
+            program.ExpectedOutputs, program.FundingSourceId, program.FundingSourceSnapshot,
+            program.Ps, program.Mooe, program.Co, program.CcAdaptation, program.CcMitigation, program.CcTypologyCode,
+            program.PdpRdp, program.Sdgs, program.SendaiFramework, program.NdrrmPlan, program.Nsp, program.Pdpdfp,
+        };
+
+        // Name is normalised to UPPERCASE — matching BuildHierarchy's own convention for
+        // every other program row, so an inline edit doesn't leave this one row inconsistent.
+        program.Name                  = dto.Name.Trim().ToUpperInvariant();
+        program.Budget                = dto.Budget;
+        program.ImplementingOffice    = dto.ImplementingOffice;
+        program.StartDate             = dto.StartDate;
+        program.EndDate               = dto.EndDate;
+        program.ExpectedOutputs       = dto.ExpectedOutputs;
+        program.FundingSourceId       = fs?.Id;
+        program.FundingSourceSnapshot = fs?.Code ?? dto.FundingSourceRaw;
+        program.Ps                    = dto.Ps;
+        program.Mooe                  = dto.Mooe;
+        program.Co                    = dto.Co;
+        program.CcAdaptation          = dto.CcAdaptation;
+        program.CcMitigation          = dto.CcMitigation;
+        program.CcTypologyCode        = dto.CcTypologyCode;
+        program.PdpRdp                = dto.PdpRdp;
+        program.Sdgs                  = dto.Sdgs;
+        program.SendaiFramework       = dto.SendaiFramework;
+        program.NdrrmPlan             = dto.NdrrmPlan;
+        program.Nsp                   = dto.Nsp;
+        program.Pdpdfp                = dto.Pdpdfp;
+
+        await _repo.SaveChangesAsync(ct);
+        await _audit.LogAsync("ldip_programs", program.Id, AuditAction.Update, old,
+            new
+            {
+                program.Name, program.Budget, program.ImplementingOffice, program.StartDate, program.EndDate,
+                program.ExpectedOutputs, program.FundingSourceId, program.FundingSourceSnapshot,
+                program.Ps, program.Mooe, program.Co, program.CcAdaptation, program.CcMitigation, program.CcTypologyCode,
+                program.PdpRdp, program.Sdgs, program.SendaiFramework, program.NdrrmPlan, program.Nsp, program.Pdpdfp,
+            }, ct);
+
+        return ServiceResult<LdipProgramDto>.Ok(MapProgramToDto(program));
+    }
+
     // ── Status transitions ────────────────────────────────────────────────────
 
     public async Task<ServiceResult<LdipRecordDto>> FinalizeAsync(

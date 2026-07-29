@@ -46,6 +46,12 @@ public sealed class LdipRepository : Repository<LdipRecord>, ILdipRepository
             .ToListAsync(ct);
 
     /// <inheritdoc />
+    public async Task<LdipProgram?> GetProgramByIdAsync(int id, CancellationToken ct = default)
+        => await _context.Set<LdipProgram>()
+            .Include(p => p.Office)
+            .FirstOrDefaultAsync(p => p.Id == id, ct);
+
+    /// <inheritdoc />
     public Task DeleteOfficeGroupAsync(LdipOffice group, CancellationToken ct = default)
     {
         _context.Set<LdipOffice>().Remove(group);
