@@ -1512,14 +1512,38 @@ function SeedFromLdipPanel({
     setSourceGroup(null);
     setCheckedProgramIds(new Set());
     try {
-      const records = await listLdip({ officeId: Number(officeConfigId) });
-      const candidates = records.filter((r) => r.status !== "Archived");
+      // Tier 1 — this office's own LDIP records (New/Amendment/Supplemental). Sector text match
+      // is safe here since these records' groups already all belong to this one office.
+      const ownRecords = await listLdip({ officeId: Number(officeConfigId) });
       let found: LdipOfficeGroup | null = null;
-      for (const rec of candidates) {
+      for (const rec of ownRecords.filter((r) => r.status !== "Archived")) {
         const detail = await getLdipById(rec.id);
         const group = detail.groups.find((g) => g.sector.toUpperCase() === sector.toUpperCase());
         if (group) { found = group; break; }
       }
+
+      // Tier 2 — multi-office Upload records (officeId null, one document spans every office).
+      // An office with no dedicated record of its own (e.g. archived after a bulk import) would
+      // otherwise show "no LDIP" even though the bulk document has its data. Sector text alone
+      // can't disambiguate within one multi-office document (many offices share "General"), so
+      // match by this office's own computed AIP ref code instead — mirrors the backend's own
+      // resolution in AipService.SeedProgramsFromLdipAsync.
+      if (!found) {
+        const office = officeConfigs.find((o) => String(o.id) === officeConfigId);
+        if (office?.officeRefCode) {
+          const expectedRefCode = `${AIP_SECTOR_PREFIX[sector]}-000-1-${office.officeRefCode}`;
+          const allRecords = await listLdip({});
+          const multiOfficeRecords = allRecords.filter((r) => r.officeId == null && r.status !== "Archived");
+          for (const rec of multiOfficeRecords) {
+            const detail = await getLdipById(rec.id);
+            const group = detail.groups.find(
+              (g) => g.refCode.toUpperCase() === expectedRefCode.toUpperCase()
+            );
+            if (group) { found = group; break; }
+          }
+        }
+      }
+
       if (!found) {
         setError(`This office has no LDIP for the ${sector} sector.`);
         return;

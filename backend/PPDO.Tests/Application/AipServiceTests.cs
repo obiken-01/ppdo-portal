@@ -2099,6 +2099,91 @@ public sealed class AipServiceTests
         Assert.Equal("Newest Program", result.Value!.Programs.Single().Name);
     }
 
+    // ── Multi-office (Upload) LDIP fallback — bug found in live use: an office's own dedicated
+    // LDIP record (New/Amendment/Supplemental, LdipRecord.OfficeId set) can be archived, leaving
+    // only a multi-office bulk-upload document (LdipRecord.OfficeId = null, RAL-165) as the real
+    // source of truth. The office-scoped GetListAsync query can never surface that record at all,
+    // so without a fallback the feature silently reports "no LDIP" even though the data exists.
+
+    private static LdipRecord UploadRec(int id, string status = "Draft") => new()
+    {
+        Id = id, OfficeId = null, RefCode = $"LDIP-2026-{id:D3}", Title = "All Offices",
+        FiscalYearStart = 2026, FiscalYearEnd = 2029, EntryMode = "Upload", Status = status,
+        CreatedById = UserId, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+    };
+
+    [Fact]
+    public async Task SeedFromLdip_OwnRecordArchived_FallsBackToMultiOfficeUploadRecord()
+    {
+        List<Office> officeConfigs = [MakeOffice(7, "PPDO", "01-010")];
+        // The office's own dedicated LDIP record has since been archived.
+        LdipRecord archivedOwnRec = LdipRec(5, 7, status: PlanningStatus.Archived);
+        LdipOffice archivedOwnGroup = LdipGroup(70, 5);
+        archivedOwnGroup.Programs.Add(LdipProg(80, 70, "1000-000-1-01-010-001", "Archived Own Program"));
+
+        // A multi-office Upload record spans every office — its group at THIS office's exact ref
+        // code is the fallback source. A same-sector group under a DIFFERENT office's ref code
+        // must not be matched (Sector text alone can't disambiguate within one multi-office doc).
+        LdipRecord uploadRec = UploadRec(6);
+        LdipOffice uploadGroup = LdipGroup(71, 6, sector: "General");
+        uploadGroup.Programs.Add(LdipProg(90, 71, "1000-000-1-01-010-001", "Uploaded Program"));
+        LdipOffice otherOfficeGroup = LdipGroup(72, 6, refCode: "1000-000-1-02-020", sector: "General", name: "Other Office");
+        otherOfficeGroup.Programs.Add(LdipProg(91, 72, "1000-000-1-02-020-001", "Other Office Program"));
+
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build(
+            [], [], officeConfigSeed: officeConfigs,
+            ldipRecordSeed: [archivedOwnRec, uploadRec],
+            ldipOfficeSeed: [archivedOwnGroup, uploadGroup, otherOfficeGroup]);
+
+        ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
+            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [90]), UserId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Uploaded Program", result.Value!.Programs.Single().Name);
+    }
+
+    [Fact]
+    public async Task SeedFromLdip_OwnRecordExists_TakesPriorityOverMultiOfficeUploadRecord()
+    {
+        List<Office> officeConfigs = [MakeOffice(7, "PPDO", "01-010")];
+        LdipRecord ownRec = LdipRec(5, 7); // Final — not archived, own dedicated record
+        LdipOffice ownGroup = LdipGroup(70, 5);
+        ownGroup.Programs.Add(LdipProg(80, 70, "1000-000-1-01-010-001", "Own Program"));
+
+        LdipRecord uploadRec = UploadRec(6);
+        LdipOffice uploadGroup = LdipGroup(71, 6, sector: "General");
+        uploadGroup.Programs.Add(LdipProg(90, 71, "1000-000-1-01-010-001", "Uploaded Program"));
+
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build(
+            [], [], officeConfigSeed: officeConfigs,
+            ldipRecordSeed: [ownRec, uploadRec],
+            ldipOfficeSeed: [ownGroup, uploadGroup]);
+
+        ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
+            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Own Program", result.Value!.Programs.Single().Name); // Tier 1, not the upload doc
+    }
+
+    [Fact]
+    public async Task SeedFromLdip_NoOwnRecord_OfficeHasNoRefCodeConfigured_SkipsFallback_ReturnsBadRequest()
+    {
+        List<Office> officeConfigs = [MakeOffice(7, "PPDO", officeRefCode: null)];
+        LdipRecord uploadRec = UploadRec(6);
+        LdipOffice uploadGroup = LdipGroup(71, 6, sector: "General");
+        uploadGroup.Programs.Add(LdipProg(90, 71, "1000-000-1-01-010-001", "Uploaded Program"));
+
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build(
+            [], [], officeConfigSeed: officeConfigs, ldipRecordSeed: [uploadRec], ldipOfficeSeed: [uploadGroup]);
+
+        ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
+            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [90]), UserId);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
     [Fact]
     public async Task AddProgram_FirstUnderOffice_RefCodeAppends001()
     {

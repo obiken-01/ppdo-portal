@@ -670,7 +670,7 @@ public sealed class AipService : IAipService
         if (dto.LdipProgramIds is null || dto.LdipProgramIds.Count == 0)
             return ServiceResult<AipOfficeDto>.BadRequest("Select at least one program to seed.");
 
-        if (!AipSector.Prefixes.ContainsKey(dto.Sector?.Trim() ?? string.Empty))
+        if (!AipSector.Prefixes.TryGetValue(dto.Sector?.Trim() ?? string.Empty, out string? prefix))
             return ServiceResult<AipOfficeDto>.BadRequest(
                 $"Sector must be one of: {string.Join(", ", AipSector.Prefixes.Keys)}.");
         string sector = dto.Sector!.Trim().ToUpperInvariant();
@@ -679,17 +679,45 @@ public sealed class AipService : IAipService
         if (office is null || !office.IsActive)
             return ServiceResult<AipOfficeDto>.NotFound($"Office {dto.OfficeConfigId} not found or inactive.");
 
-        // Resolve the matching LdipOffice — scan this config office's non-Archived LdipRecords
-        // (GetListAsync returns newest-first) for the first one with a sector group matching the
-        // requested sector. Case-insensitive: LDIP stores "General"/"Social"/…, AIP "GENERAL"/….
-        IReadOnlyList<LdipRecord> ldipRecords = await _ldipRepo.GetListAsync(dto.OfficeConfigId, null, ct);
+        // Resolve the matching LdipOffice in two tiers:
+        //
+        // Tier 1 — this office's own LDIP records (LdipRecord.OfficeId = this office; entry modes
+        // New/Amendment/Supplemental). Scan non-Archived records newest-first for the first sector
+        // group match. Sector text match is safe here because GetOfficeGroupsAsync for one of these
+        // records only ever returns groups that already belong to this one office.
+        //
+        // Tier 2 — multi-office Upload records (LdipRecord.OfficeId is null — one document spans
+        // every office, RAL-165/LdipService.ConfirmImportAsync). These never surface via Tier 1's
+        // office-scoped query at all, so an office with no Tier-1 record of its own (e.g. its only
+        // dedicated LDIP was archived) would otherwise never find real historical LDIP data even
+        // though the bulk-uploaded document contains it. Sector text alone isn't enough to pick the
+        // right group out of a multi-office document (many offices share "General"), so match by
+        // this office's own computed AIP ref code instead — the same unambiguous identity every
+        // AipOffice/LdipOffice RefCode already carries.
         LdipOffice? sourceGroup = null;
-        foreach (LdipRecord ldipRecord in ldipRecords.Where(r => r.Status != PlanningStatus.Archived))
+        IReadOnlyList<LdipRecord> ownRecords = await _ldipRepo.GetListAsync(dto.OfficeConfigId, null, ct);
+        foreach (LdipRecord ldipRecord in ownRecords.Where(r => r.Status != PlanningStatus.Archived))
         {
             IReadOnlyList<LdipOffice> groups = await _ldipRepo.GetOfficeGroupsAsync(ldipRecord.Id, ct);
             sourceGroup = groups.FirstOrDefault(g => g.Sector.Equals(dto.Sector, StringComparison.OrdinalIgnoreCase));
             if (sourceGroup is not null) break;
         }
+
+        if (sourceGroup is null && !string.IsNullOrWhiteSpace(office.OfficeRefCode))
+        {
+            string expectedRefCode = $"{prefix}-000-1-{office.OfficeRefCode}";
+            IReadOnlyList<LdipRecord> allRecords = await _ldipRepo.GetListAsync(null, null, ct);
+            IEnumerable<LdipRecord> multiOfficeRecords = allRecords
+                .Where(r => r.OfficeId is null && r.Status != PlanningStatus.Archived);
+            foreach (LdipRecord ldipRecord in multiOfficeRecords)
+            {
+                IReadOnlyList<LdipOffice> groups = await _ldipRepo.GetOfficeGroupsAsync(ldipRecord.Id, ct);
+                sourceGroup = groups.FirstOrDefault(
+                    g => g.RefCode.Equals(expectedRefCode, StringComparison.OrdinalIgnoreCase));
+                if (sourceGroup is not null) break;
+            }
+        }
+
         if (sourceGroup is null)
             return ServiceResult<AipOfficeDto>.BadRequest(
                 $"'{office.OfficeName}' has no LDIP for the {sector} sector.");
