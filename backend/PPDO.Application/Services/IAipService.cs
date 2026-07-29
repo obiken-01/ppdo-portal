@@ -112,6 +112,21 @@ public interface IAipService
     Task<ServiceResult<AipOfficeDto>> CopyOfficeFromPriorYearAsync(
         CopyAipOfficeDto dto, Guid createdById, CancellationToken ct = default);
 
+    /// <summary>
+    /// RAL-181 — seeds bare-shell AipProgram rows (Name+RefCode only, FunctionBand=CORE) from
+    /// the matching LdipOffice's programs for the given office+sector. Resolves the LdipOffice by
+    /// scanning the config office's non-Archived LdipRecords (newest first) for the first one that
+    /// has a sector group matching <see cref="SeedAipProgramsFromLdipDto.Sector"/> (case-insensitive
+    /// — LDIP stores "General"/"Social"/…, AIP stores "GENERAL"/"SOCIAL"/…). Find-or-creates the
+    /// target AipRecord/AipOffice using the same rule as <see cref="CopyOfficeFromPriorYearAsync"/>.
+    /// Rejects if no matching LdipOffice exists, if any selected LDIP program doesn't belong to it,
+    /// or if any selected program's RefCode already exists under the target office. No Project/
+    /// Activity rows are created and no LDIP budget/funding-source/schedule/CC/alignment fields are
+    /// copied — see the ticket's "why LDIP amounts don't carry over" reasoning.
+    /// </summary>
+    Task<ServiceResult<AipOfficeDto>> SeedProgramsFromLdipAsync(
+        SeedAipProgramsFromLdipDto dto, Guid createdById, CancellationToken ct = default);
+
     Task<ServiceResult<AipRecordDto>> FinalizeAsync(int id, CancellationToken ct = default);
     Task<ServiceResult<AipRecordDto>> UnlockAsync(int id, CancellationToken ct = default);
     Task<ServiceResult<AipRecordDto>> ArchiveAsync(int id, CancellationToken ct = default);

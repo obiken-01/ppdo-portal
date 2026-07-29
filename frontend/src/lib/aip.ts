@@ -15,6 +15,7 @@ import type {
   CreateAipRecordRequest,
   CreateAipOfficeRequest,
   CopyAipOfficeRequest,
+  SeedAipProgramsFromLdipRequest,
   CreateAipProgramRequest,
   CreateAipProjectRequest,
   CreateAipActivityRequest,
@@ -116,6 +117,19 @@ export async function addAipOffice(aipId: number, body: CreateAipOfficeRequest):
 export async function copyAipOfficeFromPriorYear(body: CopyAipOfficeRequest): Promise<AipOfficeDetail> {
   const { data } = await api.post<ApiResponse<AipOfficeDetail>>(
     "/budget-planning/aip/copy-office", body
+  );
+  return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// AIP seed-from-LDIP (RAL-181) — seed an office's programs from its LDIP
+// ---------------------------------------------------------------------------
+
+export async function seedAipProgramsFromLdip(
+  body: SeedAipProgramsFromLdipRequest
+): Promise<AipOfficeDetail> {
+  const { data } = await api.post<ApiResponse<AipOfficeDetail>>(
+    "/budget-planning/aip/seed-programs-from-ldip", body
   );
   return unwrap(data);
 }

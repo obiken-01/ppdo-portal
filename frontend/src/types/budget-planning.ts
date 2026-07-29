@@ -104,6 +104,15 @@ export interface CopyAipOfficeRequest {
   programIds: number[];
 }
 
+/** RAL-181 — seed an office's AIP programs (Name+RefCode only, bare shells) from that
+ * office's existing LDIP for the given sector. Target record/office are found-or-created. */
+export interface SeedAipProgramsFromLdipRequest {
+  targetFiscalYear: number;
+  officeConfigId: number;
+  sector: string;
+  ldipProgramIds: number[];
+}
+
 export interface CreateAipProgramRequest {
   name: string;
   functionBand?: string | null;
