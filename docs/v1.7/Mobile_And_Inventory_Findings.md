@@ -243,8 +243,27 @@ Two further defects surfaced while fixing it:
 - 6 new tests in `PurchaseRequestServiceTests` cover code-matching, case/whitespace,
   cross-office rejection, inactive divisions, and the error message contents.
 
-**Not verified in a live browser session** — the Inventory pages sit behind login. Backend
-behaviour is covered by the test suite (874 passing); the UI change needs a manual check.
+**✅ Verified live 2026-07-29.** Logged in locally, submitted a real Create PR through the UI —
+`POST /api/purchase-requests` returned `201 Created` (`101-1041-GF-2026-07-29-001`). Ralph's own
+session created a second PR (`...-002`) independently in the same window, confirming the fix
+end-to-end for a real user, not just a synthetic test.
+
+**A second, deeper bug surfaced during that verification.** The PR List page rendered with the
+Division column blank for both PRs, even though Create PR's own confirmation screen showed the
+division correctly. Traced to the repository layer, not the division-matching logic:
+`PurchaseRequestService.MapToSummary`/`MapToResponse` both read `pr.Division?.Name`, but none of
+`Repository<T>.GetAllAsync()` (base, admin path), `PurchaseRequestRepository.GetByDivisionAsync`
+(Staff path), `GetWithItemsAsync` (used by `GetByIdAsync`/`UpdateAsync`), or
+`GetWithItemsAndDeliveriesAsync` (used by `PRReportService`) ever `.Include(pr => pr.Division)`.
+Create's own response happened to show the division correctly only because EF Core's
+relationship-fixup wires up the navigation property when the `Division` entity is already tracked
+in the same `DbContext` (it was, via `ResolveDivisionByNameAsync`'s own read) — every *read* path
+lacked that coincidence and returned `""`. This predates the division-matching fix; RAL-97
+(v1.2) introduced the FK without adding the Include anywhere it's read back. Fixed by adding
+`.Include(pr => pr.Division)` (depth 1) to all four repository methods, and making
+`Repository<T>.GetAllAsync` `virtual` so `PurchaseRequestRepository` can override it. Verified
+live: PR List now shows "Administrative Division" for both PRs; full backend suite still green
+(874, unchanged pass count since this is an Include addition, not a behaviour change).
 
 ### 4.2 Other Distribution improvements
 

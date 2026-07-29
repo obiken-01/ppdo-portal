@@ -17,6 +17,18 @@ public sealed class PurchaseRequestRepository
 {
     public PurchaseRequestRepository(AppDbContext context) : base(context) { }
 
+    /// <summary>
+    /// Overrides the generic base to eager-load <see cref="PurchaseRequest.Division"/> —
+    /// callers (PurchaseRequestService.MapToSummary) read pr.Division?.Name, which is null
+    /// without this. Depth 1.
+    /// </summary>
+    /// <inheritdoc />
+    public override async Task<IReadOnlyList<PurchaseRequest>> GetAllAsync(
+        CancellationToken cancellationToken = default)
+        => await _context.PurchaseRequests
+            .Include(pr => pr.Division)       // depth 1
+            .ToListAsync(cancellationToken);
+
     /// <inheritdoc />
     public async Task<PurchaseRequest?> GetByPRNoAsync(
         string prNo,
@@ -30,6 +42,7 @@ public sealed class PurchaseRequestRepository
         CancellationToken cancellationToken = default)
         => await _context.PurchaseRequests
             .Include(pr => pr.Items)          // depth 1
+            .Include(pr => pr.Division)       // depth 1 — sibling include, not nested
             .FirstOrDefaultAsync(pr => pr.Id == id, cancellationToken);
 
     /// <inheritdoc />
@@ -39,6 +52,7 @@ public sealed class PurchaseRequestRepository
         => await _context.PurchaseRequests
             .Include(pr => pr.Items)          // depth 1 — sibling includes, not nested
             .Include(pr => pr.Deliveries)     // depth 1
+            .Include(pr => pr.Division)       // depth 1
             .FirstOrDefaultAsync(pr => pr.Id == id, cancellationToken);
 
     /// <inheritdoc />
@@ -47,6 +61,7 @@ public sealed class PurchaseRequestRepository
         CancellationToken cancellationToken = default)
         => await _context.PurchaseRequests
             .Where(pr => pr.DivisionId == divisionId)
+            .Include(pr => pr.Division)       // depth 1 — pr.Division?.Name is read downstream
             .OrderByDescending(pr => pr.PRDate)
             .ToListAsync(cancellationToken);
 }
