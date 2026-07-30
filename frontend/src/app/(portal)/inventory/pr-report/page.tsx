@@ -19,12 +19,12 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import api from "@/lib/api";
+import { useMe } from "@/lib/me-cache";
 import { useToast } from "@/components/ui/Toast";
 import TableSkeleton from "@/components/ui/TableSkeleton";
 import type {
-  MeResponse,
   PRReportResponse,
   PRSummaryResponse,
 } from "@/types";
@@ -191,11 +191,13 @@ function PRCombobox({
 // ---------------------------------------------------------------------------
 
 export default function PRReportPage() {
-  const router       = useRouter();
   const searchParams = useSearchParams();
   const { toast }    = useToast();
 
-  const [authChecked, setAuthChecked] = useState(false);
+  const me = useMe(
+    (m) => m.canAccessInventory || m.canAccessReports,
+    (m) => (m.officeId != null ? "/budget-planning" : "/dashboard")
+  );
 
   // PR list + combobox
   const [prs, setPRs]               = useState<PRSummaryResponse[]>([]);
@@ -231,24 +233,10 @@ export default function PRReportPage() {
     return distributed;
   }, [report]);
 
-  // ── Auth guard ─────────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    api.get<MeResponse>("/auth/me")
-      .then(({ data }) => {
-        if (!data.canAccessInventory && !data.canAccessReports) {
-          router.replace(data.officeId != null ? "/budget-planning" : "/dashboard");
-          return;
-        }
-        setAuthChecked(true);
-      })
-      .catch(() => router.replace("/login"));
-  }, [router]);
-
   // ── Load PR list ───────────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (!authChecked) return;
+    if (!me) return;
     setPRsLoading(true);
     api.get<PRSummaryResponse[]>("/purchase-requests")
       .then(({ data }) => {
@@ -265,7 +253,7 @@ export default function PRReportPage() {
       })
       .catch(() => toast.error("Failed to load PRs", "Could not fetch purchase requests."))
       .finally(() => setPRsLoading(false));
-  }, [authChecked]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [me]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Load report when PR selected ──────────────────────────────────────────
 
@@ -329,7 +317,7 @@ export default function PRReportPage() {
 
   // ── Guards ─────────────────────────────────────────────────────────────────
 
-  if (!authChecked) {
+  if (!me) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-100">
         <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />

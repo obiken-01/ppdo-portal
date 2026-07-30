@@ -24,7 +24,6 @@ import type {
   CreateDeliveryItemRequest,
   CreateDeliveryRequest,
   DeliveryResponse,
-  DeliverySummaryResponse,
   MeResponse,
   PRResponse,
   PRSummaryResponse,
@@ -257,30 +256,16 @@ export default function ReceiveDeliveryPage() {
     setFormError(null);
 
     async function load() {
-      const [prRes, summaries] = await Promise.all([
+      // Single aggregate call for per-item delivered totals — replaces the old
+      // fetch-every-delivery's-full-detail loop (RAL-192 follow-up).
+      const [prRes, totals] = await Promise.all([
         api.get<PRResponse>(`/purchase-requests/${selectedPRId}`),
-        api.get<DeliverySummaryResponse[]>(`/deliveries?prId=${selectedPRId}`)
-          .then((r) => r.data).catch(() => [] as DeliverySummaryResponse[]),
+        api.get<Record<string, number>>(`/deliveries/totals?prId=${selectedPRId}`)
+          .then((r) => r.data).catch(() => ({} as Record<string, number>)),
       ]);
       const pr = prRes.data;
       setSelectedPR(pr);
       setItems(itemsFromPR(pr));
-
-      const totals: Record<string, number> = {};
-      if (summaries.length > 0) {
-        const details = await Promise.all(
-          summaries.map((s) =>
-            api.get<DeliveryResponse>(`/deliveries/${s.id}`)
-              .then((r) => r.data).catch(() => null)
-          )
-        );
-        for (const del of details) {
-          if (!del) continue;
-          for (const item of del.items) {
-            totals[item.prItemId] = (totals[item.prItemId] ?? 0) + item.qtyDelivered;
-          }
-        }
-      }
       setDeliveredQty(totals);
     }
 

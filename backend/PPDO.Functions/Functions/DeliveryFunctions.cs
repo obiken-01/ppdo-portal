@@ -20,6 +20,8 @@ namespace PPDO.Functions.Functions;
 ///   GET  /api/deliveries             — list all deliveries (division-scoped for Staff/Observer)
 ///   GET  /api/deliveries/{id}        — delivery detail with items and distributions
 ///   GET  /api/deliveries?prId={id}   — list deliveries for a specific PR
+///   GET  /api/deliveries/totals?prId={id} — per-PRItem delivered-qty totals for a PR
+///                                      (one aggregate call — avoids N detail fetches)
 ///   POST /api/deliveries             — submit a delivery, triggers PR status update
 /// </summary>
 public sealed class DeliveryFunctions
@@ -66,6 +68,28 @@ public sealed class DeliveryFunctions
         IReadOnlyList<DeliverySummaryDto> result =
             await _service.GetAllAsync(caller, cancellationToken);
         return await OkJson(req, result, cancellationToken);
+    }
+
+    // ── GET /api/deliveries/totals?prId={guid} ────────────────────────────────
+
+    [Function("GetDeliveredTotalsByPR")]
+    public async Task<HttpResponseData> GetDeliveredTotals(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "deliveries/totals")]
+        HttpRequestData req,
+        CancellationToken cancellationToken)
+    {
+        User? caller = await _jwt.ValidateAsync(GetAuthHeader(req), cancellationToken);
+        if (caller is null)
+            return req.CreateResponse(HttpStatusCode.Unauthorized);
+
+        string? prIdParam = req.Query["prId"];
+        if (string.IsNullOrEmpty(prIdParam) || !Guid.TryParse(prIdParam, out Guid prId))
+            return await PlainError(req, HttpStatusCode.BadRequest,
+                "prId is required and must be a valid GUID.", cancellationToken);
+
+        ServiceResult<IReadOnlyDictionary<Guid, decimal>> result =
+            await _service.GetDeliveredTotalsByPRAsync(caller, prId, cancellationToken);
+        return await ToResponse(req, result, HttpStatusCode.OK, cancellationToken);
     }
 
     // ── GET /api/deliveries/{id} ──────────────────────────────────────────────

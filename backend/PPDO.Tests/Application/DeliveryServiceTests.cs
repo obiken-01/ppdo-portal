@@ -509,4 +509,51 @@ public sealed class DeliveryServiceTests
         string suffix2 = dists[1].IssueRef.Split('-')[2];
         Assert.Equal(suffix1, suffix2);
     }
+
+    // ── GetDeliveredTotalsByPRAsync (RAL-192 follow-up) ───────────────────────
+
+    [Fact]
+    public async Task GetDeliveredTotalsByPRAsync_ReturnsRepositoryAggregate()
+    {
+        PurchaseRequest pr = MakePR();
+        Guid itemId = Guid.NewGuid();
+
+        Mock<IDeliveryRepository> deliveryRepo = RepoDeliveryThatSaves();
+        deliveryRepo.Setup(r => r.GetTotalDeliveredByPRAsync(pr.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, decimal> { [itemId] = 13m });
+
+        ServiceResult<IReadOnlyDictionary<Guid, decimal>> result =
+            await BuildSut(deliveryRepo, RepoPRThatSaves(pr))
+                .GetDeliveredTotalsByPRAsync(MakeAdmin(), pr.Id);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(13m, result.Value![itemId]);
+    }
+
+    [Fact]
+    public async Task GetDeliveredTotalsByPRAsync_PRNotFound_ReturnsNotFound()
+    {
+        Mock<IDeliveryRepository> deliveryRepo = RepoDeliveryThatSaves();
+        Mock<IPurchaseRequestRepository> prRepo = new();
+        prRepo.Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PurchaseRequest?)null);
+
+        ServiceResult<IReadOnlyDictionary<Guid, decimal>> result =
+            await BuildSut(deliveryRepo, prRepo)
+                .GetDeliveredTotalsByPRAsync(MakeAdmin(), Guid.NewGuid());
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Fact]
+    public async Task GetDeliveredTotalsByPRAsync_StaffOtherDivision_ReturnsForbidden()
+    {
+        PurchaseRequest pr = MakePR(divisionId: AdminDiv);
+
+        ServiceResult<IReadOnlyDictionary<Guid, decimal>> result =
+            await BuildSut(RepoDeliveryThatSaves(), RepoPRThatSaves(pr))
+                .GetDeliveredTotalsByPRAsync(MakeStaff(PlanningDiv), pr.Id);
+
+        Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
+    }
 }
