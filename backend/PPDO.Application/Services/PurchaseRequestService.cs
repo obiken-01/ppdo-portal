@@ -515,34 +515,11 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         DateTime manilaNow,
         CancellationToken cancellationToken)
     {
-        int nextSeq = 1;
-
-        IReadOnlyList<PurchaseRequest> allPRs = await _prs.GetAllAsync(cancellationToken);
-
-        if (allPRs.Count > 0)
-        {
-            int maxSeq = allPRs
-                .Select(pr => ParseSequence(pr.PRNo))
-                .Where(n => n.HasValue)
-                .Select(n => n!.Value)
-                .DefaultIfEmpty(0)
-                .Max();
-
-            nextSeq = maxSeq + 1;
-        }
+        int? maxSeq = await _prs.GetMaxPrSequenceAsync(cancellationToken);
+        int nextSeq = (maxSeq ?? 0) + 1;
 
         string dateSegment = manilaNow.ToString("yyyy-MM-dd");
         return $"101-1041-GF-{dateSegment}-{nextSeq:D3}";
-    }
-
-    /// <summary>Extracts the 3-digit sequence number from a PR number string.</summary>
-    private static int? ParseSequence(string prNo)
-    {
-        // Format: 101-1041-GF-YYYY-MM-DD-XXX  → split by '-' gives 7 parts, index 6 = XXX
-        string[] parts = prNo.Split('-');
-        if (parts.Length >= 7 && int.TryParse(parts[^1], out int seq))
-            return seq;
-        return null;
     }
 
     /// <summary>

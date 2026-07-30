@@ -109,11 +109,14 @@ public sealed class PurchaseRequestServiceTests
     };
 
     private static Mock<IPurchaseRequestRepository> RepoPRThatSaves(
-        IReadOnlyList<PurchaseRequest>? existing = null)
+        IReadOnlyList<PurchaseRequest>? existing = null,
+        int? maxSequence = null)
     {
         Mock<IPurchaseRequestRepository> repo = new();
         repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(existing ?? new List<PurchaseRequest>());
+        repo.Setup(r => r.GetMaxPrSequenceAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(maxSequence);
         repo.Setup(r => r.AddAsync(It.IsAny<PurchaseRequest>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         repo.Setup(r => r.UpdateAsync(It.IsAny<PurchaseRequest>(), It.IsAny<CancellationToken>()))
@@ -166,12 +169,9 @@ public sealed class PurchaseRequestServiceTests
     }
 
     [Fact]
-    public async Task CreateAsync_WithExistingPRs_IncrementsSequenceByOne()
+    public async Task CreateAsync_WithExistingMaxSequence007_IncrementsToSequence008()
     {
-        string existingPRNo = $"101-1041-GF-{DateTime.UtcNow:yyyy-MM-dd}-005";
-        List<PurchaseRequest> existing = [MakePR(existingPRNo)];
-
-        Mock<IPurchaseRequestRepository> prRepo = RepoPRThatSaves(existing);
+        Mock<IPurchaseRequestRepository> prRepo = RepoPRThatSaves(maxSequence: 7);
         Mock<IItemMasterRepository> itemRepo = RepoItemThatSaves();
         itemRepo.Setup(r => r.GetByStockNoAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((ItemMaster?)null);
@@ -180,7 +180,43 @@ public sealed class PurchaseRequestServiceTests
             await BuildSut(prRepo, itemRepo).CreateAsync(MakeAdmin(), ValidDto("Administrative Division"));
 
         Assert.True(result.IsSuccess);
-        Assert.EndsWith("-006", result.Value!.PRNo);
+        Assert.EndsWith("-008", result.Value!.PRNo);
+    }
+
+    [Fact]
+    public async Task CreateAsync_QueriesMaxSequenceViaScopedRepositoryMethod_NeverFullTableLoad()
+    {
+        // Regression guard for RAL-191: GeneratePRNoAsync must never fall back to loading
+        // every PR into memory to compute the next sequence.
+        Mock<IPurchaseRequestRepository> prRepo = RepoPRThatSaves(maxSequence: 3);
+        Mock<IItemMasterRepository> itemRepo = RepoItemThatSaves();
+        itemRepo.Setup(r => r.GetByStockNoAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ItemMaster?)null);
+
+        ServiceResult<PRResponseDto> result =
+            await BuildSut(prRepo, itemRepo).CreateAsync(MakeAdmin(), ValidDto("Administrative Division"));
+
+        Assert.True(result.IsSuccess);
+        prRepo.Verify(r => r.GetMaxPrSequenceAsync(It.IsAny<CancellationToken>()), Times.Once);
+        prRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenMaxSequenceIsNull_GeneratesPRNoWithSequence001()
+    {
+        // GetMaxPrSequenceAsync returns null both when the table is empty and when every
+        // PRNo is malformed/legacy (TRY_CAST-filtered out in SQL) — both cases must fall
+        // back to sequence 1, never throw.
+        Mock<IPurchaseRequestRepository> prRepo = RepoPRThatSaves(maxSequence: null);
+        Mock<IItemMasterRepository> itemRepo = RepoItemThatSaves();
+        itemRepo.Setup(r => r.GetByStockNoAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ItemMaster?)null);
+
+        ServiceResult<PRResponseDto> result =
+            await BuildSut(prRepo, itemRepo).CreateAsync(MakeAdmin(), ValidDto("Administrative Division"));
+
+        Assert.True(result.IsSuccess);
+        Assert.Matches(@"^101-1041-GF-\d{4}-\d{2}-\d{2}-001$", result.Value!.PRNo);
     }
 
     // ── Division-scope enforcement on create ──────────────────────────────────

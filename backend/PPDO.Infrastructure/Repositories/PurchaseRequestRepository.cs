@@ -64,4 +64,27 @@ public sealed class PurchaseRequestRepository
             .Include(pr => pr.Division)       // depth 1 — pr.Division?.Name is read downstream
             .OrderByDescending(pr => pr.PRDate)
             .ToListAsync(cancellationToken);
+
+    /// <summary>
+    /// Computes MAX over the last '-'-delimited segment of PRNo entirely in SQL — no rows
+    /// are pulled into memory. TRY_CAST returns NULL (not an error) for any PRNo whose last
+    /// segment isn't a plain integer, and the WHERE clause requires at least 6 dashes (7
+    /// segments, matching the 101-1041-GF-YYYY-MM-DD-XXX format) before attempting the cast
+    /// at all — together these reproduce the old in-memory ParseSequence's tolerance for
+    /// malformed/legacy PRNos (skipped, never fatal) without ever loading purchase_requests.
+    /// </summary>
+    /// <inheritdoc />
+    public async Task<int?> GetMaxPrSequenceAsync(CancellationToken cancellationToken = default)
+    {
+        List<int?> rows = await _context.Database
+            .SqlQueryRaw<int?>(
+                """
+                SELECT MAX(TRY_CAST(RIGHT(PRNo, CHARINDEX('-', REVERSE(PRNo)) - 1) AS INT)) AS Value
+                FROM PurchaseRequests
+                WHERE LEN(PRNo) - LEN(REPLACE(PRNo, '-', '')) >= 6
+                """)
+            .ToListAsync(cancellationToken);
+
+        return rows.Count > 0 ? rows[0] : null;
+    }
 }
