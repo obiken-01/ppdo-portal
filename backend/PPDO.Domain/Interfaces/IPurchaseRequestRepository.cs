@@ -45,4 +45,24 @@ public interface IPurchaseRequestRepository : IRepository<PurchaseRequest>
     /// Used by PurchaseRequestService.GeneratePRNoAsync.
     /// </summary>
     Task<int?> GetMaxPrSequenceAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Computes the Inventory Dashboard's PR stat-card counts and total value as SQL
+    /// aggregates (Count/Sum), scoped to a division when given, without ever loading PR
+    /// rows into memory. Used by InventoryService.GetStatsAsync in place of the old
+    /// GetAllAsync()-then-LINQ-count approach.
+    /// </summary>
+    Task<PurchaseRequestStatsAggregate> GetStatsAggregateAsync(
+        int? divisionId, CancellationToken cancellationToken = default);
 }
+
+/// <summary>
+/// PR stat-card counts and total value, scoped to a division (or all divisions when the
+/// scope is null). See <see cref="IPurchaseRequestRepository.GetStatsAggregateAsync"/>.
+/// </summary>
+public sealed record PurchaseRequestStatsAggregate(
+    int Total,
+    int Open,
+    int PartiallyDelivered,
+    int FullyDeliveredOrCompleted,
+    decimal TotalAmount);

@@ -30,4 +30,13 @@ public interface IItemMasterRepository : IRepository<ItemMaster>
     /// Returns up to 20 results ordered by StockNo.
     /// </summary>
     Task<IReadOnlyList<ItemMaster>> SearchAsync(string term, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns the catalog items matching the given stock numbers, via a single IN-list
+    /// query — never the full catalog. Used by InventoryService to resolve
+    /// Description/ReorderQty for a known set of StockNos (e.g. from stock levels already
+    /// fetched from IInventoryRepository), without loading every ItemMaster row.
+    /// </summary>
+    Task<IReadOnlyList<ItemMaster>> GetByStockNosAsync(
+        IReadOnlyCollection<string> stockNos, CancellationToken cancellationToken = default);
 }

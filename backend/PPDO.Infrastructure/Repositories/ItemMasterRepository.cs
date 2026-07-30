@@ -40,4 +40,15 @@ public sealed class ItemMasterRepository
             .OrderBy(i => i.StockNo)
             .Take(20)
             .ToListAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<ItemMaster>> GetByStockNosAsync(
+        IReadOnlyCollection<string> stockNos,
+        CancellationToken cancellationToken = default)
+    {
+        if (stockNos.Count == 0) return [];
+        return await _context.ItemMasters
+            .Where(i => stockNos.Contains(i.StockNo))
+            .ToListAsync(cancellationToken);
+    }
 }
