@@ -132,6 +132,28 @@ public sealed class LdipFunctions
         return await ConfigHttp.FromResultAsync(req, await _ldip.UpdateAsync(id, body, ct), ct);
     }
 
+    // ── PUT /api/budget-planning/ldip/{id}/programs/{programId} ─────────────
+    // RAL-115 — inline per-program edit, no file round-trip. CanUploadAip-gated (not
+    // CanAccessBudgetPlanning) since these fields are upload-derived data — same
+    // reasoning as Upload/Confirm below, and PPDO-only means DenyForeignOfficeAsync
+    // never applies here (office-scoped users can't reach this endpoint at all).
+    [Function("LdipUpdateProgram")]
+    public async Task<HttpResponseData> UpdateProgram(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "budget-planning/ldip/{id:int}/programs/{programId:int}")] HttpRequestData req,
+        int id, int programId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanUpload, ct);
+        if (denied is not null) return denied;
+
+        SaveLdipProgramDto? body = await ConfigHttp.ReadBodyAsync<SaveLdipProgramDto>(req, ct);
+        if (body is null)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<LdipProgramDto>.Fail("Request body is missing or malformed."), ct);
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _ldip.UpdateProgramAsync(id, programId, body, ct), ct);
+    }
+
     // ── DELETE /api/budget-planning/ldip/{id}  (archive) ─────────────────────
     [Function("LdipArchive")]
     public async Task<HttpResponseData> Archive(

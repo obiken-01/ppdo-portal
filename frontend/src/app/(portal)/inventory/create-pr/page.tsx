@@ -38,6 +38,7 @@ import {
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { fetchMe } from "@/lib/me-cache";
+import { useInventoryDivisions } from "@/lib/inventory-divisions";
 import { useToast } from "@/components/ui/Toast";
 import type {
   CreatePRItemRequest,
@@ -51,7 +52,8 @@ import type {
 // Constants
 // ---------------------------------------------------------------------------
 
-const DIVISIONS: string[] = ["Admin", "Planning", "RM", "MIS", "SPD"];
+// Divisions come from the configurable divisions table (v1.2 — RAL-97), never a
+// hard-coded list. See @/lib/inventory-divisions.
 const TODAY = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 
 // ---------------------------------------------------------------------------
@@ -400,6 +402,9 @@ export default function CreatePRPage() {
   }, [router]);
 
   const isStaff = me?.role === "Staff";
+
+  // Staff are clamped to their own division by the backend, so only offer that one.
+  const { divisions: divisionOptions } = useInventoryDivisions(me?.division ?? null, isStaff);
 
   // ── Header field patch ─────────────────────────────────────────────────────
 
@@ -779,7 +784,7 @@ export default function CreatePRPage() {
                 className="w-full px-3 py-2 text-sm border border-slate-200 bg-cell-fill focus:outline-none focus:ring-2 focus:ring-green-600 disabled:bg-cell-auto disabled:text-slate-500 disabled:cursor-not-allowed"
               >
                 <option value="">— Select Division —</option>
-                {DIVISIONS.map((d) => (
+                {divisionOptions.map((d) => (
                   <option key={d} value={d}>{d}</option>
                 ))}
               </select>

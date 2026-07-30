@@ -26,7 +26,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createLdip, finalizeLdip, ldipErrorMessage, unlockLdip, updateLdip } from "@/lib/ldip";
+import { createLdip, finalizeLdip, ldipErrorMessage, unlockLdip, updateLdip, updateLdipProgram } from "@/lib/ldip";
 import { listOffices } from "@/lib/config";
 import { useMe } from "@/lib/me-cache";
 import { formatMoney } from "@/lib/money";
@@ -41,6 +41,7 @@ import type {
   LdipStatus,
   OfficeResponse,
   SaveLdipGroup,
+  SaveLdipProgram,
 } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -153,6 +154,141 @@ function ProgramDetailPanel({ program: p }: { program: LdipProgram }) {
   );
 }
 
+/**
+ * Editable version of ProgramDetailPanel (RAL-115) — inline per-program edit for
+ * upload-derived programs, no file round-trip. Save/Cancel + field-level error.
+ * Scoped to upload-derived programs only (see the ticket's own recommendation) —
+ * manually-added programs are edited via the normal Section 2/3 add/remove flow.
+ */
+function ProgramEditPanel({
+  draft, onChange, saving, error, onSave, onCancel,
+}: {
+  draft: SaveLdipProgram;
+  onChange: (next: SaveLdipProgram) => void;
+  saving: boolean;
+  error: string | null;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  function set<K extends keyof SaveLdipProgram>(key: K, value: SaveLdipProgram[K]) {
+    onChange({ ...draft, [key]: value });
+  }
+
+  const fieldCls =
+    "w-full border border-slate-300 bg-white text-xs px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600";
+  const labelCls = "block text-[10px] font-bold text-slate-600 uppercase tracking-wide mb-1";
+
+  return (
+    <div className="px-4 py-3 pl-11 bg-amber-50 border-t border-amber-100 space-y-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-3">
+        <div className="col-span-2 sm:col-span-4">
+          <label className={labelCls}>Program Name</label>
+          <input
+            value={draft.name}
+            onChange={(e) => set("name", e.target.value.toUpperCase())}
+            maxLength={500}
+            className={`${fieldCls} uppercase`}
+          />
+        </div>
+        <div>
+          <label className={labelCls}>Budget (₱000)</label>
+          <MoneyInput value={draft.budget} onChange={(v) => set("budget", v ?? 0)} className="w-full text-xs" />
+        </div>
+        <div>
+          <label className={labelCls}>Implementing Office</label>
+          <input value={draft.implementingOffice ?? ""} onChange={(e) => set("implementingOffice", e.target.value || null)} className={fieldCls} />
+        </div>
+        <div>
+          <label className={labelCls}>Start Date</label>
+          <input value={draft.startDate ?? ""} onChange={(e) => set("startDate", e.target.value || null)} className={fieldCls} />
+        </div>
+        <div>
+          <label className={labelCls}>Completion Date</label>
+          <input value={draft.endDate ?? ""} onChange={(e) => set("endDate", e.target.value || null)} className={fieldCls} />
+        </div>
+        <div className="col-span-2 sm:col-span-4">
+          <label className={labelCls}>Expected Outputs</label>
+          <textarea
+            value={draft.expectedOutputs ?? ""}
+            onChange={(e) => set("expectedOutputs", e.target.value || null)}
+            rows={2}
+            className={fieldCls}
+          />
+        </div>
+        <div>
+          <label className={labelCls}>Funding Source</label>
+          <input value={draft.fundingSourceRaw ?? ""} onChange={(e) => set("fundingSourceRaw", e.target.value || null)} className={fieldCls} />
+        </div>
+        <div>
+          <label className={labelCls}>PS (₱000)</label>
+          <MoneyInput value={draft.ps ?? null} onChange={(v) => set("ps", v)} className="w-full text-xs" />
+        </div>
+        <div>
+          <label className={labelCls}>MOOE (₱000)</label>
+          <MoneyInput value={draft.mooe ?? null} onChange={(v) => set("mooe", v)} className="w-full text-xs" />
+        </div>
+        <div>
+          <label className={labelCls}>CO (₱000)</label>
+          <MoneyInput value={draft.co ?? null} onChange={(v) => set("co", v)} className="w-full text-xs" />
+        </div>
+        <div>
+          <label className={labelCls}>CC Adaptation (₱000)</label>
+          <MoneyInput value={draft.ccAdaptation ?? null} onChange={(v) => set("ccAdaptation", v)} className="w-full text-xs" />
+        </div>
+        <div>
+          <label className={labelCls}>CC Mitigation (₱000)</label>
+          <MoneyInput value={draft.ccMitigation ?? null} onChange={(v) => set("ccMitigation", v)} className="w-full text-xs" />
+        </div>
+        <div>
+          <label className={labelCls}>CC Typology Code</label>
+          <input value={draft.ccTypologyCode ?? ""} onChange={(e) => set("ccTypologyCode", e.target.value || null)} className={fieldCls} />
+        </div>
+        <div>
+          <label className={labelCls}>PDP/RDP</label>
+          <input value={draft.pdpRdp ?? ""} onChange={(e) => set("pdpRdp", e.target.value || null)} className={fieldCls} />
+        </div>
+        <div>
+          <label className={labelCls}>SDGs</label>
+          <input value={draft.sdgs ?? ""} onChange={(e) => set("sdgs", e.target.value || null)} className={fieldCls} />
+        </div>
+        <div>
+          <label className={labelCls}>Sendai Framework</label>
+          <input value={draft.sendaiFramework ?? ""} onChange={(e) => set("sendaiFramework", e.target.value || null)} className={fieldCls} />
+        </div>
+        <div>
+          <label className={labelCls}>NDRRM Plan</label>
+          <input value={draft.ndrrmPlan ?? ""} onChange={(e) => set("ndrrmPlan", e.target.value || null)} className={fieldCls} />
+        </div>
+        <div>
+          <label className={labelCls}>NSP</label>
+          <input value={draft.nsp ?? ""} onChange={(e) => set("nsp", e.target.value || null)} className={fieldCls} />
+        </div>
+        <div>
+          <label className={labelCls}>PDPDFP</label>
+          <input value={draft.pdpdfp ?? ""} onChange={(e) => set("pdpdfp", e.target.value || null)} className={fieldCls} />
+        </div>
+      </div>
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={onSave}
+          disabled={saving}
+          className="px-4 py-1.5 text-sm font-medium text-white bg-green-700 hover:bg-green-800 transition-colors disabled:opacity-50"
+        >
+          {saving ? "Saving…" : "Save"}
+        </button>
+        <button
+          onClick={onCancel}
+          disabled={saving}
+          className="px-4 py-1.5 text-sm font-medium border border-slate-300 text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function SectionHead({ num, title, hint }: { num: number; title: string; hint?: string }) {
   return (
     <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100 flex-wrap">
@@ -185,6 +321,11 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
   const isReadOnly = isEdit && (record.status !== "Draft" || isMultiOffice);
   const isAdmin = me?.role === "Admin" || me?.role === "SuperAdmin";
   const isOfficeUser = me != null && me.officeId != null;
+  // RAL-115 — inline per-program edit for upload-derived programs, independent of the
+  // form-level isReadOnly flag (multi-office Upload records are always isReadOnly per
+  // RAL-113's design, but that's exactly the case this feature targets). Same gate as
+  // the Re-upload action (RAL-114): Draft + CanUploadAip (server enforces the real check).
+  const canInlineEditPrograms = isEdit && record.status === "Draft" && me?.canUploadAip === true;
 
   // ── Section 1 state ────────────────────────────────────────────────────────
 
@@ -218,6 +359,82 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
       if (next.has(key)) next.delete(key); else next.add(key);
       return next;
     });
+  }
+
+  // ── Inline per-program edit (RAL-115) ─────────────────────────────────────
+
+  const [editingKey, setEditingKey] = useState<number | null>(null);
+  const [editDraft, setEditDraft] = useState<SaveLdipProgram | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  function startEditProgram(p: DraftProgram) {
+    if (!p.detail) return;
+    setEditingKey(p.key);
+    setEditError(null);
+    setEditDraft({
+      name: p.detail.name,
+      budget: p.detail.budget,
+      implementingOffice: p.detail.implementingOffice,
+      startDate: p.detail.startDate,
+      endDate: p.detail.endDate,
+      expectedOutputs: p.detail.expectedOutputs,
+      // fundingSourceSnapshot is the closest available raw-text equivalent (the
+      // resolved FundingSource.Code, or the original unmatched text) — the server
+      // re-resolves whatever is typed here the same way BuildHierarchy does.
+      fundingSourceRaw: p.detail.fundingSourceSnapshot,
+      ps: p.detail.ps,
+      mooe: p.detail.mooe,
+      co: p.detail.co,
+      ccAdaptation: p.detail.ccAdaptation,
+      ccMitigation: p.detail.ccMitigation,
+      ccTypologyCode: p.detail.ccTypologyCode,
+      pdpRdp: p.detail.pdpRdp,
+      sdgs: p.detail.sdgs,
+      sendaiFramework: p.detail.sendaiFramework,
+      ndrrmPlan: p.detail.ndrrmPlan,
+      nsp: p.detail.nsp,
+      pdpdfp: p.detail.pdpdfp,
+    });
+    setExpandedKeys((prev) => new Set(prev).add(p.key));
+  }
+
+  function cancelEditProgram() {
+    setEditingKey(null);
+    setEditDraft(null);
+    setEditError(null);
+  }
+
+  async function saveEditProgram(groupIndex: number, p: DraftProgram) {
+    if (!record || !p.detail || !editDraft) return;
+    if (!editDraft.name.trim()) {
+      setEditError("Program name is required.");
+      return;
+    }
+    setEditSaving(true);
+    setEditError(null);
+    try {
+      const updated = await updateLdipProgram(record.id, p.detail.id, {
+        ...editDraft,
+        name: editDraft.name.trim(),
+      });
+      setGroups((prev) => {
+        const group = prev[groupIndex];
+        const programs = group.programs.map((gp) =>
+          gp.key === p.key ? { ...gp, name: updated.name, budget: updated.budget, detail: updated } : gp
+        );
+        const next = [...prev];
+        next[groupIndex] = { ...group, programs };
+        return next;
+      });
+      toast.success("Saved", `${updated.refCode} updated.`);
+      setEditingKey(null);
+      setEditDraft(null);
+    } catch (err) {
+      setEditError(ldipErrorMessage(err, "Could not save program."));
+    } finally {
+      setEditSaving(false);
+    }
   }
 
   const [sector, setSector] = useState<LdipSector>("General");
@@ -676,7 +893,7 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
           <span>AIP Ref Code</span>
           <span>Program</span>
           <span className="text-right">Budget (₱000)</span>
-          <span>{!isReadOnly ? "Actions" : ""}</span>
+          <span>{!isReadOnly || canInlineEditPrograms ? "Actions" : ""}</span>
         </div>
         {totalPrograms === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-slate-600">No programs added yet.</p>
@@ -727,7 +944,7 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
                         </span>
                         <span className="italic font-semibold text-slate-800">{p.name}</span>
                         <span className="text-right tabular-nums">₱{formatMoney(p.budget)}</span>
-                        <span>
+                        <span className="flex items-center gap-2">
                           {!isReadOnly && (
                             <button
                               onClick={() => handleRemoveProgram(groupIndex, p.key)}
@@ -736,9 +953,30 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
                               Remove
                             </button>
                           )}
+                          {canInlineEditPrograms && p.detail && editingKey !== p.key && (
+                            <button
+                              onClick={() => startEditProgram(p)}
+                              className="text-xs font-bold text-green-700 hover:text-green-800"
+                            >
+                              Edit
+                            </button>
+                          )}
                         </span>
                       </div>
-                      {expanded && p.detail && <ProgramDetailPanel program={p.detail} />}
+                      {expanded && p.detail && (
+                        editingKey === p.key && editDraft ? (
+                          <ProgramEditPanel
+                            draft={editDraft}
+                            onChange={setEditDraft}
+                            saving={editSaving}
+                            error={editError}
+                            onSave={() => saveEditProgram(groupIndex, p)}
+                            onCancel={cancelEditProgram}
+                          />
+                        ) : (
+                          <ProgramDetailPanel program={p.detail} />
+                        )
+                      )}
                     </div>
                   );
                 })}

@@ -20,6 +20,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { fetchMe } from "@/lib/me-cache";
+import { useInventoryDivisions } from "@/lib/inventory-divisions";
 import { useToast } from "@/components/ui/Toast";
 import type {
   CreateDistributionStandaloneRequest,
@@ -33,7 +34,8 @@ import type {
 // Constants
 // ---------------------------------------------------------------------------
 
-const DIVISIONS = ["Admin", "Planning", "RM", "MIS", "SPD"];
+// Divisions come from the configurable divisions table (v1.2 — RAL-97), never a
+// hard-coded list. See @/lib/inventory-divisions.
 const TODAY     = new Date().toISOString().slice(0, 10);
 
 // ---------------------------------------------------------------------------
@@ -103,6 +105,10 @@ function DistributeForm({
 }) {
   const [rows, setRows] = useState<SplitRow[]>([blankRow(TODAY)]);
 
+  // Shared module-level cache — calling this here as well as on the page costs no
+  // extra request.
+  const { divisions: divisionOptions } = useInventoryDivisions();
+
   function patchRow(id: string, patch: Partial<SplitRow>) {
     setRows((prev) => prev.map((r) => r._id === id ? { ...r, ...patch } : r));
   }
@@ -158,7 +164,7 @@ function DistributeForm({
                   className="w-full px-2 py-1.5 text-xs border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-green-500"
                 >
                   <option value="">— Select —</option>
-                  {DIVISIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+                  {divisionOptions.map((d) => <option key={d} value={d}>{d}</option>)}
                 </select>
               </div>
               <div className="col-span-2">
@@ -267,6 +273,7 @@ export default function DistributionPage() {
 
   // Filters on history view
   const [filterDivision, setFilterDivision] = useState("");
+  const { divisions: filterDivisionOptions } = useInventoryDivisions();
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo,   setFilterDateTo]   = useState("");
   const [filtersOpen,    setFiltersOpen]    = useState(false);
@@ -578,7 +585,7 @@ export default function DistributionPage() {
                       className="px-2.5 py-1.5 text-xs border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-green-500"
                     >
                       <option value="">All divisions</option>
-                      {DIVISIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+                      {filterDivisionOptions.map((d) => <option key={d} value={d}>{d}</option>)}
                     </select>
                   </div>
                   <div className="space-y-1">

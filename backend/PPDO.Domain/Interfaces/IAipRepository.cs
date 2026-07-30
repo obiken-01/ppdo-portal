@@ -18,6 +18,9 @@ public interface IAipRepository : IRepository<AipRecord>
     /// <summary>AipOffice rows WHERE aip_record_id = <paramref name="aipRecordId"/>.</summary>
     Task<IReadOnlyList<AipOffice>> GetOfficesByAipIdAsync(int aipRecordId, CancellationToken ct = default);
 
+    /// <summary>Returns the single AipOffice whose PK equals <paramref name="id"/>, or null (RAL-62 manual entry).</summary>
+    Task<AipOffice?> GetOfficeByIdAsync(int id, CancellationToken ct = default);
+
     /// <summary>AipOffice rows WHERE aip_record_id IN (<paramref name="aipIds"/>). Used by the list endpoint for office-count aggregation.</summary>
     Task<IReadOnlyList<AipOffice>> GetOfficesByAipIdsAsync(IReadOnlyList<int> aipIds, CancellationToken ct = default);
 
@@ -29,6 +32,9 @@ public interface IAipRepository : IRepository<AipRecord>
 
     /// <summary>AipProject rows WHERE program_id IN (<paramref name="programIds"/>).</summary>
     Task<IReadOnlyList<AipProject>> GetProjectsByProgramIdsAsync(IReadOnlyList<int> programIds, CancellationToken ct = default);
+
+    /// <summary>Returns the single AipProject whose PK equals <paramref name="id"/>, or null (RAL-62 manual entry).</summary>
+    Task<AipProject?> GetProjectByIdAsync(int id, CancellationToken ct = default);
 
     /// <summary>AipActivity rows WHERE project_id IN (<paramref name="projectIds"/>).</summary>
     Task<IReadOnlyList<AipActivity>> GetActivitiesByProjectIdsAsync(IReadOnlyList<int> projectIds, CancellationToken ct = default);

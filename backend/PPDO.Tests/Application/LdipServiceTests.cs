@@ -96,6 +96,15 @@ public sealed class LdipServiceTests
         repo.Setup(r => r.DeleteOfficeGroupAsync(It.IsAny<LdipOffice>(), It.IsAny<CancellationToken>()))
             .Callback<LdipOffice, CancellationToken>((g, _) => groupStore.GetValueOrDefault(g.LdipRecordId)?.Remove(g))
             .Returns(Task.CompletedTask);
+        // Mirrors the real repo's Include(p => p.Office) — sets the navigation before returning
+        // so UpdateProgramAsync can reach LdipOffice.LdipRecordId without a second query.
+        repo.Setup(r => r.GetProgramByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int id, CancellationToken _) => groupStore.Values
+                .SelectMany(list => list)
+                .SelectMany(g => g.Programs.Select(p => (Group: g, Program: p)))
+                .Where(gp => gp.Program.Id == id)
+                .Select(gp => { gp.Program.Office = gp.Group; return gp.Program; })
+                .FirstOrDefault());
         repo.Setup(r => r.UpdateAsync(It.IsAny<LdipRecord>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         repo.Setup(r => r.DeleteAsync(It.IsAny<LdipRecord>(), It.IsAny<CancellationToken>()))
@@ -422,6 +431,155 @@ public sealed class LdipServiceTests
             await sut.UpdateAsync(999, new UpdateLdipDto("X", 2027, 2029, "New", OfficeId: 1));
 
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    // ── Inline per-program edit (RAL-115) ─────────────────────────────────────
+
+    [Fact]
+    public async Task UpdateProgram_ValidEdit_UpdatesFieldsAndReturnsDto()
+    {
+        LdipOffice group = Group(70, 1, "1000-000-1-01-010", "General", "Old Name");
+        (LdipService sut, _, _, _, _) = Build(
+            [Rec(1, PlanningStatus.Draft)], groups: new() { [1] = [group] });
+
+        SaveLdipProgramDto dto = new(
+            "new name", 250m, "PPDO", "2027", "2029", "Better outputs", "GF",
+            50m, 100m, 25m, 5m, 2m, "TYP1", "PDP1", "SDG1", "SEN1", "NDR1", "NSP1", "PDPDFP1");
+
+        ServiceResult<LdipProgramDto> result = await sut.UpdateProgramAsync(1, 7000, dto);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("NEW NAME", result.Value!.Name); // uppercased, matching BuildHierarchy's convention
+        Assert.Equal(250m, result.Value.Budget);
+        Assert.Equal("PPDO", result.Value.ImplementingOffice);
+        Assert.Equal("2027", result.Value.StartDate);
+        Assert.Equal("2029", result.Value.EndDate);
+        Assert.Equal("Better outputs", result.Value.ExpectedOutputs);
+        Assert.Equal(50m, result.Value.Ps);
+        Assert.Equal(100m, result.Value.Mooe);
+        Assert.Equal(25m, result.Value.Co);
+        Assert.Equal(5m, result.Value.CcAdaptation);
+        Assert.Equal(2m, result.Value.CcMitigation);
+        Assert.Equal("TYP1", result.Value.CcTypologyCode);
+        Assert.Equal("PDP1", result.Value.PdpRdp);
+        Assert.Equal("SDG1", result.Value.Sdgs);
+        Assert.Equal("SEN1", result.Value.SendaiFramework);
+        Assert.Equal("NDR1", result.Value.NdrrmPlan);
+        Assert.Equal("NSP1", result.Value.Nsp);
+        Assert.Equal("PDPDFP1", result.Value.Pdpdfp);
+    }
+
+    [Fact]
+    public async Task UpdateProgram_RefCodeAndIdentityImmutable()
+    {
+        LdipOffice group = Group(70, 1, "1000-000-1-01-010", "General", "Old Name");
+        (LdipService sut, _, _, _, _) = Build(
+            [Rec(1, PlanningStatus.Draft)], groups: new() { [1] = [group] });
+
+        ServiceResult<LdipProgramDto> result = await sut.UpdateProgramAsync(
+            1, 7000, new SaveLdipProgramDto("New Name", 300m));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(7000, result.Value!.Id);
+        Assert.Equal("1000-000-1-01-010-001", result.Value.RefCode); // unchanged
+    }
+
+    [Fact]
+    public async Task UpdateProgram_ReResolvesFundingSourceRaw_ToFundingSourceId()
+    {
+        LdipOffice group = Group(70, 1, "1000-000-1-01-010", "General", "Program A");
+        List<FundingSource> fundingSources = [Fs(9, "LDRRMF")];
+        (LdipService sut, _, _, _, _) = Build(
+            [Rec(1, PlanningStatus.Draft)], groups: new() { [1] = [group] }, fundingSources: fundingSources);
+
+        ServiceResult<LdipProgramDto> result = await sut.UpdateProgramAsync(
+            1, 7000, new SaveLdipProgramDto("Program A", 300m, FundingSourceRaw: "LDRRMF"));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(9, result.Value!.FundingSourceId);
+        Assert.Equal("LDRRMF", result.Value.FundingSourceSnapshot);
+    }
+
+    [Fact]
+    public async Task UpdateProgram_UnmatchedFundingSourceRaw_LeavesFundingSourceIdNull_SnapshotsRawText()
+    {
+        LdipOffice group = Group(70, 1, "1000-000-1-01-010", "General", "Program A");
+        (LdipService sut, _, _, _, _) = Build(
+            [Rec(1, PlanningStatus.Draft)], groups: new() { [1] = [group] }, fundingSources: []);
+
+        ServiceResult<LdipProgramDto> result = await sut.UpdateProgramAsync(
+            1, 7000, new SaveLdipProgramDto("Program A", 300m, FundingSourceRaw: "UNKNOWN CODE"));
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Value!.FundingSourceId);
+        Assert.Equal("UNKNOWN CODE", result.Value.FundingSourceSnapshot);
+    }
+
+    [Fact]
+    public async Task UpdateProgram_ProgramNotFound_ReturnsNotFound()
+    {
+        (LdipService sut, _, _, _, _) = Build([Rec(1, PlanningStatus.Draft)]);
+
+        ServiceResult<LdipProgramDto> result = await sut.UpdateProgramAsync(
+            1, 999, new SaveLdipProgramDto("X", 100m));
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Fact]
+    public async Task UpdateProgram_ProgramBelongsToDifferentRecord_ReturnsNotFound()
+    {
+        LdipOffice group = Group(70, 1, "1000-000-1-01-010", "General", "Program A");
+        (LdipService sut, _, _, _, _) = Build(
+            [Rec(1, PlanningStatus.Draft), Rec(2, PlanningStatus.Draft, officeId: 1)],
+            groups: new() { [1] = [group] });
+
+        // Program 7000 belongs to record 1, not record 2.
+        ServiceResult<LdipProgramDto> result = await sut.UpdateProgramAsync(
+            2, 7000, new SaveLdipProgramDto("X", 100m));
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Theory]
+    [InlineData(PlanningStatus.Final)]
+    [InlineData(PlanningStatus.Archived)]
+    public async Task UpdateProgram_RecordNotDraft_ReturnsBadRequest(string status)
+    {
+        LdipOffice group = Group(70, 1, "1000-000-1-01-010", "General", "Program A");
+        (LdipService sut, _, _, _, _) = Build(
+            [Rec(1, status)], groups: new() { [1] = [group] });
+
+        ServiceResult<LdipProgramDto> result = await sut.UpdateProgramAsync(
+            1, 7000, new SaveLdipProgramDto("X", 100m));
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task UpdateProgram_EmptyName_ReturnsBadRequest()
+    {
+        LdipOffice group = Group(70, 1, "1000-000-1-01-010", "General", "Program A");
+        (LdipService sut, _, _, _, _) = Build(
+            [Rec(1, PlanningStatus.Draft)], groups: new() { [1] = [group] });
+
+        ServiceResult<LdipProgramDto> result = await sut.UpdateProgramAsync(
+            1, 7000, new SaveLdipProgramDto("   ", 100m));
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task UpdateProgram_LogsAuditUpdate()
+    {
+        LdipOffice group = Group(70, 1, "1000-000-1-01-010", "General", "Old Name");
+        (LdipService sut, _, Mock<IAuditService> audit, _, _) = Build(
+            [Rec(1, PlanningStatus.Draft)], groups: new() { [1] = [group] });
+
+        await sut.UpdateProgramAsync(1, 7000, new SaveLdipProgramDto("New Name", 300m));
+
+        audit.Verify(a => a.LogAsync("ldip_programs", 7000, AuditAction.Update,
+            It.IsAny<object?>(), It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     // ── GetAll — office scoping ───────────────────────────────────────────────

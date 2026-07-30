@@ -18,6 +18,12 @@ public sealed class AipProject
     /// <summary>Project name. Max 500 characters.</summary>
     public string Name { get; set; } = string.Empty;
 
+    /// <summary>
+    /// True when this project was materialized to hold a line item recorded directly on its
+    /// parent program row (RAL-108) — it has no corresponding row of its own in the source file.
+    /// </summary>
+    public bool IsSynthetic { get; set; }
+
     // ── Navigation ────────────────────────────────────────────────────────────
 
     /// <summary>The parent AIP program.</summary>

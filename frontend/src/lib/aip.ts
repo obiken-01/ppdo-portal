@@ -12,6 +12,21 @@ import type {
   AipRecordSummary,
   AipImportPreviewResponse,
   AipImportConfirmRequest,
+  CreateAipRecordRequest,
+  CreateAipOfficeRequest,
+  CopyAipOfficeRequest,
+  SeedAipProgramsFromLdipRequest,
+  CreateAipProgramRequest,
+  CreateAipProjectRequest,
+  CreateAipActivityRequest,
+  UpdateAipActivityRequest,
+  UpdateAipOfficeRequest,
+  UpdateAipProgramRequest,
+  UpdateAipProjectRequest,
+  AipOfficeDetail,
+  AipProgramDetail,
+  AipProjectDetail,
+  AipActivityDetail,
   ApiResponse,
 } from "@/types";
 
@@ -76,6 +91,120 @@ export async function confirmAipImport(body: AipImportConfirmRequest): Promise<A
     "/budget-planning/aip/confirm",
     body
   );
+  return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// AIP manual entry (RAL-62) — one node at a time
+// ---------------------------------------------------------------------------
+
+export async function createManualAipRecord(body: CreateAipRecordRequest): Promise<AipRecordResponse> {
+  const { data } = await api.post<ApiResponse<AipRecordResponse>>("/budget-planning/aip", body);
+  return unwrap(data);
+}
+
+export async function addAipOffice(aipId: number, body: CreateAipOfficeRequest): Promise<AipOfficeDetail> {
+  const { data } = await api.post<ApiResponse<AipOfficeDetail>>(
+    `/budget-planning/aip/${aipId}/offices`, body
+  );
+  return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// AIP carry-forward (RAL-180) — copy selected programs from a prior fiscal year's office
+// ---------------------------------------------------------------------------
+
+export async function copyAipOfficeFromPriorYear(body: CopyAipOfficeRequest): Promise<AipOfficeDetail> {
+  const { data } = await api.post<ApiResponse<AipOfficeDetail>>(
+    "/budget-planning/aip/copy-office", body
+  );
+  return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// AIP seed-from-LDIP (RAL-181) — seed an office's programs from its LDIP
+// ---------------------------------------------------------------------------
+
+export async function seedAipProgramsFromLdip(
+  body: SeedAipProgramsFromLdipRequest
+): Promise<AipOfficeDetail> {
+  const { data } = await api.post<ApiResponse<AipOfficeDetail>>(
+    "/budget-planning/aip/seed-programs-from-ldip", body
+  );
+  return unwrap(data);
+}
+
+export async function addAipProgram(officeId: number, body: CreateAipProgramRequest): Promise<AipProgramDetail> {
+  const { data } = await api.post<ApiResponse<AipProgramDetail>>(
+    `/budget-planning/aip/offices/${officeId}/programs`, body
+  );
+  return unwrap(data);
+}
+
+export async function addAipProject(programId: number, body: CreateAipProjectRequest): Promise<AipProjectDetail> {
+  const { data } = await api.post<ApiResponse<AipProjectDetail>>(
+    `/budget-planning/aip/programs/${programId}/projects`, body
+  );
+  return unwrap(data);
+}
+
+export async function addAipActivity(projectId: number, body: CreateAipActivityRequest): Promise<AipActivityDetail> {
+  const { data } = await api.post<ApiResponse<AipActivityDetail>>(
+    `/budget-planning/aip/projects/${projectId}/activities`, body
+  );
+  return unwrap(data);
+}
+
+// Mistakes happen (e.g. data entered under the wrong level) — Draft-only, cascades to children.
+export async function deleteAipOffice(officeId: number): Promise<void> {
+  const { data } = await api.delete<ApiResponse<boolean>>(`/budget-planning/aip/offices/${officeId}`);
+  unwrap(data);
+}
+
+export async function deleteAipProgram(programId: number): Promise<void> {
+  const { data } = await api.delete<ApiResponse<boolean>>(`/budget-planning/aip/programs/${programId}`);
+  unwrap(data);
+}
+
+export async function deleteAipProject(projectId: number): Promise<void> {
+  const { data } = await api.delete<ApiResponse<boolean>>(`/budget-planning/aip/projects/${projectId}`);
+  unwrap(data);
+}
+
+export async function deleteAipActivity(activityId: number): Promise<void> {
+  const { data } = await api.delete<ApiResponse<boolean>>(`/budget-planning/aip/activities/${activityId}`);
+  unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// AIP inline activity edit (RAL-179) — PUT /api/budget-planning/aip/{id}/activities/{activityId}
+// ---------------------------------------------------------------------------
+
+export async function updateAipActivity(
+  aipRecordId: number, activityId: number, body: UpdateAipActivityRequest
+): Promise<AipActivityDetail> {
+  const { data } = await api.put<ApiResponse<AipActivityDetail>>(
+    `/budget-planning/aip/${aipRecordId}/activities/${activityId}`, body
+  );
+  return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// AIP inline office/program/project edit (detail-page CRUD)
+// ---------------------------------------------------------------------------
+
+export async function updateAipOffice(officeId: number, body: UpdateAipOfficeRequest): Promise<AipOfficeDetail> {
+  const { data } = await api.put<ApiResponse<AipOfficeDetail>>(`/budget-planning/aip/offices/${officeId}`, body);
+  return unwrap(data);
+}
+
+export async function updateAipProgram(programId: number, body: UpdateAipProgramRequest): Promise<AipProgramDetail> {
+  const { data } = await api.put<ApiResponse<AipProgramDetail>>(`/budget-planning/aip/programs/${programId}`, body);
+  return unwrap(data);
+}
+
+export async function updateAipProject(projectId: number, body: UpdateAipProjectRequest): Promise<AipProjectDetail> {
+  const { data } = await api.put<ApiResponse<AipProjectDetail>>(`/budget-planning/aip/projects/${projectId}`, body);
   return unwrap(data);
 }
 

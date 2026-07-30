@@ -21,7 +21,7 @@ public sealed class AuditDescriptionBuilderTests
     }
 
     [Fact]
-    public void Build_Delete_ReturnsDeactivated()
+    public void Build_Delete_SoftDeleteMarker_ReturnsDeactivated()
     {
         string description = AuditDescriptionBuilder.Build(
             AuditAction.Delete,
@@ -29,6 +29,31 @@ public sealed class AuditDescriptionBuilderTests
             newValuesJson: null);
 
         Assert.Equal("Deactivated", description);
+    }
+
+    [Fact]
+    public void Build_Delete_RealFieldSnapshot_ReturnsPermanentlyDeletedWithFields()
+    {
+        // WfpExpenditureService/AipService's hard-delete shape: real business fields, not {isActive}.
+        string description = AuditDescriptionBuilder.Build(
+            AuditAction.Delete,
+            oldValuesJson: """{"nature":"MOOE","frequency":"Monthly","totalAppropriation":50000}""",
+            newValuesJson: null);
+
+        Assert.StartsWith("Permanently deleted:", description);
+        Assert.Contains("- Nature: MOOE", description);
+        Assert.Contains("- Total Appropriation: 50000", description);
+    }
+
+    [Fact]
+    public void Build_Delete_NoOldValues_ReturnsPermanentlyDeletedFallback()
+    {
+        string description = AuditDescriptionBuilder.Build(
+            AuditAction.Delete,
+            oldValuesJson: null,
+            newValuesJson: null);
+
+        Assert.Equal("Permanently deleted.", description);
     }
 
     [Fact]

@@ -13,6 +13,11 @@ const META_KEY    = "aip_import_meta";
 interface ImportMeta {
   originalFilename: string;
   ldipId: number | null;
+  /**
+   * RAL-178 — when set, the confirm re-uploads into this existing record (full-replaces its
+   * hierarchy) instead of creating a new one. Set by aip/new when launched with ?replaceId=.
+   */
+  replaceId?: number | null;
 }
 
 const SECTOR_ORDER = ["GENERAL", "SOCIAL", "ECONOMIC", "OTHERS"];
@@ -92,17 +97,26 @@ export default function AipImportPreviewPage() {
     if (!preview || !meta) return;
     setConfirmError(null);
     setConfirming(true);
+    const replaceId = meta.replaceId ?? null;
     try {
-      await confirmAipImport({
+      const saved = await confirmAipImport({
         fiscalYear:       preview.fiscalYear,
         originalFilename: meta.originalFilename,
         ldipId:           meta.ldipId,
         sectorOffices:    preview.sectorOffices,
+        // RAL-178 — re-upload into the same record when launched with ?replaceId=.
+        ...(replaceId != null ? { targetRecordId: replaceId } : {}),
       });
       sessionStorage.removeItem(PREVIEW_KEY);
       sessionStorage.removeItem(META_KEY);
-      toast.success("Import complete", `AIP FY${preview.fiscalYear} imported successfully.`);
-      router.push("/budget-planning/aip");
+      toast.success(
+        replaceId != null ? "Re-upload complete" : "Import complete",
+        replaceId != null
+          ? `AIP FY${preview.fiscalYear} replaced from the file.`
+          : `AIP FY${preview.fiscalYear} imported successfully.`
+      );
+      // On re-upload the service returns the SAME record id, so this lands back on it.
+      router.push(replaceId != null ? `/budget-planning/aip/detail?id=${saved.id}` : "/budget-planning/aip");
     } catch (err) {
       setConfirmError(aipErrorMessage(err, "Confirm failed. Please try again."));
       setConfirming(false);
@@ -110,9 +124,12 @@ export default function AipImportPreviewPage() {
   }
 
   function handleCancel() {
+    const replaceId = meta?.replaceId ?? null;
     sessionStorage.removeItem(PREVIEW_KEY);
     sessionStorage.removeItem(META_KEY);
-    router.push("/budget-planning/aip");
+    router.push(
+      replaceId != null ? `/budget-planning/aip/new?replaceId=${replaceId}` : "/budget-planning/aip"
+    );
   }
 
   if (!preview || !me) {
@@ -129,8 +146,14 @@ export default function AipImportPreviewPage() {
       {/* Header + actions */}
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">Import Preview — AIP FY{preview.fiscalYear}</h1>
-          <p className="text-sm text-slate-600 mt-0.5">Review the data before confirming. This cannot be undone.</p>
+          <h1 className="text-xl font-bold text-slate-800">
+            {meta?.replaceId != null ? "Re-upload Preview" : "Import Preview"} — AIP FY{preview.fiscalYear}
+          </h1>
+          <p className="text-sm text-slate-600 mt-0.5">
+            {meta?.replaceId != null
+              ? "Review the data before confirming. This replaces the existing record's hierarchy with the file's contents. This cannot be undone."
+              : "Review the data before confirming. This cannot be undone."}
+          </p>
         </div>
         <div className="flex items-center gap-3 shrink-0 ml-6">
           <button
@@ -140,7 +163,9 @@ export default function AipImportPreviewPage() {
               confirming ? "bg-green-300 cursor-not-allowed" : "bg-green-700 hover:bg-green-800"
             }`}
           >
-            {confirming ? "Importing…" : "Confirm Import"}
+            {confirming
+              ? meta?.replaceId != null ? "Replacing…" : "Importing…"
+              : meta?.replaceId != null ? "Confirm Re-upload" : "Confirm Import"}
           </button>
           <button
             onClick={handleCancel}

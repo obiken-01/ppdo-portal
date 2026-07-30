@@ -16,10 +16,21 @@ public static class AuditDescriptionBuilder
         Dictionary<string, JsonElement>? oldValues = Parse(oldValuesJson);
         Dictionary<string, JsonElement>? newValues = Parse(newValuesJson);
 
-        // Every DELETE call site in this codebase is a soft delete: oldValues = { IsActive: true },
-        // newValues = null. If that shape ever changes, this still reads fine as a stand-alone line.
+        // Soft-delete call sites (Account/Office/Division/User/etc.) always log this exact
+        // single-field marker: oldValues = { isActive: true }, newValues = null. Hard-delete call
+        // sites (WfpExpenditureService, AipService's office/program/project/activity deletes,
+        // AllocationService's program_divisions) log the entity's real field snapshot instead —
+        // those rows are gone from the database, not flipped inactive, so label them accordingly.
         if (action == AuditAction.Delete)
-            return "Deactivated";
+        {
+            bool isSoftDelete = oldValues is { Count: 1 } && oldValues.ContainsKey("isActive");
+            if (isSoftDelete)
+                return "Deactivated";
+
+            return oldValues is not null
+                ? DescribeFields("Permanently deleted", oldValues)
+                : "Permanently deleted.";
+        }
 
         if (oldValues is null && newValues is not null)
             return DescribeFields(action == AuditAction.Create ? "Created with" : "Recorded", newValues);

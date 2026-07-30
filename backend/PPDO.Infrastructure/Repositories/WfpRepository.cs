@@ -86,4 +86,8 @@ public sealed class WfpRepository : Repository<WfpRecord>, IWfpRepository
             .ThenBy(l => l.SortOrder)
             .ToListAsync(ct);
     }
+
+    /// <inheritdoc />
+    public async Task<bool> AnyForAipRecordAsync(int aipRecordId, CancellationToken ct = default)
+        => await _context.Set<WfpRecord>().AnyAsync(r => r.AipRecordId == aipRecordId, ct);
 }

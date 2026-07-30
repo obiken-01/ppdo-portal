@@ -70,9 +70,21 @@ public sealed class PurchaseRequestServiceTests
         repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Division>
             {
-                new() { Id = AdminDiv,    OfficeId = 100, Name = "Administrative Division", IsActive = true },
-                new() { Id = PlanningDiv, OfficeId = 100, Name = "Planning Division",       IsActive = true },
+                new() { Id = AdminDiv,    OfficeId = 100, Code = "ADMIN",    Name = "Administrative Division", IsActive = true },
+                new() { Id = PlanningDiv, OfficeId = 100, Code = "PLANNING", Name = "Planning Division",       IsActive = true },
             });
+        return repo;
+    }
+
+    /// <summary>
+    /// Offices repo for the PPDO-office scoping in division resolution. Office 100 matches the
+    /// OfficeId on the fixtures in <see cref="DivisionsRepo"/>.
+    /// </summary>
+    private static Mock<IOfficeRepository> OfficesRepo()
+    {
+        Mock<IOfficeRepository> repo = new();
+        repo.Setup(r => r.GetByCodeAsync("PPDO", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Office { Id = 100, OfficeCode = "PPDO", OfficeName = "Provincial Planning and Development Office", IsActive = true });
         return repo;
     }
 
@@ -125,13 +137,15 @@ public sealed class PurchaseRequestServiceTests
         Mock<IPurchaseRequestRepository> prRepo,
         Mock<IItemMasterRepository>? itemRepo = null,
         Mock<IExcelService>? excelService = null,
-        Mock<IRepository<Division>>? divisionRepo = null)
+        Mock<IRepository<Division>>? divisionRepo = null,
+        Mock<IOfficeRepository>? officeRepo = null)
         => new(
             prRepo.Object,
             (itemRepo ?? RepoItemThatSaves()).Object,
             new PermissionService(),
             (excelService ?? new Mock<IExcelService>()).Object,
             (divisionRepo ?? DivisionsRepo()).Object,
+            (officeRepo ?? OfficesRepo()).Object,
             NullLogger<PurchaseRequestService>.Instance);
 
     // ── PRNo generation ───────────────────────────────────────────────────────
@@ -386,5 +400,157 @@ public sealed class PurchaseRequestServiceTests
 
         Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
         prRepo.Verify(r => r.AddAsync(It.IsAny<PurchaseRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    /// <summary>
+    /// PR No. on the import sheet is optional. When the sheet supplies one, it should be
+    /// used verbatim — the same "supplied value wins, blank auto-generates" contract as the
+    /// manual Create PR form's PrNo field.
+    /// </summary>
+    [Fact]
+    public async Task ImportFromExcelAsync_SheetSuppliesPrNo_UsesSuppliedValue()
+    {
+        IReadOnlyList<PurchaseRequestImportRow> rows = new List<PurchaseRequestImportRow>
+        {
+            new()
+            {
+                SheetName    = "PR-001",
+                PrNo         = "101-1041-GF-2026-06-01-099",
+                DivisionName = "Administrative Division",
+                RequestedBy  = "Test",
+                PRDate       = DateOnly.FromDateTime(DateTime.UtcNow),
+                Items        = new List<PRItemImportRow>
+                {
+                    new() { Description = "Bond Paper", Unit = "ream", Quantity = 1m },
+                },
+            },
+        };
+
+        Mock<IExcelService> excel = new();
+        excel.Setup(e => e.ParsePRImport(It.IsAny<Stream>())).Returns(rows);
+
+        Mock<IPurchaseRequestRepository> prRepo = RepoPRThatSaves();
+
+        ServiceResult<IReadOnlyList<PRResponseDto>> result =
+            await BuildSut(prRepo, excelService: excel).ImportFromExcelAsync(MakeAdmin(), Stream.Null);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("101-1041-GF-2026-06-01-099", result.Value![0].PRNo);
+    }
+
+    /// <summary>
+    /// The sheet's Division cell is free text and may carry the division's short code rather
+    /// than its full name. The Staff pre-check must resolve before comparing, not string-match
+    /// the raw cell against the user's division name.
+    /// </summary>
+    [Fact]
+    public async Task ImportFromExcelAsync_OwnDivisionByCode_IsAccepted()
+    {
+        User staff = MakeStaff(PlanningDiv);
+
+        IReadOnlyList<PurchaseRequestImportRow> rows = new List<PurchaseRequestImportRow>
+        {
+            new()
+            {
+                SheetName    = "PR-001",
+                DivisionName = "PLANNING", // the code, not "Planning Division"
+                RequestedBy  = "Test",
+                PRDate       = DateOnly.FromDateTime(DateTime.UtcNow),
+                Items        = new List<PRItemImportRow>
+                {
+                    new() { Description = "Bond Paper", Unit = "ream", Quantity = 1m },
+                },
+            },
+        };
+
+        Mock<IExcelService> excel = new();
+        excel.Setup(e => e.ParsePRImport(It.IsAny<Stream>())).Returns(rows);
+
+        Mock<IPurchaseRequestRepository> prRepo = RepoPRThatSaves();
+
+        ServiceResult<IReadOnlyList<PRResponseDto>> result =
+            await BuildSut(prRepo, excelService: excel).ImportFromExcelAsync(staff, Stream.Null);
+
+        Assert.True(result.IsSuccess);
+        prRepo.Verify(r => r.AddAsync(It.IsAny<PurchaseRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // ── Division resolution ───────────────────────────────────────────────────
+
+    [Fact]
+    public async Task CreateAsync_DivisionSuppliedAsCode_ResolvesToTheDivision()
+    {
+        Mock<IPurchaseRequestRepository> prRepo = RepoPRThatSaves();
+
+        ServiceResult<PRResponseDto> result =
+            await BuildSut(prRepo).CreateAsync(MakeStaff(PlanningDiv), ValidDto(division: "PLANNING"));
+
+        Assert.True(result.IsSuccess);
+        prRepo.Verify(r => r.AddAsync(
+            It.Is<PurchaseRequest>(p => p.DivisionId == PlanningDiv), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateAsync_DivisionNameDiffersInCase_StillResolves()
+    {
+        Mock<IPurchaseRequestRepository> prRepo = RepoPRThatSaves();
+
+        ServiceResult<PRResponseDto> result =
+            await BuildSut(prRepo).CreateAsync(MakeStaff(PlanningDiv), ValidDto(division: "  planning division  "));
+
+        Assert.True(result.IsSuccess);
+    }
+
+    /// <summary>
+    /// Division names are unique only WITHIN an office. Resolution must be scoped to PPDO's
+    /// own divisions so a same-named division under another office can never be selected.
+    /// </summary>
+    [Fact]
+    public async Task CreateAsync_DivisionNameOwnedByAnotherOffice_IsNotResolved()
+    {
+        Mock<IRepository<Division>> divisions = new();
+        divisions.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Division>
+            {
+                new() { Id = AdminDiv,    OfficeId = 100, Code = "ADMIN",    Name = "Administrative Division", IsActive = true },
+                new() { Id = PlanningDiv, OfficeId = 100, Code = "PLANNING", Name = "Planning Division",       IsActive = true },
+                // Same name, different office — must never win.
+                new() { Id = 999,         OfficeId = 300, Code = "ADMIN",    Name = "Administrative",          IsActive = true },
+            });
+
+        Mock<IPurchaseRequestRepository> prRepo = RepoPRThatSaves();
+
+        ServiceResult<PRResponseDto> result = await BuildSut(prRepo, divisionRepo: divisions)
+            .CreateAsync(MakeAdmin(), ValidDto(division: "Administrative"));
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        prRepo.Verify(r => r.AddAsync(It.IsAny<PurchaseRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateAsync_UnknownDivision_ErrorListsTheValidDivisions()
+    {
+        ServiceResult<PRResponseDto> result =
+            await BuildSut(RepoPRThatSaves()).CreateAsync(MakeAdmin(), ValidDto(division: "SPD"));
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("Administrative Division", result.Error);
+        Assert.Contains("Planning Division", result.Error);
+    }
+
+    [Fact]
+    public async Task CreateAsync_InactiveDivision_IsNotResolved()
+    {
+        Mock<IRepository<Division>> divisions = new();
+        divisions.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Division>
+            {
+                new() { Id = AdminDiv, OfficeId = 100, Code = "ADMIN", Name = "Administrative Division", IsActive = false },
+            });
+
+        ServiceResult<PRResponseDto> result = await BuildSut(RepoPRThatSaves(), divisionRepo: divisions)
+            .CreateAsync(MakeAdmin(), ValidDto(division: "Administrative Division"));
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
     }
 }

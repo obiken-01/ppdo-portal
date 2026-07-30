@@ -21,14 +21,16 @@ public record AipActivityDto(
     decimal? CcAdaptation,
     decimal? CcMitigation,
     string?  CcTypologyCode,
-    bool     IsCreation);
+    bool     IsCreation,
+    bool     IsSynthetic = false);
 
 public record AipProjectDto(
     int    Id,
     int    ProgramId,
     string RefCode,
     string Name,
-    IReadOnlyList<AipActivityDto> Activities);
+    IReadOnlyList<AipActivityDto> Activities,
+    bool   IsSynthetic = false);
 
 public record AipProgramDto(
     int     Id,
@@ -69,7 +71,8 @@ public record AipRecordDetailDto(
     string   Status,
     int?     LdipId,
     int?     SourceId,
-    IReadOnlyList<AipOfficeDto> Offices);
+    IReadOnlyList<AipOfficeDto> Offices,
+    bool     HasWfpUsage = false);
 
 // ── Import counts ─────────────────────────────────────────────────────────────
 
@@ -101,12 +104,14 @@ public record ParsedAipOfficeDto(
 public record ParsedAipProgramDto(
     string RefCode,
     string Name,
-    List<ParsedAipProjectDto> Projects);
+    List<ParsedAipProjectDto> Projects,
+    ParsedAipActivityDto? LineItem = null);
 
 public record ParsedAipProjectDto(
     string RefCode,
     string Name,
-    List<ParsedAipActivityDto> Activities);
+    List<ParsedAipActivityDto> Activities,
+    ParsedAipActivityDto? LineItem = null);
 
 public record ParsedAipActivityDto(
     string   RefCode,
@@ -128,12 +133,109 @@ public record ParsedAipActivityDto(
 /// <summary>
 /// Body of POST /api/budget-planning/aip/confirm.
 /// The client sends back the exact SectorOffices payload returned by /upload.
+/// <see cref="TargetRecordId"/> (RAL-178): when set, ConfirmImportAsync full-replaces that
+/// existing record's hierarchy (re-upload a corrected file) instead of creating a new record.
 /// </summary>
 public record AipImportConfirmDto(
     int    FiscalYear,
     string OriginalFilename,
     int?   LdipId,
-    Dictionary<string, List<ParsedAipOfficeDto>> SectorOffices);
+    Dictionary<string, List<ParsedAipOfficeDto>> SectorOffices,
+    int?   TargetRecordId = null);
+
+// ── Manual entry (RAL-62) ────────────────────────────────────────────────────
+// One node at a time — mirrors the "Entry Level" tabs (Office/Program/Project/Activity) UI.
+// Each Add* call persists immediately; ref codes are auto-derived server-side, never supplied
+// by the client (see AipService.NextRefCode / the AipSector prefix map).
+
+/// <summary>Body of POST /api/budget-planning/aip — creates a blank Manual-entry AipRecord.</summary>
+public record CreateAipRecordDto(int FiscalYear);
+
+/// <summary>
+/// Body of POST /api/budget-planning/aip/{aipId}/offices. <see cref="OfficeConfigId"/> is the
+/// config <c>Office</c> row (RefCode is always derived from it; <see cref="Name"/> defaults to
+/// its <c>OfficeName</c> but can be overridden — real AIP files often label a sub-office/program
+/// cluster under the same physical office differently, e.g. "PROVINCIAL PLANNING AND DEVELOPMENT
+/// OFFICE - SPECIAL PROJECTS" or "OFFICE OF THE GOVERNOR - WARDEN", sharing the same RefCode as
+/// the office's other entries but with a distinguishing name). <see cref="Sector"/> is a separate
+/// choice — the same office can appear under more than one sector.
+/// </summary>
+public record CreateAipOfficeDto(int OfficeConfigId, string Sector, string? Name = null);
+
+/// <summary>
+/// RAL-180 — carry forward selected programs (with full project/activity subtrees) from
+/// <see cref="SourceOfficeId"/> into the target fiscal year. Target AipRecord/AipOffice are
+/// found-or-created by the service.
+/// </summary>
+public record CopyAipOfficeDto(int SourceOfficeId, int TargetFiscalYear, IReadOnlyList<int> ProgramIds);
+
+/// <summary>
+/// RAL-181 — seed an AIP office's programs (Name+RefCode only, no Project/Activity rows) from
+/// that office's existing LDIP for <see cref="Sector"/>. Target AipRecord/AipOffice are
+/// found-or-created by the service using the same rule as <see cref="CopyAipOfficeDto"/>.
+/// </summary>
+public record SeedAipProgramsFromLdipDto(
+    int TargetFiscalYear, int OfficeConfigId, string Sector, IReadOnlyList<int> LdipProgramIds);
+
+public record CreateAipProgramDto(string Name, string? FunctionBand = null);
+
+public record CreateAipProjectDto(string Name);
+
+public record CreateAipActivityDto(
+    string   Name,
+    string?  EsreCode,
+    string?  ImplementingOffice,
+    string?  StartDate,
+    string?  EndDate,
+    string?  ExpectedOutputs,
+    string?  FundingSourceRaw,
+    decimal? Ps,
+    decimal? Mooe,
+    decimal? Co,
+    decimal? CcAdaptation,
+    decimal? CcMitigation,
+    string?  CcTypologyCode);
+
+// ── Inline activity edit (RAL-179) ───────────────────────────────────────────
+
+/// <summary>
+/// Body of PUT /api/budget-planning/aip/{id}/activities/{activityId}. Editable field set only —
+/// RefCode, ProjectId, and activity identity are immutable through this endpoint (moving a node
+/// is a structural change, not a field correction). <see cref="FundingSourceId"/> is a direct FK
+/// to a config FundingSource row (not a raw code string like <see cref="CreateAipActivityDto"/>'s
+/// import-time matching) — the UI offers a dropdown of known sources, so there's nothing to match.
+/// </summary>
+public record UpdateAipActivityDto(
+    string   Name,
+    string?  EsreCode,
+    string?  ImplementingOffice,
+    string?  StartDate,
+    string?  EndDate,
+    string?  ExpectedOutputs,
+    int?     FundingSourceId,
+    decimal? Ps,
+    decimal? Mooe,
+    decimal? Co,
+    decimal? CcAdaptation,
+    decimal? CcMitigation,
+    string?  CcTypologyCode);
+
+// ── Inline office/program/project edit (detail-page CRUD follow-up to RAL-179) ─
+// RefCode/Sector/hierarchy position stay immutable through these endpoints, same
+// principle as UpdateAipActivityDto — only the human-facing fields are editable.
+
+/// <summary>Body of PUT /api/budget-planning/aip/offices/{officeId}. Only Name is editable —
+/// RefCode/Sector stay fixed (changing sector would change the ref-code prefix, a structural
+/// move, not a field correction).</summary>
+public record UpdateAipOfficeDto(string Name);
+
+/// <summary>Body of PUT /api/budget-planning/aip/programs/{programId}. Separate from the
+/// narrower PUT .../programs/{id}/function-band endpoint (v1.4 WFP entry context picker,
+/// unchanged) — this one is the detail page's full name+band edit.</summary>
+public record UpdateAipProgramDto(string Name, string? FunctionBand);
+
+/// <summary>Body of PUT /api/budget-planning/aip/projects/{projectId}. Only Name is editable.</summary>
+public record UpdateAipProjectDto(string Name);
 
 // ── Slim WFP-grid DTOs (RAL-89) ───────────────────────────────────────────────
 

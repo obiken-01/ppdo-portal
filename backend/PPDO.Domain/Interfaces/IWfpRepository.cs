@@ -55,4 +55,12 @@ public interface IWfpRepository : IRepository<WfpRecord>
 
     /// <summary>WfpExpenditureLine rows WHERE wfp_activity_id IN (<paramref name="activityIds"/>).</summary>
     Task<IReadOnlyList<WfpExpenditureLine>> GetLinesByActivityIdsAsync(IReadOnlyList<int> activityIds, CancellationToken ct = default);
+
+    /// <summary>
+    /// True if at least one WfpRecord references <paramref name="aipRecordId"/>. Used to block
+    /// AIP re-upload (RAL-178) once a WFP has been built from the record — replacing its
+    /// hierarchy would delete AipActivity rows that wfp_activities.aip_activity_id restricts
+    /// against (FK_wfp_activities_aip_activities_aip_activity_id, DeleteBehavior.Restrict).
+    /// </summary>
+    Task<bool> AnyForAipRecordAsync(int aipRecordId, CancellationToken ct = default);
 }

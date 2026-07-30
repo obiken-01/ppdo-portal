@@ -17,6 +17,18 @@ public interface ILdipService
     Task<ServiceResult<LdipRecordDetailDto>> GetByIdAsync(int id, CancellationToken ct = default);
     Task<ServiceResult<LdipRecordDetailDto>> CreateAsync(CreateLdipDto dto, Guid createdById, CancellationToken ct = default);
     Task<ServiceResult<LdipRecordDetailDto>> UpdateAsync(int id, UpdateLdipDto dto, CancellationToken ct = default);
+
+    /// <summary>
+    /// RAL-115 — edits one program's fields in place without a file round-trip.
+    /// RefCode, LdipOfficeId, and program identity are immutable through this endpoint;
+    /// FundingSourceRaw is re-resolved to FundingSourceId/Snapshot the same way
+    /// BuildHierarchy does at import time. Draft-only (same edit guard as UpdateAsync).
+    /// <paramref name="ldipRecordId"/> is a defensive cross-check that the program
+    /// actually belongs to that record.
+    /// </summary>
+    Task<ServiceResult<LdipProgramDto>> UpdateProgramAsync(
+        int ldipRecordId, int programId, SaveLdipProgramDto dto, CancellationToken ct = default);
+
     Task<ServiceResult<LdipRecordDto>> FinalizeAsync(int id, CancellationToken ct = default);
     Task<ServiceResult<LdipRecordDto>> UnlockAsync(int id, CancellationToken ct = default);
     Task<ServiceResult<LdipRecordDto>> ArchiveAsync(int id, CancellationToken ct = default);

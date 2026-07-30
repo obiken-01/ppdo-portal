@@ -123,6 +123,110 @@ public sealed class AipXlsmParserTests
         Assert.Equal(700000m,            act.Total);
     }
 
+    // ── Program/project-level line items (RAL-108) ─────────────────────────────
+
+    [Fact]
+    public void Parse_ProgramLevelRow_WithLineItemData_CapturesLineItem()
+    {
+        // A program row that carries its own amounts/eSRE/funding source with no child project
+        // (e.g. the Provincial Legal Office's "1000-000-1-01-011-004").
+        using Stream s = BuildStream(wb =>
+        {
+            IXLWorksheet ws = wb.Worksheets.Add("GENERAL_FY2027");
+            ws.Cell(14, 1).Value  = "1000-000-1-01-011";
+            ws.Cell(14, 2).Value  = "Provincial Legal Office";
+            ws.Cell(15, 1).Value  = "1000-000-1-01-011-004";       // Program level (6 segments)
+            ws.Cell(15, 3).Value  = "DISASTER RESILIENT HUMAN RIGHTS AND JUSTICE PROGRAM";
+            ws.Cell(15, 6).Value  = "ID";                          // EsreCode
+            ws.Cell(15, 7).Value  = "PLO";                         // ImplementingOffice
+            ws.Cell(15, 8).Value  = "January";                     // StartDate
+            ws.Cell(15, 9).Value  = "December";                    // EndDate
+            ws.Cell(15, 10).Value = "Human rights protected";      // ExpectedOutputs
+            ws.Cell(15, 11).Value = "GF";                          // FundingSourceRaw
+            ws.Cell(15, 12).Value = 50000.0;                       // PS
+        });
+
+        Dictionary<string, List<ParsedAipOffice>> result = _sut.Parse(s);
+
+        ParsedAipProgram prog = result["GENERAL"][0].Programs[0];
+        Assert.Empty(prog.Projects);
+        Assert.NotNull(prog.LineItem);
+        Assert.Equal("1000-000-1-01-011-004", prog.LineItem!.RefCode);
+        Assert.Equal("ID",       prog.LineItem.EsreCode);
+        Assert.Equal("PLO",      prog.LineItem.ImplementingOffice);
+        Assert.Equal("January",  prog.LineItem.StartDate);
+        Assert.Equal("December", prog.LineItem.EndDate);
+        Assert.Equal("Human rights protected", prog.LineItem.ExpectedOutputs);
+        Assert.Equal("GF",       prog.LineItem.FundingSourceRaw);
+        Assert.Equal(50000m,     prog.LineItem.Ps);
+        // Computed (RAL-144 convention), same as a real activity row — never trusted from a
+        // source Total column.
+        Assert.Equal(50000m,     prog.LineItem.Total);
+    }
+
+    [Fact]
+    public void Parse_ProjectLevelRow_WithLineItemData_CapturesLineItem()
+    {
+        using Stream s = BuildStream(wb =>
+        {
+            IXLWorksheet ws = wb.Worksheets.Add("SOCIAL_FY2027");
+            ws.Cell(14, 1).Value  = "A-B-C-D-1";
+            ws.Cell(14, 2).Value  = "Office";
+            ws.Cell(15, 1).Value  = "A-B-C-D-1-1";
+            ws.Cell(15, 3).Value  = "Program";
+            ws.Cell(16, 1).Value  = "A-B-C-D-1-1-1";     // Project level (7 segments)
+            ws.Cell(16, 4).Value  = "Project with its own line item";
+            ws.Cell(16, 11).Value = "GAD";                // FundingSourceRaw
+            ws.Cell(16, 13).Value = 25000.0;              // MOOE
+        });
+
+        Dictionary<string, List<ParsedAipOffice>> result = _sut.Parse(s);
+
+        ParsedAipProject proj = result["SOCIAL"][0].Programs[0].Projects[0];
+        Assert.Empty(proj.Activities);
+        Assert.NotNull(proj.LineItem);
+        Assert.Equal("A-B-C-D-1-1-1", proj.LineItem!.RefCode);
+        Assert.Equal("GAD",   proj.LineItem.FundingSourceRaw);
+        Assert.Equal(25000m,  proj.LineItem.Mooe);
+        Assert.Equal(25000m,  proj.LineItem.Total);
+    }
+
+    [Fact]
+    public void Parse_ProgramLevelRow_WithoutLineItemData_LineItemIsNull()
+    {
+        using Stream s = BuildStream(wb =>
+        {
+            IXLWorksheet ws = wb.Worksheets.Add("GENERAL_FY2027");
+            ws.Cell(14, 1).Value = "A-B-C-D-1";
+            ws.Cell(14, 2).Value = "Office";
+            ws.Cell(15, 1).Value = "A-B-C-D-1-1";
+            ws.Cell(15, 3).Value = "Program";
+        });
+
+        Dictionary<string, List<ParsedAipOffice>> result = _sut.Parse(s);
+
+        Assert.Null(result["GENERAL"][0].Programs[0].LineItem);
+    }
+
+    [Fact]
+    public void Parse_ProjectLevelRow_WithoutLineItemData_LineItemIsNull()
+    {
+        using Stream s = BuildStream(wb =>
+        {
+            IXLWorksheet ws = wb.Worksheets.Add("SOCIAL_FY2027");
+            ws.Cell(14, 1).Value = "A-B-C-D-1";
+            ws.Cell(14, 2).Value = "Office";
+            ws.Cell(15, 1).Value = "A-B-C-D-1-1";
+            ws.Cell(15, 3).Value = "Program";
+            ws.Cell(16, 1).Value = "A-B-C-D-1-1-1";
+            ws.Cell(16, 4).Value = "Project";
+        });
+
+        Dictionary<string, List<ParsedAipOffice>> result = _sut.Parse(s);
+
+        Assert.Null(result["SOCIAL"][0].Programs[0].Projects[0].LineItem);
+    }
+
     // ── Total is computed, never trusted from the source column (RAL-144) ──────
 
     [Fact]

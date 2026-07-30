@@ -21,6 +21,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
     private readonly IPermissionService         _permissions;
     private readonly IExcelService              _excel;
     private readonly IRepository<Division>      _divisions;
+    private readonly IOfficeRepository          _offices;
     private readonly ILogger<PurchaseRequestService> _logger;
 
     // Manila is UTC+8. Try IANA first (Linux/Azure), fall back to Windows identifier.
@@ -38,6 +39,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         IPermissionService permissions,
         IExcelService excel,
         IRepository<Division> divisions,
+        IOfficeRepository offices,
         ILogger<PurchaseRequestService> logger)
     {
         _prs         = prs;
@@ -45,16 +47,72 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         _permissions = permissions;
         _excel       = excel;
         _divisions   = divisions;
+        _offices     = offices;
         _logger      = logger;
     }
 
-    /// <summary>Resolves a division name to its active configurable division, or null (v1.2 — RAL-97).</summary>
+    /// <summary>
+    /// office_code of PPDO itself. Inventory is a PPDO-internal feature — a Purchase Request
+    /// always belongs to one of PPDO's own divisions, never another office's.
+    /// Mirrors PPDO_OFFICE_CODE in frontend/src/lib/config.ts.
+    /// </summary>
+    private const string PpdoOfficeCode = "PPDO";
+
+    /// <summary>
+    /// Resolves a division name (or code) to its active configurable division, or null
+    /// (v1.2 — RAL-97).
+    ///
+    /// Matching is scoped to PPDO's own divisions. Division names are only unique WITHIN an
+    /// office, so an unscoped match is ambiguous: "Administrative" exists under several
+    /// offices, and an unscoped FirstOrDefault could silently attach a PPDO purchase request
+    /// to another office's division. If the PPDO office row is missing (misconfigured), this
+    /// falls back to matching across all active divisions rather than failing every create.
+    ///
+    /// Both Name and Code are accepted (case-insensitive, trimmed) — Name wins. The Excel
+    /// import path carries whatever the user typed into the Division cell, where the short
+    /// code ("ADMIN") is as likely as the full name ("Administrative Division").
+    /// </summary>
     private async Task<Division?> ResolveDivisionByNameAsync(string? name, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(name)) return null;
+
+        string needle = name.Trim();
+        IReadOnlyList<Division> candidates = await GetSelectableDivisionsAsync(ct);
+
+        return candidates.FirstOrDefault(d => string.Equals(d.Name, needle, StringComparison.OrdinalIgnoreCase))
+            ?? candidates.FirstOrDefault(d => string.Equals(d.Code, needle, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// The active divisions a Purchase Request may be assigned to — PPDO's own, or all active
+    /// divisions if the PPDO office row is not configured.
+    /// </summary>
+    private async Task<IReadOnlyList<Division>> GetSelectableDivisionsAsync(CancellationToken ct)
+    {
+        // Sequential awaits — never Task.WhenAll over a shared DbContext (see CLAUDE.md).
+        Office? ppdo = await _offices.GetByCodeAsync(PpdoOfficeCode, ct);
         IReadOnlyList<Division> all = await _divisions.GetAllAsync(ct);
-        return all.FirstOrDefault(d => d.IsActive
-            && string.Equals(d.Name, name, StringComparison.OrdinalIgnoreCase));
+
+        List<Division> active = all.Where(d => d.IsActive).ToList();
+        if (ppdo is null) return active;
+
+        List<Division> scoped = active.Where(d => d.OfficeId == ppdo.Id).ToList();
+        return scoped.Count > 0 ? scoped : active;
+    }
+
+    /// <summary>
+    /// Builds the "not found" message for an unresolvable division, listing what IS valid.
+    /// Only called on the failure path — the extra read never runs on a successful create.
+    /// </summary>
+    private async Task<string> DivisionNotFoundMessageAsync(string? supplied, CancellationToken ct)
+    {
+        IReadOnlyList<Division> candidates = await GetSelectableDivisionsAsync(ct);
+
+        if (candidates.Count == 0)
+            return "No active divisions are configured. Add one in Config → Divisions first.";
+
+        string valid = string.Join(", ", candidates.Select(d => d.Name).OrderBy(n => n));
+        return $"Division '{supplied}' was not found. Valid divisions are: {valid}.";
     }
 
     // ── GetAllAsync ────────────────────────────────────────────────────────────
@@ -130,7 +188,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         Division? division = await ResolveDivisionByNameAsync(dto.Division, cancellationToken);
         if (division is null)
             return ServiceResult<PRResponseDto>.BadRequest(
-                $"Division '{dto.Division}' was not found. Configure it in Config → Divisions first.");
+                await DivisionNotFoundMessageAsync(dto.Division, cancellationToken));
 
         // Staff can only submit PRs for their own division.
         if (requester.Role is UserRole.Staff
@@ -233,7 +291,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
             Division? updatedDivision = await ResolveDivisionByNameAsync(dto.Division, cancellationToken);
             if (updatedDivision is null)
                 return ServiceResult<PRResponseDto>.BadRequest(
-                    $"Division '{dto.Division}' was not found. Configure it in Config → Divisions first.");
+                    await DivisionNotFoundMessageAsync(dto.Division, cancellationToken));
             pr.DivisionId = updatedDivision.Id;
         }
         if (dto.Fund is not null)              pr.Fund              = dto.Fund.Trim();
@@ -400,15 +458,28 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
                 "No PR worksheets found in the uploaded file.");
 
         // Enforce division scope before creating anything (Staff only).
+        //
+        // Compare RESOLVED division ids, not raw strings: the sheet's Division cell is free
+        // text and may legitimately hold the division's short code ("ADMIN") rather than its
+        // full name. A raw string comparison against requester.Division.Name rejected every
+        // such file — and rejected valid ones outright once the seeded division names stopped
+        // matching the retired v1.2 enum labels.
         if (requester.Role is UserRole.Staff)
         {
-            string? ownDivision = requester.Division?.Name;
-            IEnumerable<PurchaseRequestImportRow> wrongDivision =
-                rows.Where(r => !string.Equals(r.DivisionName, ownDivision, StringComparison.OrdinalIgnoreCase));
+            foreach (PurchaseRequestImportRow row in rows)
+            {
+                Division? rowDivision =
+                    await ResolveDivisionByNameAsync(row.DivisionName, cancellationToken);
 
-            if (wrongDivision.Any())
-                return ServiceResult<IReadOnlyList<PRResponseDto>>.Forbidden(
-                    "You can only import Purchase Requests for your own division.");
+                if (rowDivision is null)
+                    return ServiceResult<IReadOnlyList<PRResponseDto>>.BadRequest(
+                        $"Sheet '{row.SheetName}': " +
+                        await DivisionNotFoundMessageAsync(row.DivisionName, cancellationToken));
+
+                if (rowDivision.Id != requester.DivisionId)
+                    return ServiceResult<IReadOnlyList<PRResponseDto>>.Forbidden(
+                        "You can only import Purchase Requests for your own division.");
+            }
         }
 
         List<PRResponseDto> created = new(rows.Count);
@@ -553,6 +624,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
     /// <summary>Maps a parsed Excel import row to a CreatePRDto.</summary>
     private static CreatePRDto MapImportRowToDto(PurchaseRequestImportRow row) => new()
     {
+        PrNo              = row.PrNo,
         PRDate            = row.PRDate,
         Department        = row.Department,
         Division          = row.DivisionName,

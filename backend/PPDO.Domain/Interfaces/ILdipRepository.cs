@@ -27,6 +27,12 @@ public interface ILdipRepository : IRepository<LdipRecord>
     Task<IReadOnlyList<LdipOffice>> GetOfficeGroupsAsync(
         int ldipRecordId, CancellationToken ct = default);
 
+    /// <summary>
+    /// One program by its int PK, with its parent <see cref="LdipOffice"/> loaded (so callers
+    /// can reach <c>LdipOffice.LdipRecordId</c> without a second query), or null.
+    /// </summary>
+    Task<LdipProgram?> GetProgramByIdAsync(int id, CancellationToken ct = default);
+
     /// <summary>Marks a sector group for deletion (programs cascade at the DB level).</summary>
     Task DeleteOfficeGroupAsync(LdipOffice group, CancellationToken ct = default);
 

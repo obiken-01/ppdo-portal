@@ -125,6 +125,265 @@ public sealed class AipFunctions
             await _aip.ConfirmImportAsync(body, caller!.Id, ct), ct, HttpStatusCode.Created);
     }
 
+    // ── Manual entry (RAL-62) — gated on CanAccessBudgetPlanning, NOT CanUploadAip ──
+    // Office users who can never upload an .xlsm can still build an AIP by hand.
+
+    // ── POST /api/budget-planning/aip  (create blank Manual AipRecord) ───────
+    [Function("AipCreateManual")]
+    public async Task<HttpResponseData> CreateManual(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/aip")] HttpRequestData req,
+        CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        CreateAipRecordDto? body = await ConfigHttp.ReadBodyAsync<CreateAipRecordDto>(req, ct);
+        if (body is null)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<AipRecordDto>.Fail("Request body is missing or malformed."), ct);
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _aip.CreateManualRecordAsync(body, caller!.Id, ct), ct, HttpStatusCode.Created);
+    }
+
+    // ── POST /api/budget-planning/aip/{aipId}/offices ─────────────────────────
+    [Function("AipAddOffice")]
+    public async Task<HttpResponseData> AddOffice(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/aip/{aipId:int}/offices")] HttpRequestData req,
+        int aipId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        CreateAipOfficeDto? body = await ConfigHttp.ReadBodyAsync<CreateAipOfficeDto>(req, ct);
+        if (body is null)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<AipOfficeDto>.Fail("Request body is missing or malformed."), ct);
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _aip.AddOfficeAsync(aipId, body, ct), ct, HttpStatusCode.Created);
+    }
+
+    // ── POST /api/budget-planning/aip/copy-office ─────────────────────────────
+    // RAL-180 — carry forward selected programs (with full subtrees) from a prior fiscal
+    // year's office into the target fiscal year, creating the target record/office if needed.
+    // CanAccessBudgetPlanning, not CanUploadAip — same reasoning as manual entry (RAL-62/179):
+    // this isn't a new file import, office users should be able to do it too.
+    [Function("AipCopyOffice")]
+    public async Task<HttpResponseData> CopyOffice(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/aip/copy-office")] HttpRequestData req,
+        CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        CopyAipOfficeDto? body = await ConfigHttp.ReadBodyAsync<CopyAipOfficeDto>(req, ct);
+        if (body is null)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<AipOfficeDto>.Fail("Request body is missing or malformed."), ct);
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _aip.CopyOfficeFromPriorYearAsync(body, caller!.Id, ct), ct, HttpStatusCode.Created);
+    }
+
+    // ── POST /api/budget-planning/aip/seed-programs-from-ldip ─────────────────
+    // RAL-181 — seed an office's AIP programs (Name+RefCode only, bare shells) from that
+    // office's existing LDIP for the given sector. CanAccessBudgetPlanning, same reasoning as
+    // CopyOffice/manual entry — not a new file import.
+    [Function("AipSeedProgramsFromLdip")]
+    public async Task<HttpResponseData> SeedProgramsFromLdip(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/aip/seed-programs-from-ldip")] HttpRequestData req,
+        CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        SeedAipProgramsFromLdipDto? body = await ConfigHttp.ReadBodyAsync<SeedAipProgramsFromLdipDto>(req, ct);
+        if (body is null)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<AipOfficeDto>.Fail("Request body is missing or malformed."), ct);
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _aip.SeedProgramsFromLdipAsync(body, caller!.Id, ct), ct, HttpStatusCode.Created);
+    }
+
+    // ── POST /api/budget-planning/aip/offices/{officeId}/programs ────────────
+    [Function("AipAddProgram")]
+    public async Task<HttpResponseData> AddProgram(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/aip/offices/{officeId:int}/programs")] HttpRequestData req,
+        int officeId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        CreateAipProgramDto? body = await ConfigHttp.ReadBodyAsync<CreateAipProgramDto>(req, ct);
+        if (body is null)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<AipProgramDto>.Fail("Request body is missing or malformed."), ct);
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _aip.AddProgramAsync(officeId, body, ct), ct, HttpStatusCode.Created);
+    }
+
+    // ── POST /api/budget-planning/aip/programs/{programId}/projects ──────────
+    [Function("AipAddProject")]
+    public async Task<HttpResponseData> AddProject(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/aip/programs/{programId:int}/projects")] HttpRequestData req,
+        int programId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        CreateAipProjectDto? body = await ConfigHttp.ReadBodyAsync<CreateAipProjectDto>(req, ct);
+        if (body is null)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<AipProjectDto>.Fail("Request body is missing or malformed."), ct);
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _aip.AddProjectAsync(programId, body, ct), ct, HttpStatusCode.Created);
+    }
+
+    // ── POST /api/budget-planning/aip/projects/{projectId}/activities ────────
+    [Function("AipAddActivity")]
+    public async Task<HttpResponseData> AddActivity(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/aip/projects/{projectId:int}/activities")] HttpRequestData req,
+        int projectId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        CreateAipActivityDto? body = await ConfigHttp.ReadBodyAsync<CreateAipActivityDto>(req, ct);
+        if (body is null)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<AipActivityDto>.Fail("Request body is missing or malformed."), ct);
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _aip.AddActivityAsync(projectId, body, ct), ct, HttpStatusCode.Created);
+    }
+
+    // ── PUT /api/budget-planning/aip/offices/{officeId} ───────────────────────
+    // Detail-page CRUD follow-up to RAL-179 — same CanAccessBudgetPlanning reasoning.
+    [Function("AipUpdateOffice")]
+    public async Task<HttpResponseData> UpdateOffice(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "budget-planning/aip/offices/{officeId:int}")] HttpRequestData req,
+        int officeId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        UpdateAipOfficeDto? body = await ConfigHttp.ReadBodyAsync<UpdateAipOfficeDto>(req, ct);
+        if (body is null)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<AipOfficeDto>.Fail("Request body is missing or malformed."), ct);
+
+        return await ConfigHttp.FromResultAsync(req, await _aip.UpdateOfficeAsync(officeId, body, ct), ct);
+    }
+
+    // ── PUT /api/budget-planning/aip/programs/{programId} ─────────────────────
+    [Function("AipUpdateProgram")]
+    public async Task<HttpResponseData> UpdateProgram(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "budget-planning/aip/programs/{programId:int}")] HttpRequestData req,
+        int programId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        UpdateAipProgramDto? body = await ConfigHttp.ReadBodyAsync<UpdateAipProgramDto>(req, ct);
+        if (body is null)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<AipProgramDto>.Fail("Request body is missing or malformed."), ct);
+
+        return await ConfigHttp.FromResultAsync(req, await _aip.UpdateProgramAsync(programId, body, ct), ct);
+    }
+
+    // ── PUT /api/budget-planning/aip/projects/{projectId} ─────────────────────
+    [Function("AipUpdateProject")]
+    public async Task<HttpResponseData> UpdateProject(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "budget-planning/aip/projects/{projectId:int}")] HttpRequestData req,
+        int projectId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        UpdateAipProjectDto? body = await ConfigHttp.ReadBodyAsync<UpdateAipProjectDto>(req, ct);
+        if (body is null)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<AipProjectDto>.Fail("Request body is missing or malformed."), ct);
+
+        return await ConfigHttp.FromResultAsync(req, await _aip.UpdateProjectAsync(projectId, body, ct), ct);
+    }
+
+    // ── PUT /api/budget-planning/aip/{id}/activities/{activityId} ────────────
+    // RAL-179 — inline per-activity edit. CanAccessBudgetPlanning, not CanUploadAip: editing an
+    // already-imported/created record's fields is a correction, not a new import.
+    [Function("AipUpdateActivity")]
+    public async Task<HttpResponseData> UpdateActivity(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "budget-planning/aip/{id:int}/activities/{activityId:int}")] HttpRequestData req,
+        int id, int activityId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        UpdateAipActivityDto? body = await ConfigHttp.ReadBodyAsync<UpdateAipActivityDto>(req, ct);
+        if (body is null)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<AipActivityDto>.Fail("Request body is missing or malformed."), ct);
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _aip.UpdateActivityAsync(id, activityId, body, ct), ct);
+    }
+
+    // ── DELETE /api/budget-planning/aip/offices/{officeId} ────────────────────
+    // Mistakes happen — Draft-only, cascades to the office's programs/projects/activities.
+    [Function("AipDeleteOffice")]
+    public async Task<HttpResponseData> DeleteOffice(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "budget-planning/aip/offices/{officeId:int}")] HttpRequestData req,
+        int officeId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        return await ConfigHttp.FromResultAsync(req, await _aip.DeleteOfficeAsync(officeId, ct), ct);
+    }
+
+    // ── DELETE /api/budget-planning/aip/programs/{programId} ─────────────────
+    // Mistakes happen (e.g. data entered under the wrong level) — Draft-only, cascades
+    // to the program's projects/activities.
+    [Function("AipDeleteProgram")]
+    public async Task<HttpResponseData> DeleteProgram(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "budget-planning/aip/programs/{programId:int}")] HttpRequestData req,
+        int programId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        return await ConfigHttp.FromResultAsync(req, await _aip.DeleteProgramAsync(programId, ct), ct);
+    }
+
+    // ── DELETE /api/budget-planning/aip/projects/{projectId} ─────────────────
+    [Function("AipDeleteProject")]
+    public async Task<HttpResponseData> DeleteProject(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "budget-planning/aip/projects/{projectId:int}")] HttpRequestData req,
+        int projectId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        return await ConfigHttp.FromResultAsync(req, await _aip.DeleteProjectAsync(projectId, ct), ct);
+    }
+
+    // ── DELETE /api/budget-planning/aip/activities/{activityId} ──────────────
+    [Function("AipDeleteActivity")]
+    public async Task<HttpResponseData> DeleteActivity(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "budget-planning/aip/activities/{activityId:int}")] HttpRequestData req,
+        int activityId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        return await ConfigHttp.FromResultAsync(req, await _aip.DeleteActivityAsync(activityId, ct), ct);
+    }
+
     // ── DELETE /api/budget-planning/aip/{id}  (archive) ──────────────────────
     [Function("AipArchive")]
     public async Task<HttpResponseData> Archive(

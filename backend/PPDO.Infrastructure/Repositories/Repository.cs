@@ -28,7 +28,7 @@ public class Repository<T> : IRepository<T> where T : class
         => await _context.Set<T>().FindAsync(new object?[] { id }, cancellationToken);
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<T>> GetAllAsync(CancellationToken cancellationToken = default)
+    public virtual async Task<IReadOnlyList<T>> GetAllAsync(CancellationToken cancellationToken = default)
         => await _context.Set<T>().ToListAsync(cancellationToken);
 
     /// <inheritdoc />

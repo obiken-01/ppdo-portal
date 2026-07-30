@@ -40,12 +40,16 @@ export interface ParsedAipProjectResponse {
   refCode: string;
   name: string;
   activities: ParsedAipActivityResponse[];
+  /** RAL-108: set when this project row also carries its own line item — materialized as a synthetic activity at confirm time. */
+  lineItem: ParsedAipActivityResponse | null;
 }
 
 export interface ParsedAipProgramResponse {
   refCode: string;
   name: string;
   projects: ParsedAipProjectResponse[];
+  /** RAL-108: set when this program row also carries its own line item — materialized as a synthetic project+activity at confirm time. */
+  lineItem: ParsedAipActivityResponse | null;
 }
 
 export interface ParsedAipOfficeResponse {
@@ -74,6 +78,98 @@ export interface AipImportConfirmRequest {
   originalFilename: string;
   ldipId: number | null;
   sectorOffices: Record<string, ParsedAipOfficeResponse[]>;
+  /** RAL-178: when set, the confirm re-uploads into this existing record instead of creating a new one. */
+  targetRecordId?: number | null;
+}
+
+// ── AIP manual entry (RAL-62) — one node at a time ────────────────────────────
+
+export interface CreateAipRecordRequest {
+  fiscalYear: number;
+}
+
+export interface CreateAipOfficeRequest {
+  officeConfigId: number;
+  sector: string;
+  /** Defaults to the config office's name server-side when omitted/blank — override for
+   * sub-office/program-cluster rows sharing the same office (e.g. "...- SPECIAL PROJECTS"). */
+  name?: string | null;
+}
+
+/** RAL-180 — carry forward selected programs (with full subtrees) from a prior fiscal
+ * year's office into the target fiscal year. Target record/office are found-or-created. */
+export interface CopyAipOfficeRequest {
+  sourceOfficeId: number;
+  targetFiscalYear: number;
+  programIds: number[];
+}
+
+/** RAL-181 — seed an office's AIP programs (Name+RefCode only, bare shells) from that
+ * office's existing LDIP for the given sector. Target record/office are found-or-created. */
+export interface SeedAipProgramsFromLdipRequest {
+  targetFiscalYear: number;
+  officeConfigId: number;
+  sector: string;
+  ldipProgramIds: number[];
+}
+
+export interface CreateAipProgramRequest {
+  name: string;
+  functionBand?: string | null;
+}
+
+export interface CreateAipProjectRequest {
+  name: string;
+}
+
+export interface CreateAipActivityRequest {
+  name: string;
+  esreCode?: string | null;
+  implementingOffice?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  expectedOutputs?: string | null;
+  fundingSourceRaw?: string | null;
+  ps?: number | null;
+  mooe?: number | null;
+  co?: number | null;
+  ccAdaptation?: number | null;
+  ccMitigation?: number | null;
+  ccTypologyCode?: string | null;
+}
+
+// ── AIP inline activity edit (RAL-179) ────────────────────────────────────────
+
+export interface UpdateAipActivityRequest {
+  name: string;
+  esreCode?: string | null;
+  implementingOffice?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  expectedOutputs?: string | null;
+  /** Direct FK to a config FundingSource row — the UI offers a dropdown, so there's nothing to match. */
+  fundingSourceId?: number | null;
+  ps?: number | null;
+  mooe?: number | null;
+  co?: number | null;
+  ccAdaptation?: number | null;
+  ccMitigation?: number | null;
+  ccTypologyCode?: string | null;
+}
+
+// ── AIP inline office/program/project edit (detail-page CRUD) ────────────────
+
+export interface UpdateAipOfficeRequest {
+  name: string;
+}
+
+export interface UpdateAipProgramRequest {
+  name: string;
+  functionBand?: string | null;
+}
+
+export interface UpdateAipProjectRequest {
+  name: string;
 }
 
 // ── AIP detail (stored hierarchy) ────────────────────────────────────────────
@@ -98,6 +194,8 @@ export interface AipActivityDetail {
   ccMitigation: number | null;
   ccTypologyCode: string | null;
   isCreation: boolean;
+  /** RAL-108: true when this activity was materialized from a program/project-level line item. */
+  isSynthetic: boolean;
 }
 
 export interface AipProjectDetail {
@@ -106,6 +204,8 @@ export interface AipProjectDetail {
   refCode: string;
   name: string;
   activities: AipActivityDetail[];
+  /** RAL-108: true when this project was materialized to hold its parent program's line item. */
+  isSynthetic: boolean;
 }
 
 export interface AipProgramDetail {
@@ -137,6 +237,8 @@ export interface AipRecordDetail {
   ldipId: number | null;
   sourceId: number | null;
   offices: AipOfficeDetail[];
+  /** True when a WFP has been built from this AIP — re-upload is blocked in that case. */
+  hasWfpUsage: boolean;
 }
 
 // ── AIP summary — slim WFP-grid types (RAL-89) ───────────────────────────────
