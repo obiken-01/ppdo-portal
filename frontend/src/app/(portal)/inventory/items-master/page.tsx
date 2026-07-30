@@ -29,7 +29,7 @@
  *   PUT  /api/items/master/{id}   → update item
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   useReactTable,
@@ -766,9 +766,8 @@ export default function ItemsMasterPage() {
                     table.getRowModel().rows.map((row, i) => {
                       const isEditing = row.original.id === editingId;
                       return (
-                        <>
+                        <Fragment key={row.id}>
                           <tr
-                            key={row.id}
                             className={`transition-colors ${
                               isEditing
                                 ? "bg-cell-fill ring-1 ring-inset ring-green-300"
@@ -793,7 +792,7 @@ export default function ItemsMasterPage() {
                               </td>
                             </tr>
                           )}
-                        </>
+                        </Fragment>
                       );
                     })
                   )}
