@@ -35,4 +35,14 @@ public interface IPurchaseRequestRepository : IRepository<PurchaseRequest>
     /// Used to enforce division-scope read rules for Staff.
     /// </summary>
     Task<IReadOnlyList<PurchaseRequest>> GetByDivisionAsync(int divisionId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns the highest PR sequence number (the last '-'-delimited segment of PRNo)
+    /// across every PR ever created, computed as a single SQL aggregate — never
+    /// materialises rows. Returns null if the table is empty or no PRNo matches the
+    /// expected 7-segment format (mirrors the tolerant behaviour of the old in-memory
+    /// ParseSequence helper: malformed/legacy PRNos are skipped, not fatal).
+    /// Used by PurchaseRequestService.GeneratePRNoAsync.
+    /// </summary>
+    Task<int?> GetMaxPrSequenceAsync(CancellationToken cancellationToken = default);
 }
