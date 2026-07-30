@@ -105,6 +105,30 @@ public sealed class DeliveryService : IDeliveryService
             deliveries.Select(MapToSummary).ToList());
     }
 
+    // ── GetDeliveredTotalsByPRAsync ───────────────────────────────────────────
+
+    /// <inheritdoc />
+    public async Task<ServiceResult<IReadOnlyDictionary<Guid, decimal>>> GetDeliveredTotalsByPRAsync(
+        User requester,
+        Guid prId,
+        CancellationToken cancellationToken = default)
+    {
+        PurchaseRequest? pr = await _prs.GetByIdAsync(prId, cancellationToken);
+        if (pr is null)
+            return ServiceResult<IReadOnlyDictionary<Guid, decimal>>.NotFound(
+                $"Purchase Request {prId} not found.");
+
+        if (requester.Role is UserRole.Staff
+            && pr.DivisionId != requester.DivisionId)
+            return ServiceResult<IReadOnlyDictionary<Guid, decimal>>.Forbidden(
+                "You can only view deliveries for your own division.");
+
+        Dictionary<Guid, decimal> totals =
+            await _deliveries.GetTotalDeliveredByPRAsync(prId, cancellationToken);
+
+        return ServiceResult<IReadOnlyDictionary<Guid, decimal>>.Ok(totals);
+    }
+
     // ── GetByIdAsync ───────────────────────────────────────────────────────────
 
     /// <inheritdoc />

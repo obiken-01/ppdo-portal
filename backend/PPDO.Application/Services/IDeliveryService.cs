@@ -29,6 +29,17 @@ public interface IDeliveryService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Returns the total quantity delivered per PRItem, across all deliveries for the
+    /// given PR, in one aggregate query — key = PRItemId, value = summed QtyDelivered.
+    /// Enforces the same division-scope as GetByPRIdAsync. Lets the Receive Delivery
+    /// page compute remaining-quantity without fetching every delivery's full detail.
+    /// </summary>
+    Task<ServiceResult<IReadOnlyDictionary<Guid, decimal>>> GetDeliveredTotalsByPRAsync(
+        User requester,
+        Guid prId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Returns the full delivery detail — items and per-division distributions.
     /// Returns Forbidden if a Staff/Observer tries to view another division's PR delivery.
     /// </summary>
