@@ -122,6 +122,23 @@ export interface PRSummaryResponse {
   activity: string | null;
 }
 
+/** Mirrors PRStatusCountsDto — per-status counts within a filtered PR search result. */
+export interface PRStatusCounts {
+  open: number;
+  partiallyDelivered: number;
+  fullyDelivered: number;
+  completed: number;
+}
+
+/** Mirrors PRSearchResultDto — GET /api/purchase-requests/search response. */
+export interface PRSearchResult {
+  items: PRSummaryResponse[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  statusCounts: PRStatusCounts;
+}
+
 // ---------------------------------------------------------------------------
 // Deliveries
 // ---------------------------------------------------------------------------

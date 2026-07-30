@@ -142,6 +142,51 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
                        .ToList();
     }
 
+    // ── SearchAsync ────────────────────────────────────────────────────────────
+
+    /// <inheritdoc />
+    public async Task<PRSearchResultDto> SearchAsync(
+        User requester,
+        PRSearchFilterDto filter,
+        CancellationToken cancellationToken = default)
+    {
+        DivisionScope scope = DivisionScope.Resolve(requester);
+        if (scope.SeeNothing)
+            return new PRSearchResultDto(
+                Array.Empty<PRSummaryDto>(), 0, filter.Page, filter.PageSize,
+                new PRStatusCountsDto(0, 0, 0, 0));
+
+        PRSearchCriteria criteria = new(
+            Search:          filter.Search,
+            DateFrom:        filter.DateFrom,
+            DateTo:          filter.DateTo,
+            Statuses:        filter.Statuses,
+            Division:        filter.Division,
+            RequestedBy:     filter.RequestedBy,
+            Fund:            filter.Fund,
+            AIPCode:         filter.AIPCode,
+            AccountNo:       filter.AccountNo,
+            AccountTitle:    filter.AccountTitle,
+            Program:         filter.Program,
+            Project:         filter.Project,
+            Activity:        filter.Activity,
+            SortBy:          filter.SortBy,
+            SortDescending:  filter.SortDescending,
+            Page:            filter.Page,
+            PageSize:        filter.PageSize);
+
+        PRSearchResult result = await _prs.SearchAsync(criteria, scope.DivisionId, cancellationToken);
+
+        return new PRSearchResultDto(
+            result.Items.Select(MapToSummary).ToList(),
+            result.TotalCount,
+            filter.Page,
+            filter.PageSize,
+            new PRStatusCountsDto(
+                result.Counts.Open, result.Counts.PartiallyDelivered,
+                result.Counts.FullyDelivered, result.Counts.Completed));
+    }
+
     // ── GetByIdAsync ───────────────────────────────────────────────────────────
 
     /// <inheritdoc />
