@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PPDO.Domain.Entities;
+using PPDO.Domain.Enums;
 using PPDO.Domain.Interfaces;
 using PPDO.Infrastructure.Data;
 
@@ -86,5 +87,30 @@ public sealed class PurchaseRequestRepository
             .ToListAsync(cancellationToken);
 
         return rows.Count > 0 ? rows[0] : null;
+    }
+
+    /// <inheritdoc />
+    public async Task<PurchaseRequestStatsAggregate> GetStatsAggregateAsync(
+        int? divisionId,
+        CancellationToken cancellationToken = default)
+    {
+        IQueryable<PurchaseRequest> scoped = divisionId.HasValue
+            ? _context.PurchaseRequests.Where(pr => pr.DivisionId == divisionId.Value)
+            : _context.PurchaseRequests;
+
+        // Sequential aggregate queries on the shared DbContext — never Task.WhenAll here
+        // (DbContext is not thread-safe; see CLAUDE.md's GetStatsAsync prod-500 note).
+        int total = await scoped.CountAsync(cancellationToken);
+        int open = await scoped.CountAsync(pr => pr.Status == PRStatus.Open, cancellationToken);
+        int partiallyDelivered = await scoped.CountAsync(
+            pr => pr.Status == PRStatus.PartiallyDelivered, cancellationToken);
+        int fullyDeliveredOrCompleted = await scoped.CountAsync(
+            pr => pr.Status == PRStatus.FullyDelivered || pr.Status == PRStatus.Completed,
+            cancellationToken);
+        decimal totalAmount =
+            await scoped.SumAsync(pr => (decimal?)pr.TotalAmount, cancellationToken) ?? 0m;
+
+        return new PurchaseRequestStatsAggregate(
+            total, open, partiallyDelivered, fullyDeliveredOrCompleted, totalAmount);
     }
 }

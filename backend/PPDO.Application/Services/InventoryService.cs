@@ -2,7 +2,6 @@ using Microsoft.Extensions.Logging;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.Inventory;
 using PPDO.Domain.Entities;
-using PPDO.Domain.Enums;
 using PPDO.Domain.Interfaces;
 
 namespace PPDO.Application.Services;
@@ -57,25 +56,26 @@ public sealed class InventoryService : IInventoryService
 
         int? division = scope.DivisionId;
 
-        // Load PRs for division-scoped counts and total value.
-        IReadOnlyList<PurchaseRequest> prs = division.HasValue
-            ? await _prs.GetByDivisionAsync(division.Value, cancellationToken)
-            : await _prs.GetAllAsync(cancellationToken);
+        // Group 1 — Purchase Request stat cards + total value, computed as SQL aggregates
+        // (Count/Sum) scoped to the division — never loads PR rows into memory.
+        PurchaseRequestStatsAggregate prStats =
+            await _prs.GetStatsAggregateAsync(division, cancellationToken);
 
-        // Group 1 — Purchase Request stat cards.
         PRStatsGroupDto prGroup = new(
-            Total:                   prs.Count,
-            Open:                    prs.Count(p => p.Status == PRStatus.Open),
-            PartiallyDelivered:      prs.Count(p => p.Status == PRStatus.PartiallyDelivered),
-            FullyDeliveredOrCompleted: prs.Count(p =>
-                p.Status is PRStatus.FullyDelivered or PRStatus.Completed));
+            Total:                     prStats.Total,
+            Open:                      prStats.Open,
+            PartiallyDelivered:        prStats.PartiallyDelivered,
+            FullyDeliveredOrCompleted: prStats.FullyDeliveredOrCompleted);
 
         // Group 2 — Inventory Alert stat cards.
         // Stock levels from the aggregate repository query.
         IReadOnlyList<ItemStockLevel> stockLevels =
             await _inventory.GetItemStockLevelsAsync(division, cancellationToken);
 
-        IReadOnlyList<ItemMaster> catalog = await _items.GetAllAsync(cancellationToken);
+        // Only the StockNos already present in stockLevels are ever read from this map —
+        // fetch exactly those, never the full catalog.
+        IReadOnlyList<ItemMaster> catalog = await _items.GetByStockNosAsync(
+            stockLevels.Select(l => l.StockNo).ToList(), cancellationToken);
         Dictionary<string, ItemMaster> catalogMap =
             catalog.ToDictionary(i => i.StockNo, i => i);
 
@@ -94,15 +94,13 @@ public sealed class InventoryService : IInventoryService
                 lowOrOutStock++;
         }
 
-        decimal totalPRValue = prs.Sum(p => p.TotalAmount);
-
         // UniqueItemsTracked — count distinct StockNos with any PR activity (within scope).
         int uniqueItems = stockLevels.Count;
 
         AlertsGroupDto alertsGroup = new(
             InStock:            inStock,
             LowOrOutOfStock:    lowOrOutStock,
-            TotalPRValue:       totalPRValue,
+            TotalPRValue:       prStats.TotalAmount,
             UniqueItemsTracked: uniqueItems);
 
         return new InventoryStatsDto(prGroup, alertsGroup);
@@ -144,7 +142,10 @@ public sealed class InventoryService : IInventoryService
                 .ToList();
         }
 
-        IReadOnlyList<ItemMaster> catalog = await _items.GetAllAsync(cancellationToken);
+        // Only the StockNos in (the possibly date-filtered) stockLevels are ever read from
+        // this map — fetch exactly those, never the full catalog.
+        IReadOnlyList<ItemMaster> catalog = await _items.GetByStockNosAsync(
+            stockLevels.Select(l => l.StockNo).ToList(), cancellationToken);
         Dictionary<string, ItemMaster> catalogMap =
             catalog.ToDictionary(i => i.StockNo, i => i);
 
