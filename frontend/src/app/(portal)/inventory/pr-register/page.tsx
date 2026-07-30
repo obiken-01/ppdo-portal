@@ -8,17 +8,19 @@
  *   Division, Requested By, Fund, AIP Code, Account No.
  *   Account Title, Program, Project, Activity (partial match)
  *
- * All filtering is client-side on the full API response.
- * API: GET /api/purchase-requests → PRSummaryResponse[]
+ * Filtering, sorting, and paging are all server-side (RAL-192) via
+ * GET /api/purchase-requests/search. Free-text filter fields are debounced
+ * 300ms before firing a request; date/status/division changes fire immediately.
+ * Note: GET /api/purchase-requests (bare array) is a SEPARATE, untouched endpoint
+ * still used by the Inventory Dashboard widget and the PR Report/Receive Delivery
+ * comboboxes — do not conflate the two.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   useReactTable,
   getCoreRowModel,
-  getSortedRowModel,
-  getPaginationRowModel,
   flexRender,
   type ColumnDef,
   type SortingState,
@@ -28,7 +30,7 @@ import { fetchMe } from "@/lib/me-cache";
 import { useInventoryDivisions } from "@/lib/inventory-divisions";
 import { useToast } from "@/components/ui/Toast";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
-import type { MeResponse, PRSummaryResponse } from "@/types";
+import type { MeResponse, PRSearchResult, PRStatusCounts, PRSummaryResponse } from "@/types";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -98,6 +100,14 @@ const STATUS_BADGE: Record<string, string> = {
   Completed:          "bg-slate-100 text-slate-600 border-slate-300",
 };
 
+/** Maps a PRStatus string to its key on the server's PRStatusCounts response. */
+const STATUS_COUNT_KEY: Record<PRStatus, keyof PRStatusCounts> = {
+  Open:               "open",
+  PartiallyDelivered: "partiallyDelivered",
+  FullyDelivered:     "fullyDelivered",
+  Completed:          "completed",
+};
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -150,78 +160,29 @@ function quarterBounds(q: string): { from: string; to: string } | null {
   };
 }
 
-/** Generates quarter options from the earliest PR date up to current quarter. */
-function buildQuarterOptions(prs: PRSummaryResponse[]): string[] {
-  if (prs.length === 0) return [];
-  const quarters = new Set<string>();
-  quarters.add(currentQuarter());
-  for (const pr of prs) quarters.add(toQuarter(pr.prDate));
-  // Sort descending: Q4-2026, Q3-2026 ...
-  return Array.from(quarters).sort((a, b) => {
-    const [aqn, ayr] = [parseInt(a[1]), parseInt(a.slice(3))];
-    const [bqn, byr] = [parseInt(b[1]), parseInt(b.slice(3))];
-    return byr !== ayr ? byr - ayr : bqn - aqn;
-  });
+/**
+ * Fixed rolling window of selectable quarters (current quarter back 8), independent of
+ * any loaded data — server-side pagination means the page never holds the full PR set to
+ * derive this from anymore. A quarter with zero PRs may appear; the date-range filter mode
+ * still covers any actual date outside this window.
+ */
+function buildQuarterOptions(): string[] {
+  const quarters: string[] = [];
+  let q = currentQuarter();
+  for (let i = 0; i < 8; i++) {
+    quarters.push(q);
+    q = prevQuarter(q);
+  }
+  return quarters;
 }
 
-/** True if prDate falls within "QN-YYYY". */
-function inQuarter(prDate: string, q: string): boolean {
-  const bounds = quarterBounds(q);
-  if (!bounds) return false;
-  return prDate >= bounds.from && prDate <= bounds.to;
-}
-
-
-function contains(haystack: string | null | undefined, needle: string): boolean {
-  if (!needle) return true;
-  return (haystack ?? "").toLowerCase().includes(needle.toLowerCase());
-}
-
-// ---------------------------------------------------------------------------
-// Filter logic
-// ---------------------------------------------------------------------------
-
-function applyFilters(prs: PRSummaryResponse[], f: Filters): PRSummaryResponse[] {
-  return prs.filter((pr) => {
-
-    // Global search — prNo, division, requestedBy
-    if (f.search) {
-      const q = f.search.toLowerCase();
-      const hit = pr.prNo.toLowerCase().includes(q)
-        || pr.division.toLowerCase().includes(q)
-        || pr.requestedBy.toLowerCase().includes(q)
-        || pr.fund.toLowerCase().includes(q);
-      if (!hit) return false;
-    }
-
-    // PR Date
-    if (f.dateMode === "single" && f.dateSingle) {
-      if (pr.prDate !== f.dateSingle) return false;
-    } else if (f.dateMode === "range") {
-      if (f.dateFrom && pr.prDate < f.dateFrom) return false;
-      if (f.dateTo   && pr.prDate > f.dateTo)   return false;
-    } else if (f.dateMode === "quarter" && f.quarter) {
-      if (!inQuarter(pr.prDate, f.quarter)) return false;
-    }
-
-    // Status
-    if (f.statuses.length > 0 && !f.statuses.includes(pr.status as PRStatus)) return false;
-
-    // Division
-    if (f.division && pr.division !== f.division) return false;
-
-    // Text fields
-    if (!contains(pr.requestedBy,  f.requestedBy))  return false;
-    if (!contains(pr.fund,         f.fund))          return false;
-    if (!contains(pr.aipCode,      f.aipCode))       return false;
-    if (!contains(pr.accountNo,    f.accountNo))     return false;
-    if (!contains(pr.accountTitle, f.accountTitle))  return false;
-    if (!contains(pr.program,      f.program))       return false;
-    if (!contains(pr.project,      f.project))       return false;
-    if (!contains(pr.activity,     f.activity))      return false;
-
-    return true;
-  });
+/** Resolves the PR Date filter's mode (any/single/range/quarter) into a plain from/to
+ * pair — the backend only ever sees a plain date range. */
+function resolveDateRange(f: Filters): { from: string; to: string } {
+  if (f.dateMode === "single" && f.dateSingle) return { from: f.dateSingle, to: f.dateSingle };
+  if (f.dateMode === "range") return { from: f.dateFrom, to: f.dateTo };
+  if (f.dateMode === "quarter" && f.quarter) return quarterBounds(f.quarter) ?? { from: "", to: "" };
+  return { from: "", to: "" };
 }
 
 /** Count how many filter groups have non-default values (for the badge). */
@@ -271,6 +232,17 @@ function FilterInput({
 // Page
 // ---------------------------------------------------------------------------
 
+const TEXT_FIELDS = [
+  "search", "requestedBy", "fund", "aipCode", "accountNo", "accountTitle", "program", "project", "activity",
+] as const satisfies readonly (keyof Filters)[];
+
+const ZERO_STATUS_COUNTS: PRStatusCounts = { open: 0, partiallyDelivered: 0, fullyDelivered: 0, completed: 0 };
+
+const SORT_FIELD_MAP: Record<string, string> = {
+  prNo: "prNo", prDate: "prDate", division: "division",
+  requestedBy: "requestedBy", fund: "fund", totalAmount: "totalAmount",
+};
+
 export default function PRListPage() {
   const router    = useRouter();
   const { toast } = useToast();
@@ -282,7 +254,9 @@ export default function PRListPage() {
   // Declared here (not beside isAdmin below) because the loading guard early-returns.
   const { divisions: divisionOptions } = useInventoryDivisions();
 
-  const [prs, setPRs]               = useState<PRSummaryResponse[]>([]);
+  const [items, setItems]           = useState<PRSummaryResponse[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [statusCounts, setStatusCounts] = useState<PRStatusCounts>(ZERO_STATUS_COUNTS);
   const [loading, setLoading]       = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
@@ -293,6 +267,11 @@ export default function PRListPage() {
   const [filters, setFilters]       = useState<Filters>(EMPTY_FILTERS);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [sorting, setSorting]       = useState<SortingState>([{ id: "prDate", desc: true }]);
+  const [page, setPage]             = useState(1);
+  const [pageSize, setPageSize]     = useState(25);
+  const [refreshToken, setRefreshToken] = useState(0); // bumped by the manual Refresh button
+
+  const quarterOptions = useMemo(() => buildQuarterOptions(), []);
 
   function setF<K extends keyof Filters>(key: K, value: Filters[K]) {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -318,36 +297,90 @@ export default function PRListPage() {
       .catch(() => router.replace("/login"));
   }, [router]);
 
-  // ── Load ───────────────────────────────────────────────────────────────────
+  // ── Debounce the free-text filter fields only — date/status/division changes fire
+  // immediately (discrete selections, not typed input). ─────────────────────────────
 
-  const loadPRs = useCallback(async () => {
+  const textFilters = useMemo(
+    () => Object.fromEntries(TEXT_FIELDS.map((k) => [k, filters[k]])) as Pick<Filters, typeof TEXT_FIELDS[number]>,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    TEXT_FIELDS.map((k) => filters[k])
+  );
+  const [debouncedText, setDebouncedText] = useState(textFilters);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedText(textFilters), 300);
+    return () => clearTimeout(t);
+  }, [textFilters]);
+
+  const effectiveFilters = useMemo(
+    () => ({ ...filters, ...debouncedText }),
+    [filters, debouncedText]
+  );
+
+  const filterCount = useMemo(() => activeFilterCount(effectiveFilters), [effectiveFilters]);
+
+  // Reset to page 1 whenever the effective filter set or sort changes — a stale deep page
+  // number would otherwise land past the end of a newly-narrowed result set.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { setPage(1); }, [effectiveFilters, sorting]);
+
+  // ── Load (server-side filter + sort + page) ───────────────────────────────────────
+
+  const reqSeqRef = useRef(0);
+
+  useEffect(() => {
+    if (!me) return;
+    let cancelled = false;
+    const seq = ++reqSeqRef.current;
+
     setLoading(true);
     setFetchError(null);
-    try {
-      const { data } = await api.get<PRSummaryResponse[]>("/purchase-requests");
-      setPRs(data);
-    } catch {
-      setFetchError("Failed to load purchase requests. Please try again.");
-    } finally {
-      setLoading(false);
+
+    const { from: dateFrom, to: dateTo } = resolveDateRange(effectiveFilters);
+    const sort = sorting[0];
+
+    const params: Record<string, string | number> = { page, pageSize };
+    if (effectiveFilters.search)       params.search       = effectiveFilters.search;
+    if (dateFrom)                      params.dateFrom      = dateFrom;
+    if (dateTo)                        params.dateTo        = dateTo;
+    if (effectiveFilters.statuses.length > 0) params.statuses = effectiveFilters.statuses.join(",");
+    if (effectiveFilters.division)     params.division      = effectiveFilters.division;
+    if (effectiveFilters.requestedBy)  params.requestedBy   = effectiveFilters.requestedBy;
+    if (effectiveFilters.fund)         params.fund          = effectiveFilters.fund;
+    if (effectiveFilters.aipCode)      params.aipCode       = effectiveFilters.aipCode;
+    if (effectiveFilters.accountNo)    params.accountNo     = effectiveFilters.accountNo;
+    if (effectiveFilters.accountTitle) params.accountTitle  = effectiveFilters.accountTitle;
+    if (effectiveFilters.program)      params.program       = effectiveFilters.program;
+    if (effectiveFilters.project)      params.project       = effectiveFilters.project;
+    if (effectiveFilters.activity)     params.activity      = effectiveFilters.activity;
+    if (sort) {
+      params.sortBy  = SORT_FIELD_MAP[sort.id] ?? sort.id;
+      params.sortDir = sort.desc ? "desc" : "asc";
     }
-  }, []);
 
-  useEffect(() => { if (authChecked) loadPRs(); }, [authChecked, loadPRs]);
+    api.get<PRSearchResult>("/purchase-requests/search", { params })
+      .then(({ data }) => {
+        if (cancelled || seq !== reqSeqRef.current) return;
+        setItems(data.items);
+        setTotalCount(data.totalCount);
+        setStatusCounts(data.statusCounts);
+      })
+      .catch(() => {
+        if (cancelled || seq !== reqSeqRef.current) return;
+        setFetchError("Failed to load purchase requests. Please try again.");
+      })
+      .finally(() => {
+        if (cancelled || seq !== reqSeqRef.current) return;
+        setLoading(false);
+      });
 
-  // ── Derived ────────────────────────────────────────────────────────────────
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me, page, pageSize, effectiveFilters, sorting, refreshToken]);
 
-  const quarterOptions = useMemo(() => buildQuarterOptions(prs), [prs]);
-
-  const filteredPRs = useMemo(() => applyFilters(prs, filters), [prs, filters]);
-
-  const filterCount = useMemo(() => activeFilterCount(filters), [filters]);
-
-  const statusCounts = useMemo(() => {
-    const c: Record<string, number> = {};
-    for (const pr of filteredPRs) c[pr.status] = (c[pr.status] ?? 0) + 1;
-    return c;
-  }, [filteredPRs]);
+  function reload() {
+    setRefreshToken((t) => t + 1);
+  }
 
   // ── Presets ────────────────────────────────────────────────────────────────
 
@@ -398,7 +431,9 @@ export default function PRListPage() {
     setCompletingId(pr.id);
     try {
       await api.put(`/purchase-requests/${pr.id}/complete`);
-      setPRs((prev) => prev.map((p) => p.id === pr.id ? { ...p, status: "Completed" } : p));
+      // Reload rather than patch the local row in place — a status filter (e.g. the
+      // "Ready to Close" preset, FullyDelivered only) may now exclude this PR entirely.
+      reload();
       toast.success("PR Completed", `${pr.prNo} has been marked as Completed.`);
     } catch (e: unknown) {
       toast.error("Action failed",
@@ -422,7 +457,7 @@ export default function PRListPage() {
     setUncompletingId(pr.id);
     try {
       await api.put(`/purchase-requests/${pr.id}/uncomplete`);
-      setPRs((prev) => prev.map((p) => p.id === pr.id ? { ...p, status: "FullyDelivered" } : p));
+      reload();
       toast.success("PR reverted", `${pr.prNo} is back to Fully Delivered.`);
     } catch (e: unknown) {
       toast.error("Action failed",
@@ -530,21 +565,20 @@ export default function PRListPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   ], [router, completingId, uncompletingId]);
 
-  // ── Table ──────────────────────────────────────────────────────────────────
+  // ── Table (server-driven pagination + sorting — RAL-192) ──────────────────────
+
+  const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
 
   const table = useReactTable({
-    data: filteredPRs,
+    data: items,
     columns,
     state: { sorting },
     onSortingChange: setSorting,
+    manualSorting: true,
+    manualPagination: true,
+    pageCount,
     getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    initialState: { pagination: { pageSize: 25 } },
   });
-
-  const totalFiltered = filteredPRs.length;
-  const visibleRows   = table.getRowModel().rows.length;
 
   // ── Auth loading ───────────────────────────────────────────────────────────
 
@@ -588,7 +622,7 @@ export default function PRListPage() {
             )}
           </button>
           <button
-            onClick={loadPRs}
+            onClick={reload}
             className="flex items-center gap-1.5 px-3 py-2.5 text-sm border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors shadow-sm shrink-0"
           >
             ↻ Refresh
@@ -691,7 +725,7 @@ export default function PRListPage() {
                 <div className="flex flex-wrap gap-2">
                   {(["Open", "PartiallyDelivered", "FullyDelivered", "Completed"] as PRStatus[]).map((s) => {
                     const active = filters.statuses.includes(s);
-                    const count  = statusCounts[s] ?? 0;
+                    const count  = statusCounts[STATUS_COUNT_KEY[s]];
                     return (
                       <button
                         key={s}
@@ -754,8 +788,7 @@ export default function PRListPage() {
         {/* ── Result count + active filter summary ─────────────────────────── */}
         <div className="flex items-center justify-between text-xs text-slate-600">
           <span>
-            Showing <span className="font-semibold text-slate-700">{totalFiltered}</span> of{" "}
-            <span className="font-semibold text-slate-700">{prs.length}</span> PRs
+            <span className="font-semibold text-slate-700">{totalCount}</span> PR{totalCount !== 1 ? "s" : ""}
             {filterCount > 0 && (
               <button
                 onClick={() => setFilters(EMPTY_FILTERS)}
@@ -779,7 +812,7 @@ export default function PRListPage() {
           ) : fetchError ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
               <p className="text-sm text-red-500">{fetchError}</p>
-              <button onClick={loadPRs} className="text-sm text-green-600 hover:underline">Retry</button>
+              <button onClick={reload} className="text-sm text-green-600 hover:underline">Retry</button>
             </div>
           ) : (
             <div className="overflow-x-auto overflow-y-hidden">
@@ -811,7 +844,7 @@ export default function PRListPage() {
                   {table.getRowModel().rows.length === 0 ? (
                     <tr>
                       <td colSpan={columns.length} className="text-center py-16 text-slate-600 text-sm">
-                        {prs.length === 0 ? "No purchase requests found." : "No PRs match your filters."}
+                        {filterCount === 0 ? "No purchase requests found." : "No PRs match your filters."}
                       </td>
                     </tr>
                   ) : (
@@ -828,20 +861,20 @@ export default function PRListPage() {
                 </tbody>
               </table>
 
-              {/* Pagination */}
+              {/* Pagination — server-driven (RAL-192) */}
               <div className="flex items-center justify-between px-4 py-2 border-t border-slate-100 text-xs text-slate-600 flex-wrap gap-2">
                 <span>
-                  {visibleRows === totalFiltered
-                    ? `${totalFiltered} PR${totalFiltered !== 1 ? "s" : ""}`
-                    : `${visibleRows} of ${totalFiltered} PRs`}
+                  {items.length === totalCount
+                    ? `${totalCount} PR${totalCount !== 1 ? "s" : ""}`
+                    : `${items.length} of ${totalCount} PRs`}
                 </span>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="px-2 py-0.5 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50">‹</button>
-                  <span>Page {table.getState().pagination.pageIndex + 1} / {table.getPageCount() || 1}</span>
-                  <button onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="px-2 py-0.5 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50">›</button>
+                  <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} className="px-2 py-0.5 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50">‹</button>
+                  <span>Page {page} / {pageCount}</span>
+                  <button onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={page >= pageCount} className="px-2 py-0.5 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50">›</button>
                   <select
-                    value={table.getState().pagination.pageSize}
-                    onChange={(e) => table.setPageSize(Number(e.target.value))}
+                    value={pageSize}
+                    onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
                     className="px-2 py-0.5 rounded border border-slate-200 bg-white focus:outline-none text-xs"
                   >
                     {[25, 50, 100].map((n) => <option key={n} value={n}>{n} / page</option>)}
