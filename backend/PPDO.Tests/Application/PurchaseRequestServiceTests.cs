@@ -589,4 +589,121 @@ public sealed class PurchaseRequestServiceTests
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
     }
+
+    // ── SearchAsync (RAL-192 step 3) ──────────────────────────────────────────
+
+    private static PRSearchFilterDto DefaultSearchFilter() => new(
+        Page: 1, PageSize: 50, Search: null, DateFrom: null, DateTo: null, Statuses: null,
+        Division: null, RequestedBy: null, Fund: null, AIPCode: null, AccountNo: null,
+        AccountTitle: null, Program: null, Project: null, Activity: null,
+        SortBy: null, SortDescending: false);
+
+    [Fact]
+    public async Task SearchAsync_StaffWithNullDivision_ReturnsEmptyWithoutCallingRepo()
+    {
+        User officeStaff = new()
+        {
+            Id = Guid.NewGuid(), FullName = "Office Encoder", Email = "office@lgu.gov.ph",
+            PasswordHash = "hash", Role = UserRole.Staff, DivisionId = null, IsActive = true,
+        };
+        Mock<IPurchaseRequestRepository> prRepo = new();
+
+        PRSearchResultDto result =
+            await BuildSut(prRepo).SearchAsync(officeStaff, DefaultSearchFilter());
+
+        Assert.Empty(result.Items);
+        Assert.Equal(0, result.TotalCount);
+        prRepo.Verify(r => r.SearchAsync(
+            It.IsAny<PRSearchCriteria>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SearchAsync_AdminRole_PassesNullDivisionToRepo()
+    {
+        int? captured = 999; // sentinel — not null
+        Mock<IPurchaseRequestRepository> prRepo = new();
+        prRepo.Setup(r => r.SearchAsync(It.IsAny<PRSearchCriteria>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .Callback<PRSearchCriteria, int?, CancellationToken>((_, d, _) => captured = d)
+            .ReturnsAsync(new PRSearchResult(new List<PurchaseRequest>(), 0, new PRStatusCounts(0, 0, 0, 0)));
+
+        await BuildSut(prRepo).SearchAsync(MakeAdmin(), DefaultSearchFilter());
+
+        Assert.Null(captured);
+    }
+
+    [Fact]
+    public async Task SearchAsync_StaffRole_PassesOwnDivisionToRepo()
+    {
+        int? captured = null;
+        Mock<IPurchaseRequestRepository> prRepo = new();
+        prRepo.Setup(r => r.SearchAsync(It.IsAny<PRSearchCriteria>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .Callback<PRSearchCriteria, int?, CancellationToken>((_, d, _) => captured = d)
+            .ReturnsAsync(new PRSearchResult(new List<PurchaseRequest>(), 0, new PRStatusCounts(0, 0, 0, 0)));
+
+        await BuildSut(prRepo).SearchAsync(MakeStaff(PlanningDiv), DefaultSearchFilter());
+
+        Assert.Equal(PlanningDiv, captured);
+    }
+
+    [Fact]
+    public async Task SearchAsync_PassesEveryFilterFieldThroughToCriteria()
+    {
+        PRSearchCriteria? captured = null;
+        Mock<IPurchaseRequestRepository> prRepo = new();
+        prRepo.Setup(r => r.SearchAsync(It.IsAny<PRSearchCriteria>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .Callback<PRSearchCriteria, int?, CancellationToken>((c, _, _) => captured = c)
+            .ReturnsAsync(new PRSearchResult(new List<PurchaseRequest>(), 0, new PRStatusCounts(0, 0, 0, 0)));
+
+        PRSearchFilterDto filter = new(
+            Page: 2, PageSize: 25, Search: "bond", DateFrom: new DateOnly(2026, 1, 1),
+            DateTo: new DateOnly(2026, 3, 31), Statuses: [PRStatus.Open, PRStatus.PartiallyDelivered],
+            Division: "Administrative Division", RequestedBy: "Ralph", Fund: "GAD",
+            AIPCode: "AIP-1", AccountNo: "ACC-1", AccountTitle: "Supplies", Program: "Prog",
+            Project: "Proj", Activity: "Act", SortBy: "totalAmount", SortDescending: true);
+
+        await BuildSut(prRepo).SearchAsync(MakeAdmin(), filter);
+
+        Assert.NotNull(captured);
+        Assert.Equal(2, captured!.Page);
+        Assert.Equal(25, captured.PageSize);
+        Assert.Equal("bond", captured.Search);
+        Assert.Equal(new DateOnly(2026, 1, 1), captured.DateFrom);
+        Assert.Equal(new DateOnly(2026, 3, 31), captured.DateTo);
+        Assert.Equal([PRStatus.Open, PRStatus.PartiallyDelivered], captured.Statuses);
+        Assert.Equal("Administrative Division", captured.Division);
+        Assert.Equal("Ralph", captured.RequestedBy);
+        Assert.Equal("GAD", captured.Fund);
+        Assert.Equal("AIP-1", captured.AIPCode);
+        Assert.Equal("ACC-1", captured.AccountNo);
+        Assert.Equal("Supplies", captured.AccountTitle);
+        Assert.Equal("Prog", captured.Program);
+        Assert.Equal("Proj", captured.Project);
+        Assert.Equal("Act", captured.Activity);
+        Assert.Equal("totalAmount", captured.SortBy);
+        Assert.True(captured.SortDescending);
+    }
+
+    [Fact]
+    public async Task SearchAsync_MapsRepositoryResultToResponseDto()
+    {
+        PurchaseRequest pr = MakePR("101-1041-GF-2026-06-02-001");
+        Mock<IPurchaseRequestRepository> prRepo = new();
+        prRepo.Setup(r => r.SearchAsync(It.IsAny<PRSearchCriteria>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PRSearchResult(
+                new List<PurchaseRequest> { pr }, TotalCount: 7,
+                new PRStatusCounts(Open: 3, PartiallyDelivered: 2, FullyDelivered: 1, Completed: 1)));
+
+        PRSearchFilterDto filter = DefaultSearchFilter() with { Page = 2, PageSize = 10 };
+        PRSearchResultDto result = await BuildSut(prRepo).SearchAsync(MakeAdmin(), filter);
+
+        Assert.Single(result.Items);
+        Assert.Equal(pr.PRNo, result.Items[0].PRNo);
+        Assert.Equal(7, result.TotalCount);
+        Assert.Equal(2, result.Page);
+        Assert.Equal(10, result.PageSize);
+        Assert.Equal(3, result.StatusCounts.Open);
+        Assert.Equal(2, result.StatusCounts.PartiallyDelivered);
+        Assert.Equal(1, result.StatusCounts.FullyDelivered);
+        Assert.Equal(1, result.StatusCounts.Completed);
+    }
 }
