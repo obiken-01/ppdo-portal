@@ -22,6 +22,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import api from "@/lib/api";
 import { useToast } from "@/components/ui/Toast";
+import TableSkeleton from "@/components/ui/TableSkeleton";
 import type {
   MeResponse,
   PRReportResponse,
@@ -391,10 +392,35 @@ export default function PRReportPage() {
           </div>
         )}
 
+        {/* Loading — mirrors the 3-section report shape below (CLS-safe). */}
         {selectedId && reportLoading && (
-          <div className="bg-white border border-slate-200 shadow-sm flex items-center justify-center py-20">
-            <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
-          </div>
+          <>
+            <div className="bg-white border border-slate-200 shadow-sm overflow-hidden">
+              <SectionHeading number="1" title="PR Details" />
+              <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                {Array.from({ length: 10 }).map((_, i) => (
+                  <div key={i} className="space-y-1.5">
+                    <div className="h-3 w-20 bg-slate-100 animate-pulse" />
+                    <div className="h-8 bg-slate-100 animate-pulse" />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="bg-white border border-slate-200 shadow-sm overflow-hidden">
+              <SectionHeading number="2" title="Line Items" />
+              <TableSkeleton
+                columns={["#", "Item Description", "Stock No.", "Unit", "Qty Ordered", "Qty Delivered", "Qty Distributed", "Remaining"]}
+                rowCount={3}
+              />
+            </div>
+            <div className="bg-white border border-slate-200 shadow-sm overflow-hidden">
+              <SectionHeading number="3" title="Distribution" />
+              <TableSkeleton
+                columns={["Item#", "Description", "Unit", "Qty Delivered", "Delivery Ref", "Del. Date", "Division", "Qty Issued", "Issue Ref", "Date Issued", "Issued By", "Remarks"]}
+                rowCount={3}
+              />
+            </div>
+          </>
         )}
 
         {/* ── Report sections ───────────────────────────────────────────────── */}

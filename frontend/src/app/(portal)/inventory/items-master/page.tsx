@@ -45,6 +45,7 @@ import {
 import api from "@/lib/api";
 import { fetchMe } from "@/lib/me-cache";
 import { useToast } from "@/components/ui/Toast";
+import TableSkeleton from "@/components/ui/TableSkeleton";
 import type {
   CreateItemMasterRequest,
   ItemMasterResponse,
@@ -698,9 +699,7 @@ export default function ItemsMasterPage() {
         {/* ── Table card ───────────────────────────────────────────────────── */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
           {loading ? (
-            <div className="flex items-center justify-center py-20">
-              <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
-            </div>
+            <TableSkeleton columns={["#", "Stock No.", "Description", "Category", "Unit", "Unit Cost", "Type", "Reorder", "Remarks", "New?", ""]} />
           ) : fetchError ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
               <p className="text-sm text-red-500">{fetchError}</p>

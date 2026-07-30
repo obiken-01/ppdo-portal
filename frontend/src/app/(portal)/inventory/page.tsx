@@ -25,6 +25,7 @@ import Link from "next/link";
 import api from "@/lib/api";
 import { fetchMe } from "@/lib/me-cache";
 import { useToast } from "@/components/ui/Toast";
+import TableSkeleton from "@/components/ui/TableSkeleton";
 import type {
   PRSummaryResponse,
   InventoryStatsResponse,
@@ -454,9 +455,7 @@ export default function InventoryDashboardPage() {
         </div>
 
         {prsLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <span className="w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
-          </div>
+          <TableSkeleton columns={["PR No.", "Division", "Requested By", "PR Date", "Status", "Fulfillment", "Total Amount", "Actions"]} />
         ) : prs.length === 0 ? (
           <div className="py-12 text-center text-sm text-slate-600">
             No purchase requests found.
@@ -549,9 +548,7 @@ export default function InventoryDashboardPage() {
         </div>
 
         {ledgerLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <span className="w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
-          </div>
+          <TableSkeleton columns={["Stock No.", "Description", "Unit", "On Hand", "Reorder Qty", "Status"]} />
         ) : alertItems.length === 0 ? (
           <div className="py-10 text-center">
             <p className="text-sm text-green-600 font-medium">✅ All items are sufficiently stocked.</p>
