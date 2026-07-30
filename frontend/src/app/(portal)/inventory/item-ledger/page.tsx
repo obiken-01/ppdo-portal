@@ -29,6 +29,7 @@ import {
 } from "@tanstack/react-table";
 import api from "@/lib/api";
 import { fetchMe } from "@/lib/me-cache";
+import TableSkeleton from "@/components/ui/TableSkeleton";
 import type { ItemLedgerRowResponse } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -670,9 +671,7 @@ export default function StockOverviewPage() {
         {/* ── Table card ───────────────────────────────────────────────────── */}
         <div className="bg-white border border-slate-200 shadow-sm overflow-hidden">
           {loading ? (
-            <div className="flex items-center justify-center py-20">
-              <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
-            </div>
+            <TableSkeleton columns={["#", "Stock No.", "Description", "Category", "Type", "Unit", "Ordered", "Delivered", "Distributed", "On Hand", "Reorder", "Status"]} />
           ) : fetchError ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
               <p className="text-sm text-red-500">{fetchError}</p>

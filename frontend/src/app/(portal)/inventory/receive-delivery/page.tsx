@@ -19,6 +19,7 @@ import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { fetchMe } from "@/lib/me-cache";
 import { useToast } from "@/components/ui/Toast";
+import TableSkeleton from "@/components/ui/TableSkeleton";
 import type {
   CreateDeliveryItemRequest,
   CreateDeliveryRequest,
@@ -512,9 +513,10 @@ export default function ReceiveDeliveryPage() {
             />
 
             {prLoading ? (
-              <div className="flex items-center justify-center py-16">
-                <div className="w-7 h-7 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
-              </div>
+              <TableSkeleton
+                columns={["#", "Stock No.", "Description", "Unit", "Qty Ordered", "Already Received", "Remaining", "Qty This Delivery"]}
+                rowCount={3}
+              />
             ) : (
               <div className="overflow-x-auto overflow-y-hidden">
                 <table className="w-full text-xs border-collapse">

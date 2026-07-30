@@ -30,6 +30,7 @@ import { fetchMe } from "@/lib/me-cache";
 import { useInventoryDivisions } from "@/lib/inventory-divisions";
 import { useToast } from "@/components/ui/Toast";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
+import TableSkeleton from "@/components/ui/TableSkeleton";
 import type { MeResponse, PRSearchResult, PRStatusCounts, PRSummaryResponse } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -806,9 +807,7 @@ export default function PRListPage() {
         {/* ── Table card ───────────────────────────────────────────────────── */}
         <div className="bg-white border border-slate-200 shadow-sm overflow-hidden">
           {loading ? (
-            <div className="flex items-center justify-center py-20">
-              <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
-            </div>
+            <TableSkeleton columns={["#", "PR No.", "PR Date", "Division", "Requested By", "Fund", "Total Amount", "Status", ""]} />
           ) : fetchError ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
               <p className="text-sm text-red-500">{fetchError}</p>

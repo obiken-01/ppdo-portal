@@ -447,11 +447,36 @@ export default function DistributionPage() {
           )}
         </div>
 
-        {/* ── Loading ───────────────────────────────────────────────────────── */}
+        {/* ── Loading — mirrors the summary card + stock-sources card shape below,
+            so the swap to loaded content doesn't shift the page (CLS). ──────────── */}
         {summaryLoading && (
-          <div className="bg-white border border-slate-200 shadow-sm flex items-center justify-center py-16">
-            <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
-          </div>
+          <>
+            <div className="bg-white border border-slate-200 shadow-sm overflow-hidden">
+              <div className="px-5 py-3 bg-green-600/40 animate-pulse h-11" />
+              <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-slate-100">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="px-4 py-3 space-y-2">
+                    <div className="h-3 w-16 bg-slate-100 animate-pulse" />
+                    <div className="h-4 w-20 bg-slate-100 animate-pulse" />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="bg-white border border-slate-200 shadow-sm overflow-hidden">
+              <div className="px-5 py-3 border-b border-slate-100">
+                <div className="h-4 w-28 bg-slate-100 animate-pulse" />
+              </div>
+              <div className="divide-y divide-slate-100">
+                {Array.from({ length: 2 }).map((_, i) => (
+                  <div key={i} className="px-5 py-3 grid grid-cols-2 md:grid-cols-5 gap-3">
+                    {Array.from({ length: 5 }).map((_, j) => (
+                      <div key={j} className="h-4 bg-slate-100 animate-pulse" style={{ width: `${50 + ((i * 3 + j * 17) % 35)}%` }} />
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
         )}
 
         {summary && !summaryLoading && (
