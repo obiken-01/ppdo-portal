@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Enums;
@@ -112,5 +113,95 @@ public sealed class PurchaseRequestRepository
 
         return new PurchaseRequestStatsAggregate(
             total, open, partiallyDelivered, fullyDeliveredOrCompleted, totalAmount);
+    }
+
+    /// <inheritdoc />
+    public async Task<PRSearchResult> SearchAsync(
+        PRSearchCriteria criteria,
+        int? divisionId,
+        CancellationToken cancellationToken = default)
+    {
+        IQueryable<PurchaseRequest> query = _context.PurchaseRequests
+            .Include(pr => pr.Division);      // depth 1 — pr.Division?.Name is read downstream
+
+        if (divisionId.HasValue)
+            query = query.Where(pr => pr.DivisionId == divisionId.Value);
+
+        if (!string.IsNullOrWhiteSpace(criteria.Search))
+        {
+            string s = criteria.Search.Trim();
+            query = query.Where(pr =>
+                pr.PRNo.Contains(s)
+                || (pr.Division != null && pr.Division.Name.Contains(s))
+                || pr.RequestedBy.Contains(s)
+                || pr.Fund.Contains(s));
+        }
+
+        if (criteria.DateFrom.HasValue)
+            query = query.Where(pr => pr.PRDate >= criteria.DateFrom.Value);
+        if (criteria.DateTo.HasValue)
+            query = query.Where(pr => pr.PRDate <= criteria.DateTo.Value);
+
+        if (criteria.Statuses is { Count: > 0 })
+            query = query.Where(pr => criteria.Statuses.Contains(pr.Status));
+
+        if (!string.IsNullOrWhiteSpace(criteria.Division))
+            query = query.Where(pr => pr.Division != null && pr.Division.Name == criteria.Division);
+
+        if (!string.IsNullOrWhiteSpace(criteria.RequestedBy))
+            query = query.Where(pr => pr.RequestedBy.Contains(criteria.RequestedBy));
+        if (!string.IsNullOrWhiteSpace(criteria.Fund))
+            query = query.Where(pr => pr.Fund.Contains(criteria.Fund));
+        if (!string.IsNullOrWhiteSpace(criteria.AIPCode))
+            query = query.Where(pr => pr.AIPCode != null && pr.AIPCode.Contains(criteria.AIPCode));
+        if (!string.IsNullOrWhiteSpace(criteria.AccountNo))
+            query = query.Where(pr => pr.AccountNo != null && pr.AccountNo.Contains(criteria.AccountNo));
+        if (!string.IsNullOrWhiteSpace(criteria.AccountTitle))
+            query = query.Where(pr => pr.AccountTitle != null && pr.AccountTitle.Contains(criteria.AccountTitle));
+        if (!string.IsNullOrWhiteSpace(criteria.Program))
+            query = query.Where(pr => pr.Program != null && pr.Program.Contains(criteria.Program));
+        if (!string.IsNullOrWhiteSpace(criteria.Project))
+            query = query.Where(pr => pr.Project != null && pr.Project.Contains(criteria.Project));
+        if (!string.IsNullOrWhiteSpace(criteria.Activity))
+            query = query.Where(pr => pr.Activity != null && pr.Activity.Contains(criteria.Activity));
+
+        // Status counts within the filtered set (sequential — see GetStatsAggregateAsync note above).
+        int countOpen = await query.CountAsync(pr => pr.Status == PRStatus.Open, cancellationToken);
+        int countPartiallyDelivered = await query.CountAsync(
+            pr => pr.Status == PRStatus.PartiallyDelivered, cancellationToken);
+        int countFullyDelivered = await query.CountAsync(
+            pr => pr.Status == PRStatus.FullyDelivered, cancellationToken);
+        int countCompleted = await query.CountAsync(pr => pr.Status == PRStatus.Completed, cancellationToken);
+        int totalCount = countOpen + countPartiallyDelivered + countFullyDelivered + countCompleted;
+
+        query = ApplySort(query, criteria.SortBy, criteria.SortDescending);
+
+        List<PurchaseRequest> items = await query
+            .Skip((criteria.Page - 1) * criteria.PageSize)
+            .Take(criteria.PageSize)
+            .ToListAsync(cancellationToken);
+
+        return new PRSearchResult(
+            items, totalCount,
+            new PRStatusCounts(countOpen, countPartiallyDelivered, countFullyDelivered, countCompleted));
+    }
+
+    /// <summary>Applies the PR List page's 6 sortable columns; defaults to PRDate descending
+    /// (the page's own default) when SortBy is missing/unrecognized.</summary>
+    private static IQueryable<PurchaseRequest> ApplySort(
+        IQueryable<PurchaseRequest> query, string? sortBy, bool descending)
+    {
+        Expression<Func<PurchaseRequest, object>> keySelector = sortBy?.ToLowerInvariant() switch
+        {
+            "prno"         => pr => pr.PRNo,
+            "division"     => pr => pr.Division != null ? pr.Division.Name : "",
+            "requestedby"  => pr => pr.RequestedBy,
+            "fund"         => pr => pr.Fund,
+            "totalamount"  => pr => pr.TotalAmount,
+            "prdate"       => pr => pr.PRDate,
+            _              => pr => pr.PRDate,
+        };
+
+        return descending ? query.OrderByDescending(keySelector) : query.OrderBy(keySelector);
     }
 }

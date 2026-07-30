@@ -23,6 +23,16 @@ public interface IPurchaseRequestService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Filtered, sorted, paged PR search for the PR List page — everything computed in SQL.
+    /// Staff/Observer: own division only (empty result if their division is null).
+    /// Admin/SuperAdmin: all divisions.
+    /// </summary>
+    Task<PRSearchResultDto> SearchAsync(
+        User requester,
+        PRSearchFilterDto filter,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Returns the full PR detail (header + line items).
     /// Returns Forbidden if a Staff/Observer tries to view another division's PR.
     /// </summary>
