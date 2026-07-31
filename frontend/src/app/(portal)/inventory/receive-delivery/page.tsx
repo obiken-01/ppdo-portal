@@ -421,7 +421,7 @@ export default function ReceiveDeliveryPage() {
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans">
-      <div className="max-w-screen-xl mx-auto px-6 py-6 space-y-5">
+      <div className="max-w-screen-xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-5">
 
         {/* Toolbar */}
         <div className="flex items-center justify-end">
@@ -504,7 +504,7 @@ export default function ReceiveDeliveryPage() {
               />
             ) : (
               <div className="overflow-x-auto overflow-y-hidden">
-                <table className="w-full text-xs border-collapse">
+                <table className="w-full text-xs border-collapse min-w-[950px]">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase tracking-wide">
                       <th className="px-3 py-2.5 text-center font-medium w-10">#</th>
