@@ -12,11 +12,14 @@ namespace PPDO.Application.Services;
 public interface IDeliveryService
 {
     /// <summary>
-    /// Returns all deliveries visible to the requester.
-    /// Staff/Observer: own division's PRs only. Admin/SuperAdmin: all.
+    /// Returns a page of deliveries visible to the requester, division-scoped and sorted by
+    /// DeliveryDate descending. Staff/Observer: own division's PRs only. Admin/SuperAdmin: all.
+    /// A single scoped, paged query — never a full-table load or a per-PR loop.
     /// </summary>
-    Task<IReadOnlyList<DeliverySummaryDto>> GetAllAsync(
+    Task<DeliveryPagedResultDto> GetAllAsync(
         User requester,
+        int page,
+        int pageSize,
         CancellationToken cancellationToken = default);
 
     /// <summary>

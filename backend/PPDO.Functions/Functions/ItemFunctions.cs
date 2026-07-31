@@ -18,6 +18,7 @@ namespace PPDO.Functions.Functions;
 ///
 /// Endpoints:
 ///   GET  /api/items/master           — full catalog
+///   GET  /api/items/master/search    — filtered/sorted/paged catalog (RAL-192)
 ///   GET  /api/items/master/{id}      — single item
 ///   POST /api/items/master           — add item (CanAccessInventory)
 ///   PUT  /api/items/master/{id}      — update item (CanAccessInventory)
@@ -52,6 +53,41 @@ public sealed class ItemFunctions
             return req.CreateResponse(HttpStatusCode.Unauthorized);
 
         IReadOnlyList<ItemMasterDto> result = await _items.GetAllAsync(cancellationToken);
+        return await OkJson(req, result, cancellationToken);
+    }
+
+    // ── GET /api/items/master/search ──────────────────────────────────────────
+
+    [Function("SearchItemsMaster")]
+    public async Task<HttpResponseData> Search(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "items/master/search")]
+        HttpRequestData req,
+        CancellationToken cancellationToken)
+    {
+        User? caller = await _jwt.ValidateAsync(GetAuthHeader(req), cancellationToken);
+        if (caller is null)
+            return req.CreateResponse(HttpStatusCode.Unauthorized);
+
+        int page = int.TryParse(req.Query["page"], out int p) && p > 0 ? p : 1;
+        int pageSize = int.TryParse(req.Query["pageSize"], out int ps) && ps > 0 ? ps : 25;
+
+        static string? NullIfEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? null : s;
+
+        ItemMasterSearchFilterDto filter = new(
+            Page:           page,
+            PageSize:       pageSize,
+            Search:         NullIfEmpty(req.Query["search"]),
+            StockNo:        NullIfEmpty(req.Query["stockNo"]),
+            Description:    NullIfEmpty(req.Query["description"]),
+            Category:       NullIfEmpty(req.Query["category"]),
+            Unit:           NullIfEmpty(req.Query["unit"]),
+            ItemType:       NullIfEmpty(req.Query["itemType"]),
+            Remarks:        NullIfEmpty(req.Query["remarks"]),
+            IsNewOnly:      string.Equals(req.Query["isNewOnly"], "true", StringComparison.OrdinalIgnoreCase),
+            SortBy:         NullIfEmpty(req.Query["sortBy"]),
+            SortDescending: string.Equals(req.Query["sortDir"], "desc", StringComparison.OrdinalIgnoreCase));
+
+        ItemMasterSearchResultDto result = await _items.SearchAsync(filter, cancellationToken);
         return await OkJson(req, result, cancellationToken);
     }
 

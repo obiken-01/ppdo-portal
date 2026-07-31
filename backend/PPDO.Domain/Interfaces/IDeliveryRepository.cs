@@ -71,7 +71,21 @@ public interface IDeliveryRepository : IRepository<Delivery>
     Task<DeliveryItemBreakdownRow?> GetDeliveryItemBreakdownAsync(
         Guid deliveryItemId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Filtered (by division, via the parent PurchaseRequest), sorted, paged delivery list —
+    /// a single query (WHERE + COUNT + ORDER BY + OFFSET/FETCH), never a full-table load or a
+    /// per-PR loop. Replaces the old GetAllAsync() + GetByPRIdAsync-per-PR N+1 in
+    /// DeliveryService.GetAllAsync. divisionId = null means all divisions (Admin/SuperAdmin).
+    /// </summary>
+    Task<DeliveryPageResult> GetPagedAsync(
+        int? divisionId, int page, int pageSize, CancellationToken cancellationToken = default);
 }
+
+/// <summary>Result of a paged delivery list query. See <see cref="IDeliveryRepository.GetPagedAsync"/>.</summary>
+public sealed record DeliveryPageResult(
+    IReadOnlyList<Delivery> Items,
+    int TotalCount);
 
 // ---------------------------------------------------------------------------
 // Projection records used by breakdown queries (not full EF entities)

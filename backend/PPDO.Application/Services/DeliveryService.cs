@@ -53,31 +53,24 @@ public sealed class DeliveryService : IDeliveryService
     // ── GetAllAsync ────────────────────────────────────────────────────────────
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<DeliverySummaryDto>> GetAllAsync(
+    public async Task<DeliveryPagedResultDto> GetAllAsync(
         User requester,
+        int page,
+        int pageSize,
         CancellationToken cancellationToken = default)
     {
         // Division scope — office users (Staff/Observer with no division) see nothing,
         // never the all-divisions list. See DivisionScope.
         DivisionScope scope = DivisionScope.Resolve(requester);
         if (scope.SeeNothing)
-            return Array.Empty<DeliverySummaryDto>();
+            return new DeliveryPagedResultDto(Array.Empty<DeliverySummaryDto>(), 0, page, pageSize);
 
-        IReadOnlyList<PurchaseRequest> prs = scope.SeeAll
-            ? await _prs.GetAllAsync(cancellationToken)
-            : await _prs.GetByDivisionAsync(scope.DivisionId!.Value, cancellationToken);
+        DeliveryPageResult result =
+            await _deliveries.GetPagedAsync(scope.DivisionId, page, pageSize, cancellationToken);
 
-        List<DeliverySummaryDto> result = new();
-
-        foreach (PurchaseRequest pr in prs)
-        {
-            IReadOnlyList<Delivery> deliveries =
-                await _deliveries.GetByPRIdAsync(pr.Id, cancellationToken);
-
-            result.AddRange(deliveries.Select(MapToSummary));
-        }
-
-        return result.OrderByDescending(d => d.DeliveryDate).ToList();
+        return new DeliveryPagedResultDto(
+            result.Items.Select(MapToSummary).ToList(),
+            result.TotalCount, page, pageSize);
     }
 
     // ── GetByPRIdAsync ─────────────────────────────────────────────────────────

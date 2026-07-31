@@ -38,6 +38,35 @@ public sealed class ItemService : IItemService
     }
 
     /// <inheritdoc />
+    public async Task<ItemMasterSearchResultDto> SearchAsync(
+        ItemMasterSearchFilterDto filter,
+        CancellationToken cancellationToken = default)
+    {
+        ItemMasterSearchCriteria criteria = new(
+            Search:         filter.Search,
+            StockNo:        filter.StockNo,
+            Description:    filter.Description,
+            Category:       filter.Category,
+            Unit:           filter.Unit,
+            ItemType:       filter.ItemType,
+            Remarks:        filter.Remarks,
+            IsNewOnly:      filter.IsNewOnly,
+            SortBy:         filter.SortBy,
+            SortDescending: filter.SortDescending,
+            Page:           filter.Page,
+            PageSize:       filter.PageSize);
+
+        ItemMasterSearchResult result = await _items.SearchAsync(criteria, cancellationToken);
+
+        return new ItemMasterSearchResultDto(
+            result.Items.Select(MapToDto).ToList(),
+            result.TotalCount,
+            result.TotalNewItemCount,
+            filter.Page,
+            filter.PageSize);
+    }
+
+    /// <inheritdoc />
     public async Task<ServiceResult<ItemMasterDto>> GetByIdAsync(
         Guid id,
         CancellationToken cancellationToken = default)
