@@ -41,7 +41,7 @@ public interface IExcelService
     /// Parses an uploaded PR Excel file (one or multiple PR sheets).
     /// Each worksheet in the uploaded file represents one PR.
     /// Unknown StockNo values are flagged — Application maps these to IsNewItem = true.
-    /// Throws <see cref="ExcelParseException"/> if any worksheet contains validation errors.
+    /// Throws <see cref="ImportParseException"/> if any worksheet contains validation errors.
     /// </summary>
     /// <param name="stream">The uploaded .xlsx file stream.</param>
     /// <returns>One <see cref="PurchaseRequestImportRow"/> per valid PR worksheet.</returns>
@@ -55,7 +55,7 @@ public interface IExcelService
     /// against ItemMaster. This is a prefill source, not a direct-create import: the GSO export
     /// never contains Division/RequestedBy/Position/ApprovedBy/ApprovingPosition/SAINo/ALOBSNo,
     /// so those always come back null on the result.
-    /// Throws <see cref="ExcelParseException"/> if the file isn't recognizable as a GSO PR
+    /// Throws <see cref="ImportParseException"/> if the file isn't recognizable as a GSO PR
     /// export or has no valid item rows.
     /// </summary>
     GsoPRImportRow ParseGsoPRImport(Stream stream);
@@ -106,10 +106,15 @@ public sealed record PurchaseRequestImportRow
 }
 
 /// <summary>
-/// Raw data parsed from an uploaded GSO-system PR export. Every field except
-/// <see cref="Items"/> is nullable — the export's own layout only ever supplies a subset of
-/// what a PR needs, and this is a prefill preview, not a validated create. See
-/// docs/v1.7/GSO_PR_Import_Findings.md for exactly what the source file does and doesn't have.
+/// Raw data parsed from an uploaded GSO-system PR export — either the .xlsx or the signed
+/// .pdf export (RAL-197), both parsed to this same shape. Every field except <see cref="Items"/>
+/// is nullable — the export's own layout only ever supplies a subset of what a PR needs, and
+/// this is a prefill preview, not a validated create. See docs/v1.7/GSO_PR_Import_Findings.md
+/// for exactly what each source format does and doesn't have.
+///
+/// <see cref="RequestedBy"/>/<see cref="Position"/>/<see cref="ApprovedBy"/>/
+/// <see cref="ApprovingPosition"/> only ever come from the PDF's signature block — the xlsx
+/// export never has them, so the xlsx parser always leaves these null.
 /// </summary>
 public sealed record GsoPRImportRow
 {
@@ -122,6 +127,10 @@ public sealed record GsoPRImportRow
     public string?  Program   { get; init; }
     public string?  Project   { get; init; }
     public string?  Activity  { get; init; }
+    public string?  RequestedBy       { get; init; }
+    public string?  Position          { get; init; }
+    public string?  ApprovedBy        { get; init; }
+    public string?  ApprovingPosition { get; init; }
 
     public required IReadOnlyList<PRItemImportRow> Items { get; init; }
 }
@@ -152,11 +161,11 @@ public sealed record PRItemImportRow
 /// The <see cref="Errors"/> list contains one entry per problem found.
 /// The entire file is rejected — partial imports are not allowed.
 /// </summary>
-public sealed class ExcelParseException : Exception
+public sealed class ImportParseException : Exception
 {
     public IReadOnlyList<string> Errors { get; }
 
-    public ExcelParseException(IReadOnlyList<string> errors)
+    public ImportParseException(IReadOnlyList<string> errors)
         : base($"Excel import validation failed with {errors.Count} error(s).")
     {
         Errors = errors;

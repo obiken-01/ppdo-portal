@@ -670,7 +670,7 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
         }
 
         if (errors.Count > 0)
-            throw new ExcelParseException(errors);
+            throw new ImportParseException(errors);
 
         return results;
     }
@@ -686,7 +686,7 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
         if (ws is null || !ws.Cell(1, 1).GetString().Trim()
                 .Equals("PR Number", StringComparison.OrdinalIgnoreCase))
         {
-            throw new ExcelParseException(new[]
+            throw new ImportParseException(new[]
             {
                 "This file doesn't look like a GSO PR export — expected 'PR Number' in cell A1.",
             });
@@ -724,7 +724,7 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
 
         if (headerRow is null)
         {
-            throw new ExcelParseException(new[]
+            throw new ImportParseException(new[]
             {
                 "Could not find the item table — expected an 'Item No.' column header.",
             });
@@ -750,7 +750,7 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
         }
 
         if (itemsStart < 0)
-            throw new ExcelParseException(new[] { "No item rows found under the item table." });
+            throw new ImportParseException(new[] { "No item rows found under the item table." });
 
         List<string> codedLines = hierarchyLines.Where(l => l.Contains(" - ")).ToList();
         string? program  = codedLines.Count >= 2 ? codedLines[0] : null;
@@ -798,7 +798,7 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
         }
 
         if (items.Count == 0)
-            throw new ExcelParseException(new[] { "No valid item rows (Qty > 0) were found." });
+            throw new ImportParseException(new[] { "No valid item rows (Qty > 0) were found." });
 
         return new GsoPRImportRow
         {

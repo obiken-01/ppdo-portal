@@ -198,13 +198,14 @@ public sealed class PurchaseRequestFunctions
             return req.CreateResponse(HttpStatusCode.Unauthorized);
 
         // req.Body in the isolated worker is a non-seekable HttpRequestStream — copy to a
-        // MemoryStream first so ClosedXML's internal .Length call doesn't throw.
+        // MemoryStream first so ClosedXML's/PdfPig's internal .Length/seek calls don't throw,
+        // and so the service can sniff the file's magic number to tell .xlsx from .pdf.
         using MemoryStream ms = new();
         await req.Body.CopyToAsync(ms, cancellationToken);
 
         if (ms.Length == 0)
             return await PlainError(req, HttpStatusCode.BadRequest,
-                "Request body must contain the .xlsx file.", cancellationToken);
+                "Request body must contain the .xlsx or .pdf file.", cancellationToken);
 
         ms.Position = 0;
 

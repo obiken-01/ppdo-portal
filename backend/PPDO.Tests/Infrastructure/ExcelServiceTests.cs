@@ -188,7 +188,7 @@ public sealed class ExcelServiceTests
     }
 
     [Fact]
-    public void ParsePRImport_MissingDivision_ThrowsExcelParseException()
+    public void ParsePRImport_MissingDivision_ThrowsImportParseException()
     {
         using XLWorkbook wb = new();
         IXLWorksheet ws = wb.AddWorksheet("PR-001");
@@ -203,12 +203,12 @@ public sealed class ExcelServiceTests
         wb.SaveAs(ms);
         ms.Position = 0;
 
-        ExcelParseException ex = Assert.Throws<ExcelParseException>(() => _sut.ParsePRImport(ms));
+        ImportParseException ex = Assert.Throws<ImportParseException>(() => _sut.ParsePRImport(ms));
         Assert.Contains(ex.Errors, e => e.Contains("Division"));
     }
 
     [Fact]
-    public void ParsePRImport_MissingRequestedBy_ThrowsExcelParseException()
+    public void ParsePRImport_MissingRequestedBy_ThrowsImportParseException()
     {
         using XLWorkbook wb = new();
         IXLWorksheet ws = wb.AddWorksheet("PR-001");
@@ -222,12 +222,12 @@ public sealed class ExcelServiceTests
         wb.SaveAs(ms);
         ms.Position = 0;
 
-        ExcelParseException ex = Assert.Throws<ExcelParseException>(() => _sut.ParsePRImport(ms));
+        ImportParseException ex = Assert.Throws<ImportParseException>(() => _sut.ParsePRImport(ms));
         Assert.Contains(ex.Errors, e => e.Contains("Requested By"));
     }
 
     [Fact]
-    public void ParsePRImport_InvalidPRDate_ThrowsExcelParseException()
+    public void ParsePRImport_InvalidPRDate_ThrowsImportParseException()
     {
         using XLWorkbook wb = new();
         IXLWorksheet ws = wb.AddWorksheet("PR-001");
@@ -242,12 +242,12 @@ public sealed class ExcelServiceTests
         wb.SaveAs(ms);
         ms.Position = 0;
 
-        ExcelParseException ex = Assert.Throws<ExcelParseException>(() => _sut.ParsePRImport(ms));
+        ImportParseException ex = Assert.Throws<ImportParseException>(() => _sut.ParsePRImport(ms));
         Assert.Contains(ex.Errors, e => e.Contains("PR Date"));
     }
 
     [Fact]
-    public void ParsePRImport_NoItemRows_ThrowsExcelParseException()
+    public void ParsePRImport_NoItemRows_ThrowsImportParseException()
     {
         using XLWorkbook wb = new();
         IXLWorksheet ws = wb.AddWorksheet("PR-001");
@@ -260,7 +260,7 @@ public sealed class ExcelServiceTests
         wb.SaveAs(ms);
         ms.Position = 0;
 
-        ExcelParseException ex = Assert.Throws<ExcelParseException>(() => _sut.ParsePRImport(ms));
+        ImportParseException ex = Assert.Throws<ImportParseException>(() => _sut.ParsePRImport(ms));
         Assert.Contains(ex.Errors, e => e.Contains("item") || e.Contains("PR-001"));
     }
 
@@ -316,7 +316,7 @@ public sealed class ExcelServiceTests
         wb.SaveAs(ms);
         ms.Position = 0;
 
-        ExcelParseException ex = Assert.Throws<ExcelParseException>(() => _sut.ParsePRImport(ms));
+        ImportParseException ex = Assert.Throws<ImportParseException>(() => _sut.ParsePRImport(ms));
         Assert.True(ex.Errors.Count >= 2);
         Assert.Contains(ex.Errors, e => e.Contains("PR-001"));
         Assert.Contains(ex.Errors, e => e.Contains("PR-002"));
@@ -522,14 +522,14 @@ public sealed class ExcelServiceTests
     }
 
     [Fact]
-    public void ParseGsoPRImport_NotAGsoFile_ThrowsExcelParseException()
+    public void ParseGsoPRImport_NotAGsoFile_ThrowsImportParseException()
     {
         using Stream stream = BuildValidTemplate(); // our own template, not a GSO export
-        Assert.Throws<ExcelParseException>(() => _sut.ParseGsoPRImport(stream));
+        Assert.Throws<ImportParseException>(() => _sut.ParseGsoPRImport(stream));
     }
 
     [Fact]
-    public void ParseGsoPRImport_NoItemRows_ThrowsExcelParseException()
+    public void ParseGsoPRImport_NoItemRows_ThrowsImportParseException()
     {
         using XLWorkbook wb = new();
         IXLWorksheet ws = wb.AddWorksheet("PR");
@@ -541,7 +541,7 @@ public sealed class ExcelServiceTests
         wb.SaveAs(ms);
         ms.Position = 0;
 
-        Assert.Throws<ExcelParseException>(() => _sut.ParseGsoPRImport(ms));
+        Assert.Throws<ImportParseException>(() => _sut.ParseGsoPRImport(ms));
     }
 
     // ── ExportPRReport ────────────────────────────────────────────────────────

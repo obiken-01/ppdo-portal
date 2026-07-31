@@ -664,12 +664,13 @@ export default function CreatePRPage() {
   // ── Prefill from GSO export ────────────────────────────────────────────────
   //
   // Unlike handleFileUpload above (our own template, bulk, direct-create), this parses a
-  // single PR exported from the external GSO system and drops the result into the existing
-  // form state — nothing is created here. Division, Requested By, Position, Approved By,
-  // Approving Position, SAI No., and ALOBS No. are never in the GSO export, so they're left
-  // untouched (Requested By/Position/Division are already prefilled from the current user by
-  // the auth-guard effect above) for the user to fill in before Submit, same as typing a new
-  // PR by hand.
+  // single PR exported from the external GSO system — either its .xlsx or signed .pdf export,
+  // auto-detected server-side — and drops the result into the existing form state — nothing is
+  // created here. Division and SAI No./ALOBS No. are never in either export format, so those are
+  // left untouched for the user to fill in before Submit. Requested By/Position/Approved
+  // By/Approving Position only ever come back non-null from the .pdf export (its signature
+  // block) — the .xlsx export never has them, so uploading it leaves those fields as whatever
+  // was already there (e.g. the current user, prefilled by the auth-guard effect above).
 
   async function handleGsoImport(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -682,19 +683,23 @@ export default function CreatePRPage() {
       const { data } = await api.post<GsoPRImportPreviewResponse>(
         "/purchase-requests/import/gso-preview",
         file,
-        { headers: { "Content-Type": file.type || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" } }
+        { headers: { "Content-Type": file.type || "application/octet-stream" } }
       );
 
       patchHeader({
-        prNo:         data.prNo         ?? header.prNo,
-        fund:         data.fund         ?? header.fund,
-        prDate:       data.prDate       ?? header.prDate,
-        aipCode:      data.aipCode      ?? header.aipCode,
-        accountNo:    data.accountNo    ?? header.accountNo,
-        accountTitle: data.accountTitle ?? header.accountTitle,
-        program:      data.program      ?? header.program,
-        project:      data.project      ?? header.project,
-        activity:     data.activity     ?? header.activity,
+        prNo:              data.prNo              ?? header.prNo,
+        fund:              data.fund               ?? header.fund,
+        prDate:            data.prDate             ?? header.prDate,
+        aipCode:           data.aipCode            ?? header.aipCode,
+        accountNo:         data.accountNo          ?? header.accountNo,
+        accountTitle:      data.accountTitle       ?? header.accountTitle,
+        program:           data.program            ?? header.program,
+        project:           data.project            ?? header.project,
+        activity:          data.activity           ?? header.activity,
+        requestedBy:       data.requestedBy        ?? header.requestedBy,
+        position:          data.position           ?? header.position,
+        approvedBy:        data.approvedBy         ?? header.approvedBy,
+        approvingPosition: data.approvingPosition  ?? header.approvingPosition,
       });
 
       setItems(data.items.map((it): LineItem => ({
@@ -711,11 +716,14 @@ export default function CreatePRPage() {
       setItemsError(null);
 
       const unknownCount = data.items.filter((it) => it.isUnknownStock).length;
+      const stillNeeded = data.requestedBy
+        ? "Division still needs to be filled in."
+        : "Division, Requested By, and signatories still need to be filled in.";
       toast.success(
         "Prefilled from GSO export",
         `${data.items.length} item${data.items.length !== 1 ? "s" : ""} loaded` +
         (unknownCount > 0 ? ` (${unknownCount} not yet in the catalog)` : "") +
-        ". Division, Requested By, and signatories still need to be filled in."
+        `. ${stillNeeded}`
       );
     } catch (err: unknown) {
       const msg =
@@ -907,7 +915,7 @@ export default function CreatePRPage() {
           <button
             onClick={() => gsoFileInputRef.current?.click()}
             disabled={gsoImporting}
-            title="Prefill this form from a PR exported by the GSO system (.xlsx) — Division, Requested By, and signatories still need to be filled in manually"
+            title="Prefill this form from a PR exported by the GSO system (.xlsx or signed .pdf) — Division still needs to be filled in manually, and Requested By/signatories too if you upload the .xlsx"
             className="flex items-center gap-2 px-4 py-2.5 text-sm border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-sm transition-colors disabled:opacity-60"
           >
             {gsoImporting
@@ -918,7 +926,7 @@ export default function CreatePRPage() {
           <input
             ref={gsoFileInputRef}
             type="file"
-            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.pdf,application/pdf"
             className="hidden"
             onChange={handleGsoImport}
           />

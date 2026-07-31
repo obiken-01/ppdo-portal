@@ -21,6 +21,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
     private readonly IItemMasterRepository      _items;
     private readonly IPermissionService         _permissions;
     private readonly IExcelService              _excel;
+    private readonly IPdfService                _pdf;
     private readonly IAccountService            _accounts;
     private readonly IRepository<Division>      _divisions;
     private readonly IOfficeRepository          _offices;
@@ -40,6 +41,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         IItemMasterRepository items,
         IPermissionService permissions,
         IExcelService excel,
+        IPdfService pdf,
         IAccountService accounts,
         IRepository<Division> divisions,
         IOfficeRepository offices,
@@ -49,6 +51,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         _items       = items;
         _permissions = permissions;
         _excel       = excel;
+        _pdf         = pdf;
         _accounts    = accounts;
         _divisions   = divisions;
         _offices     = offices;
@@ -490,7 +493,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         {
             rows = _excel.ParsePRImport(stream);
         }
-        catch (ExcelParseException ex)
+        catch (ImportParseException ex)
         {
             return ServiceResult<IReadOnlyList<PRResponseDto>>.BadRequest(
                 $"Excel import failed: {string.Join("; ", ex.Errors)}");
@@ -567,9 +570,9 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         GsoPRImportRow row;
         try
         {
-            row = _excel.ParseGsoPRImport(stream);
+            row = IsPdf(stream) ? _pdf.ParseGsoPRImport(stream) : _excel.ParseGsoPRImport(stream);
         }
-        catch (ExcelParseException ex)
+        catch (ImportParseException ex)
         {
             return ServiceResult<GsoPRImportPreviewDto>.BadRequest(
                 $"Could not read the file: {string.Join("; ", ex.Errors)}");
@@ -578,7 +581,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         {
             _logger.LogError(ex, "Unexpected error parsing GSO PR import file for user {UserId}.", requester.Id);
             return ServiceResult<GsoPRImportPreviewDto>.BadRequest(
-                "The uploaded file could not be read. Ensure it is a valid .xlsx file.");
+                "The uploaded file could not be read. Ensure it is a valid .xlsx or .pdf file.");
         }
 
         // Resolve Account Title (and normalize AccountNo to the config table's own formatting)
@@ -628,6 +631,10 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
             Program:      row.Program,
             Project:      row.Project,
             Activity:     row.Activity,
+            RequestedBy:       row.RequestedBy,
+            Position:          row.Position,
+            ApprovedBy:        row.ApprovedBy,
+            ApprovingPosition: row.ApprovingPosition,
             Items: row.Items.Select(i => new GsoPRImportItemDto(
                     StockNo:        i.StockNo,
                     Description:    i.Description,
@@ -645,6 +652,20 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
     /// Config Accounts' own formatting. Null/empty input returns "".</summary>
     private static string DigitsOnly(string? s) =>
         s is null ? "" : new string(s.Where(char.IsDigit).ToArray());
+
+    /// <summary>Sniffs the PDF magic number (%PDF) at the start of the stream, then rewinds it
+    /// to position 0 so the chosen parser reads the file from the beginning. The .xlsx export is
+    /// a zip archive (PK\x03\x04 signature) — anything that isn't a PDF is treated as .xlsx and
+    /// left for ExcelService to accept or reject.</summary>
+    private static bool IsPdf(Stream stream)
+    {
+        byte[] header = new byte[4];
+        int read = stream.Read(header, 0, header.Length);
+        stream.Position = 0;
+
+        return read == header.Length
+            && header[0] == 0x25 && header[1] == 0x50 && header[2] == 0x44 && header[3] == 0x46; // %PDF
+    }
 
     // ── Private helpers ────────────────────────────────────────────────────────
 

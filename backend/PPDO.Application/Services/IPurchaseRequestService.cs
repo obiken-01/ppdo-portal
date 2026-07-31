@@ -77,7 +77,7 @@ public interface IPurchaseRequestService
     /// Delegates parsing to IExcelService.ParsePRImport(), then calls CreateAsync for each row.
     /// Requires CanAccessInventory.
     /// Returns Forbidden if any worksheet targets a division the requester cannot write to.
-    /// The whole import is rejected if any worksheet fails validation (ExcelParseException).
+    /// The whole import is rejected if any worksheet fails validation (ImportParseException).
     /// </summary>
     Task<ServiceResult<IReadOnlyList<PRResponseDto>>> ImportFromExcelAsync(
         User requester,

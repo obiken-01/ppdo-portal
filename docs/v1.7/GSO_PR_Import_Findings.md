@@ -11,8 +11,51 @@ The official signed hard copy — dept/section/fund/PR No./SAI/ALOBS header, the
 Program/Project/Activity/Account rows stacked above the line items, Purpose, and the three
 signature blocks (Requested By / Cash Availability / Approved By), plus a QR code and a
 "NOT A TRUE COPY" watermark. It contains the requester's and approver's names, which the xlsx
-does not. **Not a parse target** — it's a rendered layout, not structured data, and Ralph confirmed
-it's reference-only; no attachment/upload feature needed for it.
+does not.
+
+**2026-07-31, revised:** originally scoped out as reference-only (see decision #3 below, now
+superseded). Ralph asked to also support it. Re-examined with a `pdfplumber` (Python) spike
+against the real file to check extraction feasibility before committing to a .NET implementation
+— **this is a real vector/table PDF, not a scanned image** (confirmed: the page has actual line/
+rect drawing primitives, not just a raster), so both the running text and the table structure
+extract cleanly and deterministically. Full `extract_tables()` output for the item grid and the
+signature block:
+
+```
+['Item No.', 'Stock No.', 'Item Description', 'Unit', 'Qty', 'Unit Cost', 'Total Cost']
+['', '', '1000-000-1-01-010-001 - PLANNING MONITORING AND\nEVALUATION PROGRAM', '', '', '', '']
+['', '', '1000-000-1-01-010-001-002 - Administrative Support\nServices', '', '', '', '']
+['', '', '1000-000-1-01-010-001-002-008 - Safety measures for\ncontagious/ communicable diseases', '', '', '', '']
+['', '', '5 02 03 990', '', '', '', '']
+['1', 'OSAME-3955791577', 'Bathroom Tissue, 2ply', 'roll', '35', '21.00', '735.00']
+['2', 'OSAME-9365523112', '70% Isopropyl Alcohol, Hypoallergenic, 500ml', 'bottle', '54', '124.00', '6,696.00']
+['', '', 'SUBTOTAL', '', '', '', '7,431.00']
+
+['Signature:', 'Requested By:', 'Cash Availability:', 'Approved By:']
+['Printed Name:', 'ANTHONY A. DANTIS', 'CLETA B. MULINGBAYAN', 'EDUARDO B. GADIANO']
+['Position:', "Prov'l. Government Department\nHead", 'Provincial Treasurer', 'Governor']
+```
+
+Same hierarchy-row pattern as the xlsx (numbered `Item No.` distinguishes real items from the
+Program/Project/Activity/Account lines above them; same `" - "` split rule; same space-separated
+account code, same digits-only matching from the account-code fix applies unchanged). The header
+block (`Dept.:PPDO PR No.: 101-1041-GF-2026-04-28-757 Date.:04/30/2026` etc.) comes back as one
+text blob per row rather than separate cells — needs label-anchored regex extraction, not a
+lookup, since there's no cell boundary between adjacent fields on the same PDF table row.
+
+**New, useful data the xlsx never has:** the signature block gives `RequestedBy` ("ANTHONY A.
+DANTIS"), `Position` ("Prov'l. Government Department Head" — collapse the embedded line break to
+a space), `ApprovedBy` ("EDUARDO B. GADIANO"), `ApprovingPosition` ("Governor"). "Cash
+Availability" (treasurer countersignature) has no home in `CreatePRDto` — discarded, same as
+`Purpose`.
+
+**.NET implementation note:** the Python spike used `pdfplumber`'s automatic table detection,
+which isn't available in a pure-.NET library. The backend parser (`UglyToad.PdfPig`, MIT,
+no native deps — the standard .NET PDF text library) reconstructs rows/columns from word bounding
+boxes instead of border-line detection: cluster words into rows by Y-position, then bucket each
+row's words into columns by X-position against the column boundaries read from the item table's
+own header row. This avoids depending on PdfPig being able to read the PDF's vector line
+primitives at all — pure text-position clustering, matching what PdfPig is actually good at.
 
 ## The xlsx — a different export than our own template
 
@@ -72,7 +115,17 @@ spaces) is the Account No. AIP Code = the leading code segment of the Activity l
    typed by hand, and normal required-field validation on Submit is unchanged.
 2. **One PR per file, always.** Confirmed — the GSO site exports a single `PR` sheet per file. No
    multi-sheet looping needed (unlike our own template, which supports several PRs per workbook).
-3. **No PDF upload/attachment feature.** Reference-only; out of scope entirely.
+3. ~~No PDF upload/attachment feature. Reference-only; out of scope entirely.~~ **Superseded
+   2026-07-31** — see "The PDF" section above and RAL-197. The upload button now accepts either
+   format and auto-detects which one was given (sniffed from the file's magic bytes server-side,
+   not trusted from the client's declared Content-Type) rather than adding a second button.
+   PDF-sourced imports additionally prefill RequestedBy/Position/ApprovedBy/ApprovingPosition,
+   since that data only exists in the signed PDF, never the xlsx.
 4. **Account No ↔ Account Title lookup goes into manual Create PR entry too**, not just this import
    path — today they're two disconnected free-text inputs on the form; wire both to
    `GET /api/config/accounts?search=` (same bidirectional pattern as the existing Stock No lookup).
+5. **Account code matching is digits-only, not exact-string.** The GSO export (both xlsx and PDF)
+   punctuates account codes with spaces (`5 02 03 990`); Config Accounts stores dashes
+   (`5-02-03-990`). Match by stripping everything but digits on both sides; when found, store the
+   config table's own canonical `AccountNumber` rather than a guessed reformat of the source text.
+   Falls back to the raw parsed value when nothing matches.

@@ -154,6 +154,7 @@ public sealed class PurchaseRequestServiceTests
         Mock<IPurchaseRequestRepository> prRepo,
         Mock<IItemMasterRepository>? itemRepo = null,
         Mock<IExcelService>? excelService = null,
+        Mock<IPdfService>? pdfService = null,
         Mock<IAccountService>? accountService = null,
         Mock<IRepository<Division>>? divisionRepo = null,
         Mock<IOfficeRepository>? officeRepo = null)
@@ -162,6 +163,7 @@ public sealed class PurchaseRequestServiceTests
             (itemRepo ?? RepoItemThatSaves()).Object,
             new PermissionService(),
             (excelService ?? new Mock<IExcelService>()).Object,
+            (pdfService ?? new Mock<IPdfService>()).Object,
             (accountService ?? DefaultAccountService()).Object,
             (divisionRepo ?? DivisionsRepo()).Object,
             (officeRepo ?? OfficesRepo()).Object,
@@ -564,7 +566,7 @@ public sealed class PurchaseRequestServiceTests
     {
         Mock<IExcelService> excel = new();
         excel.Setup(e => e.ParseGsoPRImport(It.IsAny<Stream>()))
-            .Throws(new ExcelParseException(new[] { "bad file" }));
+            .Throws(new ImportParseException(new[] { "bad file" }));
 
         ServiceResult<GsoPRImportPreviewDto> result =
             await BuildSut(RepoPRThatSaves(), excelService: excel)
@@ -703,6 +705,43 @@ public sealed class PurchaseRequestServiceTests
         await BuildSut(prRepo, excelService: excel).PreviewGsoImportAsync(MakeAdmin(), Stream.Null);
 
         prRepo.Verify(r => r.AddAsync(It.IsAny<PurchaseRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task PreviewGsoImportAsync_PdfMagicBytes_DispatchesToPdfServiceNotExcelService()
+    {
+        Mock<IExcelService> excel = new();
+        Mock<IPdfService> pdf = new();
+        pdf.Setup(p => p.ParseGsoPRImport(It.IsAny<Stream>())).Returns(SampleGsoRow());
+
+        using MemoryStream pdfStream = new(new byte[] { 0x25, 0x50, 0x44, 0x46, 0x2D, 0x31, 0x2E, 0x34 }); // "%PDF-1.4"
+
+        ServiceResult<GsoPRImportPreviewDto> result =
+            await BuildSut(RepoPRThatSaves(), excelService: excel, pdfService: pdf)
+                .PreviewGsoImportAsync(MakeAdmin(), pdfStream);
+
+        Assert.True(result.IsSuccess);
+        pdf.Verify(p => p.ParseGsoPRImport(It.IsAny<Stream>()), Times.Once);
+        excel.Verify(e => e.ParseGsoPRImport(It.IsAny<Stream>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task PreviewGsoImportAsync_NonPdfBytes_DispatchesToExcelServiceNotPdfService()
+    {
+        Mock<IExcelService> excel = new();
+        excel.Setup(e => e.ParseGsoPRImport(It.IsAny<Stream>())).Returns(SampleGsoRow());
+        Mock<IPdfService> pdf = new();
+
+        // Zip local-file-header signature (PK\x03\x04) — how a real .xlsx export starts.
+        using MemoryStream xlsxStream = new(new byte[] { 0x50, 0x4B, 0x03, 0x04 });
+
+        ServiceResult<GsoPRImportPreviewDto> result =
+            await BuildSut(RepoPRThatSaves(), excelService: excel, pdfService: pdf)
+                .PreviewGsoImportAsync(MakeAdmin(), xlsxStream);
+
+        Assert.True(result.IsSuccess);
+        excel.Verify(e => e.ParseGsoPRImport(It.IsAny<Stream>()), Times.Once);
+        pdf.Verify(p => p.ParseGsoPRImport(It.IsAny<Stream>()), Times.Never);
     }
 
     // ── Division resolution ───────────────────────────────────────────────────
