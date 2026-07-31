@@ -16,11 +16,11 @@ namespace PPDO.Infrastructure.Services;
 ///      word-to-word spacing within one label/value/description is 1-3pt; genuine cell
 ///      boundaries are 30pt+.
 ///   3. Merge a row into the previous one when the vertical gap between them is small
-///      (<see cref="WrapMergeGap"/>) — this is PDF line-wrapping (e.g. a hierarchy line or a
-///      signatory's position title wrapping across two physical PDF lines), not a new row. Each
-///      wrapped cell is appended to whichever previous-row cell it sits nearest to on the X
-///      axis, not just appended in raw reading order — the wrapped text's own line starts back
-///      near the left margin of its cell, not after the previous line's rightmost word.
+///      (<see cref="WrapMergeGap"/>) — this is PDF line-wrapping (e.g. a hierarchy line
+///      wrapping across two physical PDF lines), not a new row. Each wrapped cell is appended
+///      to whichever previous-row cell it sits nearest to on the X axis, not just appended in
+///      raw reading order — the wrapped text's own line starts back near the left margin of
+///      its cell, not after the previous line's rightmost word.
 ///
 /// See docs/v1.7/GSO_PR_Import_Findings.md for the verified word-position data this design is
 /// based on, and <see cref="IExcelService.ParseGsoPRImport"/> for the xlsx sibling parser this
@@ -151,26 +151,18 @@ public sealed class PdfService : IPdfService
             if (TryTakeValue(cell.Text, "Purpose:", out string v)) { purpose = v; break; }
         }
 
-        // ── Signature block ──────────────────────────────────────────────────────────
-        (string? requestedBy, string? position, string? approvedBy, string? approvingPosition) =
-            ExtractSignatureBlock(rows);
-
         return new GsoPRImportRow
         {
-            PrNo              = NullIfBlank(prNo),
-            Fund              = NullIfBlank(fund),
-            PRDate            = prDate,
-            Purpose           = NullIfBlank(purpose),
-            AIPCode           = aipCode,
-            AccountNo         = accountNo,
-            Program           = program,
-            Project           = project,
-            Activity          = activity,
-            RequestedBy       = requestedBy,
-            Position          = position,
-            ApprovedBy        = approvedBy,
-            ApprovingPosition = approvingPosition,
-            Items             = items,
+            PrNo      = NullIfBlank(prNo),
+            Fund      = NullIfBlank(fund),
+            PRDate    = prDate,
+            Purpose   = NullIfBlank(purpose),
+            AIPCode   = aipCode,
+            AccountNo = accountNo,
+            Program   = program,
+            Project   = project,
+            Activity  = activity,
+            Items     = items,
         };
     }
 
@@ -262,62 +254,6 @@ public sealed class PdfService : IPdfService
         }
         value = "";
         return false;
-    }
-
-    // ── Signature block ──────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// The signature block is a real 2D table (Signature/Printed Name/Position rows ×
-    /// Requested By/Cash Availability/Approved By columns), but "Cash Availability" — the
-    /// treasurer countersignature — has no home in CreatePRDto and is discarded. Column
-    /// positions come from the row containing the three column headers; the Printed Name and
-    /// Position rows are then bucketed against those same X positions (nearest-match, since
-    /// cell left-edges don't line up exactly row to row).
-    /// </summary>
-    private static (string? RequestedBy, string? Position, string? ApprovedBy, string? ApprovingPosition)
-        ExtractSignatureBlock(List<List<PdfCell>> rows)
-    {
-        List<PdfCell>? headerRow = rows.FirstOrDefault(r =>
-            r.Any(c => c.Text.Contains("Requested By:", StringComparison.OrdinalIgnoreCase))
-            && r.Any(c => c.Text.Contains("Approved By:", StringComparison.OrdinalIgnoreCase)));
-
-        if (headerRow is null || headerRow.Count < 3)
-            return (null, null, null, null);
-
-        double requestedByX = headerRow[0].Left;
-        double approvedByX  = headerRow[^1].Left;
-
-        List<PdfCell>? nameRow = rows.FirstOrDefault(r =>
-            r.Count > 0 && r[0].Text.Trim().Equals("Printed Name:", StringComparison.OrdinalIgnoreCase));
-        List<PdfCell>? positionRow = rows.FirstOrDefault(r =>
-            r.Count > 0 && r[0].Text.Trim().Equals("Position:", StringComparison.OrdinalIgnoreCase));
-
-        // Skip cell 0 (the row's own "Printed Name:"/"Position:" label) so a narrow/malformed
-        // form can never have the label text itself picked as the "nearest" value.
-        string? requestedByName = NearestCellText(nameRow?.Skip(1).ToList(), requestedByX);
-        string? approvedByName  = NearestCellText(nameRow?.Skip(1).ToList(), approvedByX);
-        string? requestedByPos  = NearestCellText(positionRow?.Skip(1).ToList(), requestedByX);
-        string? approvedByPos   = NearestCellText(positionRow?.Skip(1).ToList(), approvedByX);
-
-        return (
-            NullIfBlank(requestedByName),
-            NullIfBlank(requestedByPos),
-            NullIfBlank(approvedByName),
-            NullIfBlank(approvedByPos));
-    }
-
-    private static string? NearestCellText(List<PdfCell>? row, double targetX)
-    {
-        if (row is null || row.Count == 0) return null;
-
-        PdfCell? nearest = null;
-        double best = double.MaxValue;
-        foreach (PdfCell cell in row)
-        {
-            double d = Math.Abs(cell.Left - targetX);
-            if (d < best) { best = d; nearest = cell; }
-        }
-        return nearest?.Text.Trim();
     }
 
     private static string? NullIfBlank(string? value) =>
