@@ -77,9 +77,24 @@ public interface IPurchaseRequestService
     /// Delegates parsing to IExcelService.ParsePRImport(), then calls CreateAsync for each row.
     /// Requires CanAccessInventory.
     /// Returns Forbidden if any worksheet targets a division the requester cannot write to.
-    /// The whole import is rejected if any worksheet fails validation (ExcelParseException).
+    /// The whole import is rejected if any worksheet fails validation (ImportParseException).
     /// </summary>
     Task<ServiceResult<IReadOnlyList<PRResponseDto>>> ImportFromExcelAsync(
+        User requester,
+        Stream stream,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Parses an uploaded PR export from the external GSO system and returns prefill data for
+    /// the Create PR form — RAL-196. Nothing is persisted; this is a preview, not a create.
+    /// Unlike <see cref="ImportFromExcelAsync"/> (our own template, bulk, direct-create), the
+    /// GSO export never contains Division/RequestedBy/etc., so there is no division-scope check
+    /// here — the user fills those in manually and CreateAsync enforces scope as normal at
+    /// Submit. Resolves AccountTitle from the Config Accounts table and flags StockNos not
+    /// found in Items Master, same as manual entry does.
+    /// Requires CanAccessInventory.
+    /// </summary>
+    Task<ServiceResult<GsoPRImportPreviewDto>> PreviewGsoImportAsync(
         User requester,
         Stream stream,
         CancellationToken cancellationToken = default);

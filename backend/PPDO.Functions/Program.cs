@@ -113,6 +113,7 @@ var host = new HostBuilder()
         services.AddScoped<IJwtMiddleware, JwtMiddleware>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<IExcelService, ExcelService>();
+        services.AddScoped<IPdfService, PdfService>();
         services.AddScoped<IWfpExcelService, ExcelService>();
         services.AddScoped<IWfpReportExcelService, WfpReportExcelService>();
         services.AddScoped<IPpmpReportExcelService, PpmpReportExcelService>();

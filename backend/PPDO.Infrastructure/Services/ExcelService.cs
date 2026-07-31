@@ -670,9 +670,149 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
         }
 
         if (errors.Count > 0)
-            throw new ExcelParseException(errors);
+            throw new ImportParseException(errors);
 
         return results;
+    }
+
+    // ── ParseGsoPRImport ──────────────────────────────────────────────────────
+
+    /// <inheritdoc />
+    public GsoPRImportRow ParseGsoPRImport(Stream stream)
+    {
+        using XLWorkbook wb = new(stream);
+        IXLWorksheet? ws = wb.Worksheets.FirstOrDefault();
+
+        if (ws is null || !ws.Cell(1, 1).GetString().Trim()
+                .Equals("PR Number", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ImportParseException(new[]
+            {
+                "This file doesn't look like a GSO PR export — expected 'PR Number' in cell A1.",
+            });
+        }
+
+        // ── Section 1 — label/value pairs, matched by label text rather than a fixed row
+        // number. This is an external system's export, not ours to control the layout of;
+        // label-matching survives GSO reordering these rows in a way a hardcoded row number
+        // would not. ─────────────────────────────────────────────────────────────────────
+        Dictionary<string, string> fields = new(StringComparer.OrdinalIgnoreCase);
+        for (int row = 1; row <= 9; row++)
+        {
+            string label = ws.Cell(row, 1).GetString().Trim();
+            if (label.Length > 0)
+                fields[label] = ws.Cell(row, 2).GetString().Trim();
+        }
+
+        DateOnly? prDate = null;
+        if (fields.TryGetValue("Submitted Date", out string? dateRaw)
+            && DateTime.TryParse(dateRaw, out DateTime parsedDate))
+        {
+            prDate = DateOnly.FromDateTime(parsedDate);
+        }
+
+        // ── Locate the item table header ("Item No." in column A) ──────────────────────
+        int? headerRow = null;
+        for (int row = 1; row <= 30; row++)
+        {
+            if (ws.Cell(row, 1).GetString().Trim().Equals("Item No.", StringComparison.OrdinalIgnoreCase))
+            {
+                headerRow = row;
+                break;
+            }
+        }
+
+        if (headerRow is null)
+        {
+            throw new ImportParseException(new[]
+            {
+                "Could not find the item table — expected an 'Item No.' column header.",
+            });
+        }
+
+        // ── Hierarchy lines — description-only rows between the header and the first
+        // numbered item row. Program/Project/Activity contain " - "; Account No. doesn't. ──
+        List<string> hierarchyLines = new();
+        int itemsStart = -1;
+
+        for (int row = headerRow.Value + 1; row <= headerRow.Value + 20; row++)
+        {
+            string itemNoRaw = ws.Cell(row, 1).GetString().Trim();
+            if (int.TryParse(itemNoRaw, out int itemNo) && itemNo > 0)
+            {
+                itemsStart = row;
+                break;
+            }
+
+            string desc = ws.Cell(row, 3).GetString().Trim();
+            if (desc.Length > 0)
+                hierarchyLines.Add(desc);
+        }
+
+        if (itemsStart < 0)
+            throw new ImportParseException(new[] { "No item rows found under the item table." });
+
+        List<string> codedLines = hierarchyLines.Where(l => l.Contains(" - ")).ToList();
+        string? program  = codedLines.Count >= 2 ? codedLines[0] : null;
+        string? activity = codedLines.Count >= 1 ? codedLines[^1] : null;
+        string? project  = codedLines.Count >= 3
+            ? string.Join("; ", codedLines.Skip(1).Take(codedLines.Count - 2))
+            : null;
+        string? accountNo = hierarchyLines.FirstOrDefault(l => !l.Contains(" - "));
+
+        string? aipCode = null;
+        if (activity is not null)
+        {
+            int dash = activity.IndexOf(" - ", StringComparison.Ordinal);
+            aipCode = dash > 0 ? activity[..dash].Trim() : null;
+        }
+
+        // ── Item rows — read-only preview, so a malformed row is skipped, not fatal. ────
+        List<PRItemImportRow> items = new();
+        for (int row = itemsStart; row <= itemsStart + 200; row++)
+        {
+            string itemNoRaw = ws.Cell(row, 1).GetString().Trim();
+            if (!int.TryParse(itemNoRaw, out int itemNo) || itemNo <= 0)
+                break; // first non-numbered row (e.g. "TOTAL") ends the item table
+
+            string stockNo = ws.Cell(row, 2).GetString().Trim();
+            string desc    = ws.Cell(row, 3).GetString().Trim();
+            string unit    = ws.Cell(row, 4).GetString().Trim();
+            string qtyRaw  = ws.Cell(row, 5).GetString().Trim();
+            string costRaw = ws.Cell(row, 6).GetString().Trim();
+
+            if (!decimal.TryParse(qtyRaw, out decimal qty) || qty <= 0)
+                continue;
+
+            decimal.TryParse(costRaw, out decimal unitCost);
+
+            items.Add(new PRItemImportRow
+            {
+                StockNo         = string.IsNullOrWhiteSpace(stockNo) ? null : stockNo,
+                Description     = string.IsNullOrWhiteSpace(desc) ? stockNo : desc,
+                Unit            = string.IsNullOrWhiteSpace(unit) ? "pcs" : unit,
+                Quantity        = qty,
+                UnitCost        = unitCost,
+                IsUnknownStock  = !string.IsNullOrWhiteSpace(stockNo),
+            });
+        }
+
+        if (items.Count == 0)
+            throw new ImportParseException(new[] { "No valid item rows (Qty > 0) were found." });
+
+        return new GsoPRImportRow
+        {
+            PrNo      = NullIfBlank(fields.GetValueOrDefault("PR Number")),
+            Fund      = NullIfBlank(fields.GetValueOrDefault("Fund")),
+            PRDate    = prDate,
+            Purpose   = NullIfBlank(fields.GetValueOrDefault("Purpose")),
+            AIPCode   = aipCode,
+            AccountNo = accountNo,
+            Program   = program,
+            Project   = project,
+            Activity  = activity,
+            Items     = items,
+        };
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────

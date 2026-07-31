@@ -188,7 +188,7 @@ public sealed class ExcelServiceTests
     }
 
     [Fact]
-    public void ParsePRImport_MissingDivision_ThrowsExcelParseException()
+    public void ParsePRImport_MissingDivision_ThrowsImportParseException()
     {
         using XLWorkbook wb = new();
         IXLWorksheet ws = wb.AddWorksheet("PR-001");
@@ -203,12 +203,12 @@ public sealed class ExcelServiceTests
         wb.SaveAs(ms);
         ms.Position = 0;
 
-        ExcelParseException ex = Assert.Throws<ExcelParseException>(() => _sut.ParsePRImport(ms));
+        ImportParseException ex = Assert.Throws<ImportParseException>(() => _sut.ParsePRImport(ms));
         Assert.Contains(ex.Errors, e => e.Contains("Division"));
     }
 
     [Fact]
-    public void ParsePRImport_MissingRequestedBy_ThrowsExcelParseException()
+    public void ParsePRImport_MissingRequestedBy_ThrowsImportParseException()
     {
         using XLWorkbook wb = new();
         IXLWorksheet ws = wb.AddWorksheet("PR-001");
@@ -222,12 +222,12 @@ public sealed class ExcelServiceTests
         wb.SaveAs(ms);
         ms.Position = 0;
 
-        ExcelParseException ex = Assert.Throws<ExcelParseException>(() => _sut.ParsePRImport(ms));
+        ImportParseException ex = Assert.Throws<ImportParseException>(() => _sut.ParsePRImport(ms));
         Assert.Contains(ex.Errors, e => e.Contains("Requested By"));
     }
 
     [Fact]
-    public void ParsePRImport_InvalidPRDate_ThrowsExcelParseException()
+    public void ParsePRImport_InvalidPRDate_ThrowsImportParseException()
     {
         using XLWorkbook wb = new();
         IXLWorksheet ws = wb.AddWorksheet("PR-001");
@@ -242,12 +242,12 @@ public sealed class ExcelServiceTests
         wb.SaveAs(ms);
         ms.Position = 0;
 
-        ExcelParseException ex = Assert.Throws<ExcelParseException>(() => _sut.ParsePRImport(ms));
+        ImportParseException ex = Assert.Throws<ImportParseException>(() => _sut.ParsePRImport(ms));
         Assert.Contains(ex.Errors, e => e.Contains("PR Date"));
     }
 
     [Fact]
-    public void ParsePRImport_NoItemRows_ThrowsExcelParseException()
+    public void ParsePRImport_NoItemRows_ThrowsImportParseException()
     {
         using XLWorkbook wb = new();
         IXLWorksheet ws = wb.AddWorksheet("PR-001");
@@ -260,7 +260,7 @@ public sealed class ExcelServiceTests
         wb.SaveAs(ms);
         ms.Position = 0;
 
-        ExcelParseException ex = Assert.Throws<ExcelParseException>(() => _sut.ParsePRImport(ms));
+        ImportParseException ex = Assert.Throws<ImportParseException>(() => _sut.ParsePRImport(ms));
         Assert.Contains(ex.Errors, e => e.Contains("item") || e.Contains("PR-001"));
     }
 
@@ -316,7 +316,7 @@ public sealed class ExcelServiceTests
         wb.SaveAs(ms);
         ms.Position = 0;
 
-        ExcelParseException ex = Assert.Throws<ExcelParseException>(() => _sut.ParsePRImport(ms));
+        ImportParseException ex = Assert.Throws<ImportParseException>(() => _sut.ParsePRImport(ms));
         Assert.True(ex.Errors.Count >= 2);
         Assert.Contains(ex.Errors, e => e.Contains("PR-001"));
         Assert.Contains(ex.Errors, e => e.Contains("PR-002"));
@@ -346,6 +346,202 @@ public sealed class ExcelServiceTests
 
         IReadOnlyList<PurchaseRequestImportRow> result = _sut.ParsePRImport(ms);
         Assert.Single(result); // only PR-001, Instructions skipped
+    }
+
+    // ── ParseGsoPRImport (RAL-196) ───────────────────────────────────────────────
+    //
+    // Layout verified against a real GSO export — see docs/v1.7/GSO_PR_Import_Findings.md.
+    // Single sheet, label/value pairs rows 1-8, item header row 10, hierarchy lines
+    // (Program/Project/Activity/Account No.) as description-only rows immediately above the
+    // first numbered item row.
+
+    /// <summary>Builds an in-memory .xlsx matching the real GSO export layout exactly.</summary>
+    private static Stream BuildValidGsoExport()
+    {
+        using XLWorkbook wb = new();
+        IXLWorksheet ws = wb.AddWorksheet("PR");
+
+        ws.Cell(1, 1).Value = "PR Number";       ws.Cell(1, 2).Value = "101-1041-GF-2026-04-28-757";
+        ws.Cell(2, 1).Value = "Office (Short)";  ws.Cell(2, 2).Value = "PPDO";
+        ws.Cell(3, 1).Value = "Office (Full)";   ws.Cell(3, 2).Value = "Provincial Planning and Development Office";
+        ws.Cell(4, 1).Value = "Fund";            ws.Cell(4, 2).Value = "General Fund";
+        ws.Cell(5, 1).Value = "Fiscal Year";     ws.Cell(5, 2).Value = 2026;
+        ws.Cell(6, 1).Value = "Quarter";         ws.Cell(6, 2).Value = "Q2";
+        ws.Cell(7, 1).Value = "Submitted Date";  ws.Cell(7, 2).Value = "Apr 28, 2026";
+        ws.Cell(8, 1).Value = "Purpose";         ws.Cell(8, 2).Value = "use for PPDO office";
+
+        ws.Cell(10, 1).Value = "Item No."; ws.Cell(10, 2).Value = "Stock No."; ws.Cell(10, 3).Value = "Description";
+        ws.Cell(10, 4).Value = "Unit";     ws.Cell(10, 5).Value = "Qty";      ws.Cell(10, 6).Value = "Unit Cost";
+        ws.Cell(10, 7).Value = "Total Cost";
+
+        ws.Cell(11, 3).Value = "1000-000-1-01-010-001 - PLANNING MONITORING AND EVALUATION PROGRAM";
+        ws.Cell(12, 3).Value = "1000-000-1-01-010-001-002 - Administrative Support Services";
+        ws.Cell(13, 3).Value = "1000-000-1-01-010-001-002-008 - Safety measures for contagious/ communicable diseases";
+        ws.Cell(14, 3).Value = "5 02 03 990";
+
+        ws.Cell(15, 1).Value = 1; ws.Cell(15, 2).Value = "OSAME-3955791577"; ws.Cell(15, 3).Value = "Bathroom Tissue, 2ply";
+        ws.Cell(15, 4).Value = "roll"; ws.Cell(15, 5).Value = 35m; ws.Cell(15, 6).Value = 21m; ws.Cell(15, 7).Value = 735m;
+
+        ws.Cell(16, 1).Value = 2; ws.Cell(16, 2).Value = "OSAME-9365523112"; ws.Cell(16, 3).Value = "70% Isopropyl Alcohol, Hypoallergenic, 500ml";
+        ws.Cell(16, 4).Value = "bottle"; ws.Cell(16, 5).Value = 54m; ws.Cell(16, 6).Value = 124m; ws.Cell(16, 7).Value = 6696m;
+
+        ws.Cell(18, 1).Value = "TOTAL"; ws.Cell(18, 7).Value = 7431m;
+
+        MemoryStream ms = new();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+        return ms;
+    }
+
+    [Fact]
+    public void ParseGsoPRImport_ValidFile_ParsesHeaderFields()
+    {
+        using Stream stream = BuildValidGsoExport();
+        GsoPRImportRow result = _sut.ParseGsoPRImport(stream);
+
+        Assert.Equal("101-1041-GF-2026-04-28-757", result.PrNo);
+        Assert.Equal("General Fund", result.Fund);
+        Assert.Equal(new DateOnly(2026, 4, 28), result.PRDate);
+        Assert.Equal("use for PPDO office", result.Purpose);
+    }
+
+    [Fact]
+    public void ParseGsoPRImport_ValidFile_ParsesHierarchyAndAccount()
+    {
+        using Stream stream = BuildValidGsoExport();
+        GsoPRImportRow result = _sut.ParseGsoPRImport(stream);
+
+        Assert.Equal("1000-000-1-01-010-001 - PLANNING MONITORING AND EVALUATION PROGRAM", result.Program);
+        Assert.Equal("1000-000-1-01-010-001-002 - Administrative Support Services", result.Project);
+        Assert.Equal(
+            "1000-000-1-01-010-001-002-008 - Safety measures for contagious/ communicable diseases",
+            result.Activity);
+        Assert.Equal("1000-000-1-01-010-001-002-008", result.AIPCode);
+        Assert.Equal("5 02 03 990", result.AccountNo);
+    }
+
+    [Fact]
+    public void ParseGsoPRImport_ValidFile_ParsesItemRows()
+    {
+        using Stream stream = BuildValidGsoExport();
+        GsoPRImportRow result = _sut.ParseGsoPRImport(stream);
+
+        Assert.Equal(2, result.Items.Count);
+        Assert.Equal("OSAME-3955791577", result.Items[0].StockNo);
+        Assert.Equal("Bathroom Tissue, 2ply", result.Items[0].Description);
+        Assert.Equal("roll", result.Items[0].Unit);
+        Assert.Equal(35m, result.Items[0].Quantity);
+        Assert.Equal(21m, result.Items[0].UnitCost);
+
+        Assert.Equal("OSAME-9365523112", result.Items[1].StockNo);
+        Assert.Equal(54m, result.Items[1].Quantity);
+        Assert.Equal(124m, result.Items[1].UnitCost);
+    }
+
+    [Fact]
+    public void ParseGsoPRImport_BlankPurpose_IsNull()
+    {
+        using XLWorkbook wb = new();
+        IXLWorksheet ws = wb.AddWorksheet("PR");
+        ws.Cell(1, 1).Value = "PR Number"; ws.Cell(1, 2).Value = "101-1041-GF-2026-04-28-757";
+        ws.Cell(8, 1).Value = "Purpose"; // value left blank — matches the real sample
+        ws.Cell(10, 1).Value = "Item No."; ws.Cell(10, 3).Value = "Description";
+        ws.Cell(15, 1).Value = 1; ws.Cell(15, 3).Value = "Item"; ws.Cell(15, 4).Value = "pcs"; ws.Cell(15, 5).Value = 1m;
+
+        MemoryStream ms = new();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+
+        GsoPRImportRow result = _sut.ParseGsoPRImport(ms);
+        Assert.Null(result.Purpose);
+    }
+
+    [Fact]
+    public void ParseGsoPRImport_TwoHierarchyLines_ProgramAndActivityOnly()
+    {
+        // Fewer than the usual 3 coded lines — Project stays null rather than guessing.
+        using XLWorkbook wb = new();
+        IXLWorksheet ws = wb.AddWorksheet("PR");
+        ws.Cell(1, 1).Value = "PR Number"; ws.Cell(1, 2).Value = "101-1041-GF-2026-04-28-757";
+        ws.Cell(10, 1).Value = "Item No."; ws.Cell(10, 3).Value = "Description";
+        ws.Cell(11, 3).Value = "1000-000-1 - PROGRAM";
+        ws.Cell(12, 3).Value = "1000-000-1-002 - ACTIVITY";
+        ws.Cell(15, 1).Value = 1; ws.Cell(15, 3).Value = "Item"; ws.Cell(15, 4).Value = "pcs"; ws.Cell(15, 5).Value = 1m;
+
+        MemoryStream ms = new();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+
+        GsoPRImportRow result = _sut.ParseGsoPRImport(ms);
+        Assert.Equal("1000-000-1 - PROGRAM", result.Program);
+        Assert.Null(result.Project);
+        Assert.Equal("1000-000-1-002 - ACTIVITY", result.Activity);
+    }
+
+    [Fact]
+    public void ParseGsoPRImport_NoHierarchyLines_HeaderFieldsStillNull()
+    {
+        using XLWorkbook wb = new();
+        IXLWorksheet ws = wb.AddWorksheet("PR");
+        ws.Cell(1, 1).Value = "PR Number"; ws.Cell(1, 2).Value = "101-1041-GF-2026-04-28-757";
+        ws.Cell(10, 1).Value = "Item No."; ws.Cell(10, 3).Value = "Description";
+        ws.Cell(11, 1).Value = 1; ws.Cell(11, 3).Value = "Item"; ws.Cell(11, 4).Value = "pcs"; ws.Cell(11, 5).Value = 1m;
+
+        MemoryStream ms = new();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+
+        GsoPRImportRow result = _sut.ParseGsoPRImport(ms);
+        Assert.Null(result.Program);
+        Assert.Null(result.Project);
+        Assert.Null(result.Activity);
+        Assert.Null(result.AccountNo);
+        Assert.Null(result.AIPCode);
+        Assert.Single(result.Items);
+    }
+
+    [Fact]
+    public void ParseGsoPRImport_MalformedItemRow_SkipsRatherThanThrows()
+    {
+        // This is a read-only preview, not a validated create — a bad row shouldn't block the
+        // whole prefill when the rest of the file is usable.
+        using XLWorkbook wb = new();
+        IXLWorksheet ws = wb.AddWorksheet("PR");
+        ws.Cell(1, 1).Value = "PR Number"; ws.Cell(1, 2).Value = "101-1041-GF-2026-04-28-757";
+        ws.Cell(10, 1).Value = "Item No."; ws.Cell(10, 3).Value = "Description";
+        ws.Cell(15, 1).Value = 1; ws.Cell(15, 3).Value = "Bad Qty"; ws.Cell(15, 4).Value = "pcs"; ws.Cell(15, 5).Value = "not-a-number";
+        ws.Cell(16, 1).Value = 2; ws.Cell(16, 3).Value = "Good Item"; ws.Cell(16, 4).Value = "pcs"; ws.Cell(16, 5).Value = 3m;
+
+        MemoryStream ms = new();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+
+        GsoPRImportRow result = _sut.ParseGsoPRImport(ms);
+        Assert.Single(result.Items);
+        Assert.Equal("Good Item", result.Items[0].Description);
+    }
+
+    [Fact]
+    public void ParseGsoPRImport_NotAGsoFile_ThrowsImportParseException()
+    {
+        using Stream stream = BuildValidTemplate(); // our own template, not a GSO export
+        Assert.Throws<ImportParseException>(() => _sut.ParseGsoPRImport(stream));
+    }
+
+    [Fact]
+    public void ParseGsoPRImport_NoItemRows_ThrowsImportParseException()
+    {
+        using XLWorkbook wb = new();
+        IXLWorksheet ws = wb.AddWorksheet("PR");
+        ws.Cell(1, 1).Value = "PR Number"; ws.Cell(1, 2).Value = "101-1041-GF-2026-04-28-757";
+        ws.Cell(10, 1).Value = "Item No."; ws.Cell(10, 3).Value = "Description";
+        // no item rows at all
+
+        MemoryStream ms = new();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+
+        Assert.Throws<ImportParseException>(() => _sut.ParseGsoPRImport(ms));
     }
 
     // ── ExportPRReport ────────────────────────────────────────────────────────

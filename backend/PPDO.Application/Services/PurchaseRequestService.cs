@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using PPDO.Application.Common;
+using PPDO.Application.DTOs.Config;
 using PPDO.Application.DTOs.PurchaseRequest;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Enums;
@@ -20,6 +21,8 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
     private readonly IItemMasterRepository      _items;
     private readonly IPermissionService         _permissions;
     private readonly IExcelService              _excel;
+    private readonly IPdfService                _pdf;
+    private readonly IAccountService            _accounts;
     private readonly IRepository<Division>      _divisions;
     private readonly IOfficeRepository          _offices;
     private readonly ILogger<PurchaseRequestService> _logger;
@@ -38,6 +41,8 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         IItemMasterRepository items,
         IPermissionService permissions,
         IExcelService excel,
+        IPdfService pdf,
+        IAccountService accounts,
         IRepository<Division> divisions,
         IOfficeRepository offices,
         ILogger<PurchaseRequestService> logger)
@@ -46,6 +51,8 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         _items       = items;
         _permissions = permissions;
         _excel       = excel;
+        _pdf         = pdf;
+        _accounts    = accounts;
         _divisions   = divisions;
         _offices     = offices;
         _logger      = logger;
@@ -486,7 +493,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         {
             rows = _excel.ParsePRImport(stream);
         }
-        catch (ExcelParseException ex)
+        catch (ImportParseException ex)
         {
             return ServiceResult<IReadOnlyList<PRResponseDto>>.BadRequest(
                 $"Excel import failed: {string.Join("; ", ex.Errors)}");
@@ -546,6 +553,118 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
             created.Count, requester.Id);
 
         return ServiceResult<IReadOnlyList<PRResponseDto>>.Ok(created);
+    }
+
+    // ── PreviewGsoImportAsync ──────────────────────────────────────────────────
+
+    /// <inheritdoc />
+    public async Task<ServiceResult<GsoPRImportPreviewDto>> PreviewGsoImportAsync(
+        User requester,
+        Stream stream,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await _permissions.CanAccessInventoryAsync(requester, cancellationToken))
+            return ServiceResult<GsoPRImportPreviewDto>.Forbidden(
+                "You do not have permission to access Inventory.");
+
+        GsoPRImportRow row;
+        try
+        {
+            row = IsPdf(stream) ? _pdf.ParseGsoPRImport(stream) : _excel.ParseGsoPRImport(stream);
+        }
+        catch (ImportParseException ex)
+        {
+            return ServiceResult<GsoPRImportPreviewDto>.BadRequest(
+                $"Could not read the file: {string.Join("; ", ex.Errors)}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error parsing GSO PR import file for user {UserId}.", requester.Id);
+            return ServiceResult<GsoPRImportPreviewDto>.BadRequest(
+                "The uploaded file could not be read. Ensure it is a valid .xlsx or .pdf file.");
+        }
+
+        // Resolve Account Title (and normalize AccountNo to the config table's own formatting)
+        // from the Config Accounts table — matched by digits only. The GSO export punctuates
+        // account codes with spaces ("5 02 03 990") while Config Accounts uses dashes
+        // ("5-02-03-990"); a Contains/exact-string search would never find that match. When a
+        // match is found, the canonical AccountNumber from the config table is used instead of
+        // the raw GSO text — safer than guessing a separator pattern. If nothing matches (not
+        // yet configured), the raw parsed value is kept so it isn't silently dropped.
+        string? accountNo    = row.AccountNo;
+        string? accountTitle = null;
+        string targetDigits  = DigitsOnly(row.AccountNo);
+        if (targetDigits.Length > 0)
+        {
+            IReadOnlyList<AccountDto> allAccounts = await _accounts.GetAllAsync(
+                search: null, accountType: null, active: ActiveFilter.Active,
+                cancellationToken: cancellationToken);
+            AccountDto? match = allAccounts.FirstOrDefault(a => DigitsOnly(a.AccountNumber) == targetDigits);
+            if (match is not null)
+            {
+                accountNo    = match.AccountNumber;
+                accountTitle = match.AccountTitle;
+            }
+        }
+
+        // Flag StockNos not found in Items Master — the same "needs review" signal manual
+        // entry surfaces, via a single IN-list query (never a per-item lookup).
+        List<string> stockNos = row.Items
+            .Where(i => !string.IsNullOrWhiteSpace(i.StockNo))
+            .Select(i => i.StockNo!)
+            .ToList();
+        IReadOnlyList<ItemMaster> known = stockNos.Count > 0
+            ? await _items.GetByStockNosAsync(stockNos, cancellationToken)
+            : Array.Empty<ItemMaster>();
+        HashSet<string> knownStockNos = known
+            .Select(i => i.StockNo)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        GsoPRImportPreviewDto dto = new(
+            PrNo:         row.PrNo,
+            Fund:         row.Fund,
+            PRDate:       row.PRDate,
+            Purpose:      row.Purpose,
+            AIPCode:      row.AIPCode,
+            AccountNo:    accountNo,
+            AccountTitle: accountTitle,
+            Program:      row.Program,
+            Project:      row.Project,
+            Activity:     row.Activity,
+            RequestedBy:       row.RequestedBy,
+            Position:          row.Position,
+            ApprovedBy:        row.ApprovedBy,
+            ApprovingPosition: row.ApprovingPosition,
+            Items: row.Items.Select(i => new GsoPRImportItemDto(
+                    StockNo:        i.StockNo,
+                    Description:    i.Description,
+                    Unit:           i.Unit,
+                    Quantity:       i.Quantity,
+                    UnitCost:       i.UnitCost,
+                    IsUnknownStock: i.StockNo is not null && !knownStockNos.Contains(i.StockNo)))
+                .ToList());
+
+        return ServiceResult<GsoPRImportPreviewDto>.Ok(dto);
+    }
+
+    /// <summary>Strips everything but digits — used to compare account codes across the
+    /// different punctuation conventions external sources use (spaces, dashes, dots) against
+    /// Config Accounts' own formatting. Null/empty input returns "".</summary>
+    private static string DigitsOnly(string? s) =>
+        s is null ? "" : new string(s.Where(char.IsDigit).ToArray());
+
+    /// <summary>Sniffs the PDF magic number (%PDF) at the start of the stream, then rewinds it
+    /// to position 0 so the chosen parser reads the file from the beginning. The .xlsx export is
+    /// a zip archive (PK\x03\x04 signature) — anything that isn't a PDF is treated as .xlsx and
+    /// left for ExcelService to accept or reject.</summary>
+    private static bool IsPdf(Stream stream)
+    {
+        byte[] header = new byte[4];
+        int read = stream.Read(header, 0, header.Length);
+        stream.Position = 0;
+
+        return read == header.Length
+            && header[0] == 0x25 && header[1] == 0x50 && header[2] == 0x44 && header[3] == 0x46; // %PDF
     }
 
     // ── Private helpers ────────────────────────────────────────────────────────

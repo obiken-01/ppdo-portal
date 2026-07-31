@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using PPDO.Application.Common;
+using PPDO.Application.DTOs.Config;
 using PPDO.Application.DTOs.PurchaseRequest;
 using PPDO.Application.Services;
 using PPDO.Domain.Entities;
@@ -133,13 +134,28 @@ public sealed class PurchaseRequestServiceTests
             .Returns(Task.CompletedTask);
         repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(1);
+        repo.Setup(r => r.GetByStockNosAsync(It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ItemMaster>());
         return repo;
+    }
+
+    /// <summary>Default IAccountService mock — GetAllAsync returns empty rather than Moq's
+    /// unconfigured-Task default of null, which would NRE any caller that enumerates it.</summary>
+    private static Mock<IAccountService> DefaultAccountService()
+    {
+        Mock<IAccountService> accounts = new();
+        accounts.Setup(a => a.GetAllAsync(
+                It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<ActiveFilter>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<AccountDto>());
+        return accounts;
     }
 
     private static PurchaseRequestService BuildSut(
         Mock<IPurchaseRequestRepository> prRepo,
         Mock<IItemMasterRepository>? itemRepo = null,
         Mock<IExcelService>? excelService = null,
+        Mock<IPdfService>? pdfService = null,
+        Mock<IAccountService>? accountService = null,
         Mock<IRepository<Division>>? divisionRepo = null,
         Mock<IOfficeRepository>? officeRepo = null)
         => new(
@@ -147,6 +163,8 @@ public sealed class PurchaseRequestServiceTests
             (itemRepo ?? RepoItemThatSaves()).Object,
             new PermissionService(),
             (excelService ?? new Mock<IExcelService>()).Object,
+            (pdfService ?? new Mock<IPdfService>()).Object,
+            (accountService ?? DefaultAccountService()).Object,
             (divisionRepo ?? DivisionsRepo()).Object,
             (officeRepo ?? OfficesRepo()).Object,
             NullLogger<PurchaseRequestService>.Instance);
@@ -509,6 +527,221 @@ public sealed class PurchaseRequestServiceTests
 
         Assert.True(result.IsSuccess);
         prRepo.Verify(r => r.AddAsync(It.IsAny<PurchaseRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // ── PreviewGsoImportAsync (RAL-196) ───────────────────────────────────────────
+
+    private static GsoPRImportRow SampleGsoRow(IReadOnlyList<PRItemImportRow>? items = null) => new()
+    {
+        PrNo      = "101-1041-GF-2026-04-28-757",
+        Fund      = "General Fund",
+        PRDate    = new DateOnly(2026, 4, 28),
+        AccountNo = "5 02 03 990",
+        Program   = "1000-000-1-01-010-001 - PLANNING PROGRAM",
+        Items     = items ?? new List<PRItemImportRow>
+        {
+            new() { StockNo = "OSAME-1", Description = "Bathroom Tissue", Unit = "roll", Quantity = 35m, UnitCost = 21m },
+        },
+    };
+
+    private static AccountDto SampleAccount(string number, string title) => new(
+        Id: 1, AccountTitle: title, AccountNumber: number, NormalBalance: null, Description: null,
+        IsActive: true, AccountType: "MOOE", ExpenseClass: "MOOE", DefaultNature: null, DefaultApplyReserve: false);
+
+    [Fact]
+    public async Task PreviewGsoImportAsync_WithoutInventoryPermission_ReturnsForbidden()
+    {
+        Mock<IExcelService> excel = new();
+        excel.Setup(e => e.ParseGsoPRImport(It.IsAny<Stream>())).Returns(SampleGsoRow());
+
+        ServiceResult<GsoPRImportPreviewDto> result =
+            await BuildSut(RepoPRThatSaves(), excelService: excel)
+                .PreviewGsoImportAsync(MakeStaffNoInventory(), Stream.Null);
+
+        Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
+    }
+
+    [Fact]
+    public async Task PreviewGsoImportAsync_ParseError_ReturnsBadRequest()
+    {
+        Mock<IExcelService> excel = new();
+        excel.Setup(e => e.ParseGsoPRImport(It.IsAny<Stream>()))
+            .Throws(new ImportParseException(new[] { "bad file" }));
+
+        ServiceResult<GsoPRImportPreviewDto> result =
+            await BuildSut(RepoPRThatSaves(), excelService: excel)
+                .PreviewGsoImportAsync(MakeAdmin(), Stream.Null);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task PreviewGsoImportAsync_ResolvesAccountTitleFromConfig()
+    {
+        // SampleGsoRow's AccountNo ("5 02 03 990") is space-separated, matching the real GSO
+        // export; the config table stores dash-separated codes ("5-02-03-990"). A plain
+        // Contains/exact-string search would never find this — matching must be digits-only.
+        Mock<IExcelService> excel = new();
+        excel.Setup(e => e.ParseGsoPRImport(It.IsAny<Stream>())).Returns(SampleGsoRow());
+
+        Mock<IAccountService> accounts = new();
+        accounts.Setup(a => a.GetAllAsync(null, null, ActiveFilter.Active, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<AccountDto> { SampleAccount("5-02-03-990", "Other Supplies and Materials Expenses") });
+
+        ServiceResult<GsoPRImportPreviewDto> result =
+            await BuildSut(RepoPRThatSaves(), excelService: excel, accountService: accounts)
+                .PreviewGsoImportAsync(MakeAdmin(), Stream.Null);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Other Supplies and Materials Expenses", result.Value!.AccountTitle);
+        // AccountNo is normalized to the config table's own canonical formatting, not a
+        // guessed reformat of the GSO text.
+        Assert.Equal("5-02-03-990", result.Value!.AccountNo);
+    }
+
+    [Fact]
+    public async Task PreviewGsoImportAsync_AccountNotInConfig_KeepsRawValueAndNullTitle()
+    {
+        Mock<IExcelService> excel = new();
+        excel.Setup(e => e.ParseGsoPRImport(It.IsAny<Stream>())).Returns(SampleGsoRow());
+
+        Mock<IAccountService> accounts = new();
+        accounts.Setup(a => a.GetAllAsync(null, null, ActiveFilter.Active, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<AccountDto>());
+
+        ServiceResult<GsoPRImportPreviewDto> result =
+            await BuildSut(RepoPRThatSaves(), excelService: excel, accountService: accounts)
+                .PreviewGsoImportAsync(MakeAdmin(), Stream.Null);
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Value!.AccountTitle);
+        // Nothing found in Config Accounts — keep the raw parsed value rather than dropping it.
+        Assert.Equal("5 02 03 990", result.Value!.AccountNo);
+    }
+
+    [Fact]
+    public async Task PreviewGsoImportAsync_MultipleAccountsSameDigitsDifferentPunctuation_MatchesCorrectOne()
+    {
+        List<PRItemImportRow> items = new()
+        {
+            new() { StockNo = "OSAME-1", Description = "Item", Unit = "pcs", Quantity = 1m },
+        };
+        GsoPRImportRow row = SampleGsoRow(items) with { AccountNo = "5.02.03.990" }; // yet another punctuation style
+        Mock<IExcelService> excel = new();
+        excel.Setup(e => e.ParseGsoPRImport(It.IsAny<Stream>())).Returns(row);
+
+        Mock<IAccountService> accounts = new();
+        accounts.Setup(a => a.GetAllAsync(null, null, ActiveFilter.Active, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<AccountDto>
+            {
+                SampleAccount("5-01-01-010", "Salaries and Wages - Regular"),
+                SampleAccount("5-02-03-990", "Other Supplies and Materials Expenses"),
+            });
+
+        ServiceResult<GsoPRImportPreviewDto> result =
+            await BuildSut(RepoPRThatSaves(), excelService: excel, accountService: accounts)
+                .PreviewGsoImportAsync(MakeAdmin(), Stream.Null);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Other Supplies and Materials Expenses", result.Value!.AccountTitle);
+        Assert.Equal("5-02-03-990", result.Value!.AccountNo);
+    }
+
+    [Fact]
+    public async Task PreviewGsoImportAsync_FlagsUnknownStockNo()
+    {
+        List<PRItemImportRow> items = new()
+        {
+            new() { StockNo = "UNKNOWN-1", Description = "Mystery Item", Unit = "pcs", Quantity = 1m },
+        };
+        Mock<IExcelService> excel = new();
+        excel.Setup(e => e.ParseGsoPRImport(It.IsAny<Stream>())).Returns(SampleGsoRow(items));
+
+        Mock<IItemMasterRepository> itemRepo = RepoItemThatSaves();
+        itemRepo.Setup(r => r.GetByStockNosAsync(It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ItemMaster>()); // nothing known
+
+        ServiceResult<GsoPRImportPreviewDto> result =
+            await BuildSut(RepoPRThatSaves(), itemRepo: itemRepo, excelService: excel)
+                .PreviewGsoImportAsync(MakeAdmin(), Stream.Null);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value!.Items[0].IsUnknownStock);
+    }
+
+    [Fact]
+    public async Task PreviewGsoImportAsync_KnownStockNo_NotFlagged()
+    {
+        List<PRItemImportRow> items = new()
+        {
+            new() { StockNo = "OSAME-1", Description = "Bathroom Tissue", Unit = "roll", Quantity = 35m, UnitCost = 21m },
+        };
+        Mock<IExcelService> excel = new();
+        excel.Setup(e => e.ParseGsoPRImport(It.IsAny<Stream>())).Returns(SampleGsoRow(items));
+
+        Mock<IItemMasterRepository> itemRepo = RepoItemThatSaves();
+        itemRepo.Setup(r => r.GetByStockNosAsync(It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ItemMaster>
+            {
+                new() { Id = Guid.NewGuid(), StockNo = "OSAME-1", Description = "Bathroom Tissue", Unit = "roll", UnitCost = 21m },
+            });
+
+        ServiceResult<GsoPRImportPreviewDto> result =
+            await BuildSut(RepoPRThatSaves(), itemRepo: itemRepo, excelService: excel)
+                .PreviewGsoImportAsync(MakeAdmin(), Stream.Null);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value!.Items[0].IsUnknownStock);
+    }
+
+    [Fact]
+    public async Task PreviewGsoImportAsync_NeverCreatesAPurchaseRequest()
+    {
+        Mock<IExcelService> excel = new();
+        excel.Setup(e => e.ParseGsoPRImport(It.IsAny<Stream>())).Returns(SampleGsoRow());
+
+        Mock<IPurchaseRequestRepository> prRepo = RepoPRThatSaves();
+
+        await BuildSut(prRepo, excelService: excel).PreviewGsoImportAsync(MakeAdmin(), Stream.Null);
+
+        prRepo.Verify(r => r.AddAsync(It.IsAny<PurchaseRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task PreviewGsoImportAsync_PdfMagicBytes_DispatchesToPdfServiceNotExcelService()
+    {
+        Mock<IExcelService> excel = new();
+        Mock<IPdfService> pdf = new();
+        pdf.Setup(p => p.ParseGsoPRImport(It.IsAny<Stream>())).Returns(SampleGsoRow());
+
+        using MemoryStream pdfStream = new(new byte[] { 0x25, 0x50, 0x44, 0x46, 0x2D, 0x31, 0x2E, 0x34 }); // "%PDF-1.4"
+
+        ServiceResult<GsoPRImportPreviewDto> result =
+            await BuildSut(RepoPRThatSaves(), excelService: excel, pdfService: pdf)
+                .PreviewGsoImportAsync(MakeAdmin(), pdfStream);
+
+        Assert.True(result.IsSuccess);
+        pdf.Verify(p => p.ParseGsoPRImport(It.IsAny<Stream>()), Times.Once);
+        excel.Verify(e => e.ParseGsoPRImport(It.IsAny<Stream>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task PreviewGsoImportAsync_NonPdfBytes_DispatchesToExcelServiceNotPdfService()
+    {
+        Mock<IExcelService> excel = new();
+        excel.Setup(e => e.ParseGsoPRImport(It.IsAny<Stream>())).Returns(SampleGsoRow());
+        Mock<IPdfService> pdf = new();
+
+        // Zip local-file-header signature (PK\x03\x04) — how a real .xlsx export starts.
+        using MemoryStream xlsxStream = new(new byte[] { 0x50, 0x4B, 0x03, 0x04 });
+
+        ServiceResult<GsoPRImportPreviewDto> result =
+            await BuildSut(RepoPRThatSaves(), excelService: excel, pdfService: pdf)
+                .PreviewGsoImportAsync(MakeAdmin(), xlsxStream);
+
+        Assert.True(result.IsSuccess);
+        excel.Verify(e => e.ParseGsoPRImport(It.IsAny<Stream>()), Times.Once);
+        pdf.Verify(p => p.ParseGsoPRImport(It.IsAny<Stream>()), Times.Never);
     }
 
     // ── Division resolution ───────────────────────────────────────────────────
