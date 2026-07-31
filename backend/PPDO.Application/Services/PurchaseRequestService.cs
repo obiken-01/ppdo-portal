@@ -581,16 +581,27 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
                 "The uploaded file could not be read. Ensure it is a valid .xlsx file.");
         }
 
-        // Resolve Account Title from the Config Accounts table — exact match on AccountNumber.
-        // Sequential awaits — never Task.WhenAll over queries sharing one DbContext.
+        // Resolve Account Title (and normalize AccountNo to the config table's own formatting)
+        // from the Config Accounts table — matched by digits only. The GSO export punctuates
+        // account codes with spaces ("5 02 03 990") while Config Accounts uses dashes
+        // ("5-02-03-990"); a Contains/exact-string search would never find that match. When a
+        // match is found, the canonical AccountNumber from the config table is used instead of
+        // the raw GSO text — safer than guessing a separator pattern. If nothing matches (not
+        // yet configured), the raw parsed value is kept so it isn't silently dropped.
+        string? accountNo    = row.AccountNo;
         string? accountTitle = null;
-        if (!string.IsNullOrWhiteSpace(row.AccountNo))
+        string targetDigits  = DigitsOnly(row.AccountNo);
+        if (targetDigits.Length > 0)
         {
-            IReadOnlyList<AccountDto> matches = await _accounts.GetAllAsync(
-                search: row.AccountNo, accountType: null, active: ActiveFilter.Active,
+            IReadOnlyList<AccountDto> allAccounts = await _accounts.GetAllAsync(
+                search: null, accountType: null, active: ActiveFilter.Active,
                 cancellationToken: cancellationToken);
-            accountTitle = matches.FirstOrDefault(a =>
-                a.AccountNumber.Equals(row.AccountNo, StringComparison.OrdinalIgnoreCase))?.AccountTitle;
+            AccountDto? match = allAccounts.FirstOrDefault(a => DigitsOnly(a.AccountNumber) == targetDigits);
+            if (match is not null)
+            {
+                accountNo    = match.AccountNumber;
+                accountTitle = match.AccountTitle;
+            }
         }
 
         // Flag StockNos not found in Items Master — the same "needs review" signal manual
@@ -612,7 +623,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
             PRDate:       row.PRDate,
             Purpose:      row.Purpose,
             AIPCode:      row.AIPCode,
-            AccountNo:    row.AccountNo,
+            AccountNo:    accountNo,
             AccountTitle: accountTitle,
             Program:      row.Program,
             Project:      row.Project,
@@ -628,6 +639,12 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
 
         return ServiceResult<GsoPRImportPreviewDto>.Ok(dto);
     }
+
+    /// <summary>Strips everything but digits — used to compare account codes across the
+    /// different punctuation conventions external sources use (spaces, dashes, dots) against
+    /// Config Accounts' own formatting. Null/empty input returns "".</summary>
+    private static string DigitsOnly(string? s) =>
+        s is null ? "" : new string(s.Where(char.IsDigit).ToArray());
 
     // ── Private helpers ────────────────────────────────────────────────────────
 

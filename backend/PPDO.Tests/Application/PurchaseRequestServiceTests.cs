@@ -576,12 +576,15 @@ public sealed class PurchaseRequestServiceTests
     [Fact]
     public async Task PreviewGsoImportAsync_ResolvesAccountTitleFromConfig()
     {
+        // SampleGsoRow's AccountNo ("5 02 03 990") is space-separated, matching the real GSO
+        // export; the config table stores dash-separated codes ("5-02-03-990"). A plain
+        // Contains/exact-string search would never find this — matching must be digits-only.
         Mock<IExcelService> excel = new();
         excel.Setup(e => e.ParseGsoPRImport(It.IsAny<Stream>())).Returns(SampleGsoRow());
 
         Mock<IAccountService> accounts = new();
-        accounts.Setup(a => a.GetAllAsync("5 02 03 990", null, ActiveFilter.Active, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<AccountDto> { SampleAccount("5 02 03 990", "Other Supplies and Materials Expenses") });
+        accounts.Setup(a => a.GetAllAsync(null, null, ActiveFilter.Active, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<AccountDto> { SampleAccount("5-02-03-990", "Other Supplies and Materials Expenses") });
 
         ServiceResult<GsoPRImportPreviewDto> result =
             await BuildSut(RepoPRThatSaves(), excelService: excel, accountService: accounts)
@@ -589,16 +592,19 @@ public sealed class PurchaseRequestServiceTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal("Other Supplies and Materials Expenses", result.Value!.AccountTitle);
+        // AccountNo is normalized to the config table's own canonical formatting, not a
+        // guessed reformat of the GSO text.
+        Assert.Equal("5-02-03-990", result.Value!.AccountNo);
     }
 
     [Fact]
-    public async Task PreviewGsoImportAsync_AccountNotInConfig_AccountTitleIsNull()
+    public async Task PreviewGsoImportAsync_AccountNotInConfig_KeepsRawValueAndNullTitle()
     {
         Mock<IExcelService> excel = new();
         excel.Setup(e => e.ParseGsoPRImport(It.IsAny<Stream>())).Returns(SampleGsoRow());
 
         Mock<IAccountService> accounts = new();
-        accounts.Setup(a => a.GetAllAsync(It.IsAny<string>(), null, ActiveFilter.Active, It.IsAny<CancellationToken>()))
+        accounts.Setup(a => a.GetAllAsync(null, null, ActiveFilter.Active, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<AccountDto>());
 
         ServiceResult<GsoPRImportPreviewDto> result =
@@ -607,6 +613,36 @@ public sealed class PurchaseRequestServiceTests
 
         Assert.True(result.IsSuccess);
         Assert.Null(result.Value!.AccountTitle);
+        // Nothing found in Config Accounts — keep the raw parsed value rather than dropping it.
+        Assert.Equal("5 02 03 990", result.Value!.AccountNo);
+    }
+
+    [Fact]
+    public async Task PreviewGsoImportAsync_MultipleAccountsSameDigitsDifferentPunctuation_MatchesCorrectOne()
+    {
+        List<PRItemImportRow> items = new()
+        {
+            new() { StockNo = "OSAME-1", Description = "Item", Unit = "pcs", Quantity = 1m },
+        };
+        GsoPRImportRow row = SampleGsoRow(items) with { AccountNo = "5.02.03.990" }; // yet another punctuation style
+        Mock<IExcelService> excel = new();
+        excel.Setup(e => e.ParseGsoPRImport(It.IsAny<Stream>())).Returns(row);
+
+        Mock<IAccountService> accounts = new();
+        accounts.Setup(a => a.GetAllAsync(null, null, ActiveFilter.Active, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<AccountDto>
+            {
+                SampleAccount("5-01-01-010", "Salaries and Wages - Regular"),
+                SampleAccount("5-02-03-990", "Other Supplies and Materials Expenses"),
+            });
+
+        ServiceResult<GsoPRImportPreviewDto> result =
+            await BuildSut(RepoPRThatSaves(), excelService: excel, accountService: accounts)
+                .PreviewGsoImportAsync(MakeAdmin(), Stream.Null);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Other Supplies and Materials Expenses", result.Value!.AccountTitle);
+        Assert.Equal("5-02-03-990", result.Value!.AccountNo);
     }
 
     [Fact]
