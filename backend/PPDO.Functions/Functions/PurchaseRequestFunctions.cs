@@ -27,6 +27,9 @@ namespace PPDO.Functions.Functions;
 ///   PUT  /api/purchase-requests/{id}/uncomplete — revert PR to FullyDelivered (Completed only)
 ///   GET  /api/purchase-requests/template      — download blank PR import template (.xlsx)
 ///   POST /api/purchase-requests/import        — upload populated PR template → create PRs
+///   POST /api/purchase-requests/import/gso-preview — upload a GSO-system PR export → prefill
+///                                                 data for the Create PR form (RAL-196, no PR
+///                                                 is created by this endpoint)
 /// </summary>
 public sealed class PurchaseRequestFunctions
 {
@@ -180,6 +183,35 @@ public sealed class PurchaseRequestFunctions
             await _service.ImportFromExcelAsync(caller, ms, cancellationToken);
 
         return await ToResponse(req, result, HttpStatusCode.Created, cancellationToken);
+    }
+
+    // ── POST /api/purchase-requests/import/gso-preview ────────────────────────
+
+    [Function("PreviewGsoPurchaseRequestImport")]
+    public async Task<HttpResponseData> PreviewGsoImport(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "purchase-requests/import/gso-preview")]
+        HttpRequestData req,
+        CancellationToken cancellationToken)
+    {
+        User? caller = await _jwt.ValidateAsync(GetAuthHeader(req), cancellationToken);
+        if (caller is null)
+            return req.CreateResponse(HttpStatusCode.Unauthorized);
+
+        // req.Body in the isolated worker is a non-seekable HttpRequestStream — copy to a
+        // MemoryStream first so ClosedXML's internal .Length call doesn't throw.
+        using MemoryStream ms = new();
+        await req.Body.CopyToAsync(ms, cancellationToken);
+
+        if (ms.Length == 0)
+            return await PlainError(req, HttpStatusCode.BadRequest,
+                "Request body must contain the .xlsx file.", cancellationToken);
+
+        ms.Position = 0;
+
+        ServiceResult<GsoPRImportPreviewDto> result =
+            await _service.PreviewGsoImportAsync(caller, ms, cancellationToken);
+
+        return await ToResponse(req, result, HttpStatusCode.OK, cancellationToken);
     }
 
     // ── GET /api/purchase-requests/{id} ──────────────────────────────────────

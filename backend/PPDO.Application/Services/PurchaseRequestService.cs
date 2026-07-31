@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using PPDO.Application.Common;
+using PPDO.Application.DTOs.Config;
 using PPDO.Application.DTOs.PurchaseRequest;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Enums;
@@ -20,6 +21,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
     private readonly IItemMasterRepository      _items;
     private readonly IPermissionService         _permissions;
     private readonly IExcelService              _excel;
+    private readonly IAccountService            _accounts;
     private readonly IRepository<Division>      _divisions;
     private readonly IOfficeRepository          _offices;
     private readonly ILogger<PurchaseRequestService> _logger;
@@ -38,6 +40,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         IItemMasterRepository items,
         IPermissionService permissions,
         IExcelService excel,
+        IAccountService accounts,
         IRepository<Division> divisions,
         IOfficeRepository offices,
         ILogger<PurchaseRequestService> logger)
@@ -46,6 +49,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         _items       = items;
         _permissions = permissions;
         _excel       = excel;
+        _accounts    = accounts;
         _divisions   = divisions;
         _offices     = offices;
         _logger      = logger;
@@ -546,6 +550,83 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
             created.Count, requester.Id);
 
         return ServiceResult<IReadOnlyList<PRResponseDto>>.Ok(created);
+    }
+
+    // ── PreviewGsoImportAsync ──────────────────────────────────────────────────
+
+    /// <inheritdoc />
+    public async Task<ServiceResult<GsoPRImportPreviewDto>> PreviewGsoImportAsync(
+        User requester,
+        Stream stream,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await _permissions.CanAccessInventoryAsync(requester, cancellationToken))
+            return ServiceResult<GsoPRImportPreviewDto>.Forbidden(
+                "You do not have permission to access Inventory.");
+
+        GsoPRImportRow row;
+        try
+        {
+            row = _excel.ParseGsoPRImport(stream);
+        }
+        catch (ExcelParseException ex)
+        {
+            return ServiceResult<GsoPRImportPreviewDto>.BadRequest(
+                $"Could not read the file: {string.Join("; ", ex.Errors)}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error parsing GSO PR import file for user {UserId}.", requester.Id);
+            return ServiceResult<GsoPRImportPreviewDto>.BadRequest(
+                "The uploaded file could not be read. Ensure it is a valid .xlsx file.");
+        }
+
+        // Resolve Account Title from the Config Accounts table — exact match on AccountNumber.
+        // Sequential awaits — never Task.WhenAll over queries sharing one DbContext.
+        string? accountTitle = null;
+        if (!string.IsNullOrWhiteSpace(row.AccountNo))
+        {
+            IReadOnlyList<AccountDto> matches = await _accounts.GetAllAsync(
+                search: row.AccountNo, accountType: null, active: ActiveFilter.Active,
+                cancellationToken: cancellationToken);
+            accountTitle = matches.FirstOrDefault(a =>
+                a.AccountNumber.Equals(row.AccountNo, StringComparison.OrdinalIgnoreCase))?.AccountTitle;
+        }
+
+        // Flag StockNos not found in Items Master — the same "needs review" signal manual
+        // entry surfaces, via a single IN-list query (never a per-item lookup).
+        List<string> stockNos = row.Items
+            .Where(i => !string.IsNullOrWhiteSpace(i.StockNo))
+            .Select(i => i.StockNo!)
+            .ToList();
+        IReadOnlyList<ItemMaster> known = stockNos.Count > 0
+            ? await _items.GetByStockNosAsync(stockNos, cancellationToken)
+            : Array.Empty<ItemMaster>();
+        HashSet<string> knownStockNos = known
+            .Select(i => i.StockNo)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        GsoPRImportPreviewDto dto = new(
+            PrNo:         row.PrNo,
+            Fund:         row.Fund,
+            PRDate:       row.PRDate,
+            Purpose:      row.Purpose,
+            AIPCode:      row.AIPCode,
+            AccountNo:    row.AccountNo,
+            AccountTitle: accountTitle,
+            Program:      row.Program,
+            Project:      row.Project,
+            Activity:     row.Activity,
+            Items: row.Items.Select(i => new GsoPRImportItemDto(
+                    StockNo:        i.StockNo,
+                    Description:    i.Description,
+                    Unit:           i.Unit,
+                    Quantity:       i.Quantity,
+                    UnitCost:       i.UnitCost,
+                    IsUnknownStock: i.StockNo is not null && !knownStockNos.Contains(i.StockNo)))
+                .ToList());
+
+        return ServiceResult<GsoPRImportPreviewDto>.Ok(dto);
     }
 
     // ── Private helpers ────────────────────────────────────────────────────────

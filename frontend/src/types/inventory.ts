@@ -333,6 +333,35 @@ export interface PRResponse {
   items: PRItemResponse[];
 }
 
+/** Mirrors GsoPRImportItemDto. */
+export interface GsoPRImportItemResponse {
+  stockNo: string | null;
+  description: string;
+  unit: string;
+  quantity: number;
+  unitCost: number;
+  isUnknownStock: boolean;
+}
+
+/**
+ * Mirrors GsoPRImportPreviewDto — POST /api/purchase-requests/import/gso-preview response
+ * (RAL-196). Prefill data only; every field except `items` may be null since the external GSO
+ * export's layout doesn't carry Division/RequestedBy/Position/ApprovedBy/etc. at all.
+ */
+export interface GsoPRImportPreviewResponse {
+  prNo: string | null;
+  fund: string | null;
+  prDate: string | null; // "YYYY-MM-DD"
+  purpose: string | null;
+  aipCode: string | null;
+  accountNo: string | null;
+  accountTitle: string | null;
+  program: string | null;
+  project: string | null;
+  activity: string | null;
+  items: GsoPRImportItemResponse[];
+}
+
 // ---------------------------------------------------------------------------
 // Distribution
 // ---------------------------------------------------------------------------

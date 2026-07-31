@@ -46,6 +46,19 @@ public interface IExcelService
     /// <param name="stream">The uploaded .xlsx file stream.</param>
     /// <returns>One <see cref="PurchaseRequestImportRow"/> per valid PR worksheet.</returns>
     IReadOnlyList<PurchaseRequestImportRow> ParsePRImport(Stream stream);
+
+    /// <summary>
+    /// Parses an uploaded PR export from the external GSO system — a completely different,
+    /// single-sheet layout than our own template (see docs/v1.7/GSO_PR_Import_Findings.md for
+    /// the verified cell map). Always exactly one PR per file. Pure parsing only — no DB
+    /// lookups; the caller (PurchaseRequestService) resolves AccountTitle and checks StockNo
+    /// against ItemMaster. This is a prefill source, not a direct-create import: the GSO export
+    /// never contains Division/RequestedBy/Position/ApprovedBy/ApprovingPosition/SAINo/ALOBSNo,
+    /// so those always come back null on the result.
+    /// Throws <see cref="ExcelParseException"/> if the file isn't recognizable as a GSO PR
+    /// export or has no valid item rows.
+    /// </summary>
+    GsoPRImportRow ParseGsoPRImport(Stream stream);
 }
 
 // ── Import data models ────────────────────────────────────────────────────────
@@ -88,6 +101,27 @@ public sealed record PurchaseRequestImportRow
     public string? ALOBSNo { get; init; }
 
     // ── Section 2 — Line items ────────────────────────────────────────────────
+
+    public required IReadOnlyList<PRItemImportRow> Items { get; init; }
+}
+
+/// <summary>
+/// Raw data parsed from an uploaded GSO-system PR export. Every field except
+/// <see cref="Items"/> is nullable — the export's own layout only ever supplies a subset of
+/// what a PR needs, and this is a prefill preview, not a validated create. See
+/// docs/v1.7/GSO_PR_Import_Findings.md for exactly what the source file does and doesn't have.
+/// </summary>
+public sealed record GsoPRImportRow
+{
+    public string?  PrNo      { get; init; }
+    public string?  Fund      { get; init; }
+    public DateOnly? PRDate   { get; init; }
+    public string?  Purpose   { get; init; }
+    public string?  AIPCode   { get; init; }
+    public string?  AccountNo { get; init; }
+    public string?  Program   { get; init; }
+    public string?  Project   { get; init; }
+    public string?  Activity  { get; init; }
 
     public required IReadOnlyList<PRItemImportRow> Items { get; init; }
 }

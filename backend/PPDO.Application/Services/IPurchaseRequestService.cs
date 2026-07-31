@@ -85,6 +85,21 @@ public interface IPurchaseRequestService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Parses an uploaded PR export from the external GSO system and returns prefill data for
+    /// the Create PR form — RAL-196. Nothing is persisted; this is a preview, not a create.
+    /// Unlike <see cref="ImportFromExcelAsync"/> (our own template, bulk, direct-create), the
+    /// GSO export never contains Division/RequestedBy/etc., so there is no division-scope check
+    /// here — the user fills those in manually and CreateAsync enforces scope as normal at
+    /// Submit. Resolves AccountTitle from the Config Accounts table and flags StockNos not
+    /// found in Items Master, same as manual entry does.
+    /// Requires CanAccessInventory.
+    /// </summary>
+    Task<ServiceResult<GsoPRImportPreviewDto>> PreviewGsoImportAsync(
+        User requester,
+        Stream stream,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Marks a PR as Completed. Only valid when current status is FullyDelivered.
     /// Requires CanAccessInventory. Division scope is not enforced — any
     /// inventory-permitted user can close a fully delivered PR.
