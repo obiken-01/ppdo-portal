@@ -345,10 +345,9 @@ export interface GsoPRImportItemResponse {
 
 /**
  * Mirrors GsoPRImportPreviewDto — POST /api/purchase-requests/import/gso-preview response
- * (RAL-196/RAL-197). Prefill data only; every field except `items` may be null since the source
- * export's layout doesn't carry all of these. requestedBy/position/approvedBy/approvingPosition
- * are null when the upload was the .xlsx export (which never has them) and populated when it was
- * the signed .pdf export (its signature block) — Division is never in either format.
+ * (RAL-196/RAL-197). Prefill data only; every field except `items` may be null since neither
+ * source export format's parsed data carries all of these. Division and the signatory fields
+ * are never in either format.
  */
 export interface GsoPRImportPreviewResponse {
   prNo: string | null;
@@ -361,10 +360,6 @@ export interface GsoPRImportPreviewResponse {
   program: string | null;
   project: string | null;
   activity: string | null;
-  requestedBy: string | null;
-  position: string | null;
-  approvedBy: string | null;
-  approvingPosition: string | null;
   items: GsoPRImportItemResponse[];
 }
 

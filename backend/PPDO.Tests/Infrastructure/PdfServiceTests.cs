@@ -8,9 +8,8 @@ namespace PPDO.Tests.Infrastructure;
 /// <summary>
 /// Unit tests for <see cref="PdfService"/> — written first (TDD), RAL-197.
 /// Fixtures are synthetic PDFs built word-by-word via <see cref="SyntheticPdfBuilder"/> (fictional
-/// names/values only) rather than a checked-in real signed PR PDF — see that class's doc comment.
-/// Coverage mirrors <c>ExcelServiceTests</c>'s ParseGsoPRImport section, plus the signature-block
-/// and line-wrap cases that only the PDF path has.
+/// values only) rather than a checked-in real signed PR PDF — see that class's doc comment.
+/// Coverage mirrors <c>ExcelServiceTests</c>'s ParseGsoPRImport section.
 /// </summary>
 public sealed class PdfServiceTests
 {
@@ -27,7 +26,7 @@ public sealed class PdfServiceTests
     private const double ColCost    = 540;
 
     /// <summary>Full happy-path fixture: title, header block, hierarchy lines, two item rows,
-    /// TOTAL row, purpose, and a signature block (with a wrapped Approved-By position title).</summary>
+    /// TOTAL row, and purpose.</summary>
     private static byte[] BuildValidGsoPdf()
     {
         List<WordPlacement> w = new()
@@ -64,24 +63,6 @@ public sealed class PdfServiceTests
             new("TOTAL", 50, 525, 9),
 
             new("Purpose: office supplies replenishment", 50, 490, 9),
-
-            // Signature block header — 3 columns, far enough apart to stay distinct cells.
-            new("Requested By:",      50,  450, 9),
-            new("Cash Availability:", 250, 450, 9),
-            new("Approved By:",       450, 450, 9),
-
-            // Printed Name row — label at far left margin, values near each header column.
-            new("Printed Name:",   10,  400, 9),
-            new("JUAN DELA CRUZ",  90,  400, 9),
-            new("PEDRO REYES",     250, 400, 9),
-            new("MARIA SANTOS",    450, 400, 9),
-
-            // Position row — Approved-By's title deliberately wraps onto a second PDF line.
-            new("Position:",   10,  380, 9),
-            new("MPDC",        90,  380, 9),
-            new("-",           250, 380, 9),
-            new("PROVINCIAL",  450, 380, 9),
-            new("PLANNING AND DEVELOPMENT COORDINATOR", 450, 372, 9), // wrap-merges into the row above
         };
 
         return Build(w);
@@ -128,43 +109,6 @@ public sealed class PdfServiceTests
         Assert.Equal("OSAME-9876543210", result.Items[1].StockNo);
         Assert.Equal(5m, result.Items[1].Quantity);
         Assert.Equal(150m, result.Items[1].UnitCost);
-    }
-
-    [Fact]
-    public void ParseGsoPRImport_ValidFile_ParsesSignatureBlockIncludingWrappedTitle()
-    {
-        using MemoryStream stream = new(BuildValidGsoPdf());
-        GsoPRImportRow result = _sut.ParseGsoPRImport(stream);
-
-        Assert.Equal("JUAN DELA CRUZ", result.RequestedBy);
-        Assert.Equal("MPDC", result.Position);
-        Assert.Equal("MARIA SANTOS", result.ApprovedBy);
-        // The two wrapped PDF lines ("PROVINCIAL" / "PLANNING AND DEVELOPMENT COORDINATOR") must
-        // merge into one field — this is the whole point of the line-wrap merge logic.
-        Assert.Equal("PROVINCIAL PLANNING AND DEVELOPMENT COORDINATOR", result.ApprovingPosition);
-    }
-
-    [Fact]
-    public void ParseGsoPRImport_NoSignatureBlock_FieldsAreNull()
-    {
-        List<WordPlacement> w = new()
-        {
-            new("PURCHASE REQUEST", 220, 750, 14),
-            new("Item No.   Stock No.   Description   Unit   Qty", 50, 660, 9),
-            new("1",    ColItemNo,  555, 9),
-            new("SN-1", ColStockNo, 555, 9),
-            new("Item", ColDesc,    555, 9),
-            new("pcs",  ColUnit,    555, 9),
-            new("1",    ColQty,     555, 9),
-        };
-        using MemoryStream stream = new(Build(w));
-
-        GsoPRImportRow result = _sut.ParseGsoPRImport(stream);
-
-        Assert.Null(result.RequestedBy);
-        Assert.Null(result.Position);
-        Assert.Null(result.ApprovedBy);
-        Assert.Null(result.ApprovingPosition);
     }
 
     [Fact]

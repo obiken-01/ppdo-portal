@@ -111,10 +111,6 @@ public sealed record PurchaseRequestImportRow
 /// is nullable — the export's own layout only ever supplies a subset of what a PR needs, and
 /// this is a prefill preview, not a validated create. See docs/v1.7/GSO_PR_Import_Findings.md
 /// for exactly what each source format does and doesn't have.
-///
-/// <see cref="RequestedBy"/>/<see cref="Position"/>/<see cref="ApprovedBy"/>/
-/// <see cref="ApprovingPosition"/> only ever come from the PDF's signature block — the xlsx
-/// export never has them, so the xlsx parser always leaves these null.
 /// </summary>
 public sealed record GsoPRImportRow
 {
@@ -127,10 +123,6 @@ public sealed record GsoPRImportRow
     public string?  Program   { get; init; }
     public string?  Project   { get; init; }
     public string?  Activity  { get; init; }
-    public string?  RequestedBy       { get; init; }
-    public string?  Position          { get; init; }
-    public string?  ApprovedBy        { get; init; }
-    public string?  ApprovingPosition { get; init; }
 
     public required IReadOnlyList<PRItemImportRow> Items { get; init; }
 }

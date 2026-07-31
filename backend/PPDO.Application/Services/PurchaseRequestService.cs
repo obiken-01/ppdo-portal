@@ -631,10 +631,6 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
             Program:      row.Program,
             Project:      row.Project,
             Activity:     row.Activity,
-            RequestedBy:       row.RequestedBy,
-            Position:          row.Position,
-            ApprovedBy:        row.ApprovedBy,
-            ApprovingPosition: row.ApprovingPosition,
             Items: row.Items.Select(i => new GsoPRImportItemDto(
                     StockNo:        i.StockNo,
                     Description:    i.Description,
