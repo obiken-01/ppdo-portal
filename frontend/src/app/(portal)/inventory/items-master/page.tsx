@@ -707,7 +707,7 @@ export default function ItemsMasterPage() {
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans">
-      <div className="max-w-screen-xl mx-auto px-6 py-6 space-y-4">
+      <div className="max-w-screen-xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-4">
 
         {/* ── Toolbar ──────────────────────────────────────────────────────── */}
         <div className="flex flex-wrap items-center gap-3">
@@ -767,7 +767,7 @@ export default function ItemsMasterPage() {
             </div>
           ) : (
             <div className="overflow-x-auto overflow-y-hidden">
-              <table className="w-full text-sm border-collapse">
+              <table className="w-full text-sm border-collapse min-w-[1250px]">
 
                 {/* ── Header ── */}
                 <thead>
