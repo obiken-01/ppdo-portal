@@ -39,4 +39,43 @@ public interface IItemMasterRepository : IRepository<ItemMaster>
     /// </summary>
     Task<IReadOnlyList<ItemMaster>> GetByStockNosAsync(
         IReadOnlyCollection<string> stockNos, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Filtered, sorted, paged catalog search for the Items Master page — everything computed
+    /// in SQL (WHERE + COUNT + ORDER BY + OFFSET/FETCH), never a full-table load. Mirrors
+    /// IPurchaseRequestRepository.SearchAsync's shape.
+    /// </summary>
+    Task<ItemMasterSearchResult> SearchAsync(
+        ItemMasterSearchCriteria criteria, CancellationToken cancellationToken = default);
 }
+
+/// <summary>
+/// Filter/sort/page parameters for <see cref="IItemMasterRepository.SearchAsync"/>.
+/// All string fields are partial (Contains), case-insensitive matches; null/empty means
+/// "no filter on this field". <see cref="Search"/> matches across StockNo, Description,
+/// Category, Unit, ItemType, and Remarks — mirrors the Items Master page's global search box;
+/// the per-field parameters mirror its per-column filter row.
+/// </summary>
+public sealed record ItemMasterSearchCriteria(
+    string? Search,
+    string? StockNo,
+    string? Description,
+    string? Category,
+    string? Unit,
+    string? ItemType,
+    string? Remarks,
+    bool     IsNewOnly,
+    string?  SortBy,
+    bool     SortDescending,
+    int      Page,
+    int      PageSize);
+
+/// <summary>
+/// Result of an item catalog search — the page of items, the total match count, and the total
+/// count of items flagged IsNewItem across the WHOLE catalog (not the filtered set — this
+/// drives the page's "★ NEW" badge, which always reflects the full pending-review count).
+/// </summary>
+public sealed record ItemMasterSearchResult(
+    IReadOnlyList<ItemMaster> Items,
+    int TotalCount,
+    int TotalNewItemCount);

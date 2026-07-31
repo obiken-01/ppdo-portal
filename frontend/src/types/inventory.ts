@@ -39,6 +39,15 @@ export interface UpdateItemMasterRequest {
   isNewItem: boolean;
 }
 
+/** Mirrors ItemMasterSearchResultDto — GET /api/items/master/search response. */
+export interface ItemMasterSearchResult {
+  items: ItemMasterResponse[];
+  totalCount: number;
+  totalNewItemCount: number;
+  page: number;
+  pageSize: number;
+}
+
 // ---------------------------------------------------------------------------
 // Item lookup (autocomplete)
 // ---------------------------------------------------------------------------

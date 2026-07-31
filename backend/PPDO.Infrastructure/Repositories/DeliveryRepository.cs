@@ -130,4 +130,25 @@ public sealed class DeliveryRepository : Repository<Delivery>, IDeliveryReposito
                     dist.IssuedBy, dist.Remarks))
                 .ToList());
     }
+
+    /// <inheritdoc />
+    public async Task<DeliveryPageResult> GetPagedAsync(
+        int? divisionId, int page, int pageSize, CancellationToken cancellationToken = default)
+    {
+        IQueryable<Delivery> query = _context.Deliveries
+            .Include(d => d.PurchaseRequest);   // depth 1 — only DivisionId is read downstream
+
+        if (divisionId.HasValue)
+            query = query.Where(d => d.PurchaseRequest != null && d.PurchaseRequest.DivisionId == divisionId.Value);
+
+        int totalCount = await query.CountAsync(cancellationToken);
+
+        List<Delivery> items = await query
+            .OrderByDescending(d => d.DeliveryDate)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+
+        return new DeliveryPageResult(items, totalCount);
+    }
 }

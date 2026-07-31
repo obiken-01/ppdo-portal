@@ -300,4 +300,57 @@ public sealed class ItemServiceTests
 
         Assert.True(result.IsSuccess);
     }
+
+    // ── SearchAsync (RAL-192 — server-side pagination) ──────────────────────────
+
+    private static ItemMasterSearchFilterDto DefaultFilter(int page = 1, int pageSize = 25) =>
+        new(page, pageSize, Search: null, StockNo: null, Description: null, Category: null,
+            Unit: null, ItemType: null, Remarks: null, IsNewOnly: false, SortBy: null,
+            SortDescending: false);
+
+    [Fact]
+    public async Task SearchAsync_BuildsCriteriaFromFilterAndMapsResult()
+    {
+        List<ItemMaster> items = [MakeItem("01-01-01-01"), MakeItem("01-01-01-02")];
+        Mock<IItemMasterRepository> repo = new();
+        ItemMasterSearchCriteria? captured = null;
+        repo.Setup(r => r.SearchAsync(It.IsAny<ItemMasterSearchCriteria>(), It.IsAny<CancellationToken>()))
+            .Callback<ItemMasterSearchCriteria, CancellationToken>((c, _) => captured = c)
+            .ReturnsAsync(new ItemMasterSearchResult(items, TotalCount: 2, TotalNewItemCount: 1));
+
+        ItemMasterSearchFilterDto filter = DefaultFilter(page: 2, pageSize: 10) with
+        {
+            Search = "bond", IsNewOnly = true, SortBy = "description", SortDescending = true,
+        };
+
+        ItemMasterSearchResultDto result = await BuildSut(repo).SearchAsync(filter);
+
+        Assert.Equal(2, result.Items.Count);
+        Assert.Equal(2, result.TotalCount);
+        Assert.Equal(1, result.TotalNewItemCount);
+        Assert.Equal(2, result.Page);
+        Assert.Equal(10, result.PageSize);
+
+        Assert.NotNull(captured);
+        Assert.Equal("bond", captured!.Search);
+        Assert.True(captured.IsNewOnly);
+        Assert.Equal("description", captured.SortBy);
+        Assert.True(captured.SortDescending);
+        Assert.Equal(2, captured.Page);
+        Assert.Equal(10, captured.PageSize);
+    }
+
+    [Fact]
+    public async Task SearchAsync_NeverLoadsTheFullCatalog()
+    {
+        // Regression guard — the page must go through SearchAsync (WHERE + COUNT + OFFSET/FETCH
+        // in SQL), never the plain GetAllAsync() base-repository call.
+        Mock<IItemMasterRepository> repo = new();
+        repo.Setup(r => r.SearchAsync(It.IsAny<ItemMasterSearchCriteria>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ItemMasterSearchResult([], TotalCount: 0, TotalNewItemCount: 0));
+
+        await BuildSut(repo).SearchAsync(DefaultFilter());
+
+        repo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
 }

@@ -65,8 +65,11 @@ public sealed class DeliveryFunctions
             return await ToResponse(req, byPR, HttpStatusCode.OK, cancellationToken);
         }
 
-        IReadOnlyList<DeliverySummaryDto> result =
-            await _service.GetAllAsync(caller, cancellationToken);
+        int page = int.TryParse(req.Query["page"], out int p) && p > 0 ? p : 1;
+        int pageSize = int.TryParse(req.Query["pageSize"], out int ps) && ps > 0 ? ps : 50;
+
+        DeliveryPagedResultDto result =
+            await _service.GetAllAsync(caller, page, pageSize, cancellationToken);
         return await OkJson(req, result, cancellationToken);
     }
 
