@@ -31,9 +31,10 @@ public interface IAuthService
     /// <summary>
     /// Validates the supplied refresh token, rotates it (issues a new one), and
     /// returns a new access token + refresh token pair.
-    /// Returns null when the token is not found, expired, or belongs to an inactive user.
+    /// On failure the <see cref="RefreshResult.Outcome"/> distinguishes why, so the
+    /// caller can explain the logout instead of a bare 401 (RAL-198).
     /// </summary>
-    Task<(string AccessToken, string RefreshToken)?> RefreshAsync(
+    Task<RefreshResult> RefreshAsync(
         string refreshToken,
         CancellationToken cancellationToken = default);
 
@@ -92,6 +93,51 @@ public readonly record struct LoginResult
         Outcome           = LoginOutcome.RateLimited,
         RetryAfterSeconds = retryAfterSeconds,
     };
+}
+
+/// <summary>The outcome of a <see cref="IAuthService.RefreshAsync"/> call (RAL-198).</summary>
+public enum RefreshOutcome
+{
+    /// <summary>Token matched and was not expired — new tokens issued.</summary>
+    Success,
+
+    /// <summary>
+    /// No user row has this exact token stored — it was rotated away by a later
+    /// login or refresh (someone else signed into the account, or another
+    /// device/tab refreshed first). Distinct from <see cref="TokenExpired"/> so the
+    /// caller can explain the logout instead of a bare 401.
+    /// </summary>
+    TokenSuperseded,
+
+    /// <summary>Token matched but is past its <c>RefreshTokenExpiry</c> (natural 7-day expiry).</summary>
+    TokenExpired,
+
+    /// <summary>Token matched but the owning user is no longer active. No specific reason is surfaced to the client.</summary>
+    Failed,
+}
+
+/// <summary>
+/// Result of <see cref="IAuthService.RefreshAsync"/>. On <see cref="RefreshOutcome.Success"/>
+/// the tokens are populated; otherwise <see cref="Outcome"/> tells the caller why.
+/// </summary>
+public readonly record struct RefreshResult
+{
+    public RefreshOutcome Outcome { get; init; }
+    public string? AccessToken { get; init; }
+    public string? RefreshToken { get; init; }
+
+    public static RefreshResult Success(string accessToken, string refreshToken) => new()
+    {
+        Outcome      = RefreshOutcome.Success,
+        AccessToken  = accessToken,
+        RefreshToken = refreshToken,
+    };
+
+    public static RefreshResult Superseded() => new() { Outcome = RefreshOutcome.TokenSuperseded };
+
+    public static RefreshResult Expired() => new() { Outcome = RefreshOutcome.TokenExpired };
+
+    public static RefreshResult Failed() => new() { Outcome = RefreshOutcome.Failed };
 }
 
 /// <summary>
