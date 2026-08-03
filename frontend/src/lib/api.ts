@@ -13,9 +13,12 @@
  *      to prevent an infinite interceptor loop). The httpOnly refresh cookie is
  *      sent automatically via withCredentials — no token is read in JS.
  *   3. On success → stores the new access token and retries the original request.
- *   4. On failure → clears the access token and redirects to /login, carrying the
- *      backend's failure reason (token_superseded / token_expired) as a query param
+ *   4. On a definitive failure (401 — token superseded or expired) → clears the
+ *      access token and redirects to /login, carrying the reason as a query param
  *      so the login page can explain the logout instead of bouncing silently (RAL-198).
+ *   5. On a network error (no response at all — cold start) → the refresh cookie
+ *      was never proven invalid, so nothing is cleared; redirects to /reconnecting
+ *      to retry instead of forcing a logout (RAL-199).
  *
  * Concurrent requests that 401 while a refresh is in-flight are queued and
  * replayed once the new access token is available.
@@ -23,7 +26,7 @@
 
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
 import { auth } from "./auth";
-import { getRefreshErrorReason, loginUrlWithReason } from "./auth-redirect";
+import { classifyRefreshFailure, loginUrlWithReason, reconnectingUrl } from "./auth-redirect";
 
 // ---------------------------------------------------------------------------
 // Base URL — set NEXT_PUBLIC_API_BASE_URL in .env.local
@@ -160,9 +163,20 @@ api.interceptors.response.use(
       return api(original);
     } catch (refreshError) {
       processQueue(refreshError, null);
-      auth.logout();
-      if (typeof window !== "undefined") {
-        window.location.href = loginUrlWithReason(getRefreshErrorReason(refreshError));
+
+      const failure = classifyRefreshFailure(refreshError);
+      if (failure.kind === "unreachable") {
+        // Never proven invalid — leave tokens alone, /reconnecting retries the
+        // same call once the backend wakes up (RAL-199).
+        if (typeof window !== "undefined") {
+          const next = window.location.pathname + window.location.search;
+          window.location.href = reconnectingUrl(next);
+        }
+      } else {
+        auth.logout();
+        if (typeof window !== "undefined") {
+          window.location.href = loginUrlWithReason(failure.reason);
+        }
       }
       return Promise.reject(refreshError);
     } finally {
