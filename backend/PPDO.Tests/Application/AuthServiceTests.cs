@@ -214,19 +214,21 @@ public sealed class AuthServiceTests
     // ── RefreshAsync ──────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task RefreshAsync_TokenNotFound_ReturnsNull()
+    public async Task RefreshAsync_TokenNotFound_ReturnsSuperseded()
     {
         Mock<IUserRepository> repo = new();
         repo.Setup(r => r.FindByRefreshTokenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((User?)null);
 
-        (string, string)? result = await BuildSut(repo).RefreshAsync("nonexistent-token");
+        RefreshResult result = await BuildSut(repo).RefreshAsync("nonexistent-token");
 
-        Assert.Null(result);
+        Assert.Equal(RefreshOutcome.TokenSuperseded, result.Outcome);
+        Assert.Null(result.AccessToken);
+        Assert.Null(result.RefreshToken);
     }
 
     [Fact]
-    public async Task RefreshAsync_InactiveUser_ReturnsNull()
+    public async Task RefreshAsync_InactiveUser_ReturnsFailed()
     {
         User user = MakeActiveUser("hash");
         user.IsActive = false;
@@ -237,13 +239,13 @@ public sealed class AuthServiceTests
         repo.Setup(r => r.FindByRefreshTokenAsync("some-token", It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        (string, string)? result = await BuildSut(repo).RefreshAsync("some-token");
+        RefreshResult result = await BuildSut(repo).RefreshAsync("some-token");
 
-        Assert.Null(result);
+        Assert.Equal(RefreshOutcome.Failed, result.Outcome);
     }
 
     [Fact]
-    public async Task RefreshAsync_ExpiredToken_ReturnsNull_AndClearsToken()
+    public async Task RefreshAsync_ExpiredToken_ReturnsExpired_AndClearsToken()
     {
         User user = MakeActiveUser("hash");
         user.RefreshToken = "expired-token";
@@ -257,9 +259,9 @@ public sealed class AuthServiceTests
         repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(1);
 
-        (string, string)? result = await BuildSut(repo).RefreshAsync("expired-token");
+        RefreshResult result = await BuildSut(repo).RefreshAsync("expired-token");
 
-        Assert.Null(result);
+        Assert.Equal(RefreshOutcome.TokenExpired, result.Outcome);
         Assert.Null(user.RefreshToken);
         Assert.Null(user.RefreshTokenExpiry);
     }
@@ -280,12 +282,31 @@ public sealed class AuthServiceTests
         repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(1);
 
-        (string AccessToken, string RefreshToken)? result =
-            await BuildSut(repo).RefreshAsync(oldRefreshToken);
+        RefreshResult result = await BuildSut(repo).RefreshAsync(oldRefreshToken);
 
-        Assert.NotNull(result);
-        Assert.False(string.IsNullOrWhiteSpace(result.Value.AccessToken));
-        Assert.NotEqual(oldRefreshToken, result.Value.RefreshToken); // token rotated
+        Assert.Equal(RefreshOutcome.Success, result.Outcome);
+        Assert.False(string.IsNullOrWhiteSpace(result.AccessToken));
+        Assert.NotEqual(oldRefreshToken, result.RefreshToken); // token rotated
+    }
+
+    [Fact]
+    public async Task RefreshAsync_SupersededByNewerLogin_DistinguishesFromExpiry()
+    {
+        // Simulates the RAL-198 scenario: account shared across two sessions.
+        // Session A holds R1; the account then logs in elsewhere and R1 is overwritten by
+        // R2. Session A's next refresh presents R1, which no row matches any more —
+        // this must surface as "superseded", not the generic "expired" reason.
+        User user = MakeActiveUser("hash");
+        user.RefreshToken = "R2-current"; // overwritten by the second login
+        user.RefreshTokenExpiry = DateTime.UtcNow.AddDays(7); // still well within validity
+
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByRefreshTokenAsync("R1-stale", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null); // R1 no longer matches any row
+
+        RefreshResult result = await BuildSut(repo).RefreshAsync("R1-stale");
+
+        Assert.Equal(RefreshOutcome.TokenSuperseded, result.Outcome);
     }
 
     [Fact]

@@ -106,7 +106,7 @@ public sealed class AuthService : IAuthService
     }
 
     /// <inheritdoc />
-    public async Task<(string AccessToken, string RefreshToken)?> RefreshAsync(
+    public async Task<RefreshResult> RefreshAsync(
         string refreshToken,
         CancellationToken cancellationToken = default)
     {
@@ -114,14 +114,16 @@ public sealed class AuthService : IAuthService
 
         if (user is null)
         {
-            _logger.LogWarning("Refresh failed — token not found.");
-            return null;
+            // No row has this exact token — it was overwritten by a later login/refresh
+            // (rotation-on-use). Distinct from expiry so the client can explain why (RAL-198).
+            _logger.LogWarning("Refresh failed — token superseded (no matching row).");
+            return RefreshResult.Superseded();
         }
 
         if (!user.IsActive)
         {
             _logger.LogWarning("Refresh failed — user is inactive. UserId: {UserId}", user.Id);
-            return null;
+            return RefreshResult.Failed();
         }
 
         if (user.RefreshTokenExpiry is null || user.RefreshTokenExpiry < DateTime.UtcNow)
@@ -132,7 +134,7 @@ public sealed class AuthService : IAuthService
             user.RefreshTokenExpiry = null;
             await _users.UpdateAsync(user, cancellationToken);
             await _users.SaveChangesAsync(cancellationToken);
-            return null;
+            return RefreshResult.Expired();
         }
 
         // Rotate: issue new tokens and overwrite the stored refresh token.
@@ -145,7 +147,7 @@ public sealed class AuthService : IAuthService
         await _users.UpdateAsync(user, cancellationToken);
         await _users.SaveChangesAsync(cancellationToken);
 
-        return (newAccessToken, newRefreshToken);
+        return RefreshResult.Success(newAccessToken, newRefreshToken);
     }
 
     /// <inheritdoc />

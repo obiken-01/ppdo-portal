@@ -94,16 +94,28 @@ public sealed class AuthFunctions
         CancellationToken cancellationToken)
     {
         // The refresh token is read from the httpOnly cookie, never the request body.
+        // No cookie at all is the normal logged-out state — no reason needed (RAL-198).
         string? refreshToken = ReadRefreshCookie(req);
         if (string.IsNullOrWhiteSpace(refreshToken))
             return req.CreateResponse(HttpStatusCode.Unauthorized);
 
-        var tokens = await _auth.RefreshAsync(refreshToken, cancellationToken);
-        if (tokens is null)
-            return req.CreateResponse(HttpStatusCode.Unauthorized);
+        RefreshResult result = await _auth.RefreshAsync(refreshToken, cancellationToken);
 
-        LoginResponseDto dto = new(tokens.Value.AccessToken, AccessTokenLifetimeSeconds);
-        return await OkWithRefreshCookie(req, dto, tokens.Value.RefreshToken, cancellationToken);
+        switch (result.Outcome)
+        {
+            case RefreshOutcome.TokenSuperseded:
+                return await UnauthorizedWithReason(req, "token_superseded", cancellationToken);
+
+            case RefreshOutcome.TokenExpired:
+                return await UnauthorizedWithReason(req, "token_expired", cancellationToken);
+
+            case RefreshOutcome.Failed:
+                return req.CreateResponse(HttpStatusCode.Unauthorized);
+
+            default: // Success
+                LoginResponseDto dto = new(result.AccessToken!, AccessTokenLifetimeSeconds);
+                return await OkWithRefreshCookie(req, dto, result.RefreshToken!, cancellationToken);
+        }
     }
 
     // ── POST /api/auth/logout ──────────────────────────────────────────────────
@@ -266,6 +278,19 @@ public sealed class AuthFunctions
         response.Headers.Add("Content-Type", "application/json; charset=utf-8");
         await response.WriteStringAsync(
             JsonSerializer.Serialize(body, _jsonOptions), cancellationToken);
+        return response;
+    }
+
+    /// <summary>Writes a 401 with a JSON reason body so the frontend can explain the logout (RAL-198).</summary>
+    private static async Task<HttpResponseData> UnauthorizedWithReason(
+        HttpRequestData req,
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        HttpResponseData response = req.CreateResponse(HttpStatusCode.Unauthorized);
+        response.Headers.Add("Content-Type", "application/json; charset=utf-8");
+        await response.WriteStringAsync(
+            JsonSerializer.Serialize(new RefreshErrorDto(reason), _jsonOptions), cancellationToken);
         return response;
     }
 
