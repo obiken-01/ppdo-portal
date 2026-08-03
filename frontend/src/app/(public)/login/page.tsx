@@ -12,17 +12,32 @@
  * navigates to /dashboard.
  */
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import axios from "axios";
 import api from "@/lib/api";
 import { auth } from "@/lib/auth";
-import type { LoginResponse, MeResponse } from "@/types/auth";
+import type { LoginResponse, MeResponse, RefreshErrorReason } from "@/types/auth";
+
+// ---------------------------------------------------------------------------
+// Unexpected-logout explanation (RAL-198) — carried from a failed silent
+// refresh via ?reason= on the /login redirect. See lib/auth-redirect.ts.
+// ---------------------------------------------------------------------------
+
+const LOGOUT_REASON_MESSAGES: Record<RefreshErrorReason, string> = {
+  token_superseded:
+    "You were signed out because someone signed into this account from another device or browser. If you both need access at the same time, ask an admin for a separate account.",
+  token_expired: "Your session expired — please sign in again.",
+};
+
+function isRefreshErrorReason(value: string | null): value is RefreshErrorReason {
+  return value === "token_superseded" || value === "token_expired";
+}
 
 // ---------------------------------------------------------------------------
 // API status indicator
@@ -74,10 +89,14 @@ type FormData = z.infer<typeof schema>;
 
 const APP_VERSION = "v1.6.0";
 
-export default function LoginPage() {
+function LoginPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [serverError, setServerError] = useState<string | null>(null);
   const [apiStatus, setApiStatus] = useState<ApiStatus>("checking");
+
+  const reasonParam = searchParams.get("reason");
+  const logoutReason = isRefreshErrorReason(reasonParam) ? LOGOUT_REASON_MESSAGES[reasonParam] : null;
 
   // Fire a health check on mount — wakes up Azure Functions + Azure SQL
   // (both auto-sleep after inactivity on the free tier).
@@ -193,6 +212,13 @@ export default function LoginPage() {
             <span className="font-bold text-green-700 text-lg">PPDO Portal</span>
           </div>
 
+          {/* Unexpected-logout explanation (RAL-198) */}
+          {logoutReason && (
+            <div className="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3">
+              <p className="text-sm text-amber-800">{logoutReason}</p>
+            </div>
+          )}
+
           {/* ── Login card ──────────────────────────────────────────────── */}
           <div className="bg-green-50 border border-green-200 rounded-xl px-8 py-8 shadow-sm">
 
@@ -296,5 +322,25 @@ export default function LoginPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Page export — wraps inner component in Suspense (required for useSearchParams)
+// ---------------------------------------------------------------------------
+
+function LoginPageFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-white">
+      <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginPageFallback />}>
+      <LoginPageInner />
+    </Suspense>
   );
 }

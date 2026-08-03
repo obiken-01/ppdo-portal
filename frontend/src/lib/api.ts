@@ -13,7 +13,9 @@
  *      to prevent an infinite interceptor loop). The httpOnly refresh cookie is
  *      sent automatically via withCredentials — no token is read in JS.
  *   3. On success → stores the new access token and retries the original request.
- *   4. On failure → clears the access token and redirects the user to /login.
+ *   4. On failure → clears the access token and redirects to /login, carrying the
+ *      backend's failure reason (token_superseded / token_expired) as a query param
+ *      so the login page can explain the logout instead of bouncing silently (RAL-198).
  *
  * Concurrent requests that 401 while a refresh is in-flight are queued and
  * replayed once the new access token is available.
@@ -21,6 +23,7 @@
 
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
 import { auth } from "./auth";
+import { getRefreshErrorReason, loginUrlWithReason } from "./auth-redirect";
 
 // ---------------------------------------------------------------------------
 // Base URL — set NEXT_PUBLIC_API_BASE_URL in .env.local
@@ -158,7 +161,9 @@ api.interceptors.response.use(
     } catch (refreshError) {
       processQueue(refreshError, null);
       auth.logout();
-      if (typeof window !== "undefined") window.location.href = "/login";
+      if (typeof window !== "undefined") {
+        window.location.href = loginUrlWithReason(getRefreshErrorReason(refreshError));
+      }
       return Promise.reject(refreshError);
     } finally {
       isRefreshing = false;
