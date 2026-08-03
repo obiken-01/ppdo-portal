@@ -447,14 +447,26 @@ export interface StockBalanceResponse {
   recordedByName: string | null;
   createdAt: string;
   updatedAt: string;
+  /** True when this save also auto-created a new Items Master row (IsNewItem = true,
+   * pending admin review) because the StockNo wasn't cataloged yet. */
+  itemWasAutoCreated: boolean;
 }
 
-/** Mirrors CreateStockBalanceDto */
+/**
+ * Mirrors CreateStockBalanceDto. Description/unit/unitCost/itemType are only used when
+ * stockNo isn't already in Items Master — the backend auto-creates the catalog entry
+ * (IsNewItem = true, pending admin review) from these, mirroring Create PR's unknown-stock
+ * handling. Ignored (the catalog's own values win) when stockNo is already known.
+ */
 export interface CreateStockBalanceRequest {
   stockNo: string;
   countedQty: number;
   effectiveDate: string; // "YYYY-MM-DD"
   reason: string | null;
+  description: string | null;
+  unit: string | null;
+  unitCost: number | null;
+  itemType: string | null;
 }
 
 /** Mirrors UpdateStockBalanceDto */
@@ -471,6 +483,10 @@ export interface StockBalanceImportRowResponse {
   countedQty: number | null;
   effectiveDate: string | null;
   reason: string | null;
+  description: string | null;
+  unit: string | null;
+  unitCost: number | null;
+  itemType: string | null;
   error: string | null;
 }
 

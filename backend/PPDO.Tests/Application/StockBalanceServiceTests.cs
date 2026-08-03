@@ -71,18 +71,53 @@ public sealed class StockBalanceServiceTests
         return repo;
     }
 
+    /// <summary>Default item-master stub for tests that don't care about the auto-create-item
+    /// behavior — every StockNo resolves to an already-cataloged item, so EnsureItemMasterAsync
+    /// short-circuits without needing Description/Unit on the DTO.</summary>
+    private static Mock<IItemMasterRepository> ItemRepoWithExistingItem()
+    {
+        Mock<IItemMasterRepository> repo = new();
+        repo.Setup(r => r.GetByStockNoAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string sn, CancellationToken _) => new ItemMaster
+            {
+                Id = Guid.NewGuid(), StockNo = sn, Description = "Existing Item", Unit = "pcs",
+                UnitCost = 10m, IsNewItem = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+            });
+        return repo;
+    }
+
+    /// <summary>Item-master stub where no StockNo is cataloged — used by the auto-create tests.</summary>
+    private static Mock<IItemMasterRepository> ItemRepoWithNoItems()
+    {
+        Mock<IItemMasterRepository> repo = new();
+        repo.Setup(r => r.GetByStockNoAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ItemMaster?)null);
+        repo.Setup(r => r.AddAsync(It.IsAny<ItemMaster>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        return repo;
+    }
+
     private static StockBalanceService BuildSut(
         Mock<IStockBalanceRepository> stockRepo,
         Mock<IInventoryRepository> invRepo,
+        Mock<IItemMasterRepository>? itemRepo = null,
         Mock<IUserRepository>? userRepo = null,
         Mock<IExcelService>? excelRepo = null)
         => new(
             stockRepo.Object,
             invRepo.Object,
+            (itemRepo ?? ItemRepoWithExistingItem()).Object,
             (userRepo ?? UserRepoStub()).Object,
             new PermissionService(),
             (excelRepo ?? new Mock<IExcelService>()).Object,
             NullLogger<StockBalanceService>.Instance);
+
+    /// <summary>Builds a CreateStockBalanceDto, defaulting the item-fields to null — use named
+    /// args (description:, unit:, ...) in tests that exercise the auto-create-item path.</summary>
+    private static CreateStockBalanceDto MakeCreateDto(
+        string stockNo, decimal countedQty, DateOnly effectiveDate, string? reason = null,
+        string? description = null, string? unit = null, decimal? unitCost = null, string? itemType = null)
+        => new(stockNo, countedQty, effectiveDate, reason, description, unit, unitCost, itemType);
 
     // ── CreateAsync — permission ──────────────────────────────────────────────
 
@@ -94,7 +129,7 @@ public sealed class StockBalanceServiceTests
 
         ServiceResult<StockBalanceDto> result = await BuildSut(stockRepo, invRepo).CreateAsync(
             MakeStaffNoInventory(),
-            new CreateStockBalanceDto("A01", 10m, DateOnly.FromDateTime(DateTime.UtcNow), null));
+            MakeCreateDto("A01", 10m, DateOnly.FromDateTime(DateTime.UtcNow), null));
 
         Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
         stockRepo.Verify(r => r.AddAsync(It.IsAny<StockBalance>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -112,7 +147,7 @@ public sealed class StockBalanceServiceTests
 
         ServiceResult<StockBalanceDto> result = await BuildSut(stockRepo, invRepo).CreateAsync(
             MakeAdmin(),
-            new CreateStockBalanceDto(stockNo, countedQty, DateOnly.FromDateTime(DateTime.UtcNow), null));
+            MakeCreateDto(stockNo, countedQty, DateOnly.FromDateTime(DateTime.UtcNow), null));
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
     }
@@ -125,7 +160,7 @@ public sealed class StockBalanceServiceTests
 
         ServiceResult<StockBalanceDto> result = await BuildSut(stockRepo, invRepo).CreateAsync(
             MakeAdmin(),
-            new CreateStockBalanceDto("A01", 10m, DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1), null));
+            MakeCreateDto("A01", 10m, DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1), null));
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
     }
@@ -142,7 +177,7 @@ public sealed class StockBalanceServiceTests
 
         ServiceResult<StockBalanceDto> result = await BuildSut(stockRepo, invRepo).CreateAsync(
             MakeAdmin(),
-            new CreateStockBalanceDto("A01", 50m, DateOnly.FromDateTime(DateTime.UtcNow), "Initial count"));
+            MakeCreateDto("A01", 50m, DateOnly.FromDateTime(DateTime.UtcNow), "Initial count"));
 
         Assert.True(result.IsSuccess);
         Assert.Equal(0m, result.Value!.SystemOnHandAtEntry);
@@ -160,7 +195,7 @@ public sealed class StockBalanceServiceTests
 
         ServiceResult<StockBalanceDto> result = await BuildSut(stockRepo, invRepo).CreateAsync(
             MakeAdmin(),
-            new CreateStockBalanceDto("B01", 12m, DateOnly.FromDateTime(DateTime.UtcNow), null));
+            MakeCreateDto("B01", 12m, DateOnly.FromDateTime(DateTime.UtcNow), null));
 
         Assert.Equal(15m, result.Value!.SystemOnHandAtEntry);
         Assert.Equal(-3m, result.Value.VarianceQty);
@@ -180,7 +215,7 @@ public sealed class StockBalanceServiceTests
 
         ServiceResult<StockBalanceDto> result = await BuildSut(stockRepo, invRepo).CreateAsync(
             MakeAdmin(),
-            new CreateStockBalanceDto("C01", 15m, DateOnly.FromDateTime(DateTime.UtcNow), null));
+            MakeCreateDto("C01", 15m, DateOnly.FromDateTime(DateTime.UtcNow), null));
 
         Assert.Equal(15m, result.Value!.SystemOnHandAtEntry);
         Assert.Equal(0m, result.Value.VarianceQty); // counted matches system exactly
@@ -194,11 +229,93 @@ public sealed class StockBalanceServiceTests
         User admin = MakeAdmin();
 
         ServiceResult<StockBalanceDto> result = await BuildSut(stockRepo, invRepo).CreateAsync(
-            admin, new CreateStockBalanceDto("D01", 8m, DateOnly.FromDateTime(DateTime.UtcNow), null));
+            admin, MakeCreateDto("D01", 8m, DateOnly.FromDateTime(DateTime.UtcNow), null));
 
         Assert.Equal(admin.Id, result.Value!.RecordedByUserId);
         stockRepo.Verify(r => r.AddAsync(It.IsAny<StockBalance>(), It.IsAny<CancellationToken>()), Times.Once);
         stockRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // ── CreateAsync — unknown StockNo auto-creates Items Master entry ────────
+
+    [Fact]
+    public async Task CreateAsync_UnknownStockNo_MissingDescription_ReturnsBadRequest_NeverCreatesItem()
+    {
+        Mock<IStockBalanceRepository> stockRepo = RepoThatSaves();
+        Mock<IInventoryRepository> invRepo = InventoryReturning(EmptyLevel("NEW01"));
+        Mock<IItemMasterRepository> itemRepo = ItemRepoWithNoItems();
+
+        ServiceResult<StockBalanceDto> result = await BuildSut(stockRepo, invRepo, itemRepo).CreateAsync(
+            MakeAdmin(),
+            MakeCreateDto("NEW01", 10m, DateOnly.FromDateTime(DateTime.UtcNow), unit: "pcs")); // no description
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        itemRepo.Verify(r => r.AddAsync(It.IsAny<ItemMaster>(), It.IsAny<CancellationToken>()), Times.Never);
+        stockRepo.Verify(r => r.AddAsync(It.IsAny<StockBalance>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateAsync_UnknownStockNo_MissingUnit_ReturnsBadRequest_NeverCreatesItem()
+    {
+        Mock<IStockBalanceRepository> stockRepo = RepoThatSaves();
+        Mock<IInventoryRepository> invRepo = InventoryReturning(EmptyLevel("NEW01"));
+        Mock<IItemMasterRepository> itemRepo = ItemRepoWithNoItems();
+
+        ServiceResult<StockBalanceDto> result = await BuildSut(stockRepo, invRepo, itemRepo).CreateAsync(
+            MakeAdmin(),
+            MakeCreateDto("NEW01", 10m, DateOnly.FromDateTime(DateTime.UtcNow), description: "New Item")); // no unit
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        itemRepo.Verify(r => r.AddAsync(It.IsAny<ItemMaster>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateAsync_UnknownStockNo_WithDescriptionAndUnit_CreatesItemFlaggedNew()
+    {
+        Mock<IStockBalanceRepository> stockRepo = RepoThatSaves();
+        Mock<IInventoryRepository> invRepo = InventoryReturning(EmptyLevel("NEW01"));
+        Mock<IItemMasterRepository> itemRepo = ItemRepoWithNoItems();
+
+        ItemMaster? created = null;
+        itemRepo.Setup(r => r.AddAsync(It.IsAny<ItemMaster>(), It.IsAny<CancellationToken>()))
+            .Callback<ItemMaster, CancellationToken>((m, _) => created = m)
+            .Returns(Task.CompletedTask);
+
+        ServiceResult<StockBalanceDto> result = await BuildSut(stockRepo, invRepo, itemRepo).CreateAsync(
+            MakeAdmin(),
+            MakeCreateDto("NEW01", 10m, DateOnly.FromDateTime(DateTime.UtcNow),
+                description: "Brand New Item", unit: "box", unitCost: 25m, itemType: "Office Supplies"));
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value!.ItemWasAutoCreated);
+        Assert.NotNull(created);
+        Assert.Equal("NEW01", created!.StockNo);
+        Assert.Equal("Brand New Item", created.Description);
+        Assert.Equal("box", created.Unit);
+        Assert.Equal(25m, created.UnitCost);
+        Assert.Equal("Office Supplies", created.ItemType);
+        Assert.True(created.IsNewItem);
+        Assert.Equal(0, created.ReorderQty);
+        // The new ItemMaster is persisted via the same SaveChanges call as the StockBalance
+        // entry (shared AppDbContext) — no separate save on the item repo.
+        stockRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateAsync_KnownStockNo_IgnoresSubmittedItemFields_NeverCreatesDuplicate()
+    {
+        Mock<IStockBalanceRepository> stockRepo = RepoThatSaves();
+        Mock<IInventoryRepository> invRepo = InventoryReturning(EmptyLevel("D01"));
+        Mock<IItemMasterRepository> itemRepo = ItemRepoWithExistingItem();
+
+        ServiceResult<StockBalanceDto> result = await BuildSut(stockRepo, invRepo, itemRepo).CreateAsync(
+            MakeAdmin(),
+            MakeCreateDto("D01", 10m, DateOnly.FromDateTime(DateTime.UtcNow),
+                description: "Whatever the user typed", unit: "ignored-unit"));
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value!.ItemWasAutoCreated);
+        itemRepo.Verify(r => r.AddAsync(It.IsAny<ItemMaster>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     // ── UpdateAsync ───────────────────────────────────────────────────────────
@@ -373,7 +490,7 @@ public sealed class StockBalanceServiceTests
         Mock<IInventoryRepository> invRepo = InventoryReturning(EmptyLevel("A01"));
 
         CommitStockBalanceImportDto dto = new(
-            [new CreateStockBalanceDto("A01", 10m, DateOnly.FromDateTime(DateTime.UtcNow), null)]);
+            [MakeCreateDto("A01", 10m, DateOnly.FromDateTime(DateTime.UtcNow), null)]);
 
         ServiceResult<StockBalanceImportResultDto> result =
             await BuildSut(stockRepo, invRepo).CommitImportAsync(MakeAdmin(), dto);
@@ -399,7 +516,7 @@ public sealed class StockBalanceServiceTests
             .ReturnsAsync(existing);
         Mock<IInventoryRepository> invRepo = InventoryReturning(EmptyLevel("A01"));
 
-        CommitStockBalanceImportDto dto = new([new CreateStockBalanceDto("A01", 20m, date, "Corrected count")]);
+        CommitStockBalanceImportDto dto = new([MakeCreateDto("A01", 20m, date, "Corrected count")]);
 
         ServiceResult<StockBalanceImportResultDto> result =
             await BuildSut(stockRepo, invRepo).CommitImportAsync(MakeAdmin(), dto);
@@ -419,11 +536,52 @@ public sealed class StockBalanceServiceTests
         Mock<IInventoryRepository> invRepo = new();
 
         CommitStockBalanceImportDto dto = new(
-            [new CreateStockBalanceDto("", 10m, DateOnly.FromDateTime(DateTime.UtcNow), null)]);
+            [MakeCreateDto("", 10m, DateOnly.FromDateTime(DateTime.UtcNow), null)]);
 
         ServiceResult<StockBalanceImportResultDto> result =
             await BuildSut(stockRepo, invRepo).CommitImportAsync(MakeAdmin(), dto);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task CommitImportAsync_UnknownStockNo_WithDescriptionAndUnit_CreatesItemFlaggedNew()
+    {
+        Mock<IStockBalanceRepository> stockRepo = RepoThatSaves();
+        stockRepo.Setup(r => r.FindByStockNoAndEffectiveDateAsync(
+                "NEW01", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((StockBalance?)null);
+        Mock<IInventoryRepository> invRepo = InventoryReturning(EmptyLevel("NEW01"));
+        Mock<IItemMasterRepository> itemRepo = ItemRepoWithNoItems();
+
+        CommitStockBalanceImportDto dto = new(
+            [MakeCreateDto("NEW01", 10m, DateOnly.FromDateTime(DateTime.UtcNow),
+                description: "Bulk New Item", unit: "ream")]);
+
+        ServiceResult<StockBalanceImportResultDto> result =
+            await BuildSut(stockRepo, invRepo, itemRepo).CommitImportAsync(MakeAdmin(), dto);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value!.Entries[0].ItemWasAutoCreated);
+        itemRepo.Verify(r => r.AddAsync(
+            It.Is<ItemMaster>(m => m.StockNo == "NEW01" && m.IsNewItem && m.Description == "Bulk New Item"),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CommitImportAsync_UnknownStockNo_MissingDescription_ReturnsBadRequest()
+    {
+        Mock<IStockBalanceRepository> stockRepo = RepoThatSaves();
+        Mock<IInventoryRepository> invRepo = new();
+        Mock<IItemMasterRepository> itemRepo = ItemRepoWithNoItems();
+
+        CommitStockBalanceImportDto dto = new(
+            [MakeCreateDto("NEW01", 10m, DateOnly.FromDateTime(DateTime.UtcNow), unit: "pcs")]); // no description
+
+        ServiceResult<StockBalanceImportResultDto> result =
+            await BuildSut(stockRepo, invRepo, itemRepo).CommitImportAsync(MakeAdmin(), dto);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        itemRepo.Verify(r => r.AddAsync(It.IsAny<ItemMaster>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

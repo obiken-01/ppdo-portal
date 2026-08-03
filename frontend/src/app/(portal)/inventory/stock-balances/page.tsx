@@ -12,6 +12,12 @@
  * Note: the resulting variance only affects the Admin/SuperAdmin unscoped Stock Overview
  * view — Staff/Observer's division-scoped on-hand is unaffected (see InventoryService).
  *
+ * Unknown StockNo handling mirrors Create PR: typing a StockNo that matches Items Master
+ * auto-fills Description/Unit/Unit Cost (read-only) from the catalog. Typing one that
+ * doesn't match shows Description/Unit input fields — submitting then auto-creates the
+ * Items Master entry (flagged for admin review), exactly like an unrecognized Create PR
+ * line item. Same handling applies to the bulk Excel upload.
+ *
  * Access guard: canAccessInventory permission required.
  *
  * API endpoints (StockBalanceFunctions.cs):
@@ -63,11 +69,20 @@ export default function StockBalancesPage() {
   // ── New-entry form ─────────────────────────────────────────────────────────
 
   const [stockNo, setStockNo] = useState("");
-  const [description, setDescription] = useState<string | null>(null);
+  // Set once the StockNo is matched to an Items Master row via the lookup — its own
+  // Description/Unit/Unit Cost win over anything typed below (mirrors Create PR).
+  const [matchedItem, setMatchedItem] = useState<ItemLookupResponse | null>(null);
   const [countedQty, setCountedQty] = useState("");
   const [effectiveDate, setEffectiveDate] = useState(todayIso());
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  // Only used when stockNo doesn't match an existing catalog item — required to auto-create
+  // it (IsNewItem = true, pending admin review), same fields Create PR asks for.
+  const [newItemDescription, setNewItemDescription] = useState("");
+  const [newItemUnit, setNewItemUnit] = useState("");
+  const [newItemUnitCost, setNewItemUnitCost] = useState("");
+  const [newItemType, setNewItemType] = useState("");
 
   const [suggestions, setSuggestions] = useState<ItemLookupResponse[]>([]);
   const [suggesting, setSuggesting] = useState(false);
@@ -75,7 +90,7 @@ export default function StockBalancesPage() {
 
   function handleStockNoInput(value: string) {
     setStockNo(value);
-    setDescription(null);
+    setMatchedItem(null);
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (value.trim().length < 2) { setSuggestions([]); return; }
@@ -98,7 +113,7 @@ export default function StockBalancesPage() {
   function handleSelectSuggestion(item: ItemLookupResponse) {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     setStockNo(item.stockNo);
-    setDescription(item.description);
+    setMatchedItem(item);
     setSuggestions([]);
     loadHistory(item.stockNo);
   }
@@ -136,6 +151,13 @@ export default function StockBalancesPage() {
     if (!countedQty || Number.isNaN(qty) || qty < 0) { toast.error("Counted quantity must be a non-negative number."); return; }
     if (!effectiveDate) { toast.error("Effective date is required."); return; }
 
+    const trimmedNewDescription = newItemDescription.trim();
+    const trimmedNewUnit = newItemUnit.trim();
+    if (!matchedItem) {
+      if (!trimmedNewDescription) { toast.error("Description is required for a new item."); return; }
+      if (!trimmedNewUnit) { toast.error("Unit is required for a new item."); return; }
+    }
+
     setSubmitting(true);
     try {
       const body: CreateStockBalanceRequest = {
@@ -143,12 +165,27 @@ export default function StockBalancesPage() {
         countedQty: qty,
         effectiveDate,
         reason: reason.trim() || null,
+        description: matchedItem ? null : trimmedNewDescription,
+        unit: matchedItem ? null : trimmedNewUnit,
+        unitCost: matchedItem ? null : (newItemUnitCost ? Number(newItemUnitCost) : null),
+        itemType: matchedItem ? null : (newItemType.trim() || null),
       };
       const { data } = await api.post<StockBalanceResponse>("/inventory/stock-balances", body);
+      const varianceMsg = `Variance: ${data.varianceQty > 0 ? "+" : ""}${data.varianceQty} (system expected ${data.systemOnHandAtEntry}).`;
       toast.success(
         "Count recorded",
-        `Variance: ${data.varianceQty > 0 ? "+" : ""}${data.varianceQty} (system expected ${data.systemOnHandAtEntry}).`
+        data.itemWasAutoCreated
+          ? `New item added to Items Master (pending review). ${varianceMsg}`
+          : varianceMsg
       );
+      // The StockNo is now cataloged — treat it as matched so a follow-up entry for the
+      // same item doesn't ask for Description/Unit again.
+      if (data.itemWasAutoCreated) {
+        setMatchedItem({
+          id: "", stockNo: trimmedStockNo, description: trimmedNewDescription,
+          unit: trimmedNewUnit, unitCost: Number(newItemUnitCost) || 0,
+        });
+      }
       setCountedQty("");
       setReason("");
       loadHistory(trimmedStockNo);
@@ -251,14 +288,20 @@ export default function StockBalancesPage() {
           countedQty: r.countedQty!,
           effectiveDate: r.effectiveDate!,
           reason: r.reason,
+          description: r.description,
+          unit: r.unit,
+          unitCost: r.unitCost,
+          itemType: r.itemType,
         })),
       };
       const { data } = await api.post<StockBalanceImportResultResponse>(
         "/inventory/stock-balances/import/commit", body
       );
+      const newItemCount = data.entries.filter((e) => e.itemWasAutoCreated).length;
       toast.success(
         "Import committed",
         `${data.inserted} inserted, ${data.updated} updated.`
+        + (newItemCount > 0 ? ` ${newItemCount} new item(s) added to Items Master (pending review).` : "")
       );
       setPreviewRows(null);
       if (historyStockNo && data.entries.some((e) => e.stockNo === historyStockNo)) {
@@ -290,8 +333,8 @@ export default function StockBalancesPage() {
             <div className="relative sm:col-span-2">
               <label className="block text-xs font-medium text-slate-600 mb-1">StockNo / Description</label>
               <input
-                value={description ? `${stockNo} — ${description}` : stockNo}
-                onChange={(e) => { setDescription(null); handleStockNoInput(e.target.value); }}
+                value={matchedItem ? `${stockNo} — ${matchedItem.description}` : stockNo}
+                onChange={(e) => handleStockNoInput(e.target.value)}
                 placeholder="Type to search…"
                 className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
               />
@@ -314,6 +357,63 @@ export default function StockBalancesPage() {
                 </div>
               )}
             </div>
+
+            {/* Matched item — read-only, catalog's own values win (mirrors Create PR) */}
+            {matchedItem && (
+              <div className="sm:col-span-4 -mt-1 text-xs text-slate-500">
+                Unit: <span className="font-medium text-slate-700">{matchedItem.unit}</span>
+                {" · "}Unit Cost: <span className="font-medium text-slate-700">₱{matchedItem.unitCost.toFixed(2)}</span>
+              </div>
+            )}
+
+            {/* Unmatched StockNo — ask for the fields needed to auto-create the catalog
+                entry, same as an unrecognized Create PR line item. */}
+            {!matchedItem && stockNo.trim().length > 0 && (
+              <div className="sm:col-span-4 bg-amber-50 border border-amber-200 px-4 py-3 space-y-2">
+                <p className="text-xs text-amber-800">
+                  <span className="font-semibold">{stockNo.trim()}</span> isn&apos;t in Items Master yet —
+                  it will be added automatically (pending admin review) using the details below.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Description *</label>
+                    <input
+                      value={newItemDescription}
+                      onChange={(e) => setNewItemDescription(e.target.value)}
+                      placeholder="e.g. Bond paper A4 80gsm"
+                      className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Unit *</label>
+                    <input
+                      value={newItemUnit}
+                      onChange={(e) => setNewItemUnit(e.target.value)}
+                      placeholder="e.g. ream"
+                      className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Unit Cost (optional)</label>
+                    <input
+                      type="number" min={0} step="any"
+                      value={newItemUnitCost}
+                      onChange={(e) => setNewItemUnitCost(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
+                    />
+                  </div>
+                  <div className="sm:col-span-4">
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Item Type (optional)</label>
+                    <input
+                      value={newItemType}
+                      onChange={(e) => setNewItemType(e.target.value)}
+                      placeholder="e.g. Office Supplies"
+                      className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Counted Qty</label>
@@ -363,6 +463,9 @@ export default function StockBalancesPage() {
           <div className="bg-white border border-slate-200 shadow-sm p-5">
             <h2 className="text-base font-semibold text-slate-800 mb-3">
               History — {historyStockNo}
+              {matchedItem?.stockNo === historyStockNo && matchedItem.description && (
+                <span className="font-normal text-slate-500"> — {matchedItem.description}</span>
+              )}
             </h2>
 
             {historyLoading ? (
@@ -440,8 +543,11 @@ export default function StockBalancesPage() {
         <div className="bg-white border border-slate-200 shadow-sm p-5">
           <h2 className="text-base font-semibold text-slate-800 mb-1">Bulk upload</h2>
           <p className="text-sm text-slate-500 mb-3">
-            Upload an .xlsx with columns StockNo | CountedQty | EffectiveDate | Reason (row 1 is
-            the header). Re-uploading the same StockNo + Effective Date overwrites that entry.
+            Upload an .xlsx with columns StockNo | CountedQty | EffectiveDate | Reason |
+            Description | Unit | UnitCost | ItemType (row 1 is the header; the last four are
+            optional, only needed for a StockNo not already in Items Master — it&apos;ll be added
+            automatically, pending admin review). Re-uploading the same StockNo + Effective Date
+            overwrites that entry.
           </p>
 
           <CsvUploadButton
@@ -464,6 +570,10 @@ export default function StockBalancesPage() {
                       <th className="py-2 pr-3">Counted Qty</th>
                       <th className="py-2 pr-3">Effective Date</th>
                       <th className="py-2 pr-3">Reason</th>
+                      <th className="py-2 pr-3">Description</th>
+                      <th className="py-2 pr-3">Unit</th>
+                      <th className="py-2 pr-3">Unit Cost</th>
+                      <th className="py-2 pr-3">Item Type</th>
                       <th className="py-2 pr-3">Status</th>
                     </tr>
                   </thead>
@@ -475,6 +585,10 @@ export default function StockBalancesPage() {
                         <td className="py-2 pr-3">{row.countedQty ?? "—"}</td>
                         <td className="py-2 pr-3">{row.effectiveDate ?? "—"}</td>
                         <td className="py-2 pr-3">{row.reason ?? "—"}</td>
+                        <td className="py-2 pr-3">{row.description ?? "—"}</td>
+                        <td className="py-2 pr-3">{row.unit ?? "—"}</td>
+                        <td className="py-2 pr-3">{row.unitCost ?? "—"}</td>
+                        <td className="py-2 pr-3">{row.itemType ?? "—"}</td>
                         <td className="py-2 pr-3">
                           {row.error
                             ? <span className="text-red-600">{row.error}</span>

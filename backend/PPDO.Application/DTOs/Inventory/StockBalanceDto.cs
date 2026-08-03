@@ -14,14 +14,27 @@ public sealed record StockBalanceDto(
     Guid RecordedByUserId,
     string? RecordedByName,
     DateTime CreatedAt,
-    DateTime UpdatedAt);
+    DateTime UpdatedAt,
+    /// <summary>True when this entry's save also auto-created a new ItemMaster row
+    /// (IsNewItem = true, pending admin review) because the StockNo wasn't cataloged yet.</summary>
+    bool ItemWasAutoCreated);
 
-/// <summary>Request body for creating a new physical-count entry.</summary>
+/// <summary>
+/// Request body for creating a new physical-count entry. Description/Unit/UnitCost/ItemType
+/// are only used when StockNo isn't found in Items Master — mirrors
+/// PurchaseRequestService.BuildItemsAsync: an unknown StockNo auto-creates a new ItemMaster
+/// row (IsNewItem = true, pending admin review) using these fields. Description and Unit are
+/// required in that case; ignored (the catalog's own values win) when the StockNo is already known.
+/// </summary>
 public sealed record CreateStockBalanceDto(
     string StockNo,
     decimal CountedQty,
     DateOnly EffectiveDate,
-    string? Reason);
+    string? Reason,
+    string? Description,
+    string? Unit,
+    decimal? UnitCost,
+    string? ItemType);
 
 /// <summary>
 /// Request body for editing an existing entry. Null fields are left unchanged.

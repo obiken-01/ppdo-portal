@@ -21,11 +21,18 @@ namespace PPDO.Application.Services;
 ///
 /// PPDO-wide: CanAccessInventory holders can create/edit/delete (no approval step, no
 /// division scope on the table).
+///
+/// Unknown StockNo handling mirrors PurchaseRequestService.BuildItemsAsync: recording a
+/// count for a StockNo not yet in Items Master auto-creates the catalog entry
+/// (IsNewItem = true, pending admin review) from the Description/Unit/UnitCost/ItemType
+/// supplied alongside the count. When the StockNo is already known, those fields are
+/// ignored — the catalog's own values win, same as the PR flow.
 /// </summary>
 public sealed class StockBalanceService : IStockBalanceService
 {
     private readonly IStockBalanceRepository _stockBalances;
     private readonly IInventoryRepository    _inventory;
+    private readonly IItemMasterRepository   _items;
     private readonly IUserRepository         _users;
     private readonly IPermissionService      _permissions;
     private readonly IExcelService           _excel;
@@ -34,6 +41,7 @@ public sealed class StockBalanceService : IStockBalanceService
     public StockBalanceService(
         IStockBalanceRepository stockBalances,
         IInventoryRepository inventory,
+        IItemMasterRepository items,
         IUserRepository users,
         IPermissionService permissions,
         IExcelService excel,
@@ -41,6 +49,7 @@ public sealed class StockBalanceService : IStockBalanceService
     {
         _stockBalances = stockBalances;
         _inventory     = inventory;
+        _items         = items;
         _users         = users;
         _permissions   = permissions;
         _excel         = excel;
@@ -88,6 +97,12 @@ public sealed class StockBalanceService : IStockBalanceService
             return ServiceResult<StockBalanceDto>.BadRequest(validationError);
 
         string stockNo = dto.StockNo.Trim();
+
+        (bool itemAutoCreated, string? itemError) = await EnsureItemMasterAsync(
+            stockNo, dto.Description, dto.Unit, dto.UnitCost, dto.ItemType, cancellationToken);
+        if (itemError is not null)
+            return ServiceResult<StockBalanceDto>.BadRequest(itemError);
+
         decimal systemOnHand = await ComputeSystemOnHandAsync(stockNo, excludeExistingVariance: 0m, cancellationToken);
 
         StockBalance entry = new()
@@ -103,13 +118,15 @@ public sealed class StockBalanceService : IStockBalanceService
         };
 
         await _stockBalances.AddAsync(entry, cancellationToken);
+        // One SaveChanges flushes both this entry and any ItemMaster row EnsureItemMasterAsync
+        // just staged — same shared AppDbContext, same pattern as BuildItemsAsync.
         await _stockBalances.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation(
             "Stock balance entry created. StockNo: {StockNo}, CountedQty: {CountedQty}, VarianceQty: {VarianceQty}, UserId: {UserId}",
             entry.StockNo, entry.CountedQty, entry.VarianceQty, requester.Id);
 
-        return ServiceResult<StockBalanceDto>.Ok(await MapToDtoAsync(entry, cancellationToken));
+        return ServiceResult<StockBalanceDto>.Ok(await MapToDtoAsync(entry, cancellationToken, itemAutoCreated));
     }
 
     // ── UpdateAsync ───────────────────────────────────────────────────────────
@@ -219,7 +236,8 @@ public sealed class StockBalanceService : IStockBalanceService
         }
 
         List<StockBalanceImportRowDto> dtoRows = rows.Select(r => new StockBalanceImportRowDto(
-            r.RowNumber, r.StockNo, r.CountedQty, r.EffectiveDate, r.Reason, r.Error)).ToList();
+            r.RowNumber, r.StockNo, r.CountedQty, r.EffectiveDate, r.Reason,
+            r.Description, r.Unit, r.UnitCost, r.ItemType, r.Error)).ToList();
 
         return ServiceResult<StockBalanceImportPreviewDto>.Ok(new StockBalanceImportPreviewDto(dtoRows));
     }
@@ -237,7 +255,7 @@ public sealed class StockBalanceService : IStockBalanceService
                 "You do not have permission to manage warehouse stock input.");
 
         int inserted = 0, updated = 0;
-        List<StockBalance> saved = new();
+        List<(StockBalance Entry, bool ItemAutoCreated)> saved = new();
 
         foreach (CreateStockBalanceDto row in dto.Rows)
         {
@@ -247,6 +265,11 @@ public sealed class StockBalanceService : IStockBalanceService
                     $"StockNo '{row.StockNo}': {validationError}");
 
             string stockNo = row.StockNo.Trim();
+
+            (bool itemAutoCreated, string? itemError) = await EnsureItemMasterAsync(
+                stockNo, row.Description, row.Unit, row.UnitCost, row.ItemType, cancellationToken);
+            if (itemError is not null)
+                return ServiceResult<StockBalanceImportResultDto>.BadRequest($"StockNo '{stockNo}': {itemError}");
 
             // Upsert by StockNo + EffectiveDate — re-uploading the same pair overwrites it.
             StockBalance? existing = await _stockBalances.FindByStockNoAndEffectiveDateAsync(
@@ -263,7 +286,7 @@ public sealed class StockBalanceService : IStockBalanceService
                 existing.Reason              = string.IsNullOrWhiteSpace(row.Reason) ? null : row.Reason.Trim();
 
                 await _stockBalances.UpdateAsync(existing, cancellationToken);
-                saved.Add(existing);
+                saved.Add((existing, itemAutoCreated));
                 updated++;
             }
             else
@@ -280,7 +303,7 @@ public sealed class StockBalanceService : IStockBalanceService
                     RecordedByUserId    = requester.Id,
                 };
                 await _stockBalances.AddAsync(entry, cancellationToken);
-                saved.Add(entry);
+                saved.Add((entry, itemAutoCreated));
                 inserted++;
             }
 
@@ -293,7 +316,11 @@ public sealed class StockBalanceService : IStockBalanceService
             "Stock balance bulk import committed. Inserted: {Inserted}, Updated: {Updated}, UserId: {UserId}",
             inserted, updated, requester.Id);
 
-        IReadOnlyList<StockBalanceDto> savedDtos = await MapToDtosAsync(saved, cancellationToken);
+        IReadOnlyDictionary<Guid, string> names = await _users.GetNamesByIdsAsync(
+            saved.Select(s => s.Entry.RecordedByUserId).Distinct().ToList(), cancellationToken);
+        IReadOnlyList<StockBalanceDto> savedDtos =
+            saved.Select(s => MapToDto(s.Entry, names, s.ItemAutoCreated)).ToList();
+
         return ServiceResult<StockBalanceImportResultDto>.Ok(
             new StockBalanceImportResultDto(inserted, updated, savedDtos));
     }
@@ -318,6 +345,56 @@ public sealed class StockBalanceService : IStockBalanceService
         return movementOnHand + otherEntriesVariance;
     }
 
+    // ── Unknown-StockNo auto-create ───────────────────────────────────────────
+
+    /// <summary>
+    /// Ensures a StockNo is cataloged. If it already exists in Items Master, does nothing.
+    /// Otherwise validates Description/Unit are present and auto-creates a new ItemMaster row
+    /// (IsNewItem = true, pending admin review) — mirrors
+    /// PurchaseRequestService.BuildItemsAsync exactly, including ReorderQty defaulting to 0.
+    /// Does not call SaveChanges — the caller's own SaveChanges (on the shared AppDbContext)
+    /// persists this alongside the StockBalance entry.
+    /// </summary>
+    private async Task<(bool AutoCreated, string? Error)> EnsureItemMasterAsync(
+        string stockNo,
+        string? description,
+        string? unit,
+        decimal? unitCost,
+        string? itemType,
+        CancellationToken cancellationToken)
+    {
+        ItemMaster? master = await _items.GetByStockNoAsync(stockNo, cancellationToken);
+        if (master is not null)
+            return (false, null);
+
+        if (string.IsNullOrWhiteSpace(description))
+            return (false, "Description is required — StockNo is not yet in Items Master.");
+        if (string.IsNullOrWhiteSpace(unit))
+            return (false, "Unit is required — StockNo is not yet in Items Master.");
+
+        ItemMaster newMaster = new()
+        {
+            Id          = Guid.NewGuid(),
+            StockNo     = stockNo,
+            Description = description.Trim(),
+            Unit        = unit.Trim(),
+            UnitCost    = unitCost ?? 0m,
+            ItemType    = string.IsNullOrWhiteSpace(itemType) ? null : itemType.Trim(),
+            IsNewItem   = true,
+            ReorderQty  = 0,
+            CreatedAt   = DateTime.UtcNow,
+            UpdatedAt   = DateTime.UtcNow,
+        };
+
+        await _items.AddAsync(newMaster, cancellationToken);
+
+        _logger.LogWarning(
+            "Unknown StockNo auto-created via warehouse stock input. StockNo: {StockNo}, flagged IsNewItem = true.",
+            stockNo);
+
+        return (true, null);
+    }
+
     // ── Validation ────────────────────────────────────────────────────────────
 
     private static string? Validate(string? stockNo, decimal countedQty, DateOnly effectiveDate)
@@ -333,11 +410,12 @@ public sealed class StockBalanceService : IStockBalanceService
 
     // ── Mapping ────────────────────────────────────────────────────────────────
 
-    private async Task<StockBalanceDto> MapToDtoAsync(StockBalance entry, CancellationToken cancellationToken)
+    private async Task<StockBalanceDto> MapToDtoAsync(
+        StockBalance entry, CancellationToken cancellationToken, bool itemWasAutoCreated = false)
     {
         IReadOnlyDictionary<Guid, string> names = await _users.GetNamesByIdsAsync(
             [entry.RecordedByUserId], cancellationToken);
-        return MapToDto(entry, names);
+        return MapToDto(entry, names, itemWasAutoCreated);
     }
 
     private async Task<IReadOnlyList<StockBalanceDto>> MapToDtosAsync(
@@ -345,10 +423,12 @@ public sealed class StockBalanceService : IStockBalanceService
     {
         IReadOnlyDictionary<Guid, string> names = await _users.GetNamesByIdsAsync(
             entries.Select(e => e.RecordedByUserId).Distinct().ToList(), cancellationToken);
-        return entries.Select(e => MapToDto(e, names)).ToList();
+        return entries.Select(e => MapToDto(e, names, itemWasAutoCreated: false)).ToList();
     }
 
-    private static StockBalanceDto MapToDto(StockBalance e, IReadOnlyDictionary<Guid, string> names) => new(
+    private static StockBalanceDto MapToDto(
+        StockBalance e, IReadOnlyDictionary<Guid, string> names, bool itemWasAutoCreated) => new(
         e.Id, e.StockNo, e.CountedQty, e.SystemOnHandAtEntry, e.VarianceQty, e.EffectiveDate,
-        e.Reason, e.RecordedByUserId, names.GetValueOrDefault(e.RecordedByUserId), e.CreatedAt, e.UpdatedAt);
+        e.Reason, e.RecordedByUserId, names.GetValueOrDefault(e.RecordedByUserId), e.CreatedAt, e.UpdatedAt,
+        itemWasAutoCreated);
 }

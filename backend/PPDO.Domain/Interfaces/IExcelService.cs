@@ -62,8 +62,12 @@ public interface IExcelService
 
     /// <summary>
     /// Parses an uploaded stock-balance bulk-upload workbook (RAL-193) — single sheet,
-    /// row 1 is the header, columns A-D: StockNo | CountedQty | EffectiveDate | Reason
-    /// (Reason optional). Pure parsing only — no DB lookups, no permission checks.
+    /// row 1 is the header, columns A-H: StockNo | CountedQty | EffectiveDate | Reason |
+    /// Description | Unit | UnitCost | ItemType. Reason/Description/Unit/UnitCost/ItemType
+    /// are all optional in the file — Description/Unit are only required when the StockNo
+    /// turns out not to be cataloged yet (validated by StockBalanceService at commit time,
+    /// same as the Description/Unit fields on the manual entry form). Pure parsing only — no
+    /// DB lookups, no permission checks.
     /// Every non-blank row is returned, even invalid ones (each carries its own optional
     /// <see cref="StockBalanceImportRow.Error"/>), so the caller can show a full preview
     /// instead of rejecting the whole file over one bad row. Stops at the first fully
@@ -170,6 +174,15 @@ public sealed record StockBalanceImportRow
     public decimal? CountedQty { get; init; }
     public DateOnly? EffectiveDate { get; init; }
     public string? Reason { get; init; }
+
+    /// <summary>Description/Unit/UnitCost/ItemType — only used when StockNo isn't already in
+    /// Items Master, to auto-create it (mirrors the GSO PR import's unknown-stock handling).
+    /// Description and Unit aren't validated here (parsing has no DB access to know whether
+    /// the StockNo is actually unknown) — StockBalanceService validates them at commit time.</summary>
+    public string? Description { get; init; }
+    public string? Unit { get; init; }
+    public decimal? UnitCost { get; init; }
+    public string? ItemType { get; init; }
 
     /// <summary>Set when this row is unusable (missing StockNo, unparseable quantity/date).
     /// Null means the row parsed cleanly.</summary>

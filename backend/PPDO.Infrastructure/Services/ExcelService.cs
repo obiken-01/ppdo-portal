@@ -825,17 +825,24 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
 
         List<StockBalanceImportRow> rows = new();
 
-        // Row 1 is the header (StockNo | CountedQty | EffectiveDate | Reason); data starts at row 2.
+        // Row 1 is the header (StockNo | CountedQty | EffectiveDate | Reason | Description |
+        // Unit | UnitCost | ItemType); data starts at row 2.
         for (int row = 2; ; row++)
         {
-            string stockNoRaw = ws.Cell(row, 1).GetString().Trim();
-            string qtyRaw     = ws.Cell(row, 2).GetString().Trim();
-            string dateRaw    = ws.Cell(row, 3).GetString().Trim();
-            string reasonRaw  = ws.Cell(row, 4).GetString().Trim();
+            string stockNoRaw     = ws.Cell(row, 1).GetString().Trim();
+            string qtyRaw         = ws.Cell(row, 2).GetString().Trim();
+            string dateRaw        = ws.Cell(row, 3).GetString().Trim();
+            string reasonRaw      = ws.Cell(row, 4).GetString().Trim();
+            string descriptionRaw = ws.Cell(row, 5).GetString().Trim();
+            string unitRaw        = ws.Cell(row, 6).GetString().Trim();
+            string unitCostRaw    = ws.Cell(row, 7).GetString().Trim();
+            string itemTypeRaw    = ws.Cell(row, 8).GetString().Trim();
 
             // A fully blank row ends the data — matches ParsePRImport's stop condition.
             if (string.IsNullOrWhiteSpace(stockNoRaw) && string.IsNullOrWhiteSpace(qtyRaw)
-                && string.IsNullOrWhiteSpace(dateRaw) && string.IsNullOrWhiteSpace(reasonRaw))
+                && string.IsNullOrWhiteSpace(dateRaw) && string.IsNullOrWhiteSpace(reasonRaw)
+                && string.IsNullOrWhiteSpace(descriptionRaw) && string.IsNullOrWhiteSpace(unitRaw)
+                && string.IsNullOrWhiteSpace(unitCostRaw) && string.IsNullOrWhiteSpace(itemTypeRaw))
                 break;
 
             List<string> rowErrors = new();
@@ -867,6 +874,10 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
                     rowErrors.Add($"EffectiveDate '{dateRaw}' is not a valid date.");
             }
 
+            decimal? unitCost = null;
+            if (!string.IsNullOrWhiteSpace(unitCostRaw) && decimal.TryParse(unitCostRaw, out decimal parsedCost))
+                unitCost = parsedCost;
+
             rows.Add(new StockBalanceImportRow
             {
                 RowNumber     = row,
@@ -874,6 +885,10 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
                 CountedQty    = countedQty,
                 EffectiveDate = effectiveDate,
                 Reason        = NullIfBlank(reasonRaw),
+                Description   = NullIfBlank(descriptionRaw),
+                Unit          = NullIfBlank(unitRaw),
+                UnitCost      = unitCost,
+                ItemType      = NullIfBlank(itemTypeRaw),
                 Error         = rowErrors.Count > 0 ? string.Join(" ", rowErrors) : null,
             });
         }

@@ -18,6 +18,12 @@ public sealed record StockBalanceImportRowDto(
     decimal? CountedQty,
     DateOnly? EffectiveDate,
     string? Reason,
+    // Only used when StockNo isn't already in Items Master — auto-creates the catalog
+    // entry at commit time. Ignored when the StockNo is already known.
+    string? Description,
+    string? Unit,
+    decimal? UnitCost,
+    string? ItemType,
     string? Error);
 
 /// <summary>
