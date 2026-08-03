@@ -8,7 +8,9 @@
  *   1. If an access token is already in memory → allow immediately.
  *   2. If not, look for a stored refresh token in localStorage.
  *      - Found  → POST /auth/refresh → store new tokens → allow.
- *      - Missing / expired → clear tokens → redirect to /login.
+ *      - Missing / expired → clear tokens → redirect to /login, carrying the
+ *        backend's failure reason (token_superseded / token_expired) as a query
+ *        param so /login can explain the logout instead of bouncing silently (RAL-198).
  *
  * After auth passes, renders the full portal shell:
  *   Sidebar (left, fixed) + Topbar (top) + main content area.
@@ -20,11 +22,12 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import axios from "axios";
 import { auth } from "@/lib/auth";
+import { getRefreshErrorReason, loginUrlWithReason } from "@/lib/auth-redirect";
 import { clearMeCache, fetchMe } from "@/lib/me-cache";
 import Sidebar from "@/components/layout/Sidebar";
 import Topbar from "@/components/layout/Topbar";
 import { ToastProvider } from "@/components/ui/Toast";
-import type { MeResponse } from "@/types";
+import type { MeResponse, RefreshErrorReason } from "@/types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api";
 
@@ -52,7 +55,10 @@ function getPageTitle(pathname: string): string {
 }
 
 // Module-level — deduplicates the silent refresh across StrictMode double-mounts.
-let _refreshInFlight: Promise<boolean> | null = null;
+// Resolves with the failure reason (RAL-198) so every awaiter — not just the one
+// that kicked off the request — can redirect with the right explanation.
+type RefreshOutcome = { ok: boolean; reason: RefreshErrorReason | null };
+let _refreshInFlight: Promise<RefreshOutcome> | null = null;
 
 export default function PortalLayout({
   children,
@@ -89,27 +95,27 @@ export default function PortalLayout({
         // the user wait 6 seconds through retry delays.
         const maxRetries = process.env.NODE_ENV === "production" ? 2 : 0;
 
-        const tryRefresh = (retries: number): Promise<boolean> =>
+        const tryRefresh = (retries: number): Promise<RefreshOutcome> =>
           axios
             .post(`${BASE_URL}/auth/refresh`, {}, { withCredentials: true })
-            .then(({ data }) => { auth.login(data); return true; })
+            .then(({ data }) => { auth.login(data); return { ok: true, reason: null }; })
             .catch((err) => {
               if (retries > 0 && axios.isAxiosError(err) && !err.response) {
-                return new Promise<boolean>((resolve) => setTimeout(resolve, 3000))
+                return new Promise<RefreshOutcome>((resolve) => setTimeout(resolve, 3000))
                   .then(() => tryRefresh(retries - 1));
               }
               clearMeCache();
               auth.logout();
-              return false;
+              return { ok: false, reason: getRefreshErrorReason(err) };
             });
 
         _refreshInFlight = tryRefresh(maxRetries).finally(() => { _refreshInFlight = null; });
       }
 
-      const ok = await _refreshInFlight;
+      const result = await _refreshInFlight;
       if (!cancelled) {
-        if (ok) setReady(true);
-        else router.replace("/login");
+        if (result.ok) setReady(true);
+        else router.replace(loginUrlWithReason(result.reason));
       }
     }
 
