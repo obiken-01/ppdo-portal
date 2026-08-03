@@ -18,6 +18,12 @@ namespace PPDO.Application.Services;
 ///   IsLowStock    = OnHand ≤ ReorderQty (and OnHand > 0)
 ///   IsOutOfStock  = OnHand ≤ 0
 ///
+/// Admin/SuperAdmin's unscoped view (division == null) additionally folds in the RAL-193
+/// warehouse physical-count ledger: OnHand = SUM(StockBalance.VarianceQty) + QtyDelivered -
+/// QtyDistributed. Staff/Observer's division-scoped view is unchanged — a PPDO-wide count
+/// can't be correctly attributed to one division's subset of movements (see
+/// StockBalanceService's class doc for the full formula rationale).
+///
 /// PR status grouping for stat cards:
 ///   "FullyDeliveredOrCompleted" = PRStatus.FullyDelivered OR PRStatus.Completed
 /// </summary>
@@ -26,18 +32,21 @@ public sealed class InventoryService : IInventoryService
     private readonly IInventoryRepository        _inventory;
     private readonly IPurchaseRequestRepository  _prs;
     private readonly IItemMasterRepository       _items;
+    private readonly IStockBalanceRepository     _stockBalances;
     private readonly ILogger<InventoryService>   _logger;
 
     public InventoryService(
         IInventoryRepository inventory,
         IPurchaseRequestRepository prs,
         IItemMasterRepository items,
+        IStockBalanceRepository stockBalances,
         ILogger<InventoryService> logger)
     {
-        _inventory = inventory;
-        _prs       = prs;
-        _items     = items;
-        _logger    = logger;
+        _inventory     = inventory;
+        _prs           = prs;
+        _items         = items;
+        _stockBalances = stockBalances;
+        _logger        = logger;
     }
 
     // ── GetStatsAsync ──────────────────────────────────────────────────────────
@@ -79,12 +88,20 @@ public sealed class InventoryService : IInventoryService
         Dictionary<string, ItemMaster> catalogMap =
             catalog.ToDictionary(i => i.StockNo, i => i);
 
+        // RAL-193: physical-count variance only applies to the unscoped (Admin/SuperAdmin)
+        // view — see class doc. Empty for Staff/Observer, so onHand below is unchanged.
+        IReadOnlyDictionary<string, decimal> varianceMap = division is null
+            ? await _stockBalances.GetTotalVarianceByStockNosAsync(
+                stockLevels.Select(l => l.StockNo).ToList(), cancellationToken)
+            : new Dictionary<string, decimal>();
+
         int inStock        = 0;
         int lowOrOutStock  = 0;
 
         foreach (ItemStockLevel level in stockLevels)
         {
-            decimal onHand = level.QtyDelivered - level.QtyDistributed;
+            decimal onHand = level.QtyDelivered - level.QtyDistributed
+                + varianceMap.GetValueOrDefault(level.StockNo, 0m);
             int reorderQty = catalogMap.TryGetValue(level.StockNo, out ItemMaster? master)
                 ? master.ReorderQty : 0;
 
@@ -149,11 +166,19 @@ public sealed class InventoryService : IInventoryService
         Dictionary<string, ItemMaster> catalogMap =
             catalog.ToDictionary(i => i.StockNo, i => i);
 
+        // RAL-193: physical-count variance only applies to the unscoped (Admin/SuperAdmin)
+        // view — see class doc. Empty for Staff/Observer, so onHand below is unchanged.
+        IReadOnlyDictionary<string, decimal> varianceMap = division is null
+            ? await _stockBalances.GetTotalVarianceByStockNosAsync(
+                stockLevels.Select(l => l.StockNo).ToList(), cancellationToken)
+            : new Dictionary<string, decimal>();
+
         List<ItemLedgerRowDto> rows = new(stockLevels.Count);
 
         foreach (ItemStockLevel level in stockLevels)
         {
-            decimal onHand = level.QtyDelivered - level.QtyDistributed;
+            decimal onHand = level.QtyDelivered - level.QtyDistributed
+                + varianceMap.GetValueOrDefault(level.StockNo, 0m);
 
             catalogMap.TryGetValue(level.StockNo, out ItemMaster? master);
             string itemName  = master?.Description ?? level.StockNo;

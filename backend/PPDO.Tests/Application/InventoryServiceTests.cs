@@ -85,9 +85,20 @@ public sealed class InventoryServiceTests
     private static InventoryService BuildSut(
         Mock<IInventoryRepository> invRepo,
         Mock<IPurchaseRequestRepository> prRepo,
-        Mock<IItemMasterRepository> itemRepo)
-        => new(invRepo.Object, prRepo.Object, itemRepo.Object,
-               NullLogger<InventoryService>.Instance);
+        Mock<IItemMasterRepository> itemRepo,
+        Mock<IStockBalanceRepository>? stockBalanceRepo = null)
+    {
+        if (stockBalanceRepo is null)
+        {
+            stockBalanceRepo = new Mock<IStockBalanceRepository>();
+            stockBalanceRepo
+                .Setup(r => r.GetTotalVarianceByStockNosAsync(
+                    It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new Dictionary<string, decimal>());
+        }
+        return new(invRepo.Object, prRepo.Object, itemRepo.Object, stockBalanceRepo.Object,
+                   NullLogger<InventoryService>.Instance);
+    }
 
     // ── Group 1 — PR stat cards ───────────────────────────────────────────────
 
@@ -444,5 +455,86 @@ public sealed class InventoryServiceTests
             It.Is<IReadOnlyCollection<string>>(s => s.Count == 1 && s.Contains("01-01")),
             It.IsAny<CancellationToken>()), Times.Once);
         itemRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // ── RAL-193 — warehouse stock input variance folding ──────────────────────
+
+    [Fact]
+    public async Task GetItemLedgerAsync_AdminView_FoldsInStockBalanceVariance()
+    {
+        // QtyDelivered=10, QtyDistributed=3 → movement on-hand = 7.
+        // A physical count contributed +5 variance → OnHand should be 12.
+        List<ItemStockLevel> levels = [ new("V01", QtyOrdered: 20, QtyDelivered: 10, QtyDistributed: 3) ];
+
+        Mock<IPurchaseRequestRepository> prRepo = new();
+        Mock<IInventoryRepository> invRepo = new();
+        invRepo.Setup(r => r.GetItemStockLevelsAsync(null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(levels);
+
+        Mock<IItemMasterRepository> itemRepo = new();
+        SetupCatalog(itemRepo, new List<ItemMaster> { MakeMaster("V01", reorderQty: 5) });
+
+        Mock<IStockBalanceRepository> stockBalanceRepo = new();
+        stockBalanceRepo.Setup(r => r.GetTotalVarianceByStockNosAsync(
+                It.Is<IReadOnlyCollection<string>>(s => s.Contains("V01")), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, decimal> { ["V01"] = 5m });
+
+        IReadOnlyList<ItemLedgerRowDto> result =
+            await BuildSut(invRepo, prRepo, itemRepo, stockBalanceRepo).GetItemLedgerAsync(MakeAdmin());
+
+        Assert.Equal(12m, result[0].OnHand);
+    }
+
+    [Fact]
+    public async Task GetItemLedgerAsync_StaffScopedView_NeverAppliesStockBalanceVariance()
+    {
+        // Same movements as above, but requested by division-scoped Staff — the PPDO-wide
+        // variance must NOT be folded in (RAL-193: only the unscoped Admin view gets it).
+        List<ItemStockLevel> levels = [ new("V01", QtyOrdered: 20, QtyDelivered: 10, QtyDistributed: 3) ];
+
+        Mock<IPurchaseRequestRepository> prRepo = new();
+        Mock<IInventoryRepository> invRepo = new();
+        invRepo.Setup(r => r.GetItemStockLevelsAsync(PlanningDiv, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(levels);
+
+        Mock<IItemMasterRepository> itemRepo = new();
+        SetupCatalog(itemRepo, new List<ItemMaster> { MakeMaster("V01", reorderQty: 5) });
+
+        Mock<IStockBalanceRepository> stockBalanceRepo = new();
+
+        IReadOnlyList<ItemLedgerRowDto> result =
+            await BuildSut(invRepo, prRepo, itemRepo, stockBalanceRepo).GetItemLedgerAsync(MakeStaff(PlanningDiv));
+
+        Assert.Equal(7m, result[0].OnHand); // unchanged: 10 - 3, no variance folded in
+        stockBalanceRepo.Verify(r => r.GetTotalVarianceByStockNosAsync(
+            It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetStatsAsync_AdminView_FoldsInStockBalanceVarianceForAlertCounts()
+    {
+        // Movement on-hand = 2 (low, since ReorderQty=5). +10 variance → 12 (in stock).
+        List<ItemStockLevel> levels = [ new("V02", QtyOrdered: 10, QtyDelivered: 10, QtyDistributed: 8) ];
+
+        Mock<IPurchaseRequestRepository> prRepo = new();
+        SetupPrStats(prRepo, new List<PurchaseRequest>(), divisionId: null);
+
+        Mock<IInventoryRepository> invRepo = new();
+        invRepo.Setup(r => r.GetItemStockLevelsAsync(null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(levels);
+
+        Mock<IItemMasterRepository> itemRepo = new();
+        SetupCatalog(itemRepo, new List<ItemMaster> { MakeMaster("V02", reorderQty: 5) });
+
+        Mock<IStockBalanceRepository> stockBalanceRepo = new();
+        stockBalanceRepo.Setup(r => r.GetTotalVarianceByStockNosAsync(
+                It.Is<IReadOnlyCollection<string>>(s => s.Contains("V02")), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, decimal> { ["V02"] = 10m });
+
+        InventoryStatsDto result =
+            await BuildSut(invRepo, prRepo, itemRepo, stockBalanceRepo).GetStatsAsync(MakeAdmin());
+
+        Assert.Equal(1, result.InventoryAlerts.InStock);
+        Assert.Equal(0, result.InventoryAlerts.LowOrOutOfStock);
     }
 }

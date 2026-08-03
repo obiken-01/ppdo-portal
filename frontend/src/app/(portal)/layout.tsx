@@ -46,6 +46,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/inventory/create-pr":       "Create Purchase Request",
   "/inventory/receive-delivery": "Receive Delivery",
   "/inventory/items-master": "Items Master",
+  "/inventory/stock-balances": "Warehouse Stock Input",
   "/inventory/pr-report":    "PR Report",
   "/admin/users":           "User Management",
 };
@@ -167,6 +168,7 @@ export default function PortalLayout({
           "/inventory/receive-delivery",
           "/inventory/items-master",
           "/inventory/distribution",
+          "/inventory/stock-balances",
           "/inventory/item-ledger",
           "/inventory/pr-register",
           "/inventory/pr-report",

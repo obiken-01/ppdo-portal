@@ -429,3 +429,59 @@ export interface DistributionCreatedResponse {
   issuedBy: string;
   remarks: string | null;
 }
+
+// ---------------------------------------------------------------------------
+// Warehouse stock input — physical-count ledger (RAL-193)
+// ---------------------------------------------------------------------------
+
+/** Mirrors StockBalanceDto */
+export interface StockBalanceResponse {
+  id: string;
+  stockNo: string;
+  countedQty: number;
+  systemOnHandAtEntry: number;
+  varianceQty: number;
+  effectiveDate: string; // "YYYY-MM-DD"
+  reason: string | null;
+  recordedByUserId: string;
+  recordedByName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Mirrors CreateStockBalanceDto */
+export interface CreateStockBalanceRequest {
+  stockNo: string;
+  countedQty: number;
+  effectiveDate: string; // "YYYY-MM-DD"
+  reason: string | null;
+}
+
+/** Mirrors UpdateStockBalanceDto */
+export interface UpdateStockBalanceRequest {
+  countedQty: number | null;
+  effectiveDate: string | null;
+  reason: string | null;
+}
+
+/** Mirrors StockBalanceImportRowDto */
+export interface StockBalanceImportRowResponse {
+  rowNumber: number;
+  stockNo: string | null;
+  countedQty: number | null;
+  effectiveDate: string | null;
+  reason: string | null;
+  error: string | null;
+}
+
+/** Mirrors StockBalanceImportPreviewDto — POST /api/inventory/stock-balances/import/preview */
+export interface StockBalanceImportPreviewResponse {
+  rows: StockBalanceImportRowResponse[];
+}
+
+/** Mirrors StockBalanceImportResultDto — POST /api/inventory/stock-balances/import/commit */
+export interface StockBalanceImportResultResponse {
+  inserted: number;
+  updated: number;
+  entries: StockBalanceResponse[];
+}

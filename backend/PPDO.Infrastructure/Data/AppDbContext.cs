@@ -70,6 +70,10 @@ public sealed class AppDbContext : DbContext
     public DbSet<ProcurementPreset> ProcurementPresets { get; set; } = null!;
     public DbSet<ProcurementPresetItem> ProcurementPresetItems { get; set; } = null!;
 
+    // ── v1.7 Warehouse stock input (RAL-193) ─────────────────────────────────
+
+    public DbSet<StockBalance> StockBalances { get; set; } = null!;
+
     // ── Model configuration ───────────────────────────────────────────────────
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

@@ -815,6 +815,72 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
         };
     }
 
+    // ── ParseStockBalanceImport ───────────────────────────────────────────────
+
+    /// <inheritdoc />
+    public IReadOnlyList<StockBalanceImportRow> ParseStockBalanceImport(Stream stream)
+    {
+        using XLWorkbook wb = new(stream);
+        IXLWorksheet ws = wb.Worksheets.First();
+
+        List<StockBalanceImportRow> rows = new();
+
+        // Row 1 is the header (StockNo | CountedQty | EffectiveDate | Reason); data starts at row 2.
+        for (int row = 2; ; row++)
+        {
+            string stockNoRaw = ws.Cell(row, 1).GetString().Trim();
+            string qtyRaw     = ws.Cell(row, 2).GetString().Trim();
+            string dateRaw    = ws.Cell(row, 3).GetString().Trim();
+            string reasonRaw  = ws.Cell(row, 4).GetString().Trim();
+
+            // A fully blank row ends the data — matches ParsePRImport's stop condition.
+            if (string.IsNullOrWhiteSpace(stockNoRaw) && string.IsNullOrWhiteSpace(qtyRaw)
+                && string.IsNullOrWhiteSpace(dateRaw) && string.IsNullOrWhiteSpace(reasonRaw))
+                break;
+
+            List<string> rowErrors = new();
+
+            if (string.IsNullOrWhiteSpace(stockNoRaw))
+                rowErrors.Add("StockNo is required.");
+
+            decimal? countedQty = null;
+            if (string.IsNullOrWhiteSpace(qtyRaw))
+                rowErrors.Add("CountedQty is required.");
+            else if (!decimal.TryParse(qtyRaw, out decimal qty) || qty < 0)
+                rowErrors.Add($"CountedQty must be a non-negative number (got '{qtyRaw}').");
+            else
+                countedQty = qty;
+
+            DateOnly? effectiveDate = null;
+            if (string.IsNullOrWhiteSpace(dateRaw))
+            {
+                rowErrors.Add("EffectiveDate is required.");
+            }
+            else
+            {
+                IXLCell dateCell = ws.Cell(row, 3);
+                if (dateCell.DataType == XLDataType.DateTime)
+                    effectiveDate = DateOnly.FromDateTime(dateCell.GetDateTime());
+                else if (DateTime.TryParse(dateRaw, out DateTime parsed))
+                    effectiveDate = DateOnly.FromDateTime(parsed);
+                else
+                    rowErrors.Add($"EffectiveDate '{dateRaw}' is not a valid date.");
+            }
+
+            rows.Add(new StockBalanceImportRow
+            {
+                RowNumber     = row,
+                StockNo       = NullIfBlank(stockNoRaw),
+                CountedQty    = countedQty,
+                EffectiveDate = effectiveDate,
+                Reason        = NullIfBlank(reasonRaw),
+                Error         = rowErrors.Count > 0 ? string.Join(" ", rowErrors) : null,
+            });
+        }
+
+        return rows;
+    }
+
     // ── Private helpers ───────────────────────────────────────────────────────
 
     /// <summary>

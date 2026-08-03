@@ -59,6 +59,17 @@ public interface IExcelService
     /// export or has no valid item rows.
     /// </summary>
     GsoPRImportRow ParseGsoPRImport(Stream stream);
+
+    /// <summary>
+    /// Parses an uploaded stock-balance bulk-upload workbook (RAL-193) — single sheet,
+    /// row 1 is the header, columns A-D: StockNo | CountedQty | EffectiveDate | Reason
+    /// (Reason optional). Pure parsing only — no DB lookups, no permission checks.
+    /// Every non-blank row is returned, even invalid ones (each carries its own optional
+    /// <see cref="StockBalanceImportRow.Error"/>), so the caller can show a full preview
+    /// instead of rejecting the whole file over one bad row. Stops at the first fully
+    /// blank row.
+    /// </summary>
+    IReadOnlyList<StockBalanceImportRow> ParseStockBalanceImport(Stream stream);
 }
 
 // ── Import data models ────────────────────────────────────────────────────────
@@ -145,6 +156,24 @@ public sealed record PRItemImportRow
     /// Application layer sets IsNewItem = true on the resulting ItemMaster entry.
     /// </summary>
     public bool IsUnknownStock { get; init; }
+}
+
+/// <summary>
+/// Raw data for one row parsed from an uploaded stock-balance bulk-upload workbook
+/// (RAL-193). <see cref="RowNumber"/> is the 1-based Excel row (header is row 1, so data
+/// starts at row 2) — used to point the user back at the offending row in the preview.
+/// </summary>
+public sealed record StockBalanceImportRow
+{
+    public required int RowNumber { get; init; }
+    public string? StockNo { get; init; }
+    public decimal? CountedQty { get; init; }
+    public DateOnly? EffectiveDate { get; init; }
+    public string? Reason { get; init; }
+
+    /// <summary>Set when this row is unusable (missing StockNo, unparseable quantity/date).
+    /// Null means the row parsed cleanly.</summary>
+    public string? Error { get; init; }
 }
 
 /// <summary>

@@ -277,6 +277,15 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
                 )}
                 {hasInventory && (
                   <Link
+                    href="/inventory/stock-balances"
+                    className={childLinkCls(isActive("/inventory/stock-balances"))}
+                  >
+                    <span className="text-xs">•</span>
+                    <span className="truncate">Warehouse Stock Input</span>
+                  </Link>
+                )}
+                {hasInventory && (
+                  <Link
                     href="/inventory/item-ledger"
                     className={childLinkCls(isActive("/inventory/item-ledger"))}
                   >
