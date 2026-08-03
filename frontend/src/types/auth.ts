@@ -10,6 +10,19 @@ export interface LoginResponse {
   expiresInSeconds: number;
 }
 
+/**
+ * Reason for a failed POST /auth/refresh (RAL-198), mirrors
+ * PPDO.Application/DTOs/Auth/RefreshErrorDto.cs.
+ *   token_superseded — a later login/refresh (elsewhere, or another device/tab)
+ *                       overwrote this refresh token.
+ *   token_expired    — the token matched but is past its natural expiry.
+ */
+export type RefreshErrorReason = "token_superseded" | "token_expired";
+
+export interface RefreshErrorResponse {
+  reason: RefreshErrorReason;
+}
+
 export interface MeResponse {
   userId: string;
   fullName: string;

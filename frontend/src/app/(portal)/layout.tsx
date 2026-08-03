@@ -6,9 +6,14 @@
  * Auth guard: every route inside (portal)/ requires a valid JWT.
  * On mount:
  *   1. If an access token is already in memory → allow immediately.
- *   2. If not, look for a stored refresh token in localStorage.
- *      - Found  → POST /auth/refresh → store new tokens → allow.
- *      - Missing / expired → clear tokens → redirect to /login.
+ *   2. If not, attempt POST /auth/refresh (httpOnly cookie sent automatically).
+ *      - Success → store new tokens → allow.
+ *      - Definitive failure (401 — token superseded or expired) → clear tokens →
+ *        redirect to /login, carrying the reason as a query param so /login can
+ *        explain the logout instead of bouncing silently (RAL-198).
+ *      - Network error (no response at all — cold start) → the refresh cookie was
+ *        never proven invalid, so don't clear anything; redirect to /reconnecting
+ *        to retry instead of forcing a logout (RAL-199).
  *
  * After auth passes, renders the full portal shell:
  *   Sidebar (left, fixed) + Topbar (top) + main content area.
@@ -16,15 +21,16 @@
  * the current user's name, role, and permission-based nav items.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import axios from "axios";
 import { auth } from "@/lib/auth";
+import { classifyRefreshFailure, loginUrlWithReason, reconnectingUrl } from "@/lib/auth-redirect";
 import { clearMeCache, fetchMe } from "@/lib/me-cache";
 import Sidebar from "@/components/layout/Sidebar";
 import Topbar from "@/components/layout/Topbar";
 import { ToastProvider } from "@/components/ui/Toast";
-import type { MeResponse } from "@/types";
+import type { MeResponse, RefreshErrorReason } from "@/types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api";
 
@@ -52,7 +58,13 @@ function getPageTitle(pathname: string): string {
 }
 
 // Module-level — deduplicates the silent refresh across StrictMode double-mounts.
-let _refreshInFlight: Promise<boolean> | null = null;
+// Resolves with enough detail (RAL-198/RAL-199) so every awaiter — not just the
+// one that kicked off the request — can redirect with the right explanation.
+type RefreshOutcome =
+  | { ok: true }
+  | { ok: false; kind: "unreachable" }
+  | { ok: false; kind: "unauthorized"; reason: RefreshErrorReason | null };
+let _refreshInFlight: Promise<RefreshOutcome> | null = null;
 
 export default function PortalLayout({
   children,
@@ -61,6 +73,11 @@ export default function PortalLayout({
 }) {
   const router   = useRouter();
   const pathname = usePathname();
+  // Read inside the auth-guard effect below without adding pathname as a
+  // dependency — that effect should only ever run once per unauthenticated
+  // mount, not on every in-portal navigation.
+  const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
   const [ready, setReady] = useState(false);
   const [me, setMe]       = useState<MeResponse | null>(null);
   // Sidebar drawer (below lg — RAL-187). No effect at lg+, where the sidebar
@@ -85,31 +102,39 @@ export default function PortalLayout({
         //
         // Production: retry up to 2× with a 3-second delay to handle Azure Functions
         // cold starts (Consumption plan). Development: 0 retries — fail fast so a
-        // restarted local server redirects to /login immediately instead of making
-        // the user wait 6 seconds through retry delays.
+        // restarted local server redirects immediately instead of making the
+        // developer wait through retry delays.
         const maxRetries = process.env.NODE_ENV === "production" ? 2 : 0;
 
-        const tryRefresh = (retries: number): Promise<boolean> =>
+        const tryRefresh = (retries: number): Promise<RefreshOutcome> =>
           axios
             .post(`${BASE_URL}/auth/refresh`, {}, { withCredentials: true })
-            .then(({ data }) => { auth.login(data); return true; })
+            .then(({ data }) => { auth.login(data); return { ok: true } as const; })
             .catch((err) => {
               if (retries > 0 && axios.isAxiosError(err) && !err.response) {
-                return new Promise<boolean>((resolve) => setTimeout(resolve, 3000))
+                return new Promise<RefreshOutcome>((resolve) => setTimeout(resolve, 3000))
                   .then(() => tryRefresh(retries - 1));
+              }
+
+              const failure = classifyRefreshFailure(err);
+              if (failure.kind === "unreachable") {
+                // Never proven invalid — leave tokens/cache alone, RAL-199's
+                // /reconnecting page will retry the same call.
+                return { ok: false, kind: "unreachable" } as const;
               }
               clearMeCache();
               auth.logout();
-              return false;
+              return { ok: false, kind: "unauthorized", reason: failure.reason } as const;
             });
 
         _refreshInFlight = tryRefresh(maxRetries).finally(() => { _refreshInFlight = null; });
       }
 
-      const ok = await _refreshInFlight;
+      const result = await _refreshInFlight;
       if (!cancelled) {
-        if (ok) setReady(true);
-        else router.replace("/login");
+        if (result.ok) setReady(true);
+        else if (result.kind === "unreachable") router.replace(reconnectingUrl(pathnameRef.current));
+        else router.replace(loginUrlWithReason(result.reason));
       }
     }
 
