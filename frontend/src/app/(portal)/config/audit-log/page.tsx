@@ -26,6 +26,7 @@ import { useRouter } from "next/navigation";
 import { fetchMe } from "@/lib/me-cache";
 import { configErrorMessage, listAuditLog, listAuditLogTableNames } from "@/lib/config";
 import DataTable, { type Column } from "@/components/ui/DataTable";
+import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import type { AuditLogEntry } from "@/types";
 
 const PAGE_SIZE = 50;
@@ -319,13 +320,10 @@ export default function AuditLogPage() {
     <div className="min-h-full bg-slate-100 font-sans">
       <div className="max-w-7xl mx-auto px-6 py-6 space-y-4">
         {/* Header */}
-        <div>
-          <h1 className="text-lg font-bold text-slate-800">Audit Log</h1>
-          <p className="text-sm text-slate-600">
-            Every recorded create, update, and deactivation across Configuration, Budget
-            Planning, and User Management.
-          </p>
-        </div>
+        <ConfigPageHeader
+          title="Audit Log"
+          description="Every recorded create, update, and deactivation across Configuration, Budget Planning, and User Management."
+        />
 
         {/* Filter bar */}
         <div className="flex flex-wrap items-end gap-3 bg-white border border-slate-200 px-4 py-3">
@@ -435,6 +433,7 @@ export default function AuditLogPage() {
           emptyMessage={filtersActive ? "No audit entries match your filters." : "No audit entries yet."}
           rowNoun={["entry", "entries"]}
           serverPagination={{ page, pageSize: PAGE_SIZE, totalCount, onPageChange: setPage }}
+          minWidth={950}
         />
       </div>
     </div>
