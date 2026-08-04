@@ -856,7 +856,11 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
         string? project  = codedLines.Count >= 3
             ? string.Join("; ", codedLines.Skip(1).Take(codedLines.Count - 2))
             : null;
-        string? accountNo = hierarchyLines.FirstOrDefault(l => !l.Contains(" - "));
+        // Must actually look like an account code (digits/spaces/dashes/dots, e.g.
+        // "5 02 03 010"), not just "any line without ' - '" — mirrors the PDF parser's identical
+        // fix (RAL-200 follow-up): a stray non-coded prose line should never be mistaken for
+        // the account code just because it happens to come first.
+        string? accountNo = hierarchyLines.FirstOrDefault(l => !l.Contains(" - ") && IsAccountCodeShape(l));
 
         string? aipCode = null;
         if (activity is not null)
@@ -1239,6 +1243,18 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
 
     private static string? NullIfBlank(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    /// <summary>
+    /// True for a short digits/spaces/dashes/dots line like "5 02 03 010" or "5-02-03-010" —
+    /// the shape a real account code takes. False for prose (contains letters) regardless of
+    /// length. Mirrors PdfService's identical helper (both parsers share this heuristic).
+    /// </summary>
+    private static bool IsAccountCodeShape(string line)
+    {
+        string trimmed = line.Trim();
+        return trimmed.Length is > 0 and <= 20
+            && trimmed.All(c => char.IsDigit(c) || c is ' ' or '-' or '.');
+    }
 
     /// <summary>
     /// Returns the fiscal quarter label for a given date.

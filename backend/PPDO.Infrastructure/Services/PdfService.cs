@@ -135,7 +135,12 @@ public sealed class PdfService : IPdfService
         string? project  = codedLines.Count >= 3
             ? string.Join("; ", codedLines.Skip(1).Take(codedLines.Count - 2))
             : null;
-        string? accountNo = hierarchyLines.FirstOrDefault(l => !l.Contains(" - "));
+        // Must actually look like an account code (digits/spaces/dashes/dots, e.g.
+        // "5 02 03 010"), not just "any line without ' - '". A long Activity description that
+        // wraps across several PDF lines occasionally leaves one continuation line un-merged
+        // by the row-wrap logic above — that orphaned prose line has no " - " either, and
+        // would otherwise be misread as the account code since it's found first.
+        string? accountNo = hierarchyLines.FirstOrDefault(l => !l.Contains(" - ") && IsAccountCodeShape(l));
 
         string? aipCode = null;
         if (activity is not null)
@@ -258,4 +263,16 @@ public sealed class PdfService : IPdfService
 
     private static string? NullIfBlank(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    /// <summary>
+    /// True for a short digits/spaces/dashes/dots line like "5 02 03 010" or "5-02-03-010" —
+    /// the shape a real account code takes. False for prose (contains letters) regardless of
+    /// length, so an orphaned Activity-description continuation line is never mistaken for one.
+    /// </summary>
+    private static bool IsAccountCodeShape(string line)
+    {
+        string trimmed = line.Trim();
+        return trimmed.Length is > 0 and <= 20
+            && trimmed.All(c => char.IsDigit(c) || c is ' ' or '-' or '.');
+    }
 }

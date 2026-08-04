@@ -942,6 +942,43 @@ public sealed class PurchaseRequestServiceTests
         Assert.Equal(1, result.StatusCounts.Completed);
     }
 
+    // ── Field length validation ───────────────────────────────────────────────
+    //
+    // Regression guard: an oversized field (e.g. a GSO PDF/Excel import misreading a long
+    // description into a short field like AccountNo) must fail with a clear BadRequest, not
+    // an unhandled SqlException 500 from EF hitting the DB column's MaxLength constraint.
+
+    [Fact]
+    public async Task CreateAsync_AccountNoExceeds50Chars_ReturnsBadRequest_NeverHitsRepository()
+    {
+        Mock<IPurchaseRequestRepository> prRepo = RepoPRThatSaves();
+        CreatePRDto dto = ValidDto("Administrative Division") with
+        {
+            AccountNo = new string('x', 51),
+        };
+
+        ServiceResult<PRResponseDto> result = await BuildSut(prRepo).CreateAsync(MakeAdmin(), dto);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("Account No.", result.Error);
+        prRepo.Verify(r => r.AddAsync(It.IsAny<PurchaseRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_AccountTitleExceeds200Chars_ReturnsBadRequest_NeverSaves()
+    {
+        PurchaseRequest pr = MakePR("101-1041-GF-2026-06-01-009");
+        Mock<IPurchaseRequestRepository> prRepo = RepoPRThatSaves();
+        prRepo.Setup(r => r.GetWithItemsAsync(pr.Id, It.IsAny<CancellationToken>())).ReturnsAsync(pr);
+
+        ServiceResult<PRResponseDto> result = await BuildSut(prRepo).UpdateAsync(
+            MakeAdmin(), pr.Id, new UpdatePRDto { AccountTitle = new string('x', 201) });
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("Account Title", result.Error);
+        prRepo.Verify(r => r.UpdateAsync(It.IsAny<PurchaseRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     // ── Audit logging (RAL-200) ───────────────────────────────────────────────
 
     [Fact]

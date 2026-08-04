@@ -281,6 +281,10 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
             return ServiceResult<PRResponseDto>.BadRequest(
                 "A Purchase Request must have at least one line item.");
 
+        string? lengthError = ValidateFieldLengths(dto);
+        if (lengthError is not null)
+            return ServiceResult<PRResponseDto>.BadRequest(lengthError);
+
         DateTime manilaNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, ManilaZone);
         string prNo = !string.IsNullOrWhiteSpace(dto.PrNo)
             ? dto.PrNo.Trim()
@@ -356,6 +360,10 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         if (pr.Status != PRStatus.Open)
             return ServiceResult<PRResponseDto>.BadRequest(
                 "Only Open Purchase Requests can be updated.");
+
+        string? lengthError = ValidateFieldLengths(dto);
+        if (lengthError is not null)
+            return ServiceResult<PRResponseDto>.BadRequest(lengthError);
 
         DateTime utcNow     = DateTime.UtcNow;
         DateTime manilaNow  = TimeZoneInfo.ConvertTimeFromUtc(utcNow, ManilaZone);
@@ -765,6 +773,50 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
     }
 
     // ── Private helpers ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Validates string fields against their DB column max lengths (see
+    /// PurchaseRequestConfiguration) before they ever reach EF. Without this, an oversized
+    /// value — e.g. a GSO PDF/Excel import misreading a long description into a short field
+    /// like AccountNo — surfaces as a raw, unhandled SqlException 500 instead of a clear
+    /// validation error the user can actually act on.
+    /// </summary>
+    private static string? ValidateFieldLength(string field, string? value, int maxLength) =>
+        value is not null && value.Length > maxLength
+            ? $"{field} must be {maxLength} characters or fewer (got {value.Length})."
+            : null;
+
+    private static string? ValidateFieldLengths(CreatePRDto dto) =>
+        ValidateFieldLength("Department", dto.Department, 100)
+        ?? ValidateFieldLength("Fund", dto.Fund, 100)
+        ?? ValidateFieldLength("Requested By", dto.RequestedBy, 100)
+        ?? ValidateFieldLength("Position", dto.Position, 100)
+        ?? ValidateFieldLength("Approved By", dto.ApprovedBy, 100)
+        ?? ValidateFieldLength("Approving Position", dto.ApprovingPosition, 100)
+        ?? ValidateFieldLength("AIP Code", dto.AIPCode, 50)
+        ?? ValidateFieldLength("Account No.", dto.AccountNo, 50)
+        ?? ValidateFieldLength("Account Title", dto.AccountTitle, 200)
+        ?? ValidateFieldLength("Program", dto.Program, 120)
+        ?? ValidateFieldLength("Project", dto.Project, 120)
+        ?? ValidateFieldLength("Activity", dto.Activity, 120)
+        ?? ValidateFieldLength("SAI No.", dto.SAINo, 50)
+        ?? ValidateFieldLength("ALOBS No.", dto.ALOBSNo, 50);
+
+    private static string? ValidateFieldLengths(UpdatePRDto dto) =>
+        ValidateFieldLength("Department", dto.Department, 100)
+        ?? ValidateFieldLength("Fund", dto.Fund, 100)
+        ?? ValidateFieldLength("Requested By", dto.RequestedBy, 100)
+        ?? ValidateFieldLength("Position", dto.Position, 100)
+        ?? ValidateFieldLength("Approved By", dto.ApprovedBy, 100)
+        ?? ValidateFieldLength("Approving Position", dto.ApprovingPosition, 100)
+        ?? ValidateFieldLength("AIP Code", dto.AIPCode, 50)
+        ?? ValidateFieldLength("Account No.", dto.AccountNo, 50)
+        ?? ValidateFieldLength("Account Title", dto.AccountTitle, 200)
+        ?? ValidateFieldLength("Program", dto.Program, 120)
+        ?? ValidateFieldLength("Project", dto.Project, 120)
+        ?? ValidateFieldLength("Activity", dto.Activity, 120)
+        ?? ValidateFieldLength("SAI No.", dto.SAINo, 50)
+        ?? ValidateFieldLength("ALOBS No.", dto.ALOBSNo, 50);
 
     /// <summary>
     /// Generates the next PR number: 101-1041-GF-YYYY-MM-DD-XXX.
