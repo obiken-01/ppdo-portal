@@ -19,7 +19,9 @@ public interface IExcelService
 {
     /// <summary>
     /// Generates a blank PR Excel template (.xlsx) for user download.
-    /// Yellow cells = user fills in. Gray cells = auto-fill / do not edit.
+    /// Deliberately plain (RAL-195, v1.7.0) — no fill colours, matching the look of a real
+    /// GSO PR export: bold labels/headers, thin borders marking the cells to fill in, and
+    /// Excel's own gridlines visible throughout.
     /// One worksheet per PR — users duplicate the sheet tab for multiple PRs.
     /// Returns the file content as a byte array.
     /// </summary>
