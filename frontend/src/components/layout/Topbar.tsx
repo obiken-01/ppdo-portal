@@ -40,6 +40,7 @@ const SECTIONS: Section[] = [
       { prefix: "/inventory/distribution",     label: "Distribution" },
       { prefix: "/inventory/item-ledger",      label: "Stock Overview" },
       { prefix: "/inventory/pr-register",      label: "PR List" },
+      { prefix: "/inventory/stock-balances",   label: "Warehouse Stock Input" },
     ],
   },
   {

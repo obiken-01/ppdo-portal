@@ -119,6 +119,84 @@ public sealed class StockBalanceServiceTests
         string? description = null, string? unit = null, decimal? unitCost = null, string? itemType = null)
         => new(stockNo, countedQty, effectiveDate, reason, description, unit, unitCost, itemType);
 
+    // ── GetSystemOnHandAsync ──────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetSystemOnHandAsync_WithoutCanAccessInventory_ReturnsForbidden()
+    {
+        Mock<IStockBalanceRepository> stockRepo = RepoThatSaves();
+        Mock<IInventoryRepository> invRepo = InventoryReturning(EmptyLevel("A01"));
+
+        ServiceResult<SystemOnHandDto> result = await BuildSut(stockRepo, invRepo).GetSystemOnHandAsync(
+            MakeStaffNoInventory(), "A01");
+
+        Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
+    }
+
+    [Fact]
+    public async Task GetSystemOnHandAsync_ReturnsMovementOnHandPlusExistingVariance()
+    {
+        // QtyDelivered=20, QtyDistributed=5 → movement on-hand = 15. Existing entries
+        // already contributed +5 variance → current system on-hand = 20. This must equal
+        // exactly what CreateAsync would compute as SystemOnHandAtEntry for a new entry
+        // right now — it's the same reference value shown to the user before they submit.
+        Mock<IStockBalanceRepository> stockRepo = RepoThatSaves();
+        stockRepo.Setup(r => r.GetTotalVarianceByStockNosAsync(
+                It.Is<IReadOnlyCollection<string>>(s => s.Contains("B01")), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, decimal> { ["B01"] = 5m });
+
+        Mock<IInventoryRepository> invRepo = InventoryReturning(new ItemStockLevel("B01", 20m, 20m, 5m));
+
+        ServiceResult<SystemOnHandDto> result = await BuildSut(stockRepo, invRepo).GetSystemOnHandAsync(
+            MakeAdmin(), "B01");
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("B01", result.Value!.StockNo);
+        Assert.Equal(20m, result.Value.OnHand);
+    }
+
+    [Fact]
+    public async Task GetSystemOnHandAsync_BlankStockNo_ReturnsBadRequest()
+    {
+        Mock<IStockBalanceRepository> stockRepo = RepoThatSaves();
+        Mock<IInventoryRepository> invRepo = new();
+
+        ServiceResult<SystemOnHandDto> result = await BuildSut(stockRepo, invRepo).GetSystemOnHandAsync(
+            MakeAdmin(), "   ");
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    // ── GetImportTemplateAsync ─────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetImportTemplateAsync_WithoutCanAccessInventory_ReturnsForbidden()
+    {
+        Mock<IStockBalanceRepository> stockRepo = RepoThatSaves();
+        Mock<IInventoryRepository> invRepo = new();
+
+        ServiceResult<byte[]> result = await BuildSut(stockRepo, invRepo).GetImportTemplateAsync(
+            MakeStaffNoInventory());
+
+        Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
+    }
+
+    [Fact]
+    public async Task GetImportTemplateAsync_ReturnsBytesFromExcelService()
+    {
+        Mock<IStockBalanceRepository> stockRepo = RepoThatSaves();
+        Mock<IInventoryRepository> invRepo = new();
+        byte[] expectedBytes = [1, 2, 3];
+        Mock<IExcelService> excelRepo = new();
+        excelRepo.Setup(e => e.GenerateStockBalanceImportTemplate()).Returns(expectedBytes);
+
+        ServiceResult<byte[]> result = await BuildSut(
+            stockRepo, invRepo, excelRepo: excelRepo).GetImportTemplateAsync(MakeAdmin());
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(expectedBytes, result.Value);
+    }
+
     // ── CreateAsync — permission ──────────────────────────────────────────────
 
     [Fact]
@@ -234,6 +312,35 @@ public sealed class StockBalanceServiceTests
         Assert.Equal(admin.Id, result.Value!.RecordedByUserId);
         stockRepo.Verify(r => r.AddAsync(It.IsAny<StockBalance>(), It.IsAny<CancellationToken>()), Times.Once);
         stockRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // ── CreateAsync — duplicate (StockNo, EffectiveDate) ──────────────────────
+
+    [Fact]
+    public async Task CreateAsync_EntryAlreadyExistsForStockNoAndDate_ReturnsConflict_NeverThrows()
+    {
+        // Bug reported after RAL-193 ship: recording a second count for a StockNo + date that
+        // already had one hit the DB's unique index and threw an unhandled DbUpdateException
+        // instead of a friendly error. The single-entry form has no upsert semantics (unlike
+        // bulk import), so a duplicate must be rejected explicitly before AddAsync.
+        DateOnly today = DateOnly.FromDateTime(DateTime.UtcNow);
+        StockBalance existing = new()
+        {
+            Id = Guid.NewGuid(), StockNo = "D01", CountedQty = 5m, SystemOnHandAtEntry = 0m,
+            VarianceQty = 5m, EffectiveDate = today, RecordedByUserId = Guid.NewGuid(),
+        };
+
+        Mock<IStockBalanceRepository> stockRepo = RepoThatSaves();
+        stockRepo.Setup(r => r.FindByStockNoAndEffectiveDateAsync("D01", today, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existing);
+        Mock<IInventoryRepository> invRepo = InventoryReturning(EmptyLevel("D01"));
+
+        ServiceResult<StockBalanceDto> result = await BuildSut(stockRepo, invRepo).CreateAsync(
+            MakeAdmin(), MakeCreateDto("D01", 8m, today, null));
+
+        Assert.Equal(ServiceErrorCode.Conflict, result.Code);
+        stockRepo.Verify(r => r.AddAsync(It.IsAny<StockBalance>(), It.IsAny<CancellationToken>()), Times.Never);
+        stockRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     // ── CreateAsync — unknown StockNo auto-creates Items Master entry ────────

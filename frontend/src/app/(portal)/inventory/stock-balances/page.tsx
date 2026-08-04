@@ -21,12 +21,15 @@
  * Access guard: canAccessInventory permission required.
  *
  * API endpoints (StockBalanceFunctions.cs):
- *   GET    /api/inventory/stock-balances?stockNo=        → history for one item
- *   POST   /api/inventory/stock-balances                 → record a new count
- *   PUT    /api/inventory/stock-balances/{id}             → edit a count
- *   DELETE /api/inventory/stock-balances/{id}             → remove a count
- *   POST   /api/inventory/stock-balances/import/preview   → parse an uploaded workbook
- *   POST   /api/inventory/stock-balances/import/commit    → persist the reviewed rows
+ *   GET    /api/inventory/stock-balances?stockNo=              → history for one item
+ *   GET    /api/inventory/stock-balances/system-on-hand?stockNo= → current computed on-hand
+ *                                                                  (reference shown before submit)
+ *   POST   /api/inventory/stock-balances                       → record a new count
+ *   PUT    /api/inventory/stock-balances/{id}                   → edit a count
+ *   DELETE /api/inventory/stock-balances/{id}                   → remove a count
+ *   POST   /api/inventory/stock-balances/import/preview         → parse an uploaded workbook
+ *   POST   /api/inventory/stock-balances/import/commit          → persist the reviewed rows
+ *   GET    /api/inventory/stock-balances/import/template        → download the blank .xlsx template
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -43,6 +46,7 @@ import type {
   StockBalanceImportResultResponse,
   StockBalanceImportRowResponse,
   StockBalanceResponse,
+  SystemOnHandResponse,
   UpdateStockBalanceRequest,
 } from "@/types";
 
@@ -91,6 +95,7 @@ export default function StockBalancesPage() {
   function handleStockNoInput(value: string) {
     setStockNo(value);
     setMatchedItem(null);
+    setCurrentOnHand(null);
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (value.trim().length < 2) { setSuggestions([]); return; }
@@ -116,6 +121,26 @@ export default function StockBalancesPage() {
     setMatchedItem(item);
     setSuggestions([]);
     loadHistory(item.stockNo);
+    loadSystemOnHand(item.stockNo);
+  }
+
+  // ── Current system on-hand (reference, shown before the user submits a count) ────
+
+  const [currentOnHand, setCurrentOnHand] = useState<number | null>(null);
+  const [currentOnHandLoading, setCurrentOnHandLoading] = useState(false);
+
+  async function loadSystemOnHand(forStockNo: string) {
+    setCurrentOnHandLoading(true);
+    try {
+      const { data } = await api.get<SystemOnHandResponse>(
+        `/inventory/stock-balances/system-on-hand?stockNo=${encodeURIComponent(forStockNo)}`
+      );
+      setCurrentOnHand(data.onHand);
+    } catch {
+      setCurrentOnHand(null);
+    } finally {
+      setCurrentOnHandLoading(false);
+    }
   }
 
   // ── History (reconciliation view) ─────────────────────────────────────────
@@ -188,6 +213,9 @@ export default function StockBalancesPage() {
       }
       setCountedQty("");
       setReason("");
+      // The just-saved entry closes the gap — system on-hand for this StockNo is now
+      // exactly what was counted, without a round-trip to re-fetch it.
+      setCurrentOnHand(data.countedQty);
       loadHistory(trimmedStockNo);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: string } })?.response?.data ?? "Failed to record count.";
@@ -256,6 +284,26 @@ export default function StockBalancesPage() {
   const [previewRows, setPreviewRows] = useState<StockBalanceImportRowResponse[] | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [committing, setCommitting] = useState(false);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
+
+  async function handleDownloadTemplate() {
+    setDownloadingTemplate(true);
+    try {
+      const response = await api.get("/inventory/stock-balances/import/template", {
+        responseType: "blob",
+      });
+      const url  = URL.createObjectURL(response.data as Blob);
+      const link = document.createElement("a");
+      link.href  = url;
+      link.download = "Stock_Balance_Import_Template.xlsx";
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Download failed", "Could not download the template. Please try again.");
+    } finally {
+      setDownloadingTemplate(false);
+    }
+  }
 
   async function handleFileSelect(file: File) {
     setPreviewing(true);
@@ -363,6 +411,12 @@ export default function StockBalancesPage() {
               <div className="sm:col-span-4 -mt-1 text-xs text-slate-500">
                 Unit: <span className="font-medium text-slate-700">{matchedItem.unit}</span>
                 {" · "}Unit Cost: <span className="font-medium text-slate-700">₱{matchedItem.unitCost.toFixed(2)}</span>
+                {" · "}Current system on-hand:{" "}
+                {currentOnHandLoading ? (
+                  <span className="italic">loading…</span>
+                ) : (
+                  <span className="font-medium text-slate-700">{currentOnHand ?? "—"}</span>
+                )}
               </div>
             )}
 
@@ -550,12 +604,23 @@ export default function StockBalancesPage() {
             overwrites that entry.
           </p>
 
-          <CsvUploadButton
-            label="Upload .xlsx"
-            accept=".xlsx"
-            disabled={previewing}
-            onSelect={handleFileSelect}
-          />
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={handleDownloadTemplate}
+              disabled={downloadingTemplate}
+              className="flex items-center gap-2 px-4 py-2 text-sm border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-sm transition-colors disabled:opacity-60"
+            >
+              <span>⬇</span>
+              Download Template
+            </button>
+
+            <CsvUploadButton
+              label="Upload .xlsx"
+              accept=".xlsx"
+              disabled={previewing}
+              onSelect={handleFileSelect}
+            />
+          </div>
 
           {previewing && <p className="text-sm text-slate-500 mt-3">Parsing file…</p>}
 

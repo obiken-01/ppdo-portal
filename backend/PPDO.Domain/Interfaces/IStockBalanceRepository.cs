@@ -26,6 +26,16 @@ public interface IStockBalanceRepository : IRepository<StockBalance>
         IReadOnlyCollection<string> stockNos, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Returns SUM(VarianceQty) grouped by StockNo for every StockNo that has at least one
+    /// stock_balances entry — unfiltered. Used by InventoryService's unscoped (Admin/
+    /// SuperAdmin) view to surface StockNos recorded purely via warehouse stock input that
+    /// never had any PR/delivery activity, and are therefore otherwise absent from
+    /// IInventoryRepository.GetItemStockLevelsAsync entirely.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, decimal>> GetAllVarianceTotalsAsync(
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Looks up the entry matching a StockNo + EffectiveDate pair exactly — the bulk-import
     /// upsert key (re-uploading the same StockNo + date overwrites that entry).
     /// </summary>

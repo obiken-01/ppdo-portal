@@ -40,6 +40,18 @@ public sealed class StockBalanceRepository
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<string, decimal>> GetAllVarianceTotalsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        List<StockNoVarianceTotal> totals = await _context.Set<StockBalance>()
+            .GroupBy(b => b.StockNo)
+            .Select(g => new StockNoVarianceTotal(g.Key, g.Sum(b => b.VarianceQty)))
+            .ToListAsync(cancellationToken);
+
+        return totals.ToDictionary(t => t.StockNo, t => t.Total);
+    }
+
+    /// <inheritdoc />
     public async Task<StockBalance?> FindByStockNoAndEffectiveDateAsync(
         string stockNo,
         DateOnly effectiveDate,

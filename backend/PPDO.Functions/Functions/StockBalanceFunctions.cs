@@ -54,6 +54,61 @@ public sealed class StockBalanceFunctions
         return await ToResponse(req, result, HttpStatusCode.OK, cancellationToken);
     }
 
+    // ── GET /api/inventory/stock-balances/system-on-hand?stockNo= ─────────────
+
+    [Function("GetStockBalanceSystemOnHand")]
+    public async Task<HttpResponseData> GetSystemOnHand(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "inventory/stock-balances/system-on-hand")]
+        HttpRequestData req,
+        CancellationToken cancellationToken)
+    {
+        User? caller = await _jwt.ValidateAsync(GetAuthHeader(req), cancellationToken);
+        if (caller is null)
+            return req.CreateResponse(HttpStatusCode.Unauthorized);
+
+        string? stockNo = req.Query["stockNo"];
+        if (string.IsNullOrWhiteSpace(stockNo))
+            return await BadRequest(req, "stockNo query parameter is required.");
+
+        ServiceResult<SystemOnHandDto> result =
+            await _service.GetSystemOnHandAsync(caller, stockNo, cancellationToken);
+
+        return await ToResponse(req, result, HttpStatusCode.OK, cancellationToken);
+    }
+
+    // ── GET /api/inventory/stock-balances/import/template ─────────────────────
+
+    [Function("GetStockBalanceImportTemplate")]
+    public async Task<HttpResponseData> GetImportTemplate(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "inventory/stock-balances/import/template")]
+        HttpRequestData req,
+        CancellationToken cancellationToken)
+    {
+        User? caller = await _jwt.ValidateAsync(GetAuthHeader(req), cancellationToken);
+        if (caller is null)
+            return req.CreateResponse(HttpStatusCode.Unauthorized);
+
+        ServiceResult<byte[]> result = await _service.GetImportTemplateAsync(caller, cancellationToken);
+        if (!result.IsSuccess)
+        {
+            HttpResponseData errorResponse = req.CreateResponse(result.Code switch
+            {
+                ServiceErrorCode.Forbidden => HttpStatusCode.Forbidden,
+                _                          => HttpStatusCode.InternalServerError,
+            });
+            await errorResponse.WriteStringAsync(result.Error ?? "An unexpected error occurred.", cancellationToken);
+            return errorResponse;
+        }
+
+        HttpResponseData response = req.CreateResponse(HttpStatusCode.OK);
+        response.Headers.Add("Content-Type",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.Headers.Add("Content-Disposition",
+            "attachment; filename=\"Stock_Balance_Import_Template.xlsx\"");
+        await response.WriteBytesAsync(result.Value!);
+        return response;
+    }
+
     // ── POST /api/inventory/stock-balances ─────────────────────────────────────
 
     [Function("CreateStockBalance")]

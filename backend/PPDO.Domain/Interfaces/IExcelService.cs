@@ -74,6 +74,14 @@ public interface IExcelService
     /// blank row.
     /// </summary>
     IReadOnlyList<StockBalanceImportRow> ParseStockBalanceImport(Stream stream);
+
+    /// <summary>
+    /// Generates a blank stock-balance bulk-upload Excel template (.xlsx) for user download.
+    /// Sheet 1 ("Stock Balance Import") has the header at row 1, matching
+    /// <see cref="ParseStockBalanceImport"/>'s expected layout exactly — no title or
+    /// instruction rows above it. Sheet 2 ("Instructions") is ignored during import.
+    /// </summary>
+    byte[] GenerateStockBalanceImportTemplate();
 }
 
 // ── Import data models ────────────────────────────────────────────────────────

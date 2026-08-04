@@ -75,6 +75,42 @@ public sealed class StockBalanceService : IStockBalanceService
         return ServiceResult<IReadOnlyList<StockBalanceDto>>.Ok(dtos);
     }
 
+    // ── GetSystemOnHandAsync ──────────────────────────────────────────────────
+
+    /// <inheritdoc />
+    public async Task<ServiceResult<SystemOnHandDto>> GetSystemOnHandAsync(
+        User requester,
+        string stockNo,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await _permissions.CanAccessInventoryAsync(requester, cancellationToken))
+            return ServiceResult<SystemOnHandDto>.Forbidden(
+                "You do not have permission to view warehouse stock input.");
+
+        if (string.IsNullOrWhiteSpace(stockNo))
+            return ServiceResult<SystemOnHandDto>.BadRequest("stockNo is required.");
+
+        string trimmed = stockNo.Trim();
+        decimal onHand = await ComputeSystemOnHandAsync(trimmed, excludeExistingVariance: 0m, cancellationToken);
+
+        return ServiceResult<SystemOnHandDto>.Ok(new SystemOnHandDto(trimmed, onHand));
+    }
+
+    // ── GetImportTemplateAsync ────────────────────────────────────────────────
+
+    /// <inheritdoc />
+    public async Task<ServiceResult<byte[]>> GetImportTemplateAsync(
+        User requester,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await _permissions.CanAccessInventoryAsync(requester, cancellationToken))
+            return ServiceResult<byte[]>.Forbidden(
+                "You do not have permission to manage warehouse stock input.");
+
+        byte[] bytes = _excel.GenerateStockBalanceImportTemplate();
+        return ServiceResult<byte[]>.Ok(bytes);
+    }
+
     // ── CreateAsync ───────────────────────────────────────────────────────────
 
     /// <inheritdoc />
@@ -97,6 +133,16 @@ public sealed class StockBalanceService : IStockBalanceService
             return ServiceResult<StockBalanceDto>.BadRequest(validationError);
 
         string stockNo = dto.StockNo.Trim();
+
+        // (StockNo, EffectiveDate) is unique at the DB level — without this check, recording
+        // a second count for a date that already has one throws an unhandled DbUpdateException
+        // instead of a friendly message. The bulk-import path avoids this because it upserts;
+        // the single-entry form here has no such semantics, so it must reject explicitly.
+        StockBalance? duplicate = await _stockBalances.FindByStockNoAndEffectiveDateAsync(
+            stockNo, dto.EffectiveDate, cancellationToken);
+        if (duplicate is not null)
+            return ServiceResult<StockBalanceDto>.Conflict(
+                $"A count for {stockNo} on {dto.EffectiveDate:yyyy-MM-dd} was already recorded. Edit that entry instead of creating a new one.");
 
         (bool itemAutoCreated, string? itemError) = await EnsureItemMasterAsync(
             stockNo, dto.Description, dto.Unit, dto.UnitCost, dto.ItemType, cancellationToken);

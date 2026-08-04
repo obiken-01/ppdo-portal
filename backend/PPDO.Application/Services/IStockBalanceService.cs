@@ -17,6 +17,15 @@ public interface IStockBalanceService
         User requester, string stockNo, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Returns the system's current computed on-hand for a StockNo — exactly what a new
+    /// entry's SystemOnHandAtEntry would be if saved right now. Reference-only, read-only;
+    /// lets the entry form show the user what the system currently expects before they
+    /// submit a physical count.
+    /// </summary>
+    Task<ServiceResult<SystemOnHandDto>> GetSystemOnHandAsync(
+        User requester, string stockNo, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Records a new physical count. Snapshots the current system-computed on-hand for the
     /// StockNo and persists CountedQty - SystemOnHandAtEntry as VarianceQty.
     /// </summary>
@@ -44,4 +53,8 @@ public interface IStockBalanceService
     /// </summary>
     Task<ServiceResult<StockBalanceImportResultDto>> CommitImportAsync(
         User requester, CommitStockBalanceImportDto dto, CancellationToken cancellationToken = default);
+
+    /// <summary>Generates the blank bulk-upload Excel template for user download.</summary>
+    Task<ServiceResult<byte[]>> GetImportTemplateAsync(
+        User requester, CancellationToken cancellationToken = default);
 }

@@ -501,3 +501,9 @@ export interface StockBalanceImportResultResponse {
   updated: number;
   entries: StockBalanceResponse[];
 }
+
+/** Mirrors SystemOnHandDto — GET /api/inventory/stock-balances/system-on-hand?stockNo= */
+export interface SystemOnHandResponse {
+  stockNo: string;
+  onHand: number;
+}

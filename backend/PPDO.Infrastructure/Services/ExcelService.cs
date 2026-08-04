@@ -93,6 +93,96 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
         return ms.ToArray();
     }
 
+    // ── GenerateStockBalanceImportTemplate ────────────────────────────────────
+
+    /// <inheritdoc />
+    public byte[] GenerateStockBalanceImportTemplate()
+    {
+        using XLWorkbook wb = new();
+
+        IXLWorksheet ws = wb.AddWorksheet("Stock Balance Import");
+        BuildStockBalanceImportSheet(ws);
+
+        IXLWorksheet inst = wb.AddWorksheet("Instructions");
+        BuildStockBalanceInstructionsSheet(inst);
+
+        using MemoryStream ms = new();
+        wb.SaveAs(ms);
+        return ms.ToArray();
+    }
+
+    /// <summary>
+    /// Row 1 = header, exactly matching <see cref="ParseStockBalanceImport"/>'s expected
+    /// layout — no title/instruction rows above it, since parsing always starts at row 2
+    /// of the first worksheet.
+    /// </summary>
+    private static void BuildStockBalanceImportSheet(IXLWorksheet ws)
+    {
+        string[] headers =
+            ["StockNo", "CountedQty", "EffectiveDate", "Reason", "Description", "Unit", "UnitCost", "ItemType"];
+
+        for (int c = 1; c <= headers.Length; c++)
+        {
+            IXLCell h = ws.Cell(1, c);
+            h.Value = headers[c - 1];
+            h.Style.Font.SetBold(true).Fill.SetBackgroundColor(DarkGreen)
+                .Font.SetFontColor(White)
+                .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
+        }
+
+        // Yellow fillable rows below the header, for a batch of counts.
+        for (int r = 2; r <= 30; r++)
+            for (int c = 1; c <= headers.Length; c++)
+                ws.Cell(r, c).Style.Fill.SetBackgroundColor(Yellow);
+
+        for (int c = 1; c <= headers.Length; c++)
+            ws.Column(c).Width = 18;
+
+        ws.SheetView.FreezeRows(1);
+    }
+
+    private static void BuildStockBalanceInstructionsSheet(IXLWorksheet ws)
+    {
+        ws.Cell(1, 1).Value = "HOW TO USE THIS TEMPLATE";
+        ws.Cell(1, 1).Style.Font.SetBold(true).Font.SetFontSize(13).Font.SetFontColor(DarkGreen);
+
+        string[] lines =
+        [
+            "",
+            "REQUIRED COLUMNS (every row):",
+            "  StockNo, CountedQty, EffectiveDate.",
+            "  CountedQty must be zero or greater. EffectiveDate cannot be in the future.",
+            "",
+            "OPTIONAL COLUMNS:",
+            "  Reason — free text, e.g. \"Quarterly physical count\".",
+            "  Description / Unit / UnitCost / ItemType — only needed when StockNo isn't",
+            "    already in Items Master. It will be added to the catalog automatically,",
+            "    pending admin review. When the StockNo is already cataloged, these four",
+            "    columns are ignored — the catalog's own values win.",
+            "",
+            "RE-UPLOADING:",
+            "  Uploading the same StockNo + Effective Date pair again overwrites that entry",
+            "  instead of creating a duplicate.",
+            "",
+            "STOPPING:",
+            "  Leave a row completely blank to stop — rows after the first blank row are",
+            "  not read.",
+            "",
+            "DEFAULT PASSWORD:",
+            "  If you forget your portal password, contact your System Administrator.",
+            "  Default password (after reset): TamarawUser2026!",
+        ];
+
+        for (int i = 0; i < lines.Length; i++)
+        {
+            ws.Cell(i + 2, 1).Value = lines[i];
+            if (lines[i].EndsWith(':'))
+                ws.Cell(i + 2, 1).Style.Font.SetBold(true);
+        }
+
+        ws.Column(1).Width = 80;
+    }
+
     // ── ExportPRReport ────────────────────────────────────────────────────────
 
     /// <inheritdoc />

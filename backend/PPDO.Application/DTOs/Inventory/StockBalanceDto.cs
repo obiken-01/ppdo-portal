@@ -44,3 +44,11 @@ public sealed record UpdateStockBalanceDto(
     decimal? CountedQty,
     DateOnly? EffectiveDate,
     string? Reason);
+
+/// <summary>
+/// The system's current computed on-hand for a StockNo — SUM(VarianceQty) + QtyDelivered -
+/// QtyDistributed, i.e. exactly what a new entry's SystemOnHandAtEntry would be if saved
+/// right now. Surfaced to the manual entry form as a reference before the user submits a
+/// count, so they can see what the system currently expects.
+/// </summary>
+public sealed record SystemOnHandDto(string StockNo, decimal OnHand);
