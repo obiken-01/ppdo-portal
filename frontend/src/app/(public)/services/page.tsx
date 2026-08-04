@@ -1,6 +1,13 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import Navbar from "@/components/landing/Navbar";
 import Footer from "@/components/landing/Footer";
+
+export const metadata: Metadata = {
+  title: "Services",
+  description: "Services provided by the Provincial Planning and Development Office of Occidental Mindoro.",
+  alternates: { canonical: "/services" },
+};
 
 export default function ServicesPage() {
   return (
