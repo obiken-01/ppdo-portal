@@ -763,4 +763,80 @@ public sealed class StockBalanceServiceTests
             "stock_balances", entryId, AuditAction.Delete,
             It.IsNotNull<object>(), null, It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Fact]
+    public async Task CommitImportAsync_NewRow_CallsAuditLog_WithCreateAction()
+    {
+        Mock<IStockBalanceRepository> stockRepo = RepoThatSaves();
+        stockRepo.Setup(r => r.FindByStockNoAndEffectiveDateAsync(
+                "A01", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((StockBalance?)null);
+        Mock<IInventoryRepository> invRepo = InventoryReturning(EmptyLevel("A01"));
+        Mock<IAuditService> audit = new();
+
+        CommitStockBalanceImportDto dto = new(
+            [MakeCreateDto("A01", 10m, DateOnly.FromDateTime(DateTime.UtcNow), null)]);
+
+        ServiceResult<StockBalanceImportResultDto> result =
+            await BuildSut(stockRepo, invRepo, auditService: audit).CommitImportAsync(MakeAdmin(), dto);
+
+        Assert.True(result.IsSuccess);
+        audit.Verify(a => a.LogAsync(
+            "stock_balances", result.Value!.Entries[0].Id, AuditAction.Create,
+            null, It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CommitImportAsync_UpsertingRow_CallsAuditLog_WithUpdateAction_CapturingOldAndNew()
+    {
+        DateOnly date = DateOnly.FromDateTime(DateTime.UtcNow);
+        StockBalance existing = new()
+        {
+            Id = Guid.NewGuid(), StockNo = "A01", CountedQty = 5m, SystemOnHandAtEntry = 0m,
+            VarianceQty = 5m, EffectiveDate = date, RecordedByUserId = Guid.NewGuid(),
+        };
+
+        Mock<IStockBalanceRepository> stockRepo = RepoThatSaves();
+        stockRepo.Setup(r => r.FindByStockNoAndEffectiveDateAsync("A01", date, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existing);
+        Mock<IInventoryRepository> invRepo = InventoryReturning(EmptyLevel("A01"));
+        Mock<IAuditService> audit = new();
+
+        CommitStockBalanceImportDto dto = new([MakeCreateDto("A01", 20m, date, "Corrected count")]);
+
+        await BuildSut(stockRepo, invRepo, auditService: audit).CommitImportAsync(MakeAdmin(), dto);
+
+        audit.Verify(a => a.LogAsync(
+            "stock_balances", existing.Id, AuditAction.Update,
+            It.IsNotNull<object>(), It.IsNotNull<object>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CommitImportAsync_MultipleRows_CallsAuditLogOncePerRow_NotOneSummarizedEntry()
+    {
+        // Unlike PR Excel import (deliberately summarized), a bulk stock-balance overwrite
+        // has no approval step — each row needs its own accountable entry, not a rollup that
+        // hides which specific rows changed.
+        Mock<IStockBalanceRepository> stockRepo = RepoThatSaves();
+        stockRepo.Setup(r => r.FindByStockNoAndEffectiveDateAsync(
+                It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((StockBalance?)null);
+        Mock<IInventoryRepository> invRepo = new();
+        invRepo.Setup(r => r.GetItemStockLevelAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string sn, CancellationToken _) => new ItemStockLevel(sn, 0m, 0m, 0m));
+        Mock<IAuditService> audit = new();
+
+        DateOnly date = DateOnly.FromDateTime(DateTime.UtcNow);
+        CommitStockBalanceImportDto dto = new(
+        [
+            MakeCreateDto("A01", 10m, date, null),
+            MakeCreateDto("B01", 20m, date, null),
+        ]);
+
+        await BuildSut(stockRepo, invRepo, auditService: audit).CommitImportAsync(MakeAdmin(), dto);
+
+        audit.Verify(a => a.LogAsync(
+            "stock_balances", It.IsAny<Guid>(), AuditAction.Create,
+            null, It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+    }
 }

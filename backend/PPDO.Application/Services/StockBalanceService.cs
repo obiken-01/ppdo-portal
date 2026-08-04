@@ -362,6 +362,8 @@ public sealed class StockBalanceService : IStockBalanceService
 
             if (existing is not null)
             {
+                object oldSnapshot = AuditSnapshot(existing);
+
                 existing.CountedQty          = row.CountedQty;
                 existing.SystemOnHandAtEntry = systemOnHand;
                 existing.VarianceQty         = row.CountedQty - systemOnHand;
@@ -370,6 +372,17 @@ public sealed class StockBalanceService : IStockBalanceService
                 await _stockBalances.UpdateAsync(existing, cancellationToken);
                 saved.Add((existing, itemAutoCreated));
                 updated++;
+
+                // Persist each row before computing the next one's system-on-hand snapshot, so
+                // multiple rows for the same StockNo in one file stack correctly.
+                await _stockBalances.SaveChangesAsync(cancellationToken);
+
+                // Per-row, not one summarized entry for the whole file — a bulk overwrite of
+                // computed on-hand values (no approval step) is exactly the kind of change
+                // that needs individual accountability, not a rollup that hides which rows
+                // actually changed.
+                await _audit.LogAsync("stock_balances", existing.Id, AuditAction.Update,
+                    oldSnapshot, AuditSnapshot(existing), cancellationToken);
             }
             else
             {
@@ -387,11 +400,12 @@ public sealed class StockBalanceService : IStockBalanceService
                 await _stockBalances.AddAsync(entry, cancellationToken);
                 saved.Add((entry, itemAutoCreated));
                 inserted++;
-            }
 
-            // Persist each row before computing the next one's system-on-hand snapshot, so
-            // multiple rows for the same StockNo in one file stack correctly.
-            await _stockBalances.SaveChangesAsync(cancellationToken);
+                await _stockBalances.SaveChangesAsync(cancellationToken);
+
+                await _audit.LogAsync("stock_balances", entry.Id, AuditAction.Create,
+                    oldValues: null, newValues: AuditSnapshot(entry), cancellationToken);
+            }
         }
 
         _logger.LogInformation(
