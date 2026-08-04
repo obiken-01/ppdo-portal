@@ -123,13 +123,15 @@ public sealed class DistributionServiceTests
         Mock<IDeliveryRepository> deliveryRepo,
         Mock<IItemMasterRepository> itemsRepo,
         Mock<IRepository<Distribution>> distributionsRepo,
-        Mock<IRepository<Division>>? divisionRepo = null)
+        Mock<IRepository<Division>>? divisionRepo = null,
+        Mock<IAuditService>? auditService = null)
         => new(
             deliveryRepo.Object,
             itemsRepo.Object,
             new PermissionService(),
             distributionsRepo.Object,
             (divisionRepo ?? DivisionsRepo()).Object,
+            (auditService ?? new Mock<IAuditService>()).Object,
             NullLogger<DistributionService>.Instance);
 
     // ── Permission gate ───────────────────────────────────────────────────────
@@ -390,5 +392,54 @@ public sealed class DistributionServiceTests
         Assert.True(result.IsSuccess);
         Assert.Single(result.Value!);
         Assert.Equal(4m, result.Value![0].QtyIssued);
+    }
+
+    // ── Audit logging (RAL-200) ───────────────────────────────────────────────
+
+    [Fact]
+    public async Task AllocateAsync_SingleSplitWithinOneBatch_CallsAuditLogOnce()
+    {
+        Guid batchId = Guid.NewGuid();
+        var batches = new List<DeliveryItemBreakdownRow>
+        {
+            Batch(batchId, DateOnly.FromDateTime(DateTime.UtcNow), delivered: 20m),
+        };
+        CreateItemDistributionDto dto = new() { Splits = new List<DistributionSplitDto> { Split(8m) } };
+        Mock<IAuditService> audit = new();
+
+        ServiceResult<IReadOnlyList<DistributionCreatedDto>> result =
+            await BuildSut(RepoWithBatches("STK-1", batches), ItemsRepo("STK-1"), DistributionsRepoThatSaves(),
+                    auditService: audit)
+                .AllocateAsync(MakeAdmin(), "STK-1", dto);
+
+        audit.Verify(a => a.LogAsync(
+            "Distributions", result.Value![0].Id, AuditAction.Create,
+            null, It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task AllocateAsync_SplitSpanningTwoBatches_CallsAuditLogOncePerCreatedRow()
+    {
+        DateOnly older = new(2026, 1, 1);
+        DateOnly newer = new(2026, 6, 1);
+        Guid oldBatchId = Guid.NewGuid();
+        Guid newBatchId = Guid.NewGuid();
+
+        var batches = new List<DeliveryItemBreakdownRow>
+        {
+            Batch(newBatchId, newer, delivered: 20m),
+            Batch(oldBatchId, older, delivered: 5m),
+        };
+        CreateItemDistributionDto dto = new() { Splits = new List<DistributionSplitDto> { Split(10m) } };
+        Mock<IAuditService> audit = new();
+
+        await BuildSut(RepoWithBatches("STK-1", batches), ItemsRepo("STK-1"), DistributionsRepoThatSaves(),
+                auditService: audit)
+            .AllocateAsync(MakeAdmin(), "STK-1", dto);
+
+        // Two Distribution rows created (one per batch drawn from) — two entries, not one.
+        audit.Verify(a => a.LogAsync(
+            "Distributions", It.IsAny<Guid>(), AuditAction.Create,
+            null, It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
 }

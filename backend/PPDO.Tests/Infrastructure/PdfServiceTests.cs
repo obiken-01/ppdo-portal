@@ -94,6 +94,48 @@ public sealed class PdfServiceTests
     }
 
     [Fact]
+    public void ParseGsoPRImport_OrphanedActivityContinuationLine_StillFindsRealAccountCode()
+    {
+        // Regression test for a real-world failure: a long Activity description that wraps
+        // across several PDF lines occasionally leaves one continuation line un-merged by the
+        // row-wrap logic (WrapMergeGap) — that orphaned prose line has no " - " either, so the
+        // old "first line without a dash" heuristic picked it over the real account code
+        // sitting right below it.
+        List<WordPlacement> w = new()
+        {
+            new("PURCHASE REQUEST", 220, 750, 14),
+            new("PR No.: 101-1041-GF-2026-04-28-757", 50, 720),
+            new("Fund: General Fund",                 50, 705),
+            new("Date.: 04/28/2026",                   50, 690),
+
+            new("Item No.   Stock No.   Description   Unit   Qty   Unit Cost   Total Cost", 50, 660, 9),
+
+            new("1000-000-1-01-010-001 - PLANNING MONITORING AND EVALUATION PROGRAM",        50, 630, 9),
+            new("1000-000-1-01-010-001-002 - Administrative Support Services",               50, 615, 9),
+            new("1000-000-1-01-010-001-002-004 - Procurement of office supplies and",        50, 600, 9),
+            // Orphaned continuation — 20pt gap from the line above (> WrapMergeGap) so it lands
+            // as its own row instead of merging back into the Activity line, same as the real
+            // sample PDF that triggered this bug.
+            new("materials, payment of subscription, communication allowance",               50, 580, 9),
+            new("5 02 03 010", 50, 565, 9), // the REAL account code
+
+            new("1",                 ColItemNo,  535, 9),
+            new("OSAME-1234567890",  ColStockNo, 535, 9),
+            new("Bond Paper A4",     ColDesc,    535, 9),
+            new("ream",              ColUnit,    535, 9),
+            new("10",                ColQty,     535, 9),
+            new("250",               ColCost,    535, 9),
+
+            new("TOTAL", 50, 505, 9),
+        };
+        using MemoryStream stream = new(Build(w));
+
+        GsoPRImportRow result = _sut.ParseGsoPRImport(stream);
+
+        Assert.Equal("5 02 03 010", result.AccountNo);
+    }
+
+    [Fact]
     public void ParseGsoPRImport_ValidFile_ParsesItemRows()
     {
         using MemoryStream stream = new(BuildValidGsoPdf());

@@ -23,6 +23,7 @@ public sealed class DistributionService : IDistributionService
     private readonly IPermissionService      _permissions;
     private readonly IRepository<Distribution> _distributions;
     private readonly IRepository<Division>    _divisions;
+    private readonly IAuditService           _audit;
     private readonly ILogger<DistributionService> _logger;
 
     private static readonly char[] RefChars =
@@ -42,6 +43,7 @@ public sealed class DistributionService : IDistributionService
         IPermissionService permissions,
         IRepository<Distribution> distributions,
         IRepository<Division> divisions,
+        IAuditService audit,
         ILogger<DistributionService> logger)
     {
         _deliveries    = deliveries;
@@ -49,6 +51,7 @@ public sealed class DistributionService : IDistributionService
         _permissions   = permissions;
         _distributions = distributions;
         _divisions     = divisions;
+        _audit         = audit;
         _logger        = logger;
     }
 
@@ -267,6 +270,18 @@ public sealed class DistributionService : IDistributionService
         _logger.LogInformation(
             "Distribution allocated. StockNo: {StockNo}, Splits: {SplitCount}, Records: {RecordCount}, TotalQty: {TotalQty}, UserId: {UserId}",
             stockNo, dto.Splits.Count, created.Count, totalRequested, requester.Id);
+
+        // One entry per created row — each is its own auditable stock movement (division,
+        // qty, batch), not a line item subordinate to a bigger aggregate.
+        foreach (Distribution dist in created)
+            await _audit.LogAsync("Distributions", dist.Id, AuditAction.Create,
+                oldValues: null,
+                newValues: new
+                {
+                    StockNo = stockNo, dist.DeliveryItemId, DivisionId = dist.DivisionId,
+                    dist.QtyIssued, dist.DateIssued, dist.IssuedBy, dist.IssueRef,
+                },
+                cancellationToken);
 
         return ServiceResult<IReadOnlyList<DistributionCreatedDto>>.Ok(createdDtos);
     }

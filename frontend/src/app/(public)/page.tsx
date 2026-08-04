@@ -4,16 +4,66 @@
  * Layout:
  *   Navbar → Hero (green, fills viewport, Mission/Vision carousel)
  *          → Announcements (white) → Footer
+ *
+ * SEO (RAL-202): the one page in the app that should actually rank in search
+ * results — full title/description, Open Graph + Twitter card, and
+ * GovernmentOrganization structured data. See src/lib/seo.ts for SITE_URL.
  */
 
+import type { Metadata } from "next";
 import Navbar from "@/components/landing/Navbar";
 import Footer from "@/components/landing/Footer";
 import MissionVisionCarousel from "@/components/landing/MissionVisionCarousel";
 import AnnouncementsSection from "@/components/landing/AnnouncementsSection";
+import { SITE_URL } from "@/lib/seo";
+
+const TITLE = "PPDO Portal — Provincial Planning and Development Office, Occidental Mindoro";
+const DESCRIPTION =
+  "Official portal of the Provincial Planning and Development Office (PPDO) of " +
+  "Occidental Mindoro — announcements, resources, and staff services.";
+
+export const metadata: Metadata = {
+  title: { absolute: TITLE },
+  description: DESCRIPTION,
+  alternates: { canonical: "/" },
+  openGraph: {
+    title: TITLE,
+    description: DESCRIPTION,
+    url: "/",
+    siteName: "PPDO Portal",
+    images: [{ url: "/images/ppdo-logo-placeholder.png", width: 512, height: 512 }],
+    locale: "en_PH",
+    type: "website",
+  },
+  twitter: {
+    card: "summary",
+    title: TITLE,
+    description: DESCRIPTION,
+    images: ["/images/ppdo-logo-placeholder.png"],
+  },
+};
+
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "GovernmentOrganization",
+  name: "Provincial Planning and Development Office",
+  alternateName: "PPDO Occidental Mindoro",
+  url: SITE_URL,
+  logo: `${SITE_URL}/images/ppdo-logo-placeholder.png`,
+  address: {
+    "@type": "PostalAddress",
+    addressRegion: "Occidental Mindoro",
+    addressCountry: "PH",
+  },
+};
 
 export default function LandingPage() {
   return (
     <div className="min-h-screen flex flex-col font-sans">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <Navbar />
 
       <main className="flex-1">

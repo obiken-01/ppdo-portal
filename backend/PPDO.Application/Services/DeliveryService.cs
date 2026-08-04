@@ -21,6 +21,7 @@ public sealed class DeliveryService : IDeliveryService
     private readonly IPurchaseRequestRepository _prs;
     private readonly IPermissionService         _permissions;
     private readonly IRepository<Division>       _divisions;
+    private readonly IAuditService              _audit;
     private readonly ILogger<DeliveryService>   _logger;
 
     // Characters used for random ref suffixes — uppercase alphanumeric, no ambiguous O/0/I/1.
@@ -41,12 +42,14 @@ public sealed class DeliveryService : IDeliveryService
         IPurchaseRequestRepository prs,
         IPermissionService permissions,
         IRepository<Division> divisions,
+        IAuditService audit,
         ILogger<DeliveryService> logger)
     {
         _deliveries  = deliveries;
         _prs         = prs;
         _permissions = permissions;
         _divisions   = divisions;
+        _audit       = audit;
         _logger      = logger;
     }
 
@@ -294,6 +297,16 @@ public sealed class DeliveryService : IDeliveryService
             "Delivery received. DeliveryRef: {DeliveryRef}, PRNo: {PRNo}, UserId: {UserId}",
             delivery.DeliveryRef, pr.PRNo, requester.Id);
 
+        await _audit.LogAsync("Deliveries", delivery.Id, AuditAction.Create,
+            oldValues: null,
+            newValues: new
+            {
+                delivery.DeliveryRef, PRNo = pr.PRNo, delivery.DeliveryDate, delivery.ReceivedBy,
+                delivery.Supplier, ItemCount = delivery.Items.Count,
+                TotalQtyDelivered = delivery.Items.Sum(i => i.QtyDelivered),
+            },
+            cancellationToken);
+
         return ServiceResult<DeliveryResponseDto>.Ok(MapToResponse(delivery));
     }
 
@@ -359,6 +372,13 @@ public sealed class DeliveryService : IDeliveryService
             _logger.LogInformation(
                 "PR status changed. PRNo: {PRNo}, OldStatus: {OldStatus}, NewStatus: {NewStatus}",
                 pr.PRNo, oldStatus, newStatus);
+
+            // Linked entry — the status transition this delivery triggered, not a separate
+            // manual edit.
+            await _audit.LogAsync("PurchaseRequests", pr.Id, AuditAction.Update,
+                oldValues: new { Status = oldStatus.ToString() },
+                newValues: new { Status = newStatus.ToString() },
+                cancellationToken);
         }
     }
 
