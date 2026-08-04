@@ -128,12 +128,13 @@ public sealed class DistributionService : IDistributionService
             DeliveryItems:    batchDtos));
     }
 
-    // ── CreateAsync ────────────────────────────────────────────────────────────
+    // ── AllocateAsync ──────────────────────────────────────────────────────────
 
     /// <inheritdoc />
-    public async Task<ServiceResult<DistributionCreatedDto>> CreateAsync(
+    public async Task<ServiceResult<IReadOnlyList<DistributionCreatedDto>>> AllocateAsync(
         User requester,
-        CreateStandaloneDistributionDto dto,
+        string stockNo,
+        CreateItemDistributionDto dto,
         CancellationToken cancellationToken = default)
     {
         if (!await _permissions.CanAccessInventoryAsync(requester, cancellationToken))
@@ -141,75 +142,132 @@ public sealed class DistributionService : IDistributionService
             _logger.LogWarning(
                 "Permission denied — user {UserId} attempted to create a distribution without CanAccessInventory.",
                 requester.Id);
-            return ServiceResult<DistributionCreatedDto>.Forbidden(
+            return ServiceResult<IReadOnlyList<DistributionCreatedDto>>.Forbidden(
                 "You do not have permission to access Inventory.");
         }
 
-        // Resolve the division name to a configurable division id (v1.2 — RAL-97).
+        if (dto.Splits is null || dto.Splits.Count == 0)
+            return ServiceResult<IReadOnlyList<DistributionCreatedDto>>.BadRequest(
+                "At least one distribution split is required.");
+
+        foreach (DistributionSplitDto split in dto.Splits)
+        {
+            if (split.QtyIssued <= 0)
+                return ServiceResult<IReadOnlyList<DistributionCreatedDto>>.BadRequest(
+                    "QtyIssued must be greater than zero for every split.");
+            if (string.IsNullOrWhiteSpace(split.IssuedBy))
+                return ServiceResult<IReadOnlyList<DistributionCreatedDto>>.BadRequest(
+                    "IssuedBy is required for every split.");
+            if (string.IsNullOrWhiteSpace(split.Division))
+                return ServiceResult<IReadOnlyList<DistributionCreatedDto>>.BadRequest(
+                    "Division is required for every split.");
+        }
+
+        // Resolve division names to configurable division ids once (v1.2 — RAL-97).
         IReadOnlyList<Division> allDivisions = await _divisions.GetAllAsync(cancellationToken);
-        Division? division = allDivisions.FirstOrDefault(
-            d => d.IsActive && string.Equals(d.Name, dto.Division, StringComparison.OrdinalIgnoreCase));
-        if (division is null)
-            return ServiceResult<DistributionCreatedDto>.BadRequest(
-                $"Division '{dto.Division}' was not found. Configure it in Config → Divisions first.");
+        Dictionary<string, Division> divisionByName = allDivisions
+            .Where(d => d.IsActive)
+            .GroupBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
-        if (dto.QtyIssued <= 0)
-            return ServiceResult<DistributionCreatedDto>.BadRequest(
-                "QtyIssued must be greater than zero.");
+        foreach (DistributionSplitDto split in dto.Splits)
+            if (!divisionByName.ContainsKey(split.Division))
+                return ServiceResult<IReadOnlyList<DistributionCreatedDto>>.BadRequest(
+                    $"Division '{split.Division}' was not found. Configure it in Config → Divisions first.");
 
-        // Load the delivery item with its existing distributions.
-        DeliveryItemBreakdownRow? breakdown =
-            await _deliveries.GetDeliveryItemBreakdownAsync(dto.DeliveryItemId, cancellationToken);
+        // Division scope determines which delivery batches (source stock) are visible —
+        // same rule as GetItemSummaryAsync. Office users (no division) see nothing.
+        DivisionScope scope = DivisionScope.Resolve(requester);
+        if (scope.SeeNothing)
+            return ServiceResult<IReadOnlyList<DistributionCreatedDto>>.NotFound(
+                $"No activity found for StockNo '{stockNo}'.");
 
-        if (breakdown is null)
-            return ServiceResult<DistributionCreatedDto>.NotFound(
-                $"DeliveryItem {dto.DeliveryItemId} not found.");
+        IReadOnlyList<DeliveryItemBreakdownRow> batches =
+            await _deliveries.GetDeliveryItemBreakdownsByStockNoAsync(stockNo, scope.DivisionId, cancellationToken);
 
-        decimal alreadyDistributed = breakdown.Distributions.Sum(d => d.QtyIssued);
-        decimal available          = breakdown.QtyDelivered - alreadyDistributed;
+        if (batches.Count == 0)
+            return ServiceResult<IReadOnlyList<DistributionCreatedDto>>.NotFound(
+                $"No delivery activity found for StockNo '{stockNo}'.");
 
-        if (dto.QtyIssued > available)
-            return ServiceResult<DistributionCreatedDto>.BadRequest(
-                $"QtyIssued ({dto.QtyIssued}) exceeds available quantity ({available}) for this delivery batch.");
+        // FIFO pool — oldest DeliveryDate first, tie-broken by DeliveryItemId for determinism.
+        List<(DeliveryItemBreakdownRow Batch, decimal Remaining)> pool = batches
+            .Select(b => (Batch: b, Remaining: b.QtyDelivered - b.Distributions.Sum(d => d.QtyIssued)))
+            .Where(x => x.Remaining > 0)
+            .OrderBy(x => x.Batch.DeliveryDate)
+            .ThenBy(x => x.Batch.DeliveryItemId)
+            .ToList();
 
-        // Generate IssueRef: ISS-YYYYMMDD-XXXXX-1
+        decimal totalAvailable = pool.Sum(x => x.Remaining);
+        decimal totalRequested = dto.Splits.Sum(s => s.QtyIssued);
+
+        if (totalRequested > totalAvailable)
+            return ServiceResult<IReadOnlyList<DistributionCreatedDto>>.BadRequest(
+                $"Requested quantity ({totalRequested}) exceeds available stock ({totalAvailable}) for StockNo '{stockNo}'.");
+
+        ItemMaster? master = await _items.GetByStockNoAsync(stockNo, cancellationToken);
+
         DateTime manilaNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, ManilaZone);
         string   suffix    = new(Enumerable.Range(0, 5)
                                     .Select(_ => RefChars[Random.Shared.Next(RefChars.Length)])
                                     .ToArray());
-        string issueRef = $"ISS-{manilaNow:yyyyMMdd}-{suffix}-1";
+        int issueSeq = 1; // shared suffix, running sequence across the whole allocation
 
-        Distribution dist = new()
+        List<Distribution> created = new();
+        List<DistributionCreatedDto> createdDtos = new();
+
+        foreach (DistributionSplitDto split in dto.Splits)
         {
-            Id             = Guid.NewGuid(),
-            IssueRef       = issueRef,
-            DeliveryItemId = dto.DeliveryItemId,
-            DivisionId     = division.Id,
-            QtyIssued      = dto.QtyIssued,
-            DateIssued     = dto.DateIssued,
-            IssuedBy       = dto.IssuedBy.Trim(),
-            Remarks        = dto.Remarks?.Trim(),
-        };
+            decimal need     = split.QtyIssued;
+            Division division = divisionByName[split.Division];
 
-        await _distributions.AddAsync(dist, cancellationToken);
+            for (int i = 0; i < pool.Count && need > 0; i++)
+            {
+                (DeliveryItemBreakdownRow batch, decimal remaining) = pool[i];
+                if (remaining <= 0) continue;
+
+                decimal take     = Math.Min(need, remaining);
+                string  issueRef = $"ISS-{manilaNow:yyyyMMdd}-{suffix}-{issueSeq++}";
+
+                Distribution dist = new()
+                {
+                    Id             = Guid.NewGuid(),
+                    IssueRef       = issueRef,
+                    DeliveryItemId = batch.DeliveryItemId,
+                    DivisionId     = division.Id,
+                    QtyIssued      = take,
+                    DateIssued     = split.DateIssued,
+                    IssuedBy       = split.IssuedBy.Trim(),
+                    Remarks        = split.Remarks?.Trim(),
+                };
+
+                created.Add(dist);
+                createdDtos.Add(new DistributionCreatedDto(
+                    Id:             dist.Id,
+                    IssueRef:       issueRef,
+                    DeliveryItemId: batch.DeliveryItemId,
+                    DeliveryRef:    batch.DeliveryRef,
+                    PRNo:           batch.PRNo,
+                    StockNo:        stockNo,
+                    Description:    master?.Description ?? stockNo,
+                    Division:       division.Name,
+                    QtyIssued:      take,
+                    DateIssued:     split.DateIssued,
+                    IssuedBy:       dist.IssuedBy,
+                    Remarks:        dist.Remarks));
+
+                pool[i] = (batch, remaining - take);
+                need   -= take;
+            }
+        }
+
+        foreach (Distribution dist in created)
+            await _distributions.AddAsync(dist, cancellationToken);
         await _distributions.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation(
-            "Distribution recorded. IssueRef: {IssueRef}, DeliveryRef: {DeliveryRef}, DivisionId: {DivisionId}, QtyIssued: {QtyIssued}, IssuedBy: {IssuedBy}, UserId: {UserId}",
-            issueRef, breakdown.DeliveryRef, division.Id, dto.QtyIssued, dto.IssuedBy, requester.Id);
+            "Distribution allocated. StockNo: {StockNo}, Splits: {SplitCount}, Records: {RecordCount}, TotalQty: {TotalQty}, UserId: {UserId}",
+            stockNo, dto.Splits.Count, created.Count, totalRequested, requester.Id);
 
-        return ServiceResult<DistributionCreatedDto>.Ok(new DistributionCreatedDto(
-            Id:             dist.Id,
-            IssueRef:       issueRef,
-            DeliveryItemId: dto.DeliveryItemId,
-            DeliveryRef:    breakdown.DeliveryRef,
-            PRNo:           breakdown.PRNo,
-            StockNo:        "—",   // requester can get this from context
-            Description:    "—",
-            Division:       division.Name,
-            QtyIssued:      dto.QtyIssued,
-            DateIssued:     dto.DateIssued,
-            IssuedBy:       dto.IssuedBy.Trim(),
-            Remarks:        dto.Remarks?.Trim()));
+        return ServiceResult<IReadOnlyList<DistributionCreatedDto>>.Ok(createdDtos);
     }
 }

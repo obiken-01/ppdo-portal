@@ -103,35 +103,6 @@ public sealed class DeliveryRepository : Repository<Delivery>, IDeliveryReposito
     }
 
     /// <inheritdoc />
-    public async Task<DeliveryItemBreakdownRow?> GetDeliveryItemBreakdownAsync(
-        Guid deliveryItemId,
-        CancellationToken cancellationToken = default)
-    {
-        DeliveryItem? di = await _context.DeliveryItems
-            .Include(x => x.Distributions)
-            .Include(x => x.PRItem)
-                .ThenInclude(pi => pi!.PurchaseRequest)
-            .Include(x => x.Delivery)
-            .FirstOrDefaultAsync(x => x.Id == deliveryItemId, cancellationToken);
-
-        if (di is null) return null;
-
-        return new DeliveryItemBreakdownRow(
-            DeliveryItemId: di.Id,
-            DeliveryRef:    di.Delivery?.DeliveryRef    ?? "—",
-            DeliveryDate:   di.Delivery?.DeliveryDate   ?? DateOnly.MinValue,
-            PRId:           di.PRItem?.PRId             ?? Guid.Empty,
-            PRNo:           di.PRItem?.PurchaseRequest?.PRNo ?? "—",
-            QtyDelivered:   di.QtyDelivered,
-            Distributions:  di.Distributions
-                .Select(dist => new DistributionBreakdownRow(
-                    dist.Id, dist.IssueRef, dist.DivisionId,
-                    dist.QtyIssued, dist.DateIssued,
-                    dist.IssuedBy, dist.Remarks))
-                .ToList());
-    }
-
-    /// <inheritdoc />
     public async Task<DeliveryPageResult> GetPagedAsync(
         int? divisionId, int page, int pageSize, CancellationToken cancellationToken = default)
     {

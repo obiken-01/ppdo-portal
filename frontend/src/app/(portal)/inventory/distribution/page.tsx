@@ -11,9 +11,10 @@
  *   5. Submit → allocates FIFO across available batches → creates Distribution records
  *
  * API:
- *   GET  /api/items/lookup?term=…                   → autocomplete
- *   GET  /api/distributions/item/{stockNo}           → item summary + breakdown
- *   POST /api/distributions                          → create distribution (per batch)
+ *   GET  /api/items/lookup?term=…                        → autocomplete
+ *   GET  /api/distributions/item/{stockNo}                → item summary + breakdown
+ *   POST /api/distributions/item/{stockNo}/allocate       → FIFO-allocate splits across
+ *                                                            batches (server-side)
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -23,8 +24,7 @@ import { fetchMe } from "@/lib/me-cache";
 import { useInventoryDivisions } from "@/lib/inventory-divisions";
 import { useToast } from "@/components/ui/Toast";
 import type {
-  CreateDistributionStandaloneRequest,
-  DeliveryItemBreakdownResponse,
+  CreateItemDistributionRequest,
   DistributionCreatedResponse,
   ItemDistributionSummaryResponse,
   ItemLookupResponse,
@@ -327,42 +327,26 @@ export default function DistributionPage() {
     } finally { setSummaryLoading(false); }
   }
 
-  /**
-   * FIFO allocation across available delivery batches.
-   * Each SplitRow may consume from multiple batches; we create one API call per
-   * (row × batch) pair so the backend still records which delivery batch was used.
-   */
+  /** Submits all split rows in one call — the backend FIFO-allocates each across batches. */
   async function handleDistribute(rows: SplitRow[]) {
     if (!summary) return;
     setSubmitting(true);
 
-    // Build an ordered list of batches with remaining available qty (earliest first)
-    const batchPool: { batch: DeliveryItemBreakdownResponse; remaining: number }[] =
-      summary.deliveryItems
-        .filter((b) => b.qtyAvailable > 0)
-        .map((b) => ({ batch: b, remaining: b.qtyAvailable }));
+    const payload: CreateItemDistributionRequest = {
+      splits: rows.map((row) => ({
+        division:   row.division,
+        qtyIssued:  parseFloat(row.qty),
+        dateIssued: row.dateIssued,
+        issuedBy:   row.issuedBy.trim(),
+        remarks:    row.remarks.trim() || null,
+      })),
+    };
 
     try {
-      for (const row of rows) {
-        let need = parseFloat(row.qty);
-        for (const slot of batchPool) {
-          if (need <= 0) break;
-          if (slot.remaining <= 0) continue;
-
-          const take = Math.min(need, slot.remaining);
-          const payload: CreateDistributionStandaloneRequest = {
-            deliveryItemId: slot.batch.deliveryItemId,
-            division:       row.division,
-            qtyIssued:      take,
-            dateIssued:     row.dateIssued,
-            issuedBy:       row.issuedBy.trim(),
-            remarks:        row.remarks.trim() || null,
-          };
-          await api.post<DistributionCreatedResponse>("/distributions", payload);
-          slot.remaining -= take;
-          need           -= take;
-        }
-      }
+      await api.post<DistributionCreatedResponse[]>(
+        `/distributions/item/${encodeURIComponent(selectedStockNo)}/allocate`,
+        payload
+      );
 
       const totalQty = rows.reduce((s, r) => s + (parseFloat(r.qty) || 0), 0);
       const divLabel = rows.length === 1

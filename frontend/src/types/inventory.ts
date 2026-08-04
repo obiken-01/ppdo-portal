@@ -404,14 +404,22 @@ export interface ItemDistributionSummaryResponse {
   deliveryItems: DeliveryItemBreakdownResponse[];
 }
 
-/** Mirrors CreateStandaloneDistributionDto */
-export interface CreateDistributionStandaloneRequest {
-  deliveryItemId: string;
+/** Mirrors DistributionSplitDto — one division's share of an item-level distribution request */
+export interface DistributionSplitRequest {
   division: string;
   qtyIssued: number;
   dateIssued: string;   // "YYYY-MM-DD"
   issuedBy: string;
   remarks: string | null;
+}
+
+/**
+ * Mirrors CreateItemDistributionDto — POST /api/distributions/item/{stockNo}/allocate.
+ * The backend FIFO-allocates each split across the item's available delivery batches
+ * (oldest DeliveryDate first) and returns one DistributionCreatedResponse per batch drawn from.
+ */
+export interface CreateItemDistributionRequest {
+  splits: DistributionSplitRequest[];
 }
 
 /** Mirrors DistributionCreatedDto */

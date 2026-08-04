@@ -14,8 +14,9 @@ namespace PPDO.Functions.Functions;
 /// HTTP-triggered Azure Functions for the Distribution feature.
 ///
 /// Endpoints:
-///   GET  /api/distributions/item/{stockNo} — breakdown for one catalog item
-///   POST /api/distributions                — create a single distribution
+///   GET  /api/distributions/item/{stockNo}          — breakdown for one catalog item
+///   POST /api/distributions/item/{stockNo}/allocate — FIFO-allocate a set of division
+///                                                      splits across the item's batches
 /// </summary>
 public sealed class DistributionFunctions
 {
@@ -53,27 +54,29 @@ public sealed class DistributionFunctions
         return await ToResponse(req, result, HttpStatusCode.OK, cancellationToken);
     }
 
-    // ── POST /api/distributions ───────────────────────────────────────────────
+    // ── POST /api/distributions/item/{stockNo}/allocate ───────────────────────
 
-    [Function("CreateDistribution")]
-    public async Task<HttpResponseData> Create(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "distributions")]
+    [Function("AllocateItemDistribution")]
+    public async Task<HttpResponseData> Allocate(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post",
+            Route = "distributions/item/{stockNo}/allocate")]
         HttpRequestData req,
+        string stockNo,
         CancellationToken cancellationToken)
     {
         User? caller = await _jwt.ValidateAsync(GetAuthHeader(req), cancellationToken);
         if (caller is null)
             return req.CreateResponse(HttpStatusCode.Unauthorized);
 
-        CreateStandaloneDistributionDto? body =
-            await DeserializeAsync<CreateStandaloneDistributionDto>(req, cancellationToken);
+        CreateItemDistributionDto? body =
+            await DeserializeAsync<CreateItemDistributionDto>(req, cancellationToken);
 
         if (body is null)
             return await PlainError(req, HttpStatusCode.BadRequest,
                 "Request body is missing or malformed.", cancellationToken);
 
-        ServiceResult<DistributionCreatedDto> result =
-            await _service.CreateAsync(caller, body, cancellationToken);
+        ServiceResult<IReadOnlyList<DistributionCreatedDto>> result =
+            await _service.AllocateAsync(caller, stockNo, body, cancellationToken);
 
         return await ToResponse(req, result, HttpStatusCode.Created, cancellationToken);
     }
