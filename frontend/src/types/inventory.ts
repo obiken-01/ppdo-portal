@@ -429,3 +429,81 @@ export interface DistributionCreatedResponse {
   issuedBy: string;
   remarks: string | null;
 }
+
+// ---------------------------------------------------------------------------
+// Warehouse stock input — physical-count ledger (RAL-193)
+// ---------------------------------------------------------------------------
+
+/** Mirrors StockBalanceDto */
+export interface StockBalanceResponse {
+  id: string;
+  stockNo: string;
+  countedQty: number;
+  systemOnHandAtEntry: number;
+  varianceQty: number;
+  effectiveDate: string; // "YYYY-MM-DD"
+  reason: string | null;
+  recordedByUserId: string;
+  recordedByName: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** True when this save also auto-created a new Items Master row (IsNewItem = true,
+   * pending admin review) because the StockNo wasn't cataloged yet. */
+  itemWasAutoCreated: boolean;
+}
+
+/**
+ * Mirrors CreateStockBalanceDto. Description/unit/unitCost/itemType are only used when
+ * stockNo isn't already in Items Master — the backend auto-creates the catalog entry
+ * (IsNewItem = true, pending admin review) from these, mirroring Create PR's unknown-stock
+ * handling. Ignored (the catalog's own values win) when stockNo is already known.
+ */
+export interface CreateStockBalanceRequest {
+  stockNo: string;
+  countedQty: number;
+  effectiveDate: string; // "YYYY-MM-DD"
+  reason: string | null;
+  description: string | null;
+  unit: string | null;
+  unitCost: number | null;
+  itemType: string | null;
+}
+
+/** Mirrors UpdateStockBalanceDto */
+export interface UpdateStockBalanceRequest {
+  countedQty: number | null;
+  effectiveDate: string | null;
+  reason: string | null;
+}
+
+/** Mirrors StockBalanceImportRowDto */
+export interface StockBalanceImportRowResponse {
+  rowNumber: number;
+  stockNo: string | null;
+  countedQty: number | null;
+  effectiveDate: string | null;
+  reason: string | null;
+  description: string | null;
+  unit: string | null;
+  unitCost: number | null;
+  itemType: string | null;
+  error: string | null;
+}
+
+/** Mirrors StockBalanceImportPreviewDto — POST /api/inventory/stock-balances/import/preview */
+export interface StockBalanceImportPreviewResponse {
+  rows: StockBalanceImportRowResponse[];
+}
+
+/** Mirrors StockBalanceImportResultDto — POST /api/inventory/stock-balances/import/commit */
+export interface StockBalanceImportResultResponse {
+  inserted: number;
+  updated: number;
+  entries: StockBalanceResponse[];
+}
+
+/** Mirrors SystemOnHandDto — GET /api/inventory/stock-balances/system-on-hand?stockNo= */
+export interface SystemOnHandResponse {
+  stockNo: string;
+  onHand: number;
+}

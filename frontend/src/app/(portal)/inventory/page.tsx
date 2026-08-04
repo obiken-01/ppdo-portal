@@ -365,11 +365,20 @@ export default function InventoryDashboardPage() {
           >
             <span>📦</span> Distribution
           </Link>
+          <Link
+            href="/inventory/stock-balances"
+            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium transition-colors"
+          >
+            <span>🏭</span> Warehouse Stock
+          </Link>
         </div>
       </div>
 
-      {/* ── Stat card groups ─────────────────────────────────────────────── */}
-      <div className="flex gap-4 flex-wrap">
+      {/* ── Stat card groups ───────────────────────────────────────────────
+          lg, not sm — the sidebar itself collapses to a hamburger below lg (Sidebar.tsx),
+          so anywhere in the sm–lg range is already a narrow-chrome layout where two
+          4-card groups side by side get cramped. Stack through that whole range. */}
+      <div className="flex flex-col lg:flex-row gap-4">
 
         {/* Group 1 — Purchase Requests */}
         <StatGroup title="📋  Purchase Requests">

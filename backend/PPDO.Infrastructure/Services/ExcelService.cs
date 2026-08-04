@@ -93,6 +93,96 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
         return ms.ToArray();
     }
 
+    // ── GenerateStockBalanceImportTemplate ────────────────────────────────────
+
+    /// <inheritdoc />
+    public byte[] GenerateStockBalanceImportTemplate()
+    {
+        using XLWorkbook wb = new();
+
+        IXLWorksheet ws = wb.AddWorksheet("Stock Balance Import");
+        BuildStockBalanceImportSheet(ws);
+
+        IXLWorksheet inst = wb.AddWorksheet("Instructions");
+        BuildStockBalanceInstructionsSheet(inst);
+
+        using MemoryStream ms = new();
+        wb.SaveAs(ms);
+        return ms.ToArray();
+    }
+
+    /// <summary>
+    /// Row 1 = header, exactly matching <see cref="ParseStockBalanceImport"/>'s expected
+    /// layout — no title/instruction rows above it, since parsing always starts at row 2
+    /// of the first worksheet.
+    /// </summary>
+    private static void BuildStockBalanceImportSheet(IXLWorksheet ws)
+    {
+        string[] headers =
+            ["StockNo", "CountedQty", "EffectiveDate", "Reason", "Description", "Unit", "UnitCost", "ItemType"];
+
+        for (int c = 1; c <= headers.Length; c++)
+        {
+            IXLCell h = ws.Cell(1, c);
+            h.Value = headers[c - 1];
+            h.Style.Font.SetBold(true).Fill.SetBackgroundColor(DarkGreen)
+                .Font.SetFontColor(White)
+                .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
+        }
+
+        // Yellow fillable rows below the header, for a batch of counts.
+        for (int r = 2; r <= 30; r++)
+            for (int c = 1; c <= headers.Length; c++)
+                ws.Cell(r, c).Style.Fill.SetBackgroundColor(Yellow);
+
+        for (int c = 1; c <= headers.Length; c++)
+            ws.Column(c).Width = 18;
+
+        ws.SheetView.FreezeRows(1);
+    }
+
+    private static void BuildStockBalanceInstructionsSheet(IXLWorksheet ws)
+    {
+        ws.Cell(1, 1).Value = "HOW TO USE THIS TEMPLATE";
+        ws.Cell(1, 1).Style.Font.SetBold(true).Font.SetFontSize(13).Font.SetFontColor(DarkGreen);
+
+        string[] lines =
+        [
+            "",
+            "REQUIRED COLUMNS (every row):",
+            "  StockNo, CountedQty, EffectiveDate.",
+            "  CountedQty must be zero or greater. EffectiveDate cannot be in the future.",
+            "",
+            "OPTIONAL COLUMNS:",
+            "  Reason — free text, e.g. \"Quarterly physical count\".",
+            "  Description / Unit / UnitCost / ItemType — only needed when StockNo isn't",
+            "    already in Items Master. It will be added to the catalog automatically,",
+            "    pending admin review. When the StockNo is already cataloged, these four",
+            "    columns are ignored — the catalog's own values win.",
+            "",
+            "RE-UPLOADING:",
+            "  Uploading the same StockNo + Effective Date pair again overwrites that entry",
+            "  instead of creating a duplicate.",
+            "",
+            "STOPPING:",
+            "  Leave a row completely blank to stop — rows after the first blank row are",
+            "  not read.",
+            "",
+            "DEFAULT PASSWORD:",
+            "  If you forget your portal password, contact your System Administrator.",
+            "  Default password (after reset): TamarawUser2026!",
+        ];
+
+        for (int i = 0; i < lines.Length; i++)
+        {
+            ws.Cell(i + 2, 1).Value = lines[i];
+            if (lines[i].EndsWith(':'))
+                ws.Cell(i + 2, 1).Style.Font.SetBold(true);
+        }
+
+        ws.Column(1).Width = 80;
+    }
+
     // ── ExportPRReport ────────────────────────────────────────────────────────
 
     /// <inheritdoc />
@@ -813,6 +903,87 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
             Activity  = activity,
             Items     = items,
         };
+    }
+
+    // ── ParseStockBalanceImport ───────────────────────────────────────────────
+
+    /// <inheritdoc />
+    public IReadOnlyList<StockBalanceImportRow> ParseStockBalanceImport(Stream stream)
+    {
+        using XLWorkbook wb = new(stream);
+        IXLWorksheet ws = wb.Worksheets.First();
+
+        List<StockBalanceImportRow> rows = new();
+
+        // Row 1 is the header (StockNo | CountedQty | EffectiveDate | Reason | Description |
+        // Unit | UnitCost | ItemType); data starts at row 2.
+        for (int row = 2; ; row++)
+        {
+            string stockNoRaw     = ws.Cell(row, 1).GetString().Trim();
+            string qtyRaw         = ws.Cell(row, 2).GetString().Trim();
+            string dateRaw        = ws.Cell(row, 3).GetString().Trim();
+            string reasonRaw      = ws.Cell(row, 4).GetString().Trim();
+            string descriptionRaw = ws.Cell(row, 5).GetString().Trim();
+            string unitRaw        = ws.Cell(row, 6).GetString().Trim();
+            string unitCostRaw    = ws.Cell(row, 7).GetString().Trim();
+            string itemTypeRaw    = ws.Cell(row, 8).GetString().Trim();
+
+            // A fully blank row ends the data — matches ParsePRImport's stop condition.
+            if (string.IsNullOrWhiteSpace(stockNoRaw) && string.IsNullOrWhiteSpace(qtyRaw)
+                && string.IsNullOrWhiteSpace(dateRaw) && string.IsNullOrWhiteSpace(reasonRaw)
+                && string.IsNullOrWhiteSpace(descriptionRaw) && string.IsNullOrWhiteSpace(unitRaw)
+                && string.IsNullOrWhiteSpace(unitCostRaw) && string.IsNullOrWhiteSpace(itemTypeRaw))
+                break;
+
+            List<string> rowErrors = new();
+
+            if (string.IsNullOrWhiteSpace(stockNoRaw))
+                rowErrors.Add("StockNo is required.");
+
+            decimal? countedQty = null;
+            if (string.IsNullOrWhiteSpace(qtyRaw))
+                rowErrors.Add("CountedQty is required.");
+            else if (!decimal.TryParse(qtyRaw, out decimal qty) || qty < 0)
+                rowErrors.Add($"CountedQty must be a non-negative number (got '{qtyRaw}').");
+            else
+                countedQty = qty;
+
+            DateOnly? effectiveDate = null;
+            if (string.IsNullOrWhiteSpace(dateRaw))
+            {
+                rowErrors.Add("EffectiveDate is required.");
+            }
+            else
+            {
+                IXLCell dateCell = ws.Cell(row, 3);
+                if (dateCell.DataType == XLDataType.DateTime)
+                    effectiveDate = DateOnly.FromDateTime(dateCell.GetDateTime());
+                else if (DateTime.TryParse(dateRaw, out DateTime parsed))
+                    effectiveDate = DateOnly.FromDateTime(parsed);
+                else
+                    rowErrors.Add($"EffectiveDate '{dateRaw}' is not a valid date.");
+            }
+
+            decimal? unitCost = null;
+            if (!string.IsNullOrWhiteSpace(unitCostRaw) && decimal.TryParse(unitCostRaw, out decimal parsedCost))
+                unitCost = parsedCost;
+
+            rows.Add(new StockBalanceImportRow
+            {
+                RowNumber     = row,
+                StockNo       = NullIfBlank(stockNoRaw),
+                CountedQty    = countedQty,
+                EffectiveDate = effectiveDate,
+                Reason        = NullIfBlank(reasonRaw),
+                Description   = NullIfBlank(descriptionRaw),
+                Unit          = NullIfBlank(unitRaw),
+                UnitCost      = unitCost,
+                ItemType      = NullIfBlank(itemTypeRaw),
+                Error         = rowErrors.Count > 0 ? string.Join(" ", rowErrors) : null,
+            });
+        }
+
+        return rows;
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────

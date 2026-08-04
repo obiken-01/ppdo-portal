@@ -1129,9 +1129,9 @@ export default function CreatePRPage() {
             <table className="w-full text-xs border-collapse min-w-[980px]">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase tracking-wide">
-                  <th className="px-3 py-2.5 text-center font-medium w-10">#</th>
+                  <th className="sticky left-0 z-20 bg-slate-50 px-3 py-2.5 text-center font-medium w-10">#</th>
                   <th className="px-3 py-2.5 text-left font-medium w-36">Stock No.</th>
-                  <th className="px-3 py-2.5 text-left font-medium min-w-56">Description</th>
+                  <th className="sticky left-10 z-20 bg-slate-50 px-3 py-2.5 text-left font-medium w-40 border-r border-slate-200">Description</th>
                   <th className="px-3 py-2.5 text-left font-medium w-24">Unit</th>
                   <th className="px-3 py-2.5 text-right font-medium w-24">Qty</th>
                   <th className="px-3 py-2.5 text-right font-medium w-28">Unit Cost</th>
@@ -1145,10 +1145,11 @@ export default function CreatePRPage() {
                   const qty   = parseFloat(row.quantity) || 0;
                   const total = qty * row.unitCost;
 
+                  const rowBg = idx % 2 === 1 ? "bg-slate-50" : "bg-white";
                   return (
-                    <tr key={row._id} className={idx % 2 === 1 ? "bg-slate-50" : "bg-white"}>
+                    <tr key={row._id} className={rowBg}>
                       {/* # */}
-                      <td className="px-3 py-1.5 text-center text-slate-600">{idx + 1}</td>
+                      <td className={`sticky left-0 z-10 px-3 py-1.5 text-center text-slate-600 ${rowBg}`}>{idx + 1}</td>
 
                       {/* Stock No — yellow, autocomplete */}
                       <td className="px-1.5 py-1.5">
@@ -1164,7 +1165,7 @@ export default function CreatePRPage() {
                       </td>
 
                       {/* Description — yellow, autocomplete */}
-                      <td className="px-1.5 py-1.5">
+                      <td className={`sticky left-10 z-10 px-1.5 py-1.5 border-r border-slate-200 ${rowBg}`}>
                         <LookupInput
                           value={row.description}
                           placeholder="Item description *"

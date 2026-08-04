@@ -75,6 +75,67 @@ public sealed class ExcelServiceTests
         Assert.Equal("PR No.", ws.Cell(ExcelService.ROW_PR_NO, 1).GetString());
     }
 
+    // ── GenerateStockBalanceImportTemplate ────────────────────────────────────
+
+    [Fact]
+    public void GenerateStockBalanceImportTemplate_ReturnsNonEmptyByteArray()
+    {
+        byte[] result = _sut.GenerateStockBalanceImportTemplate();
+        Assert.NotEmpty(result);
+    }
+
+    [Fact]
+    public void GenerateStockBalanceImportTemplate_ContainsInstructionsSheet()
+    {
+        byte[] result = _sut.GenerateStockBalanceImportTemplate();
+        using IXLWorkbook wb = new XLWorkbook(new MemoryStream(result));
+        Assert.Contains(wb.Worksheets, ws =>
+            ws.Name.Equals("Instructions", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void GenerateStockBalanceImportTemplate_HeaderRowMatchesParseStockBalanceImportLayout()
+    {
+        // Row 1 of the FIRST worksheet must be exactly the header ParseStockBalanceImport
+        // expects (StockNo | CountedQty | EffectiveDate | Reason | Description | Unit |
+        // UnitCost | ItemType) — no title/instruction rows above it, since parsing always
+        // starts reading data at row 2.
+        byte[] result = _sut.GenerateStockBalanceImportTemplate();
+        using IXLWorkbook wb = new XLWorkbook(new MemoryStream(result));
+        IXLWorksheet ws = wb.Worksheets.First();
+
+        string[] expected =
+            ["StockNo", "CountedQty", "EffectiveDate", "Reason", "Description", "Unit", "UnitCost", "ItemType"];
+        for (int c = 1; c <= expected.Length; c++)
+            Assert.Equal(expected[c - 1], ws.Cell(1, c).GetString());
+    }
+
+    [Fact]
+    public void GenerateStockBalanceImportTemplate_RoundTripsThroughParseStockBalanceImport()
+    {
+        // A filled-in copy of the generated template must parse cleanly — proves the
+        // template's column order and the parser's expectations stay in sync.
+        byte[] template = _sut.GenerateStockBalanceImportTemplate();
+        using XLWorkbook wb = new(new MemoryStream(template));
+        IXLWorksheet ws = wb.Worksheets.First();
+
+        ws.Cell(2, 1).Value = "A01";
+        ws.Cell(2, 2).Value = 10;
+        ws.Cell(2, 3).Value = DateTime.UtcNow.Date;
+        ws.Cell(2, 4).Value = "Quarterly count";
+
+        using MemoryStream filled = new();
+        wb.SaveAs(filled);
+        filled.Position = 0;
+
+        IReadOnlyList<StockBalanceImportRow> rows = _sut.ParseStockBalanceImport(filled);
+
+        StockBalanceImportRow row = Assert.Single(rows);
+        Assert.Null(row.Error);
+        Assert.Equal("A01", row.StockNo);
+        Assert.Equal(10m, row.CountedQty);
+    }
+
     // ── ParsePRImport ─────────────────────────────────────────────────────────
 
     /// <summary>
