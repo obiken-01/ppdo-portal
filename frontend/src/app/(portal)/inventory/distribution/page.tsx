@@ -11,9 +11,10 @@
  *   5. Submit → allocates FIFO across available batches → creates Distribution records
  *
  * API:
- *   GET  /api/items/lookup?term=…                   → autocomplete
- *   GET  /api/distributions/item/{stockNo}           → item summary + breakdown
- *   POST /api/distributions                          → create distribution (per batch)
+ *   GET  /api/items/lookup?term=…                        → autocomplete
+ *   GET  /api/distributions/item/{stockNo}                → item summary + breakdown
+ *   POST /api/distributions/item/{stockNo}/allocate       → FIFO-allocate splits across
+ *                                                            batches (server-side)
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -23,8 +24,7 @@ import { fetchMe } from "@/lib/me-cache";
 import { useInventoryDivisions } from "@/lib/inventory-divisions";
 import { useToast } from "@/components/ui/Toast";
 import type {
-  CreateDistributionStandaloneRequest,
-  DeliveryItemBreakdownResponse,
+  CreateItemDistributionRequest,
   DistributionCreatedResponse,
   ItemDistributionSummaryResponse,
   ItemLookupResponse,
@@ -327,42 +327,26 @@ export default function DistributionPage() {
     } finally { setSummaryLoading(false); }
   }
 
-  /**
-   * FIFO allocation across available delivery batches.
-   * Each SplitRow may consume from multiple batches; we create one API call per
-   * (row × batch) pair so the backend still records which delivery batch was used.
-   */
+  /** Submits all split rows in one call — the backend FIFO-allocates each across batches. */
   async function handleDistribute(rows: SplitRow[]) {
     if (!summary) return;
     setSubmitting(true);
 
-    // Build an ordered list of batches with remaining available qty (earliest first)
-    const batchPool: { batch: DeliveryItemBreakdownResponse; remaining: number }[] =
-      summary.deliveryItems
-        .filter((b) => b.qtyAvailable > 0)
-        .map((b) => ({ batch: b, remaining: b.qtyAvailable }));
+    const payload: CreateItemDistributionRequest = {
+      splits: rows.map((row) => ({
+        division:   row.division,
+        qtyIssued:  parseFloat(row.qty),
+        dateIssued: row.dateIssued,
+        issuedBy:   row.issuedBy.trim(),
+        remarks:    row.remarks.trim() || null,
+      })),
+    };
 
     try {
-      for (const row of rows) {
-        let need = parseFloat(row.qty);
-        for (const slot of batchPool) {
-          if (need <= 0) break;
-          if (slot.remaining <= 0) continue;
-
-          const take = Math.min(need, slot.remaining);
-          const payload: CreateDistributionStandaloneRequest = {
-            deliveryItemId: slot.batch.deliveryItemId,
-            division:       row.division,
-            qtyIssued:      take,
-            dateIssued:     row.dateIssued,
-            issuedBy:       row.issuedBy.trim(),
-            remarks:        row.remarks.trim() || null,
-          };
-          await api.post<DistributionCreatedResponse>("/distributions", payload);
-          slot.remaining -= take;
-          need           -= take;
-        }
-      }
+      await api.post<DistributionCreatedResponse[]>(
+        `/distributions/item/${encodeURIComponent(selectedStockNo)}/allocate`,
+        payload
+      );
 
       const totalQty = rows.reduce((s, r) => s + (parseFloat(r.qty) || 0), 0);
       const divLabel = rows.length === 1
@@ -405,10 +389,10 @@ export default function DistributionPage() {
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans">
-      <div className="max-w-screen-xl mx-auto px-6 py-6 space-y-4">
+      <div className="max-w-screen-xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-4">
 
         {/* ── Item search ───────────────────────────────────────────────────── */}
-        <div className="bg-white border border-slate-200 shadow-sm p-5 space-y-3">
+        <div className="bg-white border border-slate-200 shadow-sm p-3 sm:p-5 space-y-3">
           <p className="text-sm font-semibold text-slate-700">Select an Item</p>
           <div className="relative">
             <input
@@ -447,11 +431,36 @@ export default function DistributionPage() {
           )}
         </div>
 
-        {/* ── Loading ───────────────────────────────────────────────────────── */}
+        {/* ── Loading — mirrors the summary card + stock-sources card shape below,
+            so the swap to loaded content doesn't shift the page (CLS). ──────────── */}
         {summaryLoading && (
-          <div className="bg-white border border-slate-200 shadow-sm flex items-center justify-center py-16">
-            <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
-          </div>
+          <>
+            <div className="bg-white border border-slate-200 shadow-sm overflow-hidden">
+              <div className="px-5 py-3 bg-green-600/40 animate-pulse h-11" />
+              <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-slate-100">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="px-4 py-3 space-y-2">
+                    <div className="h-3 w-16 bg-slate-100 animate-pulse" />
+                    <div className="h-4 w-20 bg-slate-100 animate-pulse" />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="bg-white border border-slate-200 shadow-sm overflow-hidden">
+              <div className="px-5 py-3 border-b border-slate-100">
+                <div className="h-4 w-28 bg-slate-100 animate-pulse" />
+              </div>
+              <div className="divide-y divide-slate-100">
+                {Array.from({ length: 2 }).map((_, i) => (
+                  <div key={i} className="px-5 py-3 grid grid-cols-2 md:grid-cols-5 gap-3">
+                    {Array.from({ length: 5 }).map((_, j) => (
+                      <div key={j} className="h-4 bg-slate-100 animate-pulse" style={{ width: `${50 + ((i * 3 + j * 17) % 35)}%` }} />
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
         )}
 
         {summary && !summaryLoading && (
@@ -625,7 +634,7 @@ export default function DistributionPage() {
                 </div>
               ) : (
                 <div className="overflow-x-auto overflow-y-hidden">
-                  <table className="w-full text-sm border-collapse">
+                  <table className="w-full text-sm border-collapse min-w-[980px]">
                     <thead>
                       <tr className="bg-slate-50 border-b border-slate-200 text-xs text-slate-600 uppercase tracking-wide">
                         <th className="text-left px-4 py-2.5 font-medium">Issue Ref</th>

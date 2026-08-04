@@ -29,7 +29,7 @@ import { auth } from "@/lib/auth";
 import { clearMeCache } from "@/lib/me-cache";
 import type { MeResponse } from "@/types";
 
-const APP_VERSION = "v1.6.0";
+const APP_VERSION = "v1.7.0";
 
 interface SidebarProps {
   me: MeResponse | null;
@@ -273,6 +273,15 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
                   >
                     <span className="text-xs">•</span>
                     <span className="truncate">Distribution</span>
+                  </Link>
+                )}
+                {hasInventory && (
+                  <Link
+                    href="/inventory/stock-balances"
+                    className={childLinkCls(isActive("/inventory/stock-balances"))}
+                  >
+                    <span className="text-xs">•</span>
+                    <span className="truncate">Warehouse Stock Input</span>
                   </Link>
                 )}
                 {hasInventory && (

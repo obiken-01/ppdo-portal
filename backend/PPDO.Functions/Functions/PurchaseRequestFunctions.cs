@@ -19,6 +19,7 @@ namespace PPDO.Functions.Functions;
 ///
 /// Endpoints:
 ///   GET  /api/purchase-requests             — list PRs (division-scoped for Staff/Observer)
+///   GET  /api/purchase-requests/search      — filtered/sorted/paged PR List search (RAL-192)
 ///   GET  /api/purchase-requests/{id}        — PR detail with line items
 ///   POST /api/purchase-requests             — submit new PR
 ///   PUT  /api/purchase-requests/{id}          — update PR (Admin only, status = Open)
@@ -26,6 +27,9 @@ namespace PPDO.Functions.Functions;
 ///   PUT  /api/purchase-requests/{id}/uncomplete — revert PR to FullyDelivered (Completed only)
 ///   GET  /api/purchase-requests/template      — download blank PR import template (.xlsx)
 ///   POST /api/purchase-requests/import        — upload populated PR template → create PRs
+///   POST /api/purchase-requests/import/gso-preview — upload a GSO-system PR export → prefill
+///                                                 data for the Create PR form (RAL-196, no PR
+///                                                 is created by this endpoint)
 /// </summary>
 public sealed class PurchaseRequestFunctions
 {
@@ -64,6 +68,62 @@ public sealed class PurchaseRequestFunctions
 
         IReadOnlyList<PRSummaryDto> result =
             await _service.GetAllAsync(caller, status, cancellationToken);
+        return await OkJson(req, result, cancellationToken);
+    }
+
+    // ── GET /api/purchase-requests/search ─────────────────────────────────────
+    //   ?page=&pageSize=&search=&dateFrom=&dateTo=&statuses=Open,PartiallyDelivered
+    //   &division=&requestedBy=&fund=&aipCode=&accountNo=&accountTitle=&program=
+    //   &project=&activity=&sortBy=&sortDir=asc|desc
+
+    [Function("SearchPurchaseRequests")]
+    public async Task<HttpResponseData> Search(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "purchase-requests/search")]
+        HttpRequestData req,
+        CancellationToken cancellationToken)
+    {
+        User? caller = await _jwt.ValidateAsync(GetAuthHeader(req), cancellationToken);
+        if (caller is null)
+            return req.CreateResponse(HttpStatusCode.Unauthorized);
+
+        int page = int.TryParse(req.Query["page"], out int p) && p > 0 ? p : 1;
+        int pageSize = int.TryParse(req.Query["pageSize"], out int ps) && ps > 0 ? ps : 50;
+
+        List<PRStatus>? statuses = null;
+        string? statusesParam = req.Query["statuses"];
+        if (!string.IsNullOrEmpty(statusesParam))
+        {
+            statuses = statusesParam.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(s => Enum.TryParse<PRStatus>(s, ignoreCase: true, out _))
+                .Select(s => Enum.Parse<PRStatus>(s, ignoreCase: true))
+                .ToList();
+        }
+
+        DateOnly? dateFrom = DateOnly.TryParse(req.Query["dateFrom"], out DateOnly df) ? df : null;
+        DateOnly? dateTo   = DateOnly.TryParse(req.Query["dateTo"], out DateOnly dt) ? dt : null;
+
+        static string? NullIfEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? null : s;
+
+        PRSearchFilterDto filter = new(
+            Page:           page,
+            PageSize:       pageSize,
+            Search:         NullIfEmpty(req.Query["search"]),
+            DateFrom:       dateFrom,
+            DateTo:         dateTo,
+            Statuses:       statuses,
+            Division:       NullIfEmpty(req.Query["division"]),
+            RequestedBy:    NullIfEmpty(req.Query["requestedBy"]),
+            Fund:           NullIfEmpty(req.Query["fund"]),
+            AIPCode:        NullIfEmpty(req.Query["aipCode"]),
+            AccountNo:      NullIfEmpty(req.Query["accountNo"]),
+            AccountTitle:   NullIfEmpty(req.Query["accountTitle"]),
+            Program:        NullIfEmpty(req.Query["program"]),
+            Project:        NullIfEmpty(req.Query["project"]),
+            Activity:       NullIfEmpty(req.Query["activity"]),
+            SortBy:         NullIfEmpty(req.Query["sortBy"]),
+            SortDescending: string.Equals(req.Query["sortDir"], "desc", StringComparison.OrdinalIgnoreCase));
+
+        PRSearchResultDto result = await _service.SearchAsync(caller, filter, cancellationToken);
         return await OkJson(req, result, cancellationToken);
     }
 
@@ -123,6 +183,36 @@ public sealed class PurchaseRequestFunctions
             await _service.ImportFromExcelAsync(caller, ms, cancellationToken);
 
         return await ToResponse(req, result, HttpStatusCode.Created, cancellationToken);
+    }
+
+    // ── POST /api/purchase-requests/import/gso-preview ────────────────────────
+
+    [Function("PreviewGsoPurchaseRequestImport")]
+    public async Task<HttpResponseData> PreviewGsoImport(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "purchase-requests/import/gso-preview")]
+        HttpRequestData req,
+        CancellationToken cancellationToken)
+    {
+        User? caller = await _jwt.ValidateAsync(GetAuthHeader(req), cancellationToken);
+        if (caller is null)
+            return req.CreateResponse(HttpStatusCode.Unauthorized);
+
+        // req.Body in the isolated worker is a non-seekable HttpRequestStream — copy to a
+        // MemoryStream first so ClosedXML's/PdfPig's internal .Length/seek calls don't throw,
+        // and so the service can sniff the file's magic number to tell .xlsx from .pdf.
+        using MemoryStream ms = new();
+        await req.Body.CopyToAsync(ms, cancellationToken);
+
+        if (ms.Length == 0)
+            return await PlainError(req, HttpStatusCode.BadRequest,
+                "Request body must contain the .xlsx or .pdf file.", cancellationToken);
+
+        ms.Position = 0;
+
+        ServiceResult<GsoPRImportPreviewDto> result =
+            await _service.PreviewGsoImportAsync(caller, ms, cancellationToken);
+
+        return await ToResponse(req, result, HttpStatusCode.OK, cancellationToken);
     }
 
     // ── GET /api/purchase-requests/{id} ──────────────────────────────────────

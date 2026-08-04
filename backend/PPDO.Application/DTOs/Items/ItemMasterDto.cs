@@ -17,3 +17,26 @@ public sealed record ItemMasterDto(
     bool     IsNewItem,
     DateTime CreatedAt,
     DateTime UpdatedAt);
+
+/// <summary>Filter/sort/page parameters for <c>GET /api/items/master/search</c>.</summary>
+public sealed record ItemMasterSearchFilterDto(
+    int     Page,
+    int     PageSize,
+    string? Search,
+    string? StockNo,
+    string? Description,
+    string? Category,
+    string? Unit,
+    string? ItemType,
+    string? Remarks,
+    bool    IsNewOnly,
+    string? SortBy,
+    bool    SortDescending);
+
+/// <summary>Response shape for <c>GET /api/items/master/search</c>.</summary>
+public sealed record ItemMasterSearchResultDto(
+    IReadOnlyList<ItemMasterDto> Items,
+    int TotalCount,
+    int TotalNewItemCount,
+    int Page,
+    int PageSize);

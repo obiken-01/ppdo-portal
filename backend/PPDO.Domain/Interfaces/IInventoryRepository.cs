@@ -34,6 +34,16 @@ public interface IInventoryRepository
         DateOnly dateTo,
         int? divisionId = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns the aggregated stock level for a single StockNo, across all divisions
+    /// (PPDO-wide). Used by StockBalanceService (RAL-193) to snapshot "system on-hand" at
+    /// the moment a physical-count entry is saved — a targeted single-item query rather
+    /// than fetching every StockNo via <see cref="GetItemStockLevelsAsync"/>. Returns all
+    /// zeros (never null) when the StockNo has no PR activity at all.
+    /// </summary>
+    Task<ItemStockLevel> GetItemStockLevelAsync(
+        string stockNo, CancellationToken cancellationToken = default);
 }
 
 /// <summary>

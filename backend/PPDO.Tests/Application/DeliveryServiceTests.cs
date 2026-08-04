@@ -124,12 +124,14 @@ public sealed class DeliveryServiceTests
     private static DeliveryService BuildSut(
         Mock<IDeliveryRepository> deliveryRepo,
         Mock<IPurchaseRequestRepository> prRepo,
-        Mock<IRepository<Division>>? divisionRepo = null)
+        Mock<IRepository<Division>>? divisionRepo = null,
+        Mock<IAuditService>? auditService = null)
         => new(
             deliveryRepo.Object,
             prRepo.Object,
             new PermissionService(),
             (divisionRepo ?? DivisionsRepo()).Object,
+            (auditService ?? new Mock<IAuditService>()).Object,
             NullLogger<DeliveryService>.Instance);
 
     // ── Permission gate ───────────────────────────────────────────────────────
@@ -508,5 +510,234 @@ public sealed class DeliveryServiceTests
         string suffix1 = dists[0].IssueRef.Split('-')[2];
         string suffix2 = dists[1].IssueRef.Split('-')[2];
         Assert.Equal(suffix1, suffix2);
+    }
+
+    // ── GetDeliveredTotalsByPRAsync (RAL-192 follow-up) ───────────────────────
+
+    [Fact]
+    public async Task GetDeliveredTotalsByPRAsync_ReturnsRepositoryAggregate()
+    {
+        PurchaseRequest pr = MakePR();
+        Guid itemId = Guid.NewGuid();
+
+        Mock<IDeliveryRepository> deliveryRepo = RepoDeliveryThatSaves();
+        deliveryRepo.Setup(r => r.GetTotalDeliveredByPRAsync(pr.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, decimal> { [itemId] = 13m });
+
+        ServiceResult<IReadOnlyDictionary<Guid, decimal>> result =
+            await BuildSut(deliveryRepo, RepoPRThatSaves(pr))
+                .GetDeliveredTotalsByPRAsync(MakeAdmin(), pr.Id);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(13m, result.Value![itemId]);
+    }
+
+    [Fact]
+    public async Task GetDeliveredTotalsByPRAsync_PRNotFound_ReturnsNotFound()
+    {
+        Mock<IDeliveryRepository> deliveryRepo = RepoDeliveryThatSaves();
+        Mock<IPurchaseRequestRepository> prRepo = new();
+        prRepo.Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PurchaseRequest?)null);
+
+        ServiceResult<IReadOnlyDictionary<Guid, decimal>> result =
+            await BuildSut(deliveryRepo, prRepo)
+                .GetDeliveredTotalsByPRAsync(MakeAdmin(), Guid.NewGuid());
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Fact]
+    public async Task GetDeliveredTotalsByPRAsync_StaffOtherDivision_ReturnsForbidden()
+    {
+        PurchaseRequest pr = MakePR(divisionId: AdminDiv);
+
+        ServiceResult<IReadOnlyDictionary<Guid, decimal>> result =
+            await BuildSut(RepoDeliveryThatSaves(), RepoPRThatSaves(pr))
+                .GetDeliveredTotalsByPRAsync(MakeStaff(PlanningDiv), pr.Id);
+
+        Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
+    }
+
+    // ── GetAllAsync (RAL-192 — paged, single query, no per-PR N+1) ──────────────
+
+    private static Delivery MakeDelivery(DateOnly date) => new()
+    {
+        Id = Guid.NewGuid(), DeliveryRef = $"DEL-{date:yyyyMMdd}-AAAAA",
+        PRId = Guid.NewGuid(), DeliveryDate = date, ReceivedBy = "Ralph",
+        CreatedAt = DateTime.UtcNow,
+    };
+
+    [Fact]
+    public async Task GetAllAsync_Admin_QueriesAllDivisionsAndMapsResult()
+    {
+        List<Delivery> deliveries =
+        [
+            MakeDelivery(new DateOnly(2026, 7, 1)),
+            MakeDelivery(new DateOnly(2026, 7, 2)),
+        ];
+        Mock<IDeliveryRepository> deliveryRepo = new();
+        deliveryRepo
+            .Setup(r => r.GetPagedAsync(null, 1, 25, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DeliveryPageResult(deliveries, TotalCount: 2));
+
+        DeliveryPagedResultDto result =
+            await BuildSut(deliveryRepo, new Mock<IPurchaseRequestRepository>())
+                .GetAllAsync(MakeAdmin(), page: 1, pageSize: 25);
+
+        Assert.Equal(2, result.Items.Count);
+        Assert.Equal(2, result.TotalCount);
+        Assert.Equal(1, result.Page);
+        Assert.Equal(25, result.PageSize);
+        deliveryRepo.Verify(
+            r => r.GetPagedAsync(null, 1, 25, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetAllAsync_Staff_ScopesToOwnDivision()
+    {
+        Mock<IDeliveryRepository> deliveryRepo = new();
+        deliveryRepo
+            .Setup(r => r.GetPagedAsync(PlanningDiv, 2, 10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DeliveryPageResult(new List<Delivery>(), TotalCount: 0));
+
+        await BuildSut(deliveryRepo, new Mock<IPurchaseRequestRepository>())
+            .GetAllAsync(MakeStaff(PlanningDiv), page: 2, pageSize: 10);
+
+        deliveryRepo.Verify(
+            r => r.GetPagedAsync(PlanningDiv, 2, 10, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetAllAsync_StaffWithNoDivision_SeesNothingAndNeverQueriesRepo()
+    {
+        User officeStaff = MakeStaff(PlanningDiv);
+        officeStaff.DivisionId = null;
+
+        Mock<IDeliveryRepository> deliveryRepo = new();
+
+        DeliveryPagedResultDto result =
+            await BuildSut(deliveryRepo, new Mock<IPurchaseRequestRepository>())
+                .GetAllAsync(officeStaff, page: 1, pageSize: 25);
+
+        Assert.Empty(result.Items);
+        Assert.Equal(0, result.TotalCount);
+        deliveryRepo.Verify(
+            r => r.GetPagedAsync(It.IsAny<int?>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task GetAllAsync_NeverLoadsPurchaseRequestsToBuildTheList()
+    {
+        // Regression guard for the old N+1: GetAllAsync()/GetByDivisionAsync() on the PR
+        // repository followed by a per-PR GetByPRIdAsync loop. The paged query must be the
+        // only thing DeliveryService touches to build this list.
+        Mock<IDeliveryRepository> deliveryRepo = new();
+        deliveryRepo
+            .Setup(r => r.GetPagedAsync(It.IsAny<int?>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DeliveryPageResult(new List<Delivery>(), TotalCount: 0));
+        Mock<IPurchaseRequestRepository> prRepo = new();
+
+        await BuildSut(deliveryRepo, prRepo).GetAllAsync(MakeAdmin(), page: 1, pageSize: 25);
+
+        prRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
+        prRepo.Verify(r => r.GetByDivisionAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+        deliveryRepo.Verify(r => r.GetByPRIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // ── Audit logging (RAL-200) ───────────────────────────────────────────────
+
+    [Fact]
+    public async Task CreateAsync_CallsAuditLog_WithCreateAction_ForTheDelivery()
+    {
+        PurchaseRequest pr = MakePR(AdminDiv, PRStatus.Open);
+        PRItem item = MakePRItem(pr.Id, qty: 10m);
+        pr.Items.Add(item);
+
+        Mock<IDeliveryRepository> deliveryRepo = RepoDeliveryThatSaves();
+        deliveryRepo.Setup(r => r.GetTotalDeliveredByPRAsync(pr.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, decimal>());
+        Mock<IAuditService> audit = new();
+
+        CreateDeliveryDto dto = new()
+        {
+            PRId = pr.Id, DeliveryDate = DateOnly.FromDateTime(DateTime.UtcNow),
+            ReceivedBy = "Ralph",
+            Items = new List<CreateDeliveryItemDto>
+            {
+                new() { PRItemId = item.Id, QtyDelivered = 5m, Distributions = new List<CreateDistributionDto> { ValidDist(5m) } },
+            },
+        };
+
+        ServiceResult<DeliveryResponseDto> result =
+            await BuildSut(deliveryRepo, RepoPRThatSaves(pr), auditService: audit).CreateAsync(MakeAdmin(), dto);
+
+        audit.Verify(a => a.LogAsync(
+            "Deliveries", result.Value!.Id, AuditAction.Create,
+            null, It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateAsync_TriggersStatusTransition_CallsAuditLog_ForThePR()
+    {
+        PurchaseRequest pr = MakePR(AdminDiv, PRStatus.Open);
+        PRItem item = MakePRItem(pr.Id, qty: 10m);
+        pr.Items.Add(item);
+
+        Mock<IDeliveryRepository> deliveryRepo = RepoDeliveryThatSaves();
+        deliveryRepo.Setup(r => r.GetTotalDeliveredByPRAsync(pr.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, decimal>());
+        Mock<IAuditService> audit = new();
+
+        // Full delivery — Open → FullyDelivered.
+        CreateDeliveryDto dto = new()
+        {
+            PRId = pr.Id, DeliveryDate = DateOnly.FromDateTime(DateTime.UtcNow),
+            ReceivedBy = "Ralph",
+            Items = new List<CreateDeliveryItemDto>
+            {
+                new() { PRItemId = item.Id, QtyDelivered = 10m, Distributions = new List<CreateDistributionDto> { ValidDist(10m) } },
+            },
+        };
+
+        await BuildSut(deliveryRepo, RepoPRThatSaves(pr), auditService: audit).CreateAsync(MakeAdmin(), dto);
+
+        audit.Verify(a => a.LogAsync(
+            "PurchaseRequests", pr.Id, AuditAction.Update,
+            It.IsNotNull<object>(), It.IsNotNull<object>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateAsync_PartialDelivery_NoStatusChange_DoesNotCallAuditLogForPR()
+    {
+        // Deliver less than the ordered qty but leave status unchanged at PartiallyDelivered
+        // (already partially delivered before this call) — the PR-side audit entry should
+        // only fire on an ACTUAL transition, not every delivery.
+        PurchaseRequest pr = MakePR(AdminDiv, PRStatus.PartiallyDelivered);
+        PRItem item = MakePRItem(pr.Id, qty: 10m);
+        pr.Items.Add(item);
+
+        Mock<IDeliveryRepository> deliveryRepo = RepoDeliveryThatSaves();
+        deliveryRepo.Setup(r => r.GetTotalDeliveredByPRAsync(pr.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, decimal> { [item.Id] = 3m });
+        Mock<IAuditService> audit = new();
+
+        CreateDeliveryDto dto = new()
+        {
+            PRId = pr.Id, DeliveryDate = DateOnly.FromDateTime(DateTime.UtcNow),
+            ReceivedBy = "Ralph",
+            Items = new List<CreateDeliveryItemDto>
+            {
+                new() { PRItemId = item.Id, QtyDelivered = 2m, Distributions = new List<CreateDistributionDto> { ValidDist(2m) } },
+            },
+        };
+
+        await BuildSut(deliveryRepo, RepoPRThatSaves(pr), auditService: audit).CreateAsync(MakeAdmin(), dto);
+
+        Assert.Equal(PRStatus.PartiallyDelivered, pr.Status); // unchanged
+        audit.Verify(a => a.LogAsync(
+            "PurchaseRequests", It.IsAny<Guid>(), It.IsAny<string>(),
+            It.IsAny<object?>(), It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

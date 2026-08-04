@@ -25,8 +25,11 @@
  * API endpoints:
  *   POST /api/purchase-requests          → submit PR
  *   GET  /api/purchase-requests/template → download blank .xlsx template
- *   POST /api/purchase-requests/import   → upload populated .xlsx (raw binary body)
+ *   POST /api/purchase-requests/import   → upload populated .xlsx (raw binary body, bulk direct-create)
+ *   POST /api/purchase-requests/import/gso-preview → upload a GSO-system PR export (raw binary
+ *                                            body) → prefill this form, nothing created (RAL-196)
  *   GET  /api/items/lookup?term=         → autocomplete lookup
+ *   GET  /api/config/accounts?search=    → Account No./Title bidirectional lookup (RAL-196)
  */
 
 import {
@@ -39,10 +42,13 @@ import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { fetchMe } from "@/lib/me-cache";
 import { useInventoryDivisions } from "@/lib/inventory-divisions";
+import { listAccounts } from "@/lib/config";
 import { useToast } from "@/components/ui/Toast";
 import type {
+  AccountResponse,
   CreatePRItemRequest,
   CreatePRRequest,
+  GsoPRImportPreviewResponse,
   ItemLookupResponse,
   MeResponse,
   PRResponse,
@@ -176,6 +182,103 @@ function LookupInput({
               </span>
               <span className="ml-2 text-slate-600">
                 {displayKey === "stockNo" ? item.description : item.stockNo}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AccountLookupInput
+// Bidirectional Account No. <-> Account Title lookup against the Config Accounts
+// table (RAL-196) — same debounced-dropdown pattern as LookupInput above, but the
+// account isn't required to exist in the table, so a typed value that matches
+// nothing is left as free text rather than blocked.
+// ---------------------------------------------------------------------------
+
+interface AccountLookupInputProps {
+  value: string;
+  placeholder: string;
+  onType: (v: string) => void;
+  onSelect: (account: AccountResponse) => void;
+  displayKey: "accountNumber" | "accountTitle";
+}
+
+function AccountLookupInput({
+  value, placeholder, onType, onSelect, displayKey,
+}: AccountLookupInputProps) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [open, setOpen] = useState(false);
+  const [suggestions, setSuggestions] = useState<AccountResponse[]>([]);
+  const [searching, setSearching] = useState(false);
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  function handleType(v: string) {
+    onType(v);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    if (v.trim().length < 2) {
+      setSuggestions([]);
+      return;
+    }
+
+    setSearching(true);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const data = await listAccounts({ search: v.trim(), active: "true" });
+        setSuggestions(data);
+        setOpen(data.length > 0);
+      } catch {
+        setSuggestions([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 250);
+  }
+
+  return (
+    <div ref={wrapRef} className="relative w-full">
+      <input
+        type="text"
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => handleType(e.target.value)}
+        onFocus={() => { if (suggestions.length > 0) setOpen(true); }}
+        className="w-full px-3 py-2 text-sm border border-slate-200 bg-cell-fill focus:outline-none focus:ring-2 focus:ring-green-600 focus:bg-white transition-colors"
+      />
+      {searching && (
+        <span className="absolute right-8 top-1/2 -translate-y-1/2 w-3 h-3 border-2 border-green-400 border-t-transparent rounded-full animate-spin" />
+      )}
+      {open && suggestions.length > 0 && (
+        <ul className="absolute z-50 top-full left-0 right-0 bg-white border border-slate-200 shadow-lg max-h-48 overflow-y-auto text-xs">
+          {suggestions.map((a) => (
+            <li
+              key={a.id}
+              onMouseDown={(e) => {
+                e.preventDefault(); // prevent blur before click
+                onSelect(a);
+                setOpen(false);
+              }}
+              className="px-3 py-2 hover:bg-green-50 cursor-pointer border-b border-slate-100 last:border-0"
+            >
+              <span className="font-mono font-medium text-slate-800">
+                {displayKey === "accountNumber" ? a.accountNumber : a.accountTitle}
+              </span>
+              <span className="ml-2 text-slate-600">
+                {displayKey === "accountNumber" ? a.accountTitle : a.accountNumber}
               </span>
             </li>
           ))}
@@ -377,6 +480,10 @@ export default function CreatePRPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
 
+  // GSO import (prefill) state — RAL-196
+  const gsoFileInputRef = useRef<HTMLInputElement>(null);
+  const [gsoImporting, setGsoImporting] = useState(false);
+
   // Debounce timers per row — keyed by row _id
   const debounceRefs = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
@@ -554,6 +661,72 @@ export default function CreatePRPage() {
     }
   }
 
+  // ── Prefill from GSO export ────────────────────────────────────────────────
+  //
+  // Unlike handleFileUpload above (our own template, bulk, direct-create), this parses a
+  // single PR exported from the external GSO system — either its .xlsx or signed .pdf export,
+  // auto-detected server-side — and drops the result into the existing form state — nothing is
+  // created here. Division, Requested By, Position, Approved By, Approving Position, SAI No.,
+  // and ALOBS No. are never in either export format, so they're left untouched (Requested
+  // By/Position/Division are already prefilled from the current user by the auth-guard effect
+  // above) for the user to fill in before Submit, same as typing a new PR by hand.
+
+  async function handleGsoImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!e.target.files) return;
+    e.target.value = "";
+    if (!file) return;
+
+    setGsoImporting(true);
+    try {
+      const { data } = await api.post<GsoPRImportPreviewResponse>(
+        "/purchase-requests/import/gso-preview",
+        file,
+        { headers: { "Content-Type": file.type || "application/octet-stream" } }
+      );
+
+      patchHeader({
+        prNo:         data.prNo         ?? header.prNo,
+        fund:         data.fund         ?? header.fund,
+        prDate:       data.prDate       ?? header.prDate,
+        aipCode:      data.aipCode      ?? header.aipCode,
+        accountNo:    data.accountNo    ?? header.accountNo,
+        accountTitle: data.accountTitle ?? header.accountTitle,
+        program:      data.program      ?? header.program,
+        project:      data.project      ?? header.project,
+        activity:     data.activity     ?? header.activity,
+      });
+
+      setItems(data.items.map((it): LineItem => ({
+        _id:         uid(),
+        stockNo:     it.stockNo ?? "",
+        description: it.description,
+        unit:        it.unit,
+        quantity:    String(it.quantity),
+        unitCost:    it.unitCost,
+        itemType:    null,
+        suggestions: [], suggestFor: null, suggesting: false,
+        fromLookup:  false,
+      })));
+      setItemsError(null);
+
+      const unknownCount = data.items.filter((it) => it.isUnknownStock).length;
+      toast.success(
+        "Prefilled from GSO export",
+        `${data.items.length} item${data.items.length !== 1 ? "s" : ""} loaded` +
+        (unknownCount > 0 ? ` (${unknownCount} not yet in the catalog)` : "") +
+        ". Division, Requested By, and signatories still need to be filled in."
+      );
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: string } })?.response?.data ??
+        "Could not read this file. Make sure it's a PR export from the GSO system.";
+      toast.error("Import failed", String(msg).slice(0, 160));
+    } finally {
+      setGsoImporting(false);
+    }
+  }
+
   // ── Submit PR ──────────────────────────────────────────────────────────────
 
   async function handleSubmit() {
@@ -698,7 +871,7 @@ export default function CreatePRPage() {
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans">
-      <div className="max-w-screen-xl mx-auto px-6 py-6 space-y-5">
+      <div className="max-w-screen-xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-5">
 
         {/* ── Toolbar ──────────────────────────────────────────────────────── */}
         <div className="flex flex-wrap items-center gap-3">
@@ -728,6 +901,26 @@ export default function CreatePRPage() {
             accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             className="hidden"
             onChange={handleFileUpload}
+          />
+
+          {/* Prefill from GSO Export */}
+          <button
+            onClick={() => gsoFileInputRef.current?.click()}
+            disabled={gsoImporting}
+            title="Prefill this form from a PR exported by the GSO system (.xlsx or signed .pdf) — Division, Requested By, and signatories still need to be filled in manually"
+            className="flex items-center gap-2 px-4 py-2.5 text-sm border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-sm transition-colors disabled:opacity-60"
+          >
+            {gsoImporting
+              ? <span className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+              : <span>📄</span>}
+            {gsoImporting ? "Reading…" : "Prefill from GSO Export"}
+          </button>
+          <input
+            ref={gsoFileInputRef}
+            type="file"
+            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.pdf,application/pdf"
+            className="hidden"
+            onChange={handleGsoImport}
           />
 
           <div className="flex-1" />
@@ -851,20 +1044,24 @@ export default function CreatePRPage() {
             </div>
             <div>
               <FieldLabel>Account No.</FieldLabel>
-              <YellowInput
+              <AccountLookupInput
                 value={header.accountNo}
-                onChange={(v) => patchHeader({ accountNo: v })}
                 placeholder="Account number"
+                displayKey="accountNumber"
+                onType={(v) => patchHeader({ accountNo: v })}
+                onSelect={(a) => patchHeader({ accountNo: a.accountNumber, accountTitle: a.accountTitle })}
               />
             </div>
 
             {/* Row 7: AccountTitle (full width) */}
             <div className="md:col-span-2">
               <FieldLabel>Account Title</FieldLabel>
-              <YellowInput
+              <AccountLookupInput
                 value={header.accountTitle}
-                onChange={(v) => patchHeader({ accountTitle: v })}
                 placeholder="Account title"
+                displayKey="accountTitle"
+                onType={(v) => patchHeader({ accountTitle: v })}
+                onSelect={(a) => patchHeader({ accountNo: a.accountNumber, accountTitle: a.accountTitle })}
               />
             </div>
 
@@ -929,12 +1126,12 @@ export default function CreatePRPage() {
           <SectionHeading number="2" title="Items" />
 
           <div className="overflow-x-auto overflow-y-hidden">
-            <table className="w-full text-xs border-collapse">
+            <table className="w-full text-xs border-collapse min-w-[980px]">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase tracking-wide">
-                  <th className="px-3 py-2.5 text-center font-medium w-10">#</th>
+                  <th className="sticky left-0 z-20 bg-slate-50 px-3 py-2.5 text-center font-medium w-10">#</th>
                   <th className="px-3 py-2.5 text-left font-medium w-36">Stock No.</th>
-                  <th className="px-3 py-2.5 text-left font-medium min-w-56">Description</th>
+                  <th className="sticky left-10 z-20 bg-slate-50 px-3 py-2.5 text-left font-medium w-40 border-r border-slate-200">Description</th>
                   <th className="px-3 py-2.5 text-left font-medium w-24">Unit</th>
                   <th className="px-3 py-2.5 text-right font-medium w-24">Qty</th>
                   <th className="px-3 py-2.5 text-right font-medium w-28">Unit Cost</th>
@@ -948,10 +1145,11 @@ export default function CreatePRPage() {
                   const qty   = parseFloat(row.quantity) || 0;
                   const total = qty * row.unitCost;
 
+                  const rowBg = idx % 2 === 1 ? "bg-slate-50" : "bg-white";
                   return (
-                    <tr key={row._id} className={idx % 2 === 1 ? "bg-slate-50" : "bg-white"}>
+                    <tr key={row._id} className={rowBg}>
                       {/* # */}
-                      <td className="px-3 py-1.5 text-center text-slate-600">{idx + 1}</td>
+                      <td className={`sticky left-0 z-10 px-3 py-1.5 text-center text-slate-600 ${rowBg}`}>{idx + 1}</td>
 
                       {/* Stock No — yellow, autocomplete */}
                       <td className="px-1.5 py-1.5">
@@ -967,7 +1165,7 @@ export default function CreatePRPage() {
                       </td>
 
                       {/* Description — yellow, autocomplete */}
-                      <td className="px-1.5 py-1.5">
+                      <td className={`sticky left-10 z-10 px-1.5 py-1.5 border-r border-slate-200 ${rowBg}`}>
                         <LookupInput
                           value={row.description}
                           placeholder="Item description *"

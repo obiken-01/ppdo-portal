@@ -21,6 +21,7 @@ public sealed class DeliveryService : IDeliveryService
     private readonly IPurchaseRequestRepository _prs;
     private readonly IPermissionService         _permissions;
     private readonly IRepository<Division>       _divisions;
+    private readonly IAuditService              _audit;
     private readonly ILogger<DeliveryService>   _logger;
 
     // Characters used for random ref suffixes — uppercase alphanumeric, no ambiguous O/0/I/1.
@@ -41,43 +42,38 @@ public sealed class DeliveryService : IDeliveryService
         IPurchaseRequestRepository prs,
         IPermissionService permissions,
         IRepository<Division> divisions,
+        IAuditService audit,
         ILogger<DeliveryService> logger)
     {
         _deliveries  = deliveries;
         _prs         = prs;
         _permissions = permissions;
         _divisions   = divisions;
+        _audit       = audit;
         _logger      = logger;
     }
 
     // ── GetAllAsync ────────────────────────────────────────────────────────────
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<DeliverySummaryDto>> GetAllAsync(
+    public async Task<DeliveryPagedResultDto> GetAllAsync(
         User requester,
+        int page,
+        int pageSize,
         CancellationToken cancellationToken = default)
     {
         // Division scope — office users (Staff/Observer with no division) see nothing,
         // never the all-divisions list. See DivisionScope.
         DivisionScope scope = DivisionScope.Resolve(requester);
         if (scope.SeeNothing)
-            return Array.Empty<DeliverySummaryDto>();
+            return new DeliveryPagedResultDto(Array.Empty<DeliverySummaryDto>(), 0, page, pageSize);
 
-        IReadOnlyList<PurchaseRequest> prs = scope.SeeAll
-            ? await _prs.GetAllAsync(cancellationToken)
-            : await _prs.GetByDivisionAsync(scope.DivisionId!.Value, cancellationToken);
+        DeliveryPageResult result =
+            await _deliveries.GetPagedAsync(scope.DivisionId, page, pageSize, cancellationToken);
 
-        List<DeliverySummaryDto> result = new();
-
-        foreach (PurchaseRequest pr in prs)
-        {
-            IReadOnlyList<Delivery> deliveries =
-                await _deliveries.GetByPRIdAsync(pr.Id, cancellationToken);
-
-            result.AddRange(deliveries.Select(MapToSummary));
-        }
-
-        return result.OrderByDescending(d => d.DeliveryDate).ToList();
+        return new DeliveryPagedResultDto(
+            result.Items.Select(MapToSummary).ToList(),
+            result.TotalCount, page, pageSize);
     }
 
     // ── GetByPRIdAsync ─────────────────────────────────────────────────────────
@@ -103,6 +99,30 @@ public sealed class DeliveryService : IDeliveryService
 
         return ServiceResult<IReadOnlyList<DeliverySummaryDto>>.Ok(
             deliveries.Select(MapToSummary).ToList());
+    }
+
+    // ── GetDeliveredTotalsByPRAsync ───────────────────────────────────────────
+
+    /// <inheritdoc />
+    public async Task<ServiceResult<IReadOnlyDictionary<Guid, decimal>>> GetDeliveredTotalsByPRAsync(
+        User requester,
+        Guid prId,
+        CancellationToken cancellationToken = default)
+    {
+        PurchaseRequest? pr = await _prs.GetByIdAsync(prId, cancellationToken);
+        if (pr is null)
+            return ServiceResult<IReadOnlyDictionary<Guid, decimal>>.NotFound(
+                $"Purchase Request {prId} not found.");
+
+        if (requester.Role is UserRole.Staff
+            && pr.DivisionId != requester.DivisionId)
+            return ServiceResult<IReadOnlyDictionary<Guid, decimal>>.Forbidden(
+                "You can only view deliveries for your own division.");
+
+        Dictionary<Guid, decimal> totals =
+            await _deliveries.GetTotalDeliveredByPRAsync(prId, cancellationToken);
+
+        return ServiceResult<IReadOnlyDictionary<Guid, decimal>>.Ok(totals);
     }
 
     // ── GetByIdAsync ───────────────────────────────────────────────────────────
@@ -277,6 +297,16 @@ public sealed class DeliveryService : IDeliveryService
             "Delivery received. DeliveryRef: {DeliveryRef}, PRNo: {PRNo}, UserId: {UserId}",
             delivery.DeliveryRef, pr.PRNo, requester.Id);
 
+        await _audit.LogAsync("Deliveries", delivery.Id, AuditAction.Create,
+            oldValues: null,
+            newValues: new
+            {
+                delivery.DeliveryRef, PRNo = pr.PRNo, delivery.DeliveryDate, delivery.ReceivedBy,
+                delivery.Supplier, ItemCount = delivery.Items.Count,
+                TotalQtyDelivered = delivery.Items.Sum(i => i.QtyDelivered),
+            },
+            cancellationToken);
+
         return ServiceResult<DeliveryResponseDto>.Ok(MapToResponse(delivery));
     }
 
@@ -342,6 +372,13 @@ public sealed class DeliveryService : IDeliveryService
             _logger.LogInformation(
                 "PR status changed. PRNo: {PRNo}, OldStatus: {OldStatus}, NewStatus: {NewStatus}",
                 pr.PRNo, oldStatus, newStatus);
+
+            // Linked entry — the status transition this delivery triggered, not a separate
+            // manual edit.
+            await _audit.LogAsync("PurchaseRequests", pr.Id, AuditAction.Update,
+                oldValues: new { Status = oldStatus.ToString() },
+                newValues: new { Status = newStatus.ToString() },
+                cancellationToken);
         }
     }
 

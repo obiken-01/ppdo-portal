@@ -59,8 +59,8 @@ public sealed class ItemServiceTests
         return repo;
     }
 
-    private static ItemService BuildSut(Mock<IItemMasterRepository> repo) =>
-        new(repo.Object, new PermissionService(), NullLogger<ItemService>.Instance);
+    private static ItemService BuildSut(Mock<IItemMasterRepository> repo, Mock<IAuditService>? auditService = null) =>
+        new(repo.Object, new PermissionService(), (auditService ?? new Mock<IAuditService>()).Object, NullLogger<ItemService>.Instance);
 
     // ── GetAllAsync ───────────────────────────────────────────────────────────
 
@@ -299,5 +299,115 @@ public sealed class ItemServiceTests
             await BuildSut(repo).UpdateAsync(MakeStaffWithInventory(), item.Id, dto);
 
         Assert.True(result.IsSuccess);
+    }
+
+    // ── SearchAsync (RAL-192 — server-side pagination) ──────────────────────────
+
+    private static ItemMasterSearchFilterDto DefaultFilter(int page = 1, int pageSize = 25) =>
+        new(page, pageSize, Search: null, StockNo: null, Description: null, Category: null,
+            Unit: null, ItemType: null, Remarks: null, IsNewOnly: false, SortBy: null,
+            SortDescending: false);
+
+    [Fact]
+    public async Task SearchAsync_BuildsCriteriaFromFilterAndMapsResult()
+    {
+        List<ItemMaster> items = [MakeItem("01-01-01-01"), MakeItem("01-01-01-02")];
+        Mock<IItemMasterRepository> repo = new();
+        ItemMasterSearchCriteria? captured = null;
+        repo.Setup(r => r.SearchAsync(It.IsAny<ItemMasterSearchCriteria>(), It.IsAny<CancellationToken>()))
+            .Callback<ItemMasterSearchCriteria, CancellationToken>((c, _) => captured = c)
+            .ReturnsAsync(new ItemMasterSearchResult(items, TotalCount: 2, TotalNewItemCount: 1));
+
+        ItemMasterSearchFilterDto filter = DefaultFilter(page: 2, pageSize: 10) with
+        {
+            Search = "bond", IsNewOnly = true, SortBy = "description", SortDescending = true,
+        };
+
+        ItemMasterSearchResultDto result = await BuildSut(repo).SearchAsync(filter);
+
+        Assert.Equal(2, result.Items.Count);
+        Assert.Equal(2, result.TotalCount);
+        Assert.Equal(1, result.TotalNewItemCount);
+        Assert.Equal(2, result.Page);
+        Assert.Equal(10, result.PageSize);
+
+        Assert.NotNull(captured);
+        Assert.Equal("bond", captured!.Search);
+        Assert.True(captured.IsNewOnly);
+        Assert.Equal("description", captured.SortBy);
+        Assert.True(captured.SortDescending);
+        Assert.Equal(2, captured.Page);
+        Assert.Equal(10, captured.PageSize);
+    }
+
+    [Fact]
+    public async Task SearchAsync_NeverLoadsTheFullCatalog()
+    {
+        // Regression guard — the page must go through SearchAsync (WHERE + COUNT + OFFSET/FETCH
+        // in SQL), never the plain GetAllAsync() base-repository call.
+        Mock<IItemMasterRepository> repo = new();
+        repo.Setup(r => r.SearchAsync(It.IsAny<ItemMasterSearchCriteria>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ItemMasterSearchResult([], TotalCount: 0, TotalNewItemCount: 0));
+
+        await BuildSut(repo).SearchAsync(DefaultFilter());
+
+        repo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // ── Audit logging (RAL-200) ───────────────────────────────────────────────
+
+    [Fact]
+    public async Task CreateAsync_CallsAuditLog_WithCreateAction()
+    {
+        Mock<IItemMasterRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByStockNoAsync("NEW-003", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ItemMaster?)null);
+        Mock<IAuditService> audit = new();
+
+        CreateItemMasterDto dto = new("NEW-003", "New Item", "pcs", 10m, null, null, 0, null, false);
+        ServiceResult<ItemMasterDto> result = await BuildSut(repo, audit).CreateAsync(MakeAdmin(), dto);
+
+        Assert.True(result.IsSuccess);
+        audit.Verify(a => a.LogAsync(
+            "ItemMasters", result.Value!.Id, AuditAction.Create,
+            null, It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ChangedField_CallsAuditLog_CapturingOldAndNew()
+    {
+        ItemMaster item = MakeItem();
+        Mock<IItemMasterRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByIdAsync(item.Id, It.IsAny<CancellationToken>())).ReturnsAsync(item);
+        Mock<IAuditService> audit = new();
+
+        UpdateItemMasterDto dto = new(null, "Updated Description", "box", 50m, "Supplies", "Office", 10, "Updated remark", false);
+        await BuildSut(repo, audit).UpdateAsync(MakeAdmin(), item.Id, dto);
+
+        audit.Verify(a => a.LogAsync(
+            "ItemMasters", item.Id, AuditAction.Update,
+            It.IsNotNull<object>(), It.IsNotNull<object>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_NoFieldsActuallyChanged_DoesNotCallAuditLog()
+    {
+        ItemMaster item = MakeItem("01-01-01-01");
+        item.Description = "Bond Paper A4"; item.Unit = "ream"; item.UnitCost = 220m;
+        item.Category = "Office Supplies"; item.ItemType = null; item.ReorderQty = 0;
+        item.Remarks = null; item.IsNewItem = false;
+
+        Mock<IItemMasterRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByIdAsync(item.Id, It.IsAny<CancellationToken>())).ReturnsAsync(item);
+        Mock<IAuditService> audit = new();
+
+        // Resend the exact same values — nothing actually changed.
+        UpdateItemMasterDto dto = new(
+            "01-01-01-01", "Bond Paper A4", "ream", 220m, "Office Supplies", null, 0, null, false);
+        await BuildSut(repo, audit).UpdateAsync(MakeAdmin(), item.Id, dto);
+
+        audit.Verify(a => a.LogAsync(
+            It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<string>(),
+            It.IsAny<object?>(), It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

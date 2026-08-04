@@ -2,7 +2,6 @@ using Microsoft.Extensions.Logging;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.Inventory;
 using PPDO.Domain.Entities;
-using PPDO.Domain.Enums;
 using PPDO.Domain.Interfaces;
 
 namespace PPDO.Application.Services;
@@ -19,6 +18,15 @@ namespace PPDO.Application.Services;
 ///   IsLowStock    = OnHand ≤ ReorderQty (and OnHand > 0)
 ///   IsOutOfStock  = OnHand ≤ 0
 ///
+/// Admin/SuperAdmin's unscoped view (division == null) additionally folds in the RAL-193
+/// warehouse physical-count ledger: OnHand = SUM(StockBalance.VarianceQty) + QtyDelivered -
+/// QtyDistributed. Staff/Observer's division-scoped view is unchanged — a PPDO-wide count
+/// can't be correctly attributed to one division's subset of movements (see
+/// StockBalanceService's class doc for the full formula rationale). A StockNo counted purely
+/// via warehouse stock input, with no PR/delivery activity at all, would otherwise never
+/// appear here (GetItemStockLevelsAsync's universe is PRItems rows) — MergeCountOnlyStockLevels
+/// adds it back in as a zero-movement row so its counted quantity still surfaces.
+///
 /// PR status grouping for stat cards:
 ///   "FullyDeliveredOrCompleted" = PRStatus.FullyDelivered OR PRStatus.Completed
 /// </summary>
@@ -27,18 +35,21 @@ public sealed class InventoryService : IInventoryService
     private readonly IInventoryRepository        _inventory;
     private readonly IPurchaseRequestRepository  _prs;
     private readonly IItemMasterRepository       _items;
+    private readonly IStockBalanceRepository     _stockBalances;
     private readonly ILogger<InventoryService>   _logger;
 
     public InventoryService(
         IInventoryRepository inventory,
         IPurchaseRequestRepository prs,
         IItemMasterRepository items,
+        IStockBalanceRepository stockBalances,
         ILogger<InventoryService> logger)
     {
-        _inventory = inventory;
-        _prs       = prs;
-        _items     = items;
-        _logger    = logger;
+        _inventory     = inventory;
+        _prs           = prs;
+        _items         = items;
+        _stockBalances = stockBalances;
+        _logger        = logger;
     }
 
     // ── GetStatsAsync ──────────────────────────────────────────────────────────
@@ -57,25 +68,38 @@ public sealed class InventoryService : IInventoryService
 
         int? division = scope.DivisionId;
 
-        // Load PRs for division-scoped counts and total value.
-        IReadOnlyList<PurchaseRequest> prs = division.HasValue
-            ? await _prs.GetByDivisionAsync(division.Value, cancellationToken)
-            : await _prs.GetAllAsync(cancellationToken);
+        // Group 1 — Purchase Request stat cards + total value, computed as SQL aggregates
+        // (Count/Sum) scoped to the division — never loads PR rows into memory.
+        PurchaseRequestStatsAggregate prStats =
+            await _prs.GetStatsAggregateAsync(division, cancellationToken);
 
-        // Group 1 — Purchase Request stat cards.
         PRStatsGroupDto prGroup = new(
-            Total:                   prs.Count,
-            Open:                    prs.Count(p => p.Status == PRStatus.Open),
-            PartiallyDelivered:      prs.Count(p => p.Status == PRStatus.PartiallyDelivered),
-            FullyDeliveredOrCompleted: prs.Count(p =>
-                p.Status is PRStatus.FullyDelivered or PRStatus.Completed));
+            Total:                     prStats.Total,
+            Open:                      prStats.Open,
+            PartiallyDelivered:        prStats.PartiallyDelivered,
+            FullyDeliveredOrCompleted: prStats.FullyDeliveredOrCompleted);
 
         // Group 2 — Inventory Alert stat cards.
         // Stock levels from the aggregate repository query.
         IReadOnlyList<ItemStockLevel> stockLevels =
             await _inventory.GetItemStockLevelsAsync(division, cancellationToken);
 
-        IReadOnlyList<ItemMaster> catalog = await _items.GetAllAsync(cancellationToken);
+        // RAL-193: physical-count variance only applies to the unscoped (Admin/SuperAdmin)
+        // view — see class doc. Empty for Staff/Observer, so onHand below is unchanged. Also
+        // folds in StockNos recorded purely via warehouse stock input (no PR/delivery ever,
+        // so GetItemStockLevelsAsync never returns them) as zero-movement rows — otherwise a
+        // count for a brand-new item stays invisible here despite being the whole point of
+        // RAL-193.
+        IReadOnlyDictionary<string, decimal> varianceMap = division is null
+            ? await _stockBalances.GetAllVarianceTotalsAsync(cancellationToken)
+            : new Dictionary<string, decimal>();
+        if (varianceMap.Count > 0)
+            stockLevels = MergeCountOnlyStockLevels(stockLevels, varianceMap);
+
+        // Only the StockNos already present in stockLevels are ever read from this map —
+        // fetch exactly those, never the full catalog.
+        IReadOnlyList<ItemMaster> catalog = await _items.GetByStockNosAsync(
+            stockLevels.Select(l => l.StockNo).ToList(), cancellationToken);
         Dictionary<string, ItemMaster> catalogMap =
             catalog.ToDictionary(i => i.StockNo, i => i);
 
@@ -84,7 +108,8 @@ public sealed class InventoryService : IInventoryService
 
         foreach (ItemStockLevel level in stockLevels)
         {
-            decimal onHand = level.QtyDelivered - level.QtyDistributed;
+            decimal onHand = level.QtyDelivered - level.QtyDistributed
+                + varianceMap.GetValueOrDefault(level.StockNo, 0m);
             int reorderQty = catalogMap.TryGetValue(level.StockNo, out ItemMaster? master)
                 ? master.ReorderQty : 0;
 
@@ -94,15 +119,13 @@ public sealed class InventoryService : IInventoryService
                 lowOrOutStock++;
         }
 
-        decimal totalPRValue = prs.Sum(p => p.TotalAmount);
-
         // UniqueItemsTracked — count distinct StockNos with any PR activity (within scope).
         int uniqueItems = stockLevels.Count;
 
         AlertsGroupDto alertsGroup = new(
             InStock:            inStock,
             LowOrOutOfStock:    lowOrOutStock,
-            TotalPRValue:       totalPRValue,
+            TotalPRValue:       prStats.TotalAmount,
             UniqueItemsTracked: uniqueItems);
 
         return new InventoryStatsDto(prGroup, alertsGroup);
@@ -128,14 +151,16 @@ public sealed class InventoryService : IInventoryService
         IReadOnlyList<ItemStockLevel> stockLevels =
             await _inventory.GetItemStockLevelsAsync(division, cancellationToken);
 
+        bool dateFiltered = deliveryDateFrom.HasValue && deliveryDateTo.HasValue;
+
         // If a delivery date range is specified, restrict to items that had at
         // least one delivery within that window. Totals remain all-time figures.
-        if (deliveryDateFrom.HasValue && deliveryDateTo.HasValue)
+        if (dateFiltered)
         {
             IReadOnlySet<string> deliveredStockNos =
                 await _inventory.GetStockNosDeliveredInRangeAsync(
-                    dateFrom: deliveryDateFrom.Value,
-                    dateTo:   deliveryDateTo.Value,
+                    dateFrom: deliveryDateFrom!.Value,
+                    dateTo:   deliveryDateTo!.Value,
                     divisionId: division,
                     cancellationToken: cancellationToken);
 
@@ -144,7 +169,34 @@ public sealed class InventoryService : IInventoryService
                 .ToList();
         }
 
-        IReadOnlyList<ItemMaster> catalog = await _items.GetAllAsync(cancellationToken);
+        // RAL-193: physical-count variance only applies to the unscoped (Admin/SuperAdmin)
+        // view — see class doc. Empty for Staff/Observer, so onHand below is unchanged. When
+        // no delivery-date filter is active, also folds in StockNos recorded purely via
+        // warehouse stock input (no PR/delivery ever, so GetItemStockLevelsAsync never
+        // returns them) as zero-movement rows — otherwise a count for a brand-new item stays
+        // invisible here despite being the whole point of RAL-193. Skipped when date-filtered:
+        // a "delivered in range" filter can never match an item with no deliveries at all.
+        IReadOnlyDictionary<string, decimal> varianceMap;
+        if (division is null && !dateFiltered)
+        {
+            varianceMap = await _stockBalances.GetAllVarianceTotalsAsync(cancellationToken);
+            if (varianceMap.Count > 0)
+                stockLevels = MergeCountOnlyStockLevels(stockLevels, varianceMap);
+        }
+        else if (division is null)
+        {
+            varianceMap = await _stockBalances.GetTotalVarianceByStockNosAsync(
+                stockLevels.Select(l => l.StockNo).ToList(), cancellationToken);
+        }
+        else
+        {
+            varianceMap = new Dictionary<string, decimal>();
+        }
+
+        // Only the StockNos in (the possibly date-filtered/count-only-merged) stockLevels are
+        // ever read from this map — fetch exactly those, never the full catalog.
+        IReadOnlyList<ItemMaster> catalog = await _items.GetByStockNosAsync(
+            stockLevels.Select(l => l.StockNo).ToList(), cancellationToken);
         Dictionary<string, ItemMaster> catalogMap =
             catalog.ToDictionary(i => i.StockNo, i => i);
 
@@ -152,7 +204,8 @@ public sealed class InventoryService : IInventoryService
 
         foreach (ItemStockLevel level in stockLevels)
         {
-            decimal onHand = level.QtyDelivered - level.QtyDistributed;
+            decimal onHand = level.QtyDelivered - level.QtyDistributed
+                + varianceMap.GetValueOrDefault(level.StockNo, 0m);
 
             catalogMap.TryGetValue(level.StockNo, out ItemMaster? master);
             string itemName  = master?.Description ?? level.StockNo;
@@ -191,6 +244,27 @@ public sealed class InventoryService : IInventoryService
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Adds a zero-movement <see cref="ItemStockLevel"/> for every StockNo present in
+    /// <paramref name="varianceMap"/> but absent from <paramref name="stockLevels"/> — a
+    /// StockNo with a warehouse stock input count but no PR/delivery history at all. Its
+    /// on-hand then evaluates to exactly its counted quantity (0 movement + variance).
+    /// </summary>
+    private static IReadOnlyList<ItemStockLevel> MergeCountOnlyStockLevels(
+        IReadOnlyList<ItemStockLevel> stockLevels,
+        IReadOnlyDictionary<string, decimal> varianceMap)
+    {
+        HashSet<string> existing = stockLevels
+            .Select(l => l.StockNo)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        IEnumerable<ItemStockLevel> countOnly = varianceMap.Keys
+            .Where(stockNo => !existing.Contains(stockNo))
+            .Select(stockNo => new ItemStockLevel(stockNo, QtyOrdered: 0m, QtyDelivered: 0m, QtyDistributed: 0m));
+
+        return stockLevels.Concat(countOnly).ToList();
+    }
 
     /// <summary>
     /// All-zero stats — returned for users whose inventory scope is empty

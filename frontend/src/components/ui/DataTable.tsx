@@ -66,6 +66,13 @@ export interface DataTableProps<T> {
   /** Singular/plural noun for the row-count footer (default "row"/"rows"). */
   rowNoun?: [singular: string, plural: string];
   /**
+   * Minimum table width in pixels (RAL-201) — forces `overflow-x-auto` on the
+   * wrapper to actually engage instead of letting columns squish on narrow
+   * viewports. Tune per page to roughly (readable column count × ~140px).
+   * Omit for tables with few enough columns that squishing is a non-issue.
+   */
+  minWidth?: number;
+  /**
    * Opt into server-side pagination: `rows` is assumed to already be just the current page
    * (the caller re-fetches on page change), and the footer's count/Prev/Next are driven from
    * these values instead of `rows.length`/internal page state. Takes precedence over `pageSize`.
@@ -98,6 +105,7 @@ export default function DataTable<T>({
   pageSize,
   rowNoun = ["row", "rows"],
   serverPagination,
+  minWidth,
 }: DataTableProps<T>) {
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -161,34 +169,36 @@ export default function DataTable<T>({
     const skeletonCount = Math.min(serverPagination?.pageSize ?? pageSize ?? 8, 10);
     return (
       <div className="bg-white border border-slate-200 overflow-hidden">
-        <table className="w-full text-sm border-collapse">
-          <thead>
-            <tr className="bg-slate-50 border-b border-slate-200">
-              {columns.map((col) => (
-                <th
-                  key={col.key}
-                  className={`px-4 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wide ${ALIGN_CLASS[col.align ?? "left"]}`}
-                >
-                  {col.header}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {Array.from({ length: skeletonCount }).map((_, rowIdx) => (
-              <tr key={rowIdx} className="border-b border-slate-100">
-                {columns.map((col, colIdx) => (
-                  <td key={col.key} className={`px-4 py-3 ${ALIGN_CLASS[col.align ?? "left"]}`}>
-                    <div
-                      className="h-4 bg-slate-100 animate-pulse inline-block"
-                      style={{ width: `${50 + ((rowIdx * 3 + colIdx * 17) % 35)}%` }}
-                    />
-                  </td>
+        <div className="overflow-x-auto overflow-y-hidden">
+          <table className="w-full text-sm border-collapse" style={minWidth ? { minWidth } : undefined}>
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200">
+                {columns.map((col) => (
+                  <th
+                    key={col.key}
+                    className={`px-4 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wide ${ALIGN_CLASS[col.align ?? "left"]}`}
+                  >
+                    {col.header}
+                  </th>
                 ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {Array.from({ length: skeletonCount }).map((_, rowIdx) => (
+                <tr key={rowIdx} className="border-b border-slate-100">
+                  {columns.map((col, colIdx) => (
+                    <td key={col.key} className={`px-4 py-3 ${ALIGN_CLASS[col.align ?? "left"]}`}>
+                      <div
+                        className="h-4 bg-slate-100 animate-pulse inline-block"
+                        style={{ width: `${50 + ((rowIdx * 3 + colIdx * 17) % 35)}%` }}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     );
   }
@@ -220,7 +230,7 @@ export default function DataTable<T>({
   return (
     <div className="bg-white border border-slate-200 overflow-hidden">
       <div className="overflow-x-auto overflow-y-hidden">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm" style={minWidth ? { minWidth } : undefined}>
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200 text-xs text-slate-600 uppercase tracking-wide">
               {columns.map((col) => {

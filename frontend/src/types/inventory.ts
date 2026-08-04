@@ -39,6 +39,15 @@ export interface UpdateItemMasterRequest {
   isNewItem: boolean;
 }
 
+/** Mirrors ItemMasterSearchResultDto — GET /api/items/master/search response. */
+export interface ItemMasterSearchResult {
+  items: ItemMasterResponse[];
+  totalCount: number;
+  totalNewItemCount: number;
+  page: number;
+  pageSize: number;
+}
+
 // ---------------------------------------------------------------------------
 // Item lookup (autocomplete)
 // ---------------------------------------------------------------------------
@@ -120,6 +129,23 @@ export interface PRSummaryResponse {
   program: string | null;
   project: string | null;
   activity: string | null;
+}
+
+/** Mirrors PRStatusCountsDto — per-status counts within a filtered PR search result. */
+export interface PRStatusCounts {
+  open: number;
+  partiallyDelivered: number;
+  fullyDelivered: number;
+  completed: number;
+}
+
+/** Mirrors PRSearchResultDto — GET /api/purchase-requests/search response. */
+export interface PRSearchResult {
+  items: PRSummaryResponse[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  statusCounts: PRStatusCounts;
 }
 
 // ---------------------------------------------------------------------------
@@ -307,6 +333,36 @@ export interface PRResponse {
   items: PRItemResponse[];
 }
 
+/** Mirrors GsoPRImportItemDto. */
+export interface GsoPRImportItemResponse {
+  stockNo: string | null;
+  description: string;
+  unit: string;
+  quantity: number;
+  unitCost: number;
+  isUnknownStock: boolean;
+}
+
+/**
+ * Mirrors GsoPRImportPreviewDto — POST /api/purchase-requests/import/gso-preview response
+ * (RAL-196/RAL-197). Prefill data only; every field except `items` may be null since neither
+ * source export format's parsed data carries all of these. Division and the signatory fields
+ * are never in either format.
+ */
+export interface GsoPRImportPreviewResponse {
+  prNo: string | null;
+  fund: string | null;
+  prDate: string | null; // "YYYY-MM-DD"
+  purpose: string | null;
+  aipCode: string | null;
+  accountNo: string | null;
+  accountTitle: string | null;
+  program: string | null;
+  project: string | null;
+  activity: string | null;
+  items: GsoPRImportItemResponse[];
+}
+
 // ---------------------------------------------------------------------------
 // Distribution
 // ---------------------------------------------------------------------------
@@ -348,14 +404,22 @@ export interface ItemDistributionSummaryResponse {
   deliveryItems: DeliveryItemBreakdownResponse[];
 }
 
-/** Mirrors CreateStandaloneDistributionDto */
-export interface CreateDistributionStandaloneRequest {
-  deliveryItemId: string;
+/** Mirrors DistributionSplitDto — one division's share of an item-level distribution request */
+export interface DistributionSplitRequest {
   division: string;
   qtyIssued: number;
   dateIssued: string;   // "YYYY-MM-DD"
   issuedBy: string;
   remarks: string | null;
+}
+
+/**
+ * Mirrors CreateItemDistributionDto — POST /api/distributions/item/{stockNo}/allocate.
+ * The backend FIFO-allocates each split across the item's available delivery batches
+ * (oldest DeliveryDate first) and returns one DistributionCreatedResponse per batch drawn from.
+ */
+export interface CreateItemDistributionRequest {
+  splits: DistributionSplitRequest[];
 }
 
 /** Mirrors DistributionCreatedDto */
@@ -372,4 +436,82 @@ export interface DistributionCreatedResponse {
   dateIssued: string;
   issuedBy: string;
   remarks: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Warehouse stock input — physical-count ledger (RAL-193)
+// ---------------------------------------------------------------------------
+
+/** Mirrors StockBalanceDto */
+export interface StockBalanceResponse {
+  id: string;
+  stockNo: string;
+  countedQty: number;
+  systemOnHandAtEntry: number;
+  varianceQty: number;
+  effectiveDate: string; // "YYYY-MM-DD"
+  reason: string | null;
+  recordedByUserId: string;
+  recordedByName: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** True when this save also auto-created a new Items Master row (IsNewItem = true,
+   * pending admin review) because the StockNo wasn't cataloged yet. */
+  itemWasAutoCreated: boolean;
+}
+
+/**
+ * Mirrors CreateStockBalanceDto. Description/unit/unitCost/itemType are only used when
+ * stockNo isn't already in Items Master — the backend auto-creates the catalog entry
+ * (IsNewItem = true, pending admin review) from these, mirroring Create PR's unknown-stock
+ * handling. Ignored (the catalog's own values win) when stockNo is already known.
+ */
+export interface CreateStockBalanceRequest {
+  stockNo: string;
+  countedQty: number;
+  effectiveDate: string; // "YYYY-MM-DD"
+  reason: string | null;
+  description: string | null;
+  unit: string | null;
+  unitCost: number | null;
+  itemType: string | null;
+}
+
+/** Mirrors UpdateStockBalanceDto */
+export interface UpdateStockBalanceRequest {
+  countedQty: number | null;
+  effectiveDate: string | null;
+  reason: string | null;
+}
+
+/** Mirrors StockBalanceImportRowDto */
+export interface StockBalanceImportRowResponse {
+  rowNumber: number;
+  stockNo: string | null;
+  countedQty: number | null;
+  effectiveDate: string | null;
+  reason: string | null;
+  description: string | null;
+  unit: string | null;
+  unitCost: number | null;
+  itemType: string | null;
+  error: string | null;
+}
+
+/** Mirrors StockBalanceImportPreviewDto — POST /api/inventory/stock-balances/import/preview */
+export interface StockBalanceImportPreviewResponse {
+  rows: StockBalanceImportRowResponse[];
+}
+
+/** Mirrors StockBalanceImportResultDto — POST /api/inventory/stock-balances/import/commit */
+export interface StockBalanceImportResultResponse {
+  inserted: number;
+  updated: number;
+  entries: StockBalanceResponse[];
+}
+
+/** Mirrors SystemOnHandDto — GET /api/inventory/stock-balances/system-on-hand?stockNo= */
+export interface SystemOnHandResponse {
+  stockNo: string;
+  onHand: number;
 }

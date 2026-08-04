@@ -2030,6 +2030,68 @@ namespace PPDO.Infrastructure.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("PPDO.Domain.Entities.StockBalance", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("CountedQty")
+                        .HasColumnType("decimal(18,2)")
+                        .HasColumnName("counted_qty");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<DateOnly>("EffectiveDate")
+                        .HasColumnType("date")
+                        .HasColumnName("effective_date");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("reason");
+
+                    b.Property<Guid>("RecordedByUserId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("recorded_by_user_id");
+
+                    b.Property<string>("StockNo")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("stock_no");
+
+                    b.Property<decimal>("SystemOnHandAtEntry")
+                        .HasColumnType("decimal(18,2)")
+                        .HasColumnName("system_on_hand_at_entry");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<decimal>("VarianceQty")
+                        .HasColumnType("decimal(18,2)")
+                        .HasColumnName("variance_qty");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StockNo")
+                        .HasDatabaseName("IX_stock_balances_stock_no");
+
+                    b.HasIndex("StockNo", "EffectiveDate")
+                        .IsUnique()
+                        .HasDatabaseName("IX_stock_balances_stock_no_effective_date");
+
+                    b.ToTable("stock_balances", (string)null);
+                });
+
             modelBuilder.Entity("PPDO.Domain.Entities.User", b =>
                 {
                     b.Property<Guid>("Id")

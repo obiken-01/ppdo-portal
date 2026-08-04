@@ -25,6 +25,7 @@ import Link from "next/link";
 import api from "@/lib/api";
 import { fetchMe } from "@/lib/me-cache";
 import { useToast } from "@/components/ui/Toast";
+import TableSkeleton from "@/components/ui/TableSkeleton";
 import type {
   PRSummaryResponse,
   InventoryStatsResponse,
@@ -146,7 +147,7 @@ function StatGroup({
       <div className="px-4 py-2.5 bg-green-600 text-white text-xs font-semibold tracking-wide uppercase">
         {title}
       </div>
-      <div className="flex gap-3 p-3">{children}</div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3">{children}</div>
     </div>
   );
 }
@@ -325,7 +326,7 @@ export default function InventoryDashboardPage() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col gap-6 p-6 bg-slate-100 min-h-full">
+    <div className="flex flex-col gap-6 p-3 sm:p-6 bg-slate-100 min-h-full">
 
       {/* ── Page header ──────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between flex-wrap gap-3">
@@ -364,11 +365,20 @@ export default function InventoryDashboardPage() {
           >
             <span>📦</span> Distribution
           </Link>
+          <Link
+            href="/inventory/stock-balances"
+            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium transition-colors"
+          >
+            <span>🏭</span> Warehouse Stock
+          </Link>
         </div>
       </div>
 
-      {/* ── Stat card groups ─────────────────────────────────────────────── */}
-      <div className="flex gap-4 flex-wrap">
+      {/* ── Stat card groups ───────────────────────────────────────────────
+          lg, not sm — the sidebar itself collapses to a hamburger below lg (Sidebar.tsx),
+          so anywhere in the sm–lg range is already a narrow-chrome layout where two
+          4-card groups side by side get cramped. Stack through that whole range. */}
+      <div className="flex flex-col lg:flex-row gap-4">
 
         {/* Group 1 — Purchase Requests */}
         <StatGroup title="📋  Purchase Requests">
@@ -454,16 +464,14 @@ export default function InventoryDashboardPage() {
         </div>
 
         {prsLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <span className="w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
-          </div>
+          <TableSkeleton columns={["PR No.", "Division", "Requested By", "PR Date", "Status", "Fulfillment", "Total Amount", "Actions"]} />
         ) : prs.length === 0 ? (
           <div className="py-12 text-center text-sm text-slate-600">
             No purchase requests found.
           </div>
         ) : (
           <div className="overflow-x-auto overflow-y-hidden">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[950px]">
               <thead>
                 <tr className="bg-slate-50 text-xs text-slate-600 uppercase tracking-wide border-b border-slate-100">
                   <SortableHeader label="PR No."       col="prNo"        active={prSortCol} dir={prSortDir} onClick={handlePrSort} />
@@ -549,9 +557,7 @@ export default function InventoryDashboardPage() {
         </div>
 
         {ledgerLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <span className="w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
-          </div>
+          <TableSkeleton columns={["Stock No.", "Description", "Unit", "On Hand", "Reorder Qty", "Status"]} />
         ) : alertItems.length === 0 ? (
           <div className="py-10 text-center">
             <p className="text-sm text-green-600 font-medium">✅ All items are sufficiently stocked.</p>
@@ -559,7 +565,7 @@ export default function InventoryDashboardPage() {
           </div>
         ) : (
           <div className="overflow-x-auto overflow-y-hidden">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[750px]">
               <thead>
                 <tr className="bg-slate-50 text-xs text-slate-600 uppercase tracking-wide border-b border-slate-100">
                   <SortableHeader label="Stock No."    col="stockNo"     active={alSortCol} dir={alSortDir} onClick={handleAlSort} />

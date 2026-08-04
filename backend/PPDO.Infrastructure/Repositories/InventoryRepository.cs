@@ -91,4 +91,30 @@ public sealed class InventoryRepository : IInventoryRepository
 
         return new HashSet<string>(stockNos, StringComparer.OrdinalIgnoreCase);
     }
+
+    /// <inheritdoc />
+    public async Task<ItemStockLevel> GetItemStockLevelAsync(
+        string stockNo,
+        CancellationToken cancellationToken = default)
+    {
+        // Sequential queries on the shared DbContext — never Task.WhenAll (see CLAUDE.md).
+        decimal ordered = await _context.PRItems
+            .Where(pi => pi.StockNo == stockNo)
+            .SumAsync(pi => pi.Quantity, cancellationToken);
+
+        decimal delivered = await (from di in _context.DeliveryItems
+                                    join pi in _context.PRItems on di.PRItemId equals pi.Id
+                                    where pi.StockNo == stockNo
+                                    select di.QtyDelivered)
+                                   .SumAsync(cancellationToken);
+
+        decimal distributed = await (from dist in _context.Distributions
+                                      join di in _context.DeliveryItems on dist.DeliveryItemId equals di.Id
+                                      join pi in _context.PRItems on di.PRItemId equals pi.Id
+                                      where pi.StockNo == stockNo
+                                      select dist.QtyIssued)
+                                     .SumAsync(cancellationToken);
+
+        return new ItemStockLevel(stockNo, ordered, delivered, distributed);
+    }
 }

@@ -104,6 +104,7 @@ var host = new HostBuilder()
         services.AddScoped<IDeliveryRepository, DeliveryRepository>();
         services.AddScoped<IItemMasterRepository, ItemMasterRepository>();
         services.AddScoped<IInventoryRepository, InventoryRepository>();
+        services.AddScoped<IStockBalanceRepository, StockBalanceRepository>();
         services.AddScoped<ICalendarEventRepository, CalendarEventRepository>();
         services.AddScoped<IAuditRepository, AuditRepository>();
         services.AddScoped<IAipRepository, AipRepository>();
@@ -113,6 +114,7 @@ var host = new HostBuilder()
         services.AddScoped<IJwtMiddleware, JwtMiddleware>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<IExcelService, ExcelService>();
+        services.AddScoped<IPdfService, PdfService>();
         services.AddScoped<IWfpExcelService, ExcelService>();
         services.AddScoped<IWfpReportExcelService, WfpReportExcelService>();
         services.AddScoped<IPpmpReportExcelService, PpmpReportExcelService>();
@@ -134,6 +136,7 @@ var host = new HostBuilder()
         services.AddScoped<IDistributionService, DistributionService>();
         services.AddScoped<IPRReportService, PRReportService>();
         services.AddScoped<IInventoryService, InventoryService>();
+        services.AddScoped<IStockBalanceService, StockBalanceService>();
         services.AddScoped<IInventoryCleanupService, InventoryCleanupService>();
         services.AddScoped<IOfficeService, OfficeService>();
         services.AddScoped<IDivisionService, DivisionService>();

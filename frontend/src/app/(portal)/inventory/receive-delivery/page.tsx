@@ -19,11 +19,11 @@ import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { fetchMe } from "@/lib/me-cache";
 import { useToast } from "@/components/ui/Toast";
+import TableSkeleton from "@/components/ui/TableSkeleton";
 import type {
   CreateDeliveryItemRequest,
   CreateDeliveryRequest,
   DeliveryResponse,
-  DeliverySummaryResponse,
   MeResponse,
   PRResponse,
   PRSummaryResponse,
@@ -256,30 +256,16 @@ export default function ReceiveDeliveryPage() {
     setFormError(null);
 
     async function load() {
-      const [prRes, summaries] = await Promise.all([
+      // Single aggregate call for per-item delivered totals — replaces the old
+      // fetch-every-delivery's-full-detail loop (RAL-192 follow-up).
+      const [prRes, totals] = await Promise.all([
         api.get<PRResponse>(`/purchase-requests/${selectedPRId}`),
-        api.get<DeliverySummaryResponse[]>(`/deliveries?prId=${selectedPRId}`)
-          .then((r) => r.data).catch(() => [] as DeliverySummaryResponse[]),
+        api.get<Record<string, number>>(`/deliveries/totals?prId=${selectedPRId}`)
+          .then((r) => r.data).catch(() => ({} as Record<string, number>)),
       ]);
       const pr = prRes.data;
       setSelectedPR(pr);
       setItems(itemsFromPR(pr));
-
-      const totals: Record<string, number> = {};
-      if (summaries.length > 0) {
-        const details = await Promise.all(
-          summaries.map((s) =>
-            api.get<DeliveryResponse>(`/deliveries/${s.id}`)
-              .then((r) => r.data).catch(() => null)
-          )
-        );
-        for (const del of details) {
-          if (!del) continue;
-          for (const item of del.items) {
-            totals[item.prItemId] = (totals[item.prItemId] ?? 0) + item.qtyDelivered;
-          }
-        }
-      }
       setDeliveredQty(totals);
     }
 
@@ -435,7 +421,7 @@ export default function ReceiveDeliveryPage() {
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans">
-      <div className="max-w-screen-xl mx-auto px-6 py-6 space-y-5">
+      <div className="max-w-screen-xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-5">
 
         {/* Toolbar */}
         <div className="flex items-center justify-end">
@@ -512,17 +498,18 @@ export default function ReceiveDeliveryPage() {
             />
 
             {prLoading ? (
-              <div className="flex items-center justify-center py-16">
-                <div className="w-7 h-7 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
-              </div>
+              <TableSkeleton
+                columns={["#", "Stock No.", "Description", "Unit", "Qty Ordered", "Already Received", "Remaining", "Qty This Delivery"]}
+                rowCount={3}
+              />
             ) : (
               <div className="overflow-x-auto overflow-y-hidden">
-                <table className="w-full text-xs border-collapse">
+                <table className="w-full text-xs border-collapse min-w-[950px]">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase tracking-wide">
-                      <th className="px-3 py-2.5 text-center font-medium w-10">#</th>
+                      <th className="sticky left-0 z-20 bg-slate-50 px-3 py-2.5 text-center font-medium w-10">#</th>
                       <th className="px-3 py-2.5 text-left font-medium w-32">Stock No.</th>
-                      <th className="px-3 py-2.5 text-left font-medium">Description</th>
+                      <th className="sticky left-10 z-20 bg-slate-50 px-3 py-2.5 text-left font-medium w-36 border-r border-slate-200">Description</th>
                       <th className="px-3 py-2.5 text-left font-medium w-20">Unit</th>
                       <th className="px-3 py-2.5 text-right font-medium w-28">Qty Ordered</th>
                       <th className="px-3 py-2.5 text-right font-medium w-28">Already Received</th>
@@ -541,11 +528,14 @@ export default function ReceiveDeliveryPage() {
                       const thisQty    = parseFloat(row.qtyThisDelivery) || 0;
                       const isFull     = remaining === 0;
                       const overQty    = thisQty > remaining && remaining > 0;
+                      const rowBg = i % 2 === 1 ? "bg-slate-50" : "bg-white";
                       return (
-                        <tr key={row.prItemId} className={i % 2 === 1 ? "bg-slate-50" : "bg-white"}>
-                          <td className="px-3 py-2 text-center text-slate-600">{row.itemNo}</td>
+                        <tr key={row.prItemId} className={rowBg}>
+                          <td className={`sticky left-0 z-10 px-3 py-2 text-center text-slate-600 ${rowBg}`}>{row.itemNo}</td>
                           <td className="px-3 py-2 font-mono text-slate-600">{row.stockNo ?? "—"}</td>
-                          <td className="px-3 py-2 text-slate-800">{row.description}</td>
+                          <td className={`sticky left-10 z-10 px-3 py-2 text-slate-800 border-r border-slate-200 ${rowBg}`}>
+                            <div className="max-w-[8.5rem] truncate" title={row.description}>{row.description}</div>
+                          </td>
                           <td className="px-3 py-2 text-slate-600">{row.unit}</td>
                           <td className="px-3 py-2">
                             <div className="px-2 py-1.5 border border-slate-200 bg-cell-auto text-slate-600 text-right">

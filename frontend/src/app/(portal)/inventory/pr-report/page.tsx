@@ -19,11 +19,12 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import api from "@/lib/api";
+import { useMe } from "@/lib/me-cache";
 import { useToast } from "@/components/ui/Toast";
+import TableSkeleton from "@/components/ui/TableSkeleton";
 import type {
-  MeResponse,
   PRReportResponse,
   PRSummaryResponse,
 } from "@/types";
@@ -190,11 +191,13 @@ function PRCombobox({
 // ---------------------------------------------------------------------------
 
 export default function PRReportPage() {
-  const router       = useRouter();
   const searchParams = useSearchParams();
   const { toast }    = useToast();
 
-  const [authChecked, setAuthChecked] = useState(false);
+  const me = useMe(
+    (m) => m.canAccessInventory || m.canAccessReports,
+    (m) => (m.officeId != null ? "/budget-planning" : "/dashboard")
+  );
 
   // PR list + combobox
   const [prs, setPRs]               = useState<PRSummaryResponse[]>([]);
@@ -230,24 +233,10 @@ export default function PRReportPage() {
     return distributed;
   }, [report]);
 
-  // ── Auth guard ─────────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    api.get<MeResponse>("/auth/me")
-      .then(({ data }) => {
-        if (!data.canAccessInventory && !data.canAccessReports) {
-          router.replace(data.officeId != null ? "/budget-planning" : "/dashboard");
-          return;
-        }
-        setAuthChecked(true);
-      })
-      .catch(() => router.replace("/login"));
-  }, [router]);
-
   // ── Load PR list ───────────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (!authChecked) return;
+    if (!me) return;
     setPRsLoading(true);
     api.get<PRSummaryResponse[]>("/purchase-requests")
       .then(({ data }) => {
@@ -264,7 +253,7 @@ export default function PRReportPage() {
       })
       .catch(() => toast.error("Failed to load PRs", "Could not fetch purchase requests."))
       .finally(() => setPRsLoading(false));
-  }, [authChecked]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [me]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Load report when PR selected ──────────────────────────────────────────
 
@@ -328,7 +317,7 @@ export default function PRReportPage() {
 
   // ── Guards ─────────────────────────────────────────────────────────────────
 
-  if (!authChecked) {
+  if (!me) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-100">
         <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
@@ -342,7 +331,7 @@ export default function PRReportPage() {
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans">
-      <div className="max-w-screen-xl mx-auto px-6 py-6 space-y-5">
+      <div className="max-w-screen-xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-5">
 
         {/* ── Toolbar ──────────────────────────────────────────────────────── */}
         <div className="flex flex-wrap items-center gap-3">
@@ -391,10 +380,35 @@ export default function PRReportPage() {
           </div>
         )}
 
+        {/* Loading — mirrors the 3-section report shape below (CLS-safe). */}
         {selectedId && reportLoading && (
-          <div className="bg-white border border-slate-200 shadow-sm flex items-center justify-center py-20">
-            <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
-          </div>
+          <>
+            <div className="bg-white border border-slate-200 shadow-sm overflow-hidden">
+              <SectionHeading number="1" title="PR Details" />
+              <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                {Array.from({ length: 10 }).map((_, i) => (
+                  <div key={i} className="space-y-1.5">
+                    <div className="h-3 w-20 bg-slate-100 animate-pulse" />
+                    <div className="h-8 bg-slate-100 animate-pulse" />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="bg-white border border-slate-200 shadow-sm overflow-hidden">
+              <SectionHeading number="2" title="Line Items" />
+              <TableSkeleton
+                columns={["#", "Item Description", "Stock No.", "Unit", "Qty Ordered", "Qty Delivered", "Qty Distributed", "Remaining"]}
+                rowCount={3}
+              />
+            </div>
+            <div className="bg-white border border-slate-200 shadow-sm overflow-hidden">
+              <SectionHeading number="3" title="Distribution" />
+              <TableSkeleton
+                columns={["Item#", "Description", "Unit", "Qty Delivered", "Delivery Ref", "Del. Date", "Division", "Qty Issued", "Issue Ref", "Date Issued", "Issued By", "Remarks"]}
+                rowCount={3}
+              />
+            </div>
+          </>
         )}
 
         {/* ── Report sections ───────────────────────────────────────────────── */}
@@ -491,7 +505,7 @@ export default function PRReportPage() {
                 title="Line Items — Ordered vs Delivered vs Distributed vs Remaining"
               />
               <div className="overflow-x-auto overflow-y-hidden">
-                <table className="w-full text-xs border-collapse">
+                <table className="w-full text-xs border-collapse min-w-[950px]">
                   <thead>
                     <tr className="bg-green-800 text-white text-xs uppercase tracking-wide">
                       <th className="px-3 py-2.5 text-center font-medium w-10">#</th>
@@ -567,7 +581,7 @@ export default function PRReportPage() {
                 </div>
               ) : (
                 <div className="overflow-x-auto overflow-y-hidden">
-                  <table className="w-full text-xs border-collapse">
+                  <table className="w-full text-xs border-collapse min-w-[1450px]">
                     <thead>
                       <tr className="bg-green-800 text-white text-xs uppercase tracking-wide">
                         <th className="px-3 py-2.5 text-center font-medium w-10">Item#</th>

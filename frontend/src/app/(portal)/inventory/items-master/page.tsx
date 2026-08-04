@@ -2,6 +2,7 @@
 
 /**
  * Items Master page — RAL-52 (inline-editing, uncontrolled-input fix).
+ * Server-side search/sort/paging — RAL-192 step 3.
  * Matches Penpot frame "06 Items Master".
  *
  * Access guard: canAccessInventory permission required.
@@ -14,7 +15,9 @@
  *   The only state that columns depend on: editingId, saving, reviewingId.
  *
  * Table behaviour:
- *   - TanStack Table v8 — per-column filter row, global search, sortable columns
+ *   - TanStack Table v8 — per-column filter row, global search, sortable columns.
+ *     Filtering, sorting, and paging are all server-side (RAL-192) via
+ *     GET /api/items/master/search. Free-text fields are debounced 300ms.
  *   - ✏️ click → row switches to inline edit mode (inputs in cells)
  *   - Only one row editable at a time
  *   - isNewItem rendered as a toggle button in edit mode / ★ NEW badge in display mode
@@ -24,30 +27,29 @@
  *   - Save/API success → toast. API errors on save → toast.
  *
  * API endpoints (ItemFunctions.cs):
- *   GET  /api/items/master        → list all items
- *   POST /api/items/master        → create item
- *   PUT  /api/items/master/{id}   → update item
+ *   GET  /api/items/master         → full catalog (unused here — see /search below)
+ *   GET  /api/items/master/search  → filtered/sorted/paged catalog (this page)
+ *   POST /api/items/master         → create item
+ *   PUT  /api/items/master/{id}    → update item
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   useReactTable,
   getCoreRowModel,
-  getFilteredRowModel,
-  getSortedRowModel,
-  getPaginationRowModel,
   flexRender,
   type ColumnDef,
-  type ColumnFiltersState,
   type SortingState,
 } from "@tanstack/react-table";
 import api from "@/lib/api";
 import { fetchMe } from "@/lib/me-cache";
 import { useToast } from "@/components/ui/Toast";
+import TableSkeleton from "@/components/ui/TableSkeleton";
 import type {
   CreateItemMasterRequest,
   ItemMasterResponse,
+  ItemMasterSearchResult,
   UpdateItemMasterRequest,
 } from "@/types";
 
@@ -72,6 +74,27 @@ type EditValues = {
   remarks:     string;
   isNewItem:   boolean;
 };
+
+/** The Items Master page's per-column filter row — mirrors ItemMasterSearchFilterDto's
+ * per-field parameters. Keys match each column's accessorKey / TanStack column id. */
+interface ColumnFilters {
+  stockNo:     string;
+  description: string;
+  category:    string;
+  unit:        string;
+  itemType:    string;
+  remarks:     string;
+}
+
+const EMPTY_COLUMN_FILTERS: ColumnFilters = {
+  stockNo: "", description: "", category: "", unit: "", itemType: "", remarks: "",
+};
+
+const FILTERABLE_COLUMNS = ["stockNo", "description", "category", "unit", "itemType", "remarks"] as const;
+
+function isFilterableColumn(id: string): id is keyof ColumnFilters {
+  return (FILTERABLE_COLUMNS as readonly string[]).includes(id);
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -178,11 +201,14 @@ export default function ItemsMasterPage() {
   // Auth guard
   const [authChecked] = useState(true);
 
-  // Master data
+  // Master data — holds only the CURRENT page's rows (server-paged).
   const [items, setItems]         = useState<ItemMasterResponse[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [newCount, setNewCount]   = useState(0); // total ★ NEW across the whole catalog
   const [hasSentinel, setSentinel] = useState(false);
   const [loading, setLoading]     = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [refreshToken, setRefreshToken] = useState(0);
 
   // ---------------------------------------------------------------------------
   // Inline edit state — ONLY editingId is in React state.
@@ -195,20 +221,30 @@ export default function ItemsMasterPage() {
   const [saving, setSaving]       = useState(false);
   const [reviewingId, setReviewingId] = useState<string | null>(null);
 
-  // Table filter/sort state
-  // searchInput is what the user sees; globalFilter is what the table uses.
-  // The 150 ms debounce keeps filtering off the keystroke hot path so the
-  // page stays responsive even when the catalog grows beyond 1 000 items.
-  const [searchInput, setSearchInput]     = useState("");
-  const [globalFilter, setGlobalFilter]   = useState("");
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
-  const [sorting, setSorting]             = useState<SortingState>([]);
-  const [showNewOnly, setShowNewOnly]     = useState(false);
+  // ── Search / filter / sort / page state (server-driven — RAL-192) ──────────
 
+  const [searchInput, setSearchInput]           = useState("");
+  const [debouncedSearch, setDebouncedSearch]   = useState("");
+  const [columnFilterInput, setColumnFilterInput] = useState<ColumnFilters>(EMPTY_COLUMN_FILTERS);
+  const [debouncedColumnFilters, setDebouncedColumnFilters] = useState<ColumnFilters>(EMPTY_COLUMN_FILTERS);
+  const [sorting, setSorting]     = useState<SortingState>([]);
+  const [showNewOnly, setShowNewOnly] = useState(false);
+  const [page, setPage]           = useState(1);
+  const [pageSize, setPageSize]   = useState(25);
+
+  // Free-text fields are debounced off the keystroke hot path.
   useEffect(() => {
-    const id = setTimeout(() => setGlobalFilter(searchInput), 150);
-    return () => clearTimeout(id);
-  }, [searchInput]);
+    const t = setTimeout(() => {
+      setDebouncedSearch(searchInput);
+      setDebouncedColumnFilters(columnFilterInput);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchInput, columnFilterInput]);
+
+  // Reset to page 1 whenever the effective filter/sort set changes — a stale deep
+  // page number would otherwise land past the end of a newly-narrowed result set.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { setPage(1); }, [debouncedSearch, debouncedColumnFilters, showNewOnly, sorting]);
 
   // ── Auth guard ─────────────────────────────────────────────────────────────
 
@@ -220,31 +256,60 @@ export default function ItemsMasterPage() {
       .catch(() => router.replace("/login"));
   }, [router]);
 
-  // ── Load ───────────────────────────────────────────────────────────────────
+  // ── Load (server-side search + sort + page) ─────────────────────────────────
 
-  const loadItems = useCallback(async () => {
-    setLoading(true);
-    setFetchError(null);
-    try {
-      const { data } = await api.get<ItemMasterResponse[]>("/items/master");
-      setItems(data);
-    } catch {
-      setFetchError("Failed to load items. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const reqSeqRef = useRef(0);
 
   useEffect(() => {
-    if (authChecked) loadItems();
-  }, [authChecked, loadItems]);
+    let cancelled = false;
+    const seq = ++reqSeqRef.current;
+
+    setLoading(true);
+    setFetchError(null);
+
+    const sort = sorting[0];
+    const params: Record<string, string | number | boolean> = { page, pageSize };
+    if (debouncedSearch)                    params.search      = debouncedSearch;
+    if (debouncedColumnFilters.stockNo)     params.stockNo     = debouncedColumnFilters.stockNo;
+    if (debouncedColumnFilters.description) params.description = debouncedColumnFilters.description;
+    if (debouncedColumnFilters.category)    params.category    = debouncedColumnFilters.category;
+    if (debouncedColumnFilters.unit)        params.unit        = debouncedColumnFilters.unit;
+    if (debouncedColumnFilters.itemType)    params.itemType    = debouncedColumnFilters.itemType;
+    if (debouncedColumnFilters.remarks)     params.remarks     = debouncedColumnFilters.remarks;
+    if (showNewOnly)                        params.isNewOnly   = true;
+    if (sort) {
+      params.sortBy  = sort.id;
+      params.sortDir = sort.desc ? "desc" : "asc";
+    }
+
+    api.get<ItemMasterSearchResult>("/items/master/search", { params })
+      .then(({ data }) => {
+        if (cancelled || seq !== reqSeqRef.current) return;
+        setItems(data.items);
+        setTotalCount(data.totalCount);
+        setNewCount(data.totalNewItemCount);
+      })
+      .catch(() => {
+        if (cancelled || seq !== reqSeqRef.current) return;
+        setFetchError("Failed to load items. Please try again.");
+      })
+      .finally(() => {
+        if (cancelled || seq !== reqSeqRef.current) return;
+        setLoading(false);
+      });
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, pageSize, debouncedSearch, debouncedColumnFilters, showNewOnly, sorting, refreshToken]);
+
+  const reload = useCallback(() => setRefreshToken((t) => t + 1), []);
 
   // ── Table data ─────────────────────────────────────────────────────────────
 
-  const tableData = useMemo<ItemMasterResponse[]>(() => {
-    const base = showNewOnly ? items.filter((i) => i.isNewItem) : items;
-    return hasSentinel ? [blankSentinel(), ...base] : base;
-  }, [items, hasSentinel, showNewOnly]);
+  const tableData = useMemo<ItemMasterResponse[]>(
+    () => (hasSentinel ? [blankSentinel(), ...items] : items),
+    [items, hasSentinel]
+  );
 
   // ── Edit helpers ───────────────────────────────────────────────────────────
 
@@ -307,13 +372,14 @@ export default function ItemsMasterPage() {
         await api.post("/items/master", body satisfies CreateItemMasterRequest);
         setSentinel(false);
         toast.success("Item added", `${body.description} was added to the catalog.`);
+        setPage(1);
       } else {
         await api.put(`/items/master/${editingId}`, body satisfies UpdateItemMasterRequest);
         toast.success("Changes saved", `${body.description} was updated.`);
       }
       editRef.current = null;
       setEditingId(null);
-      await loadItems();
+      reload();
     } catch (e: unknown) {
       const msg =
         (e as { response?: { data?: { message?: string } } })?.response?.data?.message
@@ -336,7 +402,7 @@ export default function ItemsMasterPage() {
         remarks: item.remarks, isNewItem: false,
       } satisfies UpdateItemMasterRequest);
       toast.success("Marked as reviewed", `${item.description} is no longer flagged as NEW.`);
-      await loadItems();
+      reload();
     } catch {
       toast.error("Failed to update", "Could not clear the ★ NEW flag. Please try again.");
     } finally {
@@ -609,28 +675,23 @@ export default function ItemsMasterPage() {
     [editingId, saving, reviewingId]
   );
 
-  // ── Table instance ─────────────────────────────────────────────────────────
+  // ── Table instance (server-driven sorting + pagination — RAL-192) ──────────
+
+  const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
 
   const table = useReactTable({
     data: tableData,
     columns,
-    state: { globalFilter, columnFilters, sorting },
-    onGlobalFilterChange: setGlobalFilter,
-    onColumnFiltersChange: setColumnFilters,
+    state: { sorting },
     onSortingChange: setSorting,
+    manualSorting: true,
+    manualPagination: true,
+    pageCount,
     getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    initialState: { pagination: { pageSize: 25 } },
-    globalFilterFn: "includesString",
   });
 
-  // ── Derived ────────────────────────────────────────────────────────────────
-
-  const newCount      = items.filter((i) => i.isNewItem).length;
-  const visibleRows   = table.getRowModel().rows.length;
-  const totalFiltered = table.getFilteredRowModel().rows.length;
+  const hasActiveFilter =
+    !!debouncedSearch || Object.values(debouncedColumnFilters).some(Boolean) || showNewOnly;
 
   // ── Loading / auth ─────────────────────────────────────────────────────────
 
@@ -646,7 +707,7 @@ export default function ItemsMasterPage() {
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans">
-      <div className="max-w-screen-xl mx-auto px-6 py-6 space-y-4">
+      <div className="max-w-screen-xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-4">
 
         {/* ── Toolbar ──────────────────────────────────────────────────────── */}
         <div className="flex flex-wrap items-center gap-3">
@@ -658,7 +719,7 @@ export default function ItemsMasterPage() {
           />
           {searchInput && (
             <button
-              onClick={() => { setSearchInput(""); setGlobalFilter(""); }}
+              onClick={() => { setSearchInput(""); setDebouncedSearch(""); }}
               className="text-sm text-slate-600 hover:text-slate-600 px-2"
             >
               Clear
@@ -698,17 +759,15 @@ export default function ItemsMasterPage() {
         {/* ── Table card ───────────────────────────────────────────────────── */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
           {loading ? (
-            <div className="flex items-center justify-center py-20">
-              <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
-            </div>
+            <TableSkeleton columns={["#", "Stock No.", "Description", "Category", "Unit", "Unit Cost", "Type", "Reorder", "Remarks", "New?", ""]} />
           ) : fetchError ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
               <p className="text-sm text-red-500">{fetchError}</p>
-              <button onClick={loadItems} className="text-sm text-green-600 hover:underline">Retry</button>
+              <button onClick={reload} className="text-sm text-green-600 hover:underline">Retry</button>
             </div>
           ) : (
             <div className="overflow-x-auto overflow-y-hidden">
-              <table className="w-full text-sm border-collapse">
+              <table className="w-full text-sm border-collapse min-w-[1250px]">
 
                 {/* ── Header ── */}
                 <thead>
@@ -734,15 +793,19 @@ export default function ItemsMasterPage() {
                     </tr>
                   ))}
 
-                  {/* Filter row */}
+                  {/* Filter row — server-side, debounced (RAL-192) */}
                   {table.getHeaderGroups().map((hg) => (
                     <tr key={`filter-${hg.id}`} className="bg-white border-b border-slate-100">
                       {hg.headers.map((h) => (
                         <th key={`f-${h.id}`} className="px-2 py-1.5">
-                          {h.column.getCanFilter() ? (
+                          {h.column.getCanFilter() && isFilterableColumn(h.column.id) ? (
                             <input
-                              value={(h.column.getFilterValue() as string) ?? ""}
-                              onChange={(e) => h.column.setFilterValue(e.target.value)}
+                              value={columnFilterInput[h.column.id]}
+                              onChange={(e) => {
+                                const columnId = h.column.id;
+                                if (!isFilterableColumn(columnId)) return;
+                                setColumnFilterInput((prev) => ({ ...prev, [columnId]: e.target.value }));
+                              }}
                               placeholder="Filter…"
                               className="w-full px-2 py-1 text-xs rounded border border-slate-200 bg-slate-50 focus:outline-none focus:ring-1 focus:ring-green-500 focus:bg-white transition-colors"
                             />
@@ -758,18 +821,15 @@ export default function ItemsMasterPage() {
                   {table.getRowModel().rows.length === 0 ? (
                     <tr>
                       <td colSpan={columns.length} className="text-center py-16 text-slate-600 text-sm">
-                        {globalFilter || columnFilters.length > 0 || showNewOnly
-                          ? "No items match your filters."
-                          : "No items in the catalog yet."}
+                        {hasActiveFilter ? "No items match your filters." : "No items in the catalog yet."}
                       </td>
                     </tr>
                   ) : (
                     table.getRowModel().rows.map((row, i) => {
                       const isEditing = row.original.id === editingId;
                       return (
-                        <>
+                        <Fragment key={row.id}>
                           <tr
-                            key={row.id}
                             className={`transition-colors ${
                               isEditing
                                 ? "bg-cell-fill ring-1 ring-inset ring-green-300"
@@ -794,7 +854,7 @@ export default function ItemsMasterPage() {
                               </td>
                             </tr>
                           )}
-                        </>
+                        </Fragment>
                       );
                     })
                   )}
@@ -804,9 +864,7 @@ export default function ItemsMasterPage() {
               {/* ── Status bar + pagination ── */}
               <div className="flex items-center justify-between px-4 py-2 border-t border-slate-100 text-xs text-slate-600 flex-wrap gap-2">
                 <span>
-                  {visibleRows === totalFiltered
-                    ? `${totalFiltered} item${totalFiltered !== 1 ? "s" : ""}`
-                    : `${visibleRows} of ${totalFiltered} items`}
+                  {totalCount} item{totalCount !== 1 ? "s" : ""}
                   {newCount > 0 && (
                     <span className="ml-2 text-amber-600 font-medium">· {newCount} pending review</span>
                   )}
@@ -815,12 +873,12 @@ export default function ItemsMasterPage() {
                   )}
                 </span>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="px-2 py-0.5 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50 transition-colors">‹</button>
-                  <span>Page {table.getState().pagination.pageIndex + 1} / {table.getPageCount() || 1}</span>
-                  <button onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="px-2 py-0.5 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50 transition-colors">›</button>
+                  <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} className="px-2 py-0.5 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50 transition-colors">‹</button>
+                  <span>Page {page} / {pageCount}</span>
+                  <button onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={page >= pageCount} className="px-2 py-0.5 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50 transition-colors">›</button>
                   <select
-                    value={table.getState().pagination.pageSize}
-                    onChange={(e) => table.setPageSize(Number(e.target.value))}
+                    value={pageSize}
+                    onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
                     className="px-2 py-0.5 rounded border border-slate-200 bg-white focus:outline-none text-xs"
                   >
                     {[25, 50, 100].map((n) => <option key={n} value={n}>{n} / page</option>)}

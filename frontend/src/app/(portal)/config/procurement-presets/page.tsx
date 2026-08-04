@@ -39,6 +39,7 @@ import {
 } from "@/lib/config";
 import { formatMoney } from "@/lib/money";
 import Modal from "@/components/ui/Modal";
+import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import MoneyInput from "@/components/ui/MoneyInput";
 import Lookup from "@/components/ui/Lookup";
@@ -401,22 +402,19 @@ export default function ProcurementPresetsConfigPage() {
     <div className="min-h-full bg-slate-100 font-sans">
       <div className="max-w-6xl mx-auto px-6 py-6 space-y-4">
         {/* Header */}
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h1 className="text-lg font-bold text-slate-800">Procurement Presets</h1>
-            <p className="text-sm text-slate-600">
-              Account-scoped, reusable procurement line-item templates for WFP entry. Shared
-              across all offices and divisions.
-            </p>
-          </div>
-          <button
-            onClick={openAdd}
-            className="flex items-center gap-1.5 bg-green-600 text-white font-semibold text-sm px-4 py-2.5 hover:bg-green-500 transition-colors shrink-0"
-          >
-            <span className="text-base leading-none">+</span>
-            Add Preset
-          </button>
-        </div>
+        <ConfigPageHeader
+          title="Procurement Presets"
+          description="Account-scoped, reusable procurement line-item templates for WFP entry. Shared across all offices and divisions."
+          actions={
+            <button
+              onClick={openAdd}
+              className="flex items-center gap-1.5 bg-green-600 text-white font-semibold text-sm px-4 py-2.5 hover:bg-green-500 transition-colors shrink-0"
+            >
+              <span className="text-base leading-none">+</span>
+              Add Preset
+            </button>
+          }
+        />
 
         {/* Filter bar */}
         <div className="flex flex-wrap items-center gap-3 bg-white border border-slate-200 px-4 py-3">

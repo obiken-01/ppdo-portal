@@ -1,6 +1,13 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import Navbar from "@/components/landing/Navbar";
 import Footer from "@/components/landing/Footer";
+
+export const metadata: Metadata = {
+  title: "About",
+  description: "About the Provincial Planning and Development Office of Occidental Mindoro.",
+  alternates: { canonical: "/about" },
+};
 
 export default function AboutPage() {
   return (

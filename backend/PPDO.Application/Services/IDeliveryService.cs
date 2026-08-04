@@ -12,11 +12,14 @@ namespace PPDO.Application.Services;
 public interface IDeliveryService
 {
     /// <summary>
-    /// Returns all deliveries visible to the requester.
-    /// Staff/Observer: own division's PRs only. Admin/SuperAdmin: all.
+    /// Returns a page of deliveries visible to the requester, division-scoped and sorted by
+    /// DeliveryDate descending. Staff/Observer: own division's PRs only. Admin/SuperAdmin: all.
+    /// A single scoped, paged query — never a full-table load or a per-PR loop.
     /// </summary>
-    Task<IReadOnlyList<DeliverySummaryDto>> GetAllAsync(
+    Task<DeliveryPagedResultDto> GetAllAsync(
         User requester,
+        int page,
+        int pageSize,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -24,6 +27,17 @@ public interface IDeliveryService
     /// Enforces division-scope for Staff/Observer.
     /// </summary>
     Task<ServiceResult<IReadOnlyList<DeliverySummaryDto>>> GetByPRIdAsync(
+        User requester,
+        Guid prId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns the total quantity delivered per PRItem, across all deliveries for the
+    /// given PR, in one aggregate query — key = PRItemId, value = summed QtyDelivered.
+    /// Enforces the same division-scope as GetByPRIdAsync. Lets the Receive Delivery
+    /// page compute remaining-quantity without fetching every delivery's full detail.
+    /// </summary>
+    Task<ServiceResult<IReadOnlyDictionary<Guid, decimal>>> GetDeliveredTotalsByPRAsync(
         User requester,
         Guid prId,
         CancellationToken cancellationToken = default);

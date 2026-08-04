@@ -9,3 +9,10 @@ public sealed record DeliverySummaryDto(
     string ReceivedBy,
     string? Supplier,
     DateTime CreatedAt);
+
+/// <summary>Paged delivery list — GET /api/deliveries?page=&amp;pageSize= response.</summary>
+public sealed record DeliveryPagedResultDto(
+    IReadOnlyList<DeliverySummaryDto> Items,
+    int TotalCount,
+    int Page,
+    int PageSize);

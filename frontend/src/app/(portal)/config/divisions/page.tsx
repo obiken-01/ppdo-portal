@@ -41,6 +41,7 @@ import {
   updateDivision,
 } from "@/lib/config";
 import DataTable, { type Column } from "@/components/ui/DataTable";
+import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import Modal from "@/components/ui/Modal";
 import MessageDialog from "@/components/ui/MessageDialog";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
@@ -377,6 +378,7 @@ export default function DivisionConfigPage() {
     {
       key: "code",
       header: "Code",
+      className: "whitespace-nowrap",
       render: (d) => (
         <span className="font-mono text-xs text-slate-600">{d.code ?? "—"}</span>
       ),
@@ -420,6 +422,7 @@ export default function DivisionConfigPage() {
       key: "actions",
       header: "Actions",
       align: "right",
+      className: "whitespace-nowrap",
       render: (d) => (
         <div className="flex items-center justify-end gap-2 text-sm">
           <TextAction onClick={() => openEdit(d)}>Edit</TextAction>
@@ -444,29 +447,27 @@ export default function DivisionConfigPage() {
     <div className="min-h-full bg-slate-100 font-sans">
       <div className="max-w-6xl mx-auto px-6 py-6 space-y-4">
         {/* Header */}
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h1 className="text-lg font-bold text-slate-800">Divisions</h1>
-            <p className="text-sm text-slate-600">
-              Configurable per-office divisions that carry data scope and feature-permission flags.
-            </p>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <CsvDownloadButton
-              filename="divisions.csv"
-              fetchCsv={exportDivisionsCsv}
-              onError={(msg) => toast.error("Export failed", msg)}
-            />
-            <CsvUploadButton onSelect={(file) => setPendingCsv(file)} />
-            <button
-              onClick={openAdd}
-              className="flex items-center gap-1.5 bg-green-600 text-white font-semibold text-sm px-4 py-2.5 hover:bg-green-500 transition-colors shrink-0"
-            >
-              <span className="text-base leading-none">+</span>
-              Add Division
-            </button>
-          </div>
-        </div>
+        <ConfigPageHeader
+          title="Divisions"
+          description="Configurable per-office divisions that carry data scope and feature-permission flags."
+          actions={
+            <>
+              <CsvDownloadButton
+                filename="divisions.csv"
+                fetchCsv={exportDivisionsCsv}
+                onError={(msg) => toast.error("Export failed", msg)}
+              />
+              <CsvUploadButton onSelect={(file) => setPendingCsv(file)} />
+              <button
+                onClick={openAdd}
+                className="flex items-center gap-1.5 bg-green-600 text-white font-semibold text-sm px-4 py-2.5 hover:bg-green-500 transition-colors shrink-0"
+              >
+                <span className="text-base leading-none">+</span>
+                Add Division
+              </button>
+            </>
+          }
+        />
 
         {/* Filter bar */}
         <div className="flex flex-wrap items-center gap-3 bg-white border border-slate-200 px-4 py-3">
@@ -516,6 +517,7 @@ export default function DivisionConfigPage() {
           }
           pageSize={25}
           rowNoun={["division", "divisions"]}
+          minWidth={900}
         />
       </div>
 

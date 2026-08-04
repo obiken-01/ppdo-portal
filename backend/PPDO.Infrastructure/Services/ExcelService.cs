@@ -23,11 +23,19 @@ namespace PPDO.Infrastructure.Services;
 ///   Yellow (#FFFDE7) = user fills in
 ///   Gray   (#F1F3F5) = auto-fill / locked — do not edit
 ///   Green  (#F0FAF4) = section headers
+///
+/// <see cref="GeneratePRTemplate"/> is the one exception (RAL-195, v1.7.0) — it deliberately
+/// uses no fill colours at all, matching the plain look of a real GSO PR export: bold text for
+/// labels/headers and thin borders marking fillable cells, gridlines visible throughout.
 /// </summary>
 public sealed class ExcelService : IExcelService, IWfpExcelService
 {
     // ── Layout constants ──────────────────────────────────────────────────────
-    // Section 1 — col A = label, col B = value.
+    // Section 1 — col A = thin margin (doubles as Section 2's Item No. column),
+    // col B = label, col C:D = value (merged, for a wider fillable field).
+
+    internal const int COL_SECTION1_LABEL = 2; // B
+    internal const int COL_SECTION1_VALUE = 3; // C (merged C:D)
 
     // PR No. is optional — left blank, the backend auto-generates one (same as the
     // manual Create PR form). Sits first so it reads like the GSO paper form.
@@ -83,7 +91,7 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
         using XLWorkbook wb = new();
 
         IXLWorksheet ws = wb.AddWorksheet("PR-001");
-        BuildPRSheet(ws, prefilled: false, pr: null);
+        BuildPRSheet(ws);
 
         IXLWorksheet inst = wb.AddWorksheet("Instructions");
         BuildInstructionsSheet(inst);
@@ -91,6 +99,96 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
         using MemoryStream ms = new();
         wb.SaveAs(ms);
         return ms.ToArray();
+    }
+
+    // ── GenerateStockBalanceImportTemplate ────────────────────────────────────
+
+    /// <inheritdoc />
+    public byte[] GenerateStockBalanceImportTemplate()
+    {
+        using XLWorkbook wb = new();
+
+        IXLWorksheet ws = wb.AddWorksheet("Stock Balance Import");
+        BuildStockBalanceImportSheet(ws);
+
+        IXLWorksheet inst = wb.AddWorksheet("Instructions");
+        BuildStockBalanceInstructionsSheet(inst);
+
+        using MemoryStream ms = new();
+        wb.SaveAs(ms);
+        return ms.ToArray();
+    }
+
+    /// <summary>
+    /// Row 1 = header, exactly matching <see cref="ParseStockBalanceImport"/>'s expected
+    /// layout — no title/instruction rows above it, since parsing always starts at row 2
+    /// of the first worksheet.
+    /// </summary>
+    private static void BuildStockBalanceImportSheet(IXLWorksheet ws)
+    {
+        string[] headers =
+            ["StockNo", "CountedQty", "EffectiveDate", "Reason", "Description", "Unit", "UnitCost", "ItemType"];
+
+        for (int c = 1; c <= headers.Length; c++)
+        {
+            IXLCell h = ws.Cell(1, c);
+            h.Value = headers[c - 1];
+            h.Style.Font.SetBold(true).Fill.SetBackgroundColor(DarkGreen)
+                .Font.SetFontColor(White)
+                .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
+        }
+
+        // Yellow fillable rows below the header, for a batch of counts.
+        for (int r = 2; r <= 30; r++)
+            for (int c = 1; c <= headers.Length; c++)
+                ws.Cell(r, c).Style.Fill.SetBackgroundColor(Yellow);
+
+        for (int c = 1; c <= headers.Length; c++)
+            ws.Column(c).Width = 18;
+
+        ws.SheetView.FreezeRows(1);
+    }
+
+    private static void BuildStockBalanceInstructionsSheet(IXLWorksheet ws)
+    {
+        ws.Cell(1, 1).Value = "HOW TO USE THIS TEMPLATE";
+        ws.Cell(1, 1).Style.Font.SetBold(true).Font.SetFontSize(13).Font.SetFontColor(DarkGreen);
+
+        string[] lines =
+        [
+            "",
+            "REQUIRED COLUMNS (every row):",
+            "  StockNo, CountedQty, EffectiveDate.",
+            "  CountedQty must be zero or greater. EffectiveDate cannot be in the future.",
+            "",
+            "OPTIONAL COLUMNS:",
+            "  Reason — free text, e.g. \"Quarterly physical count\".",
+            "  Description / Unit / UnitCost / ItemType — only needed when StockNo isn't",
+            "    already in Items Master. It will be added to the catalog automatically,",
+            "    pending admin review. When the StockNo is already cataloged, these four",
+            "    columns are ignored — the catalog's own values win.",
+            "",
+            "RE-UPLOADING:",
+            "  Uploading the same StockNo + Effective Date pair again overwrites that entry",
+            "  instead of creating a duplicate.",
+            "",
+            "STOPPING:",
+            "  Leave a row completely blank to stop — rows after the first blank row are",
+            "  not read.",
+            "",
+            "DEFAULT PASSWORD:",
+            "  If you forget your portal password, contact your System Administrator.",
+            "  Default password (after reset): TamarawUser2026!",
+        ];
+
+        for (int i = 0; i < lines.Length; i++)
+        {
+            ws.Cell(i + 2, 1).Value = lines[i];
+            if (lines[i].EndsWith(':'))
+                ws.Cell(i + 2, 1).Style.Font.SetBold(true);
+        }
+
+        ws.Column(1).Width = 80;
     }
 
     // ── ExportPRReport ────────────────────────────────────────────────────────
@@ -563,10 +661,10 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
 
             // ── Section 1 validation ──────────────────────────────────────────
 
-            string divisionRaw   = ws.Cell(ROW_DIVISION,     2).GetString().Trim();
-            string requestedBy   = ws.Cell(ROW_REQUESTED_BY, 2).GetString().Trim();
-            string prDateRaw     = ws.Cell(ROW_PR_DATE,      2).GetString().Trim();
-            string prNoRaw       = ws.Cell(ROW_PR_NO,        2).GetString().Trim(); // optional
+            string divisionRaw   = ws.Cell(ROW_DIVISION,     COL_SECTION1_VALUE).GetString().Trim();
+            string requestedBy   = ws.Cell(ROW_REQUESTED_BY, COL_SECTION1_VALUE).GetString().Trim();
+            string prDateRaw     = ws.Cell(ROW_PR_DATE,      COL_SECTION1_VALUE).GetString().Trim();
+            string prNoRaw       = ws.Cell(ROW_PR_NO,        COL_SECTION1_VALUE).GetString().Trim(); // optional
 
             if (string.IsNullOrWhiteSpace(divisionRaw))
                 sheetErrors.Add($"[{ws.Name}] Division is required.");
@@ -584,7 +682,7 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
             }
             else
             {
-                IXLCell dateCell = ws.Cell(ROW_PR_DATE, 2);
+                IXLCell dateCell = ws.Cell(ROW_PR_DATE, COL_SECTION1_VALUE);
                 if (dateCell.DataType == XLDataType.DateTime)
                 {
                     prDate = DateOnly.FromDateTime(dateCell.GetDateTime());
@@ -651,28 +749,253 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
                     DivisionName        = divisionRaw,
                     RequestedBy         = requestedBy,
                     PRDate              = prDate,
-                    Department          = ws.Cell(ROW_DEPARTMENT,         2).GetString().Trim() is { Length: > 0 } d ? d : "PPDO",
-                    Fund                = NullIfBlank(ws.Cell(ROW_FUND,               2).GetString()),
-                    Position            = NullIfBlank(ws.Cell(ROW_POSITION,           2).GetString()),
-                    ApprovedBy          = NullIfBlank(ws.Cell(ROW_APPROVED_BY,        2).GetString()),
-                    ApprovingPosition   = NullIfBlank(ws.Cell(ROW_APPROVING_POSITION, 2).GetString()),
-                    AIPCode             = NullIfBlank(ws.Cell(ROW_AIP_CODE,           2).GetString()),
-                    AccountNo           = NullIfBlank(ws.Cell(ROW_ACCOUNT_NO,         2).GetString()),
-                    AccountTitle        = NullIfBlank(ws.Cell(ROW_ACCOUNT_TITLE,      2).GetString()),
-                    Program             = NullIfBlank(ws.Cell(ROW_PROGRAM,            2).GetString()),
-                    Project             = NullIfBlank(ws.Cell(ROW_PROJECT,            2).GetString()),
-                    Activity            = NullIfBlank(ws.Cell(ROW_ACTIVITY,           2).GetString()),
-                    SAINo               = NullIfBlank(ws.Cell(ROW_SAI_NO,             2).GetString()),
-                    ALOBSNo             = NullIfBlank(ws.Cell(ROW_ALOBS_NO,           2).GetString()),
+                    Department          = ws.Cell(ROW_DEPARTMENT,         COL_SECTION1_VALUE).GetString().Trim() is { Length: > 0 } d ? d : "PPDO",
+                    Fund                = NullIfBlank(ws.Cell(ROW_FUND,               COL_SECTION1_VALUE).GetString()),
+                    Position            = NullIfBlank(ws.Cell(ROW_POSITION,           COL_SECTION1_VALUE).GetString()),
+                    ApprovedBy          = NullIfBlank(ws.Cell(ROW_APPROVED_BY,        COL_SECTION1_VALUE).GetString()),
+                    ApprovingPosition   = NullIfBlank(ws.Cell(ROW_APPROVING_POSITION, COL_SECTION1_VALUE).GetString()),
+                    AIPCode             = NullIfBlank(ws.Cell(ROW_AIP_CODE,           COL_SECTION1_VALUE).GetString()),
+                    AccountNo           = NullIfBlank(ws.Cell(ROW_ACCOUNT_NO,         COL_SECTION1_VALUE).GetString()),
+                    AccountTitle        = NullIfBlank(ws.Cell(ROW_ACCOUNT_TITLE,      COL_SECTION1_VALUE).GetString()),
+                    Program             = NullIfBlank(ws.Cell(ROW_PROGRAM,            COL_SECTION1_VALUE).GetString()),
+                    Project             = NullIfBlank(ws.Cell(ROW_PROJECT,            COL_SECTION1_VALUE).GetString()),
+                    Activity            = NullIfBlank(ws.Cell(ROW_ACTIVITY,           COL_SECTION1_VALUE).GetString()),
+                    SAINo               = NullIfBlank(ws.Cell(ROW_SAI_NO,             COL_SECTION1_VALUE).GetString()),
+                    ALOBSNo             = NullIfBlank(ws.Cell(ROW_ALOBS_NO,           COL_SECTION1_VALUE).GetString()),
                     Items               = items,
                 });
             }
         }
 
         if (errors.Count > 0)
-            throw new ExcelParseException(errors);
+            throw new ImportParseException(errors);
 
         return results;
+    }
+
+    // ── ParseGsoPRImport ──────────────────────────────────────────────────────
+
+    /// <inheritdoc />
+    public GsoPRImportRow ParseGsoPRImport(Stream stream)
+    {
+        using XLWorkbook wb = new(stream);
+        IXLWorksheet? ws = wb.Worksheets.FirstOrDefault();
+
+        if (ws is null || !ws.Cell(1, 1).GetString().Trim()
+                .Equals("PR Number", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ImportParseException(new[]
+            {
+                "This file doesn't look like a GSO PR export — expected 'PR Number' in cell A1.",
+            });
+        }
+
+        // ── Section 1 — label/value pairs, matched by label text rather than a fixed row
+        // number. This is an external system's export, not ours to control the layout of;
+        // label-matching survives GSO reordering these rows in a way a hardcoded row number
+        // would not. ─────────────────────────────────────────────────────────────────────
+        Dictionary<string, string> fields = new(StringComparer.OrdinalIgnoreCase);
+        for (int row = 1; row <= 9; row++)
+        {
+            string label = ws.Cell(row, 1).GetString().Trim();
+            if (label.Length > 0)
+                fields[label] = ws.Cell(row, 2).GetString().Trim();
+        }
+
+        DateOnly? prDate = null;
+        if (fields.TryGetValue("Submitted Date", out string? dateRaw)
+            && DateTime.TryParse(dateRaw, out DateTime parsedDate))
+        {
+            prDate = DateOnly.FromDateTime(parsedDate);
+        }
+
+        // ── Locate the item table header ("Item No." in column A) ──────────────────────
+        int? headerRow = null;
+        for (int row = 1; row <= 30; row++)
+        {
+            if (ws.Cell(row, 1).GetString().Trim().Equals("Item No.", StringComparison.OrdinalIgnoreCase))
+            {
+                headerRow = row;
+                break;
+            }
+        }
+
+        if (headerRow is null)
+        {
+            throw new ImportParseException(new[]
+            {
+                "Could not find the item table — expected an 'Item No.' column header.",
+            });
+        }
+
+        // ── Hierarchy lines — description-only rows between the header and the first
+        // numbered item row. Program/Project/Activity contain " - "; Account No. doesn't. ──
+        List<string> hierarchyLines = new();
+        int itemsStart = -1;
+
+        for (int row = headerRow.Value + 1; row <= headerRow.Value + 20; row++)
+        {
+            string itemNoRaw = ws.Cell(row, 1).GetString().Trim();
+            if (int.TryParse(itemNoRaw, out int itemNo) && itemNo > 0)
+            {
+                itemsStart = row;
+                break;
+            }
+
+            string desc = ws.Cell(row, 3).GetString().Trim();
+            if (desc.Length > 0)
+                hierarchyLines.Add(desc);
+        }
+
+        if (itemsStart < 0)
+            throw new ImportParseException(new[] { "No item rows found under the item table." });
+
+        List<string> codedLines = hierarchyLines.Where(l => l.Contains(" - ")).ToList();
+        string? program  = codedLines.Count >= 2 ? codedLines[0] : null;
+        string? activity = codedLines.Count >= 1 ? codedLines[^1] : null;
+        string? project  = codedLines.Count >= 3
+            ? string.Join("; ", codedLines.Skip(1).Take(codedLines.Count - 2))
+            : null;
+        // Must actually look like an account code (digits/spaces/dashes/dots, e.g.
+        // "5 02 03 010"), not just "any line without ' - '" — mirrors the PDF parser's identical
+        // fix (RAL-200 follow-up): a stray non-coded prose line should never be mistaken for
+        // the account code just because it happens to come first.
+        string? accountNo = hierarchyLines.FirstOrDefault(l => !l.Contains(" - ") && IsAccountCodeShape(l));
+
+        string? aipCode = null;
+        if (activity is not null)
+        {
+            int dash = activity.IndexOf(" - ", StringComparison.Ordinal);
+            aipCode = dash > 0 ? activity[..dash].Trim() : null;
+        }
+
+        // ── Item rows — read-only preview, so a malformed row is skipped, not fatal. ────
+        List<PRItemImportRow> items = new();
+        for (int row = itemsStart; row <= itemsStart + 200; row++)
+        {
+            string itemNoRaw = ws.Cell(row, 1).GetString().Trim();
+            if (!int.TryParse(itemNoRaw, out int itemNo) || itemNo <= 0)
+                break; // first non-numbered row (e.g. "TOTAL") ends the item table
+
+            string stockNo = ws.Cell(row, 2).GetString().Trim();
+            string desc    = ws.Cell(row, 3).GetString().Trim();
+            string unit    = ws.Cell(row, 4).GetString().Trim();
+            string qtyRaw  = ws.Cell(row, 5).GetString().Trim();
+            string costRaw = ws.Cell(row, 6).GetString().Trim();
+
+            if (!decimal.TryParse(qtyRaw, out decimal qty) || qty <= 0)
+                continue;
+
+            decimal.TryParse(costRaw, out decimal unitCost);
+
+            items.Add(new PRItemImportRow
+            {
+                StockNo         = string.IsNullOrWhiteSpace(stockNo) ? null : stockNo,
+                Description     = string.IsNullOrWhiteSpace(desc) ? stockNo : desc,
+                Unit            = string.IsNullOrWhiteSpace(unit) ? "pcs" : unit,
+                Quantity        = qty,
+                UnitCost        = unitCost,
+                IsUnknownStock  = !string.IsNullOrWhiteSpace(stockNo),
+            });
+        }
+
+        if (items.Count == 0)
+            throw new ImportParseException(new[] { "No valid item rows (Qty > 0) were found." });
+
+        return new GsoPRImportRow
+        {
+            PrNo      = NullIfBlank(fields.GetValueOrDefault("PR Number")),
+            Fund      = NullIfBlank(fields.GetValueOrDefault("Fund")),
+            PRDate    = prDate,
+            Purpose   = NullIfBlank(fields.GetValueOrDefault("Purpose")),
+            AIPCode   = aipCode,
+            AccountNo = accountNo,
+            Program   = program,
+            Project   = project,
+            Activity  = activity,
+            Items     = items,
+        };
+    }
+
+    // ── ParseStockBalanceImport ───────────────────────────────────────────────
+
+    /// <inheritdoc />
+    public IReadOnlyList<StockBalanceImportRow> ParseStockBalanceImport(Stream stream)
+    {
+        using XLWorkbook wb = new(stream);
+        IXLWorksheet ws = wb.Worksheets.First();
+
+        List<StockBalanceImportRow> rows = new();
+
+        // Row 1 is the header (StockNo | CountedQty | EffectiveDate | Reason | Description |
+        // Unit | UnitCost | ItemType); data starts at row 2.
+        for (int row = 2; ; row++)
+        {
+            string stockNoRaw     = ws.Cell(row, 1).GetString().Trim();
+            string qtyRaw         = ws.Cell(row, 2).GetString().Trim();
+            string dateRaw        = ws.Cell(row, 3).GetString().Trim();
+            string reasonRaw      = ws.Cell(row, 4).GetString().Trim();
+            string descriptionRaw = ws.Cell(row, 5).GetString().Trim();
+            string unitRaw        = ws.Cell(row, 6).GetString().Trim();
+            string unitCostRaw    = ws.Cell(row, 7).GetString().Trim();
+            string itemTypeRaw    = ws.Cell(row, 8).GetString().Trim();
+
+            // A fully blank row ends the data — matches ParsePRImport's stop condition.
+            if (string.IsNullOrWhiteSpace(stockNoRaw) && string.IsNullOrWhiteSpace(qtyRaw)
+                && string.IsNullOrWhiteSpace(dateRaw) && string.IsNullOrWhiteSpace(reasonRaw)
+                && string.IsNullOrWhiteSpace(descriptionRaw) && string.IsNullOrWhiteSpace(unitRaw)
+                && string.IsNullOrWhiteSpace(unitCostRaw) && string.IsNullOrWhiteSpace(itemTypeRaw))
+                break;
+
+            List<string> rowErrors = new();
+
+            if (string.IsNullOrWhiteSpace(stockNoRaw))
+                rowErrors.Add("StockNo is required.");
+
+            decimal? countedQty = null;
+            if (string.IsNullOrWhiteSpace(qtyRaw))
+                rowErrors.Add("CountedQty is required.");
+            else if (!decimal.TryParse(qtyRaw, out decimal qty) || qty < 0)
+                rowErrors.Add($"CountedQty must be a non-negative number (got '{qtyRaw}').");
+            else
+                countedQty = qty;
+
+            DateOnly? effectiveDate = null;
+            if (string.IsNullOrWhiteSpace(dateRaw))
+            {
+                rowErrors.Add("EffectiveDate is required.");
+            }
+            else
+            {
+                IXLCell dateCell = ws.Cell(row, 3);
+                if (dateCell.DataType == XLDataType.DateTime)
+                    effectiveDate = DateOnly.FromDateTime(dateCell.GetDateTime());
+                else if (DateTime.TryParse(dateRaw, out DateTime parsed))
+                    effectiveDate = DateOnly.FromDateTime(parsed);
+                else
+                    rowErrors.Add($"EffectiveDate '{dateRaw}' is not a valid date.");
+            }
+
+            decimal? unitCost = null;
+            if (!string.IsNullOrWhiteSpace(unitCostRaw) && decimal.TryParse(unitCostRaw, out decimal parsedCost))
+                unitCost = parsedCost;
+
+            rows.Add(new StockBalanceImportRow
+            {
+                RowNumber     = row,
+                StockNo       = NullIfBlank(stockNoRaw),
+                CountedQty    = countedQty,
+                EffectiveDate = effectiveDate,
+                Reason        = NullIfBlank(reasonRaw),
+                Description   = NullIfBlank(descriptionRaw),
+                Unit          = NullIfBlank(unitRaw),
+                UnitCost      = unitCost,
+                ItemType      = NullIfBlank(itemTypeRaw),
+                Error         = rowErrors.Count > 0 ? string.Join(" ", rowErrors) : null,
+            });
+        }
+
+        return rows;
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
@@ -681,40 +1004,50 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
     /// Builds the PR sheet either as a blank template (yellow cells for user input)
     /// or as a pre-filled report (all cells show data, gray background).
     /// </summary>
-    private static void BuildPRSheet(IXLWorksheet ws, bool prefilled, PurchaseRequest? pr)
+    /// <summary>
+    /// Builds the blank PR-001 sheet for <see cref="GeneratePRTemplate"/> (RAL-195, v1.7.0).
+    /// Deliberately unstyled — no fill colours — matching the plain look of a real GSO PR
+    /// export: bold text for labels/headers, thin borders marking fillable cells, and
+    /// Excel's own gridlines left visible throughout (no solid-fill blocks painted over them).
+    /// </summary>
+    private static void BuildPRSheet(IXLWorksheet ws)
     {
+        XLColor BorderGray = XLColor.FromHtml("#ADB5BD");
+
         // ── Title ─────────────────────────────────────────────────────────────
-        ws.Cell(1, 1).Value = "PURCHASE REQUEST";
-        ws.Cell(1, 1).Style
+        // Merged B:H — column A is left as a thin margin (it doubles as Section 2's
+        // narrow Item No. column below).
+        ws.Cell(1, COL_SECTION1_LABEL).Value = "PURCHASE REQUEST";
+        ws.Cell(1, COL_SECTION1_LABEL).Style
             .Font.SetBold(true)
             .Font.SetFontSize(14)
-            .Font.SetFontColor(DarkGreen)
             .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
-        ws.Range(1, 1, 1, 7).Merge();
+        ws.Range(1, COL_SECTION1_LABEL, 1, 8).Merge();
 
-        ws.Cell(2, 1).Value = "";
+        // ── Section 1 labels + values ────────────────────────────────────────
+        void Label(int row, string text, bool required = false) =>
+            ws.Cell(row, COL_SECTION1_LABEL).Value = required ? $"{text} *" : text;
 
-        // ── Section 1 labels ──────────────────────────────────────────────────
-        void Label(int row, string text) =>
-            ws.Cell(row, 1).Value = text;
-
-        void Value(int row, object? val, bool isAuto = false)
+        void Value(int row, object? val = null)
         {
-            IXLCell cell = ws.Cell(row, 2);
+            // Value lives in column C — ParsePRImport reads it there. Merged into D purely
+            // for a wider fillable field; the merge keeps the value in C as the anchor.
+            IXLCell cell = ws.Cell(row, COL_SECTION1_VALUE);
             if (val != null) cell.Value = XLCellValue.FromObject(val);
-            cell.Style.Fill.SetBackgroundColor(isAuto || prefilled ? Gray : Yellow);
-            if (!prefilled && !isAuto)
-                cell.Style.Border.SetOutsideBorder(XLBorderStyleValues.Thin)
-                    .Border.SetOutsideBorderColor(XLColor.FromHtml("#ADB5BD"));
+
+            IXLRange range = ws.Range(row, COL_SECTION1_VALUE, row, COL_SECTION1_VALUE + 1);
+            range.Merge();
+            range.Style.Border.SetOutsideBorder(XLBorderStyleValues.Thin)
+                .Border.SetOutsideBorderColor(BorderGray);
         }
 
         Label(ROW_PR_NO,              "PR No.");
         Label(ROW_DEPARTMENT,         "Department");
-        Label(ROW_DIVISION,           "Division *");
+        Label(ROW_DIVISION,           "Division", required: true);
         Label(ROW_FUND,               "Fund");
-        Label(ROW_REQUESTED_BY,       "Requested By *");
+        Label(ROW_REQUESTED_BY,       "Requested By", required: true);
         Label(ROW_POSITION,           "Position");
-        Label(ROW_PR_DATE,            "PR Date *");
+        Label(ROW_PR_DATE,            "PR Date", required: true);
         Label(ROW_APPROVED_BY,        "Approved By");
         Label(ROW_APPROVING_POSITION, "Approving Position");
         Label(ROW_AIP_CODE,           "AIP Code");
@@ -726,106 +1059,71 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
         Label(ROW_SAI_NO,             "SAI No.");
         Label(ROW_ALOBS_NO,           "ALOBS No.");
 
-        // Style labels
         for (int r = ROW_PR_NO; r <= ROW_ALOBS_NO; r++)
-            ws.Cell(r, 1).Style.Font.SetBold(true).Fill.SetBackgroundColor(Gray);
+            ws.Cell(r, COL_SECTION1_LABEL).Style.Font.SetBold(true);
 
-        // ── Section 1 values ──────────────────────────────────────────────────
-        // PR No. is optional — not isAuto, so it gets the same yellow fillable
-        // treatment as Fund/Position/ApprovedBy, just without the required-field asterisk.
-        Value(ROW_PR_NO,              prefilled ? pr!.PRNo        : null);
-        Value(ROW_DEPARTMENT,         prefilled ? pr!.Department  : "PPDO",   isAuto: true);
-        Value(ROW_DIVISION,           prefilled ? (pr!.Division?.Name ?? "")      : null);
-        Value(ROW_FUND,               prefilled ? pr!.Fund                     : null);
-        Value(ROW_REQUESTED_BY,       prefilled ? pr!.RequestedBy              : null);
-        Value(ROW_POSITION,           prefilled ? pr!.Position                 : null);
-        Value(ROW_PR_DATE,            prefilled ? pr!.PRDate.ToDateTime(TimeOnly.MinValue) : null);
-        Value(ROW_APPROVED_BY,        prefilled ? pr!.ApprovedBy               : null);
-        Value(ROW_APPROVING_POSITION, prefilled ? pr!.ApprovingPosition        : null);
-        Value(ROW_AIP_CODE,           prefilled ? pr!.AIPCode                  : null);
-        Value(ROW_ACCOUNT_NO,         prefilled ? pr!.AccountNo                : null);
-        Value(ROW_ACCOUNT_TITLE,      prefilled ? pr!.AccountTitle             : null);
-        Value(ROW_PROGRAM,            prefilled ? pr!.Program                  : null);
-        Value(ROW_PROJECT,            prefilled ? pr!.Project                  : null);
-        Value(ROW_ACTIVITY,           prefilled ? pr!.Activity                 : null);
-        Value(ROW_SAI_NO,             prefilled ? pr!.SAINo                    : null);
-        Value(ROW_ALOBS_NO,           prefilled ? pr!.ALOBSNo                  : null);
+        // PR No. is optional — left blank, the backend auto-generates one.
+        Value(ROW_PR_NO);
+        Value(ROW_DEPARTMENT, "PPDO"); // default — still editable, just pre-filled
+        Value(ROW_DIVISION);
+        Value(ROW_FUND);
+        Value(ROW_REQUESTED_BY);
+        Value(ROW_POSITION);
+        Value(ROW_PR_DATE);
+        Value(ROW_APPROVED_BY);
+        Value(ROW_APPROVING_POSITION);
+        Value(ROW_AIP_CODE);
+        Value(ROW_ACCOUNT_NO);
+        Value(ROW_ACCOUNT_TITLE);
+        Value(ROW_PROGRAM);
+        Value(ROW_PROJECT);
+        Value(ROW_ACTIVITY);
+        Value(ROW_SAI_NO);
+        Value(ROW_ALOBS_NO);
 
         // ── Section 2 header ──────────────────────────────────────────────────
+        // Stays column-aligned with the item grid below (A = Item No.), unlike Section 1
+        // above — so only merged A:B, not the full row width; the title text overflows
+        // visually across the empty cells to its right, same as Excel does for any
+        // unmerged cell with empty neighbours.
         ws.Cell(ROW_SECTION2_HEADER, 1).Value = "SECTION 2 — ITEMS";
-        ws.Cell(ROW_SECTION2_HEADER, 1).Style
-            .Font.SetBold(true)
-            .Fill.SetBackgroundColor(Green)
-            .Font.SetFontColor(DarkGreen);
-        ws.Range(ROW_SECTION2_HEADER, 1, ROW_SECTION2_HEADER, 7).Merge();
+        ws.Cell(ROW_SECTION2_HEADER, 1).Style.Font.SetBold(true);
+        ws.Range(ROW_SECTION2_HEADER, 1, ROW_SECTION2_HEADER, 2).Merge();
 
-        // Column headers
-        string[] headers = ["Item No.", "Stock No.", "Description", "Unit", "Qty", "Unit Cost", "Total Cost"];
+        // Column headers — bold with a bottom rule, no fill.
+        // "#" not "Item No." — column A is only width 3 (it doubles as Section 1's margin).
+        string[] headers = ["#", "Stock No.", "Description", "Unit", "Qty", "Unit Cost", "Total Cost"];
         for (int c = 1; c <= 7; c++)
         {
             IXLCell h = ws.Cell(ROW_ITEMS_HEADER, c);
             h.Value = headers[c - 1];
-            h.Style.Font.SetBold(true).Fill.SetBackgroundColor(DarkGreen)
-                .Font.SetFontColor(White)
+            h.Style.Font.SetBold(true)
+                .Border.SetBottomBorder(XLBorderStyleValues.Thin)
+                .Border.SetBottomBorderColor(BorderGray)
                 .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
         }
 
-        // ── Section 2 rows ────────────────────────────────────────────────────
-        if (prefilled && pr!.Items.Any())
+        // ── Section 2 rows — ruled grid, no fill ─────────────────────────────
+        for (int row = ROW_ITEMS_START; row <= ROW_ITEMS_END; row++)
         {
-            // Filled export — write actual PR item data
-            int rowIdx = ROW_ITEMS_START;
-            foreach (PRItem item in pr.Items.OrderBy(i => i.ItemNo))
-            {
-                ws.Cell(rowIdx, COL_ITEM_NO)    .Value = item.ItemNo;
-                ws.Cell(rowIdx, COL_STOCK_NO)   .Value = item.StockNo ?? "";
-                ws.Cell(rowIdx, COL_DESCRIPTION).Value = item.Description;
-                ws.Cell(rowIdx, COL_UNIT)       .Value = item.Unit;
-                ws.Cell(rowIdx, COL_QTY)        .Value = item.Quantity;
-                ws.Cell(rowIdx, COL_UNIT_COST)  .Value = item.UnitCost;
-                ws.Cell(rowIdx, COL_TOTAL_COST) .Value = item.TotalCost;
+            ws.Cell(row, COL_ITEM_NO).Value = row - ROW_ITEMS_START + 1;
 
-                for (int c = 1; c <= 7; c++)
-                    ws.Cell(rowIdx, c).Style.Fill.SetBackgroundColor(rowIdx % 2 == 0 ? White : Gray);
-
-                rowIdx++;
-            }
-
-            // Total row
-            ws.Cell(rowIdx, COL_DESCRIPTION).Value = "TOTAL";
-            ws.Cell(rowIdx, COL_DESCRIPTION).Style.Font.SetBold(true);
-            ws.Cell(rowIdx, COL_TOTAL_COST) .Value = pr.TotalAmount;
-            ws.Cell(rowIdx, COL_TOTAL_COST) .Style.Font.SetBold(true)
-                .Fill.SetBackgroundColor(Green);
-        }
-        else
-        {
-            // Blank template — yellow input cells
-            for (int row = ROW_ITEMS_START; row <= ROW_ITEMS_END; row++)
-            {
-                ws.Cell(row, COL_ITEM_NO)    .Value = row - ROW_ITEMS_START + 1;
-                ws.Cell(row, COL_ITEM_NO)    .Style.Fill.SetBackgroundColor(Gray);
-                ws.Cell(row, COL_STOCK_NO)   .Style.Fill.SetBackgroundColor(Yellow);
-                ws.Cell(row, COL_DESCRIPTION).Style.Fill.SetBackgroundColor(Yellow);
-                ws.Cell(row, COL_UNIT)       .Style.Fill.SetBackgroundColor(Yellow);
-                ws.Cell(row, COL_QTY)        .Style.Fill.SetBackgroundColor(Yellow);
-                ws.Cell(row, COL_UNIT_COST)  .Style.Fill.SetBackgroundColor(Yellow);
-                ws.Cell(row, COL_TOTAL_COST) .Style.Fill.SetBackgroundColor(Gray);
-            }
+            for (int c = 1; c <= 7; c++)
+                ws.Cell(row, c).Style.Border.SetOutsideBorder(XLBorderStyleValues.Thin)
+                    .Border.SetOutsideBorderColor(BorderGray);
         }
 
         // ── Column widths ─────────────────────────────────────────────────────
-        ws.Column(COL_ITEM_NO)    .Width = 8;
-        ws.Column(COL_STOCK_NO)   .Width = 14;
-        ws.Column(COL_DESCRIPTION).Width = 40;
-        ws.Column(COL_UNIT)       .Width = 8;
-        ws.Column(COL_QTY)        .Width = 8;
-        ws.Column(COL_UNIT_COST)  .Width = 12;
-        ws.Column(COL_TOTAL_COST) .Width = 14;
-
-        // Section 1 label/value columns
-        ws.Column(1).Width = 22;
-        ws.Column(2).Width = 28;
+        // Columns double up between Section 1 (label/value pairs) and Section 2 (item
+        // grid) — widths below are the hand-tuned values from the approved template design.
+        ws.Column(1).Width = 3;   // margin above / Item No. below
+        ws.Column(2).Width = 22;  // label above    / Stock No. below
+        ws.Column(3).Width = 28;  // value (C:D) above / Description below
+        ws.Column(4).Width = 40;  // value (C:D) above / Unit below
+        ws.Column(5).Width = 8;   // Qty
+        ws.Column(6).Width = 12;  // Unit Cost
+        ws.Column(7).Width = 14;  // Total Cost
+        ws.Column(8).Width = 14;  // title merge (B:H) only — no item-grid column here
     }
 
     /// <summary>
@@ -902,9 +1200,8 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
         string[] lines =
         [
             "",
-            "COLOUR GUIDE:",
-            "  Yellow cells (#FFFDE7) = Fill in these cells.",
-            "  Gray cells   (#F1F3F5) = Do not edit — auto-filled or locked.",
+            "HOW TO READ THIS SHEET:",
+            "  Bordered cells next to a label are where you type — everything else is a label.",
             "",
             "SECTION 1 — PR HEADER:",
             "  Fields marked with * are required: Division, Requested By, PR Date.",
@@ -946,6 +1243,18 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
 
     private static string? NullIfBlank(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    /// <summary>
+    /// True for a short digits/spaces/dashes/dots line like "5 02 03 010" or "5-02-03-010" —
+    /// the shape a real account code takes. False for prose (contains letters) regardless of
+    /// length. Mirrors PdfService's identical helper (both parsers share this heuristic).
+    /// </summary>
+    private static bool IsAccountCodeShape(string line)
+    {
+        string trimmed = line.Trim();
+        return trimmed.Length is > 0 and <= 20
+            && trimmed.All(c => char.IsDigit(c) || c is ' ' or '-' or '.');
+    }
 
     /// <summary>
     /// Returns the fiscal quarter label for a given date.

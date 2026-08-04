@@ -103,31 +103,23 @@ public sealed class DeliveryRepository : Repository<Delivery>, IDeliveryReposito
     }
 
     /// <inheritdoc />
-    public async Task<DeliveryItemBreakdownRow?> GetDeliveryItemBreakdownAsync(
-        Guid deliveryItemId,
-        CancellationToken cancellationToken = default)
+    public async Task<DeliveryPageResult> GetPagedAsync(
+        int? divisionId, int page, int pageSize, CancellationToken cancellationToken = default)
     {
-        DeliveryItem? di = await _context.DeliveryItems
-            .Include(x => x.Distributions)
-            .Include(x => x.PRItem)
-                .ThenInclude(pi => pi!.PurchaseRequest)
-            .Include(x => x.Delivery)
-            .FirstOrDefaultAsync(x => x.Id == deliveryItemId, cancellationToken);
+        IQueryable<Delivery> query = _context.Deliveries
+            .Include(d => d.PurchaseRequest);   // depth 1 — only DivisionId is read downstream
 
-        if (di is null) return null;
+        if (divisionId.HasValue)
+            query = query.Where(d => d.PurchaseRequest != null && d.PurchaseRequest.DivisionId == divisionId.Value);
 
-        return new DeliveryItemBreakdownRow(
-            DeliveryItemId: di.Id,
-            DeliveryRef:    di.Delivery?.DeliveryRef    ?? "—",
-            DeliveryDate:   di.Delivery?.DeliveryDate   ?? DateOnly.MinValue,
-            PRId:           di.PRItem?.PRId             ?? Guid.Empty,
-            PRNo:           di.PRItem?.PurchaseRequest?.PRNo ?? "—",
-            QtyDelivered:   di.QtyDelivered,
-            Distributions:  di.Distributions
-                .Select(dist => new DistributionBreakdownRow(
-                    dist.Id, dist.IssueRef, dist.DivisionId,
-                    dist.QtyIssued, dist.DateIssued,
-                    dist.IssuedBy, dist.Remarks))
-                .ToList());
+        int totalCount = await query.CountAsync(cancellationToken);
+
+        List<Delivery> items = await query
+            .OrderByDescending(d => d.DeliveryDate)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+
+        return new DeliveryPageResult(items, totalCount);
     }
 }

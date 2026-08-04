@@ -18,6 +18,14 @@ public interface IItemService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Filtered, sorted, paged catalog search for the Items Master page — server-side
+    /// pagination (RAL-192). Available to all authenticated users, same as GetAllAsync.
+    /// </summary>
+    Task<ItemMasterSearchResultDto> SearchAsync(
+        ItemMasterSearchFilterDto filter,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Returns a single item by ID.
     /// Returns <see cref="ServiceErrorCode.NotFound"/> when not found.
     /// </summary>
