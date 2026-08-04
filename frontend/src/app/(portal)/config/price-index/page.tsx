@@ -47,6 +47,7 @@ import {
 } from "@/lib/config";
 import { formatMoney } from "@/lib/money";
 import DataTable, { type Column } from "@/components/ui/DataTable";
+import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import Modal from "@/components/ui/Modal";
 import MessageDialog from "@/components/ui/MessageDialog";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
@@ -350,12 +351,14 @@ export default function PriceIndexConfigPage() {
       key: "unit",
       header: "Unit",
       sortable: true,
+      className: "whitespace-nowrap",
       render: (p) => <span className="text-slate-600">{p.unit}</span>,
     },
     {
       key: "stockCardNo",
       header: "Stock Card No.",
       sortable: true,
+      className: "whitespace-nowrap",
       render: (p) =>
         p.stockCardNo
           ? <span className="font-mono text-xs text-slate-700">{p.stockCardNo}</span>
@@ -365,6 +368,7 @@ export default function PriceIndexConfigPage() {
       key: "category",
       header: "Category",
       sortable: true,
+      className: "whitespace-nowrap",
       render: (p) => p.category ?? <span className="text-slate-600">—</span>,
     },
     {
@@ -372,12 +376,14 @@ export default function PriceIndexConfigPage() {
       header: "Unit Price",
       align: "right",
       sortable: true,
+      className: "whitespace-nowrap",
       render: (p) => <span className="font-mono tabular-nums text-slate-800">₱{formatMoney(p.unitPrice)}</span>,
     },
     {
       key: "priceUpdatedAt",
       header: "Price Updated",
       sortable: true,
+      className: "whitespace-nowrap",
       render: (p) => <span className="text-xs text-slate-600">{formatDate(p.priceUpdatedAt)}</span>,
     },
     {
@@ -398,6 +404,7 @@ export default function PriceIndexConfigPage() {
       key: "actions",
       header: "Actions",
       align: "right",
+      className: "whitespace-nowrap",
       render: (p) => (
         <div className="flex items-center justify-end gap-2 text-sm">
           <TextAction onClick={() => openEdit(p)}>Edit</TextAction>
@@ -432,30 +439,30 @@ export default function PriceIndexConfigPage() {
     <div className="min-h-full bg-slate-100 font-sans">
       <div className="max-w-6xl mx-auto px-6 py-6 space-y-4">
         {/* Header */}
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h1 className="text-lg font-bold text-slate-800">Price Index</h1>
-            <p className="text-sm text-slate-600">
-              Procurement item catalogue searched from WFP procurement entries. Data comes from
-              GSO&apos;s own price lists — upload a CSV to seed or refresh it.
-            </p>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <CsvDownloadButton
-              filename="price-index.csv"
-              fetchCsv={exportPriceIndexCsv}
-              onError={(msg) => toast.error("Export failed", msg)}
-            />
-            <CsvUploadButton onSelect={(file) => setPendingCsv(file)} />
-            <button
-              onClick={openAdd}
-              className="flex items-center gap-1.5 bg-green-600 text-white font-semibold text-sm px-4 py-2.5 hover:bg-green-500 transition-colors shrink-0"
-            >
-              <span className="text-base leading-none">+</span>
-              Add Item
-            </button>
-          </div>
-        </div>
+        <ConfigPageHeader
+          title="Price Index"
+          description={
+            "Procurement item catalogue searched from WFP procurement entries. Data comes from " +
+            "GSO's own price lists — upload a CSV to seed or refresh it."
+          }
+          actions={
+            <>
+              <CsvDownloadButton
+                filename="price-index.csv"
+                fetchCsv={exportPriceIndexCsv}
+                onError={(msg) => toast.error("Export failed", msg)}
+              />
+              <CsvUploadButton onSelect={(file) => setPendingCsv(file)} />
+              <button
+                onClick={openAdd}
+                className="flex items-center gap-1.5 bg-green-600 text-white font-semibold text-sm px-4 py-2.5 hover:bg-green-500 transition-colors shrink-0"
+              >
+                <span className="text-base leading-none">+</span>
+                Add Item
+              </button>
+            </>
+          }
+        />
 
         {/* Filter bar */}
         <div className="flex flex-wrap items-center gap-3 bg-white border border-slate-200 px-4 py-3">
@@ -511,6 +518,7 @@ export default function PriceIndexConfigPage() {
           }
           pageSize={25}
           rowNoun={["item", "items"]}
+          minWidth={1150}
         />
       </div>
 
