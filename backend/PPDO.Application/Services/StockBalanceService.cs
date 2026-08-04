@@ -36,6 +36,7 @@ public sealed class StockBalanceService : IStockBalanceService
     private readonly IUserRepository         _users;
     private readonly IPermissionService      _permissions;
     private readonly IExcelService           _excel;
+    private readonly IAuditService           _audit;
     private readonly ILogger<StockBalanceService> _logger;
 
     public StockBalanceService(
@@ -45,6 +46,7 @@ public sealed class StockBalanceService : IStockBalanceService
         IUserRepository users,
         IPermissionService permissions,
         IExcelService excel,
+        IAuditService audit,
         ILogger<StockBalanceService> logger)
     {
         _stockBalances = stockBalances;
@@ -53,6 +55,7 @@ public sealed class StockBalanceService : IStockBalanceService
         _users         = users;
         _permissions   = permissions;
         _excel         = excel;
+        _audit         = audit;
         _logger        = logger;
     }
 
@@ -172,6 +175,11 @@ public sealed class StockBalanceService : IStockBalanceService
             "Stock balance entry created. StockNo: {StockNo}, CountedQty: {CountedQty}, VarianceQty: {VarianceQty}, UserId: {UserId}",
             entry.StockNo, entry.CountedQty, entry.VarianceQty, requester.Id);
 
+        await _audit.LogAsync("stock_balances", entry.Id, AuditAction.Create,
+            oldValues: null,
+            newValues: AuditSnapshot(entry),
+            cancellationToken);
+
         return ServiceResult<StockBalanceDto>.Ok(await MapToDtoAsync(entry, cancellationToken, itemAutoCreated));
     }
 
@@ -206,13 +214,31 @@ public sealed class StockBalanceService : IStockBalanceService
 
         decimal systemOnHand = await ComputeSystemOnHandAsync(
             entry.StockNo, excludeExistingVariance: entry.VarianceQty, cancellationToken);
+        decimal newVariance = countedQty - systemOnHand;
+
+        Dictionary<string, object?> oldValues = new();
+        Dictionary<string, object?> newValues = new();
+        void Track(string field, object? oldVal, object? newVal)
+        {
+            if (Equals(oldVal, newVal)) return;
+            oldValues[field] = oldVal;
+            newValues[field] = newVal;
+        }
+
+        Track("CountedQty", entry.CountedQty, countedQty);
+        Track("EffectiveDate", entry.EffectiveDate, effectiveDate);
+        Track("VarianceQty", entry.VarianceQty, newVariance);
+        if (dto.Reason is not null)
+        {
+            string? v = string.IsNullOrWhiteSpace(dto.Reason) ? null : dto.Reason.Trim();
+            Track("Reason", entry.Reason, v);
+            entry.Reason = v;
+        }
 
         entry.CountedQty          = countedQty;
         entry.EffectiveDate       = effectiveDate;
         entry.SystemOnHandAtEntry = systemOnHand;
-        entry.VarianceQty         = countedQty - systemOnHand;
-        if (dto.Reason is not null)
-            entry.Reason = string.IsNullOrWhiteSpace(dto.Reason) ? null : dto.Reason.Trim();
+        entry.VarianceQty         = newVariance;
 
         await _stockBalances.UpdateAsync(entry, cancellationToken);
         await _stockBalances.SaveChangesAsync(cancellationToken);
@@ -220,6 +246,10 @@ public sealed class StockBalanceService : IStockBalanceService
         _logger.LogInformation(
             "Stock balance entry updated. StockNo: {StockNo}, CountedQty: {CountedQty}, VarianceQty: {VarianceQty}, UserId: {UserId}",
             entry.StockNo, entry.CountedQty, entry.VarianceQty, requester.Id);
+
+        if (oldValues.Count > 0)
+            await _audit.LogAsync("stock_balances", entry.Id, AuditAction.Update,
+                oldValues, newValues, cancellationToken);
 
         return ServiceResult<StockBalanceDto>.Ok(await MapToDtoAsync(entry, cancellationToken));
     }
@@ -246,6 +276,7 @@ public sealed class StockBalanceService : IStockBalanceService
             return ServiceResult<StockBalanceDto>.NotFound($"Stock balance entry {id} not found.");
 
         StockBalanceDto dto = await MapToDtoAsync(entry, cancellationToken);
+        object deletedSnapshot = AuditSnapshot(entry);
 
         await _stockBalances.DeleteAsync(entry, cancellationToken);
         await _stockBalances.SaveChangesAsync(cancellationToken);
@@ -253,6 +284,11 @@ public sealed class StockBalanceService : IStockBalanceService
         _logger.LogInformation(
             "Stock balance entry deleted. StockNo: {StockNo}, UserId: {UserId}",
             entry.StockNo, requester.Id);
+
+        await _audit.LogAsync("stock_balances", entry.Id, AuditAction.Delete,
+            oldValues: deletedSnapshot,
+            newValues: null,
+            cancellationToken);
 
         return ServiceResult<StockBalanceDto>.Ok(dto);
     }
@@ -477,4 +513,10 @@ public sealed class StockBalanceService : IStockBalanceService
         e.Id, e.StockNo, e.CountedQty, e.SystemOnHandAtEntry, e.VarianceQty, e.EffectiveDate,
         e.Reason, e.RecordedByUserId, names.GetValueOrDefault(e.RecordedByUserId), e.CreatedAt, e.UpdatedAt,
         itemWasAutoCreated);
+
+    private static object AuditSnapshot(StockBalance e) => new
+    {
+        e.StockNo, e.CountedQty, e.SystemOnHandAtEntry, e.VarianceQty,
+        e.EffectiveDate, e.Reason, e.RecordedByUserId,
+    };
 }

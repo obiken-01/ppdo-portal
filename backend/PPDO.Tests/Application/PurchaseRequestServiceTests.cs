@@ -157,7 +157,8 @@ public sealed class PurchaseRequestServiceTests
         Mock<IPdfService>? pdfService = null,
         Mock<IAccountService>? accountService = null,
         Mock<IRepository<Division>>? divisionRepo = null,
-        Mock<IOfficeRepository>? officeRepo = null)
+        Mock<IOfficeRepository>? officeRepo = null,
+        Mock<IAuditService>? auditService = null)
         => new(
             prRepo.Object,
             (itemRepo ?? RepoItemThatSaves()).Object,
@@ -167,6 +168,7 @@ public sealed class PurchaseRequestServiceTests
             (accountService ?? DefaultAccountService()).Object,
             (divisionRepo ?? DivisionsRepo()).Object,
             (officeRepo ?? OfficesRepo()).Object,
+            (auditService ?? new Mock<IAuditService>()).Object,
             NullLogger<PurchaseRequestService>.Instance);
 
     // ── PRNo generation ───────────────────────────────────────────────────────
@@ -938,5 +940,136 @@ public sealed class PurchaseRequestServiceTests
         Assert.Equal(2, result.StatusCounts.PartiallyDelivered);
         Assert.Equal(1, result.StatusCounts.FullyDelivered);
         Assert.Equal(1, result.StatusCounts.Completed);
+    }
+
+    // ── Audit logging (RAL-200) ───────────────────────────────────────────────
+
+    [Fact]
+    public async Task CreateAsync_CallsAuditLog_WithCreateAction()
+    {
+        Mock<IPurchaseRequestRepository> prRepo = RepoPRThatSaves();
+        Mock<IAuditService> audit = new();
+
+        ServiceResult<PRResponseDto> result = await BuildSut(prRepo, auditService: audit)
+            .CreateAsync(MakeAdmin(), ValidDto("Administrative Division"));
+
+        Assert.True(result.IsSuccess);
+        audit.Verify(a => a.LogAsync(
+            "PurchaseRequests", result.Value!.Id, AuditAction.Create,
+            null, It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ChangedField_CallsAuditLog_WithOnlyThatFieldTracked()
+    {
+        PurchaseRequest pr = MakePR("101-1041-GF-2026-06-01-005");
+        pr.Fund = "General Fund";
+        pr.Program = "Original Program";
+
+        Mock<IPurchaseRequestRepository> prRepo = RepoPRThatSaves();
+        prRepo.Setup(r => r.GetWithItemsAsync(pr.Id, It.IsAny<CancellationToken>())).ReturnsAsync(pr);
+        Mock<IAuditService> audit = new();
+
+        // Program resent with the SAME value it already has — must not appear in the diff;
+        // only Fund actually changed.
+        await BuildSut(prRepo, auditService: audit).UpdateAsync(
+            MakeAdmin(), pr.Id, new UpdatePRDto { Fund = "Special Fund", Program = "Original Program" });
+
+        audit.Verify(a => a.LogAsync(
+            "PurchaseRequests", pr.Id, AuditAction.Update,
+            It.Is<object>(o => ((IDictionary<string, object?>)o).ContainsKey("Fund")
+                             && !((IDictionary<string, object?>)o).ContainsKey("Program")),
+            It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_NoFieldsActuallyChanged_DoesNotCallAuditLog()
+    {
+        PurchaseRequest pr = MakePR("101-1041-GF-2026-06-01-006");
+        pr.Fund = "General Fund";
+
+        Mock<IPurchaseRequestRepository> prRepo = RepoPRThatSaves();
+        prRepo.Setup(r => r.GetWithItemsAsync(pr.Id, It.IsAny<CancellationToken>())).ReturnsAsync(pr);
+        Mock<IAuditService> audit = new();
+
+        // Resend the exact same value — nothing actually changed.
+        await BuildSut(prRepo, auditService: audit).UpdateAsync(
+            MakeAdmin(), pr.Id, new UpdatePRDto { Fund = "General Fund" });
+
+        audit.Verify(a => a.LogAsync(
+            It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<string>(),
+            It.IsAny<object?>(), It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task MarkCompletedAsync_CallsAuditLog_WithOldAndNewStatus()
+    {
+        PurchaseRequest pr = MakePR("101-1041-GF-2026-06-01-007");
+        pr.Status = PRStatus.FullyDelivered;
+
+        Mock<IPurchaseRequestRepository> prRepo = RepoPRThatSaves();
+        prRepo.Setup(r => r.GetByIdAsync(pr.Id, It.IsAny<CancellationToken>())).ReturnsAsync(pr);
+        Mock<IAuditService> audit = new();
+
+        await BuildSut(prRepo, auditService: audit).MarkCompletedAsync(MakeAdmin(), pr.Id);
+
+        audit.Verify(a => a.LogAsync(
+            "PurchaseRequests", pr.Id, AuditAction.Update,
+            It.IsNotNull<object>(), It.IsNotNull<object>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UnmarkCompletedAsync_CallsAuditLog_WithOldAndNewStatus()
+    {
+        PurchaseRequest pr = MakePR("101-1041-GF-2026-06-01-008");
+        pr.Status = PRStatus.Completed;
+
+        Mock<IPurchaseRequestRepository> prRepo = RepoPRThatSaves();
+        prRepo.Setup(r => r.GetByIdAsync(pr.Id, It.IsAny<CancellationToken>())).ReturnsAsync(pr);
+        Mock<IAuditService> audit = new();
+
+        await BuildSut(prRepo, auditService: audit).UnmarkCompletedAsync(MakeAdmin(), pr.Id);
+
+        audit.Verify(a => a.LogAsync(
+            "PurchaseRequests", pr.Id, AuditAction.Update,
+            It.IsNotNull<object>(), It.IsNotNull<object>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ImportFromExcelAsync_CallsAuditLog_ExactlyOnce_NotOncePerPR()
+    {
+        List<PurchaseRequestImportRow> rows =
+        [
+            new()
+            {
+                SheetName = "PR-001", DivisionName = "Administrative Division", RequestedBy = "Ralph",
+                PRDate = DateOnly.FromDateTime(DateTime.UtcNow),
+                Items = [new() { Description = "Item A", Unit = "pc", Quantity = 1m }],
+            },
+            new()
+            {
+                SheetName = "PR-002", DivisionName = "Administrative Division", RequestedBy = "Ralph",
+                PRDate = DateOnly.FromDateTime(DateTime.UtcNow),
+                Items = [new() { Description = "Item B", Unit = "pc", Quantity = 1m }],
+            },
+        ];
+
+        Mock<IExcelService> excel = new();
+        excel.Setup(e => e.ParsePRImport(It.IsAny<Stream>())).Returns(rows);
+        Mock<IPurchaseRequestRepository> prRepo = RepoPRThatSaves();
+        Mock<IItemMasterRepository> itemRepo = RepoItemThatSaves();
+        itemRepo.Setup(r => r.GetByStockNoAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ItemMaster?)null);
+        Mock<IAuditService> audit = new();
+
+        ServiceResult<IReadOnlyList<PRResponseDto>> result = await BuildSut(
+                prRepo, itemRepo, excelService: excel, auditService: audit)
+            .ImportFromExcelAsync(MakeAdmin(), Stream.Null);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Value!.Count);
+        audit.Verify(a => a.LogAsync(
+            "PurchaseRequests", It.IsAny<Guid>(), AuditAction.Create,
+            null, It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 }

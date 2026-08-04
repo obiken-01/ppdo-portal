@@ -17,15 +17,18 @@ public sealed class ItemService : IItemService
 {
     private readonly IItemMasterRepository    _items;
     private readonly IPermissionService       _permissions;
+    private readonly IAuditService            _audit;
     private readonly ILogger<ItemService>     _logger;
 
     public ItemService(
         IItemMasterRepository items,
         IPermissionService permissions,
+        IAuditService audit,
         ILogger<ItemService> logger)
     {
         _items       = items;
         _permissions = permissions;
+        _audit       = audit;
         _logger      = logger;
     }
 
@@ -139,6 +142,11 @@ public sealed class ItemService : IItemService
             "Item created. StockNo: {StockNo}, Description: {Description}, UserId: {UserId}",
             item.StockNo, item.Description, requester.Id);
 
+        await _audit.LogAsync("ItemMasters", item.Id, AuditAction.Create,
+            oldValues: null,
+            newValues: AuditSnapshot(item),
+            cancellationToken);
+
         return ServiceResult<ItemMasterDto>.Ok(MapToDto(item));
     }
 
@@ -162,16 +170,38 @@ public sealed class ItemService : IItemService
         if (item is null)
             return ServiceResult<ItemMasterDto>.NotFound($"Item {id} not found.");
 
-        if (dto.StockNo is not null)     item.StockNo     = dto.StockNo.Trim();
-        if (dto.Description is not null) item.Description = dto.Description.Trim();
-        if (dto.Unit is not null)        item.Unit        = dto.Unit.Trim();
-        if (dto.UnitCost is not null)    item.UnitCost    = dto.UnitCost.Value;
-        if (dto.Category is not null)    item.Category    = string.IsNullOrWhiteSpace(dto.Category) ? null : dto.Category.Trim();
-        if (dto.ItemType is not null)    item.ItemType    = string.IsNullOrWhiteSpace(dto.ItemType) ? null : dto.ItemType.Trim();
-        if (dto.ReorderQty is not null)  item.ReorderQty  = dto.ReorderQty.Value;
-        if (dto.Remarks is not null)     item.Remarks     = string.IsNullOrWhiteSpace(dto.Remarks) ? null : dto.Remarks.Trim();
+        Dictionary<string, object?> oldValues = new();
+        Dictionary<string, object?> newValues = new();
+        void Track(string field, object? oldVal, object? newVal)
+        {
+            if (Equals(oldVal, newVal)) return;
+            oldValues[field] = oldVal;
+            newValues[field] = newVal;
+        }
+
+        if (dto.StockNo is not null)     { string v = dto.StockNo.Trim(); Track("StockNo", item.StockNo, v); item.StockNo = v; }
+        if (dto.Description is not null) { string v = dto.Description.Trim(); Track("Description", item.Description, v); item.Description = v; }
+        if (dto.Unit is not null)        { string v = dto.Unit.Trim(); Track("Unit", item.Unit, v); item.Unit = v; }
+        if (dto.UnitCost is not null)    { Track("UnitCost", item.UnitCost, dto.UnitCost.Value); item.UnitCost = dto.UnitCost.Value; }
+        if (dto.Category is not null)
+        {
+            string? v = string.IsNullOrWhiteSpace(dto.Category) ? null : dto.Category.Trim();
+            Track("Category", item.Category, v); item.Category = v;
+        }
+        if (dto.ItemType is not null)
+        {
+            string? v = string.IsNullOrWhiteSpace(dto.ItemType) ? null : dto.ItemType.Trim();
+            Track("ItemType", item.ItemType, v); item.ItemType = v;
+        }
+        if (dto.ReorderQty is not null)  { Track("ReorderQty", item.ReorderQty, dto.ReorderQty.Value); item.ReorderQty = dto.ReorderQty.Value; }
+        if (dto.Remarks is not null)
+        {
+            string? v = string.IsNullOrWhiteSpace(dto.Remarks) ? null : dto.Remarks.Trim();
+            Track("Remarks", item.Remarks, v); item.Remarks = v;
+        }
 
         // Always apply IsNewItem — setting it to false clears the "★ NEW - review" flag.
+        Track("IsNewItem", item.IsNewItem, dto.IsNewItem);
         item.IsNewItem = dto.IsNewItem;
 
         await _items.UpdateAsync(item, cancellationToken);
@@ -180,6 +210,10 @@ public sealed class ItemService : IItemService
         _logger.LogInformation(
             "Item updated. StockNo: {StockNo}, Description: {Description}, IsNewItem: {IsNewItem}, UserId: {UserId}",
             item.StockNo, item.Description, item.IsNewItem, requester.Id);
+
+        if (oldValues.Count > 0)
+            await _audit.LogAsync("ItemMasters", item.Id, AuditAction.Update,
+                oldValues, newValues, cancellationToken);
 
         return ServiceResult<ItemMasterDto>.Ok(MapToDto(item));
     }
@@ -190,4 +224,10 @@ public sealed class ItemService : IItemService
         i.Id, i.StockNo, i.Description, i.Category,
         i.Unit, i.UnitCost, i.ItemType, i.ReorderQty,
         i.Remarks, i.IsNewItem, i.CreatedAt, i.UpdatedAt);
+
+    private static object AuditSnapshot(ItemMaster i) => new
+    {
+        i.StockNo, i.Description, i.Category, i.Unit,
+        i.UnitCost, i.ItemType, i.ReorderQty, i.Remarks, i.IsNewItem,
+    };
 }

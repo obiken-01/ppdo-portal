@@ -59,8 +59,8 @@ public sealed class ItemServiceTests
         return repo;
     }
 
-    private static ItemService BuildSut(Mock<IItemMasterRepository> repo) =>
-        new(repo.Object, new PermissionService(), NullLogger<ItemService>.Instance);
+    private static ItemService BuildSut(Mock<IItemMasterRepository> repo, Mock<IAuditService>? auditService = null) =>
+        new(repo.Object, new PermissionService(), (auditService ?? new Mock<IAuditService>()).Object, NullLogger<ItemService>.Instance);
 
     // ── GetAllAsync ───────────────────────────────────────────────────────────
 
@@ -352,5 +352,62 @@ public sealed class ItemServiceTests
         await BuildSut(repo).SearchAsync(DefaultFilter());
 
         repo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // ── Audit logging (RAL-200) ───────────────────────────────────────────────
+
+    [Fact]
+    public async Task CreateAsync_CallsAuditLog_WithCreateAction()
+    {
+        Mock<IItemMasterRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByStockNoAsync("NEW-003", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ItemMaster?)null);
+        Mock<IAuditService> audit = new();
+
+        CreateItemMasterDto dto = new("NEW-003", "New Item", "pcs", 10m, null, null, 0, null, false);
+        ServiceResult<ItemMasterDto> result = await BuildSut(repo, audit).CreateAsync(MakeAdmin(), dto);
+
+        Assert.True(result.IsSuccess);
+        audit.Verify(a => a.LogAsync(
+            "ItemMasters", result.Value!.Id, AuditAction.Create,
+            null, It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ChangedField_CallsAuditLog_CapturingOldAndNew()
+    {
+        ItemMaster item = MakeItem();
+        Mock<IItemMasterRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByIdAsync(item.Id, It.IsAny<CancellationToken>())).ReturnsAsync(item);
+        Mock<IAuditService> audit = new();
+
+        UpdateItemMasterDto dto = new(null, "Updated Description", "box", 50m, "Supplies", "Office", 10, "Updated remark", false);
+        await BuildSut(repo, audit).UpdateAsync(MakeAdmin(), item.Id, dto);
+
+        audit.Verify(a => a.LogAsync(
+            "ItemMasters", item.Id, AuditAction.Update,
+            It.IsNotNull<object>(), It.IsNotNull<object>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_NoFieldsActuallyChanged_DoesNotCallAuditLog()
+    {
+        ItemMaster item = MakeItem("01-01-01-01");
+        item.Description = "Bond Paper A4"; item.Unit = "ream"; item.UnitCost = 220m;
+        item.Category = "Office Supplies"; item.ItemType = null; item.ReorderQty = 0;
+        item.Remarks = null; item.IsNewItem = false;
+
+        Mock<IItemMasterRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByIdAsync(item.Id, It.IsAny<CancellationToken>())).ReturnsAsync(item);
+        Mock<IAuditService> audit = new();
+
+        // Resend the exact same values — nothing actually changed.
+        UpdateItemMasterDto dto = new(
+            "01-01-01-01", "Bond Paper A4", "ream", 220m, "Office Supplies", null, 0, null, false);
+        await BuildSut(repo, audit).UpdateAsync(MakeAdmin(), item.Id, dto);
+
+        audit.Verify(a => a.LogAsync(
+            It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<string>(),
+            It.IsAny<object?>(), It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }
