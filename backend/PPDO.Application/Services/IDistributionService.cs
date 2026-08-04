@@ -25,16 +25,20 @@ public interface IDistributionService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Creates a distribution record against a specific DeliveryItem.
-    /// Validates:
-    ///   - DeliveryItem exists and belongs to requester's scope
-    ///   - QtyIssued > 0
-    ///   - QtyIssued does not exceed QtyAvailable for that batch
-    /// Generates IssueRef (ISS-YYYYMMDD-XXXXX-1).
-    /// Requires CanAccessInventory.
+    /// Allocates each split in <paramref name="dto"/> across the item's available delivery
+    /// batches — FIFO, oldest DeliveryDate first — and creates one Distribution record per
+    /// (split × batch) pair drawn from. Validates:
+    ///   - At least one split, each with QtyIssued > 0, a non-blank IssuedBy, and a
+    ///     Division that resolves to an active configured division
+    ///   - Total requested quantity across all splits does not exceed total available stock
+    ///     for the StockNo (scoped to the requester's division for Staff)
+    /// Generates one IssueRef (ISS-YYYYMMDD-XXXXX-N) per created Distribution, sharing a
+    /// random suffix across the whole allocation with a running sequence number.
+    /// Requires CanAccessInventory. All created Distributions are saved in one transaction.
     /// </summary>
-    Task<ServiceResult<DistributionCreatedDto>> CreateAsync(
+    Task<ServiceResult<IReadOnlyList<DistributionCreatedDto>>> AllocateAsync(
         User requester,
-        CreateStandaloneDistributionDto dto,
+        string stockNo,
+        CreateItemDistributionDto dto,
         CancellationToken cancellationToken = default);
 }

@@ -67,11 +67,6 @@ public interface IDeliveryRepository : IRepository<Delivery>
         int? divisionId = null,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Returns a single DeliveryItem with its Distributions loaded.</summary>
-    Task<DeliveryItemBreakdownRow?> GetDeliveryItemBreakdownAsync(
-        Guid deliveryItemId,
-        CancellationToken cancellationToken = default);
-
     /// <summary>
     /// Filtered (by division, via the parent PurchaseRequest), sorted, paged delivery list —
     /// a single query (WHERE + COUNT + ORDER BY + OFFSET/FETCH), never a full-table load or a
