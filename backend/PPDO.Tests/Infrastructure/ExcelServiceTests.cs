@@ -72,7 +72,49 @@ public sealed class ExcelServiceTests
 
         // PR No. is optional — unlike Division/Requested By/PR Date, it must not carry
         // the required-field asterisk.
-        Assert.Equal("PR No.", ws.Cell(ExcelService.ROW_PR_NO, 1).GetString());
+        Assert.Equal("PR No.", ws.Cell(ExcelService.ROW_PR_NO, ExcelService.COL_SECTION1_LABEL).GetString());
+    }
+
+    [Fact]
+    public void GeneratePRTemplate_RequiredFieldLabels_HaveAsterisk()
+    {
+        byte[] result = _sut.GeneratePRTemplate();
+        using IXLWorkbook wb = new XLWorkbook(new MemoryStream(result));
+        IXLWorksheet ws = wb.Worksheets.First(w => w.Name.StartsWith("PR-"));
+
+        Assert.Equal("Division *",     ws.Cell(ExcelService.ROW_DIVISION,     ExcelService.COL_SECTION1_LABEL).GetString());
+        Assert.Equal("Requested By *", ws.Cell(ExcelService.ROW_REQUESTED_BY, ExcelService.COL_SECTION1_LABEL).GetString());
+        Assert.Equal("PR Date *",      ws.Cell(ExcelService.ROW_PR_DATE,      ExcelService.COL_SECTION1_LABEL).GetString());
+    }
+
+    [Fact]
+    public void GeneratePRTemplate_IsUnstyled_NoFillColours()
+    {
+        // RAL-195 (v1.7.0) — the template deliberately uses no fill colours, matching the
+        // plain look of a real GSO PR export (bordered cells + bold text only).
+        byte[] result = _sut.GeneratePRTemplate();
+        using IXLWorkbook wb = new XLWorkbook(new MemoryStream(result));
+        IXLWorksheet ws = wb.Worksheets.First(w => w.Name.StartsWith("PR-"));
+
+        XLColor[] retiredFillColours =
+        [
+            XLColor.FromHtml("#FFFDE7"), XLColor.FromHtml("#F1F3F5"),
+            XLColor.FromHtml("#F0FAF4"), XLColor.White,
+        ];
+
+        foreach (IXLCell cell in ws.CellsUsed())
+            Assert.DoesNotContain(cell.Style.Fill.BackgroundColor, retiredFillColours);
+    }
+
+    [Fact]
+    public void GeneratePRTemplate_ItemGridValueCells_HaveBorder()
+    {
+        byte[] result = _sut.GeneratePRTemplate();
+        using IXLWorkbook wb = new XLWorkbook(new MemoryStream(result));
+        IXLWorksheet ws = wb.Worksheets.First(w => w.Name.StartsWith("PR-"));
+
+        IXLCell stockNoCell = ws.Cell(ExcelService.ROW_ITEMS_START, ExcelService.COL_STOCK_NO);
+        Assert.Equal(XLBorderStyleValues.Thin, stockNoCell.Style.Border.TopBorder);
     }
 
     // ── GenerateStockBalanceImportTemplate ────────────────────────────────────
@@ -149,23 +191,23 @@ public sealed class ExcelServiceTests
 
         // Section 1 — labels in col A, values in col B
         ws.Cell(ExcelService.ROW_DEPARTMENT,         1).Value = "Department";
-        ws.Cell(ExcelService.ROW_DEPARTMENT,         2).Value = "PPDO";
+        ws.Cell(ExcelService.ROW_DEPARTMENT, ExcelService.COL_SECTION1_VALUE).Value = "PPDO";
         ws.Cell(ExcelService.ROW_DIVISION,           1).Value = "Division";
-        ws.Cell(ExcelService.ROW_DIVISION,           2).Value = "Planning";   // required
+        ws.Cell(ExcelService.ROW_DIVISION, ExcelService.COL_SECTION1_VALUE).Value = "Planning";   // required
         ws.Cell(ExcelService.ROW_FUND,               1).Value = "Fund";
-        ws.Cell(ExcelService.ROW_FUND,               2).Value = "General Fund";
+        ws.Cell(ExcelService.ROW_FUND, ExcelService.COL_SECTION1_VALUE).Value = "General Fund";
         ws.Cell(ExcelService.ROW_REQUESTED_BY,       1).Value = "Requested By";
-        ws.Cell(ExcelService.ROW_REQUESTED_BY,       2).Value = "Juan dela Cruz"; // required
+        ws.Cell(ExcelService.ROW_REQUESTED_BY, ExcelService.COL_SECTION1_VALUE).Value = "Juan dela Cruz"; // required
         ws.Cell(ExcelService.ROW_POSITION,           1).Value = "Position";
-        ws.Cell(ExcelService.ROW_POSITION,           2).Value = "Planning Officer";
+        ws.Cell(ExcelService.ROW_POSITION, ExcelService.COL_SECTION1_VALUE).Value = "Planning Officer";
         ws.Cell(ExcelService.ROW_PR_DATE,            1).Value = "PR Date";
-        ws.Cell(ExcelService.ROW_PR_DATE,            2).Value = new DateTime(2026, 6, 1); // required
+        ws.Cell(ExcelService.ROW_PR_DATE, ExcelService.COL_SECTION1_VALUE).Value = new DateTime(2026, 6, 1); // required
         ws.Cell(ExcelService.ROW_APPROVED_BY,        1).Value = "Approved By";
-        ws.Cell(ExcelService.ROW_APPROVED_BY,        2).Value = "Maria Santos";
+        ws.Cell(ExcelService.ROW_APPROVED_BY, ExcelService.COL_SECTION1_VALUE).Value = "Maria Santos";
         ws.Cell(ExcelService.ROW_APPROVING_POSITION, 1).Value = "Approving Position";
-        ws.Cell(ExcelService.ROW_APPROVING_POSITION, 2).Value = "Division Chief";
+        ws.Cell(ExcelService.ROW_APPROVING_POSITION, ExcelService.COL_SECTION1_VALUE).Value = "Division Chief";
         ws.Cell(ExcelService.ROW_PROGRAM,            1).Value = "Program";
-        ws.Cell(ExcelService.ROW_PROGRAM,            2).Value = "General Administration";
+        ws.Cell(ExcelService.ROW_PROGRAM, ExcelService.COL_SECTION1_VALUE).Value = "General Administration";
 
         // Section 2 — items (header row + one item)
         ws.Cell(ExcelService.ROW_ITEMS_HEADER, ExcelService.COL_STOCK_NO)   .Value = "Stock No.";
@@ -201,6 +243,42 @@ public sealed class ExcelServiceTests
     }
 
     [Fact]
+    public void GeneratePRTemplate_FilledInAndParsed_RoundTripsCorrectly()
+    {
+        // Real end-to-end check for the B:C merge (RAL-195): fills in the ACTUAL generated
+        // template (merged value cells) rather than a synthetic layout, proving ParsePRImport
+        // — which reads column B only — still gets the right value out of a merged cell.
+        using XLWorkbook wb = new(new MemoryStream(_sut.GeneratePRTemplate()));
+        IXLWorksheet ws = wb.Worksheets.First(w => w.Name.StartsWith("PR-"));
+
+        ws.Cell(ExcelService.ROW_DIVISION, ExcelService.COL_SECTION1_VALUE).Value = "Planning";
+        ws.Cell(ExcelService.ROW_REQUESTED_BY, ExcelService.COL_SECTION1_VALUE).Value = "Juan dela Cruz";
+        ws.Cell(ExcelService.ROW_PR_DATE, ExcelService.COL_SECTION1_VALUE).Value = new DateTime(2026, 6, 1);
+        ws.Cell(ExcelService.ROW_AIP_CODE, ExcelService.COL_SECTION1_VALUE).Value = "1000-000-1-01-010-001";
+        ws.Cell(ExcelService.ROW_ITEMS_START,  ExcelService.COL_STOCK_NO)   .Value = "01-01-01-01";
+        ws.Cell(ExcelService.ROW_ITEMS_START,  ExcelService.COL_DESCRIPTION).Value = "Bond Paper A4";
+        ws.Cell(ExcelService.ROW_ITEMS_START,  ExcelService.COL_UNIT)       .Value = "ream";
+        ws.Cell(ExcelService.ROW_ITEMS_START,  ExcelService.COL_QTY)        .Value = 5m;
+        ws.Cell(ExcelService.ROW_ITEMS_START,  ExcelService.COL_UNIT_COST)  .Value = 220m;
+
+        using MemoryStream filled = new();
+        wb.SaveAs(filled);
+        filled.Position = 0;
+
+        IReadOnlyList<PurchaseRequestImportRow> result = _sut.ParsePRImport(filled);
+
+        PurchaseRequestImportRow row = Assert.Single(result);
+        Assert.Equal("Planning",                 row.DivisionName);
+        Assert.Equal("Juan dela Cruz",            row.RequestedBy);
+        Assert.Equal(new DateOnly(2026, 6, 1),    row.PRDate);
+        Assert.Equal("1000-000-1-01-010-001",     row.AIPCode);
+        Assert.Equal("PPDO",                      row.Department); // pre-filled default survives
+        PRItemImportRow item = Assert.Single(row.Items);
+        Assert.Equal("01-01-01-01", item.StockNo);
+        Assert.Equal(5m,            item.Quantity);
+    }
+
+    [Fact]
     public void ParsePRImport_PRNoLeftBlank_IsNull()
     {
         // BuildValidTemplate never sets the PR No. cell — proves the field is optional,
@@ -216,10 +294,10 @@ public sealed class ExcelServiceTests
     {
         using XLWorkbook wb = new();
         IXLWorksheet ws = wb.AddWorksheet("PR-001");
-        ws.Cell(ExcelService.ROW_PR_NO,        2).Value = "101-1041-GF-2026-06-01-099";
-        ws.Cell(ExcelService.ROW_DIVISION,     2).Value = "Planning";
-        ws.Cell(ExcelService.ROW_REQUESTED_BY, 2).Value = "Juan dela Cruz";
-        ws.Cell(ExcelService.ROW_PR_DATE,      2).Value = new DateTime(2026, 6, 1);
+        ws.Cell(ExcelService.ROW_PR_NO, ExcelService.COL_SECTION1_VALUE).Value = "101-1041-GF-2026-06-01-099";
+        ws.Cell(ExcelService.ROW_DIVISION, ExcelService.COL_SECTION1_VALUE).Value = "Planning";
+        ws.Cell(ExcelService.ROW_REQUESTED_BY, ExcelService.COL_SECTION1_VALUE).Value = "Juan dela Cruz";
+        ws.Cell(ExcelService.ROW_PR_DATE, ExcelService.COL_SECTION1_VALUE).Value = new DateTime(2026, 6, 1);
         ws.Cell(ExcelService.ROW_ITEMS_START,  ExcelService.COL_DESCRIPTION).Value = "Bond Paper A4";
         ws.Cell(ExcelService.ROW_ITEMS_START,  ExcelService.COL_UNIT)       .Value = "ream";
         ws.Cell(ExcelService.ROW_ITEMS_START,  ExcelService.COL_QTY)        .Value = 5m;
@@ -254,8 +332,8 @@ public sealed class ExcelServiceTests
         using XLWorkbook wb = new();
         IXLWorksheet ws = wb.AddWorksheet("PR-001");
         // Division cell left blank — required
-        ws.Cell(ExcelService.ROW_REQUESTED_BY, 2).Value = "Juan";
-        ws.Cell(ExcelService.ROW_PR_DATE,      2).Value = new DateTime(2026, 6, 1);
+        ws.Cell(ExcelService.ROW_REQUESTED_BY, ExcelService.COL_SECTION1_VALUE).Value = "Juan";
+        ws.Cell(ExcelService.ROW_PR_DATE, ExcelService.COL_SECTION1_VALUE).Value = new DateTime(2026, 6, 1);
         ws.Cell(ExcelService.ROW_ITEMS_START,  ExcelService.COL_DESCRIPTION).Value = "Bond Paper";
         ws.Cell(ExcelService.ROW_ITEMS_START,  ExcelService.COL_UNIT)       .Value = "ream";
         ws.Cell(ExcelService.ROW_ITEMS_START,  ExcelService.COL_QTY)        .Value = 1m;
@@ -273,8 +351,8 @@ public sealed class ExcelServiceTests
     {
         using XLWorkbook wb = new();
         IXLWorksheet ws = wb.AddWorksheet("PR-001");
-        ws.Cell(ExcelService.ROW_DIVISION,     2).Value = "Planning";
-        ws.Cell(ExcelService.ROW_PR_DATE,      2).Value = new DateTime(2026, 6, 1);
+        ws.Cell(ExcelService.ROW_DIVISION, ExcelService.COL_SECTION1_VALUE).Value = "Planning";
+        ws.Cell(ExcelService.ROW_PR_DATE, ExcelService.COL_SECTION1_VALUE).Value = new DateTime(2026, 6, 1);
         ws.Cell(ExcelService.ROW_ITEMS_START,  ExcelService.COL_DESCRIPTION).Value = "Item";
         ws.Cell(ExcelService.ROW_ITEMS_START,  ExcelService.COL_UNIT)       .Value = "pcs";
         ws.Cell(ExcelService.ROW_ITEMS_START,  ExcelService.COL_QTY)        .Value = 1m;
@@ -292,9 +370,9 @@ public sealed class ExcelServiceTests
     {
         using XLWorkbook wb = new();
         IXLWorksheet ws = wb.AddWorksheet("PR-001");
-        ws.Cell(ExcelService.ROW_DIVISION,     2).Value = "Planning";
-        ws.Cell(ExcelService.ROW_REQUESTED_BY, 2).Value = "Juan";
-        ws.Cell(ExcelService.ROW_PR_DATE,      2).Value = "not-a-date"; // invalid
+        ws.Cell(ExcelService.ROW_DIVISION, ExcelService.COL_SECTION1_VALUE).Value = "Planning";
+        ws.Cell(ExcelService.ROW_REQUESTED_BY, ExcelService.COL_SECTION1_VALUE).Value = "Juan";
+        ws.Cell(ExcelService.ROW_PR_DATE, ExcelService.COL_SECTION1_VALUE).Value = "not-a-date"; // invalid
         ws.Cell(ExcelService.ROW_ITEMS_START,  ExcelService.COL_DESCRIPTION).Value = "Item";
         ws.Cell(ExcelService.ROW_ITEMS_START,  ExcelService.COL_UNIT)       .Value = "pcs";
         ws.Cell(ExcelService.ROW_ITEMS_START,  ExcelService.COL_QTY)        .Value = 1m;
@@ -312,9 +390,9 @@ public sealed class ExcelServiceTests
     {
         using XLWorkbook wb = new();
         IXLWorksheet ws = wb.AddWorksheet("PR-001");
-        ws.Cell(ExcelService.ROW_DIVISION,     2).Value = "Admin";
-        ws.Cell(ExcelService.ROW_REQUESTED_BY, 2).Value = "Juan";
-        ws.Cell(ExcelService.ROW_PR_DATE,      2).Value = new DateTime(2026, 6, 1);
+        ws.Cell(ExcelService.ROW_DIVISION, ExcelService.COL_SECTION1_VALUE).Value = "Admin";
+        ws.Cell(ExcelService.ROW_REQUESTED_BY, ExcelService.COL_SECTION1_VALUE).Value = "Juan";
+        ws.Cell(ExcelService.ROW_PR_DATE, ExcelService.COL_SECTION1_VALUE).Value = new DateTime(2026, 6, 1);
         // No item rows filled in
 
         MemoryStream ms = new();
@@ -330,9 +408,9 @@ public sealed class ExcelServiceTests
     {
         using XLWorkbook wb = new();
         IXLWorksheet ws = wb.AddWorksheet("PR-001");
-        ws.Cell(ExcelService.ROW_DIVISION,     2).Value = "RM";
-        ws.Cell(ExcelService.ROW_REQUESTED_BY, 2).Value = "Maria";
-        ws.Cell(ExcelService.ROW_PR_DATE,      2).Value = new DateTime(2026, 6, 1);
+        ws.Cell(ExcelService.ROW_DIVISION, ExcelService.COL_SECTION1_VALUE).Value = "RM";
+        ws.Cell(ExcelService.ROW_REQUESTED_BY, ExcelService.COL_SECTION1_VALUE).Value = "Maria";
+        ws.Cell(ExcelService.ROW_PR_DATE, ExcelService.COL_SECTION1_VALUE).Value = new DateTime(2026, 6, 1);
 
         // Row 1: blank Description AND blank StockNo — should be skipped
         ws.Cell(ExcelService.ROW_ITEMS_START, ExcelService.COL_QTY).Value = 5m;
@@ -394,9 +472,9 @@ public sealed class ExcelServiceTests
 
         // Valid PR sheet
         IXLWorksheet ws = wb.AddWorksheet("PR-001");
-        ws.Cell(ExcelService.ROW_DIVISION,     2).Value = "MIS";
-        ws.Cell(ExcelService.ROW_REQUESTED_BY, 2).Value = "Ana";
-        ws.Cell(ExcelService.ROW_PR_DATE,      2).Value = new DateTime(2026, 6, 1);
+        ws.Cell(ExcelService.ROW_DIVISION, ExcelService.COL_SECTION1_VALUE).Value = "MIS";
+        ws.Cell(ExcelService.ROW_REQUESTED_BY, ExcelService.COL_SECTION1_VALUE).Value = "Ana";
+        ws.Cell(ExcelService.ROW_PR_DATE, ExcelService.COL_SECTION1_VALUE).Value = new DateTime(2026, 6, 1);
         ws.Cell(ExcelService.ROW_ITEMS_START,  ExcelService.COL_DESCRIPTION).Value = "Item";
         ws.Cell(ExcelService.ROW_ITEMS_START,  ExcelService.COL_UNIT)       .Value = "pcs";
         ws.Cell(ExcelService.ROW_ITEMS_START,  ExcelService.COL_QTY)        .Value = 2m;
