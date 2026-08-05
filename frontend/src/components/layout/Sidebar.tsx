@@ -29,7 +29,7 @@ import { auth } from "@/lib/auth";
 import { clearMeCache } from "@/lib/me-cache";
 import type { MeResponse } from "@/types";
 
-const APP_VERSION = "v1.7.0";
+const APP_VERSION = "v1.7.1";
 
 interface SidebarProps {
   me: MeResponse | null;
