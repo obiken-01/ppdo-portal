@@ -26,6 +26,7 @@ import { clearMeCache } from "@/lib/me-cache";
 import {
   classifyRefreshFailure,
   loginUrlWithReason,
+  REFRESH_TIMEOUT_MS,
 } from "@/lib/auth-redirect";
 import type { LoginResponse } from "@/types/auth";
 
@@ -56,7 +57,7 @@ function ReconnectingPageInner() {
       const token = ++attemptToken.current;
 
       axios
-        .post<LoginResponse>(`${BASE_URL}/auth/refresh`, {}, { withCredentials: true })
+        .post<LoginResponse>(`${BASE_URL}/auth/refresh`, {}, { withCredentials: true, timeout: REFRESH_TIMEOUT_MS })
         .then(({ data }) => {
           if (token !== attemptToken.current) return;
           auth.login(data);
