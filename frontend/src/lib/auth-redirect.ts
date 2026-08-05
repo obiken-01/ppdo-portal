@@ -18,6 +18,18 @@
 import axios from "axios";
 import type { RefreshErrorReason } from "@/types/auth";
 
+/**
+ * Request timeout for POST /auth/refresh calls (api.ts interceptor, portal
+ * layout.tsx guard, /reconnecting auto-retry). Without this, a slow-but-alive
+ * cold start (Azure Functions ~5-20s, Azure SQL Free auto-pause resume up to
+ * ~1 min) never rejects the axios promise — it just hangs, so isNetworkError()
+ * below never fires and the /reconnecting redirect never triggers. Set below
+ * the /health check's 30s timeout so a genuinely stuck backend gets classified
+ * as unreachable (→ /reconnecting, which retries with its own backoff) instead
+ * of leaving the UI frozen with no explanation.
+ */
+export const REFRESH_TIMEOUT_MS = 20_000;
+
 const VALID_REASONS: readonly RefreshErrorReason[] = ["token_superseded", "token_expired"];
 
 /** Extracts a known RefreshErrorReason from a failed /auth/refresh call, if present. */
