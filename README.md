@@ -20,6 +20,10 @@
 | v1.4.1 – v1.4.3 | WFP Rework follow-ups — fund-scoped ceiling & allocation | ✅ Done |
 | v1.4.4 | WFP Report → Excel export (matches PBO form) | ✅ Done |
 | v1.4.5 | Budget Planning Dashboard — PPDO-scoped, per-division view | ✅ Done |
+| v1.4.6 – v1.4.9 | Budget Planning perf fixes + Audit Log page | ✅ Done |
+| v1.5 | PPMP Report — preview + Excel export | ✅ Done |
+| v1.6 | AIP Manual Entry, In-Place Editing, Carry-Forward & LDIP Inline Edit | ✅ Done |
+| v1.7 | Inventory Optimization — perf rework, Stock Balances, server-side Distribution, GSO PR import, audit logging | ✅ Done |
 
 See [`CLAUDE.md`](CLAUDE.md) for the full delivery history and current architecture rules.
 
@@ -262,10 +266,63 @@ See [`docs/v1.1/DB_Model.md`](docs/v1.1/DB_Model.md) for the full schema.
   to PPDO (Budget Planning is effectively PPDO-only in practice) with a per-division WFP status
   view and per-fund ceiling/allocation pie charts; the underlying queries were also reworked from
   several unfiltered full-table scans down to properly scoped SQL queries.
+- 🛠️ **v1.4.6 – v1.4.9 — Budget Planning fixes + Audit Log page** — further N+1 query cleanup,
+  Manila-timezone and calendar-row-height fixes on the Dashboard, and a new SuperAdmin-only Audit
+  Log config page (auto-refreshing) surfacing the `audit_log` table added back in v1.1.
 
 See [`docs/v1.4.4/WFP_Excel_Export_Assessment.md`](docs/v1.4.4/WFP_Excel_Export_Assessment.md) for
-the design decisions behind v1.4.4's Excel export (the v1.4.5 Dashboard-scoping assessment doc
-ships on the `release/1.4.5` branch, pending its merge to `main`).
+the design decisions behind v1.4.4's Excel export.
+
+## What's New in v1.5 — PPMP Report
+
+- 📊 **PPMP Report** — a second report type on Budget Planning › Report, alongside WFP (WFP stays
+  the default). Item-grained, matching the Province's own filed PPMP working form rather than the
+  national GPPB form — one row per procurement item, nested under the AIP program/project/activity
+  hierarchy, with quarterly qty/amount schedules and a Stock Card No. column.
+- 📤 **PPMP Excel export** — one-click `.xlsx` export matching the province's official layout,
+  built with the same programmatic ClosedXML approach as the v1.4.4 WFP export.
+- 🏷️ **Stock Card No. on the Price Index** — items in the Chart-of-Accounts price index now carry
+  the GSO Item Code, joined live via `WfpProcurementItem.PriceIndexItemId` (never snapshotted, so
+  a GSO correction retroactively fixes every report).
+
+See [`docs/v1.5/PPMP_Report_Findings.md`](docs/v1.5/PPMP_Report_Findings.md) for the full design
+spec, and [`docs/v1.5/STOCK_CARD_NO_RUNBOOK.md`](docs/v1.5/STOCK_CARD_NO_RUNBOOK.md) for the
+Stock Card No. backfill process.
+
+## What's New in v1.6 — AIP Manual Entry, In-Place Editing & LDIP
+
+- ✏️ **AIP Manual Entry** — build an AIP record directly in the web UI, one node at a time
+  (Office → Program → Project → Activity), each addition persisted immediately.
+- 🔧 **AIP in-place editing** — edit/save/cancel per activity row on an uploaded or manually-built
+  Draft AIP record, no re-upload required.
+- 📋 **Carry-forward & seed from LDIP** — copy an office's programs (with full project/activity
+  subtrees) from a prior fiscal year's AIP into the current one, or seed a fresh AIP office's
+  programs directly from its matching LDIP record.
+- 📝 **LDIP inline editing** — edit a single LDIP program's fields without a full file re-upload.
+- 📱 **Mobile-responsive portal shell** — off-canvas sidebar drawer and responsive dashboard
+  stacking below the `lg` breakpoint.
+
+## What's New in v1.7 — Inventory Optimization
+
+- ⚡ **Performance rework** — PR number generation moved from a full-table scan to a SQL
+  aggregate; Inventory's catalog/PR/Delivery/Items-Master queries scoped and server-side paginated
+  instead of filtering in memory; layout-preserving loading skeletons replace full-page spinners.
+- 🧮 **Stock Balances** — a recurring, PPDO-wide physical-count ledger
+  (`/inventory/stock-balances`) that reconciles counted quantities against system on-hand via a
+  variance formula, with bulk CSV upsert.
+- 📥 **GSO PR import** — prefill Create PR directly from a GSO-system PR export (Excel or signed
+  PDF), including account-code matching across punctuation styles.
+- 🚚 **Distribution FIFO moved server-side** — batch allocation across delivery batches is now
+  computed on the backend instead of the frontend (and fixed a real LIFO-not-FIFO bug in the
+  process).
+- 📄 **Create PR Excel template redesign** — matches the look of the GSO export.
+- 📜 **Full audit trail on Inventory** — PRs, deliveries, distributions, Items Master, and Stock
+  Balances are all now logged to the audit trail.
+- 🔍 **SEO** — sitemap, robots.txt, and metadata for the public landing page.
+
+See [`docs/v1.7/Mobile_And_Inventory_Findings.md`](docs/v1.7/Mobile_And_Inventory_Findings.md) and
+[`docs/v1.7/GSO_PR_Import_Findings.md`](docs/v1.7/GSO_PR_Import_Findings.md) for the audit and
+design decisions behind this milestone.
 
 ---
 
