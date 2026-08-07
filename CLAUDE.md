@@ -251,7 +251,10 @@ Interfaces / contracts first → Implementations → Tests
 - All pages under `src/app/(public)/` are public — no auth guard
 - API calls always go through `src/lib/api.ts` (Axios instance) — never use `fetch` directly
 - Token refresh is handled automatically by the Axios interceptor in `api.ts` — never handle 401s manually in page components
+- **Read `docs/DESIGN_SYSTEM.md` before creating or restyling any page.** It is the single reference for colour tokens, typography scale, the page shell, the shared-component inventory (what to use and what NOT to use each for), and the known style divergences with their migration targets.
 - Never hardcode colours — always use Tailwind classes mapped to PPDO design tokens in `tailwind.config.ts`
+- **Never use `text-slate-700`** — it is not a PPDO token and silently falls back to blue-tinted stock Tailwind, breaking the neutral slate ramp. Use `slate-800` for headings, `slate-600` for body text (see `docs/DESIGN_SYSTEM.md` §1)
+- Portal pages are flat — no `rounded-lg`/`rounded-xl` on cards, panels, tables, buttons, or inputs. `rounded-full` for pills/badges/avatars is fine. The `(public)/` marketing pages are deliberately rounded — don't flatten them.
 - Component naming: PascalCase files, matching the component name — e.g. `StatCard.tsx`, `PRStatusTable.tsx`
 - **Fetch shared state once.** Don't call `/auth/me` (or any "fetched once, read everywhere" value) per component — read the current user from a shared context/provider mounted in the portal layout. The WFP page once fired `/auth/me` four times per load.
 - **Loading states must preserve layout (CLS).** Render the page shell immediately and show a skeleton that matches the loaded structure (same header, same row height) — never gate a page on a tiny centered spinner that's then replaced by a full-height table. Give images explicit dimensions (prefer `next/image`, which also serves WebP/AVIF and lazy-loads).
