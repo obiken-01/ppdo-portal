@@ -108,7 +108,7 @@ actually uses.
 
 | Role | Classes |
 |---|---|
-| Page title (`h1`) | `text-lg font-bold text-slate-800` |
+| Page title (`h1`) | `text-xl font-bold text-slate-800` |
 | Page description | `text-sm text-slate-600` |
 | Section heading (`h2`) | `text-sm font-semibold text-slate-800` |
 | Card/stat label | `text-xs font-semibold text-slate-600 uppercase tracking-wide` |
@@ -116,9 +116,12 @@ actually uses.
 | Modal title | `text-base font-semibold text-slate-800` |
 | Numeric value | add `tabular-nums` — always, so digits align in columns |
 
-`text-lg` for `h1` (not `text-xl`) matches `ConfigPageHeader`, which is the most-used header
-component and the de facto standard. Page titles sit under a persistent Topbar that already
-establishes context, so they don't need to shout.
+`text-xl` for `h1` is the confirmed standard (Ralph's call, 2026-08-07). It matches the Inventory
+dashboard and the Budget Planning sub-pages, which are the majority of real pages.
+
+> ⚠️ **`ConfigPageHeader` currently emits `text-lg`** (`ConfigPageHeader.tsx:26`), so it does not
+> yet match this rule. Using the component — which §5 tells you to do — gives you `text-lg` until
+> that one line is changed. Changing it fixes all 7 Config pages at once. Tracked as §7 item 3.
 
 ---
 
@@ -233,7 +236,7 @@ making them uniform.
 |---|---|---|---|---|
 | 1 | **`slate-700`** | 215 uses / 46 files; not a PPDO token, resolves to blue-tinted stock `#334155` | `slate-800` headings, `slate-600` body | **High** — most widespread, mechanical |
 | 2 | **Page shell** | 4 variants: Inventory `gap-6 p-3 sm:p-6` no max-width · Config `max-w-6xl px-6 py-6 space-y-4` · Budget Planning `p-6 max-w-screen-xl` · `admin/users` bare `space-y-4` | §4 shell | **High** |
-| 3 | **`h1` size** | `text-xl` (Inventory dashboard, BP sub-pages) vs `text-lg` (`ConfigPageHeader`, Config landing, BP dashboard) | `text-lg` | Medium |
+| 3 | **`h1` size** | `text-xl` (Inventory dashboard, BP sub-pages) vs `text-lg` (`ConfigPageHeader.tsx:26`, `config/page.tsx`, `budget-planning/page.tsx`) | **`text-xl`** — one line in `ConfigPageHeader` covers all 7 Config pages; then the 2 dashboards | **High** — smallest change, widest effect |
 | 4 | **`h2` styling** | 5 treatments: `text-sm`+`slate-700`, `text-base`+`slate-800`, `text-sm`+`slate-800`, `text-lg font-bold` (modals), `text-xs uppercase` | `text-sm font-semibold text-slate-800`; modals `text-base font-semibold` | Medium |
 | 5 | **`ConfigPageHeader` adoption** | Config only (7 files). Inventory and Budget Planning hand-roll the same markup — the exact duplication RAL-201 consolidated | Use it everywhere | Medium |
 | 6 | **Inventory sub-pages have no `h1`** | `items-master`, `item-ledger`, `pr-register`, `pr-report`, `distribution` render no page title at all | Add `ConfigPageHeader` | Medium |
@@ -258,9 +261,13 @@ Don't "fix" these — the difference carries meaning:
 
 ### Sequencing note
 
-Items 1, 3, and 4 are find-and-replace-shaped and safe to batch. Item 2 changes layout and should
-be done one page family at a time with a visual check on each. Item 7's `StatCard` is shared —
-change it once and every consumer follows, so verify the dashboard after.
+Item 3 is the cheapest win: change `text-lg` → `text-xl` in `ConfigPageHeader.tsx:26` and all 7
+Config pages follow, then fix the 2 remaining dashboard titles by hand. Do it first — while the
+component disagrees with §2, the doc contradicts itself.
+
+Items 1 and 4 are find-and-replace-shaped and safe to batch. Item 2 changes layout and should be
+done one page family at a time with a visual check on each. Item 7's `StatCard` is shared — change
+it once and every consumer follows, so verify the dashboard after.
 
 None of this changes the *design*, only its consistency. The look is reviewed and deliberate: flat
 by decision, contrast-audited in RAL-133, mobile-fixed in RAL-201. **This document describes the
