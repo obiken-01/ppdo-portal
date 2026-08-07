@@ -163,7 +163,7 @@ export default function ConfigDashboardPage() {
       <div className="max-w-6xl mx-auto px-6 py-6 space-y-5">
         {/* Header */}
         <div>
-          <h1 className="text-lg font-bold text-slate-800">Configuration</h1>
+          <h1 className="text-xl font-bold text-slate-800">Configuration</h1>
           <p className="text-sm text-slate-600">
             Manage reference data used across AIP and WFP planning entries.
           </p>
