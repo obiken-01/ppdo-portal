@@ -37,6 +37,13 @@ public interface IWfpExpenditureRepository : IRepository<WfpExpenditure>
     Task<IReadOnlyList<WfpExpenditure>> GetByWfpActivityIdsAsync(IReadOnlyList<int> wfpActivityIds, CancellationToken ct = default);
 
     /// <summary>
+    /// COUNT of WfpExpenditure rows WHERE wfp_activity_id IN (<paramref name="wfpActivityIds"/>).
+    /// For callers that only need the number — counting in SQL instead of materialising the rows
+    /// and reading <c>.Count</c> in memory (RAL-204). Empty input returns 0 without hitting the DB.
+    /// </summary>
+    Task<int> CountByWfpActivityIdsAsync(IReadOnlyList<int> wfpActivityIds, CancellationToken ct = default);
+
+    /// <summary>
     /// Batched sibling of <see cref="GetPeriodsByExpenditureIdAsync"/> — WfpExpenditurePeriod rows
     /// WHERE expenditure_id IN (<paramref name="expenditureIds"/>), ordered by expenditure_id then
     /// period_no. The caller groups the flat result by ExpenditureId (v1.4.3 — RAL-158).

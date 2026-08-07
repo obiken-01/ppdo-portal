@@ -416,11 +416,8 @@ public sealed class WfpService : IWfpService
         // to count afterward.
         IReadOnlyList<WfpActivity> activities = await _wfpRepo.GetActivitiesByWfpIdAsync(record.Id, ct);
 
-        int expenditureCount = 0;
-        foreach (WfpActivity activity in activities)
-            expenditureCount += (await _expenditureRepo.GetByWfpActivityIdAsync(activity.Id, ct)).Count;
-
         List<int> activityIds = activities.Select(a => a.Id).ToList();
+        int expenditureCount = await _expenditureRepo.CountByWfpActivityIdsAsync(activityIds, ct);
         int legacyLineCount = (await _wfpRepo.GetLinesByActivityIdsAsync(activityIds, ct)).Count;
 
         bool wasFinal = record.Status == PlanningStatus.Final;
