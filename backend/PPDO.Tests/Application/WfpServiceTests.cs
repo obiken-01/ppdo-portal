@@ -506,13 +506,10 @@ public sealed class WfpServiceTests
         var (sut, wfpRepo, _, _, _, expenditureRepo) = Build(
             [rec], [act1, act2], [], []);
 
-        expenditureRepo.Setup(r => r.GetByWfpActivityIdAsync(10, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IReadOnlyList<WfpExpenditure>)[new WfpExpenditure { Id = 1, WfpActivityId = 10 }]);
-        expenditureRepo.Setup(r => r.GetByWfpActivityIdAsync(11, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IReadOnlyList<WfpExpenditure>)[
-                new WfpExpenditure { Id = 2, WfpActivityId = 11 },
-                new WfpExpenditure { Id = 3, WfpActivityId = 11 },
-            ]);
+        expenditureRepo.Setup(r => r.CountByWfpActivityIdsAsync(
+                It.Is<IReadOnlyList<int>>(ids => ids.SequenceEqual(new[] { 10, 11 })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(3);
 
         WfpCleanupResultDto? result = await sut.CleanupScopedAsync(3, 5, 2027, CancellationToken.None);
 
@@ -522,6 +519,30 @@ public sealed class WfpServiceTests
         Assert.Equal(2, result.ActivitiesDeleted);
         Assert.Equal(3, result.ExpendituresDeleted);
         wfpRepo.Verify(r => r.DeleteAsync(rec, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>
+    /// RAL-204 regression guard: the expenditure count must come from ONE batched SQL COUNT,
+    /// not one query per activity (the old N+1 that also materialised every row just to .Count it).
+    /// </summary>
+    [Fact]
+    public async Task CleanupScoped_CountsExpendituresInOneBatchedQuery_NotPerActivity()
+    {
+        WfpRecord rec = WfpRec(1, PlanningStatus.Draft, aipId: 2, officeId: 3, divisionId: 5);
+        var (sut, _, _, _, _, expenditureRepo) = Build(
+            [rec], [WfpAct(10, 1), WfpAct(11, 1), WfpAct(12, 1)], [], []);
+
+        expenditureRepo.Setup(r => r.CountByWfpActivityIdsAsync(
+                It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(7);
+
+        WfpCleanupResultDto? result = await sut.CleanupScopedAsync(3, 5, 2027, CancellationToken.None);
+
+        Assert.Equal(7, result!.ExpendituresDeleted);
+        expenditureRepo.Verify(r => r.CountByWfpActivityIdsAsync(
+            It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()), Times.Once);
+        expenditureRepo.Verify(r => r.GetByWfpActivityIdAsync(
+            It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
