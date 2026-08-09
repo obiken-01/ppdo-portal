@@ -544,7 +544,7 @@ export default function BudgetPlanningPage() {
 
         {/* Header */}
         <div>
-          <h1 className="text-lg font-bold text-slate-800">Budget Planning Dashboard</h1>
+          <h1 className="text-xl font-bold text-slate-800">Budget Planning Dashboard</h1>
           <p className="text-sm text-slate-600">FY overview · {officeLabel}</p>
         </div>
 
