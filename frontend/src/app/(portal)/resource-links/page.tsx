@@ -398,7 +398,7 @@ export default function ResourceLinksPage() {
                         <button
                           title="Edit"
                           onClick={() => { setFormError(null); setEditTarget(link); }}
-                          className="p-1 rounded text-slate-600 hover:text-green-700 hover:bg-green-50 transition-colors"
+                          className="p-1 text-slate-600 hover:text-green-700 hover:bg-green-50 transition-colors"
                         >
                           ✏️
                         </button>
@@ -407,7 +407,7 @@ export default function ResourceLinksPage() {
                         <button
                           title="Delete"
                           onClick={() => setDeleteTarget(link)}
-                          className="p-1 rounded text-slate-600 hover:text-danger-500 hover:bg-danger-100 transition-colors"
+                          className="p-1 text-slate-600 hover:text-danger-500 hover:bg-danger-100 transition-colors"
                         >
                           🗑️
                         </button>

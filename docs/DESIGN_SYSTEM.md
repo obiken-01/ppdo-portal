@@ -7,9 +7,11 @@ page you happened to open.
 Companion docs: `PERFORMANCE_GUIDELINES.md` §6-7 (loading states, images),
 `NAMING_CONVENTIONS.md` (file and component naming), `CLAUDE.md` (frontend architecture rules).
 
-> **Status:** the token layer is mature and reviewed. The *application* of it is not yet uniform —
-> Inventory was built first and diverged from Budget Planning and Config. §7 records every known
-> divergence with a canonical target. Where a difference is legitimate, it says so and why.
+> **Status:** the token layer is mature and reviewed, and as of 2026-08-10 its application is too —
+> all 7 divergences §7 originally found (Inventory having diverged first, then drifted from Budget
+> Planning and Config) are resolved. What's left is two open decisions, not drift: `lucide-react`
+> (adopt or remove) and dark mode (finish or remove). §7 keeps the full history — what changed, what
+> was deliberately left alone, and why — for anyone touching these pages next.
 
 ---
 
@@ -242,7 +244,7 @@ making them uniform.
 | 4 | ~~**`h2` styling**~~ | ✅ **Done 2026-08-10** — 14 portal section headings on target; both dialog titles on `text-base`. Remaining variants are the deliberate exceptions listed below | `text-sm font-semibold text-slate-800`; modals `text-base font-semibold` | — |
 | 5 | ~~**`ConfigPageHeader` adoption**~~ | ✅ **Done 2026-08-10** — adopted by the Inventory dashboard, the BP dashboard, and the AIP/LDIP/Allocation/Report/WFP pages. `title`/`description` widened `string` → `ReactNode` so WFP's inline promo badge and status pill didn't have to be flattened or moved into `actions`. Not adopted by wizards or per-record detail views — see exceptions below | Use it everywhere | — |
 | 6 | ~~**Inventory sub-pages have no `h1`**~~ | ✅ **Done 2026-08-10** — all 5 (`items-master`, `item-ledger`, `pr-register`, `pr-report`, `distribution`) now render a `ConfigPageHeader` | Add `ConfigPageHeader` | — |
-| 7 | **Rounded corners in portal** | `items-master` 8 (`rounded-lg`×7, `rounded-xl`×1) · `StatCard.tsx` `rounded-xl` · `ResourceLinksWidget` · `admin/users` · `profile` · `DashboardCalendar` `rounded-sm` | Remove (keep `rounded-full`) | Medium — `StatCard` first, it's shared |
+| 7 | ~~**Rounded corners in portal**~~ | ✅ **Done 2026-08-10** — 30 occurrences across 10 files, not the 6 originally counted (see below) | Remove (keep `rounded-full`) | — |
 | 8 | **`lucide-react` unused** | Declared dependency, 0 imports | Decide: adopt or remove | Low |
 | 9 | **Dark mode** | Scaffolded, unimplemented, unreviewed | Decide: finish or remove | Low |
 
@@ -279,8 +281,37 @@ Don't "fix" these — the difference carries meaning:
 
 ### Sequencing note
 
-Items 1, 3, 4, 5, and 6 are done. Only **2** (page shell), **7** (rounded corners), and the two
-open decisions (**8**, **9**) remain.
+Items 1 through 7 are done. Only the two open decisions (**8**, **9**) remain.
+
+Item 7 (2026-08-10) undercounted the same way item 2 did: the audit's "6 files" only caught
+`rounded-lg`/`rounded-xl`/`rounded-sm`, missing bare `rounded` (Tailwind's default radius) entirely
+— the exact same violation, just a different utility name. The real count was **30 occurrences
+across 10 files**: the 6 originally named, plus `item-ledger`, `pr-register`, `resource-links`, and
+two more in `dashboard/page.tsx` split across a multi-line `className` a same-line grep couldn't
+see. All 30 were buttons, inputs, a `<kbd>` hint, a notification chip, or card containers — pure
+class-token removal, no restructuring, so unlike item 2 this carried no meaningful visual risk to
+weigh even without a screen to check it against. `StatCard.tsx` went first, per the ticket's own
+note that it's shared (Main Dashboard + Inventory Dashboard both consume it).
+
+Item 2 (2026-08-10) split into three tiers by risk, since none of it could be visually verified in
+the session that did it (no live backend, no compositing browser):
+
+- **Fully converted to the two-div target shell**, `space-y-4` replacing manual margins: the
+  Inventory dashboard, and `aip`/`ldip` (clean 3-block header→filter→table structure, low risk).
+- **Additive-only fixes** — `min-h-screen` → `min-h-full`, flat `p-6`/`px-6 py-6` → responsive
+  `px-3 py-4 sm:px-6 sm:py-6`: the 7 Config pages, `admin/users`, the Budget Planning dashboard, and
+  all 8 Inventory sub-pages (which already had responsive padding and `space-y-*`, just the wrong
+  height unit and a nonstandard `max-w-screen-xl`/`max-w-screen-lg`). Purely additive — mobile
+  breathing room only, nothing shrinks — so safe to ship without a screen to check it against.
+- **Width/padding only, structure untouched**: `allocation` and `wfp` — see "Deliberately NOT
+  unified" above for why their internal spacing wasn't swept into `space-y-4` alongside the rest.
+
+Two `max-width` shrinks (`max-w-screen-xl` 1280px → `max-w-6xl` 1152px, a ~10% reduction) were
+checked against overflow risk before applying, not assumed safe: `aip`/`ldip` route their table
+through the shared `DataTable` component, which already wraps in `overflow-x-auto` internally
+regardless of the outer page's width, and `items-master`/`pr-register`/`item-ledger` do the same at
+the page level. `stock-balances`'s width went the other way — `max-w-screen-lg` (1024px) widened to
+`max-w-6xl` (1152px) — since it's a form/upload page, not a table.
 
 Items 1 and 4 (2026-08-10) were **less mechanical than "find-and-replace-shaped" suggests**:
 `slate-700` maps to two different targets depending on role, so the sweep needed a per-occurrence

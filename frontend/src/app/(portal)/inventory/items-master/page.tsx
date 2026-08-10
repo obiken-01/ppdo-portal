@@ -152,7 +152,7 @@ function EditCell({
       defaultValue={defaultValue}
       onChange={(e) => onWrite(e.target.value)}
       placeholder={placeholder}
-      className="w-full px-2 py-1 text-xs rounded border border-slate-300 bg-cell-fill focus:outline-none focus:ring-1 focus:ring-green-500 focus:bg-white transition-colors"
+      className="w-full px-2 py-1 text-xs border border-slate-300 bg-cell-fill focus:outline-none focus:ring-1 focus:ring-green-500 focus:bg-white transition-colors"
     />
   );
 }
@@ -625,7 +625,7 @@ export default function ItemsMasterPage() {
                 <button
                   onClick={handleSave}
                   disabled={saving}
-                  className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg bg-green-600 text-white font-medium hover:bg-green-500 disabled:opacity-60 transition-colors"
+                  className="flex items-center gap-1 px-2.5 py-1 text-xs bg-green-600 text-white font-medium hover:bg-green-500 disabled:opacity-60 transition-colors"
                 >
                   {saving
                     ? <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -635,7 +635,7 @@ export default function ItemsMasterPage() {
                 <button
                   onClick={cancelEdit}
                   disabled={saving}
-                  className="px-2.5 py-1 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-60 transition-colors"
+                  className="px-2.5 py-1 text-xs border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-60 transition-colors"
                 >
                   ✕
                 </button>
@@ -650,7 +650,7 @@ export default function ItemsMasterPage() {
                   title="Mark as reviewed — clears ★ NEW flag"
                   disabled={reviewingId === item.id || !!editingId}
                   onClick={() => handleMarkReviewed(item)}
-                  className="p-1.5 rounded-lg text-xs transition-colors hover:bg-amber-50 text-amber-500 hover:text-amber-700 disabled:opacity-40"
+                  className="p-1.5 text-xs transition-colors hover:bg-amber-50 text-amber-500 hover:text-amber-700 disabled:opacity-40"
                 >
                   {reviewingId === item.id
                     ? <span className="w-3.5 h-3.5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin inline-block" />
@@ -661,7 +661,7 @@ export default function ItemsMasterPage() {
                 title="Edit row"
                 disabled={!!editingId}
                 onClick={() => startEdit(item)}
-                className="p-1.5 rounded-lg text-xs transition-colors hover:bg-green-50 text-slate-600 hover:text-green-700 disabled:opacity-40"
+                className="p-1.5 text-xs transition-colors hover:bg-green-50 text-slate-600 hover:text-green-700 disabled:opacity-40"
               >
                 ✏️
               </button>
@@ -721,7 +721,7 @@ export default function ItemsMasterPage() {
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Search items…"
-            className="flex-1 min-w-48 px-4 py-2.5 rounded-lg text-sm border border-slate-200 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-green-600"
+            className="flex-1 min-w-48 px-4 py-2.5 text-sm border border-slate-200 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-green-600"
           />
           {searchInput && (
             <button
@@ -735,7 +735,7 @@ export default function ItemsMasterPage() {
           {/* ★ NEW filter toggle */}
           <button
             onClick={() => setShowNewOnly((v) => !v)}
-            className={`flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-sm border transition-colors shrink-0 ${
+            className={`flex items-center gap-1.5 px-3 py-2.5 text-sm border transition-colors shrink-0 ${
               showNewOnly
                 ? "bg-amber-100 border-amber-300 text-amber-700 font-semibold"
                 : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
@@ -755,7 +755,7 @@ export default function ItemsMasterPage() {
           <button
             onClick={handleAddRow}
             disabled={!!editingId}
-            className="flex items-center gap-1.5 bg-green-600 text-white font-semibold text-sm px-4 py-2.5 rounded-lg hover:bg-green-500 transition-colors shadow-sm shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"
+            className="flex items-center gap-1.5 bg-green-600 text-white font-semibold text-sm px-4 py-2.5 hover:bg-green-500 transition-colors shadow-sm shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"
           >
             <span className="text-base leading-none">+</span>
             Add Item
@@ -763,7 +763,7 @@ export default function ItemsMasterPage() {
         </div>
 
         {/* ── Table card ───────────────────────────────────────────────────── */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="bg-white shadow-sm border border-slate-200 overflow-hidden">
           {loading ? (
             <TableSkeleton columns={["#", "Stock No.", "Description", "Category", "Unit", "Unit Cost", "Type", "Reorder", "Remarks", "New?", ""]} />
           ) : fetchError ? (
@@ -813,7 +813,7 @@ export default function ItemsMasterPage() {
                                 setColumnFilterInput((prev) => ({ ...prev, [columnId]: e.target.value }));
                               }}
                               placeholder="Filter…"
-                              className="w-full px-2 py-1 text-xs rounded border border-slate-200 bg-slate-50 focus:outline-none focus:ring-1 focus:ring-green-500 focus:bg-white transition-colors"
+                              className="w-full px-2 py-1 text-xs border border-slate-200 bg-slate-50 focus:outline-none focus:ring-1 focus:ring-green-500 focus:bg-white transition-colors"
                             />
                           ) : null}
                         </th>
@@ -879,13 +879,13 @@ export default function ItemsMasterPage() {
                   )}
                 </span>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} className="px-2 py-0.5 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50 transition-colors">‹</button>
+                  <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} className="px-2 py-0.5 border border-slate-200 disabled:opacity-40 hover:bg-slate-50 transition-colors">‹</button>
                   <span>Page {page} / {pageCount}</span>
-                  <button onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={page >= pageCount} className="px-2 py-0.5 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50 transition-colors">›</button>
+                  <button onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={page >= pageCount} className="px-2 py-0.5 border border-slate-200 disabled:opacity-40 hover:bg-slate-50 transition-colors">›</button>
                   <select
                     value={pageSize}
                     onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
-                    className="px-2 py-0.5 rounded border border-slate-200 bg-white focus:outline-none text-xs"
+                    className="px-2 py-0.5 border border-slate-200 bg-white focus:outline-none text-xs"
                   >
                     {[25, 50, 100].map((n) => <option key={n} value={n}>{n} / page</option>)}
                   </select>
@@ -897,7 +897,7 @@ export default function ItemsMasterPage() {
 
         {editingId && (
           <p className="text-xs text-slate-600 text-right">
-            Press <kbd className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 font-mono">✕</kbd> to cancel without saving
+            Press <kbd className="px-1.5 py-0.5 bg-slate-200 text-slate-600 font-mono">✕</kbd> to cancel without saving
           </p>
         )}
       </div>

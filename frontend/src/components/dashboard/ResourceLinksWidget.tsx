@@ -90,7 +90,7 @@ export default function ResourceLinksWidget() {
                       href={link.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-slate-600 hover:bg-green-50 hover:text-green-700 transition-colors group/link"
+                      className="flex items-center gap-2 px-2 py-1.5 text-xs text-slate-600 hover:bg-green-50 hover:text-green-700 transition-colors group/link"
                     >
                       <span className="text-slate-300 group-hover/link:text-green-400 shrink-0 transition-colors">↗</span>
                       <span className="truncate">{link.title}</span>
