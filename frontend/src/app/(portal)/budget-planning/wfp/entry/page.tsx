@@ -612,7 +612,7 @@ function ExpenditureWizard({
             <select
               value={nature}
               onChange={(e) => handleNatureChange(e.target.value as WfpExpenditureNature)}
-              className="w-full border border-slate-200 bg-white text-sm px-3 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-500"
+              className="w-full border border-slate-200 bg-white text-sm px-3 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-500"
             >
               {NATURES.map((n) => (
                 <option key={n} value={n}>{n}</option>
@@ -628,7 +628,7 @@ function ExpenditureWizard({
             <select
               value={frequency}
               onChange={(e) => handleFrequencyChange(e.target.value as WfpExpenditureFrequency)}
-              className="w-full border border-slate-200 bg-white text-sm px-3 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-500"
+              className="w-full border border-slate-200 bg-white text-sm px-3 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-500"
             >
               {FREQUENCIES.map((f) => (
                 <option key={f.value} value={f.value}>{f.label}</option>
@@ -675,7 +675,7 @@ function ExpenditureWizard({
             className="mt-0.5"
           />
           <div className="flex-1">
-            <label htmlFor="applyReserve" className="text-sm text-slate-700 font-medium">
+            <label htmlFor="applyReserve" className="text-sm text-slate-600 font-medium">
               Apply reserve
             </label>
             <p className="text-xs text-slate-600">
@@ -792,14 +792,14 @@ function ExpenditureWizard({
               <div className="flex items-center justify-end gap-4 pt-2 border-t border-slate-200 text-sm">
                 <span className="text-slate-600">
                   Net{" "}
-                  <span className="font-mono tabular-nums text-slate-700">
+                  <span className="font-mono tabular-nums text-slate-600">
                     ₱{formatMoney(combinedNet)}
                   </span>
                 </span>
                 {applyReserve && (
                   <span className="text-slate-600">
                     Reserved{" "}
-                    <span className="font-mono tabular-nums text-slate-700">
+                    <span className="font-mono tabular-nums text-slate-600">
                       ₱{formatMoney(combinedResolvedReserve)}
                     </span>
                   </span>
@@ -1359,7 +1359,7 @@ function WfpEntryPageInner() {
             <select
               value={selectedAipId ?? ""}
               onChange={(e) => setSelectedAipId(e.target.value ? Number(e.target.value) : null)}
-              className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600"
+              className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600"
             >
               <option value="">— select AIP —</option>
               {aipList.map((a) => (
@@ -1389,7 +1389,7 @@ function WfpEntryPageInner() {
                 <select
                   value={selectedDivisionId ?? ""}
                   onChange={(e) => setSelectedDivisionId(e.target.value ? Number(e.target.value) : null)}
-                  className="w-48 truncate border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600"
+                  className="w-48 truncate border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600"
                 >
                   <option value="">— select division —</option>
                   {divisionList.map((d) => (
@@ -1397,7 +1397,7 @@ function WfpEntryPageInner() {
                   ))}
                 </select>
               ) : (
-                <span className="w-48 truncate text-sm text-slate-700 px-2 py-1.5 border border-slate-200 bg-slate-50">
+                <span className="w-48 truncate text-sm text-slate-600 px-2 py-1.5 border border-slate-200 bg-slate-50">
                   {(() => {
                     const div = divisionList.find((d) => d.id === selectedDivisionId);
                     return div ? (div.code ? `${div.code} — ${div.name}` : div.name) : me?.division ?? "—";
@@ -1442,7 +1442,7 @@ function WfpEntryPageInner() {
           {/* Sticky ceiling header (§4.2) */}
           <div className="sticky top-0 z-10 mb-5 bg-white border border-slate-200 px-4 py-3 space-y-2 shadow-sm">
             <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-semibold text-slate-700">
+              <p className="text-sm font-semibold text-slate-800">
                 FY {aipDetail?.fiscalYear} · {selectedConfigOffice?.officeName} ·{" "}
                 {divisionList.find((d) => d.id === selectedDivisionId)?.name ?? me?.division}
               </p>
@@ -1664,7 +1664,7 @@ function WfpEntryPageInner() {
           {selectedActivityId != null && (
             <div className="border border-slate-200">
               <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                <span className="text-sm font-semibold text-slate-700">
+                <span className="text-sm font-semibold text-slate-800">
                   Expenditures — {selectedActivity?.refCode} — {selectedActivity?.name}
                 </span>
                 {loadingActivity && (

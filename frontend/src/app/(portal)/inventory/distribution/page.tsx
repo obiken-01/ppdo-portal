@@ -218,7 +218,7 @@ function DistributeForm({
 
       {/* Total / validation */}
       <div className="text-xs pt-1">
-        <span className={`font-semibold tabular-nums ${overLimit ? "text-red-500" : "text-slate-700"}`}>
+        <span className={`font-semibold tabular-nums ${overLimit ? "text-red-500" : "text-slate-800"}`}>
           Total: {fmt(totalQty)} / {fmt(totalAvailable)} on hand
           {overLimit && " — exceeds available stock"}
         </span>
@@ -542,11 +542,11 @@ export default function DistributionPage() {
                           </div>
                           <div>
                             <p className="text-xs text-slate-600">Date</p>
-                            <p className="text-slate-700">{fmtDate(batch.deliveryDate)}</p>
+                            <p className="text-slate-600">{fmtDate(batch.deliveryDate)}</p>
                           </div>
                           <div>
                             <p className="text-xs text-slate-600">Delivered / Distributed</p>
-                            <p className="tabular-nums text-slate-700">
+                            <p className="tabular-nums text-slate-600">
                               {fmt(batch.qtyDelivered)} / {fmt(batch.qtyDistributed)}
                             </p>
                           </div>
@@ -668,7 +668,7 @@ export default function DistributionPage() {
                             {fmt(d.qtyIssued)}
                           </td>
                           <td className="px-4 py-2.5 text-slate-600">{fmtDate(d.dateIssued)}</td>
-                          <td className="px-4 py-2.5 text-slate-700">{d.issuedBy}</td>
+                          <td className="px-4 py-2.5 text-slate-600">{d.issuedBy}</td>
                           <td className="px-4 py-2.5 text-slate-600">{d.remarks ?? "—"}</td>
                         </tr>
                       ))}

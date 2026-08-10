@@ -361,7 +361,7 @@ export default function PriceIndexConfigPage() {
       className: "whitespace-nowrap",
       render: (p) =>
         p.stockCardNo
-          ? <span className="font-mono text-xs text-slate-700">{p.stockCardNo}</span>
+          ? <span className="font-mono text-xs text-slate-600">{p.stockCardNo}</span>
           : <span className="text-slate-600">—</span>,
     },
     {
@@ -616,7 +616,7 @@ export default function PriceIndexConfigPage() {
                 className="mt-0.5 h-4 w-4 accent-green-600"
               />
               <span>
-                <span className="block text-sm font-medium text-slate-700">Enable &quot;Days&quot; in WFP entry</span>
+                <span className="block text-sm font-medium text-slate-600">Enable &quot;Days&quot; in WFP entry</span>
                 <span className="block text-[11px] text-slate-600">
                   For multi-day items (venue rental, food, accommodation) where cost scales by the
                   number of days. Leave off for everything else.

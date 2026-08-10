@@ -30,7 +30,7 @@ export default function RichTextToolbar({ editor }: RichTextToolbarProps) {
     return `px-2 py-1 text-xs font-medium border transition-colors ${
       active
         ? "bg-green-700 text-white border-green-700"
-        : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+        : "bg-white text-slate-800 border-slate-200 hover:bg-slate-50"
     }`;
   }
 
@@ -139,7 +139,7 @@ export default function RichTextToolbar({ editor }: RichTextToolbarProps) {
           }
         }}
         defaultValue=""
-        className="text-xs border border-slate-200 px-1.5 py-1 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-500"
+        className="text-xs border border-slate-200 px-1.5 py-1 bg-white text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-500"
         title="Font family"
       >
         <option value="">Default font</option>

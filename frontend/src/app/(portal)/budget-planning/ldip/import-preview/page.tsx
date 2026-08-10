@@ -216,7 +216,7 @@ export default function LdipImportPreviewPage() {
                 const progCount = office.groups.reduce((n, g) => n + g.programs.length, 0);
                 return (
                   <div key={office.officeId} className="px-4 py-3 grid grid-cols-3 items-center text-sm gap-2">
-                    <span className="font-medium text-slate-700 col-span-1">
+                    <span className="font-medium text-slate-600 col-span-1">
                       {office.officeCode} — {office.officeName}
                     </span>
                     <span className="text-slate-600 text-xs text-right">
@@ -244,13 +244,13 @@ export default function LdipImportPreviewPage() {
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between gap-2">
                 <dt className="text-slate-600">Filename</dt>
-                <dd className="text-slate-700 font-medium truncate text-right max-w-[60%]" title={meta?.originalFilename}>
+                <dd className="text-slate-600 font-medium truncate text-right max-w-[60%]" title={meta?.originalFilename}>
                   {meta?.originalFilename ?? "—"}
                 </dd>
               </div>
               <div className="flex justify-between gap-2">
                 <dt className="text-slate-600">Period</dt>
-                <dd className="text-slate-700 font-medium">
+                <dd className="text-slate-600 font-medium">
                   {preview.fiscalYearStart}–{preview.fiscalYearEnd}
                 </dd>
               </div>

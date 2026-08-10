@@ -438,7 +438,7 @@ export default function WfpProcurementItemTable({
                 </div>
                 <div className="flex-1 min-w-0">
                   <label className="block text-[11px] text-slate-600 mb-0.5">Line Total</label>
-                  <div className="w-full px-2 py-1.5 text-sm text-right font-mono tabular-nums text-slate-700 bg-slate-50 border border-slate-200">
+                  <div className="w-full px-2 py-1.5 text-sm text-right font-mono tabular-nums text-slate-600 bg-slate-50 border border-slate-200">
                     ₱{formatMoney(lineTotal)}
                   </div>
                 </div>
@@ -462,17 +462,17 @@ export default function WfpProcurementItemTable({
         {(["q1", "q2", "q3", "q4"] as const).map((q, i) => (
           <div key={q}>
             <div className="text-[10px] text-slate-600 uppercase tracking-wide">Q{i + 1}</div>
-            <div className="text-sm font-mono tabular-nums text-slate-700">₱{formatMoney(preview[q])}</div>
+            <div className="text-sm font-mono tabular-nums text-slate-600">₱{formatMoney(preview[q])}</div>
           </div>
         ))}
       </div>
       <div className="flex items-center justify-end gap-4 text-sm">
         <span className="text-slate-600">
-          Net <span className="font-mono tabular-nums text-slate-700">₱{formatMoney(preview.net)}</span>
+          Net <span className="font-mono tabular-nums text-slate-600">₱{formatMoney(preview.net)}</span>
         </span>
         {applyReserve && (
           <span className="text-slate-600">
-            Reserved <span className="font-mono tabular-nums text-slate-700">₱{formatMoney(resolvedReserve)}</span>
+            Reserved <span className="font-mono tabular-nums text-slate-600">₱{formatMoney(resolvedReserve)}</span>
           </span>
         )}
         <span className="font-semibold text-slate-800">

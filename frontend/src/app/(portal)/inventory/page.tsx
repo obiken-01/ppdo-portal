@@ -342,25 +342,25 @@ export default function InventoryDashboardPage() {
             </Link>
             <Link
               href="/inventory/receive-delivery"
-              className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium transition-colors"
+              className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 text-sm font-medium transition-colors"
             >
               <span>🚚</span> Receive Delivery
             </Link>
             <Link
               href="/inventory/pr-report"
-              className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium transition-colors"
+              className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 text-sm font-medium transition-colors"
             >
               <span>📊</span> PR Report
             </Link>
             <Link
               href="/inventory/distribution"
-              className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium transition-colors"
+              className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 text-sm font-medium transition-colors"
             >
               <span>📦</span> Distribution
             </Link>
             <Link
               href="/inventory/stock-balances"
-              className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium transition-colors"
+              className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 text-sm font-medium transition-colors"
             >
               <span>🏭</span> Warehouse Stock
             </Link>
@@ -446,7 +446,7 @@ export default function InventoryDashboardPage() {
       {/* ── PR Status Table ───────────────────────────────────────────────── */}
       <div className="bg-white border border-slate-200 shadow-sm overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-          <h2 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
             <span>📋</span> Purchase Request Status
           </h2>
           <Link
@@ -512,7 +512,7 @@ export default function InventoryDashboardPage() {
                     <td className="px-4 py-2.5 min-w-[100px]">
                       <FulfillmentBar pr={pr} ledger={ledger} />
                     </td>
-                    <td className="px-4 py-2.5 text-right text-xs font-medium text-slate-700 whitespace-nowrap">
+                    <td className="px-4 py-2.5 text-right text-xs font-medium text-slate-600 whitespace-nowrap">
                       {fmtCurrency(pr.totalAmount)}
                     </td>
                     <td className="px-4 py-2.5">
@@ -534,7 +534,7 @@ export default function InventoryDashboardPage() {
       {/* ── Inventory Alerts Table ────────────────────────────────────────── */}
       <div className="bg-white border border-slate-200 shadow-sm overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-          <h2 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
             <span>⚠️</span> Inventory Alerts
             {alertItems.length > 0 && (
               <span className="ml-1 px-2 py-0.5 bg-danger-100 text-danger-500 text-xs font-semibold">
@@ -578,10 +578,10 @@ export default function InventoryDashboardPage() {
                       idx % 2 === 0 ? "bg-white" : "bg-slate-50/50"
                     }`}
                   >
-                    <td className="px-4 py-2.5 font-mono text-xs font-semibold text-slate-700">
+                    <td className="px-4 py-2.5 font-mono text-xs font-semibold text-slate-800">
                       {item.stockNo}
                     </td>
-                    <td className="px-4 py-2.5 text-slate-700 text-xs max-w-[240px] truncate">
+                    <td className="px-4 py-2.5 text-slate-600 text-xs max-w-[240px] truncate">
                       {item.description}
                     </td>
                     <td className="px-4 py-2.5 text-slate-600 text-xs">{item.unit}</td>

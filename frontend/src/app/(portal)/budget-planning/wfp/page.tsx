@@ -387,7 +387,7 @@ function ExpenditurePopup({
             className={`px-5 py-2 text-sm font-medium border-b-2 transition-colors ${
               activeTab === tab
                 ? TAB_COLORS[tab].active
-                : "border-transparent text-slate-600 hover:text-slate-700"
+                : "border-transparent text-slate-600 hover:text-slate-800"
             }`}
           >
             {tab}
@@ -440,7 +440,7 @@ function ExpenditurePopup({
                       {/* OBJECT OF EXPENDITURE */}
                       <td className="px-2 py-1.5">
                         {readonly ? (
-                          <span className="text-slate-700">
+                          <span className="text-slate-600">
                             {selectedAccount
                               ? `${selectedAccount.accountTitle} (${selectedAccount.accountNumber})`
                               : "—"}
@@ -479,7 +479,7 @@ function ExpenditurePopup({
                       </td>
 
                       {/* NET */}
-                      <td className="px-2 py-1.5 text-right font-medium text-slate-700 whitespace-nowrap">
+                      <td className="px-2 py-1.5 text-right font-medium text-slate-600 whitespace-nowrap">
                         {formatMoney(net)}
                       </td>
 
@@ -502,7 +502,7 @@ function ExpenditurePopup({
                       {/* LINE TOTAL */}
                       <td
                         className={`px-2 py-1.5 text-right font-medium whitespace-nowrap ${
-                          isOver ? "text-red-600" : "text-slate-700"
+                          isOver ? "text-red-600" : "text-slate-600"
                         }`}
                       >
                         {formatMoney(quarterly)}
@@ -558,7 +558,7 @@ function ExpenditurePopup({
                                 {label}
                               </span>
                               {readonly ? (
-                                <span className="text-xs text-slate-700">
+                                <span className="text-xs text-slate-600">
                                   {(line[key] as string | null) ?? "—"}
                                 </span>
                               ) : (
@@ -1156,7 +1156,7 @@ function WfpPageInner() {
                 setSelectedAipId(e.target.value ? Number(e.target.value) : null);
               }}
               disabled={isFinal}
-              className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600 disabled:opacity-60"
+              className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600 disabled:opacity-60"
             >
               <option value="">— select AIP —</option>
               {aipList.map((a) => (
@@ -1190,7 +1190,7 @@ function WfpPageInner() {
                 <select
                   value={selectedDivisionId ?? ""}
                   onChange={(e) => setSelectedDivisionId(e.target.value ? Number(e.target.value) : null)}
-                  className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600"
+                  className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600"
                 >
                   <option value="">— all divisions —</option>
                   {divisionList.map((d) => (
@@ -1198,7 +1198,7 @@ function WfpPageInner() {
                   ))}
                 </select>
               ) : (
-                <span className="text-sm text-slate-700 px-2 py-1.5 border border-slate-200 bg-slate-50">
+                <span className="text-sm text-slate-600 px-2 py-1.5 border border-slate-200 bg-slate-50">
                   {divisionList.find((d) => d.id === selectedDivisionId)?.name ?? me?.division ?? "—"}
                 </span>
               )}
@@ -1286,11 +1286,11 @@ function WfpPageInner() {
                       <tr className="bg-slate-200">
                         <td
                           colSpan={12}
-                          className="px-3 py-1.5 text-xs font-bold text-slate-700 uppercase tracking-wide"
+                          className="px-3 py-1.5 text-xs font-bold text-slate-600 uppercase tracking-wide"
                         >
                           <button
                             onClick={() => toggleCollapse(sKey)}
-                            className="mr-2 text-slate-600 hover:text-slate-700 leading-none"
+                            className="mr-2 text-slate-600 hover:text-slate-800 leading-none"
                           >
                             {collapsed.has(sKey) ? "▶" : "▼"}
                           </button>
@@ -1331,7 +1331,7 @@ function WfpPageInner() {
                                   <td className="px-3 py-2 font-mono text-xs text-slate-600 whitespace-nowrap">
                                     {program.refCode}
                                   </td>
-                                  <td className="px-3 py-2 pl-6 font-semibold text-slate-700">
+                                  <td className="px-3 py-2 pl-6 font-semibold text-slate-800">
                                     <div className="flex items-start gap-1">
                                       <button
                                         onClick={() => toggleCollapse(pKey)}
@@ -1357,7 +1357,7 @@ function WfpPageInner() {
                                         <td className="px-3 py-2 font-mono text-xs text-slate-600 whitespace-nowrap">
                                           {project.refCode}
                                         </td>
-                                        <td className="px-3 py-2 pl-10 font-medium text-slate-700">
+                                        <td className="px-3 py-2 pl-10 font-medium text-slate-600">
                                           <div className="flex items-start gap-1">
                                             <button
                                               onClick={() => toggleCollapse(prKey)}
@@ -1387,7 +1387,7 @@ function WfpPageInner() {
                                             <td className="px-3 py-2 font-mono text-xs text-slate-600 leading-tight whitespace-nowrap">
                                               {activity.refCode}
                                             </td>
-                                            <td className="px-3 py-2 pl-14 text-slate-700">
+                                            <td className="px-3 py-2 pl-14 text-slate-600">
                                               <ClampedName name={activity.name} />
                                             </td>
                                             <td className="px-3 py-2 text-xs text-slate-600 whitespace-nowrap">

@@ -676,7 +676,7 @@ export default function AccountConfigPage() {
                 className="mt-0.5 h-4 w-4 accent-green-600"
               />
               <span>
-                <span className="block text-sm font-medium text-slate-700">Reserve applies by default</span>
+                <span className="block text-sm font-medium text-slate-600">Reserve applies by default</span>
                 <span className="block text-[11px] text-slate-600">
                   Pre-fills the WFP reserve toggle for this account. Any account may still have the reserve
                   toggle turned on regardless of this setting — it is a default, not an eligibility gate.

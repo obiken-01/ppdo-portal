@@ -383,7 +383,7 @@ export default function ResourceLinksPage() {
                       href={link.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex-1 min-w-0 flex items-center gap-2 text-sm text-slate-700 hover:text-green-700 transition-colors"
+                      className="flex-1 min-w-0 flex items-center gap-2 text-sm text-slate-600 hover:text-green-700 transition-colors"
                     >
                       <span className="text-slate-300 group-hover/row:text-green-400 shrink-0 transition-colors text-xs">↗</span>
                       <span className="truncate">{link.title}</span>

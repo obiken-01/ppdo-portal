@@ -280,7 +280,7 @@ export default function AipListPage() {
         <select
           value={fy}
           onChange={(e) => setFy(Number(e.target.value))}
-          className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600"
+          className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600"
         >
           {FY_OPTIONS.map((y) => (
             <option key={y} value={y}>
@@ -293,7 +293,7 @@ export default function AipListPage() {
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600"
+          className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600"
         >
           <option value="">All Status</option>
           <option value="Draft">Draft</option>
@@ -305,7 +305,7 @@ export default function AipListPage() {
         <select
           value={sourceFilter}
           onChange={(e) => setSourceFilter(e.target.value)}
-          className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600"
+          className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600"
         >
           <option value="">All Sources</option>
           <option value="Upload">Upload</option>

@@ -456,7 +456,7 @@ export default function ItemsMasterPage() {
               placeholder="SUP-001"
             />
           ) : (
-            <span className="font-mono text-xs text-slate-700">{getValue<string>()}</span>
+            <span className="font-mono text-xs text-slate-600">{getValue<string>()}</span>
           ),
       },
       // Description
@@ -532,7 +532,7 @@ export default function ItemsMasterPage() {
               onWrite={(v) => { if (editRef.current) editRef.current.unitCost = parseFloat(v) || 0; }}
             />
           ) : (
-            <span className="text-slate-700 text-sm tabular-nums">₱{fmt(getValue<number>())}</span>
+            <span className="text-slate-600 text-sm tabular-nums">₱{fmt(getValue<number>())}</span>
           ),
       },
       // Item Type
@@ -783,7 +783,7 @@ export default function ItemsMasterPage() {
                         <th key={h.id} style={{ width: h.getSize() }} className="text-left px-3 py-2.5 font-medium select-none">
                           {h.isPlaceholder ? null : (
                             <div
-                              className={h.column.getCanSort() ? "cursor-pointer flex items-center gap-1 hover:text-slate-700" : ""}
+                              className={h.column.getCanSort() ? "cursor-pointer flex items-center gap-1 hover:text-slate-800" : ""}
                               onClick={h.column.getToggleSortingHandler()}
                             >
                               {flexRender(h.column.columnDef.header, h.getContext())}

@@ -50,17 +50,19 @@ reasoning here is load-bearing (RAL-133) — read the whole table before picking
 | `slate-100` | `#F1F3F5` | — | Page background |
 | `slate-50` | `#F8F9FA` | — | Zebra rows |
 
-> ### ⚠️ `slate-700` is not a PPDO token
+> ### ⚠️ `slate-700` is not a PPDO token — migrated, keep it that way
 >
-> There is **no `slate-700` in `tailwind.config.ts`**, but it is used **215 times across 46 files**.
-> Those all silently resolve to stock Tailwind `#334155` — which is *blue-tinted*, unlike every
-> shade in the PPDO ramp above. It is not a contrast failure (it's very dark), so this is a
-> **palette-coherence** bug, not an accessibility one: headings drift blue while the surrounding
-> text stays neutral grey.
+> There is **no `slate-700` in `tailwind.config.ts`**. Any use silently resolves to stock Tailwind
+> `#334155` — which is *blue-tinted*, unlike every shade in the PPDO ramp above. It is not a
+> contrast failure (it's very dark), so this is a **palette-coherence** bug, not an accessibility
+> one: headings drift blue while the surrounding text stays neutral grey.
 >
-> **For new code: use `slate-800` for headings and `slate-600` for body text. Never `slate-700`.**
+> **Use `slate-800` for headings and `slate-600` for body text. Never `slate-700`.**
 > This is the same class of bug RAL-133 fixed for `slate-400`/`slate-500` — an undefined shade
-> falling back to an unreviewed stock value. Migration is tracked in §7.
+> falling back to an unreviewed stock value.
+>
+> ✅ **Migrated 2026-08-10 (§7 item 1).** All 215 uses across 46 files are gone; the compiled CSS
+> emits no `text-slate-700` rule at all. Reintroducing one is a regression — grep before merging.
 
 ### Status colours
 
@@ -234,12 +236,12 @@ making them uniform.
 
 | # | Divergence | Current state | Target | Priority |
 |---|---|---|---|---|
-| 1 | **`slate-700`** | 215 uses / 46 files; not a PPDO token, resolves to blue-tinted stock `#334155` | `slate-800` headings, `slate-600` body | **High** — most widespread, mechanical |
+| 1 | ~~**`slate-700`**~~ | ✅ **Done 2026-08-10** — all 215 uses across 46 files migrated; compiled CSS emits no `text-slate-700` rule | `slate-800` headings/buttons/emphasis, `slate-600` body | — |
 | 2 | **Page shell** | 4 variants: Inventory `gap-6 p-3 sm:p-6` no max-width · Config `max-w-6xl px-6 py-6 space-y-4` · Budget Planning `p-6 max-w-screen-xl` · `admin/users` bare `space-y-4` | §4 shell | **High** |
-| 3 | **`h1` size** | `text-xl` (Inventory dashboard, BP sub-pages) vs `text-lg` (`ConfigPageHeader.tsx:26`, `config/page.tsx`, `budget-planning/page.tsx`) | **`text-xl`** — one line in `ConfigPageHeader` covers all 7 Config pages; then the 2 dashboards | **High** — smallest change, widest effect |
-| 4 | **`h2` styling** | 5 treatments: `text-sm`+`slate-700`, `text-base`+`slate-800`, `text-sm`+`slate-800`, `text-lg font-bold` (modals), `text-xs uppercase` | `text-sm font-semibold text-slate-800`; modals `text-base font-semibold` | Medium |
-| 5 | **`ConfigPageHeader` adoption** | Config only (7 files). Inventory and Budget Planning hand-roll the same markup — the exact duplication RAL-201 consolidated | Use it everywhere | Medium |
-| 6 | **Inventory sub-pages have no `h1`** | `items-master`, `item-ledger`, `pr-register`, `pr-report`, `distribution` render no page title at all | Add `ConfigPageHeader` | Medium |
+| 3 | ~~**`h1` size**~~ | ✅ **Done** (PR #214) — `ConfigPageHeader.tsx:26` and both dashboards use `text-xl` | **`text-xl`** | — |
+| 4 | ~~**`h2` styling**~~ | ✅ **Done 2026-08-10** — 14 portal section headings on target; both dialog titles on `text-base`. Remaining variants are the deliberate exceptions listed below | `text-sm font-semibold text-slate-800`; modals `text-base font-semibold` | — |
+| 5 | ~~**`ConfigPageHeader` adoption**~~ | ✅ **Done 2026-08-10** — adopted by the Inventory dashboard, the BP dashboard, and the AIP/LDIP/Allocation/Report/WFP pages. `title`/`description` widened `string` → `ReactNode` so WFP's inline promo badge and status pill didn't have to be flattened or moved into `actions`. Not adopted by wizards or per-record detail views — see exceptions below | Use it everywhere | — |
+| 6 | ~~**Inventory sub-pages have no `h1`**~~ | ✅ **Done 2026-08-10** — all 5 (`items-master`, `item-ledger`, `pr-register`, `pr-report`, `distribution`) now render a `ConfigPageHeader` | Add `ConfigPageHeader` | — |
 | 7 | **Rounded corners in portal** | `items-master` 8 (`rounded-lg`×7, `rounded-xl`×1) · `StatCard.tsx` `rounded-xl` · `ResourceLinksWidget` · `admin/users` · `profile` · `DashboardCalendar` `rounded-sm` | Remove (keep `rounded-full`) | Medium — `StatCard` first, it's shared |
 | 8 | **`lucide-react` unused** | Declared dependency, 0 imports | Decide: adopt or remove | Low |
 | 9 | **Dark mode** | Scaffolded, unimplemented, unreviewed | Decide: finish or remove | Low |
@@ -258,16 +260,47 @@ Don't "fix" these — the difference carries meaning:
   one or two. Dashboards may keep `text-sm` section headings where a detail page uses more space.
 - **Bespoke skeletons** in `pr-report` (3-section report) and `distribution` (stat card + card
   list). Neither is a single table, so `TableSkeleton` genuinely doesn't fit.
+- **Config tile titles** (`config/page.tsx`, `text-base font-semibold`). These are *card titles* in
+  a tile grid, not section headings — shrinking them to `text-sm` would flatten the landing page's
+  visual hierarchy. Added as an explicit exception when item 4 was migrated.
+- **Full-page success screens** (`create-pr`, `receive-delivery`, `text-lg font-bold`). §7 item 4
+  originally filed these under "modals", but they are neither modals nor section headings: they are
+  the sole message on an otherwise empty `min-h-screen` confirmation page. Demoting them to
+  `text-base font-semibold` would weaken the one thing the page exists to say. Left as-is.
+- **Per-record detail/edit views** (`aip/detail`, `ldip/LdipForm`, and both `import-preview` pages)
+  keep their hand-rolled header. Each computes its title from the record (`"AIP FY {year}"`, a
+  filename, `record.refCode`) and renders a `StatusBadge` beside it — a materially different shape
+  from the "list page header" §7 item 5 targeted, closer to a detail-view header than a page title.
+  Not converted when item 5 shipped.
+- **`account`, `announcements`, `admin/users`.** Outside item 5's stated scope of "Inventory and
+  Budget Planning hand-roll the same markup" — left alone, not audited. `admin/users` still renders
+  no page title at all, same gap item 6 fixed for Inventory; a candidate for a future finding, not
+  claimed as done here.
 
 ### Sequencing note
 
-Item 3 is the cheapest win: change `text-lg` → `text-xl` in `ConfigPageHeader.tsx:26` and all 7
-Config pages follow, then fix the 2 remaining dashboard titles by hand. Do it first — while the
-component disagrees with §2, the doc contradicts itself.
+Items 1, 3, 4, 5, and 6 are done. Only **2** (page shell), **7** (rounded corners), and the two
+open decisions (**8**, **9**) remain.
 
-Items 1 and 4 are find-and-replace-shaped and safe to batch. Item 2 changes layout and should be
-done one page family at a time with a visual check on each. Item 7's `StatCard` is shared — change
-it once and every consumer follows, so verify the dashboard after.
+Items 1 and 4 (2026-08-10) were **less mechanical than "find-and-replace-shaped" suggests**:
+`slate-700` maps to two different targets depending on role, so the sweep needed a per-occurrence
+decision. The mapping actually used, derived from what the untouched majority of the codebase
+already did (`<td>` 72:26, `<label>` 128:13, non-broken inputs 14:3 — all favouring `slate-600`):
+
+- `slate-800` — `h1`/`h2`, §6 secondary buttons, and `font-semibold`/`font-bold` emphasis
+- `slate-600` — everything else: body, table cells, form labels, input and select text
+- `hover:text-slate-700` → `hover:text-slate-800` (darkens from a `slate-600` base)
+- `text-xs uppercase tracking-wide` micro-labels → `slate-600`, per §2's card/stat label row
+
+Items 5 and 6 (2026-08-10) turned out to have a real scope decision buried in "use it everywhere":
+not every page with a title is a *list-page* header. Wizards were already an exception; per-record
+detail/edit views (dynamic title + adjacent `StatusBadge`) were added as a second one, and three
+pages outside item 5's own stated scope (Inventory + Budget Planning) were left alone rather than
+silently pulled in. See "Deliberately NOT unified" above for the full reasoning.
+
+Item 2 changes layout and should be done one page family at a time with a visual check on each.
+Item 7's `StatCard` is shared — change it once and every consumer follows, so verify the dashboard
+after.
 
 None of this changes the *design*, only its consistency. The look is reviewed and deliberate: flat
 by decision, contrast-audited in RAL-133, mobile-fixed in RAL-201. **This document describes the

@@ -79,7 +79,7 @@ function ReadinessPanel({
           Open →
         </Link>
       </div>
-      <div className="flex-1 text-sm text-slate-700 space-y-1.5">{children}</div>
+      <div className="flex-1 text-sm text-slate-600 space-y-1.5">{children}</div>
     </div>
   );
 }
@@ -338,7 +338,7 @@ function FundCeilingCard({ fund }: { fund: FundCeiling }) {
 
   return (
     <div className="bg-white border border-slate-200 p-4">
-      <p className="text-sm font-semibold text-slate-700 mb-2">{fund.fundName}</p>
+      <p className="text-sm font-semibold text-slate-800 mb-2">{fund.fundName}</p>
       <div className="relative h-40 mb-2">
         <canvas ref={canvasRef} />
       </div>
@@ -348,7 +348,7 @@ function FundCeilingCard({ fund }: { fund: FundCeiling }) {
           style={{ backgroundColor: REMAINING_COLOR, borderRadius: "50%" }}
         />
         <span className="text-slate-600">Remaining</span>
-        <span className="float-right font-medium text-slate-700">₱{formatMoney(fund.remaining)}</span>
+        <span className="float-right font-medium text-slate-600">₱{formatMoney(fund.remaining)}</span>
       </p>
       {fund.byDivision.map((d, i) => (
         <p key={d.divisionId} className="text-xs mb-1">
@@ -357,7 +357,7 @@ function FundCeilingCard({ fund }: { fund: FundCeiling }) {
             style={{ backgroundColor: divisionColor(i), borderRadius: "50%" }}
           />
           <span className="text-slate-600">{d.divisionCode ?? d.divisionName}</span>
-          <span className="float-right text-slate-700">₱{formatMoney(d.amount)}</span>
+          <span className="float-right text-slate-600">₱{formatMoney(d.amount)}</span>
         </p>
       ))}
     </div>
@@ -379,7 +379,7 @@ function DivisionRow({ division }: { division: DivisionWfpStatus }) {
         className="border-t border-slate-100 cursor-pointer hover:bg-slate-50"
         onClick={() => setExpanded((e) => !e)}
       >
-        <td className="px-4 py-2.5 text-sm text-slate-700">
+        <td className="px-4 py-2.5 text-sm text-slate-600">
           <span
             className={`inline-block mr-1.5 transition-transform text-slate-400 ${expanded ? "rotate-90" : ""}`}
           >
@@ -390,13 +390,13 @@ function DivisionRow({ division }: { division: DivisionWfpStatus }) {
         <td className="px-4 py-2.5">
           <WfpStatusBadge status={division.wfpStatus} />
         </td>
-        <td className="px-4 py-2.5 text-sm text-right text-slate-700">
+        <td className="px-4 py-2.5 text-sm text-right text-slate-600">
           {division.activitiesWithExpenditures} / {division.totalActivities}
         </td>
-        <td className="px-4 py-2.5 text-sm text-right font-medium text-slate-700">
+        <td className="px-4 py-2.5 text-sm text-right font-medium text-slate-600">
           ₱{formatMoney(division.totalAllocated)}
         </td>
-        <td className="px-4 py-2.5 text-sm text-right font-medium text-slate-700">
+        <td className="px-4 py-2.5 text-sm text-right font-medium text-slate-600">
           ₱{formatMoney(totalRemaining)}
         </td>
       </tr>
@@ -556,7 +556,7 @@ export default function BudgetPlanningPage() {
               Fiscal Year
             </label>
             <select
-              className="border border-slate-200 bg-white text-sm text-slate-700 px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-green-500"
+              className="border border-slate-200 bg-white text-sm text-slate-600 px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-green-500"
               value={fiscalYear ?? ""}
               onChange={(e) => {
                 const fy = Number(e.target.value);
@@ -577,7 +577,7 @@ export default function BudgetPlanningPage() {
             <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
               Office
             </span>
-            <span className="text-sm text-slate-700 bg-white border border-slate-200 px-3 py-1.5">
+            <span className="text-sm text-slate-600 bg-white border border-slate-200 px-3 py-1.5">
               {officeLabel}
             </span>
           </div>
@@ -593,7 +593,7 @@ export default function BudgetPlanningPage() {
             <Link
               key={label}
               href={href}
-              className="px-5 py-2 bg-white border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-green-50 hover:border-green-300 hover:text-green-700 transition-colors"
+              className="px-5 py-2 bg-white border border-slate-200 text-sm font-semibold text-slate-800 hover:bg-green-50 hover:border-green-300 hover:text-green-700 transition-colors"
             >
               {label}
             </Link>
@@ -624,7 +624,7 @@ export default function BudgetPlanningPage() {
           );
           return setUpFunds.length > 0 && (
             <div>
-              <h2 className="text-sm font-semibold text-slate-700 mb-2">
+              <h2 className="text-sm font-semibold text-slate-800 mb-2">
                 Ceiling and Allocation by Fund — FY {fiscalYear ?? "…"}
               </h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -641,7 +641,7 @@ export default function BudgetPlanningPage() {
           <div className="bg-white border border-slate-200">
             <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
               <div>
-                <h2 className="text-sm font-semibold text-slate-700">
+                <h2 className="text-sm font-semibold text-slate-800">
                   WFP Status by Division — FY {fiscalYear ?? "…"}
                 </h2>
                 <p className="text-xs text-slate-600 mt-0.5">Click a row to see allocation per fund</p>
@@ -690,7 +690,7 @@ export default function BudgetPlanningPage() {
         {/* ── Recent activity (both views) ──────────────────────────────────── */}
         <div className="bg-white border border-slate-200">
           <div className="px-5 py-4 border-b border-slate-100">
-            <h2 className="text-sm font-semibold text-slate-700">Recent Activity</h2>
+            <h2 className="text-sm font-semibold text-slate-800">Recent Activity</h2>
             <p className="text-xs text-slate-600 mt-0.5">{officeLabel}</p>
           </div>
           <div className="divide-y divide-slate-50">
@@ -706,7 +706,7 @@ export default function BudgetPlanningPage() {
             ) : (
               activity.map((entry) => (
                 <div key={entry.id} className="px-5 py-3 flex items-start justify-between gap-4">
-                  <div className="text-sm text-slate-700">
+                  <div className="text-sm text-slate-600">
                     <span className="font-medium">{entry.actorName}</span>
                     {" — "}
                     <span className="text-slate-600">
