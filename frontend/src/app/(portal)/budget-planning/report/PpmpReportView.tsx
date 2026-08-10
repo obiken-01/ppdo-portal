@@ -135,7 +135,7 @@ function FundBlock({
                       <td className="px-2 py-1.5 font-mono text-slate-600 border border-slate-200 break-words align-top">
                         {row.refCode}
                       </td>
-                      <td colSpan={16} className="px-2 py-1.5 pl-4 font-medium text-slate-700 border border-slate-200">
+                      <td colSpan={16} className="px-2 py-1.5 pl-4 font-medium text-slate-600 border border-slate-200">
                         {row.name}
                       </td>
                     </tr>
@@ -147,7 +147,7 @@ function FundBlock({
                       <td className="px-2 py-1.5 font-mono text-slate-600 border border-slate-200 break-words align-top">
                         {row.refCode}
                       </td>
-                      <td colSpan={16} className="px-2 py-1.5 pl-8 text-slate-700 border border-slate-200">
+                      <td colSpan={16} className="px-2 py-1.5 pl-8 text-slate-600 border border-slate-200">
                         {row.name}
                       </td>
                     </tr>
@@ -168,7 +168,7 @@ function FundBlock({
                 case "item": {
                   const it = row.item;
                   itemNo += 1;
-                  const cell = "px-2 py-1 border border-slate-200 text-slate-700";
+                  const cell = "px-2 py-1 border border-slate-200 text-slate-600";
                   const rightCell = `${cell} text-right tabular-nums whitespace-nowrap`;
                   return (
                     <tr key={i}>

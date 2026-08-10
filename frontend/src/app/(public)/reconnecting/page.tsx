@@ -151,7 +151,7 @@ function ReconnectingPageInner() {
               <button
                 type="button"
                 onClick={handleCancel}
-                className="w-full bg-white text-slate-700 font-medium py-2.5 rounded-lg text-sm
+                className="w-full bg-white text-slate-800 font-medium py-2.5 rounded-lg text-sm
                            border border-slate-300 hover:bg-slate-50 transition-colors
                            focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2"
               >

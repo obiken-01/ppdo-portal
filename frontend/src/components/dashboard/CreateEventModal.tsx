@@ -123,7 +123,7 @@ export default function CreateEventModal({
       <div className="space-y-4">
         {/* Title */}
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">
+          <label className="block text-sm font-medium text-slate-600 mb-1">
             Title <span className="text-red-500">*</span>
           </label>
           <input
@@ -138,7 +138,7 @@ export default function CreateEventModal({
 
         {/* Description */}
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+          <label className="block text-sm font-medium text-slate-600 mb-1">Description</label>
           <textarea
             value={description}
             onChange={(e) => setDesc(e.target.value)}
@@ -151,7 +151,7 @@ export default function CreateEventModal({
         {/* Date range */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
+            <label className="block text-sm font-medium text-slate-600 mb-1">
               Start Date <span className="text-red-500">*</span>
             </label>
             <input
@@ -166,7 +166,7 @@ export default function CreateEventModal({
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
+            <label className="block text-sm font-medium text-slate-600 mb-1">
               End Date <span className="text-slate-600 font-normal">(optional)</span>
             </label>
             <input
@@ -188,20 +188,20 @@ export default function CreateEventModal({
             onChange={(e) => setIsAllDay(e.target.checked)}
             className="accent-green-600"
           />
-          <label htmlFor="isAllDay" className="text-sm text-slate-700">All day</label>
+          <label htmlFor="isAllDay" className="text-sm text-slate-600">All day</label>
         </div>
 
         {/* Event type — fixed at creation, not editable */}
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">Type</label>
+          <label className="block text-sm font-medium text-slate-600 mb-2">Type</label>
           {isEditing ? (
-            <span className="inline-block px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-700">
+            <span className="inline-block px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-600">
               {eventType}
             </span>
           ) : (
             <div className="flex gap-4">
               {(["Office", "Personal"] as const).map((t) => (
-                <label key={t} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                <label key={t} className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
                   <input
                     type="radio"
                     name="eventType"

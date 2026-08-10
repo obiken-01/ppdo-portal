@@ -175,7 +175,7 @@ function ProgramEditPanel({
   }
 
   const fieldCls =
-    "w-full border border-slate-300 bg-white text-xs px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600";
+    "w-full border border-slate-300 bg-white text-xs px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600";
   const labelCls = "block text-[10px] font-bold text-slate-600 uppercase tracking-wide mb-1";
 
   return (
@@ -295,7 +295,7 @@ function SectionHead({ num, title, hint }: { num: number; title: string; hint?: 
       <span className="w-5 h-5 rounded-full bg-green-700 text-white text-[11px] font-bold flex items-center justify-center shrink-0">
         {num}
       </span>
-      <span className="text-sm font-semibold text-slate-700">{title}</span>
+      <span className="text-sm font-semibold text-slate-800">{title}</span>
       {hint && <span className="text-xs text-slate-600">{hint}</span>}
     </div>
   );
@@ -630,7 +630,7 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
   if (!me) return null;
 
   const inputCls = (user: boolean) =>
-    `border border-slate-200 text-sm px-3 py-2 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600 disabled:cursor-not-allowed disabled:text-slate-500 ${
+    `border border-slate-200 text-sm px-3 py-2 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600 disabled:cursor-not-allowed disabled:text-slate-500 ${
       user ? "bg-yellow-50" : "bg-slate-100"
     }`;
 
@@ -670,7 +670,7 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
             <button
               onClick={handleSaveDraft}
               disabled={saving}
-              className="px-4 py-1.5 text-sm font-medium border border-slate-300 text-slate-700 bg-white hover:bg-slate-50 transition-colors disabled:opacity-60 flex items-center gap-2"
+              className="px-4 py-1.5 text-sm font-medium border border-slate-300 text-slate-800 bg-white hover:bg-slate-50 transition-colors disabled:opacity-60 flex items-center gap-2"
             >
               {saving && (
                 <span className="w-3.5 h-3.5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
@@ -753,7 +753,7 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
               Office <span className="text-red-500">*</span>
             </label>
             {isOfficeUser || isReadOnly ? (
-              <span className="inline-block text-sm text-slate-700 bg-slate-100 border border-slate-200 px-3 py-2">
+              <span className="inline-block text-sm text-slate-600 bg-slate-100 border border-slate-200 px-3 py-2">
                 {isMultiOffice
                   ? "All Offices"
                   : office
@@ -929,7 +929,7 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
                             <button
                               onClick={() => toggleExpanded(p.key)}
                               title={expanded ? "Hide uploaded detail" : "Show uploaded detail"}
-                              className="w-4 h-4 flex items-center justify-center text-slate-600 hover:text-slate-700"
+                              className="w-4 h-4 flex items-center justify-center text-slate-600 hover:text-slate-800"
                             >
                               <span
                                 className={`inline-block text-xs transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}

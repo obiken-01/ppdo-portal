@@ -139,7 +139,7 @@ function OverrideToggle({
 
   return (
     <div className={`flex items-center justify-between py-2 px-3 rounded-lg border border-slate-200 ${disabled ? "opacity-40" : ""}`}>
-      <span className="text-sm text-slate-700">{label}</span>
+      <span className="text-sm text-slate-600">{label}</span>
       <button
         type="button"
         onClick={cycle}
@@ -433,7 +433,7 @@ function ConfirmDialog({
         </>
       }
     >
-      <p className="text-sm text-slate-700">{message}</p>
+      <p className="text-sm text-slate-600">{message}</p>
     </Modal>
   );
 }
@@ -758,7 +758,7 @@ export default function UsersPage() {
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="font-mono text-sm text-slate-700">{user.username}</div>
+                        <div className="font-mono text-sm text-slate-600">{user.username}</div>
                         {user.email && (
                           <div className="text-xs text-slate-600">{user.email}</div>
                         )}

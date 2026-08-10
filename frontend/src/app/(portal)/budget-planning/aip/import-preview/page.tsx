@@ -206,7 +206,7 @@ export default function AipImportPreviewPage() {
                 if (!officeCount) return null;
                 return (
                   <div key={sector} className="px-4 py-3 grid grid-cols-4 items-center text-sm gap-2">
-                    <span className="font-medium text-slate-700 col-span-1">
+                    <span className="font-medium text-slate-600 col-span-1">
                       {SECTOR_LABEL[sector] ?? sector}
                     </span>
                     <span className="text-slate-600 text-xs text-right">
@@ -233,13 +233,13 @@ export default function AipImportPreviewPage() {
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between gap-2">
                 <dt className="text-slate-600">Filename</dt>
-                <dd className="text-slate-700 font-medium truncate text-right max-w-[60%]" title={meta?.originalFilename}>
+                <dd className="text-slate-600 font-medium truncate text-right max-w-[60%]" title={meta?.originalFilename}>
                   {meta?.originalFilename ?? "—"}
                 </dd>
               </div>
               <div className="flex justify-between gap-2">
                 <dt className="text-slate-600">Fiscal Year</dt>
-                <dd className="text-slate-700 font-medium">FY {preview.fiscalYear}</dd>
+                <dd className="text-slate-600 font-medium">FY {preview.fiscalYear}</dd>
               </div>
               <div className="flex justify-between gap-2">
                 <dt className="text-slate-600">LDIP Link</dt>

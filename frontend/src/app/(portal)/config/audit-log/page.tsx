@@ -264,7 +264,7 @@ export default function AuditLogPage() {
       key: "tableName",
       header: "Feature / Table",
       className: "whitespace-nowrap align-top",
-      render: (e) => <span className="font-mono text-xs text-slate-700">{e.tableName}</span>,
+      render: (e) => <span className="font-mono text-xs text-slate-600">{e.tableName}</span>,
     },
     {
       key: "recordId",
@@ -282,14 +282,14 @@ export default function AuditLogPage() {
       key: "description",
       header: "Description",
       render: (e) => (
-        <span className="text-xs text-slate-700 whitespace-pre-line">{e.description}</span>
+        <span className="text-xs text-slate-600 whitespace-pre-line">{e.description}</span>
       ),
     },
     {
       key: "actorName",
       header: "Username",
       className: "whitespace-nowrap align-top",
-      render: (e) => <span className="text-slate-700">{e.actorName}</span>,
+      render: (e) => <span className="text-slate-600">{e.actorName}</span>,
     },
   ];
 

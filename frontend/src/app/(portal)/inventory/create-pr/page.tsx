@@ -837,11 +837,11 @@ export default function CreatePRPage() {
             </div>
             <div className="flex justify-between">
               <span className="text-slate-600">Division</span>
-              <span className="text-slate-700">{submitted.division}</span>
+              <span className="text-slate-600">{submitted.division}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-600">Items</span>
-              <span className="text-slate-700">{submitted.items.length}</span>
+              <span className="text-slate-600">{submitted.items.length}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-600">Total Amount</span>
@@ -878,7 +878,7 @@ export default function CreatePRPage() {
           {/* Download Template */}
           <button
             onClick={handleDownloadTemplate}
-            className="flex items-center gap-2 px-4 py-2.5 text-sm border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-sm transition-colors"
+            className="flex items-center gap-2 px-4 py-2.5 text-sm border border-slate-200 bg-white text-slate-800 hover:bg-slate-50 shadow-sm transition-colors"
           >
             <span>⬇</span>
             Download Template
@@ -888,7 +888,7 @@ export default function CreatePRPage() {
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            className="flex items-center gap-2 px-4 py-2.5 text-sm border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-sm transition-colors disabled:opacity-60"
+            className="flex items-center gap-2 px-4 py-2.5 text-sm border border-slate-200 bg-white text-slate-800 hover:bg-slate-50 shadow-sm transition-colors disabled:opacity-60"
           >
             {uploading
               ? <span className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
@@ -908,7 +908,7 @@ export default function CreatePRPage() {
             onClick={() => gsoFileInputRef.current?.click()}
             disabled={gsoImporting}
             title="Prefill this form from a PR exported by the GSO system (.xlsx or signed .pdf) — Division, Requested By, and signatories still need to be filled in manually"
-            className="flex items-center gap-2 px-4 py-2.5 text-sm border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-sm transition-colors disabled:opacity-60"
+            className="flex items-center gap-2 px-4 py-2.5 text-sm border border-slate-200 bg-white text-slate-800 hover:bg-slate-50 shadow-sm transition-colors disabled:opacity-60"
           >
             {gsoImporting
               ? <span className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
@@ -1114,7 +1114,7 @@ export default function CreatePRPage() {
               <FieldLabel>Total Amount</FieldLabel>
               <GrayInput
                 value={`₱ ${fmt(totalAmount)}`}
-                className="font-semibold text-slate-700"
+                className="font-semibold text-slate-800"
               />
             </div>
 
@@ -1279,7 +1279,7 @@ export default function CreatePRPage() {
               <span className="text-xs text-slate-600">
                 {filledRows(items).length} item{filledRows(items).length !== 1 ? "s" : ""}
               </span>
-              <div className="text-sm font-semibold text-slate-700 tabular-nums">
+              <div className="text-sm font-semibold text-slate-800 tabular-nums">
                 Total: ₱ {fmt(totalAmount)}
               </div>
             </div>

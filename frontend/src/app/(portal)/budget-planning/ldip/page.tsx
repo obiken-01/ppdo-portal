@@ -314,12 +314,12 @@ function LdipListInner() {
           placeholder="Search by title or ref code…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="border border-slate-300 bg-white text-sm px-3 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600 w-64"
+          className="border border-slate-300 bg-white text-sm px-3 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600 w-64"
         />
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600"
+          className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600"
         >
           <option value="">All Status</option>
           <option value="Draft">Draft</option>
@@ -329,7 +329,7 @@ function LdipListInner() {
         <select
           value={modeFilter}
           onChange={(e) => setModeFilter(e.target.value)}
-          className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600"
+          className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600"
         >
           <option value="">All Entry Modes</option>
           <option value="New">New</option>

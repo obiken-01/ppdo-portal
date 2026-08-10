@@ -239,7 +239,7 @@ export default function DataTable<T>({
                   <th
                     key={col.key}
                     className={`px-4 py-3 font-medium ${ALIGN_CLASS[col.align ?? "left"]} ${
-                      col.sortable ? "cursor-pointer select-none hover:text-slate-700" : ""
+                      col.sortable ? "cursor-pointer select-none hover:text-slate-800" : ""
                     }`}
                     onClick={() => toggleSort(col)}
                   >

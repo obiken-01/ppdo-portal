@@ -108,14 +108,14 @@ function UploadTab({ replaceId }: { replaceId: number | null }) {
           Fiscal Year
         </label>
         {replaceId != null ? (
-          <p className="text-sm text-slate-700 px-3 py-2 bg-slate-100 border border-slate-200 w-40">
+          <p className="text-sm text-slate-600 px-3 py-2 bg-slate-100 border border-slate-200 w-40">
             FY {fiscalYear}
           </p>
         ) : (
           <select
             value={fiscalYear}
             onChange={(e) => setFiscalYear(Number(e.target.value))}
-            className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600 w-40"
+            className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600 w-40"
           >
             {FY_OPTIONS.map((y) => <option key={y} value={y}>{y}</option>)}
           </select>
@@ -144,7 +144,7 @@ function UploadTab({ replaceId }: { replaceId: number | null }) {
         {file ? (
           <div className="border border-slate-200 bg-slate-50 px-4 py-3 flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-slate-700">{file.name}</p>
+              <p className="text-sm font-medium text-slate-600">{file.name}</p>
               <p className="text-xs text-slate-600">{formatBytes(file.size)}</p>
             </div>
             <button
@@ -238,7 +238,7 @@ function ManualEntryTab() {
         <select
           value={fiscalYear}
           onChange={(e) => setFiscalYear(Number(e.target.value))}
-          className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600 w-40"
+          className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600 w-40"
         >
           {FY_OPTIONS.map((y) => <option key={y} value={y}>{y}</option>)}
         </select>
@@ -314,7 +314,7 @@ function AipNewInner() {
                     ? "border-transparent text-slate-300 cursor-not-allowed opacity-60"
                     : activeTab === "upload"
                     ? "border-green-700 text-green-700"
-                    : "border-transparent text-slate-600 hover:text-slate-700"
+                    : "border-transparent text-slate-600 hover:text-slate-800"
                 }`}
               >
                 Upload File
@@ -326,7 +326,7 @@ function AipNewInner() {
                 className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
                   activeTab === "manual"
                     ? "border-green-700 text-green-700"
-                    : "border-transparent text-slate-600 hover:text-slate-700"
+                    : "border-transparent text-slate-600 hover:text-slate-800"
                 }`}
               >
                 Manual Entry
@@ -355,7 +355,7 @@ function AipNewInner() {
                       {i + 1}
                     </span>
                     <div>
-                      <p className="text-sm font-medium text-slate-700">{title}</p>
+                      <p className="text-sm font-medium text-slate-600">{title}</p>
                       <p className="text-xs text-slate-600 mt-0.5">{desc}</p>
                     </div>
                   </li>
@@ -387,7 +387,7 @@ function AipNewInner() {
                         {i + 1}
                       </span>
                       <div>
-                        <p className="text-sm font-medium text-slate-700">{title}</p>
+                        <p className="text-sm font-medium text-slate-600">{title}</p>
                         <p className="text-xs text-slate-600 mt-0.5">{desc}</p>
                       </div>
                     </li>
