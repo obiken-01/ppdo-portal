@@ -256,26 +256,25 @@ export default function AipListPage() {
   // ---------------------------------------------------------------------------
 
   return (
-    <div className="p-6 max-w-screen-xl mx-auto">
-      <div className="mb-5">
-        <ConfigPageHeader
-          title="Annual Investment Program"
-          description="Yearly investment allocations per sector and office"
-          actions={
-            me?.canUploadAip && (
-              <Link
-                href="/budget-planning/aip/new"
-                className="px-4 py-2 bg-green-700 text-white text-sm font-medium hover:bg-green-800 transition-colors"
-              >
-                + New AIP
-              </Link>
-            )
-          }
-        />
-      </div>
+    <div className="min-h-full bg-slate-100">
+      <div className="max-w-6xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-4">
+      <ConfigPageHeader
+        title="Annual Investment Program"
+        description="Yearly investment allocations per sector and office"
+        actions={
+          me?.canUploadAip && (
+            <Link
+              href="/budget-planning/aip/new"
+              className="px-4 py-2 bg-green-700 text-white text-sm font-medium hover:bg-green-800 transition-colors"
+            >
+              + New AIP
+            </Link>
+          )
+        }
+      />
 
       {/* Filter bar */}
-      <div className="flex flex-wrap items-center gap-3 mb-4">
+      <div className="flex flex-wrap items-center gap-3">
         {/* Fiscal Year */}
         <select
           value={fy}
@@ -327,6 +326,7 @@ export default function AipListPage() {
 
       {/* Confirm dialog */}
       {confirm && <ConfirmDialog {...confirm} />}
+      </div>
     </div>
   );
 }

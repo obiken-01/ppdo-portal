@@ -366,8 +366,8 @@ export default function StockBalancesPage() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-slate-100 font-sans">
-      <div className="max-w-screen-lg mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-4">
+    <div className="min-h-full bg-slate-100">
+      <div className="max-w-6xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-4">
 
         {/* ── Record a count ─────────────────────────────────────────────── */}
         <div className="bg-white border border-slate-200 shadow-sm p-5">
