@@ -48,6 +48,7 @@ import MoneyInput from "@/components/ui/MoneyInput";
 import OfficeSelect from "@/components/ui/OfficeSelect";
 import { useToast } from "@/components/ui/Toast";
 import { formatMoney } from "@/lib/money";
+import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import type {
   BudgetCeilingDto,
   DivisionResponse,
@@ -764,8 +765,12 @@ function AllocationPageInner() {
     <div className="flex flex-col min-h-full">
       <div className="p-6 max-w-screen-xl mx-auto w-full flex-1">
 
-        {/* Header */}
-        <h1 className="text-xl font-bold text-slate-800 mb-5">Allocation</h1>
+        <div className="mb-5">
+          <ConfigPageHeader
+            title="Allocation"
+            description="Set office budget ceilings and per-division allocation splits by fund source."
+          />
+        </div>
 
         {/* Selectors */}
         <div className="flex flex-wrap items-center gap-4 mb-5">

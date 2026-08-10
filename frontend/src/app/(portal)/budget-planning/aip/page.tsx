@@ -21,6 +21,7 @@ import { useMe } from "@/lib/me-cache";
 import DataTable, { type Column } from "@/components/ui/DataTable";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
+import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import type { AipRecordResponse } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -256,22 +257,21 @@ export default function AipListPage() {
 
   return (
     <div className="p-6 max-w-screen-xl mx-auto">
-      {/* Header */}
-      <div className="flex items-start justify-between mb-5">
-        <div>
-          <h1 className="text-xl font-bold text-slate-800">Annual Investment Program</h1>
-          <p className="text-sm text-slate-600 mt-0.5">
-            Yearly investment allocations per sector and office
-          </p>
-        </div>
-        {me?.canUploadAip && (
-          <Link
-            href="/budget-planning/aip/new"
-            className="px-4 py-2 bg-green-700 text-white text-sm font-medium hover:bg-green-800 transition-colors"
-          >
-            + New AIP
-          </Link>
-        )}
+      <div className="mb-5">
+        <ConfigPageHeader
+          title="Annual Investment Program"
+          description="Yearly investment allocations per sector and office"
+          actions={
+            me?.canUploadAip && (
+              <Link
+                href="/budget-planning/aip/new"
+                className="px-4 py-2 bg-green-700 text-white text-sm font-medium hover:bg-green-800 transition-colors"
+              >
+                + New AIP
+              </Link>
+            )
+          }
+        />
       </div>
 
       {/* Filter bar */}

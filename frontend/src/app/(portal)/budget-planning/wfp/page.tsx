@@ -42,6 +42,7 @@ import OfficeSelect from "@/components/ui/OfficeSelect";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
 import { formatMoney } from "@/lib/money";
+import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import type {
   AipActivitySummary,
   AipRecordSummary,
@@ -1072,70 +1073,76 @@ function WfpPageInner() {
     <div className="flex flex-col min-h-full">
       <div className="p-6 max-w-screen-xl mx-auto w-full flex-1">
 
-        {/* Header */}
-        <div className="flex items-start justify-between mb-5">
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold text-slate-800">Work and Financial Plan</h1>
-              <a
-                href="/budget-planning/wfp/entry"
-                className="px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors"
-              >
-                Try the new entry wizard (v1.4 preview) →
-              </a>
-            </div>
-            {aipDetail && selectedConfigOffice && (
-              <p className="text-sm text-slate-600 mt-0.5">
-                AIP FY{aipDetail.fiscalYear} — {selectedConfigOffice.officeName}
+        <div className="mb-5">
+          <ConfigPageHeader
+            title={
+              <div className="flex items-center gap-2">
+                <span>Work and Financial Plan</span>
+                <a
+                  href="/budget-planning/wfp/entry"
+                  className="px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors"
+                >
+                  Try the new entry wizard (v1.4 preview) →
+                </a>
+              </div>
+            }
+            description={
+              aipDetail && selectedConfigOffice ? (
+                <>
+                  AIP FY{aipDetail.fiscalYear} — {selectedConfigOffice.officeName}
+                  {wfp && (
+                    <span
+                      className={`ml-2 px-2 py-0.5 text-xs font-medium ${
+                        isFinal
+                          ? "bg-green-100 text-green-700"
+                          : "bg-amber-100 text-amber-700"
+                      }`}
+                    >
+                      {wfp.status}
+                    </span>
+                  )}
+                </>
+              ) : (
+                ""
+              )
+            }
+            actions={
+              <>
                 {wfp && (
-                  <span
-                    className={`ml-2 px-2 py-0.5 text-xs font-medium ${
-                      isFinal
-                        ? "bg-green-100 text-green-700"
-                        : "bg-amber-100 text-amber-700"
-                    }`}
+                  <button
+                    onClick={handleExport}
+                    disabled={exporting}
+                    className="px-4 py-2 text-sm border border-slate-300 text-slate-600 bg-white hover:bg-slate-50 transition-colors font-medium flex items-center gap-2"
                   >
-                    {wfp.status}
-                  </span>
+                    {exporting && (
+                      <span className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+                    )}
+                    Export Excel
+                  </button>
                 )}
-              </p>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2">
-            {wfp && (
-              <button
-                onClick={handleExport}
-                disabled={exporting}
-                className="px-4 py-2 text-sm border border-slate-300 text-slate-600 bg-white hover:bg-slate-50 transition-colors font-medium flex items-center gap-2"
-              >
-                {exporting && (
-                  <span className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+                {me?.canManageConfig && isFinal && wfp && (
+                  <button
+                    onClick={handleUnlock}
+                    className="px-4 py-2 text-sm border border-slate-300 text-slate-600 bg-white hover:bg-slate-50 transition-colors font-medium"
+                  >
+                    Unlock
+                  </button>
                 )}
-                Export Excel
-              </button>
-            )}
-            {me?.canManageConfig && isFinal && wfp && (
-              <button
-                onClick={handleUnlock}
-                className="px-4 py-2 text-sm border border-slate-300 text-slate-600 bg-white hover:bg-slate-50 transition-colors font-medium"
-              >
-                Unlock
-              </button>
-            )}
-            {!isFinal && wfp && (
-              <button
-                onClick={handleFinalize}
-                disabled={finalizing}
-                className="px-4 py-2 bg-green-700 text-white text-sm font-medium hover:bg-green-800 transition-colors disabled:opacity-60 flex items-center gap-2"
-              >
-                {finalizing && (
-                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                {!isFinal && wfp && (
+                  <button
+                    onClick={handleFinalize}
+                    disabled={finalizing}
+                    className="px-4 py-2 bg-green-700 text-white text-sm font-medium hover:bg-green-800 transition-colors disabled:opacity-60 flex items-center gap-2"
+                  >
+                    {finalizing && (
+                      <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    )}
+                    Finalize
+                  </button>
                 )}
-                Finalize
-              </button>
-            )}
-          </div>
+              </>
+            }
+          />
         </div>
 
         {/* Selector row */}

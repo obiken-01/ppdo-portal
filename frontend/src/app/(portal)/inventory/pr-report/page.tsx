@@ -24,6 +24,7 @@ import api from "@/lib/api";
 import { useMe } from "@/lib/me-cache";
 import { useToast } from "@/components/ui/Toast";
 import TableSkeleton from "@/components/ui/TableSkeleton";
+import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import type {
   PRReportResponse,
   PRSummaryResponse,
@@ -332,6 +333,11 @@ export default function PRReportPage() {
   return (
     <div className="min-h-screen bg-slate-100 font-sans">
       <div className="max-w-screen-xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-5">
+
+        <ConfigPageHeader
+          title="Inventory Report"
+          description="Delivery and distribution detail for a single purchase request."
+        />
 
         {/* ── Toolbar ──────────────────────────────────────────────────────── */}
         <div className="flex flex-wrap items-center gap-3">

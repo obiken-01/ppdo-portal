@@ -23,6 +23,7 @@ import api from "@/lib/api";
 import { fetchMe } from "@/lib/me-cache";
 import { useInventoryDivisions } from "@/lib/inventory-divisions";
 import { useToast } from "@/components/ui/Toast";
+import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import type {
   CreateItemDistributionRequest,
   DistributionCreatedResponse,
@@ -391,9 +392,14 @@ export default function DistributionPage() {
     <div className="min-h-screen bg-slate-100 font-sans">
       <div className="max-w-screen-xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-4">
 
+        <ConfigPageHeader
+          title="Distribution"
+          description="Issue stock to divisions from received delivery batches."
+        />
+
         {/* ── Item search ───────────────────────────────────────────────────── */}
         <div className="bg-white border border-slate-200 shadow-sm p-3 sm:p-5 space-y-3">
-          <p className="text-sm font-semibold text-slate-700">Select an Item</p>
+          <p className="text-sm font-semibold text-slate-800">Select an Item</p>
           <div className="relative">
             <input
               value={searchTerm}

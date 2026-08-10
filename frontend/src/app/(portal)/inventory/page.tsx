@@ -26,6 +26,7 @@ import api from "@/lib/api";
 import { fetchMe } from "@/lib/me-cache";
 import { useToast } from "@/components/ui/Toast";
 import TableSkeleton from "@/components/ui/TableSkeleton";
+import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import type {
   PRSummaryResponse,
   InventoryStatsResponse,
@@ -328,51 +329,44 @@ export default function InventoryDashboardPage() {
   return (
     <div className="flex flex-col gap-6 p-3 sm:p-6 bg-slate-100 min-h-full">
 
-      {/* ── Page header ──────────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-            <span>📦</span> Inventory Dashboard
-          </h1>
-          <p className="text-sm text-slate-600 mt-0.5">
-            Overview of purchase requests, delivery status, and stock levels.
-          </p>
-        </div>
-
-        {/* Quick actions */}
-        <div className="flex gap-2 flex-wrap">
-          <Link
-            href="/inventory/create-pr"
-            className="flex items-center gap-1.5 px-3 py-2 bg-green-600 hover:bg-green-500 text-white text-sm font-medium transition-colors"
-          >
-            <span>📋</span> Create PR
-          </Link>
-          <Link
-            href="/inventory/receive-delivery"
-            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium transition-colors"
-          >
-            <span>🚚</span> Receive Delivery
-          </Link>
-          <Link
-            href="/inventory/pr-report"
-            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium transition-colors"
-          >
-            <span>📊</span> PR Report
-          </Link>
-          <Link
-            href="/inventory/distribution"
-            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium transition-colors"
-          >
-            <span>📦</span> Distribution
-          </Link>
-          <Link
-            href="/inventory/stock-balances"
-            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium transition-colors"
-          >
-            <span>🏭</span> Warehouse Stock
-          </Link>
-        </div>
-      </div>
+      <ConfigPageHeader
+        title="📦 Inventory Dashboard"
+        description="Overview of purchase requests, delivery status, and stock levels."
+        actions={
+          <>
+            <Link
+              href="/inventory/create-pr"
+              className="flex items-center gap-1.5 px-3 py-2 bg-green-600 hover:bg-green-500 text-white text-sm font-medium transition-colors"
+            >
+              <span>📋</span> Create PR
+            </Link>
+            <Link
+              href="/inventory/receive-delivery"
+              className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium transition-colors"
+            >
+              <span>🚚</span> Receive Delivery
+            </Link>
+            <Link
+              href="/inventory/pr-report"
+              className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium transition-colors"
+            >
+              <span>📊</span> PR Report
+            </Link>
+            <Link
+              href="/inventory/distribution"
+              className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium transition-colors"
+            >
+              <span>📦</span> Distribution
+            </Link>
+            <Link
+              href="/inventory/stock-balances"
+              className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium transition-colors"
+            >
+              <span>🏭</span> Warehouse Stock
+            </Link>
+          </>
+        }
+      />
 
       {/* ── Stat card groups ───────────────────────────────────────────────
           lg, not sm — the sidebar itself collapses to a hamburger below lg (Sidebar.tsx),

@@ -61,6 +61,7 @@ import { downloadPpmpReportExcel, getPpmpReportPreview } from "@/lib/ppmp";
 import PpmpReportView from "./PpmpReportView";
 import { useToast } from "@/components/ui/Toast";
 import { formatMoney } from "@/lib/money";
+import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import type {
   DivisionResponse,
   PpmpReportDto,
@@ -562,12 +563,11 @@ function WfpReportPageInner() {
         }
       `}</style>
 
-      {/* Header */}
       <div className="mb-5 print:hidden">
-        <h1 className="text-xl font-bold text-slate-800">Report</h1>
-        <p className="text-sm text-slate-600 mt-0.5">
-          Select a report type, fiscal year, office, and division to preview.
-        </p>
+        <ConfigPageHeader
+          title="Report"
+          description="Select a report type, fiscal year, office, and division to preview."
+        />
       </div>
 
       {/* Selector row */}

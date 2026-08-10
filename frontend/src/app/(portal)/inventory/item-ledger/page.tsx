@@ -30,6 +30,7 @@ import {
 import api from "@/lib/api";
 import { fetchMe } from "@/lib/me-cache";
 import TableSkeleton from "@/components/ui/TableSkeleton";
+import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import type { ItemLedgerRowResponse } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -412,6 +413,11 @@ export default function StockOverviewPage() {
   return (
     <div className="min-h-screen bg-slate-100 font-sans">
       <div className="max-w-screen-xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-3">
+
+        <ConfigPageHeader
+          title="Stock Overview"
+          description="Running on-hand balances per item, computed from deliveries and distributions."
+        />
 
         {/* ── Top bar ────────────────────────────────────────────────────────── */}
         <div className="flex flex-wrap items-center gap-3">

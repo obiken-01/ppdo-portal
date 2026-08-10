@@ -25,6 +25,7 @@ import Chart from "chart.js/auto";
 import { getDashboard, getOfficeDashboard, getRecentActivity } from "@/lib/budget-planning";
 import { useMe } from "@/lib/me-cache";
 import { formatMoney } from "@/lib/money";
+import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import type {
   DivisionWfpStatus,
   FundCeiling,
@@ -542,11 +543,10 @@ export default function BudgetPlanningPage() {
     <div className="min-h-full bg-slate-100 font-sans">
       <div className="max-w-6xl mx-auto px-6 py-6 space-y-5">
 
-        {/* Header */}
-        <div>
-          <h1 className="text-xl font-bold text-slate-800">Budget Planning Dashboard</h1>
-          <p className="text-sm text-slate-600">FY overview · {officeLabel}</p>
-        </div>
+        <ConfigPageHeader
+          title="Budget Planning Dashboard"
+          description={`FY overview · ${officeLabel}`}
+        />
 
         {/* Selectors row */}
         <div className="flex flex-wrap items-center gap-3">
