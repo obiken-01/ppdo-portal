@@ -289,24 +289,23 @@ function LdipListInner() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="p-6 max-w-screen-xl mx-auto">
-      <div className="mb-5">
-        <ConfigPageHeader
-          title="Local Development Investment Program"
-          description="Multi-year investment planning records"
-          actions={
-            <Link
-              href="/budget-planning/ldip/new"
-              className="px-4 py-2 bg-green-700 text-white text-sm font-medium hover:bg-green-800 transition-colors"
-            >
-              + New LDIP
-            </Link>
-          }
-        />
-      </div>
+    <div className="min-h-full bg-slate-100">
+      <div className="max-w-6xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-4">
+      <ConfigPageHeader
+        title="Local Development Investment Program"
+        description="Multi-year investment planning records"
+        actions={
+          <Link
+            href="/budget-planning/ldip/new"
+            className="px-4 py-2 bg-green-700 text-white text-sm font-medium hover:bg-green-800 transition-colors"
+          >
+            + New LDIP
+          </Link>
+        }
+      />
 
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-3 mb-4">
+      <div className="flex flex-wrap items-center gap-3">
         <input
           type="text"
           placeholder="Search by title or ref code…"
@@ -349,6 +348,7 @@ function LdipListInner() {
       />
 
       {confirm && <ConfirmDialog {...confirm} />}
+      </div>
     </div>
   );
 }

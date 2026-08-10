@@ -682,8 +682,8 @@ export default function UsersPage() {
   // ---------------------------------------------------------------------------
 
   return (
-    <div className="min-h-screen bg-slate-100 font-sans">
-      <div className="max-w-6xl mx-auto px-6 py-6 space-y-4">
+    <div className="min-h-full bg-slate-100 font-sans">
+      <div className="max-w-6xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-4">
         {/* Toolbar: search + add button */}
         <div className="flex items-center gap-3">
           <input

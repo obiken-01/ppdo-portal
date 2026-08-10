@@ -167,7 +167,12 @@ Every portal page uses this outer structure:
   fixed real mobile squishing across the Config pages, and a flat `p-6` regresses it.
 - **`space-y-4`** between top-level blocks.
 
-Four different shells exist today (§7). This one is the target.
+✅ **Adopted portal-wide 2026-08-10** (§7 item 2). The original "4 variants" undercounted —
+the audit sampled the Inventory dashboard but missed that all 8 Inventory sub-pages shared a
+variant of their own (`min-h-screen bg-slate-100 font-sans` / `max-w-screen-xl` — already
+responsive, just the wrong height unit and width), and mischaracterized `admin/users` and the
+Budget Planning dashboard, both of which were already close to this exact target. See §7 item 2
+for what changed per family and what was deliberately left alone.
 
 ---
 
@@ -237,7 +242,7 @@ making them uniform.
 | # | Divergence | Current state | Target | Priority |
 |---|---|---|---|---|
 | 1 | ~~**`slate-700`**~~ | ✅ **Done 2026-08-10** — all 215 uses across 46 files migrated; compiled CSS emits no `text-slate-700` rule | `slate-800` headings/buttons/emphasis, `slate-600` body | — |
-| 2 | **Page shell** | 4 variants: Inventory `gap-6 p-3 sm:p-6` no max-width · Config `max-w-6xl px-6 py-6 space-y-4` · Budget Planning `p-6 max-w-screen-xl` · `admin/users` bare `space-y-4` | §4 shell | **High** |
+| 2 | ~~**Page shell**~~ | ✅ **Done 2026-08-10** — see below for what changed and what was left alone | §4 shell | — |
 | 3 | ~~**`h1` size**~~ | ✅ **Done** (PR #214) — `ConfigPageHeader.tsx:26` and both dashboards use `text-xl` | **`text-xl`** | — |
 | 4 | ~~**`h2` styling**~~ | ✅ **Done 2026-08-10** — 14 portal section headings on target; both dialog titles on `text-base`. Remaining variants are the deliberate exceptions listed below | `text-sm font-semibold text-slate-800`; modals `text-base font-semibold` | — |
 | 5 | ~~**`ConfigPageHeader` adoption**~~ | ✅ **Done 2026-08-10** — adopted by the Inventory dashboard, the BP dashboard, and the AIP/LDIP/Allocation/Report/WFP pages. `title`/`description` widened `string` → `ReactNode` so WFP's inline promo badge and status pill didn't have to be flattened or moved into `actions`. Not adopted by wizards or per-record detail views — see exceptions below | Use it everywhere | — |
@@ -275,12 +280,44 @@ Don't "fix" these — the difference carries meaning:
 - **`account`, `announcements`, `admin/users`.** Outside item 5's stated scope of "Inventory and
   Budget Planning hand-roll the same markup" — left alone, not audited. `admin/users` still renders
   no page title at all, same gap item 6 fixed for Inventory; a candidate for a future finding, not
-  claimed as done here.
+  claimed as done here. (Item 2 did bring its outer shell to target — shell and header adoption are
+  separate concerns.)
+- **`config/audit-log`'s `max-w-7xl`.** Wider than the `max-w-6xl` every other page uses. Not
+  flattened when item 2 shipped — an audit trail table has more columns (timestamp, actor, table,
+  action, description) than a typical config list, and the extra width looked like a deliberate
+  choice, not drift. Everything else about its shell (height unit, responsive padding) was still
+  brought to target.
+- **`allocation` and `wfp`'s internal spacing.** Item 2 normalized their outer `max-width` and
+  padding to target, but left their existing `flex flex-col min-h-full` / `flex-1` wrapper and
+  scattered `mb-*` margins between sections untouched, rather than converting to `space-y-4`. Both
+  pages branch into several tabs/panels beyond the simple header→filter→table shape `aip` and `ldip`
+  have, and a blind sweep for every sibling margin with no way to render and check the result was a
+  worse trade than leaving their internal rhythm as-is. Revisit with a live visual check, not blind.
 
 ### Sequencing note
 
-Items 1, 3, 4, 5, and 6 are done. Only **2** (page shell), **7** (rounded corners), and the two
-open decisions (**8**, **9**) remain.
+Items 1, 2, 3, 4, 5, and 6 are done. Only **7** (rounded corners) and the two open decisions
+(**8**, **9**) remain.
+
+Item 2 (2026-08-10) split into three tiers by risk, since none of it could be visually verified in
+the session that did it (no live backend, no compositing browser):
+
+- **Fully converted to the two-div target shell**, `space-y-4` replacing manual margins: the
+  Inventory dashboard, and `aip`/`ldip` (clean 3-block header→filter→table structure, low risk).
+- **Additive-only fixes** — `min-h-screen` → `min-h-full`, flat `p-6`/`px-6 py-6` → responsive
+  `px-3 py-4 sm:px-6 sm:py-6`: the 7 Config pages, `admin/users`, the Budget Planning dashboard, and
+  all 8 Inventory sub-pages (which already had responsive padding and `space-y-*`, just the wrong
+  height unit and a nonstandard `max-w-screen-xl`/`max-w-screen-lg`). Purely additive — mobile
+  breathing room only, nothing shrinks — so safe to ship without a screen to check it against.
+- **Width/padding only, structure untouched**: `allocation` and `wfp` — see "Deliberately NOT
+  unified" above for why their internal spacing wasn't swept into `space-y-4` alongside the rest.
+
+Two `max-width` shrinks (`max-w-screen-xl` 1280px → `max-w-6xl` 1152px, a ~10% reduction) were
+checked against overflow risk before applying, not assumed safe: `aip`/`ldip` route their table
+through the shared `DataTable` component, which already wraps in `overflow-x-auto` internally
+regardless of the outer page's width, and `items-master`/`pr-register`/`item-ledger` do the same at
+the page level. `stock-balances`'s width went the other way — `max-w-screen-lg` (1024px) widened to
+`max-w-6xl` (1152px) — since it's a form/upload page, not a table.
 
 Items 1 and 4 (2026-08-10) were **less mechanical than "find-and-replace-shaped" suggests**:
 `slate-700` maps to two different targets depending on role, so the sweep needed a per-occurrence
@@ -298,7 +335,6 @@ detail/edit views (dynamic title + adjacent `StatusBadge`) were added as a secon
 pages outside item 5's own stated scope (Inventory + Budget Planning) were left alone rather than
 silently pulled in. See "Deliberately NOT unified" above for the full reasoning.
 
-Item 2 changes layout and should be done one page family at a time with a visual check on each.
 Item 7's `StatCard` is shared — change it once and every consumer follows, so verify the dashboard
 after.
 

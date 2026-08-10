@@ -327,7 +327,8 @@ export default function InventoryDashboardPage() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col gap-6 p-3 sm:p-6 bg-slate-100 min-h-full">
+    <div className="min-h-full bg-slate-100">
+      <div className="max-w-6xl mx-auto flex flex-col gap-6 px-3 py-4 sm:px-6 sm:py-6">
 
       <ConfigPageHeader
         title="📦 Inventory Dashboard"
@@ -610,6 +611,7 @@ export default function InventoryDashboardPage() {
         )}
       </div>
 
+      </div>
     </div>
   );
 }

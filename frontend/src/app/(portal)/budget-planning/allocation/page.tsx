@@ -763,7 +763,7 @@ function AllocationPageInner() {
 
   return (
     <div className="flex flex-col min-h-full">
-      <div className="p-6 max-w-screen-xl mx-auto w-full flex-1">
+      <div className="px-3 py-4 sm:px-6 sm:py-6 max-w-6xl mx-auto w-full flex-1">
 
         <div className="mb-5">
           <ConfigPageHeader
