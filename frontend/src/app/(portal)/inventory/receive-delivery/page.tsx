@@ -420,8 +420,8 @@ export default function ReceiveDeliveryPage() {
   const activeItemCount = items.filter((r) => parseFloat(r.qtyThisDelivery) > 0).length;
 
   return (
-    <div className="min-h-screen bg-slate-100 font-sans">
-      <div className="max-w-screen-xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-5">
+    <div className="min-h-full bg-slate-100">
+      <div className="max-w-6xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-5">
 
         {/* Toolbar */}
         <div className="flex items-center justify-end">
