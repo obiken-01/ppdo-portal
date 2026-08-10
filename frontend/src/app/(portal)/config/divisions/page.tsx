@@ -600,7 +600,7 @@ export default function DivisionConfigPage() {
               <p className="text-xs font-medium text-slate-600 mb-2">Feature Flags</p>
               <div className="grid grid-cols-2 gap-2">
                 {FLAG_FIELDS.map((f) => (
-                  <label key={f.key} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none">
+                  <label key={f.key} className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none">
                     <input
                       type="checkbox"
                       checked={form[f.key as keyof FormState] as boolean}

@@ -30,6 +30,7 @@ import {
 import api from "@/lib/api";
 import { fetchMe } from "@/lib/me-cache";
 import TableSkeleton from "@/components/ui/TableSkeleton";
+import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import type { ItemLedgerRowResponse } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -301,7 +302,7 @@ export default function StockOverviewPage() {
     {
       accessorKey: "stockNo", header: "Stock No.", size: 120,
       cell: ({ getValue }) => (
-        <span className="font-mono text-xs text-slate-700">{getValue<string>()}</span>
+        <span className="font-mono text-xs text-slate-600">{getValue<string>()}</span>
       ),
     },
     {
@@ -332,19 +333,19 @@ export default function StockOverviewPage() {
       accessorKey: "qtyOrdered", header: "Ordered", size: 80,
       enableSorting: true,
       cell: ({ getValue }) => (
-        <span className="text-slate-700 text-sm tabular-nums">{fmt(getValue<number>())}</span>
+        <span className="text-slate-600 text-sm tabular-nums">{fmt(getValue<number>())}</span>
       ),
     },
     {
       accessorKey: "qtyDelivered", header: "Delivered", size: 80,
       cell: ({ getValue }) => (
-        <span className="text-slate-700 text-sm tabular-nums">{fmt(getValue<number>())}</span>
+        <span className="text-slate-600 text-sm tabular-nums">{fmt(getValue<number>())}</span>
       ),
     },
     {
       accessorKey: "qtyDistributed", header: "Distributed", size: 90,
       cell: ({ getValue }) => (
-        <span className="text-slate-700 text-sm tabular-nums">{fmt(getValue<number>())}</span>
+        <span className="text-slate-600 text-sm tabular-nums">{fmt(getValue<number>())}</span>
       ),
     },
     {
@@ -412,6 +413,11 @@ export default function StockOverviewPage() {
   return (
     <div className="min-h-screen bg-slate-100 font-sans">
       <div className="max-w-screen-xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-3">
+
+        <ConfigPageHeader
+          title="Stock Overview"
+          description="Running on-hand balances per item, computed from deliveries and distributions."
+        />
 
         {/* ── Top bar ────────────────────────────────────────────────────────── */}
         <div className="flex flex-wrap items-center gap-3">
@@ -646,8 +652,8 @@ export default function StockOverviewPage() {
         {/* ── Result count ─────────────────────────────────────────────────── */}
         <div className="flex items-center justify-between text-xs text-slate-600">
           <span>
-            Showing <span className="font-semibold text-slate-700">{totalFiltered}</span> of{" "}
-            <span className="font-semibold text-slate-700">{rows.length}</span> items
+            Showing <span className="font-semibold text-slate-800">{totalFiltered}</span> of{" "}
+            <span className="font-semibold text-slate-800">{rows.length}</span> items
             {counts["out-of-stock"] > 0 && (
               <span className="ml-3 text-danger-500 font-medium">· {counts["out-of-stock"]} out of stock</span>
             )}
@@ -687,7 +693,7 @@ export default function StockOverviewPage() {
                         <th key={h.id} style={{ width: h.getSize() }} className="text-left px-3 py-2.5 font-medium select-none">
                           {h.isPlaceholder ? null : (
                             <div
-                              className={h.column.getCanSort() ? "cursor-pointer flex items-center gap-1 hover:text-slate-700" : ""}
+                              className={h.column.getCanSort() ? "cursor-pointer flex items-center gap-1 hover:text-slate-800" : ""}
                               onClick={h.column.getToggleSortingHandler()}
                             >
                               {flexRender(h.column.columnDef.header, h.getContext())}

@@ -31,6 +31,7 @@ import { useInventoryDivisions } from "@/lib/inventory-divisions";
 import { useToast } from "@/components/ui/Toast";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import TableSkeleton from "@/components/ui/TableSkeleton";
+import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import type { MeResponse, PRSearchResult, PRStatusCounts, PRSummaryResponse } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -496,7 +497,7 @@ export default function PRListPage() {
     {
       accessorKey: "requestedBy", header: "Requested By", size: 150,
       cell: ({ getValue }) => (
-        <span className="text-slate-700 text-sm">{getValue<string>()}</span>
+        <span className="text-slate-600 text-sm">{getValue<string>()}</span>
       ),
     },
     {
@@ -508,7 +509,7 @@ export default function PRListPage() {
     {
       accessorKey: "totalAmount", header: "Total Amount", size: 120,
       cell: ({ getValue }) => (
-        <span className="text-slate-700 text-sm tabular-nums">₱{fmt(getValue<number>())}</span>
+        <span className="text-slate-600 text-sm tabular-nums">₱{fmt(getValue<number>())}</span>
       ),
     },
     {
@@ -598,6 +599,11 @@ export default function PRListPage() {
   return (
     <div className="min-h-screen bg-slate-100 font-sans">
       <div className="max-w-screen-xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-3">
+
+        <ConfigPageHeader
+          title="PR List"
+          description="All purchase requests and their delivery status."
+        />
 
         {/* ── Top bar ────────────────────────────────────────────────────────── */}
         <div className="flex flex-wrap items-center gap-3">
@@ -789,7 +795,7 @@ export default function PRListPage() {
         {/* ── Result count + active filter summary ─────────────────────────── */}
         <div className="flex items-center justify-between text-xs text-slate-600">
           <span>
-            <span className="font-semibold text-slate-700">{totalCount}</span> PR{totalCount !== 1 ? "s" : ""}
+            <span className="font-semibold text-slate-800">{totalCount}</span> PR{totalCount !== 1 ? "s" : ""}
             {filterCount > 0 && (
               <button
                 onClick={() => setFilters(EMPTY_FILTERS)}
@@ -823,7 +829,7 @@ export default function PRListPage() {
                         <th key={h.id} style={{ width: h.getSize() }} className="text-left px-3 py-2.5 font-medium select-none">
                           {h.isPlaceholder ? null : (
                             <div
-                              className={h.column.getCanSort() ? "cursor-pointer flex items-center gap-1 hover:text-slate-700" : ""}
+                              className={h.column.getCanSort() ? "cursor-pointer flex items-center gap-1 hover:text-slate-800" : ""}
                               onClick={h.column.getToggleSortingHandler()}
                             >
                               {flexRender(h.column.columnDef.header, h.getContext())}

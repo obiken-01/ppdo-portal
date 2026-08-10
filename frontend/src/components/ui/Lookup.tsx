@@ -121,7 +121,7 @@ export default function Lookup<T>({
           setOpen(true);
         }}
         placeholder={placeholder}
-        className="w-full border border-slate-200 bg-white text-sm px-3 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-500 disabled:opacity-60 disabled:cursor-not-allowed"
+        className="w-full border border-slate-200 bg-white text-sm px-3 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-500 disabled:opacity-60 disabled:cursor-not-allowed"
       />
       {open && !disabled && (showAllOption || filtered.length > 0) && (
         <div className="absolute z-50 top-full left-0 w-full min-w-[16rem] bg-white border border-slate-200 shadow-lg max-h-64 overflow-y-auto">

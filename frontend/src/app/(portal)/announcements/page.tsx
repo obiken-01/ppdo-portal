@@ -244,7 +244,7 @@ export default function AnnouncementsPage() {
               <button
                 onClick={() => handleArchive(row)}
                 disabled={busy}
-                className="text-xs text-slate-600 hover:text-slate-700 disabled:opacity-50"
+                className="text-xs text-slate-600 hover:text-slate-800 disabled:opacity-50"
               >
                 Archive
               </button>

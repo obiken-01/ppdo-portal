@@ -526,12 +526,12 @@ export default function ProcurementPresetsConfigPage() {
                           <tbody>
                             {preset.items.map((item) => (
                               <tr key={item.id} className="border-t border-slate-200">
-                                <td className="py-1.5 text-slate-700">{item.name}</td>
+                                <td className="py-1.5 text-slate-600">{item.name}</td>
                                 <td className="py-1.5 text-slate-600">{item.unit}</td>
-                                <td className="py-1.5 text-right font-mono tabular-nums text-slate-700">
+                                <td className="py-1.5 text-right font-mono tabular-nums text-slate-600">
                                   ₱{formatMoney(item.unitPrice)}
                                 </td>
-                                <td className="py-1.5 text-right font-mono tabular-nums text-slate-700">
+                                <td className="py-1.5 text-right font-mono tabular-nums text-slate-600">
                                   {item.defaultQty}
                                 </td>
                                 <td className="py-1.5 text-right font-mono tabular-nums text-slate-800 font-medium">
@@ -733,7 +733,7 @@ function ItemRow({
         </div>
         <div className="w-32 shrink-0">
           <label className="block text-[11px] text-slate-600 mb-0.5">Total</label>
-          <div className="w-full px-2 py-1.5 text-sm text-right font-mono tabular-nums text-slate-700 bg-slate-50 border border-slate-200">
+          <div className="w-full px-2 py-1.5 text-sm text-right font-mono tabular-nums text-slate-600 bg-slate-50 border border-slate-200">
             ₱{formatMoney(total)}
           </div>
         </div>

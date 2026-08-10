@@ -153,7 +153,7 @@ export default function ConfirmDialog({
               {ICON[variant]}
             </span>
             <div>
-              <h2 id="confirm-title" className="text-sm font-semibold text-slate-800 leading-snug">
+              <h2 id="confirm-title" className="text-base font-semibold text-slate-800 leading-snug">
                 {title}
               </h2>
               <p id="confirm-message" className="mt-1 text-sm text-slate-600 leading-relaxed">

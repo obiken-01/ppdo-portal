@@ -24,6 +24,7 @@ import api from "@/lib/api";
 import { useMe } from "@/lib/me-cache";
 import { useToast } from "@/components/ui/Toast";
 import TableSkeleton from "@/components/ui/TableSkeleton";
+import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import type {
   PRReportResponse,
   PRSummaryResponse,
@@ -105,12 +106,12 @@ function Field({
     <div className={span2 ? "md:col-span-2" : ""}>
       <p className="text-xs font-medium text-slate-600 mb-1">{label}</p>
       {pre ? (
-        <div className="w-full px-3 py-2 text-sm border border-slate-200 bg-cell-auto text-slate-700 min-h-[44px] whitespace-pre-wrap">
+        <div className="w-full px-3 py-2 text-sm border border-slate-200 bg-cell-auto text-slate-600 min-h-[44px] whitespace-pre-wrap">
           {value || "—"}
         </div>
       ) : (
         <div className={`w-full px-3 py-2 text-sm border border-slate-200 bg-cell-auto ${
-          mono ? "font-mono text-slate-800 font-semibold" : "text-slate-700"
+          mono ? "font-mono text-slate-800 font-semibold" : "text-slate-600"
         }`}>
           {value || "—"}
         </div>
@@ -333,6 +334,11 @@ export default function PRReportPage() {
     <div className="min-h-screen bg-slate-100 font-sans">
       <div className="max-w-screen-xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-5">
 
+        <ConfigPageHeader
+          title="Inventory Report"
+          description="Delivery and distribution detail for a single purchase request."
+        />
+
         {/* ── Toolbar ──────────────────────────────────────────────────────── */}
         <div className="flex flex-wrap items-center gap-3">
           {/* PR combobox */}
@@ -362,7 +368,7 @@ export default function PRReportPage() {
           <button
             onClick={handleExport}
             disabled={!selectedId || !report || exporting}
-            className="flex items-center gap-2 px-4 py-2.5 text-sm border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2.5 text-sm border border-slate-200 bg-white text-slate-800 hover:bg-slate-50 shadow-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {exporting
               ? <span className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
@@ -609,7 +615,7 @@ export default function PRReportPage() {
                             <span className="truncate block font-bold" title={dist.description}>{dist.description}</span>
                           </td>
                           <td className="px-3 py-2 text-slate-600">{dist.unit}</td>
-                          <td className="px-3 py-2 text-right tabular-nums text-slate-700">{fmt(dist.qtyDelivered)}</td>
+                          <td className="px-3 py-2 text-right tabular-nums text-slate-600">{fmt(dist.qtyDelivered)}</td>
                           <td className="px-3 py-2 font-mono text-slate-600">{dist.deliveryRef}</td>
                           <td className="px-3 py-2 text-slate-600">{fmtDate(dist.deliveryDate)}</td>
                           <td className="px-3 py-2">
@@ -620,7 +626,7 @@ export default function PRReportPage() {
                           <td className="px-3 py-2 text-right tabular-nums font-bold text-slate-800">{fmt(dist.qtyIssued)}</td>
                           <td className="px-3 py-2 font-mono text-slate-600">{dist.issueRef}</td>
                           <td className="px-3 py-2 text-slate-600">{fmtDate(dist.dateIssued)}</td>
-                          <td className="px-3 py-2 text-slate-700">{dist.issuedBy}</td>
+                          <td className="px-3 py-2 text-slate-600">{dist.issuedBy}</td>
                           <td className="px-3 py-2 text-slate-600">{dist.remarks ?? "—"}</td>
                         </tr>
                       ))}

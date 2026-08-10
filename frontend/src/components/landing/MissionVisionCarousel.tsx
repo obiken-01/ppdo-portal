@@ -121,7 +121,7 @@ export default function MissionVisionCarousel() {
 
 function MissionText() {
   return (
-    <p className="text-slate-700 leading-relaxed text-center italic text-sm">
+    <p className="text-slate-600 leading-relaxed text-center italic text-sm">
       &ldquo;To be an{" "}
       <span className="text-red-600 not-italic font-semibold">effective</span>{" "}
       and{" "}
@@ -134,7 +134,7 @@ function MissionText() {
 
 function VisionText() {
   return (
-    <p className="text-slate-700 leading-relaxed text-center italic text-sm">
+    <p className="text-slate-600 leading-relaxed text-center italic text-sm">
       &ldquo;Occidental Mindoro{" "}
       <span className="text-red-600 not-italic font-semibold">PPDO</span> is an
       organization handled by competent, people-oriented, committed, proactive

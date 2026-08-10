@@ -23,6 +23,7 @@ import api from "@/lib/api";
 import { fetchMe } from "@/lib/me-cache";
 import { useInventoryDivisions } from "@/lib/inventory-divisions";
 import { useToast } from "@/components/ui/Toast";
+import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import type {
   CreateItemDistributionRequest,
   DistributionCreatedResponse,
@@ -217,7 +218,7 @@ function DistributeForm({
 
       {/* Total / validation */}
       <div className="text-xs pt-1">
-        <span className={`font-semibold tabular-nums ${overLimit ? "text-red-500" : "text-slate-700"}`}>
+        <span className={`font-semibold tabular-nums ${overLimit ? "text-red-500" : "text-slate-800"}`}>
           Total: {fmt(totalQty)} / {fmt(totalAvailable)} on hand
           {overLimit && " — exceeds available stock"}
         </span>
@@ -391,9 +392,14 @@ export default function DistributionPage() {
     <div className="min-h-screen bg-slate-100 font-sans">
       <div className="max-w-screen-xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-4">
 
+        <ConfigPageHeader
+          title="Distribution"
+          description="Issue stock to divisions from received delivery batches."
+        />
+
         {/* ── Item search ───────────────────────────────────────────────────── */}
         <div className="bg-white border border-slate-200 shadow-sm p-3 sm:p-5 space-y-3">
-          <p className="text-sm font-semibold text-slate-700">Select an Item</p>
+          <p className="text-sm font-semibold text-slate-800">Select an Item</p>
           <div className="relative">
             <input
               value={searchTerm}
@@ -536,11 +542,11 @@ export default function DistributionPage() {
                           </div>
                           <div>
                             <p className="text-xs text-slate-600">Date</p>
-                            <p className="text-slate-700">{fmtDate(batch.deliveryDate)}</p>
+                            <p className="text-slate-600">{fmtDate(batch.deliveryDate)}</p>
                           </div>
                           <div>
                             <p className="text-xs text-slate-600">Delivered / Distributed</p>
-                            <p className="tabular-nums text-slate-700">
+                            <p className="tabular-nums text-slate-600">
                               {fmt(batch.qtyDelivered)} / {fmt(batch.qtyDistributed)}
                             </p>
                           </div>
@@ -662,7 +668,7 @@ export default function DistributionPage() {
                             {fmt(d.qtyIssued)}
                           </td>
                           <td className="px-4 py-2.5 text-slate-600">{fmtDate(d.dateIssued)}</td>
-                          <td className="px-4 py-2.5 text-slate-700">{d.issuedBy}</td>
+                          <td className="px-4 py-2.5 text-slate-600">{d.issuedBy}</td>
                           <td className="px-4 py-2.5 text-slate-600">{d.remarks ?? "—"}</td>
                         </tr>
                       ))}

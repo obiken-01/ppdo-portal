@@ -236,7 +236,7 @@ function TH({ children, align = "left", rowSpan, colSpan }: {
 function AmtTD({ value, bold = false, white = false }: { value: number | null | undefined; bold?: boolean; white?: boolean }) {
   return (
     <td className={`px-2 py-1.5 text-right text-xs tabular-nums whitespace-nowrap ${
-      white ? "text-white font-semibold" : bold ? "font-semibold text-slate-800" : "text-slate-700"
+      white ? "text-white font-semibold" : bold ? "font-semibold text-slate-800" : "text-slate-600"
     }`}>
       {fmt(value)}
     </td>
@@ -247,8 +247,8 @@ function AmtTD({ value, bold = false, white = false }: { value: number | null | 
 // A read-only row that swaps to an edit form in place when the user clicks Edit — no whole-page
 // submit, Save/Cancel per row. RefCode/ProjectId/identity are never editable here.
 
-const selectCls = "border border-slate-300 bg-white text-xs px-1.5 py-1 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600";
-const inputCls  = "border border-slate-300 bg-white text-xs px-1.5 py-1 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600";
+const selectCls = "border border-slate-300 bg-white text-xs px-1.5 py-1 text-slate-600 w-full focus:outline-none focus:ring-1 focus:ring-green-600";
+const inputCls  = "border border-slate-300 bg-white text-xs px-1.5 py-1 text-slate-600 w-full focus:outline-none focus:ring-1 focus:ring-green-600";
 
 function ActivityRow({
   act, aipRecordId, canEdit, fundingSources, onSaved, onDeleted, onRequestConfirm,
@@ -362,7 +362,7 @@ function ActivityRow({
         <td className="px-2 py-1.5 text-center text-xs text-slate-600 whitespace-nowrap">{act.startDate ?? "—"}</td>
         <td className="px-2 py-1.5 text-center text-xs text-slate-600 whitespace-nowrap">{act.endDate ?? "—"}</td>
         <td className="px-2 py-1.5 text-xs text-slate-600 align-top leading-snug">{act.expectedOutputs ?? "—"}</td>
-        <td className="px-2 py-1.5 text-center text-xs font-medium text-slate-700">{act.fundingSourceSnapshot ?? "—"}</td>
+        <td className="px-2 py-1.5 text-center text-xs font-medium text-slate-600">{act.fundingSourceSnapshot ?? "—"}</td>
         <AmtTD value={act.ps} />
         <AmtTD value={act.mooe} />
         <AmtTD value={act.co} />
@@ -880,7 +880,7 @@ function ProgramRow({
             </div>
           </td>
         ) : (
-          <td colSpan={14} className="px-2 py-1.5 font-semibold text-xs italic text-slate-700 uppercase tracking-wide">
+          <td colSpan={14} className="px-2 py-1.5 font-semibold text-xs italic text-slate-600 uppercase tracking-wide">
             {prog.name}
             {!open && (
               <span className="ml-2 font-normal not-italic text-[10px] text-slate-600">
@@ -1164,7 +1164,7 @@ function AddOfficePanel({
               const picked = officeConfigs.find((o) => String(o.id) === e.target.value);
               if (picked) setOfficeName(picked.officeName);
             }}
-            className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
+            className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-600 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
           >
             <option value="">Select an office…</option>
             {officeConfigs.map((o) => (
@@ -1179,7 +1179,7 @@ function AddOfficePanel({
           <select
             value={sector}
             onChange={(e) => setSector(e.target.value)}
-            className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
+            className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-600 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
           >
             {AIP_SECTOR_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
@@ -1191,14 +1191,14 @@ function AddOfficePanel({
           <input
             value={officeName}
             onChange={(e) => setOfficeName(e.target.value)}
-            className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
+            className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-600 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
           />
         </div>
       </div>
       {officeConfigId && (
         <p className="text-xs text-slate-600">
           Ref code preview:{" "}
-          <span className="font-mono text-slate-700">
+          <span className="font-mono text-slate-600">
             {AIP_SECTOR_PREFIX[sector]}-000-1-{officeConfigs.find((o) => String(o.id) === officeConfigId)?.officeRefCode ?? "…"}
           </span>
         </p>
@@ -1373,12 +1373,12 @@ function CarryForwardOfficePanel({
               type="number"
               value={sourceFiscalYear}
               onChange={(e) => setSourceFiscalYear(e.target.value)}
-              className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
+              className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-600 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
             />
             <button
               onClick={handleLoadYear}
               disabled={loadingYear}
-              className="px-3 py-2 text-sm font-medium border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors disabled:opacity-50 whitespace-nowrap"
+              className="px-3 py-2 text-sm font-medium border border-slate-300 text-slate-800 hover:bg-slate-100 transition-colors disabled:opacity-50 whitespace-nowrap"
             >
               {loadingYear ? "Loading…" : "Load"}
             </button>
@@ -1392,7 +1392,7 @@ function CarryForwardOfficePanel({
             value={sourceRecordId}
             onChange={(e) => handlePickRecord(e.target.value)}
             disabled={sourceRecords.length === 0}
-            className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600 disabled:bg-slate-100"
+            className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-600 w-full focus:outline-none focus:ring-1 focus:ring-green-600 disabled:bg-slate-100"
           >
             <option value="">Select…</option>
             {sourceRecords.map((r) => (
@@ -1408,7 +1408,7 @@ function CarryForwardOfficePanel({
             value={sourceOfficeId}
             onChange={(e) => handlePickOffice(e.target.value)}
             disabled={!sourceRecord || loadingOffices}
-            className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600 disabled:bg-slate-100"
+            className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-600 w-full focus:outline-none focus:ring-1 focus:ring-green-600 disabled:bg-slate-100"
           >
             <option value="">{loadingOffices ? "Loading…" : "Select…"}</option>
             {sourceRecord?.offices.map((o) => (
@@ -1435,7 +1435,7 @@ function CarryForwardOfficePanel({
             {selectedSourceOffice.programs.map((p) => {
               const activityCount = p.projects.flatMap((j) => j.activities).length;
               return (
-                <label key={p.id} className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 cursor-pointer hover:bg-slate-50">
+                <label key={p.id} className="flex items-center gap-2 px-3 py-2 text-sm text-slate-600 cursor-pointer hover:bg-slate-50">
                   <input
                     type="checkbox"
                     checked={checkedProgramIds.has(p.id)}
@@ -1620,7 +1620,7 @@ function SeedFromLdipPanel({
           <select
             value={officeConfigId}
             onChange={(e) => { setOfficeConfigId(e.target.value); setSourceGroup(null); setCheckedProgramIds(new Set()); }}
-            className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
+            className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-600 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
           >
             <option value="">Select an office…</option>
             {officeConfigs.map((o) => (
@@ -1633,7 +1633,7 @@ function SeedFromLdipPanel({
           <select
             value={sector}
             onChange={(e) => { setSector(e.target.value); setSourceGroup(null); setCheckedProgramIds(new Set()); }}
-            className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
+            className="border border-slate-300 bg-white text-sm px-3 py-2 text-slate-600 w-full focus:outline-none focus:ring-1 focus:ring-green-600"
           >
             {AIP_SECTOR_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
@@ -1641,7 +1641,7 @@ function SeedFromLdipPanel({
         <button
           onClick={handleLoad}
           disabled={loading || !officeConfigId}
-          className="px-3 py-2 text-sm font-medium border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors disabled:opacity-50 whitespace-nowrap"
+          className="px-3 py-2 text-sm font-medium border border-slate-300 text-slate-800 hover:bg-slate-100 transition-colors disabled:opacity-50 whitespace-nowrap"
         >
           {loading ? "Loading…" : "Load LDIP"}
         </button>
@@ -1662,7 +1662,7 @@ function SeedFromLdipPanel({
           </div>
           <div className="max-h-56 overflow-y-auto divide-y divide-slate-100">
             {sourceGroup.programs.map((p) => (
-              <label key={p.id} className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 cursor-pointer hover:bg-slate-50">
+              <label key={p.id} className="flex items-center gap-2 px-3 py-2 text-sm text-slate-600 cursor-pointer hover:bg-slate-50">
                 <input
                   type="checkbox"
                   checked={checkedProgramIds.has(p.id)}
@@ -1969,7 +1969,7 @@ export default function AipDetailPage() {
               className={`px-5 py-2.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition-colors whitespace-nowrap ${
                 isActive
                   ? "border-green-700 text-green-700 bg-green-50"
-                  : "border-transparent text-slate-600 hover:text-slate-700 hover:bg-slate-50"
+                  : "border-transparent text-slate-600 hover:text-slate-800 hover:bg-slate-50"
               }`}
             >
               {sector}

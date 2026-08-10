@@ -33,7 +33,7 @@ export default function AccountPage() {
     return `px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
       activeTab === tab
         ? "border-green-600 text-green-700"
-        : "border-transparent text-slate-600 hover:text-slate-700"
+        : "border-transparent text-slate-600 hover:text-slate-800"
     }`;
   }
 
@@ -133,7 +133,7 @@ function ProfileTab({
 
   return (
     <div className="bg-white border border-slate-200 shadow-sm p-6">
-      <h2 className="text-sm font-semibold text-slate-700 mb-5">Profile Information</h2>
+      <h2 className="text-sm font-semibold text-slate-800 mb-5">Profile Information</h2>
 
       <div className="space-y-4">
         <Field label="Full Name" required>
@@ -270,7 +270,7 @@ function SecurityTab() {
 
   return (
     <div className="bg-white border border-slate-200 shadow-sm p-6">
-      <h2 className="text-sm font-semibold text-slate-700 mb-5">Change Password</h2>
+      <h2 className="text-sm font-semibold text-slate-800 mb-5">Change Password</h2>
 
       <div className="space-y-4">
         <Field label="Current Password" required>
