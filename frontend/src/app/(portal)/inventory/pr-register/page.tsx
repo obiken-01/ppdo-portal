@@ -224,7 +224,7 @@ function FilterInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder ?? `Filter by ${label.toLowerCase()}…`}
-        className="w-full px-2.5 py-1.5 text-xs rounded border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-green-500 focus:bg-white transition-colors"
+        className="w-full px-2.5 py-1.5 text-xs border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-green-500 focus:bg-white transition-colors"
       />
     </div>
   );
@@ -874,13 +874,13 @@ export default function PRListPage() {
                     : `${items.length} of ${totalCount} PRs`}
                 </span>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} className="px-2 py-0.5 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50">‹</button>
+                  <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} className="px-2 py-0.5 border border-slate-200 disabled:opacity-40 hover:bg-slate-50">‹</button>
                   <span>Page {page} / {pageCount}</span>
-                  <button onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={page >= pageCount} className="px-2 py-0.5 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50">›</button>
+                  <button onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={page >= pageCount} className="px-2 py-0.5 border border-slate-200 disabled:opacity-40 hover:bg-slate-50">›</button>
                   <select
                     value={pageSize}
                     onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
-                    className="px-2 py-0.5 rounded border border-slate-200 bg-white focus:outline-none text-xs"
+                    className="px-2 py-0.5 border border-slate-200 bg-white focus:outline-none text-xs"
                   >
                     {[25, 50, 100].map((n) => <option key={n} value={n}>{n} / page</option>)}
                   </select>

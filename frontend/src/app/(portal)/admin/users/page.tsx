@@ -138,7 +138,7 @@ function OverrideToggle({
   }
 
   return (
-    <div className={`flex items-center justify-between py-2 px-3 rounded-lg border border-slate-200 ${disabled ? "opacity-40" : ""}`}>
+    <div className={`flex items-center justify-between py-2 px-3 border border-slate-200 ${disabled ? "opacity-40" : ""}`}>
       <span className="text-sm text-slate-600">{label}</span>
       <button
         type="button"

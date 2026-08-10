@@ -738,13 +738,13 @@ export default function StockOverviewPage() {
                     : `${visibleRows} of ${totalFiltered} items`}
                 </span>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="px-2 py-0.5 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50">‹</button>
+                  <button onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="px-2 py-0.5 border border-slate-200 disabled:opacity-40 hover:bg-slate-50">‹</button>
                   <span>Page {table.getState().pagination.pageIndex + 1} / {table.getPageCount() || 1}</span>
-                  <button onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="px-2 py-0.5 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50">›</button>
+                  <button onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="px-2 py-0.5 border border-slate-200 disabled:opacity-40 hover:bg-slate-50">›</button>
                   <select
                     value={table.getState().pagination.pageSize}
                     onChange={(e) => table.setPageSize(Number(e.target.value))}
-                    className="px-2 py-0.5 rounded border border-slate-200 bg-white focus:outline-none text-xs"
+                    className="px-2 py-0.5 border border-slate-200 bg-white focus:outline-none text-xs"
                   >
                     {[25, 50, 100].map((n) => <option key={n} value={n}>{n} / page</option>)}
                   </select>
