@@ -552,24 +552,6 @@ export default function ItemsMasterPage() {
             <span className="text-slate-600 text-sm">{getValue<string | null>() ?? "—"}</span>
           ),
       },
-      // Reorder Qty
-      {
-        accessorKey: "reorderQty",
-        header: "Reorder",
-        size: 72,
-        enableColumnFilter: false,
-        cell: ({ row, getValue }) =>
-          row.original.id === editingId ? (
-            <EditCell
-              key={`${editingId}-reorderQty`}
-              type="number"
-              defaultValue={editRef.current?.reorderQty ?? 0}
-              onWrite={(v) => { if (editRef.current) editRef.current.reorderQty = parseInt(v) || 0; }}
-            />
-          ) : (
-            <span className="text-slate-600 text-sm tabular-nums">{getValue<number>()}</span>
-          ),
-      },
       // Remarks — wider column
       {
         accessorKey: "remarks",
@@ -611,7 +593,7 @@ export default function ItemsMasterPage() {
       // Actions
       {
         id: "actions",
-        header: "",
+        header: "Actions",
         size: 110,
         enableColumnFilter: false,
         enableSorting: false,
@@ -773,14 +755,18 @@ export default function ItemsMasterPage() {
             </div>
           ) : (
             <div className="overflow-x-auto overflow-y-hidden">
-              <table className="w-full text-sm border-collapse min-w-[1250px]">
+              <table className="w-full text-sm border-collapse min-w-[1178px]">
 
                 {/* ── Header ── */}
                 <thead>
                   {table.getHeaderGroups().map((hg) => (
                     <tr key={hg.id} className="bg-slate-50 border-b border-slate-200 text-xs text-slate-600 uppercase tracking-wide">
                       {hg.headers.map((h) => (
-                        <th key={h.id} style={{ width: h.getSize() }} className="text-left px-3 py-2.5 font-medium select-none">
+                        <th
+                          key={h.id}
+                          style={{ width: h.getSize() }}
+                          className={`px-3 py-2.5 font-medium select-none ${h.column.id === "actions" ? "text-right" : "text-left"}`}
+                        >
                           {h.isPlaceholder ? null : (
                             <div
                               className={h.column.getCanSort() ? "cursor-pointer flex items-center gap-1 hover:text-slate-800" : ""}
