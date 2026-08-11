@@ -248,7 +248,7 @@ making them uniform.
 | 3 | ~~**`h1` size**~~ | ✅ **Done** (PR #214) — `ConfigPageHeader.tsx:26` and both dashboards use `text-xl` | **`text-xl`** | — |
 | 4 | ~~**`h2` styling**~~ | ✅ **Done 2026-08-10** — 14 portal section headings on target; both dialog titles on `text-base`. Remaining variants are the deliberate exceptions listed below | `text-sm font-semibold text-slate-800`; modals `text-base font-semibold` | — |
 | 5 | ~~**`ConfigPageHeader` adoption**~~ | ✅ **Done 2026-08-10** — adopted by the Inventory dashboard, the BP dashboard, and the AIP/LDIP/Allocation/Report/WFP pages. `title`/`description` widened `string` → `ReactNode` so WFP's inline promo badge and status pill didn't have to be flattened or moved into `actions`. Not adopted by wizards or per-record detail views — see exceptions below | Use it everywhere | — |
-| 6 | ~~**Inventory sub-pages have no `h1`**~~ | ✅ **Done 2026-08-10** — all 5 (`items-master`, `item-ledger`, `pr-register`, `pr-report`, `distribution`) now render a `ConfigPageHeader` | Add `ConfigPageHeader` | — |
+| 6 | ~~**Inventory sub-pages have no `h1`**~~ | ✅ **Done 2026-08-10** — the 5 audited (`items-master`, `item-ledger`, `pr-register`, `pr-report`, `distribution`) plus `create-pr` and `receive-delivery`, which the audit missed and Ralph caught live. All 7 now render a `ConfigPageHeader` | Add `ConfigPageHeader` | — |
 | 7 | ~~**Rounded corners in portal**~~ | ✅ **Done 2026-08-10** — 30 occurrences across 10 files, not the 6 originally counted (see below) | Remove (keep `rounded-full`) | — |
 | 8 | **`lucide-react` unused** | Declared dependency, 0 imports | Decide: adopt or remove | Low |
 | 9 | **Dark mode** | Scaffolded, unimplemented, unreviewed | Decide: finish or remove | Low |
