@@ -242,19 +242,15 @@ Table rows with more than one action button had drifted into four different styl
 `items-master` (bare icons), `pr-register` (bordered chips), `resource-links` (bare icons), and
 `ldip` (underlined text links). `RowActions` is the one component for this.
 
-**The layout rule is threshold-based, not per-page choice** — per-page choice is how the four
-styles above happened in the first place:
+**Buttons keep their own natural width — never stretched to fill a shared column.** A CSS-grid
+version tried equal-width columns first; it made short labels like "View" render as an oversized
+box. Ralph caught this live and it was reverted before any other page adopted it — worth knowing
+if you're tempted to reach for a grid here again.
 
-| Action count | Layout |
-|---|---|
-| 1 | Single button, spans the fixed-width column |
-| 2 | Two across, one row |
-| 3–4 | Two across, wrapping; an odd trailing action spans both columns |
-| 5+ | Primary action + overflow menu — **not built**. Nothing in the portal hits this today (`ldip`'s 3 is the current max anywhere); build the overflow menu when a real page needs it rather than growing the grid past 4 to cover it |
-
-Every row renders inside the same fixed-width container (`w-[170px]`) regardless of action count,
-so the Actions column doesn't change width scanning down a table with mixed row states — a
-`Draft` row's 3 buttons and an `Archived` row's 1 both occupy the same footprint.
+Buttons `flex-wrap` right-aligned inside a `max-w-[180px]` container. 1–2 actions sit on one line;
+a 3rd wraps to its own line below, at its own natural size — not forced into an even 2×2 split.
+5+ actions want a primary action + overflow menu — **not built**. Nothing in the portal hits this
+today (`ldip`'s 3 is the current max anywhere); build the overflow menu when a real page needs it.
 
 **Variants:** `default` (neutral bordered — Edit/View), `primary` (green — the forward action,
 e.g. Finalize), `warn` (amber — a reversible-but-notable action, e.g. Archive/Unlock), `danger`

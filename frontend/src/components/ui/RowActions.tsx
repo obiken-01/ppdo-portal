@@ -9,18 +9,16 @@ import Link from "next/link";
  * and LDIP (bare icons, bordered chips, and underlined text links all
  * doing the same job differently).
  *
- * Layout rule — see docs/DESIGN_SYSTEM.md:
- *   1 action    -> single button, spans the fixed-width column
- *   2 actions   -> two across, one row
- *   3-4 actions -> two across, wrapping; an odd trailing action spans both columns
- *   5+ actions  -> primary action + overflow menu — NOT YET BUILT. No page
- *                  needs it today (LDIP's 3 is the current max anywhere).
- *                  Build the overflow menu when a real page needs it —
- *                  don't grow this component's grid past 4 to cover it.
+ * Buttons keep their own natural width — never stretched to fill a shared
+ * column. A CSS-grid version tried that first and made short labels like
+ * "View" render as an oversized box; not repeating that mistake.
  *
- * Every row renders inside the same fixed-width container regardless of
- * action count, so the Actions column doesn't change width as you scan
- * down a table with mixed row states.
+ * Wrapping — see docs/DESIGN_SYSTEM.md §6a:
+ *   Buttons flex-wrap right-aligned inside a max-width. 1-2 actions sit on
+ *   one line; a 3rd wraps to its own line below rather than forcing an
+ *   even 2x2 split. 5+ actions want a primary action + overflow menu —
+ *   NOT YET BUILT. No page needs it today (LDIP's 3 is the current max
+ *   anywhere) — build the menu when a page actually grows into it.
  */
 
 export interface RowAction {
@@ -42,24 +40,16 @@ const VARIANT_CLS: Record<NonNullable<RowAction["variant"]>, string> = {
 };
 
 const BTN_CLS =
-  "w-full inline-flex items-center justify-center gap-1 px-2 py-1.5 text-xs font-medium border transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap";
+  "inline-flex items-center justify-center gap-1 px-2.5 py-1 text-xs font-medium border transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap";
 
 export default function RowActions({ actions }: { actions: RowAction[] }) {
   if (actions.length === 0) return null;
 
-  const isOdd = actions.length % 2 === 1;
-
   return (
-    <div className="grid grid-cols-2 gap-1 w-[170px] ml-auto">
-      {actions.map((action, i) => {
-        const isLast = i === actions.length - 1;
-        const spanFull = actions.length === 1 || (isOdd && isLast);
-        return (
-          <div key={action.key} className={spanFull ? "col-span-2" : undefined}>
-            <ActionButton action={action} />
-          </div>
-        );
-      })}
+    <div className="flex flex-wrap gap-1 justify-end max-w-[180px] ml-auto">
+      {actions.map((action) => (
+        <ActionButton key={action.key} action={action} />
+      ))}
     </div>
   );
 }
