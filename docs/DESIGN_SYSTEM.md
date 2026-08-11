@@ -199,11 +199,17 @@ Everything in `frontend/src/components/ui/`. Check here before building anything
 | `RowActions` | Any table's per-row action buttons. See §6a for the layout rule. | A single always-visible primary action with no alternatives — a plain button is enough |
 
 **Adoption today:** `Toast` 32 files, `DataTable` 10, `ConfigPageHeader` 7, `TableSkeleton` 6,
-`RowActions` 12 (`ldip`, `aip`, `items-master`, `pr-register`, `resource-links`, `admin/users`,
-and 6 config pages — `accounts`, `offices`, `divisions`, `funding-sources`, `price-index`,
-`procurement-presets`), `Lookup` 3, `LoadingState` 1. Converted 2026-08-11 — two local helpers were
-deleted once nothing referenced them: the 6 config pages' `TextAction` (an underlined-text-link
-style, duplicated identically in each file) and `admin/users`' `ActionButton` (icon-only).
+`RowActions` 13 (`ldip`, `aip`, `items-master`, `pr-register`, `resource-links`, `admin/users`,
+`announcements`, and 6 config pages — `accounts`, `offices`, `divisions`, `funding-sources`,
+`price-index`, `procurement-presets`), `Lookup` 3, `LoadingState` 1. Converted 2026-08-11 — every
+per-row action button in the portal now uses this component. Two local helpers were deleted once
+nothing referenced them: the 6 config pages' `TextAction` (an underlined-text-link style,
+duplicated identically in each file) and `admin/users`' `ActionButton` (icon-only).
+
+`announcements` is the one page with 4 possible actions on a single row (`Draft` status: Edit,
+Publish, Archive, Delete) — still under the 5-action overflow-menu threshold, so it's a single
+row like everything else, just wider (4 × 80px + gaps ≈ 332px). The table's horizontal scroll
+absorbs it, same reasoning as every other wide row.
 
 ### Loading states
 
@@ -297,11 +303,13 @@ row. `disabled` and `loading` both map onto the rendered `disabled` state (`load
 spinner) — pass both independently rather than pre-combining them, e.g. `pr-register`'s Mark
 Completed button is `disabled: anyBusy, loading: isCompleting`.
 
-**Not yet converted:** `announcements` — a hand-rolled Edit action, a real per-row action that was
-simply not part of this pass, not a deliberate exception. `admin/users` converted 2026-08-11 (Edit/
-Reset/Deactivate → "Activate" rather than "Reactivate", per Ralph's explicit wording — not forced
-to match the config pages' naming for the same concept). `account` has no table rows at all, so it
-was never a candidate.
+**Every page with per-row actions is converted as of 2026-08-11.** `admin/users` (Edit/Reset/
+Deactivate → "Activate" rather than "Reactivate", per Ralph's explicit wording — not forced to
+match the config pages' naming for the same concept) and `announcements` (Edit/Publish/Unpublish/
+Archive/Delete) were the last two. `announcements`' pre-conversion code treated Archive as neutral
+(`text-slate-600`) while `ldip`/`aip` already treated it as `warn` (amber) — standardized to `warn`
+here too, rather than preserved as its own page's opinion; that's the whole point of one shared
+component. `account` has no table rows at all, so it was never a candidate.
 
 ---
 
