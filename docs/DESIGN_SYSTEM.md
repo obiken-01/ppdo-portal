@@ -250,12 +250,14 @@ per-button width made every button a different size and wrapped unpredictably. F
 what actually reads as one component instead of several buttons that happen to sit near each
 other — worth remembering before reaching for either alternative again.
 
-Exactly 2 fixed-width buttons fit per row (`flex-wrap` inside a container sized to
-`BTN_W * 2 + gap`, computed in JS — not a Tailwind arbitrary value, since those only work with a
-class the compiler can see statically, not a value built from a variable). A 3rd action wraps to
-its own row below, right-aligned, at the same `BTN_W` — never stretched to fill the row alone.
-5+ actions want a primary action + overflow menu — **not built**. Nothing in the portal hits this
-today (`ldip`'s 3 is the current max anywhere); build the overflow menu when a real page needs it.
+**Single row, no wrapping** — a plain `flex justify-end`, buttons in a line. Ralph tried a
+2-per-row wrap first (`flex-wrap` inside a `BTN_W * 2 + gap` container) and preferred all 3 of
+`ldip`'s actions on one line instead, so the wrap logic was removed — it's genuinely just a row
+of fixed-width buttons now. The table's own horizontal scroll absorbs a wide Actions column the
+same as it would any other wide row; nothing extra needed here. 5+ actions want a primary action +
+overflow menu rather than wrapping onto a second line — **not built**. Nothing in the portal hits
+this today (`ldip`'s 3 is the current max anywhere); build the overflow menu when a real page
+needs it, don't reach for wrapping again.
 
 **Variants:** `default` (neutral bordered — Edit/View), `primary` (green — the forward action,
 e.g. Finalize), `warn` (amber — a reversible-but-notable action, e.g. Archive/Unlock), `danger`

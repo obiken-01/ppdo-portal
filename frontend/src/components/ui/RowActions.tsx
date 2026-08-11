@@ -18,17 +18,15 @@ import Link from "next/link";
  * caught both live. Fixed width is what actually reads as one component
  * instead of several buttons that happen to sit near each other.
  *
- * Wrapping — see docs/DESIGN_SYSTEM.md §6a:
- *   Exactly 2 fixed-width buttons fit per row; a 3rd wraps to its own row
- *   below at the SAME width as every other button, right-aligned — never
- *   stretched to fill the row alone. 5+ actions want a primary action +
- *   overflow menu — NOT YET BUILT. No page needs it today (LDIP's 3 is the
- *   current max anywhere) — build the menu when a page actually grows
- *   into it.
+ * Single row, right-aligned, no wrapping — see docs/DESIGN_SYSTEM.md §6a.
+ * LDIP's 3 is the current max anywhere in the portal; the table's own
+ * horizontal scroll absorbs it same as any other wide row. 5+ actions want
+ * a primary action + overflow menu instead of wrapping this onto a second
+ * line — NOT YET BUILT. No page needs it today; build the menu when one
+ * does.
  */
 
 const BTN_W = 80; // px — fits "Finalize" / "Archive" without wrapping or clipping
-const GAP = 4;    // px — matches Tailwind's gap-1
 
 export interface RowAction {
   key: string;
@@ -55,10 +53,7 @@ export default function RowActions({ actions }: { actions: RowAction[] }) {
   if (actions.length === 0) return null;
 
   return (
-    <div
-      className="flex flex-wrap gap-1 justify-end ml-auto"
-      style={{ width: BTN_W * 2 + GAP }}
-    >
+    <div className="flex gap-1 justify-end">
       {actions.map((action) => (
         <ActionButton key={action.key} action={action} />
       ))}
