@@ -47,6 +47,7 @@ import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmD
 import CsvUploadButton from "@/components/ui/CsvUploadButton";
 import CsvDownloadButton from "@/components/ui/CsvDownloadButton";
 import { useToast } from "@/components/ui/Toast";
+import RowActions, { type RowAction } from "@/components/ui/RowActions";
 import type {
   ActiveFilter,
   CsvImportResult,
@@ -401,19 +402,15 @@ export default function FundingSourceConfigPage() {
       header: "Actions",
       align: "right",
       className: "whitespace-nowrap",
-      render: (s) => (
-        <div className="flex items-center justify-end gap-2 text-sm">
-          <TextAction onClick={() => openEdit(s)}>Edit</TextAction>
-          <span className="text-slate-300">·</span>
-          {s.isActive ? (
-            <TextAction danger onClick={() => confirmDeactivate(s)}>
-              Deactivate
-            </TextAction>
-          ) : (
-            <TextAction onClick={() => void doReactivate(s)}>Reactivate</TextAction>
-          )}
-        </div>
-      ),
+      render: (s) => {
+        const actions: RowAction[] = [{ key: "edit", label: "Edit", onClick: () => openEdit(s) }];
+        if (s.isActive) {
+          actions.push({ key: "deactivate", label: "Deactivate", onClick: () => confirmDeactivate(s), variant: "danger" });
+        } else {
+          actions.push({ key: "reactivate", label: "Reactivate", onClick: () => void doReactivate(s) });
+        }
+        return <RowActions actions={actions} btnWidth={92} />;
+      },
     },
   ];
 
@@ -715,27 +712,6 @@ export default function FundingSourceConfigPage() {
 // ---------------------------------------------------------------------------
 // Small helpers
 // ---------------------------------------------------------------------------
-
-function TextAction({
-  children,
-  danger,
-  onClick,
-}: {
-  children: React.ReactNode;
-  danger?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`font-medium transition-colors ${
-        danger ? "text-danger-500 hover:text-red-600" : "text-green-600 hover:text-green-700"
-      } hover:underline`}
-    >
-      {children}
-    </button>
-  );
-}
 
 function Stat({ label, value, tone }: { label: string; value: number; tone: "green" | "blue" | "slate" }) {
   const cls: Record<typeof tone, string> = {

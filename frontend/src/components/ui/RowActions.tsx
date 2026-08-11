@@ -9,14 +9,20 @@ import Link from "next/link";
  * and LDIP (bare icons, bordered chips, and underlined text links all
  * doing the same job differently).
  *
- * Every button renders at the same fixed width (BTN_W), sized to comfortably
- * fit the longest real label in the app ("Finalize" / "Archive") — not
- * stretched, not shrunk to its own text. Two earlier versions got this
- * wrong: a CSS-grid version with w-full stretched short labels like "View"
- * into an oversized box; a flex-wrap version with natural per-button width
- * made every button a different size and wrapped unpredictably. Ralph
- * caught both live. Fixed width is what actually reads as one component
- * instead of several buttons that happen to sit near each other.
+ * Every button in one row renders at the SAME fixed width — not stretched,
+ * not shrunk to its own text. Two earlier versions got this wrong: a
+ * CSS-grid version with w-full stretched short labels like "View" into an
+ * oversized box; a flex-wrap version with natural per-button width made
+ * every button a different size and wrapped unpredictably. Ralph caught
+ * both live. Fixed width is what actually reads as one component instead
+ * of several buttons that happen to sit near each other.
+ *
+ * `btnWidth` defaults to 80px, which fits LDIP/AIP's longest labels
+ * ("Finalize" / "Archive") without clipping. Pages with longer real labels
+ * pass a wider value — e.g. PR List's "Mark Completed" (14 chars, the
+ * longest in the app) needs ~112px. Don't widen the shared default to cover
+ * one page's outlier label; every other page would carry unnecessary
+ * padding for a word they never show.
  *
  * Wrapping — see docs/DESIGN_SYSTEM.md §6a:
  *   Exactly 2 fixed-width buttons fit per row; a 3rd wraps to its own row
@@ -27,8 +33,8 @@ import Link from "next/link";
  *   into it.
  */
 
-const BTN_W = 80; // px — fits "Finalize" / "Archive" without wrapping or clipping
-const GAP = 4;    // px — matches Tailwind's gap-1
+const DEFAULT_BTN_W = 80; // px — fits "Finalize" / "Archive" without clipping
+const GAP = 4;            // px — matches Tailwind's gap-1
 
 export interface RowAction {
   key: string;
@@ -51,22 +57,30 @@ const VARIANT_CLS: Record<NonNullable<RowAction["variant"]>, string> = {
 const BTN_CLS =
   "inline-flex items-center justify-center gap-1 px-1.5 py-1 text-xs font-medium border transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0";
 
-export default function RowActions({ actions }: { actions: RowAction[] }) {
+export default function RowActions({
+  actions,
+  btnWidth = DEFAULT_BTN_W,
+}: {
+  actions: RowAction[];
+  /** Fixed width per button, in px. Only widen this for a page whose real
+   * label is longer than "Finalize"/"Archive" — see the component doc comment. */
+  btnWidth?: number;
+}) {
   if (actions.length === 0) return null;
 
   return (
     <div
       className="flex flex-wrap gap-1 justify-end ml-auto"
-      style={{ width: BTN_W * 2 + GAP }}
+      style={{ width: btnWidth * 2 + GAP }}
     >
       {actions.map((action) => (
-        <ActionButton key={action.key} action={action} />
+        <ActionButton key={action.key} action={action} width={btnWidth} />
       ))}
     </div>
   );
 }
 
-function ActionButton({ action }: { action: RowAction }) {
+function ActionButton({ action, width }: { action: RowAction; width: number }) {
   const variant = action.variant ?? "default";
   const cls = `${BTN_CLS} ${VARIANT_CLS[variant]}`;
 
@@ -81,7 +95,7 @@ function ActionButton({ action }: { action: RowAction }) {
 
   if (action.href) {
     return (
-      <Link href={action.href} className={cls} style={{ width: BTN_W }}>
+      <Link href={action.href} className={cls} style={{ width }}>
         {content}
       </Link>
     );
@@ -92,7 +106,7 @@ function ActionButton({ action }: { action: RowAction }) {
       onClick={action.onClick}
       disabled={action.disabled || action.loading}
       className={cls}
-      style={{ width: BTN_W }}
+      style={{ width }}
     >
       {content}
     </button>

@@ -199,9 +199,11 @@ Everything in `frontend/src/components/ui/`. Check here before building anything
 | `RowActions` | Any table's per-row action buttons. See §6a for the layout rule. | A single always-visible primary action with no alternatives — a plain button is enough |
 
 **Adoption today:** `Toast` 32 files, `DataTable` 10, `ConfigPageHeader` 7, `TableSkeleton` 6,
-`Lookup` 3, `LoadingState` 1, `RowActions` 1 (`ldip`, 2026-08-11 — pilot, pending review before
-converting `items-master`, `pr-register`, `resource-links`, `aip`, and the config pages, which
-still hand-roll four different action-button styles between them).
+`RowActions` 11 (`ldip`, `aip`, `items-master`, `pr-register`, `resource-links`, and 6 config
+pages — `accounts`, `offices`, `divisions`, `funding-sources`, `price-index`,
+`procurement-presets`), `Lookup` 3, `LoadingState` 1. Fully converted as of 2026-08-11 — the 6
+config pages' local `TextAction` helper (an underlined-text-link style, duplicated identically in
+each file) was deleted entirely once nothing referenced it.
 
 ### Loading states
 
@@ -238,35 +240,61 @@ cleanup, but until then copy the strings above exactly rather than improvising.
 
 ### 6a. Row actions (`RowActions`)
 
-Table rows with more than one action button had drifted into four different styles across
-`items-master` (bare icons), `pr-register` (bordered chips), `resource-links` (bare icons), and
-`ldip` (underlined text links). `RowActions` is the one component for this.
+Table rows with more than one action button had drifted into four different styles: `items-master`
+and `resource-links` used bare icons (✓/✏️, ✏️/🗑️), `pr-register` used bordered chips, `ldip` and
+`aip` used underlined text links, and the 6 config pages shared a local `TextAction` helper — the
+same underlined-text-link style, copy-pasted identically into each file. `RowActions` replaced all
+of it 2026-08-11; the `TextAction` helper was deleted from every config page once nothing
+referenced it.
 
-**Every button renders at the same fixed width (`BTN_W` = 80px, sized to fit "Finalize" /
-"Archive" — the longest real labels in the app), not stretched, not shrunk to its own text.** Two
-earlier versions got this wrong, both caught live by Ralph: a CSS-grid version with `w-full`
-stretched short labels like "View" into an oversized box; a `flex-wrap` version with natural
-per-button width made every button a different size and wrapped unpredictably. Fixed width is
-what actually reads as one component instead of several buttons that happen to sit near each
-other — worth remembering before reaching for either alternative again.
+**Every button in one row renders at the same fixed width — not stretched, not shrunk to its own
+text.** Two earlier versions got this wrong, both caught live by Ralph before they spread past
+`ldip`: a CSS-grid version with `w-full` stretched short labels like "View" into an oversized box;
+a `flex-wrap` version with natural per-button width made every button a different size and wrapped
+unpredictably. Fixed width is what actually reads as one component instead of several buttons that
+happen to sit near each other — worth remembering before reaching for either alternative again.
 
-Exactly 2 fixed-width buttons fit per row (`flex-wrap` inside a container sized to
-`BTN_W * 2 + gap`, computed in JS — not a Tailwind arbitrary value, since those only work with a
-class the compiler can see statically, not a value built from a variable). A 3rd action wraps to
-its own row below, right-aligned, at the same `BTN_W` — never stretched to fill the row alone.
-5+ actions want a primary action + overflow menu — **not built**. Nothing in the portal hits this
-today (`ldip`'s 3 is the current max anywhere); build the overflow menu when a real page needs it.
+**`btnWidth` prop, default 80px.** 80px fits `ldip`/`aip`'s longest labels ("Finalize" /
+"Archive") without clipping — every page above uses the default *except*:
 
-**Variants:** `default` (neutral bordered — Edit/View), `primary` (green — the forward action,
-e.g. Finalize), `warn` (amber — a reversible-but-notable action, e.g. Archive/Unlock), `danger`
-(the `danger-*` tokens — reserved for destructive actions like delete; not yet used by any
-converted page). Give the `actions` column `align: "right"` on whichever table component you're
-using — `RowActions` right-aligns its own content, and an unaligned header reads as a mismatch
-against it (the same bug found and fixed in `items-master`'s Actions column).
+| Page | `btnWidth` | Why |
+|---|---|---|
+| `pr-register` | `116` | "Mark Completed" is 14 characters, the longest real label anywhere in the app |
+| 6 config pages | `92` | "Deactivate" / "Reactivate" are 10 characters each |
+
+Don't widen the shared default to cover one page's outlier label — every other page would carry
+unnecessary padding for a word they never show. Add a row to this table whenever a new page needs
+a non-default width, so the reasoning doesn't have to be re-derived from the button text alone.
+
+**Wrapping.** `ldip` and `aip` are the only pages that ever show 3 actions on one row (both
+status-gated: Draft → Edit + Finalize + Archive). Ralph tried both a 2-per-row wrap and a single
+row live and preferred **all 3 on one line** — the component is `flex justify-end`, no wrapping
+logic at all. The table's own horizontal scroll absorbs a wide Actions column the same as it would
+any other wide row. 5+ actions want a primary action + overflow menu instead — **not built**.
+Nothing in the portal hits this today; build the overflow menu when a real page needs it, don't
+reach for wrapping again — it was tried and explicitly rejected.
+
+**Variants:** `default` (neutral bordered — Edit/View/Mark Completed), `primary` (green — the
+forward action, e.g. Finalize, View Report), `warn` (amber — a reversible-but-notable action, e.g.
+Archive/Unlock/Unmark/`items-master`'s Review), `danger` (the `danger-*` tokens — genuinely
+destructive or restrictive, e.g. `resource-links`' Delete and the config pages' Deactivate).
+Deactivate kept `danger` deliberately: the pre-conversion code had explicitly marked it
+`<TextAction danger>` while Reactivate carried no such marking, so the distinction was preserved
+rather than re-decided during the refactor. Give the `actions` column `align: "right"` on
+whichever table component you're using — `RowActions` right-aligns its own content, and an
+unaligned header reads as a mismatch against it (the same bug found and fixed in
+`items-master`'s and `pr-register`'s Actions columns).
 
 Supports either `href` (renders a `Link`) or `onClick` (renders a `button`) per action — `ldip`'s
 Edit/View are navigation, Finalize/Archive/Unlock are handlers, and both need to sit in the same
-grid.
+row. `disabled` and `loading` both map onto the rendered `disabled` state (`loading` also shows a
+spinner) — pass both independently rather than pre-combining them, e.g. `pr-register`'s Mark
+Completed button is `disabled: anyBusy, loading: isCompleting`.
+
+**Not yet converted:** `admin/users` (icon-only `ActionButton` helper, same shape `items-master`
+and `resource-links` had) and `announcements` (a hand-rolled Edit action) both have real per-row
+actions that were simply not part of this pass — not a deliberate exception, a genuine gap.
+`account` has no table rows at all, so it was never a candidate.
 
 ---
 

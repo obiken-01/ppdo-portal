@@ -44,6 +44,7 @@ import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmD
 import MoneyInput from "@/components/ui/MoneyInput";
 import Lookup from "@/components/ui/Lookup";
 import { useToast } from "@/components/ui/Toast";
+import RowActions, { type RowAction } from "@/components/ui/RowActions";
 import type {
   AccountResponse,
   ActiveFilter,
@@ -498,16 +499,16 @@ export default function ProcurementPresetsConfigPage() {
                         ₱{formatMoney(sumItemTotals(preset.items))}
                       </span>
 
-                      <div className="flex items-center gap-2 text-sm shrink-0">
-                        <TextAction onClick={() => openEdit(preset)}>Edit</TextAction>
-                        <span className="text-slate-300">·</span>
-                        {preset.isActive ? (
-                          <TextAction danger onClick={() => confirmDeactivate(preset)}>
-                            Deactivate
-                          </TextAction>
-                        ) : (
-                          <TextAction onClick={() => void doReactivate(preset)}>Reactivate</TextAction>
-                        )}
+                      <div className="shrink-0">
+                        <RowActions
+                          btnWidth={92}
+                          actions={[
+                            { key: "edit", label: "Edit", onClick: () => openEdit(preset) },
+                            preset.isActive
+                              ? { key: "deactivate", label: "Deactivate", onClick: () => confirmDeactivate(preset), variant: "danger" }
+                              : { key: "reactivate", label: "Reactivate", onClick: () => void doReactivate(preset) },
+                          ] satisfies RowAction[]}
+                        />
                       </div>
                     </div>
 
@@ -742,27 +743,3 @@ function ItemRow({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Small helpers
-// ---------------------------------------------------------------------------
-
-function TextAction({
-  children,
-  danger,
-  onClick,
-}: {
-  children: React.ReactNode;
-  danger?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`font-medium transition-colors ${
-        danger ? "text-danger-500 hover:text-red-600" : "text-green-600 hover:text-green-700"
-      } hover:underline`}
-    >
-      {children}
-    </button>
-  );
-}
