@@ -501,7 +501,7 @@ export default function ProcurementPresetsConfigPage() {
 
                       <div className="shrink-0">
                         <RowActions
-                          btnWidth={92}
+                          btnPaddingX="px-1"
                           actions={[
                             { key: "edit", label: "Edit", onClick: () => openEdit(preset) },
                             preset.isActive

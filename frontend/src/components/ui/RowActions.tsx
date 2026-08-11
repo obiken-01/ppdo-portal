@@ -24,6 +24,11 @@ import Link from "next/link";
  * one page's outlier label; every other page would carry unnecessary
  * padding for a word they never show.
  *
+ * `btnPaddingX` (default "px-1.5") trades inner padding for text room at a
+ * given width, rather than widening the button — e.g. the config pages keep
+ * the default 80px width but drop to "px-1" so "Deactivate"/"Reactivate"
+ * (10 chars) still clear it.
+ *
  * Wrapping — see docs/DESIGN_SYSTEM.md §6a:
  *   Exactly 2 fixed-width buttons fit per row; a 3rd wraps to its own row
  *   below at the SAME width as every other button, right-aligned — never
@@ -54,17 +59,24 @@ const VARIANT_CLS: Record<NonNullable<RowAction["variant"]>, string> = {
   danger:  "border-danger-500/30 text-danger-500 bg-danger-100 hover:bg-danger-100/70",
 };
 
+const DEFAULT_PADDING_X = "px-1.5";
+
 const BTN_CLS =
-  "inline-flex items-center justify-center gap-1 px-1.5 py-1 text-xs font-medium border transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0";
+  "inline-flex items-center justify-center gap-1 py-1 text-xs font-medium border transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0";
 
 export default function RowActions({
   actions,
   btnWidth = DEFAULT_BTN_W,
+  btnPaddingX = DEFAULT_PADDING_X,
 }: {
   actions: RowAction[];
   /** Fixed width per button, in px. Only widen this for a page whose real
    * label is longer than "Finalize"/"Archive" — see the component doc comment. */
   btnWidth?: number;
+  /** Tailwind horizontal-padding class. Tighten this instead of widening
+   * btnWidth when a label is snug but you don't want every button on the
+   * page wider — see the component doc comment. */
+  btnPaddingX?: string;
 }) {
   if (actions.length === 0) return null;
 
@@ -74,15 +86,23 @@ export default function RowActions({
       style={{ width: btnWidth * 2 + GAP }}
     >
       {actions.map((action) => (
-        <ActionButton key={action.key} action={action} width={btnWidth} />
+        <ActionButton key={action.key} action={action} width={btnWidth} paddingX={btnPaddingX} />
       ))}
     </div>
   );
 }
 
-function ActionButton({ action, width }: { action: RowAction; width: number }) {
+function ActionButton({
+  action,
+  width,
+  paddingX,
+}: {
+  action: RowAction;
+  width: number;
+  paddingX: string;
+}) {
   const variant = action.variant ?? "default";
-  const cls = `${BTN_CLS} ${VARIANT_CLS[variant]}`;
+  const cls = `${BTN_CLS} ${paddingX} ${VARIANT_CLS[variant]}`;
 
   const content = (
     <>

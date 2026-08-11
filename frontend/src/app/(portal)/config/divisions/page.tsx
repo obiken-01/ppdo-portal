@@ -431,7 +431,7 @@ export default function DivisionConfigPage() {
         } else {
           actions.push({ key: "reactivate", label: "Reactivate", onClick: () => void doReactivate(d) });
         }
-        return <RowActions actions={actions} btnWidth={92} />;
+        return <RowActions actions={actions} btnPaddingX="px-1" />;
       },
     },
   ];

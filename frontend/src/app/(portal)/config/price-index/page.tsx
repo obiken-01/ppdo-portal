@@ -413,7 +413,7 @@ export default function PriceIndexConfigPage() {
         } else {
           actions.push({ key: "reactivate", label: "Reactivate", onClick: () => void doReactivate(p) });
         }
-        return <RowActions actions={actions} btnWidth={92} />;
+        return <RowActions actions={actions} btnPaddingX="px-1" />;
       },
     },
   ];

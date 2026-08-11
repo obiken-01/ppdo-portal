@@ -445,7 +445,7 @@ export default function AccountConfigPage() {
         } else {
           actions.push({ key: "reactivate", label: "Reactivate", onClick: () => void doReactivate(a) });
         }
-        return <RowActions actions={actions} btnWidth={92} />;
+        return <RowActions actions={actions} btnPaddingX="px-1" />;
       },
     },
   ];

@@ -361,7 +361,7 @@ export default function OfficeConfigPage() {
         } else {
           actions.push({ key: "reactivate", label: "Reactivate", onClick: () => void doReactivate(o) });
         }
-        return <RowActions actions={actions} btnWidth={92} />;
+        return <RowActions actions={actions} btnPaddingX="px-1" />;
       },
     },
   ];

@@ -409,7 +409,7 @@ export default function FundingSourceConfigPage() {
         } else {
           actions.push({ key: "reactivate", label: "Reactivate", onClick: () => void doReactivate(s) });
         }
-        return <RowActions actions={actions} btnWidth={92} />;
+        return <RowActions actions={actions} btnPaddingX="px-1" />;
       },
     },
   ];

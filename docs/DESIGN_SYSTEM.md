@@ -255,16 +255,22 @@ unpredictably. Fixed width is what actually reads as one component instead of se
 happen to sit near each other — worth remembering before reaching for either alternative again.
 
 **`btnWidth` prop, default 80px.** 80px fits `ldip`/`aip`'s longest labels ("Finalize" /
-"Archive") without clipping — every page above uses the default *except*:
-
-| Page | `btnWidth` | Why |
-|---|---|---|
-| `pr-register` | `116` | "Mark Completed" is 14 characters, the longest real label anywhere in the app |
-| 6 config pages | `92` | "Deactivate" / "Reactivate" are 10 characters each |
+"Archive") without clipping — every page above uses the default *except* `pr-register` (`116`;
+"Mark Completed" is 14 characters, the longest real label anywhere in the app).
 
 Don't widen the shared default to cover one page's outlier label — every other page would carry
-unnecessary padding for a word they never show. Add a row to this table whenever a new page needs
-a non-default width, so the reasoning doesn't have to be re-derived from the button text alone.
+unnecessary padding for a word they never show. Add a row below whenever a new page needs a
+non-default width, so the reasoning doesn't have to be re-derived from the button text alone.
+
+**`btnPaddingX` prop, default `"px-1.5"`.** The 6 config pages ("Deactivate" / "Reactivate", 10
+characters) first got a wider `btnWidth={92}`, then Ralph asked to keep the default 80px width and
+tighten the padding instead — trading inner padding for text room rather than widening the button.
+They pass `btnPaddingX="px-1"`.
+
+| Page | `btnWidth` | `btnPaddingX` | Why |
+|---|---|---|---|
+| `pr-register` | `116` | default | "Mark Completed" (14 chars) needs more width, not less padding |
+| 6 config pages | default | `"px-1"` | "Deactivate"/"Reactivate" (10 chars) fit the default 80px once padding is tightened |
 
 **Wrapping.** `ldip` and `aip` are the only pages that ever show 3 actions on one row (both
 status-gated: Draft → Edit + Finalize + Archive). Ralph tried both a 2-per-row wrap and a single
