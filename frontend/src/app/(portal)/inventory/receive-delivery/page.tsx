@@ -20,6 +20,7 @@ import api from "@/lib/api";
 import { fetchMe } from "@/lib/me-cache";
 import { useToast } from "@/components/ui/Toast";
 import TableSkeleton from "@/components/ui/TableSkeleton";
+import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import type {
   CreateDeliveryItemRequest,
   CreateDeliveryRequest,
@@ -422,6 +423,11 @@ export default function ReceiveDeliveryPage() {
   return (
     <div className="min-h-full bg-slate-100">
       <div className="max-w-6xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-5">
+
+        <ConfigPageHeader
+          title="Receive Delivery"
+          description="Record items received against a purchase request."
+        />
 
         {/* Toolbar */}
         <div className="flex items-center justify-end">
