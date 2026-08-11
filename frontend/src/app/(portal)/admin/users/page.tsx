@@ -30,6 +30,7 @@ import { listDivisions, listOffices } from "@/lib/config";
 import Modal from "@/components/ui/Modal";
 import OfficeSelect from "@/components/ui/OfficeSelect";
 import { useToast } from "@/components/ui/Toast";
+import RowActions, { type RowAction } from "@/components/ui/RowActions";
 import type {
   CreateUserRequest,
   DivisionResponse,
@@ -771,27 +772,16 @@ export default function UsersPage() {
                       </td>
                       <td className="px-4 py-3">{statusBadge(user.isActive)}</td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-1">
-                          {/* Edit */}
-                          <ActionButton
-                            title="Edit user"
-                            onClick={() => openEdit(user)}
-                            icon="✏️"
-                          />
-                          {/* Reset password */}
-                          <ActionButton
-                            title="Reset password"
-                            onClick={() => setResetTarget(user)}
-                            icon="🔑"
-                          />
-                          {/* Deactivate / Reactivate */}
-                          <ActionButton
-                            title={user.isActive ? "Deactivate user" : "Reactivate user"}
-                            onClick={() => setDeactivateTarget(user)}
-                            icon={user.isActive ? "🚫" : "✅"}
-                            danger={user.isActive}
-                          />
-                        </div>
+                        <RowActions
+                          btnPaddingX="px-1"
+                          actions={[
+                            { key: "edit", label: "Edit", onClick: () => openEdit(user) },
+                            { key: "reset", label: "Reset", onClick: () => setResetTarget(user) },
+                            user.isActive
+                              ? { key: "deactivate", label: "Deactivate", onClick: () => setDeactivateTarget(user), variant: "danger" }
+                              : { key: "activate", label: "Activate", onClick: () => setDeactivateTarget(user) },
+                          ] satisfies RowAction[]}
+                        />
                       </td>
                     </tr>
                   ))}
@@ -892,35 +882,5 @@ export default function UsersPage() {
         />
       )}
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Small action button
-// ---------------------------------------------------------------------------
-
-function ActionButton({
-  title,
-  onClick,
-  icon,
-  danger,
-}: {
-  title: string;
-  onClick: () => void;
-  icon: string;
-  danger?: boolean;
-}) {
-  return (
-    <button
-      title={title}
-      onClick={onClick}
-      className={`p-1.5 text-sm transition-colors ${
-        danger
-          ? "hover:bg-danger-100 text-slate-600 hover:text-danger-500"
-          : "hover:bg-green-50 text-slate-600 hover:text-green-700"
-      }`}
-    >
-      {icon}
-    </button>
   );
 }
