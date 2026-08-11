@@ -199,11 +199,11 @@ Everything in `frontend/src/components/ui/`. Check here before building anything
 | `RowActions` | Any table's per-row action buttons. See §6a for the layout rule. | A single always-visible primary action with no alternatives — a plain button is enough |
 
 **Adoption today:** `Toast` 32 files, `DataTable` 10, `ConfigPageHeader` 7, `TableSkeleton` 6,
-`RowActions` 11 (`ldip`, `aip`, `items-master`, `pr-register`, `resource-links`, and 6 config
-pages — `accounts`, `offices`, `divisions`, `funding-sources`, `price-index`,
-`procurement-presets`), `Lookup` 3, `LoadingState` 1. Fully converted as of 2026-08-11 — the 6
-config pages' local `TextAction` helper (an underlined-text-link style, duplicated identically in
-each file) was deleted entirely once nothing referenced it.
+`RowActions` 12 (`ldip`, `aip`, `items-master`, `pr-register`, `resource-links`, `admin/users`,
+and 6 config pages — `accounts`, `offices`, `divisions`, `funding-sources`, `price-index`,
+`procurement-presets`), `Lookup` 3, `LoadingState` 1. Converted 2026-08-11 — two local helpers were
+deleted once nothing referenced them: the 6 config pages' `TextAction` (an underlined-text-link
+style, duplicated identically in each file) and `admin/users`' `ActionButton` (icon-only).
 
 ### Loading states
 
@@ -297,10 +297,11 @@ row. `disabled` and `loading` both map onto the rendered `disabled` state (`load
 spinner) — pass both independently rather than pre-combining them, e.g. `pr-register`'s Mark
 Completed button is `disabled: anyBusy, loading: isCompleting`.
 
-**Not yet converted:** `admin/users` (icon-only `ActionButton` helper, same shape `items-master`
-and `resource-links` had) and `announcements` (a hand-rolled Edit action) both have real per-row
-actions that were simply not part of this pass — not a deliberate exception, a genuine gap.
-`account` has no table rows at all, so it was never a candidate.
+**Not yet converted:** `announcements` — a hand-rolled Edit action, a real per-row action that was
+simply not part of this pass, not a deliberate exception. `admin/users` converted 2026-08-11 (Edit/
+Reset/Deactivate → "Activate" rather than "Reactivate", per Ralph's explicit wording — not forced
+to match the config pages' naming for the same concept). `account` has no table rows at all, so it
+was never a candidate.
 
 ---
 
