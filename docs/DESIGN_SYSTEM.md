@@ -242,13 +242,18 @@ Table rows with more than one action button had drifted into four different styl
 `items-master` (bare icons), `pr-register` (bordered chips), `resource-links` (bare icons), and
 `ldip` (underlined text links). `RowActions` is the one component for this.
 
-**Buttons keep their own natural width — never stretched to fill a shared column.** A CSS-grid
-version tried equal-width columns first; it made short labels like "View" render as an oversized
-box. Ralph caught this live and it was reverted before any other page adopted it — worth knowing
-if you're tempted to reach for a grid here again.
+**Every button renders at the same fixed width (`BTN_W` = 80px, sized to fit "Finalize" /
+"Archive" — the longest real labels in the app), not stretched, not shrunk to its own text.** Two
+earlier versions got this wrong, both caught live by Ralph: a CSS-grid version with `w-full`
+stretched short labels like "View" into an oversized box; a `flex-wrap` version with natural
+per-button width made every button a different size and wrapped unpredictably. Fixed width is
+what actually reads as one component instead of several buttons that happen to sit near each
+other — worth remembering before reaching for either alternative again.
 
-Buttons `flex-wrap` right-aligned inside a `max-w-[180px]` container. 1–2 actions sit on one line;
-a 3rd wraps to its own line below, at its own natural size — not forced into an even 2×2 split.
+Exactly 2 fixed-width buttons fit per row (`flex-wrap` inside a container sized to
+`BTN_W * 2 + gap`, computed in JS — not a Tailwind arbitrary value, since those only work with a
+class the compiler can see statically, not a value built from a variable). A 3rd action wraps to
+its own row below, right-aligned, at the same `BTN_W` — never stretched to fill the row alone.
 5+ actions want a primary action + overflow menu — **not built**. Nothing in the portal hits this
 today (`ldip`'s 3 is the current max anywhere); build the overflow menu when a real page needs it.
 
