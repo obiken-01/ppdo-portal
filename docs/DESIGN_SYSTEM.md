@@ -196,9 +196,12 @@ Everything in `frontend/src/components/ui/`. Check here before building anything
 | `OfficeSelect` | Office picker | — |
 | `MoneyInput` | Peso amounts. Handles formatting and precision. | — |
 | `CsvUploadButton` / `CsvDownloadButton` | CSV import/export triggers | — |
+| `RowActions` | Any table's per-row action buttons. See §6a for the layout rule. | A single always-visible primary action with no alternatives — a plain button is enough |
 
 **Adoption today:** `Toast` 32 files, `DataTable` 10, `ConfigPageHeader` 7, `TableSkeleton` 6,
-`Lookup` 3, `LoadingState` 1. `LoadingState`'s single use is consistent with its narrow purpose.
+`Lookup` 3, `LoadingState` 1, `RowActions` 1 (`ldip`, 2026-08-11 — pilot, pending review before
+converting `items-master`, `pr-register`, `resource-links`, `aip`, and the config pages, which
+still hand-roll four different action-button styles between them).
 
 ### Loading states
 
@@ -232,6 +235,37 @@ disabled:cursor-not-allowed`, and use `slate-400` for any disabled text.
 
 There is no `Button` component — these are inline classes. Extracting one is a reasonable future
 cleanup, but until then copy the strings above exactly rather than improvising.
+
+### 6a. Row actions (`RowActions`)
+
+Table rows with more than one action button had drifted into four different styles across
+`items-master` (bare icons), `pr-register` (bordered chips), `resource-links` (bare icons), and
+`ldip` (underlined text links). `RowActions` is the one component for this.
+
+**The layout rule is threshold-based, not per-page choice** — per-page choice is how the four
+styles above happened in the first place:
+
+| Action count | Layout |
+|---|---|
+| 1 | Single button, spans the fixed-width column |
+| 2 | Two across, one row |
+| 3–4 | Two across, wrapping; an odd trailing action spans both columns |
+| 5+ | Primary action + overflow menu — **not built**. Nothing in the portal hits this today (`ldip`'s 3 is the current max anywhere); build the overflow menu when a real page needs it rather than growing the grid past 4 to cover it |
+
+Every row renders inside the same fixed-width container (`w-[170px]`) regardless of action count,
+so the Actions column doesn't change width scanning down a table with mixed row states — a
+`Draft` row's 3 buttons and an `Archived` row's 1 both occupy the same footprint.
+
+**Variants:** `default` (neutral bordered — Edit/View), `primary` (green — the forward action,
+e.g. Finalize), `warn` (amber — a reversible-but-notable action, e.g. Archive/Unlock), `danger`
+(the `danger-*` tokens — reserved for destructive actions like delete; not yet used by any
+converted page). Give the `actions` column `align: "right"` on whichever table component you're
+using — `RowActions` right-aligns its own content, and an unaligned header reads as a mismatch
+against it (the same bug found and fixed in `items-master`'s Actions column).
+
+Supports either `href` (renders a `Link`) or `onClick` (renders a `button`) per action — `ldip`'s
+Edit/View are navigation, Finalize/Archive/Unlock are handlers, and both need to sit in the same
+grid.
 
 ---
 
