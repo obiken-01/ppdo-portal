@@ -285,6 +285,16 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         if (lengthError is not null)
             return ServiceResult<PRResponseDto>.BadRequest(lengthError);
 
+        // Only a caller-supplied PrNo needs an existence check — GeneratePRNoAsync's own
+        // sequence lookup already guarantees a fresh number for the auto-generate path.
+        if (!string.IsNullOrWhiteSpace(dto.PrNo))
+        {
+            PurchaseRequest? duplicate = await _prs.GetByPRNoAsync(dto.PrNo.Trim(), cancellationToken);
+            if (duplicate is not null)
+                return ServiceResult<PRResponseDto>.Conflict(
+                    $"PR No. '{dto.PrNo.Trim()}' already exists. This purchase request has already been submitted.");
+        }
+
         DateTime manilaNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, ManilaZone);
         string prNo = !string.IsNullOrWhiteSpace(dto.PrNo)
             ? dto.PrNo.Trim()
