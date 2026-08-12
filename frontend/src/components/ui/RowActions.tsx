@@ -53,16 +53,16 @@ export interface RowAction {
 }
 
 const VARIANT_CLS: Record<NonNullable<RowAction["variant"]>, string> = {
-  default: "border-slate-300 text-slate-600 bg-white hover:bg-slate-50",
-  primary: "border-green-300 text-green-700 bg-green-50 hover:bg-green-100",
-  warn:    "border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100",
-  danger:  "border-danger-500/30 text-danger-500 bg-danger-100 hover:bg-danger-100/70",
+  default: "border-slate-300 text-slate-600 bg-white hover:bg-slate-50 hover:border-slate-400 active:bg-slate-100 focus-visible:ring-slate-400",
+  primary: "border-green-300 text-green-700 bg-green-50 hover:bg-green-100 hover:border-green-400 active:bg-green-200 focus-visible:ring-green-400",
+  warn:    "border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100 hover:border-amber-400 active:bg-amber-200 focus-visible:ring-amber-400",
+  danger:  "border-danger-500/30 text-danger-500 bg-danger-100 hover:bg-danger-100/70 hover:border-danger-500/50 active:bg-danger-200 focus-visible:ring-danger-500",
 };
 
 const DEFAULT_PADDING_X = "px-1.5";
 
 const BTN_CLS =
-  "inline-flex items-center justify-center gap-1 py-1 text-xs font-medium border transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0";
+  "inline-flex items-center justify-center gap-1 py-1 text-xs font-medium border transition-all duration-150 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 whitespace-nowrap shrink-0";
 
 export default function RowActions({
   actions,
