@@ -378,9 +378,15 @@ export interface ExistingDistributionResponse {
   remarks: string | null;
 }
 
-/** Mirrors DeliveryItemBreakdownDto */
+/**
+ * Mirrors DeliveryItemBreakdownDto — one stock source, either a real delivery batch
+ * (source: "Delivery") or the warehouse-count pool (source: "Warehouse Count", RAL-223).
+ * Exactly one of deliveryItemId / stockBalanceId is set, matching `source`.
+ */
 export interface DeliveryItemBreakdownResponse {
-  deliveryItemId: string;
+  deliveryItemId: string | null;
+  stockBalanceId: string | null;
+  source: "Delivery" | "Warehouse Count";
   deliveryRef: string;
   deliveryDate: string;
   prId: string;
@@ -422,11 +428,13 @@ export interface CreateItemDistributionRequest {
   splits: DistributionSplitRequest[];
 }
 
-/** Mirrors DistributionCreatedDto */
+/** Mirrors DistributionCreatedDto — exactly one of deliveryItemId / stockBalanceId is set (RAL-223) */
 export interface DistributionCreatedResponse {
   id: string;
   issueRef: string;
-  deliveryItemId: string;
+  deliveryItemId: string | null;
+  stockBalanceId: string | null;
+  source: "Delivery" | "Warehouse Count";
   deliveryRef: string;
   prNo: string;
   stockNo: string;

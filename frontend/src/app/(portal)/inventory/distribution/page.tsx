@@ -527,31 +527,49 @@ export default function DistributionPage() {
                 <div className="text-center py-12 text-slate-600 text-sm">No delivery batches found.</div>
               ) : (
                 <div className="divide-y divide-slate-100">
-                  {summary.deliveryItems.map((batch) => (
-                    <div key={batch.deliveryItemId}>
+                  {summary.deliveryItems.map((batch) => {
+                    const isWarehouseCount = batch.source === "Warehouse Count";
+                    return (
+                    <div key={batch.deliveryItemId ?? `wc-${batch.stockBalanceId}`}>
                       {/* Batch row */}
                       <div className="flex items-center gap-4 px-5 py-3 flex-wrap">
                         <div className="flex-1 min-w-0 grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
                           <div>
-                            <p className="text-xs text-slate-600">Delivery Ref</p>
-                            <p className="font-mono font-semibold text-slate-800">{batch.deliveryRef}</p>
+                            <p className="text-xs text-slate-600">
+                              {isWarehouseCount ? "Source" : "Delivery Ref"}
+                            </p>
+                            {isWarehouseCount ? (
+                              <p className="font-semibold text-slate-800 inline-flex items-center gap-1.5">
+                                <span className="px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-amber-50 text-amber-700 border border-amber-200">
+                                  Warehouse Count
+                                </span>
+                              </p>
+                            ) : (
+                              <p className="font-mono font-semibold text-slate-800">{batch.deliveryRef}</p>
+                            )}
                           </div>
                           <div>
                             <p className="text-xs text-slate-600">PR No.</p>
                             <p className="font-mono text-xs text-slate-600">{batch.prNo}</p>
                           </div>
                           <div>
-                            <p className="text-xs text-slate-600">Date</p>
+                            <p className="text-xs text-slate-600">
+                              {isWarehouseCount ? "Count Date" : "Date"}
+                            </p>
                             <p className="text-slate-600">{fmtDate(batch.deliveryDate)}</p>
                           </div>
                           <div>
-                            <p className="text-xs text-slate-600">Delivered / Distributed</p>
+                            <p className="text-xs text-slate-600">
+                              {isWarehouseCount ? "Counted / Distributed" : "Delivered / Distributed"}
+                            </p>
                             <p className="tabular-nums text-slate-600">
                               {fmt(batch.qtyDelivered)} / {fmt(batch.qtyDistributed)}
                             </p>
                           </div>
                           <div>
-                            <p className="text-xs text-slate-600">Available from batch</p>
+                            <p className="text-xs text-slate-600">
+                              {isWarehouseCount ? "Available from count" : "Available from batch"}
+                            </p>
                             <p className={`font-bold tabular-nums ${
                               batch.qtyAvailable > 0 ? "text-green-700" : "text-slate-600"
                             }`}>
@@ -562,7 +580,8 @@ export default function DistributionPage() {
                       </div>
 
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
