@@ -32,6 +32,7 @@ import { useToast } from "@/components/ui/Toast";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import TableSkeleton from "@/components/ui/TableSkeleton";
 import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
+import RowActions, { type RowAction } from "@/components/ui/RowActions";
 import type { MeResponse, PRSearchResult, PRStatusCounts, PRSummaryResponse } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -525,43 +526,40 @@ export default function PRListPage() {
       },
     },
     {
-      id: "actions", header: "", size: 220,
+      id: "actions", header: "Actions", size: 240,
       enableSorting: false,
       cell: ({ row }) => {
         const pr             = row.original;
         const isCompleting   = completingId === pr.id;
         const isUncompleting = uncompletingId === pr.id;
         const anyBusy        = completingId !== null || uncompletingId !== null;
-        return (
-          <div className="flex items-center justify-end gap-2">
-            {pr.status === "FullyDelivered" && (
-              <button
-                onClick={() => handleMarkCompleted(pr)}
-                disabled={isCompleting || anyBusy}
-                className="inline-flex items-center gap-1 px-3 py-1.5 text-xs border border-slate-300 text-slate-600 bg-white hover:bg-slate-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-              >
-                {isCompleting ? <span className="w-3 h-3 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" /> : "✓"}
-                {isCompleting ? "Saving…" : "Mark Completed"}
-              </button>
-            )}
-            {pr.status === "Completed" && (
-              <button
-                onClick={() => handleUnmarkCompleted(pr)}
-                disabled={isUncompleting || anyBusy}
-                className="inline-flex items-center gap-1 px-3 py-1.5 text-xs border border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-              >
-                {isUncompleting ? <span className="w-3 h-3 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" /> : "↩"}
-                {isUncompleting ? "Reverting…" : "Unmark"}
-              </button>
-            )}
-            <button
-              onClick={() => router.push(`/inventory/pr-report?id=${encodeURIComponent(pr.id)}`)}
-              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs border border-green-300 text-green-700 bg-green-50 hover:bg-green-100 transition-colors font-medium whitespace-nowrap"
-            >
-              📋 View Report
-            </button>
-          </div>
-        );
+        const actions: RowAction[] = [];
+        if (pr.status === "FullyDelivered") {
+          actions.push({
+            key: "complete",
+            label: isCompleting ? "Saving…" : "Mark Completed",
+            onClick: () => handleMarkCompleted(pr),
+            disabled: anyBusy,
+            loading: isCompleting,
+          });
+        }
+        if (pr.status === "Completed") {
+          actions.push({
+            key: "unmark",
+            label: isUncompleting ? "Reverting…" : "Unmark",
+            onClick: () => handleUnmarkCompleted(pr),
+            disabled: anyBusy,
+            loading: isUncompleting,
+            variant: "warn",
+          });
+        }
+        actions.push({
+          key: "report",
+          label: "View Report",
+          onClick: () => router.push(`/inventory/pr-report?id=${encodeURIComponent(pr.id)}`),
+          variant: "primary",
+        });
+        return <RowActions actions={actions} btnWidth={116} />;
       },
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -826,7 +824,11 @@ export default function PRListPage() {
                   {table.getHeaderGroups().map((hg) => (
                     <tr key={hg.id} className="bg-slate-50 border-b border-slate-200 text-xs text-slate-600 uppercase tracking-wide">
                       {hg.headers.map((h) => (
-                        <th key={h.id} style={{ width: h.getSize() }} className="text-left px-3 py-2.5 font-medium select-none">
+                        <th
+                          key={h.id}
+                          style={{ width: h.getSize() }}
+                          className={`px-3 py-2.5 font-medium select-none ${h.column.id === "actions" ? "text-right" : "text-left"}`}
+                        >
                           {h.isPlaceholder ? null : (
                             <div
                               className={h.column.getCanSort() ? "cursor-pointer flex items-center gap-1 hover:text-slate-800" : ""}

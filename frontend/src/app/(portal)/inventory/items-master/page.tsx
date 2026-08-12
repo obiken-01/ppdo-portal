@@ -47,6 +47,7 @@ import { fetchMe } from "@/lib/me-cache";
 import { useToast } from "@/components/ui/Toast";
 import TableSkeleton from "@/components/ui/TableSkeleton";
 import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
+import RowActions, { type RowAction } from "@/components/ui/RowActions";
 import type {
   CreateItemMasterRequest,
   ItemMasterResponse,
@@ -625,30 +626,24 @@ export default function ItemsMasterPage() {
             );
           }
 
-          return (
-            <div className="flex items-center justify-end gap-1">
-              {item.isNewItem && (
-                <button
-                  title="Mark as reviewed — clears ★ NEW flag"
-                  disabled={reviewingId === item.id || !!editingId}
-                  onClick={() => handleMarkReviewed(item)}
-                  className="p-1.5 text-xs transition-colors hover:bg-amber-50 text-amber-500 hover:text-amber-700 disabled:opacity-40"
-                >
-                  {reviewingId === item.id
-                    ? <span className="w-3.5 h-3.5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin inline-block" />
-                    : "✓"}
-                </button>
-              )}
-              <button
-                title="Edit row"
-                disabled={!!editingId}
-                onClick={() => startEdit(item)}
-                className="p-1.5 text-xs transition-colors hover:bg-green-50 text-slate-600 hover:text-green-700 disabled:opacity-40"
-              >
-                ✏️
-              </button>
-            </div>
-          );
+          const actions: RowAction[] = [];
+          if (item.isNewItem) {
+            actions.push({
+              key: "review",
+              label: "Review",
+              onClick: () => handleMarkReviewed(item),
+              disabled: !!editingId,
+              loading: reviewingId === item.id,
+              variant: "warn",
+            });
+          }
+          actions.push({
+            key: "edit",
+            label: "Edit",
+            onClick: () => startEdit(item),
+            disabled: !!editingId,
+          });
+          return <RowActions actions={actions} />;
         },
       },
     ],

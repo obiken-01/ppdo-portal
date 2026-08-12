@@ -15,6 +15,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import api from "@/lib/api";
+import RowActions, { type RowAction } from "@/components/ui/RowActions";
 import type {
   CreateResourceLinkRequest,
   MeResponse,
@@ -393,25 +394,22 @@ export default function ResourceLinksPage() {
                     </a>
 
                     {/* Actions */}
-                    <div className="flex items-center gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity shrink-0">
-                      {canEdit && (
-                        <button
-                          title="Edit"
-                          onClick={() => { setFormError(null); setEditTarget(link); }}
-                          className="p-1 text-slate-600 hover:text-green-700 hover:bg-green-50 transition-colors"
-                        >
-                          ✏️
-                        </button>
-                      )}
-                      {canDelete && (
-                        <button
-                          title="Delete"
-                          onClick={() => setDeleteTarget(link)}
-                          className="p-1 text-slate-600 hover:text-danger-500 hover:bg-danger-100 transition-colors"
-                        >
-                          🗑️
-                        </button>
-                      )}
+                    <div className="opacity-0 group-hover/row:opacity-100 transition-opacity shrink-0">
+                      <RowActions
+                        actions={[
+                          ...(canEdit ? [{
+                            key: "edit",
+                            label: "Edit",
+                            onClick: () => { setFormError(null); setEditTarget(link); },
+                          } satisfies RowAction] : []),
+                          ...(canDelete ? [{
+                            key: "delete",
+                            label: "Delete",
+                            onClick: () => setDeleteTarget(link),
+                            variant: "danger",
+                          } satisfies RowAction] : []),
+                        ]}
+                      />
                     </div>
                   </li>
                 ))}

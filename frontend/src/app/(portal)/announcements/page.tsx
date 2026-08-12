@@ -16,6 +16,7 @@ import DataTable, { type Column } from "@/components/ui/DataTable";
 import AnnouncementEditorModal from "@/components/announcements/AnnouncementEditorModal";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
+import RowActions, { type RowAction } from "@/components/ui/RowActions";
 
 const STATUS_BADGE_CLS: Record<string, string> = {
   Draft:     "bg-slate-100 text-slate-600",
@@ -213,53 +214,22 @@ export default function AnnouncementsPage() {
       align: "right",
       render: (row) => {
         const busy = actioning === row.id;
-        return (
-          <div className="flex items-center justify-end gap-3">
-            <button
-              onClick={() => openEdit(row)}
-              disabled={busy}
-              className="text-xs text-green-700 hover:text-green-900 font-medium disabled:opacity-50"
-            >
-              Edit
-            </button>
-            {row.status === "Draft" && (
-              <button
-                onClick={() => handlePublish(row)}
-                disabled={busy}
-                className="text-xs text-blue-600 hover:text-blue-800 font-medium disabled:opacity-50"
-              >
-                {busy ? "…" : "Publish"}
-              </button>
-            )}
-            {row.status === "Published" && (
-              <button
-                onClick={() => handleUnpublish(row)}
-                disabled={busy}
-                className="text-xs text-amber-600 hover:text-amber-800 font-medium disabled:opacity-50"
-              >
-                {busy ? "…" : "Unpublish"}
-              </button>
-            )}
-            {row.status !== "Archived" && (
-              <button
-                onClick={() => handleArchive(row)}
-                disabled={busy}
-                className="text-xs text-slate-600 hover:text-slate-800 disabled:opacity-50"
-              >
-                Archive
-              </button>
-            )}
-            {row.status !== "Published" && (
-              <button
-                onClick={() => handleDelete(row)}
-                disabled={busy}
-                className="text-xs text-red-500 hover:text-red-700 disabled:opacity-50"
-              >
-                Delete
-              </button>
-            )}
-          </div>
-        );
+        const actions: RowAction[] = [
+          { key: "edit", label: "Edit", onClick: () => openEdit(row), disabled: busy },
+        ];
+        if (row.status === "Draft") {
+          actions.push({ key: "publish", label: "Publish", onClick: () => handlePublish(row), disabled: busy, loading: busy, variant: "primary" });
+        }
+        if (row.status === "Published") {
+          actions.push({ key: "unpublish", label: "Unpublish", onClick: () => handleUnpublish(row), disabled: busy, loading: busy, variant: "warn" });
+        }
+        if (row.status !== "Archived") {
+          actions.push({ key: "archive", label: "Archive", onClick: () => handleArchive(row), disabled: busy, variant: "warn" });
+        }
+        if (row.status !== "Published") {
+          actions.push({ key: "delete", label: "Delete", onClick: () => handleDelete(row), disabled: busy, variant: "danger" });
+        }
+        return <RowActions actions={actions} btnPaddingX="px-1" />;
       },
     },
   ];

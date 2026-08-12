@@ -22,6 +22,7 @@ import DataTable, { type Column } from "@/components/ui/DataTable";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
 import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
+import RowActions, { type RowAction } from "@/components/ui/RowActions";
 import type { AipRecordResponse } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -214,40 +215,20 @@ export default function AipListPage() {
     {
       key: "actions",
       header: "ACTIONS",
-      render: (r) => (
-        <div className="flex items-center gap-3 text-sm">
-          <Link
-            href={`/budget-planning/aip/detail?id=${r.id}`}
-            className="text-green-700 hover:underline"
-          >
-            View
-          </Link>
-          {r.status === "Draft" && me?.canUploadAip && (
-            <>
-              <button
-                onClick={() => handleFinalize(r)}
-                className="text-slate-600 hover:underline"
-              >
-                Finalize
-              </button>
-              <button
-                onClick={() => handleArchive(r)}
-                className="text-danger-500 hover:underline"
-              >
-                Archive
-              </button>
-            </>
-          )}
-          {r.status === "Final" && (
-            <Link
-              href={`/budget-planning/wfp?aipId=${r.id}`}
-              className="text-blue-600 hover:underline"
-            >
-              WFP
-            </Link>
-          )}
-        </div>
-      ),
+      align: "right",
+      render: (r) => {
+        const actions: RowAction[] = [
+          { key: "view", label: "View", href: `/budget-planning/aip/detail?id=${r.id}` },
+        ];
+        if (r.status === "Draft" && me?.canUploadAip) {
+          actions.push({ key: "finalize", label: "Finalize", onClick: () => handleFinalize(r), variant: "primary" });
+          actions.push({ key: "archive", label: "Archive", onClick: () => handleArchive(r), variant: "warn" });
+        }
+        if (r.status === "Final") {
+          actions.push({ key: "wfp", label: "WFP", href: `/budget-planning/wfp?aipId=${r.id}` });
+        }
+        return <RowActions actions={actions} />;
+      },
     },
   ];
 

@@ -55,6 +55,7 @@ import CsvUploadButton from "@/components/ui/CsvUploadButton";
 import CsvDownloadButton from "@/components/ui/CsvDownloadButton";
 import MoneyInput from "@/components/ui/MoneyInput";
 import { useToast } from "@/components/ui/Toast";
+import RowActions, { type RowAction } from "@/components/ui/RowActions";
 import type {
   ActiveFilter,
   CsvImportResult,
@@ -405,19 +406,15 @@ export default function PriceIndexConfigPage() {
       header: "Actions",
       align: "right",
       className: "whitespace-nowrap",
-      render: (p) => (
-        <div className="flex items-center justify-end gap-2 text-sm">
-          <TextAction onClick={() => openEdit(p)}>Edit</TextAction>
-          <span className="text-slate-300">·</span>
-          {p.isActive ? (
-            <TextAction danger onClick={() => confirmDeactivate(p)}>
-              Deactivate
-            </TextAction>
-          ) : (
-            <TextAction onClick={() => void doReactivate(p)}>Reactivate</TextAction>
-          )}
-        </div>
-      ),
+      render: (p) => {
+        const actions: RowAction[] = [{ key: "edit", label: "Edit", onClick: () => openEdit(p) }];
+        if (p.isActive) {
+          actions.push({ key: "deactivate", label: "Deactivate", onClick: () => confirmDeactivate(p), variant: "danger" });
+        } else {
+          actions.push({ key: "reactivate", label: "Reactivate", onClick: () => void doReactivate(p) });
+        }
+        return <RowActions actions={actions} btnPaddingX="px-1" />;
+      },
     },
   ];
 
@@ -706,27 +703,6 @@ export default function PriceIndexConfigPage() {
 // ---------------------------------------------------------------------------
 // Small helpers
 // ---------------------------------------------------------------------------
-
-function TextAction({
-  children,
-  danger,
-  onClick,
-}: {
-  children: React.ReactNode;
-  danger?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`font-medium transition-colors ${
-        danger ? "text-danger-500 hover:text-red-600" : "text-green-600 hover:text-green-700"
-      } hover:underline`}
-    >
-      {children}
-    </button>
-  );
-}
 
 function Stat({ label, value, tone }: { label: string; value: number; tone: "green" | "blue" | "slate" }) {
   const cls: Record<typeof tone, string> = {

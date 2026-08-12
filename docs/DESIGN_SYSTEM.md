@@ -196,9 +196,20 @@ Everything in `frontend/src/components/ui/`. Check here before building anything
 | `OfficeSelect` | Office picker | — |
 | `MoneyInput` | Peso amounts. Handles formatting and precision. | — |
 | `CsvUploadButton` / `CsvDownloadButton` | CSV import/export triggers | — |
+| `RowActions` | Any table's per-row action buttons. See §6a for the layout rule. | A single always-visible primary action with no alternatives — a plain button is enough |
 
 **Adoption today:** `Toast` 32 files, `DataTable` 10, `ConfigPageHeader` 7, `TableSkeleton` 6,
-`Lookup` 3, `LoadingState` 1. `LoadingState`'s single use is consistent with its narrow purpose.
+`RowActions` 13 (`ldip`, `aip`, `items-master`, `pr-register`, `resource-links`, `admin/users`,
+`announcements`, and 6 config pages — `accounts`, `offices`, `divisions`, `funding-sources`,
+`price-index`, `procurement-presets`), `Lookup` 3, `LoadingState` 1. Converted 2026-08-11 — every
+per-row action button in the portal now uses this component. Two local helpers were deleted once
+nothing referenced them: the 6 config pages' `TextAction` (an underlined-text-link style,
+duplicated identically in each file) and `admin/users`' `ActionButton` (icon-only).
+
+`announcements` is the one page with 4 possible actions on a single row (`Draft` status: Edit,
+Publish, Archive, Delete) — still under the 5-action overflow-menu threshold, so it's a single
+row like everything else, just wider (4 × 80px + gaps ≈ 332px). The table's horizontal scroll
+absorbs it, same reasoning as every other wide row.
 
 ### Loading states
 
@@ -232,6 +243,73 @@ disabled:cursor-not-allowed`, and use `slate-400` for any disabled text.
 
 There is no `Button` component — these are inline classes. Extracting one is a reasonable future
 cleanup, but until then copy the strings above exactly rather than improvising.
+
+### 6a. Row actions (`RowActions`)
+
+Table rows with more than one action button had drifted into four different styles: `items-master`
+and `resource-links` used bare icons (✓/✏️, ✏️/🗑️), `pr-register` used bordered chips, `ldip` and
+`aip` used underlined text links, and the 6 config pages shared a local `TextAction` helper — the
+same underlined-text-link style, copy-pasted identically into each file. `RowActions` replaced all
+of it 2026-08-11; the `TextAction` helper was deleted from every config page once nothing
+referenced it.
+
+**Every button in one row renders at the same fixed width — not stretched, not shrunk to its own
+text.** Two earlier versions got this wrong, both caught live by Ralph before they spread past
+`ldip`: a CSS-grid version with `w-full` stretched short labels like "View" into an oversized box;
+a `flex-wrap` version with natural per-button width made every button a different size and wrapped
+unpredictably. Fixed width is what actually reads as one component instead of several buttons that
+happen to sit near each other — worth remembering before reaching for either alternative again.
+
+**`btnWidth` prop, default 80px.** 80px fits `ldip`/`aip`'s longest labels ("Finalize" /
+"Archive") without clipping — every page above uses the default *except* `pr-register` (`116`;
+"Mark Completed" is 14 characters, the longest real label anywhere in the app).
+
+Don't widen the shared default to cover one page's outlier label — every other page would carry
+unnecessary padding for a word they never show. Add a row below whenever a new page needs a
+non-default width, so the reasoning doesn't have to be re-derived from the button text alone.
+
+**`btnPaddingX` prop, default `"px-1.5"`.** The 6 config pages ("Deactivate" / "Reactivate", 10
+characters) first got a wider `btnWidth={92}`, then Ralph asked to keep the default 80px width and
+tighten the padding instead — trading inner padding for text room rather than widening the button.
+They pass `btnPaddingX="px-1"`.
+
+| Page | `btnWidth` | `btnPaddingX` | Why |
+|---|---|---|---|
+| `pr-register` | `116` | default | "Mark Completed" (14 chars) needs more width, not less padding |
+| 6 config pages | default | `"px-1"` | "Deactivate"/"Reactivate" (10 chars) fit the default 80px once padding is tightened |
+
+**Wrapping.** `ldip` and `aip` are the only pages that ever show 3 actions on one row (both
+status-gated: Draft → Edit + Finalize + Archive). Ralph tried both a 2-per-row wrap and a single
+row live and preferred **all 3 on one line** — the component is `flex justify-end`, no wrapping
+logic at all. The table's own horizontal scroll absorbs a wide Actions column the same as it would
+any other wide row. 5+ actions want a primary action + overflow menu instead — **not built**.
+Nothing in the portal hits this today; build the overflow menu when a real page needs it, don't
+reach for wrapping again — it was tried and explicitly rejected.
+
+**Variants:** `default` (neutral bordered — Edit/View/Mark Completed), `primary` (green — the
+forward action, e.g. Finalize, View Report), `warn` (amber — a reversible-but-notable action, e.g.
+Archive/Unlock/Unmark/`items-master`'s Review), `danger` (the `danger-*` tokens — genuinely
+destructive or restrictive, e.g. `resource-links`' Delete and the config pages' Deactivate).
+Deactivate kept `danger` deliberately: the pre-conversion code had explicitly marked it
+`<TextAction danger>` while Reactivate carried no such marking, so the distinction was preserved
+rather than re-decided during the refactor. Give the `actions` column `align: "right"` on
+whichever table component you're using — `RowActions` right-aligns its own content, and an
+unaligned header reads as a mismatch against it (the same bug found and fixed in
+`items-master`'s and `pr-register`'s Actions columns).
+
+Supports either `href` (renders a `Link`) or `onClick` (renders a `button`) per action — `ldip`'s
+Edit/View are navigation, Finalize/Archive/Unlock are handlers, and both need to sit in the same
+row. `disabled` and `loading` both map onto the rendered `disabled` state (`loading` also shows a
+spinner) — pass both independently rather than pre-combining them, e.g. `pr-register`'s Mark
+Completed button is `disabled: anyBusy, loading: isCompleting`.
+
+**Every page with per-row actions is converted as of 2026-08-11.** `admin/users` (Edit/Reset/
+Deactivate → "Activate" rather than "Reactivate", per Ralph's explicit wording — not forced to
+match the config pages' naming for the same concept) and `announcements` (Edit/Publish/Unpublish/
+Archive/Delete) were the last two. `announcements`' pre-conversion code treated Archive as neutral
+(`text-slate-600`) while `ldip`/`aip` already treated it as `warn` (amber) — standardized to `warn`
+here too, rather than preserved as its own page's opinion; that's the whole point of one shared
+component. `account` has no table rows at all, so it was never a candidate.
 
 ---
 

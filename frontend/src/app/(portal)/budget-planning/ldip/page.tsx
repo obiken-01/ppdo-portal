@@ -9,6 +9,7 @@ import DataTable, { type Column } from "@/components/ui/DataTable";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
 import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
+import RowActions, { type RowAction } from "@/components/ui/RowActions";
 import type { LdipRecord, LdipStatus } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -237,50 +238,31 @@ function LdipListInner() {
       {
         key: "actions",
         header: "ACTIONS",
-        render: (r) => (
-          <div className="flex items-center gap-3 text-sm">
-            {r.status === "Draft" && (
-              <Link
-                href={`/budget-planning/ldip/edit?id=${r.id}`}
-                className="text-green-700 hover:underline"
-              >
-                Edit
-              </Link>
-            )}
-            {r.status !== "Draft" && (
-              <Link
-                href={`/budget-planning/ldip/edit?id=${r.id}`}
-                className="text-slate-600 hover:underline"
-              >
-                View
-              </Link>
-            )}
-            {r.status === "Draft" && (
-              <button
-                onClick={() => handleFinalize(r)}
-                className="text-green-700 hover:underline"
-              >
-                Finalize
-              </button>
-            )}
-            {r.status === "Draft" && (
-              <button
-                onClick={() => handleArchive(r)}
-                className="text-red-500 hover:underline"
-              >
-                Archive
-              </button>
-            )}
-            {r.status === "Final" && isAdmin && (
-              <button
-                onClick={() => handleUnlock(r)}
-                className="text-amber-600 hover:underline"
-              >
-                Unlock
-              </button>
-            )}
-          </div>
-        ),
+        align: "right",
+        render: (r) => {
+          const actions: RowAction[] = [];
+          if (r.status === "Draft") {
+            actions.push({
+              key: "edit",
+              label: "Edit",
+              href: `/budget-planning/ldip/edit?id=${r.id}`,
+            });
+          } else {
+            actions.push({
+              key: "view",
+              label: "View",
+              href: `/budget-planning/ldip/edit?id=${r.id}`,
+            });
+          }
+          if (r.status === "Draft") {
+            actions.push({ key: "finalize", label: "Finalize", onClick: () => handleFinalize(r), variant: "primary" });
+            actions.push({ key: "archive", label: "Archive", onClick: () => handleArchive(r), variant: "warn" });
+          }
+          if (r.status === "Final" && isAdmin) {
+            actions.push({ key: "unlock", label: "Unlock", onClick: () => handleUnlock(r), variant: "warn" });
+          }
+          return <RowActions actions={actions} />;
+        },
       },
     ];
     // eslint-disable-next-line react-hooks/exhaustive-deps
