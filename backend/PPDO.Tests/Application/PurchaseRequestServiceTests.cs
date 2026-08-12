@@ -1022,6 +1022,47 @@ public sealed class PurchaseRequestServiceTests
         prRepo.Verify(r => r.AddAsync(It.IsAny<PurchaseRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    // ── Program/Project/Activity are unbounded (RAL-225) ──────────────────────
+
+    [Fact]
+    public async Task CreateAsync_ProgramProjectActivityExceed120Chars_Succeeds()
+    {
+        // Unbounded free-text, matching the AIP module's AipProgram/AipProject/AipActivity.Name
+        // convention — no longer capped at 120 chars.
+        Mock<IPurchaseRequestRepository> prRepo = RepoPRThatSaves();
+        Mock<IItemMasterRepository> itemRepo = RepoItemThatSaves();
+        itemRepo.Setup(r => r.GetByStockNoAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ItemMaster?)null);
+
+        string longText = new('x', 300);
+        CreatePRDto dto = ValidDto("Administrative Division") with
+        {
+            Program = longText, Project = longText, Activity = longText,
+        };
+
+        ServiceResult<PRResponseDto> result = await BuildSut(prRepo, itemRepo).CreateAsync(MakeAdmin(), dto);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(longText, result.Value!.Program);
+        Assert.Equal(longText, result.Value!.Project);
+        Assert.Equal(longText, result.Value!.Activity);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ActivityExceeds120Chars_Succeeds()
+    {
+        PurchaseRequest pr = MakePR("101-1041-GF-2026-06-01-010");
+        Mock<IPurchaseRequestRepository> prRepo = RepoPRThatSaves();
+        prRepo.Setup(r => r.GetWithItemsAsync(pr.Id, It.IsAny<CancellationToken>())).ReturnsAsync(pr);
+
+        string longText = new('x', 300);
+        ServiceResult<PRResponseDto> result = await BuildSut(prRepo).UpdateAsync(
+            MakeAdmin(), pr.Id, new UpdatePRDto { Activity = longText });
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(longText, result.Value!.Activity);
+    }
+
     [Fact]
     public async Task UpdateAsync_AccountTitleExceeds200Chars_ReturnsBadRequest_NeverSaves()
     {

@@ -806,9 +806,8 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         ?? ValidateFieldLength("AIP Code", dto.AIPCode, 50)
         ?? ValidateFieldLength("Account No.", dto.AccountNo, 50)
         ?? ValidateFieldLength("Account Title", dto.AccountTitle, 200)
-        ?? ValidateFieldLength("Program", dto.Program, 120)
-        ?? ValidateFieldLength("Project", dto.Project, 120)
-        ?? ValidateFieldLength("Activity", dto.Activity, 120)
+        // Program/Project/Activity: unbounded free-text (RAL-225) — matches the AIP module's
+        // AipProgram/AipProject/AipActivity.Name convention, no length cap.
         ?? ValidateFieldLength("SAI No.", dto.SAINo, 50)
         ?? ValidateFieldLength("ALOBS No.", dto.ALOBSNo, 50);
 
@@ -822,9 +821,8 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         ?? ValidateFieldLength("AIP Code", dto.AIPCode, 50)
         ?? ValidateFieldLength("Account No.", dto.AccountNo, 50)
         ?? ValidateFieldLength("Account Title", dto.AccountTitle, 200)
-        ?? ValidateFieldLength("Program", dto.Program, 120)
-        ?? ValidateFieldLength("Project", dto.Project, 120)
-        ?? ValidateFieldLength("Activity", dto.Activity, 120)
+        // Program/Project/Activity: unbounded free-text (RAL-225) — matches the AIP module's
+        // AipProgram/AipProject/AipActivity.Name convention, no length cap.
         ?? ValidateFieldLength("SAI No.", dto.SAINo, 50)
         ?? ValidateFieldLength("ALOBS No.", dto.ALOBSNo, 50);
 

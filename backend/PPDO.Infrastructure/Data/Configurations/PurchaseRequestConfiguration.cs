@@ -54,15 +54,13 @@ public sealed class PurchaseRequestConfiguration : IEntityTypeConfiguration<Purc
         builder.Property(pr => pr.AccountTitle)
             .HasMaxLength(200);
 
-        // Program / Project / Activity — long text (textarea in UI, up to 120 chars)
-        builder.Property(pr => pr.Program)
-            .HasMaxLength(120);
+        // Program / Project / Activity — nvarchar(max), unbounded free-text (RAL-225).
+        // Matches AipProgram/AipProject/AipActivity.Name, which these are often copied from.
+        builder.Property(pr => pr.Program);
 
-        builder.Property(pr => pr.Project)
-            .HasMaxLength(120);
+        builder.Property(pr => pr.Project);
 
-        builder.Property(pr => pr.Activity)
-            .HasMaxLength(120);
+        builder.Property(pr => pr.Activity);
 
         builder.Property(pr => pr.SAINo)
             .HasMaxLength(50);
