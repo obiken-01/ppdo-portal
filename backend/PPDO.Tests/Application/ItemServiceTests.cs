@@ -184,6 +184,19 @@ public sealed class ItemServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_DescriptionExceeds300Chars_ReturnsBadRequest()
+    {
+        // RAL-226: aligned to Price Index's 300-char convention (PriceIndexItem.Name).
+        Mock<IItemMasterRepository> repo = new();
+        CreateItemMasterDto dto = new("01-99", new string('x', 301), "pcs", 10m, null, null, 0, null, false);
+
+        ServiceResult<ItemMasterDto> result = await BuildSut(repo).CreateAsync(MakeAdmin(), dto);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("Description", result.Error);
+    }
+
+    [Fact]
     public async Task CreateAsync_ValidDto_ReturnsOk()
     {
         Mock<IItemMasterRepository> repo = RepoThatSaves();
@@ -266,6 +279,23 @@ public sealed class ItemServiceTests
         Assert.Equal("Updated Description", item.Description);
         Assert.Equal("box", item.Unit);
         Assert.Equal(50m, item.UnitCost);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_DescriptionExceeds300Chars_ReturnsBadRequest()
+    {
+        ItemMaster item = MakeItem();
+        Mock<IItemMasterRepository> repo = new();
+        repo.Setup(r => r.GetByIdAsync(item.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(item);
+
+        UpdateItemMasterDto dto = new(null, new string('x', 301), null, null, null, null, null, null, false);
+
+        ServiceResult<ItemMasterDto> result =
+            await BuildSut(repo).UpdateAsync(MakeAdmin(), item.Id, dto);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("Description", result.Error);
     }
 
     [Fact]

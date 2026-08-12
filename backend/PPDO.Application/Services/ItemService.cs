@@ -116,6 +116,11 @@ public sealed class ItemService : IItemService
         if (string.IsNullOrWhiteSpace(dto.Description))
             return ServiceResult<ItemMasterDto>.BadRequest("Description is required.");
 
+        // Aligned to Price Index's 300-char convention (PriceIndexItem.Name) — RAL-226.
+        if (dto.Description.Length > 300)
+            return ServiceResult<ItemMasterDto>.BadRequest(
+                $"Description must be 300 characters or fewer (got {dto.Description.Length}).");
+
         ItemMaster? existing = await _items.GetByStockNoAsync(dto.StockNo.Trim(), cancellationToken);
         if (existing is not null)
             return ServiceResult<ItemMasterDto>.Conflict(
@@ -169,6 +174,11 @@ public sealed class ItemService : IItemService
         ItemMaster? item = await _items.GetByIdAsync(id, cancellationToken);
         if (item is null)
             return ServiceResult<ItemMasterDto>.NotFound($"Item {id} not found.");
+
+        // Aligned to Price Index's 300-char convention (PriceIndexItem.Name) — RAL-226.
+        if (dto.Description is not null && dto.Description.Length > 300)
+            return ServiceResult<ItemMasterDto>.BadRequest(
+                $"Description must be 300 characters or fewer (got {dto.Description.Length}).");
 
         Dictionary<string, object?> oldValues = new();
         Dictionary<string, object?> newValues = new();

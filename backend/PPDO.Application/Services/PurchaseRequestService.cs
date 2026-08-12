@@ -285,6 +285,10 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         if (lengthError is not null)
             return ServiceResult<PRResponseDto>.BadRequest(lengthError);
 
+        string? itemLengthError = ValidateItemLengths(dto.Items);
+        if (itemLengthError is not null)
+            return ServiceResult<PRResponseDto>.BadRequest(itemLengthError);
+
         DateTime manilaNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, ManilaZone);
         string prNo = !string.IsNullOrWhiteSpace(dto.PrNo)
             ? dto.PrNo.Trim()
@@ -449,6 +453,10 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
             if (dto.Items.Count == 0)
                 return ServiceResult<PRResponseDto>.BadRequest(
                     "A Purchase Request must have at least one line item.");
+
+            string? itemLengthError = ValidateItemLengths(dto.Items);
+            if (itemLengthError is not null)
+                return ServiceResult<PRResponseDto>.BadRequest(itemLengthError);
 
             IReadOnlyList<PRItem> newItems =
                 await BuildItemsAsync(pr.Id, dto.Items, manilaNow, cancellationToken);
@@ -817,6 +825,22 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         ?? ValidateFieldLength("Activity", dto.Activity, 120)
         ?? ValidateFieldLength("SAI No.", dto.SAINo, 50)
         ?? ValidateFieldLength("ALOBS No.", dto.ALOBSNo, 50);
+
+    /// <summary>
+    /// Item Description length, aligned to Price Index's 300-char convention
+    /// (PriceIndexItem.Name) — RAL-226. A friendly BadRequest instead of relying on the
+    /// DB's nvarchar(300) cap.
+    /// </summary>
+    private static string? ValidateItemLengths(IReadOnlyList<CreatePRItemDto> items)
+    {
+        for (int i = 0; i < items.Count; i++)
+        {
+            string? error = ValidateFieldLength($"Row {i + 1}: Description", items[i].Description, 300);
+            if (error is not null)
+                return error;
+        }
+        return null;
+    }
 
     /// <summary>
     /// Generates the next PR number: 101-1041-GF-YYYY-MM-DD-XXX.
