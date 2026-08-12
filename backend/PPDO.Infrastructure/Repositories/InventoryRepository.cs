@@ -44,9 +44,13 @@ public sealed class InventoryRepository : IInventoryRepository
                   .ToListAsync(cancellationToken);
 
         // ── QtyDistributed per StockNo ────────────────────────────────────────
+        // Inner join on the nullable FK naturally excludes warehouse-count-sourced
+        // distributions (DeliveryItemId null, RAL-223) — they never touched a DeliveryItem,
+        // so they don't belong in this delivery-batch-derived total. Their effect on on-hand
+        // is instead netted directly into StockBalanceRepository's variance totals.
         List<(string StockNo, decimal QtyDistributed)> distributedRows =
             await (from dist in _context.Distributions
-                   join di in _context.DeliveryItems on dist.DeliveryItemId equals di.Id
+                   join di in _context.DeliveryItems on dist.DeliveryItemId equals (Guid?)di.Id
                    join pi in _context.PRItems on di.PRItemId equals pi.Id
                    join pr in _context.PurchaseRequests on pi.PRId equals pr.Id
                    where (divisionId == null || pr.DivisionId == divisionId)
@@ -108,8 +112,10 @@ public sealed class InventoryRepository : IInventoryRepository
                                     select di.QtyDelivered)
                                    .SumAsync(cancellationToken);
 
+        // Inner join excludes warehouse-count-sourced distributions (DeliveryItemId null,
+        // RAL-223) — same reasoning as GetItemStockLevelsAsync above.
         decimal distributed = await (from dist in _context.Distributions
-                                      join di in _context.DeliveryItems on dist.DeliveryItemId equals di.Id
+                                      join di in _context.DeliveryItems on dist.DeliveryItemId equals (Guid?)di.Id
                                       join pi in _context.PRItems on di.PRItemId equals pi.Id
                                       where pi.StockNo == stockNo
                                       select dist.QtyIssued)

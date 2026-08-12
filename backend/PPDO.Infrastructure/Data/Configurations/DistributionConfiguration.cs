@@ -38,6 +38,7 @@ public sealed class DistributionConfiguration : IEntityTypeConfiguration<Distrib
             .HasDatabaseName("IX_Distributions_IssueRef");
 
         // FK: Distributions.DeliveryItemId → DeliveryItems.Id
+        // Nullable (RAL-223) — a warehouse-count-sourced distribution has no DeliveryItem.
         // Cascade: deleting a delivery item removes all its division distributions.
         builder.HasOne(d => d.DeliveryItem)
             .WithMany(di => di.Distributions)
@@ -47,6 +48,21 @@ public sealed class DistributionConfiguration : IEntityTypeConfiguration<Distrib
 
         builder.HasIndex(d => d.DeliveryItemId)
             .HasDatabaseName("IX_Distributions_DeliveryItemId");
+
+        // FK: Distributions.StockBalanceId → stock_balances.id (RAL-223).
+        // Nullable — only set for a distribution sourced from a warehouse stock count.
+        // Restrict: a stock_balances entry with distributions against it must not be
+        // silently deletable (unlike DeliveryItem, there's no cascading "whole batch removed"
+        // concept here — deleting the count entry while it has live distributions would
+        // desync the on-hand formula).
+        builder.HasOne(d => d.StockBalance)
+            .WithMany()
+            .HasForeignKey(d => d.StockBalanceId)
+            .HasConstraintName("FK_Distributions_stock_balances_StockBalanceId")
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(d => d.StockBalanceId)
+            .HasDatabaseName("IX_Distributions_StockBalanceId");
 
         // FK: Distributions.DivisionId → divisions.id (v1.2 — RAL-97).
         builder.HasOne(d => d.Division)

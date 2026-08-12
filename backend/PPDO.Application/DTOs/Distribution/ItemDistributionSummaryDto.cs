@@ -16,11 +16,15 @@ public sealed record ItemDistributionSummaryDto(
     IReadOnlyList<DeliveryItemBreakdownDto> DeliveryItems);
 
 /// <summary>
-/// One delivery batch that contained this item, with its existing distributions.
-/// QtyAvailable = QtyDelivered - QtyDistributed (undistributed stock from this batch).
+/// One stock source that contained this item, with its existing distributions —
+/// either a delivery batch or the warehouse-count pool (RAL-223).
+/// QtyAvailable = QtyDelivered - QtyDistributed (undistributed stock from this source).
+/// Exactly one of DeliveryItemId / StockBalanceId is set, matching <see cref="Source"/>.
 /// </summary>
 public sealed record DeliveryItemBreakdownDto(
-    Guid     DeliveryItemId,
+    Guid?    DeliveryItemId,
+    Guid?    StockBalanceId,
+    string   Source,   // "Delivery" | "Warehouse Count"
     string   DeliveryRef,
     DateOnly DeliveryDate,
     Guid     PRId,
@@ -30,7 +34,7 @@ public sealed record DeliveryItemBreakdownDto(
     decimal  QtyAvailable,
     IReadOnlyList<ExistingDistributionDto> Distributions);
 
-/// <summary>One already-recorded distribution within a delivery batch.</summary>
+/// <summary>One already-recorded distribution within a stock source.</summary>
 public sealed record ExistingDistributionDto(
     Guid     Id,
     string   IssueRef,
@@ -40,11 +44,16 @@ public sealed record ExistingDistributionDto(
     string   IssuedBy,
     string?  Remarks);
 
-/// <summary>Response returned after a distribution is successfully created.</summary>
+/// <summary>
+/// Response returned after a distribution is successfully created. Exactly one of
+/// DeliveryItemId / StockBalanceId is set, matching <see cref="Source"/> (RAL-223).
+/// </summary>
 public sealed record DistributionCreatedDto(
     Guid     Id,
     string   IssueRef,
-    Guid     DeliveryItemId,
+    Guid?    DeliveryItemId,
+    Guid?    StockBalanceId,
+    string   Source,   // "Delivery" | "Warehouse Count"
     string   DeliveryRef,
     string   PRNo,
     string   StockNo,
