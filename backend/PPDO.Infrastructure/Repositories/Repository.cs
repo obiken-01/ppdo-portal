@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using PPDO.Domain.Interfaces;
 using PPDO.Infrastructure.Data;
 
@@ -58,4 +59,28 @@ public class Repository<T> : IRepository<T> where T : class
     /// <inheritdoc />
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         => _context.SaveChangesAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public async Task ExecuteInTransactionAsync(Func<Task> operation, CancellationToken cancellationToken = default)
+    {
+        // Manual transactions must go through the execution strategy once EnableRetryOnFailure
+        // is on, or EF throws — see IRepository<T>.ExecuteInTransactionAsync.
+        IExecutionStrategy strategy = _context.Database.CreateExecutionStrategy();
+
+        await strategy.ExecuteAsync(async () =>
+        {
+            await using IDbContextTransaction transaction =
+                await _context.Database.BeginTransactionAsync(cancellationToken);
+            try
+            {
+                await operation();
+                await transaction.CommitAsync(cancellationToken);
+            }
+            catch
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                throw;
+            }
+        });
+    }
 }

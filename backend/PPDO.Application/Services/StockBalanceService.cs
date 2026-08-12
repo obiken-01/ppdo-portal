@@ -339,73 +339,96 @@ public sealed class StockBalanceService : IStockBalanceService
         int inserted = 0, updated = 0;
         List<(StockBalance Entry, bool ItemAutoCreated)> saved = new();
 
-        foreach (CreateStockBalanceDto row in dto.Rows)
+        // The whole file commits or none of it does — a mid-loop failure (bad row, or an
+        // infrastructure blip against a cold-resuming DB) must not leave rows 1..n-1 live
+        // while the caller sees a failure and assumes nothing saved (RAL-207). The per-row
+        // SaveChangesAsync below still has to stay: each row must flush before the next
+        // row's ComputeSystemOnHandAsync runs, so multiple rows for the same StockNo in one
+        // file stack correctly. The transaction makes the file atomic without disturbing that.
+        //
+        // ExecuteInTransactionAsync may retry this delegate on a transient fault — reset the
+        // accumulators at the top so a retried run doesn't double up on a partial prior attempt.
+        try
         {
-            string? validationError = Validate(row.StockNo, row.CountedQty, row.EffectiveDate);
-            if (validationError is not null)
-                return ServiceResult<StockBalanceImportResultDto>.BadRequest(
-                    $"StockNo '{row.StockNo}': {validationError}");
-
-            string stockNo = row.StockNo.Trim();
-
-            (bool itemAutoCreated, string? itemError) = await EnsureItemMasterAsync(
-                stockNo, row.Description, row.Unit, row.UnitCost, row.ItemType, cancellationToken);
-            if (itemError is not null)
-                return ServiceResult<StockBalanceImportResultDto>.BadRequest($"StockNo '{stockNo}': {itemError}");
-
-            // Upsert by StockNo + EffectiveDate — re-uploading the same pair overwrites it.
-            StockBalance? existing = await _stockBalances.FindByStockNoAndEffectiveDateAsync(
-                stockNo, row.EffectiveDate, cancellationToken);
-
-            decimal excludeVariance = existing?.VarianceQty ?? 0m;
-            decimal systemOnHand = await ComputeSystemOnHandAsync(stockNo, excludeVariance, cancellationToken);
-
-            if (existing is not null)
+            await _stockBalances.ExecuteInTransactionAsync(async () =>
             {
-                object oldSnapshot = AuditSnapshot(existing);
+                inserted = 0;
+                updated = 0;
+                saved.Clear();
 
-                existing.CountedQty          = row.CountedQty;
-                existing.SystemOnHandAtEntry = systemOnHand;
-                existing.VarianceQty         = row.CountedQty - systemOnHand;
-                existing.Reason              = string.IsNullOrWhiteSpace(row.Reason) ? null : row.Reason.Trim();
-
-                await _stockBalances.UpdateAsync(existing, cancellationToken);
-                saved.Add((existing, itemAutoCreated));
-                updated++;
-
-                // Persist each row before computing the next one's system-on-hand snapshot, so
-                // multiple rows for the same StockNo in one file stack correctly.
-                await _stockBalances.SaveChangesAsync(cancellationToken);
-
-                // Per-row, not one summarized entry for the whole file — a bulk overwrite of
-                // computed on-hand values (no approval step) is exactly the kind of change
-                // that needs individual accountability, not a rollup that hides which rows
-                // actually changed.
-                await _audit.LogAsync("stock_balances", existing.Id, AuditAction.Update,
-                    oldSnapshot, AuditSnapshot(existing), cancellationToken);
-            }
-            else
-            {
-                StockBalance entry = new()
+                foreach (CreateStockBalanceDto row in dto.Rows)
                 {
-                    Id                  = Guid.NewGuid(),
-                    StockNo             = stockNo,
-                    CountedQty          = row.CountedQty,
-                    SystemOnHandAtEntry = systemOnHand,
-                    VarianceQty         = row.CountedQty - systemOnHand,
-                    EffectiveDate       = row.EffectiveDate,
-                    Reason              = string.IsNullOrWhiteSpace(row.Reason) ? null : row.Reason.Trim(),
-                    RecordedByUserId    = requester.Id,
-                };
-                await _stockBalances.AddAsync(entry, cancellationToken);
-                saved.Add((entry, itemAutoCreated));
-                inserted++;
+                    string? validationError = Validate(row.StockNo, row.CountedQty, row.EffectiveDate);
+                    if (validationError is not null)
+                        throw new StockBalanceImportRowException(
+                            $"StockNo '{row.StockNo}': {validationError}");
 
-                await _stockBalances.SaveChangesAsync(cancellationToken);
+                    string stockNo = row.StockNo.Trim();
 
-                await _audit.LogAsync("stock_balances", entry.Id, AuditAction.Create,
-                    oldValues: null, newValues: AuditSnapshot(entry), cancellationToken);
-            }
+                    (bool itemAutoCreated, string? itemError) = await EnsureItemMasterAsync(
+                        stockNo, row.Description, row.Unit, row.UnitCost, row.ItemType, cancellationToken);
+                    if (itemError is not null)
+                        throw new StockBalanceImportRowException($"StockNo '{stockNo}': {itemError}");
+
+                    // Upsert by StockNo + EffectiveDate — re-uploading the same pair overwrites it.
+                    StockBalance? existing = await _stockBalances.FindByStockNoAndEffectiveDateAsync(
+                        stockNo, row.EffectiveDate, cancellationToken);
+
+                    decimal excludeVariance = existing?.VarianceQty ?? 0m;
+                    decimal systemOnHand = await ComputeSystemOnHandAsync(stockNo, excludeVariance, cancellationToken);
+
+                    if (existing is not null)
+                    {
+                        object oldSnapshot = AuditSnapshot(existing);
+
+                        existing.CountedQty          = row.CountedQty;
+                        existing.SystemOnHandAtEntry = systemOnHand;
+                        existing.VarianceQty         = row.CountedQty - systemOnHand;
+                        existing.Reason              = string.IsNullOrWhiteSpace(row.Reason) ? null : row.Reason.Trim();
+
+                        await _stockBalances.UpdateAsync(existing, cancellationToken);
+                        saved.Add((existing, itemAutoCreated));
+                        updated++;
+
+                        // Persist each row before computing the next one's system-on-hand snapshot, so
+                        // multiple rows for the same StockNo in one file stack correctly.
+                        await _stockBalances.SaveChangesAsync(cancellationToken);
+
+                        // Per-row, not one summarized entry for the whole file — a bulk overwrite of
+                        // computed on-hand values (no approval step) is exactly the kind of change
+                        // that needs individual accountability, not a rollup that hides which rows
+                        // actually changed.
+                        await _audit.LogAsync("stock_balances", existing.Id, AuditAction.Update,
+                            oldSnapshot, AuditSnapshot(existing), cancellationToken);
+                    }
+                    else
+                    {
+                        StockBalance entry = new()
+                        {
+                            Id                  = Guid.NewGuid(),
+                            StockNo             = stockNo,
+                            CountedQty          = row.CountedQty,
+                            SystemOnHandAtEntry = systemOnHand,
+                            VarianceQty         = row.CountedQty - systemOnHand,
+                            EffectiveDate       = row.EffectiveDate,
+                            Reason              = string.IsNullOrWhiteSpace(row.Reason) ? null : row.Reason.Trim(),
+                            RecordedByUserId    = requester.Id,
+                        };
+                        await _stockBalances.AddAsync(entry, cancellationToken);
+                        saved.Add((entry, itemAutoCreated));
+                        inserted++;
+
+                        await _stockBalances.SaveChangesAsync(cancellationToken);
+
+                        await _audit.LogAsync("stock_balances", entry.Id, AuditAction.Create,
+                            oldValues: null, newValues: AuditSnapshot(entry), cancellationToken);
+                    }
+                }
+            }, cancellationToken);
+        }
+        catch (StockBalanceImportRowException ex)
+        {
+            return ServiceResult<StockBalanceImportResultDto>.BadRequest(ex.Message);
         }
 
         _logger.LogInformation(
@@ -503,6 +526,14 @@ public sealed class StockBalanceService : IStockBalanceService
             return "EffectiveDate cannot be in the future.";
         return null;
     }
+
+    /// <summary>
+    /// Carries a row-level validation/lookup failure out of the
+    /// <see cref="IRepository{T}.ExecuteInTransactionAsync"/> delegate in <see cref="CommitImportAsync"/>
+    /// so it triggers a rollback (rows already saved in this file are undone) and is then
+    /// translated back into a BadRequest — same message the pre-transaction code returned directly.
+    /// </summary>
+    private sealed class StockBalanceImportRowException(string message) : Exception(message);
 
     // ── Mapping ────────────────────────────────────────────────────────────────
 

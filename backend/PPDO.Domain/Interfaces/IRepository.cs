@@ -42,4 +42,17 @@ public interface IRepository<T> where T : class
     /// Returns the number of state entries written.
     /// </summary>
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Runs <paramref name="operation"/> inside a database transaction so multiple
+    /// <see cref="SaveChangesAsync"/> calls it makes commit or roll back together —
+    /// use when a single logical operation needs more than one save to complete
+    /// (e.g. a per-row import loop where each row must flush before computing the
+    /// next). A single SaveChangesAsync call is already atomic and doesn't need this.
+    /// Composes with EF's transient-fault retry (<c>EnableRetryOnFailure</c>) via
+    /// <c>CreateExecutionStrategy</c> — <paramref name="operation"/> may run more than
+    /// once if a transient fault triggers a retry, so it must be safe to redo from
+    /// scratch (reset any local accumulators at the start of the delegate).
+    /// </summary>
+    Task ExecuteInTransactionAsync(Func<Task> operation, CancellationToken cancellationToken = default);
 }
