@@ -18,7 +18,11 @@ namespace PPDO.Application.Services;
 /// </summary>
 public sealed class DistributionService : IDistributionService
 {
+    private const string SourceDelivery       = "Delivery";
+    private const string SourceWarehouseCount = "Warehouse Count";
+
     private readonly IDeliveryRepository     _deliveries;
+    private readonly IStockBalanceRepository _stockBalances;
     private readonly IItemMasterRepository   _items;
     private readonly IPermissionService      _permissions;
     private readonly IRepository<Distribution> _distributions;
@@ -39,6 +43,7 @@ public sealed class DistributionService : IDistributionService
 
     public DistributionService(
         IDeliveryRepository deliveries,
+        IStockBalanceRepository stockBalances,
         IItemMasterRepository items,
         IPermissionService permissions,
         IRepository<Distribution> distributions,
@@ -47,6 +52,7 @@ public sealed class DistributionService : IDistributionService
         ILogger<DistributionService> logger)
     {
         _deliveries    = deliveries;
+        _stockBalances = stockBalances;
         _items         = items;
         _permissions   = permissions;
         _distributions = distributions;
@@ -89,7 +95,14 @@ public sealed class DistributionService : IDistributionService
         IReadOnlyList<DeliveryItemBreakdownRow> batches =
             await _deliveries.GetDeliveryItemBreakdownsByStockNoAsync(stockNo, scopeDivision, cancellationToken);
 
-        if (batches.Count == 0 && master is null)
+        // Warehouse-count pool (RAL-223) — PPDO-wide, no division scope, so it only ever
+        // surfaces in the unscoped Admin/SuperAdmin view. Same precedent as InventoryService's
+        // on-hand formula (see StockBalance.cs class doc).
+        WarehouseCountPoolRow? pool = scope.SeeAll
+            ? await _stockBalances.GetPoolByStockNoAsync(stockNo, cancellationToken)
+            : null;
+
+        if (batches.Count == 0 && pool is null && master is null)
             return ServiceResult<ItemDistributionSummaryDto>.NotFound(
                 $"No activity found for StockNo '{stockNo}'.");
 
@@ -98,12 +111,14 @@ public sealed class DistributionService : IDistributionService
         decimal totalDistributed  = batches.Sum(b => b.Distributions.Sum(d => d.QtyIssued));
         decimal totalOrdered      = 0m; // would require separate query — excluded from this view
 
-        IReadOnlyList<DeliveryItemBreakdownDto> batchDtos = batches
+        List<DeliveryItemBreakdownDto> sourceDtos = batches
             .Select(b =>
             {
                 decimal distributed = b.Distributions.Sum(d => d.QtyIssued);
                 return new DeliveryItemBreakdownDto(
                     DeliveryItemId: b.DeliveryItemId,
+                    StockBalanceId: null,
+                    Source:         SourceDelivery,
                     DeliveryRef:    b.DeliveryRef,
                     DeliveryDate:   b.DeliveryDate,
                     PRId:           b.PRId,
@@ -119,6 +134,36 @@ public sealed class DistributionService : IDistributionService
             })
             .ToList();
 
+        if (pool is not null)
+        {
+            // Negative gross variance (a shrinkage count) has nothing positive to display as
+            // "received" — clamp rather than show a negative delivered quantity.
+            decimal poolReceived = Math.Max(0, pool.GrossVariance);
+
+            IReadOnlyList<DistributionBreakdownRow> poolDistributions =
+                await _stockBalances.GetDistributionsByStockNoAsync(stockNo, cancellationToken);
+
+            sourceDtos.Add(new DeliveryItemBreakdownDto(
+                DeliveryItemId: null,
+                StockBalanceId: pool.LatestStockBalanceId,
+                Source:         SourceWarehouseCount,
+                DeliveryRef:    "—",
+                DeliveryDate:   pool.EffectiveDate,
+                PRId:           Guid.Empty,
+                PRNo:           "—",
+                QtyDelivered:   poolReceived,
+                QtyDistributed: pool.TotalDistributed,
+                QtyAvailable:   Math.Max(0, pool.Remaining),
+                Distributions:  poolDistributions
+                    .Select(d => new ExistingDistributionDto(
+                        d.Id, d.IssueRef, d.DivisionId.ToString(),
+                        d.QtyIssued, d.DateIssued, d.IssuedBy, d.Remarks))
+                    .ToList()));
+
+            totalDelivered   += poolReceived;
+            totalDistributed += pool.TotalDistributed;
+        }
+
         return ServiceResult<ItemDistributionSummaryDto>.Ok(new ItemDistributionSummaryDto(
             StockNo:          stockNo,
             Description:      master?.Description ?? stockNo,
@@ -128,7 +173,7 @@ public sealed class DistributionService : IDistributionService
             TotalDelivered:   totalDelivered,
             TotalDistributed: totalDistributed,
             OnHand:           Math.Max(0, totalDelivered - totalDistributed),
-            DeliveryItems:    batchDtos));
+            DeliveryItems:    sourceDtos));
     }
 
     // ── AllocateAsync ──────────────────────────────────────────────────────────
@@ -188,16 +233,41 @@ public sealed class DistributionService : IDistributionService
         IReadOnlyList<DeliveryItemBreakdownRow> batches =
             await _deliveries.GetDeliveryItemBreakdownsByStockNoAsync(stockNo, scope.DivisionId, cancellationToken);
 
-        if (batches.Count == 0)
+        // FIFO pool — oldest date first. Mixes real delivery batches with the warehouse-count
+        // pool (RAL-223, Admin/SuperAdmin unscoped view only — same precedent as
+        // GetItemSummaryAsync/InventoryService's on-hand formula).
+        List<PoolEntry> pool = batches
+            .Select(b => new PoolEntry(
+                DeliveryItemId: b.DeliveryItemId,
+                StockBalanceId: null,
+                DeliveryRef:    b.DeliveryRef,
+                PRNo:           b.PRNo,
+                SortDate:       b.DeliveryDate,
+                Remaining:      b.QtyDelivered - b.Distributions.Sum(d => d.QtyIssued)))
+            .Where(x => x.Remaining > 0)
+            .ToList();
+
+        if (scope.SeeAll)
+        {
+            WarehouseCountPoolRow? wcPool =
+                await _stockBalances.GetPoolByStockNoAsync(stockNo, cancellationToken);
+            if (wcPool is not null && wcPool.Remaining > 0)
+                pool.Add(new PoolEntry(
+                    DeliveryItemId: null,
+                    StockBalanceId: wcPool.LatestStockBalanceId,
+                    DeliveryRef:    "—",
+                    PRNo:           "—",
+                    SortDate:       wcPool.EffectiveDate,
+                    Remaining:      wcPool.Remaining));
+        }
+
+        if (pool.Count == 0)
             return ServiceResult<IReadOnlyList<DistributionCreatedDto>>.NotFound(
                 $"No delivery activity found for StockNo '{stockNo}'.");
 
-        // FIFO pool — oldest DeliveryDate first, tie-broken by DeliveryItemId for determinism.
-        List<(DeliveryItemBreakdownRow Batch, decimal Remaining)> pool = batches
-            .Select(b => (Batch: b, Remaining: b.QtyDelivered - b.Distributions.Sum(d => d.QtyIssued)))
-            .Where(x => x.Remaining > 0)
-            .OrderBy(x => x.Batch.DeliveryDate)
-            .ThenBy(x => x.Batch.DeliveryItemId)
+        pool = pool
+            .OrderBy(x => x.SortDate)
+            .ThenBy(x => x.DeliveryItemId ?? Guid.Empty)
             .ToList();
 
         decimal totalAvailable = pool.Sum(x => x.Remaining);
@@ -225,17 +295,18 @@ public sealed class DistributionService : IDistributionService
 
             for (int i = 0; i < pool.Count && need > 0; i++)
             {
-                (DeliveryItemBreakdownRow batch, decimal remaining) = pool[i];
-                if (remaining <= 0) continue;
+                PoolEntry entry = pool[i];
+                if (entry.Remaining <= 0) continue;
 
-                decimal take     = Math.Min(need, remaining);
+                decimal take     = Math.Min(need, entry.Remaining);
                 string  issueRef = $"ISS-{manilaNow:yyyyMMdd}-{suffix}-{issueSeq++}";
 
                 Distribution dist = new()
                 {
                     Id             = Guid.NewGuid(),
                     IssueRef       = issueRef,
-                    DeliveryItemId = batch.DeliveryItemId,
+                    DeliveryItemId = entry.DeliveryItemId,
+                    StockBalanceId = entry.StockBalanceId,
                     DivisionId     = division.Id,
                     QtyIssued      = take,
                     DateIssued     = split.DateIssued,
@@ -247,9 +318,11 @@ public sealed class DistributionService : IDistributionService
                 createdDtos.Add(new DistributionCreatedDto(
                     Id:             dist.Id,
                     IssueRef:       issueRef,
-                    DeliveryItemId: batch.DeliveryItemId,
-                    DeliveryRef:    batch.DeliveryRef,
-                    PRNo:           batch.PRNo,
+                    DeliveryItemId: entry.DeliveryItemId,
+                    StockBalanceId: entry.StockBalanceId,
+                    Source:         entry.DeliveryItemId is not null ? SourceDelivery : SourceWarehouseCount,
+                    DeliveryRef:    entry.DeliveryRef,
+                    PRNo:           entry.PRNo,
                     StockNo:        stockNo,
                     Description:    master?.Description ?? stockNo,
                     Division:       division.Name,
@@ -258,7 +331,7 @@ public sealed class DistributionService : IDistributionService
                     IssuedBy:       dist.IssuedBy,
                     Remarks:        dist.Remarks));
 
-                pool[i] = (batch, remaining - take);
+                pool[i] = entry with { Remaining = entry.Remaining - take };
                 need   -= take;
             }
         }
@@ -278,11 +351,23 @@ public sealed class DistributionService : IDistributionService
                 oldValues: null,
                 newValues: new
                 {
-                    StockNo = stockNo, dist.DeliveryItemId, DivisionId = dist.DivisionId,
+                    StockNo = stockNo, dist.DeliveryItemId, dist.StockBalanceId, DivisionId = dist.DivisionId,
                     dist.QtyIssued, dist.DateIssued, dist.IssuedBy, dist.IssueRef,
                 },
                 cancellationToken);
 
         return ServiceResult<IReadOnlyList<DistributionCreatedDto>>.Ok(createdDtos);
     }
+
+    /// <summary>
+    /// One FIFO-poolable stock source — a real delivery batch or the warehouse-count pool
+    /// (RAL-223). Exactly one of DeliveryItemId / StockBalanceId is set.
+    /// </summary>
+    private sealed record PoolEntry(
+        Guid?    DeliveryItemId,
+        Guid?    StockBalanceId,
+        string   DeliveryRef,
+        string   PRNo,
+        DateOnly SortDate,
+        decimal  Remaining);
 }

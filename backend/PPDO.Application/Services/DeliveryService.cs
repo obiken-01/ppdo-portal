@@ -421,8 +421,10 @@ public sealed class DeliveryService : IDeliveryService
         d.ReceivedBy, d.Supplier, d.Remarks, d.CreatedAt,
         d.Items.Select(i => new DeliveryItemDto(
             i.Id, i.DeliveryId, i.PRItemId, i.QtyDelivered,
+            // Reached via DeliveryItem.Distributions — DeliveryItemId is always set here
+            // (a warehouse-count-sourced distribution, RAL-223, never appears in this collection).
             i.Distributions.Select(dist => new DistributionDto(
-                dist.Id, dist.IssueRef, dist.DeliveryItemId,
+                dist.Id, dist.IssueRef, dist.DeliveryItemId!.Value,
                 dist.DivisionId, dist.QtyIssued, dist.DateIssued,
                 dist.IssuedBy, dist.Remarks))
             .ToList()))
