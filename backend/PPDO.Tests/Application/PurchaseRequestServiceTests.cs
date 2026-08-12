@@ -1078,6 +1078,51 @@ public sealed class PurchaseRequestServiceTests
         prRepo.Verify(r => r.UpdateAsync(It.IsAny<PurchaseRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    // ── Item Description length (RAL-226) ─────────────────────────────────────
+    // Aligned to Price Index's 300-char convention (PriceIndexItem.Name), with a friendly
+    // BadRequest instead of relying on the DB's nvarchar(300) cap.
+
+    [Fact]
+    public async Task CreateAsync_ItemDescriptionExceeds300Chars_ReturnsBadRequest_NeverHitsRepository()
+    {
+        Mock<IPurchaseRequestRepository> prRepo = RepoPRThatSaves();
+        CreatePRDto dto = ValidDto("Administrative Division") with
+        {
+            Items = new List<CreatePRItemDto>
+            {
+                new() { Description = new string('x', 301), Unit = "ream", Quantity = 5m, UnitCost = 220m },
+            },
+        };
+
+        ServiceResult<PRResponseDto> result = await BuildSut(prRepo).CreateAsync(MakeAdmin(), dto);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("Description", result.Error);
+        prRepo.Verify(r => r.AddAsync(It.IsAny<PurchaseRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ItemDescriptionExceeds300Chars_ReturnsBadRequest_NeverSaves()
+    {
+        PurchaseRequest pr = MakePR("101-1041-GF-2026-06-01-011");
+        Mock<IPurchaseRequestRepository> prRepo = RepoPRThatSaves();
+        prRepo.Setup(r => r.GetWithItemsAsync(pr.Id, It.IsAny<CancellationToken>())).ReturnsAsync(pr);
+
+        UpdatePRDto dto = new()
+        {
+            Items = new List<CreatePRItemDto>
+            {
+                new() { Description = new string('x', 301), Unit = "ream", Quantity = 5m, UnitCost = 220m },
+            },
+        };
+
+        ServiceResult<PRResponseDto> result = await BuildSut(prRepo).UpdateAsync(MakeAdmin(), pr.Id, dto);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("Description", result.Error);
+        prRepo.Verify(r => r.UpdateAsync(It.IsAny<PurchaseRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     // ── Audit logging (RAL-200) ───────────────────────────────────────────────
 
     [Fact]

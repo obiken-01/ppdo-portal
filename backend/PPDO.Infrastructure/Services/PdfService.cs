@@ -129,6 +129,8 @@ public sealed class PdfService : IPdfService
         if (items.Count == 0)
             throw new ImportParseException(new[] { "No valid item rows (Qty > 0) were found." });
 
+        hierarchyLines = ReattachOrphanedContinuationLines(hierarchyLines);
+
         List<string> codedLines = hierarchyLines.Where(l => l.Contains(" - ")).ToList();
         string? program  = codedLines.Count >= 2 ? codedLines[0] : null;
         string? activity = codedLines.Count >= 1 ? codedLines[^1] : null;
@@ -263,6 +265,37 @@ public sealed class PdfService : IPdfService
 
     private static string? NullIfBlank(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    /// <summary>
+    /// Re-attaches an orphaned line-wrap continuation (prose with no " - " and not
+    /// account-code-shaped, e.g. "materials, payment of subscription, communication allowance")
+    /// onto the tail of the coded hierarchy line immediately before it, instead of leaving it as
+    /// a separate, silently-dropped hierarchy line. This is the actual fix for the truncated
+    /// Program/Project/Activity text the "orphaned continuation" bug produces — the row-wrap
+    /// geometry heuristic (<see cref="WrapMergeGap"/>) doesn't always catch every continuation
+    /// line, so this is a second, content-shape-based safety net. Only merges into a coded line
+    /// (never into an account-code line), so the account code itself is never corrupted.
+    /// </summary>
+    private static List<string> ReattachOrphanedContinuationLines(List<string> hierarchyLines)
+    {
+        List<string> result = new();
+        foreach (string line in hierarchyLines)
+        {
+            bool isCoded       = line.Contains(" - ", StringComparison.Ordinal);
+            bool isAccountCode = !isCoded && IsAccountCodeShape(line);
+
+            if (!isCoded && !isAccountCode
+                && result.Count > 0 && result[^1].Contains(" - ", StringComparison.Ordinal))
+            {
+                result[^1] = result[^1] + " " + line;
+            }
+            else
+            {
+                result.Add(line);
+            }
+        }
+        return result;
+    }
 
     /// <summary>
     /// True for a short digits/spaces/dashes/dots line like "5 02 03 010" or "5-02-03-010" —
