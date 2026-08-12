@@ -239,6 +239,64 @@ public sealed class PurchaseRequestServiceTests
         Assert.Matches(@"^101-1041-GF-\d{4}-\d{2}-\d{2}-001$", result.Value!.PRNo);
     }
 
+    // ── Duplicate PR No. detection (RAL-224) ──────────────────────────────────
+
+    [Fact]
+    public async Task CreateAsync_WithDuplicatePrNo_ReturnsConflict()
+    {
+        const string duplicatePrNo = "101-1041-GF-2026-08-12-005";
+        Mock<IPurchaseRequestRepository> prRepo = RepoPRThatSaves();
+        prRepo.Setup(r => r.GetByPRNoAsync(duplicatePrNo, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakePR(duplicatePrNo));
+
+        CreatePRDto dto = ValidDto("Administrative Division") with { PrNo = duplicatePrNo };
+
+        ServiceResult<PRResponseDto> result =
+            await BuildSut(prRepo).CreateAsync(MakeAdmin(), dto);
+
+        Assert.Equal(ServiceErrorCode.Conflict, result.Code);
+        Assert.Contains(duplicatePrNo, result.Error);
+        prRepo.Verify(r => r.AddAsync(It.IsAny<PurchaseRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        prRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateAsync_WithUniquePrNo_Succeeds()
+    {
+        const string uniquePrNo = "101-1041-GF-2026-08-12-006";
+        Mock<IPurchaseRequestRepository> prRepo = RepoPRThatSaves();
+        prRepo.Setup(r => r.GetByPRNoAsync(uniquePrNo, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PurchaseRequest?)null);
+        Mock<IItemMasterRepository> itemRepo = RepoItemThatSaves();
+        itemRepo.Setup(r => r.GetByStockNoAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ItemMaster?)null);
+
+        CreatePRDto dto = ValidDto("Administrative Division") with { PrNo = uniquePrNo };
+
+        ServiceResult<PRResponseDto> result =
+            await BuildSut(prRepo, itemRepo).CreateAsync(MakeAdmin(), dto);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(uniquePrNo, result.Value!.PRNo);
+    }
+
+    [Fact]
+    public async Task CreateAsync_WithBlankPrNo_NeverChecksForDuplicate()
+    {
+        // Blank PrNo means the backend auto-generates via GeneratePRNoAsync, which is already
+        // collision-safe — no need to (and must not) call GetByPRNoAsync for this path.
+        Mock<IPurchaseRequestRepository> prRepo = RepoPRThatSaves();
+        Mock<IItemMasterRepository> itemRepo = RepoItemThatSaves();
+        itemRepo.Setup(r => r.GetByStockNoAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ItemMaster?)null);
+
+        ServiceResult<PRResponseDto> result =
+            await BuildSut(prRepo, itemRepo).CreateAsync(MakeAdmin(), ValidDto("Administrative Division"));
+
+        Assert.True(result.IsSuccess);
+        prRepo.Verify(r => r.GetByPRNoAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     // ── Division-scope enforcement on create ──────────────────────────────────
 
     [Fact]
@@ -962,6 +1020,47 @@ public sealed class PurchaseRequestServiceTests
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
         Assert.Contains("Account No.", result.Error);
         prRepo.Verify(r => r.AddAsync(It.IsAny<PurchaseRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // ── Program/Project/Activity are unbounded (RAL-225) ──────────────────────
+
+    [Fact]
+    public async Task CreateAsync_ProgramProjectActivityExceed120Chars_Succeeds()
+    {
+        // Unbounded free-text, matching the AIP module's AipProgram/AipProject/AipActivity.Name
+        // convention — no longer capped at 120 chars.
+        Mock<IPurchaseRequestRepository> prRepo = RepoPRThatSaves();
+        Mock<IItemMasterRepository> itemRepo = RepoItemThatSaves();
+        itemRepo.Setup(r => r.GetByStockNoAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ItemMaster?)null);
+
+        string longText = new('x', 300);
+        CreatePRDto dto = ValidDto("Administrative Division") with
+        {
+            Program = longText, Project = longText, Activity = longText,
+        };
+
+        ServiceResult<PRResponseDto> result = await BuildSut(prRepo, itemRepo).CreateAsync(MakeAdmin(), dto);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(longText, result.Value!.Program);
+        Assert.Equal(longText, result.Value!.Project);
+        Assert.Equal(longText, result.Value!.Activity);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ActivityExceeds120Chars_Succeeds()
+    {
+        PurchaseRequest pr = MakePR("101-1041-GF-2026-06-01-010");
+        Mock<IPurchaseRequestRepository> prRepo = RepoPRThatSaves();
+        prRepo.Setup(r => r.GetWithItemsAsync(pr.Id, It.IsAny<CancellationToken>())).ReturnsAsync(pr);
+
+        string longText = new('x', 300);
+        ServiceResult<PRResponseDto> result = await BuildSut(prRepo).UpdateAsync(
+            MakeAdmin(), pr.Id, new UpdatePRDto { Activity = longText });
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(longText, result.Value!.Activity);
     }
 
     [Fact]
