@@ -31,6 +31,8 @@ import { useInventoryDivisions } from "@/lib/inventory-divisions";
 import { useToast } from "@/components/ui/Toast";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import TableSkeleton from "@/components/ui/TableSkeleton";
+import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
+import RowActions, { type RowAction } from "@/components/ui/RowActions";
 import type { MeResponse, PRSearchResult, PRStatusCounts, PRSummaryResponse } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -223,7 +225,7 @@ function FilterInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder ?? `Filter by ${label.toLowerCase()}…`}
-        className="w-full px-2.5 py-1.5 text-xs rounded border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-green-500 focus:bg-white transition-colors"
+        className="w-full px-2.5 py-1.5 text-xs border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-green-500 focus:bg-white transition-colors"
       />
     </div>
   );
@@ -496,7 +498,7 @@ export default function PRListPage() {
     {
       accessorKey: "requestedBy", header: "Requested By", size: 150,
       cell: ({ getValue }) => (
-        <span className="text-slate-700 text-sm">{getValue<string>()}</span>
+        <span className="text-slate-600 text-sm">{getValue<string>()}</span>
       ),
     },
     {
@@ -508,7 +510,7 @@ export default function PRListPage() {
     {
       accessorKey: "totalAmount", header: "Total Amount", size: 120,
       cell: ({ getValue }) => (
-        <span className="text-slate-700 text-sm tabular-nums">₱{fmt(getValue<number>())}</span>
+        <span className="text-slate-600 text-sm tabular-nums">₱{fmt(getValue<number>())}</span>
       ),
     },
     {
@@ -524,43 +526,40 @@ export default function PRListPage() {
       },
     },
     {
-      id: "actions", header: "", size: 220,
+      id: "actions", header: "Actions", size: 240,
       enableSorting: false,
       cell: ({ row }) => {
         const pr             = row.original;
         const isCompleting   = completingId === pr.id;
         const isUncompleting = uncompletingId === pr.id;
         const anyBusy        = completingId !== null || uncompletingId !== null;
-        return (
-          <div className="flex items-center justify-end gap-2">
-            {pr.status === "FullyDelivered" && (
-              <button
-                onClick={() => handleMarkCompleted(pr)}
-                disabled={isCompleting || anyBusy}
-                className="inline-flex items-center gap-1 px-3 py-1.5 text-xs border border-slate-300 text-slate-600 bg-white hover:bg-slate-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-              >
-                {isCompleting ? <span className="w-3 h-3 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" /> : "✓"}
-                {isCompleting ? "Saving…" : "Mark Completed"}
-              </button>
-            )}
-            {pr.status === "Completed" && (
-              <button
-                onClick={() => handleUnmarkCompleted(pr)}
-                disabled={isUncompleting || anyBusy}
-                className="inline-flex items-center gap-1 px-3 py-1.5 text-xs border border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-              >
-                {isUncompleting ? <span className="w-3 h-3 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" /> : "↩"}
-                {isUncompleting ? "Reverting…" : "Unmark"}
-              </button>
-            )}
-            <button
-              onClick={() => router.push(`/inventory/pr-report?id=${encodeURIComponent(pr.id)}`)}
-              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs border border-green-300 text-green-700 bg-green-50 hover:bg-green-100 transition-colors font-medium whitespace-nowrap"
-            >
-              📋 View Report
-            </button>
-          </div>
-        );
+        const actions: RowAction[] = [];
+        if (pr.status === "FullyDelivered") {
+          actions.push({
+            key: "complete",
+            label: isCompleting ? "Saving…" : "Mark Completed",
+            onClick: () => handleMarkCompleted(pr),
+            disabled: anyBusy,
+            loading: isCompleting,
+          });
+        }
+        if (pr.status === "Completed") {
+          actions.push({
+            key: "unmark",
+            label: isUncompleting ? "Reverting…" : "Unmark",
+            onClick: () => handleUnmarkCompleted(pr),
+            disabled: anyBusy,
+            loading: isUncompleting,
+            variant: "warn",
+          });
+        }
+        actions.push({
+          key: "report",
+          label: "View Report",
+          onClick: () => router.push(`/inventory/pr-report?id=${encodeURIComponent(pr.id)}`),
+          variant: "primary",
+        });
+        return <RowActions actions={actions} btnWidth={116} />;
       },
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -596,8 +595,13 @@ export default function PRListPage() {
   const isAdmin = me?.role === "SuperAdmin" || me?.role === "Admin";
 
   return (
-    <div className="min-h-screen bg-slate-100 font-sans">
-      <div className="max-w-screen-xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-3">
+    <div className="min-h-full bg-slate-100">
+      <div className="max-w-6xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-3">
+
+        <ConfigPageHeader
+          title="PR List"
+          description="All purchase requests and their delivery status."
+        />
 
         {/* ── Top bar ────────────────────────────────────────────────────────── */}
         <div className="flex flex-wrap items-center gap-3">
@@ -789,7 +793,7 @@ export default function PRListPage() {
         {/* ── Result count + active filter summary ─────────────────────────── */}
         <div className="flex items-center justify-between text-xs text-slate-600">
           <span>
-            <span className="font-semibold text-slate-700">{totalCount}</span> PR{totalCount !== 1 ? "s" : ""}
+            <span className="font-semibold text-slate-800">{totalCount}</span> PR{totalCount !== 1 ? "s" : ""}
             {filterCount > 0 && (
               <button
                 onClick={() => setFilters(EMPTY_FILTERS)}
@@ -820,10 +824,14 @@ export default function PRListPage() {
                   {table.getHeaderGroups().map((hg) => (
                     <tr key={hg.id} className="bg-slate-50 border-b border-slate-200 text-xs text-slate-600 uppercase tracking-wide">
                       {hg.headers.map((h) => (
-                        <th key={h.id} style={{ width: h.getSize() }} className="text-left px-3 py-2.5 font-medium select-none">
+                        <th
+                          key={h.id}
+                          style={{ width: h.getSize() }}
+                          className={`px-3 py-2.5 font-medium select-none ${h.column.id === "actions" ? "text-right" : "text-left"}`}
+                        >
                           {h.isPlaceholder ? null : (
                             <div
-                              className={h.column.getCanSort() ? "cursor-pointer flex items-center gap-1 hover:text-slate-700" : ""}
+                              className={h.column.getCanSort() ? "cursor-pointer flex items-center gap-1 hover:text-slate-800" : ""}
                               onClick={h.column.getToggleSortingHandler()}
                             >
                               {flexRender(h.column.columnDef.header, h.getContext())}
@@ -868,13 +876,13 @@ export default function PRListPage() {
                     : `${items.length} of ${totalCount} PRs`}
                 </span>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} className="px-2 py-0.5 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50">‹</button>
+                  <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} className="px-2 py-0.5 border border-slate-200 disabled:opacity-40 hover:bg-slate-50">‹</button>
                   <span>Page {page} / {pageCount}</span>
-                  <button onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={page >= pageCount} className="px-2 py-0.5 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50">›</button>
+                  <button onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={page >= pageCount} className="px-2 py-0.5 border border-slate-200 disabled:opacity-40 hover:bg-slate-50">›</button>
                   <select
                     value={pageSize}
                     onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
-                    className="px-2 py-0.5 rounded border border-slate-200 bg-white focus:outline-none text-xs"
+                    className="px-2 py-0.5 border border-slate-200 bg-white focus:outline-none text-xs"
                   >
                     {[25, 50, 100].map((n) => <option key={n} value={n}>{n} / page</option>)}
                   </select>

@@ -44,6 +44,7 @@ import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmD
 import MoneyInput from "@/components/ui/MoneyInput";
 import Lookup from "@/components/ui/Lookup";
 import { useToast } from "@/components/ui/Toast";
+import RowActions, { type RowAction } from "@/components/ui/RowActions";
 import type {
   AccountResponse,
   ActiveFilter,
@@ -400,7 +401,7 @@ export default function ProcurementPresetsConfigPage() {
 
   return (
     <div className="min-h-full bg-slate-100 font-sans">
-      <div className="max-w-6xl mx-auto px-6 py-6 space-y-4">
+      <div className="max-w-6xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-4">
         {/* Header */}
         <ConfigPageHeader
           title="Procurement Presets"
@@ -498,16 +499,16 @@ export default function ProcurementPresetsConfigPage() {
                         ₱{formatMoney(sumItemTotals(preset.items))}
                       </span>
 
-                      <div className="flex items-center gap-2 text-sm shrink-0">
-                        <TextAction onClick={() => openEdit(preset)}>Edit</TextAction>
-                        <span className="text-slate-300">·</span>
-                        {preset.isActive ? (
-                          <TextAction danger onClick={() => confirmDeactivate(preset)}>
-                            Deactivate
-                          </TextAction>
-                        ) : (
-                          <TextAction onClick={() => void doReactivate(preset)}>Reactivate</TextAction>
-                        )}
+                      <div className="shrink-0">
+                        <RowActions
+                          btnPaddingX="px-1"
+                          actions={[
+                            { key: "edit", label: "Edit", onClick: () => openEdit(preset) },
+                            preset.isActive
+                              ? { key: "deactivate", label: "Deactivate", onClick: () => confirmDeactivate(preset), variant: "danger" }
+                              : { key: "reactivate", label: "Reactivate", onClick: () => void doReactivate(preset) },
+                          ] satisfies RowAction[]}
+                        />
                       </div>
                     </div>
 
@@ -526,12 +527,12 @@ export default function ProcurementPresetsConfigPage() {
                           <tbody>
                             {preset.items.map((item) => (
                               <tr key={item.id} className="border-t border-slate-200">
-                                <td className="py-1.5 text-slate-700">{item.name}</td>
+                                <td className="py-1.5 text-slate-600">{item.name}</td>
                                 <td className="py-1.5 text-slate-600">{item.unit}</td>
-                                <td className="py-1.5 text-right font-mono tabular-nums text-slate-700">
+                                <td className="py-1.5 text-right font-mono tabular-nums text-slate-600">
                                   ₱{formatMoney(item.unitPrice)}
                                 </td>
-                                <td className="py-1.5 text-right font-mono tabular-nums text-slate-700">
+                                <td className="py-1.5 text-right font-mono tabular-nums text-slate-600">
                                   {item.defaultQty}
                                 </td>
                                 <td className="py-1.5 text-right font-mono tabular-nums text-slate-800 font-medium">
@@ -733,7 +734,7 @@ function ItemRow({
         </div>
         <div className="w-32 shrink-0">
           <label className="block text-[11px] text-slate-600 mb-0.5">Total</label>
-          <div className="w-full px-2 py-1.5 text-sm text-right font-mono tabular-nums text-slate-700 bg-slate-50 border border-slate-200">
+          <div className="w-full px-2 py-1.5 text-sm text-right font-mono tabular-nums text-slate-600 bg-slate-50 border border-slate-200">
             ₱{formatMoney(total)}
           </div>
         </div>
@@ -742,27 +743,3 @@ function ItemRow({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Small helpers
-// ---------------------------------------------------------------------------
-
-function TextAction({
-  children,
-  danger,
-  onClick,
-}: {
-  children: React.ReactNode;
-  danger?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`font-medium transition-colors ${
-        danger ? "text-danger-500 hover:text-red-600" : "text-green-600 hover:text-green-700"
-      } hover:underline`}
-    >
-      {children}
-    </button>
-  );
-}

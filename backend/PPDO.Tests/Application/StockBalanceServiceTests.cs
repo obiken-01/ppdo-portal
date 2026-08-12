@@ -52,6 +52,10 @@ public sealed class StockBalanceServiceTests
         repo.Setup(r => r.GetTotalVarianceByStockNosAsync(
                 It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<string, decimal>());
+        // No real transaction in a unit test — just run the delegate inline, same as the
+        // real Repository<T> does once it's inside the (mocked-away) execution strategy.
+        repo.Setup(r => r.ExecuteInTransactionAsync(It.IsAny<Func<Task>>(), It.IsAny<CancellationToken>()))
+            .Returns((Func<Task> operation, CancellationToken _) => operation());
         return repo;
     }
 
@@ -651,6 +655,56 @@ public sealed class StockBalanceServiceTests
             await BuildSut(stockRepo, invRepo).CommitImportAsync(MakeAdmin(), dto);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    // ── CommitImportAsync — transaction boundary (RAL-207) ────────────────────
+
+    [Fact]
+    public async Task CommitImportAsync_RunsInsideRepositoryTransaction()
+    {
+        // Structural regression guard: the per-row loop must stay wrapped in
+        // ExecuteInTransactionAsync so a mid-loop failure rolls the whole file back
+        // instead of leaving earlier rows partially committed.
+        Mock<IStockBalanceRepository> stockRepo = RepoThatSaves();
+        stockRepo.Setup(r => r.FindByStockNoAndEffectiveDateAsync(
+                It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((StockBalance?)null);
+        Mock<IInventoryRepository> invRepo = InventoryReturning(EmptyLevel("A01"));
+
+        CommitStockBalanceImportDto dto = new(
+            [MakeCreateDto("A01", 10m, DateOnly.FromDateTime(DateTime.UtcNow), null)]);
+
+        await BuildSut(stockRepo, invRepo).CommitImportAsync(MakeAdmin(), dto);
+
+        stockRepo.Verify(r => r.ExecuteInTransactionAsync(
+            It.IsAny<Func<Task>>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CommitImportAsync_SecondRowInvalid_ReturnsBadRequest_ReferencingFailingRow()
+    {
+        // Row 1 is valid and would have saved under the old (unwrapped) code before row 2's
+        // failure was discovered — that partial-commit gap is exactly what RAL-207 closes.
+        Mock<IStockBalanceRepository> stockRepo = RepoThatSaves();
+        stockRepo.Setup(r => r.FindByStockNoAndEffectiveDateAsync(
+                It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((StockBalance?)null);
+        Mock<IInventoryRepository> invRepo = new();
+        invRepo.Setup(r => r.GetItemStockLevelAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string sn, CancellationToken _) => new ItemStockLevel(sn, 0m, 0m, 0m));
+
+        DateOnly date = DateOnly.FromDateTime(DateTime.UtcNow);
+        CommitStockBalanceImportDto dto = new(
+        [
+            MakeCreateDto("A01", 10m, date, null),
+            MakeCreateDto("B01", -5m, date, null), // negative CountedQty fails Validate()
+        ]);
+
+        ServiceResult<StockBalanceImportResultDto> result =
+            await BuildSut(stockRepo, invRepo).CommitImportAsync(MakeAdmin(), dto);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("B01", result.Error);
     }
 
     [Fact]

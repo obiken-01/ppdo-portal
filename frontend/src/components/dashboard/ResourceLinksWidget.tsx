@@ -38,7 +38,7 @@ export default function ResourceLinksWidget() {
     <div className="bg-white border border-slate-200 shadow-sm flex flex-col h-auto lg:h-full">
       {/* Header */}
       <div className="px-4 py-3 border-b border-slate-100 shrink-0">
-        <h2 className="text-sm font-semibold text-slate-700">🔗 Resource Links</h2>
+        <h2 className="text-sm font-semibold text-slate-800">🔗 Resource Links</h2>
       </div>
 
       {/* Body */}
@@ -90,7 +90,7 @@ export default function ResourceLinksWidget() {
                       href={link.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-slate-600 hover:bg-green-50 hover:text-green-700 transition-colors group/link"
+                      className="flex items-center gap-2 px-2 py-1.5 text-xs text-slate-600 hover:bg-green-50 hover:text-green-700 transition-colors group/link"
                     >
                       <span className="text-slate-300 group-hover/link:text-green-400 shrink-0 transition-colors">↗</span>
                       <span className="truncate">{link.title}</span>

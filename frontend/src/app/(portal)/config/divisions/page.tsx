@@ -48,6 +48,7 @@ import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmD
 import CsvUploadButton from "@/components/ui/CsvUploadButton";
 import CsvDownloadButton from "@/components/ui/CsvDownloadButton";
 import { useToast } from "@/components/ui/Toast";
+import RowActions, { type RowAction } from "@/components/ui/RowActions";
 import type {
   ActiveFilter,
   CsvImportResult,
@@ -423,19 +424,15 @@ export default function DivisionConfigPage() {
       header: "Actions",
       align: "right",
       className: "whitespace-nowrap",
-      render: (d) => (
-        <div className="flex items-center justify-end gap-2 text-sm">
-          <TextAction onClick={() => openEdit(d)}>Edit</TextAction>
-          <span className="text-slate-300">·</span>
-          {d.isActive ? (
-            <TextAction danger onClick={() => confirmDeactivate(d)}>
-              Deactivate
-            </TextAction>
-          ) : (
-            <TextAction onClick={() => void doReactivate(d)}>Reactivate</TextAction>
-          )}
-        </div>
-      ),
+      render: (d) => {
+        const actions: RowAction[] = [{ key: "edit", label: "Edit", onClick: () => openEdit(d) }];
+        if (d.isActive) {
+          actions.push({ key: "deactivate", label: "Deactivate", onClick: () => confirmDeactivate(d), variant: "danger" });
+        } else {
+          actions.push({ key: "reactivate", label: "Reactivate", onClick: () => void doReactivate(d) });
+        }
+        return <RowActions actions={actions} btnPaddingX="px-1" />;
+      },
     },
   ];
 
@@ -445,7 +442,7 @@ export default function DivisionConfigPage() {
 
   return (
     <div className="min-h-full bg-slate-100 font-sans">
-      <div className="max-w-6xl mx-auto px-6 py-6 space-y-4">
+      <div className="max-w-6xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-4">
         {/* Header */}
         <ConfigPageHeader
           title="Divisions"
@@ -600,7 +597,7 @@ export default function DivisionConfigPage() {
               <p className="text-xs font-medium text-slate-600 mb-2">Feature Flags</p>
               <div className="grid grid-cols-2 gap-2">
                 {FLAG_FIELDS.map((f) => (
-                  <label key={f.key} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none">
+                  <label key={f.key} className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none">
                     <input
                       type="checkbox"
                       checked={form[f.key as keyof FormState] as boolean}
@@ -698,27 +695,6 @@ export default function DivisionConfigPage() {
 // ---------------------------------------------------------------------------
 // Small helpers
 // ---------------------------------------------------------------------------
-
-function TextAction({
-  children,
-  danger,
-  onClick,
-}: {
-  children: React.ReactNode;
-  danger?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`font-medium transition-colors ${
-        danger ? "text-danger-500 hover:text-red-600" : "text-green-600 hover:text-green-700"
-      } hover:underline`}
-    >
-      {children}
-    </button>
-  );
-}
 
 function Stat({ label, value, tone }: { label: string; value: number; tone: "green" | "blue" | "slate" }) {
   const cls: Record<typeof tone, string> = {

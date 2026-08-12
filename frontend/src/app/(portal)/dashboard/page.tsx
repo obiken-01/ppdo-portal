@@ -143,13 +143,13 @@ export default function DashboardPage() {
       <button
         onClick={() => setApprovalPanelOpen(true)}
         className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium
-                   bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors rounded"
+                   bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors"
       >
         ⏳ {pendingCount} event{pendingCount !== 1 ? "s" : ""} awaiting review
       </button>
     ) : (
       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs
-                       bg-amber-50 text-amber-600 rounded">
+                       bg-amber-50 text-amber-600">
         ⏳ {pendingCount} event{pendingCount !== 1 ? "s" : ""} pending approval
       </span>
     )

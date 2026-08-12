@@ -139,7 +139,7 @@ function UploadTab({ replaceId }: { replaceId: number | null }) {
                 value={yearStart}
                 disabled={replaceId != null}
                 onChange={(e) => setYearStart(Number(e.target.value) || CURRENT_YEAR + 1)}
-                className="w-full border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
+                className="w-full border border-slate-300 bg-white text-sm px-3 py-2 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
               />
             </div>
             <div>
@@ -153,7 +153,7 @@ function UploadTab({ replaceId }: { replaceId: number | null }) {
                 value={yearEnd}
                 disabled={replaceId != null}
                 onChange={(e) => setYearEnd(Number(e.target.value) || CURRENT_YEAR + 3)}
-                className="w-full border border-slate-300 bg-white text-sm px-3 py-2 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
+                className="w-full border border-slate-300 bg-white text-sm px-3 py-2 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
               />
             </div>
           </div>
@@ -167,7 +167,7 @@ function UploadTab({ replaceId }: { replaceId: number | null }) {
             {file ? (
               <div className="border border-slate-200 bg-slate-50 px-4 py-3 flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-slate-700">{file.name}</p>
+                  <p className="text-sm font-medium text-slate-600">{file.name}</p>
                   <p className="text-xs text-slate-600">{formatBytes(file.size)}</p>
                 </div>
                 <button
@@ -241,7 +241,7 @@ function UploadTab({ replaceId }: { replaceId: number | null }) {
                     {i + 1}
                   </span>
                   <div>
-                    <p className="text-sm font-medium text-slate-700">{title}</p>
+                    <p className="text-sm font-medium text-slate-600">{title}</p>
                     <p className="text-xs text-slate-600 mt-0.5">{desc}</p>
                   </div>
                 </li>
@@ -283,7 +283,7 @@ function TabBar({
           className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
             activeTab === "upload"
               ? "border-green-700 text-green-700"
-              : "border-transparent text-slate-600 hover:text-slate-700"
+              : "border-transparent text-slate-600 hover:text-slate-800"
           }`}
         >
           Upload File
@@ -302,7 +302,7 @@ function TabBar({
           className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
             activeTab === "manual"
               ? "border-green-700 text-green-700"
-              : "border-transparent text-slate-600 hover:text-slate-700"
+              : "border-transparent text-slate-600 hover:text-slate-800"
           }`}
         >
           Manual Entry

@@ -26,7 +26,7 @@
 
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
 import { auth } from "./auth";
-import { classifyRefreshFailure, loginUrlWithReason, reconnectingUrl } from "./auth-redirect";
+import { classifyRefreshFailure, loginUrlWithReason, reconnectingUrl, REFRESH_TIMEOUT_MS } from "./auth-redirect";
 
 // ---------------------------------------------------------------------------
 // Base URL — set NEXT_PUBLIC_API_BASE_URL in .env.local
@@ -155,7 +155,7 @@ api.interceptors.response.use(
       // Retry up to 2 times with a 3-second delay to handle Azure Functions cold starts
       // (Consumption plan scales to zero after inactivity; first request can take 20-30s).
       const { data } = await callWithRetry(() =>
-        axios.post(`${BASE_URL}/auth/refresh`, {}, { withCredentials: true })
+        axios.post(`${BASE_URL}/auth/refresh`, {}, { withCredentials: true, timeout: REFRESH_TIMEOUT_MS })
       );
       auth.login(data);
       processQueue(null, data.accessToken);

@@ -366,12 +366,12 @@ export default function StockBalancesPage() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-slate-100 font-sans">
-      <div className="max-w-screen-lg mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-4">
+    <div className="min-h-full bg-slate-100">
+      <div className="max-w-6xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-4">
 
         {/* ── Record a count ─────────────────────────────────────────────── */}
         <div className="bg-white border border-slate-200 shadow-sm p-5">
-          <h2 className="text-base font-semibold text-slate-800 mb-1">Record a physical count</h2>
+          <h2 className="text-sm font-semibold text-slate-800 mb-1">Record a physical count</h2>
           <p className="text-sm text-slate-500 mb-4">
             Enter what you physically counted in the warehouse for one item. The system
             compares it against computed on-hand and records the difference as a variance.
@@ -409,13 +409,13 @@ export default function StockBalancesPage() {
             {/* Matched item — read-only, catalog's own values win (mirrors Create PR) */}
             {matchedItem && (
               <div className="sm:col-span-4 -mt-1 text-xs text-slate-500">
-                Unit: <span className="font-medium text-slate-700">{matchedItem.unit}</span>
-                {" · "}Unit Cost: <span className="font-medium text-slate-700">₱{matchedItem.unitCost.toFixed(2)}</span>
+                Unit: <span className="font-medium text-slate-600">{matchedItem.unit}</span>
+                {" · "}Unit Cost: <span className="font-medium text-slate-600">₱{matchedItem.unitCost.toFixed(2)}</span>
                 {" · "}Current system on-hand:{" "}
                 {currentOnHandLoading ? (
                   <span className="italic">loading…</span>
                 ) : (
-                  <span className="font-medium text-slate-700">{currentOnHand ?? "—"}</span>
+                  <span className="font-medium text-slate-600">{currentOnHand ?? "—"}</span>
                 )}
               </div>
             )}
@@ -515,7 +515,7 @@ export default function StockBalancesPage() {
         {/* ── History / reconciliation view ─────────────────────────────── */}
         {historyStockNo && (
           <div className="bg-white border border-slate-200 shadow-sm p-5">
-            <h2 className="text-base font-semibold text-slate-800 mb-3">
+            <h2 className="text-sm font-semibold text-slate-800 mb-3">
               History — {historyStockNo}
               {matchedItem?.stockNo === historyStockNo && matchedItem.description && (
                 <span className="font-normal text-slate-500"> — {matchedItem.description}</span>
@@ -595,7 +595,7 @@ export default function StockBalancesPage() {
 
         {/* ── Bulk upload ────────────────────────────────────────────────── */}
         <div className="bg-white border border-slate-200 shadow-sm p-5">
-          <h2 className="text-base font-semibold text-slate-800 mb-1">Bulk upload</h2>
+          <h2 className="text-sm font-semibold text-slate-800 mb-1">Bulk upload</h2>
           <p className="text-sm text-slate-500 mb-3">
             Upload an .xlsx with columns StockNo | CountedQty | EffectiveDate | Reason |
             Description | Unit | UnitCost | ItemType (row 1 is the header; the last four are
@@ -608,7 +608,7 @@ export default function StockBalancesPage() {
             <button
               onClick={handleDownloadTemplate}
               disabled={downloadingTemplate}
-              className="flex items-center gap-2 px-4 py-2 text-sm border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-sm transition-colors disabled:opacity-60"
+              className="flex items-center gap-2 px-4 py-2 text-sm border border-slate-200 bg-white text-slate-800 hover:bg-slate-50 shadow-sm transition-colors disabled:opacity-60"
             >
               <span>⬇</span>
               Download Template

@@ -61,6 +61,7 @@ import { downloadPpmpReportExcel, getPpmpReportPreview } from "@/lib/ppmp";
 import PpmpReportView from "./PpmpReportView";
 import { useToast } from "@/components/ui/Toast";
 import { formatMoney } from "@/lib/money";
+import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import type {
   DivisionResponse,
   PpmpReportDto,
@@ -265,7 +266,7 @@ function ReportTable({ sections, breakdown }: { sections: WfpReportFundSourceDto
                 return (
                   <tr key={i} className="bg-slate-50">
                     <RefCodeCell refCode={row.refCode} indent={1} />
-                    <td colSpan={13} className="px-2 py-1.5 pl-4 font-medium text-slate-700 border border-slate-200">
+                    <td colSpan={13} className="px-2 py-1.5 pl-4 font-medium text-slate-600 border border-slate-200">
                       {row.name}
                     </td>
                   </tr>
@@ -274,7 +275,7 @@ function ReportTable({ sections, breakdown }: { sections: WfpReportFundSourceDto
                 return (
                   <tr key={i}>
                     <RefCodeCell refCode={row.refCode} indent={2} />
-                    <td colSpan={13} className="px-2 py-1.5 pl-8 text-slate-700 border border-slate-200">
+                    <td colSpan={13} className="px-2 py-1.5 pl-8 text-slate-600 border border-slate-200">
                       {row.name}
                       {row.isCreation && (
                         <span className="ml-2 px-1.5 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-700 align-middle">
@@ -304,8 +305,8 @@ function ReportTable({ sections, breakdown }: { sections: WfpReportFundSourceDto
                     <td className="px-2 py-1 font-mono text-slate-600 border border-slate-200 whitespace-nowrap">
                       {row.row.accountNumber ?? "—"}
                     </td>
-                    <td className="px-2 py-1 text-slate-700 border border-slate-200">{row.row.accountTitle ?? "—"}</td>
-                    <AmountsCells amounts={row.row.amounts} className="border border-slate-200 text-slate-700" />
+                    <td className="px-2 py-1 text-slate-600 border border-slate-200">{row.row.accountTitle ?? "—"}</td>
+                    <AmountsCells amounts={row.row.amounts} className="border border-slate-200 text-slate-600" />
                   </tr>
                 );
               case "subTotal":
@@ -313,7 +314,7 @@ function ReportTable({ sections, breakdown }: { sections: WfpReportFundSourceDto
                   <tr key={i} className="bg-slate-50 font-medium print:break-inside-avoid">
                     <td className="border border-slate-200" />
                     <td colSpan={5} className="px-2 py-1 pl-10 text-slate-600 border border-slate-200">SUB-TOTAL</td>
-                    <AmountsCells amounts={row.amounts} className="border border-slate-200 text-slate-700 font-semibold" />
+                    <AmountsCells amounts={row.amounts} className="border border-slate-200 text-slate-600 font-semibold" />
                   </tr>
                 );
               case "activityGrandTotal":
@@ -347,11 +348,11 @@ function ReportTable({ sections, breakdown }: { sections: WfpReportFundSourceDto
                 return (
                   <tr
                     key={i}
-                    className={`print:break-inside-avoid ${row.emphasis ? "bg-slate-800 text-white font-bold" : "bg-slate-100 font-medium text-slate-700"}`}
+                    className={`print:break-inside-avoid ${row.emphasis ? "bg-slate-800 text-white font-bold" : "bg-slate-100 font-medium text-slate-600"}`}
                   >
                     <td colSpan={4} className="border border-slate-200" />
                     <td colSpan={2} className="px-2 py-1.5 border border-slate-200">{row.label}</td>
-                    <AmountsCells amounts={row.amounts} className={`border border-slate-200 ${row.emphasis ? "" : "text-slate-700"}`} />
+                    <AmountsCells amounts={row.amounts} className={`border border-slate-200 ${row.emphasis ? "" : "text-slate-600"}`} />
                   </tr>
                 );
             }
@@ -562,12 +563,11 @@ function WfpReportPageInner() {
         }
       `}</style>
 
-      {/* Header */}
       <div className="mb-5 print:hidden">
-        <h1 className="text-xl font-bold text-slate-800">Report</h1>
-        <p className="text-sm text-slate-600 mt-0.5">
-          Select a report type, fiscal year, office, and division to preview.
-        </p>
+        <ConfigPageHeader
+          title="Report"
+          description="Select a report type, fiscal year, office, and division to preview."
+        />
       </div>
 
       {/* Selector row */}
@@ -584,7 +584,7 @@ function WfpReportPageInner() {
               setReport(null);
               setPpmpReport(null);
             }}
-            className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600"
+            className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600"
           >
             {REPORT_TYPES.map((t) => (
               <option key={t.value} value={t.value}>{t.label}</option>
@@ -599,7 +599,7 @@ function WfpReportPageInner() {
           <select
             value={fiscalYear ?? ""}
             onChange={(e) => setFiscalYear(e.target.value ? Number(e.target.value) : null)}
-            className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600"
+            className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600"
           >
             {availableFiscalYears.length === 0 && fiscalYear != null && (
               <option value={fiscalYear}>FY {fiscalYear}</option>
@@ -618,7 +618,7 @@ function WfpReportPageInner() {
             value={officeId ?? ""}
             onChange={(e) => setOfficeId(e.target.value ? Number(e.target.value) : null)}
             disabled={officesLoading || offices.length === 0 || !canBypassDivision}
-            className="w-64 border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600 disabled:opacity-50"
+            className="w-64 border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600 disabled:opacity-50"
           >
             <option value="">
               {officesLoading ? "Loading offices…" : offices.length === 0 ? "No offices with a WFP yet" : "— select office —"}
@@ -639,7 +639,7 @@ function WfpReportPageInner() {
             value={divisionId ?? ""}
             onChange={(e) => setDivisionId(e.target.value ? Number(e.target.value) : null)}
             disabled={officeId == null || !divisionsLoaded || !canBypassDivision}
-            className="w-56 border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600 disabled:opacity-50"
+            className="w-56 border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600 disabled:opacity-50"
           >
             {canBypassDivision && <option value="">— all divisions (consolidated) —</option>}
             {divisionList.map((d) => (
@@ -660,7 +660,7 @@ function WfpReportPageInner() {
           <button
             onClick={reportType === "PPMP" ? handlePpmpExportExcel : handleExportExcel}
             disabled={excelExporting}
-            className="px-4 py-1.5 text-sm font-medium border border-slate-300 text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+            className="px-4 py-1.5 text-sm font-medium border border-slate-300 text-slate-800 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
           >
             {excelExporting && (
               <span className="w-3.5 h-3.5 border-2 border-slate-300 border-t-green-600 rounded-full animate-spin" />

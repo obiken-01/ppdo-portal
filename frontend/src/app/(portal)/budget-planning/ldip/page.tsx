@@ -8,6 +8,8 @@ import { useMe } from "@/lib/me-cache";
 import DataTable, { type Column } from "@/components/ui/DataTable";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
+import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
+import RowActions, { type RowAction } from "@/components/ui/RowActions";
 import type { LdipRecord, LdipStatus } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -236,50 +238,31 @@ function LdipListInner() {
       {
         key: "actions",
         header: "ACTIONS",
-        render: (r) => (
-          <div className="flex items-center gap-3 text-sm">
-            {r.status === "Draft" && (
-              <Link
-                href={`/budget-planning/ldip/edit?id=${r.id}`}
-                className="text-green-700 hover:underline"
-              >
-                Edit
-              </Link>
-            )}
-            {r.status !== "Draft" && (
-              <Link
-                href={`/budget-planning/ldip/edit?id=${r.id}`}
-                className="text-slate-600 hover:underline"
-              >
-                View
-              </Link>
-            )}
-            {r.status === "Draft" && (
-              <button
-                onClick={() => handleFinalize(r)}
-                className="text-green-700 hover:underline"
-              >
-                Finalize
-              </button>
-            )}
-            {r.status === "Draft" && (
-              <button
-                onClick={() => handleArchive(r)}
-                className="text-red-500 hover:underline"
-              >
-                Archive
-              </button>
-            )}
-            {r.status === "Final" && isAdmin && (
-              <button
-                onClick={() => handleUnlock(r)}
-                className="text-amber-600 hover:underline"
-              >
-                Unlock
-              </button>
-            )}
-          </div>
-        ),
+        align: "right",
+        render: (r) => {
+          const actions: RowAction[] = [];
+          if (r.status === "Draft") {
+            actions.push({
+              key: "edit",
+              label: "Edit",
+              href: `/budget-planning/ldip/edit?id=${r.id}`,
+            });
+          } else {
+            actions.push({
+              key: "view",
+              label: "View",
+              href: `/budget-planning/ldip/edit?id=${r.id}`,
+            });
+          }
+          if (r.status === "Draft") {
+            actions.push({ key: "finalize", label: "Finalize", onClick: () => handleFinalize(r), variant: "primary" });
+            actions.push({ key: "archive", label: "Archive", onClick: () => handleArchive(r), variant: "warn" });
+          }
+          if (r.status === "Final" && isAdmin) {
+            actions.push({ key: "unlock", label: "Unlock", onClick: () => handleUnlock(r), variant: "warn" });
+          }
+          return <RowActions actions={actions} />;
+        },
       },
     ];
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -288,38 +271,34 @@ function LdipListInner() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="p-6 max-w-screen-xl mx-auto">
-      {/* Header */}
-      <div className="flex items-start justify-between mb-5">
-        <div>
-          <h1 className="text-xl font-bold text-slate-800">
-            Local Development Investment Program
-          </h1>
-          <p className="text-sm text-slate-600 mt-0.5">
-            Multi-year investment planning records
-          </p>
-        </div>
-        <Link
-          href="/budget-planning/ldip/new"
-          className="px-4 py-2 bg-green-700 text-white text-sm font-medium hover:bg-green-800 transition-colors"
-        >
-          + New LDIP
-        </Link>
-      </div>
+    <div className="min-h-full bg-slate-100">
+      <div className="max-w-6xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-4">
+      <ConfigPageHeader
+        title="Local Development Investment Program"
+        description="Multi-year investment planning records"
+        actions={
+          <Link
+            href="/budget-planning/ldip/new"
+            className="px-4 py-2 bg-green-700 text-white text-sm font-medium hover:bg-green-800 transition-colors"
+          >
+            + New LDIP
+          </Link>
+        }
+      />
 
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-3 mb-4">
+      <div className="flex flex-wrap items-center gap-3">
         <input
           type="text"
           placeholder="Search by title or ref code…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="border border-slate-300 bg-white text-sm px-3 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600 w-64"
+          className="border border-slate-300 bg-white text-sm px-3 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600 w-64"
         />
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600"
+          className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600"
         >
           <option value="">All Status</option>
           <option value="Draft">Draft</option>
@@ -329,7 +308,7 @@ function LdipListInner() {
         <select
           value={modeFilter}
           onChange={(e) => setModeFilter(e.target.value)}
-          className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600"
+          className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600"
         >
           <option value="">All Entry Modes</option>
           <option value="New">New</option>
@@ -351,6 +330,7 @@ function LdipListInner() {
       />
 
       {confirm && <ConfirmDialog {...confirm} />}
+      </div>
     </div>
   );
 }

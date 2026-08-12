@@ -21,7 +21,10 @@ public sealed class UserRepository : Repository<User>, IUserRepository
         => _context.Users
             .Include(u => u.Division)
             .FirstOrDefaultAsync(
-                u => u.Username.ToLower() == username.ToLower() && u.IsActive,
+                // No ToLower() on either side — the DB collation is case-insensitive, and wrapping
+                // the column in LOWER() makes the predicate non-SARGable so IX_Users_Username
+                // cannot be seeked (RAL-204).
+                u => u.Username == username && u.IsActive,
                 cancellationToken);
 
     /// <inheritdoc />
@@ -31,7 +34,8 @@ public sealed class UserRepository : Repository<User>, IUserRepository
         => _context.Users
             .Include(u => u.Division)
             .FirstOrDefaultAsync(
-                u => u.Email != null && u.Email.ToLower() == email.ToLower() && u.IsActive,
+                // See FindByUsernameAsync — same non-SARGable LOWER() issue, IX_Users_Email.
+                u => u.Email != null && u.Email == email && u.IsActive,
                 cancellationToken);
 
     /// <inheritdoc />

@@ -46,6 +46,8 @@ import api from "@/lib/api";
 import { fetchMe } from "@/lib/me-cache";
 import { useToast } from "@/components/ui/Toast";
 import TableSkeleton from "@/components/ui/TableSkeleton";
+import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
+import RowActions, { type RowAction } from "@/components/ui/RowActions";
 import type {
   CreateItemMasterRequest,
   ItemMasterResponse,
@@ -151,7 +153,7 @@ function EditCell({
       defaultValue={defaultValue}
       onChange={(e) => onWrite(e.target.value)}
       placeholder={placeholder}
-      className="w-full px-2 py-1 text-xs rounded border border-slate-300 bg-cell-fill focus:outline-none focus:ring-1 focus:ring-green-500 focus:bg-white transition-colors"
+      className="w-full px-2 py-1 text-xs border border-slate-300 bg-cell-fill focus:outline-none focus:ring-1 focus:ring-green-500 focus:bg-white transition-colors"
     />
   );
 }
@@ -455,7 +457,7 @@ export default function ItemsMasterPage() {
               placeholder="SUP-001"
             />
           ) : (
-            <span className="font-mono text-xs text-slate-700">{getValue<string>()}</span>
+            <span className="font-mono text-xs text-slate-600">{getValue<string>()}</span>
           ),
       },
       // Description
@@ -531,7 +533,7 @@ export default function ItemsMasterPage() {
               onWrite={(v) => { if (editRef.current) editRef.current.unitCost = parseFloat(v) || 0; }}
             />
           ) : (
-            <span className="text-slate-700 text-sm tabular-nums">₱{fmt(getValue<number>())}</span>
+            <span className="text-slate-600 text-sm tabular-nums">₱{fmt(getValue<number>())}</span>
           ),
       },
       // Item Type
@@ -549,24 +551,6 @@ export default function ItemsMasterPage() {
             />
           ) : (
             <span className="text-slate-600 text-sm">{getValue<string | null>() ?? "—"}</span>
-          ),
-      },
-      // Reorder Qty
-      {
-        accessorKey: "reorderQty",
-        header: "Reorder",
-        size: 72,
-        enableColumnFilter: false,
-        cell: ({ row, getValue }) =>
-          row.original.id === editingId ? (
-            <EditCell
-              key={`${editingId}-reorderQty`}
-              type="number"
-              defaultValue={editRef.current?.reorderQty ?? 0}
-              onWrite={(v) => { if (editRef.current) editRef.current.reorderQty = parseInt(v) || 0; }}
-            />
-          ) : (
-            <span className="text-slate-600 text-sm tabular-nums">{getValue<number>()}</span>
           ),
       },
       // Remarks — wider column
@@ -610,7 +594,7 @@ export default function ItemsMasterPage() {
       // Actions
       {
         id: "actions",
-        header: "",
+        header: "Actions",
         size: 110,
         enableColumnFilter: false,
         enableSorting: false,
@@ -624,7 +608,7 @@ export default function ItemsMasterPage() {
                 <button
                   onClick={handleSave}
                   disabled={saving}
-                  className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg bg-green-600 text-white font-medium hover:bg-green-500 disabled:opacity-60 transition-colors"
+                  className="flex items-center gap-1 px-2.5 py-1 text-xs bg-green-600 text-white font-medium hover:bg-green-500 disabled:opacity-60 transition-colors"
                 >
                   {saving
                     ? <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -634,7 +618,7 @@ export default function ItemsMasterPage() {
                 <button
                   onClick={cancelEdit}
                   disabled={saving}
-                  className="px-2.5 py-1 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-60 transition-colors"
+                  className="px-2.5 py-1 text-xs border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-60 transition-colors"
                 >
                   ✕
                 </button>
@@ -642,30 +626,24 @@ export default function ItemsMasterPage() {
             );
           }
 
-          return (
-            <div className="flex items-center justify-end gap-1">
-              {item.isNewItem && (
-                <button
-                  title="Mark as reviewed — clears ★ NEW flag"
-                  disabled={reviewingId === item.id || !!editingId}
-                  onClick={() => handleMarkReviewed(item)}
-                  className="p-1.5 rounded-lg text-xs transition-colors hover:bg-amber-50 text-amber-500 hover:text-amber-700 disabled:opacity-40"
-                >
-                  {reviewingId === item.id
-                    ? <span className="w-3.5 h-3.5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin inline-block" />
-                    : "✓"}
-                </button>
-              )}
-              <button
-                title="Edit row"
-                disabled={!!editingId}
-                onClick={() => startEdit(item)}
-                className="p-1.5 rounded-lg text-xs transition-colors hover:bg-green-50 text-slate-600 hover:text-green-700 disabled:opacity-40"
-              >
-                ✏️
-              </button>
-            </div>
-          );
+          const actions: RowAction[] = [];
+          if (item.isNewItem) {
+            actions.push({
+              key: "review",
+              label: "Review",
+              onClick: () => handleMarkReviewed(item),
+              disabled: !!editingId,
+              loading: reviewingId === item.id,
+              variant: "warn",
+            });
+          }
+          actions.push({
+            key: "edit",
+            label: "Edit",
+            onClick: () => startEdit(item),
+            disabled: !!editingId,
+          });
+          return <RowActions actions={actions} />;
         },
       },
     ],
@@ -706,8 +684,13 @@ export default function ItemsMasterPage() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-slate-100 font-sans">
-      <div className="max-w-screen-xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-4">
+    <div className="min-h-full bg-slate-100">
+      <div className="max-w-6xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-4">
+
+        <ConfigPageHeader
+          title="Items Master"
+          description="Master catalog of stock items — descriptions, categories, units, and reorder points."
+        />
 
         {/* ── Toolbar ──────────────────────────────────────────────────────── */}
         <div className="flex flex-wrap items-center gap-3">
@@ -715,7 +698,7 @@ export default function ItemsMasterPage() {
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Search items…"
-            className="flex-1 min-w-48 px-4 py-2.5 rounded-lg text-sm border border-slate-200 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-green-600"
+            className="flex-1 min-w-48 px-4 py-2.5 text-sm border border-slate-200 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-green-600"
           />
           {searchInput && (
             <button
@@ -729,7 +712,7 @@ export default function ItemsMasterPage() {
           {/* ★ NEW filter toggle */}
           <button
             onClick={() => setShowNewOnly((v) => !v)}
-            className={`flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-sm border transition-colors shrink-0 ${
+            className={`flex items-center gap-1.5 px-3 py-2.5 text-sm border transition-colors shrink-0 ${
               showNewOnly
                 ? "bg-amber-100 border-amber-300 text-amber-700 font-semibold"
                 : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
@@ -749,7 +732,7 @@ export default function ItemsMasterPage() {
           <button
             onClick={handleAddRow}
             disabled={!!editingId}
-            className="flex items-center gap-1.5 bg-green-600 text-white font-semibold text-sm px-4 py-2.5 rounded-lg hover:bg-green-500 transition-colors shadow-sm shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"
+            className="flex items-center gap-1.5 bg-green-600 text-white font-semibold text-sm px-4 py-2.5 hover:bg-green-500 transition-colors shadow-sm shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"
           >
             <span className="text-base leading-none">+</span>
             Add Item
@@ -757,7 +740,7 @@ export default function ItemsMasterPage() {
         </div>
 
         {/* ── Table card ───────────────────────────────────────────────────── */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="bg-white shadow-sm border border-slate-200 overflow-hidden">
           {loading ? (
             <TableSkeleton columns={["#", "Stock No.", "Description", "Category", "Unit", "Unit Cost", "Type", "Reorder", "Remarks", "New?", ""]} />
           ) : fetchError ? (
@@ -767,17 +750,21 @@ export default function ItemsMasterPage() {
             </div>
           ) : (
             <div className="overflow-x-auto overflow-y-hidden">
-              <table className="w-full text-sm border-collapse min-w-[1250px]">
+              <table className="w-full text-sm border-collapse min-w-[1178px]">
 
                 {/* ── Header ── */}
                 <thead>
                   {table.getHeaderGroups().map((hg) => (
                     <tr key={hg.id} className="bg-slate-50 border-b border-slate-200 text-xs text-slate-600 uppercase tracking-wide">
                       {hg.headers.map((h) => (
-                        <th key={h.id} style={{ width: h.getSize() }} className="text-left px-3 py-2.5 font-medium select-none">
+                        <th
+                          key={h.id}
+                          style={{ width: h.getSize() }}
+                          className={`px-3 py-2.5 font-medium select-none ${h.column.id === "actions" ? "text-right" : "text-left"}`}
+                        >
                           {h.isPlaceholder ? null : (
                             <div
-                              className={h.column.getCanSort() ? "cursor-pointer flex items-center gap-1 hover:text-slate-700" : ""}
+                              className={h.column.getCanSort() ? "cursor-pointer flex items-center gap-1 hover:text-slate-800" : ""}
                               onClick={h.column.getToggleSortingHandler()}
                             >
                               {flexRender(h.column.columnDef.header, h.getContext())}
@@ -807,7 +794,7 @@ export default function ItemsMasterPage() {
                                 setColumnFilterInput((prev) => ({ ...prev, [columnId]: e.target.value }));
                               }}
                               placeholder="Filter…"
-                              className="w-full px-2 py-1 text-xs rounded border border-slate-200 bg-slate-50 focus:outline-none focus:ring-1 focus:ring-green-500 focus:bg-white transition-colors"
+                              className="w-full px-2 py-1 text-xs border border-slate-200 bg-slate-50 focus:outline-none focus:ring-1 focus:ring-green-500 focus:bg-white transition-colors"
                             />
                           ) : null}
                         </th>
@@ -873,13 +860,13 @@ export default function ItemsMasterPage() {
                   )}
                 </span>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} className="px-2 py-0.5 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50 transition-colors">‹</button>
+                  <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} className="px-2 py-0.5 border border-slate-200 disabled:opacity-40 hover:bg-slate-50 transition-colors">‹</button>
                   <span>Page {page} / {pageCount}</span>
-                  <button onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={page >= pageCount} className="px-2 py-0.5 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50 transition-colors">›</button>
+                  <button onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={page >= pageCount} className="px-2 py-0.5 border border-slate-200 disabled:opacity-40 hover:bg-slate-50 transition-colors">›</button>
                   <select
                     value={pageSize}
                     onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
-                    className="px-2 py-0.5 rounded border border-slate-200 bg-white focus:outline-none text-xs"
+                    className="px-2 py-0.5 border border-slate-200 bg-white focus:outline-none text-xs"
                   >
                     {[25, 50, 100].map((n) => <option key={n} value={n}>{n} / page</option>)}
                   </select>
@@ -891,7 +878,7 @@ export default function ItemsMasterPage() {
 
         {editingId && (
           <p className="text-xs text-slate-600 text-right">
-            Press <kbd className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 font-mono">✕</kbd> to cancel without saving
+            Press <kbd className="px-1.5 py-0.5 bg-slate-200 text-slate-600 font-mono">✕</kbd> to cancel without saving
           </p>
         )}
       </div>

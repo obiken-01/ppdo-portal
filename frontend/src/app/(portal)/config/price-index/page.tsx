@@ -55,6 +55,7 @@ import CsvUploadButton from "@/components/ui/CsvUploadButton";
 import CsvDownloadButton from "@/components/ui/CsvDownloadButton";
 import MoneyInput from "@/components/ui/MoneyInput";
 import { useToast } from "@/components/ui/Toast";
+import RowActions, { type RowAction } from "@/components/ui/RowActions";
 import type {
   ActiveFilter,
   CsvImportResult,
@@ -361,7 +362,7 @@ export default function PriceIndexConfigPage() {
       className: "whitespace-nowrap",
       render: (p) =>
         p.stockCardNo
-          ? <span className="font-mono text-xs text-slate-700">{p.stockCardNo}</span>
+          ? <span className="font-mono text-xs text-slate-600">{p.stockCardNo}</span>
           : <span className="text-slate-600">—</span>,
     },
     {
@@ -405,19 +406,15 @@ export default function PriceIndexConfigPage() {
       header: "Actions",
       align: "right",
       className: "whitespace-nowrap",
-      render: (p) => (
-        <div className="flex items-center justify-end gap-2 text-sm">
-          <TextAction onClick={() => openEdit(p)}>Edit</TextAction>
-          <span className="text-slate-300">·</span>
-          {p.isActive ? (
-            <TextAction danger onClick={() => confirmDeactivate(p)}>
-              Deactivate
-            </TextAction>
-          ) : (
-            <TextAction onClick={() => void doReactivate(p)}>Reactivate</TextAction>
-          )}
-        </div>
-      ),
+      render: (p) => {
+        const actions: RowAction[] = [{ key: "edit", label: "Edit", onClick: () => openEdit(p) }];
+        if (p.isActive) {
+          actions.push({ key: "deactivate", label: "Deactivate", onClick: () => confirmDeactivate(p), variant: "danger" });
+        } else {
+          actions.push({ key: "reactivate", label: "Reactivate", onClick: () => void doReactivate(p) });
+        }
+        return <RowActions actions={actions} btnPaddingX="px-1" />;
+      },
     },
   ];
 
@@ -437,7 +434,7 @@ export default function PriceIndexConfigPage() {
 
   return (
     <div className="min-h-full bg-slate-100 font-sans">
-      <div className="max-w-6xl mx-auto px-6 py-6 space-y-4">
+      <div className="max-w-6xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-4">
         {/* Header */}
         <ConfigPageHeader
           title="Price Index"
@@ -616,7 +613,7 @@ export default function PriceIndexConfigPage() {
                 className="mt-0.5 h-4 w-4 accent-green-600"
               />
               <span>
-                <span className="block text-sm font-medium text-slate-700">Enable &quot;Days&quot; in WFP entry</span>
+                <span className="block text-sm font-medium text-slate-600">Enable &quot;Days&quot; in WFP entry</span>
                 <span className="block text-[11px] text-slate-600">
                   For multi-day items (venue rental, food, accommodation) where cost scales by the
                   number of days. Leave off for everything else.
@@ -706,27 +703,6 @@ export default function PriceIndexConfigPage() {
 // ---------------------------------------------------------------------------
 // Small helpers
 // ---------------------------------------------------------------------------
-
-function TextAction({
-  children,
-  danger,
-  onClick,
-}: {
-  children: React.ReactNode;
-  danger?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`font-medium transition-colors ${
-        danger ? "text-danger-500 hover:text-red-600" : "text-green-600 hover:text-green-700"
-      } hover:underline`}
-    >
-      {children}
-    </button>
-  );
-}
 
 function Stat({ label, value, tone }: { label: string; value: number; tone: "green" | "blue" | "slate" }) {
   const cls: Record<typeof tone, string> = {

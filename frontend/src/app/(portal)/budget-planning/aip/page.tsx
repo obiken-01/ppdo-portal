@@ -21,6 +21,8 @@ import { useMe } from "@/lib/me-cache";
 import DataTable, { type Column } from "@/components/ui/DataTable";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
+import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
+import RowActions, { type RowAction } from "@/components/ui/RowActions";
 import type { AipRecordResponse } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -213,40 +215,20 @@ export default function AipListPage() {
     {
       key: "actions",
       header: "ACTIONS",
-      render: (r) => (
-        <div className="flex items-center gap-3 text-sm">
-          <Link
-            href={`/budget-planning/aip/detail?id=${r.id}`}
-            className="text-green-700 hover:underline"
-          >
-            View
-          </Link>
-          {r.status === "Draft" && me?.canUploadAip && (
-            <>
-              <button
-                onClick={() => handleFinalize(r)}
-                className="text-slate-600 hover:underline"
-              >
-                Finalize
-              </button>
-              <button
-                onClick={() => handleArchive(r)}
-                className="text-danger-500 hover:underline"
-              >
-                Archive
-              </button>
-            </>
-          )}
-          {r.status === "Final" && (
-            <Link
-              href={`/budget-planning/wfp?aipId=${r.id}`}
-              className="text-blue-600 hover:underline"
-            >
-              WFP
-            </Link>
-          )}
-        </div>
-      ),
+      align: "right",
+      render: (r) => {
+        const actions: RowAction[] = [
+          { key: "view", label: "View", href: `/budget-planning/aip/detail?id=${r.id}` },
+        ];
+        if (r.status === "Draft" && me?.canUploadAip) {
+          actions.push({ key: "finalize", label: "Finalize", onClick: () => handleFinalize(r), variant: "primary" });
+          actions.push({ key: "archive", label: "Archive", onClick: () => handleArchive(r), variant: "warn" });
+        }
+        if (r.status === "Final") {
+          actions.push({ key: "wfp", label: "WFP", href: `/budget-planning/wfp?aipId=${r.id}` });
+        }
+        return <RowActions actions={actions} />;
+      },
     },
   ];
 
@@ -255,32 +237,30 @@ export default function AipListPage() {
   // ---------------------------------------------------------------------------
 
   return (
-    <div className="p-6 max-w-screen-xl mx-auto">
-      {/* Header */}
-      <div className="flex items-start justify-between mb-5">
-        <div>
-          <h1 className="text-xl font-bold text-slate-800">Annual Investment Program</h1>
-          <p className="text-sm text-slate-600 mt-0.5">
-            Yearly investment allocations per sector and office
-          </p>
-        </div>
-        {me?.canUploadAip && (
-          <Link
-            href="/budget-planning/aip/new"
-            className="px-4 py-2 bg-green-700 text-white text-sm font-medium hover:bg-green-800 transition-colors"
-          >
-            + New AIP
-          </Link>
-        )}
-      </div>
+    <div className="min-h-full bg-slate-100">
+      <div className="max-w-6xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-4">
+      <ConfigPageHeader
+        title="Annual Investment Program"
+        description="Yearly investment allocations per sector and office"
+        actions={
+          me?.canUploadAip && (
+            <Link
+              href="/budget-planning/aip/new"
+              className="px-4 py-2 bg-green-700 text-white text-sm font-medium hover:bg-green-800 transition-colors"
+            >
+              + New AIP
+            </Link>
+          )
+        }
+      />
 
       {/* Filter bar */}
-      <div className="flex flex-wrap items-center gap-3 mb-4">
+      <div className="flex flex-wrap items-center gap-3">
         {/* Fiscal Year */}
         <select
           value={fy}
           onChange={(e) => setFy(Number(e.target.value))}
-          className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600"
+          className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600"
         >
           {FY_OPTIONS.map((y) => (
             <option key={y} value={y}>
@@ -293,7 +273,7 @@ export default function AipListPage() {
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600"
+          className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600"
         >
           <option value="">All Status</option>
           <option value="Draft">Draft</option>
@@ -305,7 +285,7 @@ export default function AipListPage() {
         <select
           value={sourceFilter}
           onChange={(e) => setSourceFilter(e.target.value)}
-          className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600"
+          className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600"
         >
           <option value="">All Sources</option>
           <option value="Upload">Upload</option>
@@ -327,6 +307,7 @@ export default function AipListPage() {
 
       {/* Confirm dialog */}
       {confirm && <ConfirmDialog {...confirm} />}
+      </div>
     </div>
   );
 }

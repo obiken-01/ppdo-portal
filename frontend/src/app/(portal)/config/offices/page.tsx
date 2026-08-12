@@ -47,6 +47,7 @@ import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmD
 import CsvUploadButton from "@/components/ui/CsvUploadButton";
 import CsvDownloadButton from "@/components/ui/CsvDownloadButton";
 import { useToast } from "@/components/ui/Toast";
+import RowActions, { type RowAction } from "@/components/ui/RowActions";
 import type {
   ActiveFilter,
   CsvImportResult,
@@ -353,19 +354,15 @@ export default function OfficeConfigPage() {
       header: "Actions",
       align: "right",
       className: "whitespace-nowrap",
-      render: (o) => (
-        <div className="flex items-center justify-end gap-2 text-sm">
-          <TextAction onClick={() => openEdit(o)}>Edit</TextAction>
-          <span className="text-slate-300">·</span>
-          {o.isActive ? (
-            <TextAction danger onClick={() => confirmDeactivate(o)}>
-              Deactivate
-            </TextAction>
-          ) : (
-            <TextAction onClick={() => void doReactivate(o)}>Reactivate</TextAction>
-          )}
-        </div>
-      ),
+      render: (o) => {
+        const actions: RowAction[] = [{ key: "edit", label: "Edit", onClick: () => openEdit(o) }];
+        if (o.isActive) {
+          actions.push({ key: "deactivate", label: "Deactivate", onClick: () => confirmDeactivate(o), variant: "danger" });
+        } else {
+          actions.push({ key: "reactivate", label: "Reactivate", onClick: () => void doReactivate(o) });
+        }
+        return <RowActions actions={actions} btnPaddingX="px-1" />;
+      },
     },
   ];
 
@@ -385,7 +382,7 @@ export default function OfficeConfigPage() {
 
   return (
     <div className="min-h-full bg-slate-100 font-sans">
-      <div className="max-w-6xl mx-auto px-6 py-6 space-y-4">
+      <div className="max-w-6xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-4">
         {/* Header */}
         <ConfigPageHeader
           title="Offices"
@@ -627,27 +624,6 @@ export default function OfficeConfigPage() {
 // ---------------------------------------------------------------------------
 // Small helpers
 // ---------------------------------------------------------------------------
-
-function TextAction({
-  children,
-  danger,
-  onClick,
-}: {
-  children: React.ReactNode;
-  danger?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`font-medium transition-colors ${
-        danger ? "text-danger-500 hover:text-red-600" : "text-green-600 hover:text-green-700"
-      } hover:underline`}
-    >
-      {children}
-    </button>
-  );
-}
 
 function Stat({ label, value, tone }: { label: string; value: number; tone: "green" | "blue" | "slate" }) {
   const cls: Record<typeof tone, string> = {

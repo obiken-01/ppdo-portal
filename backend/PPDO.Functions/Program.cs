@@ -82,7 +82,7 @@ var host = new HostBuilder()
                 "Add it to local.settings.json (local) or Azure App Settings (production).");
 
         services.AddDbContext<AppDbContext>(options =>
-            options.UseSqlServer(connectionString));
+            options.UseSqlServer(connectionString, sqlOptions => sqlOptions.EnableRetryOnFailure()));
 
         // -- Application Insights --------------------------------------------
         services.AddApplicationInsightsTelemetryWorkerService();

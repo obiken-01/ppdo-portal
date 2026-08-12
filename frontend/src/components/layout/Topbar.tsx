@@ -109,10 +109,10 @@ function SectionBreadcrumb({ section, pathname }: { section: Section; pathname: 
             </>
           )}
           <span className="text-slate-300">›</span>
-          <span className="font-semibold text-slate-700">{sub.label}</span>
+          <span className="font-semibold text-slate-800">{sub.label}</span>
         </>
       ) : (
-        <span className="font-semibold text-slate-700">{section.rootLabel}</span>
+        <span className="font-semibold text-slate-800">{section.rootLabel}</span>
       )}
     </nav>
   );
@@ -137,7 +137,7 @@ export default function Topbar({ me, title, onMenuClick }: TopbarProps) {
         {section ? (
           <SectionBreadcrumb section={section} pathname={pathname} />
         ) : (
-          <h1 className="text-sm font-semibold text-slate-700 truncate">{title}</h1>
+          <h1 className="text-sm font-semibold text-slate-800 truncate">{title}</h1>
         )}
       </div>
 

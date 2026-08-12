@@ -264,7 +264,7 @@ export default function AuditLogPage() {
       key: "tableName",
       header: "Feature / Table",
       className: "whitespace-nowrap align-top",
-      render: (e) => <span className="font-mono text-xs text-slate-700">{e.tableName}</span>,
+      render: (e) => <span className="font-mono text-xs text-slate-600">{e.tableName}</span>,
     },
     {
       key: "recordId",
@@ -282,14 +282,14 @@ export default function AuditLogPage() {
       key: "description",
       header: "Description",
       render: (e) => (
-        <span className="text-xs text-slate-700 whitespace-pre-line">{e.description}</span>
+        <span className="text-xs text-slate-600 whitespace-pre-line">{e.description}</span>
       ),
     },
     {
       key: "actorName",
       header: "Username",
       className: "whitespace-nowrap align-top",
-      render: (e) => <span className="text-slate-700">{e.actorName}</span>,
+      render: (e) => <span className="text-slate-600">{e.actorName}</span>,
     },
   ];
 
@@ -318,7 +318,7 @@ export default function AuditLogPage() {
 
   return (
     <div className="min-h-full bg-slate-100 font-sans">
-      <div className="max-w-7xl mx-auto px-6 py-6 space-y-4">
+      <div className="max-w-7xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-4">
         {/* Header */}
         <ConfigPageHeader
           title="Audit Log"

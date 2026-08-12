@@ -42,6 +42,7 @@ import OfficeSelect from "@/components/ui/OfficeSelect";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
 import { formatMoney } from "@/lib/money";
+import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import type {
   AipActivitySummary,
   AipRecordSummary,
@@ -386,7 +387,7 @@ function ExpenditurePopup({
             className={`px-5 py-2 text-sm font-medium border-b-2 transition-colors ${
               activeTab === tab
                 ? TAB_COLORS[tab].active
-                : "border-transparent text-slate-600 hover:text-slate-700"
+                : "border-transparent text-slate-600 hover:text-slate-800"
             }`}
           >
             {tab}
@@ -439,7 +440,7 @@ function ExpenditurePopup({
                       {/* OBJECT OF EXPENDITURE */}
                       <td className="px-2 py-1.5">
                         {readonly ? (
-                          <span className="text-slate-700">
+                          <span className="text-slate-600">
                             {selectedAccount
                               ? `${selectedAccount.accountTitle} (${selectedAccount.accountNumber})`
                               : "—"}
@@ -478,7 +479,7 @@ function ExpenditurePopup({
                       </td>
 
                       {/* NET */}
-                      <td className="px-2 py-1.5 text-right font-medium text-slate-700 whitespace-nowrap">
+                      <td className="px-2 py-1.5 text-right font-medium text-slate-600 whitespace-nowrap">
                         {formatMoney(net)}
                       </td>
 
@@ -501,7 +502,7 @@ function ExpenditurePopup({
                       {/* LINE TOTAL */}
                       <td
                         className={`px-2 py-1.5 text-right font-medium whitespace-nowrap ${
-                          isOver ? "text-red-600" : "text-slate-700"
+                          isOver ? "text-red-600" : "text-slate-600"
                         }`}
                       >
                         {formatMoney(quarterly)}
@@ -557,7 +558,7 @@ function ExpenditurePopup({
                                 {label}
                               </span>
                               {readonly ? (
-                                <span className="text-xs text-slate-700">
+                                <span className="text-xs text-slate-600">
                                   {(line[key] as string | null) ?? "—"}
                                 </span>
                               ) : (
@@ -1070,72 +1071,78 @@ function WfpPageInner() {
 
   return (
     <div className="flex flex-col min-h-full">
-      <div className="p-6 max-w-screen-xl mx-auto w-full flex-1">
+      <div className="px-3 py-4 sm:px-6 sm:py-6 max-w-6xl mx-auto w-full flex-1">
 
-        {/* Header */}
-        <div className="flex items-start justify-between mb-5">
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold text-slate-800">Work and Financial Plan</h1>
-              <a
-                href="/budget-planning/wfp/entry"
-                className="px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors"
-              >
-                Try the new entry wizard (v1.4 preview) →
-              </a>
-            </div>
-            {aipDetail && selectedConfigOffice && (
-              <p className="text-sm text-slate-600 mt-0.5">
-                AIP FY{aipDetail.fiscalYear} — {selectedConfigOffice.officeName}
+        <div className="mb-5">
+          <ConfigPageHeader
+            title={
+              <div className="flex items-center gap-2">
+                <span>Work and Financial Plan</span>
+                <a
+                  href="/budget-planning/wfp/entry"
+                  className="px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors"
+                >
+                  Try the new entry wizard (v1.4 preview) →
+                </a>
+              </div>
+            }
+            description={
+              aipDetail && selectedConfigOffice ? (
+                <>
+                  AIP FY{aipDetail.fiscalYear} — {selectedConfigOffice.officeName}
+                  {wfp && (
+                    <span
+                      className={`ml-2 px-2 py-0.5 text-xs font-medium ${
+                        isFinal
+                          ? "bg-green-100 text-green-700"
+                          : "bg-amber-100 text-amber-700"
+                      }`}
+                    >
+                      {wfp.status}
+                    </span>
+                  )}
+                </>
+              ) : (
+                ""
+              )
+            }
+            actions={
+              <>
                 {wfp && (
-                  <span
-                    className={`ml-2 px-2 py-0.5 text-xs font-medium ${
-                      isFinal
-                        ? "bg-green-100 text-green-700"
-                        : "bg-amber-100 text-amber-700"
-                    }`}
+                  <button
+                    onClick={handleExport}
+                    disabled={exporting}
+                    className="px-4 py-2 text-sm border border-slate-300 text-slate-600 bg-white hover:bg-slate-50 transition-colors font-medium flex items-center gap-2"
                   >
-                    {wfp.status}
-                  </span>
+                    {exporting && (
+                      <span className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+                    )}
+                    Export Excel
+                  </button>
                 )}
-              </p>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2">
-            {wfp && (
-              <button
-                onClick={handleExport}
-                disabled={exporting}
-                className="px-4 py-2 text-sm border border-slate-300 text-slate-600 bg-white hover:bg-slate-50 transition-colors font-medium flex items-center gap-2"
-              >
-                {exporting && (
-                  <span className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+                {me?.canManageConfig && isFinal && wfp && (
+                  <button
+                    onClick={handleUnlock}
+                    className="px-4 py-2 text-sm border border-slate-300 text-slate-600 bg-white hover:bg-slate-50 transition-colors font-medium"
+                  >
+                    Unlock
+                  </button>
                 )}
-                Export Excel
-              </button>
-            )}
-            {me?.canManageConfig && isFinal && wfp && (
-              <button
-                onClick={handleUnlock}
-                className="px-4 py-2 text-sm border border-slate-300 text-slate-600 bg-white hover:bg-slate-50 transition-colors font-medium"
-              >
-                Unlock
-              </button>
-            )}
-            {!isFinal && wfp && (
-              <button
-                onClick={handleFinalize}
-                disabled={finalizing}
-                className="px-4 py-2 bg-green-700 text-white text-sm font-medium hover:bg-green-800 transition-colors disabled:opacity-60 flex items-center gap-2"
-              >
-                {finalizing && (
-                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                {!isFinal && wfp && (
+                  <button
+                    onClick={handleFinalize}
+                    disabled={finalizing}
+                    className="px-4 py-2 bg-green-700 text-white text-sm font-medium hover:bg-green-800 transition-colors disabled:opacity-60 flex items-center gap-2"
+                  >
+                    {finalizing && (
+                      <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    )}
+                    Finalize
+                  </button>
                 )}
-                Finalize
-              </button>
-            )}
-          </div>
+              </>
+            }
+          />
         </div>
 
         {/* Selector row */}
@@ -1149,7 +1156,7 @@ function WfpPageInner() {
                 setSelectedAipId(e.target.value ? Number(e.target.value) : null);
               }}
               disabled={isFinal}
-              className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600 disabled:opacity-60"
+              className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600 disabled:opacity-60"
             >
               <option value="">— select AIP —</option>
               {aipList.map((a) => (
@@ -1183,7 +1190,7 @@ function WfpPageInner() {
                 <select
                   value={selectedDivisionId ?? ""}
                   onChange={(e) => setSelectedDivisionId(e.target.value ? Number(e.target.value) : null)}
-                  className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600"
+                  className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600"
                 >
                   <option value="">— all divisions —</option>
                   {divisionList.map((d) => (
@@ -1191,7 +1198,7 @@ function WfpPageInner() {
                   ))}
                 </select>
               ) : (
-                <span className="text-sm text-slate-700 px-2 py-1.5 border border-slate-200 bg-slate-50">
+                <span className="text-sm text-slate-600 px-2 py-1.5 border border-slate-200 bg-slate-50">
                   {divisionList.find((d) => d.id === selectedDivisionId)?.name ?? me?.division ?? "—"}
                 </span>
               )}
@@ -1279,11 +1286,11 @@ function WfpPageInner() {
                       <tr className="bg-slate-200">
                         <td
                           colSpan={12}
-                          className="px-3 py-1.5 text-xs font-bold text-slate-700 uppercase tracking-wide"
+                          className="px-3 py-1.5 text-xs font-bold text-slate-600 uppercase tracking-wide"
                         >
                           <button
                             onClick={() => toggleCollapse(sKey)}
-                            className="mr-2 text-slate-600 hover:text-slate-700 leading-none"
+                            className="mr-2 text-slate-600 hover:text-slate-800 leading-none"
                           >
                             {collapsed.has(sKey) ? "▶" : "▼"}
                           </button>
@@ -1324,7 +1331,7 @@ function WfpPageInner() {
                                   <td className="px-3 py-2 font-mono text-xs text-slate-600 whitespace-nowrap">
                                     {program.refCode}
                                   </td>
-                                  <td className="px-3 py-2 pl-6 font-semibold text-slate-700">
+                                  <td className="px-3 py-2 pl-6 font-semibold text-slate-800">
                                     <div className="flex items-start gap-1">
                                       <button
                                         onClick={() => toggleCollapse(pKey)}
@@ -1350,7 +1357,7 @@ function WfpPageInner() {
                                         <td className="px-3 py-2 font-mono text-xs text-slate-600 whitespace-nowrap">
                                           {project.refCode}
                                         </td>
-                                        <td className="px-3 py-2 pl-10 font-medium text-slate-700">
+                                        <td className="px-3 py-2 pl-10 font-medium text-slate-600">
                                           <div className="flex items-start gap-1">
                                             <button
                                               onClick={() => toggleCollapse(prKey)}
@@ -1380,7 +1387,7 @@ function WfpPageInner() {
                                             <td className="px-3 py-2 font-mono text-xs text-slate-600 leading-tight whitespace-nowrap">
                                               {activity.refCode}
                                             </td>
-                                            <td className="px-3 py-2 pl-14 text-slate-700">
+                                            <td className="px-3 py-2 pl-14 text-slate-600">
                                               <ClampedName name={activity.name} />
                                             </td>
                                             <td className="px-3 py-2 text-xs text-slate-600 whitespace-nowrap">

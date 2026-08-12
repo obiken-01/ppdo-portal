@@ -87,7 +87,7 @@ type FormData = z.infer<typeof schema>;
 // Page
 // ---------------------------------------------------------------------------
 
-const APP_VERSION = "v1.7.0";
+const APP_VERSION = "v1.7.1";
 
 function LoginPageInner() {
   const router = useRouter();
@@ -234,7 +234,7 @@ function LoginPageInner() {
             <div>
               <label
                 htmlFor="username"
-                className="block text-sm font-medium text-slate-700 mb-1"
+                className="block text-sm font-medium text-slate-600 mb-1"
               >
                 Username
               </label>
@@ -261,7 +261,7 @@ function LoginPageInner() {
             <div>
               <label
                 htmlFor="password"
-                className="block text-sm font-medium text-slate-700 mb-1"
+                className="block text-sm font-medium text-slate-600 mb-1"
               >
                 Password
               </label>

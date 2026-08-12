@@ -100,7 +100,7 @@ export default function CalendarApprovalPanel({
       sortable: true,
       sortValue: (row) => row.startDate,
       render: (row) => (
-        <span className="text-sm text-slate-700 whitespace-nowrap">
+        <span className="text-sm text-slate-600 whitespace-nowrap">
           {new Date(row.startDate).toLocaleDateString("en-PH", {
             year: "numeric",
             month: "short",
@@ -114,7 +114,7 @@ export default function CalendarApprovalPanel({
       key: "createdByName",
       header: "Submitted By",
       sortable: true,
-      render: (row) => <span className="text-sm text-slate-700">{row.createdByName}</span>,
+      render: (row) => <span className="text-sm text-slate-600">{row.createdByName}</span>,
     },
     {
       key: "createdAt",

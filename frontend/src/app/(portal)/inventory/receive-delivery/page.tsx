@@ -20,6 +20,7 @@ import api from "@/lib/api";
 import { fetchMe } from "@/lib/me-cache";
 import { useToast } from "@/components/ui/Toast";
 import TableSkeleton from "@/components/ui/TableSkeleton";
+import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import type {
   CreateDeliveryItemRequest,
   CreateDeliveryRequest,
@@ -381,15 +382,15 @@ export default function ReceiveDeliveryPage() {
             </div>
             <div className="flex justify-between">
               <span className="text-slate-600">Items received</span>
-              <span className="text-slate-700">{submitted.items.length}</span>
+              <span className="text-slate-600">{submitted.items.length}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-600">Delivery Date</span>
-              <span className="text-slate-700">{submitted.deliveryDate}</span>
+              <span className="text-slate-600">{submitted.deliveryDate}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-600">Received By</span>
-              <span className="text-slate-700">{submitted.receivedBy}</span>
+              <span className="text-slate-600">{submitted.receivedBy}</span>
             </div>
           </div>
           <div className="flex gap-3 justify-center pt-2">
@@ -420,8 +421,13 @@ export default function ReceiveDeliveryPage() {
   const activeItemCount = items.filter((r) => parseFloat(r.qtyThisDelivery) > 0).length;
 
   return (
-    <div className="min-h-screen bg-slate-100 font-sans">
-      <div className="max-w-screen-xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-5">
+    <div className="min-h-full bg-slate-100">
+      <div className="max-w-6xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-5">
+
+        <ConfigPageHeader
+          title="Receive Delivery"
+          description="Record items received against a purchase request."
+        />
 
         {/* Toolbar */}
         <div className="flex items-center justify-end">
@@ -577,7 +583,7 @@ export default function ReceiveDeliveryPage() {
                 <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
                   <span>{activeItemCount} of {items.length} item{items.length !== 1 ? "s" : ""} with delivery qty</span>
                   {formError && <span className="text-red-500 font-medium">{formError}</span>}
-                  <span className="font-semibold text-slate-700">
+                  <span className="font-semibold text-slate-800">
                     PR Total: ₱{selectedPR ? fmt(selectedPR.totalAmount) : "—"}
                   </span>
                 </div>

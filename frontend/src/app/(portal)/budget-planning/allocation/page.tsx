@@ -48,6 +48,7 @@ import MoneyInput from "@/components/ui/MoneyInput";
 import OfficeSelect from "@/components/ui/OfficeSelect";
 import { useToast } from "@/components/ui/Toast";
 import { formatMoney } from "@/lib/money";
+import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import type {
   BudgetCeilingDto,
   DivisionResponse,
@@ -227,7 +228,7 @@ function FundSection({
         <>
           <div
             className={`mb-3 text-sm font-medium tabular-nums ${
-              isOverCeiling ? "text-red-600" : "text-slate-700"
+              isOverCeiling ? "text-red-600" : "text-slate-600"
             }`}
           >
             Allocated ₱{formatMoney(allocationTotal)} of ₱
@@ -304,10 +305,10 @@ function FundSection({
             </tbody>
             <tfoot>
               <tr className="border-t border-slate-300">
-                <td className="py-2 text-sm font-semibold text-slate-700">Total</td>
+                <td className="py-2 text-sm font-semibold text-slate-800">Total</td>
                 <td
                   className={`py-2 text-right font-semibold tabular-nums ${
-                    isOverCeiling ? "text-red-600" : "text-slate-700"
+                    isOverCeiling ? "text-red-600" : "text-slate-600"
                   }`}
                 >
                   ₱{formatMoney(allocationTotal)}
@@ -350,7 +351,7 @@ function FundSection({
   if (isGeneralFund) {
     return (
       <div className="border border-slate-200 p-4">
-        <h2 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+        <h2 className="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-2">
           {fund.name}
           <span className="text-[10px] font-medium text-green-700 bg-green-100 px-1.5 py-0.5">
             Required
@@ -372,7 +373,7 @@ function FundSection({
         onClick={onToggleExpand}
         className="w-full flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-left hover:bg-slate-50 transition-colors"
       >
-        <span className="flex items-center gap-2 text-sm font-medium text-slate-700">
+        <span className="flex items-center gap-2 text-sm font-medium text-slate-600">
           <span className="text-slate-600">{expanded ? "▼" : "▶"}</span>
           {fund.color && (
             <span
@@ -762,10 +763,14 @@ function AllocationPageInner() {
 
   return (
     <div className="flex flex-col min-h-full">
-      <div className="p-6 max-w-screen-xl mx-auto w-full flex-1">
+      <div className="px-3 py-4 sm:px-6 sm:py-6 max-w-6xl mx-auto w-full flex-1">
 
-        {/* Header */}
-        <h1 className="text-xl font-bold text-slate-800 mb-5">Allocation</h1>
+        <div className="mb-5">
+          <ConfigPageHeader
+            title="Allocation"
+            description="Set office budget ceilings and per-division allocation splits by fund source."
+          />
+        </div>
 
         {/* Selectors */}
         <div className="flex flex-wrap items-center gap-4 mb-5">
@@ -780,7 +785,7 @@ function AllocationPageInner() {
               min={2020}
               max={2050}
               onChange={(e) => setSelectedFiscalYear(Number(e.target.value))}
-              className="border border-slate-300 bg-white text-sm px-2 py-1.5 w-24 text-slate-700 focus:outline-none focus:ring-1 focus:ring-green-600"
+              className="border border-slate-300 bg-white text-sm px-2 py-1.5 w-24 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600"
             />
           </div>
 
@@ -790,7 +795,7 @@ function AllocationPageInner() {
               Office
             </label>
             {isOfficeUser ? (
-              <span className="text-sm text-slate-700 font-medium">
+              <span className="text-sm text-slate-600 font-medium">
                 {me?.officeName ?? `Office #${me?.officeId}`}
               </span>
             ) : (
@@ -843,7 +848,7 @@ function AllocationPageInner() {
                   className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
                     activeTab === tab
                       ? "border-green-600 text-green-700"
-                      : "border-transparent text-slate-600 hover:text-slate-700"
+                      : "border-transparent text-slate-600 hover:text-slate-800"
                   }`}
                 >
                   {tab === "ceiling" ? "Ceiling & Division Allocation" : "PPA → Division"}
@@ -1042,11 +1047,11 @@ function AllocationPageInner() {
                                 <tr className="bg-slate-200">
                                   <td
                                     colSpan={4 + divisions.length}
-                                    className="px-3 py-1.5 text-xs font-bold text-slate-700 uppercase tracking-wide"
+                                    className="px-3 py-1.5 text-xs font-bold text-slate-600 uppercase tracking-wide"
                                   >
                                     <button
                                       onClick={() => toggleSectorCollapse(sector)}
-                                      className="mr-2 text-slate-600 hover:text-slate-700"
+                                      className="mr-2 text-slate-600 hover:text-slate-800"
                                     >
                                       {isCollapsed ? "▶" : "▼"}
                                     </button>
@@ -1096,7 +1101,7 @@ function AllocationPageInner() {
                                         </td>
 
                                         {/* Program Name */}
-                                        <td className="px-3 py-2 text-slate-700 align-top">
+                                        <td className="px-3 py-2 text-slate-600 align-top">
                                           <div className="flex items-start gap-2">
                                             <span className="flex-1 min-w-0">{p.programName}</span>
                                             {isUnassigned && (

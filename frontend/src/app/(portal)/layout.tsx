@@ -25,7 +25,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import axios from "axios";
 import { auth } from "@/lib/auth";
-import { classifyRefreshFailure, loginUrlWithReason, reconnectingUrl } from "@/lib/auth-redirect";
+import { classifyRefreshFailure, loginUrlWithReason, reconnectingUrl, REFRESH_TIMEOUT_MS } from "@/lib/auth-redirect";
 import { clearMeCache, fetchMe } from "@/lib/me-cache";
 import Sidebar from "@/components/layout/Sidebar";
 import Topbar from "@/components/layout/Topbar";
@@ -109,7 +109,7 @@ export default function PortalLayout({
 
         const tryRefresh = (retries: number): Promise<RefreshOutcome> =>
           axios
-            .post(`${BASE_URL}/auth/refresh`, {}, { withCredentials: true })
+            .post(`${BASE_URL}/auth/refresh`, {}, { withCredentials: true, timeout: REFRESH_TIMEOUT_MS })
             .then(({ data }) => { auth.login(data); return { ok: true } as const; })
             .catch((err) => {
               if (retries > 0 && axios.isAxiosError(err) && !err.response) {

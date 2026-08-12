@@ -30,6 +30,7 @@ import { listDivisions, listOffices } from "@/lib/config";
 import Modal from "@/components/ui/Modal";
 import OfficeSelect from "@/components/ui/OfficeSelect";
 import { useToast } from "@/components/ui/Toast";
+import RowActions, { type RowAction } from "@/components/ui/RowActions";
 import type {
   CreateUserRequest,
   DivisionResponse,
@@ -138,8 +139,8 @@ function OverrideToggle({
   }
 
   return (
-    <div className={`flex items-center justify-between py-2 px-3 rounded-lg border border-slate-200 ${disabled ? "opacity-40" : ""}`}>
-      <span className="text-sm text-slate-700">{label}</span>
+    <div className={`flex items-center justify-between py-2 px-3 border border-slate-200 ${disabled ? "opacity-40" : ""}`}>
+      <span className="text-sm text-slate-600">{label}</span>
       <button
         type="button"
         onClick={cycle}
@@ -433,7 +434,7 @@ function ConfirmDialog({
         </>
       }
     >
-      <p className="text-sm text-slate-700">{message}</p>
+      <p className="text-sm text-slate-600">{message}</p>
     </Modal>
   );
 }
@@ -682,8 +683,8 @@ export default function UsersPage() {
   // ---------------------------------------------------------------------------
 
   return (
-    <div className="min-h-screen bg-slate-100 font-sans">
-      <div className="max-w-6xl mx-auto px-6 py-6 space-y-4">
+    <div className="min-h-full bg-slate-100 font-sans">
+      <div className="max-w-6xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-4">
         {/* Toolbar: search + add button */}
         <div className="flex items-center gap-3">
           <input
@@ -758,7 +759,7 @@ export default function UsersPage() {
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="font-mono text-sm text-slate-700">{user.username}</div>
+                        <div className="font-mono text-sm text-slate-600">{user.username}</div>
                         {user.email && (
                           <div className="text-xs text-slate-600">{user.email}</div>
                         )}
@@ -771,27 +772,16 @@ export default function UsersPage() {
                       </td>
                       <td className="px-4 py-3">{statusBadge(user.isActive)}</td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-1">
-                          {/* Edit */}
-                          <ActionButton
-                            title="Edit user"
-                            onClick={() => openEdit(user)}
-                            icon="✏️"
-                          />
-                          {/* Reset password */}
-                          <ActionButton
-                            title="Reset password"
-                            onClick={() => setResetTarget(user)}
-                            icon="🔑"
-                          />
-                          {/* Deactivate / Reactivate */}
-                          <ActionButton
-                            title={user.isActive ? "Deactivate user" : "Reactivate user"}
-                            onClick={() => setDeactivateTarget(user)}
-                            icon={user.isActive ? "🚫" : "✅"}
-                            danger={user.isActive}
-                          />
-                        </div>
+                        <RowActions
+                          btnPaddingX="px-1"
+                          actions={[
+                            { key: "edit", label: "Edit", onClick: () => openEdit(user) },
+                            { key: "reset", label: "Reset", onClick: () => setResetTarget(user) },
+                            user.isActive
+                              ? { key: "deactivate", label: "Deactivate", onClick: () => setDeactivateTarget(user), variant: "danger" }
+                              : { key: "activate", label: "Activate", onClick: () => setDeactivateTarget(user) },
+                          ] satisfies RowAction[]}
+                        />
                       </td>
                     </tr>
                   ))}
@@ -892,35 +882,5 @@ export default function UsersPage() {
         />
       )}
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Small action button
-// ---------------------------------------------------------------------------
-
-function ActionButton({
-  title,
-  onClick,
-  icon,
-  danger,
-}: {
-  title: string;
-  onClick: () => void;
-  icon: string;
-  danger?: boolean;
-}) {
-  return (
-    <button
-      title={title}
-      onClick={onClick}
-      className={`p-1.5 text-sm transition-colors ${
-        danger
-          ? "hover:bg-danger-100 text-slate-600 hover:text-danger-500"
-          : "hover:bg-green-50 text-slate-600 hover:text-green-700"
-      }`}
-    >
-      {icon}
-    </button>
   );
 }

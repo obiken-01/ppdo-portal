@@ -142,7 +142,7 @@ export default function AnnouncementEditorModal({
       <div className="space-y-4">
         {/* Title */}
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">
+          <label className="block text-sm font-medium text-slate-600 mb-1">
             Title <span className="text-red-500">*</span>
           </label>
           <input
@@ -157,7 +157,7 @@ export default function AnnouncementEditorModal({
 
         {/* Rich-text content */}
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Content</label>
+          <label className="block text-sm font-medium text-slate-600 mb-1">Content</label>
           <div className="border border-slate-200">
             {editor && <RichTextToolbar editor={editor} />}
             <EditorContent editor={editor} />

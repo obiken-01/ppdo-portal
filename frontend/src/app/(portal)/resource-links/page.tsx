@@ -15,6 +15,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import api from "@/lib/api";
+import RowActions, { type RowAction } from "@/components/ui/RowActions";
 import type {
   CreateResourceLinkRequest,
   MeResponse,
@@ -383,7 +384,7 @@ export default function ResourceLinksPage() {
                       href={link.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex-1 min-w-0 flex items-center gap-2 text-sm text-slate-700 hover:text-green-700 transition-colors"
+                      className="flex-1 min-w-0 flex items-center gap-2 text-sm text-slate-600 hover:text-green-700 transition-colors"
                     >
                       <span className="text-slate-300 group-hover/row:text-green-400 shrink-0 transition-colors text-xs">↗</span>
                       <span className="truncate">{link.title}</span>
@@ -393,25 +394,22 @@ export default function ResourceLinksPage() {
                     </a>
 
                     {/* Actions */}
-                    <div className="flex items-center gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity shrink-0">
-                      {canEdit && (
-                        <button
-                          title="Edit"
-                          onClick={() => { setFormError(null); setEditTarget(link); }}
-                          className="p-1 rounded text-slate-600 hover:text-green-700 hover:bg-green-50 transition-colors"
-                        >
-                          ✏️
-                        </button>
-                      )}
-                      {canDelete && (
-                        <button
-                          title="Delete"
-                          onClick={() => setDeleteTarget(link)}
-                          className="p-1 rounded text-slate-600 hover:text-danger-500 hover:bg-danger-100 transition-colors"
-                        >
-                          🗑️
-                        </button>
-                      )}
+                    <div className="opacity-0 group-hover/row:opacity-100 transition-opacity shrink-0">
+                      <RowActions
+                        actions={[
+                          ...(canEdit ? [{
+                            key: "edit",
+                            label: "Edit",
+                            onClick: () => { setFormError(null); setEditTarget(link); },
+                          } satisfies RowAction] : []),
+                          ...(canDelete ? [{
+                            key: "delete",
+                            label: "Delete",
+                            onClick: () => setDeleteTarget(link),
+                            variant: "danger",
+                          } satisfies RowAction] : []),
+                        ]}
+                      />
                     </div>
                   </li>
                 ))}
