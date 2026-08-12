@@ -581,8 +581,9 @@ out-of-scope → commit message). `RAL-81` is the reference example.
 | Version indicator | `APP_VERSION` const in three places — `frontend/src/components/layout/Sidebar.tsx` (portal sidebar), `frontend/src/components/landing/Footer.tsx` (`Portal vX.Y.Z`, public landing page), and `frontend/src/app/(public)/login/page.tsx` (login page). All three must be updated together — they've drifted out of sync before. |
 | Version scheme | Patch releases (bug fixes, optimizations, no new features) use `vX.Y.Z` (e.g. `v1.0.1`). Feature milestones use `vX.Y` (e.g. `v1.2`). |
 | **Version bump timing** | Bump `APP_VERSION` in all three places **at the start of a new version's development** — i.e. right after cutting its `release/X.Y.Z` branch, as the first commit on that branch — not at the end when merging/deploying. This way the displayed version always reflects what's actually running in that environment throughout development, including on preview/local builds. |
-| Cold start mitigation | `GET /api/health` (no auth) runs `SELECT 1` against Azure SQL — called on login page mount to warm up both Azure Functions (cold start ~10 min) and Azure SQL (auto-pause ~1 hr) before user clicks Sign In. |
+| Cold start mitigation | `GET /api/health` (no auth) runs `SELECT 1` against Azure SQL — called on login page mount to warm up Azure Functions (cold start ~10 min). Originally also pre-warmed Azure SQL auto-pause (~1 hr); no longer needed for the DB since the Basic-tier switch (2026-08-12) removed auto-pause entirely, but the call still serves the Functions side. |
 | Health endpoint | `HealthFunctions.cs` — `GET /api/health`. Returns `{ status, api, database, utc }`. 200 OK when DB is reachable, 503 when DB is down. No auth required. |
+| Azure SQL tier: Basic over Serverless | Switched 2026-08-12 — see Production Deployment notes below for full rationale (cost, headroom, auto-pause removal). Not a performance upgrade — Basic's 5 DTU is a lower ceiling than serverless's burst-to-4-vCores; fine at current near-idle load, but revisit if usage grows. |
 
 ### Linear Milestones
 
@@ -611,7 +612,7 @@ out-of-scope → commit message). `RAL-81` is the reference example.
 |---|---|---|
 | Frontend | `ppdo-portal` (Azure Static Web Apps) | https://jolly-sky-0e3a2e310.7.azurestaticapps.net |
 | Backend API | `ppdo-portal-api` (Azure Functions) | https://ppdo-portal-api-dpevbthmd5dycacq.centralus-01.azurewebsites.net/api |
-| Database | `ppdo-portal-db` on `ppdo-portal-server` (Azure SQL Free) | Southeast Asia region |
+| Database | `ppdo-portal-db` on `ppdo-portal-server` (Azure SQL Basic tier) | Southeast Asia region |
 | Storage | `ppdoportalstorage` (Azure Storage — LRS) | Required by Azure Functions (`AzureWebJobsStorage`) |
 | Monitoring | `ppdo-portal-api` (Application Insights) | Central US |
 | Resource Group | `ppdo-portal-rg` | All resources grouped here |
@@ -619,8 +620,8 @@ out-of-scope → commit message). `RAL-81` is the reference example.
 **Deployment notes:**
 - `NEXT_PUBLIC_API_BASE_URL` is baked into the Next.js build via `.github/workflows/deploy.yml` — SWA Free tier does not support API linking
 - Azure Functions CORS is configured in **Azure Portal → Function App → CORS** (not `host.json`) — add any new allowed origins there
-- Azure SQL Free tier auto-pauses after **1 hour** of inactivity — first request after pause takes ~20-30s to resume. The `GET /api/health` call on the login page pre-warms both services.
-- Azure Functions Consumption plan scales to zero after **~10 min** of no traffic — cold start takes 5-20s
+- Azure SQL moved from Free-offer Serverless (Gen5, 4 vCores) to **Basic tier (5 DTU, 2GB max)** on 2026-08-12 — flat ~$4.90/mo instead of pay-as-you-go overage (the free monthly vCore-second grant was being exhausted earlier each month — Jun→Jul→Aug — from baseline serverless overhead alone, independent of real traffic; see below). Basic is DTU-based/always-provisioned, so it does **not** auto-pause — the DB-side cold start described below no longer applies. Actual usage at time of switch: 42 MB storage (vs 2GB cap), ~0% CPU (vs 5 DTU cap) — wide headroom for current load; revisit if usage grows enough to approach the DTU ceiling.
+- Azure Functions Consumption plan still scales to zero after **~10 min** of no traffic — cold start takes 5-20s. The `GET /api/health` call on the login page pre-warms this (DB no longer needs pre-warming since the Basic-tier switch, but the call is harmless to keep).
 - Push to `main` → GitHub Actions builds and deploys both frontend and backend automatically
 - First-time DB setup: run `dotnet ef database update --project PPDO.Infrastructure` with `SqlConnectionString` env var pointing to Azure SQL
 - SuperAdmin seed account: `superadmin@ppdo.gov.ph` / `PPDOAdmin2026!`
