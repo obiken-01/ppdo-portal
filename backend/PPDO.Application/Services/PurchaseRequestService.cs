@@ -285,6 +285,20 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         if (lengthError is not null)
             return ServiceResult<PRResponseDto>.BadRequest(lengthError);
 
+        string? itemLengthError = ValidateItemLengths(dto.Items);
+        if (itemLengthError is not null)
+            return ServiceResult<PRResponseDto>.BadRequest(itemLengthError);
+
+        // Only a caller-supplied PrNo needs an existence check — GeneratePRNoAsync's own
+        // sequence lookup already guarantees a fresh number for the auto-generate path.
+        if (!string.IsNullOrWhiteSpace(dto.PrNo))
+        {
+            PurchaseRequest? duplicate = await _prs.GetByPRNoAsync(dto.PrNo.Trim(), cancellationToken);
+            if (duplicate is not null)
+                return ServiceResult<PRResponseDto>.Conflict(
+                    $"PR No. '{dto.PrNo.Trim()}' already exists. This purchase request has already been submitted.");
+        }
+
         DateTime manilaNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, ManilaZone);
         string prNo = !string.IsNullOrWhiteSpace(dto.PrNo)
             ? dto.PrNo.Trim()
@@ -449,6 +463,10 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
             if (dto.Items.Count == 0)
                 return ServiceResult<PRResponseDto>.BadRequest(
                     "A Purchase Request must have at least one line item.");
+
+            string? itemLengthError = ValidateItemLengths(dto.Items);
+            if (itemLengthError is not null)
+                return ServiceResult<PRResponseDto>.BadRequest(itemLengthError);
 
             IReadOnlyList<PRItem> newItems =
                 await BuildItemsAsync(pr.Id, dto.Items, manilaNow, cancellationToken);
@@ -796,9 +814,8 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         ?? ValidateFieldLength("AIP Code", dto.AIPCode, 50)
         ?? ValidateFieldLength("Account No.", dto.AccountNo, 50)
         ?? ValidateFieldLength("Account Title", dto.AccountTitle, 200)
-        ?? ValidateFieldLength("Program", dto.Program, 120)
-        ?? ValidateFieldLength("Project", dto.Project, 120)
-        ?? ValidateFieldLength("Activity", dto.Activity, 120)
+        // Program/Project/Activity: unbounded free-text (RAL-225) — matches the AIP module's
+        // AipProgram/AipProject/AipActivity.Name convention, no length cap.
         ?? ValidateFieldLength("SAI No.", dto.SAINo, 50)
         ?? ValidateFieldLength("ALOBS No.", dto.ALOBSNo, 50);
 
@@ -812,11 +829,26 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         ?? ValidateFieldLength("AIP Code", dto.AIPCode, 50)
         ?? ValidateFieldLength("Account No.", dto.AccountNo, 50)
         ?? ValidateFieldLength("Account Title", dto.AccountTitle, 200)
-        ?? ValidateFieldLength("Program", dto.Program, 120)
-        ?? ValidateFieldLength("Project", dto.Project, 120)
-        ?? ValidateFieldLength("Activity", dto.Activity, 120)
+        // Program/Project/Activity: unbounded free-text (RAL-225) — matches the AIP module's
+        // AipProgram/AipProject/AipActivity.Name convention, no length cap.
         ?? ValidateFieldLength("SAI No.", dto.SAINo, 50)
         ?? ValidateFieldLength("ALOBS No.", dto.ALOBSNo, 50);
+
+    /// <summary>
+    /// Item Description length, aligned to Price Index's 300-char convention
+    /// (PriceIndexItem.Name) — RAL-226. A friendly BadRequest instead of relying on the
+    /// DB's nvarchar(300) cap.
+    /// </summary>
+    private static string? ValidateItemLengths(IReadOnlyList<CreatePRItemDto> items)
+    {
+        for (int i = 0; i < items.Count; i++)
+        {
+            string? error = ValidateFieldLength($"Row {i + 1}: Description", items[i].Description, 300);
+            if (error is not null)
+                return error;
+        }
+        return null;
+    }
 
     /// <summary>
     /// Generates the next PR number: 101-1041-GF-YYYY-MM-DD-XXX.

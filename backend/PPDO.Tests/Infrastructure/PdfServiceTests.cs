@@ -133,6 +133,11 @@ public sealed class PdfServiceTests
         GsoPRImportRow result = _sut.ParseGsoPRImport(stream);
 
         Assert.Equal("5 02 03 010", result.AccountNo);
+        // The orphaned continuation line must be re-attached to Activity, not silently dropped —
+        // otherwise Activity comes back truncated even though AccountNo is now correctly found.
+        Assert.Equal(
+            "1000-000-1-01-010-001-002-004 - Procurement of office supplies and materials, payment of subscription, communication allowance",
+            result.Activity);
     }
 
     [Fact]
