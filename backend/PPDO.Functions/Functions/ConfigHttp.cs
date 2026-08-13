@@ -45,6 +45,38 @@ internal static class ConfigHttp
         return (caller, null);
     }
 
+    // ── Office scoping (v1.8.0 — RAL-228) ─────────────────────────────────────
+    // Thin wrappers over OfficeScope so endpoints don't re-implement the rule. The logic and
+    // its tests live in PPDO.Application/Common/OfficeScope.cs — read its XML doc before
+    // changing either of these, especially the note on why a null OfficeId means PPDO-internal
+    // (full access) here but "see nothing" in DivisionScope.
+
+    /// <summary>
+    /// Clamps a caller-supplied office id to what the caller may actually use: an office user
+    /// always gets their own office whatever they asked for, a PPDO caller gets the requested
+    /// value through unchanged.
+    ///
+    /// Prefer this over validate-and-reject — there is no error path to get wrong, and a client
+    /// cannot probe for other offices' ids by watching which ones 403.
+    /// </summary>
+    internal static int? ClampOfficeId(User caller, int? requestedOfficeId)
+        => OfficeScope.Resolve(caller).Clamp(requestedOfficeId);
+
+    /// <summary>
+    /// Returns a 403 when an office-scoped caller targets a record owned by a different office,
+    /// or a record with no owning office (PPDO-only, e.g. LDIP's multi-office bulk uploads).
+    /// Returns null when the caller may proceed.
+    ///
+    /// Use this only where the record's owning office is already known and refusing is the
+    /// correct answer; for caller-supplied ids on list/query endpoints use
+    /// <see cref="ClampOfficeId"/> instead. Generalises <c>LdipFunctions.DenyForeignOfficeAsync</c>.
+    /// </summary>
+    internal static HttpResponseData? DenyForeignOffice(
+        HttpRequestData req, User caller, int? owningOfficeId)
+        => OfficeScope.Resolve(caller).Permits(owningOfficeId)
+            ? null
+            : req.CreateResponse(HttpStatusCode.Forbidden);
+
     internal static async Task<T?> ReadBodyAsync<T>(HttpRequestData req, CancellationToken cancellationToken)
     {
         try { return await JsonSerializer.DeserializeAsync<T>(req.Body, Json, cancellationToken); }
