@@ -27,6 +27,14 @@ public interface IPriceIndexService
     Task<IReadOnlyList<PriceIndexPickerItemDto>> GetPickerListAsync(
         string? search, ActiveFilter active, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Filtered, sorted, paged read for the management grid (RAL-233). <paramref name="page"/> is
+    /// 1-based. An unrecognized <paramref name="sortColumn"/> falls back to Name ascending.
+    /// </summary>
+    Task<PriceIndexPageDto> GetPagedAsync(
+        string? search, ActiveFilter active, string? sortColumn, bool sortDescending,
+        int page, int pageSize, CancellationToken cancellationToken = default);
+
     Task<ServiceResult<PriceIndexItemDto>> GetByIdAsync(int id, CancellationToken cancellationToken = default);
     Task<ServiceResult<PriceIndexItemDto>> CreateAsync(UpsertPriceIndexItemDto dto, CancellationToken cancellationToken = default);
     Task<ServiceResult<PriceIndexItemDto>> UpdateAsync(int id, UpsertPriceIndexItemDto dto, CancellationToken cancellationToken = default);

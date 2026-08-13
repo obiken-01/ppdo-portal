@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Interfaces;
@@ -38,6 +39,49 @@ public sealed class PriceIndexItemRepository : Repository<PriceIndexItem>, IPric
             .OrderBy(p => p.Name)
             .Select(p => new PriceIndexPickerItem(p.Id, p.Name, p.Unit, p.UnitPrice, p.DaysEnabled))
             .ToListAsync(ct);
+
+    /// <inheritdoc />
+    public async Task<(IReadOnlyList<PriceIndexItem> Items, int TotalCount)> GetPagedAsync(
+        bool? isActive, string? search, string? sortColumn, bool sortDescending,
+        int page, int pageSize, CancellationToken ct = default)
+    {
+        IQueryable<PriceIndexItem> query = Filtered(isActive, search);
+
+        int total = await query.CountAsync(ct);
+
+        List<PriceIndexItem> items = await ApplySort(query, sortColumn, sortDescending)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        return (items, total);
+    }
+
+    /// <summary>
+    /// The management grid's whitelisted sort columns (RAL-233). Mirrors
+    /// <c>PurchaseRequestRepository.ApplySort</c>'s shape: an unrecognized or absent
+    /// <paramref name="sortColumn"/> falls back to the default rather than reaching arbitrary
+    /// user input into <c>OrderBy</c> — accepting a raw column name here would be a real
+    /// injection surface, not just a correctness bug.
+    /// </summary>
+    private static IQueryable<PriceIndexItem> ApplySort(
+        IQueryable<PriceIndexItem> query, string? sortColumn, bool descending)
+    {
+        Expression<Func<PriceIndexItem, object>> keySelector = sortColumn?.ToLowerInvariant() switch
+        {
+            "unit"           => p => p.Unit,
+            "stockcardno"    => p => p.StockCardNo ?? "",
+            "category"       => p => p.Category ?? "",
+            "unitprice"      => p => p.UnitPrice,
+            "priceupdatedat" => p => p.PriceUpdatedAt,
+            "daysenabled"    => p => p.DaysEnabled,
+            "isactive"       => p => p.IsActive,
+            "name"           => p => p.Name,
+            _                => p => p.Name,
+        };
+
+        return descending ? query.OrderByDescending(keySelector) : query.OrderBy(keySelector);
+    }
 
     /// <summary>
     /// The shared active/search WHERE, so the list, count and picker reads can never drift apart

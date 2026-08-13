@@ -141,6 +141,14 @@ export interface PriceIndexPickerItem {
   daysEnabled: boolean;
 }
 
+/** A page of the price-index management grid plus the total match count (RAL-233). */
+export interface PriceIndexPage {
+  items: PriceIndexItemResponse[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
 export interface PriceIndexItemResponse {
   id: number;
   name: string;

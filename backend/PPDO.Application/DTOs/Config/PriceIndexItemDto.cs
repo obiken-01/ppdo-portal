@@ -26,6 +26,16 @@ public sealed record PriceIndexPickerItemDto(
     decimal UnitPrice,
     bool    DaysEnabled);
 
+/// <summary>
+/// A page of price-index management-grid rows plus the total match count (RAL-233) — same
+/// {Items, TotalCount, Page, PageSize} shape as <c>AuditLogPageDto</c>.
+/// </summary>
+public sealed record PriceIndexPageDto(
+    IReadOnlyList<PriceIndexItemDto> Items,
+    int TotalCount,
+    int Page,
+    int PageSize);
+
 /// <summary>Create/update body for a price index item. (Name, Unit) is the unique key.</summary>
 public sealed record UpsertPriceIndexItemDto(
     string  Name,

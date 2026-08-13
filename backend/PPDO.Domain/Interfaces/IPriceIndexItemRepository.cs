@@ -43,6 +43,20 @@ public interface IPriceIndexItemRepository : IRepository<PriceIndexItem>
     /// </summary>
     Task<IReadOnlyList<PriceIndexPickerItem>> GetPickerItemsAsync(
         bool? isActive, string? search, CancellationToken ct = default);
+
+    /// <summary>
+    /// Filtered, sorted, paged read for the price-index management grid (RAL-233) — WHERE, COUNT,
+    /// ORDER BY and OFFSET/FETCH all in SQL, never a full-table load. Same filters as
+    /// <see cref="GetFilteredAsync"/> via the shared <c>Filtered()</c> helper, so this can never
+    /// disagree with the list/count/picker reads on what "active" or "matches the search" means.
+    ///
+    /// <paramref name="sortColumn"/> is matched against a fixed whitelist (see the repository's
+    /// <c>ApplySort</c>) — an unrecognized value falls back to Name ascending rather than
+    /// erroring, mirroring <c>PurchaseRequestRepository.SearchAsync</c>'s RAL-192 precedent.
+    /// </summary>
+    Task<(IReadOnlyList<PriceIndexItem> Items, int TotalCount)> GetPagedAsync(
+        bool? isActive, string? search, string? sortColumn, bool sortDescending,
+        int page, int pageSize, CancellationToken ct = default);
 }
 
 /// <summary>

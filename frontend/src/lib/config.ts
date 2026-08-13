@@ -21,6 +21,7 @@ import type {
   FundingSourceResponse,
   OfficeResponse,
   PriceIndexItemResponse,
+  PriceIndexPage,
   PriceIndexPickerItem,
   ProcurementPresetResponse,
   UpsertAccountRequest,
@@ -156,6 +157,31 @@ export async function listPriceIndex(
   const { data } = await api.get<ApiResponse<PriceIndexItemResponse[]>>("/config/price-index", {
     params: query,
   });
+  return unwrap(data);
+}
+
+export interface PriceIndexPagedParams extends PriceIndexListParams {
+  sortBy?: string;
+  sortDir?: "asc" | "desc";
+  page?: number;
+  pageSize?: number;
+}
+
+/**
+ * GET /api/config/price-index/paged — filtered, sorted, paged read for the management grid
+ * (RAL-233). Prefer this over {@link listPriceIndex} for that page; the plain list endpoint
+ * still backs the CSV export path, which must return everything.
+ */
+export async function getPriceIndexPage(params: PriceIndexPagedParams = {}): Promise<PriceIndexPage> {
+  const query: Record<string, string | number> = {};
+  if (params.search?.trim()) query.search = params.search.trim();
+  if (params.active) query.active = params.active;
+  if (params.sortBy) query.sortBy = params.sortBy;
+  if (params.sortDir) query.sortDir = params.sortDir;
+  query.page = params.page ?? 1;
+  query.pageSize = params.pageSize ?? 50;
+
+  const { data } = await api.get<ApiResponse<PriceIndexPage>>("/config/price-index/paged", { params: query });
   return unwrap(data);
 }
 

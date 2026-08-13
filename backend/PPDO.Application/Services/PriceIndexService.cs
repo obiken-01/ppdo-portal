@@ -67,6 +67,17 @@ public sealed class PriceIndexService : IPriceIndexService
             .ToList();
     }
 
+    /// <inheritdoc />
+    public async Task<PriceIndexPageDto> GetPagedAsync(
+        string? search, ActiveFilter active, string? sortColumn, bool sortDescending,
+        int page, int pageSize, CancellationToken cancellationToken = default)
+    {
+        (IReadOnlyList<PriceIndexItem> items, int totalCount) = await _repo.GetPagedAsync(
+            ToIsActive(active), search, sortColumn, sortDescending, page, pageSize, cancellationToken);
+
+        return new PriceIndexPageDto(items.Select(MapToDto).ToList(), totalCount, page, pageSize);
+    }
+
     /// <summary>Shared by the list, count and picker reads so their filters can't drift apart.</summary>
     private static bool? ToIsActive(ActiveFilter active) => active switch
     {
