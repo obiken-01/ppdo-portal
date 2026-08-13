@@ -65,6 +65,13 @@ public sealed class BudgetPlanningDashboardFunctionsTests
         new OfficeLdipSummaryDto(false, 0, Array.Empty<StatusBreakdownDto>()),
         new OfficeAipSummaryDto(false, null, 0, 0, 0));
 
+    private static PpdoDashboardDto MakePpdoDashboard() => new(
+        FiscalYear, new[] { FiscalYear }, OwnOffice, "PPDO", "Provincial Planning and Development Office",
+        new OfficeLdipSummaryDto(false, 0, Array.Empty<StatusBreakdownDto>()),
+        new OfficeAipSummaryDto(false, null, 0, 0, 0),
+        Array.Empty<DivisionWfpStatusDto>(),
+        Array.Empty<FundCeilingDto>());
+
     /// <summary>Captures the officeId the handler resolves and hands to the service.</summary>
     private void ExpectOfficeDashboard(Action<int> captureOfficeId)
     {
@@ -183,6 +190,44 @@ public sealed class BudgetPlanningDashboardFunctionsTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         _service.Verify(s => s.GetOfficeDashboardAsync(
             It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // ── PPDO-only gate — GetDashboard (RAL-230) ───────────────────────────────
+    // This payload is PPDO's own (its ceilings, per-division allocations, per-division WFP
+    // status). There is no office dimension to clamp, so an office user is refused rather than
+    // served someone else's data.
+
+    [Fact]
+    public async Task GetDashboard_AsOfficeUser_ReturnsForbiddenAndNeverCallsService()
+    {
+        User caller = MakeUser(OwnOffice);
+        Authenticate(caller);
+
+        HttpResponseData response = await Sut.GetDashboard(
+            FunctionHttp.Get($"fiscalYear={FiscalYear}", path: "budget-planning/dashboard"),
+            CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        _service.Verify(s => s.GetDashboardAsync(
+            It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetDashboard_AsPpdoUser_StillReturnsTheDashboard()
+    {
+        User caller = MakeUser(officeId: null);
+        Authenticate(caller);
+        _service.Setup(s => s.GetDashboardAsync(
+                It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakePpdoDashboard());
+
+        HttpResponseData response = await Sut.GetDashboard(
+            FunctionHttp.Get($"fiscalYear={FiscalYear}", path: "budget-planning/dashboard"),
+            CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        _service.Verify(s => s.GetDashboardAsync(
+            It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     // ── Office clamp — GetActivity (same omission, same class) ─────────────────

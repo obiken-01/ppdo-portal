@@ -6,6 +6,9 @@
  * The readiness hub (RAL-60) — Allocation setup / LDIP / AIP / WFP, 2×2 — is the
  * primary view for everyone:
  *   - Office user (e.g. GSO): always locked to their own office (OfficeReadinessPanels).
+ *     They never call GET /budget-planning/dashboard — that payload is PPDO's own and the
+ *     endpoint 403s them (RAL-230). Their fiscal-year list comes from the standalone
+ *     /budget-planning/fiscal-years endpoint instead.
  *   - PPDO user: the backend's GET /budget-planning/dashboard now always resolves the
  *     PPDO office internally — there is no "All Offices" mode or office picker any more
  *     (Budget Planning is effectively PPDO-only in practice). OfficeReadinessPanels is
@@ -22,7 +25,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Chart from "chart.js/auto";
-import { getDashboard, getOfficeDashboard, getRecentActivity } from "@/lib/budget-planning";
+import { getDashboard, getFiscalYears, getOfficeDashboard, getRecentActivity } from "@/lib/budget-planning";
 import { useMe } from "@/lib/me-cache";
 import { formatMoney } from "@/lib/money";
 import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
@@ -447,6 +450,11 @@ export default function BudgetPlanningPage() {
 
   const [fiscalYear, setFiscalYear] = useState<number | null>(null);
 
+  // Fed by the PPDO dashboard for PPDO users and by /budget-planning/fiscal-years for
+  // office users — the FY selector reads this rather than `dashboard`, which is null for
+  // office users and would otherwise collapse their selector to a single option.
+  const [availableFiscalYears, setAvailableFiscalYears] = useState<number[]>([]);
+
   const [dashboard, setDashboard] = useState<PpdoDashboard | null>(null);
   const [activity, setActivity] = useState<RecentActivity[]>([]);
 
@@ -460,8 +468,9 @@ export default function BudgetPlanningPage() {
   const [officeDashboardError, setOfficeDashboardError] = useState<string | null>(null);
 
   // ── Dashboard load ─────────────────────────────────────────────────────────
-  // For a PPDO user this is now the PPDO-scoped dashboard (no office param — the
-  // backend always resolves PPDO internally and clamps by division server-side).
+  // PPDO only. GET /budget-planning/dashboard returns PPDO's own ceilings, per-division
+  // allocations, and per-division WFP status — the backend 403s office users (RAL-230),
+  // so this must never be called for them.
 
   const loadDashboard = useCallback(
     (fy?: number) => {
@@ -470,6 +479,7 @@ export default function BudgetPlanningPage() {
       getDashboard(fy)
         .then((data) => {
           setDashboard(data);
+          setAvailableFiscalYears(data.availableFiscalYears);
           if (fy == null) setFiscalYear(data.fiscalYear);
         })
         .catch(() => setDashboardError("Failed to load dashboard data."))
@@ -479,10 +489,33 @@ export default function BudgetPlanningPage() {
   );
 
   // ── Initial data load ──────────────────────────────────────────────────────
+  // Waits for `user` — which path to take depends on whether they're PPDO or an office
+  // user, and useMe() resolves null on first render. Mirrors the recent-activity effect
+  // below, which already had to do the same.
 
   useEffect(() => {
-    loadDashboard();
-  }, [loadDashboard]);
+    if (!user) return;
+
+    if (user.officeId == null) {
+      loadDashboard();
+      return;
+    }
+
+    // Office user: no PPDO dashboard to fetch, so the fiscal-year list has to come from
+    // somewhere legitimately theirs. /budget-planning/fiscal-years (RAL-166) is exactly
+    // that — distinct AIP fiscal years, no office-scoped data in the payload.
+    //
+    // Ordering matters: the office-readiness effect below is gated on `fiscalYear != null`,
+    // so it stays parked until this resolves. Sourcing the year from the office dashboard
+    // itself would deadlock — each would be waiting on the other.
+    setDashboardLoading(false);
+    getFiscalYears()
+      .then((data) => {
+        setAvailableFiscalYears(data.availableFiscalYears);
+        setFiscalYear(data.fiscalYear);
+      })
+      .catch(() => setDashboardError("Failed to load fiscal years."));
+  }, [user, loadDashboard]);
 
   useEffect(() => {
     if (!user) return;
@@ -561,11 +594,18 @@ export default function BudgetPlanningPage() {
               onChange={(e) => {
                 const fy = Number(e.target.value);
                 setFiscalYear(fy);
-                loadDashboard(fy);
+                // Office users have no PPDO dashboard to reload — the office-readiness
+                // effect re-runs off `fiscalYear` on its own.
+                if (isPpdo) loadDashboard(fy);
               }}
-              disabled={dashboardLoading}
+              disabled={dashboardLoading || officeDashboardLoading}
             >
-              {(dashboard?.availableFiscalYears ?? (fiscalYear ? [fiscalYear] : [])).map((fy) => (
+              {(availableFiscalYears.length > 0
+                ? availableFiscalYears
+                : fiscalYear
+                ? [fiscalYear]
+                : []
+              ).map((fy) => (
                 <option key={fy} value={fy}>
                   FY {fy}
                 </option>
