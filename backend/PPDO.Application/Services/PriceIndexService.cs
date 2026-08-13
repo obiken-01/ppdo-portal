@@ -45,16 +45,35 @@ public sealed class PriceIndexService : IPriceIndexService
     public async Task<IReadOnlyList<PriceIndexItemDto>> GetAllAsync(
         string? search, ActiveFilter active, CancellationToken cancellationToken = default)
     {
-        bool? isActive = active switch
-        {
-            ActiveFilter.Active   => true,
-            ActiveFilter.Inactive => false,
-            _                     => null,
-        };
-
-        IReadOnlyList<PriceIndexItem> items = await _repo.GetFilteredAsync(isActive, search, cancellationToken);
+        IReadOnlyList<PriceIndexItem> items =
+            await _repo.GetFilteredAsync(ToIsActive(active), search, cancellationToken);
         return items.Select(MapToDto).ToList();
     }
+
+    /// <inheritdoc />
+    public Task<int> GetCountAsync(
+        string? search, ActiveFilter active, CancellationToken cancellationToken = default)
+        => _repo.CountAsync(ToIsActive(active), search, cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<PriceIndexPickerItemDto>> GetPickerListAsync(
+        string? search, ActiveFilter active, CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<PriceIndexPickerItem> items =
+            await _repo.GetPickerItemsAsync(ToIsActive(active), search, cancellationToken);
+
+        return items
+            .Select(i => new PriceIndexPickerItemDto(i.Id, i.Name, i.Unit, i.UnitPrice, i.DaysEnabled))
+            .ToList();
+    }
+
+    /// <summary>Shared by the list, count and picker reads so their filters can't drift apart.</summary>
+    private static bool? ToIsActive(ActiveFilter active) => active switch
+    {
+        ActiveFilter.Active   => true,
+        ActiveFilter.Inactive => false,
+        _                     => null,
+    };
 
     /// <inheritdoc />
     public async Task<ServiceResult<PriceIndexItemDto>> GetByIdAsync(int id, CancellationToken cancellationToken = default)

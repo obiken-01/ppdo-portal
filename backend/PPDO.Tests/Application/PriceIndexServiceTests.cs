@@ -53,6 +53,20 @@ public sealed class PriceIndexServiceTests
                 }
                 return (IReadOnlyList<PriceIndexItem>)q.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ToList();
             });
+        // RAL-232 — count and picker are separate SQL reads, not filters over the full list.
+        // Mocked off the same seed so a service-side filter-translation bug still shows up.
+        repo.Setup(r => r.CountAsync(
+                It.IsAny<bool?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((bool? isActive, string? _, CancellationToken __) =>
+                seed.Count(p => !isActive.HasValue || p.IsActive == isActive.Value));
+        repo.Setup(r => r.GetPickerItemsAsync(
+                It.IsAny<bool?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((bool? isActive, string? _, CancellationToken __) =>
+                (IReadOnlyList<PriceIndexPickerItem>)seed
+                    .Where(p => !isActive.HasValue || p.IsActive == isActive.Value)
+                    .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+                    .Select(p => new PriceIndexPickerItem(p.Id, p.Name, p.Unit, p.UnitPrice, p.DaysEnabled))
+                    .ToList());
         repo.Setup(r => r.AddAsync(It.IsAny<PriceIndexItem>(), It.IsAny<CancellationToken>()))
             .Callback<PriceIndexItem, CancellationToken>((p, _) => seed.Add(p))
             .Returns(Task.CompletedTask);
@@ -565,5 +579,114 @@ public sealed class PriceIndexServiceTests
         audit.Verify(a => a.LogAsync(
             "price_index_items", 1, AuditAction.Delete,
             It.IsNotNull<object>(), null, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // ── Count + picker reads (RAL-232) ─────────────────────────────────────────
+    // The Config dashboard tile downloaded the whole ~1.57 MB catalogue to render .length, and
+    // both item pickers pulled all nine fields when they read five. Both now have their own
+    // SQL-side read; these tests exist mainly to guard that they never quietly fall back to the
+    // full-list path, which would restore the bug while still returning correct-looking values.
+
+    [Fact]
+    public async Task GetCountAsync_ReturnsCountFromRepository_WithoutReadingTheList()
+    {
+        List<PriceIndexItem> seed = [Item(1, "Ballpen", "piece", 15m), Item(2, "Bond Paper", "ream", 250m)];
+        (PriceIndexService sut, Mock<IPriceIndexItemRepository> repo) = Build(seed);
+
+        int count = await sut.GetCountAsync(null, ActiveFilter.All);
+
+        Assert.Equal(2, count);
+        repo.Verify(r => r.CountAsync(null, null, It.IsAny<CancellationToken>()), Times.Once);
+        repo.Verify(r => r.GetFilteredAsync(
+            It.IsAny<bool?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+        repo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData(ActiveFilter.Active, true)]
+    [InlineData(ActiveFilter.Inactive, false)]
+    [InlineData(ActiveFilter.All, null)]
+    public async Task GetCountAsync_TranslatesActiveFilterForSql(ActiveFilter filter, bool? expected)
+    {
+        List<PriceIndexItem> seed = [Item(1, "Ballpen", "piece", 15m), Item(2, "Old Item", "piece", 5m, active: false)];
+        (PriceIndexService sut, Mock<IPriceIndexItemRepository> repo) = Build(seed);
+
+        await sut.GetCountAsync("bond", filter);
+
+        repo.Verify(r => r.CountAsync(expected, "bond", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetCountAsync_ExcludesInactive_WhenFilteredToActive()
+    {
+        List<PriceIndexItem> seed = [Item(1, "Ballpen", "piece", 15m), Item(2, "Retired", "piece", 5m, active: false)];
+        (PriceIndexService sut, _) = Build(seed);
+
+        Assert.Equal(1, await sut.GetCountAsync(null, ActiveFilter.Active));
+    }
+
+    [Fact]
+    public async Task GetPickerListAsync_MapsTheFiveFieldsPickersActuallyUse()
+    {
+        List<PriceIndexItem> seed =
+        [
+            Item(7, "Bond Paper", "ream", 250m, category: "Office Supplies",
+                 daysEnabled: true, stockCardNo: "SC-001"),
+        ];
+        (PriceIndexService sut, _) = Build(seed);
+
+        IReadOnlyList<PriceIndexPickerItemDto> items = await sut.GetPickerListAsync(null, ActiveFilter.Active);
+
+        PriceIndexPickerItemDto only = Assert.Single(items);
+        Assert.Equal(new PriceIndexPickerItemDto(7, "Bond Paper", "ream", 250m, true), only);
+    }
+
+    [Fact]
+    public async Task GetPickerListAsync_UsesTheProjectedRead_NotTheFullList()
+    {
+        List<PriceIndexItem> seed = [Item(1, "Ballpen", "piece", 15m)];
+        (PriceIndexService sut, Mock<IPriceIndexItemRepository> repo) = Build(seed);
+
+        await sut.GetPickerListAsync(null, ActiveFilter.Active);
+
+        repo.Verify(r => r.GetPickerItemsAsync(true, null, It.IsAny<CancellationToken>()), Times.Once);
+        repo.Verify(r => r.GetFilteredAsync(
+            It.IsAny<bool?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+        repo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData(ActiveFilter.Active, true)]
+    [InlineData(ActiveFilter.Inactive, false)]
+    [InlineData(ActiveFilter.All, null)]
+    public async Task GetPickerListAsync_TranslatesActiveFilterForSql(ActiveFilter filter, bool? expected)
+    {
+        List<PriceIndexItem> seed = [Item(1, "Ballpen", "piece", 15m)];
+        (PriceIndexService sut, Mock<IPriceIndexItemRepository> repo) = Build(seed);
+
+        await sut.GetPickerListAsync("pen", filter);
+
+        repo.Verify(r => r.GetPickerItemsAsync(expected, "pen", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>
+    /// The management grid must keep every field — the whole point of adding a separate picker
+    /// read rather than narrowing the shared DTO.
+    /// </summary>
+    [Fact]
+    public async Task GetAllAsync_StillReturnsTheFullRecord_AfterThePickerSplit()
+    {
+        List<PriceIndexItem> seed =
+        [
+            Item(1, "Bond Paper", "ream", 250m, category: "Office Supplies", stockCardNo: "SC-001"),
+        ];
+        (PriceIndexService sut, _) = Build(seed);
+
+        PriceIndexItemDto only = Assert.Single(await sut.GetAllAsync(null, ActiveFilter.Active));
+
+        Assert.Equal("Office Supplies", only.Category);
+        Assert.Equal("SC-001", only.StockCardNo);
+        Assert.True(only.IsActive);
+        Assert.Equal(FixedNow, only.PriceUpdatedAt);
     }
 }

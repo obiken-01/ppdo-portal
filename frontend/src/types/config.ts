@@ -125,6 +125,22 @@ export interface UpsertFundingSourceRequest {
 // ---------------------------------------------------------------------------
 
 /** Read model for a price index item (config table `price_index_items`). */
+/**
+ * Slim price-index row for item pickers (RAL-232) — the five fields the WFP procurement item
+ * table and the procurement-preset editor actually read.
+ *
+ * The full {@link PriceIndexItemResponse} is ~1,569 KB over the real 6,397-row catalogue; this is
+ * ~686 KB. Use it anywhere the extra four fields are not genuinely needed. The price-index
+ * management grid still uses the full response — do not narrow that one.
+ */
+export interface PriceIndexPickerItem {
+  id: number;
+  name: string;
+  unit: string;
+  unitPrice: number;
+  daysEnabled: boolean;
+}
+
 export interface PriceIndexItemResponse {
   id: number;
   name: string;

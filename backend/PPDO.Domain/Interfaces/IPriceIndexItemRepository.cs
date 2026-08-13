@@ -25,4 +25,37 @@ public interface IPriceIndexItemRepository : IRepository<PriceIndexItem>
     /// </summary>
     Task<IReadOnlyList<PriceIndexItem>> GetFilteredAsync(
         bool? isActive, string? search, CancellationToken ct = default);
+
+    /// <summary>
+    /// Row count only, same filters as <see cref="GetFilteredAsync"/> (RAL-232). Exists because
+    /// the Config dashboard tile was downloading the entire catalogue (~1.57 MB) to render
+    /// <c>.length</c>.
+    /// </summary>
+    Task<int> CountAsync(bool? isActive, string? search, CancellationToken ct = default);
+
+    /// <summary>
+    /// The five columns an item picker needs, projected in SQL so the wide free-text columns are
+    /// never read or materialised (RAL-232). Same filters and ordering as
+    /// <see cref="GetFilteredAsync"/>.
+    ///
+    /// Dropping Category, PriceUpdatedAt, StockCardNo and IsActive takes the serialized response
+    /// from ~1,569 KB to ~686 KB over the real 6,397-row catalogue — 56% smaller.
+    /// </summary>
+    Task<IReadOnlyList<PriceIndexPickerItem>> GetPickerItemsAsync(
+        bool? isActive, string? search, CancellationToken ct = default);
 }
+
+/// <summary>
+/// Slim projection of <see cref="PriceIndexItem"/> for pickers — the only fields the WFP
+/// procurement item table and the procurement-preset editor actually read (RAL-232).
+///
+/// Declared alongside its repository interface, matching <c>WfpActivityCoverageDto</c> in
+/// <c>IWfpExpenditureRepository</c> and <c>PurchaseRequestStatsAggregate</c> in
+/// <c>IPurchaseRequestRepository</c>.
+/// </summary>
+public sealed record PriceIndexPickerItem(
+    int     Id,
+    string  Name,
+    string  Unit,
+    decimal UnitPrice,
+    bool    DaysEnabled);

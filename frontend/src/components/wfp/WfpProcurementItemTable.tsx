@@ -39,7 +39,7 @@ import {
 } from "@/lib/config";
 import { computeWfpRollUpPreview, mergeWfpPeriodAndItemAmounts, wfpPeriodCount } from "@/lib/wfp";
 import type {
-  PriceIndexItemResponse,
+  PriceIndexPickerItem,
   ProcurementPresetResponse,
   SaveWfpProcurementItemRequest,
   WfpExpenditureFrequency,
@@ -61,8 +61,8 @@ function periodLabels(frequency: WfpExpenditureFrequency): string[] {
   }
 }
 
-const priceIndexItemLabel = (p: PriceIndexItemResponse) => `${p.name} (${p.unit}) — ₱${formatMoney(p.unitPrice)}`;
-const priceIndexItemSearchText = (p: PriceIndexItemResponse) => `${p.name} ${p.unit}`;
+const priceIndexItemLabel = (p: PriceIndexPickerItem) => `${p.name} (${p.unit}) — ₱${formatMoney(p.unitPrice)}`;
+const priceIndexItemSearchText = (p: PriceIndexPickerItem) => `${p.name} ${p.unit}`;
 
 // ---------------------------------------------------------------------------
 // Props
@@ -73,7 +73,7 @@ export interface WfpProcurementItemTableProps {
   accountId: number | null;
   procurementItems: SaveWfpProcurementItemRequest[];
   onProcurementItemsChange: (items: SaveWfpProcurementItemRequest[]) => void;
-  priceIndex: PriceIndexItemResponse[];
+  priceIndex: PriceIndexPickerItem[];
   /**
    * True while the ~6,400-row catalogue is still loading (RAL-231). It is fetched off the page's
    * critical path, so the wizard can be opened before it lands — without this the picker would

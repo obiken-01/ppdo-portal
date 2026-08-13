@@ -13,6 +13,20 @@ public interface IPriceIndexService
     Task<IReadOnlyList<PriceIndexItemDto>> GetAllAsync(
         string? search, ActiveFilter active, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Row count only, same filters as <see cref="GetAllAsync"/> (RAL-232) — for the Config
+    /// dashboard tile, which previously downloaded the whole catalogue to read <c>.length</c>.
+    /// </summary>
+    Task<int> GetCountAsync(string? search, ActiveFilter active, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Slim list for item pickers (RAL-232) — five fields instead of nine, projected in SQL.
+    /// Use this anywhere the full record is not genuinely needed; the management grid still
+    /// uses <see cref="GetAllAsync"/>.
+    /// </summary>
+    Task<IReadOnlyList<PriceIndexPickerItemDto>> GetPickerListAsync(
+        string? search, ActiveFilter active, CancellationToken cancellationToken = default);
+
     Task<ServiceResult<PriceIndexItemDto>> GetByIdAsync(int id, CancellationToken cancellationToken = default);
     Task<ServiceResult<PriceIndexItemDto>> CreateAsync(UpsertPriceIndexItemDto dto, CancellationToken cancellationToken = default);
     Task<ServiceResult<PriceIndexItemDto>> UpdateAsync(int id, UpsertPriceIndexItemDto dto, CancellationToken cancellationToken = default);

@@ -38,7 +38,7 @@ import {
   updateAipActivityIsCreation,
   aipErrorMessage,
 } from "@/lib/aip";
-import { findGeneralFund, findPpdoOffice, listAccounts, listDivisions, listFundingSources, listOffices, listPriceIndex } from "@/lib/config";
+import { findGeneralFund, findPpdoOffice, listAccounts, listDivisions, listFundingSources, listOffices, listPriceIndexForPicker } from "@/lib/config";
 import { getAllocations, getCeilingStatus, getPrograms, getSetupStatus } from "@/lib/allocation";
 import {
   computeWfpRollUpPreview,
@@ -72,7 +72,7 @@ import type {
   DivisionResponse,
   FundingSourceResponse,
   OfficeResponse,
-  PriceIndexItemResponse,
+  PriceIndexPickerItem,
   ProgramAssignmentDto,
   SaveWfpExpenditurePeriodRequest,
   SaveWfpProcurementItemRequest,
@@ -302,7 +302,7 @@ interface ExpenditureWizardProps {
   aipAssignedFundingSourceId: number | null;
   accounts: AccountResponse[];
   fundingSources: FundingSourceResponse[];
-  priceIndex: PriceIndexItemResponse[];
+  priceIndex: PriceIndexPickerItem[];
   /** True while the catalogue is still in flight (RAL-231) — the picker shows a hint, not an empty list. */
   priceIndexLoading: boolean;
   reserveRate: number;
@@ -886,7 +886,7 @@ function WfpEntryPageInner() {
   const [aipDetail, setAipDetail] = useState<AipRecordSummary | null>(null);
   const [accounts, setAccounts] = useState<AccountResponse[]>([]);
   const [fundingSources, setFundingSources] = useState<FundingSourceResponse[]>([]);
-  const [priceIndex, setPriceIndex] = useState<PriceIndexItemResponse[]>([]);
+  const [priceIndex, setPriceIndex] = useState<PriceIndexPickerItem[]>([]);
   const [priceIndexLoading, setPriceIndexLoading] = useState(true);
   const [programAssignments, setProgramAssignments] = useState<ProgramAssignmentDto[]>([]);
   const [divisionAllocation, setDivisionAllocation] = useState<DivisionAllocationDto | null>(null);
@@ -961,7 +961,7 @@ function WfpEntryPageInner() {
   // so a user who reaches the picker first sees a loading hint rather than a silently empty
   // search — the failure mode of firing this fetch and forgetting about it.
   useEffect(() => {
-    listPriceIndex({ active: "true" })
+    listPriceIndexForPicker({ active: "true" })
       .then(setPriceIndex)
       .catch(() => toast.error("Load failed", "Could not load the price index catalogue."))
       .finally(() => setPriceIndexLoading(false));
