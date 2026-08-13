@@ -42,6 +42,12 @@ public sealed class BudgetPlanningDashboardFunctions
     // clamped to their own division — mirrors WfpReportFunctions.GetPreview's RAL-136 pattern.
     // There is no client-supplied divisionId param here at all; a division-scoped caller can
     // never see another division's data by any query string.
+    //
+    // PPDO-only (RAL-230): the payload IS PPDO's — GetDashboardAsync resolves the PPDO office
+    // internally and returns its ceilings, per-division allocations, and per-division WFP
+    // status. There is no office dimension to clamp, so a non-PPDO caller is refused outright
+    // rather than served someone else's data. Office users get the office readiness hub via
+    // GetOfficeDashboard, and their fiscal-year list via GetFiscalYears.
 
     [Function("GetBudgetPlanningDashboard")]
     public async Task<HttpResponseData> GetDashboard(
@@ -54,6 +60,10 @@ public sealed class BudgetPlanningDashboardFunctions
             return req.CreateResponse(HttpStatusCode.Unauthorized);
 
         if (!await _permissions.CanAccessBudgetPlanningAsync(caller, cancellationToken))
+            return req.CreateResponse(HttpStatusCode.Forbidden);
+
+        // Generic 403 — don't confirm to an office user whether PPDO data exists.
+        if (!OfficeScope.Resolve(caller).SeeAll)
             return req.CreateResponse(HttpStatusCode.Forbidden);
 
         int? fiscalYear = TryParseIntQuery(req, "fiscalYear");
