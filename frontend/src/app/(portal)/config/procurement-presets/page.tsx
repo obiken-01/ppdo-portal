@@ -33,7 +33,7 @@ import {
   createProcurementPreset,
   deactivateProcurementPreset,
   listAccounts,
-  listPriceIndex,
+  listPriceIndexForPicker,
   listProcurementPresets,
   updateProcurementPreset,
 } from "@/lib/config";
@@ -48,7 +48,7 @@ import RowActions, { type RowAction } from "@/components/ui/RowActions";
 import type {
   AccountResponse,
   ActiveFilter,
-  PriceIndexItemResponse,
+  PriceIndexPickerItem,
   ProcurementPresetResponse,
   UpsertProcurementPresetItemRequest,
   UpsertProcurementPresetRequest,
@@ -71,8 +71,8 @@ const STATUS_TO_ACTIVE: Record<StatusFilter, ActiveFilter> = {
 const accountLabel = (a: AccountResponse) => `${a.accountNumber} — ${a.accountTitle}`;
 const accountSearchText = (a: AccountResponse) => `${a.accountNumber} ${a.accountTitle}`;
 
-const priceIndexItemLabel = (p: PriceIndexItemResponse) => `${p.name} (${p.unit}) — ₱${formatMoney(p.unitPrice)}`;
-const priceIndexItemSearchText = (p: PriceIndexItemResponse) => `${p.name} ${p.unit}`;
+const priceIndexItemLabel = (p: PriceIndexPickerItem) => `${p.name} (${p.unit}) — ₱${formatMoney(p.unitPrice)}`;
+const priceIndexItemSearchText = (p: PriceIndexPickerItem) => `${p.name} ${p.unit}`;
 
 /** Sum of unitPrice × qty across a set of line items — the preset's full total. */
 function sumItemTotals(items: { unitPrice: number | null; defaultQty: number | null }[]): number {
@@ -146,7 +146,7 @@ export default function ProcurementPresetsConfigPage() {
   const [accountId, setAccountId] = useState<number | null>(null);
 
   // Price index (for the item picker)
-  const [priceIndex, setPriceIndex] = useState<PriceIndexItemResponse[]>([]);
+  const [priceIndex, setPriceIndex] = useState<PriceIndexPickerItem[]>([]);
 
   // Data
   const [presets, setPresets] = useState<ProcurementPresetResponse[]>([]);
@@ -187,7 +187,7 @@ export default function ProcurementPresetsConfigPage() {
     listAccounts({ active: "true" })
       .then((data) => setAccounts(data))
       .catch(() => toast.error("Failed to load accounts", "Please refresh the page."));
-    listPriceIndex({ active: "true" }).catch(() => undefined).then((data) => setPriceIndex(data ?? []));
+    listPriceIndexForPicker({ active: "true" }).catch(() => undefined).then((data) => setPriceIndex(data ?? []));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authChecked]);
 
@@ -662,7 +662,7 @@ function ItemRow({
   onRemove,
 }: {
   row: ItemFormRow;
-  priceIndex: PriceIndexItemResponse[];
+  priceIndex: PriceIndexPickerItem[];
   onPickPriceIndexItem: (id: number | null) => void;
   onChange: (patch: Partial<ItemFormRow>) => void;
   onRemove?: () => void;

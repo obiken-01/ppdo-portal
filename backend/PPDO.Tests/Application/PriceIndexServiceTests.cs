@@ -53,6 +53,53 @@ public sealed class PriceIndexServiceTests
                 }
                 return (IReadOnlyList<PriceIndexItem>)q.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ToList();
             });
+        // RAL-232 — count and picker are separate SQL reads, not filters over the full list.
+        // Mocked off the same seed so a service-side filter-translation bug still shows up.
+        repo.Setup(r => r.CountAsync(
+                It.IsAny<bool?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((bool? isActive, string? _, CancellationToken __) =>
+                seed.Count(p => !isActive.HasValue || p.IsActive == isActive.Value));
+        repo.Setup(r => r.GetPickerItemsAsync(
+                It.IsAny<bool?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((bool? isActive, string? _, CancellationToken __) =>
+                (IReadOnlyList<PriceIndexPickerItem>)seed
+                    .Where(p => !isActive.HasValue || p.IsActive == isActive.Value)
+                    .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+                    .Select(p => new PriceIndexPickerItem(p.Id, p.Name, p.Unit, p.UnitPrice, p.DaysEnabled))
+                    .ToList());
+        // RAL-233 — mocks the same whitelist ApplySort implements in SQL, so a service-side
+        // mismatch between the two (e.g. a typo'd column key) still shows up here.
+        repo.Setup(r => r.GetPagedAsync(
+                It.IsAny<bool?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<bool>(),
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((bool? isActive, string? search, string? sortColumn, bool descending,
+                int page, int pageSize, CancellationToken _) =>
+            {
+                IEnumerable<PriceIndexItem> q = seed;
+                if (isActive.HasValue) q = q.Where(p => p.IsActive == isActive.Value);
+                if (!string.IsNullOrWhiteSpace(search))
+                {
+                    string s = search.Trim();
+                    q = q.Where(p =>
+                        p.Name.Contains(s, StringComparison.OrdinalIgnoreCase) ||
+                        (p.Category != null && p.Category.Contains(s, StringComparison.OrdinalIgnoreCase)) ||
+                        (p.StockCardNo != null && p.StockCardNo.Contains(s, StringComparison.OrdinalIgnoreCase)));
+                }
+                Func<PriceIndexItem, IComparable> key = sortColumn?.ToLowerInvariant() switch
+                {
+                    "unit"           => p => p.Unit,
+                    "stockcardno"    => p => p.StockCardNo ?? "",
+                    "category"       => p => p.Category ?? "",
+                    "unitprice"      => p => p.UnitPrice,
+                    "priceupdatedat" => p => p.PriceUpdatedAt,
+                    "daysenabled"    => p => p.DaysEnabled,
+                    "isactive"       => p => p.IsActive,
+                    _                => p => p.Name,
+                };
+                List<PriceIndexItem> ordered = (descending ? q.OrderByDescending(key) : q.OrderBy(key)).ToList();
+                return ((IReadOnlyList<PriceIndexItem>)ordered.Skip((page - 1) * pageSize).Take(pageSize).ToList(),
+                        ordered.Count);
+            });
         repo.Setup(r => r.AddAsync(It.IsAny<PriceIndexItem>(), It.IsAny<CancellationToken>()))
             .Callback<PriceIndexItem, CancellationToken>((p, _) => seed.Add(p))
             .Returns(Task.CompletedTask);
@@ -565,5 +612,240 @@ public sealed class PriceIndexServiceTests
         audit.Verify(a => a.LogAsync(
             "price_index_items", 1, AuditAction.Delete,
             It.IsNotNull<object>(), null, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // ── Count + picker reads (RAL-232) ─────────────────────────────────────────
+    // The Config dashboard tile downloaded the whole ~1.57 MB catalogue to render .length, and
+    // both item pickers pulled all nine fields when they read five. Both now have their own
+    // SQL-side read; these tests exist mainly to guard that they never quietly fall back to the
+    // full-list path, which would restore the bug while still returning correct-looking values.
+
+    [Fact]
+    public async Task GetCountAsync_ReturnsCountFromRepository_WithoutReadingTheList()
+    {
+        List<PriceIndexItem> seed = [Item(1, "Ballpen", "piece", 15m), Item(2, "Bond Paper", "ream", 250m)];
+        (PriceIndexService sut, Mock<IPriceIndexItemRepository> repo) = Build(seed);
+
+        int count = await sut.GetCountAsync(null, ActiveFilter.All);
+
+        Assert.Equal(2, count);
+        repo.Verify(r => r.CountAsync(null, null, It.IsAny<CancellationToken>()), Times.Once);
+        repo.Verify(r => r.GetFilteredAsync(
+            It.IsAny<bool?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+        repo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData(ActiveFilter.Active, true)]
+    [InlineData(ActiveFilter.Inactive, false)]
+    [InlineData(ActiveFilter.All, null)]
+    public async Task GetCountAsync_TranslatesActiveFilterForSql(ActiveFilter filter, bool? expected)
+    {
+        List<PriceIndexItem> seed = [Item(1, "Ballpen", "piece", 15m), Item(2, "Old Item", "piece", 5m, active: false)];
+        (PriceIndexService sut, Mock<IPriceIndexItemRepository> repo) = Build(seed);
+
+        await sut.GetCountAsync("bond", filter);
+
+        repo.Verify(r => r.CountAsync(expected, "bond", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetCountAsync_ExcludesInactive_WhenFilteredToActive()
+    {
+        List<PriceIndexItem> seed = [Item(1, "Ballpen", "piece", 15m), Item(2, "Retired", "piece", 5m, active: false)];
+        (PriceIndexService sut, _) = Build(seed);
+
+        Assert.Equal(1, await sut.GetCountAsync(null, ActiveFilter.Active));
+    }
+
+    [Fact]
+    public async Task GetPickerListAsync_MapsTheFiveFieldsPickersActuallyUse()
+    {
+        List<PriceIndexItem> seed =
+        [
+            Item(7, "Bond Paper", "ream", 250m, category: "Office Supplies",
+                 daysEnabled: true, stockCardNo: "SC-001"),
+        ];
+        (PriceIndexService sut, _) = Build(seed);
+
+        IReadOnlyList<PriceIndexPickerItemDto> items = await sut.GetPickerListAsync(null, ActiveFilter.Active);
+
+        PriceIndexPickerItemDto only = Assert.Single(items);
+        Assert.Equal(new PriceIndexPickerItemDto(7, "Bond Paper", "ream", 250m, true), only);
+    }
+
+    [Fact]
+    public async Task GetPickerListAsync_UsesTheProjectedRead_NotTheFullList()
+    {
+        List<PriceIndexItem> seed = [Item(1, "Ballpen", "piece", 15m)];
+        (PriceIndexService sut, Mock<IPriceIndexItemRepository> repo) = Build(seed);
+
+        await sut.GetPickerListAsync(null, ActiveFilter.Active);
+
+        repo.Verify(r => r.GetPickerItemsAsync(true, null, It.IsAny<CancellationToken>()), Times.Once);
+        repo.Verify(r => r.GetFilteredAsync(
+            It.IsAny<bool?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+        repo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData(ActiveFilter.Active, true)]
+    [InlineData(ActiveFilter.Inactive, false)]
+    [InlineData(ActiveFilter.All, null)]
+    public async Task GetPickerListAsync_TranslatesActiveFilterForSql(ActiveFilter filter, bool? expected)
+    {
+        List<PriceIndexItem> seed = [Item(1, "Ballpen", "piece", 15m)];
+        (PriceIndexService sut, Mock<IPriceIndexItemRepository> repo) = Build(seed);
+
+        await sut.GetPickerListAsync("pen", filter);
+
+        repo.Verify(r => r.GetPickerItemsAsync(expected, "pen", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>
+    /// The management grid must keep every field — the whole point of adding a separate picker
+    /// read rather than narrowing the shared DTO.
+    /// </summary>
+    [Fact]
+    public async Task GetAllAsync_StillReturnsTheFullRecord_AfterThePickerSplit()
+    {
+        List<PriceIndexItem> seed =
+        [
+            Item(1, "Bond Paper", "ream", 250m, category: "Office Supplies", stockCardNo: "SC-001"),
+        ];
+        (PriceIndexService sut, _) = Build(seed);
+
+        PriceIndexItemDto only = Assert.Single(await sut.GetAllAsync(null, ActiveFilter.Active));
+
+        Assert.Equal("Office Supplies", only.Category);
+        Assert.Equal("SC-001", only.StockCardNo);
+        Assert.True(only.IsActive);
+        Assert.Equal(FixedNow, only.PriceUpdatedAt);
+    }
+
+    // ── Paged read (RAL-233) — the management grid ──────────────────────────────
+    // Server-side pagination/sort is the exact scenario DataTable's own doc comment warns
+    // about: client re-sort would silently sort only the current page. These tests exist to
+    // guard that GetPagedAsync's page/sort/count all come from the SQL-side read, never a
+    // full materialize-then-slice.
+
+    [Fact]
+    public async Task GetPagedAsync_ReturnsRequestedPageSize_NotTheWholeCatalogue()
+    {
+        List<PriceIndexItem> seed = Enumerable.Range(1, 5)
+            .Select(i => Item(i, $"Item {i:00}", "piece", i * 10m)).ToList();
+        (PriceIndexService sut, _) = Build(seed);
+
+        PriceIndexPageDto result = await sut.GetPagedAsync(
+            null, ActiveFilter.All, sortColumn: null, sortDescending: false, page: 1, pageSize: 2);
+
+        Assert.Equal(2, result.Items.Count);
+        Assert.Equal(5, result.TotalCount);
+        Assert.Equal(1, result.Page);
+        Assert.Equal(2, result.PageSize);
+    }
+
+    [Fact]
+    public async Task GetPagedAsync_SecondPage_ReturnsTheRemainingRows()
+    {
+        List<PriceIndexItem> seed = Enumerable.Range(1, 5)
+            .Select(i => Item(i, $"Item {i:00}", "piece", i * 10m)).ToList();
+        (PriceIndexService sut, _) = Build(seed);
+
+        PriceIndexPageDto result = await sut.GetPagedAsync(
+            null, ActiveFilter.All, sortColumn: null, sortDescending: false, page: 3, pageSize: 2);
+
+        PriceIndexItemDto only = Assert.Single(result.Items);
+        Assert.Equal("Item 05", only.Name);
+        Assert.Equal(5, result.TotalCount);
+    }
+
+    [Fact]
+    public async Task GetPagedAsync_TotalCountReflectsTheFilter_NotTheWholeTable()
+    {
+        List<PriceIndexItem> seed =
+        [
+            Item(1, "Ballpen", "piece", 15m),
+            Item(2, "Retired Item", "piece", 5m, active: false),
+        ];
+        (PriceIndexService sut, _) = Build(seed);
+
+        PriceIndexPageDto result = await sut.GetPagedAsync(
+            null, ActiveFilter.Active, sortColumn: null, sortDescending: false, page: 1, pageSize: 50);
+
+        Assert.Equal(1, result.TotalCount);
+        Assert.Equal("Ballpen", Assert.Single(result.Items).Name);
+    }
+
+    [Theory]
+    [InlineData("unitPrice", false, new[] { "C", "A", "B" })]     // C=5, A=10, B=20
+    [InlineData("unitPrice", true,  new[] { "B", "A", "C" })]
+    [InlineData("name",      false, new[] { "A", "B", "C" })]     // Apple, Bond Paper, Chair
+    [InlineData("daysEnabled", false, new[] { "A", "C", "B" })]   // false, false, true — B is daysEnabled
+    public async Task GetPagedAsync_SortsByEachWhitelistedColumn(
+        string sortBy, bool descending, string[] expectedOrder)
+    {
+        List<PriceIndexItem> seed =
+        [
+            Item(1, "Apple Juice", "box", 10m, daysEnabled: false),   // "A"
+            Item(2, "Bond Paper", "ream", 20m, daysEnabled: true),    // "B"
+            Item(3, "Chair", "piece", 5m, daysEnabled: false),        // "C"
+        ];
+        Dictionary<int, string> label = new() { [1] = "A", [2] = "B", [3] = "C" };
+        (PriceIndexService sut, _) = Build(seed);
+
+        PriceIndexPageDto result = await sut.GetPagedAsync(
+            null, ActiveFilter.All, sortBy, descending, page: 1, pageSize: 50);
+
+        Assert.Equal(expectedOrder, result.Items.Select(i => label[i.Id]).ToArray());
+    }
+
+    [Fact]
+    public async Task GetPagedAsync_UnrecognizedSortColumn_FallsBackToNameAscending_NotAnError()
+    {
+        List<PriceIndexItem> seed =
+        [
+            Item(1, "Zebra Print", "piece", 1m),
+            Item(2, "Apple Juice", "box", 1m),
+        ];
+        (PriceIndexService sut, _) = Build(seed);
+
+        // "'; DROP TABLE" is deliberate — this is the injection-surface case ApplySort's own
+        // comment calls out, not just a typo. It must fall back safely, never reach OrderBy raw.
+        PriceIndexPageDto result = await sut.GetPagedAsync(
+            null, ActiveFilter.All, "'; DROP TABLE price_index_items;--", sortDescending: false,
+            page: 1, pageSize: 50);
+
+        Assert.Equal(new[] { "Apple Juice", "Zebra Print" }, result.Items.Select(i => i.Name).ToArray());
+    }
+
+    [Fact]
+    public async Task GetPagedAsync_UsesTheProjectedPagedRead_NotTheFullList()
+    {
+        List<PriceIndexItem> seed = [Item(1, "Ballpen", "piece", 15m)];
+        (PriceIndexService sut, Mock<IPriceIndexItemRepository> repo) = Build(seed);
+
+        await sut.GetPagedAsync(null, ActiveFilter.All, null, false, 1, 50);
+
+        repo.Verify(r => r.GetPagedAsync(
+            null, null, null, false, 1, 50, It.IsAny<CancellationToken>()), Times.Once);
+        repo.Verify(r => r.GetFilteredAsync(
+            It.IsAny<bool?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+        repo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData(ActiveFilter.Active, true)]
+    [InlineData(ActiveFilter.Inactive, false)]
+    [InlineData(ActiveFilter.All, null)]
+    public async Task GetPagedAsync_TranslatesActiveFilterForSql(ActiveFilter filter, bool? expected)
+    {
+        List<PriceIndexItem> seed = [Item(1, "Ballpen", "piece", 15m)];
+        (PriceIndexService sut, Mock<IPriceIndexItemRepository> repo) = Build(seed);
+
+        await sut.GetPagedAsync("pen", filter, "unit", true, 2, 25);
+
+        repo.Verify(r => r.GetPagedAsync(
+            expected, "pen", "unit", true, 2, 25, It.IsAny<CancellationToken>()), Times.Once);
     }
 }

@@ -21,7 +21,7 @@ import {
   listDivisions,
   listFundingSources,
   listOffices,
-  listPriceIndex,
+  countPriceIndex,
 } from "@/lib/config";
 
 // ---------------------------------------------------------------------------
@@ -69,7 +69,8 @@ const TILES: TileDef[] = [
     name: "Price Index",
     caption: "Procurement item catalogue searched from WFP line-item entry.",
     href: "/config/price-index",
-    load: async () => (await listPriceIndex({ active: "true" })).length,
+    // Count endpoint, not the list (RAL-232) — this tile used to pull ~1.57 MB to show a number.
+    load: async () => countPriceIndex({ active: "true" }),
   },
   {
     key: "divisions",

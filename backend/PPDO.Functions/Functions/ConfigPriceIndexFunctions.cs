@@ -48,6 +48,65 @@ public sealed class ConfigPriceIndexFunctions
         return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK, ApiResponse<IReadOnlyList<PriceIndexItemDto>>.Ok(data), ct);
     }
 
+    // ── GET /api/config/price-index/paged?search=&active=&sortBy=&sortDir=asc|desc&page=&pageSize= ──
+    // RAL-233: the management grid's read, WHERE/COUNT/ORDER BY/OFFSET-FETCH all in SQL. Query
+    // param names (page/pageSize/sortBy/sortDir) match SearchPurchaseRequests's convention
+    // (RAL-192) rather than inventing new ones.
+    [Function("PriceIndexPaged")]
+    public async Task<HttpResponseData> Paged(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "config/price-index/paged")] HttpRequestData req,
+        CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, ConfigHttp.Authenticated, ct);
+        if (denied is not null) return denied;
+
+        int page     = int.TryParse(req.Query["page"], out int p) && p > 0 ? p : 1;
+        int pageSize = int.TryParse(req.Query["pageSize"], out int ps) && ps > 0 ? ps : 50;
+        bool sortDescending = string.Equals(req.Query["sortDir"], "desc", StringComparison.OrdinalIgnoreCase);
+
+        PriceIndexPageDto result = await _priceIndex.GetPagedAsync(
+            req.Query["search"], ActiveFilterParser.Parse(req.Query["active"]),
+            req.Query["sortBy"], sortDescending, page, pageSize, ct);
+
+        return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK, ApiResponse<PriceIndexPageDto>.Ok(result), ct);
+    }
+
+    // ── GET /api/config/price-index/count?search=&active=true|false|all ──
+    // RAL-232: the Config dashboard tile rendered its number from
+    // (await listPriceIndex({active:"true"})).length — a ~1.57 MB download to display a count.
+    // Same auth and same filters as List, so the two can never disagree.
+    [Function("PriceIndexCount")]
+    public async Task<HttpResponseData> Count(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "config/price-index/count")] HttpRequestData req,
+        CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, ConfigHttp.Authenticated, ct);
+        if (denied is not null) return denied;
+
+        int count = await _priceIndex.GetCountAsync(
+            req.Query["search"], ActiveFilterParser.Parse(req.Query["active"]), ct);
+
+        return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK, ApiResponse<int>.Ok(count), ct);
+    }
+
+    // ── GET /api/config/price-index/picker?search=&active=true|false|all ──
+    // RAL-232: five fields instead of nine for the WFP procurement item table and the
+    // procurement-preset editor — ~686 KB vs ~1,569 KB over the real catalogue. The full List
+    // above is unchanged and still backs the management grid, which needs every field.
+    [Function("PriceIndexPickerList")]
+    public async Task<HttpResponseData> PickerList(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "config/price-index/picker")] HttpRequestData req,
+        CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, ConfigHttp.Authenticated, ct);
+        if (denied is not null) return denied;
+
+        IReadOnlyList<PriceIndexPickerItemDto> data = await _priceIndex.GetPickerListAsync(
+            req.Query["search"], ActiveFilterParser.Parse(req.Query["active"]), ct);
+
+        return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK, ApiResponse<IReadOnlyList<PriceIndexPickerItemDto>>.Ok(data), ct);
+    }
+
     // ── GET /api/config/price-index/csv ──
     [Function("PriceIndexCsvExport")]
     public async Task<HttpResponseData> Export(

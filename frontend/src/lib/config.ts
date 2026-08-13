@@ -21,6 +21,8 @@ import type {
   FundingSourceResponse,
   OfficeResponse,
   PriceIndexItemResponse,
+  PriceIndexPage,
+  PriceIndexPickerItem,
   ProcurementPresetResponse,
   UpsertAccountRequest,
   UpsertDivisionRequest,
@@ -153,6 +155,66 @@ export async function listPriceIndex(
   if (params.active) query.active = params.active;
 
   const { data } = await api.get<ApiResponse<PriceIndexItemResponse[]>>("/config/price-index", {
+    params: query,
+  });
+  return unwrap(data);
+}
+
+export interface PriceIndexPagedParams extends PriceIndexListParams {
+  sortBy?: string;
+  sortDir?: "asc" | "desc";
+  page?: number;
+  pageSize?: number;
+}
+
+/**
+ * GET /api/config/price-index/paged — filtered, sorted, paged read for the management grid
+ * (RAL-233). Prefer this over {@link listPriceIndex} for that page; the plain list endpoint
+ * still backs the CSV export path, which must return everything.
+ */
+export async function getPriceIndexPage(params: PriceIndexPagedParams = {}): Promise<PriceIndexPage> {
+  const query: Record<string, string | number> = {};
+  if (params.search?.trim()) query.search = params.search.trim();
+  if (params.active) query.active = params.active;
+  if (params.sortBy) query.sortBy = params.sortBy;
+  if (params.sortDir) query.sortDir = params.sortDir;
+  query.page = params.page ?? 1;
+  query.pageSize = params.pageSize ?? 50;
+
+  const { data } = await api.get<ApiResponse<PriceIndexPage>>("/config/price-index/paged", { params: query });
+  return unwrap(data);
+}
+
+/**
+ * GET /api/config/price-index/count — row count only (RAL-232).
+ *
+ * For callers that need a number, not the catalogue. The Config dashboard tile used to fetch the
+ * whole ~1.57 MB list and read `.length`.
+ */
+export async function countPriceIndex(params: PriceIndexListParams = {}): Promise<number> {
+  const query: Record<string, string> = {};
+  if (params.search?.trim()) query.search = params.search.trim();
+  if (params.active) query.active = params.active;
+
+  const { data } = await api.get<ApiResponse<number>>("/config/price-index/count", { params: query });
+  return unwrap(data);
+}
+
+/**
+ * GET /api/config/price-index/picker — slim list for item pickers (RAL-232).
+ *
+ * Five fields instead of nine: ~686 KB rather than ~1,569 KB over the real catalogue. Prefer this
+ * over {@link listPriceIndex} unless you genuinely need category / priceUpdatedAt / isActive /
+ * stockCardNo — currently only the price-index management grid does.
+ */
+export async function listPriceIndexForPicker(
+  params: PriceIndexListParams = {},
+): Promise<PriceIndexPickerItem[]> {
+  const query: Record<string, string> = {};
+  if (params.search?.trim()) query.search = params.search.trim();
+  if (params.active) query.active = params.active;
+
+  const { data } = await api.get<ApiResponse<PriceIndexPickerItem[]>>("/config/price-index/picker", {
     params: query,
   });
   return unwrap(data);
