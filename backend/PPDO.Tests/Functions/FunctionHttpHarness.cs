@@ -19,10 +19,17 @@ namespace PPDO.Tests.Functions;
 /// </summary>
 internal static class FunctionHttp
 {
-    /// <summary>Builds a GET request; <paramref name="query"/> is appended verbatim (no leading "?").</summary>
-    internal static FakeHttpRequestData Get(string query, string? authorizationHeader = "Bearer test-token")
+    /// <summary>
+    /// Builds a GET request; <paramref name="query"/> is appended verbatim (no leading "?").
+    /// The path only matters for readability — handlers route by attribute and read
+    /// <see cref="HttpRequestData.Query"/>, never the path itself.
+    /// </summary>
+    internal static FakeHttpRequestData Get(
+        string query,
+        string? authorizationHeader = "Bearer test-token",
+        string path = "budget-planning/ppmp/report/preview")
     {
-        Uri url = new($"https://localhost/api/budget-planning/ppmp/report/preview?{query}");
+        Uri url = new($"https://localhost/api/{path}?{query}");
         return new FakeHttpRequestData(new Mock<FunctionContext>().Object, url, authorizationHeader);
     }
 
