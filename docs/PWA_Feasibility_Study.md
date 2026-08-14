@@ -634,8 +634,30 @@ Worth being explicit: Phase 1 is **not** blocked on AIP at all. It was only ever
 > into `frontend/public/images/` unblocks Phase 1 immediately — `sharp` is already available to
 > derive every size from it.
 >
-> Unrelated but adjacent: `(public)/page.tsx:34` declares the Open Graph image as `512×512` while
-> the actual file is 256×256. Worth correcting whenever the logo is replaced.
+> **Corrected same day — the institutional blocker does not exist.** Ralph confirmed that
+> `ppdo-logo-placeholder.png` **is the official PPDO logo**; the filename was kept deliberately so
+> that swapping the image required no code change. Verified by opening the file: it is the real
+> badge (gear ring, four quadrant icons, "PROVINCIAL PLANNING AND DEVELOPMENT OFFICE · OCCIDENTAL
+> MINDORO"), not the green-circle placeholder the docs described. `CLAUDE.md` and
+> `PROJECT_DOCUMENTATION_NET_AZURE.md:217` have been corrected — both claimed it was a placeholder
+> awaiting the real logo, which is what caused the paragraph above to record a blocker that was
+> never there.
+>
+> **What remains is purely technical, and smaller:**
+>
+> 1. **Resolution.** The file is **256×256**; a manifest needs 192 *and* 512. 192 downscales
+>    cleanly. 512 needs either a higher-resolution source (best — a vector or large PNG original, if
+>    one exists) or a 2× upscale. An upscale is usable but will look soft specifically on the Android
+>    splash screen, which renders the 512 icon large; at ordinary home-screen sizes (48–192px) the
+>    difference is not visible.
+> 2. **Maskable safe zone.** Android crops icons to a device-chosen shape, keeping roughly the centre
+>    80%. This logo puts its ring text right at the outer edge, so used as-is for `maskable` the words
+>    "PROVINCIAL PLANNING AND DEVELOPMENT OFFICE" would be clipped on most Android phones. The
+>    maskable variant needs the badge scaled to ~80% on a solid background (white or PPDO green) — a
+>    visual decision, not a technical one. The plain (non-maskable) icon is unaffected.
+>
+> Adjacent: `(public)/page.tsx:34` declares the Open Graph image as `512×512` while the actual file
+> is 256×256. Worth correcting alongside any icon work.
 
 ### 12.3 Start now — independent of AIP, but on the critical path for it
 

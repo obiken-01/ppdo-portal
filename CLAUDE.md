@@ -373,7 +373,7 @@ The public landing page (`src/app/(public)/page.tsx`) must include:
 - Left: `public/images/Ph_seal_occidental_mindoro.png` — Province of Occidental Mindoro Official Seal
 - Center: PPDO name + title text
 - Right: `public/images/Bagong_Pilipinas_logo.png` — Bagong Pilipinas ⚠️ use transparent PNG version
-- PPDO logo: `public/images/ppdo-logo-placeholder.png` — generate a simple green circle placeholder (replaced when official logo is provided)
+- PPDO logo: `public/images/ppdo-logo-placeholder.png` — ⚠️ **despite the filename, this file holds the OFFICIAL PPDO logo** (confirmed 2026-08-14). The name was kept deliberately so no code change was needed when the real logo replaced the original placeholder. Do not treat it as a placeholder or "improve" it; it is 256×256 with transparency.
 
 **Mission section** — styled card with logo header, title "MISSION" centered:
 > "To be an effective and efficient department in helping the LGU attain its goals and thrust and provide better quality service."
