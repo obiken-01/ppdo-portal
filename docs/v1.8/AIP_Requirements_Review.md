@@ -17,9 +17,13 @@
 
 Three things stand out from the review:
 
-1. **The Allocation requirement is ~80% already built.** Per-office ceilings, per-division
-   allocation and program allocation all exist with the right shape (v1.4.3). The real work is a
-   permission split, not a feature. See §4.
+1. **Allocation: the two storage tables are reusable, but every consumer of them is WFP-only.**
+   (Corrected 2026-08-14 after Ralph pointed out that allocation only caters to WFP — he is right,
+   and the reason matters.) `BudgetCeiling` and `DivisionAllocation` are genuinely generic, but the
+   draw-down ledger is keyed on `WfpRecordId` and is documented as deliberately non-polymorphic,
+   and all validation lives in `WfpCeilingService`. AIP needs its own consumer — and, more
+   importantly, **AIP is currently the ceiling *for* WFP**, so pointing both at one pot needs a
+   stated rule or the numbers will contradict each other. See §4.
 2. **The AIP expenditure model as described cannot be stored in the current schema.** Multiple
    fund sources per activity, and one expenditure split across PS/MOOE/CO, break `AipActivity`'s
    single `FundingSourceId` + three amount columns. This is the largest structural change in
@@ -164,54 +168,109 @@ but easy to forget.
 
 ---
 
-## 4. Allocation Page — mostly already built
+## 4. Allocation Page
 
 > Requirement: office ceilings set by PBO; general-fund allocation to PPDO divisions; program
 > allocation; new PBO permission; rename the finance-officer permission.
 
-**Most of this exists.** From v1.4.3:
+> **⚠️ Corrected 2026-08-14.** An earlier draft of this review said this requirement was "~80%
+> already built" and amounted to a permission split. **That was wrong**, as Ralph pointed out: the
+> current allocation machinery serves **WFP only**. The storage is reusable; nothing that consumes
+> it is. The corrected picture is below, and it changes this from the smallest item in v1.8.0 to
+> one that needs a real design decision.
 
-| Requirement | Existing | Verdict |
+### 4.1 What actually exists, and what it serves
+
+| Layer | Component | Generic or WFP-only? |
 |---|---|---|
-| Ceiling per office, per fiscal year, per fund | `BudgetCeiling { OfficeId, FiscalYear, FundingSourceId, Amount }` | ✅ exists |
-| Allocation to PPDO divisions | `DivisionAllocation { DivisionId, FiscalYear, FundingSourceId, Amount }` | ✅ exists |
-| Program allocation | `ProgramDivision` + `PUT /allocation/programs?officeId=` | ✅ exists |
-| Ceilings for offices **other than PPDO** | Endpoints already take `officeId` | ✅ endpoint exists; UI/permission is the gap |
-| PBO sets them | Everything is gated on the single `CanManageAllocation` | ❌ **the actual work** |
+| Storage | `BudgetCeiling { OfficeId, FiscalYear, FundingSourceId, Amount }` | ✅ **generic** — no WFP column |
+| Storage | `DivisionAllocation { DivisionId, FiscalYear, FundingSourceId, Amount }` | ✅ **generic** |
+| Storage | `ProgramDivision` (program → division assignment) | ✅ generic (but string-keyed — §5.2) |
+| Read/write API | `AllocationService` + `/allocation/*` endpoints (already take `officeId`) | ✅ generic |
+| **Draw-down ledger** | `WfpDivisionAllocationLedger` — keyed on **`WfpRecordId`** | ❌ **WFP-only** |
+| **Validation** | `WfpCeilingService` — `ValidateExpenditureSaveAsync`, `UpsertLedgerForActivityAsync`, `ValidateRecordForFinalizeAsync` | ❌ **WFP-only** |
+| UI | Allocation page | Generic-ish, but built around the WFP flow |
 
-So the ticket is **a permission split plus the office picker**, not a new feature:
+The ledger's own doc comment is explicit about this:
 
-- `CanManageAllocation` → rename to reflect PPDO-only scope (Ralph's own suggestion —
-  "Manage PPDO Allocation (PPDO finance officer)"). Keeps divisions + programs for PPDO.
-- New `OverrideCanManagePboCeiling` (or similar) → may set **`BudgetCeiling` for any office**.
-  Mirrors `CanManageAllocation`'s plumbing exactly: `bool?` column, Admin **not** auto-granted.
+> *"WFP-scoped by design (not a generic polymorphic ledger)… Named/shaped so a future consumer of
+> the same allocation could post its own rows later without needing a redesign, but that
+> generalization is explicitly out of scope for this ticket."*
 
-⚠️ **Rename cost:** `CanManageAllocation` appears across the backend service, the Functions gates,
-the user form, `MeResponse`, and the frontend. A rename is mechanical but wide — worth doing as its
-own commit so it doesn't hide behind feature work in review.
+So the shape was chosen with a second consumer in mind, but the generalization was deliberately
+deferred. **AIP is that second consumer, and this is the ticket that pays the deferred cost.**
 
-### 4.1 What is genuinely new — and under-specified
+### 4.2 The thing that makes this genuinely hard: AIP already constrains WFP
 
-**→ DECISION 1 — what enforces the ceiling, and against what?**
-The draft says the division allocation *"will be used as ceiling of all divisions when creating
-activities using general fund. Other fund source and Personal Services will have no ceiling."*
+`WfpCeilingService` performs **two** checks on every WFP expenditure:
 
-That rule mixes two different axes: **fund source** (General Fund) and **expense class** (PS). With
-the new model (§5.1) a single expenditure line can be General Fund *and* split across PS/MOOE/CO —
-so the check is *"sum only the non-PS portion of General-Fund lines"*, not "sum General-Fund lines".
-Worth stating explicitly, because it is easy to implement the wrong one and the difference is
-invisible until the numbers are audited.
+1. **against the parent AIP activity's total** — `activity.Total * 1000m`, aggregate across all
+   funding sources (AIP carries no per-fund breakdown today);
+2. **against the division allocation** — fund-scoped.
 
-**→ DECISION 2 — is the ceiling a block or a warning?** WFP has precedent for over-allocation
-tracking; AIP should either hard-block the save, or allow it with a visible over-allocation state
-that the reviewer sees. Blocking at *submit* rather than at *save* is usually kinder for a document
-built over weeks — and it is essential if entry happens offline (§6), where a hard block can't be
-evaluated at typing time anyway.
+So today the chain is:
 
-**→ DECISION 3 — must division allocations sum to ≤ the office ceiling?** And what happens if PBO
-lowers an office ceiling *after* divisions have been allocated and activities encoded against them?
+```
+DivisionAllocation ──constrains──▶ WFP
+AipActivity.Total  ──constrains──▶ WFP
+AIP itself         ──constrained by──▶ (nothing)
+```
 
----
+The requirement adds `DivisionAllocation ──constrains──▶ AIP`. That closes a triangle, and a
+triangle needs a rule:
+
+**→ DECISION A — is it one pot or two?**
+
+- **One pot.** AIP and WFP draw on the same division allocation. Then a single peso planned in AIP
+  and then detailed in WFP must not be counted twice — which means the ledger cannot simply gain
+  AIP rows alongside WFP rows. Most likely resolution: **the allocation constrains AIP, and WFP is
+  constrained by its parent AIP activity only** (check 2 above becomes redundant and should be
+  removed, not kept alongside). Conceptually clean — the AIP is the plan, the WFP details it — but
+  it changes existing, working WFP validation.
+- **Two pots.** AIP gets its own allocation dimension, independent of WFP's. Nothing existing
+  changes, but the same office now has two ceiling numbers that can disagree, and someone has to
+  explain which is authoritative.
+
+Ralph's own phrasing — *"Updates in Allocation Page (AIP specific only)"* — may already mean the
+second. Worth confirming explicitly, because it decides whether this is additive or a change to
+shipped WFP behaviour.
+
+### 4.3 What has to be built either way
+
+| # | Work | Note |
+|---|---|---|
+| 1 | **An AIP draw-down ledger** | Either `AipDivisionAllocationLedger` (mirrors the WFP one, keyed on the AIP record) or generalise the existing ledger to `(sourceType, sourceId)`. The latter is tidier and touches shipped WFP code; the former is safer and duplicates ~200 lines |
+| 2 | **An AIP ceiling service** | The AIP equivalent of `WfpCeilingService` — validate on save/submit, upsert the ledger, expose remaining |
+| 3 | **Ceiling checks for offices** | Non-PPDO offices have ceilings but no divisions, so the office ceiling is checked directly rather than via a division allocation |
+| 4 | **PBO permission** | New `OverrideCanManagePboCeiling` — may set `BudgetCeiling` for **any** office. Mirrors `CanManageAllocation`'s plumbing; Admin **not** auto-granted |
+| 5 | **Rename `CanManageAllocation`** | To Ralph's "Manage PPDO Allocation (PPDO finance officer)". Mechanical but wide — backend service, Functions gates, user form, `MeResponse`, frontend. Worth its own commit |
+| 6 | **Allocation page: office picker** | Endpoints already take `officeId`; the page is built around PPDO |
+
+Only items 4–6 are the "permission split" the earlier draft described. Items 1–3 are the real work,
+and item 1's shape depends on DECISION A.
+
+### 4.4 The ceiling rule itself is still under-specified
+
+**→ DECISION B — what exactly is capped?** The draft says the division allocation *"will be used as
+ceiling of all divisions when creating activities using general fund. Other fund source and Personal
+Services will have no ceiling."*
+
+That mixes two axes: **fund source** (General Fund) and **expense class** (PS). Under the new model
+(§5.1) one expenditure line can be General Fund *and* split across PS/MOOE/CO — so the check is
+*"sum only the non-PS portion of General-Fund lines"*, not "sum General-Fund lines". Easy to
+implement the wrong one; the difference is invisible until audited.
+
+Note this also **diverges from WFP's existing behaviour**, where the AIP check is aggregate across
+all funds precisely because AIP has no per-fund breakdown. Once AIP gains one (§5.1), that
+justification disappears and the WFP-side check could be tightened too — worth deciding whether to
+do so in the same pass or leave WFP alone.
+
+**→ DECISION C — block or warn, at save or at submit?** Blocking at *submit* rather than at *save*
+is kinder for a document built over weeks, and it is close to mandatory if entry happens offline
+(§6), where a hard block can't be evaluated at typing time.
+
+**→ DECISION D — must division allocations sum to ≤ the office ceiling?** And what happens if PBO
+lowers an office ceiling *after* divisions are allocated and activities encoded?
 
 ## 5. New AIP implementation
 
@@ -460,6 +519,41 @@ is the reason the data is being captured at all.
 > Requirement: users enter `1,234,567.89`, it is stored as entered, and displays as thousands.
 > Quoted rule: *"round up to the nearest thousand … it will be 1,234,000.00"*.
 
+### 8.0 ⚠️ This is a storage-unit change, not just a display rule — and it has a silent 1000× failure mode
+
+Found while re-checking §4. **AIP amounts are currently stored in *thousands*, not pesos** — the
+`.xlsm` is "in thousand pesos" and `AipXlsmParser` stores the cell values verbatim with no scaling.
+WFP amounts, by contrast, are stored in **pesos**. The two are reconciled in exactly one place,
+`WfpCeilingService`:
+
+```csharp
+decimal aipBudget = (activity?.Total ?? 0m) * 1000m; // the ONE conversion point
+```
+
+That `* 1000m` appears at **three** call sites in that file (lines 60, 106, 220 — save validation,
+status, and finalize validation), and the class comment states the conversion happens there and
+nowhere else.
+
+**The requirement inverts this.** *"let them put the value they want whether its 1,234,567.89 and it
+will be saved as it is"* means AIP storage becomes **pesos**, with thousands as a display
+convention. That is correct and much better — but it means:
+
+1. **Those three `* 1000m` conversions must be removed in the same change.** If AIP storage moves to
+   pesos and they are left in place, every WFP ceiling check silently becomes **1000× too
+   permissive**. Nothing fails, no error appears — the budget validation simply stops validating.
+   This is the single most dangerous change in v1.8.0 precisely because it is invisible.
+2. **Mixed-unit data is worse than either unit.** If 2027 stays in thousands and 2028 is in pesos,
+   the same column holds two different units and the conversion becomes conditional on fiscal year —
+   a bug factory. **→ DECISION E:** migrate 2027 to pesos (a `UPDATE … * 1000` over the existing
+   rows, alongside the §5.1 migration), or hard-partition by fiscal year?
+3. **Tests must pin this.** `WfpCeilingService` is the one place the two documents meet
+   numerically. Whatever is decided, it deserves an explicit test asserting a WFP expenditure is
+   correctly accepted/rejected against a known AIP activity total, so the factor can never drift
+   again.
+
+Also note the interaction with §5.1: once AIP gains per-fund expenditure lines, the comment
+justifying the aggregate AIP check (*"AIP data carries no per-fund breakdown"*) stops being true.
+
 **The rule and the example contradict each other.** `1,234,567.89`:
 
 | Interpretation | Result (pesos) | Displayed |
@@ -548,9 +642,11 @@ last-write-wins. A per-record soft lock or a "changed by someone else" warning i
 
 | # | Decision | §  | Blocks |
 |---|---|---|---|
-| 1 | Ceiling rule — General Fund minus PS, computed how? | 4.1 | Allocation + AIP validation |
-| 2 | Ceiling: hard block or warning, at save or at submit? | 4.1 | Both, and offline |
-| 3 | Must division allocations fit inside the office ceiling? | 4.1 | Allocation |
+| A | **One pot or two — do AIP and WFP draw on the same division allocation?** | 4.2 | **The ledger design** |
+| B | Ceiling rule — General Fund minus PS, computed how? | 4.4 | Allocation + AIP validation |
+| C | Ceiling: hard block or warning, at save or at submit? | 4.4 | Both, and offline |
+| D | Must division allocations fit inside the office ceiling? | 4.4 | Allocation |
+| E | **AIP storage units — migrate 2027 to pesos, or partition by FY?** | 8.0 | **Migration + WFP validation** |
 | 4 | Multi-fund: per expenditure line, or per activity? | 5.1 | **The schema** |
 | 5 | Can offices add programs outside the LDIP? | 5.5 | Entry UI |
 | 6 | W1 — who prepares GAD / 20% DF / PS / LDRRF / Trust Fund? | 5.6 | Permission model |
@@ -561,8 +657,18 @@ last-write-wins. A per-record soft lock or a "changed by someone else" warning i
 | 11 | 2027 AIP + `.xlsm` upload — migrate, keep, or retire? | 5.1 | Migration |
 | 12 | Password reset — admin relay, or is email mandatory? | 2.3 | Reset flow |
 
-Decisions **4, 6, 10 and 11** are the ones that change the data model rather than the UI. If only a
-few can be settled before work starts, settle those.
+Decisions **A, E, 4, 6, 10 and 11** change the data model rather than the UI. If only a few can be
+settled before work starts, settle those.
+
+Two of them are also the two most dangerous changes in v1.8.0, for the same reason — both fail
+**silently**:
+
+- **E (storage units).** Leaving `WfpCeilingService`'s three `* 1000m` conversions in place after
+  AIP moves to pesos makes every WFP ceiling check 1000× too permissive, with no error anywhere.
+- **A (one pot or two).** Pointing both AIP and WFP at one allocation without removing the now-
+  redundant check double-counts every peso — the same money spent once, deducted twice.
+
+Neither produces a stack trace. Both produce budget numbers that look plausible and are wrong.
 
 ---
 
