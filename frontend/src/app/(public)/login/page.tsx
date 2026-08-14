@@ -22,6 +22,7 @@ import { z } from "zod";
 import axios from "axios";
 import api from "@/lib/api";
 import { auth } from "@/lib/auth";
+import { APP_VERSION } from "@/lib/version";
 import type { LoginResponse, MeResponse, RefreshErrorReason } from "@/types/auth";
 
 // ---------------------------------------------------------------------------
@@ -87,8 +88,6 @@ type FormData = z.infer<typeof schema>;
 // Page
 // ---------------------------------------------------------------------------
 
-const APP_VERSION = "v1.8.0";
-
 function LoginPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -149,7 +148,7 @@ function LoginPageInner() {
       {/* ── Left panel — branding (desktop only) ────────────────────────── */}
       <aside className="hidden md:flex md:w-1/4 bg-green-700 flex-col items-center justify-center px-8 py-14 text-white">
         <Image
-          src="/images/ppdo-logo-placeholder.webp"
+          src="/images/ppdo-logo.webp"
           alt="PPDO Logo"
           width={88}
           height={88}
@@ -202,7 +201,7 @@ function LoginPageInner() {
           {/* Mobile logo (visible only on small screens) */}
           <div className="flex md:hidden items-center justify-center gap-2 mb-8">
             <Image
-              src="/images/ppdo-logo-placeholder.webp"
+              src="/images/ppdo-logo.webp"
               alt="PPDO"
               width={36}
               height={36}

@@ -27,9 +27,8 @@ import { useRouter, usePathname } from "next/navigation";
 import api from "@/lib/api";
 import { auth } from "@/lib/auth";
 import { clearMeCache } from "@/lib/me-cache";
+import { APP_VERSION } from "@/lib/version";
 import type { MeResponse } from "@/types";
-
-const APP_VERSION = "v1.8.0";
 
 interface SidebarProps {
   me: MeResponse | null;
@@ -169,7 +168,7 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
         className="flex items-center gap-3 px-5 py-3 border-b border-green-600 hover:bg-green-600 transition-colors group"
       >
         <Image
-          src="/images/ppdo-logo-placeholder.webp"
+          src="/images/ppdo-logo.webp"
           alt="PPDO"
           width={48}
           height={48}
