@@ -38,6 +38,20 @@ wrong fix.
 
 ---
 
+## 0.1 Decisions settled (Ralph, 2026-08-14)
+
+| # | Decision | Answer | Effect |
+|---|---|---|---|
+| 4 | Multi-fund granularity | **Multiple single-fund lines** — one fund source per expenditure line | §5.1's table works as drafted. The simpler option, and Ralph's original intent |
+| 8 | Rounding of `1,234,567.89` | **`1,235,000`** | Not the `1,234,000` in the draft. ⚠️ Still ambiguous between *round-half-up* and *always-round-up* — they agree on this number but not on others. See §8.2 |
+| B | What the ceiling applies to | **General Fund only.** GAD, 20% DF, LDRRF, Trust Fund and PS are all exempt | Also **resolves W1** — see §5.6 |
+| W1 | "Limit Dept Head — except GAD/20% DF/PS/LDRRF/Trust Fund" | **Not a permission rule.** It is the ceiling-exemption list above | §5.6 rewritten; the permission model is unaffected |
+| 9.1 | Printable AIP form | **Confirmed in scope**, matching the official form already used | Largest single deliverable in §7 |
+| 9.2–9.8 | Remaining suggested additions | **Accepted** | Deadline, notifications, amendment-readiness, carry-forward, completeness rules, approval snapshot, concurrent-edit guard |
+| 12 | Password reset | Ralph proposes fully self-service with a **deterministic** temporary password | ⚠️ **Cannot ship as specified** — see §2.4 |
+
+---
+
 ## 1. What the whiteboard has that the written draft does not
 
 Working left-to-right through the photo. These are the items I could not find anywhere in the
@@ -119,9 +133,65 @@ organisation of ~52 people who share a building and already know each other.
 **Later, if email ever arrives:** the same table becomes the token store and step 4–5 become an
 emailed one-time link. Nothing designed here is thrown away.
 
-**→ DECISION:** is admin-relay acceptable, or is emailed self-service a hard requirement for
-v1.8.0? If the latter, treat the email provider as its own ticket with its own lead time — the DNS
-side of a `.gov.ph` domain is not a same-day task.
+### 2.4 Ralph's proposal, and why it can't ship as specified
+
+> Ralph, 2026-08-14: *"limit the interaction between the admin and the users. Instead of me relaying
+> the new password, the website provides it (assuming they provide the correct username), and the new
+> password will be `MangyanUser_<month><day>` … let's give them an option of skipping the force
+> password change."*
+
+**The goal is right** — minimising admin involvement is a real usability win, and admin-relay is
+friction for 52 people. **The mechanism cannot be used**, for one reason:
+
+`MangyanUser_0814` is **computable by anyone who knows today's date.** The reset form asks only for
+a username. So the flow reduces to:
+
+> *type any username → that account's password is now a value you already know → log in as them.*
+
+That is not a password reset; it is an account-takeover endpoint on the public login page, for a
+system holding provincial budget data. It is also worse than today, where only an admin can trigger
+a reset. Three aggravating details:
+
+- **It locks the real user out.** Their password changed without them asking.
+- **Usernames are guessable**, and colleagues know each other's outright.
+- **Skippable force-change makes it permanent** — the account can sit on the guessable password
+  indefinitely. (This is exactly the `TamarawUser2026!` problem in §2.2, with a date appended.)
+
+The rotating date doesn't help: it changes daily, but it is never *secret*.
+
+**The underlying constraint:** you cannot deliver a secret to a user without a channel you trust.
+The available channels are email (doesn't exist — §2.1), SMS (a paid provider), the office itself
+(admin relay), or something the user already knows. A deterministic string is not a channel; it is
+a public value.
+
+### 2.5 Two ways to get what Ralph actually wants
+
+**Option A — one-click admin approval (recommended).** As §2.3, but the admin's only action is a
+single click; the system generates a **random** temporary password and shows it once. No queue of
+messages, no back-and-forth — one click, then it's relayed however that office already verifies
+people. Safe, small, uses what exists.
+
+**Option B — true self-service with a user-set recovery answer.** No admin involvement at all:
+
+1. Every user sets a **recovery question/PIN** once (at first login, or the next time they sign in).
+2. Reset asks for **username + the correct answer**.
+3. On success the system shows a **random** temporary password immediately.
+
+This is genuinely self-service and closes the hole against anyone outside the organisation — the
+attacker now needs a secret, not a calendar. Two honest caveats: it is weak against a *colleague*
+who knows the answer, and it needs a one-time setup pass over all ~52 accounts (users without an
+answer set fall back to Option A).
+
+Whichever is chosen, two things should hold:
+
+- **The temporary password must be random, never a pattern.** With a random password the
+  "skip the forced change" option becomes harmless — nobody keeps a random string — so Ralph's
+  request for it is fine here. With a deterministic one, skipping is precisely what makes the
+  vulnerability permanent.
+- **Log every reset in the audit trail**, and tell the user on next login that their password was
+  reset and when. That is the detective control that makes Option B acceptable.
+
+**→ DECISION 12 (revised):** Option A or Option B?
 
 ---
 
@@ -406,16 +476,29 @@ CC codes — **suggest doing both**: one small `climate_change_typologies` confi
 eSRE, following the existing config-page pattern. Free strings on a document that gets audited will
 drift.
 
-### 5.6 W1 — "Limit Dept Head, except GAD / 20% DF / PS / LDRRF / Trust Fund"
+### 5.6 W1 — resolved: it is a ceiling exemption, not a permission rule
 
-**→ DECISION 6.** My reading: department heads prepare their own office's AIP, **except** for those
-five, which are prepared centrally (PPDO or PBO) because they are province-wide funds or
-centrally-computed. If that is right it is a significant scoping rule — certain programs or fund
-sources are simply not editable by an office user, even within their own office.
+> **Answered by Ralph, 2026-08-14:** *"this part is about the exception of these fund sources to
+> have a ceiling. Since only GF will have ceiling."*
 
-This is not in the written draft at all, and it changes the permission model (a per-fund-source or
-per-program editability rule, on top of office/division scope). Worth confirming early: it is
-cheap to design in and expensive to add later.
+So the whiteboard's *"Limit Dept Head — except GAD, 20% DF, PS, LDRRF, Trust Fund"* reads as
+"the department head is **limited by the ceiling**, except for these", not "the department head may
+not touch these". **The permission model is unaffected** — this was my misreading, and the earlier
+concern here is withdrawn.
+
+It restates §4.4's DECISION B, now settled: **only General Fund carries a ceiling.** Everything
+else is uncapped.
+
+One implementation note that survives the correction. The exemption list mixes two axes:
+
+- **GAD, 20% DF, LDRRF, Trust Fund** are *fund sources* — excluded by `funding_source_id`;
+- **PS** is an *expense class*, and under §5.1 it is a **column on an expenditure line**, not a
+  line of its own.
+
+So the ceiling check is: **sum the `mooe + co` portions of General-Fund lines only.** A General-Fund
+line that is part PS and part MOOE contributes only its MOOE. Implementing this as "sum
+General-Fund lines" is the easy mistake, and the difference is invisible until someone audits the
+numbers.
 
 ---
 
@@ -563,12 +646,28 @@ justifying the aggregate AIP check (*"AIP data carries no per-fund breakdown"*) 
 | Round **half-up** (normal rounding) | 1,235,000 | `1,235` |
 
 The whiteboard shows both `1,235` and `1,234 0000`, so the ambiguity is real and predates the
-document. **→ DECISION 8** — and it should come from the PBO, since their forms are what the output
-is checked against. (For what it's worth, "in thousand pesos" on Philippine budget forms is
-conventionally normal rounding, i.e. `1,235` — but this is precisely the kind of thing to confirm
-rather than assume.)
+document.
 
-### 8.1 The harder question the draft doesn't reach
+> **✅ Answered by Ralph, 2026-08-14: `1,235,000`.** So the draft's `1,234,000` example was the
+> error, not the rule.
+
+### 8.2 ⚠️ One tie-break still open
+
+`1,235,000` is produced by **both** remaining candidates, so this number alone doesn't separate
+them. They differ on other values:
+
+| Value | Round half-up | Always round up (ceiling) |
+|---|---|---|
+| `1,234,567.89` | `1,235` | `1,235` | ← the agreed example; no help |
+| **`1,234,200.00`** | **`1,234`** | **`1,235`** | ← the one that decides it |
+| `1,234,000.00` | `1,234` | `1,234` |
+
+**→ DECISION 8b:** does `1,234,200` display as `1,234` or `1,235`? Philippine budget forms
+conventionally use normal (half-up) rounding, which would give `1,234` — but the original wording
+said "round **up**", so this needs one word of confirmation from the PBO rather than an assumption.
+It affects roughly half of all figures.
+
+### 8.3 The harder question the draft doesn't reach
 
 **Do rounded rows have to add up to the rounded total?** They cannot always do both:
 
@@ -578,9 +677,9 @@ rather than assume.)
 | Round each row, then sum the rounded | The printed column adds up, but the total differs from the true sum |
 
 For a document reviewed line-by-line against PBO figures, "the column adds up" often matters more
-than "the total is exact" — but that is a finance call, not a developer one. **→ DECISION 9.**
+than "the total is exact" — but that is a finance call, not a developer one. **→ DECISION 9** — still open.
 
-### 8.2 Implementation notes
+### 8.4 Implementation notes
 
 - **Store exact, always.** Round only at the display/report boundary — never persist a rounded
   value, or the original is gone.
@@ -643,21 +742,22 @@ last-write-wins. A per-record soft lock or a "changed by someone else" warning i
 | # | Decision | §  | Blocks |
 |---|---|---|---|
 | A | **One pot or two — do AIP and WFP draw on the same division allocation?** | 4.2 | **The ledger design** |
-| B | Ceiling rule — General Fund minus PS, computed how? | 4.4 | Allocation + AIP validation |
+| ~~B~~ | ~~Ceiling rule~~ | ✅ **General Fund only; PS exempt.** Check sums `mooe + co` of GF lines | — |
 | C | Ceiling: hard block or warning, at save or at submit? | 4.4 | Both, and offline |
 | D | Must division allocations fit inside the office ceiling? | 4.4 | Allocation |
 | E | **AIP storage units — migrate 2027 to pesos, or partition by FY?** | 8.0 | **Migration + WFP validation** |
-| 4 | Multi-fund: per expenditure line, or per activity? | 5.1 | **The schema** |
+| ~~4~~ | ~~Multi-fund granularity~~ | ✅ **One fund per line**; multi-fund = multiple lines | — |
 | 5 | Can offices add programs outside the LDIP? | 5.5 | Entry UI |
-| 6 | W1 — who prepares GAD / 20% DF / PS / LDRRF / Trust Fund? | 5.6 | Permission model |
+| ~~6~~ | ~~W1 — who prepares GAD / 20% DF / …?~~ | ✅ **Not a permission rule** — it is the ceiling-exemption list | — |
 | 7 | Offline: personal/shared device, or office-issued? | 6.2 | Session persistence |
-| 8 | Round up, down, or half-up to the nearest thousand? | 8 | Every report |
-| 9 | Must printed rows add up to the printed total? | 8.1 | Every report |
+| 8b | **Does `1,234,200` show as `1,234` or `1,235`?** (`1,235,000` confirmed for the original example, but it doesn't separate half-up from always-up) | 8.2 | Every report |
+| 9 | Must printed rows add up to the printed total? | 8.3 | Every report |
 | 10 | Reviewer: can they reject/return, and with comments at what level? | 5.3 | Workflow |
 | 11 | 2027 AIP + `.xlsm` upload — migrate, keep, or retire? | 5.1 | Migration |
-| 12 | Password reset — admin relay, or is email mandatory? | 2.3 | Reset flow |
+| 12 | **Password reset — Option A (one-click admin approval) or Option B (user-set recovery answer)?** The deterministic-password proposal can't ship | 2.4–2.5 | Reset flow |
 
-Decisions **A, E, 4, 6, 10 and 11** change the data model rather than the UI. If only a few can be
+Settled rows are struck through and kept for the record. Of what remains, **A, E, 10 and 11**
+change the data model rather than the UI. If only a few can be
 settled before work starts, settle those.
 
 Two of them are also the two most dangerous changes in v1.8.0, for the same reason — both fail
