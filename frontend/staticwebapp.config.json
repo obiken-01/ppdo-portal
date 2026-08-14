@@ -2,14 +2,28 @@
   "$schema": "https://json.schemastore.org/staticwebapp.config.json",
   "navigationFallback": {
     "rewrite": "/index.html",
-    "exclude": ["/api/*", "/_next/*", "/favicon.ico", "/*.{png,jpg,svg,ico,css,js}"]
+    "exclude": [
+      "/api/*",
+      "/_next/*",
+      "/favicon.ico",
+      "/*.{png,jpg,svg,ico,css,js,webp,webmanifest}"
+    ]
   },
   "routes": [
+    {
+      "route": "/sw.js",
+      "headers": {
+        "Cache-Control": "no-cache"
+      }
+    },
     {
       "route": "/api/*",
       "allowedRoles": ["anonymous"]
     }
   ],
+  "mimeTypes": {
+    ".webmanifest": "application/manifest+json"
+  },
   "globalHeaders": {
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",

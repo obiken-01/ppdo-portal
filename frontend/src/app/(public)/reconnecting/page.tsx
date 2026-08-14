@@ -16,6 +16,16 @@
  * falls through to the normal RAL-198 /login redirect. After auto-retries are
  * exhausted, shows manual Try Again / Cancel controls instead of retrying
  * silently forever.
+ *
+ * Offline handling: this page previously told EVERY disconnected user that the
+ * server was waking up — including users whose own device had no connection at
+ * all, where that message blames the wrong party. `navigator.onLine === false`
+ * is reliable (it means there is no network interface), so it is used to swap
+ * the copy and to stop burning retry attempts against a dead connection. The
+ * inverse is NOT reliable — `true` only means an interface exists, not that the
+ * internet is reachable — so it never suppresses a retry, it only softens the
+ * message. Returning online fires the `online` event, which resumes the retry
+ * automatically rather than leaving the user to find the button.
  */
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
@@ -48,9 +58,18 @@ function ReconnectingPageInner() {
 
   const [phase, setPhase] = useState<Phase>("retrying");
   const [attempt, setAttempt] = useState(1);
+  // Starts false rather than reading navigator.onLine directly: this page is
+  // prerendered by the static export, and touching navigator during render
+  // would desync the first client paint from the prerendered HTML. The real
+  // value is read in the effect below, immediately after mount.
+  const [offline, setOffline] = useState(false);
   // Guards against a stale timer/response resolving after unmount or after a
   // newer attempt has already started.
   const attemptToken = useRef(0);
+  // Read by the `online` listener, which must not restart a run once we've
+  // already committed to navigating away.
+  const phaseRef = useRef<Phase>("retrying");
+  phaseRef.current = phase;
 
   const runAttempt = useCallback(
     (attemptNumber: number) => {
@@ -76,6 +95,14 @@ function ReconnectingPageInner() {
             return;
           }
 
+          // No network interface at all — retrying is guaranteed to fail, so stop
+          // consuming attempts and wait for the `online` event to resume us.
+          if (typeof navigator !== "undefined" && !navigator.onLine) {
+            setOffline(true);
+            setPhase("manual");
+            return;
+          }
+
           // Still unreachable — auto-retry with backoff, then hand control to the user.
           const delay = AUTO_RETRY_DELAYS_MS[attemptNumber - 1];
           if (delay !== undefined) {
@@ -98,6 +125,31 @@ function ReconnectingPageInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── Connectivity tracking ──────────────────────────────────────────────────
+
+  useEffect(() => {
+    function handleOnline() {
+      setOffline(false);
+      // Regaining connectivity is exactly the signal this page is waiting for —
+      // resume immediately instead of making the user press Try Again.
+      if (phaseRef.current === "redirecting") return;
+      setPhase("retrying");
+      setAttempt(1);
+      runAttempt(1);
+    }
+    function handleOffline() {
+      setOffline(true);
+    }
+
+    setOffline(!navigator.onLine);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, [runAttempt]);
+
   function handleTryAgain() {
     setPhase("retrying");
     setAttempt(1);
@@ -117,25 +169,35 @@ function ReconnectingPageInner() {
     <div className="min-h-screen flex items-center justify-center bg-white px-4">
       <div className="w-full max-w-sm">
         <div className="bg-amber-50 border border-amber-200 rounded-xl px-8 py-8 shadow-sm text-center">
-          <div className="w-10 h-10 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-5" />
+          {offline ? (
+            // Static, not a spinner — nothing is in flight while the device has
+            // no connection, and an animated spinner would imply otherwise.
+            <div className="w-10 h-10 border-4 border-amber-500 rounded-full mx-auto mb-5 flex items-center justify-center text-amber-500 text-lg font-bold">
+              !
+            </div>
+          ) : (
+            <div className="w-10 h-10 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-5" />
+          )}
 
           <h2 className="text-lg font-bold text-slate-800 mb-2">
-            Reconnecting to the server…
+            {offline ? "You appear to be offline" : "Reconnecting to the server…"}
           </h2>
           <p className="text-sm text-amber-800 mb-1">
-            The PPDO Portal server may be waking up after a period of
-            inactivity — this can take up to about a minute.
+            {offline
+              ? "No internet connection was detected on this device. The portal will reconnect automatically as soon as you're back online."
+              : "The PPDO Portal server may be waking up after a period of inactivity — this can take up to about a minute."}
           </p>
-          {phase === "retrying" && (
+          {!offline && phase === "retrying" && (
             <p className="text-xs text-amber-700 mb-6">
               Attempt {attempt} of {totalAttempts}…
             </p>
           )}
-          {phase === "manual" && (
+          {!offline && phase === "manual" && (
             <p className="text-xs text-amber-700 mb-6">
               Still unable to reach the server.
             </p>
           )}
+          {offline && <p className="text-xs text-amber-700 mb-6">Waiting for a connection…</p>}
 
           {phase === "manual" && (
             <div className="flex flex-col gap-2">

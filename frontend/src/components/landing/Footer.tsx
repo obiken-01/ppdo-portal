@@ -2,6 +2,8 @@
  * Public site footer — dark strip with copyright and portal version.
  * Matches the Penpot "01 Landing" frame footer.
  */
+import { APP_VERSION } from "@/lib/version";
+
 export default function Footer() {
   return (
     <footer className="bg-slate-800 text-slate-400">
@@ -9,7 +11,7 @@ export default function Footer() {
         <span>
           &copy; 2026 Provincial Government of Occidental Mindoro &mdash; PPDO
         </span>
-        <span className="text-slate-600">Portal v1.8.0</span>
+        <span className="text-slate-600">Portal {APP_VERSION}</span>
       </div>
     </footer>
   );

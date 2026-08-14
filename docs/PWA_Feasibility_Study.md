@@ -601,13 +601,21 @@ authoring component is written.
 > Added 2026-08-14 at Ralph's request. Everything below is independent of §11 — none of it changes
 > shape once the AIP requirements land, and all of it is needed regardless of what the rework decides.
 
-### 12.1 Ship now — no decisions needed
+### 12.1 Ship now — no decisions needed ✅ DONE (RAL-234)
+
+> Shipped 2026-08-14 on `claude/progressive-web-apps-9kym78`, targeting `release/1.8.0`.
+> Linear: [RAL-234](https://linear.app/ralphoksiprojects/issue/RAL-234/pwa-groundwork-offline-honest-reconnecting-shared-app-version-swa).
 
 | # | Work | Why it's unblocked | Size |
 |---|---|---|---|
-| 1 | **Offline honesty on `/reconnecting`** (§6.3) — `navigator.onLine` check so a user with no signal stops being told the server is waking up | No service worker, no manifest, no auth change. Pure copy + one conditional. | trivial |
-| 2 | **Consolidate `APP_VERSION`** (§4.4) — one exported constant replacing three hardcoded copies, one of which is a bare string literal in `Footer.tsx:12` | Prerequisite for any "new version available" prompt. Closes a drift risk `CLAUDE.md` already flags. | trivial |
-| 3 | **SWA config hardening** (§7) — `.webmanifest` MIME type, `Cache-Control: no-cache` on `/sw.js`, navigation-fallback excludes | Config-only. Harmless before a SW exists, and prevents a stale-worker deploy trap once one does. | trivial |
+| 1 | ✅ **Offline honesty on `/reconnecting`** (§6.3) — `navigator.onLine` check so a user with no signal stops being told the server is waking up | No service worker, no manifest, no auth change. Pure copy + one conditional. | trivial |
+| 2 | ✅ **Consolidate `APP_VERSION`** (§4.4) — one exported constant replacing three hardcoded copies, one of which was a bare string literal in `Footer.tsx:12` | Prerequisite for any "new version available" prompt. Closes a drift risk `CLAUDE.md` already flags. | trivial |
+| 3 | ✅ **SWA config hardening** (§7) — `.webmanifest` MIME type, `Cache-Control: no-cache` on `/sw.js`, navigation-fallback excludes | Config-only. Harmless before a SW exists, and prevents a stale-worker deploy trap once one does. | trivial |
+
+Item 1 went slightly beyond the copy change: retrying against a dead network interface consumed both
+auto-retry attempts before showing manual controls, so offline now pauses the retry loop and the
+`online` event resumes it automatically. New file `frontend/src/lib/version.ts` holds the version
+constant for item 2.
 
 ### 12.2 Ship now — one small decision needed
 
@@ -617,6 +625,17 @@ authoring component is written.
 
 Worth being explicit: Phase 1 is **not** blocked on AIP at all. It was only ever blocked on a
 512×512 image. If the seal is acceptable as interim, this can be built this week.
+
+> **Checked 2026-08-14** (Ralph: *"I think we already have the PPDO logo"*): the official logo is
+> **not in the repository**. The only PPDO mark committed is `ppdo-logo-placeholder.png` / `.webp`
+> at 256×256, referenced from 8 places across the landing page, login page, navbar and sidebar.
+> `CLAUDE.md` and `PROJECT_DOCUMENTATION_NET_AZURE.md:217` both still describe it as a placeholder
+> pending the official logo. If the real logo exists outside the repo, dropping a ≥512×512 source
+> into `frontend/public/images/` unblocks Phase 1 immediately — `sharp` is already available to
+> derive every size from it.
+>
+> Unrelated but adjacent: `(public)/page.tsx:34` declares the Open Graph image as `512×512` while
+> the actual file is 256×256. Worth correcting whenever the logo is replaced.
 
 ### 12.3 Start now — independent of AIP, but on the critical path for it
 

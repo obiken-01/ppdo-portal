@@ -22,6 +22,7 @@ import { z } from "zod";
 import axios from "axios";
 import api from "@/lib/api";
 import { auth } from "@/lib/auth";
+import { APP_VERSION } from "@/lib/version";
 import type { LoginResponse, MeResponse, RefreshErrorReason } from "@/types/auth";
 
 // ---------------------------------------------------------------------------
@@ -86,8 +87,6 @@ type FormData = z.infer<typeof schema>;
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
-
-const APP_VERSION = "v1.8.0";
 
 function LoginPageInner() {
   const router = useRouter();
