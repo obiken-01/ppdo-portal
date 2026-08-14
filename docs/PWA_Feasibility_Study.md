@@ -11,6 +11,8 @@
 > **do AIP creation work locally with no server round-trip, and upload it later.** AIP creation is
 > itself being reworked in v1.8.0 (details to follow), so §11 records the constraints the rework
 > must be designed against rather than a design for the flow as it stands today.
+> **Confirmed by Ralph:** authoring happens **in the portal UI, not in Excel** — see §11.2 ⑧, which
+> closes the cheaper alternative and makes the PWA genuinely load-bearing.
 
 ---
 
@@ -461,12 +463,54 @@ These are small, slow-changing, and not sensitive — a good first cache. But no
 composition currently happens **on the server**; offline authoring either replicates that rule
 client-side or defers it to upload.
 
-**⑧ The `.xlsm` upload path cannot go offline.** Parsing is `AipXlsmParser` in Infrastructure
-(server-side, ClosedXML). Offline "AIP creation" therefore means the *manual/local authoring* path
-only, unless a parser is reimplemented in the browser — which would be a second source of truth for
-the file format and is not recommended. Worth confirming this matches what Ralph has in mind: if
-the intent is "fill in the Excel file offline and upload the file later", that is a much smaller
-feature — the file just sits on disk and gets uploaded when there's signal, needing no PWA at all.
+**⑧ Authoring is in the portal UI, not Excel — confirmed by Ralph, 2026-08-14.**
+This closes the cheaper alternative. Had the intent been "fill in the `.xlsm` offline and upload the
+file later", the file would simply sit on disk and no PWA would be needed at all. It is not: the
+**authoring UI itself must run offline**, which makes every other item in this section binding
+rather than advisory.
+
+Two direct consequences:
+
+- The `.xlsm` path is out of scope for offline regardless — parsing is `AipXlsmParser` in
+  Infrastructure (server-side, ClosedXML), and reimplementing it in the browser would create a
+  second source of truth for the file format. Offline means the authoring path only.
+- **§5's auth wall is now a hard blocker, not a caveat.** With an Excel workflow there was a
+  fallback that worked with no app at all. With UI authoring there is none: if the app won't render
+  offline, the feature does not exist.
+
+**⑨ Validation is almost entirely server-side — this is the sharpest new problem.**
+The client validates *only* `"Name is required."` (7 occurrences in `detail/page.tsx`; the UI
+otherwise just renders whatever error string the API returns, via `aipErrorMessage`). Everything
+substantive lives in `AipService`:
+
+| Rule | Where |
+|---|---|
+| Sector must be one of the known prefixes | `AddOfficeAsync:429` |
+| Office must exist and be active | `:433` |
+| Office must have an `OfficeRefCode` configured | `:436` |
+| Ref code composition `{prefix}-000-1-{OfficeRefCode}` | `:441` |
+| No duplicate sibling `RefCode` + `Name` | `:449` |
+| Record must be in `Draft` | `:425` |
+| One active AIP per fiscal year | `ConfirmImportAsync:279` |
+
+Online this is fine — every rule fires within a second of the user's click. **Offline, a user could
+author for days and receive no feedback beyond "Name is required" until they upload**, at which
+point the entire document can come back rejected. That is the difference between a feature people
+trust and one they abandon.
+
+There is no free fix. Duplicating the rules in TypeScript creates two sources of truth that will
+drift (`docs/v1.7/Mobile_And_Inventory_Findings.md` §4.1 is precisely that failure mode: a
+hard-coded frontend list that silently diverged from the backend and broke PR creation outright).
+The realistic options, in preference order:
+
+1. **Make offline validation structural, not duplicated** — have the rework serve the rules as
+   *data* (cached alongside the reference data in ⑦: valid sectors, office ref codes, active
+   offices) so one source of truth drives both sides. This is the option the rework can actually
+   choose; retrofitting it later is much harder.
+2. Validate on every local save against cached reference data, and show a persistent "N issues to
+   resolve before upload" panel — the user sees problems as they work, not at the end.
+3. Accept upload-time rejection, but return **per-node errors** rather than a single failed request,
+   so the user can fix six rows instead of re-authoring a document.
 
 ### 11.3 What the shape of a solution looks like
 
@@ -476,7 +520,8 @@ Sequenced by dependency, not priority:
 |---|---|---|
 | A | **Session-without-network** (§5) | Prerequisite for everything. Also the piece most likely to be wrong on iOS (§5.3) — verify on a device first. |
 | B | **Local draft store** — IndexedDB, not `localStorage` | An AIP hierarchy is deep and can be large; `localStorage` is a synchronous 5 MB string store and the wrong tool. The WFP draft pattern (`wfp/page.tsx:819`) is the right *idea* at the wrong scale. |
-| C | **Reference-data cache** (⑦) | Small, independent, useful on its own. |
+| C | **Reference-data cache** (⑦) | Small, independent, useful on its own. Now also the substrate for offline validation (⑨). |
+| C2 | **Rules-as-data validation** (⑨) | Only viable if the rework designs for it. The alternative — a hand-copied TypeScript rulebook — is the drift failure already seen in `Mobile_And_Inventory_Findings.md` §4.1. |
 | D | **Bulk scoped upload endpoint** (①+③) | The one piece that must land in the AIP rework itself rather than beside it. |
 | E | **Upload UX** — explicit "Upload my work" button, not silent background sync | For a document a user spent days on, silent replay is the wrong model: they need to see what will be sent, what came back, and what to do if it's rejected (④). |
 | F | **Idempotency** — client-generated draft ID sent with the upload | A retried upload over a flaky link must not create two records. Nothing in the current AIP write path is idempotent. |
@@ -495,8 +540,8 @@ primitive here — see ② (chained server IDs) and E (silent replay of a multi-
 4. **Is provincial budget data on a personal/shared laptop acceptable?** (§9 Q4, now unavoidable.)
    If the answer is "only on office-issued devices", say so explicitly — it changes the risk
    calculus, not the code.
-5. **Does "AIP creation work" mean authoring in the portal UI, or filling in the Excel file?** (⑧.)
-   If it's the file, this may not need a PWA at all — worth settling before anything is built.
+5. ~~**Does "AIP creation work" mean authoring in the portal UI, or filling in the Excel file?**~~
+   ✅ **Answered 2026-08-14 — portal UI.** The PWA is load-bearing; see ⑧ and ⑨.
 6. **Who is the offline user?** Non-PPDO office users are the likely answer, which immediately
    raises ⑥'s permission gap.
 
@@ -508,10 +553,36 @@ component — it is an **AIP feature with a PWA component**, and the PWA part (m
 worker, install) is the small half. The hard half is session-without-network, a merge policy, and a
 rejection-recovery path.
 
-Because AIP creation is being reworked anyway, the timing is good: ①, ③ and ⑥ are cheap to design
+Because AIP creation is being reworked anyway, the timing is good: ①, ③, ⑥ and ⑨ are cheap to design
 in now and expensive to retrofit. **The single most useful thing to carry into the rework is that
 the offline unit of work and the upload endpoint should be the same scoped, ID-free, atomic
 document** — everything else follows from that.
+
+### 11.6 The one recommendation that matters for the rework
+
+Now that authoring is confirmed to happen in the portal UI (⑧), there is a fork in the road, and
+the rework picks it whether or not anyone decides it deliberately:
+
+- **Online-first UI, offline bolted on later.** Each edit calls an endpoint; component state is a
+  cache of server state. This is what AIP authoring does today. Adding offline afterwards means
+  intercepting ~20 endpoints, inventing temp IDs, remapping them on replay (②), and duplicating a
+  server rulebook (⑨). This is the expensive path, and it usually ends with an offline mode that
+  works for demos and not for a budget season.
+
+- **Local-document-first UI, upload as an explicit step.** Editing mutates a local document held in
+  IndexedDB; the document is the source of truth while the user works; upload posts it whole (①).
+  Online and offline become the *same* code path — online users simply upload more often. ②
+  disappears entirely, ⑨ becomes tractable because validation already runs locally against cached
+  reference data, and ③'s merge question is confined to one endpoint instead of twenty.
+
+**Recommendation: design the reworked AIP authoring UI local-document-first**, even for the online
+case. It is not much more work when starting fresh, and it is the difference between offline being a
+later ticket and offline being a rewrite. The precedent is already in the codebase — the `.xlsm`
+import path holds a complete unsaved hierarchy client-side and commits it in one call — so this is
+an existing pattern in this app, not a novel architecture.
+
+Everything else in §11 can be sequenced later. This one cannot: it is decided the moment the first
+authoring component is written.
 
 ---
 
