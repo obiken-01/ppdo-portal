@@ -48,7 +48,7 @@ wrong fix.
 | W1 | "Limit Dept Head — except GAD/20% DF/PS/LDRRF/Trust Fund" | **Not a permission rule.** It is the ceiling-exemption list above | §5.6 rewritten; the permission model is unaffected |
 | 9.1 | Printable AIP form | **Confirmed in scope**, matching the official form already used | Largest single deliverable in §7 |
 | 9.2–9.8 | Remaining suggested additions | **Accepted** | Deadline, notifications, amendment-readiness, carry-forward, completeness rules, approval snapshot, concurrent-edit guard |
-| 12 | Password reset | Ralph proposes fully self-service with a **deterministic** temporary password | ⚠️ **Cannot ship as specified** — see §2.4 |
+| 12 | Password reset | **Option B** — self-service gated on a user-set recovery answer, random temporary password. (The deterministic-password proposal was withdrawn — §2.4) | Ticket-ready; §2.6. No dependency on the AIP work |
 
 ---
 
@@ -191,7 +191,33 @@ Whichever is chosen, two things should hold:
 - **Log every reset in the audit trail**, and tell the user on next login that their password was
   reset and when. That is the detective control that makes Option B acceptable.
 
-**→ DECISION 12 (revised):** Option A or Option B?
+> **✅ Decided by Ralph, 2026-08-14: Option B** — true self-service, no admin involvement.
+
+### 2.6 Option B, ready to ticket
+
+The shape is settled; these are the sub-decisions inside it. **Recommended defaults are marked** —
+none is load-bearing, so this can be ticketed as-is and adjusted if Ralph prefers otherwise.
+
+| # | Sub-decision | Recommended | Why |
+|---|---|---|---|
+| a | What is the recovery secret? | **A question chosen from a short fixed list, plus a free-text answer** | Free-text *questions* invite unanswerable ones ("my favourite?"). A fixed list keeps the UI simple and the answers memorable. A numeric PIN is easier to shoulder-surf and easier to forget |
+| b | How many questions? | **One** | "Do not make it complicated." Two roughly doubles the setup friction for a marginal gain against a colleague who already knows one answer |
+| c | How is the answer stored? | **Hashed, exactly like a password** (same BCrypt path) | It *is* a credential. It must never be readable by an admin, or Option B degrades to Option A with extra steps |
+| d | Answer matching | **Case-insensitive, trimmed** | "Manila" vs "manila " is a support call, not a security boundary |
+| e | Who sets it, and when? | **Forced once at next login** for every existing user; part of account creation for new ones | Anything optional leaves most of the 52 accounts unrecoverable, which is the state we're trying to leave |
+| f | User has no answer set yet? | **Fall back to Option A** (admin one-click approval) | Needed during the rollout window regardless, and as the permanent path for anyone who forgets their answer |
+| g | Wrong answers | **Lock reset attempts for that account after 5 failures in an hour** | Without this the answer is brute-forceable, which undoes the whole point |
+| h | Response when the username doesn't exist | **Identical to a wrong answer** | Otherwise the form is a username-enumeration oracle |
+| i | Temporary password | **Randomly generated, shown once on screen** | Never a pattern — that is the §2.4 finding |
+| j | Forced change after reset | **Offered, skippable** (Ralph's request) | Safe *because* the password is random — nobody chooses to keep one |
+| k | After any reset | **Write an audit-log entry, and tell the user on next login that their password was reset and when** | The detective control that makes self-service acceptable — a colleague who used someone's answer does not go unnoticed |
+
+**Schema:** two columns on `users` (`RecoveryQuestionKey`, `RecoveryAnswerHash`), plus a small
+attempts table or counter for (g). The `MustChangePassword` flag from §2.3 is still worth adding —
+it fixes the §2.2 finding for admin-initiated resets too.
+
+**Independent of everything else in v1.8.0** — no AIP dependency, no open questions. Can be
+ticketed and built before Monday's answers land.
 
 ---
 
@@ -754,7 +780,7 @@ last-write-wins. A per-record soft lock or a "changed by someone else" warning i
 | 9 | Must printed rows add up to the printed total? | 8.3 | Every report |
 | 10 | Reviewer: can they reject/return, and with comments at what level? | 5.3 | Workflow |
 | 11 | 2027 AIP + `.xlsm` upload — migrate, keep, or retire? | 5.1 | Migration |
-| 12 | **Password reset — Option A (one-click admin approval) or Option B (user-set recovery answer)?** The deterministic-password proposal can't ship | 2.4–2.5 | Reset flow |
+| ~~12~~ | ~~Password reset flow~~ | ✅ **Option B** — self-service via a user-set recovery answer. Ready to ticket, see §2.6 | — |
 
 Settled rows are struck through and kept for the record. Of what remains, **A, E, 10 and 11**
 change the data model rather than the UI. If only a few can be
