@@ -596,5 +596,59 @@ authoring component is written.
 
 ---
 
-*Study only — no implementation. Phase 1 is blocked on §9 Q1; §6.3 can ship independently today.*
-*§11 (offline AIP) is provisional pending the v1.8.0 AIP rework details.*
+## 12. What can proceed now, without the AIP rework requirements
+
+> Added 2026-08-14 at Ralph's request. Everything below is independent of §11 — none of it changes
+> shape once the AIP requirements land, and all of it is needed regardless of what the rework decides.
+
+### 12.1 Ship now — no decisions needed
+
+| # | Work | Why it's unblocked | Size |
+|---|---|---|---|
+| 1 | **Offline honesty on `/reconnecting`** (§6.3) — `navigator.onLine` check so a user with no signal stops being told the server is waking up | No service worker, no manifest, no auth change. Pure copy + one conditional. | trivial |
+| 2 | **Consolidate `APP_VERSION`** (§4.4) — one exported constant replacing three hardcoded copies, one of which is a bare string literal in `Footer.tsx:12` | Prerequisite for any "new version available" prompt. Closes a drift risk `CLAUDE.md` already flags. | trivial |
+| 3 | **SWA config hardening** (§7) — `.webmanifest` MIME type, `Cache-Control: no-cache` on `/sw.js`, navigation-fallback excludes | Config-only. Harmless before a SW exists, and prevents a stale-worker deploy trap once one does. | trivial |
+
+### 12.2 Ship now — one small decision needed
+
+| # | Work | Decision required | Size |
+|---|---|---|---|
+| 4 | **The whole of Phase 1** — manifest, service worker, static-asset caching, offline fallback, update toast | **Only the icon** (§9 Q1): ship with the provincial seal as an interim app icon, or hold until the official PPDO logo exists. Everything else in Phase 1 is written and testable without it. | 1 ticket |
+
+Worth being explicit: Phase 1 is **not** blocked on AIP at all. It was only ever blocked on a
+512×512 image. If the seal is acceptable as interim, this can be built this week.
+
+### 12.3 Start now — independent of AIP, but on the critical path for it
+
+| # | Work | Why now | Size |
+|---|---|---|---|
+| 5 | **Custom domain** (§5.3) — put frontend and API on the same site so the refresh cookie stops being third-party | Independent of everything in this document, has standalone value (branding, SEO, a `gov.ph` address for a government portal), and is the durable fix for the iOS cookie risk. Long lead time if it needs provincial IT or a registrar — worth starting early. | infra |
+| 6 | **Solve the auth wall** (§5) — decide how the portal boots without a network | Needs *Ralph's security call*, not AIP requirements. It is the single hardest prerequisite for §11 and completely orthogonal to how AIP authoring is reworked. Deciding it now means the rework can assume it. | 1 decision + 1–2 tickets |
+
+### 12.4 Verify now — costs nothing but a phone
+
+| # | Check | Why it matters |
+|---|---|---|
+| 7 | **Does silent refresh work on a real iPhone today?** (§5.3) | The refresh cookie is `SameSite=None` to a different origin, and Safari blocks third-party cookies by default. If this is already broken, it is a live bug affecting iOS users **today** — independent of any PWA work — and it reorders everything: the custom domain (5) becomes the first ticket, not an infra nicety. |
+
+### 12.5 Decide now — cheap today, a rewrite later
+
+| # | Decision | Deadline |
+|---|---|---|
+| 8 | **Local-document-first vs online-first authoring** (§11.6) | Settled implicitly by the first authoring component the rework writes. Does not need the requirements — it is a principle, not a feature. |
+
+### 12.6 Genuinely blocked on the AIP requirements
+
+Listed so the boundary is explicit: the scoped bulk upload endpoint (§11.2 ①/③), the merge and
+ownership policy (③, ⑤, ⑥), rules-as-data validation (⑨), the local draft store's schema (§11.3 B),
+and idempotency (§11.3 F). All of these depend on §11.4 Q1 and Q2, which the requirements should
+answer.
+
+**Summary:** items 1–3 and 7 can happen immediately; 4 needs only an icon; 5, 6 and 8 need a
+decision from Ralph but not the AIP requirements. That is most of the PWA work — the part that is
+actually blocked is the AIP-specific half.
+
+---
+
+*Study only — no implementation. Phase 1 is blocked on §9 Q1 (an icon), not on AIP — see §12.*
+*§11 (offline AIP) is parked pending the v1.8.0 AIP rework requirements.*
