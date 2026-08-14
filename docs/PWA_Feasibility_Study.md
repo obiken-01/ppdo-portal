@@ -6,6 +6,11 @@
 > **No production code was changed by this study.** One file (`src/app/manifest.ts`) was created
 > temporarily to verify a build behaviour, then deleted — see §10 for the verification log.
 > Nothing here is committed to a milestone.
+>
+> **Addendum 2026-08-14 — §11.** Ralph raised a concrete v1.8.0 driver: users install the web app,
+> **do AIP creation work locally with no server round-trip, and upload it later.** AIP creation is
+> itself being reworked in v1.8.0 (details to follow), so §11 records the constraints the rework
+> must be designed against rather than a design for the flow as it stands today.
 
 ---
 
@@ -300,6 +305,7 @@ takes the root scope `/`. A service worker can only control paths at or below it
 | **1.5 — Offline honesty** | `navigator.onLine` on `/reconnecting`; correct wording for a genuinely offline user | none — can ship independently | trivial |
 | **2 — Offline read** | Per-endpoint API cache allowlist, staleness banner, cache purge on logout, session-render decision | §5.2 + §6.2 answered by Ralph | 2–3 tickets |
 | **3 — Push + background sync** | VAPID keys, subscription table + endpoints, Web Push send path, offline write queue with server-side idempotency keys | Phase 2; iOS 16.4+; backend milestone | own milestone |
+| **3-AIP — offline AIP authoring** | The v1.8.0 driver: author AIP work locally, upload later. Jumps straight to offline writes. | §5 auth wall + the AIP rework — see **§11** | own milestone |
 
 **Recommendation: do 1.5 now, and 1 as soon as there's a real logo.** Treat Phase 2 as a separate
 decision on its merits — it is where the security tradeoff actually lives, and it should not ride
@@ -353,4 +359,161 @@ What was actually run for this study, on this branch, 2026-08-14:
 
 ---
 
+---
+
+## 11. Addendum — v1.8.0: offline AIP creation
+
+> Added 2026-08-14 after Ralph described the actual v1.8.0 driver: *"users download the web app and
+> do AIP creation work locally without sending to server, then later they upload their work."*
+>
+> **AIP creation is being reworked in v1.8.0; details to follow.** So this section deliberately
+> stops at *constraints and shapes* — the things that stay true regardless of what the new entry UI
+> looks like — rather than designing against a flow that is about to change. Nothing here is a
+> ticket yet.
+
+### 11.1 What this changes about the study above
+
+It moves the goalposts from **Phase 1** (install + fast loads) to **Phase 3** (offline writes),
+skipping Phase 2 entirely. That is the most demanding version of this feature, and it makes two
+things non-negotiable that were previously optional:
+
+1. **§5's auth wall becomes the critical path, not a caveat.** A user cannot "work locally" in an
+   app that refuses to render until `POST /auth/refresh` succeeds. This is now the first problem to
+   solve, and it is completely independent of the AIP rework — worth starting on regardless of what
+   the new AIP UI looks like.
+2. **§6.2's "never cache API data" rule needs a scoped exception.** Local AIP work *is*
+   provincial budget data sitting on a laptop. That is the security decision from §9 Q4, and this
+   requirement answers it with "yes, for AIP drafts" — which means it now needs an explicit,
+   written scope (which data, how long, purged when) rather than a blanket refusal.
+
+### 11.2 Findings from the current implementation that should survive the rework
+
+Read as *design constraints for the rework*, not as descriptions of what to keep.
+
+**① The right upload shape already exists — preserve it.**
+`AipService.ConfirmImportAsync` (`AipService.cs:263`) accepts a complete hierarchy —
+`sectorOffices: Record<string, ParsedAipOfficeResponse[]>`, offices → programs → projects →
+activities — containing **no server-assigned IDs at all**, and commits the entire graph in a single
+`SaveChangesAsync`. The code comment at `:291` says why it was built that way: per-level saves used
+to leave orphan rows when a deep insert failed.
+
+That is exactly the contract an offline client needs: author a whole document locally, POST it once,
+all-or-nothing. It also already round-trips through the browser — `aip/new/page.tsx:82` stashes the
+preview in `sessionStorage` and `import-preview` posts it back — so the server **already accepts a
+client-held, client-editable hierarchy payload**. The offline path is a longer-lived version of a
+trip the data already makes.
+
+**② The per-node path is the wrong shape — don't carry it into the rework.**
+The manual-entry flow builds the tree through ~20 chained endpoints (`lib/aip.ts`), each depending
+on the parent's **server-assigned integer ID**: `addAipProgram(officeId)` → `addAipProject(programId)`
+→ `addAipActivity(projectId)`. Offline there is no `officeId` to hang a program off, so a naive
+"queue the failed requests and replay them" service worker **cannot work** — it would need
+client-generated temporary IDs plus server-side ID remapping on replay, which is materially harder
+and easier to get wrong than ①. If the rework keeps a per-node API for online editing, offline work
+should still upload via a bulk endpoint.
+
+**③ The hardest problem is merge, not queueing — and it is a policy question.**
+`ConfirmImportAsync:279` enforces **one active (Draft or Final) AIP per fiscal year**, provincewide.
+An `AipRecord` is a single shared provincial document; each office is an `AipOffice` node *inside*
+it. So if five offices each work offline on FY2027 and then upload:
+
+- the first upload creates the record;
+- the other four hit `An AIP for FY 2027 already exists with status 'Draft'.`
+
+This is not a bug to route around — it is the data model correctly saying that offline users are
+not editing separate documents, they are editing **disjoint subtrees of one shared document**.
+
+The structurally clean answer, and the thing the rework should make possible: **scope both the
+offline unit of work and the upload to a single `AipOffice` subtree.** "Upsert my office's programs,
+projects and activities into the FY2027 record" is atomic, conflict-free between offices, and is a
+near-copy of the machinery `ReplaceImportAsync` (`AipService.cs:318`) already uses to swap one
+record's hierarchy. Whether it should also allow *replacing* an office subtree the user has already
+uploaded — and what happens if two people worked offline on the same office — is Ralph's call
+(§11.4 Q2).
+
+**④ Two guards will reject offline work that was valid when it was written.**
+
+| Guard | Where | Offline consequence |
+|---|---|---|
+| Mutations require `Status == Draft` | `AddOfficeAsync:425` and every sibling | A record finalized while a user was offline rejects their upload wholesale. Weeks of work, one 400. |
+| One active AIP per fiscal year | `ConfirmImportAsync:279` | As ③. |
+
+Neither is wrong; both need a **defined recovery path** rather than an error toast. At minimum the
+local draft must survive a rejected upload intact and stay re-uploadable — never "submit, fail,
+lose it."
+
+**⑤ No office-ownership enforcement exists today.** `AddOfficeAsync` takes any `officeConfigId`
+from any budget-planning user; nothing ties it to the caller's own office. Fine while every edit is
+online, immediate, and audited. If uploads start *merging subtrees*, "may this user overwrite this
+office's subtree?" becomes a real authorization question that has no answer in the code today.
+
+**⑥ Related gate:** `AipConfirm` requires `CanUploadAip`, while manual entry requires only
+`CanAccessBudgetPlanning` (`AipFunctions.cs:15`, `:128`). Non-PPDO office users — the most likely
+offline audience — **cannot** call confirm today. An offline upload path for them needs either a new
+permission or a separate endpoint; reusing `AipConfirm` as-is would lock out exactly the users the
+feature is for.
+
+**⑦ Offline entry needs reference data cached.** Local AIP authoring validates against server-held
+lookups the detail page fetches on mount (`detail/page.tsx:1802-1803`): active offices
+(`listOffices`) and funding sources (`listFundingSources`), plus sector prefixes (`AipSector.Prefixes`)
+and ref-code derivation (`AddOfficeAsync:441` builds `{prefix}-000-1-{OfficeRefCode}` server-side).
+These are small, slow-changing, and not sensitive — a good first cache. But note that ref-code
+composition currently happens **on the server**; offline authoring either replicates that rule
+client-side or defers it to upload.
+
+**⑧ The `.xlsm` upload path cannot go offline.** Parsing is `AipXlsmParser` in Infrastructure
+(server-side, ClosedXML). Offline "AIP creation" therefore means the *manual/local authoring* path
+only, unless a parser is reimplemented in the browser — which would be a second source of truth for
+the file format and is not recommended. Worth confirming this matches what Ralph has in mind: if
+the intent is "fill in the Excel file offline and upload the file later", that is a much smaller
+feature — the file just sits on disk and gets uploaded when there's signal, needing no PWA at all.
+
+### 11.3 What the shape of a solution looks like
+
+Sequenced by dependency, not priority:
+
+| Step | Work | Notes |
+|---|---|---|
+| A | **Session-without-network** (§5) | Prerequisite for everything. Also the piece most likely to be wrong on iOS (§5.3) — verify on a device first. |
+| B | **Local draft store** — IndexedDB, not `localStorage` | An AIP hierarchy is deep and can be large; `localStorage` is a synchronous 5 MB string store and the wrong tool. The WFP draft pattern (`wfp/page.tsx:819`) is the right *idea* at the wrong scale. |
+| C | **Reference-data cache** (⑦) | Small, independent, useful on its own. |
+| D | **Bulk scoped upload endpoint** (①+③) | The one piece that must land in the AIP rework itself rather than beside it. |
+| E | **Upload UX** — explicit "Upload my work" button, not silent background sync | For a document a user spent days on, silent replay is the wrong model: they need to see what will be sent, what came back, and what to do if it's rejected (④). |
+| F | **Idempotency** — client-generated draft ID sent with the upload | A retried upload over a flaky link must not create two records. Nothing in the current AIP write path is idempotent. |
+
+Deliberately **not** recommended: Workbox Background Sync replaying queued POSTs. It is the wrong
+primitive here — see ② (chained server IDs) and E (silent replay of a multi-day document).
+
+### 11.4 Open questions — these block scoping, and most are for the rework
+
+1. **What is the offline unit of work?** One office's subtree, or a whole AIP record? This decides
+   whether ③ is a merge problem or a simple create.
+2. **Two users, one office, both offline.** Last-write-wins, reject-second, or merge? Cheapest
+   honest answer is a lock or a warning; the rework should at least not make this *impossible*.
+3. **How long does offline work live?** Hours (a site visit) or weeks (a budget season)? Weeks means
+   ④'s recovery path is a certainty, and iOS storage-eviction behaviour needs verifying.
+4. **Is provincial budget data on a personal/shared laptop acceptable?** (§9 Q4, now unavoidable.)
+   If the answer is "only on office-issued devices", say so explicitly — it changes the risk
+   calculus, not the code.
+5. **Does "AIP creation work" mean authoring in the portal UI, or filling in the Excel file?** (⑧.)
+   If it's the file, this may not need a PWA at all — worth settling before anything is built.
+6. **Who is the offline user?** Non-PPDO office users are the likely answer, which immediately
+   raises ⑥'s permission gap.
+
+### 11.5 Honest assessment
+
+Offline AIP creation is **feasible**, and the backend's existing bulk-commit contract (①) means it
+is better-positioned than most apps attempting this. It is not, however, a PWA feature with an AIP
+component — it is an **AIP feature with a PWA component**, and the PWA part (manifest, service
+worker, install) is the small half. The hard half is session-without-network, a merge policy, and a
+rejection-recovery path.
+
+Because AIP creation is being reworked anyway, the timing is good: ①, ③ and ⑥ are cheap to design
+in now and expensive to retrofit. **The single most useful thing to carry into the rework is that
+the offline unit of work and the upload endpoint should be the same scoped, ID-free, atomic
+document** — everything else follows from that.
+
+---
+
 *Study only — no implementation. Phase 1 is blocked on §9 Q1; §6.3 can ship independently today.*
+*§11 (offline AIP) is provisional pending the v1.8.0 AIP rework details.*
