@@ -148,7 +148,7 @@ function LoginPageInner() {
       {/* ── Left panel — branding (desktop only) ────────────────────────── */}
       <aside className="hidden md:flex md:w-1/4 bg-green-700 flex-col items-center justify-center px-8 py-14 text-white">
         <Image
-          src="/images/ppdo-logo-placeholder.webp"
+          src="/images/ppdo-logo.webp"
           alt="PPDO Logo"
           width={88}
           height={88}
@@ -201,7 +201,7 @@ function LoginPageInner() {
           {/* Mobile logo (visible only on small screens) */}
           <div className="flex md:hidden items-center justify-center gap-2 mb-8">
             <Image
-              src="/images/ppdo-logo-placeholder.webp"
+              src="/images/ppdo-logo.webp"
               alt="PPDO"
               width={36}
               height={36}

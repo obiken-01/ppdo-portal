@@ -214,7 +214,7 @@ ppdo-portal/
 │   │   └── images/
 │   │       ├── Ph_seal_occidental_mindoro.png   ← Province of Occidental Mindoro seal
 │   │       ├── Bagong_Pilipinas_logo.png         ← Bagong Pilipinas logo (use transparent PNG)
-│   │       └── ppdo-logo-placeholder.png         ← OFFICIAL PPDO logo (filename kept to avoid a code change)
+│   │       └── ppdo-logo.png                     ← official PPDO logo (source for public/icons/)
 │   ├── src/
 │   │   ├── app/                        ← Next.js App Router pages
 │   │   │   ├── (public)/

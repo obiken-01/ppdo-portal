@@ -168,7 +168,7 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
         className="flex items-center gap-3 px-5 py-3 border-b border-green-600 hover:bg-green-600 transition-colors group"
       >
         <Image
-          src="/images/ppdo-logo-placeholder.webp"
+          src="/images/ppdo-logo.webp"
           alt="PPDO"
           width={48}
           height={48}
