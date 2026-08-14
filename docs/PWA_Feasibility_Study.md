@@ -372,6 +372,16 @@ What was actually run for this study, on this branch, 2026-08-14:
 > stops at *constraints and shapes* — the things that stay true regardless of what the new entry UI
 > looks like — rather than designing against a flow that is about to change. Nothing here is a
 > ticket yet.
+>
+> **Status: parked pending the v1.8.0 AIP requirements** (Ralph, 2026-08-14 — *"let's first finish
+> the requirements then see what can be adjusted"*). Direction is still offline authoring in the
+> portal UI. The open questions in **§11.4** are the input this section is waiting on — Q1 (what is
+> the offline unit of work) and Q2 (two people, one office, both offline) are the two the
+> requirements most need to settle, because they decide the data model rather than the UI.
+>
+> One item does **not** wait for requirements: **§11.6**. Online-first vs local-document-first is
+> settled implicitly by the first authoring component that gets written, so it is worth a deliberate
+> call before the rework starts coding, not after.
 
 ### 11.1 What this changes about the study above
 
