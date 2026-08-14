@@ -86,6 +86,19 @@ export interface DataTableProps<T> {
     totalCount: number;
     onPageChange: (page: number) => void;
   };
+  /**
+   * Opt into server-side sort (RAL-233) — pairs with `serverPagination` for tables where
+   * client-side re-sort would silently sort only the current page instead of the whole result
+   * set. When set, DataTable trusts `rows` to already be sorted by the caller and clicking a
+   * sortable header calls `onSortChange` instead of re-sorting locally; the header's own
+   * active-column/direction indicator is driven from `sortKey`/`sortDir` here rather than
+   * internal state. Omit for the ordinary client-side-sort behaviour every other page still uses.
+   */
+  serverSort?: {
+    sortKey: string | null;
+    sortDir: "asc" | "desc";
+    onSortChange: (key: string, dir: "asc" | "desc") => void;
+  };
 }
 
 const ALIGN_CLASS: Record<Align, string> = {
@@ -105,13 +118,22 @@ export default function DataTable<T>({
   pageSize,
   rowNoun = ["row", "rows"],
   serverPagination,
+  serverSort,
   minWidth,
 }: DataTableProps<T>) {
-  const [sortKey, setSortKey] = useState<string | null>(null);
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [localSortKey, setLocalSortKey] = useState<string | null>(null);
+  const [localSortDir, setLocalSortDir] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(0);
 
-  // Reset to first page whenever the data set or sort changes.
+  // Server-sorted tables use the caller's sortKey/sortDir for the header indicator instead of
+  // this component's own state — the caller owns the fetch that actually produced the order.
+  const sortKey = serverSort ? serverSort.sortKey : localSortKey;
+  const sortDir = serverSort ? serverSort.sortDir : localSortDir;
+
+  // Reset to first page whenever the data set or LOCAL sort changes. A server-sort change
+  // already triggers a re-fetch (the caller's onSortChange), which changes `rows` and lands
+  // here anyway — listing sortKey/sortDir (plain values, not the `serverSort` object) keeps
+  // this working for both without re-triggering on every render.
   useEffect(() => {
     setPage(0);
   }, [rows, sortKey, sortDir]);
@@ -124,6 +146,9 @@ export default function DataTable<T>({
   }
 
   const sortedRows = useMemo(() => {
+    // Server-sorted: `rows` is already in the right order (that's the whole point — sorting it
+    // again here would only reorder the current page, not the full result set behind it).
+    if (serverSort) return rows;
     if (!sortKey) return rows;
     const col = columns.find((c) => c.key === sortKey);
     if (!col) return rows;
@@ -138,7 +163,7 @@ export default function DataTable<T>({
     });
     return copy;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, columns, sortKey, sortDir]);
+  }, [rows, columns, sortKey, sortDir, serverSort]);
 
   const pageCount = serverPagination
     ? Math.max(1, Math.ceil(serverPagination.totalCount / serverPagination.pageSize))
@@ -155,12 +180,13 @@ export default function DataTable<T>({
 
   function toggleSort(col: Column<T>) {
     if (!col.sortable) return;
-    if (sortKey === col.key) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortKey(col.key);
-      setSortDir("asc");
+    const nextDir: "asc" | "desc" = sortKey === col.key && sortDir === "asc" ? "desc" : "asc";
+    if (serverSort) {
+      serverSort.onSortChange(col.key, nextDir);
+      return;
     }
+    setLocalSortKey(col.key);
+    setLocalSortDir(nextDir);
   }
 
   // ── States ────────────────────────────────────────────────────────────────

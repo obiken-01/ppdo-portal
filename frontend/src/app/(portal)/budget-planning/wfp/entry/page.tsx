@@ -38,7 +38,7 @@ import {
   updateAipActivityIsCreation,
   aipErrorMessage,
 } from "@/lib/aip";
-import { findGeneralFund, findPpdoOffice, listAccounts, listDivisions, listFundingSources, listOffices, listPriceIndex } from "@/lib/config";
+import { findGeneralFund, findPpdoOffice, listAccounts, listDivisions, listFundingSources, listOffices, listPriceIndexForPicker } from "@/lib/config";
 import { getAllocations, getCeilingStatus, getPrograms, getSetupStatus } from "@/lib/allocation";
 import {
   computeWfpRollUpPreview,
@@ -72,7 +72,7 @@ import type {
   DivisionResponse,
   FundingSourceResponse,
   OfficeResponse,
-  PriceIndexItemResponse,
+  PriceIndexPickerItem,
   ProgramAssignmentDto,
   SaveWfpExpenditurePeriodRequest,
   SaveWfpProcurementItemRequest,
@@ -302,7 +302,9 @@ interface ExpenditureWizardProps {
   aipAssignedFundingSourceId: number | null;
   accounts: AccountResponse[];
   fundingSources: FundingSourceResponse[];
-  priceIndex: PriceIndexItemResponse[];
+  priceIndex: PriceIndexPickerItem[];
+  /** True while the catalogue is still in flight (RAL-231) — the picker shows a hint, not an empty list. */
+  priceIndexLoading: boolean;
   reserveRate: number;
   editingExpenditure: WfpExpenditureDto | null;
   onSaved: (saved: WfpExpenditureDto) => void;
@@ -319,6 +321,7 @@ function ExpenditureWizard({
   accounts,
   fundingSources,
   priceIndex,
+  priceIndexLoading,
   reserveRate,
   editingExpenditure,
   onSaved,
@@ -749,6 +752,7 @@ function ExpenditureWizard({
                   procurementItems={procurementItems}
                   onProcurementItemsChange={setProcurementItems}
                   priceIndex={priceIndex}
+                  priceIndexLoading={priceIndexLoading}
                   annualQuarterChoice={annualQuarterChoice}
                   onAnnualQuarterChoiceChange={setAnnualQuarterChoice}
                   applyReserve={applyReserve}
@@ -822,6 +826,7 @@ function ExpenditureWizard({
               procurementItems={procurementItems}
               onProcurementItemsChange={setProcurementItems}
               priceIndex={priceIndex}
+              priceIndexLoading={priceIndexLoading}
               annualQuarterChoice={annualQuarterChoice}
               onAnnualQuarterChoiceChange={setAnnualQuarterChoice}
               applyReserve={applyReserve}
@@ -881,7 +886,8 @@ function WfpEntryPageInner() {
   const [aipDetail, setAipDetail] = useState<AipRecordSummary | null>(null);
   const [accounts, setAccounts] = useState<AccountResponse[]>([]);
   const [fundingSources, setFundingSources] = useState<FundingSourceResponse[]>([]);
-  const [priceIndex, setPriceIndex] = useState<PriceIndexItemResponse[]>([]);
+  const [priceIndex, setPriceIndex] = useState<PriceIndexPickerItem[]>([]);
+  const [priceIndexLoading, setPriceIndexLoading] = useState(true);
   const [programAssignments, setProgramAssignments] = useState<ProgramAssignmentDto[]>([]);
   const [divisionAllocation, setDivisionAllocation] = useState<DivisionAllocationDto | null>(null);
   const [setupStatus, setSetupStatus] = useState<AllocationSetupStatusDto | null>(null);
@@ -915,21 +921,26 @@ function WfpEntryPageInner() {
 
   // ── Effect A: load selector lists on mount ───────────────────────────────
 
-  // Deliberately loaded together (not split apart to unblock the selectors sooner): once every
-  // resource this page could need is in memory — including the price-index catalogue used later
-  // by the Procurement/Combined item entry — the rest of the session never waits on a fetch for
-  // this data again. resourcesLoading gates the selector row with a skeleton + notice below so
-  // the wait is communicated instead of the dropdowns silently sitting empty.
+  // Only the three small, fast resources the selector row itself needs. Together they are ~7 KB
+  // and ~35 ms; resourcesLoading gates the selector row on them with a skeleton + notice below.
+  //
+  // The price-index catalogue is deliberately NOT in here (RAL-231). It is ~6,400 rows / ~1.58 MB
+  // — over 200× the combined payload of these three — and it is not needed until the user opens
+  // the Procurement/Combined expenditure wizard, several interactions later. Bundling it meant the
+  // AIP/Office/Division dropdowns could not paint until that 1.58 MB had crossed the wire.
+  //
+  // This does not undo f841184's fix, which pushed the catalogue's active/search filter down to
+  // SQL — that addressed query *latency* and still stands. The remaining cost is *payload*, which
+  // only decoupling the fetch can take off the critical path.
   useEffect(() => {
     const urlAipId = searchParams.get("aipId");
     const urlOfficeId = searchParams.get("officeId");
 
-    Promise.all([listAip(), listOffices({ active: "true" }), getReserveRate(), listPriceIndex({ active: "true" })])
-      .then(([aips, offices, rate, items]) => {
+    Promise.all([listAip(), listOffices({ active: "true" }), getReserveRate()])
+      .then(([aips, offices, rate]) => {
         setAipList(aips);
         setOfficeList(offices);
         setReserveRate(rate.rate);
-        setPriceIndex(items);
         if (urlAipId) {
           setSelectedAipId(Number(urlAipId));
         } else if (aips.length === 1) {
@@ -940,6 +951,20 @@ function WfpEntryPageInner() {
       })
       .catch(() => toast.error("Load failed", "Could not load AIP / office data."))
       .finally(() => setResourcesLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Effect A2: price-index catalogue, off the critical path (RAL-231) ────
+  //
+  // Fetched in parallel with the above but gating nothing, so a slow catalogue delays only the
+  // item picker inside the wizard. priceIndexLoading is threaded down to WfpProcurementItemTable
+  // so a user who reaches the picker first sees a loading hint rather than a silently empty
+  // search — the failure mode of firing this fetch and forgetting about it.
+  useEffect(() => {
+    listPriceIndexForPicker({ active: "true" })
+      .then(setPriceIndex)
+      .catch(() => toast.error("Load failed", "Could not load the price index catalogue."))
+      .finally(() => setPriceIndexLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1765,6 +1790,7 @@ function WfpEntryPageInner() {
           accounts={accounts}
           fundingSources={fundingSources}
           priceIndex={priceIndex}
+          priceIndexLoading={priceIndexLoading}
           reserveRate={reserveRate}
           editingExpenditure={editingExpenditure}
           onSaved={handleExpenditureSaved}

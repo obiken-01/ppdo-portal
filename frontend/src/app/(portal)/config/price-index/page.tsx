@@ -42,7 +42,7 @@ import {
   deactivatePriceIndexItem,
   exportPriceIndexCsv,
   importPriceIndexCsv,
-  listPriceIndex,
+  getPriceIndexPage,
   updatePriceIndexItem,
 } from "@/lib/config";
 import { formatMoney } from "@/lib/money";
@@ -139,15 +139,30 @@ export default function PriceIndexConfigPage() {
   // Auth / permission guard
   const [authChecked, setAuthChecked] = useState(false);
 
-  // Data
+  // Data — server-paginated + server-sorted (RAL-233): the grid is 6,397 rows, and every
+  // column is sortable, so client-side re-sort would silently sort only the visible page
+  // (see DataTable's own serverSort doc comment for why that's worse than no pagination).
   const [items, setItems] = useState<PriceIndexItemResponse[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 50;
+  const [sortKey, setSortKey] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
   // Filters
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("Active");
+
+  // A stale page number past the end of a newly-narrowed result set (filter OR sort change)
+  // would otherwise leave the grid showing an empty page instead of jumping back to page 1 —
+  // same reasoning as audit-log's identical reset-on-filter-change effect.
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, statusFilter, sortKey, sortDir]);
 
   // Add / Edit modal
   const [showForm, setShowForm] = useState(false);
@@ -189,17 +204,22 @@ export default function PriceIndexConfigPage() {
     setLoading(true);
     setFetchError(null);
     try {
-      const data = await listPriceIndex({
+      const result = await getPriceIndexPage({
         search: debouncedSearch,
         active: STATUS_TO_ACTIVE[statusFilter],
+        sortBy: sortKey ?? undefined,
+        sortDir,
+        page,
+        pageSize: PAGE_SIZE,
       });
-      setItems(data);
+      setItems(result.items);
+      setTotalCount(result.totalCount);
     } catch (err) {
       setFetchError(configErrorMessage(err, "Failed to load price index items. Please try again."));
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, statusFilter]);
+  }, [debouncedSearch, statusFilter, sortKey, sortDir, page]);
 
   useEffect(() => {
     if (authChecked) load();
@@ -513,9 +533,17 @@ export default function PriceIndexConfigPage() {
               ? "No price index items match your filters."
               : "No price index items yet. Upload a CSV from GSO to get started."
           }
-          pageSize={25}
           rowNoun={["item", "items"]}
           minWidth={1150}
+          serverPagination={{ page, pageSize: PAGE_SIZE, totalCount, onPageChange: setPage }}
+          serverSort={{
+            sortKey,
+            sortDir,
+            onSortChange: (key, dir) => {
+              setSortKey(key);
+              setSortDir(dir);
+            },
+          }}
         />
       </div>
 
