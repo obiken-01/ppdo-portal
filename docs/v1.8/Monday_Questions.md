@@ -7,7 +7,7 @@
 > reading the whole thing. Questions are written in the language of the person answering; the
 > *"why it matters"* line is there if someone asks why you're asking.
 >
-> **🔴 = blocking.** Work cannot start on that area until it's answered. Six of them.
+> **🔴 = blocking.** Work cannot start on that area until it's answered. Five of them.
 
 ---
 
@@ -19,11 +19,10 @@ without stalling development.
 | # | Question | Ask |
 |---|---|---|
 | 1 | Does the AIP draw from the **same budget ceiling** the WFP already uses, or its own separate one? | PBO / PPDC |
-| 2 | For "in thousand pesos", does **1,234,200** show as **1,234** or **1,235**? | PBO |
-| 3 | Must the printed figures in a column **add up exactly** to the printed total? | PBO |
-| 4 | Can a reviewer **send work back** for correction, and can they leave **comments**? | PPDC |
-| 5 | Can an office add a **program that isn't in the LDIP**? | PPDC |
-| 6 | What happens to the **2027 AIP** and the Excel upload once the new AIP is live? | Ralph / PPDC |
+| 2 | Must the printed figures in a column **add up exactly** to the printed total? (More important now that everything rounds up — see A3) | PBO |
+| 3 | Can a reviewer **send work back** for correction, and can they leave **comments**? | PPDC |
+| 4 | Can an office add a **program that isn't in the LDIP**? | PPDC |
+| 5 | What happens to the **2027 AIP** and the Excel upload once the new AIP is live? | Ralph / PPDC |
 
 ---
 
@@ -44,30 +43,40 @@ again when it's detailed in the WFP.
 *Why it matters:* decides how the budget tracking is built. Getting it wrong silently
 double-counts money, with no error message.
 
-### 🔴 A2. Rounding — does 1,234,200 display as 1,234 or 1,235?
+### ✅ A2. Rounding — settled, no need to ask
 
-Confirmed already: **1,234,567.89 → 1,235**. But that example doesn't settle the rule, because two
-different rules both produce it:
+**Always round up** to the nearest thousand whenever there's any remainder above zero
+(`1,234,200` → `1,235`), on the reasoning that it's safer to state slightly more than slightly less.
+Zero stays zero.
 
-| Amount | If "normal rounding" | If "always round up" |
-|---|---|---|
-| 1,234,567.89 | **1,235** | **1,235** ← both agree |
-| **1,234,200.00** | **1,234** | **1,235** ← this is the one that decides it |
-| 1,234,900.00 | 1,235 | 1,235 |
-
-*Why it matters:* affects roughly half of every figure in every AIP report.
+Carried here only because it changes the weight of A3 below.
 
 ### 🔴 A3. Must the printed rows add up to the printed total?
 
-Once figures are shown in thousands, you can have **one** of these, not both:
+Once figures show in thousands, you can have **one** of these, not both:
 
 - **Accurate total** — the total is the true sum, but adding up the printed rows by hand gives a
-  slightly different number.
-- **Column that adds up** — the printed rows sum exactly to the printed total, but that total is a
-  few thousand off the true figure.
+  different number.
+- **Column that adds up** — the printed rows sum exactly to the printed total, but that total sits
+  slightly above the true figure.
 
-*Why it matters:* if the PBO checks the AIP line by line against their own figures, "the column adds
-up" usually matters more. This is a finance policy call, not a technical one.
+**Because everything now rounds up, this gap is one-directional and grows with the number of
+rows.** Every row is overstated by up to 1,000 pesos (about 500 on average) and nothing cancels out:
+
+| Rows in the column | Printed column would exceed the printed total by roughly |
+|---|---|
+| 10 | ~5 thousand |
+| 50 | ~25 thousand |
+| 100 | ~50 thousand |
+| 500 | ~250 thousand |
+
+On a consolidated AIP across ~20 offices, that's a visible discrepancy a reviewer would query.
+
+**Our recommendation:** round each row first, then add the rounded rows for every subtotal and
+total. The printed document is then internally consistent at every level — and it still never
+understates, which was the point of rounding up. Exact centavos stay in the database.
+
+*Why it matters:* it's a finance policy call, and it changes every total on every AIP report.
 
 ### A4. Should going over the ceiling **block** saving, or just **warn**?
 
@@ -221,7 +230,7 @@ Recorded here so nobody re-opens them by accident.
 | Decided | Answer |
 |---|---|
 | Multiple fund sources | One fund source **per expense line**; an activity with several funds simply has several lines |
-| Rounding of 1,234,567.89 | **1,235,000** (the draft's 1,234,000 was a typo) — but see A2 for the remaining tie-break |
+| Rounding to thousands | **Always round up** on any remainder above zero — 1,234,200 → 1,235, 1,234,567.89 → 1,235. Zero stays zero |
 | Which funds have a ceiling | **General Fund only** |
 | "Limit Dept Head, except GAD / 20% DF / PS / LDRRF / Trust Fund" | This is the **ceiling exemption list**, not a permissions rule |
 | Printable AIP form | **In scope** |
@@ -229,5 +238,5 @@ Recorded here so nobody re-opens them by accident.
 
 ---
 
-*If only part of Monday is available, the six 🔴 questions are the ones that unblock work.
-Questions 1, 4 and 6 change how the data is stored — those are expensive to change later.*
+*If only part of Monday is available, the five 🔴 questions are the ones that unblock work.
+Questions 1, 3 and 5 change how the data is stored — those are expensive to change later.*

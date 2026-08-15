@@ -43,7 +43,7 @@ wrong fix.
 | # | Decision | Answer | Effect |
 |---|---|---|---|
 | 4 | Multi-fund granularity | **Multiple single-fund lines** — one fund source per expenditure line | §5.1's table works as drafted. The simpler option, and Ralph's original intent |
-| 8 | Rounding of `1,234,567.89` | **`1,235,000`** | Not the `1,234,000` in the draft. ⚠️ Still ambiguous between *round-half-up* and *always-round-up* — they agree on this number but not on others. See §8.2 |
+| 8 | Rounding to thousands | **Always round UP** on any remainder above zero — `1,234,200` → `1,235`. Rationale: *"better to have a bit higher value than having less"* | Settled. ⚠️ Makes §8.3 (must rows add up?) materially more important — the error no longer cancels out |
 | B | What the ceiling applies to | **General Fund only.** GAD, 20% DF, LDRRF, Trust Fund and PS are all exempt | Also **resolves W1** — see §5.6 |
 | W1 | "Limit Dept Head — except GAD/20% DF/PS/LDRRF/Trust Fund" | **Not a permission rule.** It is the ceiling-exemption list above | §5.6 rewritten; the permission model is unaffected |
 | 9.1 | Printable AIP form | **Confirmed in scope**, matching the official form already used | Largest single deliverable in §7 |
@@ -677,33 +677,60 @@ document.
 > **✅ Answered by Ralph, 2026-08-14: `1,235,000`.** So the draft's `1,234,000` example was the
 > error, not the rule.
 
-### 8.2 ⚠️ One tie-break still open
+### 8.2 ✅ Settled — always round up
 
-`1,235,000` is produced by **both** remaining candidates, so this number alone doesn't separate
-them. They differ on other values:
+> **Ralph, 2026-08-14:** *"1,234,200 will be 1,235 because 2 is greater than 0. If it's greater than
+> 0 then it will be rounded up — it's better to have a bit higher value than having less."*
 
-| Value | Round half-up | Always round up (ceiling) |
-|---|---|---|
-| `1,234,567.89` | `1,235` | `1,235` | ← the agreed example; no help |
-| **`1,234,200.00`** | **`1,234`** | **`1,235`** | ← the one that decides it |
-| `1,234,000.00` | `1,234` | `1,234` |
+So the rule is **ceiling to the nearest thousand**, not half-up:
 
-**→ DECISION 8b:** does `1,234,200` display as `1,234` or `1,235`? Philippine budget forms
-conventionally use normal (half-up) rounding, which would give `1,234` — but the original wording
-said "round **up**", so this needs one word of confirmation from the PBO rather than an assumption.
-It affects roughly half of all figures.
+| Amount | Displays as |
+|---|---|
+| `1,234,000.00` | `1,234` (exact — no remainder, no rounding) |
+| `1,234,000.01` | `1,235` |
+| `1,234,200.00` | `1,235` |
+| `1,234,567.89` | `1,235` |
+| `0.00` | `0` |
 
-### 8.3 The harder question the draft doesn't reach
+`Math.Ceiling(amount / 1000m)` on the backend, `Math.ceil(n / 1000)` on the frontend. Zero stays
+zero — the rule triggers on a remainder *above* zero, so an empty line doesn't become 1.
+
+The rationale is sound for budgeting: rounding up never under-states a requirement. It does have one
+arithmetic consequence, below.
+
+### 8.3 ⚠️ The consequence of rounding up — this now matters more than it did
 
 **Do rounded rows have to add up to the rounded total?** They cannot always do both:
 
 | Approach | Consequence |
 |---|---|
 | Sum exact values, round only the total | The total is accurate, but a reader adding up the printed column gets a different number |
-| Round each row, then sum the rounded | The printed column adds up, but the total differs from the true sum |
+| Round each row, then sum the rounded | The printed column adds up, but the total is higher than the true sum |
 
-For a document reviewed line-by-line against PBO figures, "the column adds up" often matters more
-than "the total is exact" — but that is a finance call, not a developer one. **→ DECISION 9** — still open.
+**With round-up this stops being a rounding nuisance and becomes a visible, systematic gap.** Under
+normal (half-up) rounding the per-row error is roughly ±500 pesos and errors cancel, so a long
+column lands close to its true total either way. Under ceiling rounding **every row is overstated**,
+by an average of ~500 pesos each, and nothing cancels:
+
+| Rows in the column | Printed column exceeds the true total by roughly |
+|---|---|
+| 10 | ~5,000 (5 thousand-units) |
+| 50 | ~25,000 (25) |
+| 100 | ~50,000 (50) |
+| 500 | ~250,000 (250) |
+
+So on a consolidated AIP covering ~20 offices, "sum exact, round the total" would print a column
+whose visible arithmetic is off by a noticeable and always-positive amount — the kind of thing a
+reviewer spots and queries.
+
+**Recommendation (still Ralph's/PBO's call):** round each row first, then sum the rounded rows for
+every subtotal and total. The printed document is then internally consistent at every level, which
+is what a line-by-line reviewer needs — and it stays faithful to the "never under-state" intent,
+since the total is rounded up too. The exact values remain in the database for anything that needs
+true precision.
+
+**→ DECISION 9** — still open, and now worth asking explicitly rather than leaving to the
+implementation.
 
 ### 8.4 Implementation notes
 
@@ -776,7 +803,7 @@ last-write-wins. A per-record soft lock or a "changed by someone else" warning i
 | 5 | Can offices add programs outside the LDIP? | 5.5 | Entry UI |
 | ~~6~~ | ~~W1 — who prepares GAD / 20% DF / …?~~ | ✅ **Not a permission rule** — it is the ceiling-exemption list | — |
 | 7 | Offline: personal/shared device, or office-issued? | 6.2 | Session persistence |
-| 8b | **Does `1,234,200` show as `1,234` or `1,235`?** (`1,235,000` confirmed for the original example, but it doesn't separate half-up from always-up) | 8.2 | Every report |
+| ~~8b~~ | ~~Half-up or always-up?~~ | ✅ **Always round up** on any remainder | — |
 | 9 | Must printed rows add up to the printed total? | 8.3 | Every report |
 | 10 | Reviewer: can they reject/return, and with comments at what level? | 5.3 | Workflow |
 | 11 | 2027 AIP + `.xlsm` upload — migrate, keep, or retire? | 5.1 | Migration |
