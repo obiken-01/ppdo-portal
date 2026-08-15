@@ -698,6 +698,82 @@ zero — the rule triggers on a remainder *above* zero, so an empty line doesn't
 The rationale is sound for budgeting: rounding up never under-states a requirement. It does have one
 arithmetic consequence, below.
 
+### 8.2b Edge cases the rule doesn't yet cover
+
+Raised 2026-08-14 at Ralph's invitation. Ceiling rounding is unambiguous for a single positive
+amount; these are the cases where it still needs a decision.
+
+#### ① Rows won't add up *across* either — and this is on every line
+
+The AIP form carries **PS, MOOE, CO and Total on the same row**. Round each up independently and
+the row stops balancing horizontally:
+
+| | PS | MOOE | CO | Total |
+|---|---|---|---|---|
+| Exact | 100,100 | 200,100 | 300,100 | 600,300 |
+| Each rounded up | **101** | **201** | **301** | **601** ← but 101 + 201 + 301 = **603** |
+
+Up to **2 thousand of visible discrepancy per line**, on every line — arguably more noticeable than
+§8.3's column drift, because a reader checking one row sees it immediately.
+
+**Same fix, applied consistently:** round the three components, then make the row total the **sum of
+the rounded components** (603, not 601). Combined with §8.3's recommendation, every total in the
+document — horizontal and vertical — is the sum of the rounded figures directly above or beside it,
+so the document balances everywhere a reader checks. **→ CONFIRM**
+
+#### ② Amounts below 1,000
+
+Under the rule, any non-zero amount under a thousand displays as **1**:
+
+| Exact | Displays as |
+|---|---|
+| ₱0.00 | 0 |
+| ₱0.01 | 1 |
+| ₱500 | 1 |
+| ₱999.99 | 1 |
+
+Consistent with "never understate", and probably fine — AIP lines are rarely that small. Flagged
+only so nobody is surprised by a ₱500 line printing as "1". **→ CONFIRM**
+
+#### ③ Negative amounts — do they exist at all?
+
+`Math.Ceiling` on a negative rounds **toward zero**, which *shrinks* the magnitude — the opposite of
+the conservative intent:
+
+| Exact | `Math.Ceiling` | "Never understate" would want |
+|---|---|---|
+| −1,234,200 | **−1,234** (a smaller deduction) | −1,235 |
+
+Probably moot for a first AIP, which is a plan of appropriations. It becomes real for **amendments
+and supplemental budgets** (§9.4), where a realignment reduces a line. **→ DECISION:** are negative
+amounts possible? If yes, "round up" should mean *away from zero* (round the magnitude up), not
+numerically up.
+
+#### ④ Is the ceiling checked against exact or rounded figures?
+
+If the printed document is built from rounded-up figures, the printed total can exceed the ceiling
+while the exact total sits inside it:
+
+| | Value |
+|---|---|
+| Exact total | ₱49,999,600 |
+| Printed total (rounded rows summed) | 50,020 → **₱50,020,000** |
+| Ceiling | ₱50,000,000 |
+
+The system would say "within ceiling"; the printed AIP would read as ₱20,000 over. **Recommendation:
+enforce against the same rounded figures the document prints**, so what the system allows and what
+the paper shows can never disagree. **→ DECISION** — worth asking PBO alongside A3, since it's the
+same underlying choice.
+
+#### ⑤ What goes in the Excel cells?
+
+If PBO opens the export and re-sums a column, their `SUM()` must reproduce the printed total.
+**Recommendation: write the rounded thousand-value as a real number** (`1235`), not the exact peso
+amount with display formatting — otherwise their own arithmetic disagrees with the document.
+Label the sheet "(In Thousand Pesos)" so the unit is unambiguous. **→ CONFIRM**
+
+---
+
 ### 8.3 ⚠️ The consequence of rounding up — this now matters more than it did
 
 **Do rounded rows have to add up to the rounded total?** They cannot always do both:

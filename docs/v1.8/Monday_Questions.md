@@ -19,7 +19,7 @@ without stalling development.
 | # | Question | Ask |
 |---|---|---|
 | 1 | Does the AIP draw from the **same budget ceiling** the WFP already uses, or its own separate one? | PBO / PPDC |
-| 2 | Must the printed figures in a column **add up exactly** to the printed total? (More important now that everything rounds up — see A3) | PBO |
+| 2 | Must the printed figures **add up exactly** to the printed total — both down a column and across the PS/MOOE/CO row? (A2 ① and A3) | PBO |
 | 3 | Can a reviewer **send work back** for correction, and can they leave **comments**? | PPDC |
 | 4 | Can an office add a **program that isn't in the LDIP**? | PPDC |
 | 5 | What happens to the **2027 AIP** and the Excel upload once the new AIP is live? | Ralph / PPDC |
@@ -43,13 +43,41 @@ again when it's detailed in the WFP.
 *Why it matters:* decides how the budget tracking is built. Getting it wrong silently
 double-counts money, with no error message.
 
-### ✅ A2. Rounding — settled, no need to ask
+### A2. Rounding — the rule is settled, five details aren't
 
-**Always round up** to the nearest thousand whenever there's any remainder above zero
-(`1,234,200` → `1,235`), on the reasoning that it's safer to state slightly more than slightly less.
-Zero stays zero.
+**Settled:** always round up to the nearest thousand on any remainder above zero
+(`1,234,200` → `1,235`). Zero stays zero.
 
-Carried here only because it changes the weight of A3 below.
+Five follow-on details. The first is the one worth raising in the room — it shows up on every
+printed line.
+
+**① The PS / MOOE / CO / Total row won't balance across.** Round each column up on its own and the
+row stops adding up:
+
+| | PS | MOOE | CO | Total |
+|---|---|---|---|---|
+| Exact | 100,100 | 200,100 | 300,100 | 600,300 |
+| Each rounded up | 101 | 201 | 301 | **601** — but 101 + 201 + 301 = **603** |
+
+Up to 2 thousand out, on every single line. *Recommendation: make the row total the sum of the
+rounded components (603). Together with A3 that makes the whole document balance both across and
+down, wherever anyone checks.*
+
+**② Anything under ₱1,000 prints as 1.** ₱500 shows as "1", ₱0.01 shows as "1". Consistent with
+never understating — just confirming nobody is surprised.
+
+**③ Are there ever negative amounts?** Not in a first AIP, presumably — but in an amendment or
+supplemental budget, where a realignment reduces a line? If so, "round up" needs to mean *round the
+size up* (−1,234,200 → −1,235), not literally upward, which would shrink the deduction to −1,234.
+
+**④ Should the ceiling be checked against the rounded figures or the exact ones?** They can
+disagree: an office at ₱49,999,600 exact is inside a ₱50M ceiling, but its printed AIP — built from
+rounded-up rows — could read ₱50,020,000, i.e. over. *Recommendation: enforce on the same rounded
+figures the document prints, so the system and the paper can never disagree.*
+
+**⑤ In the Excel export, do the cells hold the rounded thousands or the exact pesos?**
+*Recommendation: the rounded thousands as real numbers*, so when PBO re-sums a column in Excel they
+get exactly the printed total.
 
 ### 🔴 A3. Must the printed rows add up to the printed total?
 
