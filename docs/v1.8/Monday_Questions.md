@@ -11,7 +11,7 @@
 
 ---
 
-## Start here — the six blockers
+## Start here — the five blockers
 
 If Monday gets cut short, these are the ones to get through. Everything else can be answered later
 without stalling development.
