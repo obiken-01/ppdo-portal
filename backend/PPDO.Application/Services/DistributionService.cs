@@ -91,6 +91,12 @@ public sealed class DistributionService : IDistributionService
         // Load catalog entry for item details (optional — might be an orphan StockNo).
         ItemMaster? master = await _items.GetByStockNoAsync(stockNo, cancellationToken);
 
+        // Division id → name lookup for the distribution rows below (RAL-236). Includes
+        // inactive divisions since past distributions may reference one that's since been
+        // deactivated — the name should still resolve.
+        IReadOnlyList<Division> allDivisions = await _divisions.GetAllAsync(cancellationToken);
+        Dictionary<int, string> divisionNameById = allDivisions.ToDictionary(d => d.Id, d => d.Name);
+
         // Load all delivery batches for this item.
         IReadOnlyList<DeliveryItemBreakdownRow> batches =
             await _deliveries.GetDeliveryItemBreakdownsByStockNoAsync(stockNo, scopeDivision, cancellationToken);
@@ -128,7 +134,7 @@ public sealed class DistributionService : IDistributionService
                     QtyAvailable:   Math.Max(0, b.QtyDelivered - distributed),
                     Distributions:  b.Distributions
                         .Select(d => new ExistingDistributionDto(
-                            d.Id, d.IssueRef, d.DivisionId.ToString(),
+                            d.Id, d.IssueRef, divisionNameById.GetValueOrDefault(d.DivisionId, d.DivisionId.ToString()),
                             d.QtyIssued, d.DateIssued, d.IssuedBy, d.Remarks))
                         .ToList());
             })
@@ -156,7 +162,7 @@ public sealed class DistributionService : IDistributionService
                 QtyAvailable:   Math.Max(0, pool.Remaining),
                 Distributions:  poolDistributions
                     .Select(d => new ExistingDistributionDto(
-                        d.Id, d.IssueRef, d.DivisionId.ToString(),
+                        d.Id, d.IssueRef, divisionNameById.GetValueOrDefault(d.DivisionId, d.DivisionId.ToString()),
                         d.QtyIssued, d.DateIssued, d.IssuedBy, d.Remarks))
                     .ToList()));
 
