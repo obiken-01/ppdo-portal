@@ -187,6 +187,35 @@ single-region, low-traffic app.
 
 ---
 
+## 9. Backlog ideas from external reading (not urgent)
+
+Added 2026-08-17 after reading Kerim Kara, *"What Senior .NET Developers Measure Before Choosing an
+Architecture"* (Medium, Aug 2026). Its core argument — measure the actual workload before adding or
+removing architectural boundaries, rather than deciding from diagrams or convention — matches the
+approach this doc already takes (§1–§8 are all "we measured, here's what we found"). None of these are
+urgent for a near-idle, single-region app; listed here so they aren't lost, and to revisit if traffic or
+team size grows.
+
+- **Track P95/P99 latency, not just average, on the hot endpoints** (PR list, delivery, distribution,
+  dashboard stats). Application Insights already collects this — it's a matter of looking at the
+  percentile view instead of the average. Skip for now: current traffic is low enough that percentiles
+  and the average are unlikely to diverge meaningfully.
+- **When adding an `Include` chain, check the generated SQL for cartesian explosion** (multiple sibling
+  collections joined at the same level multiplying row counts) before deciding between a single query,
+  `.AsSplitQuery()`, or a projection. Reinforces the existing "never nest `Include` more than 2 levels"
+  rule in `CLAUDE.md` — this just adds *why* (SQL shape, not just readability).
+  See: Microsoft, [EF Core Single vs. Split Queries](https://learn.microsoft.com/en-us/ef/core/querying/single-split-queries).
+- **Watch change-surface, not just layer count.** If adding one field routinely requires touching
+  entity → repository → DTO → mapper → response DTO → frontend type in lockstep for nearly every
+  feature, that's a sign a boundary isn't isolating anything and is worth flattening. Not a current
+  finding — just a metric worth a glance if Application-layer boilerplate starts feeling heavy.
+- **Microservices-splitting the discussion covers doesn't apply here** — worth noting as an explicit
+  non-decision. This app is a single Functions app + single database with a small team; the article's
+  own conclusion (distributed failure/deployment costs must be justified by measured independent-scaling
+  or independent-deployment needs) argues *against* splitting at current scale, not for it.
+
+---
+
 ## Quick checklist for any new feature
 
 Backend:
