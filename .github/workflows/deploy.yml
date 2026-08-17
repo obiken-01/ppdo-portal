@@ -30,7 +30,10 @@ jobs:
 
       - name: Deploy to Azure Functions via ZIP deploy
         env:
-          PUBLISH_PROFILE: ${{ secrets.AZURE_FUNCTIONS_PUBLISH_PROFILE }}
+          # RAL-237: deploys to the Southeast Asia Function App (colocated with
+          # ppdo-portal-db) instead of the old Central US one, to eliminate the
+          # cross-region latency documented on that ticket.
+          PUBLISH_PROFILE: ${{ secrets.AZURE_FUNCTIONS_PUBLISH_PROFILE_SEA }}
         run: |
           # Extract MSDeploy credentials from publish profile XML
           USER=$(echo "$PUBLISH_PROFILE" | python3 -c "
@@ -47,7 +50,7 @@ jobs:
           ")
 
           curl -X POST \
-            "https://ppdo-portal-api-dpevbthmd5dycacq.scm.centralus-01.azurewebsites.net/api/zipdeploy" \
+            "https://ppdo-portal-api-sea-ajakdzf4a7hbeaev.scm.southeastasia-01.azurewebsites.net/api/zipdeploy" \
             -u "${USER}:${PASS}" \
             --data-binary @${{ github.workspace }}/publish/function.zip \
             --fail \
