@@ -276,6 +276,8 @@ Interfaces / contracts first → Implementations → Tests
 | Functions classes | suffix `Functions` | `PurchaseRequestFunctions` |
 | EF migrations | PascalCase description | `AddPermissionGroups` |
 
+> **Validator folder structure (RAL-235):** `PPDO.Application/Validators/` is organized into per-feature subfolders that mirror `DTOs/` — e.g. `Validators/PurchaseRequest/CreatePRValidator.cs`, `Validators/Items/CreateItemValidator.cs`. Never add a validator directly to the `Validators/` root.
+
 ### Frontend (TypeScript)
 | Element | Convention | Example |
 |---|---|---|

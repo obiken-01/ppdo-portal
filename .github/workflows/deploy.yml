@@ -30,7 +30,10 @@ jobs:
 
       - name: Deploy to Azure Functions via ZIP deploy
         env:
-          PUBLISH_PROFILE: ${{ secrets.AZURE_FUNCTIONS_PUBLISH_PROFILE }}
+          # RAL-237: deploys to the Southeast Asia Function App (colocated with
+          # ppdo-portal-db) instead of the old Central US one, to eliminate the
+          # cross-region latency documented on that ticket.
+          PUBLISH_PROFILE: ${{ secrets.AZURE_FUNCTIONS_PUBLISH_PROFILE_SEA }}
         run: |
           # Extract MSDeploy credentials from publish profile XML
           USER=$(echo "$PUBLISH_PROFILE" | python3 -c "
@@ -47,7 +50,7 @@ jobs:
           ")
 
           curl -X POST \
-            "https://ppdo-portal-api-dpevbthmd5dycacq.scm.centralus-01.azurewebsites.net/api/zipdeploy" \
+            "https://ppdo-portal-api-sea-ajakdzf4a7hbeaev.scm.southeastasia-01.azurewebsites.net/api/zipdeploy" \
             -u "${USER}:${PASS}" \
             --data-binary @${{ github.workspace }}/publish/function.zip \
             --fail \
@@ -72,7 +75,9 @@ jobs:
         env:
           # Baked into the Next.js build at compile time.
           # Points directly to the Azure Functions app (SWA Free tier does not support API linking).
-          NEXT_PUBLIC_API_BASE_URL: https://ppdo-portal-api-dpevbthmd5dycacq.centralus-01.azurewebsites.net/api
+          # RAL-237: cut over to the Southeast Asia app (colocated with ppdo-portal-db) —
+          # was centralus-01, verified faster via direct health-check timing before this switch.
+          NEXT_PUBLIC_API_BASE_URL: https://ppdo-portal-api-sea-ajakdzf4a7hbeaev.southeastasia-01.azurewebsites.net/api
           # SEO (RAL-202) — base origin for sitemap.xml/robots.txt/Open Graph/canonical URLs.
           # Update this the day a custom domain replaces the default SWA URL.
           NEXT_PUBLIC_SITE_URL: https://jolly-sky-0e3a2e310.7.azurestaticapps.net
