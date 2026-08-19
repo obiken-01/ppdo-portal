@@ -361,6 +361,290 @@ public sealed class AipXlsmParserTests
         Assert.Throws<AipParseException>(() => _sut.Parse(s));
     }
 
+    // ── Level detection from the description column (RAL-238) ─────────────────
+    //
+    // The province's real FY2027 AIP does not encode ref-code depth consistently: 82 of 2,887
+    // rows have a segment count that disagrees with the description column they are indented
+    // into. The description column (B/C/D/E) is authoritative; the segment count is a fallback.
+
+    [Fact]
+    public void Parse_7SegmentCode_ButTextInActivityColumn_CreatesActivity()
+    {
+        // SOCIAL_FY2027 r26: "3000-000-1-01-003-001-001" (7 segments) with its text in col E.
+        using Stream s = BuildStream(wb =>
+        {
+            IXLWorksheet ws = wb.Worksheets.Add("SOCIAL_FY2027");
+            ws.Cell(14, 1).Value = "A-B-C-D-1";
+            ws.Cell(14, 2).Value = "Office";
+            ws.Cell(15, 1).Value = "A-B-C-D-1-1";
+            ws.Cell(15, 3).Value = "Program";
+            ws.Cell(16, 1).Value = "A-B-C-D-1-1-1";
+            ws.Cell(16, 4).Value = "Project";
+            ws.Cell(17, 1).Value  = "A-B-C-D-1-1-2";        // 7 segments — code says Project
+            ws.Cell(17, 5).Value  = "Actually an activity";  // but text is in col E
+            ws.Cell(17, 13).Value = 1836.614;
+        });
+
+        Dictionary<string, List<ParsedAipOffice>> result = _sut.Parse(s);
+
+        ParsedAipProject proj = result["SOCIAL"][0].Programs[0].Projects[0];
+        Assert.Single(proj.Activities);
+        Assert.Equal("Actually an activity", proj.Activities[0].Name);
+        Assert.Equal(1836.614m, proj.Activities[0].Mooe);
+        // Must NOT have become a second project.
+        Assert.Single(result["SOCIAL"][0].Programs[0].Projects);
+    }
+
+    [Fact]
+    public void Parse_9SegmentCode_WithTextInActivityColumn_CreatesActivity_NotDropped()
+    {
+        // ECONOMIC_FY2027 r897: "8000-000-1-01-016-004-001-003-001" (9 segments) —
+        // fell outside the 5..8 switch and was silently discarded.
+        using Stream s = BuildStream(wb =>
+        {
+            IXLWorksheet ws = wb.Worksheets.Add("ECONOMIC_FY2027");
+            ws.Cell(14, 1).Value = "A-B-C-D-1";
+            ws.Cell(14, 2).Value = "Office";
+            ws.Cell(15, 1).Value = "A-B-C-D-1-1";
+            ws.Cell(15, 3).Value = "Program";
+            ws.Cell(16, 1).Value = "A-B-C-D-1-1-1";
+            ws.Cell(16, 4).Value = "Project";
+            ws.Cell(17, 1).Value  = "A-B-C-D-1-1-1-1-1";   // 9 segments
+            ws.Cell(17, 5).Value  = "Operation of Seed Production Farm";
+            ws.Cell(17, 13).Value = 2032.945;
+        });
+
+        Dictionary<string, List<ParsedAipOffice>> result = _sut.Parse(s);
+
+        ParsedAipProject proj = result["ECONOMIC"][0].Programs[0].Projects[0];
+        Assert.Single(proj.Activities);
+        Assert.Equal("Operation of Seed Production Farm", proj.Activities[0].Name);
+        Assert.Equal(2032.945m, proj.Activities[0].Mooe);
+    }
+
+    [Fact]
+    public void Parse_5SegmentCode_ButTextInProgramColumn_CreatesProgram_NotNamelessOffice()
+    {
+        // SOCIAL_FY2027 r24/r27/r30/r35/r40/r56: office-depth codes whose text sits in col C.
+        // The old parser created a ParsedAipOffice with an empty Name and orphaned everything
+        // that followed onto it.
+        using Stream s = BuildStream(wb =>
+        {
+            IXLWorksheet ws = wb.Worksheets.Add("SOCIAL_FY2027");
+            ws.Cell(14, 1).Value = "A-B-C-D-1";
+            ws.Cell(14, 2).Value = "Office of the Governor - Housing";
+            ws.Cell(15, 1).Value = "A-B-C-D-2";                 // 5 segments — code says Office
+            ws.Cell(15, 3).Value = "Sustainable Housing Program"; // but text is in col C
+        });
+
+        Dictionary<string, List<ParsedAipOffice>> result = _sut.Parse(s);
+
+        Assert.Single(result["SOCIAL"]);
+        ParsedAipOffice off = result["SOCIAL"][0];
+        Assert.Equal("Office of the Governor - Housing", off.Name);
+        Assert.Single(off.Programs);
+        Assert.Equal("Sustainable Housing Program", off.Programs[0].Name);
+        Assert.DoesNotContain(result["SOCIAL"], o => string.IsNullOrWhiteSpace(o.Name));
+    }
+
+    [Fact]
+    public void Parse_BlankRefCode_WithProjectColumnText_CreatesProject_AndChildrenAttach()
+    {
+        // OTHERS_FY2027 r228: a project row with a description in col D but an empty col A.
+        // The old parser treated blank col A as an activity-name continuation, found no
+        // lastActivity, skipped the row, and then dropped rows 229-233 for having no project.
+        using Stream s = BuildStream(wb =>
+        {
+            IXLWorksheet ws = wb.Worksheets.Add("OTHERS_FY2027");
+            ws.Cell(14, 1).Value = "A-B-C-D-1";
+            ws.Cell(14, 2).Value = "Environment and Natural Resources Office";
+            ws.Cell(15, 1).Value = "A-B-C-D-1-2";
+            ws.Cell(15, 3).Value = "Sustainable Mineral Program";
+            // r16: no ref code, description in col D → a Project
+            ws.Cell(16, 4).Value  = "Mining Compliance, Monitoring, and Support";
+            ws.Cell(17, 1).Value  = "A-B-C-D-1-2-1-1";
+            ws.Cell(17, 5).Value  = "Monitoring and supervision of CSAG, ISAG";
+            ws.Cell(17, 13).Value = 1531.25;
+            ws.Cell(18, 1).Value  = "A-B-C-D-1-2-1-2";
+            ws.Cell(18, 5).Value  = "Manpower augmentation through hiring";
+            ws.Cell(18, 13).Value = 10642.50;
+        });
+
+        Dictionary<string, List<ParsedAipOffice>> result = _sut.Parse(s);
+
+        ParsedAipProgram prog = result["OTHERS"][0].Programs[0];
+        Assert.Single(prog.Projects);
+        ParsedAipProject proj = prog.Projects[0];
+        Assert.Equal("Mining Compliance, Monitoring, and Support", proj.Name);
+        Assert.False(string.IsNullOrWhiteSpace(proj.RefCode));   // synthesized, but present
+        Assert.Equal(2, proj.Activities.Count);
+        Assert.Equal(1531.25m,  proj.Activities[0].Mooe);
+        Assert.Equal(10642.50m, proj.Activities[1].Mooe);
+    }
+
+    [Fact]
+    public void Parse_ActivityWithNoPrecedingProject_IsNotSilentlyDropped()
+    {
+        using Stream s = BuildStream(wb =>
+        {
+            IXLWorksheet ws = wb.Worksheets.Add("OTHERS_FY2027");
+            ws.Cell(14, 1).Value = "A-B-C-D-1";
+            ws.Cell(14, 2).Value = "Office";
+            ws.Cell(15, 1).Value = "A-B-C-D-1-1";
+            ws.Cell(15, 3).Value = "Program";
+            // No project row at all — activity arrives orphaned.
+            ws.Cell(16, 1).Value  = "A-B-C-D-1-1-9-1";
+            ws.Cell(16, 5).Value  = "Orphaned activity carrying real money";
+            ws.Cell(16, 13).Value = 12892.50;
+        });
+
+        Dictionary<string, List<ParsedAipOffice>> result = _sut.Parse(s);
+
+        ParsedAipProgram prog = result["OTHERS"][0].Programs[0];
+        Assert.Single(prog.Projects);
+        Assert.Single(prog.Projects[0].Activities);
+        Assert.Equal(12892.50m, prog.Projects[0].Activities[0].Mooe);
+    }
+
+    [Fact]
+    public void Parse_ContinuationShapedRow_ThatCarriesAmounts_BecomesItsOwnActivity()
+    {
+        // GENERAL_FY2027 r188: col A holds the literal text "None", the description is in col E,
+        // and the row carries ₱8,850,000. Treating it as a name continuation folded the text
+        // into the previous activity and discarded the money. Four such rows exist in the real
+        // file, worth ₱29,350,000 in total.
+        using Stream s = BuildStream(wb =>
+        {
+            IXLWorksheet ws = wb.Worksheets.Add("GENERAL_FY2027");
+            ws.Cell(14, 1).Value = "A-B-C-D-1";
+            ws.Cell(14, 2).Value = "Sangguniang Panlalawigan Office";
+            ws.Cell(15, 1).Value = "A-B-C-D-1-1";
+            ws.Cell(15, 3).Value = "Program";
+            ws.Cell(16, 1).Value = "A-B-C-D-1-1-1";
+            ws.Cell(16, 4).Value = "Project";
+            ws.Cell(17, 1).Value  = "A-B-C-D-1-1-1-1";
+            ws.Cell(17, 5).Value  = "Enactment of ordinances";
+            ws.Cell(17, 13).Value = 130129.93;
+            ws.Cell(18, 1).Value  = "None";                                    // literal "None"
+            ws.Cell(18, 5).Value  = "Creation and filing up complementary legislative posts";
+            ws.Cell(18, 13).Value = 8850.00;                                   // carries money
+        });
+
+        Dictionary<string, List<ParsedAipOffice>> result = _sut.Parse(s);
+
+        ParsedAipProject proj = result["GENERAL"][0].Programs[0].Projects[0];
+        Assert.Equal(2, proj.Activities.Count);
+        Assert.Equal("Enactment of ordinances", proj.Activities[0].Name);
+        Assert.Equal(130129.93m, proj.Activities[0].Mooe);
+        Assert.Equal("Creation and filing up complementary legislative posts", proj.Activities[1].Name);
+        Assert.Equal(8850.00m, proj.Activities[1].Mooe);
+        Assert.False(string.IsNullOrWhiteSpace(proj.Activities[1].RefCode));
+    }
+
+    [Fact]
+    public void Parse_ContinuationRow_WithNoAmounts_StillAppendsToName()
+    {
+        // The money-carrying case above must not break ordinary multi-line wrapping.
+        using Stream s = BuildStream(wb =>
+        {
+            IXLWorksheet ws = wb.Worksheets.Add("GENERAL_FY2027");
+            ws.Cell(14, 1).Value = "A-B-C-D-1";
+            ws.Cell(14, 2).Value = "Office";
+            ws.Cell(15, 1).Value = "A-B-C-D-1-1";
+            ws.Cell(15, 3).Value = "Program";
+            ws.Cell(16, 1).Value = "A-B-C-D-1-1-1";
+            ws.Cell(16, 4).Value = "Project";
+            ws.Cell(17, 1).Value  = "A-B-C-D-1-1-1-1";
+            ws.Cell(17, 5).Value  = "First part";
+            ws.Cell(17, 13).Value = 500.0;
+            ws.Cell(18, 1).Value  = "None";
+            ws.Cell(18, 5).Value  = "second part";   // no amounts → continuation
+        });
+
+        Dictionary<string, List<ParsedAipOffice>> result = _sut.Parse(s);
+
+        ParsedAipProject proj = result["GENERAL"][0].Programs[0].Projects[0];
+        ParsedAipActivity act = Assert.Single(proj.Activities);
+        Assert.Equal("First part second part", act.Name);
+        Assert.Equal(500.0m, act.Mooe);
+    }
+
+    [Fact]
+    public void Parse_HeaderRowWithDescriptionText_IsNotTreatedAsAnOffice()
+    {
+        // Row 8 of every real sheet holds "AIP Reference Code (1)" in col A and
+        // "Program/Project/Activity Description (2)" in col B (merged B8:E9). Neither is data.
+        using Stream s = BuildStream(wb =>
+        {
+            IXLWorksheet ws = wb.Worksheets.Add("GENERAL_FY2027");
+            ws.Cell(8, 1).Value  = "AIP Reference Code           \n(1)";
+            ws.Cell(8, 2).Value  = "Program/Project/Activity Description                (2)";
+            ws.Cell(14, 1).Value = "A-B-C-D-1";
+            ws.Cell(14, 2).Value = "Real Office";
+        });
+
+        Dictionary<string, List<ParsedAipOffice>> result = _sut.Parse(s);
+
+        Assert.Single(result["GENERAL"]);
+        Assert.Equal("Real Office", result["GENERAL"][0].Name);
+    }
+
+    [Fact]
+    public void Parse_TotalRow_IsStillSkipped()
+    {
+        using Stream s = BuildStream(wb =>
+        {
+            IXLWorksheet ws = wb.Worksheets.Add("GENERAL_FY2027");
+            ws.Cell(14, 1).Value = "A-B-C-D-1";
+            ws.Cell(14, 2).Value = "Real Office";
+            ws.Cell(20, 1).Value  = "TOTAL";
+            ws.Cell(20, 12).Value = 8798.65;
+            ws.Cell(21, 1).Value  = "GRAND TOTAL";
+            ws.Cell(21, 12).Value = 17777422.68;
+        });
+
+        Dictionary<string, List<ParsedAipOffice>> result = _sut.Parse(s);
+
+        Assert.Single(result["GENERAL"]);
+        Assert.Equal("Real Office", result["GENERAL"][0].Name);
+    }
+
+    [Fact]
+    public void Parse_CorrectlyCodedFile_ParsesIdentically_Regression()
+    {
+        // A file where the segment count and the description column agree must be unaffected.
+        using Stream s = BuildStream(wb =>
+        {
+            IXLWorksheet ws = wb.Worksheets.Add("GENERAL_FY2027");
+            ws.Cell(14, 1).Value  = "1000-000-1-01-010";
+            ws.Cell(14, 2).Value  = "Provincial Planning and Development Office";
+            ws.Cell(15, 1).Value  = "1000-000-1-01-010-001";
+            ws.Cell(15, 3).Value  = "Planning Program";
+            ws.Cell(16, 1).Value  = "1000-000-1-01-010-001-001";
+            ws.Cell(16, 4).Value  = "Planning Project";
+            ws.Cell(17, 1).Value  = "1000-000-1-01-010-001-001-001";
+            ws.Cell(17, 5).Value  = "Planning Activity";
+            ws.Cell(17, 12).Value = 100.5;
+            ws.Cell(17, 13).Value = 200.25;
+            ws.Cell(17, 14).Value = 300.0;
+        });
+
+        Dictionary<string, List<ParsedAipOffice>> result = _sut.Parse(s);
+
+        ParsedAipOffice off = result["GENERAL"][0];
+        Assert.Equal("Provincial Planning and Development Office", off.Name);
+        ParsedAipProgram prog = Assert.Single(off.Programs);
+        Assert.Equal("Planning Program", prog.Name);
+        ParsedAipProject proj = Assert.Single(prog.Projects);
+        Assert.Equal("Planning Project", proj.Name);
+        ParsedAipActivity act = Assert.Single(proj.Activities);
+        Assert.Equal("Planning Activity", act.Name);
+        Assert.Equal(100.5m,  act.Ps);
+        Assert.Equal(200.25m, act.Mooe);
+        Assert.Equal(300.0m,  act.Co);
+        Assert.Equal(600.75m, act.Total);
+    }
+
     [Fact]
     public void Parse_AllFourSectorSheets_ReturnsDistinctSectorKeys()
     {

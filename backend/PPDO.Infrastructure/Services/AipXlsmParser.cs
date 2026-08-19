@@ -29,11 +29,31 @@ namespace PPDO.Infrastructure.Services;
 ///   Q  = CC Mitigation
 ///   R  = CC Typology Code
 ///
-/// Hierarchy detection: segment count in the ref code (split by '-'):
-///   5 segments = Office, 6 = Program, 7 = Project, 8 = Activity.
+/// Hierarchy detection (RAL-238): a row's level is taken from WHICH description column
+/// holds its text — B = Office, C = Program, D = Project, E = Activity. Columns B:E are
+/// merged as B8:E9 in the source form and act as indent columns, so the indentation is the
+/// author's actual statement of intent.
 ///
-/// Multi-line rows: if col A is empty or "None" and the previous row was an
-/// Activity, the col-E text is appended to the previous activity's name.
+/// The ref-code segment count (5 = Office, 6 = Program, 7 = Project, 8 = Activity) is only a
+/// FALLBACK, used when B–E are all blank. It is not authoritative: in the province's real
+/// FY2027 AIP, 82 of 2,887 rows have a segment count that contradicts the description column
+/// — 5-segment codes on program rows (which produced nameless phantom offices), 9-segment
+/// codes on activity rows (which were silently discarded), and so on.
+///
+/// Ref-code shape: a cell counts as a ref code only if it contains a '-' and no whitespace.
+/// This keeps header text ("AIP Reference Code (1)") and footer rows ("TOTAL", "GRAND TOTAL")
+/// out of the hierarchy even though they sit in column A.
+///
+/// Multi-line rows: if col A holds no ref code, the text is in col E, the row carries NO
+/// amounts, and the previous row was an Activity, the col-E text is appended to that
+/// activity's name. A blank-ref row that does carry amounts is a real activity whose author
+/// left the ref code blank (or typed "None") — it becomes its own activity, because merging
+/// it into the previous name would discard its money. A blank-ref row whose text is in col C
+/// or D is likewise a real Program/Project node. All such recovered nodes get a synthetic ref
+/// code of the form "{parentRefCode}-S{ordinal:000}".
+///
+/// Nothing carrying data is ever discarded silently: a node arriving without its parent gets
+/// a synthesized "(unassigned)" parent rather than being dropped.
 /// </summary>
 public sealed class AipXlsmParser : IAipXlsmParser
 {
@@ -95,36 +115,59 @@ public sealed class AipXlsmParser : IAipXlsmParser
         List<ParsedAipActivity>? currentActivityList = null;
 
         int lastRow = ws.LastRowUsed()?.RowNumber() ?? 0;
+        int synthCounter = 0;
 
         for (int row = 1; row <= lastRow; row++)
         {
-            string refCode = ws.Cell(row, 1).GetString().Trim();
+            string rawRefCode = ws.Cell(row, 1).GetString().Trim();
+            bool hasRefCode = IsRefCodeLike(rawRefCode);
 
-            // Blank / "None" in col A: possible continuation of previous activity name.
-            if (string.IsNullOrWhiteSpace(refCode) || refCode.Equals("None", StringComparison.OrdinalIgnoreCase))
+            AipLevel level = DetectLevel(ws, row, hasRefCode ? CountSegments(rawRefCode) : 0);
+
+            if (!hasRefCode)
             {
-                if (lastActivity is not null && currentActivityList is not null)
+                // No usable ref code. Either a continuation of the previous activity's name,
+                // or a Program/Project node whose author left column A blank.
+                if (level == AipLevel.Activity)
                 {
-                    string extra = ws.Cell(row, 5).GetString().Trim();
-                    if (!string.IsNullOrWhiteSpace(extra))
+                    // A continuation row is text only. If the row carries amounts of its own it
+                    // is a real activity whose author left column A blank (or typed "None") —
+                    // folding that into the previous activity's NAME silently discards its
+                    // money, so it falls through and becomes its own activity instead.
+                    if (!CarriesAmounts(ws, row))
                     {
-                        // Rebuild the activity record with the appended name.
-                        int idx = currentActivityList.IndexOf(lastActivity);
-                        lastActivity = lastActivity with { Name = lastActivity.Name + " " + extra };
-                        currentActivityList[idx] = lastActivity;
+                        if (lastActivity is not null && currentActivityList is not null)
+                        {
+                            string extra = ws.Cell(row, 5).GetString().Trim();
+                            if (!string.IsNullOrWhiteSpace(extra))
+                            {
+                                // Rebuild the activity record with the appended name.
+                                int idx = currentActivityList.IndexOf(lastActivity);
+                                lastActivity = lastActivity with { Name = lastActivity.Name + " " + extra };
+                                currentActivityList[idx] = lastActivity;
+                            }
+                        }
+                        continue;
                     }
                 }
-                continue;
+
+                // A blank-ref Office row is header furniture (the merged B8:E9 caption), never
+                // data — only Program/Project/Activity nodes are recovered here.
+                if (level is not (AipLevel.Program or AipLevel.Project or AipLevel.Activity)) continue;
+            }
+            else if (level == AipLevel.None)
+            {
+                continue;   // ref-code-shaped but no level could be resolved
             }
 
-            int segments = CountSegments(refCode);
+            // Strip the -XXX- placeholder before storing; segment count used the raw value.
+            string storedRefCode = hasRefCode
+                ? rawRefCode.Replace("-XXX-", "-", StringComparison.OrdinalIgnoreCase)
+                : SynthRefCode(currentProject?.RefCode ?? currentProgram?.RefCode ?? currentOffice?.RefCode ?? sector, ++synthCounter);
 
-            // Strip the -XXX- placeholder before storing; segment count uses the raw (inflated) value.
-            string storedRefCode = refCode.Replace("-XXX-", "-", StringComparison.OrdinalIgnoreCase);
-
-            switch (segments)
+            switch (level)
             {
-                case 5: // Office level
+                case AipLevel.Office:
                 {
                     string name = ws.Cell(row, 2).GetString().Trim();
                     currentOffice = new ParsedAipOffice(storedRefCode, name, sector, new List<ParsedAipProgram>());
@@ -135,9 +178,9 @@ public sealed class AipXlsmParser : IAipXlsmParser
                     currentActivityList = null;
                     break;
                 }
-                case 6: // Program level
+                case AipLevel.Program:
                 {
-                    if (currentOffice is null) break;
+                    currentOffice ??= AddUnassignedOffice(offices, storedRefCode, sector);
                     string name = ws.Cell(row, 3).GetString().Trim();
                     ParsedAipActivity? lineItem = TryParseLineItem(ws, row, storedRefCode, name);
                     currentProgram = new ParsedAipProgram(storedRefCode, name, new List<ParsedAipProject>(), lineItem);
@@ -147,9 +190,10 @@ public sealed class AipXlsmParser : IAipXlsmParser
                     currentActivityList = null;
                     break;
                 }
-                case 7: // Project level
+                case AipLevel.Project:
                 {
-                    if (currentProgram is null) break;
+                    currentOffice  ??= AddUnassignedOffice(offices, storedRefCode, sector);
+                    currentProgram ??= AddUnassignedProgram(currentOffice, storedRefCode);
                     string name = ws.Cell(row, 4).GetString().Trim();
                     ParsedAipActivity? lineItem = TryParseLineItem(ws, row, storedRefCode, name);
                     currentProject = new ParsedAipProject(storedRefCode, name, new List<ParsedAipActivity>(), lineItem);
@@ -158,9 +202,14 @@ public sealed class AipXlsmParser : IAipXlsmParser
                     currentActivityList = (List<ParsedAipActivity>)currentProject.Activities;
                     break;
                 }
-                case 8: // Activity level
+                case AipLevel.Activity:
                 {
-                    if (currentProject is null) break;
+                    // An orphaned activity keeps its data: synthesize whatever parents are
+                    // missing rather than discarding the row.
+                    currentOffice  ??= AddUnassignedOffice(offices, storedRefCode, sector);
+                    currentProgram ??= AddUnassignedProgram(currentOffice, storedRefCode);
+                    currentProject ??= AddUnassignedProject(currentProgram, storedRefCode);
+
                     currentActivityList = (List<ParsedAipActivity>)currentProject.Activities;
                     LineItemFields f = ReadLineItemFields(ws, row);
                     ParsedAipActivity activity = new(
@@ -183,11 +232,86 @@ public sealed class AipXlsmParser : IAipXlsmParser
                     lastActivity = activity;
                     break;
                 }
-                // Other segment counts are skipped (totals rows, etc.)
             }
         }
 
         return offices;
+    }
+
+    // ── Level detection (RAL-238) ─────────────────────────────────────────────
+
+    private enum AipLevel { None = 0, Office = 2, Program = 3, Project = 4, Activity = 5 }
+
+    /// <summary>
+    /// Resolves a row's hierarchy level. The description column wins: the first non-blank of
+    /// B (Office), C (Program), D (Project), E (Activity). Only when all four are blank does
+    /// the ref-code segment count decide.
+    /// </summary>
+    private static AipLevel DetectLevel(IXLWorksheet ws, int row, int segments)
+    {
+        for (int col = 2; col <= 5; col++)
+            if (!string.IsNullOrWhiteSpace(ws.Cell(row, col).GetString()))
+                return (AipLevel)col;
+
+        return segments switch
+        {
+            5 => AipLevel.Office,
+            6 => AipLevel.Program,
+            7 => AipLevel.Project,
+            8 => AipLevel.Activity,
+            _ => AipLevel.None,
+        };
+    }
+
+    /// <summary>
+    /// A column-A value counts as a ref code only when it contains a '-' and no whitespace.
+    /// Keeps sheet headers ("AIP Reference Code (1)") and footers ("TOTAL", "GRAND TOTAL")
+    /// out of the hierarchy.
+    /// </summary>
+    private static bool IsRefCodeLike(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        if (value.Equals("None", StringComparison.OrdinalIgnoreCase)) return false;
+        if (!value.Contains('-')) return false;
+        foreach (char c in value)
+            if (char.IsWhiteSpace(c)) return false;
+        return true;
+    }
+
+    /// <summary>
+    /// True when the row has a PS, MOOE or CO figure of its own. Deliberately narrower than
+    /// <see cref="TryParseLineItem"/>'s check: a text-only continuation row that happens to
+    /// carry a stray eSRE code still merges into the previous activity's name, but one
+    /// carrying money never does.
+    /// </summary>
+    private static bool CarriesAmounts(IXLWorksheet ws, int row)
+        => ParseDecimal(ws.Cell(row, 12)) is not null
+        || ParseDecimal(ws.Cell(row, 13)) is not null
+        || ParseDecimal(ws.Cell(row, 14)) is not null;
+
+    private const string UnassignedName = "(unassigned)";
+
+    private static string SynthRefCode(string basis, int ordinal) => $"{basis}-S{ordinal:000}";
+
+    private static ParsedAipOffice AddUnassignedOffice(List<ParsedAipOffice> offices, string childRefCode, string sector)
+    {
+        ParsedAipOffice office = new(SynthRefCode(childRefCode, 0), UnassignedName, sector, new List<ParsedAipProgram>());
+        offices.Add(office);
+        return office;
+    }
+
+    private static ParsedAipProgram AddUnassignedProgram(ParsedAipOffice office, string childRefCode)
+    {
+        ParsedAipProgram program = new(SynthRefCode(childRefCode, 0), UnassignedName, new List<ParsedAipProject>());
+        ((List<ParsedAipProgram>)office.Programs).Add(program);
+        return program;
+    }
+
+    private static ParsedAipProject AddUnassignedProject(ParsedAipProgram program, string childRefCode)
+    {
+        ParsedAipProject project = new(SynthRefCode(childRefCode, 0), UnassignedName, new List<ParsedAipActivity>());
+        ((List<ParsedAipProject>)program.Projects).Add(project);
+        return project;
     }
 
     /// <summary>
