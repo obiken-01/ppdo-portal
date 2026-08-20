@@ -540,6 +540,51 @@ public sealed class DistributionServiceTests
     }
 
     [Fact]
+    public async Task GetItemSummaryAsync_DeliveryBatchDistribution_ResolvesDivisionNameNotId()
+    {
+        // RAL-236 regression: ExistingDistributionDto.Division must be the division's
+        // display name, not the raw DivisionId stringified (e.g. "1" instead of
+        // "Administrative Division").
+        var batches = new List<DeliveryItemBreakdownRow>
+        {
+            Batch(Guid.NewGuid(), DateOnly.FromDateTime(DateTime.UtcNow), delivered: 10m, alreadyDistributed: 4m),
+        };
+
+        ServiceResult<ItemDistributionSummaryDto> result =
+            await BuildSut(RepoWithBatches("STK-1", batches), ItemsRepo("STK-1"), DistributionsRepoThatSaves())
+                .GetItemSummaryAsync(MakeAdmin(), "STK-1");
+
+        Assert.True(result.IsSuccess);
+        DeliveryItemBreakdownDto source = Assert.Single(result.Value!.DeliveryItems);
+        ExistingDistributionDto dist = Assert.Single(source.Distributions);
+        Assert.Equal("Administrative Division", dist.Division);
+    }
+
+    [Fact]
+    public async Task GetItemSummaryAsync_WarehouseCountDistribution_ResolvesDivisionNameNotId()
+    {
+        // Same RAL-236 regression, but for the warehouse-count pool's distributions
+        // (second, separate ExistingDistributionDto construction site in the same method).
+        var poolDistributions = new List<DistributionBreakdownRow>
+        {
+            new(Guid.NewGuid(), "ISS-20260101-AAAAA-1", PlanningDiv, 5m,
+                DateOnly.FromDateTime(DateTime.UtcNow), "Ralph", null),
+        };
+        Mock<IStockBalanceRepository> stockBalances =
+            WarehouseCountRepo("STK-1", Pool(5m), poolDistributions);
+
+        ServiceResult<ItemDistributionSummaryDto> result =
+            await BuildSut(RepoWithBatches("STK-1", Array.Empty<DeliveryItemBreakdownRow>()),
+                    ItemsRepo("STK-1"), DistributionsRepoThatSaves(), stockBalanceRepo: stockBalances)
+                .GetItemSummaryAsync(MakeAdmin(), "STK-1");
+
+        Assert.True(result.IsSuccess);
+        DeliveryItemBreakdownDto source = Assert.Single(result.Value!.DeliveryItems);
+        ExistingDistributionDto dist = Assert.Single(source.Distributions);
+        Assert.Equal("Planning Division", dist.Division);
+    }
+
+    [Fact]
     public async Task AllocateAsync_CountOnlyStockNoDeliveries_AllocatesFromWarehouseCount()
     {
         // The exact prod scenario: a PR item with a warehouse count recorded but never
