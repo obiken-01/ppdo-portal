@@ -97,6 +97,27 @@ public sealed class DistributionService : IDistributionService
         IReadOnlyList<Division> allDivisions = await _divisions.GetAllAsync(cancellationToken);
         Dictionary<int, string> divisionNameById = allDivisions.ToDictionary(d => d.Id, d => d.Name);
 
+        // divisions.id is an FK target, so a miss means referential integrity is broken.
+        // Say so in the log rather than rendering a bare number that reads like real data —
+        // that silent stringified ID was the original RAL-236 bug.
+        string ResolveDivisionName(int divisionId)
+        {
+            if (divisionNameById.TryGetValue(divisionId, out string? name))
+                return name;
+
+            _logger.LogWarning(
+                "Distribution references DivisionId {DivisionId}, which has no divisions row.",
+                divisionId);
+            return "—";
+        }
+
+        // Single construction site for distribution rows (RAL-239). The delivery-batch and
+        // warehouse-pool paths below build identical DTOs; RAL-236 had to be fixed in two
+        // places precisely because this was copy-pasted. Keep it to one site.
+        ExistingDistributionDto ToDistributionDto(DistributionBreakdownRow d) =>
+            new(d.Id, d.IssueRef, ResolveDivisionName(d.DivisionId),
+                d.QtyIssued, d.DateIssued, d.IssuedBy, d.Remarks);
+
         // Load all delivery batches for this item.
         IReadOnlyList<DeliveryItemBreakdownRow> batches =
             await _deliveries.GetDeliveryItemBreakdownsByStockNoAsync(stockNo, scopeDivision, cancellationToken);
@@ -132,11 +153,7 @@ public sealed class DistributionService : IDistributionService
                     QtyDelivered:   b.QtyDelivered,
                     QtyDistributed: distributed,
                     QtyAvailable:   Math.Max(0, b.QtyDelivered - distributed),
-                    Distributions:  b.Distributions
-                        .Select(d => new ExistingDistributionDto(
-                            d.Id, d.IssueRef, divisionNameById.GetValueOrDefault(d.DivisionId, d.DivisionId.ToString()),
-                            d.QtyIssued, d.DateIssued, d.IssuedBy, d.Remarks))
-                        .ToList());
+                    Distributions:  b.Distributions.Select(ToDistributionDto).ToList());
             })
             .ToList();
 
@@ -160,11 +177,7 @@ public sealed class DistributionService : IDistributionService
                 QtyDelivered:   poolReceived,
                 QtyDistributed: pool.TotalDistributed,
                 QtyAvailable:   Math.Max(0, pool.Remaining),
-                Distributions:  poolDistributions
-                    .Select(d => new ExistingDistributionDto(
-                        d.Id, d.IssueRef, divisionNameById.GetValueOrDefault(d.DivisionId, d.DivisionId.ToString()),
-                        d.QtyIssued, d.DateIssued, d.IssuedBy, d.Remarks))
-                    .ToList()));
+                Distributions:  poolDistributions.Select(ToDistributionDto).ToList()));
 
             totalDelivered   += poolReceived;
             totalDistributed += pool.TotalDistributed;
