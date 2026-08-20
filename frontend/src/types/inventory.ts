@@ -371,6 +371,11 @@ export interface GsoPRImportPreviewResponse {
 export interface ExistingDistributionResponse {
   id: string;
   issueRef: string;
+  /**
+   * Division *display name*, already resolved server-side — render it verbatim.
+   * Until RAL-236 this carried a stringified DivisionId instead, which the
+   * Distribution page rendered as a bare number in the DIVISION pill.
+   */
   division: string;
   qtyIssued: number;
   dateIssued: string;
