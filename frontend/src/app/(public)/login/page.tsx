@@ -87,7 +87,7 @@ type FormData = z.infer<typeof schema>;
 // Page
 // ---------------------------------------------------------------------------
 
-const APP_VERSION = "v1.7.3";
+const APP_VERSION = "v1.7.4";
 
 function LoginPageInner() {
   const router = useRouter();
