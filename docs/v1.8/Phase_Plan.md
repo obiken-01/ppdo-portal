@@ -182,6 +182,34 @@ Read as the landing-target set. Each needs one thing done to it before it can be
 **Phase 1 total: 31 work items**, in four clusters — permissions, configuration, landing, password
 reset.
 
+### 3.6 Linear ticket linkage
+
+Created 2026-08-20 under milestone *v1.8.0 — Office Users, AIP Redesign & Reviewer Flow*, all
+children of the epic **RAL-241** (*v1.8.0 Phase 1 — Identity, Configuration & Landing*). Ticket
+descriptions carry scope, not implementation prompts — those follow `docs/TICKET_PROMPT_STANDARD.md`
+and get written when a ticket moves to In Progress.
+
+| Item | Ticket | Item | Ticket | Item | Ticket |
+|---|---|---|---|---|---|
+| V18-01 | RAL-242 | V18-12 | RAL-258 | V18-23 | RAL-265 |
+| V18-02 | RAL-243 | V18-13 | RAL-259 | V18-24 | RAL-269 |
+| V18-03 | RAL-244 | V18-14 | RAL-260 | V18-25 | RAL-266 |
+| V18-04 | RAL-256 | V18-15 | RAL-250 | V18-26 | RAL-254 |
+| V18-05 | RAL-257 | V18-16 | RAL-251 | V18-27 | RAL-267 |
+| V18-06 | RAL-245 | V18-17 | RAL-261 | V18-28 | RAL-270 |
+| V18-07 | RAL-246 | V18-18 | RAL-263 | V18-29 | RAL-271 |
+| V18-08 | RAL-268 | V18-19 | RAL-264 | V18-30 | RAL-255 |
+| V18-09 | RAL-247 | V18-20 | RAL-262 | V18-31 | RAL-272 |
+| V18-10 | RAL-248 | V18-21 | RAL-252 | | |
+| V18-11 | RAL-249 | V18-22 | RAL-253 | | |
+
+All are **Todo** except **RAL-255** (V18-30), left in Backlog because it needs Ralph's call first.
+Suggested starting order: **RAL-254** (the live shared-password finding) → **RAL-251** (landing
+schema + resolver, which five other tickets sit on) → **RAL-244**/**RAL-256** (reviewer flag and its
+guard, the longest pole in the permission cluster).
+
+Phases 2–7 are **not** ticketed — every one of them has at least one open decision in §9.
+
 ---
 
 ## 4. Phase 2 — AIP Foundation 🔴
