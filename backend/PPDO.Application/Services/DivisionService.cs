@@ -87,11 +87,21 @@ public sealed class DivisionService : IDivisionService
                       && d.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
             return ServiceResult<DivisionDto>.Conflict($"A division named '{name}' already exists in this office.");
 
+        // Code is the CSV upsert key (RAL-239), so it has to be unique within the office —
+        // enforced by IX_divisions_office_id_code. Check here for a clean 409 instead of a
+        // DbUpdateException.
+        string? newCode = NullIfBlank(dto.Code);
+        if (newCode is not null
+            && all.Any(d => d.OfficeId == dto.OfficeId
+                         && d.Code is not null
+                         && d.Code.Equals(newCode, StringComparison.OrdinalIgnoreCase)))
+            return ServiceResult<DivisionDto>.Conflict($"A division with code '{newCode}' already exists in this office.");
+
         DateTime now = DateTime.UtcNow;
         Division entity = new()
         {
             OfficeId                = dto.OfficeId,
-            Code                    = NullIfBlank(dto.Code),
+            Code                    = newCode,
             Name                    = name,
             IsActive                = dto.IsActive,
             CanAccessBudgetPlanning = dto.CanAccessBudgetPlanning,
@@ -134,7 +144,25 @@ public sealed class DivisionService : IDivisionService
 
         object oldSnapshot = AuditSnapshot(entity);
 
-        entity.Code                    = NullIfBlank(dto.Code);
+        // Name is editable as of RAL-239 — nothing persists a division name as text (every
+        // referencing table carries division_id), so a rename propagates on the next read.
+        // Both keys still have to stay unique within the office.
+        string newName = dto.Name.Trim();
+        if (all.Any(d => d.Id != id
+                      && d.OfficeId == entity.OfficeId
+                      && d.Name.Equals(newName, StringComparison.OrdinalIgnoreCase)))
+            return ServiceResult<DivisionDto>.Conflict($"A division named '{newName}' already exists in this office.");
+
+        string? newCode = NullIfBlank(dto.Code);
+        if (newCode is not null
+            && all.Any(d => d.Id != id
+                         && d.OfficeId == entity.OfficeId
+                         && d.Code is not null
+                         && d.Code.Equals(newCode, StringComparison.OrdinalIgnoreCase)))
+            return ServiceResult<DivisionDto>.Conflict($"A division with code '{newCode}' already exists in this office.");
+
+        entity.Name                    = newName;
+        entity.Code                    = newCode;
         entity.IsActive                = dto.IsActive;
         entity.CanAccessBudgetPlanning = dto.CanAccessBudgetPlanning;
         entity.CanAccessInventory      = dto.CanAccessInventory;
@@ -144,7 +172,6 @@ public sealed class DivisionService : IDivisionService
         entity.CanManageUsers          = dto.CanManageUsers;
         entity.CanManageResourceLinks  = dto.CanManageResourceLinks;
         entity.UpdatedAt               = DateTime.UtcNow;
-        // Name is the upsert key — not editable via update (only via CSV re-seeding).
 
         await _divisions.UpdateAsync(entity, cancellationToken);
         await _divisions.SaveChangesAsync(cancellationToken);
@@ -227,14 +254,24 @@ public sealed class DivisionService : IDivisionService
             o => o.OfficeCode.Trim(), o => o.Id, StringComparer.OrdinalIgnoreCase);
 
         List<Division> all = (await _divisions.GetAllAsync(cancellationToken)).ToList();
-        // Key = (officeId, normalised name)
-        Dictionary<(int, string), Division> byKey = all.ToDictionary(
+
+        // Upsert key is (officeId, code) whenever the row carries one — that is what lets a
+        // division be renamed in place instead of the re-seed creating a duplicate (RAL-239).
+        // Codeless rows keep the pre-RAL-239 (officeId, name) behaviour and cannot be renamed
+        // this way; give the division a code to make it renameable.
+        Dictionary<(int, string), Division> byCode = all
+            .Where(d => !string.IsNullOrWhiteSpace(d.Code))
+            .ToDictionary(d => (d.OfficeId, d.Code!.Trim().ToLowerInvariant()));
+        Dictionary<(int, string), Division> byName = all.ToDictionary(
             d => (d.OfficeId, d.Name.Trim().ToLowerInvariant()));
 
         int created = 0, updated = 0, skipped = 0;
         List<string> errors = new();
         DateTime now = DateTime.UtcNow;
-        HashSet<(int, string)> processedThisBatch = new();
+        // Names and codes are deduped separately: two rows may legitimately share neither,
+        // but either colliding inside one file would breach a unique index on save.
+        HashSet<(int, string)> processedNames = new();
+        HashSet<(int, string)> processedCodes = new();
 
         for (int i = start; i < parsed.Count; i++)
         {
@@ -265,19 +302,54 @@ public sealed class DivisionService : IDivisionService
                 continue;
             }
 
-            (int, string) key = (officeId, name.ToLowerInvariant());
+            (int, string) nameKey = (officeId, name.ToLowerInvariant());
+            (int, string)? codeKey = code is null ? null : (officeId, code.ToLowerInvariant());
 
-            if (!processedThisBatch.Add(key))
+            if (!processedNames.Add(nameKey))
             {
                 skipped++;
                 errors.Add($"Row {i + 1}: duplicate name '{name}' for office '{officeCode}' in this file.");
                 continue;
             }
 
-            if (byKey.TryGetValue(key, out Division? existing))
+            if (codeKey is not null && !processedCodes.Add(codeKey.Value))
+            {
+                skipped++;
+                errors.Add($"Row {i + 1}: duplicate code '{code}' for office '{officeCode}' in this file.");
+                continue;
+            }
+
+            // Match on code first, then fall back to name for codeless rows.
+            Division? existing = null;
+            if (codeKey is not null)
+                byCode.TryGetValue(codeKey.Value, out existing);
+            existing ??= byName.GetValueOrDefault(nameKey);
+
+            // A rename must not land on a name another division already holds, and adopting a
+            // code must not steal one — either would breach a unique index at SaveChanges.
+            if (existing is not null
+                && byName.TryGetValue(nameKey, out Division? nameOwner)
+                && nameOwner.Id != existing.Id)
+            {
+                skipped++;
+                errors.Add($"Row {i + 1}: cannot rename '{existing.Name}' to '{name}' — another division in office '{officeCode}' already uses that name.");
+                continue;
+            }
+
+            if (existing is not null && codeKey is not null
+                && byCode.TryGetValue(codeKey.Value, out Division? codeOwner)
+                && codeOwner.Id != existing.Id)
+            {
+                skipped++;
+                errors.Add($"Row {i + 1}: code '{code}' already belongs to division '{codeOwner.Name}' in office '{officeCode}'.");
+                continue;
+            }
+
+            if (existing is not null)
             {
                 bool changed =
                     existing.Code                    != code        ||
+                    !existing.Name.Equals(name, StringComparison.Ordinal) ||
                     existing.IsActive                != active      ||
                     existing.CanAccessBudgetPlanning != budget      ||
                     existing.CanAccessInventory      != inventory   ||
@@ -289,7 +361,14 @@ public sealed class DivisionService : IDivisionService
 
                 if (!changed) { skipped++; continue; }
 
+                // Keep the lookups in step with the rename/recode, so a later row in the same
+                // file resolves against current state rather than the pre-import names.
+                byName.Remove((existing.OfficeId, existing.Name.Trim().ToLowerInvariant()));
+                if (!string.IsNullOrWhiteSpace(existing.Code))
+                    byCode.Remove((existing.OfficeId, existing.Code.Trim().ToLowerInvariant()));
+
                 existing.Code                    = code;
+                existing.Name                    = name;
                 existing.IsActive                = active;
                 existing.CanAccessBudgetPlanning = budget;
                 existing.CanAccessInventory      = inventory;
@@ -299,6 +378,10 @@ public sealed class DivisionService : IDivisionService
                 existing.CanManageUsers          = manageUsers;
                 existing.CanManageResourceLinks  = resourceLinks;
                 existing.UpdatedAt               = now;
+
+                byName[nameKey] = existing;
+                if (codeKey is not null) byCode[codeKey.Value] = existing;
+
                 await _divisions.UpdateAsync(existing, cancellationToken);
                 updated++;
             }
@@ -321,7 +404,8 @@ public sealed class DivisionService : IDivisionService
                     UpdatedAt               = now,
                 };
                 await _divisions.AddAsync(entity, cancellationToken);
-                byKey[key] = entity;
+                byName[nameKey] = entity;
+                if (codeKey is not null) byCode[codeKey.Value] = entity;
                 created++;
             }
         }

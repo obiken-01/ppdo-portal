@@ -91,6 +91,38 @@ public sealed class DistributionService : IDistributionService
         // Load catalog entry for item details (optional — might be an orphan StockNo).
         ItemMaster? master = await _items.GetByStockNoAsync(stockNo, cancellationToken);
 
+        // Division id → name lookup for the distribution rows below (RAL-236). Includes
+        // inactive divisions since past distributions may reference one that's since been
+        // deactivated — the name should still resolve.
+        IReadOnlyList<Division> allDivisions = await _divisions.GetAllAsync(cancellationToken);
+        Dictionary<int, Division> divisionById = allDivisions.ToDictionary(d => d.Id);
+
+        // divisions.id is an FK target, so a miss means referential integrity is broken.
+        // Say so in the log rather than rendering a bare number that reads like real data —
+        // that silent stringified ID was the original RAL-236 bug.
+        Division? ResolveDivision(int divisionId)
+        {
+            if (divisionById.TryGetValue(divisionId, out Division? division))
+                return division;
+
+            _logger.LogWarning(
+                "Distribution references DivisionId {DivisionId}, which has no divisions row.",
+                divisionId);
+            return null;
+        }
+
+        // Single construction site for distribution rows (RAL-239). The delivery-batch and
+        // warehouse-pool paths below build identical DTOs; RAL-236 had to be fixed in two
+        // places precisely because this was copy-pasted. Keep it to one site.
+        // Both name and code go out: the grid pill renders the short code, and the full name
+        // stays available for its tooltip and for divisions that have no code.
+        ExistingDistributionDto ToDistributionDto(DistributionBreakdownRow d)
+        {
+            Division? division = ResolveDivision(d.DivisionId);
+            return new(d.Id, d.IssueRef, division?.Name ?? "—", division?.Code,
+                d.QtyIssued, d.DateIssued, d.IssuedBy, d.Remarks);
+        }
+
         // Load all delivery batches for this item.
         IReadOnlyList<DeliveryItemBreakdownRow> batches =
             await _deliveries.GetDeliveryItemBreakdownsByStockNoAsync(stockNo, scopeDivision, cancellationToken);
@@ -126,11 +158,7 @@ public sealed class DistributionService : IDistributionService
                     QtyDelivered:   b.QtyDelivered,
                     QtyDistributed: distributed,
                     QtyAvailable:   Math.Max(0, b.QtyDelivered - distributed),
-                    Distributions:  b.Distributions
-                        .Select(d => new ExistingDistributionDto(
-                            d.Id, d.IssueRef, d.DivisionId.ToString(),
-                            d.QtyIssued, d.DateIssued, d.IssuedBy, d.Remarks))
-                        .ToList());
+                    Distributions:  b.Distributions.Select(ToDistributionDto).ToList());
             })
             .ToList();
 
@@ -154,11 +182,7 @@ public sealed class DistributionService : IDistributionService
                 QtyDelivered:   poolReceived,
                 QtyDistributed: pool.TotalDistributed,
                 QtyAvailable:   Math.Max(0, pool.Remaining),
-                Distributions:  poolDistributions
-                    .Select(d => new ExistingDistributionDto(
-                        d.Id, d.IssueRef, d.DivisionId.ToString(),
-                        d.QtyIssued, d.DateIssued, d.IssuedBy, d.Remarks))
-                    .ToList()));
+                Distributions:  poolDistributions.Select(ToDistributionDto).ToList()));
 
             totalDelivered   += poolReceived;
             totalDistributed += pool.TotalDistributed;

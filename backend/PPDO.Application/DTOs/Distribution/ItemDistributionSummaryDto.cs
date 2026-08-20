@@ -39,6 +39,7 @@ public sealed record ExistingDistributionDto(
     Guid     Id,
     string   IssueRef,
     string   Division,
+    string?  DivisionCode,
     decimal  QtyIssued,
     DateOnly DateIssued,
     string   IssuedBy,
