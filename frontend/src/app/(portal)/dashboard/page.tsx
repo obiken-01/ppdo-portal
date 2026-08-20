@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import api from "@/lib/api";
 import { useMe } from "@/lib/me-cache";
 import { getPendingEvents, deleteCalendarEvent } from "@/lib/dashboard";
@@ -30,6 +30,24 @@ export default function DashboardPage() {
   const [editingEvent, setEditingEvent]   = useState<CalendarEventResponse | null>(null);
   const [dialog, setDialog]               = useState<ConfirmDialogProps | null>(null);
   const { toast } = useToast();
+
+  // Dismiss only when the press BOTH starts and ends on the backdrop (RAL-273). A `click` is
+  // dispatched at the nearest common ancestor of the mousedown/mouseup targets, so releasing
+  // a drag outside the panel retargets it onto the backdrop and closed this dialog
+  // unintentionally.
+  const eventBackdropRef = useRef<HTMLDivElement>(null);
+  const eventPressStartedOnBackdrop = useRef(false);
+
+  function handleEventBackdropPointerDown(e: React.PointerEvent) {
+    eventPressStartedOnBackdrop.current = e.target === eventBackdropRef.current;
+  }
+
+  function handleEventBackdropPointerUp(e: React.PointerEvent) {
+    const shouldClose =
+      eventPressStartedOnBackdrop.current && e.target === eventBackdropRef.current;
+    eventPressStartedOnBackdrop.current = false;
+    if (shouldClose) setSelectedEvent(null);
+  }
 
   // Dashboard has no special access requirement -- every authenticated portal user lands
   // here, so the permission check always passes. Reads the shared cached /auth/me instead
@@ -180,13 +198,12 @@ export default function DashboardPage() {
       {/* Event detail modal */}
       {selectedEvent && (
         <div
+          ref={eventBackdropRef}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
-          onClick={() => setSelectedEvent(null)}
+          onPointerDown={handleEventBackdropPointerDown}
+          onPointerUp={handleEventBackdropPointerUp}
         >
-          <div
-            className="bg-white shadow-xl max-w-sm w-full p-5 border border-slate-200"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="bg-white shadow-xl max-w-sm w-full p-5 border border-slate-200">
             <div className="flex items-start justify-between gap-2 mb-3">
               <div>
                 <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${

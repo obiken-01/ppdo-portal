@@ -25,7 +25,8 @@
  *   )}
  *
  * Behaviour:
- *   - Backdrop click → onClose
+ *   - Backdrop click → onClose (only when the press starts AND ends on the backdrop, so a
+ *     text selection dragged out of a field does not dismiss the modal — RAL-273)
  *   - Escape key     → onClose
  *   - × button       → onClose
  *   - Body scrolls when content exceeds the viewport; header/footer stay fixed.
@@ -58,6 +59,7 @@ const SIZE_CLASS: Record<ModalSize, string> = {
 
 export default function Modal({ title, children, footer, size = "md", fixedHeight, onClose }: ModalProps) {
   const backdropRef = useRef<HTMLDivElement>(null);
+  const pressStartedOnBackdrop = useRef(false);
 
   // Close on Escape
   useEffect(() => {
@@ -68,14 +70,30 @@ export default function Modal({ title, children, footer, size = "md", fixedHeigh
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  function handleBackdrop(e: React.MouseEvent) {
-    if (e.target === backdropRef.current) onClose();
+  // Dismiss only when the press BOTH starts and ends on the backdrop (RAL-273).
+  //
+  // This deliberately does not use `click`. Per the UI Events spec a click is dispatched at
+  // the nearest common ancestor of the mousedown and mouseup targets — and since the panel is
+  // a child of the backdrop, drag-selecting text in a field and releasing outside the panel
+  // retargets the click onto the backdrop itself. `e.target === backdropRef.current` was
+  // therefore true for a gesture that began inside the modal, and the user's edits vanished.
+  // The same retargeting made the reverse gesture (press on backdrop, release inside) close
+  // the modal too.
+  function handlePointerDown(e: React.PointerEvent) {
+    pressStartedOnBackdrop.current = e.target === backdropRef.current;
+  }
+
+  function handlePointerUp(e: React.PointerEvent) {
+    const shouldClose = pressStartedOnBackdrop.current && e.target === backdropRef.current;
+    pressStartedOnBackdrop.current = false;
+    if (shouldClose) onClose();
   }
 
   const content = (
     <div
       ref={backdropRef}
-      onClick={handleBackdrop}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4"
       aria-modal="true"
       role="dialog"
