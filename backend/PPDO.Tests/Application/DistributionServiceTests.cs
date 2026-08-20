@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging.Abstractions;
+﻿using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.Distribution;
@@ -28,8 +28,8 @@ public sealed class DistributionServiceTests
         repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Division>
             {
-                new() { Id = AdminDiv,    OfficeId = 100, Name = "Administrative Division", IsActive = true },
-                new() { Id = PlanningDiv, OfficeId = 100, Name = "Planning Division",       IsActive = true },
+                new() { Id = AdminDiv,    OfficeId = 100, Name = "Administrative Division", Code = "ADMIN", IsActive = true },
+                new() { Id = PlanningDiv, OfficeId = 100, Name = "Planning Division",       Code = "PLAN",  IsActive = true },
             });
         return repo;
     }
@@ -558,6 +558,7 @@ public sealed class DistributionServiceTests
         DeliveryItemBreakdownDto source = Assert.Single(result.Value!.DeliveryItems);
         ExistingDistributionDto dist = Assert.Single(source.Distributions);
         Assert.Equal("Administrative Division", dist.Division);
+        Assert.Equal("ADMIN", dist.DivisionCode);
     }
 
     [Fact]
@@ -582,6 +583,7 @@ public sealed class DistributionServiceTests
         DeliveryItemBreakdownDto source = Assert.Single(result.Value!.DeliveryItems);
         ExistingDistributionDto dist = Assert.Single(source.Distributions);
         Assert.Equal("Planning Division", dist.Division);
+        Assert.Equal("PLAN", dist.DivisionCode);
     }
 
     [Fact]
@@ -671,5 +673,32 @@ public sealed class DistributionServiceTests
                 .AllocateAsync(MakeAdmin(), "STK-1", dto);
 
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Fact]
+    public async Task GetItemSummaryAsync_UnknownDivisionId_RendersPlaceholderNotRawId()
+    {
+        // RAL-239: divisions.id is an FK target, so this is unreachable in practice — but if
+        // referential integrity ever breaks, show a placeholder rather than silently
+        // reproducing the RAL-236 bug by printing the bare id as if it were a name.
+        var poolDistributions = new List<DistributionBreakdownRow>
+        {
+            new(Guid.NewGuid(), "ISS-20260101-AAAAA-1", 999, 5m,
+                DateOnly.FromDateTime(DateTime.UtcNow), "Ralph", null),
+        };
+        Mock<IStockBalanceRepository> stockBalances =
+            WarehouseCountRepo("STK-1", Pool(5m), poolDistributions);
+
+        ServiceResult<ItemDistributionSummaryDto> result =
+            await BuildSut(RepoWithBatches("STK-1", Array.Empty<DeliveryItemBreakdownRow>()),
+                    ItemsRepo("STK-1"), DistributionsRepoThatSaves(), stockBalanceRepo: stockBalances)
+                .GetItemSummaryAsync(MakeAdmin(), "STK-1");
+
+        Assert.True(result.IsSuccess);
+        DeliveryItemBreakdownDto source = Assert.Single(result.Value!.DeliveryItems);
+        ExistingDistributionDto dist = Assert.Single(source.Distributions);
+        Assert.Equal("—", dist.Division);
+        Assert.Null(dist.DivisionCode);
+        Assert.DoesNotContain("999", dist.Division);
     }
 }
