@@ -95,28 +95,33 @@ public sealed class DistributionService : IDistributionService
         // inactive divisions since past distributions may reference one that's since been
         // deactivated — the name should still resolve.
         IReadOnlyList<Division> allDivisions = await _divisions.GetAllAsync(cancellationToken);
-        Dictionary<int, string> divisionNameById = allDivisions.ToDictionary(d => d.Id, d => d.Name);
+        Dictionary<int, Division> divisionById = allDivisions.ToDictionary(d => d.Id);
 
         // divisions.id is an FK target, so a miss means referential integrity is broken.
         // Say so in the log rather than rendering a bare number that reads like real data —
         // that silent stringified ID was the original RAL-236 bug.
-        string ResolveDivisionName(int divisionId)
+        Division? ResolveDivision(int divisionId)
         {
-            if (divisionNameById.TryGetValue(divisionId, out string? name))
-                return name;
+            if (divisionById.TryGetValue(divisionId, out Division? division))
+                return division;
 
             _logger.LogWarning(
                 "Distribution references DivisionId {DivisionId}, which has no divisions row.",
                 divisionId);
-            return "—";
+            return null;
         }
 
         // Single construction site for distribution rows (RAL-239). The delivery-batch and
         // warehouse-pool paths below build identical DTOs; RAL-236 had to be fixed in two
         // places precisely because this was copy-pasted. Keep it to one site.
-        ExistingDistributionDto ToDistributionDto(DistributionBreakdownRow d) =>
-            new(d.Id, d.IssueRef, ResolveDivisionName(d.DivisionId),
+        // Both name and code go out: the grid pill renders the short code, and the full name
+        // stays available for its tooltip and for divisions that have no code.
+        ExistingDistributionDto ToDistributionDto(DistributionBreakdownRow d)
+        {
+            Division? division = ResolveDivision(d.DivisionId);
+            return new(d.Id, d.IssueRef, division?.Name ?? "—", division?.Code,
                 d.QtyIssued, d.DateIssued, d.IssuedBy, d.Remarks);
+        }
 
         // Load all delivery batches for this item.
         IReadOnlyList<DeliveryItemBreakdownRow> batches =

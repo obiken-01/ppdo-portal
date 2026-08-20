@@ -679,8 +679,11 @@ export default function DistributionPage() {
                           <td className="px-4 py-2.5 font-mono text-xs text-slate-600">{d.deliveryRef}</td>
                           <td className="px-4 py-2.5 font-mono text-xs text-slate-600">{d.prNo}</td>
                           <td className="px-4 py-2.5">
-                            <span className="px-2 py-0.5 text-xs bg-green-50 text-green-700 border border-green-200">
-                              {d.division}
+                            <span
+                              title={d.division}
+                              className="px-2 py-0.5 text-xs bg-green-50 text-green-700 border border-green-200"
+                            >
+                              {d.divisionCode ?? d.division}
                             </span>
                           </td>
                           <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-slate-800">

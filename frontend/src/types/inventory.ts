@@ -377,6 +377,11 @@ export interface ExistingDistributionResponse {
    * Distribution page rendered as a bare number in the DIVISION pill.
    */
   division: string;
+  /**
+   * Short code ("ADMIN"), or null for divisions that have none. The grid pill shows
+   * this and falls back to `division`; the full name stays as the pill's tooltip.
+   */
+  divisionCode: string | null;
   qtyIssued: number;
   dateIssued: string;
   issuedBy: string;

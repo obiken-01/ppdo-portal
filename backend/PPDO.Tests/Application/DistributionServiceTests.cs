@@ -28,8 +28,8 @@ public sealed class DistributionServiceTests
         repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Division>
             {
-                new() { Id = AdminDiv,    OfficeId = 100, Name = "Administrative Division", IsActive = true },
-                new() { Id = PlanningDiv, OfficeId = 100, Name = "Planning Division",       IsActive = true },
+                new() { Id = AdminDiv,    OfficeId = 100, Name = "Administrative Division", Code = "ADMIN", IsActive = true },
+                new() { Id = PlanningDiv, OfficeId = 100, Name = "Planning Division",       Code = "PLAN",  IsActive = true },
             });
         return repo;
     }
@@ -558,6 +558,7 @@ public sealed class DistributionServiceTests
         DeliveryItemBreakdownDto source = Assert.Single(result.Value!.DeliveryItems);
         ExistingDistributionDto dist = Assert.Single(source.Distributions);
         Assert.Equal("Administrative Division", dist.Division);
+        Assert.Equal("ADMIN", dist.DivisionCode);
     }
 
     [Fact]
@@ -582,6 +583,7 @@ public sealed class DistributionServiceTests
         DeliveryItemBreakdownDto source = Assert.Single(result.Value!.DeliveryItems);
         ExistingDistributionDto dist = Assert.Single(source.Distributions);
         Assert.Equal("Planning Division", dist.Division);
+        Assert.Equal("PLAN", dist.DivisionCode);
     }
 
     [Fact]
@@ -696,6 +698,7 @@ public sealed class DistributionServiceTests
         DeliveryItemBreakdownDto source = Assert.Single(result.Value!.DeliveryItems);
         ExistingDistributionDto dist = Assert.Single(source.Distributions);
         Assert.Equal("—", dist.Division);
+        Assert.Null(dist.DivisionCode);
         Assert.DoesNotContain("999", dist.Division);
     }
 }
