@@ -46,9 +46,10 @@ public sealed class StockBalanceRepository
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyDictionary<string, decimal>> GetAllVarianceTotalsAsync(
+    public async Task<IReadOnlyDictionary<string, StockNoPoolMovement>> GetAllPoolMovementsAsync(
         CancellationToken cancellationToken = default)
     {
+        // Sequential awaits — never Task.WhenAll over a shared DbContext (see CLAUDE.md).
         List<StockNoVarianceTotal> totals = await _context.Set<StockBalance>()
             .GroupBy(b => b.StockNo)
             .Select(g => new StockNoVarianceTotal(g.Key, g.Sum(b => b.VarianceQty)))
@@ -60,7 +61,58 @@ public sealed class StockBalanceRepository
             .Select(g => new StockNoVarianceTotal(g.Key, g.Sum(d => d.QtyIssued)))
             .ToListAsync(cancellationToken);
 
-        return NetOut(totals, distributed);
+        return Combine(totals, distributed);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<string, StockNoPoolMovement>> GetPoolMovementsByStockNosAsync(
+        IReadOnlyCollection<string> stockNos,
+        CancellationToken cancellationToken = default)
+    {
+        if (stockNos.Count == 0) return new Dictionary<string, StockNoPoolMovement>();
+
+        // Sequential awaits — never Task.WhenAll over a shared DbContext (see CLAUDE.md).
+        List<StockNoVarianceTotal> totals = await _context.Set<StockBalance>()
+            .Where(b => stockNos.Contains(b.StockNo))
+            .GroupBy(b => b.StockNo)
+            .Select(g => new StockNoVarianceTotal(g.Key, g.Sum(b => b.VarianceQty)))
+            .ToListAsync(cancellationToken);
+
+        List<StockNoVarianceTotal> distributed = await _context.Set<Distribution>()
+            .Where(d => d.StockBalanceId != null && stockNos.Contains(d.StockBalance!.StockNo))
+            .GroupBy(d => d.StockBalance!.StockNo)
+            .Select(g => new StockNoVarianceTotal(g.Key, g.Sum(d => d.QtyIssued)))
+            .ToListAsync(cancellationToken);
+
+        return Combine(totals, distributed);
+    }
+
+    /// <summary>
+    /// Pairs each StockNo's gross variance with what has been issued against its pool. Unlike
+    /// <see cref="NetOut"/> the two are kept apart (RAL-240), so the caller can report counted
+    /// stock and pool issues in separate columns instead of only their difference.
+    /// </summary>
+    private static Dictionary<string, StockNoPoolMovement> Combine(
+        List<StockNoVarianceTotal> variance, List<StockNoVarianceTotal> distributed)
+    {
+        Dictionary<string, decimal> distributedByStockNo =
+            distributed.ToDictionary(d => d.StockNo, d => d.Total);
+
+        Dictionary<string, StockNoPoolMovement> result = variance.ToDictionary(
+            v => v.StockNo,
+            v => new StockNoPoolMovement(
+                GrossVariance: v.Total,
+                Distributed:   distributedByStockNo.GetValueOrDefault(v.StockNo, 0m)));
+
+        // A pool issue always references a stock_balances row, so every key here should also
+        // appear in `variance`. Guard anyway — dropping one would understate DISTRIBUTED.
+        foreach (StockNoVarianceTotal d in distributed)
+        {
+            if (!result.ContainsKey(d.StockNo))
+                result[d.StockNo] = new StockNoPoolMovement(GrossVariance: 0m, Distributed: d.Total);
+        }
+
+        return result;
     }
 
     /// <inheritdoc />

@@ -90,11 +90,11 @@ public sealed class InventoryService : IInventoryService
         // so GetItemStockLevelsAsync never returns them) as zero-movement rows — otherwise a
         // count for a brand-new item stays invisible here despite being the whole point of
         // RAL-193.
-        IReadOnlyDictionary<string, decimal> varianceMap = division is null
-            ? await _stockBalances.GetAllVarianceTotalsAsync(cancellationToken)
-            : new Dictionary<string, decimal>();
-        if (varianceMap.Count > 0)
-            stockLevels = MergeCountOnlyStockLevels(stockLevels, varianceMap);
+        IReadOnlyDictionary<string, StockNoPoolMovement> poolMap = division is null
+            ? await _stockBalances.GetAllPoolMovementsAsync(cancellationToken)
+            : new Dictionary<string, StockNoPoolMovement>();
+        if (poolMap.Count > 0)
+            stockLevels = MergeCountOnlyStockLevels(stockLevels, poolMap);
 
         // Only the StockNos already present in stockLevels are ever read from this map —
         // fetch exactly those, never the full catalog.
@@ -108,8 +108,7 @@ public sealed class InventoryService : IInventoryService
 
         foreach (ItemStockLevel level in stockLevels)
         {
-            decimal onHand = level.QtyDelivered - level.QtyDistributed
-                + varianceMap.GetValueOrDefault(level.StockNo, 0m);
+            (_, _, decimal onHand) = ApplyPoolMovement(level, poolMap);
             int reorderQty = catalogMap.TryGetValue(level.StockNo, out ItemMaster? master)
                 ? master.ReorderQty : 0;
 
@@ -176,21 +175,21 @@ public sealed class InventoryService : IInventoryService
         // returns them) as zero-movement rows — otherwise a count for a brand-new item stays
         // invisible here despite being the whole point of RAL-193. Skipped when date-filtered:
         // a "delivered in range" filter can never match an item with no deliveries at all.
-        IReadOnlyDictionary<string, decimal> varianceMap;
+        IReadOnlyDictionary<string, StockNoPoolMovement> poolMap;
         if (division is null && !dateFiltered)
         {
-            varianceMap = await _stockBalances.GetAllVarianceTotalsAsync(cancellationToken);
-            if (varianceMap.Count > 0)
-                stockLevels = MergeCountOnlyStockLevels(stockLevels, varianceMap);
+            poolMap = await _stockBalances.GetAllPoolMovementsAsync(cancellationToken);
+            if (poolMap.Count > 0)
+                stockLevels = MergeCountOnlyStockLevels(stockLevels, poolMap);
         }
         else if (division is null)
         {
-            varianceMap = await _stockBalances.GetTotalVarianceByStockNosAsync(
+            poolMap = await _stockBalances.GetPoolMovementsByStockNosAsync(
                 stockLevels.Select(l => l.StockNo).ToList(), cancellationToken);
         }
         else
         {
-            varianceMap = new Dictionary<string, decimal>();
+            poolMap = new Dictionary<string, StockNoPoolMovement>();
         }
 
         // Only the StockNos in (the possibly date-filtered/count-only-merged) stockLevels are
@@ -204,8 +203,8 @@ public sealed class InventoryService : IInventoryService
 
         foreach (ItemStockLevel level in stockLevels)
         {
-            decimal onHand = level.QtyDelivered - level.QtyDistributed
-                + varianceMap.GetValueOrDefault(level.StockNo, 0m);
+            (decimal delivered, decimal distributed, decimal onHand) =
+                ApplyPoolMovement(level, poolMap);
 
             catalogMap.TryGetValue(level.StockNo, out ItemMaster? master);
             string itemName  = master?.Description ?? level.StockNo;
@@ -233,8 +232,8 @@ public sealed class InventoryService : IInventoryService
                 ItemType:        master?.ItemType,
                 ReorderQty:      reorderQty,
                 QtyOrdered:      level.QtyOrdered,
-                QtyDelivered:    level.QtyDelivered,
-                QtyDistributed:  level.QtyDistributed,
+                QtyDelivered:    delivered,
+                QtyDistributed:  distributed,
                 OnHand:          onHand,
                 IsLowStock:      onHand > 0 && onHand <= reorderQty,
                 IsOutOfStock:    onHand <= 0));
@@ -247,23 +246,46 @@ public sealed class InventoryService : IInventoryService
 
     /// <summary>
     /// Adds a zero-movement <see cref="ItemStockLevel"/> for every StockNo present in
-    /// <paramref name="varianceMap"/> but absent from <paramref name="stockLevels"/> — a
+    /// <paramref name="poolMap"/> but absent from <paramref name="stockLevels"/> — a
     /// StockNo with a warehouse stock input count but no PR/delivery history at all. Its
     /// on-hand then evaluates to exactly its counted quantity (0 movement + variance).
     /// </summary>
     private static IReadOnlyList<ItemStockLevel> MergeCountOnlyStockLevels(
         IReadOnlyList<ItemStockLevel> stockLevels,
-        IReadOnlyDictionary<string, decimal> varianceMap)
+        IReadOnlyDictionary<string, StockNoPoolMovement> poolMap)
     {
         HashSet<string> existing = stockLevels
             .Select(l => l.StockNo)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        IEnumerable<ItemStockLevel> countOnly = varianceMap.Keys
+        IEnumerable<ItemStockLevel> countOnly = poolMap.Keys
             .Where(stockNo => !existing.Contains(stockNo))
             .Select(stockNo => new ItemStockLevel(stockNo, QtyOrdered: 0m, QtyDelivered: 0m, QtyDistributed: 0m));
 
         return stockLevels.Concat(countOnly).ToList();
+    }
+
+    /// <summary>
+    /// Folds warehouse-count movement into an item's reported figures (RAL-240). Counted stock
+    /// is reported as delivered and pool issues as distributed, so the row reconciles as
+    /// delivered − distributed (+ shrinkage) = on-hand; before this, both columns excluded
+    /// count-sourced movement entirely while on-hand silently included it, so a count-sourced
+    /// item read as "0 delivered, 0 distributed, 39 on hand".
+    ///
+    /// On-hand is deliberately unchanged from the pre-RAL-240 formula: Received + Shrinkage
+    /// == GrossVariance, so this still evaluates to
+    /// QtyDelivered − QtyDistributed + (GrossVariance − Distributed).
+    /// </summary>
+    private static (decimal Delivered, decimal Distributed, decimal OnHand) ApplyPoolMovement(
+        ItemStockLevel level,
+        IReadOnlyDictionary<string, StockNoPoolMovement> poolMap)
+    {
+        if (!poolMap.TryGetValue(level.StockNo, out StockNoPoolMovement? pool))
+            return (level.QtyDelivered, level.QtyDistributed, level.QtyDelivered - level.QtyDistributed);
+
+        decimal delivered   = level.QtyDelivered   + pool.Received;
+        decimal distributed = level.QtyDistributed + pool.Distributed;
+        return (delivered, distributed, delivered - distributed + pool.Shrinkage);
     }
 
     /// <summary>
