@@ -1,3 +1,4 @@
+using PPDO.Domain.Enums;
 using Microsoft.Extensions.Logging;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.Config;
@@ -80,6 +81,13 @@ public sealed class DivisionService : IDivisionService
         if (string.IsNullOrWhiteSpace(dto.Name))
             return ServiceResult<DivisionDto>.BadRequest("Division name is required.");
 
+        // Name-only validation: reachability is per-user, since an individual override can
+        // grant a page the division's own flags do not. The resolver skips a default the
+        // user cannot reach, so a mismatch falls through rather than breaking (RAL-262).
+        if (!LandingPageName.TryParse(dto.LandingPage, out LandingPage? landingPage))
+            return ServiceResult<DivisionDto>.BadRequest(
+                $"'{dto.LandingPage}' is not a valid landing page. Valid values: {LandingPageName.ValidValues}.");
+
         string name = dto.Name.Trim();
         IReadOnlyList<Division> all = await _divisions.GetAllAsync(cancellationToken);
 
@@ -101,6 +109,7 @@ public sealed class DivisionService : IDivisionService
             CanUploadAip            = dto.CanUploadAip,
             CanManageUsers          = dto.CanManageUsers,
             CanManageResourceLinks  = dto.CanManageResourceLinks,
+            LandingPage             = landingPage,
             CreatedAt               = now,
             UpdatedAt               = now,
         };
@@ -127,6 +136,13 @@ public sealed class DivisionService : IDivisionService
         if (string.IsNullOrWhiteSpace(dto.Name))
             return ServiceResult<DivisionDto>.BadRequest("Division name is required.");
 
+        // Name-only validation: reachability is per-user, since an individual override can
+        // grant a page the division's own flags do not. The resolver skips a default the
+        // user cannot reach, so a mismatch falls through rather than breaking (RAL-262).
+        if (!LandingPageName.TryParse(dto.LandingPage, out LandingPage? landingPage))
+            return ServiceResult<DivisionDto>.BadRequest(
+                $"'{dto.LandingPage}' is not a valid landing page. Valid values: {LandingPageName.ValidValues}.");
+
         IReadOnlyList<Division> all = await _divisions.GetAllAsync(cancellationToken);
         Division? entity = all.FirstOrDefault(d => d.Id == id);
         if (entity is null)
@@ -143,6 +159,7 @@ public sealed class DivisionService : IDivisionService
         entity.CanUploadAip            = dto.CanUploadAip;
         entity.CanManageUsers          = dto.CanManageUsers;
         entity.CanManageResourceLinks  = dto.CanManageResourceLinks;
+        entity.LandingPage             = landingPage;
         entity.UpdatedAt               = DateTime.UtcNow;
         // Name is the upsert key — not editable via update (only via CSV re-seeding).
 
@@ -348,7 +365,8 @@ public sealed class DivisionService : IDivisionService
             d.CanManageResourceLinks,
             d.CanAccessBudgetPlanning,
             d.CanUploadAip,
-            d.CanManageConfig);
+            d.CanManageConfig,
+            d.LandingPage?.ToString());
 
     private static object AuditSnapshot(Division d) => new
     {

@@ -1,3 +1,5 @@
+import type { LandingPageKey } from "./auth";
+
 /**
  * Configuration module types (v1.1) — mirrors PPDO.Application/DTOs/Config/
  * and PPDO.Application/Common/ (ApiResponse, CsvImportResult).
@@ -81,6 +83,8 @@ export interface OfficeResponse {
   /** Last segment of the AIP office ref code (e.g. "013"). Used to match AIP → config office in WFP. */
   officeRefCode: string | null;
   isActive: boolean;
+  /** Landing-page enum name, or null for none (RAL-262). */
+  landingPage: LandingPageKey | null;
 }
 
 /** Create/update body for an office. officeCode is the unique key. */
@@ -89,6 +93,8 @@ export interface UpsertOfficeRequest {
   officeName: string;
   officeRefCode?: string | null;
   isActive: boolean;
+  /** Landing-page enum name, or null for none (RAL-262). */
+  landingPage?: LandingPageKey | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -248,6 +254,8 @@ export interface DivisionResponse {
   canAccessBudgetPlanning: boolean;
   canUploadAip: boolean;
   canManageConfig: boolean;
+  /** Landing-page enum name, or null for none (RAL-262). */
+  landingPage: LandingPageKey | null;
 }
 
 /** Create/update body for a configurable division. name is the upsert key within an office. */
@@ -263,6 +271,8 @@ export interface UpsertDivisionRequest {
   canUploadAip: boolean;
   canManageUsers: boolean;
   canManageResourceLinks: boolean;
+  /** Landing-page enum name, or null for none (RAL-262). */
+  landingPage?: LandingPageKey | null;
 }
 
 // ── Audit Log (SuperAdmin-only) ───────────────────────────────────────────────

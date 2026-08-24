@@ -31,6 +31,7 @@ import Modal from "@/components/ui/Modal";
 import OfficeSelect from "@/components/ui/OfficeSelect";
 import RowActions, { type RowAction } from "@/components/ui/RowActions";
 import IssuedPasswordDialog from "@/components/ui/IssuedPasswordDialog";
+import LandingPageSelect from "@/components/ui/LandingPageSelect";
 import type {
   CreateUserRequest,
   DivisionResponse,
@@ -85,6 +86,7 @@ const blankForm = (): CreateUserRequest => ({
   officeId: null,
   position: null,
   contactNo: null,
+  landingPage: null,
 });
 
 // ---------------------------------------------------------------------------
@@ -175,6 +177,8 @@ function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFor
   const isOfficeUser = form.officeId != null;
   // Division is required only for PPDO-internal Staff. Office users are scoped by office_id, not division.
   const isPpdoDivisionUser = form.role === "Staff" && !isOfficeUser;
+  // Drives which landing pages can be offered — a Staff user inherits feature flags from here.
+  const selectedDivision = divisions.find((d) => d.id === form.divisionId) ?? null;
 
   // Division options: filter to the selected office's divisions.
   // No office selected = PPDO-internal user → show only PPDO divisions (officeCode === "PPDO").
@@ -303,6 +307,30 @@ function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFor
             onChange={(e) => onChange({ contactNo: e.target.value || null })}
             placeholder="09XX-XXX-XXXX"
             className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
+          />
+        </div>
+
+        <div className="col-span-2">
+          <LandingPageSelect
+            value={form.landingPage ?? null}
+            onChange={(landingPage) => onChange({ landingPage })}
+            reachability={{
+              isOfficeUser,
+              // Mirrors PermissionService: SuperAdmin/Admin hold every flag, so only Staff
+              // depend on their division and overrides.
+              canAccessInventory:
+                form.role !== "Staff" ||
+                ((form as UpdateUserRequest).overrideCanAccessInventory ??
+                  selectedDivision?.canAccessInventory ??
+                  false),
+              canAccessBudgetPlanning:
+                form.role !== "Staff" ||
+                isOfficeUser ||
+                ((form as UpdateUserRequest).overrideCanAccessBudgetPlanning ??
+                  selectedDivision?.canAccessBudgetPlanning ??
+                  false),
+            }}
+            hint="Where this user lands after signing in. Only pages they can open are listed; leave unset to use their division or office default."
           />
         </div>
 
@@ -610,6 +638,7 @@ export default function UsersPage() {
       officeId:                      user.officeId,
       position:                      user.position,
       contactNo:                     user.contactNo,
+      landingPage:                   user.landingPage,
       isActive:                      user.isActive,
       overrideCanAccessInventory:    user.overrideCanAccessInventory,
       overrideCanAccessReports:      user.overrideCanAccessReports,

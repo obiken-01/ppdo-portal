@@ -36,6 +36,13 @@ public sealed class UserResponseDto
     public bool? OverrideCanManageConfig { get; init; }
     public bool? OverrideCanManageAllocation { get; init; }
 
+    /// <summary>
+    /// This user's own landing-page preference as an enum name, or null when unset.
+    /// Distinct from the resolved path on /auth/me: this is what is stored, not what
+    /// the chain resolves to (RAL-262).
+    /// </summary>
+    public string? LandingPage { get; init; }
+
     // -- Audit -----------------------------------------------------------------
     public DateTime CreatedAt { get; init; }
     public DateTime UpdatedAt { get; init; }

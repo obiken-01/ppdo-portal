@@ -4,7 +4,7 @@
  */
 
 import api from "./api";
-import type { UserResponse } from "@/types";
+import type { LandingPageKey, UserResponse } from "@/types";
 
 export interface UpdateProfileRequest {
   fullName:  string;
@@ -12,6 +12,8 @@ export interface UpdateProfileRequest {
   email:     string | null;
   position:  string | null;
   contactNo: string | null;
+  /** Preferred landing page, or null for none (RAL-262). */
+  landingPage: LandingPageKey | null;
 }
 
 export interface ChangePasswordRequest {

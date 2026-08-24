@@ -23,12 +23,25 @@ export interface RefreshErrorResponse {
   reason: RefreshErrorReason;
 }
 
+/**
+ * Landing-page targets (RAL-251). Mirrors the backend `LandingPage` enum by NAME —
+ * the API exchanges names, not the underlying numbers.
+ */
+export type LandingPageKey =
+  | "MainDashboard"
+  | "InventoryDashboard"
+  | "BudgetPlanningDashboard"
+  | "Profile";
+
 export interface MeResponse {
   /**
    * Portal route this user should land on, resolved server-side (RAL-261).
    * Always a route they can actually reach — safe to redirect to without checking.
    */
   landingPath: string;
+
+  /** This user's own stored preference, or null when unset. What /account shows. */
+  landingPage: LandingPageKey | null;
   userId: string;
   fullName: string;
   username: string;

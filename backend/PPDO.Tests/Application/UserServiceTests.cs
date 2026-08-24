@@ -55,6 +55,9 @@ public sealed class UserServiceTests
         IsActive = true,
     };
 
+    /// <summary>Division 1 — CanAccessInventory is left false, so its Staff cannot reach /inventory.</summary>
+    private const int NoInventoryDivisionId = 1;
+
     // Default divisions repo: two active PPDO divisions (1, 2) plus an office division (5 → office 7).
     private static Mock<IRepository<Division>> DefaultDivisions()
     {
@@ -78,7 +81,8 @@ public sealed class UserServiceTests
             (officeMock ?? new Mock<IRepository<Office>>()).Object,
             (divisionMock ?? DefaultDivisions()).Object,
             NullLogger<UserService>.Instance,
-            (auditMock ?? new Mock<IAuditService>()).Object);
+            (auditMock ?? new Mock<IAuditService>()).Object,
+            new LandingPageResolver(new PermissionService()));
 
     private static Mock<IUserRepository> RepoThatSaves()
     {
@@ -372,6 +376,79 @@ public sealed class UserServiceTests
             await BuildSut(Repo(MakeAdmin())).CreateAsync(MakeSuperAdmin(), second);
 
         Assert.NotEqual(a.Value!.TemporaryPassword, b.Value!.TemporaryPassword);
+    }
+
+    // ── Landing page selection (RAL-262) ──────────────────────────────────────
+
+    private static Mock<IUserRepository> RepoForCreate(User created, Action<User>? capture = null)
+    {
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByUsernameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+        repo.Setup(r => r.FindByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+        repo.Setup(r => r.AddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
+            .Callback<User, CancellationToken>((u, _) => capture?.Invoke(u))
+            .Returns(Task.CompletedTask);
+        repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+        repo.Setup(r => r.GetByIdWithDivisionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(created);
+        return repo;
+    }
+
+    [Fact]
+    public async Task CreateAsync_ReachableLandingPage_IsStored()
+    {
+        User? persisted = null;
+        Mock<IUserRepository> repo = RepoForCreate(MakeAdmin(), u => persisted = u);
+        CreateUserDto dto = new("Admin Two", "admin2", "a2@ppdo.gov.ph", "Admin",
+                                null, null, null, null, "InventoryDashboard");
+
+        ServiceResult<UserCredentialResponseDto> result =
+            await BuildSut(repo).CreateAsync(MakeSuperAdmin(), dto);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(LandingPage.InventoryDashboard, persisted!.LandingPage);
+    }
+
+    [Fact]
+    public async Task CreateAsync_UnknownLandingPageName_ReturnsBadRequest()
+    {
+        CreateUserDto dto = new("Admin Two", "admin2", "a2@ppdo.gov.ph", "Admin",
+                                null, null, null, null, "TheMoon");
+
+        ServiceResult<UserCredentialResponseDto> result =
+            await BuildSut(RepoForCreate(MakeAdmin())).CreateAsync(MakeSuperAdmin(), dto);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task CreateAsync_NoLandingPage_LeavesItUnset()
+    {
+        User? persisted = null;
+        Mock<IUserRepository> repo = RepoForCreate(MakeAdmin(), u => persisted = u);
+        CreateUserDto dto = new("Admin Two", "admin2", "a2@ppdo.gov.ph", "Admin", null, null, null);
+
+        await BuildSut(repo).CreateAsync(MakeSuperAdmin(), dto);
+
+        Assert.Null(persisted!.LandingPage);
+    }
+
+    [Fact]
+    public async Task CreateAsync_LandingPageTheUserCannotReach_ReturnsBadRequest()
+    {
+        // Saving an unreachable landing page does not fail at redirect time — it loops.
+        // Staff in a division without inventory access cannot land on the inventory dashboard.
+        CreateUserDto dto = new("Plain Staff", "plain", "plain@ppdo.gov.ph", "Staff",
+                                NoInventoryDivisionId, null, null, null, "InventoryDashboard");
+
+        ServiceResult<UserCredentialResponseDto> result =
+            await BuildSut(RepoForCreate(MakeStaff())).CreateAsync(MakeAdmin(), dto);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("cannot access", result.Error ?? string.Empty, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

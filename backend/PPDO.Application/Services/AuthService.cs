@@ -184,6 +184,7 @@ public sealed class AuthService : IAuthService
             OfficeCode = user.Office?.OfficeCode,
             OfficeName = user.Office?.OfficeName,
             Position   = user.Position,
+            LandingPage = user.LandingPage?.ToString(),
             LandingPath = LandingPageRoutes.PathFor(
                 await _landing.ResolveAsync(user, cancellationToken)),
             CanAccessInventory      = await _permissions.CanAccessInventoryAsync(user, cancellationToken),

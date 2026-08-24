@@ -54,8 +54,10 @@ import type {
   CsvImportResult,
   DivisionResponse,
   OfficeResponse,
+  LandingPageKey,
   UpsertDivisionRequest,
 } from "@/types";
+import LandingPageSelect from "@/components/ui/LandingPageSelect";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -142,12 +144,14 @@ interface FormState {
   canUploadAip:            boolean;
   canManageUsers:          boolean;
   canManageResourceLinks:  boolean;
+  landingPage:             LandingPageKey | null;
 }
 
 const blankForm = (): FormState => ({
   officeId: "",
   code: "",
   name: "",
+  landingPage: null,
   isActive: true,
   ...blankFlags(),
 });
@@ -258,6 +262,7 @@ export default function DivisionConfigPage() {
       canUploadAip:            division.canUploadAip,
       canManageUsers:          division.canManageUsers,
       canManageResourceLinks:  division.canManageResourceLinks,
+      landingPage:             division.landingPage,
     });
     setFormError(null);
     setShowForm(true);
@@ -284,6 +289,7 @@ export default function DivisionConfigPage() {
       canUploadAip:            form.canUploadAip,
       canManageUsers:          form.canManageUsers,
       canManageResourceLinks:  form.canManageResourceLinks,
+      landingPage:             form.landingPage,
     };
 
     setSaving(true);
@@ -612,6 +618,21 @@ export default function DivisionConfigPage() {
                 Staff users inherit these flags from their division (per-user overrides take precedence).
               </p>
             </div>
+
+            <LandingPageSelect
+              label="Default landing page"
+              value={form.landingPage}
+              onChange={(landingPage) => setForm((prev) => ({ ...prev, landingPage }))}
+              reachability={{
+                // Divisions exist under any office, and a per-user override can grant a page
+                // the division's own flags do not — so this is a hint, not a hard filter.
+                // The resolver skips a default a given user cannot reach (RAL-262).
+                isOfficeUser: false,
+                canAccessInventory: form.canAccessInventory,
+                canAccessBudgetPlanning: form.canAccessBudgetPlanning,
+              }}
+              hint="Applied to users in this division who have no preference of their own. Follows the flags ticked above."
+            />
 
             {formError && (
               <div className="bg-danger-100 border border-danger-500/30 px-4 py-3">

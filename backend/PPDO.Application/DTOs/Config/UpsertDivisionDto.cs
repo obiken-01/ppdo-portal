@@ -16,4 +16,6 @@ public sealed record UpsertDivisionDto(
     bool    CanManageConfig,
     bool    CanUploadAip,
     bool    CanManageUsers,
-    bool    CanManageResourceLinks);
+    bool    CanManageResourceLinks,
+    /// <summary>Default landing page for this division's users. Null = none (RAL-262).</summary>
+    string? LandingPage = null);

@@ -1,3 +1,5 @@
+import type { LandingPageKey } from "./auth";
+
 /** Mirrors PPDO.Application/DTOs/User/ */
 
 // Observer retired in v1.2 (RAL-97).
@@ -24,6 +26,8 @@ export interface UserResponse {
   position: string | null;
   contactNo: string | null;
   isActive: boolean;
+  /** Landing-page enum name, or null for none (RAL-262). */
+  landingPage: LandingPageKey | null;
   createdAt: string;
   overrideCanAccessInventory: boolean | null;
   overrideCanAccessReports: boolean | null;
@@ -56,6 +60,8 @@ export interface CreateUserRequest {
   officeId: number | null;
   position: string | null;
   contactNo: string | null;
+  /** Preferred landing page, or null for none. Rejected if unreachable for this user (RAL-262). */
+  landingPage: LandingPageKey | null;
 }
 
 export interface UpdateUserRequest extends CreateUserRequest {
