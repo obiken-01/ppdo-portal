@@ -316,10 +316,11 @@ public sealed class UserServiceTests
     }
 
     [Fact]
-    public async Task CreateAsync_MixedCaseUsername_PreservesTheCasingAsTyped()
+    public async Task CreateAsync_MixedCaseUsername_IsStoredLowerCase()
     {
-        // RAL-254: usernames used to be forced to lower case. Lookups stay case-insensitive
-        // via the DB collation (SQL_Latin1_General_CP1_CI_AS), so nothing needs normalising.
+        // RAL-254: usernames are normalised to lower case on write, keeping every account on
+        // the office's lowercase-dotted convention. Matching is separately case-insensitive
+        // via the DB collation, so this is belt-and-braces rather than what login relies on.
         User? persisted = null;
         Mock<IUserRepository> repo = new();
         repo.Setup(r => r.FindByUsernameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -339,7 +340,7 @@ public sealed class UserServiceTests
         await BuildSut(repo).CreateAsync(MakeSuperAdmin(), dto);
 
         Assert.NotNull(persisted);
-        Assert.Equal("newUser", persisted!.Username);   // trimmed, but not lower-cased
+        Assert.Equal("newuser", persisted!.Username);   // trimmed and lower-cased
     }
 
     [Fact]

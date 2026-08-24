@@ -207,11 +207,17 @@ function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFor
           <label className="block text-xs font-medium text-slate-600 mb-1">Username *</label>
           <input
             value={form.username}
-            onChange={(e) => onChange({ username: e.target.value })}
+            // Lower-cased as it is typed so the field always shows exactly what will be
+            // saved — the backend normalises the same way (RAL-254).
+            onChange={(e) => onChange({ username: e.target.value.toLowerCase() })}
             placeholder="juandelacruz"
             autoComplete="off"
             className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 font-mono"
           />
+          <p className="mt-1 text-xs text-slate-600">
+            Saved in lowercase — capitals are converted automatically. Signing in is not
+            case-sensitive, so the user can type it any way they like.
+          </p>
         </div>
 
         <div className="col-span-2">

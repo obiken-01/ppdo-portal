@@ -145,8 +145,10 @@ public sealed class UserService : IUserService
         {
             Id           = Guid.NewGuid(),
             FullName     = dto.FullName.Trim(),
-            // Case preserved as typed — lookups are case-insensitive via the DB collation (RAL-254).
-            Username     = dto.Username.Trim(),
+            // Stored lower-case so every account matches the office's lowercase convention and
+            // relaying credentials never involves spelling out capitals (RAL-254). Matching is
+            // separately case-insensitive via the DB collation — see UserRepository.
+            Username     = dto.Username.Trim().ToLowerInvariant(),
             Email        = string.IsNullOrWhiteSpace(dto.Email) ? null : dto.Email.Trim().ToLowerInvariant(),
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(temporaryPassword),
             Role         = newRole,
@@ -204,7 +206,7 @@ public sealed class UserService : IUserService
 
         if (dto.Username is not null)
         {
-            string newUsername = dto.Username.Trim();
+            string newUsername = dto.Username.Trim().ToLowerInvariant();
             if (!string.Equals(newUsername, target.Username, StringComparison.OrdinalIgnoreCase))
             {
                 User? taken = await _users.FindByUsernameAsync(newUsername, cancellationToken);
@@ -506,7 +508,7 @@ public sealed class UserService : IUserService
         if (string.IsNullOrWhiteSpace(dto.Username))
             return ServiceResult<UserResponseDto>.BadRequest("Username is required.");
 
-        string newUsername = dto.Username.Trim();
+        string newUsername = dto.Username.Trim().ToLowerInvariant();
         if (!string.Equals(newUsername, user.Username, StringComparison.OrdinalIgnoreCase))
         {
             User? taken = await _users.FindByUsernameAsync(newUsername, cancellationToken);
