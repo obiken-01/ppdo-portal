@@ -126,6 +126,7 @@ var host = new HostBuilder()
 
         // -- Application services --------------------------------------------
         services.AddScoped<IPermissionService, PermissionService>();
+        services.AddScoped<ILandingPageResolver, LandingPageResolver>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<IDashboardService, DashboardService>();

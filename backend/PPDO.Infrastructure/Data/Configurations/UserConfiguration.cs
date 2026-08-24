@@ -44,6 +44,10 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(u => u.Position)
             .HasMaxLength(100);
 
+        // Legacy PascalCase table — new columns follow the table's existing convention.
+        // Nullable: null means "no preference", which the resolver treats as fall-through.
+        builder.Property(u => u.LandingPage);
+
         builder.Property(u => u.ContactNo)
             .HasMaxLength(50);
 
