@@ -1,3 +1,5 @@
+using PPDO.Domain.Enums;
+
 namespace PPDO.Domain.Entities;
 
 /// <summary>
@@ -46,6 +48,14 @@ public sealed class Division
     public bool CanManageConfig { get; set; }
 
     // ── Audit ─────────────────────────────────────────────────────────────────
+
+
+    /// <summary>
+    /// Default landing page for every user in this division (RAL-251). Null = no preference; the resolver
+    /// falls through to the next level of the chain
+    /// (user → division → office → first permitted → Profile).
+    /// </summary>
+    public LandingPage? LandingPage { get; set; }
 
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }

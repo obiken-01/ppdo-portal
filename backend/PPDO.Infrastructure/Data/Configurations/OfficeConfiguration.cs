@@ -34,6 +34,10 @@ public sealed class OfficeConfiguration : IEntityTypeConfiguration<Office>
             .IsRequired()
             .HasDefaultValue(true);
 
+        // Null means "no default" — the resolver falls through to the next level.
+        builder.Property(o => o.LandingPage)
+            .HasColumnName("landing_page");
+
         builder.Property(o => o.CreatedAt)
             .HasColumnName("created_at")
             .HasDefaultValueSql("GETUTCDATE()");

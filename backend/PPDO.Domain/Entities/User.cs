@@ -113,6 +113,14 @@ public sealed class User
     /// </summary>
     public bool? OverrideCanManageAllocation { get; set; }
 
+    // ── Preferences ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// This user's preferred landing page (RAL-251). Null = no preference; the resolver falls
+    /// through to their division, then their office, then the first page they can actually reach.
+    /// </summary>
+    public LandingPage? LandingPage { get; set; }
+
     // ── Refresh token (JWT rotation) ─────────────────────────────────────────
 
     /// <summary>

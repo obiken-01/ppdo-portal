@@ -1,3 +1,5 @@
+using PPDO.Domain.Enums;
+
 namespace PPDO.Domain.Entities;
 
 /// <summary>
@@ -25,6 +27,14 @@ public sealed class Office
 
     /// <summary>Soft-delete flag. Inactive offices are hidden from pickers but kept for history.</summary>
     public bool IsActive { get; set; } = true;
+
+
+    /// <summary>
+    /// Default landing page for every user in this office (RAL-251). Null = no preference; the resolver
+    /// falls through to the next level of the chain
+    /// (user → division → office → first permitted → Profile).
+    /// </summary>
+    public LandingPage? LandingPage { get; set; }
 
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
