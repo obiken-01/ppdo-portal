@@ -1,29 +1,65 @@
 "use client";
 
 /**
- * IssuedPasswordDialog — shows a one-time password after an account is created
- * or an admin resets one (RAL-254).
+ * IssuedPasswordDialog — shows the sign-in credentials after an account is created
+ * or an admin resets a password (RAL-254).
  *
  * The portal used to hand every account the same documented default password, so
  * nothing had to be relayed. Passwords are now random and per-account: this dialog
  * is the only place the plaintext ever appears. It is not recoverable afterwards —
  * losing it means resetting again.
  *
- * Deliberately not a toast: a toast auto-dismisses, and the admin needs time to
- * copy the value and hand it over.
+ * Username is shown alongside it (and separately copyable) because the admin has to
+ * relay both, and usernames now keep whatever casing they were typed in.
+ *
+ * Deliberately not a toast: a toast auto-dismisses, and the admin needs time to copy
+ * the values and hand them over.
  */
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 export interface IssuedPasswordDialogProps {
-  /** Who the password belongs to — shown so the admin relays it to the right person. */
+  /** Who the credentials belong to — shown so the admin relays them to the right person. */
   fullName: string;
   username: string;
   password: string;
   /** Distinguishes "account created" wording from "password reset" wording. */
   context: "created" | "reset";
   onClose: () => void;
+}
+
+type CopyField = "username" | "password";
+
+/** One labelled, selectable, copyable credential row. */
+function CredentialField({
+  label,
+  value,
+  copied,
+  onCopy,
+}: {
+  label: string;
+  value: string;
+  copied: boolean;
+  onCopy: () => void;
+}) {
+  return (
+    <div className="flex items-stretch border border-slate-300">
+      <span className="flex w-24 shrink-0 items-center border-r border-slate-300 bg-slate-50 px-3 text-xs font-medium text-slate-600">
+        {label}
+      </span>
+      <code className="flex-1 select-all break-all px-3 py-2.5 font-mono text-base tracking-wide text-slate-800">
+        {value}
+      </code>
+      <button
+        type="button"
+        onClick={onCopy}
+        className="shrink-0 border-l border-slate-300 bg-white px-3 text-sm font-medium text-green-700 hover:bg-slate-50"
+      >
+        {copied ? "Copied" : "Copy"}
+      </button>
+    </div>
+  );
 }
 
 export default function IssuedPasswordDialog({
@@ -33,7 +69,7 @@ export default function IssuedPasswordDialog({
   context,
   onClose,
 }: IssuedPasswordDialogProps) {
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<CopyField | null>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -45,14 +81,14 @@ export default function IssuedPasswordDialog({
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  async function copy() {
+  async function copy(field: CopyField, value: string) {
     try {
-      await navigator.clipboard.writeText(password);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
+      await navigator.clipboard.writeText(value);
+      setCopied(field);
+      window.setTimeout(() => setCopied((c) => (c === field ? null : c)), 2000);
     } catch {
-      // Clipboard blocked (insecure origin or denied permission) — the password is
-      // on screen and selectable, so this is a convenience failure, not a blocker.
+      // Clipboard blocked (insecure origin or denied permission) — the value is on
+      // screen and selectable, so this is a convenience failure, not a blocker.
     }
   }
 
@@ -74,34 +110,35 @@ export default function IssuedPasswordDialog({
           <p className="text-sm text-slate-600">
             {context === "created" ? (
               <>
-                <span className="font-medium text-slate-800">{fullName}</span> can now sign in
-                as <span className="font-mono">{username}</span> with this password.
+                Give these sign-in details to{" "}
+                <span className="font-medium text-slate-800">{fullName}</span>.
               </>
             ) : (
               <>
                 A new password has been issued for{" "}
-                <span className="font-medium text-slate-800">{fullName}</span>{" "}
-                (<span className="font-mono">{username}</span>). Any active session has been
-                signed out.
+                <span className="font-medium text-slate-800">{fullName}</span>. Any active
+                session has been signed out.
               </>
             )}
           </p>
 
-          <div className="mt-4 flex items-stretch border border-slate-300">
-            <code className="flex-1 select-all bg-slate-50 px-3 py-2.5 font-mono text-base tracking-wide text-slate-800 break-all">
-              {password}
-            </code>
-            <button
-              type="button"
-              onClick={copy}
-              className="shrink-0 border-l border-slate-300 bg-white px-3 text-sm font-medium text-green-700 hover:bg-slate-50"
-            >
-              {copied ? "Copied" : "Copy"}
-            </button>
+          <div className="mt-4 space-y-2">
+            <CredentialField
+              label="Username"
+              value={username}
+              copied={copied === "username"}
+              onCopy={() => copy("username", username)}
+            />
+            <CredentialField
+              label="Password"
+              value={password}
+              copied={copied === "password"}
+              onCopy={() => copy("password", password)}
+            />
           </div>
 
-          <p className="mt-3 text-xs text-amber-800 bg-amber-100 border border-amber-300 px-3 py-2">
-            This password is shown once and cannot be retrieved later. Copy it now and give it
+          <p className="mt-3 border border-amber-300 bg-amber-100 px-3 py-2 text-xs text-amber-800">
+            The password is shown once and cannot be retrieved later. Copy it now and give it
             to the user directly. If you lose it, reset the password again.
           </p>
         </div>

@@ -316,6 +316,33 @@ public sealed class UserServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_MixedCaseUsername_PreservesTheCasingAsTyped()
+    {
+        // RAL-254: usernames used to be forced to lower case. Lookups stay case-insensitive
+        // via the DB collation (SQL_Latin1_General_CP1_CI_AS), so nothing needs normalising.
+        User? persisted = null;
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByUsernameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+        repo.Setup(r => r.FindByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+        repo.Setup(r => r.AddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
+            .Callback<User, CancellationToken>((u, _) => persisted = u)
+            .Returns(Task.CompletedTask);
+        repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+        repo.Setup(r => r.GetByIdWithDivisionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakeAdmin());
+
+        CreateUserDto dto = new("New User", "  newUser  ", "new@ppdo.gov.ph", "Admin", null, null, null);
+
+        await BuildSut(repo).CreateAsync(MakeSuperAdmin(), dto);
+
+        Assert.NotNull(persisted);
+        Assert.Equal("newUser", persisted!.Username);   // trimmed, but not lower-cased
+    }
+
+    [Fact]
     public async Task CreateAsync_TwoUsers_IssueDifferentPasswords()
     {
         // The finding this ticket closes: every account used to land on one documented password.

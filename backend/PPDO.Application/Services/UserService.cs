@@ -145,7 +145,8 @@ public sealed class UserService : IUserService
         {
             Id           = Guid.NewGuid(),
             FullName     = dto.FullName.Trim(),
-            Username     = dto.Username.Trim().ToLowerInvariant(),
+            // Case preserved as typed — lookups are case-insensitive via the DB collation (RAL-254).
+            Username     = dto.Username.Trim(),
             Email        = string.IsNullOrWhiteSpace(dto.Email) ? null : dto.Email.Trim().ToLowerInvariant(),
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(temporaryPassword),
             Role         = newRole,
@@ -203,7 +204,7 @@ public sealed class UserService : IUserService
 
         if (dto.Username is not null)
         {
-            string newUsername = dto.Username.Trim().ToLowerInvariant();
+            string newUsername = dto.Username.Trim();
             if (!string.Equals(newUsername, target.Username, StringComparison.OrdinalIgnoreCase))
             {
                 User? taken = await _users.FindByUsernameAsync(newUsername, cancellationToken);
@@ -505,7 +506,7 @@ public sealed class UserService : IUserService
         if (string.IsNullOrWhiteSpace(dto.Username))
             return ServiceResult<UserResponseDto>.BadRequest("Username is required.");
 
-        string newUsername = dto.Username.Trim().ToLowerInvariant();
+        string newUsername = dto.Username.Trim();
         if (!string.Equals(newUsername, user.Username, StringComparison.OrdinalIgnoreCase))
         {
             User? taken = await _users.FindByUsernameAsync(newUsername, cancellationToken);
