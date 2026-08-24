@@ -99,7 +99,7 @@ public sealed class UserFunctions
         if (body is null)
             return await BadRequest(req, "Request body is missing or malformed.");
 
-        ServiceResult<UserResponseDto> result =
+        ServiceResult<UserCredentialResponseDto> result =
             await _users.CreateAsync(caller, body, cancellationToken);
 
         return await ToResponse(req, result, HttpStatusCode.Created, cancellationToken);
@@ -147,7 +147,7 @@ public sealed class UserFunctions
         if (!await _permissions.CanManageUsersAsync(caller, cancellationToken))
             return req.CreateResponse(HttpStatusCode.Forbidden);
 
-        ServiceResult<UserResponseDto> result =
+        ServiceResult<UserCredentialResponseDto> result =
             await _users.ResetPasswordAsync(caller, id, cancellationToken);
 
         return await ToResponse(req, result, HttpStatusCode.OK, cancellationToken);

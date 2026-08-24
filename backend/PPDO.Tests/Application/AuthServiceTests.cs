@@ -81,7 +81,7 @@ public sealed class AuthServiceTests
     [Fact]
     public async Task LoginAsync_ValidCredentials_ReturnsTokenPair()
     {
-        string password = "TamarawUser2026!";
+        string password = "Test-Password1!";
         string hash = BCrypt.Net.BCrypt.HashPassword(password);
         User user = MakeActiveUser(hash);
 
@@ -128,7 +128,7 @@ public sealed class AuthServiceTests
     [Fact]
     public async Task LoginAsync_RateLimited_BlocksEvenCorrectPassword()
     {
-        string password = "TamarawUser2026!";
+        string password = "Test-Password1!";
         User user = MakeActiveUser(BCrypt.Net.BCrypt.HashPassword(password));
         Mock<IUserRepository> repo = new();
         repo.Setup(r => r.FindByUsernameAsync(user.Username, It.IsAny<CancellationToken>()))
@@ -148,7 +148,7 @@ public sealed class AuthServiceTests
     [Fact]
     public async Task LoginAsync_SuccessfulLogin_ResetsFailedAttemptCounter()
     {
-        string password = "TamarawUser2026!";
+        string password = "Test-Password1!";
         User user = MakeActiveUser(BCrypt.Net.BCrypt.HashPassword(password));
         Mock<IUserRepository> repo = new();
         repo.Setup(r => r.FindByUsernameAsync(user.Username, It.IsAny<CancellationToken>()))
@@ -194,7 +194,7 @@ public sealed class AuthServiceTests
     [Fact]
     public async Task LoginAsync_ValidCredentials_StoresRefreshTokenOnUser()
     {
-        string password = "TamarawUser2026!";
+        string password = "Test-Password1!";
         User user = MakeActiveUser(BCrypt.Net.BCrypt.HashPassword(password));
 
         Mock<IUserRepository> repo = new();
