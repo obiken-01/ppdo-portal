@@ -54,7 +54,9 @@ type Phase = "retrying" | "manual" | "redirecting";
 function ReconnectingPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next = searchParams.get("next") || "/dashboard";
+  // No recorded destination — resolve it rather than assuming /dashboard, which
+  // office users cannot open (RAL-264).
+  const next = searchParams.get("next") || "/home";
 
   const [phase, setPhase] = useState<Phase>("retrying");
   const [attempt, setAttempt] = useState(1);

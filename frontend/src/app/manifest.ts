@@ -19,12 +19,16 @@ export const dynamic = "force-static";
  * declared: Android crops icons to a device-chosen shape and would clip this
  * logo's outer ring text, so the maskable variant is pre-padded to the safe zone.
  *
- * start_url is /dashboard rather than /login: the access token is in-memory only,
- * so every launch runs a silent refresh anyway — a returning user with a valid
- * session lands straight in the app, and an expired one is redirected to /login by
- * the portal auth guard. Non-PPDO office users are forwarded to /budget-planning by
- * the office gate in (portal)/layout.tsx. Change this one line if that ordering
- * should differ (PWA study §9 Q2 — never formally settled).
+ * start_url is /home rather than /login: the access token is in-memory only, so every
+ * launch runs a silent refresh anyway — a returning user with a valid session lands
+ * straight in the app, and an expired one is redirected to /login by the portal auth
+ * guard.
+ *
+ * It points at /home, not a real page: start_url is a SINGLE FIXED VALUE baked into the
+ * installed app and shared by every user, so it cannot be per-user. /home resolves the
+ * user's actual landing page and replaces itself (RAL-264). It previously pointed at
+ * /dashboard, which office users cannot open — they were launched into a page the
+ * office gate ejected them from on arrival.
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
@@ -33,7 +37,7 @@ export default function manifest(): MetadataRoute.Manifest {
     short_name: "PPDO Portal",
     description:
       "Portal of the Provincial Planning and Development Office, Occidental Mindoro — budget planning, inventory monitoring, and office resources.",
-    start_url: "/dashboard",
+    start_url: "/home",
     scope: "/",
     display: "standalone",
     orientation: "any",

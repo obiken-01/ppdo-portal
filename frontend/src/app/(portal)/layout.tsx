@@ -37,6 +37,7 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api";
 
 // Page title map — keyed by pathname prefix.
 const PAGE_TITLES: Record<string, string> = {
+  "/home":          "Opening…",   // transient — /home redirects on mount (RAL-264)
   "/dashboard":     "Main Dashboard",
   "/inventory":     "Inventory",
   "/budget-planning":       "Budget Planning",
@@ -211,7 +212,10 @@ export default function PortalLayout({
     const allowed =
       pathname.startsWith("/budget-planning") ||
       pathname.startsWith("/profile") ||
-      pathname.startsWith("/account");
+      pathname.startsWith("/account") ||
+      // /home resolves the destination itself; letting the gate fire here too would
+      // race it to the same place (RAL-264).
+      pathname === "/home";
     if (!allowed) {
       // landingPath is resolved server-side and is guaranteed reachable, so this cannot
       // bounce them somewhere that ejects them straight back here (RAL-261).
