@@ -43,6 +43,7 @@ public sealed class AuthServiceTests
     private static AuthService BuildSut(Mock<IUserRepository> repoMock, IMemoryCache? cache = null) => new(
         repoMock.Object,
         new PermissionService(),
+        new LandingPageResolver(new PermissionService()),
         Options.Create(JwtSettings),
         cache ?? new MemoryCache(new MemoryCacheOptions()),
         NullLogger<AuthService>.Instance);
@@ -362,5 +363,46 @@ public sealed class AuthServiceTests
 
         Assert.Null(user.RefreshToken);
         Assert.Null(user.RefreshTokenExpiry);
+    }
+
+    // ── GetMeAsync — landing path (RAL-261) ──────────────────────────────────
+
+    [Fact]
+    public async Task GetMeAsync_PpdoUserWithNoPreference_ReturnsMainDashboardPath()
+    {
+        User user = MakeActiveUser(BCrypt.Net.BCrypt.HashPassword("x"));
+        user.OfficeId = null;
+
+        MeResponse me = await BuildSut(new Mock<IUserRepository>()).GetMeAsync(user);
+
+        Assert.Equal("/dashboard", me.LandingPath);
+    }
+
+    [Fact]
+    public async Task GetMeAsync_UserPreference_IsReflectedInTheResolvedPath()
+    {
+        User user = MakeActiveUser(BCrypt.Net.BCrypt.HashPassword("x"));
+        user.OfficeId = null;
+        user.LandingPage = LandingPage.Profile;
+
+        MeResponse me = await BuildSut(new Mock<IUserRepository>()).GetMeAsync(user);
+
+        Assert.Equal("/account", me.LandingPath);
+    }
+
+    [Fact]
+    public async Task GetMeAsync_OfficeUser_NeverGetsTheMainDashboardPath()
+    {
+        // The portal layout gate bounces office users off /dashboard — returning it here
+        // would send them into a redirect loop the moment they signed in.
+        User user = MakeActiveUser(BCrypt.Net.BCrypt.HashPassword("x"));
+        user.Role = UserRole.Staff;
+        user.OfficeId = 7;
+        user.LandingPage = LandingPage.MainDashboard;
+
+        MeResponse me = await BuildSut(new Mock<IUserRepository>()).GetMeAsync(user);
+
+        Assert.NotEqual("/dashboard", me.LandingPath);
+        Assert.Equal("/budget-planning", me.LandingPath);
     }
 }

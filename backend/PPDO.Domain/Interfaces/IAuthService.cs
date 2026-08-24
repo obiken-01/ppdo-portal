@@ -169,6 +169,13 @@ public sealed class MeResponse
 
     public string? Position { get; init; }
 
+    /// <summary>
+    /// Portal route this user should land on after signing in (RAL-251/RAL-261), resolved
+    /// server-side through user → division → office → first reachable → /account.
+    /// Always a route the user can actually reach, so it is safe to redirect to directly.
+    /// </summary>
+    public string LandingPath { get; init; } = "/account";
+
     // -- Effective permission flags (resolved via PermissionService) --------
     public bool CanAccessInventory { get; init; }
     public bool CanAccessReports { get; init; }

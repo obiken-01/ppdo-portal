@@ -31,6 +31,7 @@ import Sidebar from "@/components/layout/Sidebar";
 import Topbar from "@/components/layout/Topbar";
 import { ToastProvider } from "@/components/ui/Toast";
 import type { MeResponse, RefreshErrorReason } from "@/types";
+import { resolveLandingPath } from "@/lib/landing";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api";
 
@@ -212,7 +213,9 @@ export default function PortalLayout({
       pathname.startsWith("/profile") ||
       pathname.startsWith("/account");
     if (!allowed) {
-      router.replace(me.canAccessBudgetPlanning ? "/budget-planning" : "/account");
+      // landingPath is resolved server-side and is guaranteed reachable, so this cannot
+      // bounce them somewhere that ejects them straight back here (RAL-261).
+      router.replace(resolveLandingPath(me));
     }
   }, [me, pathname, router]);
 

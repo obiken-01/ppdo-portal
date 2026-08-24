@@ -24,6 +24,7 @@ import api from "@/lib/api";
 import { auth } from "@/lib/auth";
 import { APP_VERSION } from "@/lib/version";
 import type { LoginResponse, MeResponse, RefreshErrorReason } from "@/types/auth";
+import { resolveLandingPath, LANDING_FALLBACK } from "@/lib/landing";
 
 // ---------------------------------------------------------------------------
 // Unexpected-logout explanation (RAL-198) — carried from a failed silent
@@ -130,13 +131,15 @@ function LoginPageInner() {
       });
       auth.login(data);
 
-      // Non-PPDO office users go straight to Budget Planning — it's their only feature.
-      // PPDO users land on the main Dashboard.
+      // Where the user lands is resolved server-side and returned on /auth/me (RAL-261);
+      // it already accounts for their preference, division, office and permissions.
       try {
         const { data: me } = await api.get<MeResponse>("/auth/me");
-        router.replace(me.officeId != null ? "/budget-planning" : "/dashboard");
+        router.replace(resolveLandingPath(me));
       } catch {
-        router.replace("/dashboard");
+        // /auth/me failed — send them somewhere every account can reach rather than
+        // guessing at a dashboard an office user cannot open.
+        router.replace(LANDING_FALLBACK);
       }
     } catch {
       setServerError("Invalid username or password. Please try again.");
