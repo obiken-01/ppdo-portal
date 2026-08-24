@@ -6,6 +6,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using PPDO.Application.Common;
 using PPDO.Application.DTOs.Auth;
 using PPDO.Application.Settings;
 using PPDO.Domain.Common;
@@ -37,6 +38,7 @@ public sealed class AuthService : IAuthService
 
     private readonly IUserRepository _users;
     private readonly IPermissionService _permissions;
+    private readonly ILandingPageResolver _landing;
     private readonly JwtSettings _jwt;
     private readonly IMemoryCache _cache;
     private readonly ILogger<AuthService> _logger;
@@ -44,12 +46,14 @@ public sealed class AuthService : IAuthService
     public AuthService(
         IUserRepository users,
         IPermissionService permissions,
+        ILandingPageResolver landing,
         IOptions<JwtSettings> jwtOptions,
         IMemoryCache cache,
         ILogger<AuthService> logger)
     {
         _users = users;
         _permissions = permissions;
+        _landing = landing;
         _jwt = jwtOptions.Value;
         _cache = cache;
         _logger = logger;
@@ -180,6 +184,8 @@ public sealed class AuthService : IAuthService
             OfficeCode = user.Office?.OfficeCode,
             OfficeName = user.Office?.OfficeName,
             Position   = user.Position,
+            LandingPath = LandingPageRoutes.PathFor(
+                await _landing.ResolveAsync(user, cancellationToken)),
             CanAccessInventory      = await _permissions.CanAccessInventoryAsync(user, cancellationToken),
             CanAccessReports        = await _permissions.CanAccessReportsAsync(user, cancellationToken),
             CanManageUsers          = await _permissions.CanManageUsersAsync(user, cancellationToken),

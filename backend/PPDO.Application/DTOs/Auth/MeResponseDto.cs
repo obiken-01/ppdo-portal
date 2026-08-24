@@ -29,6 +29,9 @@ public sealed class MeResponseDto
     public string? Position { get; init; }
 
     // -- Effective permission flags (resolved via PermissionService) ----------
+    /// <summary>Resolved landing route, e.g. "/dashboard". Always reachable for this user.</summary>
+    public string LandingPath { get; init; } = "/account";
+
     public bool CanAccessInventory { get; init; }
     public bool CanAccessReports { get; init; }
     public bool CanManageUsers { get; init; }

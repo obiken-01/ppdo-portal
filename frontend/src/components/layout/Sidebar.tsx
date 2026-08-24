@@ -29,6 +29,7 @@ import { auth } from "@/lib/auth";
 import { clearMeCache } from "@/lib/me-cache";
 import { APP_VERSION } from "@/lib/version";
 import type { MeResponse } from "@/types";
+import { resolveLandingPath } from "@/lib/landing";
 
 interface SidebarProps {
   me: MeResponse | null;
@@ -162,9 +163,11 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
           print:hidden`}
       >
 
-      {/* ── Logo / brand — click to go to Dashboard ─────────────────────── */}
+      {/* ── Logo / brand — click to go to this user's landing page ──────── */}
+      {/* Not hardcoded to /dashboard: office users cannot open it, so the brand
+          link used to eject them the moment they clicked it (RAL-263). */}
       <Link
-        href="/dashboard"
+        href={resolveLandingPath(me)}
         className="flex items-center gap-3 px-5 py-3 border-b border-green-600 hover:bg-green-600 transition-colors group"
       >
         <Image

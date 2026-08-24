@@ -24,6 +24,11 @@ export interface RefreshErrorResponse {
 }
 
 export interface MeResponse {
+  /**
+   * Portal route this user should land on, resolved server-side (RAL-261).
+   * Always a route they can actually reach — safe to redirect to without checking.
+   */
+  landingPath: string;
   userId: string;
   fullName: string;
   username: string;
