@@ -8,16 +8,16 @@
  *
  * Features:
  *   - Table listing all portal users (name, email, role, division, status)
- *   - Add User modal — create a new account with default password TamarawUser2026!
+ *   - Add User modal — create a new account; a one-time password is issued and shown once
  *   - Edit User modal — update profile + per-user permission override toggles
- *   - Reset Password — one-click reset back to TamarawUser2026!
+ *   - Reset Password — one-click reset; issues a new one-time password, shown once
  *   - Deactivate / Reactivate — toggle isActive without deleting the record
  *
  * API endpoints used (all from UserFunctions.cs):
  *   GET    /api/users                     → list all users
  *   POST   /api/users                     → create user
  *   PUT    /api/users/{id}                → update user
- *   PUT    /api/users/{id}/reset-password → reset to default password
+ *   PUT    /api/users/{id}/reset-password → issue a new one-time password
  *   DELETE /api/users/{id}               → deactivate
  *   PUT    /api/users/{id}/reactivate    → reactivate
  *   GET    /api/config/divisions          → list divisions for the dropdown (RAL-97)
@@ -29,14 +29,15 @@ import api from "@/lib/api";
 import { listDivisions, listOffices } from "@/lib/config";
 import Modal from "@/components/ui/Modal";
 import OfficeSelect from "@/components/ui/OfficeSelect";
-import { useToast } from "@/components/ui/Toast";
 import RowActions, { type RowAction } from "@/components/ui/RowActions";
+import IssuedPasswordDialog from "@/components/ui/IssuedPasswordDialog";
 import type {
   CreateUserRequest,
   DivisionResponse,
   MeResponse,
   OfficeResponse,
   UpdateUserRequest,
+  UserCredentialResponse,
   UserResponse,
   UserRole,
 } from "@/types";
@@ -206,11 +207,17 @@ function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFor
           <label className="block text-xs font-medium text-slate-600 mb-1">Username *</label>
           <input
             value={form.username}
-            onChange={(e) => onChange({ username: e.target.value })}
+            // Lower-cased as it is typed so the field always shows exactly what will be
+            // saved — the backend normalises the same way (RAL-254).
+            onChange={(e) => onChange({ username: e.target.value.toLowerCase() })}
             placeholder="juandelacruz"
             autoComplete="off"
             className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 font-mono"
           />
+          <p className="mt-1 text-xs text-slate-600">
+            Saved in lowercase — capitals are converted automatically. Signing in is not
+            case-sensitive, so the user can type it any way they like.
+          </p>
         </div>
 
         <div className="col-span-2">
@@ -447,7 +454,6 @@ export default function UsersPage() {
   const router = useRouter();
 
   // Auth / permission guard
-  const { toast } = useToast();
   const [authChecked, setAuthChecked] = useState(false);
 
   // Data
@@ -464,6 +470,13 @@ export default function UsersPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [editTarget, setEditTarget] = useState<UserResponse | null>(null);
   const [resetTarget, setResetTarget] = useState<UserResponse | null>(null);
+  /** One-time password awaiting acknowledgement — set after a create or a reset (RAL-254). */
+  const [issued, setIssued] = useState<{
+    fullName: string;
+    username: string;
+    password: string;
+    context: "created" | "reset";
+  } | null>(null);
   const [deactivateTarget, setDeactivateTarget] = useState<UserResponse | null>(null);
 
   // Form state
@@ -561,10 +574,16 @@ export default function UsersPage() {
     setSaving(true);
     setFormError(null);
     try {
-      await api.post("/users", addForm);
+      const { data } = await api.post<UserCredentialResponse>("/users", addForm);
       setShowAdd(false);
       await loadData();
-      toast.success("User created", `${addForm.fullName} has been added. Default password: TamarawUser2026!`);
+      // Shown once — the plaintext is not stored and cannot be fetched again.
+      setIssued({
+        fullName: data.user.fullName,
+        username: data.user.username,
+        password: data.temporaryPassword,
+        context:  "created",
+      });
     } catch (e: unknown) {
       const data = (e as { response?: { data?: unknown } })?.response?.data;
       const msg = typeof data === "string" ? data : (data as { message?: string } | undefined)?.message;
@@ -634,9 +653,14 @@ export default function UsersPage() {
     if (!resetTarget) return;
     setActionLoading(true);
     try {
-      await api.put(`/users/${resetTarget.id}/reset-password`);
-      toast.success("Password reset", `Password reset to TamarawUser2026! for ${resetTarget.fullName}.`);
+      const { data } = await api.put<UserCredentialResponse>(`/users/${resetTarget.id}/reset-password`);
       setResetTarget(null);
+      setIssued({
+        fullName: data.user.fullName,
+        username: data.user.username,
+        password: data.temporaryPassword,
+        context:  "reset",
+      });
     } catch {
       // keep modal open — user can retry
     } finally {
@@ -815,7 +839,8 @@ export default function UsersPage() {
           }
         >
           <p className="text-xs text-slate-600 mb-4">
-            Default password <span className="font-mono bg-slate-100 px-1">TamarawUser2026!</span> is set automatically. The user must change it on first login.
+            A one-time password is generated automatically and shown once after the account is
+            created. Copy it then and give it to the user — it cannot be retrieved afterwards.
           </p>
           <UserForm
             form={addForm}
@@ -855,10 +880,21 @@ export default function UsersPage() {
         </Modal>
       )}
 
+      {/* ── One-time password, shown once (RAL-254) ───────────────────────── */}
+      {issued && (
+        <IssuedPasswordDialog
+          fullName={issued.fullName}
+          username={issued.username}
+          password={issued.password}
+          context={issued.context}
+          onClose={() => setIssued(null)}
+        />
+      )}
+
       {/* ── Reset Password confirm ─────────────────────────────────────────── */}
       {resetTarget && (
         <ConfirmDialog
-          message={`Reset password for ${resetTarget.fullName}? Their password will be set back to the default: TamarawUser2026!`}
+          message={`Reset password for ${resetTarget.fullName}? A new one-time password will be issued and shown once, and any active session will be signed out.`}
           confirmLabel="Reset Password"
           loading={actionLoading}
           onConfirm={handleResetPassword}

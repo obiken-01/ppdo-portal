@@ -20,9 +20,6 @@ namespace PPDO.Application.Services;
 /// </summary>
 public sealed class UserService : IUserService
 {
-    // Default password issued to every newly created user and on reset.
-    private const string DefaultPassword = "TamarawUser2026!";
-
     private readonly IUserRepository _users;
     private readonly IRepository<Office> _offices;
     private readonly IRepository<Division> _divisions;
@@ -67,13 +64,13 @@ public sealed class UserService : IUserService
     // ── Mutations ──────────────────────────────────────────────────────────────
 
     /// <inheritdoc />
-    public async Task<ServiceResult<UserResponseDto>> CreateAsync(
+    public async Task<ServiceResult<UserCredentialResponseDto>> CreateAsync(
         User requester,
         CreateUserDto dto,
         CancellationToken cancellationToken = default)
     {
         if (!Enum.TryParse<UserRole>(dto.Role, ignoreCase: true, out UserRole newRole))
-            return ServiceResult<UserResponseDto>.BadRequest(
+            return ServiceResult<UserCredentialResponseDto>.BadRequest(
                 $"'{dto.Role}' is not a valid Role. Valid values: SuperAdmin, Admin, Staff.");
 
         if (!CanRequesterManageRole(requester, newRole))
@@ -81,20 +78,20 @@ public sealed class UserService : IUserService
             _logger.LogWarning(
                 "Permission denied — user {UserId} attempted to create a user with role {TargetRole}.",
                 requester.Id, newRole);
-            return ServiceResult<UserResponseDto>.Forbidden(
+            return ServiceResult<UserCredentialResponseDto>.Forbidden(
                 $"You do not have permission to create a user with role '{newRole}'.");
         }
 
         bool isOfficeUser = dto.OfficeId is int oid && oid > 0;
 
         if (isOfficeUser && newRole is UserRole.SuperAdmin or UserRole.Admin)
-            return ServiceResult<UserResponseDto>.BadRequest(
+            return ServiceResult<UserCredentialResponseDto>.BadRequest(
                 "Office users must be Staff, not SuperAdmin/Admin.");
 
         if (isOfficeUser)
         {
-            ServiceResult<UserResponseDto>? officeError =
-                await ValidateOfficeAsync(dto.OfficeId!.Value, cancellationToken);
+            ServiceResult<UserCredentialResponseDto>? officeError =
+                await ValidateOfficeAsync<UserCredentialResponseDto>(dto.OfficeId!.Value, cancellationToken);
             if (officeError is not null) return officeError;
         }
 
@@ -106,10 +103,10 @@ public sealed class UserService : IUserService
         if (newRole is UserRole.Staff && !isOfficeUser)
         {
             if (dto.DivisionId is not int did || did <= 0)
-                return ServiceResult<UserResponseDto>.BadRequest("Division is required for Staff users.");
+                return ServiceResult<UserCredentialResponseDto>.BadRequest("Division is required for Staff users.");
 
-            ServiceResult<UserResponseDto>? divError =
-                await ValidateDivisionAsync(did, null, cancellationToken);
+            ServiceResult<UserCredentialResponseDto>? divError =
+                await ValidateDivisionAsync<UserCredentialResponseDto>(did, null, cancellationToken);
             if (divError is not null) return divError;
 
             newDivisionId = did;
@@ -117,37 +114,43 @@ public sealed class UserService : IUserService
         else if (newRole is UserRole.Staff && isOfficeUser && dto.DivisionId is int offDid && offDid > 0)
         {
             // Optional division for office users — validate it belongs to their office if supplied.
-            ServiceResult<UserResponseDto>? divError =
-                await ValidateDivisionAsync(offDid, dto.OfficeId, cancellationToken);
+            ServiceResult<UserCredentialResponseDto>? divError =
+                await ValidateDivisionAsync<UserCredentialResponseDto>(offDid, dto.OfficeId, cancellationToken);
             if (divError is not null) return divError;
             newDivisionId = offDid;
         }
 
         if (string.IsNullOrWhiteSpace(dto.FullName))
-            return ServiceResult<UserResponseDto>.BadRequest("FullName is required.");
+            return ServiceResult<UserCredentialResponseDto>.BadRequest("FullName is required.");
         if (string.IsNullOrWhiteSpace(dto.Username))
-            return ServiceResult<UserResponseDto>.BadRequest("Username is required.");
+            return ServiceResult<UserCredentialResponseDto>.BadRequest("Username is required.");
 
         User? existingByUsername = await _users.FindByUsernameAsync(dto.Username, cancellationToken);
         if (existingByUsername is not null)
-            return ServiceResult<UserResponseDto>.Conflict(
+            return ServiceResult<UserCredentialResponseDto>.Conflict(
                 $"Username '{dto.Username}' is already taken.");
 
         if (!string.IsNullOrWhiteSpace(dto.Email))
         {
             User? existingByEmail = await _users.FindByEmailAsync(dto.Email, cancellationToken);
             if (existingByEmail is not null)
-                return ServiceResult<UserResponseDto>.Conflict(
+                return ServiceResult<UserCredentialResponseDto>.Conflict(
                     $"Email '{dto.Email}' is already registered.");
         }
+
+        // Issued once, shown once — never stored or logged in plaintext (RAL-254).
+        string temporaryPassword = PasswordGenerator.Generate();
 
         User user = new()
         {
             Id           = Guid.NewGuid(),
             FullName     = dto.FullName.Trim(),
+            // Stored lower-case so every account matches the office's lowercase convention and
+            // relaying credentials never involves spelling out capitals (RAL-254). Matching is
+            // separately case-insensitive via the DB collation — see UserRepository.
             Username     = dto.Username.Trim().ToLowerInvariant(),
             Email        = string.IsNullOrWhiteSpace(dto.Email) ? null : dto.Email.Trim().ToLowerInvariant(),
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(DefaultPassword),
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(temporaryPassword),
             Role         = newRole,
             DivisionId   = newDivisionId,
             OfficeId     = isOfficeUser ? dto.OfficeId : null,
@@ -168,7 +171,11 @@ public sealed class UserService : IUserService
             oldValues: null,
             newValues: AuditSnapshot(created),
             cancellationToken);
-        return ServiceResult<UserResponseDto>.Ok(MapToDto(created));
+        return ServiceResult<UserCredentialResponseDto>.Ok(new UserCredentialResponseDto
+        {
+            User              = MapToDto(created),
+            TemporaryPassword = temporaryPassword,
+        });
     }
 
     /// <inheritdoc />
@@ -249,7 +256,7 @@ public sealed class UserService : IUserService
         if (isOfficeUser)
         {
             ServiceResult<UserResponseDto>? officeError =
-                await ValidateOfficeAsync(dto.OfficeId!.Value, cancellationToken);
+                await ValidateOfficeAsync<UserResponseDto>(dto.OfficeId!.Value, cancellationToken);
             if (officeError is not null) return officeError;
             target.OfficeId = dto.OfficeId;
         }
@@ -271,7 +278,7 @@ public sealed class UserService : IUserService
                 return ServiceResult<UserResponseDto>.BadRequest("Division is required for Staff users.");
 
             ServiceResult<UserResponseDto>? divError =
-                await ValidateDivisionAsync(did, null, cancellationToken);
+                await ValidateDivisionAsync<UserResponseDto>(did, null, cancellationToken);
             if (divError is not null) return divError;
 
             target.DivisionId = did;
@@ -284,7 +291,7 @@ public sealed class UserService : IUserService
             if (candidateDivisionId is int did && did > 0)
             {
                 ServiceResult<UserResponseDto>? divError =
-                    await ValidateDivisionAsync(did, target.OfficeId, cancellationToken);
+                    await ValidateDivisionAsync<UserResponseDto>(did, target.OfficeId, cancellationToken);
                 if (divError is not null) return divError;
                 target.DivisionId = did;
             }
@@ -320,20 +327,23 @@ public sealed class UserService : IUserService
     }
 
     /// <inheritdoc />
-    public async Task<ServiceResult<UserResponseDto>> ResetPasswordAsync(
+    public async Task<ServiceResult<UserCredentialResponseDto>> ResetPasswordAsync(
         User requester,
         Guid targetId,
         CancellationToken cancellationToken = default)
     {
         User? target = await _users.GetByIdWithDivisionAsync(targetId, cancellationToken);
         if (target is null)
-            return ServiceResult<UserResponseDto>.NotFound($"User {targetId} not found.");
+            return ServiceResult<UserCredentialResponseDto>.NotFound($"User {targetId} not found.");
 
         if (!CanRequesterManageTarget(requester, target))
-            return ServiceResult<UserResponseDto>.Forbidden(
+            return ServiceResult<UserCredentialResponseDto>.Forbidden(
                 "You do not have permission to reset this user's password.");
 
-        target.PasswordHash       = BCrypt.Net.BCrypt.HashPassword(DefaultPassword);
+        // Issued once, shown once — never stored or logged in plaintext (RAL-254).
+        string temporaryPassword = PasswordGenerator.Generate();
+
+        target.PasswordHash       = BCrypt.Net.BCrypt.HashPassword(temporaryPassword);
         target.RefreshToken       = null;
         target.RefreshTokenExpiry = null;
 
@@ -344,13 +354,17 @@ public sealed class UserService : IUserService
             "Password reset. TargetUserId: {TargetUserId}, ResetBy: {ResetBy}",
             target.Id, requester.Id);
 
-        // Never snapshot PasswordHash — just record that a reset happened.
+        // Never snapshot PasswordHash or the issued password — just record that a reset happened.
         await _audit.LogAsync("users", target.Id, AuditAction.Update,
             oldValues: null,
             newValues: new { PasswordReset = true },
             cancellationToken);
 
-        return ServiceResult<UserResponseDto>.Ok(MapToDto(target));
+        return ServiceResult<UserCredentialResponseDto>.Ok(new UserCredentialResponseDto
+        {
+            User              = MapToDto(target),
+            TemporaryPassword = temporaryPassword,
+        });
     }
 
     /// <inheritdoc />
@@ -583,7 +597,7 @@ public sealed class UserService : IUserService
     /// Validates that the office exists and is active. Returns a populated error result
     /// to short-circuit on failure, or null when the office is valid.
     /// </summary>
-    private async Task<ServiceResult<UserResponseDto>?> ValidateOfficeAsync(
+    private async Task<ServiceResult<TResult>?> ValidateOfficeAsync<TResult>(
         int officeId,
         CancellationToken cancellationToken)
     {
@@ -591,9 +605,9 @@ public sealed class UserService : IUserService
         Office? office = offices.FirstOrDefault(o => o.Id == officeId);
 
         if (office is null)
-            return ServiceResult<UserResponseDto>.BadRequest($"Office {officeId} not found.");
+            return ServiceResult<TResult>.BadRequest($"Office {officeId} not found.");
         if (!office.IsActive)
-            return ServiceResult<UserResponseDto>.BadRequest($"Office '{office.OfficeName}' is inactive.");
+            return ServiceResult<TResult>.BadRequest($"Office '{office.OfficeName}' is inactive.");
 
         return null;
     }
@@ -602,7 +616,7 @@ public sealed class UserService : IUserService
     /// Validates that the division exists, is active, and (for office users) belongs to the
     /// given office. Returns a populated error result to short-circuit, or null when valid.
     /// </summary>
-    private async Task<ServiceResult<UserResponseDto>?> ValidateDivisionAsync(
+    private async Task<ServiceResult<TResult>?> ValidateDivisionAsync<TResult>(
         int divisionId,
         int? requireOfficeId,
         CancellationToken cancellationToken)
@@ -611,11 +625,11 @@ public sealed class UserService : IUserService
         Division? division = divisions.FirstOrDefault(d => d.Id == divisionId);
 
         if (division is null)
-            return ServiceResult<UserResponseDto>.BadRequest($"Division {divisionId} not found.");
+            return ServiceResult<TResult>.BadRequest($"Division {divisionId} not found.");
         if (!division.IsActive)
-            return ServiceResult<UserResponseDto>.BadRequest($"Division '{division.Name}' is inactive.");
+            return ServiceResult<TResult>.BadRequest($"Division '{division.Name}' is inactive.");
         if (requireOfficeId is int officeId && division.OfficeId != officeId)
-            return ServiceResult<UserResponseDto>.BadRequest(
+            return ServiceResult<TResult>.BadRequest(
                 $"Division '{division.Name}' does not belong to the selected office.");
 
         return null;

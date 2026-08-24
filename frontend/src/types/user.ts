@@ -35,6 +35,16 @@ export interface UserResponse {
   overrideCanManageAllocation: boolean | null;
 }
 
+/**
+ * Returned by POST /api/users and PUT /api/users/{id}/reset-password (RAL-254).
+ * `temporaryPassword` is delivered once and never again — the server does not
+ * store the plaintext, so it cannot be re-fetched.
+ */
+export interface UserCredentialResponse {
+  user: UserResponse;
+  temporaryPassword: string;
+}
+
 export interface CreateUserRequest {
   fullName: string;
   username: string;

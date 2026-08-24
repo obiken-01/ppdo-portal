@@ -143,7 +143,7 @@ public sealed class UserServiceTests
         Mock<IUserRepository> repo = new();
         CreateUserDto dto = new("Jane", "jane", "jane@ppdo.gov.ph", "NotARole", 1, null, null);
 
-        ServiceResult<UserResponseDto> result = await BuildSut(repo).CreateAsync(MakeAdmin(), dto);
+        ServiceResult<UserCredentialResponseDto> result = await BuildSut(repo).CreateAsync(MakeAdmin(), dto);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
     }
@@ -154,7 +154,7 @@ public sealed class UserServiceTests
         Mock<IUserRepository> repo = new();
         CreateUserDto dto = new("Jane", "jane", "jane@ppdo.gov.ph", "Staff", 999, null, null);
 
-        ServiceResult<UserResponseDto> result = await BuildSut(repo).CreateAsync(MakeAdmin(), dto);
+        ServiceResult<UserCredentialResponseDto> result = await BuildSut(repo).CreateAsync(MakeAdmin(), dto);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
     }
@@ -166,7 +166,7 @@ public sealed class UserServiceTests
         CreateUserDto dto = new("Jane", "jane", "jane@ppdo.gov.ph", "Admin", null, null, null);
 
         // Admin cannot create another Admin — only SuperAdmin can.
-        ServiceResult<UserResponseDto> result = await BuildSut(repo).CreateAsync(MakeAdmin(), dto);
+        ServiceResult<UserCredentialResponseDto> result = await BuildSut(repo).CreateAsync(MakeAdmin(), dto);
 
         Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
     }
@@ -181,7 +181,7 @@ public sealed class UserServiceTests
 
         CreateUserDto dto = new("Jane", "staff", "jane@ppdo.gov.ph", "Staff", 2, null, null);
 
-        ServiceResult<UserResponseDto> result = await BuildSut(repo).CreateAsync(MakeAdmin(), dto);
+        ServiceResult<UserCredentialResponseDto> result = await BuildSut(repo).CreateAsync(MakeAdmin(), dto);
 
         Assert.Equal(ServiceErrorCode.Conflict, result.Code);
     }
@@ -198,7 +198,7 @@ public sealed class UserServiceTests
 
         CreateUserDto dto = new("Jane", "jane", existing.Email, "Staff", 2, null, null);
 
-        ServiceResult<UserResponseDto> result = await BuildSut(repo).CreateAsync(MakeAdmin(), dto);
+        ServiceResult<UserCredentialResponseDto> result = await BuildSut(repo).CreateAsync(MakeAdmin(), dto);
 
         Assert.Equal(ServiceErrorCode.Conflict, result.Code);
     }
@@ -222,7 +222,7 @@ public sealed class UserServiceTests
 
         CreateUserDto dto = new("Jane Doe", "janedoe", "jane@ppdo.gov.ph", "Staff", 2, null, null);
 
-        ServiceResult<UserResponseDto> result = await BuildSut(repo).CreateAsync(MakeAdmin(), dto);
+        ServiceResult<UserCredentialResponseDto> result = await BuildSut(repo).CreateAsync(MakeAdmin(), dto);
 
         Assert.True(result.IsSuccess);
     }
@@ -278,9 +278,100 @@ public sealed class UserServiceTests
 
         CreateUserDto dto = new("Admin Two", "admin2", "admin2@ppdo.gov.ph", "Admin", null, null, null);
 
-        ServiceResult<UserResponseDto> result = await BuildSut(repo).CreateAsync(MakeSuperAdmin(), dto);
+        ServiceResult<UserCredentialResponseDto> result = await BuildSut(repo).CreateAsync(MakeSuperAdmin(), dto);
 
         Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ValidUser_IssuesPasswordMatchingTheStoredHash()
+    {
+        // RAL-254: the account is created with a generated password, returned once.
+        User? persisted = null;
+        User created = MakeAdmin();
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByUsernameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+        repo.Setup(r => r.FindByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+        repo.Setup(r => r.AddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
+            .Callback<User, CancellationToken>((u, _) => persisted = u)
+            .Returns(Task.CompletedTask);
+        repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+        repo.Setup(r => r.GetByIdWithDivisionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(created);
+
+        CreateUserDto dto = new("Admin Two", "admin2", "admin2@ppdo.gov.ph", "Admin", null, null, null);
+
+        ServiceResult<UserCredentialResponseDto> result =
+            await BuildSut(repo).CreateAsync(MakeSuperAdmin(), dto);
+
+        Assert.True(result.IsSuccess);
+        string issued = result.Value!.TemporaryPassword;
+
+        Assert.False(string.IsNullOrWhiteSpace(issued));
+        Assert.NotNull(persisted);
+        Assert.True(BCrypt.Net.BCrypt.Verify(issued, persisted!.PasswordHash));
+    }
+
+    [Fact]
+    public async Task CreateAsync_MixedCaseUsername_IsStoredLowerCase()
+    {
+        // RAL-254: usernames are normalised to lower case on write, keeping every account on
+        // the office's lowercase-dotted convention. Matching is separately case-insensitive
+        // via the DB collation, so this is belt-and-braces rather than what login relies on.
+        User? persisted = null;
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByUsernameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+        repo.Setup(r => r.FindByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+        repo.Setup(r => r.AddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
+            .Callback<User, CancellationToken>((u, _) => persisted = u)
+            .Returns(Task.CompletedTask);
+        repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+        repo.Setup(r => r.GetByIdWithDivisionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakeAdmin());
+
+        CreateUserDto dto = new("New User", "  newUser  ", "new@ppdo.gov.ph", "Admin", null, null, null);
+
+        await BuildSut(repo).CreateAsync(MakeSuperAdmin(), dto);
+
+        Assert.NotNull(persisted);
+        Assert.Equal("newuser", persisted!.Username);   // trimmed and lower-cased
+    }
+
+    [Fact]
+    public async Task CreateAsync_TwoUsers_IssueDifferentPasswords()
+    {
+        // The finding this ticket closes: every account used to land on one documented password.
+        static Mock<IUserRepository> Repo(User created)
+        {
+            Mock<IUserRepository> repo = new();
+            repo.Setup(r => r.FindByUsernameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((User?)null);
+            repo.Setup(r => r.FindByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((User?)null);
+            repo.Setup(r => r.AddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
+                .Returns(Task.CompletedTask);
+            repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync(1);
+            repo.Setup(r => r.GetByIdWithDivisionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(created);
+            return repo;
+        }
+
+        CreateUserDto first  = new("Admin Two",   "admin2", "admin2@ppdo.gov.ph", "Admin", null, null, null);
+        CreateUserDto second = new("Admin Three", "admin3", "admin3@ppdo.gov.ph", "Admin", null, null, null);
+
+        ServiceResult<UserCredentialResponseDto> a =
+            await BuildSut(Repo(MakeAdmin())).CreateAsync(MakeSuperAdmin(), first);
+        ServiceResult<UserCredentialResponseDto> b =
+            await BuildSut(Repo(MakeAdmin())).CreateAsync(MakeSuperAdmin(), second);
+
+        Assert.NotEqual(a.Value!.TemporaryPassword, b.Value!.TemporaryPassword);
     }
 
     [Fact]
@@ -291,7 +382,7 @@ public sealed class UserServiceTests
         // PPDO Staff with neither a division nor an office cannot be assigned a group.
         CreateUserDto dto = new("Jane", "jane", "jane@ppdo.gov.ph", "Staff", null, null, null);
 
-        ServiceResult<UserResponseDto> result = await BuildSut(repo).CreateAsync(MakeAdmin(), dto);
+        ServiceResult<UserCredentialResponseDto> result = await BuildSut(repo).CreateAsync(MakeAdmin(), dto);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
     }
@@ -320,7 +411,7 @@ public sealed class UserServiceTests
         // Office user — division 5 belongs to office 7 (see DefaultDivisions()).
         CreateUserDto dto = new("Office Encoder", "enc", "enc@lgu.gov.ph", "Staff", 5, null, null, OfficeId: 7);
 
-        ServiceResult<UserResponseDto> result = await BuildSut(repo, offices).CreateAsync(MakeAdmin(), dto);
+        ServiceResult<UserCredentialResponseDto> result = await BuildSut(repo, offices).CreateAsync(MakeAdmin(), dto);
 
         Assert.True(result.IsSuccess);
         Assert.NotNull(captured);
@@ -344,7 +435,7 @@ public sealed class UserServiceTests
         // Division 2 belongs to office 100, not office 7 → rejected.
         CreateUserDto dto = new("Enc", "enc", "enc@lgu.gov.ph", "Staff", 2, null, null, OfficeId: 7);
 
-        ServiceResult<UserResponseDto> result = await BuildSut(repo, offices).CreateAsync(MakeAdmin(), dto);
+        ServiceResult<UserCredentialResponseDto> result = await BuildSut(repo, offices).CreateAsync(MakeAdmin(), dto);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
     }
@@ -360,7 +451,7 @@ public sealed class UserServiceTests
 
         CreateUserDto dto = new("Enc", "enc", "enc@lgu.gov.ph", "Staff", null, null, null, OfficeId: 7);
 
-        ServiceResult<UserResponseDto> result = await BuildSut(repo, offices).CreateAsync(MakeAdmin(), dto);
+        ServiceResult<UserCredentialResponseDto> result = await BuildSut(repo, offices).CreateAsync(MakeAdmin(), dto);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
     }
@@ -372,7 +463,7 @@ public sealed class UserServiceTests
         CreateUserDto dto = new("Enc", "enc", "enc@lgu.gov.ph", "Admin", null, null, null, OfficeId: 7);
 
         // Office users must be Staff or Observer — never Admin/SuperAdmin.
-        ServiceResult<UserResponseDto> result = await BuildSut(repo).CreateAsync(MakeSuperAdmin(), dto);
+        ServiceResult<UserCredentialResponseDto> result = await BuildSut(repo).CreateAsync(MakeSuperAdmin(), dto);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
     }
@@ -586,7 +677,7 @@ public sealed class UserServiceTests
         repo.Setup(r => r.GetByIdWithDivisionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((User?)null);
 
-        ServiceResult<UserResponseDto> result =
+        ServiceResult<UserCredentialResponseDto> result =
             await BuildSut(repo).ResetPasswordAsync(MakeAdmin(), Guid.NewGuid());
 
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
@@ -619,10 +710,14 @@ public sealed class UserServiceTests
         repo.Setup(r => r.GetByIdWithDivisionAsync(target.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(target);
 
-        await BuildSut(repo).ResetPasswordAsync(MakeAdmin(), target.Id);
+        ServiceResult<UserCredentialResponseDto> result =
+            await BuildSut(repo).ResetPasswordAsync(MakeAdmin(), target.Id);
 
         Assert.NotEqual(originalHash, target.PasswordHash);
-        Assert.True(BCrypt.Net.BCrypt.Verify("TamarawUser2026!", target.PasswordHash));
+
+        // The issued password is returned once and is the one that was actually set.
+        string issued = result.Value!.TemporaryPassword;
+        Assert.True(BCrypt.Net.BCrypt.Verify(issued, target.PasswordHash));
     }
 
     [Fact]
