@@ -18,7 +18,11 @@ public sealed class DivisionService : IDivisionService
         "office_code", "code", "name", "is_active",
         "can_access_budget_planning", "can_access_inventory", "can_access_reports",
         "can_manage_config", "can_upload_aip", "can_manage_users", "can_manage_resource_links",
+        "landing_page",
     };
+
+    /// <summary>Column index of <c>landing_page</c> in <see cref="CsvHeaders"/> (RAL-259).</summary>
+    private const int LandingPageIndex = 11;
 
     private readonly IRepository<Division>   _divisions;
     private readonly IRepository<Office>     _offices;
@@ -226,6 +230,8 @@ public sealed class DivisionService : IDivisionService
                 d.CanUploadAip             ? "TRUE" : "FALSE",
                 d.CanManageUsers           ? "TRUE" : "FALSE",
                 d.CanManageResourceLinks   ? "TRUE" : "FALSE",
+                // Enum name, matching the wire format the API already uses. Blank = no preference.
+                d.LandingPage?.ToString() ?? "",
             });
         return Csv.Write(CsvHeaders, rows);
     }
@@ -239,6 +245,13 @@ public sealed class DivisionService : IDivisionService
             return ServiceResult<CsvImportResult>.BadRequest("The CSV file is empty.");
 
         int start = parsed[0].Any(c => c.Trim().Equals("office_code", StringComparison.OrdinalIgnoreCase)) ? 1 : 0;
+
+        // A file exported before RAL-259 has no landing_page column at all, and an absent column
+        // is not the same as a blank one: blank clears the preference, absent must leave it alone.
+        // Otherwise re-uploading an old export would silently wipe every division's landing page.
+        bool hasLandingPageColumn = start == 1
+            ? parsed[0].Any(c => c.Trim().Equals("landing_page", StringComparison.OrdinalIgnoreCase))
+            : parsed.Any(r => r.Length > LandingPageIndex);
 
         Dictionary<string, int> officeCodeToId = offices.ToDictionary(
             o => o.OfficeCode.Trim(), o => o.Id, StringComparer.OrdinalIgnoreCase);
@@ -291,10 +304,26 @@ public sealed class DivisionService : IDivisionService
                 continue;
             }
 
-            if (byKey.TryGetValue(key, out Division? existing))
+            byKey.TryGetValue(key, out Division? existing);
+
+            // Keep whatever is stored when the column is absent; parse it when it is present.
+            LandingPage? landingPage = existing?.LandingPage;
+            if (hasLandingPageColumn
+                && !LandingPageName.TryParse(Field(f, LandingPageIndex), out landingPage))
+            {
+                // A typo must not be read as "no preference" — that silently drops the setting.
+                skipped++;
+                errors.Add(
+                    $"Row {i + 1}: '{Field(f, LandingPageIndex)}' is not a valid landing page. " +
+                    $"Valid values: {LandingPageName.ValidValues}.");
+                continue;
+            }
+
+            if (existing is not null)
             {
                 bool changed =
                     existing.Code                    != code        ||
+                    existing.LandingPage             != landingPage ||
                     existing.IsActive                != active      ||
                     existing.CanAccessBudgetPlanning != budget      ||
                     existing.CanAccessInventory      != inventory   ||
@@ -315,6 +344,7 @@ public sealed class DivisionService : IDivisionService
                 existing.CanUploadAip            = uploadAip;
                 existing.CanManageUsers          = manageUsers;
                 existing.CanManageResourceLinks  = resourceLinks;
+                existing.LandingPage             = landingPage;
                 existing.UpdatedAt               = now;
                 await _divisions.UpdateAsync(existing, cancellationToken);
                 updated++;
@@ -334,6 +364,7 @@ public sealed class DivisionService : IDivisionService
                     CanUploadAip            = uploadAip,
                     CanManageUsers          = manageUsers,
                     CanManageResourceLinks  = resourceLinks,
+                    LandingPage             = landingPage,
                     CreatedAt               = now,
                     UpdatedAt               = now,
                 };
