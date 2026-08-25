@@ -1,0 +1,898 @@
+# v1.8.0 Requirements — Review, Gaps & Suggested Additions
+
+> Reviewed 2026-08-14 against Ralph's draft requirements + the whiteboard photo from the
+> discussion. Checked against the codebase as it stands on `release/1.8.0`.
+>
+> Companion docs: `AIP_Redesign_Notes.md` (incomplete, Ralph's earlier description),
+> `Office_User_Path_Findings.md` (office-user isolation + reviewer model),
+> `../PWA_Feasibility_Study.md` (offline — §11 in particular).
+>
+> **Nothing here is a decision.** It is (a) what the whiteboard contains that the written draft
+> does not, (b) what already exists in code and therefore is not new work, (c) what is missing, and
+> (d) what I would add. Items marked **→ DECISION** block ticket-writing.
+>
+> ---
+>
+> **🔄 Refreshed 2026-08-25**, and moved onto `release/1.8.0` — until now this document and
+> `Monday_Questions.md` existed only on `claude/progressive-web-apps-9kym78`, even though
+> `Phase_Plan.md` cites both as companions. The analysis is still as of 2026-08-14; what changed:
+>
+> - §2 (password reset) condensed — the finding is fixed and the decision is made; §2.6 kept as the
+>   build spec.
+> - §3 (landing page) marked shipped — RAL-251/261/262/263/264.
+> - §8.0 DECISION E annotated — the FY clean break implies the answer but never states it.
+> - §10 decisions table brought to today: **11 answered**, **F added**, E downgraded to 🟡.
+> - §0.1 extended with the decisions taken on 2026-08-17 and 2026-08-20.
+>
+> **⚠️ The 2026-08-17 meeting answers were never recorded in the repo.** If A, C, D, 5, 9 or 10 were
+> answered in that room, §10 is the table to update. `Phase_Plan.md` §9 carries the same list in
+> phase order.
+
+---
+
+## 0. Headline
+
+Three things stand out from the review:
+
+1. **Allocation: the two storage tables are reusable, but every consumer of them is WFP-only.**
+   (Corrected 2026-08-14 after Ralph pointed out that allocation only caters to WFP — he is right,
+   and the reason matters.) `BudgetCeiling` and `DivisionAllocation` are genuinely generic, but the
+   draw-down ledger is keyed on `WfpRecordId` and is documented as deliberately non-polymorphic,
+   and all validation lives in `WfpCeilingService`. AIP needs its own consumer — and, more
+   importantly, **AIP is currently the ceiling *for* WFP**, so pointing both at one pot needs a
+   stated rule or the numbers will contradict each other. See §4.
+2. **The AIP expenditure model as described cannot be stored in the current schema.** Multiple
+   fund sources per activity, and one expenditure split across PS/MOOE/CO, break `AipActivity`'s
+   single `FundingSourceId` + three amount columns. This is the largest structural change in
+   v1.8.0. See §5.1.
+3. ✅ *(Answered 2026-08-14 — see §8.2.)* **The stated rounding rule and its own example disagree** — "round *up* to the nearest thousand"
+   applied to `1,234,567.89` gives `1,235,000`, not the `1,234,000` in the draft. Every peso figure
+   in every AIP document depends on which one is meant. See §8.
+
+Plus one observation offered as pushback, not obstruction: **52 users is not a load problem**
+(§6.3). Offline entry is well justified by *connectivity*; justifying it by *load* points at the
+wrong fix.
+
+---
+
+## 0.1 Decisions settled (Ralph, 2026-08-14)
+
+| # | Decision | Answer | Effect |
+|---|---|---|---|
+| 4 | Multi-fund granularity | **Multiple single-fund lines** — one fund source per expenditure line | §5.1's table works as drafted. The simpler option, and Ralph's original intent |
+| 8 | Rounding to thousands | **Always round UP** on any remainder above zero — `1,234,200` → `1,235`. Rationale: *"better to have a bit higher value than having less"* | Settled. ⚠️ Makes §8.3 (must rows add up?) materially more important — the error no longer cancels out |
+| B | What the ceiling applies to | **General Fund only.** GAD, 20% DF, LDRRF, Trust Fund and PS are all exempt | Also **resolves W1** — see §5.6 |
+| W1 | "Limit Dept Head — except GAD/20% DF/PS/LDRRF/Trust Fund" | **Not a permission rule.** It is the ceiling-exemption list above | §5.6 rewritten; the permission model is unaffected |
+| 9.1 | Printable AIP form | **Confirmed in scope**, matching the official form already used | Largest single deliverable in §7 |
+| 9.2–9.8 | Remaining suggested additions | **Accepted** | Deadline, notifications, amendment-readiness, carry-forward, completeness rules, approval snapshot, concurrent-edit guard |
+| 12 | Password reset | **Option B** — self-service gated on a user-set recovery answer, random temporary password. (The deterministic-password proposal was withdrawn — §2.4) | Ticket-ready; §2.6. No dependency on the AIP work |
+
+**Added since — decisions taken 2026-08-17 and 2026-08-20:**
+
+| # | Decision | Answer | Effect |
+|---|---|---|---|
+| — | Redesign AIP, or retrofit office isolation onto the current model? | **Redesign.** No office-user account exists in production, so there is no real office data on the current shape to disrupt — the cheapest point at which to make the change | `AIP_Redesign_Notes.md` §1; the whole of Phases 2–5 |
+| 11 | 2027 AIP + `.xlsm` upload | **Clean break by fiscal year.** FY≤2027 stays in the v1.6 shape permanently; the new office-owned format starts **FY2028**. No conversion job, no dual-write. FY2027 is **not** re-imported despite the RAL-238 parser fix | `AIP_Redesign_Notes.md` §4a/§4b. Accepted cost: two AIP code paths live indefinitely. Implies — but never states — DECISION E, see §8.0 |
+| — | `/profile` stub vs `/account` | **`/account`.** The `(portal)/profile` stub goes; `/profile` redirects to it. "User Profile" as a landing target resolves to `/account` | RAL-252, the last landing item |
+
+---
+
+## 1. What the whiteboard has that the written draft does not
+
+Working left-to-right through the photo. These are the items I could not find anywhere in the
+written requirements.
+
+| # | On the board | Why it matters | Status |
+|---|---|---|---|
+| W1 | **"Limit Dept Head — Except: GAD, 20% DF, PS, LDRRF, Trust Fund"** | Reads as: department heads encode their own office's items, **except** these five, which are prepared centrally. That is a scoping rule affecting who may create what — and it is not in the draft at all. | **→ DECISION** — see §5.6 |
+| W2 | **"cost auto generated"** | Activity costs roll up to project and program automatically rather than being typed at each level. Confirms totals are derived, not entered. | Assumed; confirm |
+| W3 | **"Review Comments"** (right side, next to the review arrow) | Reviewers leave *comments*. The draft says work is "sent for review" and "once approved" but never mentions comments, rejection, or send-back. | **→ DECISION** — see §5.3 |
+| W4 | **"Submitted for Review of LFC → Locked"** | Submitted work locks against editing. The draft doesn't state what happens to editability at each transition. | **→ DECISION** — see §5.3 |
+| W5 | **"Output/Report → … → Project Profile"** | A per-project profile document as an output, distinct from the AIP form itself and from the §7 database exports. | Missing from draft — §7 |
+| W6 | **"20 Depts"** | ~20 offices against 44 non-PPDO users ≈ 2 users per office (encoder + reviewer). Consistent with the draft; useful for sizing. | Consistent |
+| W7 | **Fund × class matrix** (`fund | total | PS | MOOE | CO`, rows for Gen. Fund / LDRRF / 20% DF / DOH) | This is the clearest statement of the new expenditure shape — one activity, several funds, each split three ways. Corroborates §5.1. | Confirms §5.1 |
+| W8 | **"1 budget item, multiple fund source — [MFS] default single"** | The multi-fund toggle defaults to **off**. Matches the draft's toggle idea and gives the default. | Consistent |
+| W9 | **"₱5M cost" against Prog/Project** | Suggests a cost ceiling or threshold at project level. Unclear — may be an example figure. | **→ CLARIFY** |
+
+Also on the board and already covered by the draft: the importable file → PPDO / PBO / Actg / PTO /
+GSO (§7), and the round-up arithmetic (§8).
+
+---
+
+## 2. Password Reset
+
+> Requirement: *"Users can trigger password reset. Suggest the steps — do not make it complicated."*
+
+### 2.1–2.5 ✅ Settled, and the finding is fixed — condensed 2026-08-25
+
+The full reasoning that produced Option B is in this file's git history; what a builder still needs
+is kept below.
+
+**The constraint that decided it (§2.1).** There is no email infrastructure in the codebase — no
+SMTP client, no SendGrid, no MailKit, no `IEmailService`. `User.Email` is optional (`string?`) and
+unverified — the unique index is filtered on `IS NOT NULL`, so accounts may have none at all — and
+login is by **username**. So "enter your email, click the link" would mean a mail provider, DNS
+records on a government domain, a token table, and a campaign to collect and verify ~52 addresses:
+the opposite of *"do not make it complicated"*. Everything below therefore uses no email.
+
+**The security finding (§2.2) — ✅ FIXED.** `UserService.ResetPasswordAsync` used to set every reset
+account to the same hardcoded default (`TamarawUser2026!`), written down in `CLAUDE.md`, with
+nothing forcing a change. Closed by **RAL-254** (PR #253, merged to `release/1.8.0`): `CreateAsync`
+and `ResetPasswordAsync` each now issue a unique random password via `PasswordGenerator`, returned
+once in `UserCredentialResponseDto.TemporaryPassword` and never stored or logged.
+
+> ⚠️ **Still open, same class, no ticket yet:** the SuperAdmin seed account
+> `superadmin@ppdo.gov.ph` / `PPDOAdmin2026!` is still documented in `CLAUDE.md` and live in
+> production. It was outside RAL-254's scope.
+
+**The decision (§2.5) — ✅ Option B**, taken by Ralph 2026-08-14: true self-service gated on a
+user-set recovery answer, random temporary password, no admin involvement. Option A (one-click admin
+approval, random password shown once) survives as the fallback for anyone who has not set an
+answer — see (f) in §2.6.
+
+Two constraints hold whichever path a user takes, and both are easy to lose during implementation:
+
+- **The temporary password must be random, never a pattern.** A deterministic string — the
+  withdrawn §2.4 proposal derived one from the username plus a rotating date — is not a delivery
+  channel, it is a public value. You cannot hand a user a secret without a channel you trust, and
+  the only trusted channels here are the office itself or something the user already knows.
+  *Because* the password is random, Ralph's "let them skip the forced change" request is harmless —
+  nobody chooses to keep a random string. With a deterministic one, skipping is precisely what makes
+  the vulnerability permanent.
+- **Log every reset in the audit trail**, and tell the user on next login that their password was
+  reset and when. That is the detective control that makes self-service acceptable — a colleague who
+  used someone else's recovery answer does not go unnoticed.
+
+### 2.6 Option B, ready to ticket
+
+The shape is settled; these are the sub-decisions inside it. **Recommended defaults are marked** —
+none is load-bearing, so this can be ticketed as-is and adjusted if Ralph prefers otherwise.
+
+| # | Sub-decision | Recommended | Why |
+|---|---|---|---|
+| a | What is the recovery secret? | **A question chosen from a short fixed list, plus a free-text answer** | Free-text *questions* invite unanswerable ones ("my favourite?"). A fixed list keeps the UI simple and the answers memorable. A numeric PIN is easier to shoulder-surf and easier to forget |
+| b | How many questions? | **One** | "Do not make it complicated." Two roughly doubles the setup friction for a marginal gain against a colleague who already knows one answer |
+| c | How is the answer stored? | **Hashed, exactly like a password** (same BCrypt path) | It *is* a credential. It must never be readable by an admin, or Option B degrades to Option A with extra steps |
+| d | Answer matching | **Case-insensitive, trimmed** | "Manila" vs "manila " is a support call, not a security boundary |
+| e | Who sets it, and when? | **Forced once at next login** for every existing user; part of account creation for new ones | Anything optional leaves most of the 52 accounts unrecoverable, which is the state we're trying to leave |
+| f | User has no answer set yet? | **Fall back to Option A** (admin one-click approval) | Needed during the rollout window regardless, and as the permanent path for anyone who forgets their answer |
+| g | Wrong answers | **Lock reset attempts for that account after 5 failures in an hour** | Without this the answer is brute-forceable, which undoes the whole point |
+| h | Response when the username doesn't exist | **Identical to a wrong answer** | Otherwise the form is a username-enumeration oracle |
+| i | Temporary password | **Randomly generated, shown once on screen** | Never a pattern — that is the §2.4 finding |
+| j | Forced change after reset | **Offered, skippable** (Ralph's request) | Safe *because* the password is random — nobody chooses to keep one |
+| k | After any reset | **Write an audit-log entry, and tell the user on next login that their password was reset and when** | The detective control that makes self-service acceptable — a colleague who used someone's answer does not go unnoticed |
+
+**Schema:** two columns on `users` (`RecoveryQuestionKey`, `RecoveryAnswerHash`), plus a small
+attempts table or counter for (g). The `MustChangePassword` flag from §2.3 is still worth adding —
+it fixes the §2.2 finding for admin-initiated resets too.
+
+**Independent of everything else in v1.8.0** — no AIP dependency, no open questions. Can be
+ticketed and built before Monday's answers land.
+
+> **Status 2026-08-25 — ticketed, mostly not yet built.** RAL-253 (schema: `RecoveryQuestionKey`,
+> `RecoveryAnswerHash`, `MustChangePassword`, attempt counter) · RAL-265 (request-reset and
+> verify-answer endpoints) · RAL-269 (the login-page flow) · RAL-266 (forced answer setup at next
+> login — the one pass over ~52 accounts) · RAL-267 (the "your password was reset on …" notice).
+> Only **RAL-254**, the §2.2 fix, has shipped. The table above is the spec for the rest.
+
+---
+
+## 3. Per-user Landing Page
+
+> Requirement: settable landing page — Main Dashboard, Inventory Dashboard, Budget Planning
+> Dashboard, User Profile. Default: Main Dashboard (PPDO), Budget Planning (non-PPDO).
+
+> **✅ Shipped — status 2026-08-25.** All three traps below were designed around, and the work is
+> nearly done on `release/1.8.0`: **RAL-251** (a `LandingPage` enum on `users`, `divisions` and
+> `offices`, plus the resolution chain — PR #254) · **RAL-261/263/264** (resolved server-side and
+> exposed as `landingPath` on `/auth/me`; one `resolveLandingPath(me)` helper replacing all five
+> hardcoded sites; a neutral `/home` for the PWA `start_url` — PR #255). **RAL-262** — the
+> permission-aware selector on the User form, Division config, Office config and `/account` — is
+> open as PR #256. **RAL-252** (`/profile` → `/account`) is the last one outstanding. §§3.1–3.3 are
+> kept as the design record, not as pending work.
+>
+> One related thing no ticket covers: ~15 hardcoded `/dashboard` literals used as *permission-denied
+> ejections*, plus `useMe`'s default `redirectTo`, would read better as `landingPath`.
+
+Straightforward, with three traps worth designing around.
+
+### 3.1 It must be validated against permissions, not just stored
+
+Setting a user's landing page to Inventory Dashboard when they lack `CanAccessInventory` produces
+either a 403 on login or a redirect loop. The office-user gate in `(portal)/layout.tsx:208-217`
+already bounces office users away from everything outside Budget Planning, so an office user with
+"Main Dashboard" saved would ping-pong.
+
+**Suggestion:** store the preference, but resolve it through a fallback chain at login —
+*preferred → first permitted from an ordered list → `/account`*. `/account` is the one page every
+user can always reach, which is exactly why the existing office gate already falls back to it.
+Also validate the choice in the user form so an admin cannot save an impossible combination.
+
+### 3.2 Every redirect site has to agree
+
+The landing target is currently hardcoded in several places, and they will drift apart the way
+`APP_VERSION` did:
+
+| Site | Today |
+|---|---|
+| `login/page.tsx:137` | `me.officeId != null ? "/budget-planning" : "/dashboard"` |
+| `(portal)/layout.tsx:215` | office-user gate → `/budget-planning` or `/account` |
+| `Sidebar.tsx:167` | logo link → `/dashboard` |
+| `manifest.ts` | `start_url: "/dashboard"` |
+| `/reconnecting` | `?next=` default `/dashboard` |
+
+**Suggestion:** one `resolveLandingPath(me)` helper, used by all five.
+
+### 3.3 It interacts with the PWA I just shipped
+
+The manifest's `start_url` is a **single fixed value** for everyone — it cannot vary per user. Once
+per-user landing pages exist, `start_url` should point at a neutral resolver (e.g. `/` or a small
+`/home` page that redirects via `resolveLandingPath`) rather than `/dashboard`. One-line change,
+but easy to forget.
+
+---
+
+## 4. Allocation Page
+
+> Requirement: office ceilings set by PBO; general-fund allocation to PPDO divisions; program
+> allocation; new PBO permission; rename the finance-officer permission.
+
+> **⚠️ Corrected 2026-08-14.** An earlier draft of this review said this requirement was "~80%
+> already built" and amounted to a permission split. **That was wrong**, as Ralph pointed out: the
+> current allocation machinery serves **WFP only**. The storage is reusable; nothing that consumes
+> it is. The corrected picture is below, and it changes this from the smallest item in v1.8.0 to
+> one that needs a real design decision.
+
+### 4.1 What actually exists, and what it serves
+
+| Layer | Component | Generic or WFP-only? |
+|---|---|---|
+| Storage | `BudgetCeiling { OfficeId, FiscalYear, FundingSourceId, Amount }` | ✅ **generic** — no WFP column |
+| Storage | `DivisionAllocation { DivisionId, FiscalYear, FundingSourceId, Amount }` | ✅ **generic** |
+| Storage | `ProgramDivision` (program → division assignment) | ✅ generic (but string-keyed — §5.2) |
+| Read/write API | `AllocationService` + `/allocation/*` endpoints (already take `officeId`) | ✅ generic |
+| **Draw-down ledger** | `WfpDivisionAllocationLedger` — keyed on **`WfpRecordId`** | ❌ **WFP-only** |
+| **Validation** | `WfpCeilingService` — `ValidateExpenditureSaveAsync`, `UpsertLedgerForActivityAsync`, `ValidateRecordForFinalizeAsync` | ❌ **WFP-only** |
+| UI | Allocation page | Generic-ish, but built around the WFP flow |
+
+The ledger's own doc comment is explicit about this:
+
+> *"WFP-scoped by design (not a generic polymorphic ledger)… Named/shaped so a future consumer of
+> the same allocation could post its own rows later without needing a redesign, but that
+> generalization is explicitly out of scope for this ticket."*
+
+So the shape was chosen with a second consumer in mind, but the generalization was deliberately
+deferred. **AIP is that second consumer, and this is the ticket that pays the deferred cost.**
+
+### 4.2 The thing that makes this genuinely hard: AIP already constrains WFP
+
+`WfpCeilingService` performs **two** checks on every WFP expenditure:
+
+1. **against the parent AIP activity's total** — `activity.Total * 1000m`, aggregate across all
+   funding sources (AIP carries no per-fund breakdown today);
+2. **against the division allocation** — fund-scoped.
+
+So today the chain is:
+
+```
+DivisionAllocation ──constrains──▶ WFP
+AipActivity.Total  ──constrains──▶ WFP
+AIP itself         ──constrained by──▶ (nothing)
+```
+
+The requirement adds `DivisionAllocation ──constrains──▶ AIP`. That closes a triangle, and a
+triangle needs a rule:
+
+**→ DECISION A — is it one pot or two?**
+
+- **One pot.** AIP and WFP draw on the same division allocation. Then a single peso planned in AIP
+  and then detailed in WFP must not be counted twice — which means the ledger cannot simply gain
+  AIP rows alongside WFP rows. Most likely resolution: **the allocation constrains AIP, and WFP is
+  constrained by its parent AIP activity only** (check 2 above becomes redundant and should be
+  removed, not kept alongside). Conceptually clean — the AIP is the plan, the WFP details it — but
+  it changes existing, working WFP validation.
+- **Two pots.** AIP gets its own allocation dimension, independent of WFP's. Nothing existing
+  changes, but the same office now has two ceiling numbers that can disagree, and someone has to
+  explain which is authoritative.
+
+Ralph's own phrasing — *"Updates in Allocation Page (AIP specific only)"* — may already mean the
+second. Worth confirming explicitly, because it decides whether this is additive or a change to
+shipped WFP behaviour.
+
+### 4.3 What has to be built either way
+
+| # | Work | Note |
+|---|---|---|
+| 1 | **An AIP draw-down ledger** | Either `AipDivisionAllocationLedger` (mirrors the WFP one, keyed on the AIP record) or generalise the existing ledger to `(sourceType, sourceId)`. The latter is tidier and touches shipped WFP code; the former is safer and duplicates ~200 lines |
+| 2 | **An AIP ceiling service** | The AIP equivalent of `WfpCeilingService` — validate on save/submit, upsert the ledger, expose remaining |
+| 3 | **Ceiling checks for offices** | Non-PPDO offices have ceilings but no divisions, so the office ceiling is checked directly rather than via a division allocation |
+| 4 | **PBO permission** | New `OverrideCanManagePboCeiling` — may set `BudgetCeiling` for **any** office. Mirrors `CanManageAllocation`'s plumbing; Admin **not** auto-granted |
+| 5 | **Rename `CanManageAllocation`** | To Ralph's "Manage PPDO Allocation (PPDO finance officer)". Mechanical but wide — backend service, Functions gates, user form, `MeResponse`, frontend. Worth its own commit |
+| 6 | **Allocation page: office picker** | Endpoints already take `officeId`; the page is built around PPDO |
+
+Only items 4–6 are the "permission split" the earlier draft described. Items 1–3 are the real work,
+and item 1's shape depends on DECISION A.
+
+### 4.4 The ceiling rule itself is still under-specified
+
+**→ DECISION B — what exactly is capped?** The draft says the division allocation *"will be used as
+ceiling of all divisions when creating activities using general fund. Other fund source and Personal
+Services will have no ceiling."*
+
+That mixes two axes: **fund source** (General Fund) and **expense class** (PS). Under the new model
+(§5.1) one expenditure line can be General Fund *and* split across PS/MOOE/CO — so the check is
+*"sum only the non-PS portion of General-Fund lines"*, not "sum General-Fund lines". Easy to
+implement the wrong one; the difference is invisible until audited.
+
+Note this also **diverges from WFP's existing behaviour**, where the AIP check is aggregate across
+all funds precisely because AIP has no per-fund breakdown. Once AIP gains one (§5.1), that
+justification disappears and the WFP-side check could be tightened too — worth deciding whether to
+do so in the same pass or leave WFP alone.
+
+**→ DECISION C — block or warn, at save or at submit?** Blocking at *submit* rather than at *save*
+is kinder for a document built over weeks, and it is close to mandatory if entry happens offline
+(§6), where a hard block can't be evaluated at typing time.
+
+**→ DECISION D — must division allocations sum to ≤ the office ceiling?** And what happens if PBO
+lowers an office ceiling *after* divisions are allocated and activities encoded?
+
+## 5. New AIP implementation
+
+The bulk of the work. Ordered by how much of the design each point decides.
+
+### 5.1 The expenditure model — the structural change
+
+**Current storage.** `AipActivity` holds **one** `FundingSourceId` plus `Ps`, `Mooe`, `Co` columns
+directly on the activity row.
+
+**What the requirement (and whiteboard W7) describes:**
+
+- an activity carries **account-code expenditure lines** (like WFP);
+- an expenditure's total may be **split across PS / MOOE / CO** — one line, up to three classes;
+- an activity may draw on **multiple fund sources**, with a toggle (default single, per W8).
+
+None of that fits the current columns. The shape needed is a new child table, closely mirroring
+`WfpExpenditure` (which already snapshots account number/title and funding source code — reuse that
+pattern, including the snapshots, so historical AIPs survive config edits):
+
+```
+aip_expenditures
+  activity_id, account_id + snapshots, funding_source_id + snapshot,
+  ps, mooe, co, total (= ps + mooe + co)
+```
+
+`AipActivity.Ps/Mooe/Co/Total` then become **derived sums**, matching whiteboard W2's "cost auto
+generated". Keeping them as stored, recomputed columns is probably wise — every report reads them.
+
+**⚠️ Three consequences that need planning, not just coding:**
+
+1. **`wfp_activities.aip_activity_id` is an FK-Restrict onto AIP activities.** WFPs already exist
+   built on 2027 AIP activities. Restructuring AIP activities cannot orphan them.
+2. **The 2027 AIP is live data** and was used for WFP. Whatever happens to the old shape, it has to
+   keep reading correctly. **→ DECISION:** migrate 2027 into the new model, or keep both shapes with
+   the new model applying only from 2028?
+3. **The `.xlsm` upload path produces the old shape.** `AipXlsmParser` fills exactly the columns
+   being replaced. **→ DECISION:** retire the upload for 2028+, or keep it for offices that still
+   submit spreadsheets? (This is open Q4 in `AIP_Redesign_Notes.md` and still unanswered.)
+
+**→ DECISION 4 — can a *single expenditure line* have multiple fund sources, or does multi-fund
+mean multiple lines each with one fund?** The draft says *"multiple expenditure with different fund
+source. but i am not sure if this is also true to 1 expenditure"*. The one-fund-per-line answer is
+dramatically simpler (the table above works as written) and can express everything the other can.
+I would strongly recommend it unless the PBO's own forms require otherwise.
+
+### 5.2 Ownership, scoping and the FK that doesn't exist
+
+Already documented in `Office_User_Path_Findings.md` §6.1 and unchanged: **`AipOffice` has no FK to
+the offices config table** — office identity is ref-code string matching. The per-office
+prepare-and-submit flow needs real ownership, so this redesign is where that FK is added.
+
+Same problem in `ProgramDivision`, which keys on `OfficeRefCode` + `ProgramRefCode` **strings**.
+Since program-to-division assignment is now load-bearing for PPDO visibility ("only programs related
+to their division will be visible"), this string matching becomes a correctness risk, not just
+untidiness. Worth converting to FKs in the same pass.
+
+### 5.3 The review workflow is under-specified — the biggest documentation gap
+
+The draft describes *"sent for review"* and *"once approved"*. The whiteboard adds **"Review
+Comments"** (W3) and **"Locked"** (W4). Between them, the following is undefined:
+
+| Question | Why it matters |
+|---|---|
+| **Can a reviewer reject / send back?** | W3's comments imply yes. If so: a Returned state, a comment thread, and a resubmit path. If no, "review" is just a submit gate and is far simpler. |
+| **Is submitted work locked?** | W4 says locked. Locked against the encoder only, or the reviewer too? Can a reviewer edit, or only comment? §6.2 of the findings doc says reviewers are **read-only on content** — confirm that still holds. |
+| **Comments at what level?** | Whole submission, per program/project/activity, or per expenditure line? Per-node is far more useful and materially more work. |
+| **Can LFC return one office's work**, or only approve/return the consolidated whole? | Decides whether consolidation is a snapshot or a live view. |
+| **Does PPDO consolidate before LFC?** | The draft says a PPDO reviewer approves PPDO's own divisions, and separately LFC reviews everything. So PPDO divisions → PPDO reviewer → consolidated → LFC. Confirm PPDO's internal step is a real gate, not just a view. |
+| **Deadline / cutoff?** | Nothing in the draft. See §9.2. |
+
+**Suggested state model** (extends `PlanningStatus`, currently just Draft/Final/Archived):
+
+```
+Draft ──submit──▶ SubmittedToOfficeReviewer ──approve──▶ OfficeApproved ──▶ (consolidated)
+  ▲                          │                                                    │
+  └──────── return ──────────┘                          LFCApproved ◀──approve── LFCReview
+                                                             │
+  ◀──────────────────── return to office ─────────────────────┘
+```
+
+`CalendarEvent` (RAL-82) is the in-repo precedent for reviewer columns — it stores `ReviewedById`
+and `ReviewedAt`. A three-level flow needs those per transition, not just once.
+
+### 5.4 Users and permissions
+
+Draft lists five user kinds. Mapping to what exists:
+
+| Draft role | Mechanism | Exists? |
+|---|---|---|
+| non-PPDO encoder | `CanAccessBudgetPlanning` + `OfficeScope` | ✅ (OfficeScope shipped in RAL-228) |
+| non-PPDO reviewer | `OverrideCanReviewBudgetPlanning` | ❌ designed in findings §6.2, not built |
+| PPDO user with division | `CanAccessBudgetPlanning` + `DivisionScope` | ✅ |
+| PPDO reviewer (PPDC) | Same reviewer flag, PPDO office | ❌ |
+| **LFC** | **New flag — spans PPDO and non-PPDO users, sees all offices** | ❌ new |
+
+LFC is the interesting one: it is the **first permission that is explicitly cross-office**. Every
+other flag narrows to the caller's own office. Its resolution must therefore bypass `OfficeScope`
+rather than combine with it — worth calling out so it isn't accidentally built as
+"reviewer + all offices", which would also grant reviewer's write-denial semantics.
+
+⚠️ The reviewer flag carries a caveat already flagged in findings §6.2 and worth repeating: it is
+the codebase's **first subtractive permission**. Every existing flag only ever *grants*. A reviewer
+must be *denied* write on content while being the *only* one allowed to submit. That cannot be
+expressed with the existing `ConfigHttp.AuthorizeAsync(req, _jwt, CanX, ct)` idiom and needs a
+companion guard applied to every write endpoint.
+
+### 5.5 Entry flow, programs and ref codes
+
+**Programs come from a valid LDIP.** Reuses `seedAipProgramsFromLdip` (RAL-181) — good, that exists.
+
+**→ DECISION 5 — what if a program isn't in the LDIP?** Can an office add an ad-hoc program, or is
+the LDIP the closed universe? This decides whether program creation exists in the AIP UI at all.
+(Related: the draft says the PPDO finance officer assigns programs to divisions — for PPDO. Who
+assigns for non-PPDO offices, or is it all-programs-to-all-office-users?)
+
+**Ref codes.** The draft correctly flags that correct AIP ref code generation is important. Two
+things the draft doesn't cover:
+
+- **Concurrency.** ~20 offices generating project/activity sequence numbers in the same window. The
+  existing PR-number generator had exactly this class of bug (`GeneratePRNoAsync`, full-table scan
+  per create — `Mobile_And_Inventory_Findings.md` §3.1). Don't repeat it: scope the sequence per
+  office/program and compute it in SQL.
+- **Offline.** A client working offline **cannot safely reserve a ref code** — two offline users
+  would mint the same one. **Ref codes must be assigned server-side at upload**, and the offline UI
+  should show a placeholder until then. This is a hard constraint on §6, and it is much cheaper to
+  design in than to retrofit.
+
+**Config-driven code lists.** eSRE (`SS`/`ES`/`ID`/`EN`) is currently a free string on
+`AipActivity`; climate-change typology is a free string too (`CcTypologyCode`), with
+`CcAdaptation`/`CcMitigation` amounts already present. The draft anticipates a config page for the
+CC codes — **suggest doing both**: one small `climate_change_typologies` config table and one for
+eSRE, following the existing config-page pattern. Free strings on a document that gets audited will
+drift.
+
+### 5.6 W1 — resolved: it is a ceiling exemption, not a permission rule
+
+> **Answered by Ralph, 2026-08-14:** *"this part is about the exception of these fund sources to
+> have a ceiling. Since only GF will have ceiling."*
+
+So the whiteboard's *"Limit Dept Head — except GAD, 20% DF, PS, LDRRF, Trust Fund"* reads as
+"the department head is **limited by the ceiling**, except for these", not "the department head may
+not touch these". **The permission model is unaffected** — this was my misreading, and the earlier
+concern here is withdrawn.
+
+It restates §4.4's DECISION B, now settled: **only General Fund carries a ceiling.** Everything
+else is uncapped.
+
+One implementation note that survives the correction. The exemption list mixes two axes:
+
+- **GAD, 20% DF, LDRRF, Trust Fund** are *fund sources* — excluded by `funding_source_id`;
+- **PS** is an *expense class*, and under §5.1 it is a **column on an expenditure line**, not a
+  line of its own.
+
+So the ceiling check is: **sum the `mooe + co` portions of General-Fund lines only.** A General-Fund
+line that is part PS and part MOOE contributes only its MOOE. Implementing this as "sum
+General-Fund lines" is the easy mistake, and the difference is invisible until someone audits the
+numbers.
+
+---
+
+## 6. Offline data entry
+
+Analysed at length in `../PWA_Feasibility_Study.md` §11; PWA Phase 1 (installable app, offline
+shell) shipped 2026-08-14. What follows is only what the new requirements add or change.
+
+### 6.1 Storage — recommend IndexedDB, not localStorage
+
+The draft suggests localStorage. For this data I'd advise against it: an office's AIP subtree
+(programs → projects → activities → expenditure lines) is deep, and localStorage is a **synchronous,
+~5 MB, string-only** store — large writes block the UI thread mid-typing. **IndexedDB** is the right
+tool: asynchronous, structured, far larger quota. The existing WFP draft persistence
+(`wfp/page.tsx:819`) is the right *idea* at a much smaller scale.
+
+### 6.2 "Save the session so they don't need to login" — the part to be careful with
+
+This is the study's §5 auth wall, and the requirement resolves it in the most permissive direction.
+Worth being explicit about the trade:
+
+- Today the access token is **in-memory only** and deliberately never persisted, so a stolen or
+  shared laptop yields nothing. Persisting a session inverts that: **anyone who opens the browser is
+  that user**, offline, with their office's budget data.
+- **Suggested middle path:** persist enough to open the app into the user's **own local drafts**
+  offline (a local profile marker, not a bearer token), but require a real login for anything that
+  touches the server — including upload. Combine with an explicit **"Sign out & clear local work"**
+  that wipes IndexedDB, and an automatic wipe after N days of no use.
+- **→ DECISION 7:** is the offline device assumed to be a personal/shared laptop, or an
+  office-issued machine? A "shared laptop" answer justifies the middle path; "office-issued only"
+  makes full session persistence defensible. Either is fine — but it should be a decision, not a
+  default.
+
+### 6.3 On the stated justification — load
+
+The draft gives the reason as high traffic: 8 PPDO + 44 non-PPDO users. Offered as a check, not an
+objection: **52 users is a very small load.** Even if all 52 worked simultaneously, that is far
+below what a single Azure Function instance handles.
+
+If slowness is the real worry, the two actual bottlenecks are already documented and neither is
+fixed by offline entry:
+
+- **Azure SQL Basic tier — 5 DTU** (`CLAUDE.md`, switched 2026-08-12). Fine at today's near-idle
+  load; it is the first thing to saturate under 52 concurrent users. Scaling it up for AIP season is
+  a slider, not a project.
+- **Functions Consumption cold start** (~10 min to zero, 5–20 s wake).
+
+And note that offline entry moves work *later*, not away: 20 offices uploading full subtrees near a
+deadline is a **more** concentrated load than the same typing spread over weeks, and consolidation
+and reports stay entirely server-side.
+
+**None of this argues against offline** — it is well justified by provincial connectivity, by
+letting people work through a cold start, and by the PPDC asking for it. It argues only that the
+DB tier should be reviewed for AIP season regardless, and that offline shouldn't be *scoped* as a
+performance fix.
+
+### 6.4 Offline items the draft doesn't cover
+
+| # | Issue | Note |
+|---|---|---|
+| 1 | **Ref codes can't be minted offline** | §5.5 — assign at upload, show a placeholder before |
+| 2 | **Validation is server-side today** | Study §11.2 ⑨: the client validates only "Name is required". Offline, a user could work for days and have the whole thing rejected at upload. Serve the rules as cached data instead of hand-copying them into TypeScript |
+| 3 | **Two encoders, one office, both offline** | Merge policy. The one-encoder-per-office shape makes it rare, not impossible |
+| 4 | **Ceiling checks need cached allocations** | §4.1 — a ceiling can't be evaluated offline without the numbers cached |
+| 5 | **Reference data must be cached** | Accounts, price index, funding sources, offices, divisions, LDIP programs, eSRE + CC codes |
+| 6 | **Upload rejected after days of work** | Must never lose the local draft. Prefer per-node errors over one failed request |
+| 7 | **How long does local work live?** | Weeks (a budget season) means storage-eviction behaviour matters, especially on iOS |
+
+---
+
+## 7. Reports and inter-office data files
+
+> Requirement: exports for PPDO, PBO (budget), PACCO (accounting), PTO (treasurer), GSO
+> (procurement) — form to be discussed with each.
+
+Three suggestions:
+
+1. **Build one canonical dataset, then filter it.** One row per expenditure line (office, division,
+   program, project, activity, account, fund source, PS/MOOE/CO, CC fields, eSRE, ref code) answers
+   most of what any of the five will ask for. Five bespoke reports built from five conversations
+   will drift; one dataset with five column selections will not.
+2. **GSO may already be answered.** `docs/External_AIP_API_Contract.md` is a read-only partner API
+   contract for GSO, sitting in the backlog. Before designing a GSO file export, check whether that
+   contract supersedes it — a live API beats a file that goes stale the moment it's generated.
+3. **Ask each office for a filled example of what they use today**, not a description. The WFP
+   export learned this the hard way — the province's `WFP-NEW.xlsx` turned out to be a filled sample
+   rather than a blank template (`v1.5` milestone notes).
+
+**Missing from the draft (W5): the AIP document itself.** The requirements cover *data files for
+other offices* but not the **official AIP form output** — the printable/exportable document the
+province actually submits. WFP got an Excel export (v1.4.4) and PPMP got one (v1.5); AIP has none.
+Plus the board's **"Project Profile"** output, which appears to be a separate per-project document.
+
+I would rate the official AIP form as the **single largest missing deliverable** in the draft — it
+is the reason the data is being captured at all.
+
+---
+
+## 8. "In Thousand Pesos" display and rounding
+
+> Requirement: users enter `1,234,567.89`, it is stored as entered, and displays as thousands.
+> Quoted rule: *"round up to the nearest thousand … it will be 1,234,000.00"*.
+
+### 8.0 ⚠️ This is a storage-unit change, not just a display rule — and it has a silent 1000× failure mode
+
+Found while re-checking §4. **AIP amounts are currently stored in *thousands*, not pesos** — the
+`.xlsm` is "in thousand pesos" and `AipXlsmParser` stores the cell values verbatim with no scaling.
+WFP amounts, by contrast, are stored in **pesos**. The two are reconciled in exactly one place,
+`WfpCeilingService`:
+
+```csharp
+decimal aipBudget = (activity?.Total ?? 0m) * 1000m; // the ONE conversion point
+```
+
+That `* 1000m` appears at **three** call sites in that file (lines 60, 106, 220 — save validation,
+status, and finalize validation), and the class comment states the conversion happens there and
+nowhere else.
+
+**The requirement inverts this.** *"let them put the value they want whether its 1,234,567.89 and it
+will be saved as it is"* means AIP storage becomes **pesos**, with thousands as a display
+convention. That is correct and much better — but it means:
+
+1. **Those three `* 1000m` conversions must be removed in the same change.** If AIP storage moves to
+   pesos and they are left in place, every WFP ceiling check silently becomes **1000× too
+   permissive**. Nothing fails, no error appears — the budget validation simply stops validating.
+   This is the single most dangerous change in v1.8.0 precisely because it is invisible.
+2. **Mixed-unit data is worse than either unit.** If 2027 stays in thousands and 2028 is in pesos,
+   the same column holds two different units and the conversion becomes conditional on fiscal year —
+   a bug factory. **→ DECISION E:** migrate 2027 to pesos (a `UPDATE … * 1000` over the existing
+   rows, alongside the §5.1 migration), or hard-partition by fiscal year?
+
+   > **🟡 Implied 2026-08-17, never stated outright — confirm before Phase 2 is ticketed.** The
+   > FY clean break (`AIP_Redesign_Notes.md` §4a) says FY≤2027 keeps the v1.6 shape permanently and
+   > FY2028+ gets the new one. That *forces* the partition answer and rules out the migration — but
+   > it was decided about record shape, not about units, and nobody has said so for units. It is
+   > also the more dangerous of the two answers: under a partition the three `* 1000m` conversions
+   > in `WfpCeilingService` must become **conditional on fiscal year**, not simply deleted. A
+   > migration would have let them be deleted outright. Getting this half-right — deleting them
+   > while FY2027 rows still hold thousands — breaks historical WFP validation just as silently as
+   > leaving them in breaks the new years.
+3. **Tests must pin this.** `WfpCeilingService` is the one place the two documents meet
+   numerically. Whatever is decided, it deserves an explicit test asserting a WFP expenditure is
+   correctly accepted/rejected against a known AIP activity total, so the factor can never drift
+   again.
+
+Also note the interaction with §5.1: once AIP gains per-fund expenditure lines, the comment
+justifying the aggregate AIP check (*"AIP data carries no per-fund breakdown"*) stops being true.
+
+**The rule and the example contradict each other.** `1,234,567.89`:
+
+| Interpretation | Result (pesos) | Displayed |
+|---|---|---|
+| Round **up** (ceiling) — as the rule says | 1,235,000 | `1,235` |
+| Round **down** (floor/truncate) — as the example says | 1,234,000 | `1,234` |
+| Round **half-up** (normal rounding) | 1,235,000 | `1,235` |
+
+The whiteboard shows both `1,235` and `1,234 0000`, so the ambiguity is real and predates the
+document.
+
+> **✅ Answered by Ralph, 2026-08-14: `1,235,000`.** So the draft's `1,234,000` example was the
+> error, not the rule.
+
+### 8.2 ✅ Settled — always round up
+
+> **Ralph, 2026-08-14:** *"1,234,200 will be 1,235 because 2 is greater than 0. If it's greater than
+> 0 then it will be rounded up — it's better to have a bit higher value than having less."*
+
+So the rule is **ceiling to the nearest thousand**, not half-up:
+
+| Amount | Displays as |
+|---|---|
+| `1,234,000.00` | `1,234` (exact — no remainder, no rounding) |
+| `1,234,000.01` | `1,235` |
+| `1,234,200.00` | `1,235` |
+| `1,234,567.89` | `1,235` |
+| `0.00` | `0` |
+
+`Math.Ceiling(amount / 1000m)` on the backend, `Math.ceil(n / 1000)` on the frontend. Zero stays
+zero — the rule triggers on a remainder *above* zero, so an empty line doesn't become 1.
+
+The rationale is sound for budgeting: rounding up never under-states a requirement. It does have one
+arithmetic consequence, below.
+
+### 8.2b Edge cases the rule doesn't yet cover
+
+Raised 2026-08-14 at Ralph's invitation. Ceiling rounding is unambiguous for a single positive
+amount; these are the cases where it still needs a decision.
+
+#### ① Rows won't add up *across* either — and this is on every line
+
+The AIP form carries **PS, MOOE, CO and Total on the same row**. Round each up independently and
+the row stops balancing horizontally:
+
+| | PS | MOOE | CO | Total |
+|---|---|---|---|---|
+| Exact | 100,100 | 200,100 | 300,100 | 600,300 |
+| Each rounded up | **101** | **201** | **301** | **601** ← but 101 + 201 + 301 = **603** |
+
+Up to **2 thousand of visible discrepancy per line**, on every line — arguably more noticeable than
+§8.3's column drift, because a reader checking one row sees it immediately.
+
+**Same fix, applied consistently:** round the three components, then make the row total the **sum of
+the rounded components** (603, not 601). Combined with §8.3's recommendation, every total in the
+document — horizontal and vertical — is the sum of the rounded figures directly above or beside it,
+so the document balances everywhere a reader checks. **→ CONFIRM**
+
+#### ② Amounts below 1,000
+
+Under the rule, any non-zero amount under a thousand displays as **1**:
+
+| Exact | Displays as |
+|---|---|
+| ₱0.00 | 0 |
+| ₱0.01 | 1 |
+| ₱500 | 1 |
+| ₱999.99 | 1 |
+
+Consistent with "never understate", and probably fine — AIP lines are rarely that small. Flagged
+only so nobody is surprised by a ₱500 line printing as "1". **→ CONFIRM**
+
+#### ③ Negative amounts — do they exist at all?
+
+`Math.Ceiling` on a negative rounds **toward zero**, which *shrinks* the magnitude — the opposite of
+the conservative intent:
+
+| Exact | `Math.Ceiling` | "Never understate" would want |
+|---|---|---|
+| −1,234,200 | **−1,234** (a smaller deduction) | −1,235 |
+
+Probably moot for a first AIP, which is a plan of appropriations. It becomes real for **amendments
+and supplemental budgets** (§9.4), where a realignment reduces a line. **→ DECISION:** are negative
+amounts possible? If yes, "round up" should mean *away from zero* (round the magnitude up), not
+numerically up.
+
+#### ④ Is the ceiling checked against exact or rounded figures?
+
+If the printed document is built from rounded-up figures, the printed total can exceed the ceiling
+while the exact total sits inside it:
+
+| | Value |
+|---|---|
+| Exact total | ₱49,999,600 |
+| Printed total (rounded rows summed) | 50,020 → **₱50,020,000** |
+| Ceiling | ₱50,000,000 |
+
+The system would say "within ceiling"; the printed AIP would read as ₱20,000 over. **Recommendation:
+enforce against the same rounded figures the document prints**, so what the system allows and what
+the paper shows can never disagree. **→ DECISION** — worth asking PBO alongside A3, since it's the
+same underlying choice.
+
+#### ⑤ What goes in the Excel cells?
+
+If PBO opens the export and re-sums a column, their `SUM()` must reproduce the printed total.
+**Recommendation: write the rounded thousand-value as a real number** (`1235`), not the exact peso
+amount with display formatting — otherwise their own arithmetic disagrees with the document.
+Label the sheet "(In Thousand Pesos)" so the unit is unambiguous. **→ CONFIRM**
+
+---
+
+### 8.3 ⚠️ The consequence of rounding up — this now matters more than it did
+
+**Do rounded rows have to add up to the rounded total?** They cannot always do both:
+
+| Approach | Consequence |
+|---|---|
+| Sum exact values, round only the total | The total is accurate, but a reader adding up the printed column gets a different number |
+| Round each row, then sum the rounded | The printed column adds up, but the total is higher than the true sum |
+
+**With round-up this stops being a rounding nuisance and becomes a visible, systematic gap.** Under
+normal (half-up) rounding the per-row error is roughly ±500 pesos and errors cancel, so a long
+column lands close to its true total either way. Under ceiling rounding **every row is overstated**,
+by an average of ~500 pesos each, and nothing cancels:
+
+| Rows in the column | Printed column exceeds the true total by roughly |
+|---|---|
+| 10 | ~5,000 (5 thousand-units) |
+| 50 | ~25,000 (25) |
+| 100 | ~50,000 (50) |
+| 500 | ~250,000 (250) |
+
+So on a consolidated AIP covering ~20 offices, "sum exact, round the total" would print a column
+whose visible arithmetic is off by a noticeable and always-positive amount — the kind of thing a
+reviewer spots and queries.
+
+**Recommendation (still Ralph's/PBO's call):** round each row first, then sum the rounded rows for
+every subtotal and total. The printed document is then internally consistent at every level, which
+is what a line-by-line reviewer needs — and it stays faithful to the "never under-state" intent,
+since the total is rounded up too. The exact values remain in the database for anything that needs
+true precision.
+
+**→ DECISION 9** — still open, and now worth asking explicitly rather than leaving to the
+implementation.
+
+### 8.4 Implementation notes
+
+- **Store exact, always.** Round only at the display/report boundary — never persist a rounded
+  value, or the original is gone.
+- **One shared formatter.** Add `formatThousands()` alongside the existing `formatMoney()` /
+  `parseMoney()` in `frontend/src/lib/money.ts`, and a matching helper on the backend for exports so
+  the UI and the Excel output can't disagree.
+- **Label every rounded surface** with "(In Thousand Pesos)" — an unlabelled `1,235` next to an
+  entry field showing `1,234,567.89` reads as a bug.
+- **Never round the entry field.** Users type and verify the exact figure; rounding is a *view*.
+
+---
+
+## 9. Missing entirely — suggested additions
+
+Neither the draft nor the whiteboard covers these. Ordered by how much I'd argue for them.
+
+### 9.1 The official AIP form output — **strongly recommended**
+See §7. The document the province submits. Precedents exist (v1.4.4 WFP, v1.5 PPMP), including the
+hard-won rule: build the sheet programmatically from a documented style catalogue, don't clone rows
+out of a reference workbook.
+
+### 9.2 Submission deadline per fiscal year — **recommended**
+AIP preparation runs to a calendar. Without a cutoff, "has everyone submitted?" is a manual chase.
+A per-FY deadline plus a readiness view (which offices have submitted, which haven't) is small and
+makes the reviewer's job possible. It also gives the ceiling check a natural hard-block point (§4.1).
+
+### 9.3 Notifications — **recommended**
+A reviewer has no way to learn that work is waiting; an encoder has no way to learn their work was
+returned. With no email infrastructure (§2.1), the realistic v1.8.0 answer is **in-app**: a pending
+count on the sidebar and a review queue page. Push notifications are PWA Phase 3 and need a backend
+push service — out of scope now, but the in-app queue is a prerequisite for it either way.
+
+### 9.4 Amendment / supplemental AIP — **flag now, build later**
+AIPs change after approval (supplemental budgets, realignments). `RAL-78` already exists for
+amendment/copy mechanics. Not needed for first entry, but the data model should not make it
+impossible — specifically, don't treat LFC approval as terminal.
+
+### 9.5 Carry-forward from the prior year — **worth confirming**
+`RAL-180` (carry-forward) and `copyAipOfficeFromPriorYear` already exist. For 2028, starting from
+2027's structure would save every office significant typing. Does the new flow keep this?
+
+### 9.6 Completeness rules before submit — **recommended**
+Define what "ready to submit" means: every activity has ≥1 expenditure, totals > 0, required CC/eSRE
+fields present, ceiling respected. Surface it as a checklist on the office's AIP page. This is also
+the natural home for offline validation (§6.4 #2).
+
+### 9.7 Approval snapshot — **worth a decision**
+When LFC approves, is the approved version preserved? If a returned-and-edited record overwrites in
+place, "what was approved" becomes unanswerable. The audit log records changes but does not
+reconstruct a document version.
+
+### 9.8 Concurrent editing within an office — **small but real**
+Two encoders in the same office, both online, editing the same activity. Nothing today prevents
+last-write-wins. A per-record soft lock or a "changed by someone else" warning is inexpensive.
+
+---
+
+## 10. Decisions blocking ticket-writing
+
+> **State as of 2026-08-25.** Eight still open (A, C, D, 5, 7, 9, 10, F), plus E implied by the FY
+> clean break but never confirmed. `Phase_Plan.md` §9 carries the same list ordered by
+> the phase each one blocks, and is the version to read when deciding what to build next; this one
+> is ordered by the section that explains it. **The 2026-08-17 meeting answers were never recorded**
+> — if A, C, D, 5, 9 or 10 were settled in that room, this is the table to update.
+
+| # | Decision | §  | Blocks |
+|---|---|---|---|
+| A | **One pot or two — do AIP and WFP draw on the same division allocation?** | 4.2 | **The ledger design** |
+| ~~B~~ | ~~Ceiling rule~~ | ✅ **General Fund only; PS exempt.** Check sums `mooe + co` of GF lines | — |
+| C | Ceiling: hard block or warning, at save or at submit? | 4.4 | Both, and offline |
+| D | Must division allocations fit inside the office ceiling? | 4.4 | Allocation |
+| E | 🟡 **AIP storage units — migrate 2027 to pesos, or partition by FY?** *Implied by the FY clean break (partition), never stated outright — confirm* | 8.0 | **Migration + WFP validation** |
+| ~~4~~ | ~~Multi-fund granularity~~ | ✅ **One fund per line**; multi-fund = multiple lines | — |
+| 5 | Can offices add programs outside the LDIP? | 5.5 | Entry UI |
+| ~~6~~ | ~~W1 — who prepares GAD / 20% DF / …?~~ | ✅ **Not a permission rule** — it is the ceiling-exemption list | — |
+| 7 | Offline: personal/shared device, or office-issued? | 6.2 | Session persistence |
+| ~~8b~~ | ~~Half-up or always-up?~~ | ✅ **Always round up** on any remainder | — |
+| 9 | Must printed rows add up to the printed total? | 8.3 | Every report |
+| 10 | Reviewer: can they reject/return, and with comments at what level? | 5.3 | Workflow |
+| ~~11~~ | ~~2027 AIP + `.xlsm` upload — migrate, keep, or retire?~~ | ✅ **Clean break.** FY≤2027 keeps the v1.6 shape and the `.xlsm` path permanently; the new format starts FY2028. No conversion job — `AIP_Redesign_Notes.md` §4a | — |
+| ~~12~~ | ~~Password reset flow~~ | ✅ **Option B** — self-service via a user-set recovery answer. Ready to ticket, see §2.6 | — |
+| **F** | **Make PPDO an explicit office (`Office.IsPpdo`) instead of `OfficeId == null`?** *Raised 2026-08-20* | 3.1 of `Phase_Plan.md` | **Every scope check, and AIP ownership** |
+
+Settled rows are struck through and kept for the record. Of what remains, **A, E, F and 10** change
+the data model rather than the UI. If only a few can be settled before work starts, settle those.
+
+**F is the cheapest one to answer and the most expensive one to defer.** PPDO is identified two ways
+today — `OfficeId == null` (pinned by RAL-228's tests, where null means *full* access, the opposite
+of `DivisionScope`'s null rule) and a hardcoded `PpdoOfficeCode = "PPDO"` in the Budget Planning
+dashboard. Two mechanisms for one concept. If that is going to become an explicit flag, it has to
+change **before** Phase 2 builds AIP ownership on top of it; afterwards it is a data migration
+through every scope check in the system.
+
+Two others are the most dangerous changes in v1.8.0, for the same reason — both fail **silently**:
+
+- **E (storage units).** Leaving `WfpCeilingService`'s three `* 1000m` conversions in place after
+  AIP moves to pesos makes every WFP ceiling check 1000× too permissive, with no error anywhere.
+- **A (one pot or two).** Pointing both AIP and WFP at one allocation without removing the now-
+  redundant check double-counts every peso — the same money spent once, deducted twice.
+
+Neither produces a stack trace. Both produce budget numbers that look plausible and are wrong.
+
+---
+
+*Review only — no implementation. Companions: `AIP_Redesign_Notes.md` (the record of Ralph's
+original description and the decisions settled since), `Office_User_Path_Findings.md` (office
+isolation and the reviewer model, incl. its own open questions in §6.4), `Phase_Plan.md` (the same
+decisions ordered by the phase they block) and `Monday_Questions.md` (the meeting version of this
+list, in the language of the people answering).*
