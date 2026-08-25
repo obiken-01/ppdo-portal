@@ -73,6 +73,14 @@ const OVERRIDE_KEYS: {
   { key: "overrideCanManageAllocation",     label: "Manage Allocation (finance officer)", adminOnly: true },
 ];
 
+/** Tabs in the Add/Edit User modal (RAL-268). */
+type FormTab = "details" | "permissions";
+
+const FORM_TABS: { id: FormTab; label: string }[] = [
+  { id: "details",     label: "Details" },
+  { id: "permissions", label: "Permissions" },
+];
+
 // ---------------------------------------------------------------------------
 // Blank form state
 // ---------------------------------------------------------------------------
@@ -173,6 +181,21 @@ function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFor
   const showOverrides      = form.role === "Staff";
   const showAdminOverrides = form.role === "Admin";
   const adminOnlyKeys      = OVERRIDE_KEYS.filter((o) => o.adminOnly);
+
+  // Split across tabs (RAL-268): the flat form already ran to ~11 permission rows below the
+  // profile fields, so the flags people edit most were the ones furthest down the scroll. The
+  // count is what makes the split safe — you can see a user carries overrides without opening
+  // the tab, which a plain "Permissions" label would have hidden.
+  const [tab, setTab] = useState<FormTab>("details");
+
+  const visibleOverrideKeys =
+    form.role === "Staff" ? OVERRIDE_KEYS :
+    form.role === "Admin" ? adminOnlyKeys : [];
+
+  // Only counts flags actually shown for this role, so the badge always matches the tab.
+  const overrideCount = isEdit
+    ? visibleOverrideKeys.filter(({ key }) => (form as UpdateUserRequest)[key] != null).length
+    : 0;
   // Every user has an office since RAL-258, so "has an office" no longer distinguishes anyone.
   // A guest-office user is one whose office is NOT the host office; leaving the picker blank
   // means the host office, which is what an empty selection has always meant in practice.
@@ -202,8 +225,56 @@ function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFor
 
   return (
     <div className="space-y-4">
+      <div
+        role="tablist"
+        aria-label="User settings"
+        className="flex border-b border-slate-200"
+        onKeyDown={(e) => {
+          if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+          e.preventDefault();
+          const order: FormTab[] = ["details", "permissions"];
+          const next = order[(order.indexOf(tab) + (e.key === "ArrowRight" ? 1 : -1) + order.length) % order.length];
+          setTab(next);
+          document.getElementById(`user-form-tab-${next}`)?.focus();
+        }}
+      >
+        {FORM_TABS.map(({ id, label }) => (
+          <button
+            key={id}
+            id={`user-form-tab-${id}`}
+            type="button"
+            role="tab"
+            aria-selected={tab === id}
+            aria-controls={`user-form-panel-${id}`}
+            tabIndex={tab === id ? 0 : -1}
+            onClick={() => setTab(id)}
+            className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-green-600 ${
+              tab === id
+                ? "border-green-600 text-green-700"
+                : "border-transparent text-slate-600 hover:text-slate-800"
+            }`}
+          >
+            {label}
+            {id === "permissions" && overrideCount > 0 && (
+              <span
+                className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-green-600 px-1 text-[10px] font-semibold text-white"
+                title={`${overrideCount} permission${overrideCount === 1 ? "" : "s"} overridden for this user`}
+              >
+                {overrideCount}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
       {/* Profile fields */}
-      <div className="grid grid-cols-2 gap-3">
+      <div
+        id="user-form-panel-details"
+        role="tabpanel"
+        aria-labelledby="user-form-tab-details"
+        hidden={tab !== "details"}
+        className="grid grid-cols-2 gap-3"
+      >
         <div className="col-span-2">
           <label className="block text-xs font-medium text-slate-600 mb-1">Full Name *</label>
           <input
@@ -367,6 +438,25 @@ function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFor
         )}
       </div>
 
+      {/* Permissions */}
+      <div
+        id="user-form-panel-permissions"
+        role="tabpanel"
+        aria-labelledby="user-form-tab-permissions"
+        hidden={tab !== "permissions"}
+        className="space-y-4"
+      >
+
+      {/* Create has no override fields — CreateUserDto does not carry them, so say where
+          they live rather than showing an empty tab. */}
+      {!isEdit && (
+        <p className="bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          Permissions are set after the account exists. A new user inherits every flag from their
+          division — reopen this tab from <span className="font-medium">Edit User</span> to grant
+          or deny one individually.
+        </p>
+      )}
+
       {/* Permission overrides — Staff: all flags; Admin: adminOnly flags only */}
       {isEdit && showOverrides && (
         <div>
@@ -424,7 +514,10 @@ function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFor
         </p>
       )}
 
-      {/* Error */}
+      </div>
+
+      {/* Error — outside both panels on purpose: a save can fail on a field the user cannot
+          currently see, and a message hidden behind an inactive tab reads as nothing happening. */}
       {error && (
         <div className="bg-danger-100 border border-danger-500/30 px-4 py-3">
           <p className="text-sm text-danger-500">{error}</p>
