@@ -1,4 +1,4 @@
-using PPDO.Domain.Entities;
+﻿using PPDO.Domain.Entities;
 
 namespace PPDO.Domain.Interfaces;
 
@@ -29,15 +29,29 @@ public interface IStockBalanceRepository : IRepository<StockBalance>
         IReadOnlyCollection<string> stockNos, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Same net-of-distributions calculation as <see cref="GetTotalVarianceByStockNosAsync"/>,
-    /// grouped by StockNo for every StockNo that has at least one stock_balances entry —
-    /// unfiltered. Used by InventoryService's unscoped (Admin/SuperAdmin) view to surface
-    /// StockNos recorded purely via warehouse stock input that never had any PR/delivery
-    /// activity, and are therefore otherwise absent from
+    /// Warehouse-count movement per StockNo, for every StockNo with at least one
+    /// stock_balances entry — unfiltered. Used by InventoryService's unscoped
+    /// (Admin/SuperAdmin) view to surface StockNos recorded purely via warehouse stock input
+    /// that never had any PR/delivery activity, and are therefore otherwise absent from
     /// IInventoryRepository.GetItemStockLevelsAsync entirely.
+    ///
+    /// Returns the two components separately rather than the single netted figure this
+    /// method used to return (RAL-240): the Stock Overview grid has to attribute counted
+    /// stock to its DELIVERED column and pool issues to DISTRIBUTED, and a pre-netted total
+    /// cannot be decomposed back into the two. Callers wanting the old value take
+    /// <see cref="StockNoPoolMovement.NetVariance"/>.
     /// </summary>
-    Task<IReadOnlyDictionary<string, decimal>> GetAllVarianceTotalsAsync(
+    Task<IReadOnlyDictionary<string, StockNoPoolMovement>> GetAllPoolMovementsAsync(
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Same decomposition as <see cref="GetAllPoolMovementsAsync"/>, restricted to the given
+    /// stock numbers — the date-filtered Stock Overview view, whose item universe is already
+    /// narrowed to items delivered in range. StockNos with no entries are simply absent from
+    /// the result (caller treats missing as zero movement).
+    /// </summary>
+    Task<IReadOnlyDictionary<string, StockNoPoolMovement>> GetPoolMovementsByStockNosAsync(
+        IReadOnlyCollection<string> stockNos, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Looks up the entry matching a StockNo + EffectiveDate pair exactly — the bulk-import
@@ -80,4 +94,33 @@ public sealed record WarehouseCountPoolRow(
 {
     /// <summary>GrossVariance minus what's already been distributed against this pool.</summary>
     public decimal Remaining => GrossVariance - TotalDistributed;
+}
+
+/// <summary>
+/// Warehouse-count movement for one StockNo (RAL-240), kept as two separate components so
+/// callers can report counted stock and pool issues independently.
+/// </summary>
+public sealed record StockNoPoolMovement(
+    decimal GrossVariance,
+    decimal Distributed)
+{
+    /// <summary>
+    /// What the pool contributes to on-hand: counted quantity less what has been issued
+    /// from it. This is the single figure GetAllVarianceTotalsAsync returned before RAL-240.
+    /// </summary>
+    public decimal NetVariance => GrossVariance - Distributed;
+
+    /// <summary>
+    /// The positive part of GrossVariance — stock the count brought in, reported under
+    /// DELIVERED. A negative gross variance is shrinkage, not a receipt, so it is excluded
+    /// here and carried by <see cref="Shrinkage"/> instead.
+    /// </summary>
+    public decimal Received => Math.Max(0m, GrossVariance);
+
+    /// <summary>
+    /// The negative part of GrossVariance (always &lt;= 0). Has no column of its own; it is
+    /// added into on-hand so that Received + Shrinkage == GrossVariance and the on-hand
+    /// total is unchanged from before RAL-240.
+    /// </summary>
+    public decimal Shrinkage => Math.Min(0m, GrossVariance);
 }

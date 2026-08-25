@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging.Abstractions;
+﻿using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using PPDO.Application.DTOs.Inventory;
 using PPDO.Application.Services;
@@ -96,8 +96,8 @@ public sealed class InventoryServiceTests
                     It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new Dictionary<string, decimal>());
             stockBalanceRepo
-                .Setup(r => r.GetAllVarianceTotalsAsync(It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new Dictionary<string, decimal>());
+                .Setup(r => r.GetAllPoolMovementsAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new Dictionary<string, StockNoPoolMovement>());
         }
         return new(invRepo.Object, prRepo.Object, itemRepo.Object, stockBalanceRepo.Object,
                    NullLogger<InventoryService>.Instance);
@@ -478,8 +478,8 @@ public sealed class InventoryServiceTests
         SetupCatalog(itemRepo, new List<ItemMaster> { MakeMaster("V01", reorderQty: 5) });
 
         Mock<IStockBalanceRepository> stockBalanceRepo = new();
-        stockBalanceRepo.Setup(r => r.GetAllVarianceTotalsAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Dictionary<string, decimal> { ["V01"] = 5m });
+        stockBalanceRepo.Setup(r => r.GetAllPoolMovementsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, StockNoPoolMovement> { ["V01"] = new(GrossVariance: 5m, Distributed: 0m) });
 
         IReadOnlyList<ItemLedgerRowDto> result =
             await BuildSut(invRepo, prRepo, itemRepo, stockBalanceRepo).GetItemLedgerAsync(MakeAdmin());
@@ -503,8 +503,8 @@ public sealed class InventoryServiceTests
         SetupCatalog(itemRepo, new List<ItemMaster> { MakeMaster("NEW-01", reorderQty: 5) });
 
         Mock<IStockBalanceRepository> stockBalanceRepo = new();
-        stockBalanceRepo.Setup(r => r.GetAllVarianceTotalsAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Dictionary<string, decimal> { ["NEW-01"] = 8m });
+        stockBalanceRepo.Setup(r => r.GetAllPoolMovementsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, StockNoPoolMovement> { ["NEW-01"] = new(GrossVariance: 8m, Distributed: 0m) });
 
         IReadOnlyList<ItemLedgerRowDto> result =
             await BuildSut(invRepo, prRepo, itemRepo, stockBalanceRepo).GetItemLedgerAsync(MakeAdmin());
@@ -538,7 +538,7 @@ public sealed class InventoryServiceTests
         Assert.Equal(7m, result[0].OnHand); // unchanged: 10 - 3, no variance folded in
         stockBalanceRepo.Verify(r => r.GetTotalVarianceByStockNosAsync(
             It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()), Times.Never);
-        stockBalanceRepo.Verify(r => r.GetAllVarianceTotalsAsync(
+        stockBalanceRepo.Verify(r => r.GetAllPoolMovementsAsync(
             It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -559,8 +559,8 @@ public sealed class InventoryServiceTests
         SetupCatalog(itemRepo, new List<ItemMaster> { MakeMaster("V02", reorderQty: 5) });
 
         Mock<IStockBalanceRepository> stockBalanceRepo = new();
-        stockBalanceRepo.Setup(r => r.GetAllVarianceTotalsAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Dictionary<string, decimal> { ["V02"] = 10m });
+        stockBalanceRepo.Setup(r => r.GetAllPoolMovementsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, StockNoPoolMovement> { ["V02"] = new(GrossVariance: 10m, Distributed: 0m) });
 
         InventoryStatsDto result =
             await BuildSut(invRepo, prRepo, itemRepo, stockBalanceRepo).GetStatsAsync(MakeAdmin());
@@ -586,8 +586,8 @@ public sealed class InventoryServiceTests
         SetupCatalog(itemRepo, new List<ItemMaster> { MakeMaster("NEW-02", reorderQty: 5) });
 
         Mock<IStockBalanceRepository> stockBalanceRepo = new();
-        stockBalanceRepo.Setup(r => r.GetAllVarianceTotalsAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Dictionary<string, decimal> { ["NEW-02"] = 3m });
+        stockBalanceRepo.Setup(r => r.GetAllPoolMovementsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, StockNoPoolMovement> { ["NEW-02"] = new(GrossVariance: 3m, Distributed: 0m) });
 
         InventoryStatsDto result =
             await BuildSut(invRepo, prRepo, itemRepo, stockBalanceRepo).GetStatsAsync(MakeAdmin());
@@ -595,5 +595,132 @@ public sealed class InventoryServiceTests
         Assert.Equal(1, result.InventoryAlerts.UniqueItemsTracked);
         Assert.Equal(0, result.InventoryAlerts.InStock);         // 3 <= ReorderQty 5
         Assert.Equal(1, result.InventoryAlerts.LowOrOutOfStock);
+    }
+
+    // -- RAL-240: warehouse-count movement in the DELIVERED/DISTRIBUTED columns ------------
+
+    [Fact]
+    public async Task GetItemLedgerAsync_CountSourcedItem_ReportsCountedAndIssuedInColumns()
+    {
+        // The reported bug, with the production shape: an item whose stock came entirely from
+        // a warehouse count read as "0 delivered, 0 distributed, 39 on hand" because both
+        // columns excluded pool movement while OnHand silently included it.
+        Mock<IPurchaseRequestRepository> prRepo = new();
+        Mock<IInventoryRepository> invRepo = new();
+        invRepo.Setup(r => r.GetItemStockLevelsAsync(null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ItemStockLevel>());
+
+        Mock<IItemMasterRepository> itemRepo = new();
+        SetupCatalog(itemRepo, new List<ItemMaster> { MakeMaster("TAPE", reorderQty: 5) });
+
+        Mock<IStockBalanceRepository> stockBalanceRepo = new();
+        stockBalanceRepo.Setup(r => r.GetAllPoolMovementsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, StockNoPoolMovement>
+            {
+                ["TAPE"] = new(GrossVariance: 40m, Distributed: 1m),
+            });
+
+        IReadOnlyList<ItemLedgerRowDto> result =
+            await BuildSut(invRepo, prRepo, itemRepo, stockBalanceRepo).GetItemLedgerAsync(MakeAdmin());
+
+        ItemLedgerRowDto row = Assert.Single(result);
+        Assert.Equal(40m, row.QtyDelivered);
+        Assert.Equal(1m,  row.QtyDistributed);
+        Assert.Equal(39m, row.OnHand);
+        Assert.Equal(row.OnHand, row.QtyDelivered - row.QtyDistributed); // row reconciles
+    }
+
+    [Fact]
+    public async Task GetItemLedgerAsync_DeliveryAndPoolMovement_SumsBothIntoColumns()
+    {
+        // An item with real PR deliveries AND a warehouse count: both sources contribute.
+        List<ItemStockLevel> levels =
+            [ new("MIX", QtyOrdered: 10, QtyDelivered: 10, QtyDistributed: 3) ];
+
+        Mock<IPurchaseRequestRepository> prRepo = new();
+        Mock<IInventoryRepository> invRepo = new();
+        invRepo.Setup(r => r.GetItemStockLevelsAsync(null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(levels);
+
+        Mock<IItemMasterRepository> itemRepo = new();
+        SetupCatalog(itemRepo, new List<ItemMaster> { MakeMaster("MIX", reorderQty: 5) });
+
+        Mock<IStockBalanceRepository> stockBalanceRepo = new();
+        stockBalanceRepo.Setup(r => r.GetAllPoolMovementsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, StockNoPoolMovement>
+            {
+                ["MIX"] = new(GrossVariance: 5m, Distributed: 2m),
+            });
+
+        IReadOnlyList<ItemLedgerRowDto> result =
+            await BuildSut(invRepo, prRepo, itemRepo, stockBalanceRepo).GetItemLedgerAsync(MakeAdmin());
+
+        ItemLedgerRowDto row = Assert.Single(result);
+        Assert.Equal(15m, row.QtyDelivered);    // 10 delivered + 5 counted
+        Assert.Equal(5m,  row.QtyDistributed);  // 3 from batches + 2 from the pool
+        Assert.Equal(10m, row.OnHand);          // unchanged from the pre-RAL-240 formula
+    }
+
+    [Fact]
+    public async Task GetItemLedgerAsync_NegativeVariance_KeepsShrinkageOutOfDeliveredColumn()
+    {
+        // A shrinkage count (gross variance < 0) is not a receipt. It must not appear as
+        // negative "delivered", but it must still reduce on-hand — so the row deliberately
+        // does NOT reconcile as delivered - distributed here.
+        List<ItemStockLevel> levels =
+            [ new("SHRINK", QtyOrdered: 10, QtyDelivered: 10, QtyDistributed: 0) ];
+
+        Mock<IPurchaseRequestRepository> prRepo = new();
+        Mock<IInventoryRepository> invRepo = new();
+        invRepo.Setup(r => r.GetItemStockLevelsAsync(null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(levels);
+
+        Mock<IItemMasterRepository> itemRepo = new();
+        SetupCatalog(itemRepo, new List<ItemMaster> { MakeMaster("SHRINK", reorderQty: 5) });
+
+        Mock<IStockBalanceRepository> stockBalanceRepo = new();
+        stockBalanceRepo.Setup(r => r.GetAllPoolMovementsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, StockNoPoolMovement>
+            {
+                ["SHRINK"] = new(GrossVariance: -3m, Distributed: 0m),
+            });
+
+        IReadOnlyList<ItemLedgerRowDto> result =
+            await BuildSut(invRepo, prRepo, itemRepo, stockBalanceRepo).GetItemLedgerAsync(MakeAdmin());
+
+        ItemLedgerRowDto row = Assert.Single(result);
+        Assert.Equal(10m, row.QtyDelivered);   // not 7, and never negative
+        Assert.Equal(0m,  row.QtyDistributed);
+        Assert.Equal(7m,  row.OnHand);         // shrinkage still lands on on-hand
+    }
+
+    [Fact]
+    public async Task GetItemLedgerAsync_StaffView_LeavesColumnsAtMovementOnly()
+    {
+        // Pool movement is PPDO-wide and only applies to the unscoped Admin view, so a
+        // division-scoped caller must see neither the counted stock nor the pool issues.
+        List<ItemStockLevel> levels =
+            [ new("V03", QtyOrdered: 10, QtyDelivered: 10, QtyDistributed: 3) ];
+
+        Mock<IPurchaseRequestRepository> prRepo = new();
+        Mock<IInventoryRepository> invRepo = new();
+        invRepo.Setup(r => r.GetItemStockLevelsAsync(PlanningDiv, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(levels);
+
+        Mock<IItemMasterRepository> itemRepo = new();
+        SetupCatalog(itemRepo, new List<ItemMaster> { MakeMaster("V03", reorderQty: 5) });
+
+        Mock<IStockBalanceRepository> stockBalanceRepo = new();
+
+        IReadOnlyList<ItemLedgerRowDto> result =
+            await BuildSut(invRepo, prRepo, itemRepo, stockBalanceRepo)
+                .GetItemLedgerAsync(MakeStaff(PlanningDiv));
+
+        ItemLedgerRowDto row = Assert.Single(result);
+        Assert.Equal(10m, row.QtyDelivered);
+        Assert.Equal(3m,  row.QtyDistributed);
+        Assert.Equal(7m,  row.OnHand);
+        stockBalanceRepo.Verify(r => r.GetAllPoolMovementsAsync(
+            It.IsAny<CancellationToken>()), Times.Never);
     }
 }

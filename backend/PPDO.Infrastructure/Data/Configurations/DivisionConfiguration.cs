@@ -76,9 +76,19 @@ public sealed class DivisionConfiguration : IEntityTypeConfiguration<Division>
         builder.HasIndex(d => d.OfficeId)
             .HasDatabaseName("IX_divisions_office_id");
 
-        // Upsert key — name unique within an office (code is nullable).
+        // Name stays unique within an office — PurchaseRequestService resolves a division
+        // from a free-text Excel cell by name, which must not be ambiguous.
         builder.HasIndex(d => new { d.OfficeId, d.Name })
             .IsUnique()
             .HasDatabaseName("IX_divisions_office_id_name");
+
+        // Upsert key (RAL-239) — code unique within an office, so a division can be renamed
+        // without the CSV re-seed treating it as a new row. Filtered to non-NULL because code
+        // stays optional: SQL Server treats NULLs as equal in a unique index, so an unfiltered
+        // one would reject a second codeless division.
+        builder.HasIndex(d => new { d.OfficeId, d.Code })
+            .IsUnique()
+            .HasFilter("[code] IS NOT NULL")
+            .HasDatabaseName("IX_divisions_office_id_code");
     }
 }

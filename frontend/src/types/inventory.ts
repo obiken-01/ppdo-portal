@@ -371,7 +371,17 @@ export interface GsoPRImportPreviewResponse {
 export interface ExistingDistributionResponse {
   id: string;
   issueRef: string;
+  /**
+   * Division *display name*, already resolved server-side — render it verbatim.
+   * Until RAL-236 this carried a stringified DivisionId instead, which the
+   * Distribution page rendered as a bare number in the DIVISION pill.
+   */
   division: string;
+  /**
+   * Short code ("ADMIN"), or null for divisions that have none. The grid pill shows
+   * this and falls back to `division`; the full name stays as the pill's tooltip.
+   */
+  divisionCode: string | null;
   qtyIssued: number;
   dateIssued: string;
   issuedBy: string;

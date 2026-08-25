@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging.Abstractions;
+﻿using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.Config;
@@ -431,5 +431,145 @@ public sealed class DivisionServiceTests
         audit.Verify(a => a.LogAsync(
             "divisions", 1, AuditAction.Delete,
             It.IsNotNull<object>(), null, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // ── RAL-239: code-keyed upsert, editable name ──────────────────────────────
+
+    private const string CsvHeader =
+        "office_code,code,name,is_active,can_access_budget_planning,can_access_inventory," +
+        "can_access_reports,can_manage_config,can_upload_aip,can_manage_users,can_manage_resource_links";
+
+    [Fact]
+    public async Task UpdateAsync_RenamesDivision_PersistsNewName()
+    {
+        List<Division> seed = [Div(1, 1, "Administrative Division", "ADMIN")];
+        (DivisionService sut, _) = Build(seed, [Office1]);
+
+        ServiceResult<DivisionDto> result = await sut.UpdateAsync(1,
+            new UpsertDivisionDto(1, "ADMIN", "Admin Division", true, true, false, false, false, false, false, false));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Admin Division", seed[0].Name);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_RenameCollidesWithinOffice_ReturnsConflict()
+    {
+        List<Division> seed = [Div(1, 1, "Administrative Division", "ADMIN"), Div(2, 1, "ICT Division", "ICT")];
+        (DivisionService sut, _) = Build(seed, [Office1]);
+
+        ServiceResult<DivisionDto> result = await sut.UpdateAsync(1,
+            new UpsertDivisionDto(1, "ADMIN", "ICT Division", true, true, false, false, false, false, false, false));
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("Administrative Division", seed[0].Name);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_RenameCollidesInDifferentOffice_IsAllowed()
+    {
+        // The unique key is (office_id, name) — the same name in another office is fine.
+        List<Division> seed = [Div(1, 1, "Administrative Division", "ADMIN"), Div(2, 2, "ICT Division", "ICT")];
+        (DivisionService sut, _) = Build(seed, [Office1, Office2]);
+
+        ServiceResult<DivisionDto> result = await sut.UpdateAsync(1,
+            new UpsertDivisionDto(1, "ADMIN", "ICT Division", true, true, false, false, false, false, false, false));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("ICT Division", seed[0].Name);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_CodeCollidesWithinOffice_ReturnsConflict()
+    {
+        List<Division> seed = [Div(1, 1, "Administrative Division", "ADMIN"), Div(2, 1, "ICT Division", "ICT")];
+        (DivisionService sut, _) = Build(seed, [Office1]);
+
+        ServiceResult<DivisionDto> result = await sut.UpdateAsync(1,
+            new UpsertDivisionDto(1, "ICT", "Administrative Division", true, true, false, false, false, false, false, false));
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("ADMIN", seed[0].Code);
+    }
+
+    [Fact]
+    public async Task CreateAsync_DuplicateCodeWithinOffice_ReturnsConflict()
+    {
+        List<Division> seed = [Div(1, 1, "Administrative Division", "ADMIN")];
+        (DivisionService sut, _) = Build(seed, [Office1]);
+
+        ServiceResult<DivisionDto> result = await sut.CreateAsync(
+            new UpsertDivisionDto(1, "ADMIN", "Sectoral Planning Division", true, true, false, false, false, false, false, false));
+
+        Assert.False(result.IsSuccess);
+        Assert.Single(seed);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_RenameByCode_UpdatesInPlaceInsteadOfCreating()
+    {
+        // The headline RAL-239 behaviour: before this, a renamed row matched nothing by name
+        // and was inserted as a duplicate, orphaning users on the old row.
+        List<Division> seed = [Div(1, 1, "Administrative Division", "ADMIN")];
+        (DivisionService sut, _) = Build(seed, [Office1]);
+
+        string csv = string.Join("\r\n", CsvHeader,
+            "PPDO,ADMIN,Admin Division,true,true,false,false,false,false,false,false");
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv, [Office1]);
+
+        Assert.Equal(0, result.Value!.New);
+        Assert.Equal(1, result.Value.Updated);
+        Assert.Single(seed);
+        Assert.Equal("Admin Division", seed[0].Name);
+        Assert.Equal(1, seed[0].Id);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_RenameOntoAnotherDivisionsName_SkipsRowWithError()
+    {
+        List<Division> seed = [Div(1, 1, "Administrative Division", "ADMIN"), Div(2, 1, "ICT Division", "ICT")];
+        (DivisionService sut, _) = Build(seed, [Office1]);
+
+        string csv = string.Join("\r\n", CsvHeader,
+            "PPDO,ADMIN,ICT Division,true,true,false,false,false,false,false,false");
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv, [Office1]);
+
+        Assert.Equal(1, result.Value!.Skipped);
+        Assert.Equal(0, result.Value.Updated);
+        Assert.Equal("Administrative Division", seed[0].Name);
+        Assert.NotEmpty(result.Value.Errors);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_CodelessRow_StillUpsertsByName()
+    {
+        List<Division> seed = [Div(1, 1, "Administrative Division")];
+        (DivisionService sut, _) = Build(seed, [Office1]);
+
+        string csv = string.Join("\r\n", CsvHeader,
+            "PPDO,,Administrative Division,true,true,true,false,false,false,false,false");
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv, [Office1]);
+
+        Assert.Equal(0, result.Value!.New);
+        Assert.Equal(1, result.Value.Updated);
+        Assert.True(seed[0].CanAccessInventory);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_DuplicateCodeSameOfficeInCSV_SecondRowSkipped()
+    {
+        (DivisionService sut, _) = Build([], [Office1]);
+
+        string csv = string.Join("\r\n", CsvHeader,
+            "PPDO,ADMIN,Administrative Division,true,true,false,false,false,false,false,false",
+            "PPDO,ADMIN,Sectoral Planning Division,true,true,false,false,false,false,false,false");
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv, [Office1]);
+
+        Assert.Equal(1, result.Value!.New);
+        Assert.Equal(1, result.Value.Skipped);
     }
 }

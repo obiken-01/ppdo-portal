@@ -13,7 +13,7 @@
  * API endpoints: GET/POST/PUT/DELETE /api/resource-links
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import api from "@/lib/api";
 import RowActions, { type RowAction } from "@/components/ui/RowActions";
 import type {
@@ -65,17 +65,32 @@ function LinkFormModal({
     linkOrder: initial.linkOrder ?? 99,
   });
 
-  const backdropRef = (e: React.MouseEvent<HTMLDivElement>) => {
-    if ((e.target as HTMLElement).dataset.backdrop) onClose();
+  // Dismiss only when the press BOTH starts and ends on the backdrop (RAL-273) — a `click`
+  // is dispatched at the nearest common ancestor of the mousedown/mouseup targets, so
+  // drag-selecting text in a field and releasing outside retargets it onto the backdrop.
+  // (That retargeting is also why the panel's stopPropagation below never fired: the click
+  // originates at the backdrop and never travels through the panel.)
+  const pressStartedOnBackdrop = useRef(false);
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    pressStartedOnBackdrop.current = Boolean((e.target as HTMLElement).dataset.backdrop);
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    const shouldClose =
+      pressStartedOnBackdrop.current && Boolean((e.target as HTMLElement).dataset.backdrop);
+    pressStartedOnBackdrop.current = false;
+    if (shouldClose) onClose();
   };
 
   return (
     <div
       data-backdrop="true"
-      onClick={backdropRef}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
     >
-      <div className="bg-white shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white shadow-xl w-full max-w-md">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
           <h2 className="text-sm font-semibold text-slate-800">{title}</h2>
           <button onClick={onClose} className="text-slate-600 hover:text-slate-600 text-xl leading-none">×</button>
