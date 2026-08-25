@@ -190,7 +190,7 @@ export default function AccountConfigPage() {
   useEffect(() => {
     fetchMe()
       .then((data) => {
-        if (!data.canManageConfig) router.replace(data.officeId != null ? "/budget-planning" : "/dashboard");
+        if (!data.canManageConfig) router.replace(!data.isHostOffice ? "/budget-planning" : "/dashboard");
       })
       .catch(() => router.replace("/login"));
   }, [router]);

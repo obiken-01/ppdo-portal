@@ -4,6 +4,7 @@ using PPDO.Application.Common;
 using PPDO.Application.DTOs.Config;
 using PPDO.Application.Services;
 using PPDO.Domain.Entities;
+using PPDO.Domain.Enums;
 using PPDO.Domain.Interfaces;
 
 namespace PPDO.Tests.Application;
@@ -87,6 +88,141 @@ public sealed class OfficeServiceTests
         Assert.True(result.IsSuccess);
         Assert.False(target.IsActive);
         repo.Verify(r => r.DeleteAsync(It.IsAny<Office>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // ── CSV landing_page round-trip (RAL-258) ──────────────────────────────────
+
+    private const string OfficeCsvHeader = "office_code,office_name,is_active,office_ref_code,landing_page";
+
+    [Fact]
+    public async Task ExportCsvAsync_IncludesLandingPageColumnAndValue()
+    {
+        Office withLanding = Off(1, "GSO", "General Services Office");
+        withLanding.LandingPage = LandingPage.BudgetPlanningDashboard;
+        (OfficeService sut, _) = Build([withLanding]);
+
+        string csv = await sut.ExportCsvAsync();
+
+        Assert.Contains("landing_page", csv);
+        Assert.Contains("BudgetPlanningDashboard", csv);
+    }
+
+    [Fact]
+    public async Task ExportCsvAsync_NoPreference_WritesBlankLandingPage()
+    {
+        (OfficeService sut, _) = Build([Off(1, "GSO", "General Services Office")]);
+
+        string csv = await sut.ExportCsvAsync();
+
+        // Trailing empty cell rather than the string "null" — blank means "no preference".
+        Assert.Contains("GSO,General Services Office,true,,", csv);
+        Assert.DoesNotContain("null", csv);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_NewOfficeWithLandingPage_SetsIt()
+    {
+        List<Office> seed = [];
+        (OfficeService sut, _) = Build(seed);
+
+        string csv = string.Join("\r\n",
+            OfficeCsvHeader,
+            "GSO,General Services Office,true,,BudgetPlanningDashboard");
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv);
+
+        Assert.Equal(1, result.Value!.New);
+        Assert.Equal(LandingPage.BudgetPlanningDashboard, seed.Single().LandingPage);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_LandingPageIsOnlyChange_CountsAsUpdated()
+    {
+        Office existing = Off(1, "GSO", "General Services Office");
+        (OfficeService sut, _) = Build([existing]);
+
+        string csv = string.Join("\r\n",
+            OfficeCsvHeader,
+            "GSO,General Services Office,true,,Profile");
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv);
+
+        // Without landing_page in the change detection this row would count as skipped and the
+        // value would be silently dropped.
+        Assert.Equal(1, result.Value!.Updated);
+        Assert.Equal(0, result.Value.Skipped);
+        Assert.Equal(LandingPage.Profile, existing.LandingPage);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_BlankLandingPage_ClearsExistingPreference()
+    {
+        Office existing = Off(1, "GSO", "General Services Office");
+        existing.LandingPage = LandingPage.Profile;
+        (OfficeService sut, _) = Build([existing]);
+
+        string csv = string.Join("\r\n",
+            OfficeCsvHeader,
+            "GSO,General Services Office,true,,");
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv);
+
+        Assert.Equal(1, result.Value!.Updated);
+        Assert.Null(existing.LandingPage);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_InvalidLandingPage_SkipsRowWithError()
+    {
+        Office existing = Off(1, "GSO", "General Services Office");
+        existing.LandingPage = LandingPage.Profile;
+        (OfficeService sut, _) = Build([existing]);
+
+        string csv = string.Join("\r\n",
+            OfficeCsvHeader,
+            "GSO,General Services Office,true,,Nonsense");
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv);
+
+        // A typo must not be read as "no preference" — that would quietly wipe the setting.
+        Assert.Equal(1, result.Value!.Skipped);
+        Assert.NotEmpty(result.Value.Errors);
+        Assert.Equal(LandingPage.Profile, existing.LandingPage);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_LegacyCsvWithoutLandingPageColumn_LeavesValueUntouched()
+    {
+        Office existing = Off(1, "GSO", "General Services Office");
+        existing.LandingPage = LandingPage.BudgetPlanningDashboard;
+        (OfficeService sut, _) = Build([existing]);
+
+        // A file exported before RAL-258 has only four columns.
+        string csv = string.Join("\r\n",
+            "office_code,office_name,is_active,office_ref_code",
+            "GSO,General Services Office,true,");
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv);
+
+        Assert.Equal(0, result.Value!.Updated);
+        Assert.Equal(LandingPage.BudgetPlanningDashboard, existing.LandingPage);
+    }
+
+    [Fact]
+    public async Task ExportThenImportCsv_IsAStableRoundTrip()
+    {
+        Office withLanding = Off(1, "GSO", "General Services Office");
+        withLanding.LandingPage = LandingPage.BudgetPlanningDashboard;
+        (OfficeService sut, _) = Build([withLanding]);
+
+        string exported = await sut.ExportCsvAsync();
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(exported);
+
+        // Re-uploading an untouched export must be a no-op, not an update.
+        Assert.Equal(0, result.Value!.New);
+        Assert.Equal(0, result.Value.Updated);
+        Assert.Equal(1, result.Value.Skipped);
+        Assert.Equal(LandingPage.BudgetPlanningDashboard, withLanding.LandingPage);
     }
 
     [Fact]

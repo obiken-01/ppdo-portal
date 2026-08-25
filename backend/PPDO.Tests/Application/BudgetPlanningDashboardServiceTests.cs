@@ -47,11 +47,15 @@ public sealed class BudgetPlanningDashboardServiceTests
         UpdatedAt = updatedAt ?? DateTime.UtcNow,
     };
 
+    /// <summary>
+    /// Builds an office. Defaults to the host office (DECISION F, RAL-258) because the dashboard
+    /// resolves its subject office by that flag now, not by the code "PPDO".
+    /// </summary>
     private static Office Off(int id, string name, bool active = true, string? refCode = null,
-        string code = "PPDO") => new()
+        string code = "PPDO", bool isHostOffice = true) => new()
     {
         Id = id, OfficeCode = code, OfficeName = name, IsActive = active,
-        OfficeRefCode = refCode,
+        OfficeRefCode = refCode, IsHostOffice = isHostOffice,
         CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
     };
 
@@ -172,6 +176,8 @@ public sealed class BudgetPlanningDashboardServiceTests
         Mock<IOfficeRepository> officeRepo = new();
         officeRepo.Setup(r => r.GetByCodeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string code, CancellationToken _) => offices.FirstOrDefault(o => o.OfficeCode == code));
+        officeRepo.Setup(r => r.GetHostOfficeAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => offices.FirstOrDefault(o => o.IsHostOffice));
         officeRepo.Setup(r => r.GetByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((int id, CancellationToken _) => offices.FirstOrDefault(o => o.Id == id));
 
@@ -246,7 +252,8 @@ public sealed class BudgetPlanningDashboardServiceTests
     [Fact]
     public async Task GetDashboardAsync_ResolvesPpdoOfficeByCode_IgnoresOtherOffices()
     {
-        List<Office> offices = [Off(1, "PPDO", code: "PPDO"), Off(2, "Other Office", code: "OTH")];
+        List<Office> offices =
+            [Off(1, "PPDO", code: "PPDO"), Off(2, "Other Office", code: "OTH", isHostOffice: false)];
         (BudgetPlanningDashboardService sut, _) = Build([], [], [], offices, []);
 
         PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027, divisionId: null);

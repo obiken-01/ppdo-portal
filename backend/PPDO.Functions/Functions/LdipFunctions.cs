@@ -45,7 +45,7 @@ public sealed class LdipFunctions
     private async Task<HttpResponseData?> DenyForeignOfficeAsync(
         HttpRequestData req, User caller, int id, CancellationToken ct)
     {
-        if (caller.OfficeId is null) return null;   // PPDO — full access
+        if (OfficeScope.IsHostOfficeUser(caller)) return null;   // host office — full access
 
         ServiceResult<LdipRecordDetailDto> existing = await _ldip.GetByIdAsync(id, ct);
         if (existing.IsSuccess && existing.Value!.OfficeId != caller.OfficeId)
@@ -101,12 +101,13 @@ public sealed class LdipFunctions
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
                 ApiResponse<LdipRecordDetailDto>.Fail("Request body is missing or malformed."), ct);
 
-        // Office users always create for their own office, whatever the body says.
-        if (caller!.OfficeId is not null)
-            body = body with { OfficeId = caller.OfficeId };
+        // A guest office always creates for its own office, whatever the body says; the host
+        // office may create for any. Clamp expresses both, and since RAL-258 every user has an
+        // office id — so testing "has an office" here would have clamped the host office too.
+        body = body with { OfficeId = OfficeScope.Resolve(caller!).Clamp(body.OfficeId) };
 
         return await ConfigHttp.FromResultAsync(req,
-            await _ldip.CreateAsync(body, caller.Id, ct), ct, HttpStatusCode.Created);
+            await _ldip.CreateAsync(body, caller!.Id, ct), ct, HttpStatusCode.Created);
     }
 
     // ── PUT /api/budget-planning/ldip/{id} ───────────────────────────────────
@@ -126,8 +127,8 @@ public sealed class LdipFunctions
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
                 ApiResponse<LdipRecordDetailDto>.Fail("Request body is missing or malformed."), ct);
 
-        if (caller!.OfficeId is not null)
-            body = body with { OfficeId = caller.OfficeId };
+        // Same clamp as Create — see the note there on why this is not an "is null" test.
+        body = body with { OfficeId = OfficeScope.Resolve(caller!).Clamp(body.OfficeId) };
 
         return await ConfigHttp.FromResultAsync(req, await _ldip.UpdateAsync(id, body, ct), ct);
     }

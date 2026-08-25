@@ -183,6 +183,7 @@ public sealed class AuthService : IAuthService
             OfficeId   = user.OfficeId,
             OfficeCode = user.Office?.OfficeCode,
             OfficeName = user.Office?.OfficeName,
+            IsHostOffice = OfficeScope.IsHostOfficeUser(user),
             Position   = user.Position,
             LandingPage = user.LandingPage?.ToString(),
             LandingPath = LandingPageRoutes.PathFor(

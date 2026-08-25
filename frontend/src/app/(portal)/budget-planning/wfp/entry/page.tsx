@@ -38,7 +38,7 @@ import {
   updateAipActivityIsCreation,
   aipErrorMessage,
 } from "@/lib/aip";
-import { findGeneralFund, findPpdoOffice, listAccounts, listDivisions, listFundingSources, listOffices, listPriceIndexForPicker } from "@/lib/config";
+import { findGeneralFund, findHostOffice, listAccounts, listDivisions, listFundingSources, listOffices, listPriceIndexForPicker } from "@/lib/config";
 import { getAllocations, getCeilingStatus, getPrograms, getSetupStatus } from "@/lib/allocation";
 import {
   computeWfpRollUpPreview,
@@ -971,11 +971,11 @@ function WfpEntryPageInner() {
   useEffect(() => {
     if (!me) return;
     if (!searchParams.get("officeId")) {
-      if (me.officeId != null) {
+      if (!me.isHostOffice) {
         setSelectedOfficeId(me.officeId);
       } else {
         // PPDO-internal users (me.officeId is null by design) default to PPDO itself.
-        const ppdo = findPpdoOffice(officeList);
+        const ppdo = findHostOffice(officeList);
         if (ppdo) setSelectedOfficeId(ppdo.id);
       }
     }
@@ -1324,7 +1324,7 @@ function WfpEntryPageInner() {
 
   // ── Derived flags ─────────────────────────────────────────────────────────
 
-  const isOfficeUser = me != null && me.officeId != null;
+  const isOfficeUser = me != null && !me.isHostOffice;
   const canBypassDivision =
     me?.role === "SuperAdmin" || me?.role === "Admin" || me?.canManageAllocation === true;
 

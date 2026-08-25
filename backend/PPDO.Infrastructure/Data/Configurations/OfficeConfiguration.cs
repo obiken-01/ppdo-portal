@@ -34,6 +34,11 @@ public sealed class OfficeConfiguration : IEntityTypeConfiguration<Office>
             .IsRequired()
             .HasDefaultValue(true);
 
+        builder.Property(o => o.IsHostOffice)
+            .HasColumnName("is_host_office")
+            .IsRequired()
+            .HasDefaultValue(false);
+
         // Null means "no default" — the resolver falls through to the next level.
         builder.Property(o => o.LandingPage)
             .HasColumnName("landing_page");
@@ -49,5 +54,13 @@ public sealed class OfficeConfiguration : IEntityTypeConfiguration<Office>
         builder.HasIndex(o => o.OfficeCode)
             .IsUnique()
             .HasDatabaseName("IX_offices_office_code");
+
+        // At most one host office, enforced by the database rather than by a service check that
+        // a second code path could forget to call (DECISION F, RAL-258). Filtered so the many
+        // false rows do not collide with each other.
+        builder.HasIndex(o => o.IsHostOffice)
+            .IsUnique()
+            .HasFilter("[is_host_office] = 1")
+            .HasDatabaseName("UX_offices_is_host_office");
     }
 }

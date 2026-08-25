@@ -15,7 +15,11 @@ namespace PPDO.Application.Services;
 /// </summary>
 public sealed class OfficeService : IOfficeService
 {
-    private static readonly string[] CsvHeaders = { "office_code", "office_name", "is_active", "office_ref_code" };
+    private static readonly string[] CsvHeaders =
+        { "office_code", "office_name", "is_active", "office_ref_code", "landing_page" };
+
+    /// <summary>Column index of <c>landing_page</c> in <see cref="CsvHeaders"/> (RAL-258).</summary>
+    private const int LandingPageIndex = 4;
 
     private readonly IRepository<Office> _repo;
     private readonly ILogger<OfficeService> _logger;
@@ -171,7 +175,15 @@ public sealed class OfficeService : IOfficeService
         IReadOnlyList<Office> all = await _repo.GetAllAsync(cancellationToken);
         IEnumerable<string?[]> rows = all
             .OrderBy(o => o.OfficeName, StringComparer.OrdinalIgnoreCase)
-            .Select(o => new string?[] { o.OfficeCode, o.OfficeName, o.IsActive ? "true" : "false", o.OfficeRefCode ?? "" });
+            .Select(o => new string?[]
+            {
+                o.OfficeCode,
+                o.OfficeName,
+                o.IsActive ? "true" : "false",
+                o.OfficeRefCode ?? "",
+                // Enum name, matching the wire format the API already uses. Blank = no preference.
+                o.LandingPage?.ToString() ?? "",
+            });
         return Csv.Write(CsvHeaders, rows);
     }
 
@@ -183,6 +195,13 @@ public sealed class OfficeService : IOfficeService
             return ServiceResult<CsvImportResult>.BadRequest("The CSV file is empty.");
 
         int start = parsed[0].Any(c => c.Trim().Equals("office_code", StringComparison.OrdinalIgnoreCase)) ? 1 : 0;
+
+        // A file exported before RAL-258 has no landing_page column at all, and an absent column
+        // is not the same as a blank one: blank clears the preference, absent must leave it alone.
+        // Otherwise re-uploading an old export would silently wipe every office's landing page.
+        bool hasLandingPageColumn = start == 1
+            ? parsed[0].Any(c => c.Trim().Equals("landing_page", StringComparison.OrdinalIgnoreCase))
+            : parsed.Any(r => r.Length > LandingPageIndex);
 
         List<Office> all = (await _repo.GetAllAsync(cancellationToken)).ToList();
         Dictionary<string, Office> byCode = all.ToDictionary(
@@ -207,16 +226,33 @@ public sealed class OfficeService : IOfficeService
                 continue;
             }
 
-            if (byCode.TryGetValue(code, out Office? existing))
+            byCode.TryGetValue(code, out Office? existing);
+
+            // Keep whatever is stored when the column is absent; parse it when it is present.
+            LandingPage? landingPage = existing?.LandingPage;
+            if (hasLandingPageColumn
+                && !LandingPageName.TryParse(Field(f, LandingPageIndex), out landingPage))
+            {
+                // A typo must not be read as "no preference" — that silently drops the setting.
+                skipped++;
+                errors.Add(
+                    $"Row {i + 1}: '{Field(f, LandingPageIndex)}' is not a valid landing page. " +
+                    $"Valid values: {LandingPageName.ValidValues}.");
+                continue;
+            }
+
+            if (existing is not null)
             {
                 bool changed = existing.OfficeName    != name.Trim()
                             || existing.IsActive      != active
-                            || existing.OfficeRefCode != refCode;
+                            || existing.OfficeRefCode != refCode
+                            || existing.LandingPage   != landingPage;
                 if (!changed) { skipped++; continue; }
 
                 existing.OfficeName    = name.Trim();
                 existing.OfficeRefCode = refCode;
                 existing.IsActive      = active;
+                existing.LandingPage   = landingPage;
                 existing.UpdatedAt     = now;
                 await _repo.UpdateAsync(existing, cancellationToken);
                 updated++;
@@ -229,6 +265,7 @@ public sealed class OfficeService : IOfficeService
                     OfficeName    = name.Trim(),
                     OfficeRefCode = refCode,
                     IsActive      = active,
+                    LandingPage   = landingPage,
                     CreatedAt     = now,
                     UpdatedAt     = now,
                 };
@@ -246,7 +283,7 @@ public sealed class OfficeService : IOfficeService
 
     private static OfficeDto MapToDto(Office o) =>
         new(o.Id, o.OfficeCode, o.OfficeName, o.OfficeRefCode, o.IsActive,
-            o.LandingPage?.ToString());
+            o.LandingPage?.ToString(), o.IsHostOffice);
 
     private static string Field(string[] row, int index) => index < row.Length ? row[index] : string.Empty;
 

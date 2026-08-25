@@ -3,21 +3,29 @@ using PPDO.Domain.Entities;
 namespace PPDO.Application.Common;
 
 /// <summary>
-/// Resolved office scope for a Budget Planning query (v1.8.0 — RAL-228).
+/// Resolved office scope for a Budget Planning query (RAL-228; discriminator changed by
+/// DECISION F, RAL-258).
 ///
-/// <see cref="User.OfficeId"/> is the PPDO / non-PPDO discriminator:
-///   <see cref="SeeAll"/>  — PPDO-internal caller (OfficeId null): no office filter.
-///   office id value       — non-PPDO office user: scoped to their own office.
+/// <see cref="Office.IsHostOffice"/> is the cross-office-authority discriminator:
+///   <see cref="SeeAll"/>  — caller in the host office: no office filter.
+///   office id value       — any other office user: scoped to their own office.
+///   <see cref="NoOffice"/> — caller with no office at all: scoped to nothing.
 ///
-/// ⚠️ <b>Deliberately asymmetric with <see cref="DivisionScope"/> — read this before changing it.</b>
-/// DivisionScope has a third "SeeNothing" state because a Staff user with a null DivisionId is an
-/// <i>unassigned</i> user who must resolve to EMPTY results. OfficeScope has no such state: a null
-/// OfficeId is not "unassigned", it positively means <i>PPDO-internal</i>, which is the
-/// full-access case. Treating null the same way in both types inverts the security check.
+/// ⚠️ <b>The rule that changed — read this before "restoring" the old one.</b> Until DECISION F a
+/// null <see cref="User.OfficeId"/> positively meant "PPDO-internal, sees everything", the inverse
+/// of <see cref="DivisionScope"/> where null means "unassigned, sees nothing". Two mechanisms
+/// described PPDO and nothing kept them in agreement, so cross-office authority now comes from the
+/// office row's flag. That frees null to mean here what it means everywhere else: unassigned, and
+/// therefore scoped to nothing. A user in that state has an incomplete record, not a privileged one.
 ///
-/// Office wins over role. The SuperAdmin/Admin bypass in <c>PermissionService</c> governs FEATURE
-/// flags, not data scope — an admin account deliberately tied to an office stays scoped to it.
-/// (Pinned by <c>OfficeScopeTests.Resolve_AdminOrAboveWithOfficeIdSet_IsStillScopedToThatOffice</c>.)
+/// The flag is read off the <see cref="User.Office"/> navigation property, so a query that forgets
+/// <c>.Include(u =&gt; u.Office)</c> sees <c>false</c> and the caller is scoped to their own office.
+/// That is deliberate: forgetting the include degrades to MORE restrictive, never to full access.
+///
+/// Office wins over role, unchanged. The SuperAdmin/Admin bypass in <c>PermissionService</c>
+/// governs FEATURE flags, not data scope — an admin account deliberately tied to a guest office
+/// stays scoped to it. (Pinned by
+/// <c>OfficeScopeTests.Resolve_AdminOrAboveInANonHostOffice_IsStillScopedToThatOffice</c>.)
 ///
 /// Prefer <see cref="Clamp"/> over validate-and-reject for caller-supplied office ids: silently
 /// substituting the caller's own office leaves no error path to get wrong, and no way for a client
@@ -38,18 +46,37 @@ public readonly struct OfficeScope
     /// <summary>The single office id to scope to. Null when <see cref="SeeAll"/>.</summary>
     public int? OfficeId { get; }
 
-    /// <summary>PPDO-internal caller — see every office.</summary>
+    /// <summary>
+    /// Office id used for a caller who has no office. Offices are IDENTITY(1,1), so nothing owns
+    /// office 0 and every filter built from it returns empty — which is the point. It exists so
+    /// <see cref="Clamp"/> never has to answer null for such a caller, because callers downstream
+    /// read a null office id as "no filter — every office".
+    /// </summary>
+    public const int NoOffice = 0;
+
+    /// <summary>Host-office caller — see every office.</summary>
     public static OfficeScope All { get; } = new(seeAll: true, officeId: null);
 
     /// <summary>Office user — scoped to one office.</summary>
     public static OfficeScope For(int officeId) => new(seeAll: false, officeId);
 
     /// <summary>
-    /// Resolves the scope for a user: an OfficeId means an office user scoped to it,
-    /// null means a PPDO-internal user with full cross-office access.
+    /// Resolves the scope for a user. The host-office flag grants cross-office access; any other
+    /// office scopes to itself; no office at all is scoped to <see cref="NoOffice"/> and sees
+    /// nothing. See the type's remarks for why that last case is not full access any more.
     /// </summary>
     public static OfficeScope Resolve(User user)
-        => user.OfficeId is int officeId ? For(officeId) : All;
+        => IsHostOfficeUser(user) ? All : For(user.OfficeId ?? NoOffice);
+
+    /// <summary>
+    /// Whether <paramref name="user"/> belongs to the host office, and so holds cross-office
+    /// authority (DECISION F, RAL-258). The one place this question is answered — call it rather
+    /// than reading <c>OfficeId is null</c> or comparing office codes to <c>"PPDO"</c>.
+    ///
+    /// Requires <see cref="User.Office"/> to be loaded; returns false when it is not, which scopes
+    /// the caller to their own office rather than granting the bypass.
+    /// </summary>
+    public static bool IsHostOfficeUser(User user) => user.Office?.IsHostOffice == true;
 
     /// <summary>
     /// Clamps a caller-supplied office id to what the caller is actually allowed to use.

@@ -172,7 +172,7 @@ export default function ProcurementPresetsConfigPage() {
     fetchMe()
       .then((data) => {
         if (!data.canManageConfig) {
-          router.replace(data.officeId != null ? "/budget-planning" : "/dashboard");
+          router.replace(!data.isHostOffice ? "/budget-planning" : "/dashboard");
           return;
         }
         setAuthChecked(true);

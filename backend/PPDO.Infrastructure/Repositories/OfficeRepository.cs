@@ -19,4 +19,9 @@ public sealed class OfficeRepository : Repository<Office>, IOfficeRepository
     public async Task<Office?> GetByCodeAsync(string code, CancellationToken ct = default)
         => await _context.Set<Office>()
             .FirstOrDefaultAsync(o => o.OfficeCode == code, ct);
+
+    /// <inheritdoc />
+    public async Task<Office?> GetHostOfficeAsync(CancellationToken ct = default)
+        => await _context.Set<Office>()
+            .FirstOrDefaultAsync(o => o.IsHostOffice, ct);
 }

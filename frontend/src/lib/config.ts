@@ -123,12 +123,15 @@ export async function listOffices(params: OfficeListParams = {}): Promise<Office
   return unwrap(data);
 }
 
-/** office_code of PPDO itself — the default office for PPDO-internal budget-planning users (those with no me.officeId). */
-export const PPDO_OFFICE_CODE = "PPDO";
-
-/** Finds the PPDO office row in an already-loaded office list, or null if not configured/loaded yet. */
-export function findPpdoOffice(offices: OfficeResponse[]): OfficeResponse | null {
-  return offices.find((o) => o.officeCode === PPDO_OFFICE_CODE) ?? null;
+/**
+ * Finds the host office in an already-loaded office list, or null if none is flagged.
+ *
+ * Replaces matching on the literal code "PPDO" (DECISION F, RAL-258): the flag is set on one row
+ * in the database and survives the office being renamed, whereas the string had to be kept in
+ * agreement by hand across the backend and this file.
+ */
+export function findHostOffice(offices: OfficeResponse[]): OfficeResponse | null {
+  return offices.find((o) => o.isHostOffice) ?? null;
 }
 
 /** POST /api/config/offices — create a new office. */

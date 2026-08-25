@@ -313,7 +313,7 @@ function TabBar({
 }
 
 function LdipNewInner() {
-  const me = useMe((m) => m.canAccessBudgetPlanning, (m) => (m.officeId != null ? "/account" : "/dashboard"));
+  const me = useMe((m) => m.canAccessBudgetPlanning, (m) => (m.isHostOffice ? "/dashboard" : "/account"));
   const canUpload = me?.canUploadAip === true;
 
   // RAL-114 — re-upload into an existing record (?replaceId=). Upload-only, so it

@@ -54,7 +54,7 @@
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMe } from "@/lib/me-cache";
-import { PPDO_OFFICE_CODE, listDivisions } from "@/lib/config";
+import { listDivisions } from "@/lib/config";
 import { getFiscalYears } from "@/lib/budget-planning";
 import { downloadWfpReportExcel, getWfpReportOffices, getWfpReportPreview, wfpErrorMessage } from "@/lib/wfp";
 import { downloadPpmpReportExcel, getPpmpReportPreview } from "@/lib/ppmp";
@@ -452,10 +452,10 @@ function WfpReportPageInner() {
       .then((offices) => {
         setOffices(offices);
         // ?officeId= from the WFP entry wizard's Preview link takes priority; otherwise
-        // default to the caller's own office, falling back to PPDO for PPDO-internal users.
-        const preferredId = urlOfficeId
-          ? Number(urlOfficeId)
-          : me?.officeId ?? offices.find((o) => o.officeCode === PPDO_OFFICE_CODE)?.officeId ?? null;
+        // default to the caller's own office. Since RAL-258 every user has one — for a
+        // host-office user that IS the PPDO office id, which is what the old
+        // fall-back-to-PPDO branch used to compute the long way round.
+        const preferredId = urlOfficeId ? Number(urlOfficeId) : me?.officeId ?? null;
         if (preferredId != null && offices.some((o) => o.officeId === preferredId)) {
           setOfficeId(preferredId);
         }

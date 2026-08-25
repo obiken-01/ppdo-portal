@@ -85,6 +85,11 @@ export interface OfficeResponse {
   isActive: boolean;
   /** Landing-page enum name, or null for none (RAL-262). */
   landingPage: LandingPageKey | null;
+  /**
+   * Whether this is the host office — its users hold cross-office authority
+   * (DECISION F, RAL-258). Exactly one office has this set.
+   */
+  isHostOffice: boolean;
 }
 
 /** Create/update body for an office. officeCode is the unique key. */

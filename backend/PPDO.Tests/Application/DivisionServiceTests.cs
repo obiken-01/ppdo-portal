@@ -4,6 +4,7 @@ using PPDO.Application.Common;
 using PPDO.Application.DTOs.Config;
 using PPDO.Application.Services;
 using PPDO.Domain.Entities;
+using PPDO.Domain.Enums;
 using PPDO.Domain.Interfaces;
 
 namespace PPDO.Tests.Application;
@@ -250,6 +251,129 @@ public sealed class DivisionServiceTests
         Assert.Equal(1, result.Value!.New);
         Assert.Equal(0, result.Value.Updated);
         Assert.Equal(1, result.Value.Skipped);
+    }
+
+    // ── CSV landing_page round-trip (RAL-259) ──────────────────────────────────
+
+    private const string DivisionCsvHeader =
+        "office_code,code,name,is_active,can_access_budget_planning,can_access_inventory," +
+        "can_access_reports,can_manage_config,can_upload_aip,can_manage_users," +
+        "can_manage_resource_links,landing_page";
+
+    [Fact]
+    public async Task ExportCsvAsync_IncludesLandingPageColumnAndValue()
+    {
+        Division d = Div(1, 1, "Administrative Division", "ADMIN");
+        d.CanAccessInventory = true;
+        d.LandingPage = LandingPage.InventoryDashboard;
+        (DivisionService sut, _) = Build([d], [Office1]);
+
+        string csv = await sut.ExportCsvAsync([Office1]);
+
+        Assert.Contains("landing_page", csv);
+        Assert.Contains("InventoryDashboard", csv);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_NewDivisionWithLandingPage_SetsIt()
+    {
+        List<Division> seed = [];
+        (DivisionService sut, _) = Build(seed, [Office1]);
+
+        string csv = string.Join("\r\n",
+            DivisionCsvHeader,
+            "PPDO,SECTORAL,Sectoral Planning Division,true,true,false,false,false,false,false,false,BudgetPlanningDashboard");
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv, [Office1]);
+
+        Assert.Equal(1, result.Value!.New);
+        Assert.Equal(LandingPage.BudgetPlanningDashboard, seed.Single().LandingPage);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_LandingPageIsOnlyChange_CountsAsUpdated()
+    {
+        Division existing = Div(1, 1, "Administrative Division", "ADMIN");
+        (DivisionService sut, _) = Build([existing], [Office1]);
+
+        string csv = string.Join("\r\n",
+            DivisionCsvHeader,
+            "PPDO,ADMIN,Administrative Division,true,true,false,false,false,false,false,false,BudgetPlanningDashboard");
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv, [Office1]);
+
+        Assert.Equal(1, result.Value!.Updated);
+        Assert.Equal(0, result.Value.Skipped);
+        Assert.Equal(LandingPage.BudgetPlanningDashboard, existing.LandingPage);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_BlankLandingPage_ClearsExistingPreference()
+    {
+        Division existing = Div(1, 1, "Administrative Division", "ADMIN");
+        existing.LandingPage = LandingPage.BudgetPlanningDashboard;
+        (DivisionService sut, _) = Build([existing], [Office1]);
+
+        string csv = string.Join("\r\n",
+            DivisionCsvHeader,
+            "PPDO,ADMIN,Administrative Division,true,true,false,false,false,false,false,false,");
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv, [Office1]);
+
+        Assert.Equal(1, result.Value!.Updated);
+        Assert.Null(existing.LandingPage);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_InvalidLandingPage_SkipsRowWithError()
+    {
+        Division existing = Div(1, 1, "Administrative Division", "ADMIN");
+        existing.LandingPage = LandingPage.BudgetPlanningDashboard;
+        (DivisionService sut, _) = Build([existing], [Office1]);
+
+        string csv = string.Join("\r\n",
+            DivisionCsvHeader,
+            "PPDO,ADMIN,Administrative Division,true,true,false,false,false,false,false,false,Nonsense");
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv, [Office1]);
+
+        Assert.Equal(1, result.Value!.Skipped);
+        Assert.NotEmpty(result.Value.Errors);
+        Assert.Equal(LandingPage.BudgetPlanningDashboard, existing.LandingPage);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_LegacyCsvWithoutLandingPageColumn_LeavesValueUntouched()
+    {
+        Division existing = Div(1, 1, "Administrative Division", "ADMIN");
+        existing.LandingPage = LandingPage.BudgetPlanningDashboard;
+        (DivisionService sut, _) = Build([existing], [Office1]);
+
+        // A file exported before RAL-259 has only eleven columns.
+        string csv = string.Join("\r\n",
+            "office_code,code,name,is_active,can_access_budget_planning,can_access_inventory,can_access_reports,can_manage_config,can_upload_aip,can_manage_users,can_manage_resource_links",
+            "PPDO,ADMIN,Administrative Division,true,true,false,false,false,false,false,false");
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv, [Office1]);
+
+        Assert.Equal(0, result.Value!.Updated);
+        Assert.Equal(LandingPage.BudgetPlanningDashboard, existing.LandingPage);
+    }
+
+    [Fact]
+    public async Task ExportThenImportCsv_IsAStableRoundTrip()
+    {
+        Division d = Div(1, 1, "Administrative Division", "ADMIN");
+        d.LandingPage = LandingPage.BudgetPlanningDashboard;
+        (DivisionService sut, _) = Build([d], [Office1]);
+
+        string exported = await sut.ExportCsvAsync([Office1]);
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(exported, [Office1]);
+
+        Assert.Equal(0, result.Value!.New);
+        Assert.Equal(0, result.Value.Updated);
+        Assert.Equal(1, result.Value.Skipped);
+        Assert.Equal(LandingPage.BudgetPlanningDashboard, d.LandingPage);
     }
 
     // ── CSV export ─────────────────────────────────────────────────────────────

@@ -445,7 +445,7 @@ export default function BudgetPlanningPage() {
   // page they can always reach); PPDO users still fall back to /dashboard.
   const user = useMe(
     (me) => me.canAccessBudgetPlanning,
-    (me) => (me.officeId != null ? "/account" : "/dashboard"),
+    (me) => (me.isHostOffice ? "/dashboard" : "/account"),
   );
 
   const [fiscalYear, setFiscalYear] = useState<number | null>(null);
@@ -496,7 +496,7 @@ export default function BudgetPlanningPage() {
   useEffect(() => {
     if (!user) return;
 
-    if (user.officeId == null) {
+    if (user.isHostOffice) {
       loadDashboard();
       return;
     }
@@ -528,7 +528,7 @@ export default function BudgetPlanningPage() {
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
-  const isPpdo = user?.officeId == null;
+  const isPpdo = user?.isHostOffice === true;
 
   // Office user: locked to their own office. PPDO user: the PPDO-scoped dashboard
   // resolves the office server-side — its id/code/name only become known once loaded.

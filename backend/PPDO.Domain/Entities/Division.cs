@@ -47,15 +47,21 @@ public sealed class Division
     public bool CanUploadAip { get; set; }
     public bool CanManageConfig { get; set; }
 
-    // ── Audit ─────────────────────────────────────────────────────────────────
-
+    // ── Landing ───────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Default landing page for every user in this division (RAL-251). Null = no preference; the resolver
-    /// falls through to the next level of the chain
+    /// Default landing page for every user in this division (RAL-251). Null = no preference; the
+    /// resolver falls through to the next level of the chain
     /// (user → division → office → first permitted → Profile).
     /// </summary>
+    /// <remarks>
+    /// Not permission-checked on write, unlike the per-user preference: one division default is
+    /// shared by users whose overrides differ, so a value that is unreachable for some of them is
+    /// legitimate. <c>LandingPageResolver</c> skips it per-user at read time (RAL-259).
+    /// </remarks>
     public LandingPage? LandingPage { get; set; }
+
+    // ── Audit ─────────────────────────────────────────────────────────────────
 
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
