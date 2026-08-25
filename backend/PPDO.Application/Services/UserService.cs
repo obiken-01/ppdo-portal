@@ -21,7 +21,7 @@ namespace PPDO.Application.Services;
 public sealed class UserService : IUserService
 {
     private readonly IUserRepository _users;
-    private readonly IRepository<Office> _offices;
+    private readonly IOfficeRepository _offices;
     private readonly IRepository<Division> _divisions;
     private readonly ILogger<UserService> _logger;
     private readonly IAuditService _audit;
@@ -29,7 +29,7 @@ public sealed class UserService : IUserService
 
     public UserService(
         IUserRepository users,
-        IRepository<Office> offices,
+        IOfficeRepository offices,
         IRepository<Division> divisions,
         ILogger<UserService> logger,
         IAuditService audit,
@@ -85,7 +85,14 @@ public sealed class UserService : IUserService
                 $"You do not have permission to create a user with role '{newRole}'.");
         }
 
-        bool isOfficeUser = dto.OfficeId is int oid && oid > 0;
+        // "No office selected" in the form means the host office, not the absence of one
+        // (DECISION F, RAL-258). Leaving it null would create a user scoped to nothing —
+        // before DECISION F the same null meant the opposite, full cross-office access.
+        Office? hostOffice = await _offices.GetHostOfficeAsync(cancellationToken);
+
+        // A GUEST-office user is the constrained case. Since every user now has an office,
+        // "has an office id" no longer separates anyone — being in a non-host office does.
+        bool isOfficeUser = dto.OfficeId is int oid && oid > 0 && oid != hostOffice?.Id;
 
         if (isOfficeUser && newRole is UserRole.SuperAdmin or UserRole.Admin)
             return ServiceResult<UserCredentialResponseDto>.BadRequest(
@@ -156,7 +163,8 @@ public sealed class UserService : IUserService
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(temporaryPassword),
             Role         = newRole,
             DivisionId   = newDivisionId,
-            OfficeId     = isOfficeUser ? dto.OfficeId : null,
+            OfficeId     = isOfficeUser ? dto.OfficeId : hostOffice?.Id,
+            Office       = isOfficeUser ? null : hostOffice,   // needed by the landing check below
             Position     = dto.Position?.Trim(),
             ContactNo    = dto.ContactNo?.Trim(),
             IsActive     = true,
@@ -256,7 +264,10 @@ public sealed class UserService : IUserService
         }
 
         // -- Office (full replacement; office users have a division within their office) ---
-        bool isOfficeUser = dto.OfficeId is int oid && oid > 0;
+        Office? hostOfficeForUpdate = await _offices.GetHostOfficeAsync(cancellationToken);
+
+        // See CreateAsync: only a non-host office makes someone a constrained "office user".
+        bool isOfficeUser = dto.OfficeId is int oid && oid > 0 && oid != hostOfficeForUpdate?.Id;
 
         if (isOfficeUser && effectiveRole is UserRole.SuperAdmin or UserRole.Admin)
             return ServiceResult<UserResponseDto>.BadRequest(
@@ -271,7 +282,9 @@ public sealed class UserService : IUserService
         }
         else
         {
-            target.OfficeId = null;
+            // Same rule as CreateAsync: clearing the office means "host office", never "none".
+            target.OfficeId = hostOfficeForUpdate?.Id;
+            target.Office   = hostOfficeForUpdate;
         }
 
         // -- Division ------------------------------------------------------------

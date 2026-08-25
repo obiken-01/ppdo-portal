@@ -371,7 +371,9 @@ public sealed class AuthServiceTests
     public async Task GetMeAsync_PpdoUserWithNoPreference_ReturnsMainDashboardPath()
     {
         User user = MakeActiveUser(BCrypt.Net.BCrypt.HashPassword("x"));
-        user.OfficeId = null;
+        // Host-office user — DECISION F (RAL-258) moved cross-office authority onto the flag.
+        user.OfficeId = 1;
+        user.Office   = new Office { Id = 1, OfficeCode = "PPDO", IsHostOffice = true };
 
         MeResponse me = await BuildSut(new Mock<IUserRepository>()).GetMeAsync(user);
 
@@ -382,7 +384,9 @@ public sealed class AuthServiceTests
     public async Task GetMeAsync_UserPreference_IsReflectedInTheResolvedPath()
     {
         User user = MakeActiveUser(BCrypt.Net.BCrypt.HashPassword("x"));
-        user.OfficeId = null;
+        // Host-office user — DECISION F (RAL-258) moved cross-office authority onto the flag.
+        user.OfficeId = 1;
+        user.Office   = new Office { Id = 1, OfficeCode = "PPDO", IsHostOffice = true };
         user.LandingPage = LandingPage.Profile;
 
         MeResponse me = await BuildSut(new Mock<IUserRepository>()).GetMeAsync(user);

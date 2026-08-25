@@ -48,8 +48,20 @@ public sealed class BudgetPlanningDashboardFunctionsTests
         Username     = "test",
         PasswordHash = "hash",
         Role         = UserRole.Staff,
-        OfficeId     = officeId,
+        // DECISION F (RAL-258): the host-office flag grants cross-office access, not a null
+        // office id. `officeId: null` here still reads as "the PPDO caller" — it now resolves
+        // to the host office row rather than to the absence of one.
+        OfficeId     = officeId ?? HostOfficeId,
+        Office       = new Office
+        {
+            Id           = officeId ?? HostOfficeId,
+            OfficeCode   = officeId is null ? "PPDO" : $"OFF{officeId}",
+            IsHostOffice = officeId is null,
+        },
     };
+
+    /// <summary>Id of the office flagged <c>IsHostOffice</c> in these fixtures.</summary>
+    private const int HostOfficeId = 1;
 
     private void Authenticate(User caller, bool canAccessBudgetPlanning = true)
     {

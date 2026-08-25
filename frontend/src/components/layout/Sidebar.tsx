@@ -114,7 +114,7 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
 
   // Non-PPDO office users (officeId set) get Budget Planning ONLY — no Dashboard,
   // Inventory, Resource Links (PPDO-internal), Configuration, or User Management.
-  const isOfficeUser       = me != null && me.officeId != null;
+  const isOfficeUser       = me != null && !me.isHostOffice;
 
   const hasInventory       = me?.canAccessInventory      === true;
   const hasReport          = me?.canAccessReports         === true;

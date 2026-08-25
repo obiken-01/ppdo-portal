@@ -34,7 +34,7 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useMe } from "@/lib/me-cache";
-import { findGeneralFund, findPpdoOffice, listOffices, listDivisions, listFundingSources } from "@/lib/config";
+import { findGeneralFund, findHostOffice, listOffices, listDivisions, listFundingSources } from "@/lib/config";
 import {
   allocationErrorMessage,
   getAllocationsAllFunds,
@@ -458,7 +458,7 @@ function AllocationPageInner() {
 
   // ── Derived ───────────────────────────────────────────────────────────────
 
-  const isOfficeUser = me != null && me.officeId != null;
+  const isOfficeUser = me != null && !me.isHostOffice;
   const selectedOffice = officeList.find((o) => o.id === selectedOfficeId) ?? null;
 
   const unassignedCount = useMemo(
@@ -505,10 +505,10 @@ function AllocationPageInner() {
 
   useEffect(() => {
     if (!me) return;
-    if (me.officeId != null) {
+    if (!me.isHostOffice) {
       setSelectedOfficeId(me.officeId);
     } else {
-      const ppdo = findPpdoOffice(officeList);
+      const ppdo = findHostOffice(officeList);
       if (ppdo) setSelectedOfficeId(ppdo.id);
     }
   }, [me, officeList]);

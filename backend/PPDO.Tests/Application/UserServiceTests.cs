@@ -72,13 +72,35 @@ public sealed class UserServiceTests
         return divisions;
     }
 
+    /// <summary>Id of the office flagged <c>IsHostOffice</c> in these fixtures (DECISION F, RAL-258).</summary>
+    private const int HostOfficeId = 1;
+
+    private static Office HostOffice => new()
+    {
+        Id = HostOfficeId, OfficeCode = "PPDO", OfficeName = "Provincial Planning and Development Office",
+        IsActive = true, IsHostOffice = true,
+    };
+
+    /// <summary>
+    /// An office repo that can answer the host-office lookup. UserService calls it whenever a user
+    /// is saved without an office, because "no office" now means "the host office" (RAL-258).
+    /// </summary>
+    private static Mock<IOfficeRepository> DefaultOffices()
+    {
+        Mock<IOfficeRepository> offices = new();
+        offices.Setup(o => o.GetHostOfficeAsync(It.IsAny<CancellationToken>())).ReturnsAsync(HostOffice);
+        offices.Setup(o => o.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Office> { HostOffice });
+        return offices;
+    }
+
     private static UserService BuildSut(
         Mock<IUserRepository> repoMock,
-        Mock<IRepository<Office>>? officeMock = null,
+        Mock<IOfficeRepository>? officeMock = null,
         Mock<IRepository<Division>>? divisionMock = null,
         Mock<IAuditService>? auditMock = null) =>
         new(repoMock.Object,
-            (officeMock ?? new Mock<IRepository<Office>>()).Object,
+            (officeMock ?? DefaultOffices()).Object,
             (divisionMock ?? DefaultDivisions()).Object,
             NullLogger<UserService>.Instance,
             (auditMock ?? new Mock<IAuditService>()).Object,
@@ -397,6 +419,60 @@ public sealed class UserServiceTests
         return repo;
     }
 
+    // ── Host office assignment (DECISION F, RAL-258) ──────────────────────────
+
+    [Fact]
+    public async Task CreateAsync_NoOfficeSupplied_AssignsTheHostOffice()
+    {
+        User? persisted = null;
+        Mock<IUserRepository> repo = RepoForCreate(MakeAdmin(), u => persisted = u);
+        CreateUserDto dto = new("Planner", "planner", "p@ppdo.gov.ph", "Staff", 2, null, null);
+
+        ServiceResult<UserCredentialResponseDto> result =
+            await BuildSut(repo).CreateAsync(MakeSuperAdmin(), dto);
+
+        // Before DECISION F this left OfficeId null, which meant "sees every office". Leaving it
+        // null now would mean the opposite — a user scoped to nothing.
+        Assert.True(result.IsSuccess);
+        Assert.Equal(HostOfficeId, persisted!.OfficeId);
+    }
+
+    [Fact]
+    public async Task CreateAsync_HostOfficeSelectedExplicitly_AdminRoleIsStillAllowed()
+    {
+        Mock<IUserRepository> repo = RepoForCreate(MakeAdmin(), _ => { });
+        CreateUserDto dto = new("Admin Two", "admin2", "a2@ppdo.gov.ph", "Admin",
+                                null, null, null, OfficeId: HostOfficeId);
+
+        ServiceResult<UserCredentialResponseDto> result =
+            await BuildSut(repo).CreateAsync(MakeSuperAdmin(), dto);
+
+        // Only a GUEST office forces the Staff role. The host office holds the admins, so
+        // rejecting this would make it impossible to create one.
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task CreateAsync_GuestOfficeWithAdminRole_IsStillRejected()
+    {
+        Mock<IUserRepository> repo = RepoForCreate(MakeAdmin(), _ => { });
+        Mock<IOfficeRepository> offices = DefaultOffices();
+        offices.Setup(o => o.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Office>
+            {
+                HostOffice,
+                new() { Id = 7, OfficeCode = "PGO", OfficeName = "Provincial Gov Office", IsActive = true },
+            });
+
+        CreateUserDto dto = new("Enc", "enc", "enc@lgu.gov.ph", "Admin",
+                                null, null, null, OfficeId: 7);
+
+        ServiceResult<UserCredentialResponseDto> result =
+            await BuildSut(repo, offices).CreateAsync(MakeSuperAdmin(), dto);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
     [Fact]
     public async Task CreateAsync_ReachableLandingPage_IsStored()
     {
@@ -481,9 +557,14 @@ public sealed class UserServiceTests
         repo.Setup(r => r.GetByIdWithDivisionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(MakeStaff());
 
-        Mock<IRepository<Office>> offices = new();
+        Mock<IOfficeRepository> offices = new();
         offices.Setup(o => o.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<Office> { new() { Id = 7, OfficeCode = "PGO", OfficeName = "Provincial Gov Office", IsActive = true } });
+            .ReturnsAsync(new List<Office>
+            {
+                HostOffice,
+                new() { Id = 7, OfficeCode = "PGO", OfficeName = "Provincial Gov Office", IsActive = true },
+            });
+        offices.Setup(o => o.GetHostOfficeAsync(It.IsAny<CancellationToken>())).ReturnsAsync(HostOffice);
 
         // Office user — division 5 belongs to office 7 (see DefaultDivisions()).
         CreateUserDto dto = new("Office Encoder", "enc", "enc@lgu.gov.ph", "Staff", 5, null, null, OfficeId: 7);
@@ -505,7 +586,7 @@ public sealed class UserServiceTests
         repo.Setup(r => r.FindByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((User?)null);
 
-        Mock<IRepository<Office>> offices = new();
+        Mock<IOfficeRepository> offices = new();
         offices.Setup(o => o.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Office> { new() { Id = 7, OfficeName = "PGO", IsActive = true } });
 
@@ -522,7 +603,7 @@ public sealed class UserServiceTests
     {
         Mock<IUserRepository> repo = new();
 
-        Mock<IRepository<Office>> offices = new();
+        Mock<IOfficeRepository> offices = new();
         offices.Setup(o => o.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Office> { new() { Id = 7, OfficeName = "Closed Office", IsActive = false } });
 

@@ -26,6 +26,14 @@ public sealed class MeResponseDto
     /// <summary>Full office name. Null for PPDO-internal users.</summary>
     public string? OfficeName { get; init; }
 
+    /// <summary>
+    /// Whether this user belongs to the host office and so holds cross-office authority
+    /// (DECISION F, RAL-258). The client's single source for that question — it replaces
+    /// <c>officeId == null</c>, which used to mean the same thing by proxy and no longer does
+    /// now that every user has an office.
+    /// </summary>
+    public bool IsHostOffice { get; init; }
+
     public string? Position { get; init; }
 
     // -- Effective permission flags (resolved via PermissionService) ----------

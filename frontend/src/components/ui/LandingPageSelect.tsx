@@ -34,7 +34,9 @@ export function reachableLandingPages(r: LandingReachability): LandingPageKey[] 
   return ALL.filter(({ key }) => {
     switch (key) {
       case "MainDashboard":           return !r.isOfficeUser;
-      case "InventoryDashboard":      return r.canAccessInventory;
+      // Inventory is PPDO-internal — the portal gate blocks it for office users regardless of
+      // what their division's flag says, so it must never be offered to them (RAL-271).
+      case "InventoryDashboard":      return !r.isOfficeUser && r.canAccessInventory;
       case "BudgetPlanningDashboard": return r.canAccessBudgetPlanning;
       case "Profile":                 return true;
     }
@@ -44,7 +46,7 @@ export function reachableLandingPages(r: LandingReachability): LandingPageKey[] 
 /** Reachability for the signed-in user, from /auth/me. */
 export function reachabilityFromMe(me: MeResponse): LandingReachability {
   return {
-    isOfficeUser: me.officeId != null,
+    isOfficeUser: !me.isHostOffice,
     canAccessInventory: me.canAccessInventory,
     canAccessBudgetPlanning: me.canAccessBudgetPlanning,
   };

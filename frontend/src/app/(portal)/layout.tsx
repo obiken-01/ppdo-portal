@@ -43,7 +43,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/budget-planning":       "Budget Planning",
   "/config":                "Configuration",
   "/resource-links":        "Resource Links",
-  "/profile":               "My Profile",
+  "/profile":               "My Account",  // transient — /profile redirects to /account (RAL-252)
   "/account":               "My Account",
   "/inventory/create-pr":       "Create Purchase Request",
   "/inventory/receive-delivery": "Receive Delivery",
@@ -159,7 +159,7 @@ export default function PortalLayout({
   // first navigation to any section is instant.
   useEffect(() => {
     if (!me) return;
-    const isOfficeUser = me.officeId != null;
+    const isOfficeUser = !me.isHostOffice;
     const routes: string[] = ["/account"];
     if (!isOfficeUser) {
       routes.push("/dashboard", "/resource-links");
@@ -208,9 +208,11 @@ export default function PortalLayout({
   // looping forever. Send those users to /account (a terminal page they can
   // always reach) instead.
   useEffect(() => {
-    if (!me || me.officeId == null) return;
+    if (!me || me.isHostOffice) return;
     const allowed =
       pathname.startsWith("/budget-planning") ||
+      // /profile only redirects to /account (RAL-252); allowing it lets that redirect land
+      // instead of the gate racing it to landingPath.
       pathname.startsWith("/profile") ||
       pathname.startsWith("/account") ||
       // /home resolves the destination itself; letting the gate fire here too would

@@ -167,6 +167,13 @@ public sealed class MeResponse
     /// <summary>Full office name. Null for PPDO-internal users.</summary>
     public string? OfficeName { get; init; }
 
+    /// <summary>
+    /// Whether this user belongs to the host office and so holds cross-office authority
+    /// (DECISION F, RAL-258). Replaces <c>OfficeId == null</c>, which meant the same thing by
+    /// proxy until every user gained an office.
+    /// </summary>
+    public bool IsHostOffice { get; init; }
+
     public string? Position { get; init; }
 
     /// <summary>

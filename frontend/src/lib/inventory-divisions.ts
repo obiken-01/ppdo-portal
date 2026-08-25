@@ -21,7 +21,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { PPDO_OFFICE_CODE, listDivisions } from "@/lib/config";
+import { findHostOffice, listDivisions, listOffices } from "@/lib/config";
 import type { DivisionResponse } from "@/types";
 
 let _cache: DivisionResponse[] | null = null;
@@ -34,22 +34,27 @@ export function clearInventoryDivisionsCache(): void {
 }
 
 /**
- * Fetches the active PPDO divisions.
+ * Fetches the active divisions of the host office — inventory is a host-office feature, so a
+ * Purchase Request always belongs to one of its divisions (DECISION F, RAL-258).
  * - Returns a resolved promise immediately when the cache is warm.
  * - Deduplicates concurrent calls.
  *
- * Falls back to all active divisions if none carry the PPDO office code, so a
- * misconfigured office row degrades to "too many options" rather than an empty
- * dropdown that blocks every submission.
+ * Falls back to all active divisions when no office is flagged as host, so a misconfigured
+ * office row degrades to "too many options" rather than an empty dropdown that blocks every
+ * submission. Same fallback the backend's GetSelectableDivisionsAsync uses.
+ *
+ * The offices request is what identifies the host office. It runs once per cache fill, alongside
+ * the divisions request rather than after it, so this costs no extra round trip.
  */
 export function fetchInventoryDivisions(): Promise<DivisionResponse[]> {
   if (_cache) return Promise.resolve(_cache);
   if (_inflight) return _inflight;
 
-  _inflight = listDivisions({ active: "true" })
-    .then((all) => {
-      const ppdo = all.filter((d) => d.officeCode === PPDO_OFFICE_CODE);
-      _cache = ppdo.length > 0 ? ppdo : all;
+  _inflight = Promise.all([listDivisions({ active: "true" }), listOffices({ active: "true" })])
+    .then(([all, offices]) => {
+      const hostCode = findHostOffice(offices)?.officeCode;
+      const scoped = hostCode ? all.filter((d) => d.officeCode === hostCode) : [];
+      _cache = scoped.length > 0 ? scoped : all;
       return _cache;
     })
     .finally(() => { _inflight = null; });

@@ -142,7 +142,7 @@ export default function OfficeConfigPage() {
   useEffect(() => {
     fetchMe()
       .then((data) => {
-        if (!data.canManageConfig) router.replace(data.officeId != null ? "/budget-planning" : "/dashboard");
+        if (!data.canManageConfig) router.replace(!data.isHostOffice ? "/budget-planning" : "/dashboard");
       })
       .catch(() => router.replace("/login"));
   }, [router]);
@@ -600,7 +600,11 @@ export default function OfficeConfigPage() {
               Rows are matched by <span className="font-mono text-xs">office_code</span>: new codes are
               added and existing ones are updated. Nothing is deleted.
             </p>
-            <p className="text-xs text-slate-600">Expected columns: office_code, office_name, is_active, office_ref_code (optional).</p>
+            <p className="text-xs text-slate-600">
+              Expected columns: office_code, office_name, is_active, office_ref_code (optional),
+              landing_page (optional — MainDashboard, InventoryDashboard, BudgetPlanningDashboard
+              or Profile; blank means no preference).
+            </p>
           </div>
         </Modal>
       )}

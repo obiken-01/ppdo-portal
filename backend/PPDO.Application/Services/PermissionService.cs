@@ -12,16 +12,18 @@ namespace PPDO.Application.Services;
 ///   Admin      → true for every flag EXCEPT special per-user grants (CanManageAllocation)
 ///   Staff      → Override ?? user.Division.&lt;flag&gt; ?? false
 ///
-/// CanUploadAip is additionally PPDO-only (office users can never hold it).
-/// CanAccessBudgetPlanning defaults ON for office users (office_id set) — it's their only
-/// feature and they have no division to inherit from; an override can still turn it off.
+/// CanUploadAip is additionally host-office-only (a guest office can never hold it).
+/// CanAccessBudgetPlanning defaults ON for guest-office users — it's their only feature and they
+/// have no division to inherit from; an override can still turn it off.
 /// CanManageAllocation is a per-user grant: SuperAdmin → true, else Override ?? false.
 /// CanAccessProfile is always true.
 ///
 /// No database access — the <see cref="User"/> must be loaded with <see cref="User.Division"/>
-/// included (JwtMiddleware guarantees this). When Division is null (SuperAdmin/Admin, or a
-/// not-yet-assigned Staff user) flag lookups fall back to false — harmless for SuperAdmin/Admin
-/// because they short-circuit first.
+/// AND <see cref="User.Office"/> included (JwtMiddleware guarantees both). Division drives the
+/// flag lookups; Office carries the host-office flag that the two rules above branch on
+/// (DECISION F, RAL-258). When Division is null (SuperAdmin/Admin, or a not-yet-assigned Staff
+/// user) flag lookups fall back to false — harmless for SuperAdmin/Admin because they
+/// short-circuit first.
 /// </summary>
 public sealed class PermissionService : IPermissionService
 {
@@ -64,14 +66,14 @@ public sealed class PermissionService : IPermissionService
     {
         if (IsAdminOrAbove(user)) return Task.FromResult(true);
 
-        // Office users (office_id set) have Budget Planning as their ONLY feature, and they
-        // can't be assigned a division in the user form (scoped by office_id, not division).
-        // Default their access ON so a division-less office user isn't locked out of the one
-        // thing they exist to do; an explicit override can still turn it off.
-        if (user.OfficeId is not null)
+        // Guest-office users have Budget Planning as their ONLY feature, and they can't be
+        // assigned a division in the user form (scoped by office_id, not division). Default their
+        // access ON so a division-less office user isn't locked out of the one thing they exist
+        // to do; an explicit override can still turn it off.
+        if (!OfficeScope.IsHostOfficeUser(user))
             return Task.FromResult(user.OverrideCanAccessBudgetPlanning ?? true);
 
-        // PPDO-internal Staff: inherit from their division.
+        // Host-office Staff: inherit from their division.
         return Task.FromResult(user.OverrideCanAccessBudgetPlanning ?? user.Division?.CanAccessBudgetPlanning ?? false);
     }
 
@@ -80,8 +82,9 @@ public sealed class PermissionService : IPermissionService
     {
         if (IsAdminOrAbove(user)) return Task.FromResult(true);
 
-        // PPDO-only: a non-PPDO office user can never upload (the file contains every office's records).
-        if (user.OfficeId is not null) return Task.FromResult(false);
+        // Host-office only: a guest office can never upload (the file contains every office's
+        // records).
+        if (!OfficeScope.IsHostOfficeUser(user)) return Task.FromResult(false);
 
         return Task.FromResult(user.OverrideCanUploadAip ?? user.Division?.CanUploadAip ?? false);
     }

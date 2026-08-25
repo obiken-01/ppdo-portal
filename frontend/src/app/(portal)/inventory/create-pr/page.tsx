@@ -494,7 +494,7 @@ export default function CreatePRPage() {
     fetchMe()
       .then((data) => {
         if (!data.canAccessInventory) {
-          router.replace(data.officeId != null ? "/budget-planning" : "/dashboard");
+          router.replace(!data.isHostOffice ? "/budget-planning" : "/dashboard");
           return;
         }
         setMe(data);

@@ -34,7 +34,7 @@ import {
   unlockWfp,
   wfpErrorMessage,
 } from "@/lib/wfp";
-import { findGeneralFund, findPpdoOffice, listAccounts, listDivisions, listFundingSources, listOffices } from "@/lib/config";
+import { findGeneralFund, findHostOffice, listAccounts, listDivisions, listFundingSources, listOffices } from "@/lib/config";
 import { getCeiling, getSetupStatus, getAllocations, getPrograms } from "@/lib/allocation";
 import Modal from "@/components/ui/Modal";
 import MoneyInput from "@/components/ui/MoneyInput";
@@ -687,11 +687,11 @@ function WfpPageInner() {
   useEffect(() => {
     if (!me) return;
     if (!searchParams.get("officeId")) {
-      if (me.officeId != null) {
+      if (!me.isHostOffice) {
         setSelectedOfficeId(me.officeId);
       } else {
         // PPDO-internal users (me.officeId is null by design) default to PPDO itself.
-        const ppdo = findPpdoOffice(officeList);
+        const ppdo = findHostOffice(officeList);
         if (ppdo) setSelectedOfficeId(ppdo.id);
       }
     }
@@ -1037,7 +1037,7 @@ function WfpPageInner() {
   // ── Derived flags ─────────────────────────────────────────────────────────
 
   const isFinal = wfp?.status === "Final";
-  const isOfficeUser = me != null && me.officeId != null;
+  const isOfficeUser = me != null && !me.isHostOffice;
   const canBypassDivision =
     me?.role === "SuperAdmin" || me?.role === "Admin" || me?.canManageAllocation === true;
 

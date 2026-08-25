@@ -310,7 +310,7 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
   const { toast } = useToast();
   const me = useMe(
     (m) => m.canAccessBudgetPlanning,
-    (m) => (m.officeId != null ? "/account" : "/dashboard"),
+    (m) => (m.isHostOffice ? "/dashboard" : "/account"),
   );
 
   const isEdit = record != null;
@@ -320,7 +320,7 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
   const isMultiOffice = isEdit && record.officeId == null && record.entryMode === "Upload";
   const isReadOnly = isEdit && (record.status !== "Draft" || isMultiOffice);
   const isAdmin = me?.role === "Admin" || me?.role === "SuperAdmin";
-  const isOfficeUser = me != null && me.officeId != null;
+  const isOfficeUser = me != null && !me.isHostOffice;
   // RAL-115 — inline per-program edit for upload-derived programs, independent of the
   // form-level isReadOnly flag (multi-office Upload records are always isReadOnly per
   // RAL-113's design, but that's exactly the case this feature targets). Same gate as
@@ -456,7 +456,7 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
   }, []);
 
   useEffect(() => {
-    if (!isEdit && me?.officeId != null) setOfficeId(me.officeId);
+    if (!isEdit && me != null && !me.isHostOffice) setOfficeId(me.officeId);
   }, [me, isEdit]);
 
   // ── Derived ────────────────────────────────────────────────────────────────

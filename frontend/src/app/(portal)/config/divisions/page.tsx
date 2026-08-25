@@ -14,7 +14,8 @@
  * CSV columns (§5 of Allocation_Requirements.md):
  *   office_code, code, name, is_active,
  *   can_access_budget_planning, can_access_inventory, can_access_reports,
- *   can_manage_config, can_upload_aip, can_manage_users, can_manage_resource_links
+ *   can_manage_config, can_upload_aip, can_manage_users, can_manage_resource_links,
+ *   landing_page (RAL-259 — enum name or blank)
  *
  * Access guard: only users with canManageConfig may view this page.
  *
@@ -190,7 +191,7 @@ export default function DivisionConfigPage() {
   useEffect(() => {
     fetchMe()
       .then((data) => {
-        if (!data.canManageConfig) router.replace(data.officeId != null ? "/budget-planning" : "/dashboard");
+        if (!data.canManageConfig) router.replace(!data.isHostOffice ? "/budget-planning" : "/dashboard");
       })
       .catch(() => router.replace("/login"));
   }, [router]);
@@ -671,7 +672,9 @@ export default function DivisionConfigPage() {
             <p className="text-xs text-slate-600">
               Expected columns: office_code, code, name, is_active, can_access_budget_planning,
               can_access_inventory, can_access_reports, can_manage_config, can_upload_aip,
-              can_manage_users, can_manage_resource_links.
+              can_manage_users, can_manage_resource_links, landing_page (optional —
+              MainDashboard, InventoryDashboard, BudgetPlanningDashboard or Profile; blank means
+              no preference).
             </p>
           </div>
         </Modal>

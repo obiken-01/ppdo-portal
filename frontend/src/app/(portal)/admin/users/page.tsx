@@ -173,23 +173,30 @@ function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFor
   const showOverrides      = form.role === "Staff";
   const showAdminOverrides = form.role === "Admin";
   const adminOnlyKeys      = OVERRIDE_KEYS.filter((o) => o.adminOnly);
-  // A non-PPDO office user has an office assigned. Their division must belong to that office.
-  const isOfficeUser = form.officeId != null;
-  // Division is required only for PPDO-internal Staff. Office users are scoped by office_id, not division.
+  // Every user has an office since RAL-258, so "has an office" no longer distinguishes anyone.
+  // A guest-office user is one whose office is NOT the host office; leaving the picker blank
+  // means the host office, which is what an empty selection has always meant in practice.
+  const hostOffice = offices.find((o) => o.isHostOffice) ?? null;
+  const selectedOffice = offices.find((o) => o.id === form.officeId) ?? null;
+  const isOfficeUser = form.officeId != null && !selectedOffice?.isHostOffice;
+  // Division is required only for host-office Staff. Guest-office users are scoped by office_id.
   const isPpdoDivisionUser = form.role === "Staff" && !isOfficeUser;
   // Drives which landing pages can be offered — a Staff user inherits feature flags from here.
   const selectedDivision = divisions.find((d) => d.id === form.divisionId) ?? null;
 
-  // Division options: filter to the selected office's divisions.
-  // No office selected = PPDO-internal user → show only PPDO divisions (officeCode === "PPDO").
+  // Division options: filter to the selected office's divisions. A blank office means the host
+  // office, whose divisions are the ones a host-office user can belong to.
   const divisionOptions = isOfficeUser
     ? divisions.filter((d) => d.officeId === form.officeId)
-    : divisions.filter((d) => d.officeCode === "PPDO");
+    : divisions.filter((d) => d.officeId === hostOffice?.id);
 
   // Selecting an office forces a non-admin role (office users are encoders).
   function handleOfficeChange(officeId: number | null) {
     const patch: Partial<CreateUserRequest & UpdateUserRequest> = { officeId, divisionId: null };
-    if (officeId != null && (form.role === "SuperAdmin" || form.role === "Admin")) patch.role = "Staff";
+    // Only a GUEST office forces the Staff role — the host office still holds admins.
+    const picked = offices.find((o) => o.id === officeId) ?? null;
+    if (officeId != null && !picked?.isHostOffice
+        && (form.role === "SuperAdmin" || form.role === "Admin")) patch.role = "Staff";
     onChange(patch);
   }
 
@@ -276,17 +283,21 @@ function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFor
           )}
         </div>
 
-        {/* Office (v1.1) — set to create a non-PPDO office user (Budget Planning only). */}
+        {/* Office (v1.1) — pick a guest office to create a Budget-Planning-only user. */}
         <div className="col-span-2">
           <label className="block text-xs font-medium text-slate-600 mb-1">
             Office
-            <span className="ml-1 font-normal text-slate-600">(non-PPDO user — clears Division)</span>
+            <span className="ml-1 font-normal text-slate-600">
+              (another office — clears Division)
+            </span>
           </label>
           <OfficeSelect
             offices={offices}
             value={form.officeId ?? null}
             onChange={handleOfficeChange}
-            allOptionLabel="— None (PPDO-internal user) —"
+            // Blank means the host office, not "no office" — every user has one since RAL-258.
+            // Named from the flagged row rather than the literal "PPDO" so a rename carries.
+            allOptionLabel={`— ${hostOffice?.officeCode ?? "Host office"} (this office) —`}
           />
         </div>
 
@@ -523,7 +534,7 @@ export default function UsersPage() {
   useEffect(() => {
     api.get<MeResponse>("/auth/me").then(({ data }) => {
       if (!data.canManageUsers) {
-        router.replace(data.officeId != null ? "/budget-planning" : "/dashboard");
+        router.replace(!data.isHostOffice ? "/budget-planning" : "/dashboard");
       } else {
         setAuthChecked(true);
       }
@@ -627,8 +638,12 @@ export default function UsersPage() {
 
   function openEdit(user: UserResponse) {
     setEditTarget(user);
-    // Office users (non-PPDO): clear any stale PPDO division — they're scoped by officeId.
-    const divisionId = user.officeId != null ? null : user.divisionId;
+    // Guest-office users: clear any stale host-office division — they're scoped by officeId.
+    // Must test "is a GUEST office", not "has an office": since RAL-258 every user has one, so
+    // the old null test would wipe the division of every host-office user opened for edit.
+    const isGuestOffice =
+      user.officeId != null && !offices.find((o) => o.id === user.officeId)?.isHostOffice;
+    const divisionId = isGuestOffice ? null : user.divisionId;
     setEditForm({
       fullName:                      user.fullName,
       username:                      user.username,

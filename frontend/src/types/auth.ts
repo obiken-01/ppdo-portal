@@ -52,12 +52,24 @@ export interface MeResponse {
   divisionId: number | null;
   /** Division name. Null for SuperAdmin/Admin. */
   division: string | null;
-  /** Provincial office id, or null for PPDO-internal users (the PPDO discriminator). */
+  /**
+   * Provincial office id. Every user has one as of RAL-258 — it is no longer the PPDO
+   * discriminator, and a null here now means an incomplete record rather than full access.
+   * Use {@link isHostOffice} to ask whether a user holds cross-office authority.
+   */
   officeId: number | null;
-  /** Short office code, e.g. "PEO". Null for PPDO-internal users. */
+  /** Short office code, e.g. "PEO". */
   officeCode: string | null;
-  /** Full office name. Null for PPDO-internal users. */
+  /** Full office name. */
   officeName: string | null;
+  /**
+   * Whether this user belongs to the host office — PPDO today (DECISION F, RAL-258).
+   *
+   * The single client-side answer to "can this user see every office's data?". It replaces
+   * `officeId == null`, which meant the same thing by proxy until every user gained an office,
+   * and the `officeCode === "PPDO"` string comparisons that had to agree with it by hand.
+   */
+  isHostOffice: boolean;
   position?: string | null;
   canAccessInventory: boolean;
   canAccessReports: boolean;

@@ -127,7 +127,7 @@ export default function ConfigDashboardPage() {
   useEffect(() => {
     fetchMe()
       .then((data) => {
-        if (!data.canManageConfig) router.replace(data.officeId != null ? "/budget-planning" : "/dashboard");
+        if (!data.canManageConfig) router.replace(!data.isHostOffice ? "/budget-planning" : "/dashboard");
         else setCanManageUsers(data.canManageUsers === true);
       })
       .catch(() => router.replace("/login"));

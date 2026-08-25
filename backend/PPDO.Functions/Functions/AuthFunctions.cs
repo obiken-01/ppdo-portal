@@ -163,6 +163,7 @@ public sealed class AuthFunctions
             OfficeId                = me.OfficeId,
             OfficeCode              = me.OfficeCode,
             OfficeName              = me.OfficeName,
+            IsHostOffice            = me.IsHostOffice,
             Position                = me.Position,
             LandingPath             = me.LandingPath,
             LandingPage             = me.LandingPage,

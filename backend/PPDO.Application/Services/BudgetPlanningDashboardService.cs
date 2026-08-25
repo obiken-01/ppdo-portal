@@ -21,8 +21,6 @@ namespace PPDO.Application.Services;
 /// </summary>
 public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardService
 {
-    private const string PpdoOfficeCode = "PPDO";
-
     /// <summary>Scopes GetRecentActivityAsync to Budget Planning's own tables (AIP, LDIP, WFP,
     /// Allocation) — excludes "users" and Config tables (accounts, divisions, offices, etc.),
     /// which surface instead on the dedicated Audit Log page (SuperAdmin-only, RAL-174).</summary>
@@ -73,18 +71,19 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     public async Task<PpdoDashboardDto> GetDashboardAsync(
         int? fiscalYear, int? divisionId, CancellationToken ct = default)
     {
-        Office ppdo = await _officeRepo.GetByCodeAsync(PpdoOfficeCode, ct)
-            ?? throw new InvalidOperationException($"Office '{PpdoOfficeCode}' is not seeded.");
+        Office host = await _officeRepo.GetHostOfficeAsync(ct)
+            ?? throw new InvalidOperationException(
+                "No office is flagged as the host office (offices.is_host_office).");
 
         (int resolvedFY, IReadOnlyList<int> availableFiscalYears) = await ResolveFiscalYearsAsync(fiscalYear, ct);
 
-        OfficeLdipSummaryDto ldip = await BuildOfficeLdipSummaryAsync(ppdo.Id, resolvedFY, ct);
-        OfficeAipSummaryDto  aip  = await BuildOfficeAipSummaryAsync(ppdo.Id, resolvedFY, ct);
+        OfficeLdipSummaryDto ldip = await BuildOfficeLdipSummaryAsync(host.Id, resolvedFY, ct);
+        OfficeAipSummaryDto  aip  = await BuildOfficeAipSummaryAsync(host.Id, resolvedFY, ct);
 
         // Divisions in scope: every active division of PPDO, narrowed to one when the caller
         // (the Functions layer) has already clamped divisionId for a non-finance caller.
         List<Division> divisions = (await _divisionRepo.GetAllAsync(ct))
-            .Where(d => d.OfficeId == ppdo.Id && d.IsActive
+            .Where(d => d.OfficeId == host.Id && d.IsActive
                      && (divisionId == null || d.Id == divisionId.Value))
             .OrderBy(d => d.Name)
             .ToList();
@@ -99,16 +98,16 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
             .Where(f => f.IsActive)
             .ToList();
         Dictionary<int, IReadOnlyList<DivisionAllocationDto>> allocationsByFund =
-            await GetAllocationsByFundAsync(ppdo.Id, resolvedFY, activeFunds, ct);
+            await GetAllocationsByFundAsync(host.Id, resolvedFY, activeFunds, ct);
 
         IReadOnlyList<DivisionWfpStatusDto> wfpByDivision =
-            await BuildWfpByDivisionAsync(ppdo.Id, resolvedFY, divisions, activeFunds, allocationsByFund, ct);
+            await BuildWfpByDivisionAsync(host.Id, resolvedFY, divisions, activeFunds, allocationsByFund, ct);
         IReadOnlyList<FundCeilingDto> ceilingByFund =
             await BuildCeilingByFundAsync(
-                ppdo.Id, resolvedFY, divisions, activeFunds, allocationsByFund, _allocationService, ct);
+                host.Id, resolvedFY, divisions, activeFunds, allocationsByFund, _allocationService, ct);
 
         return new PpdoDashboardDto(
-            resolvedFY, availableFiscalYears, ppdo.Id, ppdo.OfficeCode, ppdo.OfficeName,
+            resolvedFY, availableFiscalYears, host.Id, host.OfficeCode, host.OfficeName,
             ldip, aip, wfpByDivision, ceilingByFund);
     }
 

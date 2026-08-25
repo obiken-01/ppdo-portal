@@ -31,26 +31,30 @@ public sealed class LandingPageResolverTests
             LandingPage = landing,
         };
 
-    /// <summary>PPDO-internal Staff (no office). Division drives their flags.</summary>
+    /// <summary>The host office — its users hold cross-office authority (DECISION F, RAL-258).</summary>
+    private static Office HostOffice => new() { Id = 1, OfficeCode = "PPDO", IsHostOffice = true };
+
+    /// <summary>Host-office Staff. Division drives their flags.</summary>
     private static User PpdoStaff(Division? division = null, LandingPage? landing = null)
         => new()
         {
             Id = Guid.NewGuid(),
             Role = UserRole.Staff,
-            OfficeId = null,
+            OfficeId = 1,
+            Office = HostOffice,
             Division = division,
             DivisionId = division?.Id,
             LandingPage = landing,
         };
 
-    /// <summary>Non-PPDO office user. Budget Planning is their only feature.</summary>
+    /// <summary>Guest-office user. Budget Planning is their only feature.</summary>
     private static User OfficeUser(LandingPage? landing = null, Office? office = null)
         => new()
         {
             Id = Guid.NewGuid(),
             Role = UserRole.Staff,
             OfficeId = 7,
-            Office = office,
+            Office = office ?? new Office { Id = 7, OfficeCode = "PEO", IsHostOffice = false },
             LandingPage = landing,
         };
 
@@ -77,7 +81,7 @@ public sealed class LandingPageResolverTests
     [Fact]
     public async Task ResolveAsync_NoUserOrDivisionPreference_FallsBackToOfficeDefault()
     {
-        Office office = new() { Id = 7, OfficeName = "PEO", LandingPage = LandingPage.Profile };
+        Office office = new() { Id = 7, OfficeName = "PEO", IsHostOffice = false, LandingPage = LandingPage.Profile };
         User user = OfficeUser(office: office);
 
         Assert.Equal(LandingPage.Profile, await Sut().ResolveAsync(user));
@@ -108,7 +112,7 @@ public sealed class LandingPageResolverTests
     [Fact]
     public async Task ResolveAsync_DivisionDefaultUnreachable_SkipsToOfficeDefault()
     {
-        Office office = new() { Id = 7, OfficeName = "PEO", LandingPage = LandingPage.Profile };
+        Office office = new() { Id = 7, OfficeName = "PEO", IsHostOffice = false, LandingPage = LandingPage.Profile };
         User user = OfficeUser(office: office);
         user.Division = DivisionWith(inventory: false, landing: LandingPage.InventoryDashboard);
 
@@ -151,6 +155,7 @@ public sealed class LandingPageResolverTests
             PpdoStaff(DivisionWith(inventory: true), landing: LandingPage.InventoryDashboard),
             OfficeUser(landing: LandingPage.MainDashboard),
             new() { Id = Guid.NewGuid(), Role = UserRole.Staff, OfficeId = 7,
+                    Office = new Office { Id = 7, OfficeCode = "PEO", IsHostOffice = false },
                     OverrideCanAccessBudgetPlanning = false },
         ];
 
@@ -172,6 +177,27 @@ public sealed class LandingPageResolverTests
     }
 
     [Fact]
+    public async Task IsReachableAsync_InventoryDashboard_IsFalseForOfficeUsersEvenWithTheFlag()
+    {
+        // A guest office whose division happens to carry can_access_inventory would otherwise
+        // resolve true here, but the portal gate blocks /inventory for them — inventory is
+        // host-office-only. Offering it strands them on a page the gate ejects them from (RAL-271).
+        User user = OfficeUser();
+        user.OverrideCanAccessInventory = true;
+
+        Assert.False(await Sut().IsReachableAsync(user, LandingPage.InventoryDashboard));
+    }
+
+    [Fact]
+    public async Task ResolveAsync_OfficeUserPrefersInventoryDashboard_SkipsIt()
+    {
+        User user = OfficeUser(landing: LandingPage.InventoryDashboard);
+        user.OverrideCanAccessInventory = true;
+
+        Assert.Equal(LandingPage.BudgetPlanningDashboard, await Sut().ResolveAsync(user));
+    }
+
+    [Fact]
     public async Task IsReachableAsync_MainDashboard_IsFalseForOfficeUsers()
     {
         Assert.False(await Sut().IsReachableAsync(OfficeUser(), LandingPage.MainDashboard));
@@ -181,7 +207,10 @@ public sealed class LandingPageResolverTests
     [Fact]
     public async Task IsReachableAsync_SuperAdmin_CanReachEveryPage()
     {
-        User superAdmin = new() { Id = Guid.NewGuid(), Role = UserRole.SuperAdmin, OfficeId = null };
+        User superAdmin = new()
+        {
+            Id = Guid.NewGuid(), Role = UserRole.SuperAdmin, OfficeId = 1, Office = HostOffice,
+        };
 
         foreach (LandingPage page in Enum.GetValues<LandingPage>())
             Assert.True(await Sut().IsReachableAsync(superAdmin, page), $"{page} should be reachable");

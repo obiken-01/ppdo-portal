@@ -10,7 +10,7 @@ namespace PPDO.Tests.Application;
 ///   SuperAdmin → true for everything (incl. allocation).
 ///   Admin      → true for every flag EXCEPT CanManageAllocation.
 ///   Staff      → Override ?? user.Division.&lt;flag&gt; ?? false.
-///   CanUploadAip is PPDO-only (office users never).
+///   CanUploadAip is host-office-only (guest offices never).
 ///   CanManageAllocation is a per-user grant (SuperAdmin bypass; Admin not auto).
 ///
 /// No mocks needed — PermissionService is pure logic. The "division" entity carries the flags.
@@ -18,6 +18,9 @@ namespace PPDO.Tests.Application;
 public sealed class PermissionServiceTests
 {
     private readonly PermissionService _sut = new();
+
+    /// <summary>Id of the office flagged <c>IsHostOffice</c> in these fixtures.</summary>
+    private const int HostOfficeId = 1;
 
     private static User MakeUser(
         UserRole role,
@@ -62,7 +65,16 @@ public sealed class PermissionServiceTests
             Role                          = role,
             DivisionId                    = division?.Id,
             Division                      = division,
-            OfficeId                      = officeId,
+            // DECISION F (RAL-258): everyone has an office, and the host-office flag — not a null
+            // office id — is what grants cross-office authority. `officeId: null` in these tests
+            // therefore means "in the host office", which is what it used to mean by proxy.
+            OfficeId                      = officeId ?? HostOfficeId,
+            Office                        = new Office
+            {
+                Id           = officeId ?? HostOfficeId,
+                OfficeCode   = officeId is null ? "PPDO" : $"OFF{officeId}",
+                IsHostOffice = officeId is null,
+            },
             OverrideCanAccessInventory    = overrideInventory,
             OverrideCanAccessReports      = overrideReports,
             OverrideCanManageUsers        = overrideManageUsers,

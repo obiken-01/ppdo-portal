@@ -62,21 +62,14 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
     }
 
     /// <summary>
-    /// office_code of PPDO itself. Inventory is a PPDO-internal feature — a Purchase Request
-    /// always belongs to one of PPDO's own divisions, never another office's.
-    /// Mirrors PPDO_OFFICE_CODE in frontend/src/lib/config.ts.
-    /// </summary>
-    private const string PpdoOfficeCode = "PPDO";
-
-    /// <summary>
     /// Resolves a division name (or code) to its active configurable division, or null
     /// (v1.2 — RAL-97).
     ///
-    /// Matching is scoped to PPDO's own divisions. Division names are only unique WITHIN an
-    /// office, so an unscoped match is ambiguous: "Administrative" exists under several
-    /// offices, and an unscoped FirstOrDefault could silently attach a PPDO purchase request
-    /// to another office's division. If the PPDO office row is missing (misconfigured), this
-    /// falls back to matching across all active divisions rather than failing every create.
+    /// Matching is scoped to the host office's own divisions. Division names are only unique
+    /// WITHIN an office, so an unscoped match is ambiguous: "Administrative" exists under several
+    /// offices, and an unscoped FirstOrDefault could silently attach a host-office purchase
+    /// request to a guest office's division. If no office is flagged as host (misconfigured),
+    /// this falls back to matching across all active divisions rather than failing every create.
     ///
     /// Both Name and Code are accepted (case-insensitive, trimmed) — Name wins. The Excel
     /// import path carries whatever the user typed into the Division cell, where the short
@@ -94,19 +87,19 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
     }
 
     /// <summary>
-    /// The active divisions a Purchase Request may be assigned to — PPDO's own, or all active
-    /// divisions if the PPDO office row is not configured.
+    /// The active divisions a Purchase Request may be assigned to — the host office's own, or all
+    /// active divisions if no office is flagged as host (DECISION F, RAL-258).
     /// </summary>
     private async Task<IReadOnlyList<Division>> GetSelectableDivisionsAsync(CancellationToken ct)
     {
         // Sequential awaits — never Task.WhenAll over a shared DbContext (see CLAUDE.md).
-        Office? ppdo = await _offices.GetByCodeAsync(PpdoOfficeCode, ct);
+        Office? host = await _offices.GetHostOfficeAsync(ct);
         IReadOnlyList<Division> all = await _divisions.GetAllAsync(ct);
 
         List<Division> active = all.Where(d => d.IsActive).ToList();
-        if (ppdo is null) return active;
+        if (host is null) return active;
 
-        List<Division> scoped = active.Where(d => d.OfficeId == ppdo.Id).ToList();
+        List<Division> scoped = active.Where(d => d.OfficeId == host.Id).ToList();
         return scoped.Count > 0 ? scoped : active;
     }
 
