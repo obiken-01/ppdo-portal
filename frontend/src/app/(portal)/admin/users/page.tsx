@@ -273,7 +273,10 @@ function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFor
         role="tabpanel"
         aria-labelledby="user-form-tab-details"
         hidden={tab !== "details"}
-        className="grid grid-cols-2 gap-3"
+        // The class must carry the hiding too. `hidden` works through the UA stylesheet's
+        // [hidden] { display: none }, which LOSES to any class that sets display — `grid` here —
+        // so the attribute alone left this panel fully visible on the Permissions tab.
+        className={tab === "details" ? "grid grid-cols-2 gap-3" : "hidden"}
       >
         <div className="col-span-2">
           <label className="block text-xs font-medium text-slate-600 mb-1">Full Name *</label>
@@ -444,7 +447,9 @@ function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFor
         role="tabpanel"
         aria-labelledby="user-form-tab-permissions"
         hidden={tab !== "permissions"}
-        className="space-y-4"
+        // Explicit for the same reason as the Details panel — space-y-4 sets no display, so this
+        // one happened to work on the attribute alone. Not something to leave to luck.
+        className={tab === "permissions" ? "space-y-4" : "hidden"}
       >
 
       {/* Create has no override fields — CreateUserDto does not carry them, so say where
