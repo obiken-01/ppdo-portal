@@ -82,8 +82,14 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         string needle = name.Trim();
         IReadOnlyList<Division> candidates = await GetSelectableDivisionsAsync(ct);
 
-        return candidates.FirstOrDefault(d => string.Equals(d.Name, needle, StringComparison.OrdinalIgnoreCase))
-            ?? candidates.FirstOrDefault(d => string.Equals(d.Code, needle, StringComparison.OrdinalIgnoreCase));
+        // Ordered by Id so the match is stable if the candidate set ever contains a collision —
+        // FirstOrDefault over an unordered repo result would otherwise bind to whichever row
+        // SQL happened to return first. (office_id, name) and (office_id, code) are both unique
+        // as of RAL-239, but this set can span offices when the PPDO office row is unconfigured.
+        return candidates.OrderBy(d => d.Id)
+                   .FirstOrDefault(d => string.Equals(d.Name, needle, StringComparison.OrdinalIgnoreCase))
+            ?? candidates.OrderBy(d => d.Id)
+                   .FirstOrDefault(d => string.Equals(d.Code, needle, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>

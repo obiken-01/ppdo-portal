@@ -568,17 +568,16 @@ export default function DivisionConfigPage() {
               <input
                 value={form.name}
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                disabled={!!editTarget}
                 placeholder="Administrative Division"
                 className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 disabled:bg-slate-100 disabled:text-slate-400"
               />
               {editTarget ? (
                 <p className="mt-1 text-[11px] text-slate-600">
-                  The division name is the unique key and cannot be changed.
+                  Renaming updates everywhere the division appears. Must be unique within the office.
                 </p>
               ) : (
                 <p className="mt-1 text-[11px] text-slate-600">
-                  Full division name — the upsert key within the office.
+                  Full division name — must be unique within the office.
                 </p>
               )}
             </div>
@@ -595,7 +594,9 @@ export default function DivisionConfigPage() {
                 className="w-full px-3 py-2 text-sm font-mono border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
               />
               <p className="mt-1 text-[11px] text-slate-600">
-                Optional short code for display in narrow grids (e.g. ADMIN, ICT). Leave blank if none.
+                Short code for narrow grids (e.g. ADMIN, ICT). Must be unique within the office.
+                It is also the CSV upsert key — a division with a code can be renamed by
+                re-uploading; one without will be added as a new row instead.
               </p>
             </div>
 

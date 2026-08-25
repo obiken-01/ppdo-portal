@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PPDO.Infrastructure.Data;
 
@@ -11,9 +12,11 @@ using PPDO.Infrastructure.Data;
 namespace PPDO.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260820022036_AddDivisionCodeUniqueIndex")]
+    partial class AddDivisionCodeUniqueIndex
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -824,10 +827,6 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasDefaultValue(true)
                         .HasColumnName("is_active");
 
-                    b.Property<int?>("LandingPage")
-                        .HasColumnType("int")
-                        .HasColumnName("landing_page");
-
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -1283,16 +1282,6 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasDefaultValue(true)
                         .HasColumnName("is_active");
 
-                    b.Property<bool>("IsHostOffice")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(false)
-                        .HasColumnName("is_host_office");
-
-                    b.Property<int?>("LandingPage")
-                        .HasColumnType("int")
-                        .HasColumnName("landing_page");
-
                     b.Property<string>("OfficeCode")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -1317,11 +1306,6 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasDefaultValueSql("GETUTCDATE()");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("IsHostOffice")
-                        .IsUnique()
-                        .HasDatabaseName("UX_offices_is_host_office")
-                        .HasFilter("[is_host_office] = 1");
 
                     b.HasIndex("OfficeCode")
                         .IsUnique()
@@ -2148,9 +2132,6 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
                         .HasDefaultValue(true);
-
-                    b.Property<int?>("LandingPage")
-                        .HasColumnType("int");
 
                     b.Property<int?>("OfficeId")
                         .HasColumnType("int");
