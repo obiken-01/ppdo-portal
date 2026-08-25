@@ -113,13 +113,15 @@ has held since v1.0.
 | **V18-07** | Audit-log coverage for permission, role, office and division changes | Confirm every write on `users`/`divisions` lands in the audit log; add what is missing. A precondition for accepting self-service password reset (§3.4) | S |
 | **V18-08** | User Management form restructure | The form now carries role, office, division, ~11 permission flags and a landing page. Group into sections (Access · Budget Planning · Inventory · Admin) rather than one flat list | M |
 
-**Decision candidate, not yet a work item — `Office.IsPpdo`, or giving PPDO users a real `OfficeId`.**
-Today PPDO-internal users are identified by `OfficeId == null`, and RAL-228 pinned that by test
-(null = full access — the *opposite* of `DivisionScope`'s null rule). The Budget Planning dashboard
-separately hardcodes `PpdoOfficeCode = "PPDO"`. That is two mechanisms for one concept. Making PPDO
-an explicit office row plus an `IsPpdo` flag would remove the inversion — but it is a data migration
-touching every scope check, and the current model works. **→ DECISION F (§9).** If it is going to
-change, it must change *before* Phase 2 builds AIP ownership on top of it.
+**✅ DECIDED 2026-08-25 (DECISION F) — PPDO becomes a real office link plus a host-office flag.**
+Ralph chose the full change over the half-measure, and it lands in **Phase 1 under V18-12**, not
+later. Until now PPDO-internal users were identified by `OfficeId == null`, pinned by RAL-228's
+tests (null = full access — the *opposite* of `DivisionScope`'s null rule), while the PPDO office
+*row* was found by three hardcoded `"PPDO"` string lookups. Two mechanisms for one concept, neither
+pointing at the other. From V18-12 there is one: PPDO users carry a real `office_id`, and the office
+row carries the flag. **Why now:** there are no production office accounts yet, so the backfill is a
+single `UPDATE`; and Phase 2 builds AIP ownership (V18-32) directly on the scope resolver, so
+changing after that means re-touching every ownership check. See V18-12 in §3.2 for the scope.
 
 ### 3.2 Configuration (theme B)
 
@@ -128,10 +130,29 @@ change, it must change *before* Phase 2 builds AIP ownership on top of it.
 | **V18-09** | `climate_change_typologies` config table + page | Replaces the free-text `AipActivity.CcTypologyCode`. Follows the existing config-page pattern (`config/funding-sources`) | M |
 | **V18-10** | `esre_codes` config table + page | Replaces the free-text eSRE field (`SS`/`ES`/`ID`/`EN`). Same pattern; can share V18-09's ticket if kept small | S |
 | **V18-11** | `ProgramDivision` string keys → real FKs | Keys on `OfficeRefCode` + `ProgramRefCode` **strings** today. Program→division assignment becomes load-bearing for PPDO visibility in Phase 3, so this stops being untidiness and becomes a correctness risk | M |
-| **V18-12** | Office config: extend the entity + page | Adds the default landing page (V18-16), plus whatever DECISION F concludes. Includes the CSV download/upload round-trip that page already uses | S |
+| **V18-12** | Office config: extend the entity + page — **plus the DECISION F host-office change** | Adds the default landing page (V18-16), and carries DECISION F: the `IsHostOffice` flag, PPDO users gaining a real `office_id`, and the retirement of `OfficeId == null`. Includes the CSV download/upload round-trip that page already uses. **Size raised S → M** — it is now a migration + scope-resolver change, detailed below the table | M |
 | **V18-13** | Division config: extend the entity + page | Adds the default landing page (V18-16). Confirm the flag set is still right now that reviewer/LFC/PBO are per-user, not per-division | S |
 | **V18-14** | Config dashboard tiles for the new pages | `config/page.tsx` — one tile per new config area, counts served by count endpoints, not full lists (the RAL-232 lesson) | S |
 | **V18-15** | Division-as-scope for non-PPDO offices — document and enforce | Divisions are office-scoped, but the AIP requirement says office users are scoped by **office only, division explicitly not a factor**. Write that into the scope resolver and its tests now, before Phase 3 reads it | S |
+
+**V18-12 detail — the DECISION F host-office change.** Recorded here because it is the one item in
+§3.2 that is not a config-page CRUD job.
+
+| Step | What | Notes |
+|---|---|---|
+| a | `offices.is_host_office` **BIT NOT NULL DEFAULT 0**, `Office.IsHostOffice` | snake_case column per `docs/NAMING_CONVENTIONS.md`; exactly one row may be true — enforce with a filtered unique index, not application code |
+| b | Backfill migration | `UPDATE users SET office_id = @ppdoId WHERE office_id IS NULL`, then set the flag on the `PPDO` row. Trivial **only because no production office accounts exist yet** — this step gets expensive the moment they do |
+| c | `OfficeScope.Resolve` reads the flag, not the null | The single backend chokepoint (RAL-228). Delete the null-means-everything branch and its 15-line warning comment — the inversion it was defending against no longer exists |
+| d | `.Include(u => u.Office)` on `UserRepository`'s by-id / by-username paths | Lines 22/35/46 include `Division` but not `Office`. Depth 1, allowed by CLAUDE.md. ⚠️ This is a per-request join on **every authenticated call** — the one genuine ongoing cost of the change |
+| e | Direct `OfficeId is null` readers | `LdipFunctions.cs:48`, `LandingPageResolver.cs:72` and `:91`. Small list precisely because `OfficeScope` exists |
+| f | Retire the three hardcoded `"PPDO"` lookups | `BudgetPlanningDashboardService` (which throws `"Office 'PPDO' is not seeded"` today), `PurchaseRequestService:67`, and `config.ts:127`'s `PPDO_OFFICE_CODE` → resolve via the flag instead |
+| g | Frontend `user?.officeId == null` → an `isHostOffice` boolean off `/auth/me` | `layout.tsx:211`, `budget-planning/page.tsx:531`, `budget-planning/report/page.tsx:458` |
+| h | Rewrite the RAL-228 tests that pin the null rule | Including `Resolve_AdminOrAboveWithOfficeIdSet_IsStillScopedToThatOffice` and the asymmetry doc block. Keep the *office-wins-over-role* rule — only the discriminator changes |
+
+**Naming still flippable:** the tracker calls it `IsPpdo`; this plan says **`IsHostOffice`** because
+what the flag actually governs is cross-office authority, not which office it happens to be — it
+survives the office being renamed or restructured. Cheap to flip while it is still a plan; settle it
+before the migration is written.
 
 ### 3.3 Landing page (theme C)
 
@@ -214,20 +235,69 @@ Phases 2–7 are **not** ticketed — every one of them has at least one open de
 
 ## 4. Phase 2 — AIP Foundation 🔴
 
-Blocked by DECISION A (one pot or two), DECISION E (storage units) and DECISION F (PPDO office
-identity). Do not ticket before those land.
+Blocked by **DECISION A** (one pot or two) — the last one standing. ~~DECISION F (PPDO office
+identity)~~ ✅ answered 2026-08-25 and absorbed into V18-12, so V18-32 now builds on a settled
+office identity. ~~DECISION E (storage units)~~ ✅ answered 2026-08-25 — pesos everywhere, migrated
+not partitioned (see V18-35). Do not ticket before A lands.
 
 | # | Work item | Notes |
 |---|---|---|
 | **V18-32** | Ownership FK: `AipOffice` → `offices.id` | Office identity is `RefCode` **string matching** today — there is no column to scope on. This is where ownership is created |
 | **V18-33** | `aip_expenditures` child table, mirroring `WfpExpenditure` | `activity_id`, `account_id` + snapshots, `funding_source_id` + snapshot, `ps`, `mooe`, `co`, `total`. Keep the snapshot pattern so historical AIPs survive config edits |
 | **V18-34** | `AipActivity.Ps/Mooe/Co/Total` become derived, recomputed sums | Whiteboard W2's "cost auto generated". Keep them stored — every report reads them |
-| **V18-35** | ⚠️ Storage units: AIP moves from thousands to pesos | **The most dangerous change in the version.** `WfpCeilingService` has three `* 1000m` conversions (save validation, status, finalize). Leaving them in place after AIP moves to pesos makes every WFP ceiling check **1000× too permissive** — silently, with no error anywhere |
+| **V18-35** | ⚠️ Storage units: AIP moves from thousands to pesos — **all fiscal years, migrated** | **✅ DECISION E answered 2026-08-25.** Was the most dangerous change in the version; the answer defuses it rather than managing it. `UPDATE aip_activities SET total = total * 1000` for every year, then **delete all six ×1000 sites** — not make them FY-conditional. Detail below the table |
 | **V18-36** | Pin the AIP↔WFP numeric boundary with tests | The one place the two documents meet numerically. An explicit accept/reject test against a known AIP activity total, so the factor can never drift again |
-| **V18-37** | FY partition: FY≤2027 keeps the v1.6 shape, FY≥2028 the new one | Per `AIP_Redesign_Notes.md` §4a — clean break, no migration. Decide the gate's mechanism: a literal `fiscalYear` check on shared endpoints, or new endpoints beside untouched old ones |
+| **V18-37** | FY partition: FY≤2027 keeps the v1.6 **shape**, FY≥2028 the new one | Per `AIP_Redesign_Notes.md` §4a — clean break, no migration. ⚠️ **Shape only — the partition does NOT extend to units** (DECISION E, V18-35): units are migrated across all years, so `total` means pesos on every row regardless of fiscal year. Decide the gate's mechanism: a literal `fiscalYear` check on shared endpoints, or new endpoints beside untouched old ones |
 | **V18-38** | Freeze the `.xlsm` upload to historical years | `AipXlsmParser` produces the old shape only. ⚠️ Per §4b, the FY2027 rows in the database were imported by the **pre-RAL-238** parser and are not a faithful copy of the province's file |
 | **V18-39** | AIP scope resolver: `OfficeScope` × `DivisionScope` | The genuinely two-axis model — division participates **only** when the caller is PPDO. Neither WFP (always both) nor LDIP (office only) does this |
 | **V18-40** | New AIP record shape — office-owned, LDIP-like | Includes the open question of one record per PPDO division vs one record with division-tagged rows |
+
+
+**V18-35 detail — DECISION E, answered 2026-08-25 (units ≠ shape).**
+
+§4a's clean break was decided for the record *shape*, and the tracker (D2) correctly caught that it
+was never stated for **units**. It is now: **shape partitions, units do not.** A multi-office record
+with no ownership FK genuinely cannot be retrofitted — that is structural. Units are not structural:
+`total = total * 1000` restructures nothing, is verifiable (sum before × 1000 = sum after) and is
+reversible. RAL-108 synthetic leaves, RAL-180 carry-forward and RAL-181 seeding are all indifferent
+to magnitude.
+
+**Why migrate rather than partition.** Under a partition, `AipActivity.Total` stops being readable
+without knowing the fiscal year — permanently, not for a migration window — and the six conversion
+sites become six FY-conditional branches that must stay correct forever. Getting one wrong in the
+*permissive* direction is silent: the ceiling simply never trips again, and the first symptom is a
+WFP over its AIP activity, found by someone adding up a printed report by hand. Migrating deletes
+the failure mode instead of managing it.
+
+**All six ×1000 sites** — ⚠️ `WfpCeilingService`'s class doc claims the conversion happens *only*
+there. That is true of backend services and **false of the codebase**; the frontend triple is
+currently undocumented and is exactly what a partition would leave behind:
+
+| Layer | Site |
+|---|---|
+| Backend | `WfpCeilingService.cs:60` (status), `:106` (save validation), `:220` (finalize) |
+| Frontend | `budget-planning/wfp/page.tsx:274`, `:377`, `:1409` |
+
+Display in thousands stays available — it becomes formatting at the report edge (e.g. the AIP detail
+page's `Amount (in ₱000)` headers, `aip/detail/page.tsx:2015`), which is where a presentation
+concern belongs, rather than a storage invariant every reader must remember.
+
+**LDIP is deliberately NOT moving — and that is not an inconsistency.** The rule being applied is
+not *one unit everywhere*; it is **units may differ, but only where the value never crosses a
+boundary, and every boundary is named**. AIP had to move because AIP↔WFP is a live numeric boundary
+crossed six times. LDIP has **zero**: `SeedProgramsFromLdipAsync` copies `RefCode`/`Name`/
+`FunctionBand` and explicitly no amounts (`AipService.cs:785` — an LDIP budget is a multi-year
+total, not a valid FY figure), and both dashboard summaries carry counts and statuses only, no money
+(`PlanningDashboardDtos.cs:50-63`). LDIP amounts are entered, stored and displayed in ₱000
+throughout — the province's own LDIP form is denominated that way. Moving it would relocate a
+conversion to multiply-on-save/divide-on-display across ~15 form sites plus `LdipXlsmParser`, for
+zero correctness gain.
+
+⚠️ **The invariant that makes that safe is unwritten, so write it:** *`LdipProgram.Budget` is
+stored in thousands and must never be compared to, or copied into, a peso amount. If a future
+feature needs that, convert at the call site and name the boundary.* DECISION 5 (offices adding
+programs outside the LDIP) and V18-40's LDIP-like AIP are the two things that could create that
+seam for the first time — this note is what should stop it happening silently.
 
 ## 5. Phase 3 — AIP Entry 🔴
 
@@ -301,18 +371,19 @@ Phase 1 is ticketed.
 | **A** | One pot or two — do AIP and WFP draw on the same division allocation? | V18-45, V18-46 | 🔴 open |
 | **C** | Ceiling: hard block or warning; at save or at submit? | Phase 3, Phase 6 | 🔴 open |
 | **D** | Must division allocations fit inside the office ceiling? | V18-47, V18-48 | 🔴 open |
-| **E** | Storage units — migrate 2027 to pesos, or partition by FY? | V18-35, V18-37 | 🟡 implied by §4a (partition), never stated outright |
+| **E** | Storage units — migrate 2027 to pesos, or partition by FY? | V18-35, V18-37 | ✅ answered 2026-08-25 — **migrate, all years to pesos**; partition is shape-only. LDIP stays in ₱000 (§4) |
 | **5** | Can offices add programs outside the LDIP? | V18-41 | 🔴 open |
 | **7** | Offline: personal/shared device, or office-issued? | V18-69 | 🔴 open |
 | **9** | Must printed rows add up to the printed total? | every report in Phase 5 | 🔴 open |
 | **10** | Reviewer: can they reject/return, and comments at what level? | all of Phase 4 | 🔴 open |
 | **11** | 2027 AIP + `.xlsm` upload — migrate, keep, or retire? | V18-37, V18-38 | ✅ answered (§4a clean break; §4b no re-import) |
-| **F** | *New* — make PPDO an explicit office (`IsPpdo`) instead of `OfficeId == null`? | V18-32 and every scope check | 🔴 new; must land before Phase 2 |
+| **F** | Make PPDO an explicit office (host-office flag) instead of `OfficeId == null`? | V18-32 and every scope check | ✅ answered 2026-08-25 — yes, full change; lands in Phase 1 under V18-12 (§3.1) |
 | B, 4, 6, 8b, 12 | Ceiling rule · multi-fund granularity · W1 · round-up · password reset | — | ✅ settled |
 
-**A and E remain the two most dangerous**, for the same reason: both fail **silently**. E leaves the
-WFP ceiling checks 1000× too permissive; A double-counts every peso planned once and detailed once.
-Neither produces an error — only budget numbers that look plausible and are wrong.
+**A is now the most dangerous open decision**, and the reason is unchanged: it fails **silently** —
+double-counting every peso planned once and detailed once, producing no error, only budget numbers
+that look plausible and are wrong. ~~E~~ shared that shape (ceiling checks 1000× too permissive) and
+was answered on 2026-08-25 by removing the failure mode rather than managing it — see V18-35.
 
 ---
 
@@ -344,9 +415,11 @@ either way.
 ## 11. Questions for Ralph
 
 1. **Did Monday's meeting produce answers to A, C, D, 5, 9 and 10?** If so they need recording — §9
-   is the table to update, and Phase 2 unblocks the moment A, E and F are all green.
-2. **DECISION F** (§3.1) — is PPDO becoming a real office row with `IsPpdo`, or does
-   `OfficeId == null` stay? Cheapest to decide before Phase 2, most expensive to change after.
+   is the table to update. With E and F both now green, **DECISION A is all that stands between
+   here and ticketing Phase 2**.
+2. ~~**DECISION F** (§3.1) — is PPDO becoming a real office row with `IsPpdo`, or does
+   `OfficeId == null` stay?~~ ✅ **Answered 2026-08-25: the full change**, folded into V18-12 and
+   sized S → M. Remaining sub-question: the flag's name (`IsHostOffice` vs `IsPpdo`) — see §3.2.
 3. **V18-30** — does Phase 1 ship a real Budget Planning dashboard for office users, or keep the
    readiness hub until the redesign?
 4. ~~**V18-21** — delete the `/profile` stub and redirect to `/account`, or build `/profile` out?~~

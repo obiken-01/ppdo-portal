@@ -129,6 +129,36 @@ path; a parallel office-owned/two-stage path is added for ≥2028. This is the a
 avoiding migration risk to real historical data — revisit only if that dual-maintenance burden
 turns out to be worse in practice than expected.
 
+### 4c. Update 2026-08-25 — the clean break is about SHAPE, not UNITS (DECISION E)
+
+§4a says "FY2027 and earlier AIP data stays exactly as-is." Read literally that would also freeze
+the **storage unit**, leaving `aip_activities.total` holding thousands on FY≤2027 rows and pesos on
+FY2028+ rows — one column, two units, told apart only by the parent record's fiscal year. §4a never
+actually said that, and it is **not** what was decided.
+
+**Decided (Ralph, 2026-08-25): units are migrated for every fiscal year.** AIP totals move from
+thousands to pesos across the board (`UPDATE aip_activities SET total = total * 1000`), and the six
+×1000 conversion sites are **deleted**, not made fiscal-year-conditional.
+
+**The distinction being drawn is shape vs units.** §4a's reasoning holds for shape and only for
+shape: a multi-office record with no ownership FK cannot be retrofitted into an office-owned,
+reviewer-driven one, so FY≤2027 keeps the v1.6 structure. Units carry none of that risk — the
+migration restructures nothing, is verifiable (sum before × 1000 = sum after), and is reversible.
+RAL-108 synthetic leaves, RAL-180 carry-forward and RAL-181 seeding are all indifferent to
+magnitude. §4b's caveat is unaffected: multiplying an imperfectly-imported number by 1000 leaves it
+exactly as imperfect, no worse.
+
+**What partitioning would have cost.** `AipActivity.Total` would stop being readable without the
+fiscal year in hand — permanently, not for a migration window — and the six conversions become six
+branches that must stay correct forever. An error in the permissive direction is silent: the WFP
+ceiling check simply never trips again, with no exception anywhere. Migrating removes the failure
+mode instead of managing it.
+
+**LDIP does not move.** `LdipProgram.Budget` stays in ₱000. The rule is not *one unit everywhere*
+but *units may differ only where the value never crosses a boundary* — and LDIP has no such
+boundary, since `SeedProgramsFromLdipAsync` copies no amounts. The invariant is now written on the
+entity itself. Full reasoning and the site list: `Phase_Plan.md` §4, V18-35 detail.
+
 ### 4b. Update 2026-08-19 — the FY≤2027 importer was fixed, but FY2027 is NOT being re-imported
 
 The Excel import path that §4a freezes to historical years had a real defect, found by analysing
