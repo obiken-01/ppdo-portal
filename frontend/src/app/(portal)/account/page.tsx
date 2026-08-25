@@ -8,7 +8,9 @@ import {
   type UpdateProfileRequest,
 } from "@/lib/account";
 import { useToast } from "@/components/ui/Toast";
-import type { UserResponse } from "@/types";
+import type { MeResponse, UserResponse } from "@/types";
+import LandingPageSelect, { reachabilityFromMe } from "@/components/ui/LandingPageSelect";
+import { fetchMe } from "@/lib/me-cache";
 
 type Tab = "profile" | "security";
 
@@ -81,9 +83,14 @@ function ProfileTab({
     email:     null,
     position:  null,
     contactNo: null,
+    landingPage: null,
   });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState<string | null>(null);
+  // Resolved permission flags live on /auth/me; UserResponse only carries the raw overrides.
+  const [me, setMe] = useState<MeResponse | null>(null);
+
+  useEffect(() => { fetchMe().then(setMe).catch(() => setMe(null)); }, []);
 
   // Pre-fill once profile loads
   useEffect(() => {
@@ -94,6 +101,7 @@ function ProfileTab({
       email:     profile.email ?? null,
       position:  profile.position ?? null,
       contactNo: profile.contactNo ?? null,
+      landingPage: profile.landingPage ?? null,
     });
   }, [profile]);
 
@@ -180,6 +188,16 @@ function ProfileTab({
             value={form.contactNo ?? ""}
             onChange={(e) => patch("contactNo", e.target.value)}
             placeholder="e.g. 09171234567"
+          />
+        </Field>
+
+        <Field label="Landing Page">
+          <LandingPageSelect
+            label=""
+            value={form.landingPage}
+            onChange={(landingPage) => setForm((f) => ({ ...f, landingPage }))}
+            reachability={me ? reachabilityFromMe(me) : undefined}
+            hint="The page you land on after signing in. Leave unset to follow your division or office default."
           />
         </Field>
 

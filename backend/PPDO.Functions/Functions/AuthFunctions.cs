@@ -165,6 +165,7 @@ public sealed class AuthFunctions
             OfficeName              = me.OfficeName,
             Position                = me.Position,
             LandingPath             = me.LandingPath,
+            LandingPage             = me.LandingPage,
             CanAccessInventory      = me.CanAccessInventory,
             CanAccessReports        = me.CanAccessReports,
             CanManageUsers          = me.CanManageUsers,

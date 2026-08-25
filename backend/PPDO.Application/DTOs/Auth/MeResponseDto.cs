@@ -32,6 +32,9 @@ public sealed class MeResponseDto
     /// <summary>Resolved landing route, e.g. "/dashboard". Always reachable for this user.</summary>
     public string LandingPath { get; init; } = "/account";
 
+    /// <summary>Stored preference as an enum name, or null when unset.</summary>
+    public string? LandingPage { get; init; }
+
     public bool CanAccessInventory { get; init; }
     public bool CanAccessReports { get; init; }
     public bool CanManageUsers { get; init; }

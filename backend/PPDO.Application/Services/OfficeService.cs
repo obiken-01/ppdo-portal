@@ -1,3 +1,4 @@
+using PPDO.Domain.Enums;
 using Microsoft.Extensions.Logging;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.Config;
@@ -70,6 +71,11 @@ public sealed class OfficeService : IOfficeService
         if (string.IsNullOrWhiteSpace(dto.OfficeName))
             return ServiceResult<OfficeDto>.BadRequest("Office name is required.");
 
+        // Name-only validation — see DivisionService: reachability is per-user (RAL-262).
+        if (!LandingPageName.TryParse(dto.LandingPage, out LandingPage? landingPage))
+            return ServiceResult<OfficeDto>.BadRequest(
+                $"'{dto.LandingPage}' is not a valid landing page. Valid values: {LandingPageName.ValidValues}.");
+
         string code = dto.OfficeCode.Trim();
         IReadOnlyList<Office> all = await _repo.GetAllAsync(cancellationToken);
         if (all.Any(o => o.OfficeCode.Equals(code, StringComparison.OrdinalIgnoreCase)))
@@ -82,6 +88,7 @@ public sealed class OfficeService : IOfficeService
             OfficeName    = dto.OfficeName.Trim(),
             OfficeRefCode = NullIfBlank(dto.OfficeRefCode),
             IsActive      = dto.IsActive,
+            LandingPage   = landingPage,
             CreatedAt     = now,
             UpdatedAt     = now,
         };
@@ -105,6 +112,11 @@ public sealed class OfficeService : IOfficeService
         if (string.IsNullOrWhiteSpace(dto.OfficeName))
             return ServiceResult<OfficeDto>.BadRequest("Office name is required.");
 
+        // Name-only validation — see DivisionService: reachability is per-user (RAL-262).
+        if (!LandingPageName.TryParse(dto.LandingPage, out LandingPage? landingPage))
+            return ServiceResult<OfficeDto>.BadRequest(
+                $"'{dto.LandingPage}' is not a valid landing page. Valid values: {LandingPageName.ValidValues}.");
+
         IReadOnlyList<Office> all = await _repo.GetAllAsync(cancellationToken);
         Office? entity = all.FirstOrDefault(o => o.Id == id);
         if (entity is null)
@@ -120,6 +132,7 @@ public sealed class OfficeService : IOfficeService
         entity.OfficeName    = dto.OfficeName.Trim();
         entity.OfficeRefCode = NullIfBlank(dto.OfficeRefCode);
         entity.IsActive      = dto.IsActive;
+        entity.LandingPage   = landingPage;
         entity.UpdatedAt     = DateTime.UtcNow;
 
         await _repo.UpdateAsync(entity, cancellationToken);
@@ -232,7 +245,8 @@ public sealed class OfficeService : IOfficeService
     }
 
     private static OfficeDto MapToDto(Office o) =>
-        new(o.Id, o.OfficeCode, o.OfficeName, o.OfficeRefCode, o.IsActive);
+        new(o.Id, o.OfficeCode, o.OfficeName, o.OfficeRefCode, o.IsActive,
+            o.LandingPage?.ToString());
 
     private static string Field(string[] row, int index) => index < row.Length ? row[index] : string.Empty;
 

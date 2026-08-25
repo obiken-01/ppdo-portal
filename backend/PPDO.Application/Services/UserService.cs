@@ -25,19 +25,22 @@ public sealed class UserService : IUserService
     private readonly IRepository<Division> _divisions;
     private readonly ILogger<UserService> _logger;
     private readonly IAuditService _audit;
+    private readonly ILandingPageResolver _landing;
 
     public UserService(
         IUserRepository users,
         IRepository<Office> offices,
         IRepository<Division> divisions,
         ILogger<UserService> logger,
-        IAuditService audit)
+        IAuditService audit,
+        ILandingPageResolver landing)
     {
         _users     = users;
         _offices   = offices;
         _divisions = divisions;
         _logger    = logger;
         _audit     = audit;
+        _landing   = landing;
     }
 
     // ── Queries ────────────────────────────────────────────────────────────────
@@ -158,6 +161,12 @@ public sealed class UserService : IUserService
             ContactNo    = dto.ContactNo?.Trim(),
             IsActive     = true,
         };
+
+        // Validated against the user as it will exist, not as the requester currently is.
+        ServiceResult<UserCredentialResponseDto>? landingError =
+            await ValidateLandingPageAsync<UserCredentialResponseDto>(user, dto.LandingPage, cancellationToken);
+        if (landingError is not null) return landingError;
+        user.LandingPage = ParseLandingPage(dto.LandingPage);
 
         await _users.AddAsync(user, cancellationToken);
         await _users.SaveChangesAsync(cancellationToken);
@@ -310,6 +319,13 @@ public sealed class UserService : IUserService
         target.OverrideCanUploadAip            = dto.OverrideCanUploadAip;
         target.OverrideCanManageConfig         = dto.OverrideCanManageConfig;
         target.OverrideCanManageAllocation     = dto.OverrideCanManageAllocation;
+
+        // Runs after role/division/office and the override flags are applied, so
+        // reachability is judged on what the user is about to become.
+        ServiceResult<UserResponseDto>? landingError =
+            await ValidateLandingPageAsync<UserResponseDto>(target, dto.LandingPage, cancellationToken);
+        if (landingError is not null) return landingError;
+        target.LandingPage = ParseLandingPage(dto.LandingPage);
 
         await _users.UpdateAsync(target, cancellationToken);
         await _users.SaveChangesAsync(cancellationToken);
@@ -528,11 +544,18 @@ public sealed class UserService : IUserService
                     $"Email '{newEmail}' is already registered.");
         }
 
-        user.FullName  = dto.FullName.Trim();
-        user.Username  = newUsername;
-        user.Email     = newEmail;
-        user.Position  = dto.Position?.Trim();
-        user.ContactNo = dto.ContactNo?.Trim();
+        // Self-service: role/division/office are untouched here, so the user's own
+        // permissions decide what they may pick.
+        ServiceResult<UserResponseDto>? landingError =
+            await ValidateLandingPageAsync<UserResponseDto>(user, dto.LandingPage, cancellationToken);
+        if (landingError is not null) return landingError;
+
+        user.FullName    = dto.FullName.Trim();
+        user.Username    = newUsername;
+        user.Email       = newEmail;
+        user.Position    = dto.Position?.Trim();
+        user.ContactNo   = dto.ContactNo?.Trim();
+        user.LandingPage = ParseLandingPage(dto.LandingPage);
 
         await _users.UpdateAsync(user, cancellationToken);
         await _users.SaveChangesAsync(cancellationToken);
@@ -574,6 +597,67 @@ public sealed class UserService : IUserService
         _logger.LogInformation("Password changed. UserId: {UserId}", user.Id);
 
         return ServiceResult<bool>.Ok(true);
+    }
+
+    // ── Landing page (RAL-262) ────────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses the landing-page name and checks the user can actually reach it.
+    ///
+    /// Validating here matters: a landing page the user cannot open does not fail at
+    /// redirect time, it loops — the page ejects them and the redirect sends them back.
+    /// The resolver skips unreachable stored values at runtime as a backstop, but silently
+    /// ignoring what an admin just saved would be its own kind of wrong.
+    /// </summary>
+    /// <param name="user">
+    /// Must carry the role/office/division the user will have AFTER this operation, not before.
+    /// Division is loaded here when needed, since a division change makes a preloaded one stale.
+    /// </param>
+    private async Task<ServiceResult<TResult>?> ValidateLandingPageAsync<TResult>(
+        User user,
+        string? landingPageName,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(landingPageName))
+            return null;
+
+        if (!LandingPageName.TryParse(landingPageName, out LandingPage? parsed) || parsed is not LandingPage page)
+            return ServiceResult<TResult>.BadRequest(
+                $"'{landingPageName}' is not a valid landing page. Valid values: {LandingPageName.ValidValues}.");
+
+        await EnsureDivisionLoadedAsync(user, cancellationToken);
+
+        if (!await _landing.IsReachableAsync(user, page, cancellationToken))
+            return ServiceResult<TResult>.BadRequest(
+                $"This user cannot access '{page}', so it cannot be their landing page.");
+
+        return null;
+    }
+
+    /// <summary>Parses an already-validated landing-page name. Null/blank clears the preference.</summary>
+    private static LandingPage? ParseLandingPage(string? name)
+    {
+        LandingPageName.TryParse(name, out LandingPage? page);
+        return page;
+    }
+
+    /// <summary>
+    /// Attaches the Division matching <c>user.DivisionId</c> when it is missing or stale.
+    /// Permission resolution reads flags off it, so a wrong one silently changes the answer.
+    /// </summary>
+    private async Task EnsureDivisionLoadedAsync(User user, CancellationToken cancellationToken)
+    {
+        if (user.DivisionId is not int divisionId)
+        {
+            user.Division = null;
+            return;
+        }
+
+        if (user.Division?.Id == divisionId)
+            return;
+
+        IReadOnlyList<Division> divisions = await _divisions.GetAllAsync(cancellationToken);
+        user.Division = divisions.FirstOrDefault(d => d.Id == divisionId);
     }
 
     // ── Private helpers ────────────────────────────────────────────────────────
@@ -650,6 +734,7 @@ public sealed class UserService : IUserService
         Position                      = u.Position,
         ContactNo                     = u.ContactNo,
         IsActive                      = u.IsActive,
+        LandingPage                   = u.LandingPage?.ToString(),
         OverrideCanAccessInventory    = u.OverrideCanAccessInventory,
         OverrideCanAccessReports      = u.OverrideCanAccessReports,
         OverrideCanManageUsers        = u.OverrideCanManageUsers,

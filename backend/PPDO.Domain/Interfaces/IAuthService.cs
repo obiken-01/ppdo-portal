@@ -176,6 +176,12 @@ public sealed class MeResponse
     /// </summary>
     public string LandingPath { get; init; } = "/account";
 
+    /// <summary>
+    /// The user's own stored preference as an enum name, or null when unset. The /account
+    /// selector shows this; <see cref="LandingPath"/> is where they will actually land.
+    /// </summary>
+    public string? LandingPage { get; init; }
+
     // -- Effective permission flags (resolved via PermissionService) --------
     public bool CanAccessInventory { get; init; }
     public bool CanAccessReports { get; init; }

@@ -34,4 +34,12 @@ public sealed record UpdateUserDto(
     bool?    OverrideCanAccessBudgetPlanning = null,
     bool?    OverrideCanUploadAip            = null,
     bool?    OverrideCanManageConfig         = null,
-    bool?    OverrideCanManageAllocation     = null);
+    bool?    OverrideCanManageAllocation     = null,
+    /// <summary>
+    /// Preferred landing page: "MainDashboard" | "InventoryDashboard" |
+    /// "BudgetPlanningDashboard" | "Profile". Null = no preference (RAL-262).
+    /// Rejected if the page would not be reachable for this user.
+    /// </summary>
+    /// <remarks>Full-replacement like OfficeId — the form always resubmits the
+    /// current value, so null means "no preference", not "unchanged".</remarks>
+    string?  LandingPage                     = null);

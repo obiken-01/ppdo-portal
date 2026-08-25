@@ -52,8 +52,10 @@ import type {
   ActiveFilter,
   CsvImportResult,
   OfficeResponse,
+  LandingPageKey,
   UpsertOfficeRequest,
 } from "@/types";
+import LandingPageSelect from "@/components/ui/LandingPageSelect";
 
 // ---------------------------------------------------------------------------
 // Filter option types
@@ -93,9 +95,11 @@ interface FormState {
   officeCode: string;
   officeName: string;
   officeRefCode: string;
+  landingPage: LandingPageKey | null;
 }
 
-const blankForm = (): FormState => ({ officeCode: "", officeName: "", officeRefCode: "" });
+const blankForm = (): FormState =>
+  ({ officeCode: "", officeName: "", officeRefCode: "", landingPage: null });
 
 // ---------------------------------------------------------------------------
 // Page
@@ -188,6 +192,7 @@ export default function OfficeConfigPage() {
       officeCode: office.officeCode,
       officeName: office.officeName,
       officeRefCode: office.officeRefCode ?? "",
+      landingPage: office.landingPage,
     });
     setFormError(null);
     setCodeError(null);
@@ -236,6 +241,7 @@ export default function OfficeConfigPage() {
       officeRefCode: form.officeRefCode.trim() || null,
       // Modal does not edit status; preserve it on update, default active on create.
       isActive: editTarget ? editTarget.isActive : true,
+      landingPage: form.landingPage,
     };
 
     setSaving(true);
@@ -545,6 +551,20 @@ export default function OfficeConfigPage() {
                 <span className="font-mono">8000-000-1-01-010</span>). Used to link this office to AIP entries in the WFP page.
               </p>
             </div>
+
+            <LandingPageSelect
+              label="Default landing page"
+              value={form.landingPage}
+              onChange={(landingPage) => setForm((f) => ({ ...f, landingPage }))}
+              reachability={{
+                // Anyone carrying an office_id is an office user, and the portal gate keeps
+                // them out of the main dashboard — so it is never a sensible office default.
+                isOfficeUser: true,
+                canAccessInventory: false,
+                canAccessBudgetPlanning: true,
+              }}
+              hint="Applied to this office's users when neither they nor their division has a preference."
+            />
 
             {formError && (
               <div className="bg-danger-100 border border-danger-500/30 px-4 py-3">

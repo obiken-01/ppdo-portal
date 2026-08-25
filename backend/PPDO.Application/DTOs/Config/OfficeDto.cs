@@ -12,4 +12,6 @@ public sealed record OfficeDto(
     string  OfficeCode,
     string  OfficeName,
     string? OfficeRefCode,
-    bool    IsActive);
+    bool    IsActive,
+    /// <summary>Default landing page enum name, or null.</summary>
+    string? LandingPage = null);
