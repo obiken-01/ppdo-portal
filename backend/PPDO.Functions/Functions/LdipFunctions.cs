@@ -107,7 +107,7 @@ public sealed class LdipFunctions
         body = body with { OfficeId = OfficeScope.Resolve(caller!).Clamp(body.OfficeId) };
 
         return await ConfigHttp.FromResultAsync(req,
-            await _ldip.CreateAsync(body, caller.Id, ct), ct, HttpStatusCode.Created);
+            await _ldip.CreateAsync(body, caller!.Id, ct), ct, HttpStatusCode.Created);
     }
 
     // ── PUT /api/budget-planning/ldip/{id} ───────────────────────────────────
