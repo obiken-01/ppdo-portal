@@ -54,8 +54,9 @@ public interface IAuthService
     /// <summary>
     /// Returns the recovery-question text to show for a username, for the "Forgot password?"
     /// flow (RAL-265). Always returns a question — an unknown username or an account that
-    /// hasn't set one yet both fall back to <c>RecoveryQuestionCatalog.Default</c>, so this
-    /// can never be used to test whether a username exists.
+    /// hasn't set one yet gets a question deterministically derived from the username itself
+    /// (same fake username always gets the same fake question, spread uniformly across the
+    /// catalog), so no single response value can be used to test whether a username exists.
     /// </summary>
     Task<string> GetRecoveryQuestionAsync(string username, CancellationToken cancellationToken = default);
 

@@ -426,7 +426,7 @@ public sealed class AuthServiceTests
     }
 
     [Fact]
-    public async Task GetRecoveryQuestionAsync_UnknownUsername_ReturnsDefaultQuestion()
+    public async Task GetRecoveryQuestionAsync_UnknownUsername_ReturnsAQuestionFromTheCatalog()
     {
         Mock<IUserRepository> repo = new();
         repo.Setup(r => r.FindByUsernameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -434,20 +434,59 @@ public sealed class AuthServiceTests
 
         string text = await BuildSut(repo).GetRecoveryQuestionAsync("nobody");
 
-        Assert.Equal(RecoveryQuestionCatalog.TextFor(RecoveryQuestionCatalog.Default), text);
+        Assert.Contains(text, RecoveryQuestionCatalog.All.Values);
     }
 
     [Fact]
-    public async Task GetRecoveryQuestionAsync_UserWithNoQuestionSet_ReturnsDefaultQuestion()
+    public async Task GetRecoveryQuestionAsync_UnknownUsername_IsDeterministicAcrossRepeatedCalls()
+    {
+        // Same unknown username must always get the same fake question — an inconsistent
+        // answer across calls would itself be a tell that the username doesn't exist.
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByUsernameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+
+        AuthService sut = BuildSut(repo);
+        string first = await sut.GetRecoveryQuestionAsync("nobody");
+        string second = await sut.GetRecoveryQuestionAsync("nobody");
+
+        Assert.Equal(first, second);
+    }
+
+    [Fact]
+    public async Task GetRecoveryQuestionAsync_UnknownUsernames_AreNotAllCollapsedToOneFixedQuestion()
+    {
+        // Regression guard for the RAL-265 enumeration bug this fix closes: a single fixed
+        // default question for every unknown/unset username meant any REAL account that had
+        // configured a DIFFERENT question was trivially distinguishable from "doesn't exist"
+        // on sight. Different unknown usernames must be able to land on different questions.
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByUsernameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+
+        AuthService sut = BuildSut(repo);
+        HashSet<string> distinctQuestions = new();
+        for (int i = 0; i < 20; i++)
+            distinctQuestions.Add(await sut.GetRecoveryQuestionAsync($"nobody-{i}"));
+
+        Assert.True(distinctQuestions.Count > 1,
+            "Expected different unknown usernames to spread across more than one catalog question.");
+    }
+
+    [Fact]
+    public async Task GetRecoveryQuestionAsync_UserWithNoQuestionSet_ReturnsADeterministicCatalogQuestion()
     {
         User user = MakeActiveUser("hash"); // RecoveryQuestionKey left unset
         Mock<IUserRepository> repo = new();
         repo.Setup(r => r.FindByUsernameAsync(user.Username, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        string text = await BuildSut(repo).GetRecoveryQuestionAsync(user.Username);
+        AuthService sut = BuildSut(repo);
+        string first = await sut.GetRecoveryQuestionAsync(user.Username);
+        string second = await sut.GetRecoveryQuestionAsync(user.Username);
 
-        Assert.Equal(RecoveryQuestionCatalog.TextFor(RecoveryQuestionCatalog.Default), text);
+        Assert.Contains(first, RecoveryQuestionCatalog.All.Values);
+        Assert.Equal(first, second);
     }
 
     [Fact]
@@ -582,6 +621,29 @@ public sealed class AuthServiceTests
         // The 6th attempt is locked out — even the correct answer is refused.
         RecoveryVerifyResult locked = await sut.VerifyRecoveryAnswerAsync(user.Username, "Bantay");
         Assert.Equal(RecoveryVerifyOutcome.Failed, locked.Outcome);
+    }
+
+    [Fact]
+    public async Task VerifyRecoveryAnswerAsync_LockedOut_StillWritesToTheUserRow()
+    {
+        // Timing-parity fix: the locked-out branch must do the same DB write as the
+        // wrong-answer branch, or a locked real account responds measurably faster than a
+        // not-yet-locked one — a side channel that confirms the account is being targeted.
+        User user = MakeUserWithRecoveryAnswer(RecoveryQuestion.FirstPetName, "Bantay");
+        user.RecoveryAttemptCount = 5;
+        user.RecoveryFirstAttemptAt = DateTime.UtcNow;
+
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByUsernameAsync(user.Username, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        repo.Setup(r => r.UpdateAsync(user, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+
+        RecoveryVerifyResult result = await BuildSut(repo).VerifyRecoveryAnswerAsync(user.Username, "Bantay");
+
+        Assert.Equal(RecoveryVerifyOutcome.Failed, result.Outcome);
+        repo.Verify(r => r.UpdateAsync(user, It.IsAny<CancellationToken>()), Times.Once);
+        repo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

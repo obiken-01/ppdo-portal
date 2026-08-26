@@ -1,4 +1,5 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Linq;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
@@ -224,11 +225,29 @@ public sealed class AuthService : IAuthService
     {
         User? user = await _users.FindByUsernameAsync(username, cancellationToken);
 
-        // Unknown username, or a known account that hasn't set a question yet — both fall
-        // back to the same catalog default so this endpoint is not a username-enumeration
-        // oracle (RAL-265).
-        RecoveryQuestion question = user?.RecoveryQuestionKey ?? RecoveryQuestionCatalog.Default;
+        // Unknown username, or a known account that hasn't set a question yet — both need a
+        // question to show that is indistinguishable from a real one. A single fixed default
+        // (e.g. always BirthTown) would fail that: any account that picked one of the OTHER
+        // catalog questions would return text no unknown/unset username could ever produce,
+        // confirming the account exists. Instead, derive a fake question deterministically
+        // from the username itself — same fake username always gets the same fake question
+        // (so repeated calls don't leak inconsistency), and the pick lands uniformly across
+        // the same catalog a real answer would, so no single response value is a tell.
+        RecoveryQuestion question = user?.RecoveryQuestionKey ?? FakeQuestionFor(username);
         return RecoveryQuestionCatalog.TextFor(question);
+    }
+
+    /// <summary>
+    /// Deterministically maps a username to one of the catalog questions, for accounts that
+    /// don't have a real one yet. Not a secret — just needs to be stable per username and
+    /// spread uniformly across the catalog (RAL-265 enumeration guard).
+    /// </summary>
+    private static RecoveryQuestion FakeQuestionFor(string username)
+    {
+        RecoveryQuestion[] questions = RecoveryQuestionCatalog.All.Keys.ToArray();
+        byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(username.Trim().ToLowerInvariant()));
+        int index = hash[0] % questions.Length;
+        return questions[index];
     }
 
     /// <inheritdoc />
@@ -241,8 +260,14 @@ public sealed class AuthService : IAuthService
         string normalizedAnswer = RecoveryAnswerNormalizer.Normalize(answer);
 
         // Unknown username, or no recovery answer set yet — nothing to check the answer
-        // against. Still run a dummy compare so the response takes the same time as a real
-        // wrong-answer check (RAL-265 enumeration guard).
+        // against, and no row to write to. Still run a dummy compare so this branch takes
+        // about as long as a real BCrypt check. It is still measurably cheaper than the two
+        // branches below, which each do a real DB write — an inherent gap for "does this
+        // username exist at all" that a dummy compare alone can't close. The write is real
+        // and needed for lockout durability (see RegisterFailedRecoveryAttempt), so it isn't
+        // removed to chase full parity; the two real-account branches are kept equal instead
+        // (see below), which is what RAL-265 explicitly calls out ("never surface locked as
+        // a distinct state").
         if (user is null || user.RecoveryAnswerHash is null)
         {
             BCrypt.Net.BCrypt.Verify(normalizedAnswer, DummyHash);
@@ -250,12 +275,18 @@ public sealed class AuthService : IAuthService
             return RecoveryVerifyResult.Failed();
         }
 
-        // Locked out — still compare against the real hash for timing parity, but the
-        // outcome is the same "Failed" as a wrong answer. Never surface "locked" as a
-        // distinct state; that alone would confirm the account exists and is being targeted.
+        // Locked out — still compare against the real hash, and still write, so this branch
+        // costs exactly the same as the wrong-answer branch below (same BCrypt compare, same
+        // UpdateAsync/SaveChangesAsync pair). Repository<T>.UpdateAsync calls DbSet.Update(),
+        // which marks the whole entity Modified and forces a real UPDATE even though no field
+        // changed here — this is a deliberate no-op write for timing parity, not a bug.
+        // Never surface "locked" as a distinct state — that alone would confirm the account
+        // exists and is being targeted (RAL-265).
         if (IsRecoveryLockedOut(user))
         {
             BCrypt.Net.BCrypt.Verify(normalizedAnswer, user.RecoveryAnswerHash);
+            await _users.UpdateAsync(user, cancellationToken);
+            await _users.SaveChangesAsync(cancellationToken);
             _logger.LogWarning("Recovery verify blocked — too many failed attempts. UserId: {UserId}", user.Id);
             return RecoveryVerifyResult.Failed();
         }
