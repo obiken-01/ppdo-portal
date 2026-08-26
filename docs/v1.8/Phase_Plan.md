@@ -1,7 +1,13 @@
 # v1.8.0 — Phase Plan & Work Items
 
-> Drafted 2026-08-20 from `AIP_Requirements_Review.md`, `AIP_Redesign_Notes.md`,
-> `Office_User_Path_Findings.md`, `Monday_Questions.md` and `../PWA_Feasibility_Study.md`,
+> ⚠️ **Two of the documents cited below do not exist in this repository and never have:**
+> **`AIP_Requirements_Review.md`** and **`Monday_Questions.md`**. They are referred to throughout
+> this plan because it was drafted against them, but nobody should go looking — **this file is the
+> authoritative source** for everything they covered, and the open questions live in
+> `v1.8.0_Open_Items_Tracker.xlsx`. Corrected 2026-08-26, after the references sent someone hunting.
+>
+> Drafted 2026-08-20 from `AIP_Requirements_Review.md` (missing), `AIP_Redesign_Notes.md`,
+> `Office_User_Path_Findings.md`, `Monday_Questions.md` (missing) and `../PWA_Feasibility_Study.md`,
 > plus Ralph's additions on 2026-08-20 (configuration work, the user/division/permission change,
 > landing-page configuration at office and division level, the three dashboards, user profile).
 >
@@ -209,8 +215,9 @@ existing office-user gate already falls back to it.
 
 ### 3.4 Password reset — Option B (theme D)
 
-Settled 2026-08-14; ticket-ready per `AIP_Requirements_Review.md` §2.6. Independent of everything
-else in the version.
+Settled 2026-08-14. **The sub-decisions are the table below — there is no separate document.**
+(RAL-253/265/266/267 all used to cite `AIP_Requirements_Review.md` §2.6, which does not exist; the
+tickets were corrected 2026-08-26.) Independent of everything else in the version.
 
 | # | Work item | Notes | Size |
 |---|---|---|---|
@@ -433,7 +440,8 @@ whether the printed MOOE/CO carry the +30% (§12.2).
 
 ## 9. Decisions still blocking work
 
-From `AIP_Requirements_Review.md` §10. **✅ Updated 2026-08-25 from the PPDC meeting** — the answers
+Originally from `AIP_Requirements_Review.md` §10 — **that document does not exist; this table is the
+record.** **✅ Updated 2026-08-25 from the PPDC meeting** — the answers
 themselves live in `v1.8.0_Open_Items_Tracker.xlsx` (columns H–K); §12 records what each one changes
 in this plan. Nothing below Phase 1 was ticketed before this table was updated.
 
@@ -1109,6 +1117,10 @@ description.
 
 ---
 
-*Plan only — no tickets created, no decisions taken. Companion to `AIP_Requirements_Review.md` (the
-technical reasoning), `Monday_Questions.md` (the meeting version) and `AIP_Redesign_Notes.md` (the
-record of Ralph's description and the decisions settled so far).*
+*Companion to `AIP_Redesign_Notes.md` (the record of Ralph's description and the decisions settled
+so far), `AIP_Form_Spec.md` (the printable AIP form) and `v1.8.0_Open_Items_Tracker.xlsx` (the open
+questions and their answers). ⚠️ `AIP_Requirements_Review.md` and `Monday_Questions.md` are cited
+above but do not exist — see the note at the top of this file.*
+
+*No longer "plan only": §12 records decisions taken on 2026-08-25 and 2026-08-26, and Phase 1 is
+partly shipped (§3.6).*
