@@ -147,6 +147,22 @@ public sealed class User
     /// </summary>
     public DateTime? RecoveryFirstAttemptAt { get; set; }
 
+    /// <summary>
+    /// UTC timestamp of the most recent password reset — self-service (RAL-265) or
+    /// admin-initiated (RAL-254). Null if this account has never been reset. Paired with
+    /// <see cref="PasswordResetAcknowledgedAt"/> to decide whether the "your password was
+    /// reset" notice (RAL-267) is still owed to the user. A routine self-service password
+    /// change via <c>ChangePasswordAsync</c> does NOT touch this — that's a voluntary change,
+    /// not a reset someone else could have triggered.
+    /// </summary>
+    public DateTime? LastPasswordResetAt { get; set; }
+
+    /// <summary>
+    /// UTC timestamp the user last dismissed the reset notice (RAL-267). The notice is owed
+    /// again whenever <see cref="LastPasswordResetAt"/> is set and is null or newer than this.
+    /// </summary>
+    public DateTime? PasswordResetAcknowledgedAt { get; set; }
+
     // ── Preferences ───────────────────────────────────────────────────────────
 
     /// <summary>

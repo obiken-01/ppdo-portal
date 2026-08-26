@@ -168,6 +168,9 @@ public sealed class UserService : IUserService
             Position     = dto.Position?.Trim(),
             ContactNo    = dto.ContactNo?.Trim(),
             IsActive     = true,
+            // A fresh account starts on the same one-time temporary password an admin
+            // reset issues — force the change at next login (RAL-254/RAL-266).
+            MustChangePassword = true,
         };
 
         // Validated against the user as it will exist, not as the requester currently is.
@@ -372,9 +375,15 @@ public sealed class UserService : IUserService
         // Issued once, shown once — never stored or logged in plaintext (RAL-254).
         string temporaryPassword = PasswordGenerator.Generate();
 
-        target.PasswordHash       = BCrypt.Net.BCrypt.HashPassword(temporaryPassword);
-        target.RefreshToken       = null;
-        target.RefreshTokenExpiry = null;
+        target.PasswordHash               = BCrypt.Net.BCrypt.HashPassword(temporaryPassword);
+        target.RefreshToken               = null;
+        target.RefreshTokenExpiry         = null;
+        // Force a real change at next login (RAL-254's own scope — never wired up until now)
+        // and surface the "your password was reset" notice (RAL-267). A fresh reset always
+        // needs re-acknowledging, even if a previous one was already dismissed.
+        target.MustChangePassword         = true;
+        target.LastPasswordResetAt        = DateTime.UtcNow;
+        target.PasswordResetAcknowledgedAt = null;
 
         await _users.UpdateAsync(target, cancellationToken);
         await _users.SaveChangesAsync(cancellationToken);
@@ -602,12 +611,68 @@ public sealed class UserService : IUserService
         if (!dto.NewPassword.Any(char.IsDigit))
             return ServiceResult<bool>.BadRequest("Password must contain at least one digit.");
 
-        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
+        user.PasswordHash       = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
+        // Whatever put this user on a temporary password (admin reset or self-service
+        // recovery) is satisfied the moment they successfully change it themselves.
+        user.MustChangePassword = false;
 
         await _users.UpdateAsync(user, cancellationToken);
         await _users.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Password changed. UserId: {UserId}", user.Id);
+
+        return ServiceResult<bool>.Ok(true);
+    }
+
+    // ── Recovery-answer setup (RAL-266) ─────────────────────────────────────────
+
+    /// <inheritdoc />
+    public async Task<ServiceResult<bool>> SetRecoveryAnswerAsync(
+        User caller,
+        SetRecoveryAnswerDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        User? user = await _users.GetByIdAsync(caller.Id, cancellationToken);
+        if (user is null)
+            return ServiceResult<bool>.NotFound($"User {caller.Id} not found.");
+
+        if (!RecoveryQuestionName.TryParse(dto.QuestionKey, out RecoveryQuestion question))
+            return ServiceResult<bool>.BadRequest(
+                $"'{dto.QuestionKey}' is not a valid recovery question. Valid values: {RecoveryQuestionName.ValidValues}.");
+
+        if (string.IsNullOrWhiteSpace(dto.Answer))
+            return ServiceResult<bool>.BadRequest("Answer is required.");
+
+        // Same normalize-then-hash path RAL-265 verifies against — a divergence here would
+        // silently lock the user out of their own answer.
+        string normalized = RecoveryAnswerNormalizer.Normalize(dto.Answer);
+        user.RecoveryQuestionKey  = question;
+        user.RecoveryAnswerHash   = BCrypt.Net.BCrypt.HashPassword(normalized);
+        // Re-running this (changing your answer later) starts the lockout window clean.
+        user.RecoveryAttemptCount = 0;
+        user.RecoveryFirstAttemptAt = null;
+
+        await _users.UpdateAsync(user, cancellationToken);
+        await _users.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Recovery answer set. UserId: {UserId}", user.Id);
+
+        return ServiceResult<bool>.Ok(true);
+    }
+
+    /// <inheritdoc />
+    public async Task<ServiceResult<bool>> AcknowledgePasswordResetAsync(
+        User caller,
+        CancellationToken cancellationToken = default)
+    {
+        User? user = await _users.GetByIdAsync(caller.Id, cancellationToken);
+        if (user is null)
+            return ServiceResult<bool>.NotFound($"User {caller.Id} not found.");
+
+        user.PasswordResetAcknowledgedAt = DateTime.UtcNow;
+
+        await _users.UpdateAsync(user, cancellationToken);
+        await _users.SaveChangesAsync(cancellationToken);
 
         return ServiceResult<bool>.Ok(true);
     }

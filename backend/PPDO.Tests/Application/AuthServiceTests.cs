@@ -415,6 +415,87 @@ public sealed class AuthServiceTests
         Assert.Equal("/budget-planning", me.LandingPath);
     }
 
+    // ── GetMeAsync — password / recovery gates (RAL-266/RAL-267) ─────────────
+
+    [Fact]
+    public async Task GetMeAsync_MustChangePasswordFlag_IsReflectedAsIs()
+    {
+        User user = MakeActiveUser(BCrypt.Net.BCrypt.HashPassword("x"));
+        user.MustChangePassword = true;
+
+        MeResponse me = await BuildSut(new Mock<IUserRepository>()).GetMeAsync(user);
+
+        Assert.True(me.MustChangePassword);
+    }
+
+    [Fact]
+    public async Task GetMeAsync_NoRecoveryQuestionSet_NeedsRecoverySetupIsTrue()
+    {
+        User user = MakeActiveUser(BCrypt.Net.BCrypt.HashPassword("x")); // RecoveryQuestionKey left unset
+
+        MeResponse me = await BuildSut(new Mock<IUserRepository>()).GetMeAsync(user);
+
+        Assert.True(me.NeedsRecoverySetup);
+    }
+
+    [Fact]
+    public async Task GetMeAsync_RecoveryQuestionSet_NeedsRecoverySetupIsFalse()
+    {
+        User user = MakeActiveUser(BCrypt.Net.BCrypt.HashPassword("x"));
+        user.RecoveryQuestionKey = RecoveryQuestion.FirstPetName;
+
+        MeResponse me = await BuildSut(new Mock<IUserRepository>()).GetMeAsync(user);
+
+        Assert.False(me.NeedsRecoverySetup);
+    }
+
+    [Fact]
+    public async Task GetMeAsync_NeverReset_UnacknowledgedPasswordResetAtIsNull()
+    {
+        User user = MakeActiveUser(BCrypt.Net.BCrypt.HashPassword("x")); // LastPasswordResetAt left unset
+
+        MeResponse me = await BuildSut(new Mock<IUserRepository>()).GetMeAsync(user);
+
+        Assert.Null(me.UnacknowledgedPasswordResetAt);
+    }
+
+    [Fact]
+    public async Task GetMeAsync_ResetNeverAcknowledged_ReturnsTheResetTimestamp()
+    {
+        User user = MakeActiveUser(BCrypt.Net.BCrypt.HashPassword("x"));
+        user.LastPasswordResetAt = DateTime.UtcNow.AddMinutes(-10);
+
+        MeResponse me = await BuildSut(new Mock<IUserRepository>()).GetMeAsync(user);
+
+        Assert.Equal(user.LastPasswordResetAt, me.UnacknowledgedPasswordResetAt);
+    }
+
+    [Fact]
+    public async Task GetMeAsync_ResetAlreadyAcknowledged_ReturnsNull()
+    {
+        User user = MakeActiveUser(BCrypt.Net.BCrypt.HashPassword("x"));
+        user.LastPasswordResetAt = DateTime.UtcNow.AddMinutes(-10);
+        user.PasswordResetAcknowledgedAt = DateTime.UtcNow.AddMinutes(-5); // after the reset
+
+        MeResponse me = await BuildSut(new Mock<IUserRepository>()).GetMeAsync(user);
+
+        Assert.Null(me.UnacknowledgedPasswordResetAt);
+    }
+
+    [Fact]
+    public async Task GetMeAsync_NewerResetAfterAStaleAcknowledgement_ReturnsTheNewResetTimestamp()
+    {
+        // A second reset after the user dismissed the notice for the first one must surface
+        // again — an old acknowledgement must not suppress a brand-new reset.
+        User user = MakeActiveUser(BCrypt.Net.BCrypt.HashPassword("x"));
+        user.PasswordResetAcknowledgedAt = DateTime.UtcNow.AddDays(-30);
+        user.LastPasswordResetAt = DateTime.UtcNow; // reset happened AFTER that acknowledgement
+
+        MeResponse me = await BuildSut(new Mock<IUserRepository>()).GetMeAsync(user);
+
+        Assert.Equal(user.LastPasswordResetAt, me.UnacknowledgedPasswordResetAt);
+    }
+
     // ── Password recovery (RAL-265) ──────────────────────────────────────────
 
     private static User MakeUserWithRecoveryAnswer(RecoveryQuestion question, string answer)

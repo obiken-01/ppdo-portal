@@ -213,7 +213,25 @@ public sealed class AuthService : IAuthService
             CanUploadAip            = await _permissions.CanUploadAipAsync(user, cancellationToken),
             CanManageConfig         = await _permissions.CanManageConfigAsync(user, cancellationToken),
             CanManageAllocation     = await _permissions.CanManageAllocationAsync(user, cancellationToken),
+            MustChangePassword      = user.MustChangePassword,
+            NeedsRecoverySetup      = user.RecoveryQuestionKey is null,
+            UnacknowledgedPasswordResetAt = UnacknowledgedResetAt(user),
         };
+    }
+
+    /// <summary>
+    /// Null unless there's a reset the user hasn't dismissed yet — either they've never
+    /// acknowledged one, or a newer reset happened since their last acknowledgement.
+    /// </summary>
+    private static DateTime? UnacknowledgedResetAt(User user)
+    {
+        if (user.LastPasswordResetAt is not DateTime resetAt)
+            return null;
+
+        bool alreadyAcknowledged =
+            user.PasswordResetAcknowledgedAt is DateTime ackAt && ackAt >= resetAt;
+
+        return alreadyAcknowledged ? null : resetAt;
     }
 
     // ── Password recovery (RAL-265) ────────────────────────────────────────────
@@ -309,6 +327,10 @@ public sealed class AuthService : IAuthService
         user.RecoveryFirstAttemptAt = null;
         user.RefreshToken          = null; // force re-login on every other session
         user.RefreshTokenExpiry    = null;
+        // Surface the "your password was reset" notice at next login (RAL-267). A fresh
+        // reset always needs re-acknowledging, even if a previous one was already dismissed.
+        user.LastPasswordResetAt        = DateTime.UtcNow;
+        user.PasswordResetAcknowledgedAt = null;
 
         await _users.UpdateAsync(user, cancellationToken);
         await _users.SaveChangesAsync(cancellationToken);

@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Options;
+using PPDO.Application.Common;
 using PPDO.Application.DTOs.Auth;
 using PPDO.Application.Services;
 using PPDO.Application.Settings;
@@ -21,8 +22,9 @@ namespace PPDO.Functions.Functions;
 ///   POST /api/auth/verify-recovery  — username + answer → one-time temporary password (RAL-265)
 ///
 /// Protected endpoints (JWT validated via JwtMiddleware.ValidateAsync):
-///   POST /api/auth/logout  — revoke refresh token
-///   GET  /api/auth/me      — current user identity + effective permissions
+///   POST /api/auth/logout             — revoke refresh token
+///   GET  /api/auth/me                 — current user identity + effective permissions
+///   GET  /api/auth/recovery-questions — the fixed catalog, for the setup screen (RAL-266)
 ///
 /// All triggers use AuthorizationLevel.Anonymous — JWT is validated manually per
 /// CLAUDE.md architecture rules. Business logic lives exclusively in AuthService.
@@ -221,9 +223,33 @@ public sealed class AuthFunctions
             CanUploadAip            = me.CanUploadAip,
             CanManageConfig         = me.CanManageConfig,
             CanManageAllocation     = me.CanManageAllocation,
+            MustChangePassword      = me.MustChangePassword,
+            NeedsRecoverySetup      = me.NeedsRecoverySetup,
+            UnacknowledgedPasswordResetAt = me.UnacknowledgedPasswordResetAt,
         };
 
         return await Ok(req, dto, cancellationToken);
+    }
+
+    // ── GET /api/auth/recovery-questions ───────────────────────────────────────
+
+    [Function("RecoveryQuestions")]
+    public async Task<HttpResponseData> RecoveryQuestions(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "auth/recovery-questions")]
+        HttpRequestData req,
+        CancellationToken cancellationToken)
+    {
+        User? user = await _jwt.ValidateAsync(GetAuthHeader(req), cancellationToken);
+        if (user is null)
+            return req.CreateResponse(HttpStatusCode.Unauthorized);
+
+        // Static catalog, no service call needed — RecoveryQuestionCatalog is the single
+        // place both this setup screen and the RAL-265 verify flow read question text from.
+        List<RecoveryQuestionOptionDto> options = RecoveryQuestionCatalog.All
+            .Select(kv => new RecoveryQuestionOptionDto(kv.Key.ToString(), kv.Value))
+            .ToList();
+
+        return await Ok(req, options, cancellationToken);
     }
 
     // ── Refresh-token cookie helpers ─────────────────────────────────────────────

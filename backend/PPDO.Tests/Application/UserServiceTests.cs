@@ -1346,4 +1346,195 @@ public sealed class UserServiceTests
         Assert.NotEqual(originalHash, caller.PasswordHash);
         Assert.True(BCrypt.Net.BCrypt.Verify("NewPass2@", caller.PasswordHash));
     }
+
+    [Fact]
+    public async Task ChangePasswordAsync_ValidNewPassword_ClearsMustChangePassword()
+    {
+        User caller = MakeStaff();
+        caller.PasswordHash = BCrypt.Net.BCrypt.HashPassword("Current1!");
+        caller.MustChangePassword = true; // e.g. still on a temporary password from a reset
+
+        Mock<IUserRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByIdWithDivisionAsync(caller.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(caller);
+
+        ChangePasswordDto dto = new("Current1!", "NewPass2@", "NewPass2@");
+
+        ServiceResult<bool> result = await BuildSut(repo).ChangePasswordAsync(caller, dto);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(caller.MustChangePassword);
+    }
+
+    // ── CreateAsync — MustChangePassword (RAL-254 gap closed by RAL-266) ────────
+
+    [Fact]
+    public async Task CreateAsync_ValidStaff_SetsMustChangePassword()
+    {
+        User? captured = null;
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByUsernameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+        repo.Setup(r => r.FindByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+        repo.Setup(r => r.AddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
+            .Callback<User, CancellationToken>((u, _) => captured = u)
+            .Returns(Task.CompletedTask);
+        repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+        repo.Setup(r => r.GetByIdWithDivisionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => captured);
+
+        CreateUserDto dto = new("Jane Doe", "janedoe", "jane@ppdo.gov.ph", "Staff", 2, null, null);
+
+        await BuildSut(repo).CreateAsync(MakeAdmin(), dto);
+
+        Assert.NotNull(captured);
+        Assert.True(captured!.MustChangePassword);
+    }
+
+    // ── ResetPasswordAsync — MustChangePassword + reset notice (RAL-254/RAL-267) ─
+
+    [Fact]
+    public async Task ResetPasswordAsync_ValidTarget_SetsMustChangePassword()
+    {
+        User target = MakeStaff();
+        Mock<IUserRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByIdWithDivisionAsync(target.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(target);
+
+        await BuildSut(repo).ResetPasswordAsync(MakeAdmin(), target.Id);
+
+        Assert.True(target.MustChangePassword);
+    }
+
+    [Fact]
+    public async Task ResetPasswordAsync_ValidTarget_SetsLastPasswordResetAt_AndClearsPriorAcknowledgement()
+    {
+        User target = MakeStaff();
+        // A stale acknowledgement from a PRIOR reset must not suppress the notice for this one.
+        target.PasswordResetAcknowledgedAt = DateTime.UtcNow.AddDays(-30);
+
+        Mock<IUserRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByIdWithDivisionAsync(target.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(target);
+
+        DateTime before = DateTime.UtcNow;
+        await BuildSut(repo).ResetPasswordAsync(MakeAdmin(), target.Id);
+
+        Assert.NotNull(target.LastPasswordResetAt);
+        Assert.True(target.LastPasswordResetAt >= before);
+        Assert.Null(target.PasswordResetAcknowledgedAt);
+    }
+
+    // ── SetRecoveryAnswerAsync (RAL-266) ─────────────────────────────────────────
+
+    [Fact]
+    public async Task SetRecoveryAnswerAsync_UserNotFound_ReturnsNotFound()
+    {
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+
+        SetRecoveryAnswerDto dto = new("BirthTown", "Manila");
+
+        ServiceResult<bool> result = await BuildSut(repo).SetRecoveryAnswerAsync(MakeStaff(), dto);
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Fact]
+    public async Task SetRecoveryAnswerAsync_UnknownQuestionKey_ReturnsBadRequest()
+    {
+        User caller = MakeStaff();
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.GetByIdAsync(caller.Id, It.IsAny<CancellationToken>())).ReturnsAsync(caller);
+
+        SetRecoveryAnswerDto dto = new("NotAQuestion", "Manila");
+
+        ServiceResult<bool> result = await BuildSut(repo).SetRecoveryAnswerAsync(caller, dto);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task SetRecoveryAnswerAsync_BlankAnswer_ReturnsBadRequest()
+    {
+        User caller = MakeStaff();
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.GetByIdAsync(caller.Id, It.IsAny<CancellationToken>())).ReturnsAsync(caller);
+
+        SetRecoveryAnswerDto dto = new("BirthTown", "   ");
+
+        ServiceResult<bool> result = await BuildSut(repo).SetRecoveryAnswerAsync(caller, dto);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task SetRecoveryAnswerAsync_Valid_SetsQuestionAndHashedNormalizedAnswer()
+    {
+        User caller = MakeStaff();
+        Mock<IUserRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByIdAsync(caller.Id, It.IsAny<CancellationToken>())).ReturnsAsync(caller);
+
+        SetRecoveryAnswerDto dto = new("FirstPetName", "  Bantay  ");
+
+        ServiceResult<bool> result = await BuildSut(repo).SetRecoveryAnswerAsync(caller, dto);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(RecoveryQuestion.FirstPetName, caller.RecoveryQuestionKey);
+        Assert.NotNull(caller.RecoveryAnswerHash);
+        // Verifying must go through the exact same normalize-then-hash path RAL-265 reads —
+        // a divergence here silently locks the user out of their own answer.
+        Assert.True(BCrypt.Net.BCrypt.Verify(
+            RecoveryAnswerNormalizer.Normalize("bantay"), caller.RecoveryAnswerHash));
+    }
+
+    [Fact]
+    public async Task SetRecoveryAnswerAsync_Valid_ClearsAnyPriorLockoutState()
+    {
+        User caller = MakeStaff();
+        caller.RecoveryAttemptCount = 4;
+        caller.RecoveryFirstAttemptAt = DateTime.UtcNow;
+
+        Mock<IUserRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByIdAsync(caller.Id, It.IsAny<CancellationToken>())).ReturnsAsync(caller);
+
+        SetRecoveryAnswerDto dto = new("BirthTown", "Manila");
+        await BuildSut(repo).SetRecoveryAnswerAsync(caller, dto);
+
+        Assert.Equal(0, caller.RecoveryAttemptCount);
+        Assert.Null(caller.RecoveryFirstAttemptAt);
+    }
+
+    // ── AcknowledgePasswordResetAsync (RAL-267) ──────────────────────────────────
+
+    [Fact]
+    public async Task AcknowledgePasswordResetAsync_UserNotFound_ReturnsNotFound()
+    {
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+
+        ServiceResult<bool> result = await BuildSut(repo).AcknowledgePasswordResetAsync(MakeStaff());
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Fact]
+    public async Task AcknowledgePasswordResetAsync_Valid_SetsAcknowledgedTimestamp()
+    {
+        User caller = MakeStaff();
+        caller.LastPasswordResetAt = DateTime.UtcNow.AddMinutes(-5);
+
+        Mock<IUserRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByIdAsync(caller.Id, It.IsAny<CancellationToken>())).ReturnsAsync(caller);
+
+        DateTime before = DateTime.UtcNow;
+        ServiceResult<bool> result = await BuildSut(repo).AcknowledgePasswordResetAsync(caller);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(caller.PasswordResetAcknowledgedAt);
+        Assert.True(caller.PasswordResetAcknowledgedAt >= before);
+    }
 }

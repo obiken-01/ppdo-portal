@@ -25,12 +25,12 @@ import { auth } from "@/lib/auth";
 import { APP_VERSION } from "@/lib/version";
 import type {
   LoginResponse,
-  MeResponse,
   RefreshErrorReason,
   ForgotPasswordResponse,
   VerifyRecoveryResponse,
 } from "@/types/auth";
 import { resolveLandingPath, LANDING_FALLBACK } from "@/lib/landing";
+import { clearMeCache, fetchMe } from "@/lib/me-cache";
 
 // ---------------------------------------------------------------------------
 // Unexpected-logout explanation (RAL-198) — carried from a failed silent
@@ -367,10 +367,19 @@ function LoginPageInner() {
       });
       auth.login(data);
 
+      // A fresh login can be a DIFFERENT identity than whatever this browser tab had
+      // cached before — e.g. testing a second account without logging out of the first.
+      // The stale cache would otherwise carry over silently: the portal layout's own
+      // fetchMe() short-circuits on a warm cache, so the wrong user's permissions AND
+      // password/recovery gates (RAL-266/267) would apply until a hard reload.
+      clearMeCache();
+
       // Where the user lands is resolved server-side and returned on /auth/me (RAL-261);
       // it already accounts for their preference, division, office and permissions.
+      // Goes through fetchMe() (not a bare api.get) so this call also warms the cache the
+      // portal layout is about to read — one request instead of two.
       try {
-        const { data: me } = await api.get<MeResponse>("/auth/me");
+        const me = await fetchMe();
         router.replace(resolveLandingPath(me));
       } catch {
         // /auth/me failed — send them somewhere every account can reach rather than

@@ -219,6 +219,17 @@ public sealed class MeResponse
     public bool CanUploadAip { get; init; }
     public bool CanManageConfig { get; init; }
     public bool CanManageAllocation { get; init; }
+
+    // -- Password / recovery gates (RAL-266/RAL-267) ---------------------------
+
+    /// <summary>True after a reset — the portal blocks everything except changing the password.</summary>
+    public bool MustChangePassword { get; init; }
+
+    /// <summary>True when no recovery question is set yet — the portal blocks everything except setup.</summary>
+    public bool NeedsRecoverySetup { get; init; }
+
+    /// <summary>UTC timestamp of the most recent reset, only when not yet acknowledged. Non-blocking.</summary>
+    public DateTime? UnacknowledgedPasswordResetAt { get; init; }
 }
 
 /// <summary>The outcome of a <see cref="IAuthService.VerifyRecoveryAnswerAsync"/> call.</summary>
