@@ -142,7 +142,7 @@ changing after that means re-touching every ownership check. See V18-12 in §3.2
 |---|---|---|---|
 | **V18-09** | `climate_change_typologies` config table + page | Replaces the free-text `AipActivity.CcTypologyCode`. Follows the existing config-page pattern (`config/funding-sources`) | M |
 | **V18-10** | `esre_codes` config table + page | Replaces the free-text eSRE field (`SS`/`ES`/`ID`/`EN`). Same pattern; can share V18-09's ticket if kept small | S |
-| **V18-11** | `ProgramDivision` string keys → real FKs | Keys on `OfficeRefCode` + `ProgramRefCode` **strings** today. Program→division assignment becomes load-bearing for PPDO visibility in Phase 3, so this stops being untidiness and becomes a correctness risk | M |
+| **V18-11** | `ProgramDivision` string keys → real FKs | Keys on `OfficeRefCode` + `ProgramRefCode` **strings** today. Program→division assignment becomes load-bearing for PPDO visibility in Phase 3, so this stops being untidiness and becomes a correctness risk. ✅ **Confirmed 2026-08-26 (tracker B12-b): this is now the *sole* carrier of PPDO's division visibility** — the prediction landed. ℹ️ The original reason for string keys also **lapses**: they exist so assignments survive supplemental `.xlsm` re-uploads, and FY2028+ has no upload (§12.6) | M |
 | **V18-12** | Office config: extend the entity + page — **plus the DECISION F host-office change** | **✅ Built in `f35c47c` (2026-08-25); PR #257 open, not merged.** `IsHostOffice` flag, PPDO users on a real `office_id`, `OfficeId == null` retired. Landing-page field (V18-16) also wired on the office form. Was sized S → M for the migration + scope-resolver work; detail below the table | M |
 | **V18-13** | Division config: extend the entity + page | Adds the default landing page (V18-16). Confirm the flag set is still right now that reviewer/LFC/PBO are per-user, not per-division | S |
 | **V18-14** | Config dashboard tiles for the new pages | `config/page.tsx` — one tile per new config area, counts served by count endpoints, not full lists (the RAL-232 lesson) | S |
@@ -285,7 +285,7 @@ WFP's generalised (§12.1). **Phase 2 can be ticketed.**
 | **V18-37** | FY partition: FY≤2027 keeps the v1.6 **shape**, FY≥2028 the new one | Per `AIP_Redesign_Notes.md` §4a — clean break, no migration. ⚠️ **Shape only — the partition does NOT extend to units** (DECISION E, V18-35): units are migrated across all years, so `total` means pesos on every row regardless of fiscal year. Decide the gate's mechanism: a literal `fiscalYear` check on shared endpoints, or new endpoints beside untouched old ones |
 | **V18-38** | Freeze the `.xlsm` upload to historical years | `AipXlsmParser` produces the old shape only. ⚠️ Per §4b, the FY2027 rows in the database were imported by the **pre-RAL-238** parser and are not a faithful copy of the province's file |
 | **V18-39** | AIP scope resolver: `OfficeScope` × `DivisionScope` | The genuinely two-axis model — division participates **only** when the caller is PPDO. Neither WFP (always both) nor LDIP (office only) does this |
-| **V18-40** | New AIP record shape — office-owned, LDIP-like | Includes the open question of one record per PPDO division vs one record with division-tagged rows |
+| **V18-40** | New AIP record shape — office-owned, LDIP-like | ✅ **Unblocked 2026-08-26 (tracker B12-b).** PPDO gets an **ordinary office record** — no per-division records, no division column on `AipOffice`, and divisions never print. Division of work is carried on the **program**, via the existing `ProgramDivision` map, exactly as WFP does. A sub-unit that *does* print is an `AipOffice` row sharing the office ref code, distinguished by `(Sector, Name)` — already built, and how the province really encodes (§12.6) |
 
 
 **V18-35 detail — DECISION E, answered 2026-08-25 (units ≠ shape).**
@@ -887,10 +887,35 @@ the PPDO reviewer's do.
 to a **PPDO department-head reviewer** first, mirroring any other office, and that person is
 **distinct from the PPDO consolidated reviewer**. PPDO encoders "will only be able to see their
 division's work", so division scoping applies inside PPDO exactly as office scoping applies outside
-it. ⚠️ What this still does not settle is the **record shape** underneath — one AIP record per PPDO
-division, or one record with division-tagged rows (`AIP_Redesign_Notes.md` §4 Q2). The answer leans
-toward one-per-division, since that is what "mirroring an office" implies, but it does not say so
-(§12.8 Q8).
+it.
+
+✅ **The record shape is answered — 2026-08-26, tracker B12-b — and it is neither of the two options
+this plan had been posing.** Ralph: *"For PPDO, the programs will be assigned to the divisions (same
+as in WFP) for the division of work. And like in WFP they will only see their own division's work.
+This special filter will not be applied to other offices."*
+
+| | |
+|---|---|
+| **PPDO's AIP record** | An **ordinary office record**. No per-division records, and no division tag on `AipOffice`. PPDO's divisions **never appear on the printed form** — PPDO prints as office rows exactly like any other office |
+| **Where the division lives** | On the **program**, via the existing **`ProgramDivision`** map (v1.2 / RAL-99) — the same mechanism WFP already uses. A program may be assigned to **more than one** division; `AllocationService` already handles a set |
+| **The visibility rule** | PPDO users see only programs assigned to their own division. ⚠️ **Host office only** — it must *not* apply to ordinary offices |
+
+⚠️ **Two consequences for Phase 2, and neither is free.**
+
+1. **V18-11 is confirmed load-bearing, exactly as it predicted.** `ProgramDivision` is keyed on
+   `(OfficeRefCode, ProgramRefCode)` **strings**. It is now the sole carrier of PPDO's visibility
+   scoping, so string keys stop being untidiness and become a correctness risk — which is what
+   V18-11 already says. Convert to real FKs **before** Phase 3 builds on it.
+   ℹ️ And the reason those keys are strings **lapses in the redesign**: the entity's own comment says
+   they are ref-code-keyed "so that assignments survive supplemental AIP re-uploads, which recreate
+   `aip_programs` rows with new surrogate IDs". FY2028+ has **no `.xlsm` upload** (§4a/§4b) — so the
+   justification for the string keys does not carry into the new format.
+2. **"Host office only" is not enforced anywhere today.** `WfpService.GetFilteredAsync` takes
+   `divisionId` as a **caller-supplied parameter**, and `OfficeScope.IsHostOfficeUser` is consulted
+   in `PermissionService` and `LandingPageResolver` but **not** in `WfpService`. So the conditional
+   — *apply the division filter for the host office, and only for the host office* — is new work,
+   not a pattern to copy. Building it as an ordinary always-on filter would silently scope every
+   office's AIP by division.
 
 ⚠️ **2026-08-26 — the ladder does not stop at Consolidated, and the plan had no idea.** Ralph
 described a Sangguniang Panlalawigan stage, hedged as his own understanding. **The DBM Budget
