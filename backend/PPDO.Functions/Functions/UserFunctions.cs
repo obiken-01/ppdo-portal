@@ -299,6 +299,57 @@ public sealed class UserFunctions
         return error;
     }
 
+    // ── PUT /api/users/me/recovery-answer ───────────────────────────────────────
+
+    [Function("SetMyRecoveryAnswer")]
+    public async Task<HttpResponseData> SetMyRecoveryAnswer(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "users/me/recovery-answer")]
+        HttpRequestData req,
+        CancellationToken cancellationToken)
+    {
+        User? caller = await _jwt.ValidateAsync(GetAuthHeader(req), cancellationToken);
+        if (caller is null)
+            return req.CreateResponse(HttpStatusCode.Unauthorized);
+
+        SetRecoveryAnswerDto? body =
+            await DeserializeAsync<SetRecoveryAnswerDto>(req, cancellationToken);
+        if (body is null)
+            return await BadRequest(req, "Request body is missing or malformed.");
+
+        ServiceResult<bool> result =
+            await _users.SetRecoveryAnswerAsync(caller, body, cancellationToken);
+
+        if (result.IsSuccess)
+            return req.CreateResponse(HttpStatusCode.NoContent);
+
+        HttpStatusCode status = result.Code switch
+        {
+            ServiceErrorCode.NotFound   => HttpStatusCode.NotFound,
+            ServiceErrorCode.BadRequest => HttpStatusCode.BadRequest,
+            _                           => HttpStatusCode.InternalServerError,
+        };
+        HttpResponseData error = req.CreateResponse(status);
+        await error.WriteStringAsync(result.Error ?? "An unexpected error occurred.");
+        return error;
+    }
+
+    // ── POST /api/users/me/acknowledge-password-reset ──────────────────────────
+
+    [Function("AcknowledgePasswordReset")]
+    public async Task<HttpResponseData> AcknowledgePasswordReset(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "users/me/acknowledge-password-reset")]
+        HttpRequestData req,
+        CancellationToken cancellationToken)
+    {
+        User? caller = await _jwt.ValidateAsync(GetAuthHeader(req), cancellationToken);
+        if (caller is null)
+            return req.CreateResponse(HttpStatusCode.Unauthorized);
+
+        await _users.AcknowledgePasswordResetAsync(caller, cancellationToken);
+
+        return req.CreateResponse(HttpStatusCode.NoContent);
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     private static string? GetAuthHeader(HttpRequestData req)

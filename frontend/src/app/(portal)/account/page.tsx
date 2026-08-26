@@ -4,13 +4,14 @@ import { useCallback, useEffect, useState } from "react";
 import {
   getMyProfile,
   updateMyProfile,
-  changePassword,
   type UpdateProfileRequest,
 } from "@/lib/account";
 import { useToast } from "@/components/ui/Toast";
 import type { MeResponse, UserResponse } from "@/types";
 import LandingPageSelect, { reachabilityFromMe } from "@/components/ui/LandingPageSelect";
 import { fetchMe } from "@/lib/me-cache";
+import ChangePasswordForm from "@/components/account/ChangePasswordForm";
+import RecoveryAnswerForm from "@/components/account/RecoveryAnswerForm";
 
 type Tab = "profile" | "security";
 
@@ -244,102 +245,22 @@ function ProfileTab({
 function SecurityTab() {
   const { toast } = useToast();
 
-  const [current, setCurrent]   = useState("");
-  const [newPw, setNewPw]       = useState("");
-  const [confirm, setConfirm]   = useState("");
-  const [saving, setSaving]     = useState(false);
-  const [error, setError]       = useState<string | null>(null);
-
-  const canSubmit = current.trim() !== "" && newPw !== "" && confirm !== "";
-
-  // Client-side policy preview
-  function validateLocal(): string | null {
-    if (newPw.length < 8) return "New password must be at least 8 characters.";
-    if (!/[A-Z]/.test(newPw)) return "New password must contain at least one uppercase letter.";
-    if (!/\d/.test(newPw)) return "New password must contain at least one digit.";
-    if (newPw !== confirm) return "Passwords do not match.";
-    return null;
-  }
-
-  async function handleSave() {
-    const localErr = validateLocal();
-    if (localErr) { setError(localErr); return; }
-
-    setSaving(true);
-    setError(null);
-    try {
-      await changePassword({ currentPassword: current, newPassword: newPw, confirmPassword: confirm });
-      toast.success("Password updated successfully.");
-      setCurrent("");
-      setNewPw("");
-      setConfirm("");
-    } catch (err) {
-      const msg =
-        (err as { response?: { data?: string } })?.response?.data ??
-        "Failed to change password.";
-      setError(msg);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  const inputCls =
-    "w-full px-3 py-2 text-sm border border-slate-200 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-green-600 focus:border-transparent";
-
   return (
-    <div className="bg-white border border-slate-200 shadow-sm p-6">
-      <h2 className="text-sm font-semibold text-slate-800 mb-5">Change Password</h2>
+    <div className="space-y-6">
+      <div className="bg-white border border-slate-200 shadow-sm p-6">
+        <h2 className="text-sm font-semibold text-slate-800 mb-5">Change Password</h2>
+        <ChangePasswordForm onSuccess={() => toast.success("Password updated successfully.")} />
+      </div>
 
-      <div className="space-y-4">
-        <Field label="Current Password" required>
-          <input
-            type="password"
-            className={inputCls}
-            value={current}
-            onChange={(e) => { setCurrent(e.target.value); setError(null); }}
-            autoComplete="current-password"
-          />
-        </Field>
-
-        <Field label="New Password" required>
-          <input
-            type="password"
-            className={inputCls}
-            value={newPw}
-            onChange={(e) => { setNewPw(e.target.value); setError(null); }}
-            autoComplete="new-password"
-          />
-          <p className="text-xs text-slate-600 mt-1">
-            Min. 8 characters · at least 1 uppercase letter · at least 1 digit
-          </p>
-        </Field>
-
-        <Field label="Confirm New Password" required>
-          <input
-            type="password"
-            className={inputCls}
-            value={confirm}
-            onChange={(e) => { setConfirm(e.target.value); setError(null); }}
-            autoComplete="new-password"
-          />
-        </Field>
-
-        {error && (
-          <p className="text-sm text-danger-500">{error}</p>
-        )}
-
-        <div className="flex justify-end pt-2">
-          <button
-            onClick={handleSave}
-            disabled={!canSubmit || saving}
-            className="px-5 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-500 disabled:opacity-60 transition-colors flex items-center gap-2"
-          >
-            {saving && (
-              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            )}
-            {saving ? "Saving…" : "Save Changes"}
-          </button>
-        </div>
+      <div className="bg-white border border-slate-200 shadow-sm p-6">
+        <h2 className="text-sm font-semibold text-slate-800 mb-1">Account Recovery</h2>
+        <p className="text-xs text-slate-600 mb-5">
+          Used to reset your own password if you ever forget it. Saving here replaces
+          whatever question and answer you set before.
+        </p>
+        <RecoveryAnswerForm
+          onSuccess={() => toast.success("Recovery answer updated successfully.")}
+        />
       </div>
     </div>
   );

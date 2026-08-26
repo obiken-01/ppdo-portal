@@ -102,4 +102,27 @@ export interface MeResponse {
   canUploadAip: boolean;
   canManageConfig: boolean;
   canManageAllocation: boolean;
+
+  /** True after a reset — the portal blocks everything except changing the password (RAL-266). */
+  mustChangePassword: boolean;
+  /** True when no recovery question is set yet — the portal blocks everything except setup (RAL-266). */
+  needsRecoverySetup: boolean;
+  /**
+   * ISO timestamp of the most recent reset, only when not yet acknowledged. Null means
+   * nothing to show. Non-blocking — rendered as a dismissible banner (RAL-267).
+   */
+  unacknowledgedPasswordResetAt: string | null;
+}
+
+/** Mirrors PPDO.Application/DTOs/Auth/RecoveryQuestionOptionDto.cs (RAL-266). */
+export interface RecoveryQuestionOption {
+  /** Enum name, e.g. "BirthTown" — the same value SetRecoveryAnswerRequest.questionKey expects. */
+  key: string;
+  text: string;
+}
+
+/** Mirrors PPDO.Application/DTOs/Users/SetRecoveryAnswerDto.cs (RAL-266). */
+export interface SetRecoveryAnswerRequest {
+  questionKey: string;
+  answer: string;
 }

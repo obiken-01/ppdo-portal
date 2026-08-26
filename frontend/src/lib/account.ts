@@ -4,7 +4,7 @@
  */
 
 import api from "./api";
-import type { LandingPageKey, UserResponse } from "@/types";
+import type { LandingPageKey, RecoveryQuestionOption, SetRecoveryAnswerRequest, UserResponse } from "@/types";
 
 export interface UpdateProfileRequest {
   fullName:  string;
@@ -37,4 +37,20 @@ export async function updateMyProfile(body: UpdateProfileRequest): Promise<UserR
 /** PUT /api/users/me/password — 204 No Content on success; throws on any error. */
 export async function changePassword(body: ChangePasswordRequest): Promise<void> {
   await api.put("/users/me/password", body);
+}
+
+/** GET /api/auth/recovery-questions — the fixed catalog, for the setup screen (RAL-266). */
+export async function getRecoveryQuestionOptions(): Promise<RecoveryQuestionOption[]> {
+  const { data } = await api.get<RecoveryQuestionOption[]>("/auth/recovery-questions");
+  return data;
+}
+
+/** PUT /api/users/me/recovery-answer — 204 No Content on success; throws on any error (RAL-266). */
+export async function setRecoveryAnswer(body: SetRecoveryAnswerRequest): Promise<void> {
+  await api.put("/users/me/recovery-answer", body);
+}
+
+/** POST /api/users/me/acknowledge-password-reset — dismisses the reset notice (RAL-267). */
+export async function acknowledgePasswordReset(): Promise<void> {
+  await api.post("/users/me/acknowledge-password-reset");
 }

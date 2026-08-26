@@ -29,6 +29,9 @@ import { classifyRefreshFailure, loginUrlWithReason, reconnectingUrl, REFRESH_TI
 import { clearMeCache, fetchMe } from "@/lib/me-cache";
 import Sidebar from "@/components/layout/Sidebar";
 import Topbar from "@/components/layout/Topbar";
+import MustChangePasswordGate from "@/components/layout/MustChangePasswordGate";
+import RecoverySetupGate from "@/components/layout/RecoverySetupGate";
+import PasswordResetNotice from "@/components/layout/PasswordResetNotice";
 import { ToastProvider } from "@/components/ui/Toast";
 import type { MeResponse, RefreshErrorReason } from "@/types";
 import { resolveLandingPath } from "@/lib/landing";
@@ -83,6 +86,10 @@ export default function PortalLayout({
   pathnameRef.current = pathname;
   const [ready, setReady] = useState(false);
   const [me, setMe]       = useState<MeResponse | null>(null);
+  // True once the FIRST /auth/me attempt has settled (success or failure) — gates
+  // the mustChangePassword/needsRecoverySetup checks below so they never fall through
+  // to the normal shell just because `me` hasn't loaded yet (RAL-266/267).
+  const [meLoaded, setMeLoaded] = useState(false);
   // Sidebar drawer (below lg — RAL-187). No effect at lg+, where the sidebar
   // is always visible regardless of this flag.
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -149,8 +156,21 @@ export default function PortalLayout({
 
   useEffect(() => {
     if (!ready) return;
-    fetchMe().then(setMe).catch(() => {});
+    fetchMe().then(setMe).catch(() => {}).finally(() => setMeLoaded(true));
   }, [ready]);
+
+  // Re-fetches /auth/me after a gate action (change password, set recovery answer,
+  // dismiss the reset notice) changes something the cached value no longer reflects.
+  // The module-level cache never refetches on its own, so it must be cleared first.
+  async function refreshMe() {
+    clearMeCache();
+    try {
+      setMe(await fetchMe());
+    } catch {
+      // Transient failure — leave the current (stale) me in place rather than booting
+      // the user out of a gate they just cleared; the next natural refetch will catch up.
+    }
+  }
 
   // ── Prefetch nav routes after permissions are known ─────────────────────────
   // Sidebar links are permission-gated so <Link> elements don't exist in the DOM
@@ -226,8 +246,10 @@ export default function PortalLayout({
   }, [me, pathname, router]);
 
   // ── Loading state ──────────────────────────────────────────────────────────
-
-  if (!ready) {
+  // Waits for the first /auth/me attempt too, not just the token check — otherwise the
+  // mustChangePassword/needsRecoverySetup gates below would read a still-null `me` on the
+  // very first render and fall through to the real shell for a frame before correcting.
+  if (!ready || !meLoaded) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-100">
         <div className="flex flex-col items-center gap-3">
@@ -238,6 +260,22 @@ export default function PortalLayout({
     );
   }
 
+  // ── Password / recovery gates (RAL-266/RAL-267) ─────────────────────────────
+  // Structural takeovers, not route redirects — neither renders Sidebar/Topbar/children,
+  // so there is nothing to navigate to and no allowlist to maintain. me starts null while
+  // /auth/me is still in flight, so there is a brief window (same as the office-user gate
+  // above) where neither condition is true yet; that's an accepted, already-established
+  // trade-off in this file, not new here.
+  //
+  // Order matters: a temporary password takes priority over recovery setup, so a freshly
+  // reset account isn't asked to set up recovery using a password it's about to change.
+  if (me?.mustChangePassword) {
+    return <MustChangePasswordGate onComplete={refreshMe} />;
+  }
+  if (me?.needsRecoverySetup) {
+    return <RecoverySetupGate onComplete={refreshMe} />;
+  }
+
   // ── Portal shell ───────────────────────────────────────────────────────────
 
   return (
@@ -246,6 +284,14 @@ export default function PortalLayout({
         <Sidebar me={me} open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden print:overflow-visible">
           <Topbar me={me} title={getPageTitle(pathname)} onMenuClick={() => setSidebarOpen(true)} />
+          {me?.unacknowledgedPasswordResetAt && (
+            <PasswordResetNotice
+              resetAt={me.unacknowledgedPasswordResetAt}
+              onDismissed={() =>
+                setMe((prev) => (prev ? { ...prev, unacknowledgedPasswordResetAt: null } : prev))
+              }
+            />
+          )}
           <main className="flex-1 overflow-auto print:overflow-visible print:h-auto">
             {children}
           </main>

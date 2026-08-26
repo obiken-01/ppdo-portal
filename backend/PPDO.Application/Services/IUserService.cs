@@ -146,4 +146,27 @@ public interface IUserService
         User caller,
         ChangePasswordDto dto,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Self-service one-time recovery-question setup (RAL-266). Overwrites any existing
+    /// question/answer — re-running this is how a user changes their recovery answer, not
+    /// just how they set it the first time — and clears any stale lockout state from a prior
+    /// answer.
+    ///
+    /// Returns:
+    ///   <see cref="ServiceErrorCode.NotFound"/>  — caller's user record not found.
+    ///   <see cref="ServiceErrorCode.BadRequest"/> — unknown question key, or blank answer.
+    /// </summary>
+    Task<ServiceResult<bool>> SetRecoveryAnswerAsync(
+        User caller,
+        SetRecoveryAnswerDto dto,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Dismisses the "your password was reset" notice (RAL-267) for the caller's own account.
+    /// Idempotent — safe to call when there is nothing to acknowledge.
+    /// </summary>
+    Task<ServiceResult<bool>> AcknowledgePasswordResetAsync(
+        User caller,
+        CancellationToken cancellationToken = default);
 }

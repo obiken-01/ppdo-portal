@@ -52,4 +52,26 @@ public sealed class MeResponseDto
     public bool CanUploadAip { get; init; }
     public bool CanManageConfig { get; init; }
     public bool CanManageAllocation { get; init; }
+
+    // -- Password / recovery gates (RAL-266/RAL-267) ---------------------------
+
+    /// <summary>
+    /// True after an admin or self-service reset — the portal must block everything except
+    /// changing the password until this clears.
+    /// </summary>
+    public bool MustChangePassword { get; init; }
+
+    /// <summary>
+    /// True when this account has no recovery question set yet — the portal must block
+    /// everything except the one-time setup screen until this clears (RAL-266).
+    /// </summary>
+    public bool NeedsRecoverySetup { get; init; }
+
+    /// <summary>
+    /// UTC timestamp of the most recent reset, only when it hasn't been acknowledged yet.
+    /// Null means there is nothing to show — either no reset has happened, or the user
+    /// already dismissed the notice for it. Non-blocking: shown as a dismissible banner,
+    /// not a gate (RAL-267).
+    /// </summary>
+    public DateTime? UnacknowledgedPasswordResetAt { get; init; }
 }
