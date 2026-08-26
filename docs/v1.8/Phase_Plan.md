@@ -398,11 +398,11 @@ how PPDO's own divisions submit).
 | **V18-50** | Extend `PlanningStatus` (Draft/Final/Archived today) to the multi-stage flow |
 | **V18-51** | ⚠️ **Corrected 2026-08-25 — there are TWO submits, not one.** The **encoder** submits the office's whole work for department review; the **department-head reviewer** is the sole submitter onward to PPDO. The original "encoders cannot submit" holds only for the second hop |
 | **V18-52** | Locking on submit. ✅ **Answered 2026-08-25 (tracker B3):** during department-head review the work stays **editable by both encoder and reviewer**; it locks **only when submitted to PPDO**, and unlocks again when a PPDO reviewer returns it |
-| **V18-53** | Review comments. ✅ **Narrowed 2026-08-26 (tracker B10), superseding DECISION 10's "both levels": inline comments only** — there is no whole-submission comment. Each carries a **"Mark as resolved" checkbox**, set when the work is returned; on re-submit the app **counts unresolved comments, warns, and lets the user proceed or cancel** — a soft gate, not a hard one. The department head may also edit values directly; the PPDO reviewer may only comment (V18-04). ⚠️ Two things still unspecified: **what "inline" anchors to** (activity row, expense line, or any field) and whether the department head's comments enter the same resolve flow (§12.5) |
+| **V18-53** | Review comments. ✅ **Narrowed 2026-08-26 (tracker B10), superseding DECISION 10's "both levels": inline comments only** — there is no whole-submission comment. Each carries a **"Mark as resolved" checkbox**, set when the work is returned; on re-submit the app **counts unresolved comments, warns, and lets the user proceed or cancel** — a soft gate, not a hard one. The department head may also edit values directly; the PPDO reviewer may only comment (V18-04). ✅ **Both remaining gaps closed 2026-08-26 (§12.5):** comments anchor to **the row** (GitHub-style gutter control, collapsed by default with a row marker); **an office may not resolve a PPDO reviewer's comment** — only the other side can, or the soft gate becomes self-marking; **no replies/threading**, resolve is the only action; the unresolved count is **split by author side** and rendered as filter buttons *and* in the re-submit warning. Resolved comments are marked, never deleted — they feed V18-77's "Show History" |
 | **V18-54** | Return / send-back path with a resubmit flow |
 | **V18-55** | PPDO internal consolidation (divisions → PPDO reviewer). ✅ **Answered (tracker B4/B4-a/B4-b):** "consolidated" is the **existing multi-office record, filled in office by office as they submit** — not a newly assembled record; **only reviewers can see it** (PPDO division users cannot), and PPDO reviewers may view it **partially**, before every office has submitted |
 | **V18-56** | ⚠️ **Rewritten 2026-08-25 — PPDO review across all offices, not LFC.** Designated PPDO users review the consolidated document, comment, and **send a whole office's work back** for update and re-submission. One office at a time is the confirmed granularity (tracker B5) |
-| **V18-57** | ⚠️ **Narrowed 2026-08-25 (tracker B7): no enforced deadline.** The deadline is communicated to offices outside the system, so build **no date gate** — build the **history**: who submitted and when, who returned it, when it was re-submitted, plus the readiness view of who has and has not submitted |
+| **V18-57** | ⚠️ **Narrowed 2026-08-25 (tracker B7): no enforced deadline.** The deadline is communicated to offices outside the system, so build **no date gate** — build the **history**: who submitted and when, who returned it, when it was re-submitted, plus the readiness view of who has and has not submitted. ✅ **The readiness view has a shape as of 2026-08-26: an office kanban — see V18-82 (§12.5a).** The history half is V18-77, surfaced via "Show History" on the review page |
 | **V18-58** | In-app notifications — sidebar pending count + review queue page. No email infrastructure exists; push is PWA Phase 3, and the in-app queue is its prerequisite either way |
 
 ## 7. Phase 5 — Outputs ✅ unblocked
@@ -876,10 +876,98 @@ The reading of tracker B3 was correct: the PPDO reviewer comments and returns bu
 program / project / activity" with **inline comments only** — there is no whole-submission comment.
 The lifecycle is specified: each comment carries a **"Mark as resolved" checkbox**, set when the
 work is returned to the office; on re-submit the app **counts unresolved comments and warns**, and
-the user may **proceed anyway or cancel**. It is a soft gate, not a hard one. Two things B10 does
-not say, and V18-53 needs both: **what "inline" anchors to** (an activity row, an expense line, or
-any field), and whether the department-head reviewer's comments enter the same resolve flow or only
-the PPDO reviewer's do.
+the user may **proceed anyway or cancel**. It is a soft gate, not a hard one.
+
+✅ **2026-08-26 — both of B10's gaps are now closed, and the interaction is specified.** The two
+things B10 left open (what "inline" anchors to, and whose comments enter the resolve flow) were
+answered together with the comment UI, modelled on GitHub's inline review comments:
+
+| Question | Answer |
+|---|---|
+| **What does "inline" anchor to?** | **The row.** Not a field, not an expense line — a gutter control on the left of each row, the way GitHub anchors a comment to a line. Field-level anchoring was rejected: the AIP grid is wide, and it would multiply anchor points for no reviewer benefit |
+| **Who may resolve?** | **Only the side that did not write it.** An office **cannot** resolve a PPDO reviewer's comment. Without this the soft gate is self-marking — an office could clear every comment and re-submit with nothing actually addressed |
+| **Threading / replies?** | **None.** Resolve is the only action on a comment. (This also answers §12.8 Q6's "comment threading") |
+| **Default visibility** | **Collapsed.** Rows carrying comments are marked (row highlight + a show-comments control in the gutter); the comment body is opened deliberately, so the grid stays readable |
+
+**The unresolved counter is per-source, and it is a filter, not just a number.** Because comments
+are collapsed by default, a user could otherwise re-submit having never opened one. So the count
+appears **on screen as filter buttons split by author side** — office-authored vs PPDO-reviewer
+authored — and the **same split appears in the re-submit warning**. Two reasons for the split: the
+office cannot resolve the PPDO side at all (above), so lumping them into one number would offer an
+action that does not exist; and "3 unresolved from PPDO" is the sentence that actually changes
+whether someone re-submits.
+
+**History is a first-class part of this page, not just an audit table.** Ralph: *"As long as the
+history is preserved and can be displayed in the review page … then they can backtrack the comments
+and changes made."* So V18-77's submission history gets a **"Show History"** control on the review
+page itself — comments (including resolved ones) and the submit / return / re-submit chain, readable
+in place. Resolved comments are therefore **never deleted**, only marked; the resolve action is a
+state change, not a removal.
+
+### 12.5a 🆕 The office kanban — a shape for V18-57's readiness view
+
+**Raised 2026-08-26 by Ralph, as his own initiative.** It is recorded here rather than treated as
+new scope, because it is a **concrete shape for two work items that already exist**: V18-57's
+"readiness view of who has and has not submitted" and V18-58's "review queue page". Tracked as
+**V18-82**.
+
+**Why it earns its place.** §12.5 makes the review page deliberately **query-first — it lists
+nothing by default**, and the only escape hatch on record is a "show everything applicable to me"
+tag. That is a poor landing for a PPDO reviewer whose first question is *"who is done and who is
+not"*. A board of office cards answers that at a glance **and** doubles as the query entry point:
+clicking a card filters the review list to that office.
+
+**Columns** — four map onto §12.6's workflow states, plus one for the implicit pre-Draft state that
+§12.6's table never names:
+
+| Column | §12.6 state | Note |
+|---|---|---|
+| **Not Started** | *(none — pre-Draft)* | Office exists and has programs, but nothing entered. §12.6's table starts at Draft; a readiness view needs this |
+| **In Progress** | Draft | |
+| **Office Review** | Department review | |
+| **PPDO Review** | Submitted to PPDO | Locked (V18-52) |
+| **Done** | Consolidated | |
+
+⚠️ **"Returned by PPDO" is deliberately NOT a sixth column.** It is a real §12.6 state, but returned
+work re-enters exactly the Department-review condition — editable by encoder *and* reviewer, moving
+on when the department head re-submits — so it belongs **in the Office Review column carrying a
+"Returned" badge**. This keeps what is arguably the reviewer's most actionable signal (*"I sent this
+back — has it come back yet?"*) without collapsing it into an undifferentiated "In Progress", and
+without column sprawl. Agreed 2026-08-26.
+
+**Card contents and the denominator.** Each card is one office and shows its **assigned program
+count** and **created activity count**. The denominator question ("what makes a program *assigned*
+to an office?") is answered — and it is **not new logic**:
+
+> Programs reach an office through **LDIP**. `AipService.SeedProgramsFromLdipAsync` seeds AIP
+> programs from LDIP, and `AipRecord.LdipId` carries the link. An office's programs are then the
+> `AipProgram` rows under the `AipOffice` whose `RefCode` **suffix-matches** that office's
+> configured `Office.OfficeRefCode` — precisely the resolution
+> `AllocationService.GetProgramAssignmentsAsync` already implements for the Allocation page's
+> **PPA → Division** tab. The kanban should reuse that path, not re-derive it.
+
+⚠️ **No "% complete", and this is deliberate.** Ralph: *"we don't know how many activities will be
+created per-office … this is up to them."* There is a denominator for **programs** but none for
+**activities**, so a percentage would be fiction. This is also the stated reason the view is a
+**kanban rather than a chart**: column position is the real signal, and the counts are context
+only. Do not let this drift into a progress bar.
+
+**Access.** PPDO reviewers only (V18-05's consolidated-reviewer flag). Office users must **not** get
+this board — they would see exactly one card, which is noise; their own status belongs as a chip on
+their own AIP page. Scoping it this way is also what keeps the board small enough not to overwhelm:
+**19 active offices** across five columns.
+
+**Nav consequence — AIP splits into Entry and Review.** §12.5 already says entry and review are two
+pages (though its body then calls them "tabs" — settled here in favour of **two pages**). With the
+kanban living on Review, Review becomes the PPDO reviewer's home and deserves to be a first-class
+destination rather than a tab inside an entry page; it also lets the two be permission-gated
+separately (Entry → encoders, Review → reviewers).
+
+⚠️ **Implement as two siblings, not a third nesting level.** `Sidebar.tsx` is hand-written JSX with
+exactly **one** collapsible level (Budget Planning → flat children); it has no nesting primitive.
+There is already precedent for a flat item pointing at a sub-page — **WFP** renders as one item
+while linking to `/budget-planning/wfp/entry`. So add **"AIP Entry"** and **"AIP Review"** as two
+sibling children of Budget Planning. Same outcome, no new sidebar machinery, independently gated.
 
 ### 12.6 The workflow, as now answered
 
@@ -1049,6 +1137,8 @@ exactly one program even when several sub-office groups share the office code.
 | **V18-79** | **One-reviewer-per-office constraint** — ✅ **shape decided 2026-08-26 (tracker B13): a validation error, not a database constraint.** "Enforce by convention, just add an error if an app admin accidentally assigns another reviewer to the same office … so that if they want many reviewers per office in the future, we won't have many issues when changing." So: an application-layer check in the user-assignment path, **no filtered unique index**, and no "reviewer on leave" override to design — the constraint is soft by intent | 1 |
 | **V18-81** 🆕 | **Block FY2028+ WFP creation in this system as "not supported yet"** — it is unknown whether the FY2028 WFP is built here or in GSO's system (§12.1). Blocking it makes the AIP/WFP double-count *impossible* rather than *silently wrong*, and defers the netting rule until the answer is known. Cheap to add, cheap to remove; pairs with V18-45's reduced scope | 2–3 |
 | **V18-80** 🆕 | **AIP expenditure procurement lines from the Price Index** — tracker W13: activities carry expenditures with accounts, and some carry **procurement items sourced from the Price Index config, the same as WFP**, in both the entry tab and the review tab. Nothing in Phase 3 covers this today; V18-42 says only "enter expenditures", and V18-65 lists the price index purely as offline cached reference data | 3 |
+| **V18-82** 🆕 | **Office kanban — the shape of V18-57's readiness view** (§12.5a). Five columns (Not Started · In Progress · Office Review · PPDO Review · Done), with **"Returned by PPDO" as a badge inside Office Review, not a sixth column**. One card per office showing assigned-program and created-activity counts; clicking a card filters the review list to that office. Denominator reuses `AllocationService.GetProgramAssignmentsAsync`'s LDIP→AIP ref-code suffix match — do not re-derive it. **No "% complete"** — there is no activity denominator, which is why this is a kanban and not a chart. PPDO reviewers only; office users get a status chip on their own page instead. Also serves as the non-empty landing for V18-75's query-first page | 4 |
+| **V18-83** 🆕 | **Split the AIP sidebar item into "AIP Entry" and "AIP Review"** (§12.5a) — **two siblings under Budget Planning, not a third nesting level**: `Sidebar.tsx` has one collapsible level and no nesting primitive, and WFP already sets the flat-item-to-sub-page precedent. Gated separately (Entry → encoders, Review → reviewers). Settles §12.5's internal "two pages" vs "two tabs" wording in favour of **two pages** | 4 |
 
 **Changed in place:** V18-03 (one reviewer per office) · V18-04 (premise questioned) · V18-05 (LFC →
 PPDO) · V18-41 (closed LDIP list) · V18-42 (encoder tab + submit) · V18-45 (own tables) · V18-46
@@ -1059,7 +1149,9 @@ LFC) · V18-57 (history, no deadline) · V18-59 (rounding settled) · V18-71 (pr
 **Changed again 2026-08-26:** V18-45 (**AIP-only reservation ledger — the relief/netting mechanism
 is deferred**, §12.1) · V18-73 (terminal authority is the SP resolution, not the LFC) · V18-46
 (**General Fund only**, and the base figure — not the uplifted one) · V18-53 (**inline comments only**, with a resolve checkbox and a soft unresolved-count warning
-on re-submit — no whole-submission comment) · V18-74 (reduced to a report-side concern) · V18-79
+on re-submit — no whole-submission comment; **later the same day, row-level anchoring, no threading,
+and "an office may not resolve a PPDO reviewer's comment"**) · V18-57 (**the readiness view is an
+office kanban** — V18-82) · V18-74 (reduced to a report-side concern) · V18-79
 (validation error, not a unique index) · **V18-04 — see below.**
 
 ⚠️ **Phase 1 gains real work from the 2026-08-26 answers, which it did not have before.** Tracker
@@ -1081,7 +1173,7 @@ blocks a phase.** What remains are three fragments and two readings, marked ⚠�
 | 3 | ~~The non-GF ceiling figures~~ | ↩️ **Moot** — the all-fund ceiling was withdrawn (§12.3). No figures to collect; V18-78 dropped |
 | 4 | **The ref-code segment layout** | ⚠️ **Half-answered** (B9). The format is `8000-000-1-03-009-001-001-001` and the meeting sketch is to be ignored — but the **segment meanings and reset points are still missing**, and the count varies with depth. V18-76 cannot create indexed columns without a defined maximum depth (§12.5) |
 | 5 | **A ceiling cut after encoding** | ✅ **Confirmed 2026-08-26** — the encoded work **stands and fails at submit**; nothing is destroyed or flagged when the ceiling is cut. Consistent with DECISION C. ⚠️ Implementation trap in V18-48 — see §5 |
-| 6 | **Comment threading and lifecycle** | ✅ **Answered and narrowed** (B10) — inline comments only, a "Mark as resolved" checkbox, and a soft unresolved-count warning on re-submit that the user may override. This **narrows DECISION 10**, which allowed a whole-submission comment. Two gaps for V18-53 in §12.5 |
+| 6 | **Comment threading and lifecycle** | ✅ **Fully answered.** (B10) narrowed it to inline comments only, a "Mark as resolved" checkbox, and a soft unresolved-count warning on re-submit that the user may override — **narrowing DECISION 10**, which allowed a whole-submission comment. ✅ **2026-08-26 closes the two remaining gaps (§12.5): row-level anchoring, no threading, and an office may not resolve a PPDO reviewer's comment**; the unresolved count is split by author side |
 | 7 | **The reviewer write-denial contradiction** | ✅ **Answered** (B11) — the denial does not go away, it **splits**: department-head reviewer edits and comments; PPDO reviewer comments only. RAL-256 / V18-04 must be re-scoped. The one Phase 1 consequence (§12.7) |
 | 8 | **PPDO's own internal path** | ✅ **Yes to both** (B12) — PPDO divisions submit to a PPDO department-head reviewer, distinct from the consolidated reviewer; PPDO encoders see only their own division. ⚠️ `AIP_Redesign_Notes.md` §4 Q2 (record shape) is still open underneath (§12.6) |
 | 9 | **One reviewer per office** | ✅ **Convention, enforced softly** (B13) — an application-layer error on double assignment, deliberately not a database constraint, so future multi-reviewer support is a removal rather than a migration. No "on leave" rule needed |
