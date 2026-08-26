@@ -50,6 +50,26 @@ public interface IAuthService
     /// <c>JwtMiddleware.ValidateAsync</c>).
     /// </summary>
     Task<MeResponse> GetMeAsync(User user, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns the recovery-question text to show for a username, for the "Forgot password?"
+    /// flow (RAL-265). Always returns a question — an unknown username or an account that
+    /// hasn't set one yet gets a question deterministically derived from the username itself
+    /// (same fake username always gets the same fake question, spread uniformly across the
+    /// catalog), so no single response value can be used to test whether a username exists.
+    /// </summary>
+    Task<string> GetRecoveryQuestionAsync(string username, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Verifies a recovery answer and, on success, issues a random one-time password
+    /// (RAL-265). Every failure path — unknown username, no recovery answer set, wrong
+    /// answer, locked out — returns the exact same <see cref="RecoveryVerifyOutcome.Failed"/>
+    /// outcome so the caller cannot distinguish them.
+    /// </summary>
+    Task<RecoveryVerifyResult> VerifyRecoveryAnswerAsync(
+        string username,
+        string answer,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>The outcome of a <see cref="IAuthService.LoginAsync"/> call.</summary>
@@ -199,4 +219,33 @@ public sealed class MeResponse
     public bool CanUploadAip { get; init; }
     public bool CanManageConfig { get; init; }
     public bool CanManageAllocation { get; init; }
+}
+
+/// <summary>The outcome of a <see cref="IAuthService.VerifyRecoveryAnswerAsync"/> call.</summary>
+public enum RecoveryVerifyOutcome
+{
+    /// <summary>Answer matched — a new temporary password was issued.</summary>
+    Success,
+
+    /// <summary>
+    /// Unknown username, no recovery answer set on the account, wrong answer, or the
+    /// account is locked out. Deliberately one outcome for all four — see RAL-265's
+    /// enumeration-guard note.
+    /// </summary>
+    Failed,
+}
+
+/// <summary>Result of <see cref="IAuthService.VerifyRecoveryAnswerAsync"/>.</summary>
+public readonly record struct RecoveryVerifyResult
+{
+    public RecoveryVerifyOutcome Outcome { get; init; }
+    public string? TemporaryPassword { get; init; }
+
+    public static RecoveryVerifyResult Success(string temporaryPassword) => new()
+    {
+        Outcome            = RecoveryVerifyOutcome.Success,
+        TemporaryPassword  = temporaryPassword,
+    };
+
+    public static RecoveryVerifyResult Failed() => new() { Outcome = RecoveryVerifyOutcome.Failed };
 }

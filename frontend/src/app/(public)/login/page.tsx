@@ -23,7 +23,13 @@ import axios from "axios";
 import api from "@/lib/api";
 import { auth } from "@/lib/auth";
 import { APP_VERSION } from "@/lib/version";
-import type { LoginResponse, MeResponse, RefreshErrorReason } from "@/types/auth";
+import type {
+  LoginResponse,
+  MeResponse,
+  RefreshErrorReason,
+  ForgotPasswordResponse,
+  VerifyRecoveryResponse,
+} from "@/types/auth";
 import { resolveLandingPath, LANDING_FALLBACK } from "@/lib/landing";
 
 // ---------------------------------------------------------------------------
@@ -86,6 +92,235 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>;
 
 // ---------------------------------------------------------------------------
+// Forgot password (RAL-269) — self-service reset via a fixed recovery question.
+//
+// A generic failure message covers every failure mode the backend can return —
+// unknown username, no recovery answer set, wrong answer, or locked out. Never show
+// a different message per case; that would undo the RAL-265 enumeration guard.
+// ---------------------------------------------------------------------------
+
+const GENERIC_RECOVERY_FAILURE =
+  "We couldn't verify that answer. Check your username and answer, or contact your administrator.";
+
+const usernameSchema = z.object({
+  username: z.string().min(1, "Username is required"),
+});
+type UsernameFormData = z.infer<typeof usernameSchema>;
+
+const answerSchema = z.object({
+  answer: z.string().min(1, "Answer is required"),
+});
+type AnswerFormData = z.infer<typeof answerSchema>;
+
+type RecoveryStep = "username" | "answer" | "success";
+
+function ForgotPasswordModal({ onClose }: { onClose: () => void }) {
+  const [step, setStep] = useState<RecoveryStep>("username");
+  const [username, setUsername] = useState("");
+  const [questionText, setQuestionText] = useState("");
+  const [temporaryPassword, setTemporaryPassword] = useState("");
+  const [serverError, setServerError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const usernameForm = useForm<UsernameFormData>({ resolver: zodResolver(usernameSchema) });
+  const answerForm = useForm<AnswerFormData>({ resolver: zodResolver(answerSchema) });
+
+  async function submitUsername(values: UsernameFormData) {
+    setServerError(null);
+    try {
+      const { data } = await api.post<ForgotPasswordResponse>("/auth/forgot-password", {
+        username: values.username,
+      });
+      setUsername(values.username);
+      setQuestionText(data.questionText);
+      setStep("answer");
+    } catch {
+      // /auth/forgot-password always returns 200 — a thrown error here means the
+      // request itself failed (network/cold start), not a bad username.
+      setServerError("Something went wrong. Please try again.");
+    }
+  }
+
+  async function submitAnswer(values: AnswerFormData) {
+    setServerError(null);
+    try {
+      const { data } = await api.post<VerifyRecoveryResponse>("/auth/verify-recovery", {
+        username,
+        answer: values.answer,
+      });
+      setTemporaryPassword(data.temporaryPassword);
+      setStep("success");
+    } catch {
+      setServerError(GENERIC_RECOVERY_FAILURE);
+    }
+  }
+
+  async function copyPassword() {
+    try {
+      await navigator.clipboard.writeText(temporaryPassword);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard API unavailable — the password is still shown on screen to copy by hand.
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4">
+      <div className="w-full max-w-sm bg-white rounded-xl shadow-lg px-6 py-6">
+        {step === "username" && (
+          <>
+            <h3 className="text-lg font-bold text-slate-800 mb-1">Forgot password?</h3>
+            <p className="text-sm text-slate-600 mb-5">
+              Enter your username and we&apos;ll show your recovery question.
+            </p>
+            <form onSubmit={usernameForm.handleSubmit(submitUsername)} noValidate className="space-y-4">
+              <div>
+                <label htmlFor="fp-username" className="block text-sm font-medium text-slate-600 mb-1">
+                  Username
+                </label>
+                <input
+                  id="fp-username"
+                  type="text"
+                  autoComplete="username"
+                  autoFocus
+                  {...usernameForm.register("username")}
+                  className="w-full px-3 py-2.5 rounded-lg text-sm text-slate-800 border border-slate-300
+                             bg-white shadow-sm placeholder:text-slate-400 transition-colors
+                             focus:outline-none focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                />
+                {usernameForm.formState.errors.username && (
+                  <p className="mt-1 text-xs text-red-600">
+                    {usernameForm.formState.errors.username.message}
+                  </p>
+                )}
+              </div>
+
+              {serverError && (
+                <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3">
+                  <p className="text-sm text-red-700">{serverError}</p>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="text-sm text-slate-600 hover:text-slate-800 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={usernameForm.formState.isSubmitting}
+                  className="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg text-sm
+                             hover:bg-green-500 active:bg-green-700 transition-colors
+                             focus:outline-none focus:ring-2 focus:ring-green-600 focus:ring-offset-2
+                             disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {usernameForm.formState.isSubmitting ? "Checking…" : "Continue"}
+                </button>
+              </div>
+            </form>
+          </>
+        )}
+
+        {step === "answer" && (
+          <>
+            <h3 className="text-lg font-bold text-slate-800 mb-1">Answer your recovery question</h3>
+            <p className="text-sm text-slate-600 mb-5">{questionText}</p>
+            <form onSubmit={answerForm.handleSubmit(submitAnswer)} noValidate className="space-y-4">
+              <div>
+                <label htmlFor="fp-answer" className="block text-sm font-medium text-slate-600 mb-1">
+                  Answer
+                </label>
+                <input
+                  id="fp-answer"
+                  type="text"
+                  autoFocus
+                  {...answerForm.register("answer")}
+                  className="w-full px-3 py-2.5 rounded-lg text-sm text-slate-800 border border-slate-300
+                             bg-white shadow-sm placeholder:text-slate-400 transition-colors
+                             focus:outline-none focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                />
+                {answerForm.formState.errors.answer && (
+                  <p className="mt-1 text-xs text-red-600">{answerForm.formState.errors.answer.message}</p>
+                )}
+              </div>
+
+              {serverError && (
+                <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3">
+                  <p className="text-sm text-red-700">{serverError}</p>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setServerError(null);
+                    setStep("username");
+                  }}
+                  className="text-sm text-slate-600 hover:text-slate-800 transition-colors"
+                >
+                  ← Back
+                </button>
+                <button
+                  type="submit"
+                  disabled={answerForm.formState.isSubmitting}
+                  className="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg text-sm
+                             hover:bg-green-500 active:bg-green-700 transition-colors
+                             focus:outline-none focus:ring-2 focus:ring-green-600 focus:ring-offset-2
+                             disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {answerForm.formState.isSubmitting ? "Verifying…" : "Verify"}
+                </button>
+              </div>
+            </form>
+          </>
+        )}
+
+        {step === "success" && (
+          <>
+            <h3 className="text-lg font-bold text-slate-800 mb-1">Your temporary password</h3>
+            <p className="text-sm text-slate-600 mb-4">
+              Use this to sign in. You&apos;ll be asked to set a new password right away.
+            </p>
+            <div className="flex items-center gap-2 mb-2">
+              <code className="flex-1 px-3 py-2.5 rounded-lg text-sm font-mono text-slate-800 bg-slate-100 border border-slate-300 select-all">
+                {temporaryPassword}
+              </code>
+              <button
+                type="button"
+                onClick={copyPassword}
+                className="px-3 py-2.5 rounded-lg text-sm font-medium text-green-700 bg-green-50
+                           border border-green-200 hover:bg-green-100 transition-colors whitespace-nowrap"
+              >
+                {copied ? "Copied!" : "Copy"}
+              </button>
+            </div>
+            <p className="text-xs text-slate-500 mb-5">
+              If you didn&apos;t request this, contact your administrator.
+            </p>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={onClose}
+                className="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg text-sm
+                           hover:bg-green-500 active:bg-green-700 transition-colors
+                           focus:outline-none focus:ring-2 focus:ring-green-600 focus:ring-offset-2"
+              >
+                Done
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
@@ -94,6 +329,7 @@ function LoginPageInner() {
   const searchParams = useSearchParams();
   const [serverError, setServerError] = useState<string | null>(null);
   const [apiStatus, setApiStatus] = useState<ApiStatus>("checking");
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
 
   const reasonParam = searchParams.get("reason");
   const logoutReason = isRefreshErrorReason(reasonParam) ? LOGOUT_REASON_MESSAGES[reasonParam] : null;
@@ -261,12 +497,21 @@ function LoginPageInner() {
 
             {/* Password */}
             <div>
-              <label
-                htmlFor="password"
-                className="block text-sm font-medium text-slate-600 mb-1"
-              >
-                Password
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label
+                  htmlFor="password"
+                  className="block text-sm font-medium text-slate-600"
+                >
+                  Password
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowForgotPassword(true)}
+                  className="text-xs text-green-700 hover:text-green-800 hover:underline transition-colors"
+                >
+                  Forgot password?
+                </button>
+              </div>
               <input
                 id="password"
                 type="password"
@@ -323,6 +568,10 @@ function LoginPageInner() {
           </div>{/* end login card */}
         </div>
       </main>
+
+      {showForgotPassword && (
+        <ForgotPasswordModal onClose={() => setShowForgotPassword(false)} />
+      )}
     </div>
   );
 }
