@@ -149,33 +149,55 @@ FY2027 file.
 | 4 | **+30% uplift on MOOE and CO**, FY2028+ only, applied at render time from a stored base | DECISION G |
 | 5 | **State the units in the `L8:O8` AMOUNT header.** The FY2027 form declares "(In Thousand Pesos)" over the *climate-change* block `P8:R8` and says **nothing** over the main AMOUNT block — the one place the ₱000-vs-pesos ambiguity actually lives | DECISION E |
 
-### ⚠️ 6.1 Unresolved: does the uplift show in `M` and `N`, or only in `O`?
+### ✅ 6.1 The uplift shows in `M` and `N`, not only in `O`
 
-**This is not answered by any decision on record, and the form cannot be built without it.**
+**Answered 2026-08-26 (tracker G7).** Ralph raised this scenario with PPDC directly, and **`M` and
+`N` uplifted is what will be followed** — *"as long as the entered value (in round up) follows the
+ceiling."*
 
-Tracker **G6** settled that the printed Total is `PS + 1.3 × (MOOE + CO)`. But column `O` is labelled
-**`8+9+10`** on the form itself, and every total in the province's file is `SUM` of the cells beside
-or below it. So:
+So the row keeps the structure it has always had:
 
-- **If `M` and `N` print base values**, then `L + M + N ≠ O` on every row with MOOE or CO. The row
-  visibly does not add up, and column `O` contradicts its own printed label — in a document read by
-  elected officials.
-- **If `M` and `N` print uplifted values**, then `O = SUM(L:N)` holds exactly as it always has, and
-  `O` equals `PS + 1.3 × (MOOE + CO)` at the same time. Both rules are satisfied.
+> `O = SUM(L:N)` — and, because `M` and `N` carry the uplift, `O` also equals
+> `PS + 1.3 × (MOOE + CO)`, satisfying tracker G6 at the same time.
 
-**Recommendation: uplift `M` and `N` themselves.** It is the only reading under which G6 and
-DECISION 9 are both true, and it preserves the one structural property the form has always had.
-Needs confirming before V18-60 is built.
+The rejected alternative — base `M`/`N` with only `O` uplifted — would have made `L + M + N ≠ O` on
+every row carrying MOOE or CO, with column `O` contradicting its own printed label `8+9+10` in a
+document read by elected officials.
 
-### ⚠️ 6.2 The ceiling exceedance must be visible on the document
+✅ **The qualifier corroborates two earlier decisions at once.** "The entered value (in round up)
+follows the ceiling" means the ceiling is compared against the **entered figures, rounded up** —
+i.e. **base, rounded**. That is exactly tracker **G3** (the uplift is not in the ceiling check) and
+tracker **A2-4** (the ceiling compares the rounded figures) holding together. Two numbers exist by
+design and neither is wrong:
 
-DECISION G3 has the ceiling check compare **base** figures while this form prints **uplifted** ones.
-An office encoding exactly to a ₱10,000,000 ceiling passes every check in the system and prints an
-AIP reading ₱13,000,000. **That is intended.** A PDC member or board member reading the document has
-no way to know that, and the natural conclusion is that the office overspent its ceiling.
+| Number | Rounded from | Used for |
+|---|---|---|
+| **Base MOOE + CO** | the entered values | the **ceiling check** |
+| **Uplifted MOOE + CO** | base × 1.3 | the **printed columns `M` / `N`**, and `O` |
 
-**The form, or a covering note printed with it, must say so.** This is the room where it will
-otherwise be raised as an error. Wording to be agreed with PPDC — see `Phase_Plan.md` §12.2.
+⚠️ **They are not exactly 1.3× each other once rounded, and nothing should assume they are.**
+Before rounding the ratio is exactly 1.3; after rounding it is not, and by how much depends on
+**tracker G5**, which is still open — uplift-then-round or round-then-uplift. Worked example:
+₱1,000,400 base → the ceiling sees `1,001`; the form shows `1,301` under uplift-then-round, or
+`1,302` under round-then-uplift. **Do not write a test or a reconciliation that asserts
+`printed = 1.3 × checked`.**
+
+### ⚠️ 6.2 The ceiling exceedance is visible — and still needs explaining
+
+With `M` and `N` uplifted (§6.1), an office encoding exactly to a ₱10,000,000 ceiling passes every
+check in the system and prints an AIP whose MOOE + CO reads about ₱13,000,000. **That is intended**,
+and §6.1 is the reason it is now visible **in the money columns** rather than buried inside a Total
+that does not reconcile — which is the better of the two failure modes, but it is still a figure
+that reads as an overspend.
+
+A PDC member or board member has no way to know the excess is deliberate. **The form, or a covering
+note printed with it, must say so** — this is the room where it would otherwise be raised as an
+error. Wording to be agreed with PPDC; see `Phase_Plan.md` §12.2.
+
+ℹ️ **The uplift and the ceiling govern exactly the same figures**, which is why this is sharper than
+a general rounding caveat: the uplift applies to MOOE and CO (PS prints as entered), and the ceiling
+applies to MOOE and CO (PS is exempt as an expense class, tracker A6-2). There is no dilution — the
+gap between the printed figure and the checked figure *is* the ceiling gap.
 
 ---
 

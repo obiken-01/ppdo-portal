@@ -714,10 +714,13 @@ deliberate rather than quietly absorbed.
 Two scope points, both **✅ confirmed by G6** ("yes to both"): the uplift belongs to the **new
 FY2028+ format only** (FY≤2027 rows are historical and are not recomputed), and the printed AIP
 form's **Total column is `PS + 1.3 × (MOOE + CO)`** — stated explicitly in `AIP_Form_Spec.md` so
-nobody re-derives it as `1.3 × everything`. ⚠️ Writing that spec surfaced a gap G6 does not
-close: whether the **MOOE and CO columns themselves** print uplifted, or only the Total. If only
-the Total, then `L + M + N ≠ O` and column O contradicts its own printed label `8+9+10` — see
-`AIP_Form_Spec.md` §6.1.
+nobody re-derives it as `1.3 × everything`. ✅ **Answered 2026-08-26 (tracker G7):** the **MOOE and CO
+columns themselves print uplifted**, not only the Total — PPDC's own call, relayed by Ralph, *"as
+long as the entered value (in round up) follows the ceiling."* So `O = SUM(L:N)` still holds and
+equals `PS + 1.3 × (MOOE + CO)` at the same time. The qualifier also corroborates **G3** and
+**A2-4** together: the ceiling is compared against the entered figures **rounded up** — base,
+rounded. ⚠️ The printed and checked figures are **not** exactly 1.3× each other once rounded, and
+by how much depends on **G5**, still open. See `AIP_Form_Spec.md` §6.1.
 
 ⚠️ **What G3 and G4 together mean, stated plainly because it will look like a bug.** The ceiling
 check, the AIP→WFP limit and the stored figures are all in base pesos; only the printed document
