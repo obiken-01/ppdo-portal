@@ -398,7 +398,7 @@ how PPDO's own divisions submit).
 | **V18-50** | Extend `PlanningStatus` (Draft/Final/Archived today) to the multi-stage flow |
 | **V18-51** | ⚠️ **Corrected 2026-08-25 — there are TWO submits, not one.** The **encoder** submits the office's whole work for department review; the **department-head reviewer** is the sole submitter onward to PPDO. The original "encoders cannot submit" holds only for the second hop |
 | **V18-52** | Locking on submit. ✅ **Answered 2026-08-25 (tracker B3):** during department-head review the work stays **editable by both encoder and reviewer**; it locks **only when submitted to PPDO**, and unlocks again when a PPDO reviewer returns it |
-| **V18-53** | Review comments. ✅ **Narrowed 2026-08-26 (tracker B10), superseding DECISION 10's "both levels": inline comments only** — there is no whole-submission comment. Each carries a **"Mark as resolved" checkbox**, set when the work is returned; on re-submit the app **counts unresolved comments, warns, and lets the user proceed or cancel** — a soft gate, not a hard one. The department head may also edit values directly; the PPDO reviewer may only comment (V18-04). ✅ **Both remaining gaps closed 2026-08-26 (§12.5):** comments anchor to **the row** (GitHub-style gutter control, collapsed by default with a row marker); **an office may not resolve a PPDO reviewer's comment** — only the other side can, or the soft gate becomes self-marking; **no replies/threading**, resolve is the only action; the unresolved count is **split by author side** and rendered as filter buttons *and* in the re-submit warning. Resolved comments are marked, never deleted — they feed V18-77's "Show History" |
+| **V18-53** | Review comments. ✅ **Narrowed 2026-08-26 (tracker B10), superseding DECISION 10's "both levels": inline comments only** — there is no whole-submission comment. Each carries a **"Mark as resolved" checkbox**, set when the work is returned; on re-submit the app **counts unresolved comments, warns, and lets the user proceed or cancel** — a soft gate, not a hard one. The department head may also edit values directly; the PPDO reviewer may only comment (V18-04). ✅ **Both remaining gaps closed 2026-08-26 (§12.5):** comments anchor to **the row** (GitHub-style gutter control, collapsed by default with a row marker); **only the authoring side resolves** — an office may not resolve a PPDO reviewer's comment, and an encoder may not resolve their department head's, or the soft gate becomes self-marking; **no replies/threading**, resolve is the only action; the unresolved count is **split by the two authoring roles** (department-head reviewer vs PPDO reviewer — the encoder never comments) and rendered as filter buttons *and* in the re-submit warning. Resolved comments are marked, never deleted — they feed V18-77's "Show History" |
 | **V18-54** | Return / send-back path with a resubmit flow |
 | **V18-55** | PPDO internal consolidation (divisions → PPDO reviewer). ✅ **Answered (tracker B4/B4-a/B4-b):** "consolidated" is the **existing multi-office record, filled in office by office as they submit** — not a newly assembled record; **only reviewers can see it** (PPDO division users cannot), and PPDO reviewers may view it **partially**, before every office has submitted |
 | **V18-56** | ⚠️ **Rewritten 2026-08-25 — PPDO review across all offices, not LFC.** Designated PPDO users review the consolidated document, comment, and **send a whole office's work back** for update and re-submission. One office at a time is the confirmed granularity (tracker B5) |
@@ -812,6 +812,30 @@ and its defining property is that **it lists nothing by default.** Work is found
 | Office code | The common case for a PPDO reviewer |
 | A "show everything applicable to me" tag | The escape hatch from an empty page; scoped by the user's own permissions |
 
+✅ **How the filters combine — answered 2026-08-26. OR within a field, AND across fields, and no
+query language.** Ralph: *"reviewers may want to see all PPAs across all sectors of an office. Or
+certain Programs … I am not sure if AND is needed."*
+
+| | Rule | Why |
+|---|---|---|
+| **Within one field** | **OR** — each field is multi-value (pick two sectors, three programs) | This is the real ask. "Certain programs" is a *subset*, which a single-value field cannot express |
+| **Across fields** | **AND** — office **AND** sector **AND** title | Not a feature to build; it is simply what a filter panel does. It is needed, it is just free |
+| **Boolean expressions** | ❌ **Do not build** | No `A OR (B AND C)` syntax, no parser, no query box. Reviewers will not type query syntax, and it would make the SQL unindexable |
+
+⚠️ Worth separating the two examples, because only one of them needs OR: *"all PPAs across all
+sectors of an office"* is achieved by setting **office** and leaving **sector blank** — blank
+already means "all". It is *"certain programs"* that genuinely needs multi-value.
+
+**There is already a working precedent in this codebase**, so this is a pattern to copy rather than
+invent: the **PR List** status filter (`inventory/pr-register`) is multi-select toggle chips with
+per-value counts, and its own helper text reads *"Select multiple to combine (e.g. Open + Partially
+Delivered = all pending)"* — OR within the field — while its other filter rows AND together. Reuse
+that interaction, including the counts on each chip.
+
+This also stays consistent with **V18-76**: `office_id = @x AND sector IN (…)` is index-friendly on
+the segment columns that decision creates, whereas a free-text boolean expression over a formatted
+ref-code string is exactly the `LIKE '%…%'` shape V18-76 exists to avoid.
+
 ⚠️ **This is a Phase 2 schema consequence of a Phase 4 UI requirement, which is why it is recorded
 now.** For segments to be queryable they must be **columns, not substrings**: a `LIKE '%…%'` over a
 formatted ref-code string cannot use an index and cannot express "segment 3 = 004". Store each
@@ -885,17 +909,19 @@ answered together with the comment UI, modelled on GitHub's inline review commen
 | Question | Answer |
 |---|---|
 | **What does "inline" anchor to?** | **The row.** Not a field, not an expense line — a gutter control on the left of each row, the way GitHub anchors a comment to a line. Field-level anchoring was rejected: the AIP grid is wide, and it would multiply anchor points for no reviewer benefit |
-| **Who may resolve?** | **Only the side that did not write it.** An office **cannot** resolve a PPDO reviewer's comment. Without this the soft gate is self-marking — an office could clear every comment and re-submit with nothing actually addressed |
+| **Who may resolve?** | **Only the authoring side.** A PPDO reviewer's comment is resolved by PPDO; a department-head reviewer's comment is resolved by the department head. The recipient never clears the comment addressed to them — an office cannot resolve a PPDO comment, and an **encoder cannot resolve their department head's** (confirmed 2026-08-26). Without this the soft gate is self-marking: the recipient could clear everything and re-submit with nothing actually addressed |
 | **Threading / replies?** | **None.** Resolve is the only action on a comment. (This also answers §12.8 Q6's "comment threading") |
 | **Default visibility** | **Collapsed.** Rows carrying comments are marked (row highlight + a show-comments control in the gutter); the comment body is opened deliberately, so the grid stays readable |
 
 **The unresolved counter is per-source, and it is a filter, not just a number.** Because comments
 are collapsed by default, a user could otherwise re-submit having never opened one. So the count
-appears **on screen as filter buttons split by author side** — office-authored vs PPDO-reviewer
-authored — and the **same split appears in the re-submit warning**. Two reasons for the split: the
-office cannot resolve the PPDO side at all (above), so lumping them into one number would offer an
-action that does not exist; and "3 unresolved from PPDO" is the sentence that actually changes
-whether someone re-submits.
+appears **on screen as filter buttons split by author**, and the **same split appears in the
+re-submit warning**. There are exactly **two** sources to split by, not three — per the role table
+above the **encoder never comments at all**, so every comment is authored by either the
+**department-head reviewer** or the **PPDO reviewer**. Two reasons for the split: the reader cannot
+resolve either set themselves (above), so one merged number would imply an action that does not
+exist for them; and "3 unresolved from PPDO" is the sentence that actually changes whether someone
+re-submits.
 
 **History is a first-class part of this page, not just an audit table.** Ralph: *"As long as the
 history is preserved and can be displayed in the review page … then they can backtrack the comments
@@ -922,11 +948,18 @@ clicking a card filters the review list to that office.
 
 | Column | §12.6 state | Note |
 |---|---|---|
-| **Not Started** | *(none — pre-Draft)* | Office exists and has programs, but nothing entered. §12.6's table starts at Draft; a readiness view needs this |
-| **In Progress** | Draft | |
+| **Not Started** | *(none — pre-Draft)* | Office exists and has LDIP-seeded programs, but **zero activities created**. §12.6's table starts at Draft; a readiness view needs this |
+| **In Progress** | Draft | **One or more activities created**, not yet submitted for department review |
 | **Office Review** | Department review | |
 | **PPDO Review** | Submitted to PPDO | Locked (V18-52) |
 | **Done** | Consolidated | |
+
+✅ **The Not Started / In Progress boundary is activity count, confirmed 2026-08-26.** Seeded
+programs alone do **not** count as started — they arrive from LDIP without anyone in the office
+touching the record, so an office that has never opened the page would otherwise show as working.
+The card query is therefore: **zero activities → Not Started; one or more → In Progress**, with the
+submission states taking precedence over both once the work moves on. Stated explicitly so the
+query is not guessed at per-implementation.
 
 ⚠️ **"Returned by PPDO" is deliberately NOT a sixth column.** It is a real §12.6 state, but returned
 work re-enters exactly the Department-review condition — editable by encoder *and* reviewer, moving
@@ -1130,14 +1163,14 @@ exactly one program even when several sub-office groups share the office code.
 | # | New work item | Phase |
 |---|---|---|
 | **V18-74** | **The +30% uplift** — ✅ **scope settled and reduced 2026-08-26**: derived at render time from a stored base, **fixed** 30% (no per-FY rate, no snapshot), FY2028+ only, and applied **in reports only** — *not* in the ceiling check and *not* at the AIP→WFP boundary. The ticket must state that the printed total may legitimately exceed the printed ceiling (§12.2) | 2–3 |
-| **V18-75** | **Query-first review page** — ref-code (whole or per segment), title, office code, and the "everything applicable to me" tag; empty by default | 4 |
+| **V18-75** | **Query-first review page** — ref-code (whole or per segment), title, office code, and the "everything applicable to me" tag; empty by default. ✅ **Combination rule settled 2026-08-26 (§12.5): OR within a field (multi-value), AND across fields, and no boolean query syntax.** Copy the PR List status-chip interaction (`inventory/pr-register`), counts included — it already implements exactly this | 4 |
 | **V18-76** | **Ref-code segments as indexed columns.** ✅ **Reshaped 2026-08-26 once the DBM manual was read (§12.5):** two halves, not one. Segments **1–5** (sector · sub-sector · LGU level · office type · office) are **fixed** — five indexed columns, and they are pure office identity, so they belong with V18-32's ownership FK rather than with the PPA tree. Segments **6+** are a **variable-length PPA path** and must **not** be columns: give each Program/Project/Activity node a sibling-unique `seq` and render the code from the root-to-node path. This removes the "needs a defined maximum depth" blocker — there is no maximum, and none is needed | 2 |
 | **V18-77** | **Submission history / audit trail** — submitted, returned, re-submitted, by whom and when (replaces V18-57's deadline gate) | 4 |
 | ~~**V18-78**~~ | ~~Non-GF ceiling and allocation data~~ ↩️ **dropped 2026-08-26** — the all-fund ceiling was withdrawn (§12.3). What survives is folded into V18-46: non-GF funds must be **explicitly excluded** from the check, because a missing allocation row resolves to `0m`, not to *unlimited* | — |
 | **V18-79** | **One-reviewer-per-office constraint** — ✅ **shape decided 2026-08-26 (tracker B13): a validation error, not a database constraint.** "Enforce by convention, just add an error if an app admin accidentally assigns another reviewer to the same office … so that if they want many reviewers per office in the future, we won't have many issues when changing." So: an application-layer check in the user-assignment path, **no filtered unique index**, and no "reviewer on leave" override to design — the constraint is soft by intent | 1 |
 | **V18-81** 🆕 | **Block FY2028+ WFP creation in this system as "not supported yet"** — it is unknown whether the FY2028 WFP is built here or in GSO's system (§12.1). Blocking it makes the AIP/WFP double-count *impossible* rather than *silently wrong*, and defers the netting rule until the answer is known. Cheap to add, cheap to remove; pairs with V18-45's reduced scope | 2–3 |
 | **V18-80** 🆕 | **AIP expenditure procurement lines from the Price Index** — tracker W13: activities carry expenditures with accounts, and some carry **procurement items sourced from the Price Index config, the same as WFP**, in both the entry tab and the review tab. Nothing in Phase 3 covers this today; V18-42 says only "enter expenditures", and V18-65 lists the price index purely as offline cached reference data | 3 |
-| **V18-82** 🆕 | **Office kanban — the shape of V18-57's readiness view** (§12.5a). Five columns (Not Started · In Progress · Office Review · PPDO Review · Done), with **"Returned by PPDO" as a badge inside Office Review, not a sixth column**. One card per office showing assigned-program and created-activity counts; clicking a card filters the review list to that office. Denominator reuses `AllocationService.GetProgramAssignmentsAsync`'s LDIP→AIP ref-code suffix match — do not re-derive it. **No "% complete"** — there is no activity denominator, which is why this is a kanban and not a chart. PPDO reviewers only; office users get a status chip on their own page instead. Also serves as the non-empty landing for V18-75's query-first page | 4 |
+| **V18-82** 🆕 | **Office kanban — the shape of V18-57's readiness view** (§12.5a). Five columns (Not Started · In Progress · Office Review · PPDO Review · Done), with **"Returned by PPDO" as a badge inside Office Review, not a sixth column**. Not Started vs In Progress is decided by **activity count, not seeded programs** (zero → Not Started), since LDIP seeding happens without the office touching anything. One card per office showing assigned-program and created-activity counts; clicking a card filters the review list to that office. Denominator reuses `AllocationService.GetProgramAssignmentsAsync`'s LDIP→AIP ref-code suffix match — do not re-derive it. **No "% complete"** — there is no activity denominator, which is why this is a kanban and not a chart. PPDO reviewers only; office users get a status chip on their own page instead. Also serves as the non-empty landing for V18-75's query-first page | 4 |
 | **V18-83** 🆕 | **Split the AIP sidebar item into "AIP Entry" and "AIP Review"** (§12.5a) — **two siblings under Budget Planning, not a third nesting level**: `Sidebar.tsx` has one collapsible level and no nesting primitive, and WFP already sets the flat-item-to-sub-page precedent. Gated separately (Entry → encoders, Review → reviewers). Settles §12.5's internal "two pages" vs "two tabs" wording in favour of **two pages** | 4 |
 
 **Changed in place:** V18-03 (one reviewer per office) · V18-04 (premise questioned) · V18-05 (LFC →
@@ -1150,7 +1183,7 @@ LFC) · V18-57 (history, no deadline) · V18-59 (rounding settled) · V18-71 (pr
 is deferred**, §12.1) · V18-73 (terminal authority is the SP resolution, not the LFC) · V18-46
 (**General Fund only**, and the base figure — not the uplifted one) · V18-53 (**inline comments only**, with a resolve checkbox and a soft unresolved-count warning
 on re-submit — no whole-submission comment; **later the same day, row-level anchoring, no threading,
-and "an office may not resolve a PPDO reviewer's comment"**) · V18-57 (**the readiness view is an
+and only the authoring side resolves — neither an office nor an encoder clears a comment addressed to them**) · V18-57 (**the readiness view is an
 office kanban** — V18-82) · V18-74 (reduced to a report-side concern) · V18-79
 (validation error, not a unique index) · **V18-04 — see below.**
 
@@ -1173,7 +1206,7 @@ blocks a phase.** What remains are three fragments and two readings, marked ⚠�
 | 3 | ~~The non-GF ceiling figures~~ | ↩️ **Moot** — the all-fund ceiling was withdrawn (§12.3). No figures to collect; V18-78 dropped |
 | 4 | **The ref-code segment layout** | ⚠️ **Half-answered** (B9). The format is `8000-000-1-03-009-001-001-001` and the meeting sketch is to be ignored — but the **segment meanings and reset points are still missing**, and the count varies with depth. V18-76 cannot create indexed columns without a defined maximum depth (§12.5) |
 | 5 | **A ceiling cut after encoding** | ✅ **Confirmed 2026-08-26** — the encoded work **stands and fails at submit**; nothing is destroyed or flagged when the ceiling is cut. Consistent with DECISION C. ⚠️ Implementation trap in V18-48 — see §5 |
-| 6 | **Comment threading and lifecycle** | ✅ **Fully answered.** (B10) narrowed it to inline comments only, a "Mark as resolved" checkbox, and a soft unresolved-count warning on re-submit that the user may override — **narrowing DECISION 10**, which allowed a whole-submission comment. ✅ **2026-08-26 closes the two remaining gaps (§12.5): row-level anchoring, no threading, and an office may not resolve a PPDO reviewer's comment**; the unresolved count is split by author side |
+| 6 | **Comment threading and lifecycle** | ✅ **Fully answered.** (B10) narrowed it to inline comments only, a "Mark as resolved" checkbox, and a soft unresolved-count warning on re-submit that the user may override — **narrowing DECISION 10**, which allowed a whole-submission comment. ✅ **2026-08-26 closes the two remaining gaps (§12.5): row-level anchoring, no threading, and only the authoring side resolves (an office cannot clear a PPDO reviewer's comment, nor an encoder their department head's)**; the unresolved count is split by the two authoring roles |
 | 7 | **The reviewer write-denial contradiction** | ✅ **Answered** (B11) — the denial does not go away, it **splits**: department-head reviewer edits and comments; PPDO reviewer comments only. RAL-256 / V18-04 must be re-scoped. The one Phase 1 consequence (§12.7) |
 | 8 | **PPDO's own internal path** | ✅ **Yes to both** (B12) — PPDO divisions submit to a PPDO department-head reviewer, distinct from the consolidated reviewer; PPDO encoders see only their own division. ⚠️ `AIP_Redesign_Notes.md` §4 Q2 (record shape) is still open underneath (§12.6) |
 | 9 | **One reviewer per office** | ✅ **Convention, enforced softly** (B13) — an application-layer error on double assignment, deliberately not a database constraint, so future multi-reviewer support is a removal rather than a migration. No "on leave" rule needed |
