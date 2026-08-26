@@ -54,7 +54,7 @@ Bracketed numbers are the **DBM column numbers printed on the form itself**.
 |---|---|---|---|
 | `A` | `A8:A9` | AIP Reference Code | **(1)** |
 | `B`–`E` | `B8:E9` | Program/Project/Activity Description | **(2)** |
-| `F` | `F8:F9` | **eSRE Code** | **— none** |
+| `F` | `F8:F9` | **eSRE Code** — encoder-supplied, see §3.1 | **— none** |
 | `G` | `G8:G9` | Implementing Office/Department | **(3)** |
 | `H` | `H8:I8` → `H9` | Schedule of Implementation → Start Date | **(4)** |
 | `I` | `H8:I8` → `I9` | Schedule of Implementation → Completion Date | **(5)** |
@@ -69,8 +69,32 @@ Bracketed numbers are the **DBM column numbers printed on the form itself**.
 | `R` | `P8:R8` → `R9` | AMOUNT of Climate Change expenditure → CC Typology Code | **(14)** |
 
 ⚠️ **Column F is a provincial insertion, not part of Annex B.** It carries no DBM number and sits
-between (2) and (3), which is why the printed numbering jumps `(2) … (3)` across two columns. Keep
-it — the province uses it — but do not present it as a DBM column.
+between (2) and (3), which is why the printed numbering jumps `(2) … (3)` across two columns. It
+stays on the form; the only consequence of it not being an Annex B column is that it must not be
+given a DBM number in the header.
+
+### 3.1 Column F — eSRE Code
+
+**✅ Confirmed 2026-08-26 (Ralph): "keep eSRE Code, this will be part of what they enter or
+select."** It is an encoder-supplied field, not a derived one, and it is already required at submit
+(V18-49's completeness checklist) and cached for offline use (V18-65).
+
+The FY2027 file uses **four** codes across 2,357 filled rows:
+
+| Code | Rows |
+|---|---|
+| `SS` | 1,069 |
+| `ID` | 669 |
+| `ES` | 537 |
+| `EN` | 81 |
+
+… and **one** row reading `PPDO/PEO` — an implementing-office name typed into the eSRE column. One
+bad value in 2,357 is a low error rate, but it is the exact error a pick-list makes impossible, and
+it is the evidence behind **V18-10** (`esre_codes` config table + page, replacing today's free-text
+`AipActivity.EsreCode`). "Enter **or select**" is satisfied by V18-10; nothing further is needed on
+the entry side.
+
+The form itself prints whatever code the activity carries — no transformation.
 
 ---
 
