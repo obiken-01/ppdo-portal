@@ -373,8 +373,8 @@ below covers. See **V18-80** (§12.7).
 | **V18-42** | Two-stage entry UI — create Project and Activity first, then enter expenditures against them. **2026-08-25: this is the encoder's own tab**, shaped like the WFP entry page: add/update projects and activities, then submit the whole office's work for department review in one action (§12.5) |
 | **V18-43** | Multi-fund toggle, default single (whiteboard W8); one fund source per line (decision 4, settled) |
 | **V18-44** | Server-side, concurrency-safe ref-code generation — scoped per office/program, computed in SQL. ⚠️ Do not repeat `GeneratePRNoAsync`'s full-table-scan-per-create bug; and offline clients **cannot** mint ref codes safely (a hard constraint on Phase 6) |
-| **V18-45** | AIP draw-down ledger. ✅ **DECISION A answered 2026-08-25 — build `AipDivisionAllocationLedger` mirroring the WFP one; do NOT generalise the existing ledger.** Ralph: "create new tables and fields for AIP, and not reuse the fields used by WFP … in the future, WFP itself will be updated". ⚠️ Two ledgers against **one** `DivisionAllocation` double-counts until WFP is changed — §12.1 |
-| **V18-46** | AIP ceiling service — validate at **submit** (✅ DECISION C), upsert the ledger, expose remaining. The check sums `mooe + co` of the **General Fund only** (↩️ reverted 2026-08-26, §12.3); PS is exempt as an expense *class* on top of that. It compares the **rounded** figures the document prints (tracker A2-4), and the **base** figures — the +30% uplift is **not** part of the comparison (✅ DECISION G, tracker G3). ⚠️ Non-GF funds must be **explicitly excluded** from the check, not simply left without ceiling rows: `GetDivisionAllocationAsync` resolves a missing allocation to `0m`, so a blank row means *zero*, not *unlimited* (§12.3) |
+| **V18-45** | AIP draw-down ledger. ✅ **DECISION A answered 2026-08-25 — build `AipDivisionAllocationLedger` mirroring the WFP one; do NOT generalise the existing ledger.** Ralph: "create new tables and fields for AIP, and not reuse the fields used by WFP … in the future, WFP itself will be updated". ✅ **The double-count is answered too (2026-08-26):** the AIP row is a **reservation** that the WFP **relieves per activity** as it commits — the two ledgers must net, not add. Allocation consumed = `WFP committed + AIP reserved not yet converted`. ⚠️ Relief per *fund* instead of per *activity* strands reservations whenever the fund mix changes — §12.1 |
+| **V18-46** | AIP ceiling service — validate at **submit** (✅ DECISION C), upsert the ledger, expose remaining. The check sums `mooe + co` of the **General Fund only** (↩️ reverted 2026-08-26, §12.3); PS is exempt as an expense *class* on top of that. It compares the **rounded** figures the document prints (tracker A2-4), and the **base** figures — the +30% uplift is **not** part of the comparison (✅ DECISION G, tracker G3). ⚠️ Non-GF funds must be **explicitly excluded** from the check, not simply left without ceiling rows: `GetDivisionAllocationAsync` resolves a missing allocation to `0m`, so a blank row means *zero*, not *unlimited* (§12.3). ✅ **2026-08-26 — this service does not replace the WFP one:** `WfpCeilingService`'s allocation check **stays live** for FY2028+, and a WFP expenditure is bound by **the lesser** of its AIP activity amount and the fund's currently remaining allocation (§12.1) |
 | **V18-47** | Office-level ceiling checks — non-PPDO offices have ceilings but no divisions |
 | **V18-48** | Allocation page: office picker + PBO ceiling management (the endpoints already take `officeId`) |
 | **V18-49** | Completeness checklist before submit — ≥1 expenditure per activity, totals > 0, CC/eSRE present, ceiling respected. ✅ **DECISION C makes this the enforcement point**: over-ceiling entry is allowed while encoding and blocked at submit, so this checklist *is* the ceiling gate, not a courtesy |
@@ -439,7 +439,7 @@ in this plan. Nothing below Phase 1 was ticketed before this table was updated.
 
 | # | Decision | Blocks | State |
 |---|---|---|---|
-| **A** | One pot or two — do AIP and WFP draw on the same division allocation? | V18-45, V18-46 | ✅ answered 2026-08-25 — **one pot, drawn down in sequence**: the allocation is repurposed to constrain the **AIP**, and WFP is limited by its AIP activity. AIP gets **its own tables**, not WFP's generalised. ⚠️ Transitional double-count — §12.1 |
+| **A** | One pot or two — do AIP and WFP draw on the same division allocation? | V18-45, V18-46 | ✅ answered 2026-08-25 — **one pot, drawn down in sequence**: the allocation is repurposed to constrain the **AIP**, and WFP is limited by its AIP activity. AIP gets **its own tables**, not WFP's generalised. ✅ The transitional double-count is resolved too (2026-08-26): the WFP allocation check **stays live**, an expenditure is bound by **the lesser** of its AIP activity and the fund's current remaining allocation, and the AIP reservation is **relieved per activity** as the WFP commits — §12.1 |
 | **C** | Ceiling: hard block or warning; at save or at submit? | Phase 3, Phase 6 | ✅ answered 2026-08-25 — **block at submit**, not at save ("this should be discussed or adjusted"). V18-49 becomes the gate |
 | **D** | Must division allocations fit inside the office ceiling? | V18-47, V18-48 | ✅ answered 2026-08-25 — allocations **may total less** than the ceiling (they may never exceed it, which the code already enforces). ⚠️ The second half — PBO cutting a ceiling *after* offices have encoded — went unanswered, §12.8 Q5 |
 | **E** | Storage units — migrate 2027 to pesos, or partition by FY? | V18-35, V18-37 | ✅ answered 2026-08-25 — **migrate, all years to pesos**; partition is shape-only. LDIP stays in ₱000 (§4) |
@@ -467,12 +467,16 @@ recorded here as deliberate: the printed AIP total may legitimately exceed the p
 to 30%, and this **must be stated on the Phase 5 form spec** or someone will read it as a defect and
 "fix" it back.
 
-**A's own failure mode did not fully disappear — it moved into the transition.** The answer makes
-the allocation the AIP's pot, but WFP's existing draw-down against `DivisionAllocation` is still
-live in code, and "in the future, WFP itself will be updated" is not a date. Until it is, an
-FY2028 division that plans ₱6M in the AIP and details ₱6M in the WFP consumes ₱12M of a ₱10M
-allocation without raising anything. See §12.1 — this is the single most important thing to carry
-into Phase 2 ticketing.
+**✅ A's transitional failure mode is closed (2026-08-26).** It had moved into the transition: WFP's
+own draw-down against `DivisionAllocation` is still live in code, so an FY2028 division that plans
+₱6M in the AIP and details ₱6M in the WFP would consume ₱12M of a ₱10M allocation. The plan's
+recommendation was to retire the WFP check; **Ralph rejected that**, because the allocation may
+have changed — in amount *or* in fund mix — by the time the WFP is written. The check therefore
+**stays**, an expenditure is bound by **the lesser** of its AIP activity and the fund's currently
+remaining allocation, and the AIP reservation is **relieved per activity** as the WFP commits
+against it, rather than sitting alongside it. §12.1 has the netting rule written out — read it
+before ticketing V18-45/46, because relieving per *fund* instead of per *activity* reintroduces the
+bug in a quieter form.
 
 ---
 
@@ -529,8 +533,9 @@ is no boundary to imply it, so it has to be remembered deliberately.
 ten items resolved to. Only three fragments are still genuinely open: the **ref-code segment
 layout** (Q4 — the format string is known, the segment *meanings* and reset points are not), the
 **PPDO AIP record shape** (Q8 — one record per PPDO division, or one with division-tagged rows), and
-**three answers phrased as a bare "yes" to a question that was not yes/no** (tracker G5, A5-b,
-A1-b), which are read in §12.8 but are not treated as settled.
+**two answers phrased as a bare "yes" to a question that was not yes/no** (tracker G5 and A5-b),
+which are read in §12.8 but are not treated as settled. **A1-b closed 2026-08-26** — it was the last
+blocker, and its answer overturned this plan's own recommendation (§12.1).
 
 ---
 
@@ -577,18 +582,51 @@ check in step 1. Once the AIP also draws down that same allocation, the same pes
 > raised either way.
 
 That is DECISION A's original failure mode, relocated from the design into the transition period.
-Three ways out, in order of preference:
 
-1. **Retire the WFP allocation check for FY2028+** when the AIP ledger goes live — WFP is bounded by
-   its AIP activity, which is bounded by the allocation, so the chain is intact without it. Smallest
-   change, and it is what "the AIP is created first, then WFP" implies.
-2. Keep both, and have the WFP ledger row *replace* rather than add to the AIP row for the same
-   `(division, FY, fund)` — more code, and the netting rule is easy to get subtly wrong.
-3. Ship both draw-downs and accept a wrong "remaining" figure until WFP is reworked. **Not
-   recommended** — it is silent, and the numbers look plausible.
+#### ✅ Answered 2026-08-26 — and the answer rules out the option this section recommended
 
-This needs Ralph's call before V18-45/46 are ticketed (§12.8 Q2), and it is FY2028-only either way:
-FY≤2027 keeps the v1.6 shape and today's behaviour.
+Three ways out were offered. Ralph's answer picks the second, and **explicitly rejects the first**:
+
+> "Mostly correct — **but it may be possible that fund allocation will be different during WFP
+> creation.**" Clarified the same day: **both** the allocation *amount* and the *fund mix* may
+> differ by then, and the WFP is limited by **the lesser** of the AIP activity and the current
+> allocation.
+
+That single caveat is decisive. Option 1 — retiring the WFP allocation check for FY2028+ — assumed
+the allocation the AIP was validated against is still the allocation in force when the WFP is
+written. **It is not.** A check that has been deleted cannot notice that the allocation moved
+underneath it, so option 1 would have shipped a silent hole rather than closing one. It is
+withdrawn.
+
+**The decision:**
+
+| | Rule |
+|---|---|
+| **The WFP allocation check stays live** | It is **not** retired for FY2028+. It validates per fund against the allocation **as it stands at WFP time**, not the one the AIP was approved against |
+| **Two bounds, both enforced** | An expenditure must satisfy **both** `≤ its AIP activity amount` **and** `≤ the fund's currently remaining allocation`. Whichever bites first governs — that is the "lesser of the two" |
+| **A raised allocation gives no extra room** | The AIP stays a cap. Extra headroom requires amending the AIP (V18-73 / RAL-78), not merely a bigger allocation |
+| **A cut allocation blocks the difference** | The approved AIP does not entitle the WFP to money that is no longer there |
+| **No double-count** | The AIP reservation is **relieved** as the WFP commits against it — it does not sit alongside the WFP's own draw-down |
+
+⚠️ **The netting rule is the part that is easy to get subtly wrong, so it is written out here.**
+This is an encumbrance-then-obligation pattern: the AIP *reserves*, the WFP *commits*, and for any
+`(division, FY, fund)` the allocation consumed is
+
+> `WFP committed  +  AIP reserved that has not yet been converted into WFP commitment`
+
+**Relief must be per ACTIVITY, not per fund.** When an activity is detailed in the WFP, its whole
+AIP reservation is released and replaced by the WFP's actual per-fund commitments. Relieving fund
+by fund breaks the moment the fund mix changes: an activity reserved as ₱6,000,000 of General Fund
+and then detailed as ₱4,000,000 GF + ₱2,000,000 GAD would leave ₱2,000,000 of stale GF reservation
+blocking other work forever.
+
+⚠️ **The dangerous direction of a fund-mix change, now that ceilings are General Fund only
+(§12.3).** GF is the only fund that is checked. So an activity **planned under an unchecked fund
+and detailed under General Fund** consumes GF allocation with **no AIP reservation standing behind
+it** — the one case where the chain `allocation → AIP → WFP` genuinely has a gap. The per-fund
+check at WFP time is what catches it, which is the second reason option 1 could not be taken.
+
+FY≤2027 is unaffected either way: it keeps the v1.6 shape and today's behaviour.
 
 ### 12.2 🆕 DECISION G — the +30% uplift on MOOE and CO
 
@@ -809,7 +847,7 @@ blocks a phase.** What remains are three fragments and two readings, marked ⚠�
 | Q | Item | Outcome |
 |---|---|---|
 | 1 | **DECISION G's mechanics** (§12.2) | ✅ **Presentation-only uplift** (G1–G6). Base stored, fixed 30%, reports only — the ceiling and the WFP limit both see the base. ⚠️ G5 answered "Yes" to an either/or; read as *uplift then round* |
-| 2 | **The AIP/WFP transitional double-count** (§12.1) | ⚠️ **Soft-answered** — "I think yes" (A1-b), i.e. retire WFP's own allocation draw-down for FY2028+, as recommended. "I think" is not enough to ticket V18-45/46 on; confirm before Phase 2 |
+| 2 | **The AIP/WFP transitional double-count** (§12.1) | ✅ **Answered 2026-08-26, against the recommendation.** The WFP allocation check **stays live** — the allocation may differ in amount *and* fund mix by WFP time, so retiring it would hide the change. An expenditure is bound by **the lesser** of its AIP activity and the fund's current remaining allocation; the AIP reservation is **relieved per activity** as the WFP commits. V18-45/46 are ticketable |
 | 3 | ~~The non-GF ceiling figures~~ | ↩️ **Moot** — the all-fund ceiling was withdrawn (§12.3). No figures to collect; V18-78 dropped |
 | 4 | **The ref-code segment layout** | ⚠️ **Half-answered** (B9). The format is `8000-000-1-03-009-001-001-001` and the meeting sketch is to be ignored — but the **segment meanings and reset points are still missing**, and the count varies with depth. V18-76 cannot create indexed columns without a defined maximum depth (§12.5) |
 | 5 | **A ceiling cut after encoding** | ⚠️ **Answered "yes"** to a *what-happens* question (A5-b). Read as the recommendation: the encoded work stands and fails at submit, consistent with DECISION C |
