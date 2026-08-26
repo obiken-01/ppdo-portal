@@ -820,7 +820,7 @@ certain Programs … I am not sure if AND is needed."*
 |---|---|---|
 | **Within one field** | **OR** — each field is multi-value (pick two sectors, three programs) | This is the real ask. "Certain programs" is a *subset*, which a single-value field cannot express |
 | **Across fields** | **AND** — office **AND** sector **AND** title | Not a feature to build; it is simply what a filter panel does. It is needed, it is just free |
-| **Boolean expressions** | ❌ **Do not build** | No `A OR (B AND C)` syntax, no parser, no query box. Reviewers will not type query syntax, and it would make the SQL unindexable |
+| **Boolean expressions** | ❌ **Do not build** | No `A OR (B AND C)`, no precedence, no nesting, no expression tree. ⚠️ This does **not** forbid a typed `OR` *separator* in code-shaped fields — see below; that is flat multi-value entry, not an expression language |
 
 ⚠️ Worth separating the two examples, because only one of them needs OR: *"all PPAs across all
 sectors of an office"* is achieved by setting **office** and leaving **sector blank** — blank
@@ -863,9 +863,26 @@ search degrades to `LIKE '%-1-01-010%'` — the exact non-SARGable pattern V18-7
 | **Ref-code prefix** | "All offices in a sector" (`3000-`), and **subtree drill-down** — `…-010-001-` is everything under program 001. Genuinely valuable, and indexable | "One office, all sectors" |
 | **Segment filters** (V18-76 columns) | **"One office, all sectors"** — set office, leave sector blank. Also any other mix-and-match | — |
 
-The office-across-sectors case therefore routes through the **segment-column filter**, never the
-prefix box. Multi-value OR would also express it by naming both prefixes, but that asks the reviewer
-to know the sector list up front; leaving the sector filter blank does not.
+✅ **The ref-code field also accepts a typed `OR` list — confirmed 2026-08-26.** Ralph: *"i can
+input `1000-000-1-01-010 OR 3000-000-1-01-010`"*. Yes, and it is **not** the boolean query language
+ruled out above — that prohibition is on an *expression* (precedence, nesting, `A OR (B AND C)`, a
+parser). This is a **separator**: a flat list of values in one field, which is precisely the "OR
+within a field" rule already agreed, entered by typing instead of by chips. It stays indexable —
+`ref LIKE '1000-…-010%' OR ref LIKE '3000-…-010%'` is two index range seeks unioned, not a scan.
+
+Three constraints keep it from drifting back into an expression language:
+
+1. **`OR` only** — no `AND`, no `NOT`, no parentheses. AND is what the separate fields already do.
+2. **Parse to a flat set**, never to an expression tree.
+3. **Code-shaped fields only.** The ref-code field is safe — digits and dashes, so the token `OR` is
+   unambiguous. **Do not OR-split the free-text title field**, where a title may legitimately
+   contain the word "or". A comma should be accepted as an equivalent separator.
+
+⚠️ **Both routes stay, and the difference is durability, not capability.** A typed prefix list
+captures *today's* sectors: if PPDO later gains a program under `8000`, that query silently returns
+a short list — no error, just missing rows. `office = 010, sector = blank` picks it up
+automatically. So the typed `OR` is the fast path when the reviewer knows exactly what they want,
+and the segment filter is the one that stays correct as the data grows. Neither replaces the other.
 
 ⚠️ **This is a Phase 2 schema consequence of a Phase 4 UI requirement, which is why it is recorded
 now.** For segments to be queryable they must be **columns, not substrings**: a `LIKE '%…%'` over a
@@ -1194,7 +1211,7 @@ exactly one program even when several sub-office groups share the office code.
 | # | New work item | Phase |
 |---|---|---|
 | **V18-74** | **The +30% uplift** — ✅ **scope settled and reduced 2026-08-26**: derived at render time from a stored base, **fixed** 30% (no per-FY rate, no snapshot), FY2028+ only, and applied **in reports only** — *not* in the ceiling check and *not* at the AIP→WFP boundary. The ticket must state that the printed total may legitimately exceed the printed ceiling (§12.2) | 2–3 |
-| **V18-75** | **Query-first review page** — ref-code (whole or per segment), title, office code, and the "everything applicable to me" tag; empty by default. ✅ **Combination rule settled 2026-08-26 (§12.5): OR within a field (multi-value), AND across fields, and no boolean query syntax.** Copy the PR List status-chip interaction (`inventory/pr-register`), counts included — it already implements exactly this. ⚠️ **The ref-code prefix box and the segment filters are not interchangeable:** sector is segment 1 and office is segment 5, so a prefix cannot express "one office, all sectors" — that must route through the segment columns. Verified against real data, where **11 offices span multiple sectors** | 4 |
+| **V18-75** | **Query-first review page** — ref-code (whole or per segment), title, office code, and the "everything applicable to me" tag; empty by default. ✅ **Combination rule settled 2026-08-26 (§12.5): OR within a field (multi-value), AND across fields, and no boolean query syntax.** Copy the PR List status-chip interaction (`inventory/pr-register`), counts included — it already implements exactly this. ⚠️ **The ref-code box and the segment filters are not interchangeable:** sector is segment 1 and office is segment 5, so a *single* prefix cannot express "one office, all sectors". Verified against real data, where **11 offices span multiple sectors**. The ref-code field additionally accepts a typed **`OR` list** (`1000-…-010 OR 3000-…-010`) — a flat separator, `OR` only, code-shaped fields only, never an expression tree — but a typed list captures only today's sectors, so `office` set + `sector` blank remains the durable form | 4 |
 | **V18-76** | **Ref-code segments as indexed columns.** ✅ **Reshaped 2026-08-26 once the DBM manual was read (§12.5):** two halves, not one. Segments **1–5** (sector · sub-sector · LGU level · office type · office) are **fixed** — five indexed columns, and they are pure office identity, so they belong with V18-32's ownership FK rather than with the PPA tree. Segments **6+** are a **variable-length PPA path** and must **not** be columns: give each Program/Project/Activity node a sibling-unique `seq` and render the code from the root-to-node path. This removes the "needs a defined maximum depth" blocker — there is no maximum, and none is needed | 2 |
 | **V18-77** | **Submission history / audit trail** — submitted, returned, re-submitted, by whom and when (replaces V18-57's deadline gate) | 4 |
 | ~~**V18-78**~~ | ~~Non-GF ceiling and allocation data~~ ↩️ **dropped 2026-08-26** — the all-fund ceiling was withdrawn (§12.3). What survives is folded into V18-46: non-GF funds must be **explicitly excluded** from the check, because a missing allocation row resolves to `0m`, not to *unlimited* | — |
