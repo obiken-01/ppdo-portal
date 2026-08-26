@@ -427,7 +427,7 @@ whether the printed MOOE/CO carry the +30% (§12.2).
 | **V18-70** | Azure SQL tier review for AIP season | 7 |
 | **V18-71** | Concurrent-edit guard within an office — soft lock or "changed by someone else" warning. ⚠️ **Promoted 2026-08-25:** tracker D5 confirms **two or more encoders per office**, so this is a correctness requirement, not hardening — today the last save silently wins | 7 |
 | **V18-72** | Approval snapshot — preserve what was approved when a record is returned and edited | 7 |
-| **V18-73** | Amendment readiness — don't make LFC approval terminal (RAL-78 already exists) | 7 |
+| **V18-73** | Amendment readiness — don't make approval terminal (RAL-78 already exists). ⚠️ **Doubly restated 2026-08-26:** the LFC is out of the system (§12.4), and the terminal authority now appears to be the **Sangguniang Panlalawigan resolution**, not any state this system owns. Supplementals reportedly go to the SP *first* — so this is a workflow question before it is a schema one (§12.6, tracker B14/B15) | 7 |
 
 ---
 
@@ -628,6 +628,53 @@ check at WFP time is what catches it, which is the second reason option 1 could 
 
 FY≤2027 is unaffected either way: it keeps the v1.6 shape and today's behaviour.
 
+#### ⚠️ Amended later on 2026-08-26 — the FY2028 WFP may not be built in this system at all
+
+Ralph, after the above was written:
+
+> "It is possible that the AIP created by our application will be sent to **GSO for their system**,
+> which is what was used to create the FY2027 WFP by other offices — although I am not sure yet how
+> we would send this to them or what data will be needed."
+
+That reopens the question one level up: **not *how* the WFP check should behave, but whether an
+FY2028 WFP exists here to check.** It does not, however, change the decision above — it changes
+what gets *built* around it. Checked against the code before deciding:
+
+- The allocation check runs in **four** methods (`GetStatusAsync`, `ValidateExpenditureSaveAsync`,
+  `UpsertLedgerForActivityAsync`, `ValidateRecordForFinalizeAsync`), each already parameterised by
+  fiscal year. **"Retire for FY2028+" would ADD four conditionals and their tests, not delete code.**
+  This section's original "smallest change" framing was wrong about the codebase.
+- **If no FY2028 WFP record is created here, none of those four is ever called with
+  `fiscalYear >= 2028`.** The check is already inert in that world; retiring it buys nothing.
+- If FY2028 WFPs *are* built here, retiring it removes **the only fund-scoped check in the system**.
+  Per this service's own header comment, the AIP-budget check (step 1) is *aggregate across all
+  funding sources*; only the allocation check (step 2) is fund-scoped. It is precisely the check the
+  fund-mix caveat requires.
+
+**So: retiring is all cost and no benefit in both worlds, and the amendment falls on the new work
+instead.**
+
+| | Decision |
+|---|---|
+| `WfpCeilingService` | **Untouched. Zero diff.** Not retired, not made conditional |
+| **V18-45** | Build the AIP ledger as an **AIP-only reservation ledger**. **Do NOT build the relief/netting mechanism** — it only earns its keep if an AIP *and* a WFP for the same FY both live here, which is exactly what is unknown. The netting rule above stays written down, unbuilt, for whenever that is settled |
+| **V18-81** 🆕 | **Block FY2028+ WFP creation in this system as "not supported yet."** This is the move that resolves the ambiguity: the double-count becomes *impossible* rather than *silently wrong*, and the netting rule need not be decided until we know. Cheap to add, cheap to remove |
+
+⚠️ **This promotes the GSO question from a Phase 5 output to the critical path.** If GSO's system
+builds the FY2028 WFP from our AIP, then tracker **C2** decides whether our AIP is the end of the
+chain or a feed into someone else's — **re-rated Blocker**. Two things make that conversation
+shorter than it sounds:
+
+- `docs/External_AIP_API_Contract.md` (July draft) already anticipated it. Its open item **#4** asks
+  GSO literally: *"Anything missing for **WFP building** (e.g. account-level breakdown beyond
+  PS/MOOE/CO totals)?"*
+- The old format's limitation does **not** carry over. `WfpCeilingService`'s "§2 D3 — AIP data
+  carries no per-fund breakdown" is a **FY≤2027** constraint. The new format puts **one fund source
+  per expense line**, so the FY2028 export *can* carry the per-fund detail GSO would need to do
+  allocation checking on their side. Worth confirming explicitly — if GSO cannot see funds either,
+  the fund-mix problem does not disappear, it relocates to a system with **less** information than
+  this one.
+
 ### 12.2 🆕 DECISION G — the +30% uplift on MOOE and CO
 
 > "Each activities' MOOE and CO of all fund source except for PS will have additional 30% value.
@@ -796,6 +843,29 @@ division, or one record with division-tagged rows (`AIP_Redesign_Notes.md` §4 Q
 toward one-per-division, since that is what "mirroring an office" implies, but it does not say so
 (§12.8 Q8).
 
+⚠️ **2026-08-26 — the ladder does not stop at Consolidated, and the plan had no idea.** Ralph's
+account of what happens next (recorded as his understanding, not as a confirmed requirement — he
+hedged it repeatedly, and it needs confirming before anything is built on it):
+
+| Stage | What happens | In this system? |
+|---|---|---|
+| **Consolidated & approved by PPDO reviewers** | Where §12.6's table currently ends | ✅ yes |
+| **🆕 Sangguniang Panlalawigan (SP)** | The consolidated AIP is generated and presented to the SP — the elected board members and the Vice Governor. They review it and **pass a resolution** approving it | ❓ **unknown — tracker B14** |
+| **🆕 Supplemental changes** | Amendments go to the SP **first**, before taking effect | ❓ **unknown — tracker B15** |
+| **🆕 FY2028 budget planning — the WFP** | Built in **GSO's** system, but the WFP document is what **PBO** needs | ❓ **unknown — tracker C2**, now Blocker (§12.1) |
+
+Three consequences worth stating now, none of them yet decided:
+
+- **"Approved" is not the terminal state the plan assumed.** V18-73's note still reads "don't make
+  **LFC** approval terminal" — doubly stale: the LFC is out (§12.4), and the real terminal authority
+  appears to be the **SP resolution**, which is further downstream than anything modelled.
+- **The amendment path (V18-73 / RAL-78) now has a named gate.** If supplementals route through the
+  SP, amendment readiness is not merely "allow edits after approval" — it is a second trip through
+  an external body, which is a workflow question before it is a schema one.
+- **PBO is the WFP's consumer, GSO only its builder.** That matters for tracker C1: the office that
+  *needs* the document and the office that *makes the tool* are different, so "what do you need out
+  of the AIP" has to be asked of both, and they may not give the same answer.
+
 Two structural answers inside that table:
 
 - **"Consolidated" is not a new record.** It is the **existing multi-office record, filled in office
@@ -819,6 +889,7 @@ becomes a submission audit trail plus the who-has-and-hasn't view, with no date 
 | **V18-77** | **Submission history / audit trail** — submitted, returned, re-submitted, by whom and when (replaces V18-57's deadline gate) | 4 |
 | ~~**V18-78**~~ | ~~Non-GF ceiling and allocation data~~ ↩️ **dropped 2026-08-26** — the all-fund ceiling was withdrawn (§12.3). What survives is folded into V18-46: non-GF funds must be **explicitly excluded** from the check, because a missing allocation row resolves to `0m`, not to *unlimited* | — |
 | **V18-79** | **One-reviewer-per-office constraint** — ✅ **shape decided 2026-08-26 (tracker B13): a validation error, not a database constraint.** "Enforce by convention, just add an error if an app admin accidentally assigns another reviewer to the same office … so that if they want many reviewers per office in the future, we won't have many issues when changing." So: an application-layer check in the user-assignment path, **no filtered unique index**, and no "reviewer on leave" override to design — the constraint is soft by intent | 1 |
+| **V18-81** 🆕 | **Block FY2028+ WFP creation in this system as "not supported yet"** — it is unknown whether the FY2028 WFP is built here or in GSO's system (§12.1). Blocking it makes the AIP/WFP double-count *impossible* rather than *silently wrong*, and defers the netting rule until the answer is known. Cheap to add, cheap to remove; pairs with V18-45's reduced scope | 2–3 |
 | **V18-80** 🆕 | **AIP expenditure procurement lines from the Price Index** — tracker W13: activities carry expenditures with accounts, and some carry **procurement items sourced from the Price Index config, the same as WFP**, in both the entry tab and the review tab. Nothing in Phase 3 covers this today; V18-42 says only "enter expenditures", and V18-65 lists the price index purely as offline cached reference data | 3 |
 
 **Changed in place:** V18-03 (one reviewer per office) · V18-04 (premise questioned) · V18-05 (LFC →
@@ -827,8 +898,9 @@ PPDO) · V18-41 (closed LDIP list) · V18-42 (encoder tab + submit) · V18-45 (o
 (locking rule) · V18-53 (both comment levels) · V18-55 (consolidation shape) · V18-56 (PPDO not
 LFC) · V18-57 (history, no deadline) · V18-59 (rounding settled) · V18-71 (promoted to required).
 
-**Changed again 2026-08-26:** V18-46 (**General Fund only**, and the base figure — not the uplifted
-one) · V18-53 (**inline comments only**, with a resolve checkbox and a soft unresolved-count warning
+**Changed again 2026-08-26:** V18-45 (**AIP-only reservation ledger — the relief/netting mechanism
+is deferred**, §12.1) · V18-73 (terminal authority is the SP resolution, not the LFC) · V18-46
+(**General Fund only**, and the base figure — not the uplifted one) · V18-53 (**inline comments only**, with a resolve checkbox and a soft unresolved-count warning
 on re-submit — no whole-submission comment) · V18-74 (reduced to a report-side concern) · V18-79
 (validation error, not a unique index) · **V18-04 — see below.**
 
