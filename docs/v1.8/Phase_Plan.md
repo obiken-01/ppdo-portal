@@ -409,7 +409,7 @@ whether the printed MOOE/CO carry the +30% (§12.2).
 | # | Work item |
 |---|---|
 | **V18-59** | Shared rounding/thousands formatter — `formatThousands()` beside `formatMoney()` in `lib/money.ts`, plus a backend twin so the UI and the Excel output cannot disagree. Store exact; round only at the boundary. ✅ **The rule is settled (2026-08-25):** round each value UP to the next thousand, then **sum the rounded values** for every total and subtotal — including the row's own Total, which is the sum of the rounded PS/MOOE/CO, not a separately-rounded grand total. Excel cells hold the **rounded thousands as real numbers**, so re-summing a column in Excel reproduces the printed total. Amounts under ₱1,000 print as `1`; negatives do not occur |
-| **V18-60** | **Official AIP form export** — the document the province actually submits, and the single largest missing deliverable in the draft. Build programmatically from a style catalogue (the v1.4.4 / v1.5 lesson), against RAL-238's description-column rule. ⚠️ **Stakes raised 2026-08-26 (§12.6):** this is the document **presented to the PDC and then to the Sangguniang Panlalawigan**, under a **June 7** statutory deadline — not an internal report. It is also where the +30% uplift first meets readers who did not encode it, including the deliberate ceiling-exceedance of DECISION G, so the form or its covering note must say so |
+| **V18-60** | **Official AIP form export** — the document the province actually submits, and the single largest missing deliverable in the draft. ✅ **Specified 2026-08-26 in `docs/v1.8/AIP_Form_Spec.md`**, from DBM Annex B plus the province's real FY2027 file: sheet set, preamble, the A–R column map with DBM numbers, the B/C/D/E level rule, row types, what changes for FY2028+, and the FY2027 defects not to reproduce. Build programmatically from a style catalogue (the v1.4.4 / v1.5 lesson), against RAL-238's description-column rule. ⚠️ **One open question blocks it — §6.1 of that spec.** ⚠️ **Stakes raised 2026-08-26 (§12.6):** this is the document **presented to the PDC and then to the Sangguniang Panlalawigan**, under a **June 7** statutory deadline — not an internal report. It is also where the +30% uplift first meets readers who did not encode it, including the deliberate ceiling-exceedance of DECISION G, so the form or its covering note must say so |
 | **V18-61** | Project Profile output (whiteboard W5) — a separate per-project document |
 | **V18-62** | One canonical dataset: one row per expenditure line, then filter it per office. Five bespoke reports from five conversations will drift; one dataset with five column selections will not |
 | **V18-63** | PBO / PACCO / PTO / GSO data files. ⚠️ Check `docs/External_AIP_API_Contract.md` first — a live read-only API for GSO may supersede a file export |
@@ -464,7 +464,7 @@ paper, passing in the system, no error anywhere. That is the same shape as A's d
 1000× permissiveness, and it directly contradicts the principle tracker A2-4 settled ("the system
 must never disagree with the paper"). It is nonetheless **the decision** (tracker G3), so it is
 recorded here as deliberate: the printed AIP total may legitimately exceed the printed ceiling by up
-to 30%, and this **must be stated on the Phase 5 form spec** or someone will read it as a defect and
+to 30%, and this **is stated in `AIP_Form_Spec.md` §6.2** — without it someone reads it as a defect and
 "fix" it back.
 
 **✅ A's transitional failure mode is closed (2026-08-26).** It had moved into the transition: WFP's
@@ -713,17 +713,20 @@ deliberate rather than quietly absorbed.
 
 Two scope points, both **✅ confirmed by G6** ("yes to both"): the uplift belongs to the **new
 FY2028+ format only** (FY≤2027 rows are historical and are not recomputed), and the printed AIP
-form's **Total column is `PS + 1.3 × (MOOE + CO)`** — stated explicitly on the form spec so nobody
-re-derives it as `1.3 × everything`.
+form's **Total column is `PS + 1.3 × (MOOE + CO)`** — stated explicitly in `AIP_Form_Spec.md` so
+nobody re-derives it as `1.3 × everything`. ⚠️ Writing that spec surfaced a gap G6 does not
+close: whether the **MOOE and CO columns themselves** print uplifted, or only the Total. If only
+the Total, then `L + M + N ≠ O` and column O contradicts its own printed label `8+9+10` — see
+`AIP_Form_Spec.md` §6.1.
 
 ⚠️ **What G3 and G4 together mean, stated plainly because it will look like a bug.** The ceiling
 check, the AIP→WFP limit and the stored figures are all in base pesos; only the printed document
 carries the uplift. So an office that encodes exactly to its ₱10,000,000 ceiling **passes every
 check** and then **prints an AIP reading ₱13,000,000** — 30% over the ceiling on paper, with no
 error raised anywhere. Tracker A2-4 settled the opposite principle ("the system must never disagree
-with the paper") and G3 knowingly departs from it. **This must appear on the Phase 5 form spec and
-in V18-74's ticket**, or the first person to notice it will "fix" it back and silently start
-failing valid submissions.
+with the paper") and G3 knowingly departs from it. **It is recorded in `AIP_Form_Spec.md` §6.2 and
+belongs in V18-74's ticket**, or the first person to notice it will "fix" it back and silently
+start failing valid submissions.
 
 ### 12.3 ↩️ Ceilings on every fund source — made 2026-08-25, **withdrawn 2026-08-26**
 
