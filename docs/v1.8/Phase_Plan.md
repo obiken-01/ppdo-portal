@@ -372,7 +372,7 @@ below covers. See **V18-80** (§12.7).
 | **V18-41** | Programs sourced from a valid LDIP (reuses `seedAipProgramsFromLdip`, RAL-181). ✅ **#5 answered 2026-08-25 — the LDIP is a closed list**; an office cannot add a program outside it, so there is no "propose a new program" path and no approval flow for one |
 | **V18-42** | Two-stage entry UI — create Project and Activity first, then enter expenditures against them. **2026-08-25: this is the encoder's own tab**, shaped like the WFP entry page: add/update projects and activities, then submit the whole office's work for department review in one action (§12.5) |
 | **V18-43** | Multi-fund toggle, default single (whiteboard W8); one fund source per line (decision 4, settled) |
-| **V18-44** | Server-side, concurrency-safe ref-code generation — scoped per office/program, computed in SQL. ⚠️ Do not repeat `GeneratePRNoAsync`'s full-table-scan-per-create bug; and offline clients **cannot** mint ref codes safely (a hard constraint on Phase 6) |
+| **V18-44** | Server-side, concurrency-safe ref-code generation — scoped per office/program, computed in SQL. ✅ **The format is now pinned to a primary source (§12.5):** DBM Budget Operations Manual for LGUs, 2023 Ed., Figure 4 + Annexes C/D. Generation reduces to allocating a sibling-unique `seq` per node — segments 1–5 are office identity and are not generated at all. ⚠️ Do not repeat `GeneratePRNoAsync`'s full-table-scan-per-create bug; and offline clients **cannot** mint ref codes safely (a hard constraint on Phase 6) |
 | **V18-45** | AIP draw-down ledger. ✅ **DECISION A answered 2026-08-25 — build `AipDivisionAllocationLedger` mirroring the WFP one; do NOT generalise the existing ledger.** Ralph: "create new tables and fields for AIP, and not reuse the fields used by WFP … in the future, WFP itself will be updated". ✅ **The double-count is answered too (2026-08-26):** the AIP row is a **reservation** that the WFP **relieves per activity** as it commits — the two ledgers must net, not add. Allocation consumed = `WFP committed + AIP reserved not yet converted`. ⚠️ Relief per *fund* instead of per *activity* strands reservations whenever the fund mix changes — §12.1 |
 | **V18-46** | AIP ceiling service — validate at **submit** (✅ DECISION C), upsert the ledger, expose remaining. The check sums `mooe + co` of the **General Fund only** (↩️ reverted 2026-08-26, §12.3); PS is exempt as an expense *class* on top of that. It compares the **rounded** figures the document prints (tracker A2-4), and the **base** figures — the +30% uplift is **not** part of the comparison (✅ DECISION G, tracker G3). ⚠️ Non-GF funds must be **explicitly excluded** from the check, not simply left without ceiling rows: `GetDivisionAllocationAsync` resolves a missing allocation to `0m`, so a blank row means *zero*, not *unlimited* (§12.3). ✅ **2026-08-26 — this service does not replace the WFP one:** `WfpCeilingService`'s allocation check **stays live** for FY2028+, and a WFP expenditure is bound by **the lesser** of its AIP activity amount and the fund's currently remaining allocation (§12.1) |
 | **V18-47** | Office-level ceiling checks — non-PPDO offices have ceilings but no divisions |
@@ -660,10 +660,22 @@ instead.**
 | **V18-45** | Build the AIP ledger as an **AIP-only reservation ledger**. **Do NOT build the relief/netting mechanism** — it only earns its keep if an AIP *and* a WFP for the same FY both live here, which is exactly what is unknown. The netting rule above stays written down, unbuilt, for whenever that is settled |
 | **V18-81** 🆕 | **Block FY2028+ WFP creation in this system as "not supported yet."** This is the move that resolves the ambiguity: the double-count becomes *impossible* rather than *silently wrong*, and the netting rule need not be decided until we know. Cheap to add, cheap to remove |
 
-⚠️ **This promotes the GSO question from a Phase 5 output to the critical path.** If GSO's system
-builds the FY2028 WFP from our AIP, then tracker **C2** decides whether our AIP is the end of the
-chain or a feed into someone else's — **re-rated Blocker**. Two things make that conversation
-shorter than it sounds:
+⚠️ **This raises the GSO question from a Phase 5 output to something the FY2028 path depends on.**
+If GSO's system builds the FY2028 WFP from our AIP, tracker **C2** decides whether our AIP is the
+end of the chain or a feed into someone else's.
+
+✅ **Sequencing decided 2026-08-26 (Ralph):** *"I will leave C1 and C2 as-is for now since we
+haven't had a discussion yet with GSO — and I would prefer if we already have the structure of our
+new AIP that can be provided to them."* So **the AIP structure is built first, and GSO is engaged
+with something concrete in hand.** C1/C2 stay **High** rather than being escalated: a Blocker nobody
+intends to unblock is noise, and the deferral is deliberate.
+
+⚠️ **That sequencing is only safe because of V18-81.** With FY2028 WFP creation blocked in this
+system, deferring the GSO conversation cannot produce a wrong number — it can only produce a missing
+feature. Without V18-81 the same deferral would leave the double-count question open while Phase 2
+and 3 are being built on top of it.
+
+Two things make the eventual conversation shorter than it sounds:
 
 - `docs/External_AIP_API_Contract.md` (July draft) already anticipated it. Its open item **#4** asks
   GSO literally: *"Anything missing for **WFP building** (e.g. account-level breakdown beyond
@@ -793,15 +805,46 @@ segment as its own indexed column alongside the composite display string, and ha
 generator populate them (new item **V18-76**). Retrofitting this after the ref-code format ships
 means a migration over every AIP row.
 
-**✅ 2026-08-26 — the format is confirmed, the layout is not (tracker B9).** The province uses the
-code the system already knows: `8000-000-1-03-009-001-001-001`. The sketch on the meeting page was
-"a sample based in memory" and should be ignored. That matches what is in the codebase today — LDIP
-programs carry `8000-000-1-01-010-001` and the `.xlsm` parser test carries a nine-segment
-`8000-000-1-01-016-004-001-003-001` — which surfaces the part V18-76 still needs: **the segment
-count varies with depth.** The reading to confirm is that segments 1–5 are the sector + office code
-and segments 6/7/8 are the program / project / activity sequences; what is still missing is what
-each segment means and **where each sequence resets**. Indexed segment columns need a defined
-maximum depth before they can be created (§12.8 Q4).
+**✅ 2026-08-26 — fully answered, from the primary source.** The layout is **not** LGU-invented: it
+is prescribed by the DBM **Budget Operations Manual for LGUs, 2023 Edition (2024 reprint)**,
+Figure 4 "AIP Reference Code Guide" (printed p.25), with the code lists in **Annex C** (sectors) and
+**Annex D** (LGU level / office type / office). Local copy:
+`D:\RalphFiles\PPDO\PPDO\AIP\BOM-for-LGUs-2023-Edition-(2024-Reprinted)-For-Posting-in-DBM-Website.pdf`.
+The meeting-page sketch is superseded; so is the guess recorded here before the manual was read.
+
+| # | Segment | Digits | Meaning | Source |
+|---|---|---|---|---|
+| 1 | **Sector** | 4 | `1000` General Public Services · `3000` Social Services · `8000` Economic Services · `9000` Other Services | Figure 4, Annex C |
+| 2 | **Sub-Sector** | 3 | "if any". Annex C sub-groups — in practice mainly Social Services (Education & Manpower Development, Health, Housing & Community Development) | Figure 4, Annex C |
+| 3 | **LGU Level** | 1 | `1` Province · `2` City · `3` Municipality | Figure 4, Annex D |
+| 4 | **Office Type** | 2 | `01` Mandatory · `02` Optional · `03` Others | Figure 4, Annex D |
+| 5 | **Office** | 3 | Annex D enumerates `001`–`022` per level and type. `1 03 Others` is deliberately left **unenumerated** — the LGU assigns its own | Annex D |
+| 6+ | **PPA path** | 3 each | Program → Project → Activity, **one segment per level of the tree** | Figure 4 |
+
+**Verified against all three real codes**, which now make sense rather than looking inconsistent:
+
+- `8000-000-1-01-010-001` (our LDIP seed) — Economic Services / no sub-sector / Province / Mandatory
+  / **`010` = Office of the Provincial Planning and Development Coordinator**, i.e. PPDO itself /
+  Program `001`.
+- `8000-000-1-03-009-001-001-001` (Ralph's example) — … / **Others** / office `009`, an LGU-assigned
+  code, which is exactly why it is not in Annex D / Program · Project · Activity.
+- `8000-000-1-01-016-004-001-003-001` (the `.xlsm` parser test) — … /
+  **`016` = Office of the Provincial Agriculturist** / a **four**-segment PPA path.
+
+✅ **This answers "where the sequences reset":** the manual requires that "all activities and
+projects be subsumed under a specific program" (printed p.26), so the PPA path is a tree — program
+numbered within its office, project within its program, activity within its project. The one thing
+left to confirm is whether the **program sequence restarts each fiscal year** or runs continuously
+(the v1.3 LDIP work numbered programs continuously across sub-office groups).
+
+⚠️ **This changes V18-76, and dissolves the blocker this section raised.** Segments **1–5 are fixed**
+— five indexed columns, as originally proposed, and they are pure office identity. Segments **6+ are
+a variable-length path**, and storing *those* as fixed columns was the wrong shape: it is what forced
+the "we need a defined maximum depth" problem. There is no maximum. But there does not need to be
+one — the AIP **already is** a Program/Project/Activity tree, so give each node a `seq` that is
+unique among its siblings and **render** the code from the root-to-node path. "Segment 6 = 004" then
+becomes a query on `program.seq`, indexed naturally, with no cap and no migration when the tree
+deepens. The composite string stays a display value.
 
 **Who may do what on that page — ✅ confirmed and narrowed 2026-08-26 (tracker B10, B11).** There
 are **two kinds of reviewer, with different powers**, and the distinction is now explicit rather
@@ -843,28 +886,47 @@ division, or one record with division-tagged rows (`AIP_Redesign_Notes.md` §4 Q
 toward one-per-division, since that is what "mirroring an office" implies, but it does not say so
 (§12.8 Q8).
 
-⚠️ **2026-08-26 — the ladder does not stop at Consolidated, and the plan had no idea.** Ralph's
-account of what happens next (recorded as his understanding, not as a confirmed requirement — he
-hedged it repeatedly, and it needs confirming before anything is built on it):
+⚠️ **2026-08-26 — the ladder does not stop at Consolidated, and the plan had no idea.** Ralph
+described a Sangguniang Panlalawigan stage, hedged as his own understanding. **The DBM Budget
+Operations Manual confirms it, and adds a stage he did not mention** (printed pp.23–24):
 
-| Stage | What happens | In this system? |
-|---|---|---|
-| **Consolidated & approved by PPDO reviewers** | Where §12.6's table currently ends | ✅ yes |
-| **🆕 Sangguniang Panlalawigan (SP)** | The consolidated AIP is generated and presented to the SP — the elected board members and the Vice Governor. They review it and **pass a resolution** approving it | ❓ **unknown — tracker B14** |
-| **🆕 Supplemental changes** | Amendments go to the SP **first**, before taking effect | ❓ **unknown — tracker B15** |
-| **🆕 FY2028 budget planning — the WFP** | Built in **GSO's** system, but the WFP document is what **PBO** needs | ❓ **unknown — tracker C2**, now Blocker (§12.1) |
+> **Preparation and/or Approval of AIP by the LDC** — the Local Development Council; SLPBC 2016
+> puts AIP preparation **within the month of May**.
+> **Submission of LDC-approved AIP to the Sanggunian** — reasonable time prior to **June 7**.
+> **Approval of the AIP by the Sanggunian** — on or before **June 7** of every year
+> (DILG-NEDA-DBM-DOF JMC No. 1, s. 2016).
 
-Three consequences worth stating now, none of them yet decided:
+So there are **two** external bodies downstream of PPDO's work, not one: the **LDC**, then the
+**Sanggunian**. The statutory shape is therefore:
 
-- **"Approved" is not the terminal state the plan assumed.** V18-73's note still reads "don't make
-  **LFC** approval terminal" — doubly stale: the LFC is out (§12.4), and the real terminal authority
-  appears to be the **SP resolution**, which is further downstream than anything modelled.
-- **The amendment path (V18-73 / RAL-78) now has a named gate.** If supplementals route through the
-  SP, amendment readiness is not merely "allow edits after approval" — it is a second trip through
-  an external body, which is a workflow question before it is a schema one.
+| Stage | What happens | When | In this system? |
+|---|---|---|---|
+| **Consolidated & approved by PPDO reviewers** | Where §12.6's table above ends | — | ✅ yes |
+| **🆕 Local Development Council (LDC)** | Prepares and/or **approves** the AIP. Ralph did not mention this stage; the BOM does | within **May** | ❓ **unknown — tracker B14** |
+| **🆕 Sangguniang Panlalawigan** | The LDC-approved AIP is submitted to the SP — elected board members and the Vice Governor — which **approves it by resolution** | submit before **June 7**, approve on or before **June 7** | ❓ **unknown — tracker B14** |
+| **🆕 Supplemental changes** | Amendments reportedly go to the SP **first**, before taking effect | — | ❓ **unknown — tracker B15** |
+| **🆕 FY2028 budget planning — the WFP** | Built in **GSO's** system, but the WFP document is what **PBO** needs | — | ❓ **unknown — tracker C2** (§12.1) |
+
+Four consequences, none of them yet decided:
+
+- **"Approved" is not the terminal state the plan assumed — and it is two stages away, not one.**
+  V18-73's note still reads "don't make **LFC** approval terminal", which is now triply stale: the
+  LFC is out (§12.4), it was never the terminal authority, and the real chain is
+  **PPDO → LDC → Sanggunian resolution**.
+- **The amendment path (V18-73 / RAL-78) has a named external gate.** If supplementals route through
+  the SP, amendment readiness is not "allow edits after approval" — it is a second trip through an
+  external body: a workflow question before it is a schema one.
+- **The LFC's statutory role is upstream, which corroborates B5/B6.** In the BOM the LFC identifies
+  *investible funds* at the LDIP/investment-programming stage (printed p.23) — not AIP review. So
+  "the LFC no longer reviews" is consistent with the manual, not a local deviation.
 - **PBO is the WFP's consumer, GSO only its builder.** That matters for tracker C1: the office that
-  *needs* the document and the office that *makes the tool* are different, so "what do you need out
-  of the AIP" has to be asked of both, and they may not give the same answer.
+  *needs* the document and the office that *makes the tool* are different, and they may not give the
+  same answer.
+
+ℹ️ **No conflict with tracker B7** ("no deadline enforced in the system"). B7 is about *offices
+submitting to PPDO*, which is internal and stays undated. **June 7 is statutory and applies to the
+Sanggunian step**, downstream of everything this system currently models — recorded here so nobody
+later finds the date and concludes B7 was answered wrongly.
 
 Two structural answers inside that table:
 
@@ -885,7 +947,7 @@ becomes a submission audit trail plus the who-has-and-hasn't view, with no date 
 |---|---|---|
 | **V18-74** | **The +30% uplift** — ✅ **scope settled and reduced 2026-08-26**: derived at render time from a stored base, **fixed** 30% (no per-FY rate, no snapshot), FY2028+ only, and applied **in reports only** — *not* in the ceiling check and *not* at the AIP→WFP boundary. The ticket must state that the printed total may legitimately exceed the printed ceiling (§12.2) | 2–3 |
 | **V18-75** | **Query-first review page** — ref-code (whole or per segment), title, office code, and the "everything applicable to me" tag; empty by default | 4 |
-| **V18-76** | **Ref-code segments as indexed columns** — populated by V18-44's generator; the schema half of V18-75 | 2 |
+| **V18-76** | **Ref-code segments as indexed columns.** ✅ **Reshaped 2026-08-26 once the DBM manual was read (§12.5):** two halves, not one. Segments **1–5** (sector · sub-sector · LGU level · office type · office) are **fixed** — five indexed columns, and they are pure office identity, so they belong with V18-32's ownership FK rather than with the PPA tree. Segments **6+** are a **variable-length PPA path** and must **not** be columns: give each Program/Project/Activity node a sibling-unique `seq` and render the code from the root-to-node path. This removes the "needs a defined maximum depth" blocker — there is no maximum, and none is needed | 2 |
 | **V18-77** | **Submission history / audit trail** — submitted, returned, re-submitted, by whom and when (replaces V18-57's deadline gate) | 4 |
 | ~~**V18-78**~~ | ~~Non-GF ceiling and allocation data~~ ↩️ **dropped 2026-08-26** — the all-fund ceiling was withdrawn (§12.3). What survives is folded into V18-46: non-GF funds must be **explicitly excluded** from the check, because a missing allocation row resolves to `0m`, not to *unlimited* | — |
 | **V18-79** | **One-reviewer-per-office constraint** — ✅ **shape decided 2026-08-26 (tracker B13): a validation error, not a database constraint.** "Enforce by convention, just add an error if an app admin accidentally assigns another reviewer to the same office … so that if they want many reviewers per office in the future, we won't have many issues when changing." So: an application-layer check in the user-assignment path, **no filtered unique index**, and no "reviewer on leave" override to design — the constraint is soft by intent | 1 |
