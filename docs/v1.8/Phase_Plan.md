@@ -836,6 +836,37 @@ This also stays consistent with **V18-76**: `office_id = @x AND sector IN (…)`
 the segment columns that decision creates, whereas a free-text boolean expression over a formatted
 ref-code string is exactly the `LIKE '%…%'` shape V18-76 exists to avoid.
 
+⚠️ **A ref-code *prefix* cannot express "one office, all sectors" — and this is the common case, not
+an edge case.** The natural instinct is to query by a prefix of the ref code, since the code already
+carries both sector and office (*"i imagined i use certain prefix of AIP ref code since it have the
+sector and office codes there"*). But the **segment order defeats it for exactly this query**:
+**sector is segment 1, office is segment 5**. Pinning the office while letting the sector vary means
+wildcarding the *front* of the string and matching the *middle* — not a prefix.
+
+**Verified against the real local AIP data, not reasoned about in the abstract:** the same office
+genuinely does appear under several sectors —
+
+```
+1000-000-1-01-001   GENERAL   OFFICE OF THE PROVINCIAL GOVERNOR
+3000-000-1-01-001   SOCIAL    OFFICE OF THE GOVERNOR - WARDEN
+```
+
+— and **11 of the offices present span more than one sector** (office `001` and `017` span three;
+PPDO's own `010` spans two). So "all PPAs of office 010 across all sectors" is `1000-…-010` **OR**
+`3000-…-010`: two different prefixes, which no single prefix match can cover, and which as a string
+search degrades to `LIKE '%-1-01-010%'` — the exact non-SARGable pattern V18-76 exists to prevent.
+
+**So the two inputs divide by what each is actually good at, and both are kept:**
+
+| Input | Use it for | Not for |
+|---|---|---|
+| **Ref-code prefix** | "All offices in a sector" (`3000-`), and **subtree drill-down** — `…-010-001-` is everything under program 001. Genuinely valuable, and indexable | "One office, all sectors" |
+| **Segment filters** (V18-76 columns) | **"One office, all sectors"** — set office, leave sector blank. Also any other mix-and-match | — |
+
+The office-across-sectors case therefore routes through the **segment-column filter**, never the
+prefix box. Multi-value OR would also express it by naming both prefixes, but that asks the reviewer
+to know the sector list up front; leaving the sector filter blank does not.
+
 ⚠️ **This is a Phase 2 schema consequence of a Phase 4 UI requirement, which is why it is recorded
 now.** For segments to be queryable they must be **columns, not substrings**: a `LIKE '%…%'` over a
 formatted ref-code string cannot use an index and cannot express "segment 3 = 004". Store each
@@ -1163,7 +1194,7 @@ exactly one program even when several sub-office groups share the office code.
 | # | New work item | Phase |
 |---|---|---|
 | **V18-74** | **The +30% uplift** — ✅ **scope settled and reduced 2026-08-26**: derived at render time from a stored base, **fixed** 30% (no per-FY rate, no snapshot), FY2028+ only, and applied **in reports only** — *not* in the ceiling check and *not* at the AIP→WFP boundary. The ticket must state that the printed total may legitimately exceed the printed ceiling (§12.2) | 2–3 |
-| **V18-75** | **Query-first review page** — ref-code (whole or per segment), title, office code, and the "everything applicable to me" tag; empty by default. ✅ **Combination rule settled 2026-08-26 (§12.5): OR within a field (multi-value), AND across fields, and no boolean query syntax.** Copy the PR List status-chip interaction (`inventory/pr-register`), counts included — it already implements exactly this | 4 |
+| **V18-75** | **Query-first review page** — ref-code (whole or per segment), title, office code, and the "everything applicable to me" tag; empty by default. ✅ **Combination rule settled 2026-08-26 (§12.5): OR within a field (multi-value), AND across fields, and no boolean query syntax.** Copy the PR List status-chip interaction (`inventory/pr-register`), counts included — it already implements exactly this. ⚠️ **The ref-code prefix box and the segment filters are not interchangeable:** sector is segment 1 and office is segment 5, so a prefix cannot express "one office, all sectors" — that must route through the segment columns. Verified against real data, where **11 offices span multiple sectors** | 4 |
 | **V18-76** | **Ref-code segments as indexed columns.** ✅ **Reshaped 2026-08-26 once the DBM manual was read (§12.5):** two halves, not one. Segments **1–5** (sector · sub-sector · LGU level · office type · office) are **fixed** — five indexed columns, and they are pure office identity, so they belong with V18-32's ownership FK rather than with the PPA tree. Segments **6+** are a **variable-length PPA path** and must **not** be columns: give each Program/Project/Activity node a sibling-unique `seq` and render the code from the root-to-node path. This removes the "needs a defined maximum depth" blocker — there is no maximum, and none is needed | 2 |
 | **V18-77** | **Submission history / audit trail** — submitted, returned, re-submitted, by whom and when (replaces V18-57's deadline gate) | 4 |
 | ~~**V18-78**~~ | ~~Non-GF ceiling and allocation data~~ ↩️ **dropped 2026-08-26** — the all-fund ceiling was withdrawn (§12.3). What survives is folded into V18-46: non-GF funds must be **explicitly excluded** from the check, because a missing allocation row resolves to `0m`, not to *unlimited* | — |
