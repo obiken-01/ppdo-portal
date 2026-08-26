@@ -123,7 +123,7 @@ by inference.
 
 | Type | `A` | Description col | Amounts | Notes |
 |---|---|---|---|---|
-| **Office** | office-level code, 5 segments | `B` | subtotal | e.g. `1000-000-1-01-001` / `OFFICE OF THE PROVINCIAL GOVERNOR` |
+| **Office / sub-office group** | office-level code, 5 segments — **shared across the groups** | `B` | subtotal | One office may head **several** such rows under one code, distinguished by name: `OFFICE OF THE GOVERNOR - WARDEN` / `- AKAP-HUB` / `- HOUSING` are three separate rows, all `3000-000-1-01-001`. Group identity is `(Sector, Name)`. **Encoder-created** — see `Phase_Plan.md` §12.6a |
 | **Program** | + program segment | `C` | usually blank | |
 | **Project** | + project segment | `D` | usually blank | |
 | **Activity** | + activity segment | `E` | the money lines | |

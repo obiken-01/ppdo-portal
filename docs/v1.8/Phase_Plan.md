@@ -370,7 +370,7 @@ below covers. See **V18-80** (§12.7).
 | # | Work item |
 |---|---|
 | **V18-41** | Programs sourced from a valid LDIP (reuses `seedAipProgramsFromLdip`, RAL-181). ✅ **#5 answered 2026-08-25 — the LDIP is a closed list**; an office cannot add a program outside it, so there is no "propose a new program" path and no approval flow for one |
-| **V18-42** | Two-stage entry UI — create Project and Activity first, then enter expenditures against them. **2026-08-25: this is the encoder's own tab**, shaped like the WFP entry page: add/update projects and activities, then submit the whole office's work for department review in one action (§12.5) |
+| **V18-42** | Two-stage entry UI — create Project and Activity first, then enter expenditures against them. **2026-08-25: this is the encoder's own tab**, shaped like the WFP entry page: add/update projects and activities, then submit the whole office's work for department review in one action (§12.5). ✅ **2026-08-26 — THREE stages, not two: encoders must also create the SUB-OFFICE GROUP** (§12.6a). It is entered *with* the program, not separately, and **`LdipForm.tsx` already implements the exact interaction** (RAL-61) — lift it rather than redesign it |
 | **V18-43** | Multi-fund toggle, default single (whiteboard W8); one fund source per line (decision 4, settled) |
 | **V18-44** | Server-side, concurrency-safe ref-code generation — scoped per office/program, computed in SQL. ✅ **The format is now pinned to a primary source (§12.5):** DBM Budget Operations Manual for LGUs, 2023 Ed., Figure 4 + Annexes C/D. Generation reduces to allocating a sibling-unique `seq` per node — segments 1–5 are office identity and are not generated at all. ⚠️ Do not repeat `GeneratePRNoAsync`'s full-table-scan-per-create bug; and offline clients **cannot** mint ref codes safely (a hard constraint on Phase 6) |
 | **V18-45** | AIP draw-down ledger. ✅ **DECISION A answered 2026-08-25 — build `AipDivisionAllocationLedger` mirroring the WFP one; do NOT generalise the existing ledger.** Ralph: "create new tables and fields for AIP, and not reuse the fields used by WFP … in the future, WFP itself will be updated". ✅ **The double-count is answered too (2026-08-26):** the AIP row is a **reservation** that the WFP **relieves per activity** as it commits — the two ledgers must net, not add. Allocation consumed = `WFP committed + AIP reserved not yet converted`. ⚠️ Relief per *fund* instead of per *activity* strands reservations whenever the fund mix changes — §12.1 |
@@ -989,6 +989,45 @@ Two structural answers inside that table:
 **No deadline gate** (tracker B7): the deadline is communicated to offices outside the system.
 What is wanted instead is **history** — "let's document the history so we can track" — so V18-57
 becomes a submission audit trail plus the who-has-and-hasn't view, with no date enforcement.
+
+### 12.6a 🆕 Sub-office groups are user-created — and are NOT the division
+
+Raised by Ralph 2026-08-26, after B12-b: *"I would like to bring up again the sub-office. We also
+need for users to add this. This is mostly entered on top of a program — I think in the current AIP
+page that we will retire or change, this is considered."*
+
+**What it is.** An office may hold several named groups under **one** office ref code, each heading
+its own block of programs on the printed form. The province's FY2027 file is full of them — three
+`3000-000-1-01-001` office rows on the SOCIAL sheet reading `OFFICE OF THE GOVERNOR - WARDEN`,
+`- AKAP-HUB` and `- HOUSING`, each with its own programs and its own shaded subtotal row. Group
+identity is the **`(Sector, Name)`** pair, which is what `AipOffice` and `LdipOffice` already store.
+
+**✅ It is already built, on the LDIP side.** `LdipForm.tsx` (RAL-61) implements precisely the
+interaction Ralph describes — the sub-office name is a field **inside the "add a program"
+mini-form**, not a separate step:
+
+> Pick a Sector → see the office-level ref-code preview → set the office/sub-office group name,
+> choosing an existing name from the suggestions to keep adding under that group **or typing a new
+> one to start another** → name the program → enter its budget → Add.
+
+Names are uppercased to match the source files and normalised server-side; **program numbering runs
+continuously across groups that share a ref code**, and removals renumber without gaps. **V18-42
+should lift this, not redesign it.**
+
+⚠️ **Do not conflate the sub-office group with the division.** Both attach at program level and
+they are orthogonal:
+
+| | Sub-office group | Division |
+|---|---|---|
+| **Stored on** | `AipOffice` — `(Sector, Name)` | `ProgramDivision` — `(OfficeRefCode, ProgramRefCode)` → `DivisionId` |
+| **Printed?** | **Yes** — it is an office row on the form | **No** — never appears on the AIP |
+| **Applies to** | every office | **the host office only** (B12-b) |
+| **Cardinality** | a program sits in exactly one group | a program may be assigned to several divisions |
+| **Purpose** | how the document is *structured* | how the work is *divided* |
+
+ℹ️ The two do not collide: because program numbering is continuous across groups sharing a ref
+code, `ProgramRefCode` stays unique within an office, so `ProgramDivision`'s key still resolves to
+exactly one program even when several sub-office groups share the office code.
 
 ### 12.7 New and changed work items
 
