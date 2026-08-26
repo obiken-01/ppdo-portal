@@ -1,8 +1,9 @@
 # AIP Redesign — Working Notes
 
-> ⚠️ **Incomplete.** This captures Ralph's initial description (2026-08-13) verbatim in substance.
-> More detail to follow. Do not ticket the redesign from this document alone — the open questions
-> in §4 and in `Office_User_Path_Findings.md` §6.4 are unanswered.
+> ⚠️ **Partly superseded.** This captures Ralph's initial description (2026-08-13) verbatim in
+> substance. The §4 and `Office_User_Path_Findings.md` §6.4 questions it warned about were largely
+> **answered at the 2026-08-25 PPDC meeting** — see §4d below, and `Phase_Plan.md` §12 for the full
+> reading. Still do not ticket from this document alone: the plan, not this file, is the ordering.
 
 ---
 
@@ -97,6 +98,13 @@ would have destructive access to PPDO's AIP (`DELETE /aip/{id}`).
 6. `wfp_activities.aip_activity_id` is an FK-Restrict onto AIP activities (see RAL-178). Any
    restructuring of AIP activities has to account for WFPs already built on them.
 
+> **State of these after 2026-08-25 (§4d):** Q1 is effectively settled by the entry flow — the
+> encoder creates projects and activities, then costs them, so the expenditure-line child table
+> (`Phase_Plan.md` V18-33) is the shape being built. **Q2 and Q3 are still open** and are now the
+> last structural unknowns in the redesign: whether PPDO holds one AIP record per division or one
+> record with division-tagged rows, and whether PPDO's divisions submit through a PPDO
+> department-head reviewer the way an office does. Both are folded into `Phase_Plan.md` §12.8 Q8.
+
 ### 4a. Decided 2026-08-17 — questions 4 and 5 (clean break by fiscal year)
 
 **Decision: clean break, not migration.** FY2027 and earlier AIP data stays exactly as-is, in the
@@ -158,6 +166,61 @@ mode instead of managing it.
 but *units may differ only where the value never crosses a boundary* — and LDIP has no such
 boundary, since `SeedProgramsFromLdipAsync` copies no amounts. The invariant is now written on the
 entity itself. Full reasoning and the site list: `Phase_Plan.md` §4, V18-35 detail.
+
+
+### 4d. Decided 2026-08-25 — the PPDC meeting (flow, reviewers, and a +30% uplift)
+
+The meeting answered every decision that was blocking Phases 2–5. **`Phase_Plan.md` §12 is the full
+record** — including the code checks behind the ceiling change and the ten questions that remain.
+What matters at *this* document's level:
+
+**1. The flow, end to end.** Encoder(s) prepare the office's PPAs in a WFP-shaped entry tab →
+submit the whole office's work for **department-head review** (where both encoder and reviewer may
+still edit) → the department head submits to **PPDO**, which **locks** it → designated **PPDO
+reviewers** comment and may send a whole office's work back, which unlocks it for re-submission.
+Consolidation is not a new record: it is the **existing multi-office record filled in office by
+office as they submit**, visible to reviewers only, and reviewable **partially** before every office
+has submitted.
+
+**2. The LFC is out of the system.** The step-4 reviewer on the meeting page is crossed through and
+redirected to PPDO. Cross-office review is a **permission flag held by certain PPDO users**, not an
+external committee — so §2 of this document's reviewer model now has two flags: the office's own
+department-head reviewer (**one per office**), and the PPDO consolidated reviewer.
+
+**3. Programs stay a closed list.** An office cannot add a program outside the LDIP. This also
+retires the risk §4 of `Phase_Plan.md` flagged — that offices inventing programs would create the
+first LDIP↔AIP amount seam and with it a units boundary.
+
+**4. 🆕 A +30% uplift on MOOE and CO.** Every activity's MOOE and CO, across all fund sources, carry
+an additional 30%; PS is shown as entered. This appears in no earlier version of the requirements.
+
+> **✅ Mechanics settled 2026-08-26 (tracker G1–G6): the uplift is presentation-only.** The base
+> figure is stored, the rate is a **fixed** 30%, and the 30% is applied **only when a report is
+> rendered** — **neither the ceiling check nor the AIP→WFP limit ever sees the uplifted figure**.
+> FY2028+ only; the printed Total is `PS + 1.3 × (MOOE + CO)`.
+>
+> ⚠️ The consequence is deliberate and must not be "fixed": an office encoding exactly to its
+> ceiling **passes every check** and then **prints a document 30% over that ceiling**. This departs
+> from the principle tracker A2-4 settled, knowingly. `Phase_Plan.md` §12.2 has the full reading.
+
+**5. ↩️ Ceilings apply to every fund source — made 2026-08-25, WITHDRAWN 2026-08-26.**
+On 2026-08-25 this reversed the 2026-08-14 "General Fund only" decision. **The next day it was
+reversed back** (tracker A1-b and A6-4: "in a later discussion, we will go back to old requirement
+where only GF will have ceiling check"), confirmed by Ralph the same day. So:
+
+> **Ceilings are General Fund only**, as settled 2026-08-14. The "except GAD / 20% DF / LDRRF /
+> Trust Fund" exemption list stands, and **PS remains exempt** on top of it as an expense class.
+>
+> ⚠️ One code caveat outlives the withdrawal: `GetDivisionAllocationAsync` resolves a missing
+> allocation row to `0m`, so a fund with **no** ceiling row is constrained to **zero**, not left
+> unconstrained. Non-GF funds must therefore be **explicitly excluded** from the check rather than
+> left blank. `Phase_Plan.md` §12.3.
+
+**6. One pot, drawn down in sequence** — the division allocation constrains the AIP, and the WFP is
+constrained by its AIP activity. AIP gets **its own ledger tables**; WFP's are not generalised, and
+WFP itself is reworked in a later version. ⚠️ Until that rework, both would draw on the same
+allocation — see `Phase_Plan.md` §12.1, which is the single most important caveat to carry into
+Phase 2.
 
 ### 4b. Update 2026-08-19 — the FY≤2027 importer was fixed, but FY2027 is NOT being re-imported
 

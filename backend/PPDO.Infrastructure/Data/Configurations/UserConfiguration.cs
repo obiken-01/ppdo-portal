@@ -64,6 +64,19 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
 
         // RefreshTokenExpiry — nullable DateTime; no extra config needed.
 
+        // ── Password reset (RAL-253) — legacy PascalCase table, no HasColumnName needed ────────
+        // RecoveryQuestionKey — nullable enum, no extra config needed.
+
+        builder.Property(u => u.MustChangePassword)
+            .IsRequired()
+            .HasDefaultValue(false);
+
+        builder.Property(u => u.RecoveryAttemptCount)
+            .IsRequired()
+            .HasDefaultValue(0);
+
+        // RecoveryAnswerHash, RecoveryFirstAttemptAt — nullable, no extra config needed.
+
         // Unique index on Username — the login identity.
         builder.HasIndex(u => u.Username)
             .IsUnique()

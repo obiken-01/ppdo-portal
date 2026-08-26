@@ -211,8 +211,14 @@ Step 4 is blocked on §6.4.
 Ralph confirmed: `CanAccessBudgetPlanning` stays ON by default for office users, and each office
 will additionally have **reviewer** users, defined as:
 
-- **read-only on content** — they view their office's work, they don't edit it;
-- **the sole submit authority** — only a reviewer may send their office's work;
+- ~~**read-only on content** — they view their office's work, they don't edit it;~~
+  ⚠️ **Superseded 2026-08-25:** the department-head reviewer **may edit values** during review, and
+  may comment instead of or as well as editing (tracker B1/B3). This matters beyond the AIP — the
+  planned `DenyReviewerWriteAsync` guard (RAL-256) was designed from the read-only reading;
+- **the sole submit authority** — only a reviewer may send their office's work.
+  ⚠️ **Refined 2026-08-25:** true for the hop **to PPDO**. There is an earlier hop the encoder makes
+  themselves — encoder → department-head review — so "reviewer is the sole submitter" is not the
+  whole flow (`Phase_Plan.md` §12.5);
 - **submitted work feeds a consolidated document** at the PPDO level.
 
 Scope for now is **AIP only**, but the backend permission must be written generically so LDIP and
@@ -286,16 +292,28 @@ columns.
 needs the same two columns, and consolidation will likely want a third (which consolidated record
 absorbed this submission).
 
-### 6.4 — Open questions
+### 6.4 — Open questions — ✅ all five answered 2026-08-25
 
-1. **Can a reviewer reject / send back?** If yes, `Submitted → Draft` needs a reason field and the
-   preparer needs to see it. If no, the only recovery is PPDO unlocking.
-2. **What is "the consolidated work" concretely** — a new provincial `AipRecord` assembled from
-   submissions, or the existing multi-office record with offices filled in as they submit?
-3. **Can PPDO consolidate partially**, before every office has submitted?
-4. **Can an office edit after submitting?** (Presumably locked, but the unlock path needs an owner.)
-5. **One reviewer per office, or several?** The per-user flag supports many; if exactly one is
-   required, that constraint has to live somewhere.
+Answered at the PPDC meeting. Full reading in `Phase_Plan.md` §12.6; verbatim answers in
+`v1.8.0_Open_Items_Tracker.xlsx` (rows B3, B4, B4-a, B4-b, B4-c, B5).
+
+1. ~~**Can a reviewer reject / send back?**~~ ✅ **Yes** — a PPDO reviewer comments and sends a
+   whole office's work back for update and re-submission. One office at a time, not only the
+   document as a whole. So `Submitted → Returned` does need its reason/comment trail.
+2. ~~**What is "the consolidated work" concretely?**~~ ✅ **The existing multi-office record, with
+   offices filled in as they submit** — not a newly assembled provincial record.
+3. ~~**Can PPDO consolidate partially?**~~ ✅ **Yes** — PPDO reviewers review the consolidated work
+   so far, before every office has submitted. Partial is the normal case, not an edge case.
+4. ~~**Can an office edit after submitting?**~~ ✅ **Locked on submission to PPDO**, and unlocked
+   again when a PPDO reviewer returns it. Before that hop — during department-head review — both
+   the encoder and the reviewer may still edit.
+5. ~~**One reviewer per office, or several?**~~ ✅ **One per office.** The per-user flag permits
+   several, so the constraint has to be built deliberately (`Phase_Plan.md` V18-79); whether it is
+   a database constraint or an administrative convention, and what happens when that person is on
+   leave, is tracker row B13.
+
+**Also settled:** the cross-office reviewer is a **PPDO user, not the LFC** — the LFC no longer
+reviews in the system (`Phase_Plan.md` §12.4).
 
 ---
 

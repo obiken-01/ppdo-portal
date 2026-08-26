@@ -113,6 +113,40 @@ public sealed class User
     /// </summary>
     public bool? OverrideCanManageAllocation { get; set; }
 
+    // ── Password reset (RAL-253) ────────────────────────────────────────────────
+
+    /// <summary>
+    /// The recovery question this user has chosen. Null until they complete the one-time setup
+    /// screen (RAL-266) — self-service reset (RAL-265) is unavailable until this is set.
+    /// </summary>
+    public RecoveryQuestion? RecoveryQuestionKey { get; set; }
+
+    /// <summary>
+    /// BCrypt hash of the normalized recovery answer (see RecoveryAnswerNormalizer in
+    /// PPDO.Application.Common). This IS a credential — never expose it, even to an admin, or
+    /// self-service reset degrades into an admin-mediated reset with extra steps.
+    /// </summary>
+    public string? RecoveryAnswerHash { get; set; }
+
+    /// <summary>
+    /// True after any reset — self-service or admin-initiated — forcing a password change at next
+    /// login before the user can reach anything else.
+    /// </summary>
+    public bool MustChangePassword { get; set; }
+
+    /// <summary>
+    /// Failed recovery-answer attempts within the current window. Reset to 0 on a successful
+    /// verify. Paired with <see cref="RecoveryFirstAttemptAt"/> to enforce "5 failures in an hour".
+    /// </summary>
+    public int RecoveryAttemptCount { get; set; }
+
+    /// <summary>
+    /// UTC timestamp of the first failed attempt in the current window. Null when
+    /// <see cref="RecoveryAttemptCount"/> is 0. The account is locked while
+    /// <c>RecoveryAttemptCount >= 5 &amp;&amp; now &lt; RecoveryFirstAttemptAt + 1 hour</c>.
+    /// </summary>
+    public DateTime? RecoveryFirstAttemptAt { get; set; }
+
     // ── Preferences ───────────────────────────────────────────────────────────
 
     /// <summary>
