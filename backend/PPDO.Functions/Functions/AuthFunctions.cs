@@ -15,8 +15,10 @@ namespace PPDO.Functions.Functions;
 /// HTTP-triggered Azure Functions for authentication.
 ///
 /// Public endpoints (no JWT required):
-///   POST /api/auth/login   — email + password → access token + refresh token
-///   POST /api/auth/refresh — refresh token → new access token + refresh token
+///   POST /api/auth/login            — email + password → access token + refresh token
+///   POST /api/auth/refresh          — refresh token → new access token + refresh token
+///   POST /api/auth/forgot-password  — username → recovery question to show (RAL-265)
+///   POST /api/auth/verify-recovery  — username + answer → one-time temporary password (RAL-265)
 ///
 /// Protected endpoints (JWT validated via JwtMiddleware.ValidateAsync):
 ///   POST /api/auth/logout  — revoke refresh token
@@ -116,6 +118,49 @@ public sealed class AuthFunctions
                 LoginResponseDto dto = new(result.AccessToken!, AccessTokenLifetimeSeconds);
                 return await OkWithRefreshCookie(req, dto, result.RefreshToken!, cancellationToken);
         }
+    }
+
+    // ── POST /api/auth/forgot-password ─────────────────────────────────────────
+
+    [Function("ForgotPassword")]
+    public async Task<HttpResponseData> ForgotPassword(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "auth/forgot-password")]
+        HttpRequestData req,
+        CancellationToken cancellationToken)
+    {
+        ForgotPasswordRequestDto? body = await DeserializeAsync<ForgotPasswordRequestDto>(req, cancellationToken);
+        if (body is null || string.IsNullOrWhiteSpace(body.Username))
+            return await BadRequest(req, "Username is required.");
+
+        string questionText = await _auth.GetRecoveryQuestionAsync(body.Username, cancellationToken);
+        return await Ok(req, new ForgotPasswordResponseDto(questionText), cancellationToken);
+    }
+
+    // ── POST /api/auth/verify-recovery ─────────────────────────────────────────
+
+    [Function("VerifyRecovery")]
+    public async Task<HttpResponseData> VerifyRecovery(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "auth/verify-recovery")]
+        HttpRequestData req,
+        CancellationToken cancellationToken)
+    {
+        VerifyRecoveryRequestDto? body = await DeserializeAsync<VerifyRecoveryRequestDto>(req, cancellationToken);
+        if (body is null || string.IsNullOrWhiteSpace(body.Username) || string.IsNullOrWhiteSpace(body.Answer))
+            return await BadRequest(req, "Username and Answer are required.");
+
+        RecoveryVerifyResult result = await _auth.VerifyRecoveryAnswerAsync(
+            body.Username, body.Answer, cancellationToken);
+
+        if (result.Outcome != RecoveryVerifyOutcome.Success)
+        {
+            // Deliberately generic and identical for every failure mode — unknown username,
+            // no recovery answer set, wrong answer, or locked out (RAL-265 enumeration guard).
+            return await Unauthorized(req,
+                "We couldn't verify that answer. Check your username and answer, or contact your administrator.",
+                cancellationToken);
+        }
+
+        return await Ok(req, new VerifyRecoveryResponseDto(result.TemporaryPassword!), cancellationToken);
     }
 
     // ── POST /api/auth/logout ──────────────────────────────────────────────────
@@ -303,6 +348,18 @@ public sealed class AuthFunctions
     {
         HttpResponseData response = req.CreateResponse(HttpStatusCode.BadRequest);
         await response.WriteStringAsync(message);
+        return response;
+    }
+
+    private static async Task<HttpResponseData> Unauthorized(
+        HttpRequestData req,
+        string message,
+        CancellationToken cancellationToken)
+    {
+        HttpResponseData response = req.CreateResponse(HttpStatusCode.Unauthorized);
+        response.Headers.Add("Content-Type", "application/json; charset=utf-8");
+        await response.WriteStringAsync(
+            JsonSerializer.Serialize(new { message }, _jsonOptions), cancellationToken);
         return response;
     }
 }

@@ -36,9 +36,22 @@ public sealed class AuthService : IAuthService
     private const int MaxFailedAttempts = 5;
     private static readonly TimeSpan LockoutWindow = TimeSpan.FromMinutes(15);
 
+    // Recovery-answer lockout (RAL-265): 5 failures per hour, persisted on the User row
+    // itself (RecoveryAttemptCount/RecoveryFirstAttemptAt) rather than IMemoryCache — the
+    // Consumption plan scales to zero after ~10 min idle, which would silently reset an
+    // in-memory counter and defeat the lockout.
+    private const int MaxRecoveryAttempts = 5;
+    private static readonly TimeSpan RecoveryLockoutWindow = TimeSpan.FromHours(1);
+
+    // BCrypt.Verify against a fixed hash nobody could ever match — run on every "nothing to
+    // check against" branch so the response takes the same time as a real comparison and
+    // cannot be used to infer whether the username or the recovery answer exists.
+    private const string DummyHash = "$2a$11$dummyhashtopreventtimingattacksonuserexistence00000000000";
+
     private readonly IUserRepository _users;
     private readonly IPermissionService _permissions;
     private readonly ILandingPageResolver _landing;
+    private readonly IAuditService _audit;
     private readonly JwtSettings _jwt;
     private readonly IMemoryCache _cache;
     private readonly ILogger<AuthService> _logger;
@@ -47,6 +60,7 @@ public sealed class AuthService : IAuthService
         IUserRepository users,
         IPermissionService permissions,
         ILandingPageResolver landing,
+        IAuditService audit,
         IOptions<JwtSettings> jwtOptions,
         IMemoryCache cache,
         ILogger<AuthService> logger)
@@ -54,6 +68,7 @@ public sealed class AuthService : IAuthService
         _users = users;
         _permissions = permissions;
         _landing = landing;
+        _audit = audit;
         _jwt = jwtOptions.Value;
         _cache = cache;
         _logger = logger;
@@ -81,7 +96,7 @@ public sealed class AuthService : IAuthService
         if (user is null)
         {
             // Consistent timing — run a dummy verify so response time doesn't leak existence.
-            BCrypt.Net.BCrypt.Verify(password, "$2a$11$dummyhashtopreventtimingattacksonuserexistence00000000000");
+            BCrypt.Net.BCrypt.Verify(password, DummyHash);
             _logger.LogWarning("Login failed — username not found or user inactive. Username: {Username}", username);
             RegisterFailedAttempt(attemptKey);
             return LoginResult.Invalid();
@@ -198,6 +213,113 @@ public sealed class AuthService : IAuthService
             CanManageConfig         = await _permissions.CanManageConfigAsync(user, cancellationToken),
             CanManageAllocation     = await _permissions.CanManageAllocationAsync(user, cancellationToken),
         };
+    }
+
+    // ── Password recovery (RAL-265) ────────────────────────────────────────────
+
+    /// <inheritdoc />
+    public async Task<string> GetRecoveryQuestionAsync(
+        string username,
+        CancellationToken cancellationToken = default)
+    {
+        User? user = await _users.FindByUsernameAsync(username, cancellationToken);
+
+        // Unknown username, or a known account that hasn't set a question yet — both fall
+        // back to the same catalog default so this endpoint is not a username-enumeration
+        // oracle (RAL-265).
+        RecoveryQuestion question = user?.RecoveryQuestionKey ?? RecoveryQuestionCatalog.Default;
+        return RecoveryQuestionCatalog.TextFor(question);
+    }
+
+    /// <inheritdoc />
+    public async Task<RecoveryVerifyResult> VerifyRecoveryAnswerAsync(
+        string username,
+        string answer,
+        CancellationToken cancellationToken = default)
+    {
+        User? user = await _users.FindByUsernameAsync(username, cancellationToken);
+        string normalizedAnswer = RecoveryAnswerNormalizer.Normalize(answer);
+
+        // Unknown username, or no recovery answer set yet — nothing to check the answer
+        // against. Still run a dummy compare so the response takes the same time as a real
+        // wrong-answer check (RAL-265 enumeration guard).
+        if (user is null || user.RecoveryAnswerHash is null)
+        {
+            BCrypt.Net.BCrypt.Verify(normalizedAnswer, DummyHash);
+            _logger.LogWarning("Recovery verify failed — unknown username or no recovery answer set.");
+            return RecoveryVerifyResult.Failed();
+        }
+
+        // Locked out — still compare against the real hash for timing parity, but the
+        // outcome is the same "Failed" as a wrong answer. Never surface "locked" as a
+        // distinct state; that alone would confirm the account exists and is being targeted.
+        if (IsRecoveryLockedOut(user))
+        {
+            BCrypt.Net.BCrypt.Verify(normalizedAnswer, user.RecoveryAnswerHash);
+            _logger.LogWarning("Recovery verify blocked — too many failed attempts. UserId: {UserId}", user.Id);
+            return RecoveryVerifyResult.Failed();
+        }
+
+        if (!BCrypt.Net.BCrypt.Verify(normalizedAnswer, user.RecoveryAnswerHash))
+        {
+            RegisterFailedRecoveryAttempt(user);
+            await _users.UpdateAsync(user, cancellationToken);
+            await _users.SaveChangesAsync(cancellationToken);
+            _logger.LogWarning("Recovery verify failed — wrong answer. UserId: {UserId}", user.Id);
+            return RecoveryVerifyResult.Failed();
+        }
+
+        // Issued once, shown once — never stored or logged in plaintext (RAL-254 convention).
+        string temporaryPassword = PasswordGenerator.Generate();
+
+        user.PasswordHash          = BCrypt.Net.BCrypt.HashPassword(temporaryPassword);
+        user.MustChangePassword    = true;
+        user.RecoveryAttemptCount  = 0;
+        user.RecoveryFirstAttemptAt = null;
+        user.RefreshToken          = null; // force re-login on every other session
+        user.RefreshTokenExpiry    = null;
+
+        await _users.UpdateAsync(user, cancellationToken);
+        await _users.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Password reset via recovery answer. UserId: {UserId}", user.Id);
+
+        // Actor is the account itself — this is a public endpoint, so JwtMiddleware never
+        // ran and CallerContext.UserId is unset. Never snapshot PasswordHash or the issued
+        // password, just that a reset happened (matches the admin-reset audit shape).
+        await _audit.LogAsync("users", user.Id, AuditAction.Update, actorId: user.Id,
+            oldValues: null,
+            newValues: new { PasswordReset = true, Method = "recovery-answer" },
+            cancellationToken);
+
+        return RecoveryVerifyResult.Success(temporaryPassword);
+    }
+
+    private static bool IsRecoveryLockedOut(User user) =>
+        user.RecoveryAttemptCount >= MaxRecoveryAttempts
+        && user.RecoveryFirstAttemptAt is DateTime first
+        && DateTime.UtcNow < first.Add(RecoveryLockoutWindow);
+
+    /// <summary>
+    /// The first failure opens a fixed one-hour window; subsequent failures within that
+    /// window keep incrementing. A failure after the window has elapsed starts a fresh one —
+    /// exactly the "5 failures in an hour" shape <see cref="RegisterFailedAttempt"/> uses for
+    /// login, just persisted on the row instead of IMemoryCache.
+    /// </summary>
+    private static void RegisterFailedRecoveryAttempt(User user)
+    {
+        bool windowActive = user.RecoveryFirstAttemptAt is DateTime first
+            && DateTime.UtcNow < first.Add(RecoveryLockoutWindow);
+
+        if (windowActive)
+        {
+            user.RecoveryAttemptCount += 1;
+        }
+        else
+        {
+            user.RecoveryAttemptCount = 1;
+            user.RecoveryFirstAttemptAt = DateTime.UtcNow;
+        }
     }
 
     // ── Rate limiting ────────────────────────────────────────────────────────────

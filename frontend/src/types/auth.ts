@@ -23,6 +23,28 @@ export interface RefreshErrorResponse {
   reason: RefreshErrorReason;
 }
 
+/** Mirrors PPDO.Application/DTOs/Auth/ForgotPasswordRequestDto.cs and ...ResponseDto.cs (RAL-265). */
+export interface ForgotPasswordRequest {
+  username: string;
+}
+
+export interface ForgotPasswordResponse {
+  /** Always present — an unknown username or an account with no question set both fall back
+   * to the same catalog default, so this response never reveals whether the account exists. */
+  questionText: string;
+}
+
+/** Mirrors PPDO.Application/DTOs/Auth/VerifyRecoveryRequestDto.cs and ...ResponseDto.cs (RAL-265). */
+export interface VerifyRecoveryRequest {
+  username: string;
+  answer: string;
+}
+
+export interface VerifyRecoveryResponse {
+  /** Shown once — never persisted client-side beyond the confirmation screen. */
+  temporaryPassword: string;
+}
+
 /**
  * Landing-page targets (RAL-251). Mirrors the backend `LandingPage` enum by NAME —
  * the API exchanges names, not the underlying numbers.

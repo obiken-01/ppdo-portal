@@ -2,6 +2,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
+using PPDO.Application.Common;
 using PPDO.Application.Services;
 using PPDO.Application.Settings;
 using PPDO.Domain.Entities;
@@ -40,10 +41,14 @@ public sealed class AuthServiceTests
         IsActive     = true,
     };
 
-    private static AuthService BuildSut(Mock<IUserRepository> repoMock, IMemoryCache? cache = null) => new(
+    private static AuthService BuildSut(
+        Mock<IUserRepository> repoMock,
+        IMemoryCache? cache = null,
+        Mock<IAuditService>? auditMock = null) => new(
         repoMock.Object,
         new PermissionService(),
         new LandingPageResolver(new PermissionService()),
+        (auditMock ?? new Mock<IAuditService>()).Object,
         Options.Create(JwtSettings),
         cache ?? new MemoryCache(new MemoryCacheOptions()),
         NullLogger<AuthService>.Instance);
@@ -408,5 +413,194 @@ public sealed class AuthServiceTests
 
         Assert.NotEqual("/dashboard", me.LandingPath);
         Assert.Equal("/budget-planning", me.LandingPath);
+    }
+
+    // ── Password recovery (RAL-265) ──────────────────────────────────────────
+
+    private static User MakeUserWithRecoveryAnswer(RecoveryQuestion question, string answer)
+    {
+        User user = MakeActiveUser(BCrypt.Net.BCrypt.HashPassword("current-password"));
+        user.RecoveryQuestionKey = question;
+        user.RecoveryAnswerHash  = BCrypt.Net.BCrypt.HashPassword(RecoveryAnswerNormalizer.Normalize(answer));
+        return user;
+    }
+
+    [Fact]
+    public async Task GetRecoveryQuestionAsync_UnknownUsername_ReturnsDefaultQuestion()
+    {
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByUsernameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+
+        string text = await BuildSut(repo).GetRecoveryQuestionAsync("nobody");
+
+        Assert.Equal(RecoveryQuestionCatalog.TextFor(RecoveryQuestionCatalog.Default), text);
+    }
+
+    [Fact]
+    public async Task GetRecoveryQuestionAsync_UserWithNoQuestionSet_ReturnsDefaultQuestion()
+    {
+        User user = MakeActiveUser("hash"); // RecoveryQuestionKey left unset
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByUsernameAsync(user.Username, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+
+        string text = await BuildSut(repo).GetRecoveryQuestionAsync(user.Username);
+
+        Assert.Equal(RecoveryQuestionCatalog.TextFor(RecoveryQuestionCatalog.Default), text);
+    }
+
+    [Fact]
+    public async Task GetRecoveryQuestionAsync_UserWithQuestionSet_ReturnsThatQuestion()
+    {
+        User user = MakeUserWithRecoveryAnswer(RecoveryQuestion.FirstPetName, "Bantay");
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByUsernameAsync(user.Username, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+
+        string text = await BuildSut(repo).GetRecoveryQuestionAsync(user.Username);
+
+        Assert.Equal(RecoveryQuestionCatalog.TextFor(RecoveryQuestion.FirstPetName), text);
+    }
+
+    [Fact]
+    public async Task VerifyRecoveryAnswerAsync_UnknownUsername_ReturnsFailed()
+    {
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByUsernameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+
+        RecoveryVerifyResult result = await BuildSut(repo).VerifyRecoveryAnswerAsync("nobody", "whatever");
+
+        Assert.Equal(RecoveryVerifyOutcome.Failed, result.Outcome);
+        Assert.Null(result.TemporaryPassword);
+    }
+
+    [Fact]
+    public async Task VerifyRecoveryAnswerAsync_NoAnswerSetOnAccount_ReturnsFailed()
+    {
+        User user = MakeActiveUser("hash"); // RecoveryAnswerHash left null
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByUsernameAsync(user.Username, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+
+        RecoveryVerifyResult result = await BuildSut(repo).VerifyRecoveryAnswerAsync(user.Username, "Bantay");
+
+        Assert.Equal(RecoveryVerifyOutcome.Failed, result.Outcome);
+    }
+
+    [Fact]
+    public async Task VerifyRecoveryAnswerAsync_WrongAnswer_ReturnsFailed()
+    {
+        User user = MakeUserWithRecoveryAnswer(RecoveryQuestion.FirstPetName, "Bantay");
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByUsernameAsync(user.Username, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        repo.Setup(r => r.UpdateAsync(user, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+
+        RecoveryVerifyResult result = await BuildSut(repo).VerifyRecoveryAnswerAsync(user.Username, "wrong-answer");
+
+        Assert.Equal(RecoveryVerifyOutcome.Failed, result.Outcome);
+    }
+
+    [Fact]
+    public async Task VerifyRecoveryAnswerAsync_CorrectAnswer_IsCaseInsensitiveAndTrimmed()
+    {
+        User user = MakeUserWithRecoveryAnswer(RecoveryQuestion.FirstPetName, "Bantay");
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByUsernameAsync(user.Username, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        repo.Setup(r => r.UpdateAsync(user, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+
+        RecoveryVerifyResult result = await BuildSut(repo).VerifyRecoveryAnswerAsync(user.Username, "  BANTAY  ");
+
+        Assert.Equal(RecoveryVerifyOutcome.Success, result.Outcome);
+        Assert.False(string.IsNullOrWhiteSpace(result.TemporaryPassword));
+    }
+
+    [Fact]
+    public async Task VerifyRecoveryAnswerAsync_CorrectAnswer_SetsMustChangePasswordAndClearsRefreshToken()
+    {
+        User user = MakeUserWithRecoveryAnswer(RecoveryQuestion.FirstPetName, "Bantay");
+        user.RefreshToken = "some-active-session";
+        user.RefreshTokenExpiry = DateTime.UtcNow.AddDays(7);
+
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByUsernameAsync(user.Username, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        repo.Setup(r => r.UpdateAsync(user, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+
+        RecoveryVerifyResult result = await BuildSut(repo).VerifyRecoveryAnswerAsync(user.Username, "Bantay");
+
+        Assert.Equal(RecoveryVerifyOutcome.Success, result.Outcome);
+        Assert.True(user.MustChangePassword);
+        Assert.Null(user.RefreshToken);
+        Assert.Null(user.RefreshTokenExpiry);
+        Assert.True(BCrypt.Net.BCrypt.Verify(result.TemporaryPassword!, user.PasswordHash));
+    }
+
+    [Fact]
+    public async Task VerifyRecoveryAnswerAsync_CorrectAnswer_WritesAuditLogWithSelfAsActor()
+    {
+        User user = MakeUserWithRecoveryAnswer(RecoveryQuestion.FirstPetName, "Bantay");
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByUsernameAsync(user.Username, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        repo.Setup(r => r.UpdateAsync(user, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+
+        Mock<IAuditService> audit = new();
+
+        await BuildSut(repo, auditMock: audit).VerifyRecoveryAnswerAsync(user.Username, "Bantay");
+
+        audit.Verify(a => a.LogAsync(
+            "users", user.Id, AuditAction.Update, user.Id,
+            null, It.IsAny<object>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task VerifyRecoveryAnswerAsync_FiveFailures_LocksOutEvenTheCorrectAnswer()
+    {
+        User user = MakeUserWithRecoveryAnswer(RecoveryQuestion.FirstPetName, "Bantay");
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByUsernameAsync(user.Username, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        repo.Setup(r => r.UpdateAsync(user, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+
+        AuthService sut = BuildSut(repo);
+
+        for (int i = 0; i < 5; i++)
+        {
+            RecoveryVerifyResult fail = await sut.VerifyRecoveryAnswerAsync(user.Username, "wrong");
+            Assert.Equal(RecoveryVerifyOutcome.Failed, fail.Outcome);
+        }
+
+        // The 6th attempt is locked out — even the correct answer is refused.
+        RecoveryVerifyResult locked = await sut.VerifyRecoveryAnswerAsync(user.Username, "Bantay");
+        Assert.Equal(RecoveryVerifyOutcome.Failed, locked.Outcome);
+    }
+
+    [Fact]
+    public async Task VerifyRecoveryAnswerAsync_SuccessfulVerification_ResetsFailedAttemptCounter()
+    {
+        User user = MakeUserWithRecoveryAnswer(RecoveryQuestion.FirstPetName, "Bantay");
+        user.RecoveryAttemptCount = 4;
+        user.RecoveryFirstAttemptAt = DateTime.UtcNow;
+
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByUsernameAsync(user.Username, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        repo.Setup(r => r.UpdateAsync(user, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+
+        RecoveryVerifyResult result = await BuildSut(repo).VerifyRecoveryAnswerAsync(user.Username, "Bantay");
+
+        Assert.Equal(RecoveryVerifyOutcome.Success, result.Outcome);
+        Assert.Equal(0, user.RecoveryAttemptCount);
+        Assert.Null(user.RecoveryFirstAttemptAt);
     }
 }
