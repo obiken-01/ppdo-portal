@@ -40,7 +40,7 @@
  *
  * Access: canAccessBudgetPlanning, same as the rest of Budget Planning.
  *
- * Division scoping (RAL-136): a division-scoped caller (not CanManageAllocation) is always
+ * Division scoping (RAL-136): a division-scoped caller (not CanManagePpdoAllocation) is always
  * forced server-side to their own division regardless of the divisionId query param — the
  * Division select below is locked to it, matching the Office select. Finance officers get an
  * optional Division filter (blank = consolidated across every division of the office, the
@@ -402,7 +402,7 @@ function WfpReportPageInner() {
   // both here and on the Office select, since a division only exists under its own office and
   // showing a different office's division picker to a locked user would be meaningless (RAL-136).
   const canBypassDivision =
-    me?.role === "SuperAdmin" || me?.role === "Admin" || me?.canManageAllocation === true;
+    me?.role === "SuperAdmin" || me?.role === "Admin" || me?.canManagePpdoAllocation === true;
 
   const urlOfficeId = searchParams.get("officeId");
   const urlDivisionId = searchParams.get("divisionId");

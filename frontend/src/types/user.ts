@@ -36,7 +36,7 @@ export interface UserResponse {
   overrideCanAccessBudgetPlanning: boolean | null;
   overrideCanUploadAip: boolean | null;
   overrideCanManageConfig: boolean | null;
-  overrideCanManageAllocation: boolean | null;
+  overrideCanManagePpdoAllocation: boolean | null;
 }
 
 /**
@@ -73,7 +73,7 @@ export interface UpdateUserRequest extends CreateUserRequest {
   overrideCanAccessBudgetPlanning: boolean | null;
   overrideCanUploadAip: boolean | null;
   overrideCanManageConfig: boolean | null;
-  overrideCanManageAllocation: boolean | null;
+  overrideCanManagePpdoAllocation: boolean | null;
 }
 
 // OfficeResponse / DivisionResponse live in ./config.ts — re-exported via the @/types barrel.

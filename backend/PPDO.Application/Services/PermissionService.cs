@@ -9,13 +9,13 @@ namespace PPDO.Application.Services;
 /// Resolves effective feature permissions for an authenticated user (v1.2 — RAL-97).
 ///
 ///   SuperAdmin → true for everything (full bypass)
-///   Admin      → true for every flag EXCEPT special per-user grants (CanManageAllocation)
+///   Admin      → true for every flag EXCEPT special per-user grants (CanManagePpdoAllocation)
 ///   Staff      → Override ?? user.Division.&lt;flag&gt; ?? false
 ///
 /// CanUploadAip is additionally host-office-only (a guest office can never hold it).
 /// CanAccessBudgetPlanning defaults ON for guest-office users — it's their only feature and they
 /// have no division to inherit from; an override can still turn it off.
-/// CanManageAllocation is a per-user grant: SuperAdmin → true, else Override ?? false.
+/// CanManagePpdoAllocation is a per-user grant: SuperAdmin → true, else Override ?? false.
 /// CanAccessProfile is always true.
 ///
 /// No database access — the <see cref="User"/> must be loaded with <see cref="User.Division"/>
@@ -97,11 +97,11 @@ public sealed class PermissionService : IPermissionService
     }
 
     /// <inheritdoc />
-    public Task<bool> CanManageAllocationAsync(User user, CancellationToken cancellationToken = default)
+    public Task<bool> CanManagePpdoAllocationAsync(User user, CancellationToken cancellationToken = default)
     {
         // Per-user grant only — Admin is NOT auto-granted. SuperAdmin bypasses for support.
         if (user.Role is UserRole.SuperAdmin) return Task.FromResult(true);
-        return Task.FromResult(user.OverrideCanManageAllocation ?? false);
+        return Task.FromResult(user.OverrideCanManagePpdoAllocation ?? false);
     }
 
     /// <inheritdoc />

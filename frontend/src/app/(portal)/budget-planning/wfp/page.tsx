@@ -1039,7 +1039,7 @@ function WfpPageInner() {
   const isFinal = wfp?.status === "Final";
   const isOfficeUser = me != null && !me.isHostOffice;
   const canBypassDivision =
-    me?.role === "SuperAdmin" || me?.role === "Admin" || me?.canManageAllocation === true;
+    me?.role === "SuperAdmin" || me?.role === "Admin" || me?.canManagePpdoAllocation === true;
 
   // Gross total of all draft expenditure lines (in pesos — no ×1000 here).
   // AIP totals are stored in thousands; division allocation is in pesos.

@@ -67,7 +67,7 @@ public record FiscalYearsDto(
 /// so this carries PPDO's own LDIP/AIP counts plus a per-division WFP + per-fund ceiling/allocation
 /// breakdown, instead of a fleet-wide "N offices set up" summary.
 ///
-/// For a caller without CanManageAllocation (division-scoped Staff), the service clamps
+/// For a caller without CanManagePpdoAllocation (division-scoped Staff), the service clamps
 /// <see cref="WfpByDivision"/> and every <see cref="FundCeilingDto.ByDivision"/> entry to just
 /// the caller's own division — never trust a client-supplied divisionId for this (RAL-136 pattern).
 /// </summary>

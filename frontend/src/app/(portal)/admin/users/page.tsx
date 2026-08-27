@@ -70,7 +70,7 @@ const OVERRIDE_KEYS: {
   { key: "overrideCanAccessBudgetPlanning", label: "Access Budget Planning" },
   { key: "overrideCanUploadAip",            label: "Upload AIP" },
   { key: "overrideCanManageConfig",         label: "Manage Configuration" },
-  { key: "overrideCanManageAllocation",     label: "Manage Allocation (finance officer)", adminOnly: true },
+  { key: "overrideCanManagePpdoAllocation",     label: "Manage PPDO Allocation (finance officer)", adminOnly: true },
 ];
 
 /** Tabs in the Add/Edit User modal (RAL-268). */
@@ -760,7 +760,7 @@ export default function UsersPage() {
       overrideCanAccessBudgetPlanning: user.overrideCanAccessBudgetPlanning,
       overrideCanUploadAip:            user.overrideCanUploadAip,
       overrideCanManageConfig:         user.overrideCanManageConfig,
-      overrideCanManageAllocation:     user.overrideCanManageAllocation,
+      overrideCanManagePpdoAllocation:     user.overrideCanManagePpdoAllocation,
     });
     setFormError(null);
   }

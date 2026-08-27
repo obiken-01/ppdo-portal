@@ -109,9 +109,9 @@ public sealed class User
     /// Per-user grant for the Budget Allocation page (v1.2 — RAL-97). Unlike the other
     /// flags this is NOT a division flag: it is assigned to a specific finance-officer user
     /// regardless of role/division. Resolution: SuperAdmin → true; everyone else →
-    /// <c>OverrideCanManageAllocation ?? false</c> (Admin is NOT auto-granted this).
+    /// <c>OverrideCanManagePpdoAllocation ?? false</c> (Admin is NOT auto-granted this).
     /// </summary>
-    public bool? OverrideCanManageAllocation { get; set; }
+    public bool? OverrideCanManagePpdoAllocation { get; set; }
 
     // ── Password reset (RAL-253) ────────────────────────────────────────────────
 

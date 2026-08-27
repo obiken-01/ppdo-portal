@@ -222,7 +222,7 @@ public sealed class AuthFunctions
             CanAccessBudgetPlanning = me.CanAccessBudgetPlanning,
             CanUploadAip            = me.CanUploadAip,
             CanManageConfig         = me.CanManageConfig,
-            CanManageAllocation     = me.CanManageAllocation,
+            CanManagePpdoAllocation     = me.CanManagePpdoAllocation,
             MustChangePassword      = me.MustChangePassword,
             NeedsRecoverySetup      = me.NeedsRecoverySetup,
             UnacknowledgedPasswordResetAt = me.UnacknowledgedPasswordResetAt,

@@ -15,7 +15,7 @@ namespace PPDO.Functions.Functions;
 /// All require CanAccessBudgetPlanning. Unlock additionally requires Admin/SuperAdmin.
 /// SaveAsync is a POST that both creates and updates (upsert by aipRecordId + officeId + divisionId).
 ///
-/// Division-filter bypass (RAL-102): Admin/SuperAdmin/CanManageAllocation callers may pass an
+/// Division-filter bypass (RAL-102): Admin/SuperAdmin/CanManagePpdoAllocation callers may pass an
 /// optional ?divisionId= to list a specific division's WFPs; others are automatically scoped to
 /// their own division.
 /// </summary>
@@ -49,7 +49,7 @@ public sealed class WfpFunctions
         int? aipId    = int.TryParse(req.Query["aipRecordId"], out int a) ? a : null;
         int? officeId = int.TryParse(req.Query["officeId"],    out int o) ? o : null;
 
-        // Division filter: bypass for Admin/SuperAdmin/CanManageAllocation; auto-scope others.
+        // Division filter: bypass for Admin/SuperAdmin/CanManagePpdoAllocation; auto-scope others.
         int? divisionId = await ResolveDivisionFilterAsync(caller!, req, ct);
 
         IReadOnlyList<WfpRecordDto> data = await _wfp.GetAllAsync(aipId, officeId, divisionId, ct);
@@ -191,14 +191,14 @@ public sealed class WfpFunctions
 
     /// <summary>
     /// Resolves the effective division filter for list queries.
-    /// Admin/SuperAdmin/CanManageAllocation may pass an optional ?divisionId= (or see all when omitted).
+    /// Admin/SuperAdmin/CanManagePpdoAllocation may pass an optional ?divisionId= (or see all when omitted).
     /// All other callers are automatically scoped to their own division_id.
     /// </summary>
     private async Task<int?> ResolveDivisionFilterAsync(
         User caller, HttpRequestData req, CancellationToken ct)
     {
         bool canBypass = caller.Role is UserRole.SuperAdmin or UserRole.Admin
-            || await _permissions.CanManageAllocationAsync(caller);
+            || await _permissions.CanManagePpdoAllocationAsync(caller);
 
         if (canBypass)
         {

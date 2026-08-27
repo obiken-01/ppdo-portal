@@ -37,7 +37,7 @@ public sealed class Division
     // ── Feature permission flags (the "grouping") ─────────────────────────────
     // Defaults for Staff members of this division. Per-user Override* flags on User
     // take precedence when non-null. SuperAdmin/Admin ignore these (they bypass).
-    // CanManageAllocation is deliberately NOT here — it is a per-user grant.
+    // CanManagePpdoAllocation is deliberately NOT here — it is a per-user grant.
 
     public bool CanAccessInventory { get; set; }
     public bool CanAccessReports { get; set; }

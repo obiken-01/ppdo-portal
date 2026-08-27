@@ -34,7 +34,7 @@ public sealed class UserResponseDto
     public bool? OverrideCanAccessBudgetPlanning { get; init; }
     public bool? OverrideCanUploadAip { get; init; }
     public bool? OverrideCanManageConfig { get; init; }
-    public bool? OverrideCanManageAllocation { get; init; }
+    public bool? OverrideCanManagePpdoAllocation { get; init; }
 
     /// <summary>
     /// This user's own landing-page preference as an enum name, or null when unset.

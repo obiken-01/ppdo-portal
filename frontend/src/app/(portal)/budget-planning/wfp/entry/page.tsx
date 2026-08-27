@@ -1326,7 +1326,7 @@ function WfpEntryPageInner() {
 
   const isOfficeUser = me != null && !me.isHostOffice;
   const canBypassDivision =
-    me?.role === "SuperAdmin" || me?.role === "Admin" || me?.canManageAllocation === true;
+    me?.role === "SuperAdmin" || me?.role === "Admin" || me?.canManagePpdoAllocation === true;
 
   const setupComplete =
     setupStatus == null || (setupStatus.hasAllocation && setupStatus.hasProgramAssignment);
