@@ -477,8 +477,57 @@ Follow the JWT validation and permission check patterns in CLAUDE.md.
 
 When writing the implementation prompt that is pasted into a Linear ticket to kick off a
 ticket, follow the standard structure in **`docs/TICKET_PROMPT_STANDARD.md`** (context docs to
-read → files to read before coding → working branch + PR target → TDD → numbered steps →
-out-of-scope → commit message). `RAL-81` is the reference example.
+read → files to read before coding → current vs target behaviour → working branch + PR target →
+TDD → numbered steps with per-step verification and `⚠️ MIGRATION` flags → risks/rollback/sign-off
+→ out-of-scope → commit message). `RAL-81` is the reference example.
+
+The spec that ticket prompt points at must satisfy **`docs/SPEC_STANDARD.md`** (goal → settled
+decisions → behaviour given/when/then incl. failure + per-role cases → API contract with error
+shapes → data model → UI states → non-goals → deployment notes → ticket split → acceptance
+checklist → test focus).
+
+### Eliciting feature details (do this proactively)
+
+**When the user starts describing a new feature, do not wait to be handed a complete spec.** Work
+through `docs/SPEC_STANDARD.md` §2 and **ask for the sections they have not covered** — they will
+usually supply the goal and the happy path, and omit the rest. The ones most often missing, in
+priority order:
+
+1. **Failure and edge cases** — empty, first record, boundaries, duplicates, concurrent edits
+2. **Per-role behaviour** — SuperAdmin / Admin / Staff, and a user whose division or office does
+   **not** match the record (scope leaks have been a real defect class here)
+3. **UI states** — loading, empty, error, read-only/forbidden, validation (largest fix category in
+   the project to date)
+4. **Non-goals** — what we are deliberately *not* building
+5. **Acceptance checklist** — lines a person can verify against the running app
+
+Ask for these in batches, not one at a time, and propose a sensible default with each question
+rather than asking open-endedly — it is faster to correct a proposal than to author from blank.
+Where a detail is genuinely a judgment call with an obvious answer, state the assumption and move
+on instead of asking. **Do not begin implementation of a feature that adds a table, an endpoint, a
+permission, or a screen until the spec exists.**
+
+### Flag manual-implementation candidates when planning
+
+**When formulating an implementation plan for a ticket, assess whether Ralph could hand-code it
+himself** and say so as part of the plan. He is deliberately rebuilding hands-on coding fluency;
+candidates should surface as a by-product of normal planning rather than as a separate hunt.
+
+**Good candidate:** small blast radius · a near-identical sibling already exists in the repo to
+pattern-match against · testable (ideally via `dotnet test`, so feedback does not require running
+the app) · reversible.
+
+**Not a candidate (say why, don't just omit it):** `PermissionService` or auth — a missing check is
+not caught by the compiler; EF migrations; the 1,000+ line page components (`aip/detail/page.tsx`,
+`wfp/entry/page.tsx`); `ExcelService.cs`. These are excluded for bad feedback loops and blast
+radius, not difficulty.
+
+**Guidance ladder** — start at 1, escalate only when he asks: (1) spec + the sibling to copy the
+shape from, (2) signature and file location only, (3) step outline, (4) the code, explained.
+**Default to 1. Do not volunteer paste-ready code** — it defeats the purpose even when it is faster.
+
+Bank candidates in `docs/LEARNING_TICKET_BANK.md`. Do not push them during a release crunch, and
+treat handing one back as a normal, cost-free outcome.
 
 ---
 
@@ -508,7 +557,15 @@ out-of-scope → commit message). `RAL-81` is the reference example.
 ## Implementation Status
 
 > ⚠️ **This section is a session progress update — not part of the original CLAUDE.md spec.**
-> Updated: 2026-06-05. Keep this section current as RALs are completed.
+> **Updated: 2026-08-27 — current as of v1.7.4 (merged to `main` 2026-08-20).**
+>
+> **Keeping this current is part of the release ritual.** The first commit on every `release/X.Y.Z`
+> branch already bumps `APP_VERSION` in three files (`Sidebar.tsx`, `Footer.tsx`,
+> `login/page.tsx`) — update this section and the footer date stamp in that same commit. This
+> section previously drifted eleven weeks and six minor versions behind the code, which is why the
+> rule is written down here.
+
+**Shipped:** v0.1 → v1.7.4, 19 releases to `main` between 2026-05-26 and 2026-08-20.
 
 ### ✅ v1.0 — Core Portal & Inventory Monitoring (DONE)
 
@@ -558,6 +615,35 @@ out-of-scope → commit message). `RAL-81` is the reference example.
 | RAL-71 | Add version indicator to sidebar (`APP_VERSION` in `Sidebar.tsx`) | #40 |
 | RAL-72 | Production deployment to Azure (SWA + Functions + SQL) | #39 |
 
+### ✅ v1.2 → v1.7.4 — Release history (ALL DONE)
+
+Per-RAL detail lives on the Linear tickets and in each version's `docs/vX.Y/` spec. This table is
+the index — what shipped in each release, and the PR that merged it to `main`.
+
+| Version | Merged | PR | What shipped | Key RALs |
+|---|---|---|---|---|
+| **v1.2.0** | 2026-06-30 | #90 | Calendar approval workflow, public announcements (admin + landing feed), self-service profile + change password, **divisions config replacing the `PermissionGroup` table and `Division` enum (RAL-97)**, allocation backend + page (ceiling, division allocation, PPA assignment), per-division WFP scoping, security hardening (login rate limiting, httpOnly refresh cookie, CORS allowlist), shared `MoneyInput` | 58, 84–89, 91–102 |
+| **v1.3.0** | 2026-07-07 | #104 | Office-scoped Budget Planning dashboard readiness hub, LDIP entry form + schema (budget/funding/CC fields), LDIP file upload with program-level detail and multi-office batch import, LDIP re-upload into an existing record | 60, 61, 111, 113, 114 |
+| **v1.4.0** | 2026-07-12 | #123 | **WFP rework** — entry wizard as default, non-procurement frequency grid with carry-forward, procurement line-item entry with price-index search, Procurement Presets config, Combined-nature dual entry, edit/delete saved expenditures, WFP report preview page segmented by fund source | 116–133 |
+| **v1.4.1** | 2026-07-13 | #126/#127/#132 | WFP entry and report fixes (three separate merges — release branch was reopened twice) | 144–146 |
+| **v1.4.2** | 2026-07-14 | #143 | WFP/allocation fixes, procurement item duplicate warning | 136–141, 147–150, 153 |
+| **v1.4.3** | 2026-07-15 | #149 | Other-fund-source ceiling & allocation setup — `budget_ceilings`, `division_allocations`, `wfp_division_allocation_ledger`, funding-source aliases | 154–158 |
+| **v1.4.4** | 2026-07-16 | #152 | **WFP Excel export** matching the province form (programmatic build, fill/colour handling) | 159–161 |
+| **v1.4.5** | 2026-07-18 | #158 | Budget Planning PPDO scoping + dashboard optimization (division-clamp pattern, ceiling/allocation primitives) | 161–168 |
+| **v1.4.7** | 2026-07-20 | #167 | Allocation and WFP follow-up fixes | 171–174 |
+| **v1.4.8** | 2026-07-21 | #171 | WFP fixes | 175, 176 |
+| **v1.5.0** | 2026-07-28 | #186 | **PPMP report** — preview (item-grained grid) + `.xlsx` export matching the province PPMP form; Stock Card No. on the price index; audit-log grid auto-refresh | 177, 182–185 |
+| **v1.6.0** | 2026-07-30 | #189 | **AIP editing** — manual entry, re-upload into an existing record, inline per-activity and per-program editing, carry-forward from a prior FY, seed an AIP office from its LDIP, full add/edit/delete on the detail page; **responsive portal shell (off-canvas sidebar below `lg`)** | 62, 108, 115, 178–181, 187–189 |
+| **v1.7.0** | 2026-08-04 | #209 | **Inventory** — warehouse stock input (physical-count ledger), Create PR prefill from a GSO PR export and signed PDF, redesigned Create PR Excel template, server-side Distribution FIFO allocation, audit trail logging across PRs/deliveries/distributions/items/stock balances, loading skeletons, public-site SEO | 190–202 |
+| **v1.7.1** | 2026-08-12 | #225 | Auth refresh timeout fix, `RowActions` rollout across every page, bulk stock-balance import wrapped in a transaction with EF retry | 133, 199, 203–207 |
+| **v1.7.2** | 2026-08-12 / 08-13 | #227, #231 | Distribution of warehouse-count-only stock, duplicate PR No. conflict message, unbounded PR text fields, item description cap, PDF line-wrap continuation fix | 223–227 |
+| **v1.7.2B** | 2026-08-17 | #243, #245 | **Function App relocated Central US → Southeast Asia (RAL-237)** — removes the cross-region hop to Azure SQL; `Validators/` reorganized into per-feature subfolders (RAL-235) | 235, 237 |
+| **v1.7.3** | 2026-08-20 | #249 | Division name resolved in distribution history, code-keyed division upsert, division code in the history pill | 236, 239 |
+| **v1.7.4** | 2026-08-20 | #251 | Warehouse-count movement counted in Stock Overview columns, modal no longer closes on a drag-to-backdrop selection | 240, 273 |
+
+> **v1.4.6 was never merged to `main`.** Its price-index work is the one real gap found in the
+> branch audit — see the `archive/fix/v1.4.6-budget-planning-query-perf` tag.
+
 ### Bug Fixes Applied
 
 | Fix | What / Why |
@@ -586,17 +672,28 @@ out-of-scope → commit message). `RAL-81` is the reference example.
 | Cold start mitigation | `GET /api/health` (no auth) runs `SELECT 1` against Azure SQL — called on login page mount to warm up Azure Functions (cold start ~10 min). Originally also pre-warmed Azure SQL auto-pause (~1 hr); no longer needed for the DB since the Basic-tier switch (2026-08-12) removed auto-pause entirely, but the call still serves the Functions side. |
 | Health endpoint | `HealthFunctions.cs` — `GET /api/health`. Returns `{ status, api, database, utc }`. 200 OK when DB is reachable, 503 when DB is down. No auth required. |
 | Azure SQL tier: Basic over Serverless | Switched 2026-08-12 — see Production Deployment notes below for full rationale (cost, headroom, auto-pause removal). Not a performance upgrade — Basic's 5 DTU is a lower ceiling than serverless's burst-to-4-vCores; fine at current near-idle load, but revisit if usage grows. |
+| **Colocate compute with the database (Southeast Asia)** | RAL-237, 2026-08-17. Functions ran in Central US against SQL in Southeast Asia — every query crossed the Pacific for ~3 months before a latency investigation found it. Relocating cut requests from **~2–6s to ~0.4s**, a far bigger factor than the DB tier that was investigated first. **Any new Azure resource goes in Southeast Asia.** |
 
 ### Linear Milestones
+
+> ⚠️ The milestone **names** below are the historical Linear labels and no longer describe what
+> each version actually shipped (v1.2 became Calendar/Announcements/Divisions, not Employee
+> Profiles). The **Release history** table above is authoritative for content.
 
 | Milestone | Status |
 |---|---|
 | v0.1 — Project Setup & Foundation | ✅ Done |
 | v1.0 — Core Portal & Inventory Monitoring | ✅ Done |
-| v1.1 — Inventory UI Refinements + Distribution | ✅ Done |
 | v1.0.1 — Patch: logo compression, CI fix, auth retry, health check | ✅ Done |
-| v1.2 — Employee Profiles | 📋 Planned |
-| v1.3 — Calendar & Announcements | 📋 Planned |
+| v1.1 — Inventory UI Refinements + Distribution | ✅ Done |
+| v1.2 — Calendar, Announcements, Divisions & Allocation | ✅ Done |
+| v1.3 — LDIP Entry & Upload | ✅ Done |
+| v1.4 — WFP Rework (+ .1–.5, .7, .8 patches) | ✅ Done |
+| v1.5 — PPMP Report | ✅ Done |
+| v1.6 — AIP Editing + Responsive Shell | ✅ Done |
+| v1.7 — Inventory (+ .1–.4 patches) | ✅ Done |
+| **v1.8.0 — AIP Redesign** | 🚧 **In planning** — RAL-241 epic, RAL-242…272, 7 phases / 73 items |
+| `techdebt` | 🔁 Ongoing — non-feature cleanup; tickets move into the active version milestone when they go In Progress |
 
 ### v1.0.1 Patch — Changes (merged to main 2026-06-08)
 
@@ -608,20 +705,32 @@ out-of-scope → commit message). `RAL-81` is the reference example.
 | Auth retry on cold start | `callWithRetry()` in `api.ts` and `layout.tsx` — retries refresh up to 2x with 3s delay on network errors |
 | Health check endpoint | `GET /api/health` wakes Functions + SQL; login page shows status indicator (yellow/green/red) |
 
-### Production Deployment (Live as of 2026-06-05)
+### Production Deployment (Live — table current as of 2026-08-27)
 
 | Service | Resource Name | URL / Notes |
 |---|---|---|
 | Frontend | `ppdo-portal` (Azure Static Web Apps) | https://jolly-sky-0e3a2e310.7.azurestaticapps.net |
-| Backend API | `ppdo-portal-api` (Azure Functions) | https://ppdo-portal-api-dpevbthmd5dycacq.centralus-01.azurewebsites.net/api |
+| Backend API | `ppdo-portal-api-sea` (Azure Functions) | https://ppdo-portal-api-sea-ajakdzf4a7hbeaev.southeastasia-01.azurewebsites.net/api — **Southeast Asia**, colocated with the DB since RAL-237 |
 | Database | `ppdo-portal-db` on `ppdo-portal-server` (Azure SQL Basic tier) | Southeast Asia region |
 | Storage | `ppdoportalstorage` (Azure Storage — LRS) | Required by Azure Functions (`AzureWebJobsStorage`) |
 | Monitoring | `ppdo-portal-api` (Application Insights) | Central US |
 | Resource Group | `ppdo-portal-rg` | All resources grouped here |
 
+> ⚠️ **The old Central US Function App (`ppdo-portal-api`) is superseded but not yet
+> decommissioned.** Nothing points at it — `deploy.yml` publishes to `ppdo-portal-api-sea` and
+> bakes that host into `NEXT_PUBLIC_API_BASE_URL`. Deleting it is outstanding cleanup on RAL-237.
+
 **Deployment notes:**
+- **RAL-237 (2026-08-17): the Function App was relocated Central US → Southeast Asia** to colocate
+  it with `ppdo-portal-db`. Every request had been crossing the Pacific to reach the database.
+  Measured effect: **~0.4s per request vs the previous ~2–6s.** This was a far larger factor than
+  the SQL tier, which had been investigated first and showed no capacity problem (0–20% DTU).
+  **When adding any Azure resource, colocate it in Southeast Asia.**
+- **CI does not run EF migrations.** A release containing a migration needs a manual
+  `dotnet ef database update` against Azure SQL — see `docs/SPEC_STANDARD.md` §2.8 and the
+  `⚠️ MIGRATION` step flag in `docs/TICKET_PROMPT_STANDARD.md` §6.
 - `NEXT_PUBLIC_API_BASE_URL` is baked into the Next.js build via `.github/workflows/deploy.yml` — SWA Free tier does not support API linking
-- Azure Functions CORS is configured in **Azure Portal → Function App → CORS** (not `host.json`) — add any new allowed origins there
+- Azure Functions CORS is configured in **Azure Portal → Function App → CORS** (not `host.json`) — add any new allowed origins there, **on the `ppdo-portal-api-sea` app**
 - Azure SQL moved from Free-offer Serverless (Gen5, 4 vCores) to **Basic tier (5 DTU, 2GB max)** on 2026-08-12 — flat ~$4.90/mo instead of pay-as-you-go overage (the free monthly vCore-second grant was being exhausted earlier each month — Jun→Jul→Aug — from baseline serverless overhead alone, independent of real traffic; see below). Basic is DTU-based/always-provisioned, so it does **not** auto-pause — the DB-side cold start described below no longer applies. Actual usage at time of switch: 42 MB storage (vs 2GB cap), ~0% CPU (vs 5 DTU cap) — wide headroom for current load; revisit if usage grows enough to approach the DTU ceiling.
 - Azure Functions Consumption plan still scales to zero after **~10 min** of no traffic — cold start takes 5-20s. The `GET /api/health` call on the login page pre-warms this (DB no longer needs pre-warming since the Basic-tier switch, but the call is harmless to keep).
 - Push to `main` → GitHub Actions builds and deploys both frontend and backend automatically
@@ -638,11 +747,40 @@ out-of-scope → commit message). `RAL-81` is the reference example.
   seeded an environment holds that account's password. Give production and each local instance its own
   password, set through the portal's change-password flow.
 
-### Next: v1.2 — Employee Profiles (Planned)
+### Next: v1.8.0 — AIP Redesign (in planning)
 
-> Check `PROJECT_DOCUMENTATION_NET_AZURE.md` Section 11 (Roadmap) for full list.
+The largest single change attempted so far. **RAL-241** is the epic; **RAL-242…272** are the
+children, organized as **7 phases / 73 items**.
+
+- **Approach: redesign, not retrofit.** Clean fiscal-year break — **FY2027 stays on the old
+  format, FY2028+ uses the new one, and there is no data migration.**
+- Phases 2 and 4 were unblocked at the 2026-08-25 PPDC meeting; **DECISION G is the current
+  blocker.**
+- The AIP reference code follows the DBM BOM segment layout — see the project docs before
+  touching code structure.
+- **Read `docs/v1.8/RETROSPECTIVE.md` before starting.** Three findings apply directly: v1.8.0
+  rewrites `aip/detail/page.tsx` (2,057 lines — the largest file in the codebase, extract before
+  redesigning); a change this size is exactly what produced the v1.4 and v1.7 patch trains; and
+  the 1,061-test suite is what makes a clean-break redesign tractable at all.
+
+> Check `PROJECT_DOCUMENTATION_NET_AZURE.md` Section 11 (Roadmap) for the full forward list.
+
+### Standards docs — read the one that applies before working
+
+| Doc | Read before |
+|---|---|
+| `docs/SPEC_STANDARD.md` | Writing or accepting a feature spec |
+| `docs/TICKET_PROMPT_STANDARD.md` | Writing a Linear ticket implementation prompt |
+| `docs/PERFORMANCE_GUIDELINES.md` | Adding a query, endpoint, or list view |
+| `docs/DESIGN_SYSTEM.md` | Creating or restyling any page |
+| `docs/NAMING_CONVENTIONS.md` | Adding a table or column |
+| `docs/TEST_CONVENTIONS.md` | Writing tests or a PR test plan |
+| `docs/GIT_CONVENTIONS.md` | Branching, committing, releasing |
+| `docs/BUG_REPORT_STANDARD.md` | Filing a bug |
+| `docs/v1.8/RETROSPECTIVE.md` | Planning a release or changing process |
 
 ---
 
-*CLAUDE.md — PPDO Portal v1.0.1 — 2026-06-08 — Ralph Armand Alcaide*
+*CLAUDE.md — PPDO Portal — Implementation Status current to v1.7.4 — 2026-08-27 — Ralph Armand Alcaide*
 *Performance & scalability guidelines added 2026-06-22 (`docs/PERFORMANCE_GUIDELINES.md`) — from the v1.1.0 prod audit.*
+*Spec standard + ticket prompt revision added 2026-08-27, alongside the whole-project retrospective.*
