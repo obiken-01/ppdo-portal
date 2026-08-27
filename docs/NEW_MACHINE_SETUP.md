@@ -59,20 +59,49 @@ Copy them to a USB drive or a private note. Templates are in Part 5 if you'd rat
 
 ## Part 1 — Core toolchain
 
-| # | Tool | Version | Why |
+Versions in the **"Old machine"** column were read off the current laptop on 2026-08-27 — match or
+exceed them.
+
+### Required — the app will not build without these
+
+| # | Tool | Old machine | Why |
 |---|---|---|---|
-| 1 | **Git for Windows** | latest | Version control; also provides the Bash shell Claude Code uses |
-| 2 | **.NET SDK** | **9.0** (`net9.0`) | Backend targets .NET 9. Get the SDK, not just the runtime |
-| 3 | **Visual Studio 2026 Community** | 18.6+ | Backend development. **Include the "Azure development" workload** |
-| 4 | **VS Code** | latest | Frontend development |
-| 5 | **Node.js** | **20 LTS** | Pinned in CI (`node-version: '20'`). Includes npm |
-| 6 | **SQL Server Express** | 2022 | Local `PPDOPortalDev` database |
-| 7 | **SSMS** | 22.x | Database GUI |
-| 8 | **Python** | 3.11+ | Repo scripts (`scripts/linear_archive.py`) and Claude's tooling — see Part 8 |
+| 1 | **Git for Windows** | 2.39.1 | Version control; also the Bash shell Claude Code uses |
+| 2 | **.NET SDK** | **10.0.400** | Backend targets `net9.0`; SDK 10 builds it fine via roll-forward — see the note below |
+| 3 | **Visual Studio 2026 Community** | 18.9.2 | Backend development. **Include the "Azure development" workload** |
+| 4 | **VS Code** | 1.134.0 | Frontend development |
+| 5 | **Node.js** | **22.16.0** | CI pins **20** — see the note below. Includes npm (10.9.2) |
+| 6 | **SQL Server 2022** | 16.0.1190 | Local `PPDOPortalDev` database |
+| 7 | **SSMS** | 22.9.1 | Database GUI |
+| 8 | **Python** | 3.14.3 | Repo scripts and Claude's tooling — see Part 8 |
+
+### Supporting tools — installed and in regular use
+
+| Tool | Old machine | Used for |
+|---|---|---|
+| **Postman** | 12.18.0 | Hitting the Functions API directly — testing endpoints without the frontend, checking JWT flows and `ApiResponse<T>` shapes |
+| **Compact Log Format Viewer** | 1.4.0 | Reading `.clef`/structured logs. **Microsoft Store app** (publisher: Warren Buckley) — not a normal installer |
+| **Docker Desktop** | 28.5.1 | Containers / local service dependencies |
+| **Obsidian** | 1.12.4 | Notes |
+| **Notepad++** | 8.9.6.4 | Quick file edits, large-file viewing |
+| **GitHub CLI (`gh`)** | 2.92.0 | Auth and PR work from the terminal |
+| **Windows Terminal** | 1.24 | Store app |
+| **Claude desktop** | 1.37937.3 | Store app |
 
 > ⚠️ **The solution file is `backend/PPDO.slnx`** — the newer XML solution format. It needs a recent
 > Visual Studio (2022 17.13+ or 2026) **or** .NET SDK 9.0.200+ for `dotnet build`. An older VS will
 > not open it. If you hit "unsupported solution format," your SDK or VS is too old.
+
+> ⚠️ **Two version mismatches carried over from the old machine — reproduce them knowingly, or fix
+> them deliberately. Do not fix them by accident while setting up:**
+>
+> - **.NET SDK 10.0.400 is the only SDK installed**, while every project targets `net9.0`. This
+>   works because the SDK builds older target frameworks, and it is what the code has been built
+>   with. Installing the 9.0 SDK as well is harmless; installing *only* 10 matches today's setup.
+> - **Node 22.16.0 locally vs `node-version: '20'` in `.github/workflows/ci.yml`.** Local and CI
+>   have been on different major versions the whole time. Node 22 is the safer choice for the new
+>   machine since that is what the code was actually developed against — but the real fix is to
+>   align CI and local, and pick the version on purpose rather than by drift.
 
 ---
 
@@ -93,13 +122,19 @@ dotnet tool install --global dotnet-ef
 ```
 
 `dotnet-ef` is required for migrations — **CI does not run them**, so every release containing a
-migration is applied by hand from your machine.
+migration is applied by hand from your machine. The old machine ran **dotnet-ef 10.0.5**.
 
-Verify all three:
+Verify:
 
 ```bash
-func --version; swa --version; dotnet ef --version; node --version; dotnet --version
+func --version; swa --version; dotnet ef --version; node --version; dotnet --version; gh --version; docker --version
 ```
+
+> ⚠️ **The SWA CLI was documented but never actually installed on the old machine** — `swa` was not
+> on `PATH` as of 2026-08-27, despite `CLAUDE.md` listing it under local development. So the
+> `localhost:4280` proxy workflow has not been in real use; the Terminal 1 + Terminal 2 setup is
+> what actually gets run. Install it if you want that workflow, but know it is new ground rather
+> than something being restored.
 
 ---
 
@@ -251,9 +286,14 @@ Log in at `http://localhost:3000` and confirm the sidebar shows the expected ver
 
 Worth installing even though the application does not need it:
 
-- **Python 3.11+** — `scripts/linear_archive.py` runs on it, and Claude uses Python for CSV/Excel
-  work, data conversion, and analysis scripts. The `.xlsx` trackers in `docs/v1.8/` are handled this
-  way.
+- **Python** — `scripts/linear_archive.py` runs on it, and Claude uses Python for CSV/Excel work,
+  data conversion, and analysis scripts. The `.xlsx` trackers in `docs/v1.8/` and the Linear export
+  conversion were all done this way.
+
+  The old machine had **two installs — 3.11.9 and 3.14.3** — with `python` resolving to **3.14.3**,
+  plus the Store's Python Manager. One install is enough; just confirm which one `python` resolves
+  to, because that is the one Claude's scripts will use.
+
 - **Git Bash** — comes with Git for Windows; Claude uses it for POSIX shell work alongside
   PowerShell.
 - Make sure `python` resolves on `PATH` (`python --version`). On Windows the Microsoft Store shim
@@ -285,11 +325,17 @@ BEFORE WIPING THE OLD MACHINE
 [ ] Copy local.settings.json, .env.local, .env.production.local
 [ ] Check other repos under D:\RalphFiles\
 
-INSTALL
-[ ] Git for Windows      [ ] .NET 9 SDK        [ ] Visual Studio 2026 (+Azure workload)
-[ ] VS Code              [ ] Node 20 LTS       [ ] SQL Server Express 2022
-[ ] SSMS                 [ ] Python 3.11+      [ ] Claude Code
-[ ] func core tools v4   [ ] SWA CLI           [ ] dotnet-ef
+INSTALL — required
+[ ] Git for Windows      [ ] .NET SDK 10       [ ] Visual Studio 2026 (+Azure workload)
+[ ] VS Code              [ ] Node 22 LTS       [ ] SQL Server 2022
+[ ] SSMS 22              [ ] Python 3.14       [ ] Claude Code
+[ ] func core tools v4   [ ] dotnet-ef         [ ] GitHub CLI (gh)
+[ ] SWA CLI (optional — was never installed on the old machine)
+
+INSTALL — supporting tools in regular use
+[ ] Postman              [ ] Docker Desktop    [ ] Obsidian
+[ ] Notepad++            [ ] Windows Terminal (Store)
+[ ] Compact Log Format Viewer (Microsoft Store — publisher Warren Buckley)
 
 CONFIGURE
 [ ] git user.name / user.email / core.autocrlf true
