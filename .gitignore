@@ -174,3 +174,5 @@ lcov.info
 publish/
 dist/
 build/
+# Linear archive script progress log (local run state)
+scripts/.linear_archive_log.tsv
