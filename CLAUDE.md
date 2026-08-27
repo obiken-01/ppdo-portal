@@ -507,6 +507,28 @@ Where a detail is genuinely a judgment call with an obvious answer, state the as
 on instead of asking. **Do not begin implementation of a feature that adds a table, an endpoint, a
 permission, or a screen until the spec exists.**
 
+### Flag manual-implementation candidates when planning
+
+**When formulating an implementation plan for a ticket, assess whether Ralph could hand-code it
+himself** and say so as part of the plan. He is deliberately rebuilding hands-on coding fluency;
+candidates should surface as a by-product of normal planning rather than as a separate hunt.
+
+**Good candidate:** small blast radius · a near-identical sibling already exists in the repo to
+pattern-match against · testable (ideally via `dotnet test`, so feedback does not require running
+the app) · reversible.
+
+**Not a candidate (say why, don't just omit it):** `PermissionService` or auth — a missing check is
+not caught by the compiler; EF migrations; the 1,000+ line page components (`aip/detail/page.tsx`,
+`wfp/entry/page.tsx`); `ExcelService.cs`. These are excluded for bad feedback loops and blast
+radius, not difficulty.
+
+**Guidance ladder** — start at 1, escalate only when he asks: (1) spec + the sibling to copy the
+shape from, (2) signature and file location only, (3) step outline, (4) the code, explained.
+**Default to 1. Do not volunteer paste-ready code** — it defeats the purpose even when it is faster.
+
+Bank candidates in `docs/LEARNING_TICKET_BANK.md`. Do not push them during a release crunch, and
+treat handing one back as a normal, cost-free outcome.
+
 ---
 
 ## What NOT to Do
