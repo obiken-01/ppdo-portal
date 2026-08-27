@@ -12,6 +12,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The migration-flag step below diffs this push's commit range, which a
+          # shallow clone cannot see.
+          fetch-depth: 0
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -56,6 +60,84 @@ jobs:
             --fail \
             --silent \
             --show-error
+
+      # Retrospective action item 2. Nothing used to verify a deploy actually came
+      # up — a broken one was discovered by a user. /api/health needs no auth and
+      # returns 503 when the database is unreachable, so it checks both tiers.
+      #
+      # Consumption plan scales to zero after ~10 min and cold start is 5-20s, and
+      # a freshly-deployed app is cold by definition. So this polls rather than
+      # asking once: a single immediate request would fail on a healthy deploy.
+      - name: Smoke test — wait for /api/health
+        run: |
+          HEALTH="https://ppdo-portal-api-sea-ajakdzf4a7hbeaev.southeastasia-01.azurewebsites.net/api/health"
+          ATTEMPTS=20      # 20 x 15s = 5 minutes, well past a worst-case cold start
+          SLEEP=15
+
+          for i in $(seq 1 $ATTEMPTS); do
+            CODE=$(curl -s -o /tmp/health.json -w '%{http_code}' --max-time 30 "$HEALTH" || echo "000")
+
+            if [ "$CODE" = "200" ]; then
+              echo "✅ Healthy after ${i} attempt(s)."
+              cat /tmp/health.json
+              exit 0
+            fi
+
+            # 503 means the API is up but the database is not reachable. That is a
+            # real failure, not a cold start — but give it a couple of tries first,
+            # since the DB connection can lag the worker coming up.
+            if [ "$CODE" = "503" ] && [ "$i" -ge 4 ]; then
+              echo "::error::/api/health returned 503 — API is up but the database is unreachable."
+              cat /tmp/health.json
+              exit 1
+            fi
+
+            echo "  attempt ${i}/${ATTEMPTS}: HTTP ${CODE} — waiting ${SLEEP}s"
+            sleep $SLEEP
+          done
+
+          echo "::error::/api/health never returned 200 after $((ATTEMPTS * SLEEP))s. The deploy is not serving."
+          cat /tmp/health.json 2>/dev/null || true
+          exit 1
+
+      # Retrospective action item 3. CI does not run EF migrations — a release
+      # containing one needs a manual `dotnet ef database update` against Azure
+      # SQL. This surfaces that in the deploy log instead of relying on memory.
+      - name: Flag migrations needing a manual apply
+        if: always()
+        run: |
+          BEFORE="${{ github.event.before }}"
+          RANGE="${BEFORE}..${{ github.sha }}"
+
+          # First push to a branch, or a force-push, gives an all-zero SHA.
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            RANGE="${{ github.sha }}~1..${{ github.sha }}"
+          fi
+
+          MIGRATIONS=$(git diff --name-only --diff-filter=A "$RANGE" -- \
+            'backend/PPDO.Infrastructure/Data/Migrations/*.cs' 2>/dev/null \
+            | grep -v '\.Designer\.cs$' | grep -v 'ModelSnapshot' || true)
+
+          if [ -n "$MIGRATIONS" ]; then
+            {
+              echo "### ⚠️ MIGRATION REQUIRED"
+              echo ""
+              echo "This deploy adds EF Core migrations. **CI does not apply them** — run this"
+              echo "manually against Azure SQL or the new code will run against an old schema:"
+              echo ""
+              echo '```bash'
+              echo "dotnet ef database update --project backend/PPDO.Infrastructure --startup-project backend/PPDO.Functions"
+              echo '```'
+              echo ""
+              echo "New migrations in this push:"
+              echo "$MIGRATIONS" | sed 's|.*/|- |'
+            } >> "$GITHUB_STEP_SUMMARY"
+
+            echo "::warning title=Migration required::This deploy adds migrations. Run 'dotnet ef database update' against Azure SQL — CI does not."
+            echo "$MIGRATIONS"
+          else
+            echo "No new migrations in this push."
+          fi
 
   deploy-frontend:
     name: Deploy Frontend to Azure Static Web Apps
