@@ -626,7 +626,12 @@ out-of-scope → commit message). `RAL-81` is the reference example.
 - Azure Functions Consumption plan still scales to zero after **~10 min** of no traffic — cold start takes 5-20s. The `GET /api/health` call on the login page pre-warms this (DB no longer needs pre-warming since the Basic-tier switch, but the call is harmless to keep).
 - Push to `main` → GitHub Actions builds and deploys both frontend and backend automatically
 - First-time DB setup: run `dotnet ef database update --project PPDO.Infrastructure` with `SqlConnectionString` env var pointing to Azure SQL
-- SuperAdmin seed account: `superadmin@ppdo.gov.ph` / `PPDOAdmin2026!`
+- SuperAdmin seed account: `superadmin@ppdo.gov.ph` — the bootstrap password is **not recorded in this
+  repository** (it is public). It lives in the maintainer's password manager; ask before standing up a new
+  environment. Never paste a working credential back into this file, a code comment, or a commit message.
+  ⚠️ Until RAL-274 lands, `UserConfiguration.cs` still seeds the retired `PPDOAdmin2026!` hash, so a **fresh**
+  `database update` creates a SuperAdmin on a password that is public in this repo's history — rotate it
+  immediately after standing up any new environment. Live local/prod were rotated 2026-08-26.
 
 ### Next: v1.2 — Employee Profiles (Planned)
 
