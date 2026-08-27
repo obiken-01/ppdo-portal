@@ -3,19 +3,23 @@
 **Period covered:** 2026-05-26 (initial commit) → 2026-08-20 (v1.7.4 merged to `main`)
 **Elapsed:** 86 days
 **Prepared:** 2026-08-27, ahead of v1.8.0 (AIP redesign) execution
-**Scope:** Everything from project inception through the v1.7.x release train. Written at the
-v1.8.0 boundary specifically so its findings can change how v1.8.0 is executed.
+**Scope:** Everything from project inception through the v1.7.x release train. Written at a release
+boundary so its findings can change how the next one is run.
 
 > **Method.** Every claim below is derived from the repository itself — commit history, branch
 > and release topology, file sizes, CI/deploy configuration, and grep-based convention audits.
 > Where a number appears, the command that produced it is reproducible against this repo.
 > No claim here rests on recollection alone.
 
-> **Revised 2026-08-27, same day.** The first draft audited `main` only, and `main` turned out to be
-> 81 commits behind `release/1.8.0`. Two claims were wrong as a result and are corrected in place
-> (§3.7, action item 9), and the miss produced a new finding — **§3.9**, plus root-cause pattern
-> **E**. Corrections are marked rather than silently edited; a retrospective that quietly rewrites
-> itself is worth less than one that shows where it was wrong.
+> **Scope note.** This document covers **shipped history — v0.1 through v1.7.4 — and process.** It
+> deliberately contains no v1.8.0 planning detail: that lives in `docs/v1.8/Phase_Plan.md` on the
+> release branch, and nothing here should require a v1.8.0 change to act on. Findings are stated so
+> they apply to *the next large release*, whichever it is.
+
+> **Revised 2026-08-27, same day.** The first draft audited `main` only and got §3.7 wrong as a
+> result; it is corrected in place, with action item 9 narrowed. Corrections are marked rather than
+> silently edited — a retrospective that quietly rewrites itself is worth less than one that shows
+> where it was wrong.
 
 ---
 
@@ -69,8 +73,7 @@ bulk of the build (v1.1 through v1.6); August was consolidation, patching, and v
   `PpmpReportExcelServiceTests`)
 
 This is unusual for a solo project under delivery pressure, and it is the single strongest asset
-the codebase has going into v1.8.0's AIP redesign. **A redesign of that scale is only safe because
-this net exists.**
+the codebase has. **An ambitious change is only safe because this net exists.**
 
 ### 2.2 CI gates every PR on both stacks
 
@@ -176,8 +179,9 @@ The cause is structural: **features were added to existing pages rather than ext
 components.** `docs/DESIGN_SYSTEM.md` documents a shared-component inventory, but nothing enforces
 extraction, and no file-size ceiling exists in lint.
 
-This matters acutely for v1.8.0. `aip/detail/page.tsx` — the single largest file in the
-codebase — is the primary surface the AIP redesign will rewrite.
+The risk compounds on the next feature to touch any of these files: work landing inside a
+2,000-line component makes it a 2,400-line component, and lifting a 999-line component into a
+second caller makes two of them.
 
 ### 3.3 `CLAUDE.md` — the file read at the start of every session — went stale
 
@@ -243,13 +247,12 @@ generated across two days (2026-08-25 → 08-26), versioned by filename suffix
 git.** The versioning instinct is right; the mechanism is manual filename copies of a binary file
 that git cannot diff, sitting outside version control entirely.
 
-> **Correction (2026-08-27).** This section originally claimed the v1.8.0 plan had no Markdown
-> representation in the repo. **That was wrong.** `docs/v1.8/Phase_Plan.md` is a 1,245+ line
-> document carrying the full phase map, DECISION G, and the PPDC meeting outcomes, alongside
-> `AIP_Form_Spec.md`, `AIP_Requirements_Review.md`, `Monday_Questions.md`, `AIP_Redesign_Notes.md`
-> and `Office_User_Path_Findings.md`. They live on `release/1.8.0`, not `main` — which is why an
-> audit run against `main` did not see them. **The mistake is itself the evidence for §3.9 below.**
-> Only the `.xlsx` tracker duplication stands.
+> **Correction (2026-08-27).** This section originally claimed the current version's plan had no
+> Markdown representation in the repo. **That was wrong** — it and five sibling planning documents
+> are tracked, on the release branch rather than on `main`, which is why an audit run against
+> `main` did not find them. The finding that stands is narrower: **only the `.xlsx` tracker is
+> versioned by filename copy.** The miss is itself an instance of the drift described in §3.3, and
+> is what action item 12 addresses.
 
 ### 3.8 Single contributor, no second reviewer
 
@@ -258,45 +261,6 @@ criticism of the individual — the discipline evident in §2 is genuinely high 
 means CI is the *only* independent check. Nothing catches a design decision that is internally
 consistent and wrong, and the bus factor is 1 across a codebase now carrying a province's budget
 planning workflow.
-
-### 3.9 `main` no longer represents the project — and finished work is stranded behind it
-
-*Added 2026-08-27, after the §3.7 correction exposed it.*
-
-**`release/1.8.0` is 81 commits ahead of `main` and unmerged.** Since `main` is what auto-deploys,
-the branch that represents production is now materially behind the branch that represents the
-project. Two distinct costs follow.
-
-**The project is not legible from `main`.** All six v1.8.0 planning documents live only on the
-release branch. Anyone — a person, a fresh Claude Code session, a future maintainer — who reads
-`main` sees a project with no v1.8.0 plan at all, and a `CLAUDE.md` that (until this release) still
-described v1.0.1. This compounds §3.3: the stale status section and the stranded planning docs are
-the same failure seen from two directions. **This retrospective made exactly that error and had to
-be corrected**, which is about as direct a demonstration as the finding could ask for.
-
-**Finished work is stranded.** The RAL-254 password-reset fix — random per-reset passwords, a
-`MustChangePassword` gate, removal of the shared default from code, from the Excel template
-instructions, and from `CLAUDE.md` — is **complete and merged to `release/1.8.0`**, with two
-migrations. It has been sitting unreleased since 2026-08-26. The ticket itself said:
-
-> ⚠️ Independent of the rest of the reset cluster and worth shipping first — it is live in
-> production today.
-
-That advice was not followed, and the fix is queued behind a 73-item AIP redesign blocked on
-DECISION G — a policy question about a +30% uplift on MOOE and CO that has nothing to do with
-password handling.
-
-**This is the batch-size problem from §3.1 seen from the other end.** There, big changes pushed
-defects *past* the release boundary into patch trains. Here, a big release branch holds finished
-work *behind* the boundary. Same root cause: the unit of release is a milestone rather than a
-change. A release branch that runs for weeks becomes a queue, and anything independent and urgent
-inside it inherits the queue's blockers.
-
-> **Decision, 2026-08-27:** a `v1.7.5` patch to cherry-pick the password cluster onto `main` was
-> considered and **deliberately declined** — production is functioning, the exposed SuperAdmin
-> credential was rotated by hand, and the fix ships with v1.8.0. The residual is that
-> `TamarawUser2026!` remains the default for account creation and reset in production until then.
-> Recorded here as an accepted, known risk rather than an oversight.
 
 ---
 
@@ -310,7 +274,7 @@ Four patterns explain most of §3:
 | **B** | **Features are added to pages, not extracted into components.** No size ceiling, no extraction trigger. | §3.2 giant files, and the `ui`/`budget-planning` fix concentration |
 | **C** | **Rules a machine checks survive; rules a human maintains decay.** | §2.3 (0 violations) vs §3.3 (stale status), §3.4 (archiving lapsed) |
 | **D** | **Infrastructure is invisible until it hurts.** Telemetry is collected but unwatched. | §3.6 region split, tier overage |
-| **E** | **The unit of release is a milestone, not a change.** Release branches run for weeks and batch unrelated work together, so the batch's slowest blocker becomes everything's blocker. | §3.1 defects pushed *past* the release boundary into patch trains; §3.9 finished work stranded *behind* it |
+| **E** | **The unit of release is a milestone, not a change.** Release branches run for weeks and batch unrelated work together, so the batch's slowest blocker becomes everything's blocker — and independent work inherits blockers it has nothing to do with. | §3.1 — v1.4 batched a whole rework, then paid it back as 8 patches in 9 days; v1.7 as 4 in 16 |
 
 Pattern **C** is the most useful lever, because it is also the explanation for the successes.
 **The reliable move on this project has been to convert intent into an automated check.** Every
@@ -321,7 +285,7 @@ below are weighted accordingly.
 
 ## 5. Action items
 
-Ordered by leverage. Items 1–3 should land before v1.8.0 Phase 2 begins.
+Ordered by leverage. Items 1–3 are the ones worth landing **before** the next large release starts, not after it ships.
 
 | # | Action | Addresses | Effort |
 |---|---|---|---|
@@ -329,30 +293,32 @@ Ordered by leverage. Items 1–3 should land before v1.8.0 Phase 2 begins.
 | **2** | **Add a post-deploy smoke test to `deploy.yml`.** Poll `GET /api/health` until 200 (with a timeout) and fail the workflow on 503. One step, catches a dead deploy before a user does. | §3.5.2 | S |
 | **3** | **Gate migrations in CI, and flag the manual step in the deploy job.** Fail the build if a migration appears in the diff without a corresponding checklist acknowledgment; echo an explicit "MIGRATION REQUIRED — run `dotnet ef database update`" banner in the deploy log. Automating the run against Azure SQL is the better end state, but the banner is today's work. | §3.5.1 | S |
 | **4** | **Set a frontend file-size ceiling in lint.** Warn at 600 lines, error at 900, with existing offenders grandfathered via an explicit allowlist that may only shrink. This converts a good intention into a machine-checked rule — the move that has worked on this project. | §3.2, Pattern B | S |
-| **5** | **Refactor `aip/detail/page.tsx` (2,057 lines) as the *first* step of the v1.8.0 AIP redesign, not as cleanup after it.** The redesign rewrites this surface anyway; extracting components first means the new work lands in a structure that can hold it. | §3.2 | M |
+| **5** | **When a release is going to rewrite one of the §3.2 files, extract it *first*, as part of that work — not as cleanup after.** A redesign landing inside a 2,000-line component produces a 2,400-line component. The same applies to reusing one: lifting an existing large component into a second caller is the moment to extract it, or there are now two of them drifting apart. | §3.2 | M |
 | **6** | **Make the `CLAUDE.md` Implementation Status update part of the release checklist.** Every `release/*` branch's first commit already bumps `APP_VERSION` in three files — add the status section and the footer date stamp to that same commit. Then bring the section current to v1.7.4 now. | §3.3, Pattern C | S |
 | **7** | **Add cost and latency alerts in Azure.** A budget alert on the resource group at a monthly threshold, and an Application Insights alert on p95 request duration. Both are configuration, not code. | §3.6, Pattern D | S |
 | **8** | **Make branch archiving part of the release ritual.** After each release merge, tag and delete merged branches. A scheduled workflow that archives branches merged more than 30 days ago would remove the discipline requirement entirely — again, Pattern C. | §3.4 | S |
-| **9** | ~~Move the v1.8.0 plan into a tracked Markdown file~~ — **superseded:** `Phase_Plan.md` already exists on `release/1.8.0`. What remains is narrower: add `docs/**/*.backup*.xlsx` to `.gitignore` and stop versioning the tracker by filename copy. | §3.7 | XS |
-| **11** | **Decide what `main` is for.** Either merge `release/1.8.0` to `main` more often (even behind a flag), or accept that `main` is a deploy pointer and move the "what is this project" documents somewhere both branches share. Today `main` is 81 commits behind and reads as a different, smaller project. At minimum, no *independent* fix should inherit a milestone branch's blockers — carve those out as patches by default. | §3.9 | M |
+| **9** | ~~Move the version plan into a tracked Markdown file~~ — **superseded:** it already is tracked. What remains is narrower: add `docs/**/*.backup*.xlsx` to `.gitignore` and stop versioning the tracker by filename copy. | §3.7 | XS |
 | **10** | **Add a thin integration-test layer for the highest-churn pages.** Playwright against the top five components from §3.2 — load, submit, verify — would cover the class of defect that produced 51 `ui` fixes and that unit tests structurally cannot reach. | §3.1, §3.2 | L |
+| **11** | **Carve independent fixes out of milestone branches by default.** A security or correctness fix that depends on nothing in the release should ship as a patch off `main`, not wait in the queue. Batch-size discipline is worth more where the cost of waiting is a live defect. | Pattern E | S |
+| **12** | **Decide what `main` is for.** A long-running release branch means `main` and "the project" drift apart, and documents describing the project can end up on only one of them. Either merge forward more often, or keep the "what is this project" docs where both branches see them. | §3.3 | M |
 
 ---
 
-## 6. Carrying into v1.8.0
+## 6. Carrying forward — what applies to the next large release
 
-The v1.8.0 AIP redesign is the largest single change attempted so far — 7 phases, 73 items, a
-clean FY break (FY2027 stays on the old format, FY2028+ moves to the new), and no data migration.
-Three findings above apply to it directly:
+Stated generally on purpose. Planning detail for any specific version belongs in that version's own
+docs, not here.
 
-- **It rewrites the largest file in the codebase.** Action item 5 says extract before redesigning,
-  not after.
-- **It is exactly the kind of change that produces a patch-release train.** v1.4 (WFP) produced 8
-  patches; v1.7 (Inventory) produced 4. v1.8.0 is bigger than both. Action item 1 is the
-  difference between finding those defects in UAT and finding them in production.
-- **The 1,061-test safety net is what makes the redesign tractable at all.** Hold the ratio.
-  Service-layer coverage is the reason a clean-break redesign is a reasonable plan rather than a
-  reckless one.
+- **The bigger the release, the more of §3.1 you should expect.** v1.4 produced 8 patch releases in
+  9 days; v1.7 produced 4 in 16. That is the observed price of a large batch reaching production
+  without an intermediate environment — and it scales with batch size, so a release larger than
+  either should be planned assuming a patch train, or given the UAT gate in action item 1.
+- **If a release rewrites or reuses one of the §3.2 files, extract before building** (action item
+  5). Extraction is cheap while you are already working in the file and expensive afterwards.
+- **The 1,061-test suite is what makes ambitious changes tractable.** Hold the ratio. Service-layer
+  coverage is the reason a clean-break redesign is a reasonable plan rather than a reckless one —
+  and it is the one asset here that would take months to rebuild if it were allowed to lapse.
+- **Independent fixes should not inherit a milestone's blockers** (action item 11).
 
 ---
 
