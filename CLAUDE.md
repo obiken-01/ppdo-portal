@@ -626,7 +626,17 @@ out-of-scope → commit message). `RAL-81` is the reference example.
 - Azure Functions Consumption plan still scales to zero after **~10 min** of no traffic — cold start takes 5-20s. The `GET /api/health` call on the login page pre-warms this (DB no longer needs pre-warming since the Basic-tier switch, but the call is harmless to keep).
 - Push to `main` → GitHub Actions builds and deploys both frontend and backend automatically
 - First-time DB setup: run `dotnet ef database update --project PPDO.Infrastructure` with `SqlConnectionString` env var pointing to Azure SQL
-- SuperAdmin seed account: `superadmin@ppdo.gov.ph` / `PPDOAdmin2026!`
+- SuperAdmin seed account: `superadmin@ppdo.gov.ph` — the bootstrap password is **not recorded in this
+  repository** (it is public). It lives in the maintainer's password manager; ask before standing up a new
+  environment. The seeded row carries `MustChangePassword = true`, so a fresh environment is forced to
+  rotate at first login. Never paste a working credential back into this file, a code comment, or a commit
+  message — the previous default was published here and ended up on the internet (RAL-274).
+- **The bootstrap password seeds new environments only — never set a live account to it.** It is meant to
+  be handed to whoever stands up a fresh environment, and its BCrypt hash is committed to this public repo,
+  so it is a value that will circulate. That is harmless while it only ever opens an empty, freshly-seeded
+  database that forces a rotation at first login. Point it at a live account and every person who has ever
+  seeded an environment holds that account's password. Give production and each local instance its own
+  password, set through the portal's change-password flow.
 
 ### Next: v1.2 — Employee Profiles (Planned)
 

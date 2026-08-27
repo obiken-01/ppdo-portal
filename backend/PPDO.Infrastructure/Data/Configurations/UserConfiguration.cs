@@ -13,10 +13,20 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
     // Fixed timestamp so re-running the seed is idempotent.
     private static readonly DateTime SeedDate = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
-    // Pre-computed BCrypt hash (work factor 11) of the default password: PPDOAdmin2026!
-    // ⚠️  MUST be changed on first deploy — use PUT /api/auth/change-password after login.
+    // Pre-computed BCrypt hash (work factor 11) of the SuperAdmin bootstrap password (RAL-274).
+    //
+    // The PLAINTEXT IS DELIBERATELY NOT RECORDED HERE, in CLAUDE.md, or anywhere else in this
+    // repository — this repository is public. It lives in the maintainer's password manager; ask
+    // before standing up a new environment. Storing the hash is fine and is the point of a hash.
+    //
+    // The previous value was a hash of a password that WAS written down here and in CLAUDE.md,
+    // which put it on the internet. Do not reintroduce that pattern: if this ever needs rotating,
+    // generate the replacement out of band and commit only the hash.
+    //
+    // The seeded row also carries MustChangePassword = true, so a fresh environment is forced to
+    // rotate at first login rather than relying on anyone reading a warning comment.
     private const string DefaultSuperAdminHash =
-        "$2a$11$HaBMPo0zwTrOTJt3jqY8Ou8RNcYTfedkTJCDuP2AW5RFvofq0wQEO";
+        "$2a$11$lOZMuB5SI/QZZe8xeWgYUuuHExMXKhav1hn.1eGPK9zHrCJRkHM/K";
 
     public void Configure(EntityTypeBuilder<User> builder)
     {
@@ -115,8 +125,8 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         // ── Seed data ─────────────────────────────────────────────────────────
         // One SuperAdmin user created at first deploy.
         // DivisionId is null — SuperAdmin bypasses all permission flag checks.
-        // Default password: PPDOAdmin2026!  (BCrypt work factor 11, pre-computed)
-        // ⚠️  Change this password immediately after the first login.
+        // Bootstrap password: see DefaultSuperAdminHash above — the plaintext is intentionally
+        // absent from this repository. MustChangePassword = true forces a rotation at first login.
         builder.HasData(new User
         {
             Id           = SuperAdminId,
@@ -125,6 +135,7 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
             Email        = "superadmin@ppdo.gov.ph",
             PasswordHash = DefaultSuperAdminHash,
             Role         = UserRole.SuperAdmin,
+            MustChangePassword = true,
             DivisionId   = null,
             Position     = "System Administrator",
             IsActive     = true,
