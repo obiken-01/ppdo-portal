@@ -1,4 +1,4 @@
-using PPDO.Domain.Enums;
+﻿using PPDO.Domain.Enums;
 using Microsoft.Extensions.Logging;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.Config;
@@ -296,6 +296,9 @@ public sealed class DivisionService : IDivisionService
             d => (d.OfficeId, d.Name.Trim().ToLowerInvariant()));
 
         int created = 0, updated = 0, skipped = 0;
+        // Audit rows are emitted AFTER SaveChangesAsync, not inline: a newly created division
+        // has no Id until then, and an audit row keyed on 0 is worse than none. RAL-246.
+        List<(Division Entity, object? Old)> audited = new();
         List<string> errors = new();
         DateTime now = DateTime.UtcNow;
         // Names and codes are deduped separately: two rows may legitimately share neither,
@@ -407,6 +410,8 @@ public sealed class DivisionService : IDivisionService
 
                 // Keep the lookups in step with the rename/recode, so a later row in the same
                 // file resolves against current state rather than the pre-import names.
+                object oldSnapshot = AuditSnapshot(existing);
+
                 byName.Remove((existing.OfficeId, existing.Name.Trim().ToLowerInvariant()));
                 if (!string.IsNullOrWhiteSpace(existing.Code))
                     byCode.Remove((existing.OfficeId, existing.Code.Trim().ToLowerInvariant()));
@@ -428,6 +433,7 @@ public sealed class DivisionService : IDivisionService
                 if (codeKey is not null) byCode[codeKey.Value] = existing;
 
                 await _divisions.UpdateAsync(existing, cancellationToken);
+                audited.Add((existing, oldSnapshot));
                 updated++;
             }
             else
@@ -452,11 +458,26 @@ public sealed class DivisionService : IDivisionService
                 await _divisions.AddAsync(entity, cancellationToken);
                 byName[nameKey] = entity;
                 if (codeKey is not null) byCode[codeKey.Value] = entity;
+                audited.Add((entity, null));
                 created++;
             }
         }
 
         await _divisions.SaveChangesAsync(cancellationToken);
+
+        // One audit row per division the import actually changed (RAL-246). A CSV re-upload can
+        // grant Budget Planning, Inventory or Config to every division at once — the single
+        // widest "who can do what" write in the system, and until now the only unaudited one.
+        // Skipped rows produce nothing: an import that changed nothing should not look like it did.
+        foreach ((Division entity, object? old) in audited)
+        {
+            await _audit.LogAsync("divisions", entity.Id,
+                old is null ? AuditAction.Create : AuditAction.Update,
+                oldValues: old,
+                newValues: AuditSnapshot(entity),
+                cancellationToken);
+        }
+
         _logger.LogInformation(
             "Divisions CSV imported. New: {New}, Updated: {Updated}, Skipped: {Skipped}", created, updated, skipped);
         return ServiceResult<CsvImportResult>.Ok(new CsvImportResult(created, updated, skipped, errors));
