@@ -176,3 +176,13 @@ dist/
 build/
 # Linear archive script progress log (local run state)
 scripts/.linear_archive_log.tsv
+
+# Python bytecode from the repo's scripts/ tooling
+__pycache__/
+*.py[cod]
+
+# Manual filename-versioned copies of the tracker workbooks. The live file is
+# tracked (docs/v1.8/v1.8.0_Open_Items_Tracker.xlsx); the ".backupN-DATE-before-X"
+# copies are local working state and are not diffable by git.
+# Retrospective action item 9 — docs/v1.8/RETROSPECTIVE.md §3.7.
+docs/**/*.backup*.xlsx
