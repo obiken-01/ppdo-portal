@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using PPDO.Application.Common;
@@ -105,7 +105,7 @@ public sealed class AllocationFunctions
             Route = "budget-planning/allocation/ceiling")] HttpRequestData req,
         CancellationToken ct)
     {
-        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanManagePboCeiling, ct);
+        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanManagePboCeiling, ct);
         if (denied is not null) return denied;
 
         UpsertCeilingDto? body = await ConfigHttp.ReadBodyAsync<UpsertCeilingDto>(req, ct);
@@ -187,7 +187,7 @@ public sealed class AllocationFunctions
             Route = "budget-planning/allocation/divisions")] HttpRequestData req,
         CancellationToken ct)
     {
-        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanManagePpdoAllocation, ct);
+        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanManagePpdoAllocation, ct);
         if (denied is not null) return denied;
 
         UpsertAllocationsDto? body = await ConfigHttp.ReadBodyAsync<UpsertAllocationsDto>(req, ct);
@@ -234,7 +234,7 @@ public sealed class AllocationFunctions
             Route = "budget-planning/allocation/programs")] HttpRequestData req,
         CancellationToken ct)
     {
-        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanManagePpdoAllocation, ct);
+        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanManagePpdoAllocation, ct);
         if (denied is not null) return denied;
 
         UpsertProgramAssignmentDto? body =
