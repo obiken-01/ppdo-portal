@@ -101,7 +101,7 @@ export interface MeResponse {
   canAccessBudgetPlanning: boolean;
   canUploadAip: boolean;
   canManageConfig: boolean;
-  canManageAllocation: boolean;
+  canManagePpdoAllocation: boolean;
 
   /** True after a reset — the portal blocks everything except changing the password (RAL-266). */
   mustChangePassword: boolean;

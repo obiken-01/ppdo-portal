@@ -12,7 +12,7 @@ namespace PPDO.Domain.Interfaces;
 ///   Staff                → Override ?? user.Division.&lt;flag&gt; ?? false
 ///
 /// Special cases:
-///   CanManageAllocation — per-user grant only: SuperAdmin → true, else Override ?? false
+///   CanManagePpdoAllocation — per-user grant only: SuperAdmin → true, else Override ?? false
 ///                         (Admin is NOT auto-granted this).
 ///   CanAccessProfile    — always true for all roles.
 ///
@@ -70,10 +70,10 @@ public interface IPermissionService
 
     /// <summary>
     /// True when the user may access the Budget Allocation page (v1.2 — RAL-97).
-    /// Per-user grant only: SuperAdmin → true; everyone else → OverrideCanManageAllocation ?? false.
+    /// Per-user grant only: SuperAdmin → true; everyone else → OverrideCanManagePpdoAllocation ?? false.
     /// Admin is NOT auto-granted this — only the designated finance officer holds it.
     /// </summary>
-    Task<bool> CanManageAllocationAsync(User user, CancellationToken cancellationToken = default);
+    Task<bool> CanManagePpdoAllocationAsync(User user, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// True when the user may view the Audit Log config page. Gated behind a feature flag

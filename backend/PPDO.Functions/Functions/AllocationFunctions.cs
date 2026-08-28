@@ -12,7 +12,7 @@ namespace PPDO.Functions.Functions;
 /// <summary>
 /// Allocation endpoints under <c>/api/budget-planning/allocation</c> (RAL-99).
 ///
-/// Mutations (ceiling/allocation/assignment upserts) stay gated on CanManageAllocation
+/// Mutations (ceiling/allocation/assignment upserts) stay gated on CanManagePpdoAllocation
 /// (finance officer only). All GET reads are gated on the broader CanAccessBudgetPlanning
 /// so that regular WFP users — not just finance officers — can load the context the WFP
 /// entry wizard needs (ceiling exists?, own division's allocation, assigned programs, setup
@@ -39,11 +39,11 @@ public sealed class AllocationFunctions
         _permissions = permissions;
     }
 
-    private Task<bool> CanManageAllocation(User u) => _permissions.CanManageAllocationAsync(u);
+    private Task<bool> CanManagePpdoAllocation(User u) => _permissions.CanManagePpdoAllocationAsync(u);
     private Task<bool> CanAccessBudgetPlanning(User u) => _permissions.CanAccessBudgetPlanningAsync(u);
 
     // ── GET /api/budget-planning/allocation/ceiling?officeId=&fiscalYear=&fundingSourceId= ─────
-    // Read is gated on CanAccessBudgetPlanning (not CanManageAllocation): every WFP
+    // Read is gated on CanAccessBudgetPlanning (not CanManagePpdoAllocation): every WFP
     // user — including non-finance office users — needs to know whether a ceiling
     // exists for the setup-complete gate. Mutations below stay finance-only.
     [Function("AllocationGetCeiling")]
@@ -97,7 +97,7 @@ public sealed class AllocationFunctions
             Route = "budget-planning/allocation/ceiling")] HttpRequestData req,
         CancellationToken ct)
     {
-        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanManageAllocation, ct);
+        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanManagePpdoAllocation, ct);
         if (denied is not null) return denied;
 
         UpsertCeilingDto? body = await ConfigHttp.ReadBodyAsync<UpsertCeilingDto>(req, ct);
@@ -111,7 +111,7 @@ public sealed class AllocationFunctions
     }
 
     // ── GET /api/budget-planning/allocation/divisions?officeId=&fiscalYear=&fundingSourceId= ───
-    // Gated on CanAccessBudgetPlanning (not CanManageAllocation): the WFP entry
+    // Gated on CanAccessBudgetPlanning (not CanManagePpdoAllocation): the WFP entry
     // wizard needs a regular division-scoped user's own allocation amount to show
     // the budget banner. Non-finance callers only ever see their own division's
     // row — other divisions' peso amounts are finance-officer-only.
@@ -135,7 +135,7 @@ public sealed class AllocationFunctions
         IReadOnlyList<DivisionAllocationDto> data =
             await _allocation.GetAllocationsAsync(officeId, fiscalYear, fundingSourceId, ct);
 
-        if (!await CanManageAllocation(caller))
+        if (!await CanManagePpdoAllocation(caller))
             data = data.Where(a => a.DivisionId == caller.DivisionId).ToList();
 
         return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK,
@@ -165,7 +165,7 @@ public sealed class AllocationFunctions
         IReadOnlyList<DivisionAllocationDto> data =
             await _allocation.GetAllocationsForAllFundsAsync(officeId, fiscalYear, ct);
 
-        if (!await CanManageAllocation(caller))
+        if (!await CanManagePpdoAllocation(caller))
             data = data.Where(a => a.DivisionId == caller.DivisionId).ToList();
 
         return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK,
@@ -179,7 +179,7 @@ public sealed class AllocationFunctions
             Route = "budget-planning/allocation/divisions")] HttpRequestData req,
         CancellationToken ct)
     {
-        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanManageAllocation, ct);
+        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanManagePpdoAllocation, ct);
         if (denied is not null) return denied;
 
         UpsertAllocationsDto? body = await ConfigHttp.ReadBodyAsync<UpsertAllocationsDto>(req, ct);
@@ -194,7 +194,7 @@ public sealed class AllocationFunctions
     }
 
     // ── GET /api/budget-planning/allocation/programs?officeId=&fiscalYear= ────
-    // Gated on CanAccessBudgetPlanning (not CanManageAllocation): the WFP entry
+    // Gated on CanAccessBudgetPlanning (not CanManagePpdoAllocation): the WFP entry
     // wizard needs this to know which programs are assigned to the current
     // division. No monetary data here (just a PPA → division-id mapping), unlike
     // GetDivisions above, so no further per-caller filtering is needed.
@@ -226,7 +226,7 @@ public sealed class AllocationFunctions
             Route = "budget-planning/allocation/programs")] HttpRequestData req,
         CancellationToken ct)
     {
-        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanManageAllocation, ct);
+        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanManagePpdoAllocation, ct);
         if (denied is not null) return denied;
 
         UpsertProgramAssignmentDto? body =

@@ -7,7 +7,7 @@
  * active funding source, RAL-154/155), distributing it among divisions, and
  * assigning AIP programs to divisions.
  *
- * Access: canManageAllocation. Hidden in sidebar for everyone else.
+ * Access: canManagePpdoAllocation. Hidden in sidebar for everyone else.
  * Route:  /budget-planning/allocation
  *
  * Amounts are in PESOS — no ×1000 conversion (that lives in WFP only).
@@ -405,7 +405,7 @@ function FundSection({
 
 function AllocationPageInner() {
   const { toast } = useToast();
-  const me = useMe((m) => m.canManageAllocation);
+  const me = useMe((m) => m.canManagePpdoAllocation);
 
   // ── Selectors ─────────────────────────────────────────────────────────────
 

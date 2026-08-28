@@ -81,6 +81,9 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
             .IsRequired()
             .HasDefaultValue(false);
 
+        builder.Property(u => u.OverrideCanManagePpdoAllocation)
+            .HasColumnName("OverrideCanManageAllocation");
+
         builder.Property(u => u.RecoveryAttemptCount)
             .IsRequired()
             .HasDefaultValue(0);

@@ -21,5 +21,5 @@ public sealed class SetPermissionsDto
     public bool? OverrideCanManageConfig { get; init; }
 
     /// <summary>Per-user grant for the Budget Allocation page (v1.2 — RAL-97).</summary>
-    public bool? OverrideCanManageAllocation { get; init; }
+    public bool? OverrideCanManagePpdoAllocation { get; init; }
 }

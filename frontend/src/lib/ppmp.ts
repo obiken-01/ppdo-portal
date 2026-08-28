@@ -12,7 +12,7 @@ import type { ApiResponse, PpmpReportDto } from "@/types";
 
 /**
  * The full PPMP report preview for one office + fiscal year. divisionId is only honored for
- * allocation officers (CanManageAllocation) — division-scoped callers are always forced
+ * allocation officers (CanManagePpdoAllocation) — division-scoped callers are always forced
  * server-side to their own division (RAL-136).
  */
 export async function getPpmpReportPreview(

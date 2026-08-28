@@ -8,10 +8,10 @@ namespace PPDO.Tests.Application;
 /// Unit tests for <see cref="PermissionService"/> (v1.2 — RAL-97 model).
 ///
 ///   SuperAdmin → true for everything (incl. allocation).
-///   Admin      → true for every flag EXCEPT CanManageAllocation.
+///   Admin      → true for every flag EXCEPT CanManagePpdoAllocation.
 ///   Staff      → Override ?? user.Division.&lt;flag&gt; ?? false.
 ///   CanUploadAip is host-office-only (guest offices never).
-///   CanManageAllocation is a per-user grant (SuperAdmin bypass; Admin not auto).
+///   CanManagePpdoAllocation is a per-user grant (SuperAdmin bypass; Admin not auto).
 ///
 /// No mocks needed — PermissionService is pure logic. The "division" entity carries the flags.
 /// </summary>
@@ -82,7 +82,7 @@ public sealed class PermissionServiceTests
             OverrideCanAccessBudgetPlanning = overrideBudgetPlanning,
             OverrideCanUploadAip            = overrideUploadAip,
             OverrideCanManageConfig         = overrideManageConfig,
-            OverrideCanManageAllocation     = overrideAllocation,
+            OverrideCanManagePpdoAllocation     = overrideAllocation,
         };
     }
 
@@ -190,27 +190,27 @@ public sealed class PermissionServiceTests
         => Assert.False(await _sut.CanUploadAipAsync(
             MakeUser(UserRole.Staff, overrideUploadAip: true, divUploadAip: true, officeId: 7)));
 
-    // ── CanManageAllocation — per-user grant ──────────────────────────────────
+    // ── CanManagePpdoAllocation — per-user grant ──────────────────────────────────
 
     [Fact]
-    public async Task CanManageAllocation_SuperAdmin_ReturnsTrue()
-        => Assert.True(await _sut.CanManageAllocationAsync(MakeUser(UserRole.SuperAdmin)));
+    public async Task CanManagePpdoAllocation_SuperAdmin_ReturnsTrue()
+        => Assert.True(await _sut.CanManagePpdoAllocationAsync(MakeUser(UserRole.SuperAdmin)));
 
     [Fact]
-    public async Task CanManageAllocation_Admin_NotAutoGranted()
-        => Assert.False(await _sut.CanManageAllocationAsync(MakeUser(UserRole.Admin)));
+    public async Task CanManagePpdoAllocation_Admin_NotAutoGranted()
+        => Assert.False(await _sut.CanManagePpdoAllocationAsync(MakeUser(UserRole.Admin)));
 
     [Fact]
-    public async Task CanManageAllocation_Admin_WithOverride_ReturnsTrue()
-        => Assert.True(await _sut.CanManageAllocationAsync(MakeUser(UserRole.Admin, overrideAllocation: true)));
+    public async Task CanManagePpdoAllocation_Admin_WithOverride_ReturnsTrue()
+        => Assert.True(await _sut.CanManagePpdoAllocationAsync(MakeUser(UserRole.Admin, overrideAllocation: true)));
 
     [Fact]
-    public async Task CanManageAllocation_Staff_WithOverride_ReturnsTrue()
-        => Assert.True(await _sut.CanManageAllocationAsync(MakeUser(UserRole.Staff, overrideAllocation: true)));
+    public async Task CanManagePpdoAllocation_Staff_WithOverride_ReturnsTrue()
+        => Assert.True(await _sut.CanManagePpdoAllocationAsync(MakeUser(UserRole.Staff, overrideAllocation: true)));
 
     [Fact]
-    public async Task CanManageAllocation_Staff_NoOverride_ReturnsFalse()
-        => Assert.False(await _sut.CanManageAllocationAsync(MakeUser(UserRole.Staff)));
+    public async Task CanManagePpdoAllocation_Staff_NoOverride_ReturnsFalse()
+        => Assert.False(await _sut.CanManagePpdoAllocationAsync(MakeUser(UserRole.Staff)));
 
     // ── CanViewAuditLog — SuperAdmin-only, feature-flag gated ─────────────────
 

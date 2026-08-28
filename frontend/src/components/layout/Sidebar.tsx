@@ -350,7 +350,7 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
                   <span className="text-xs">•</span>
                   <span className="truncate">AIP</span>
                 </Link>
-                {me?.canManageAllocation && (
+                {me?.canManagePpdoAllocation && (
                   <Link href="/budget-planning/allocation" className={childLinkCls(isActive("/budget-planning/allocation"))}>
                     <span className="text-xs">•</span>
                     <span className="truncate">Allocation</span>
