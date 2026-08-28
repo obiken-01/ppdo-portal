@@ -107,6 +107,22 @@ public interface IPermissionService
     Task<bool> CanReviewBudgetPlanningAsync(User user, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// True when the user may review EVERY office's budget-planning work (v1.8.0 — RAL-257).
+    /// Per-user grant only: SuperAdmin -> true; everyone else -> OverrideCanReviewAllOffices ??
+    /// false. Admin is NOT auto-granted this.
+    ///
+    /// The first CROSS-OFFICE permission here. Every other flag narrows to the caller's own
+    /// office; this one widens past it. A holder may carry an OfficeId and that must not narrow
+    /// what they review — feed this result to OfficeScope.ResolveForReview rather than
+    /// OfficeScope.Resolve.
+    ///
+    /// Resolved SEPARATELY from <see cref="CanReviewBudgetPlanningAsync"/>, even for a person
+    /// holding both. Building this as "reviewer + all offices" would inherit the department-head
+    /// reviewer's write rule, which is a different rule with a different intent (RAL-256).
+    /// </summary>
+    Task<bool> CanReviewAllOfficesAsync(User user, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// True when the user may view the Audit Log config page. Gated behind a feature flag
     /// (see the implementation) and, while that flag is on, SuperAdmin-only — no
     /// per-user/division override yet (add one here if that's ever needed).

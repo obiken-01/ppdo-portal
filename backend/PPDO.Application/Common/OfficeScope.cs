@@ -69,6 +69,31 @@ public readonly struct OfficeScope
         => IsHostOfficeUser(user) ? All : For(user.OfficeId ?? NoOffice);
 
     /// <summary>
+    /// Resolves the scope for a caller on a <b>review READ path</b> (v1.8.0 — RAL-257).
+    /// Identical to <see cref="Resolve"/>, except that a cross-office reviewer sees every office
+    /// even when they belong to one themselves.
+    ///
+    /// <paramref name="canReviewAllOffices"/> must come from
+    /// <c>IPermissionService.CanReviewAllOfficesAsync</c>. It is passed in rather than read off
+    /// the user here because effective permission resolution belongs in <c>PermissionService</c>
+    /// and this type is deliberately pure — see CLAUDE.md.
+    ///
+    /// <b>⚠️ Why this is a separate method rather than a branch inside <see cref="Resolve"/>.</b>
+    /// <see cref="Resolve"/> feeds the write paths too, through <see cref="Clamp"/>. Teaching it
+    /// this flag would silently promote a cross-office <i>reviewer</i> into a cross-office
+    /// <i>editor</i> of every office's data — a much larger grant than RAL-257 asks for, arriving
+    /// with no diff at any write site to notice it. Keeping the bypass on its own entry point
+    /// means a write path can only acquire it by being deliberately changed to call this instead.
+    /// Do not "simplify" the two back together.
+    ///
+    /// The reviewer's own office is intentionally ignored, not combined: a reviewer who sits in
+    /// GSO reviews every office, not GSO's rows plus everyone else's. That is the case most
+    /// likely to be got wrong, and it is pinned by test.
+    /// </summary>
+    public static OfficeScope ResolveForReview(User user, bool canReviewAllOffices)
+        => canReviewAllOffices ? All : Resolve(user);
+
+    /// <summary>
     /// Whether <paramref name="user"/> belongs to the host office, and so holds cross-office
     /// authority (DECISION F, RAL-258). The one place this question is answered — call it rather
     /// than reading <c>OfficeId is null</c> or comparing office codes to <c>"PPDO"</c>.
