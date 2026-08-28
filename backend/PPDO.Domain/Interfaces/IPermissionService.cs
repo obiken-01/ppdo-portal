@@ -1,4 +1,4 @@
-using PPDO.Domain.Entities;
+﻿using PPDO.Domain.Entities;
 
 namespace PPDO.Domain.Interfaces;
 
@@ -87,6 +87,24 @@ public interface IPermissionService
     /// Neither implies the other.
     /// </summary>
     Task<bool> CanManagePboCeilingAsync(User user, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// True when the user is a budget-planning REVIEWER for their office (v1.8.0 - RAL-244):
+    /// the department head who checks the office's work and is the sole authority to submit it.
+    /// Per-user grant only: SuperAdmin -> true; everyone else -> OverrideCanReviewBudgetPlanning
+    /// ?? false. Admin is NOT auto-granted this.
+    ///
+    /// Named for budget planning rather than AIP on purpose - LDIP and WFP reuse the same
+    /// reviewer once their workflows land.
+    ///
+    /// GRANT ONLY. This says nothing about what a reviewer may write. There are TWO reviewer
+    /// kinds and they differ precisely on that point: the department-head reviewer (this flag)
+    /// MAY edit values during review, while the PPDO consolidated reviewer (RAL-257) may only
+    /// comment. So RAL-256's write-denial guard must key on WHICH reviewer role the caller
+    /// holds - a single "is a reviewer, therefore read-only" check would wrongly freeze the
+    /// department head out of the edits the review exists to make.
+    /// </summary>
+    Task<bool> CanReviewBudgetPlanningAsync(User user, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// True when the user may view the Audit Log config page. Gated behind a feature flag

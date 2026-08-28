@@ -53,6 +53,7 @@ public sealed class MeResponseDto
     public bool CanManageConfig { get; init; }
     public bool CanManagePpdoAllocation { get; init; }
     public bool CanManagePboCeiling { get; init; }
+    public bool CanReviewBudgetPlanning { get; init; }
 
     // -- Password / recovery gates (RAL-266/RAL-267) ---------------------------
 

@@ -1,4 +1,4 @@
-using PPDO.Domain.Enums;
+﻿using PPDO.Domain.Enums;
 
 namespace PPDO.Domain.Entities;
 
@@ -122,6 +122,24 @@ public sealed class User
     /// <c>OverrideCanManagePboCeiling ?? false</c> (Admin is NOT auto-granted this).
     /// </summary>
     public bool? OverrideCanManagePboCeiling { get; set; }
+
+    /// <summary>
+    /// Per-user grant marking this user as their office's budget-planning REVIEWER
+    /// (v1.8.0 - RAL-244). The reviewer is the sole authority to submit the office's work,
+    /// and is the department head who checks it first.
+    ///
+    /// Deliberately named for budget planning, not AIP: LDIP and WFP reuse the same reviewer
+    /// once their workflows land. Only the scope of USE is AIP-first.
+    ///
+    /// Like the two allocation grants this is NOT a division flag. Resolution:
+    /// SuperAdmin -> true; everyone else -> <c>OverrideCanReviewBudgetPlanning ?? false</c>
+    /// (Admin is NOT auto-granted this).
+    ///
+    /// This flag grants review authority only - it takes nothing away. The write-denial that
+    /// distinguishes the two reviewer kinds is RAL-256; see IPermissionService for why the
+    /// guard cannot key on this flag alone.
+    /// </summary>
+    public bool? OverrideCanReviewBudgetPlanning { get; set; }
 
     // ── Password reset (RAL-253) ────────────────────────────────────────────────
 

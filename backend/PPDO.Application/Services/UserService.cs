@@ -336,6 +336,7 @@ public sealed class UserService : IUserService
         target.OverrideCanManageConfig         = dto.OverrideCanManageConfig;
         target.OverrideCanManagePpdoAllocation     = dto.OverrideCanManagePpdoAllocation;
         target.OverrideCanManagePboCeiling      = dto.OverrideCanManagePboCeiling;
+        target.OverrideCanReviewBudgetPlanning  = dto.OverrideCanReviewBudgetPlanning;
 
         // Runs after role/division/office and the override flags are applied, so
         // reachability is judged on what the user is about to become.
@@ -437,6 +438,7 @@ public sealed class UserService : IUserService
         target.OverrideCanManageConfig         = dto.OverrideCanManageConfig;
         target.OverrideCanManagePpdoAllocation     = dto.OverrideCanManagePpdoAllocation;
         target.OverrideCanManagePboCeiling      = dto.OverrideCanManagePboCeiling;
+        target.OverrideCanReviewBudgetPlanning  = dto.OverrideCanReviewBudgetPlanning;
 
         await _users.UpdateAsync(target, cancellationToken);
         await _users.SaveChangesAsync(cancellationToken);
@@ -824,6 +826,7 @@ public sealed class UserService : IUserService
         OverrideCanManageConfig         = u.OverrideCanManageConfig,
         OverrideCanManagePpdoAllocation     = u.OverrideCanManagePpdoAllocation,
         OverrideCanManagePboCeiling         = u.OverrideCanManagePboCeiling,
+        OverrideCanReviewBudgetPlanning     = u.OverrideCanReviewBudgetPlanning,
         CreatedAt                     = u.CreatedAt,
         UpdatedAt                     = u.UpdatedAt,
     };
@@ -840,6 +843,6 @@ public sealed class UserService : IUserService
         u.OverrideCanAccessInventory, u.OverrideCanAccessReports, u.OverrideCanManageUsers,
         u.OverrideCanManageResourceLinks, u.OverrideCanAccessBudgetPlanning,
         u.OverrideCanUploadAip, u.OverrideCanManageConfig, u.OverrideCanManagePpdoAllocation,
-        u.OverrideCanManagePboCeiling,
+        u.OverrideCanManagePboCeiling, u.OverrideCanReviewBudgetPlanning,
     };
 }

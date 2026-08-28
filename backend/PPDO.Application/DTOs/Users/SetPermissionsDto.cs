@@ -25,4 +25,7 @@ public sealed class SetPermissionsDto
 
     /// <summary>Per-user grant for setting any office's budget ceiling (v1.8.0 — RAL-243).</summary>
     public bool? OverrideCanManagePboCeiling { get; init; }
+
+    /// <summary>Per-user grant marking this user their office's budget-planning reviewer (v1.8.0 — RAL-244).</summary>
+    public bool? OverrideCanReviewBudgetPlanning { get; init; }
 }

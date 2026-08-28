@@ -1,4 +1,4 @@
-using PPDO.Application.Common;
+﻿using PPDO.Application.Common;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Enums;
 using PPDO.Domain.Interfaces;
@@ -10,7 +10,7 @@ namespace PPDO.Application.Services;
 ///
 ///   SuperAdmin → true for everything (full bypass)
 ///   Admin      → true for every flag EXCEPT special per-user grants
-///                (CanManagePpdoAllocation, CanManagePboCeiling)
+///                (CanManagePpdoAllocation, CanManagePboCeiling, CanReviewBudgetPlanning)
 ///   Staff      → Override ?? user.Division.&lt;flag&gt; ?? false
 ///
 /// CanUploadAip is additionally host-office-only (a guest office can never hold it).
@@ -19,6 +19,8 @@ namespace PPDO.Application.Services;
 /// CanManagePpdoAllocation is a per-user grant: SuperAdmin → true, else Override ?? false.
 /// CanManagePboCeiling is the same shape (RAL-243) but a separate authority — ceiling writes
 /// for any office. Holding one never implies the other.
+/// CanReviewBudgetPlanning is the same shape again (RAL-244) — the office's reviewer. It is a
+/// GRANT: it never denies a write. RAL-256's denial guard is separate and deliberately so.
 /// CanAccessProfile is always true.
 ///
 /// No database access — the <see cref="User"/> must be loaded with <see cref="User.Division"/>
@@ -116,6 +118,16 @@ public sealed class PermissionService : IPermissionService
         // PPDO finance officer the power to set other offices' ceilings.
         if (user.Role is UserRole.SuperAdmin) return Task.FromResult(true);
         return Task.FromResult(user.OverrideCanManagePboCeiling ?? false);
+    }
+
+    /// <inheritdoc />
+    public Task<bool> CanReviewBudgetPlanningAsync(User user, CancellationToken cancellationToken = default)
+    {
+        // Per-user grant only — Admin is NOT auto-granted. SuperAdmin bypasses for support.
+        // Purely additive: holding this never removes a write the user already had. The
+        // reviewer write-denial is RAL-256 and lives in its own guard, not here.
+        if (user.Role is UserRole.SuperAdmin) return Task.FromResult(true);
+        return Task.FromResult(user.OverrideCanReviewBudgetPlanning ?? false);
     }
 
     /// <inheritdoc />
