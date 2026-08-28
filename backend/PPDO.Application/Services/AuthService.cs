@@ -1,4 +1,4 @@
-using System.IdentityModel.Tokens.Jwt;
+﻿using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
 using System.Security.Claims;
 using System.Security.Cryptography;
@@ -213,6 +213,7 @@ public sealed class AuthService : IAuthService
             CanUploadAip            = await _permissions.CanUploadAipAsync(user, cancellationToken),
             CanManageConfig         = await _permissions.CanManageConfigAsync(user, cancellationToken),
             CanManagePpdoAllocation     = await _permissions.CanManagePpdoAllocationAsync(user, cancellationToken),
+            CanManagePboCeiling     = await _permissions.CanManagePboCeilingAsync(user, cancellationToken),
             MustChangePassword      = user.MustChangePassword,
             NeedsRecoverySetup      = user.RecoveryQuestionKey is null,
             UnacknowledgedPasswordResetAt = UnacknowledgedResetAt(user),

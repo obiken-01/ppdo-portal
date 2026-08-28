@@ -12,8 +12,11 @@ namespace PPDO.Functions.Functions;
 /// <summary>
 /// Allocation endpoints under <c>/api/budget-planning/allocation</c> (RAL-99).
 ///
-/// Mutations (ceiling/allocation/assignment upserts) stay gated on CanManagePpdoAllocation
-/// (finance officer only). All GET reads are gated on the broader CanAccessBudgetPlanning
+/// Mutations split across two per-user grants (RAL-243): the ceiling upsert is gated on
+/// CanManagePboCeiling (PBO finance officer — any office), while the division-allocation and
+/// PPA-assignment upserts stay on CanManagePpdoAllocation (PPDO finance officer — splits PPDO's
+/// own ceiling). Holding one does not grant the other; a user who set ceilings before v1.8.0
+/// needs OverrideCanManagePboCeiling granted. All GET reads are gated on the broader CanAccessBudgetPlanning
 /// so that regular WFP users — not just finance officers — can load the context the WFP
 /// entry wizard needs (ceiling exists?, own division's allocation, assigned programs, setup
 /// gate). GetDivisions additionally scopes non-finance callers to their own division's row —
@@ -40,6 +43,7 @@ public sealed class AllocationFunctions
     }
 
     private Task<bool> CanManagePpdoAllocation(User u) => _permissions.CanManagePpdoAllocationAsync(u);
+    private Task<bool> CanManagePboCeiling(User u)     => _permissions.CanManagePboCeilingAsync(u);
     private Task<bool> CanAccessBudgetPlanning(User u) => _permissions.CanAccessBudgetPlanningAsync(u);
 
     // ── GET /api/budget-planning/allocation/ceiling?officeId=&fiscalYear=&fundingSourceId= ─────
@@ -91,13 +95,17 @@ public sealed class AllocationFunctions
     }
 
     // ── PUT /api/budget-planning/allocation/ceiling ───────────────────────────
+    // Gated on CanManagePboCeiling, NOT CanManagePpdoAllocation (RAL-243). Setting a
+    // ceiling is the Provincial Budget Office's authority and applies to any office;
+    // the allocation grant only splits PPDO's own ceiling across its divisions. The two
+    // are deliberately not OR-ed — see IPermissionService.CanManagePboCeilingAsync.
     [Function("AllocationUpsertCeiling")]
     public async Task<HttpResponseData> UpsertCeiling(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put",
             Route = "budget-planning/allocation/ceiling")] HttpRequestData req,
         CancellationToken ct)
     {
-        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanManagePpdoAllocation, ct);
+        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanManagePboCeiling, ct);
         if (denied is not null) return denied;
 
         UpsertCeilingDto? body = await ConfigHttp.ReadBodyAsync<UpsertCeilingDto>(req, ct);

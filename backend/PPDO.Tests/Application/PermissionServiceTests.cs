@@ -1,4 +1,4 @@
-using PPDO.Application.Services;
+﻿using PPDO.Application.Services;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Enums;
 
@@ -8,10 +8,12 @@ namespace PPDO.Tests.Application;
 /// Unit tests for <see cref="PermissionService"/> (v1.2 — RAL-97 model).
 ///
 ///   SuperAdmin → true for everything (incl. allocation).
-///   Admin      → true for every flag EXCEPT CanManagePpdoAllocation.
+///   Admin      → true for every flag EXCEPT CanManagePpdoAllocation and CanManagePboCeiling.
 ///   Staff      → Override ?? user.Division.&lt;flag&gt; ?? false.
 ///   CanUploadAip is host-office-only (guest offices never).
 ///   CanManagePpdoAllocation is a per-user grant (SuperAdmin bypass; Admin not auto).
+///   CanManagePboCeiling is the same shape but a SEPARATE authority (RAL-243) --
+///   holding one must never resolve the other true.
 ///
 /// No mocks needed — PermissionService is pure logic. The "division" entity carries the flags.
 /// </summary>
@@ -36,6 +38,7 @@ public sealed class PermissionServiceTests
         bool? overrideUploadAip        = null,
         bool? overrideManageConfig     = null,
         bool? overrideAllocation       = null,
+        bool? overridePboCeiling       = null,
         bool  divBudgetPlanning        = false,
         bool  divUploadAip             = false,
         bool  divManageConfig          = false,
@@ -83,6 +86,7 @@ public sealed class PermissionServiceTests
             OverrideCanUploadAip            = overrideUploadAip,
             OverrideCanManageConfig         = overrideManageConfig,
             OverrideCanManagePpdoAllocation     = overrideAllocation,
+            OverrideCanManagePboCeiling         = overridePboCeiling,
         };
     }
 
@@ -211,6 +215,50 @@ public sealed class PermissionServiceTests
     [Fact]
     public async Task CanManagePpdoAllocation_Staff_NoOverride_ReturnsFalse()
         => Assert.False(await _sut.CanManagePpdoAllocationAsync(MakeUser(UserRole.Staff)));
+
+    // -- CanManagePboCeiling -- per-user grant (RAL-243) ---------------------------
+
+    [Fact]
+    public async Task CanManagePboCeiling_SuperAdmin_ReturnsTrue()
+        => Assert.True(await _sut.CanManagePboCeilingAsync(MakeUser(UserRole.SuperAdmin)));
+
+    [Fact]
+    public async Task CanManagePboCeiling_Admin_NotAutoGranted()
+        => Assert.False(await _sut.CanManagePboCeilingAsync(MakeUser(UserRole.Admin)));
+
+    [Fact]
+    public async Task CanManagePboCeiling_Admin_WithOverride_ReturnsTrue()
+        => Assert.True(await _sut.CanManagePboCeilingAsync(MakeUser(UserRole.Admin, overridePboCeiling: true)));
+
+    [Fact]
+    public async Task CanManagePboCeiling_Staff_WithOverride_ReturnsTrue()
+        => Assert.True(await _sut.CanManagePboCeilingAsync(MakeUser(UserRole.Staff, overridePboCeiling: true)));
+
+    [Fact]
+    public async Task CanManagePboCeiling_Staff_NoOverride_ReturnsFalse()
+        => Assert.False(await _sut.CanManagePboCeilingAsync(MakeUser(UserRole.Staff)));
+
+    [Fact]
+    public async Task CanManagePboCeiling_Staff_OverrideFalse_ReturnsFalse()
+        => Assert.False(await _sut.CanManagePboCeilingAsync(MakeUser(UserRole.Staff, overridePboCeiling: false)));
+
+    [Fact]
+    public async Task CanManagePboCeiling_OfficeUser_WithOverride_ReturnsTrue()
+        => Assert.True(await _sut.CanManagePboCeilingAsync(
+            MakeUser(UserRole.Staff, overridePboCeiling: true, officeId: 7)));
+
+    // The two allocation grants are separate authorities: neither implies the other.
+    // If either of these fails, someone has OR-ed them together in PermissionService.
+
+    [Fact]
+    public async Task CanManagePboCeiling_PpdoAllocationHolder_DoesNotImplyCeiling()
+        => Assert.False(await _sut.CanManagePboCeilingAsync(
+            MakeUser(UserRole.Staff, overrideAllocation: true)));
+
+    [Fact]
+    public async Task CanManagePpdoAllocation_PboCeilingHolder_DoesNotImplyAllocation()
+        => Assert.False(await _sut.CanManagePpdoAllocationAsync(
+            MakeUser(UserRole.Staff, overridePboCeiling: true)));
 
     // ── CanViewAuditLog — SuperAdmin-only, feature-flag gated ─────────────────
 

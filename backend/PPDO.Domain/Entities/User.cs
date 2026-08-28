@@ -113,6 +113,16 @@ public sealed class User
     /// </summary>
     public bool? OverrideCanManagePpdoAllocation { get; set; }
 
+    /// <summary>
+    /// Per-user grant for setting an office's budget ceiling (v1.8.0 — RAL-243). Held by the
+    /// Provincial Budget Office finance officer, who sets the ceiling for EVERY office —
+    /// a different authority from <see cref="OverrideCanManagePpdoAllocation"/>, which only
+    /// splits PPDO's own ceiling across its divisions. Like that flag this is NOT a division
+    /// flag. Resolution: SuperAdmin → true; everyone else →
+    /// <c>OverrideCanManagePboCeiling ?? false</c> (Admin is NOT auto-granted this).
+    /// </summary>
+    public bool? OverrideCanManagePboCeiling { get; set; }
+
     // ── Password reset (RAL-253) ────────────────────────────────────────────────
 
     /// <summary>

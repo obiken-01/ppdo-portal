@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Enums;
@@ -83,6 +83,10 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
 
         builder.Property(u => u.OverrideCanManagePpdoAllocation)
             .HasColumnName("OverrideCanManageAllocation");
+
+        // OverrideCanManagePboCeiling (RAL-243) — new nullable bit column on the legacy
+        // PascalCase Users table, so the property name IS the column name. No HasColumnName
+        // needed; unlike the line above this one was never renamed.
 
         builder.Property(u => u.RecoveryAttemptCount)
             .IsRequired()

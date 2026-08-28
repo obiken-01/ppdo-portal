@@ -102,6 +102,9 @@ export interface MeResponse {
   canUploadAip: boolean;
   canManageConfig: boolean;
   canManagePpdoAllocation: boolean;
+  /** PBO finance officer: may set ANY office's budget ceiling (RAL-243). Separate
+   *  authority from canManagePpdoAllocation — neither implies the other. */
+  canManagePboCeiling: boolean;
 
   /** True after a reset — the portal blocks everything except changing the password (RAL-266). */
   mustChangePassword: boolean;

@@ -1,4 +1,4 @@
-namespace PPDO.Application.DTOs.Users;
+﻿namespace PPDO.Application.DTOs.Users;
 
 /// <summary>
 /// Request body for <c>PUT /api/users/{id}</c>.
@@ -35,6 +35,7 @@ public sealed record UpdateUserDto(
     bool?    OverrideCanUploadAip            = null,
     bool?    OverrideCanManageConfig         = null,
     bool?    OverrideCanManagePpdoAllocation     = null,
+    bool?    OverrideCanManagePboCeiling      = null,
     /// <summary>
     /// Preferred landing page: "MainDashboard" | "InventoryDashboard" |
     /// "BudgetPlanningDashboard" | "Profile". Null = no preference (RAL-262).

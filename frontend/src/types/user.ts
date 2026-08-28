@@ -37,6 +37,7 @@ export interface UserResponse {
   overrideCanUploadAip: boolean | null;
   overrideCanManageConfig: boolean | null;
   overrideCanManagePpdoAllocation: boolean | null;
+  overrideCanManagePboCeiling: boolean | null;
 }
 
 /**
@@ -74,6 +75,7 @@ export interface UpdateUserRequest extends CreateUserRequest {
   overrideCanUploadAip: boolean | null;
   overrideCanManageConfig: boolean | null;
   overrideCanManagePpdoAllocation: boolean | null;
+  overrideCanManagePboCeiling: boolean | null;
 }
 
 // OfficeResponse / DivisionResponse live in ./config.ts — re-exported via the @/types barrel.

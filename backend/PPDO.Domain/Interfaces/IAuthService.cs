@@ -1,4 +1,4 @@
-using PPDO.Domain.Entities;
+﻿using PPDO.Domain.Entities;
 
 namespace PPDO.Domain.Interfaces;
 
@@ -219,6 +219,7 @@ public sealed class MeResponse
     public bool CanUploadAip { get; init; }
     public bool CanManageConfig { get; init; }
     public bool CanManagePpdoAllocation { get; init; }
+    public bool CanManagePboCeiling { get; init; }
 
     // -- Password / recovery gates (RAL-266/RAL-267) ---------------------------
 

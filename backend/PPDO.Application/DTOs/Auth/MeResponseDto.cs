@@ -1,4 +1,4 @@
-namespace PPDO.Application.DTOs.Auth;
+﻿namespace PPDO.Application.DTOs.Auth;
 
 /// <summary>Response body for <c>GET /api/auth/me</c>.</summary>
 public sealed class MeResponseDto
@@ -52,6 +52,7 @@ public sealed class MeResponseDto
     public bool CanUploadAip { get; init; }
     public bool CanManageConfig { get; init; }
     public bool CanManagePpdoAllocation { get; init; }
+    public bool CanManagePboCeiling { get; init; }
 
     // -- Password / recovery gates (RAL-266/RAL-267) ---------------------------
 

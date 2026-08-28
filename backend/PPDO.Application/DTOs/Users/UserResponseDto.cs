@@ -1,4 +1,4 @@
-namespace PPDO.Application.DTOs.Users;
+﻿namespace PPDO.Application.DTOs.Users;
 
 /// <summary>
 /// User record returned by all <c>/api/users</c> endpoints.
@@ -35,6 +35,7 @@ public sealed class UserResponseDto
     public bool? OverrideCanUploadAip { get; init; }
     public bool? OverrideCanManageConfig { get; init; }
     public bool? OverrideCanManagePpdoAllocation { get; init; }
+    public bool? OverrideCanManagePboCeiling { get; init; }
 
     /// <summary>
     /// This user's own landing-page preference as an enum name, or null when unset.

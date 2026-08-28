@@ -7,7 +7,10 @@
  * active funding source, RAL-154/155), distributing it among divisions, and
  * assigning AIP programs to divisions.
  *
- * Access: canManagePpdoAllocation. Hidden in sidebar for everyone else.
+ * Access: canManagePpdoAllocation OR canManagePboCeiling (RAL-243). Hidden in the sidebar
+ * for everyone else. The two grants are separate authorities and each gates its own half:
+ * canManagePboCeiling edits the ceiling (any office), canManagePpdoAllocation edits the
+ * division split and the PPA tab. A holder of one sees the other half read-only.
  * Route:  /budget-planning/allocation
  *
  * Amounts are in PESOS — no ×1000 conversion (that lives in WFP only).
@@ -169,6 +172,8 @@ function FundSection({
   onAllocationInputChange,
   onSaveAllocations,
   savingAllocations,
+  canSetCeiling,
+  canSetAllocations,
 }: {
   fund: FundingSourceResponse;
   isGeneralFund: boolean;
@@ -186,6 +191,10 @@ function FundSection({
   onAllocationInputChange: (divisionId: number, v: number | null) => void;
   onSaveAllocations: () => void;
   savingAllocations: boolean;
+  /** RAL-243: the PBO grant. Without it the ceiling is shown but not editable here. */
+  canSetCeiling: boolean;
+  /** The PPDO allocation grant. Without it the division split is read-only. */
+  canSetAllocations: boolean;
 }) {
   const allocationTotal = divisions.reduce((sum, d) => sum + (allocationInputs[d.id] ?? 0), 0);
   const isOverCeiling = (ceilingInput ?? 0) > 0 && allocationTotal > (ceilingInput ?? 0) + 0.001;
@@ -201,24 +210,36 @@ function FundSection({
 
   const body = (
     <>
-      {/* Ceiling */}
-      <div className="flex items-center gap-3 mb-1">
-        <MoneyInput value={ceilingInput} onChange={onCeilingInputChange} className="w-52" />
-        <button
-          onClick={onSaveCeiling}
-          disabled={savingCeiling || !ceilingInput || ceilingInput <= 0}
-          className="px-4 py-2 bg-green-700 text-white text-sm font-medium hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-        >
-          {savingCeiling && (
-            <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+      {/* Ceiling — editable only for the PBO ceiling officer (RAL-243). Everyone else
+          sees the saved figure, because the division split below is measured against it. */}
+      {canSetCeiling ? (
+        <div className="flex items-center gap-3 mb-1">
+          <MoneyInput value={ceilingInput} onChange={onCeilingInputChange} className="w-52" />
+          <button
+            onClick={onSaveCeiling}
+            disabled={savingCeiling || !ceilingInput || ceilingInput <= 0}
+            className="px-4 py-2 bg-green-700 text-white text-sm font-medium hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            {savingCeiling && (
+              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            )}
+            Set Ceiling
+          </button>
+        </div>
+      ) : (
+        <div className="mb-1 text-sm text-slate-800 tabular-nums">
+          Ceiling:{" "}
+          {ceiling ? (
+            <span className="font-semibold">₱{formatMoney(ceiling.amount)}</span>
+          ) : (
+            <span className="text-slate-600">not set by the Provincial Budget Office yet</span>
           )}
-          Set Ceiling
-        </button>
-      </div>
-      {ceiling && (
+        </div>
+      )}
+      {canSetCeiling && ceiling && (
         <p className="mb-4 text-xs text-slate-600">Saved ceiling: ₱{formatMoney(ceiling.amount)}</p>
       )}
-      {!ceiling && <div className="mb-4" />}
+      {(!canSetCeiling || !ceiling) && <div className="mb-4" />}
 
       {divisions.length === 0 ? (
         <p className="text-sm text-slate-600">
@@ -292,6 +313,7 @@ function FundSection({
                           value={amount}
                           onChange={(v) => onAllocationInputChange(div.id, v)}
                           className="w-48 text-sm"
+                          disabled={!canSetAllocations}
                         />
                       </div>
                     </td>
@@ -323,8 +345,14 @@ function FundSection({
           </table>
 
           <div className="mt-4 flex items-center gap-3">
+            {!canSetAllocations && (
+              <span className="text-xs text-slate-600">
+                Read-only — the division split is set by the PPDO finance officer.
+              </span>
+            )}
             <button
               onClick={onSaveAllocations}
+              hidden={!canSetAllocations}
               disabled={savingAllocations || isOverCeiling || !ceiling}
               className={`px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed flex items-center gap-2 ${
                 isOverCeiling
@@ -405,7 +433,7 @@ function FundSection({
 
 function AllocationPageInner() {
   const { toast } = useToast();
-  const me = useMe((m) => m.canManagePpdoAllocation);
+  const me = useMe((m) => m.canManagePpdoAllocation || m.canManagePboCeiling);
 
   // ── Selectors ─────────────────────────────────────────────────────────────
 
@@ -459,6 +487,13 @@ function AllocationPageInner() {
   // ── Derived ───────────────────────────────────────────────────────────────
 
   const isOfficeUser = me != null && !me.isHostOffice;
+
+  // RAL-243 — two independent grants share this page. The PBO officer sets ceilings for
+  // any office; the PPDO finance officer splits PPDO's ceiling across divisions and
+  // assigns PPAs. Holding one does not grant the other, so each half gates separately.
+  // The backend enforces both (AllocationFunctions) — this only keeps the UI honest.
+  const canSetCeiling     = me?.canManagePboCeiling === true;
+  const canSetAllocations = me?.canManagePpdoAllocation === true;
   const selectedOffice = officeList.find((o) => o.id === selectedOfficeId) ?? null;
 
   const unassignedCount = useMemo(
@@ -606,6 +641,7 @@ function AllocationPageInner() {
   // ── Tab 1: Ceiling & Allocation — per fund source ─────────────────────────
 
   async function handleSaveCeiling(fundId: number) {
+    if (!canSetCeiling) return;
     const amount = ceilingInputs[fundId];
     if (selectedOfficeId == null || amount == null || amount <= 0) return;
     setSavingCeilingFundId(fundId);
@@ -626,6 +662,7 @@ function AllocationPageInner() {
   }
 
   async function handleSaveAllocations(fundId: number) {
+    if (!canSetAllocations) return;
     const inputs = allocationInputsByFund[fundId] ?? {};
     const total = divisions.reduce((sum, d) => sum + (inputs[d.id] ?? 0), 0);
     const ceilingAmount = ceilingInputs[fundId] ?? 0;
@@ -696,6 +733,7 @@ function AllocationPageInner() {
   }
 
   async function handleSavePpa() {
+    if (!canSetAllocations) return;
     if (savingPpa || programs.length === 0) return;
     setSavingPpa(true);
     let failed = 0;
@@ -841,7 +879,10 @@ function AllocationPageInner() {
           <>
             {/* Tabs */}
             <div className="flex border-b border-slate-200 mb-6">
-              {(["ceiling", "ppa"] as const).map((tab) => (
+              {(canSetAllocations
+                ? (["ceiling", "ppa"] as const)
+                : (["ceiling"] as const)
+              ).map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
@@ -898,6 +939,8 @@ function AllocationPageInner() {
                       }
                       onSaveAllocations={() => handleSaveAllocations(fund.id)}
                       savingAllocations={savingAllocationsFundId === fund.id}
+                      canSetCeiling={canSetCeiling}
+                      canSetAllocations={canSetAllocations}
                     />
                   ))
                 )}
@@ -905,7 +948,7 @@ function AllocationPageInner() {
             )}
 
             {/* ── TAB 2: PPA → Division ────────────────────────────────────── */}
-            {activeTab === "ppa" && (
+            {activeTab === "ppa" && canSetAllocations && (
               <div>
                 {divisions.length === 0 ? (
                   <p className="text-sm text-slate-600 py-4">
