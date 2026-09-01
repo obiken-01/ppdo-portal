@@ -51,8 +51,16 @@ public sealed class AllocationServiceTests
     private static AipProgram MakeAipProgram(int id, int officeId, string refCode) =>
         new() { Id = id, OfficeId = officeId, RefCode = refCode, Name = $"Program {refCode}" };
 
-    private static ProgramDivision MakePD(int id, string offRef, string progRef, int divId) =>
-        new() { Id = id, OfficeRefCode = offRef, ProgramRefCode = progRef, DivisionId = divId };
+    private static ProgramDivision MakePD(
+        int id, string offRef, string progRef, int divId, int? officeId = 1) =>
+        new()
+        {
+            Id             = id,
+            OfficeRefCode  = offRef,
+            OfficeId       = officeId,   // RAL-249 — reads key on this, not on offRef
+            ProgramRefCode = progRef,
+            DivisionId     = divId,
+        };
 
     // ── Build factory ─────────────────────────────────────────────────────────
 
@@ -169,6 +177,19 @@ public sealed class AllocationServiceTests
             .ReturnsAsync((IReadOnlyList<string> refs, CancellationToken _) =>
                 (IReadOnlyList<ProgramDivision>)pdList
                     .Where(pd => refs.Contains(pd.OfficeRefCode)).ToList());
+
+        // RAL-249 — the office-FK reads the service now uses.
+        pdRepo.Setup(r => r.GetProgramDivisionsByOfficeIdAsync(
+                It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int officeId, CancellationToken _) =>
+                (IReadOnlyList<ProgramDivision>)pdList
+                    .Where(pd => pd.OfficeId == officeId).ToList());
+
+        pdRepo.Setup(r => r.FindProgramDivisionsByOfficeIdAsync(
+                It.IsAny<int>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int officeId, string pRef, CancellationToken _) =>
+                (IReadOnlyList<ProgramDivision>)pdList
+                    .Where(pd => pd.OfficeId == officeId && pd.ProgramRefCode == pRef).ToList());
 
         // Division repo
         divRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(divList);
@@ -425,10 +446,10 @@ public sealed class AllocationServiceTests
         Division div1 = MakeDivision(1, 1);
         Division div2 = MakeDivision(2, 1);
         (AllocationService sut, _, _, Mock<IAllocationRepository> pdRepo, _, _, _, _) =
-            Build(divisions: [div1, div2]);
+            Build(divisions: [div1, div2], offices: [MakeOffice(1)]);
 
         ServiceResult<ProgramAssignmentDto> result = await sut.UpsertProgramAssignmentAsync(
-            new("I-PPDO-01-010-01", "I-PPDO-01-010-01-001", [1, 2]));
+            new("I-PPDO-01-010", "I-PPDO-01-010-001", [1, 2]));
 
         Assert.True(result.IsSuccess);
         Assert.Equal(2, result.Value!.DivisionIds.Count);
@@ -444,14 +465,14 @@ public sealed class AllocationServiceTests
         Division div1 = MakeDivision(1, 1);
         Division div2 = MakeDivision(2, 1);
         Division div3 = MakeDivision(3, 1);
-        ProgramDivision pd1 = MakePD(1, "OFF-01", "PRG-01", 1);
-        ProgramDivision pd2 = MakePD(2, "OFF-01", "PRG-01", 2);
+        ProgramDivision pd1 = MakePD(1, "I-PPDO-01-010", "PRG-01", 1);
+        ProgramDivision pd2 = MakePD(2, "I-PPDO-01-010", "PRG-01", 2);
 
         (AllocationService sut, _, _, Mock<IAllocationRepository> pdRepo, _, _, _, _) =
-            Build(pds: [pd1, pd2], divisions: [div1, div2, div3]);
+            Build(pds: [pd1, pd2], divisions: [div1, div2, div3], offices: [MakeOffice(1)]);
 
         ServiceResult<ProgramAssignmentDto> result = await sut.UpsertProgramAssignmentAsync(
-            new("OFF-01", "PRG-01", [2, 3]));
+            new("I-PPDO-01-010", "PRG-01", [2, 3]));
 
         Assert.True(result.IsSuccess);
         Assert.Equal(2, result.Value!.DivisionIds.Count);
@@ -466,14 +487,14 @@ public sealed class AllocationServiceTests
     [Fact]
     public async Task UpsertProgramAssignment_ClearsAll_WhenEmptyList()
     {
-        ProgramDivision pd1 = MakePD(1, "OFF-01", "PRG-01", 1);
-        ProgramDivision pd2 = MakePD(2, "OFF-01", "PRG-01", 2);
+        ProgramDivision pd1 = MakePD(1, "I-PPDO-01-010", "PRG-01", 1);
+        ProgramDivision pd2 = MakePD(2, "I-PPDO-01-010", "PRG-01", 2);
 
         (AllocationService sut, _, _, Mock<IAllocationRepository> pdRepo, _, _, _, _) =
-            Build(pds: [pd1, pd2]);
+            Build(pds: [pd1, pd2], offices: [MakeOffice(1)]);
 
         ServiceResult<ProgramAssignmentDto> result = await sut.UpsertProgramAssignmentAsync(
-            new("OFF-01", "PRG-01", []));
+            new("I-PPDO-01-010", "PRG-01", []));
 
         Assert.True(result.IsSuccess);
         Assert.Empty(result.Value!.DivisionIds);
@@ -579,6 +600,89 @@ public sealed class AllocationServiceTests
         AllocationSetupStatusDto status = await sut.GetSetupStatusAsync(1, 2027, 1);
 
         Assert.False(status.HasProgramAssignment);
+    }
+
+    // ── Office FK (RAL-249) ──────────────────────────────────
+
+    [Fact]
+    public async Task UpsertProgramAssignment_SetsOfficeFk_OnNewRows()
+    {
+        Division div = MakeDivision(1, 1);
+        (AllocationService sut, _, _, Mock<IAllocationRepository> pdRepo, _, _, _, _) =
+            Build(divisions: [div], offices: [MakeOffice(1, refCode: "01-010")]);
+
+        await sut.UpsertProgramAssignmentAsync(
+            new("I-PPDO-01-010", "I-PPDO-01-010-001", [1]));
+
+        // The FK, not just the ref code — a row written without it is invisible to every read.
+        pdRepo.Verify(r => r.AddAsync(
+            It.Is<ProgramDivision>(pd => pd.OfficeId == 1 && pd.OfficeRefCode == "I-PPDO-01-010"),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpsertProgramAssignment_LongestSuffixWins_WhenTwoOfficesBothMatch()
+    {
+        // "01-010" and the more specific "1-01-010" are both suffixes of the AIP ref code.
+        // Taking the first match would file the assignment under the wrong office.
+        Division div = MakeDivision(1, 2);
+        (AllocationService sut, _, _, Mock<IAllocationRepository> pdRepo, _, _, _, _) =
+            Build(divisions: [div],
+                  offices: [MakeOffice(1, code: "AAA", refCode: "01-010"),
+                            MakeOffice(2, code: "BBB", refCode: "1-01-010")]);
+
+        await sut.UpsertProgramAssignmentAsync(
+            new("I-PPDO-1-01-010", "I-PPDO-1-01-010-001", [1]));
+
+        pdRepo.Verify(r => r.AddAsync(
+            It.Is<ProgramDivision>(pd => pd.OfficeId == 2), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task UpsertProgramAssignment_Refuses_WhenNoConfigOfficeMatches()
+    {
+        Division div = MakeDivision(1, 1);
+        (AllocationService sut, _, _, Mock<IAllocationRepository> pdRepo, _, _, _, _) =
+            Build(divisions: [div], offices: [MakeOffice(1, refCode: "01-010")]);
+
+        ServiceResult<ProgramAssignmentDto> result = await sut.UpsertProgramAssignmentAsync(
+            new("I-NOBODY-99-999", "I-NOBODY-99-999-001", [1]));
+
+        // Refuse rather than write a row with a null office_id — such a row would save
+        // successfully and then never appear on the Allocation tab again.
+        Assert.False(result.IsSuccess);
+        pdRepo.Verify(r => r.AddAsync(It.IsAny<ProgramDivision>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task GetProgramAssignments_SurvivesOfficeRefCodeChange_BecauseReadsUseTheFk()
+    {
+        // The assignment was written when the office's AIP ref code was one thing; the AIP has
+        // since been re-uploaded with a differently-formatted ref code for the same office.
+        // Before RAL-249 this silently detached the assignment and looked like missing data.
+        const string oldOfficeRef = "I-PPDO-01-010";
+        const string newOfficeRef = "1000-000-1-01-010";
+        const string progRefCode  = "PRG-001";
+
+        Office office = MakeOffice(1, refCode: "01-010");
+        Division div  = MakeDivision(1, 1);
+        ProgramDivision pd = MakePD(1, oldOfficeRef, progRefCode, 1, officeId: 1);
+
+        AipRecord rec    = MakeAipRecord(1, 2027);
+        AipOffice aipOff = MakeAipOffice(7, 1, newOfficeRef);
+        AipProgram prog  = MakeAipProgram(99, 7, progRefCode);
+
+        (AllocationService sut, _, _, _, _, _, _, _) = Build(
+            pds: [pd], divisions: [div], offices: [office],
+            aipRecords: [rec], aipOffices: [aipOff], aipPrograms: [prog]);
+
+        IReadOnlyList<ProgramAssignmentDto> result =
+            await sut.GetProgramAssignmentsAsync(1, 2027);
+
+        ProgramAssignmentDto assignment = Assert.Single(result);
+        Assert.Contains(1, assignment.DivisionIds);
     }
 
     // ── Supplemental AIP carry-forward (D6) ──────────────────────────────────

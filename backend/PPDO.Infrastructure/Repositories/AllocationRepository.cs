@@ -32,4 +32,18 @@ public sealed class AllocationRepository : Repository<ProgramDivision>, IAllocat
             .Where(pd => officeRefCodes.Contains(pd.OfficeRefCode))
             .ToListAsync(ct);
     }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<ProgramDivision>> GetProgramDivisionsByOfficeIdAsync(
+        int officeId, CancellationToken ct = default)
+        => await _context.Set<ProgramDivision>()
+            .Where(pd => pd.OfficeId == officeId)
+            .ToListAsync(ct);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<ProgramDivision>> FindProgramDivisionsByOfficeIdAsync(
+        int officeId, string programRefCode, CancellationToken ct = default)
+        => await _context.Set<ProgramDivision>()
+            .Where(pd => pd.OfficeId == officeId && pd.ProgramRefCode == programRefCode)
+            .ToListAsync(ct);
 }

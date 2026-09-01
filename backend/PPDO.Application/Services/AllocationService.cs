@@ -287,20 +287,20 @@ public sealed class AllocationService : IAllocationService
         IReadOnlyList<AipProgram> programs =
             await _aipRepo.GetProgramsByOfficeIdsAsync(officeIds, ct);
 
-        // Bulk-load program_divisions for these offices.
-        List<string> officeRefCodes = matchedOffices.Select(o => o.RefCode).ToList();
+        // Bulk-load program_divisions on the office FK (RAL-249). Previously this matched on
+        // the AIP ref code, so an edited or re-imported code silently detached the assignment
+        // and the failure looked like missing data rather than an error.
         IReadOnlyList<ProgramDivision> pds =
-            await _pdRepo.GetProgramDivisionsByOfficeRefCodesAsync(officeRefCodes, ct);
+            await _pdRepo.GetProgramDivisionsByOfficeIdAsync(officeId, ct);
 
-        // Index pds by (officeRefCode, programRefCode) for O(1) lookup.
-        Dictionary<(string, string), List<int>> divIdsByKey = [];
+        // Index by program ref code alone — office is now fixed by the query above.
+        Dictionary<string, List<int>> divIdsByProgram = [];
         foreach (ProgramDivision pd in pds)
         {
-            (string, string) key = (pd.OfficeRefCode, pd.ProgramRefCode);
-            if (!divIdsByKey.TryGetValue(key, out List<int>? list))
+            if (!divIdsByProgram.TryGetValue(pd.ProgramRefCode, out List<int>? list))
             {
                 list = [];
-                divIdsByKey[key] = list;
+                divIdsByProgram[pd.ProgramRefCode] = list;
             }
             list.Add(pd.DivisionId);
         }
@@ -312,20 +312,50 @@ public sealed class AllocationService : IAllocationService
             .Select(p =>
             {
                 AipOffice parent = officeById[p.OfficeId];
-                (string, string) key = (parent.RefCode, p.RefCode);
-                List<int> divIds = divIdsByKey.GetValueOrDefault(key, []);
+                List<int> divIds = divIdsByProgram.GetValueOrDefault(p.RefCode, []);
                 return new ProgramAssignmentDto(
                     parent.RefCode, p.RefCode, p.Name, parent.Sector, divIds.AsReadOnly());
             })
             .ToList();
     }
 
+    /// <summary>
+    /// Resolves an AIP office ref code (<c>1000-000-1-01-010</c>) to the config <c>offices</c>
+    /// row whose <c>OfficeRefCode</c> it ends with (<c>01-010</c>) — RAL-249.
+    ///
+    /// <b>Longest match wins.</b> Two config offices can both be suffixes of one AIP ref code;
+    /// taking the first match would attach the assignment to whichever office happened to sort
+    /// first. The migration's backfill uses the same rule, deliberately, so a row written here
+    /// and a row backfilled there resolve identically.
+    /// </summary>
+    private async Task<int?> ResolveConfigOfficeIdAsync(
+        string aipOfficeRefCode, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(aipOfficeRefCode)) return null;
+
+        IReadOnlyList<Office> offices = await GetAllOfficesAsync(ct);
+        return offices
+            .Where(o => !string.IsNullOrWhiteSpace(o.OfficeRefCode)
+                     && aipOfficeRefCode.EndsWith(o.OfficeRefCode!, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(o => o.OfficeRefCode!.Length)
+            .Select(o => (int?)o.Id)
+            .FirstOrDefault();
+    }
+
     public async Task<ServiceResult<ProgramAssignmentDto>> UpsertProgramAssignmentAsync(
         UpsertProgramAssignmentDto dto, CancellationToken ct = default)
     {
-        // Load current rows for this (officeRefCode, programRefCode) pair.
+        // The office FK is resolved once, up front. Refusing here beats writing a row with a
+        // null office_id: an unlinked row is invisible to every read path below.
+        int? officeId = await ResolveConfigOfficeIdAsync(dto.OfficeRefCode, ct);
+        if (officeId is null)
+            return ServiceResult<ProgramAssignmentDto>.BadRequest(
+                $"No configured office matches the AIP office ref code '{dto.OfficeRefCode}'. " +
+                "Set the office's AIP ref code in Config → Offices first.");
+
+        // Load current rows for this (office, programRefCode) pair.
         IReadOnlyList<ProgramDivision> existing =
-            await _pdRepo.FindProgramDivisionsAsync(dto.OfficeRefCode, dto.ProgramRefCode, ct);
+            await _pdRepo.FindProgramDivisionsByOfficeIdAsync(officeId.Value, dto.ProgramRefCode, ct);
 
         HashSet<int> currentDivIds  = existing.Select(pd => pd.DivisionId).ToHashSet();
         HashSet<int> desiredDivIds  = dto.DivisionIds.ToHashSet();
@@ -343,7 +373,8 @@ public sealed class AllocationService : IAllocationService
         {
             ProgramDivision entity = new()
             {
-                OfficeRefCode  = dto.OfficeRefCode,
+                OfficeRefCode  = dto.OfficeRefCode,   // kept as the AIP-side re-link key
+                OfficeId       = officeId,
                 ProgramRefCode = dto.ProgramRefCode,
                 DivisionId     = divId,
             };
@@ -356,7 +387,7 @@ public sealed class AllocationService : IAllocationService
 
         // Reload to return accurate state.
         IReadOnlyList<ProgramDivision> updated =
-            await _pdRepo.FindProgramDivisionsAsync(dto.OfficeRefCode, dto.ProgramRefCode, ct);
+            await _pdRepo.FindProgramDivisionsByOfficeIdAsync(officeId.Value, dto.ProgramRefCode, ct);
         List<int> divIds = updated.Select(pd => pd.DivisionId).ToList();
 
         return ServiceResult<ProgramAssignmentDto>.Ok(
@@ -408,7 +439,7 @@ public sealed class AllocationService : IAllocationService
                 if (matchedRefs.Count > 0)
                 {
                     IReadOnlyList<ProgramDivision> pds =
-                        await _pdRepo.GetProgramDivisionsByOfficeRefCodesAsync(matchedRefs, ct);
+                        await _pdRepo.GetProgramDivisionsByOfficeIdAsync(officeId, ct);
                     hasProgramAssignment = pds.Any(pd => pd.DivisionId == divisionId);
                 }
             }
