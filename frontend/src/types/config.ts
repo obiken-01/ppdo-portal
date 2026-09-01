@@ -325,3 +325,25 @@ export interface UpsertClimateChangeTypologyRequest {
   description?: string | null;
   isActive: boolean;
 }
+
+/**
+ * An eSRE classification code — RAL-248. A closed vocabulary of four: SS (Social Services),
+ * ES (Economic Services), ID (Institutional Development), EN (Environmental Services).
+ *
+ * `code` is stored upper-case; `name` is what the picker labels the option with.
+ */
+export interface EsreCodeResponse {
+  id: number;
+  code: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+}
+
+/** Create/update body. `code` is the unique key and is upper-cased server-side. */
+export interface UpsertEsreCodeRequest {
+  code: string;
+  name: string;
+  description?: string | null;
+  isActive: boolean;
+}

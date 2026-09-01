@@ -75,6 +75,10 @@ public sealed class AppDbContext : DbContext
 
     public DbSet<StockBalance> StockBalances { get; set; } = null!;
 
+
+    // ── v1.8 New AIP| eSRE Codes (RAL-248) ─────────────────────────────────
+    public DbSet<EsreCode> EsreCodes { get; set; } = null!;
+
     // ── Model configuration ───────────────────────────────────────────────────
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

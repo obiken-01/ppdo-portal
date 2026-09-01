@@ -19,6 +19,7 @@ import type {
   CsvImportResult,
   DivisionResponse,
   ClimateChangeTypologyResponse,
+  EsreCodeResponse,
   FundingSourceResponse,
   OfficeResponse,
   PriceIndexItemResponse,
@@ -28,6 +29,7 @@ import type {
   UpsertAccountRequest,
   UpsertDivisionRequest,
   UpsertClimateChangeTypologyRequest,
+  UpsertEsreCodeRequest,
   UpsertFundingSourceRequest,
   UpsertOfficeRequest,
   UpsertPriceIndexItemRequest,
@@ -602,6 +604,61 @@ export async function updateCcTypology(
 export async function deactivateCcTypology(id: number): Promise<ClimateChangeTypologyResponse> {
   const { data } = await api.delete<ApiResponse<ClimateChangeTypologyResponse>>(
     `/config/cc-typologies/${id}`,
+  );
+  return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// ESRE codes (RAL-248)
+// ---------------------------------------------------------------------------
+
+export interface EsreCodeListParams {
+  search?: string;
+  active?: ActiveFilter;
+}
+
+/** GET /api/config/esre-codes — readable by any authenticated user (AIP picker data). */
+export async function listEsreCodes(
+  params: EsreCodeListParams = {},
+): Promise<EsreCodeResponse[]> {
+  const query: Record<string, string> = {};
+  if (params.search?.trim()) query.search = params.search.trim();
+  if (params.active) query.active = params.active;
+
+  const { data } = await api.get<ApiResponse<EsreCodeResponse[]>>(
+    "/config/esre-codes",
+    { params: query },
+  );
+  return unwrap(data);
+}
+
+/** POST /api/config/esre-codes */
+export async function createEsreCode(
+  body: UpsertEsreCodeRequest,
+): Promise<EsreCodeResponse> {
+  const { data } = await api.post<ApiResponse<EsreCodeResponse>>(
+    "/config/esre-codes",
+    body,
+  );
+  return unwrap(data);
+}
+
+/** PUT /api/config/esre-codes/{id} */
+export async function updateEsreCode(
+  id: number,
+  body: UpsertEsreCodeRequest,
+): Promise<EsreCodeResponse> {
+  const { data } = await api.put<ApiResponse<EsreCodeResponse>>(
+    `/config/esre-codes/${id}`,
+    body,
+  );
+  return unwrap(data);
+}
+
+/** DELETE /api/config/esre-codes/{id} — soft delete; the row stays, is_active goes false. */
+export async function deactivateEsreCode(id: number): Promise<EsreCodeResponse> {
+  const { data } = await api.delete<ApiResponse<EsreCodeResponse>>(
+    `/config/esre-codes/${id}`,
   );
   return unwrap(data);
 }
