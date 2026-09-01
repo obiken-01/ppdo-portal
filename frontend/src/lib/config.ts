@@ -18,6 +18,7 @@ import type {
   AuditLogPage,
   CsvImportResult,
   DivisionResponse,
+  ClimateChangeTypologyResponse,
   FundingSourceResponse,
   OfficeResponse,
   PriceIndexItemResponse,
@@ -26,6 +27,7 @@ import type {
   ProcurementPresetResponse,
   UpsertAccountRequest,
   UpsertDivisionRequest,
+  UpsertClimateChangeTypologyRequest,
   UpsertFundingSourceRequest,
   UpsertOfficeRequest,
   UpsertPriceIndexItemRequest,
@@ -546,5 +548,60 @@ export async function listAuditLog(params: AuditLogListParams = {}): Promise<Aud
 /** GET /api/config/audit-log/tables — distinct table names, drives the table filter dropdown. */
 export async function listAuditLogTableNames(): Promise<string[]> {
   const { data } = await api.get<ApiResponse<string[]>>("/config/audit-log/tables");
+  return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// Climate change typologies (RAL-247)
+// ---------------------------------------------------------------------------
+
+export interface CcTypologyListParams {
+  search?: string;
+  active?: ActiveFilter;
+}
+
+/** GET /api/config/cc-typologies — readable by any authenticated user (AIP picker data). */
+export async function listCcTypologies(
+  params: CcTypologyListParams = {},
+): Promise<ClimateChangeTypologyResponse[]> {
+  const query: Record<string, string> = {};
+  if (params.search?.trim()) query.search = params.search.trim();
+  if (params.active) query.active = params.active;
+
+  const { data } = await api.get<ApiResponse<ClimateChangeTypologyResponse[]>>(
+    "/config/cc-typologies",
+    { params: query },
+  );
+  return unwrap(data);
+}
+
+/** POST /api/config/cc-typologies */
+export async function createCcTypology(
+  body: UpsertClimateChangeTypologyRequest,
+): Promise<ClimateChangeTypologyResponse> {
+  const { data } = await api.post<ApiResponse<ClimateChangeTypologyResponse>>(
+    "/config/cc-typologies",
+    body,
+  );
+  return unwrap(data);
+}
+
+/** PUT /api/config/cc-typologies/{id} */
+export async function updateCcTypology(
+  id: number,
+  body: UpsertClimateChangeTypologyRequest,
+): Promise<ClimateChangeTypologyResponse> {
+  const { data } = await api.put<ApiResponse<ClimateChangeTypologyResponse>>(
+    `/config/cc-typologies/${id}`,
+    body,
+  );
+  return unwrap(data);
+}
+
+/** DELETE /api/config/cc-typologies/{id} — soft delete; the row stays, is_active goes false. */
+export async function deactivateCcTypology(id: number): Promise<ClimateChangeTypologyResponse> {
+  const { data } = await api.delete<ApiResponse<ClimateChangeTypologyResponse>>(
+    `/config/cc-typologies/${id}`,
+  );
   return unwrap(data);
 }

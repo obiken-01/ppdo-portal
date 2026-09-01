@@ -143,6 +143,7 @@ var host = new HostBuilder()
         services.AddScoped<IDivisionService, DivisionService>();
         services.AddScoped<IAccountService, AccountService>();
         services.AddScoped<IFundingSourceService, FundingSourceService>();
+        services.AddScoped<IClimateChangeTypologyService, ClimateChangeTypologyService>();
         services.AddScoped<IPriceIndexService, PriceIndexService>();
         services.AddScoped<IAuditLogService, AuditLogService>();
         services.AddScoped<IProcurementPresetRepository, ProcurementPresetRepository>();

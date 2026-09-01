@@ -36,6 +36,7 @@ public sealed class AppDbContext : DbContext
 
     public DbSet<Office> Offices { get; set; } = null!;
     public DbSet<FundingSource> FundingSources { get; set; } = null!;
+    public DbSet<ClimateChangeTypology> ClimateChangeTypologies { get; set; } = null!;
     public DbSet<Account> Accounts { get; set; } = null!;
     public DbSet<LdipRecord> LdipRecords { get; set; } = null!;
     public DbSet<LdipOffice> LdipOffices { get; set; } = null!;
