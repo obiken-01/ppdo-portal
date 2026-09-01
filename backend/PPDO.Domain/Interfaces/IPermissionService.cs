@@ -1,4 +1,4 @@
-using PPDO.Domain.Entities;
+﻿using PPDO.Domain.Entities;
 
 namespace PPDO.Domain.Interfaces;
 
@@ -87,6 +87,40 @@ public interface IPermissionService
     /// Neither implies the other.
     /// </summary>
     Task<bool> CanManagePboCeilingAsync(User user, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// True when the user is a budget-planning REVIEWER for their office (v1.8.0 - RAL-244):
+    /// the department head who checks the office's work and is the sole authority to submit it.
+    /// Per-user grant only: SuperAdmin -> true; everyone else -> OverrideCanReviewBudgetPlanning
+    /// ?? false. Admin is NOT auto-granted this.
+    ///
+    /// Named for budget planning rather than AIP on purpose - LDIP and WFP reuse the same
+    /// reviewer once their workflows land.
+    ///
+    /// GRANT ONLY. This says nothing about what a reviewer may write. There are TWO reviewer
+    /// kinds and they differ precisely on that point: the department-head reviewer (this flag)
+    /// MAY edit values during review, while the PPDO consolidated reviewer (RAL-257) may only
+    /// comment. So RAL-256's write-denial guard must key on WHICH reviewer role the caller
+    /// holds - a single "is a reviewer, therefore read-only" check would wrongly freeze the
+    /// department head out of the edits the review exists to make.
+    /// </summary>
+    Task<bool> CanReviewBudgetPlanningAsync(User user, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// True when the user may review EVERY office's budget-planning work (v1.8.0 — RAL-257).
+    /// Per-user grant only: SuperAdmin -> true; everyone else -> OverrideCanReviewAllOffices ??
+    /// false. Admin is NOT auto-granted this.
+    ///
+    /// The first CROSS-OFFICE permission here. Every other flag narrows to the caller's own
+    /// office; this one widens past it. A holder may carry an OfficeId and that must not narrow
+    /// what they review — feed this result to OfficeScope.ResolveForReview rather than
+    /// OfficeScope.Resolve.
+    ///
+    /// Resolved SEPARATELY from <see cref="CanReviewBudgetPlanningAsync"/>, even for a person
+    /// holding both. Building this as "reviewer + all offices" would inherit the department-head
+    /// reviewer's write rule, which is a different rule with a different intent (RAL-256).
+    /// </summary>
+    Task<bool> CanReviewAllOfficesAsync(User user, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// True when the user may view the Audit Log config page. Gated behind a feature flag

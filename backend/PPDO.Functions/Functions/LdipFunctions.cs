@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using PPDO.Application.Common;
@@ -93,7 +93,7 @@ public sealed class LdipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/ldip")] HttpRequestData req,
         CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         CreateLdipDto? body = await ConfigHttp.ReadBodyAsync<CreateLdipDto>(req, ct);
@@ -116,7 +116,7 @@ public sealed class LdipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "budget-planning/ldip/{id:int}")] HttpRequestData req,
         int id, CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         HttpResponseData? forbidden = await DenyForeignOfficeAsync(req, caller!, id, ct);
@@ -143,7 +143,7 @@ public sealed class LdipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "budget-planning/ldip/{id:int}/programs/{programId:int}")] HttpRequestData req,
         int id, int programId, CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanUpload, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanUpload, ct);
         if (denied is not null) return denied;
 
         SaveLdipProgramDto? body = await ConfigHttp.ReadBodyAsync<SaveLdipProgramDto>(req, ct);
@@ -161,7 +161,7 @@ public sealed class LdipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "budget-planning/ldip/{id:int}")] HttpRequestData req,
         int id, CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         HttpResponseData? forbidden = await DenyForeignOfficeAsync(req, caller!, id, ct);
@@ -176,7 +176,7 @@ public sealed class LdipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/ldip/{id:int}/finalize")] HttpRequestData req,
         int id, CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         HttpResponseData? forbidden = await DenyForeignOfficeAsync(req, caller!, id, ct);
@@ -191,7 +191,7 @@ public sealed class LdipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/ldip/{id:int}/unlock")] HttpRequestData req,
         int id, CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         if (caller!.Role is not (UserRole.SuperAdmin or UserRole.Admin))
@@ -213,7 +213,7 @@ public sealed class LdipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/ldip/upload")] HttpRequestData req,
         CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanUpload, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanUpload, ct);
         if (denied is not null) return denied;
 
         if (!int.TryParse(req.Query["fiscalYearStart"], out int fyStart) || fyStart < 2000)
@@ -244,7 +244,7 @@ public sealed class LdipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/ldip/confirm")] HttpRequestData req,
         CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanUpload, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanUpload, ct);
         if (denied is not null) return denied;
 
         LdipImportConfirmDto? body = await ConfigHttp.ReadBodyAsync<LdipImportConfirmDto>(req, ct);

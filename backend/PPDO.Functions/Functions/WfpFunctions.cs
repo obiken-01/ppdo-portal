@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using PPDO.Application.Common;
@@ -99,7 +99,7 @@ public sealed class WfpFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/wfp")] HttpRequestData req,
         CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         SaveWfpDto? body = await ConfigHttp.ReadBodyAsync<SaveWfpDto>(req, ct);
@@ -122,7 +122,7 @@ public sealed class WfpFunctions
             Route = "budget-planning/wfp/activities/ensure")] HttpRequestData req,
         CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         EnsureWfpActivityDto? body = await ConfigHttp.ReadBodyAsync<EnsureWfpActivityDto>(req, ct);
@@ -142,7 +142,7 @@ public sealed class WfpFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/wfp/{id:int}/finalize")] HttpRequestData req,
         int id, CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         return await ConfigHttp.FromResultAsync(req, await _wfp.FinalizeAsync(id, ct), ct);
@@ -154,7 +154,7 @@ public sealed class WfpFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/wfp/{id:int}/unlock")] HttpRequestData req,
         int id, CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         if (caller!.Role is not (UserRole.SuperAdmin or UserRole.Admin))
