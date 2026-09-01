@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using PPDO.Application.Common;
@@ -84,7 +84,7 @@ public sealed class AipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/aip/upload")] HttpRequestData req,
         CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanUpload, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanUpload, ct);
         if (denied is not null) return denied;
 
         if (!int.TryParse(req.Query["fiscalYear"], out int fiscalYear) || fiscalYear < 2000)
@@ -113,7 +113,7 @@ public sealed class AipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/aip/confirm")] HttpRequestData req,
         CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanUpload, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanUpload, ct);
         if (denied is not null) return denied;
 
         AipImportConfirmDto? body = await ConfigHttp.ReadBodyAsync<AipImportConfirmDto>(req, ct);
@@ -134,7 +134,7 @@ public sealed class AipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/aip")] HttpRequestData req,
         CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         CreateAipRecordDto? body = await ConfigHttp.ReadBodyAsync<CreateAipRecordDto>(req, ct);
@@ -152,7 +152,7 @@ public sealed class AipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/aip/{aipId:int}/offices")] HttpRequestData req,
         int aipId, CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         CreateAipOfficeDto? body = await ConfigHttp.ReadBodyAsync<CreateAipOfficeDto>(req, ct);
@@ -174,7 +174,7 @@ public sealed class AipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/aip/copy-office")] HttpRequestData req,
         CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         CopyAipOfficeDto? body = await ConfigHttp.ReadBodyAsync<CopyAipOfficeDto>(req, ct);
@@ -195,7 +195,7 @@ public sealed class AipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/aip/seed-programs-from-ldip")] HttpRequestData req,
         CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         SeedAipProgramsFromLdipDto? body = await ConfigHttp.ReadBodyAsync<SeedAipProgramsFromLdipDto>(req, ct);
@@ -213,7 +213,7 @@ public sealed class AipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/aip/offices/{officeId:int}/programs")] HttpRequestData req,
         int officeId, CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         CreateAipProgramDto? body = await ConfigHttp.ReadBodyAsync<CreateAipProgramDto>(req, ct);
@@ -231,7 +231,7 @@ public sealed class AipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/aip/programs/{programId:int}/projects")] HttpRequestData req,
         int programId, CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         CreateAipProjectDto? body = await ConfigHttp.ReadBodyAsync<CreateAipProjectDto>(req, ct);
@@ -249,7 +249,7 @@ public sealed class AipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/aip/projects/{projectId:int}/activities")] HttpRequestData req,
         int projectId, CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         CreateAipActivityDto? body = await ConfigHttp.ReadBodyAsync<CreateAipActivityDto>(req, ct);
@@ -268,7 +268,7 @@ public sealed class AipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "budget-planning/aip/offices/{officeId:int}")] HttpRequestData req,
         int officeId, CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         UpdateAipOfficeDto? body = await ConfigHttp.ReadBodyAsync<UpdateAipOfficeDto>(req, ct);
@@ -285,7 +285,7 @@ public sealed class AipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "budget-planning/aip/programs/{programId:int}")] HttpRequestData req,
         int programId, CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         UpdateAipProgramDto? body = await ConfigHttp.ReadBodyAsync<UpdateAipProgramDto>(req, ct);
@@ -302,7 +302,7 @@ public sealed class AipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "budget-planning/aip/projects/{projectId:int}")] HttpRequestData req,
         int projectId, CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         UpdateAipProjectDto? body = await ConfigHttp.ReadBodyAsync<UpdateAipProjectDto>(req, ct);
@@ -321,7 +321,7 @@ public sealed class AipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "budget-planning/aip/{id:int}/activities/{activityId:int}")] HttpRequestData req,
         int id, int activityId, CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         UpdateAipActivityDto? body = await ConfigHttp.ReadBodyAsync<UpdateAipActivityDto>(req, ct);
@@ -340,7 +340,7 @@ public sealed class AipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "budget-planning/aip/offices/{officeId:int}")] HttpRequestData req,
         int officeId, CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         return await ConfigHttp.FromResultAsync(req, await _aip.DeleteOfficeAsync(officeId, ct), ct);
@@ -354,7 +354,7 @@ public sealed class AipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "budget-planning/aip/programs/{programId:int}")] HttpRequestData req,
         int programId, CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         return await ConfigHttp.FromResultAsync(req, await _aip.DeleteProgramAsync(programId, ct), ct);
@@ -366,7 +366,7 @@ public sealed class AipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "budget-planning/aip/projects/{projectId:int}")] HttpRequestData req,
         int projectId, CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         return await ConfigHttp.FromResultAsync(req, await _aip.DeleteProjectAsync(projectId, ct), ct);
@@ -378,7 +378,7 @@ public sealed class AipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "budget-planning/aip/activities/{activityId:int}")] HttpRequestData req,
         int activityId, CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         return await ConfigHttp.FromResultAsync(req, await _aip.DeleteActivityAsync(activityId, ct), ct);
@@ -390,7 +390,7 @@ public sealed class AipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "budget-planning/aip/{id:int}")] HttpRequestData req,
         int id, CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         return await ConfigHttp.FromResultAsync(req, await _aip.ArchiveAsync(id, ct), ct);
@@ -402,7 +402,7 @@ public sealed class AipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/aip/{id:int}/finalize")] HttpRequestData req,
         int id, CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         return await ConfigHttp.FromResultAsync(req, await _aip.FinalizeAsync(id, ct), ct);
@@ -414,7 +414,7 @@ public sealed class AipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/aip/{id:int}/unlock")] HttpRequestData req,
         int id, CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         if (caller!.Role is not (UserRole.SuperAdmin or UserRole.Admin))
@@ -431,7 +431,7 @@ public sealed class AipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "budget-planning/aip/programs/{id:int}/function-band")] HttpRequestData req,
         int id, CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         UpdateAipProgramFunctionBandDto? body = await ConfigHttp.ReadBodyAsync<UpdateAipProgramFunctionBandDto>(req, ct);
@@ -450,7 +450,7 @@ public sealed class AipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "budget-planning/aip/activities/{id:int}/is-creation")] HttpRequestData req,
         int id, CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         UpdateAipActivityIsCreationDto? body = await ConfigHttp.ReadBodyAsync<UpdateAipActivityIsCreationDto>(req, ct);

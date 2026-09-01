@@ -39,6 +39,7 @@ export interface UserResponse {
   overrideCanManagePpdoAllocation: boolean | null;
   overrideCanManagePboCeiling: boolean | null;
   overrideCanReviewBudgetPlanning: boolean | null;
+  overrideCanReviewAllOffices: boolean | null;
 }
 
 /**
@@ -78,6 +79,7 @@ export interface UpdateUserRequest extends CreateUserRequest {
   overrideCanManagePpdoAllocation: boolean | null;
   overrideCanManagePboCeiling: boolean | null;
   overrideCanReviewBudgetPlanning: boolean | null;
+  overrideCanReviewAllOffices: boolean | null;
 }
 
 // OfficeResponse / DivisionResponse live in ./config.ts — re-exported via the @/types barrel.

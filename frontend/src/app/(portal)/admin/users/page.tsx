@@ -73,6 +73,7 @@ const OVERRIDE_KEYS: {
   { key: "overrideCanManagePpdoAllocation",     label: "Manage PPDO Allocation (finance officer)", adminOnly: true },
   { key: "overrideCanManagePboCeiling",         label: "Set Budget Ceiling (PBO officer)", adminOnly: true },
   { key: "overrideCanReviewBudgetPlanning",     label: "Review Budget Planning (reviewer)", adminOnly: true },
+  { key: "overrideCanReviewAllOffices",         label: "Review All Offices (cross-office)", adminOnly: true },
 ];
 
 /** Tabs in the Add/Edit User modal (RAL-268). */
@@ -765,6 +766,7 @@ export default function UsersPage() {
       overrideCanManagePpdoAllocation:     user.overrideCanManagePpdoAllocation,
       overrideCanManagePboCeiling:         user.overrideCanManagePboCeiling,
       overrideCanReviewBudgetPlanning:     user.overrideCanReviewBudgetPlanning,
+      overrideCanReviewAllOffices:         user.overrideCanReviewAllOffices,
     });
     setFormError(null);
   }

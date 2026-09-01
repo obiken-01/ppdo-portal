@@ -1,0 +1,58 @@
+/**
+ * The allocation page wears two names, depending on who is reading it (v1.8.0).
+ *
+ * A **PPDO finance officer** (`canManagePpdoAllocation`) sets the ceiling *and* splits it
+ * across PPDO's divisions. For them the page is "Allocation", and it says so throughout.
+ *
+ * A **PBO finance officer** (`canManagePboCeiling` alone) sets ceilings for any office and
+ * need not be a PPDO employee at all. The division split is PPDO's own internal mechanic —
+ * division is a scoping axis only for the host office, settled in `BudgetPlanningScope`
+ * (RAL-250) — so for that reader the page is "Budget Ceilings" and the word "division"
+ * does not appear on it anywhere. Hiding the controls but keeping the vocabulary would
+ * still leave them asking what a division split is and whether they were meant to do one.
+ *
+ * The sidebar link, the breadcrumb, the page header and the tab strip all read their text
+ * from here, so those four cannot drift apart the way three copies of `APP_VERSION` did.
+ */
+
+/** The slice of `MeResponse` these labels turn on. */
+export interface AllocationLabelSubject {
+  canManagePpdoAllocation?: boolean;
+}
+
+export interface AllocationLabels {
+  /** Sidebar link and breadcrumb leaf. */
+  nav: string;
+  /** `ConfigPageHeader` title. */
+  title: string;
+  /** `ConfigPageHeader` description. */
+  description: string;
+  /** Label of the first tab. */
+  ceilingTab: string;
+  /** Helper line above the fund-source list. */
+  ceilingIntro: string;
+}
+
+export function allocationLabels(me: AllocationLabelSubject | null): AllocationLabels {
+  // Anyone reaching this page without the PPDO grant holds the PBO one — the page
+  // redirects users with neither (see the useMe guard on the page itself).
+  if (me?.canManagePpdoAllocation) {
+    return {
+      nav:         "Allocation",
+      title:       "Allocation",
+      description: "Set office budget ceilings and per-division allocation splits by fund source.",
+      ceilingTab:  "Ceiling & Division Allocation",
+      ceilingIntro:
+        "One ceiling and division split per active fund source. General Fund is required; others are optional.",
+    };
+  }
+
+  return {
+    nav:         "Budget Ceilings",
+    title:       "Budget Ceilings",
+    description: "Set each office's budget ceiling by fund source.",
+    ceilingTab:  "Ceilings",
+    ceilingIntro:
+      "One ceiling per active fund source. General Fund is required; others are optional.",
+  };
+}

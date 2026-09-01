@@ -108,6 +108,9 @@ export interface MeResponse {
   /** This user is their office's budget-planning reviewer (RAL-244). A grant only —
    *  what a reviewer may write is decided by RAL-256's guard, not by this flag. */
   canReviewBudgetPlanning: boolean;
+  /** This user reviews EVERY office's budget-planning work (RAL-257) — the one flag that
+   *  widens data scope past the caller's own office. Read scope only. */
+  canReviewAllOffices: boolean;
 
   /** True after a reset — the portal blocks everything except changing the password (RAL-266). */
   mustChangePassword: boolean;

@@ -25,6 +25,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import api from "@/lib/api";
+import { allocationLabels } from "@/lib/budget-planning-labels";
 import { auth } from "@/lib/auth";
 import { clearMeCache } from "@/lib/me-cache";
 import { APP_VERSION } from "@/lib/version";
@@ -353,7 +354,7 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
                 {(me?.canManagePpdoAllocation || me?.canManagePboCeiling) && (
                   <Link href="/budget-planning/allocation" className={childLinkCls(isActive("/budget-planning/allocation"))}>
                     <span className="text-xs">•</span>
-                    <span className="truncate">Allocation</span>
+                    <span className="truncate">{allocationLabels(me).nav}</span>
                   </Link>
                 )}
                 <Link href="/budget-planning/wfp/entry" className={childLinkCls(isActive("/budget-planning/wfp"))}>

@@ -1,4 +1,4 @@
-using PPDO.Application.Common;
+﻿using PPDO.Application.Common;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Enums;
 
@@ -94,6 +94,88 @@ public sealed class OfficeScopeTests
         Assert.Equal(OfficeScope.NoOffice, scope.OfficeId);
         Assert.False(scope.Permits(1));
         Assert.False(scope.Permits(null));
+    }
+
+
+    // -- ResolveForReview -- the cross-office read bypass (RAL-257) ------------
+
+    /// <summary>
+    /// THE case the ticket flags as most likely to be got wrong: a cross-office reviewer who
+    /// sits in a real office. Their own office must be IGNORED, not combined -- a reviewer in
+    /// GSO reviews every office, not GSO's rows plus everyone else's.
+    /// </summary>
+    [Fact]
+    public void ResolveForReview_CrossOfficeReviewerInAGuestOffice_SeesEveryOffice()
+    {
+        OfficeScope scope = OfficeScope.ResolveForReview(
+            MakeUser(UserRole.Staff, GuestOffice), canReviewAllOffices: true);
+
+        Assert.True(scope.SeeAll);
+        Assert.Null(scope.OfficeId);
+        Assert.True(scope.Permits(1));
+        Assert.True(scope.Permits(42));
+        Assert.True(scope.Permits(99));
+    }
+
+    /// <summary>A non-holder is completely unaffected -- ResolveForReview degrades to Resolve.</summary>
+    [Fact]
+    public void ResolveForReview_WithoutTheGrant_MatchesResolve()
+    {
+        User user = MakeUser(UserRole.Staff, GuestOffice);
+
+        OfficeScope review = OfficeScope.ResolveForReview(user, canReviewAllOffices: false);
+        OfficeScope plain  = OfficeScope.Resolve(user);
+
+        Assert.Equal(plain.SeeAll,   review.SeeAll);
+        Assert.Equal(plain.OfficeId, review.OfficeId);
+        Assert.False(review.SeeAll);
+        Assert.Equal(42, review.OfficeId);
+    }
+
+    /// <summary>
+    /// The containment guarantee. Resolve feeds the WRITE paths through Clamp, so it must never
+    /// learn this flag: that would silently promote a cross-office reviewer into a cross-office
+    /// editor of every office's data, with no diff at any write site to notice it. If this test
+    /// fails, the two methods have been "simplified" back together.
+    /// </summary>
+    [Fact]
+    public void Resolve_IgnoresTheCrossOfficeGrant_SoWritePathsStayScoped()
+    {
+        User reviewer = MakeUser(UserRole.Staff, GuestOffice);
+        reviewer.OverrideCanReviewAllOffices = true;
+
+        OfficeScope writeScope = OfficeScope.Resolve(reviewer);
+
+        Assert.False(writeScope.SeeAll);
+        Assert.Equal(42, writeScope.OfficeId);
+        Assert.Equal(42, writeScope.Clamp(requestedOfficeId: 7));
+        Assert.False(writeScope.Permits(7));
+    }
+
+    /// <summary>A host-office caller already saw everything; the grant changes nothing for them.</summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ResolveForReview_HostOfficeUser_SeesEveryOfficeEitherWay(bool canReviewAllOffices)
+    {
+        OfficeScope scope = OfficeScope.ResolveForReview(
+            MakeUser(UserRole.Staff, HostOffice), canReviewAllOffices);
+
+        Assert.True(scope.SeeAll);
+    }
+
+    /// <summary>
+    /// The grant is not a substitute for having an office. A holder with no office row still
+    /// gets the bypass -- the flag is the authority, and the unassigned-sees-nothing rule is
+    /// about the ABSENCE of a grant, not an override of one.
+    /// </summary>
+    [Fact]
+    public void ResolveForReview_HolderWithNoOffice_StillSeesEveryOffice()
+    {
+        OfficeScope scope = OfficeScope.ResolveForReview(
+            MakeUser(UserRole.Staff, office: null), canReviewAllOffices: true);
+
+        Assert.True(scope.SeeAll);
     }
 
     /// <summary>

@@ -1,4 +1,4 @@
-using PPDO.Domain.Enums;
+﻿using PPDO.Domain.Enums;
 using Microsoft.Extensions.Logging;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.Config;
@@ -103,7 +103,7 @@ public sealed class OfficeService : IOfficeService
         _logger.LogInformation("Office created. OfficeCode: {OfficeCode}", entity.OfficeCode);
         await _audit.LogAsync("offices", entity.Id, AuditAction.Create,
             oldValues: null,
-            newValues: new { entity.OfficeCode, entity.OfficeName, entity.OfficeRefCode, entity.IsActive },
+            newValues: AuditSnapshot(entity),
             cancellationToken);
         return ServiceResult<OfficeDto>.Ok(MapToDto(entity));
     }
@@ -130,7 +130,7 @@ public sealed class OfficeService : IOfficeService
         if (all.Any(o => o.Id != id && o.OfficeCode.Equals(code, StringComparison.OrdinalIgnoreCase)))
             return ServiceResult<OfficeDto>.Conflict($"Office code '{code}' already exists.");
 
-        var oldSnapshot = new { entity.OfficeCode, entity.OfficeName, entity.OfficeRefCode, entity.IsActive };
+        object oldSnapshot = AuditSnapshot(entity);
 
         entity.OfficeCode    = code;
         entity.OfficeName    = dto.OfficeName.Trim();
@@ -143,7 +143,7 @@ public sealed class OfficeService : IOfficeService
         await _repo.SaveChangesAsync(cancellationToken);
         await _audit.LogAsync("offices", entity.Id, AuditAction.Update,
             oldValues: oldSnapshot,
-            newValues: new { entity.OfficeCode, entity.OfficeName, entity.OfficeRefCode, entity.IsActive },
+            newValues: AuditSnapshot(entity),
             cancellationToken);
         return ServiceResult<OfficeDto>.Ok(MapToDto(entity));
     }
@@ -163,7 +163,7 @@ public sealed class OfficeService : IOfficeService
 
         _logger.LogInformation("Office deactivated. OfficeCode: {OfficeCode}", entity.OfficeCode);
         await _audit.LogAsync("offices", entity.Id, AuditAction.Delete,
-            oldValues: new { IsActive = true },
+            oldValues: AuditSnapshot(entity),
             newValues: null,
             cancellationToken);
         return ServiceResult<OfficeDto>.Ok(MapToDto(entity));
@@ -208,6 +208,8 @@ public sealed class OfficeService : IOfficeService
             o => o.OfficeCode.Trim(), o => o, StringComparer.OrdinalIgnoreCase);
 
         int created = 0, updated = 0, skipped = 0;
+        // Emitted after SaveChangesAsync — a new office has no Id before then (RAL-246).
+        List<(Office Entity, object? Old)> audited = new();
         List<string> errors = new();
         DateTime now = DateTime.UtcNow;
 
@@ -249,12 +251,15 @@ public sealed class OfficeService : IOfficeService
                             || existing.LandingPage   != landingPage;
                 if (!changed) { skipped++; continue; }
 
+                object oldSnapshot = AuditSnapshot(existing);
+
                 existing.OfficeName    = name.Trim();
                 existing.OfficeRefCode = refCode;
                 existing.IsActive      = active;
                 existing.LandingPage   = landingPage;
                 existing.UpdatedAt     = now;
                 await _repo.UpdateAsync(existing, cancellationToken);
+                audited.Add((existing, oldSnapshot));
                 updated++;
             }
             else
@@ -271,15 +276,42 @@ public sealed class OfficeService : IOfficeService
                 };
                 await _repo.AddAsync(entity, cancellationToken);
                 byCode[code] = entity;
+                audited.Add((entity, null));
                 created++;
             }
         }
 
         await _repo.SaveChangesAsync(cancellationToken);
+
+        // One row per office the import actually changed (RAL-246). Deactivating an office
+        // silently narrows every scoped query that touches it, so a bulk upload that does so
+        // must leave a trace. Skipped rows produce nothing.
+        foreach ((Office entity, object? old) in audited)
+        {
+            await _audit.LogAsync("offices", entity.Id,
+                old is null ? AuditAction.Create : AuditAction.Update,
+                oldValues: old,
+                newValues: AuditSnapshot(entity),
+                cancellationToken);
+        }
+
         _logger.LogInformation(
             "Offices CSV imported. New: {New}, Updated: {Updated}, Skipped: {Skipped}", created, updated, skipped);
         return ServiceResult<CsvImportResult>.Ok(new CsvImportResult(created, updated, skipped, errors));
     }
+
+    /// <summary>
+    /// Audit snapshot of an office (RAL-246). Includes LandingPage, which the update path used
+    /// to write without recording, and IsHostOffice — no application code assigns that today
+    /// (only the DECISION F migration does), but it is THE cross-office authority discriminator,
+    /// so it belongs in the record: if it is ever changed, in code or by hand in the database,
+    /// the next audited write on that office shows the value it changed to.
+    /// </summary>
+    private static object AuditSnapshot(Office o) => new
+    {
+        o.OfficeCode, o.OfficeName, o.OfficeRefCode, o.IsActive,
+        LandingPage = o.LandingPage?.ToString(), o.IsHostOffice,
+    };
 
     private static OfficeDto MapToDto(Office o) =>
         new(o.Id, o.OfficeCode, o.OfficeName, o.OfficeRefCode, o.IsActive,
