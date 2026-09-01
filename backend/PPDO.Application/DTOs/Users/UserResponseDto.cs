@@ -37,6 +37,7 @@ public sealed class UserResponseDto
     public bool? OverrideCanManagePpdoAllocation { get; init; }
     public bool? OverrideCanManagePboCeiling { get; init; }
     public bool? OverrideCanReviewBudgetPlanning { get; init; }
+    public bool? OverrideCanReviewAllOffices { get; init; }
 
     /// <summary>
     /// This user's own landing-page preference as an enum name, or null when unset.

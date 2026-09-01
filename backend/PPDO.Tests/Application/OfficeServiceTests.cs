@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging.Abstractions;
+﻿using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.Config;
@@ -283,4 +283,80 @@ public sealed class OfficeServiceTests
             "offices", 1, AuditAction.Delete,
             It.IsNotNull<object>(), null, It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    /// <summary>
+    /// Deactivating an office silently narrows every scoped query that touches it, so a bulk
+    /// upload that does so must leave a trace (RAL-246). Before this the whole import path wrote
+    /// nothing to the audit log at all.
+    /// </summary>
+    [Fact]
+    public async Task ImportCsvAsync_DeactivatingAnOffice_LogsAnAuditRowWithOldAndNew()
+    {
+        Office existing = Off(1, "GSO", "General Services Office", true);
+        (OfficeService sut, _, Mock<IAuditService> audit) = BuildWithAudit([existing]);
+
+        string csv = string.Join(CRLF,
+            OfficeCsvHeader,
+            "GSO,General Services Office,false,,");
+
+        await sut.ImportCsvAsync(csv);
+
+        Assert.False(existing.IsActive);
+
+        audit.Verify(a => a.LogAsync(
+            "offices", 1, AuditAction.Update,
+            It.Is<object>(v => Equals(Prop(v, "IsActive"), true)),
+            It.Is<object>(v => Equals(Prop(v, "IsActive"), false)),
+            It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    /// <summary>An import that changed nothing must not look like it did.</summary>
+    [Fact]
+    public async Task ImportCsvAsync_SkippedRows_ProduceNoAuditRows()
+    {
+        Office existing = Off(1, "GSO", "General Services Office", true);
+        (OfficeService sut, _, Mock<IAuditService> audit) = BuildWithAudit([existing]);
+
+        string csv = string.Join(CRLF,
+            OfficeCsvHeader,
+            "GSO,General Services Office,true,,");
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv);
+
+        Assert.Equal(1, result.Value!.Skipped);
+        audit.Verify(a => a.LogAsync(
+            It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>(),
+            It.IsAny<object?>(), It.IsAny<object?>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    /// <summary>
+    /// IsHostOffice is THE cross-office authority discriminator (DECISION F). No application code
+    /// assigns it today, but it belongs in the snapshot: if it is ever changed — in code or by
+    /// hand in the database — the next audited write on that office shows the value it changed to.
+    /// </summary>
+    [Fact]
+    public async Task UpdateAsync_AuditSnapshot_CarriesLandingPageAndIsHostOffice()
+    {
+        Office existing = Off(1, "PPDO", "Planning Office", true);
+        existing.IsHostOffice = true;
+        (OfficeService sut, _, Mock<IAuditService> audit) = BuildWithAudit([existing]);
+
+        await sut.UpdateAsync(1, new UpsertOfficeDto("PPDO", "Planning Office", true, null, "Profile"));
+
+        audit.Verify(a => a.LogAsync(
+            "offices", 1, AuditAction.Update,
+            It.Is<object>(v => Equals(Prop(v, "IsHostOffice"), true)),
+            It.Is<object>(v => Equals(Prop(v, "IsHostOffice"), true)
+                            && Equals(Prop(v, "LandingPage"), "Profile")),
+            It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    private const string CRLF = "\r\n";
+
+    private static object? Prop(object snapshot, string name)
+        => snapshot.GetType().GetProperty(name)?.GetValue(snapshot);
+
 }

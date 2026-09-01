@@ -141,6 +141,28 @@ public sealed class User
     /// </summary>
     public bool? OverrideCanReviewBudgetPlanning { get; set; }
 
+    /// <summary>
+    /// Per-user grant for reviewing EVERY office's budget-planning work (v1.8.0 — RAL-257).
+    /// Held by the designated PPDO users who review what the offices submit, once consolidated.
+    ///
+    /// The first permission in this codebase that is explicitly CROSS-OFFICE: every other flag
+    /// narrows to the caller's own office. A holder may legitimately carry an
+    /// <see cref="OfficeId"/> — they are a real person in a real office — and that must not
+    /// narrow what they can review.
+    ///
+    /// Resolution: SuperAdmin -> true; everyone else -> <c>OverrideCanReviewAllOffices ?? false</c>
+    /// (Admin is NOT auto-granted this).
+    ///
+    /// Deliberately NOT modelled as "reviewer + all offices". It is resolved separately from
+    /// <see cref="OverrideCanReviewBudgetPlanning"/> even when one person holds both, because
+    /// the two reviewer kinds differ on what they may WRITE (RAL-256) and folding them together
+    /// would make the cross-office holder inherit the wrong write rule.
+    ///
+    /// READ SCOPE ONLY. The bypass is consumed through OfficeScope.ResolveForReview, which the
+    /// write paths do not call — see that method for why.
+    /// </summary>
+    public bool? OverrideCanReviewAllOffices { get; set; }
+
     // ── Password reset (RAL-253) ────────────────────────────────────────────────
 
     /// <summary>
