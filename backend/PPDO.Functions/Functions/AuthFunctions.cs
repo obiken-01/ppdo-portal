@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Text.Json;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
@@ -223,6 +223,9 @@ public sealed class AuthFunctions
             CanUploadAip            = me.CanUploadAip,
             CanManageConfig         = me.CanManageConfig,
             CanManagePpdoAllocation     = me.CanManagePpdoAllocation,
+            CanManagePboCeiling     = me.CanManagePboCeiling,
+            CanReviewBudgetPlanning = me.CanReviewBudgetPlanning,
+            CanReviewAllOffices     = me.CanReviewAllOffices,
             MustChangePassword      = me.MustChangePassword,
             NeedsRecoverySetup      = me.NeedsRecoverySetup,
             UnacknowledgedPasswordResetAt = me.UnacknowledgedPasswordResetAt,

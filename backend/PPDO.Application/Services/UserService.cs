@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.Users;
 using PPDO.Domain.Entities;
@@ -335,6 +335,9 @@ public sealed class UserService : IUserService
         target.OverrideCanUploadAip            = dto.OverrideCanUploadAip;
         target.OverrideCanManageConfig         = dto.OverrideCanManageConfig;
         target.OverrideCanManagePpdoAllocation     = dto.OverrideCanManagePpdoAllocation;
+        target.OverrideCanManagePboCeiling      = dto.OverrideCanManagePboCeiling;
+        target.OverrideCanReviewBudgetPlanning  = dto.OverrideCanReviewBudgetPlanning;
+        target.OverrideCanReviewAllOffices      = dto.OverrideCanReviewAllOffices;
 
         // Runs after role/division/office and the override flags are applied, so
         // reachability is judged on what the user is about to become.
@@ -435,6 +438,9 @@ public sealed class UserService : IUserService
         target.OverrideCanUploadAip            = dto.OverrideCanUploadAip;
         target.OverrideCanManageConfig         = dto.OverrideCanManageConfig;
         target.OverrideCanManagePpdoAllocation     = dto.OverrideCanManagePpdoAllocation;
+        target.OverrideCanManagePboCeiling      = dto.OverrideCanManagePboCeiling;
+        target.OverrideCanReviewBudgetPlanning  = dto.OverrideCanReviewBudgetPlanning;
+        target.OverrideCanReviewAllOffices      = dto.OverrideCanReviewAllOffices;
 
         await _users.UpdateAsync(target, cancellationToken);
         await _users.SaveChangesAsync(cancellationToken);
@@ -572,6 +578,8 @@ public sealed class UserService : IUserService
             await ValidateLandingPageAsync<UserResponseDto>(user, dto.LandingPage, cancellationToken);
         if (landingError is not null) return landingError;
 
+        object oldSnapshot = AuditSnapshot(user);
+
         user.FullName    = dto.FullName.Trim();
         user.Username    = newUsername;
         user.Email       = newEmail;
@@ -583,6 +591,14 @@ public sealed class UserService : IUserService
         await _users.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Profile updated. UserId: {UserId}", user.Id);
+
+        // Self-service, but still a write to `users` — and username and email are identity,
+        // not decoration (RAL-246). Role, division and office are untouched here, so this row
+        // records who someone became, not what they were allowed to do.
+        await _audit.LogAsync("users", user.Id, AuditAction.Update,
+            oldValues: oldSnapshot,
+            newValues: AuditSnapshot(user),
+            cancellationToken);
 
         User updated = (await _users.GetByIdWithDivisionAsync(user.Id, cancellationToken))!;
         return ServiceResult<UserResponseDto>.Ok(MapToDto(updated));
@@ -621,6 +637,14 @@ public sealed class UserService : IUserService
 
         _logger.LogInformation("Password changed. UserId: {UserId}", user.Id);
 
+        // Same shape as ResetPasswordAsync: record THAT it happened, never the hash or the
+        // password (RAL-246). Without this row a self-change is indistinguishable from no
+        // change at all, which is the gap the reset notice (RAL-267) is meant to close.
+        await _audit.LogAsync("users", user.Id, AuditAction.Update,
+            oldValues: null,
+            newValues: new { PasswordChanged = true },
+            cancellationToken);
+
         return ServiceResult<bool>.Ok(true);
     }
 
@@ -646,6 +670,7 @@ public sealed class UserService : IUserService
         // Same normalize-then-hash path RAL-265 verifies against — a divergence here would
         // silently lock the user out of their own answer.
         string normalized = RecoveryAnswerNormalizer.Normalize(dto.Answer);
+        RecoveryQuestion? previousQuestion = user.RecoveryQuestionKey;
         user.RecoveryQuestionKey  = question;
         user.RecoveryAnswerHash   = BCrypt.Net.BCrypt.HashPassword(normalized);
         // Re-running this (changing your answer later) starts the lockout window clean.
@@ -656,6 +681,15 @@ public sealed class UserService : IUserService
         await _users.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Recovery answer set. UserId: {UserId}", user.Id);
+
+        // The recovery answer is a credential: it is what self-service reset (RAL-265) checks
+        // to hand out a new password. Changing it changes who can take the account over, so it
+        // is exactly the class of write RAL-246 exists for — and it was the only one leaving no
+        // trace at all. The QUESTION is recorded; the ANSWER HASH never is.
+        await _audit.LogAsync("users", user.Id, AuditAction.Update,
+            oldValues: new { RecoveryQuestionKey = previousQuestion?.ToString() },
+            newValues: new { RecoveryQuestionKey = question.ToString(), RecoveryAnswerChanged = true },
+            cancellationToken);
 
         return ServiceResult<bool>.Ok(true);
     }
@@ -821,6 +855,9 @@ public sealed class UserService : IUserService
         OverrideCanUploadAip            = u.OverrideCanUploadAip,
         OverrideCanManageConfig         = u.OverrideCanManageConfig,
         OverrideCanManagePpdoAllocation     = u.OverrideCanManagePpdoAllocation,
+        OverrideCanManagePboCeiling         = u.OverrideCanManagePboCeiling,
+        OverrideCanReviewBudgetPlanning     = u.OverrideCanReviewBudgetPlanning,
+        OverrideCanReviewAllOffices         = u.OverrideCanReviewAllOffices,
         CreatedAt                     = u.CreatedAt,
         UpdatedAt                     = u.UpdatedAt,
     };
@@ -837,5 +874,14 @@ public sealed class UserService : IUserService
         u.OverrideCanAccessInventory, u.OverrideCanAccessReports, u.OverrideCanManageUsers,
         u.OverrideCanManageResourceLinks, u.OverrideCanAccessBudgetPlanning,
         u.OverrideCanUploadAip, u.OverrideCanManageConfig, u.OverrideCanManagePpdoAllocation,
+        u.OverrideCanManagePboCeiling, u.OverrideCanReviewBudgetPlanning,
+        u.OverrideCanReviewAllOffices,
+        // RAL-246: LandingPage decides where this user lands; RecoveryQuestionKey identifies
+        // WHICH secret can reset the account, and MustChangePassword whether they are on a
+        // temporary one. All three are security-relevant state that was being written
+        // unrecorded. The two HASHES are still excluded and must stay that way.
+        LandingPage = u.LandingPage?.ToString(),
+        RecoveryQuestionKey = u.RecoveryQuestionKey?.ToString(),
+        u.MustChangePassword,
     };
 }

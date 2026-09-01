@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging.Abstractions;
+﻿using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.Users;
@@ -1537,4 +1537,171 @@ public sealed class UserServiceTests
         Assert.NotNull(caller.PasswordResetAcknowledgedAt);
         Assert.True(caller.PasswordResetAcknowledgedAt >= before);
     }
+
+    // -- Audit coverage for permission / credential changes (RAL-246) ----------
+
+    /// <summary>
+    /// The user-permission path the ticket asks to be covered. Uses one of the v1.8.0 grants so a
+    /// newly added flag missing from AuditSnapshot shows up here rather than in production.
+    /// </summary>
+    [Fact]
+    public async Task SetPermissionsAsync_LogsOldAndNewValuesOfThePermissionFlags()
+    {
+        User target = MakeStaff();
+        target.OverrideCanReviewAllOffices = null;
+
+        Mock<IUserRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByIdWithDivisionAsync(target.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(target);
+
+        Mock<IAuditService> audit = new();
+        SetPermissionsDto dto = new() { OverrideCanReviewAllOffices = true };
+
+        await BuildSut(repo, auditMock: audit).SetPermissionsAsync(MakeSuperAdmin(), target.Id, dto);
+
+        audit.Verify(a => a.LogAsync(
+            "users",
+            target.Id,
+            AuditAction.Update,
+            It.Is<object>(v => Prop(v, "OverrideCanReviewAllOffices") == null),
+            It.Is<object>(v => Equals(Prop(v, "OverrideCanReviewAllOffices"), true)),
+            It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    /// <summary>
+    /// The recovery answer is a credential — it is what self-service reset checks before handing
+    /// out a new password, so changing it changes who can take the account over. The QUESTION is
+    /// recorded; the ANSWER HASH must never be.
+    /// </summary>
+    [Fact]
+    public async Task SetRecoveryAnswerAsync_LogsTheQuestionChange_AndNeverTheAnswerHash()
+    {
+        User caller = MakeStaff();
+        caller.RecoveryQuestionKey = null;
+
+        Mock<IUserRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByIdAsync(caller.Id, It.IsAny<CancellationToken>())).ReturnsAsync(caller);
+
+        Mock<IAuditService> audit = new();
+        SetRecoveryAnswerDto dto = new("FirstElementarySchool", "Mamburao Elementary");
+
+        ServiceResult<bool> result =
+            await BuildSut(repo, auditMock: audit).SetRecoveryAnswerAsync(caller, dto);
+
+        Assert.True(result.IsSuccess);
+
+        audit.Verify(a => a.LogAsync(
+            "users",
+            caller.Id,
+            AuditAction.Update,
+            It.Is<object>(v => Prop(v, "RecoveryQuestionKey") == null),
+            It.Is<object>(v =>
+                Prop(v, "RecoveryQuestionKey") != null
+                && !HasProperty(v, "RecoveryAnswerHash")),
+            It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    /// <summary>
+    /// Without this row a self-service password change is indistinguishable from no change at all.
+    /// Records THAT it happened — never the hash, and never the password.
+    /// </summary>
+    [Fact]
+    public async Task ChangePasswordAsync_LogsThatThePasswordChanged_WithoutTheHash()
+    {
+        User caller = MakeStaff();
+        caller.PasswordHash = BCrypt.Net.BCrypt.HashPassword("OldPassword1");
+
+        Mock<IUserRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByIdWithDivisionAsync(caller.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(caller);
+
+        Mock<IAuditService> audit = new();
+        ChangePasswordDto dto = new("OldPassword1", "NewPassword1", "NewPassword1");
+
+        ServiceResult<bool> result =
+            await BuildSut(repo, auditMock: audit).ChangePasswordAsync(caller, dto);
+
+        Assert.True(result.IsSuccess);
+
+        audit.Verify(a => a.LogAsync(
+            "users",
+            caller.Id,
+            AuditAction.Update,
+            null,
+            It.Is<object>(v =>
+                Equals(Prop(v, "PasswordChanged"), true)
+                && !HasProperty(v, "PasswordHash")),
+            It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    /// <summary>Self-service, but username and email are identity, not decoration.</summary>
+    [Fact]
+    public async Task UpdateOwnProfileAsync_LogsOldAndNewSnapshots()
+    {
+        User caller = MakeStaff();
+        caller.FullName = "Original Name";
+
+        Mock<IUserRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByIdWithDivisionAsync(caller.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(caller);
+        repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<User> { caller });
+
+        Mock<IAuditService> audit = new();
+        UpdateOwnProfileDto dto = new("Updated Name", caller.Username, null, null, null);
+
+        await BuildSut(repo, auditMock: audit).UpdateOwnProfileAsync(caller, dto);
+
+        audit.Verify(a => a.LogAsync(
+            "users",
+            caller.Id,
+            AuditAction.Update,
+            It.Is<object>(v => Equals(Prop(v, "FullName"), "Original Name")),
+            It.Is<object>(v => Equals(Prop(v, "FullName"), "Updated Name")),
+            It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    /// <summary>
+    /// The two hashes must never reach audit_log — it is read back and rendered in the Recent
+    /// Activity UI. Asserted on the snapshot itself so it holds for every path that uses it.
+    /// </summary>
+    [Fact]
+    public async Task AuditSnapshot_NeverCarriesPasswordOrRecoveryAnswerHashes()
+    {
+        User target = MakeStaff();
+        target.PasswordHash       = "$2a$11$notarealhash";
+        target.RecoveryAnswerHash = "$2a$11$alsonotarealhash";
+        target.RefreshToken       = "a-refresh-token";
+
+        Mock<IUserRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByIdWithDivisionAsync(target.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(target);
+
+        Mock<IAuditService> audit = new();
+        UpdateUserDto dto = new("Updated Name", null, null, null, null, null, null,
+            null, null, null, null, null, null, null);
+
+        await BuildSut(repo, auditMock: audit).UpdateAsync(MakeAdmin(), target.Id, dto);
+
+        audit.Verify(a => a.LogAsync(
+            "users", target.Id, AuditAction.Update,
+            It.Is<object>(v => !HasProperty(v, "PasswordHash")
+                            && !HasProperty(v, "RecoveryAnswerHash")
+                            && !HasProperty(v, "RefreshToken")),
+            It.Is<object>(v => !HasProperty(v, "PasswordHash")
+                            && !HasProperty(v, "RecoveryAnswerHash")
+                            && !HasProperty(v, "RefreshToken")),
+            It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    private static object? Prop(object snapshot, string name)
+        => snapshot.GetType().GetProperty(name)?.GetValue(snapshot);
+
+    private static bool HasProperty(object snapshot, string name)
+        => snapshot.GetType().GetProperty(name) is not null;
 }

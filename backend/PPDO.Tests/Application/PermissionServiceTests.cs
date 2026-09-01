@@ -1,4 +1,4 @@
-using PPDO.Application.Services;
+﻿using PPDO.Application.Services;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Enums;
 
@@ -8,10 +8,16 @@ namespace PPDO.Tests.Application;
 /// Unit tests for <see cref="PermissionService"/> (v1.2 — RAL-97 model).
 ///
 ///   SuperAdmin → true for everything (incl. allocation).
-///   Admin      → true for every flag EXCEPT CanManagePpdoAllocation.
+///   Admin      → true for every flag EXCEPT CanManagePpdoAllocation and CanManagePboCeiling.
 ///   Staff      → Override ?? user.Division.&lt;flag&gt; ?? false.
 ///   CanUploadAip is host-office-only (guest offices never).
 ///   CanManagePpdoAllocation is a per-user grant (SuperAdmin bypass; Admin not auto).
+///   CanManagePboCeiling is the same shape but a SEPARATE authority (RAL-243) --
+///   holding one must never resolve the other true.
+///   CanReviewBudgetPlanning is the same shape again (RAL-244) and is purely ADDITIVE --
+///   the reviewer write-denial belongs to RAL-256's guard, not to this service.
+///   CanReviewAllOffices (RAL-257) is the one flag that WIDENS scope past the caller's own
+///   office. Resolved separately from CanReviewBudgetPlanning even when both are held.
 ///
 /// No mocks needed — PermissionService is pure logic. The "division" entity carries the flags.
 /// </summary>
@@ -36,6 +42,9 @@ public sealed class PermissionServiceTests
         bool? overrideUploadAip        = null,
         bool? overrideManageConfig     = null,
         bool? overrideAllocation       = null,
+        bool? overridePboCeiling       = null,
+        bool? overrideReviewer         = null,
+        bool? overrideAllOffices       = null,
         bool  divBudgetPlanning        = false,
         bool  divUploadAip             = false,
         bool  divManageConfig          = false,
@@ -83,6 +92,9 @@ public sealed class PermissionServiceTests
             OverrideCanUploadAip            = overrideUploadAip,
             OverrideCanManageConfig         = overrideManageConfig,
             OverrideCanManagePpdoAllocation     = overrideAllocation,
+            OverrideCanManagePboCeiling         = overridePboCeiling,
+            OverrideCanReviewBudgetPlanning     = overrideReviewer,
+            OverrideCanReviewAllOffices         = overrideAllOffices,
         };
     }
 
@@ -211,6 +223,170 @@ public sealed class PermissionServiceTests
     [Fact]
     public async Task CanManagePpdoAllocation_Staff_NoOverride_ReturnsFalse()
         => Assert.False(await _sut.CanManagePpdoAllocationAsync(MakeUser(UserRole.Staff)));
+
+    // -- CanManagePboCeiling -- per-user grant (RAL-243) ---------------------------
+
+    [Fact]
+    public async Task CanManagePboCeiling_SuperAdmin_ReturnsTrue()
+        => Assert.True(await _sut.CanManagePboCeilingAsync(MakeUser(UserRole.SuperAdmin)));
+
+    [Fact]
+    public async Task CanManagePboCeiling_Admin_NotAutoGranted()
+        => Assert.False(await _sut.CanManagePboCeilingAsync(MakeUser(UserRole.Admin)));
+
+    [Fact]
+    public async Task CanManagePboCeiling_Admin_WithOverride_ReturnsTrue()
+        => Assert.True(await _sut.CanManagePboCeilingAsync(MakeUser(UserRole.Admin, overridePboCeiling: true)));
+
+    [Fact]
+    public async Task CanManagePboCeiling_Staff_WithOverride_ReturnsTrue()
+        => Assert.True(await _sut.CanManagePboCeilingAsync(MakeUser(UserRole.Staff, overridePboCeiling: true)));
+
+    [Fact]
+    public async Task CanManagePboCeiling_Staff_NoOverride_ReturnsFalse()
+        => Assert.False(await _sut.CanManagePboCeilingAsync(MakeUser(UserRole.Staff)));
+
+    [Fact]
+    public async Task CanManagePboCeiling_Staff_OverrideFalse_ReturnsFalse()
+        => Assert.False(await _sut.CanManagePboCeilingAsync(MakeUser(UserRole.Staff, overridePboCeiling: false)));
+
+    [Fact]
+    public async Task CanManagePboCeiling_OfficeUser_WithOverride_ReturnsTrue()
+        => Assert.True(await _sut.CanManagePboCeilingAsync(
+            MakeUser(UserRole.Staff, overridePboCeiling: true, officeId: 7)));
+
+    // The two allocation grants are separate authorities: neither implies the other.
+    // If either of these fails, someone has OR-ed them together in PermissionService.
+
+    [Fact]
+    public async Task CanManagePboCeiling_PpdoAllocationHolder_DoesNotImplyCeiling()
+        => Assert.False(await _sut.CanManagePboCeilingAsync(
+            MakeUser(UserRole.Staff, overrideAllocation: true)));
+
+    [Fact]
+    public async Task CanManagePpdoAllocation_PboCeilingHolder_DoesNotImplyAllocation()
+        => Assert.False(await _sut.CanManagePpdoAllocationAsync(
+            MakeUser(UserRole.Staff, overridePboCeiling: true)));
+
+    // -- CanReviewBudgetPlanning -- per-user grant (RAL-244) -----------------------
+
+    [Fact]
+    public async Task CanReviewBudgetPlanning_SuperAdmin_ReturnsTrue()
+        => Assert.True(await _sut.CanReviewBudgetPlanningAsync(MakeUser(UserRole.SuperAdmin)));
+
+    [Fact]
+    public async Task CanReviewBudgetPlanning_Admin_NotAutoGranted()
+        => Assert.False(await _sut.CanReviewBudgetPlanningAsync(MakeUser(UserRole.Admin)));
+
+    [Fact]
+    public async Task CanReviewBudgetPlanning_Admin_WithOverride_ReturnsTrue()
+        => Assert.True(await _sut.CanReviewBudgetPlanningAsync(MakeUser(UserRole.Admin, overrideReviewer: true)));
+
+    [Fact]
+    public async Task CanReviewBudgetPlanning_Staff_WithOverride_ReturnsTrue()
+        => Assert.True(await _sut.CanReviewBudgetPlanningAsync(MakeUser(UserRole.Staff, overrideReviewer: true)));
+
+    [Fact]
+    public async Task CanReviewBudgetPlanning_Staff_NoOverride_ReturnsFalse()
+        => Assert.False(await _sut.CanReviewBudgetPlanningAsync(MakeUser(UserRole.Staff)));
+
+    [Fact]
+    public async Task CanReviewBudgetPlanning_Staff_OverrideFalse_ReturnsFalse()
+        => Assert.False(await _sut.CanReviewBudgetPlanningAsync(MakeUser(UserRole.Staff, overrideReviewer: false)));
+
+    // The reviewer is an office user in every real deployment -- this is the case that matters.
+    [Fact]
+    public async Task CanReviewBudgetPlanning_OfficeUser_WithOverride_ReturnsTrue()
+        => Assert.True(await _sut.CanReviewBudgetPlanningAsync(
+            MakeUser(UserRole.Staff, overrideReviewer: true, officeId: 7)));
+
+    [Fact]
+    public async Task CanReviewBudgetPlanning_OfficeUser_NoOverride_ReturnsFalse()
+        => Assert.False(await _sut.CanReviewBudgetPlanningAsync(
+            MakeUser(UserRole.Staff, officeId: 7)));
+
+    // The reviewer grant is ADDITIVE (RAL-244): it must not remove a write the user already
+    // had. The write-denial that distinguishes the two reviewer kinds is RAL-256's own guard.
+    // If this fails, a denial has leaked into PermissionService, which is the wrong layer.
+    [Fact]
+    public async Task CanReviewBudgetPlanning_DoesNotRevokeExistingGrants()
+    {
+        User reviewer = MakeUser(
+            UserRole.Staff, overrideReviewer: true, overrideBudgetPlanning: true, divBudgetPlanning: true);
+        Assert.True(await _sut.CanReviewBudgetPlanningAsync(reviewer));
+        Assert.True(await _sut.CanAccessBudgetPlanningAsync(reviewer));
+    }
+
+    // Reviewer and the two allocation grants are independent authorities.
+    [Fact]
+    public async Task CanReviewBudgetPlanning_IsIndependentOfAllocationGrants()
+    {
+        Assert.False(await _sut.CanReviewBudgetPlanningAsync(
+            MakeUser(UserRole.Staff, overrideAllocation: true)));
+        Assert.False(await _sut.CanReviewBudgetPlanningAsync(
+            MakeUser(UserRole.Staff, overridePboCeiling: true)));
+        Assert.False(await _sut.CanManagePpdoAllocationAsync(
+            MakeUser(UserRole.Staff, overrideReviewer: true)));
+        Assert.False(await _sut.CanManagePboCeilingAsync(
+            MakeUser(UserRole.Staff, overrideReviewer: true)));
+    }
+
+    // -- CanReviewAllOffices -- per-user cross-office grant (RAL-257) ---------------
+
+    [Fact]
+    public async Task CanReviewAllOffices_SuperAdmin_ReturnsTrue()
+        => Assert.True(await _sut.CanReviewAllOfficesAsync(MakeUser(UserRole.SuperAdmin)));
+
+    [Fact]
+    public async Task CanReviewAllOffices_Admin_NotAutoGranted()
+        => Assert.False(await _sut.CanReviewAllOfficesAsync(MakeUser(UserRole.Admin)));
+
+    [Fact]
+    public async Task CanReviewAllOffices_Admin_WithOverride_ReturnsTrue()
+        => Assert.True(await _sut.CanReviewAllOfficesAsync(MakeUser(UserRole.Admin, overrideAllOffices: true)));
+
+    [Fact]
+    public async Task CanReviewAllOffices_Staff_WithOverride_ReturnsTrue()
+        => Assert.True(await _sut.CanReviewAllOfficesAsync(MakeUser(UserRole.Staff, overrideAllOffices: true)));
+
+    [Fact]
+    public async Task CanReviewAllOffices_Staff_NoOverride_ReturnsFalse()
+        => Assert.False(await _sut.CanReviewAllOfficesAsync(MakeUser(UserRole.Staff)));
+
+    [Fact]
+    public async Task CanReviewAllOffices_Staff_OverrideFalse_ReturnsFalse()
+        => Assert.False(await _sut.CanReviewAllOfficesAsync(MakeUser(UserRole.Staff, overrideAllOffices: false)));
+
+    /// <summary>
+    /// The case the ticket calls out as most likely to be got wrong: the holder sits in a real
+    /// office. Their own office must not narrow the grant.
+    /// </summary>
+    [Fact]
+    public async Task CanReviewAllOffices_HolderInAGuestOffice_StillResolvesTrue()
+        => Assert.True(await _sut.CanReviewAllOfficesAsync(
+            MakeUser(UserRole.Staff, overrideAllOffices: true, officeId: 7)));
+
+    // The two reviewer flags are resolved SEPARATELY (RAL-257). "Reviewer + all offices" would
+    // make the cross-office holder inherit the department-head reviewer's write rule, which is a
+    // different rule with a different intent -- see RAL-256.
+
+    [Fact]
+    public async Task CanReviewAllOffices_ReviewerFlagAlone_DoesNotGrantCrossOffice()
+        => Assert.False(await _sut.CanReviewAllOfficesAsync(
+            MakeUser(UserRole.Staff, overrideReviewer: true)));
+
+    [Fact]
+    public async Task CanReviewBudgetPlanning_CrossOfficeFlagAlone_DoesNotGrantReviewer()
+        => Assert.False(await _sut.CanReviewBudgetPlanningAsync(
+            MakeUser(UserRole.Staff, overrideAllOffices: true)));
+
+    [Fact]
+    public async Task ReviewFlags_BothHeld_BothResolveTrueIndependently()
+    {
+        User both = MakeUser(UserRole.Staff, overrideReviewer: true, overrideAllOffices: true, officeId: 7);
+        Assert.True(await _sut.CanReviewBudgetPlanningAsync(both));
+        Assert.True(await _sut.CanReviewAllOfficesAsync(both));
+    }
 
     // ── CanViewAuditLog — SuperAdmin-only, feature-flag gated ─────────────────
 

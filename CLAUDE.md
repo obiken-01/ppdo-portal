@@ -198,6 +198,12 @@ Interfaces / contracts first → Implementations → Tests
 
 ### RBAC / Permissions
 - Effective permission resolution always goes through `PermissionService` — never inline the logic
+- **`docs/v1.8/Permission_Matrix.md` is the reference for who can do what** (RAL-245): every flag × role ×
+  division default × override × scope, plus the cross-office read bypass and the one subtractive guard.
+  Every row is pinned by `PermissionMatrixTests`, and a flag added without a row fails the build.
+  ⚠️ A null `users.office_id` no longer means "PPDO, sees everything" — DECISION F (RAL-258) retired that
+  inversion; null now means unassigned and sees nothing, matching `DivisionScope`. Older tickets and
+  comments still asserting the old rule are stale.
 - `PermissionService.CanAccessInventoryAsync(user)` logic:
   ```
   SuperAdmin or Admin role → return true (always)
@@ -774,6 +780,7 @@ children, organized as **7 phases / 73 items**.
 | `docs/PERFORMANCE_GUIDELINES.md` | Adding a query, endpoint, or list view |
 | `docs/DESIGN_SYSTEM.md` | Creating or restyling any page |
 | `docs/NAMING_CONVENTIONS.md` | Adding a table or column |
+| `docs/v1.8/Permission_Matrix.md` | Adding or changing a permission flag, a scope rule, or a gated endpoint |
 | `docs/TEST_CONVENTIONS.md` | Writing tests or a PR test plan |
 | `docs/GIT_CONVENTIONS.md` | Branching, committing, releasing |
 | `docs/BUG_REPORT_STANDARD.md` | Filing a bug |
