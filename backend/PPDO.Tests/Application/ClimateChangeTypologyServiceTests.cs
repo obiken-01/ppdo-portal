@@ -118,4 +118,30 @@ public sealed class ClimateChangeTypologyServiceTests
         Assert.Single(active);
         Assert.Equal(2, all.Count);
     }
+
+    /// <summary>Reads a property off an anonymous audit-snapshot object.</summary>
+    private static object? Prop(object? snapshot, string name) =>
+        snapshot?.GetType().GetProperty(name)?.GetValue(snapshot);
+
+    [Fact]
+    public async Task DeleteAsync_OnAnAlreadyInactiveRow_DoesNotLogAFalseTransition()
+    {
+        // The audit log is read back in Recent Activity, so an entry claiming true -> false on a
+        // row that was already inactive is worse than no entry at all (RAL-246).
+        Mock<IAuditService> audit = new();
+        Mock<IRepository<ClimateChangeTypology>> repo = new();
+        List<ClimateChangeTypology> seed = [Cc(1, "A113-08", active: false)];
+        repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(seed);
+        repo.Setup(r => r.UpdateAsync(It.IsAny<ClimateChangeTypology>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+        ClimateChangeTypologyService sut = new(
+            repo.Object, NullLogger<ClimateChangeTypologyService>.Instance, audit.Object);
+        await sut.DeleteAsync(1);
+
+        audit.Verify(a => a.LogAsync(
+            "climate_change_typologies", 1, It.IsAny<string>(),
+            It.Is<object?>(o => Equals(Prop(o, "IsActive"), false)),
+            It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
 }

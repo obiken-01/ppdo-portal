@@ -150,6 +150,11 @@ public sealed class ClimateChangeTypologyService : IClimateChangeTypologyService
 
         // Soft delete only: AIP activities reference these codes, and an AIP is an audited
         // document — a code that vanishes makes a historical activity unreadable.
+        // Capture the prior state: deactivating an already-inactive row must not log a
+        // true -> false transition that never happened (RAL-246 -- the audit log is read
+        // back in Recent Activity, so a false entry is worse than no entry).
+        bool wasActive  = entity.IsActive;
+
         entity.IsActive  = false;
         entity.UpdatedAt = DateTime.UtcNow;
 
@@ -158,7 +163,7 @@ public sealed class ClimateChangeTypologyService : IClimateChangeTypologyService
 
         _logger.LogInformation("Climate change typology deactivated. Code: {Code}", entity.Code);
         await _audit.LogAsync("climate_change_typologies", entity.Id, AuditAction.Delete,
-            oldValues: new { entity.Code, entity.Name, entity.Category, IsActive = true },
+            oldValues: new { entity.Code, entity.Name, entity.Category, IsActive = wasActive },
             newValues: new { entity.Code, entity.Name, entity.Category, entity.IsActive },
             cancellationToken);
         return ServiceResult<ClimateChangeTypologyDto>.Ok(MapToDto(entity));
