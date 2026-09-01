@@ -37,6 +37,8 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useMe } from "@/lib/me-cache";
+import { allocationLabels } from "@/lib/budget-planning-labels";
+import InfoTip from "@/components/ui/InfoTip";
 import { findGeneralFund, findHostOffice, listOffices, listDivisions, listFundingSources } from "@/lib/config";
 import {
   allocationErrorMessage,
@@ -174,6 +176,7 @@ function FundSection({
   savingAllocations,
   canSetCeiling,
   canSetAllocations,
+  showDivisionSplit,
 }: {
   fund: FundingSourceResponse;
   isGeneralFund: boolean;
@@ -193,16 +196,30 @@ function FundSection({
   savingAllocations: boolean;
   /** RAL-243: the PBO grant. Without it the ceiling is shown but not editable here. */
   canSetCeiling: boolean;
-  /** The PPDO allocation grant. Without it the division split is read-only. */
+  /** The PPDO allocation grant. Without it the division split is not this caller's to set. */
   canSetAllocations: boolean;
+  /**
+   * Whether a division split applies here at all: the grant AND a host-office (PPDO)
+   * selection. Division is a scoping axis only for PPDO — `BudgetPlanningScope`, RAL-250 —
+   * so for any other office there is nothing to split and nothing to say about it.
+   */
+  showDivisionSplit: boolean;
 }) {
   const allocationTotal = divisions.reduce((sum, d) => sum + (allocationInputs[d.id] ?? 0), 0);
   const isOverCeiling = (ceilingInput ?? 0) > 0 && allocationTotal > (ceilingInput ?? 0) + 0.001;
   const remaining = (ceilingInput ?? 0) - allocationTotal;
 
-  const statusLabel = !ceiling ? "Not set" : allocationTotal > 0 ? "Set up" : "Ceiling only";
+  // Without a division split there is no half-done state to report: the ceiling is either
+  // set or it is not. "Ceiling only" would name a second step this office never has.
+  const statusLabel = !ceiling
+    ? "Not set"
+    : !showDivisionSplit
+    ? "Set"
+    : allocationTotal > 0
+    ? "Set up"
+    : "Ceiling only";
   const statusClasses =
-    statusLabel === "Set up"
+    statusLabel === "Set up" || statusLabel === "Set"
       ? "text-green-700 bg-green-100"
       : statusLabel === "Ceiling only"
       ? "text-amber-700 bg-amber-100"
@@ -227,13 +244,23 @@ function FundSection({
           </button>
         </div>
       ) : (
-        <div className="mb-1 text-sm text-slate-800 tabular-nums">
-          Ceiling:{" "}
-          {ceiling ? (
-            <span className="font-semibold">₱{formatMoney(ceiling.amount)}</span>
-          ) : (
-            <span className="text-slate-600">not set by the Provincial Budget Office yet</span>
-          )}
+        <div className="mb-1 flex items-center gap-1.5 text-sm text-slate-800 tabular-nums">
+          <span>
+            Ceiling:{" "}
+            {ceiling ? (
+              <span className="font-semibold">₱{formatMoney(ceiling.amount)}</span>
+            ) : (
+              <span className="text-slate-600">not set by the Provincial Budget Office yet</span>
+            )}
+          </span>
+          {/* Only reachable by a caller holding the PPDO allocation grant but not the PBO one
+              (the page requires one of the two), so naming the division split here is safe —
+              unlike the General Fund tip, which a PBO reader also sees. */}
+          <InfoTip label="Who sets the ceiling?">
+            Ceilings are set by the Provincial Budget Office &mdash; the General Fund and every
+            other fund source alike. The saved figure is shown here because your division split
+            is measured against it.
+          </InfoTip>
         </div>
       )}
       {canSetCeiling && ceiling && (
@@ -241,7 +268,10 @@ function FundSection({
       )}
       {(!canSetCeiling || !ceiling) && <div className="mb-4" />}
 
-      {divisions.length === 0 ? (
+      {/* The division split belongs to the PPDO finance officer. Without that grant the
+          whole block is hidden rather than shown disabled — for a PBO officer setting a
+          ceiling on another office it is that office's internal breakdown. */}
+      {!showDivisionSplit ? null : divisions.length === 0 ? (
         <p className="text-sm text-slate-600">
           No divisions configured for this office. Add divisions in Config → Divisions.
         </p>
@@ -345,14 +375,8 @@ function FundSection({
           </table>
 
           <div className="mt-4 flex items-center gap-3">
-            {!canSetAllocations && (
-              <span className="text-xs text-slate-600">
-                Read-only — the division split is set by the PPDO finance officer.
-              </span>
-            )}
             <button
               onClick={onSaveAllocations}
-              hidden={!canSetAllocations}
               disabled={savingAllocations || isOverCeiling || !ceiling}
               className={`px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed flex items-center gap-2 ${
                 isOverCeiling
@@ -384,6 +408,14 @@ function FundSection({
           <span className="text-[10px] font-medium text-green-700 bg-green-100 px-1.5 py-0.5">
             Required
           </span>
+          {/* Deliberately says nothing about divisions: a PBO reader never meets that
+              concept, and the rule holds either way. Present tense only — the AIP-side
+              General-Fund-only check is V18-46/FY2028+ and has not shipped. */}
+          <InfoTip label="Why is only the General Fund ceiling required?">
+            General Fund is the only required ceiling. Ceilings on other fund sources are
+            optional &mdash; set one for any fund this office will encode against, since each
+            expenditure is checked against its own fund source.
+          </InfoTip>
           {selectedOffice && (
             <span className="font-normal text-slate-600">
               — {selectedOffice.officeName} · FY{selectedFiscalYear}
@@ -415,11 +447,13 @@ function FundSection({
           </span>
         </span>
         <span className="text-xs text-slate-600">
-          {ceiling
+          {!ceiling
+            ? "No ceiling set"
+            : showDivisionSplit
             ? `Ceiling ₱${formatMoney(ceiling.amount)} · Allocated ₱${formatMoney(
                 allocationTotal
               )} · Remaining ₱${formatMoney(remaining)}`
-            : "No ceiling set"}
+            : `Ceiling ₱${formatMoney(ceiling.amount)}`}
         </span>
       </button>
       {expanded && <div className="px-4 pb-4">{body}</div>}
@@ -495,6 +529,18 @@ function AllocationPageInner() {
   const canSetCeiling     = me?.canManagePboCeiling === true;
   const canSetAllocations = me?.canManagePpdoAllocation === true;
   const selectedOffice = officeList.find((o) => o.id === selectedOfficeId) ?? null;
+
+  // Division is a scoping axis for the host office (PPDO) only — BudgetPlanningScope,
+  // RAL-250. A guest office has no split to set, whoever is looking, so both the split
+  // and the PPA → Division tab turn on the selected OFFICE as well as on the grant.
+  const showDivisionSplit = canSetAllocations && selectedOffice?.isHostOffice === true;
+
+  // A PBO-only caller reads a ceilings page, not an allocation page — see the helper.
+  const labels = allocationLabels(me);
+
+  // Switching from PPDO to a guest office while on the PPA tab must not leave the user
+  // on a tab that no longer renders — fall back rather than blanking the page.
+  const effectiveTab = showDivisionSplit ? activeTab : "ceiling";
 
   const unassignedCount = useMemo(
     () =>
@@ -804,10 +850,7 @@ function AllocationPageInner() {
       <div className="px-3 py-4 sm:px-6 sm:py-6 max-w-6xl mx-auto w-full flex-1">
 
         <div className="mb-5">
-          <ConfigPageHeader
-            title="Allocation"
-            description="Set office budget ceilings and per-division allocation splits by fund source."
-          />
+          <ConfigPageHeader title={labels.title} description={labels.description} />
         </div>
 
         {/* Selectors */}
@@ -879,7 +922,7 @@ function AllocationPageInner() {
           <>
             {/* Tabs */}
             <div className="flex border-b border-slate-200 mb-6">
-              {(canSetAllocations
+              {(showDivisionSplit
                 ? (["ceiling", "ppa"] as const)
                 : (["ceiling"] as const)
               ).map((tab) => (
@@ -887,23 +930,20 @@ function AllocationPageInner() {
                   key={tab}
                   onClick={() => setActiveTab(tab)}
                   className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                    activeTab === tab
+                    effectiveTab === tab
                       ? "border-green-600 text-green-700"
                       : "border-transparent text-slate-600 hover:text-slate-800"
                   }`}
                 >
-                  {tab === "ceiling" ? "Ceiling & Division Allocation" : "PPA → Division"}
+                  {tab === "ceiling" ? labels.ceilingTab : "PPA → Division"}
                 </button>
               ))}
             </div>
 
             {/* ── TAB 1: Ceiling & Division Allocation ───────────────── */}
-            {activeTab === "ceiling" && (
+            {effectiveTab === "ceiling" && (
               <div className="max-w-2xl space-y-3">
-                <p className="text-xs text-slate-600">
-                  One ceiling and division split per active fund source. General Fund is
-                  required; others are optional.
-                </p>
+                <p className="text-xs text-slate-600">{labels.ceilingIntro}</p>
 
                 {fundList.length === 0 ? (
                   <p className="text-sm text-slate-600 py-4">
@@ -941,6 +981,7 @@ function AllocationPageInner() {
                       savingAllocations={savingAllocationsFundId === fund.id}
                       canSetCeiling={canSetCeiling}
                       canSetAllocations={canSetAllocations}
+                      showDivisionSplit={showDivisionSplit}
                     />
                   ))
                 )}
@@ -948,7 +989,7 @@ function AllocationPageInner() {
             )}
 
             {/* ── TAB 2: PPA → Division ────────────────────────────────────── */}
-            {activeTab === "ppa" && canSetAllocations && (
+            {effectiveTab === "ppa" && (
               <div>
                 {divisions.length === 0 ? (
                   <p className="text-sm text-slate-600 py-4">

@@ -572,4 +572,66 @@ public sealed class DivisionServiceTests
         Assert.Equal(1, result.Value!.New);
         Assert.Equal(1, result.Value.Skipped);
     }
+
+    /// <summary>
+    /// The widest "who can do what" write in the system, and until RAL-246 the only unaudited one:
+    /// a CSV re-upload can grant Budget Planning, Inventory or Config to every division at once.
+    /// One row per division the import actually changed, with old -> new on the flags.
+    /// </summary>
+    [Fact]
+    public async Task ImportCsvAsync_LogsAnAuditRowPerChangedDivision_WithFlagOldAndNew()
+    {
+        List<Division> seed = [Div(1, 1, "Administrative Division")];
+        seed[0].CanAccessInventory = false;
+        (DivisionService sut, _, Mock<IAuditService> audit) = BuildWithAudit(seed, [Office1]);
+
+        string csv = string.Join("\r\n",
+            "office_code,code,name,is_active,can_access_budget_planning,can_access_inventory,can_access_reports,can_manage_config,can_upload_aip,can_manage_users,can_manage_resource_links",
+            "PPDO,,Administrative Division,true,true,true,false,false,false,false,false",   // inventory granted
+            "PPDO,SECTORAL,Sectoral Planning Division,true,true,false,false,false,false,false,false");  // new
+
+        await sut.ImportCsvAsync(csv, [Office1]);
+
+        // The updated division: inventory false -> true, recorded both ways.
+        audit.Verify(a => a.LogAsync(
+            "divisions", 1, AuditAction.Update,
+            It.Is<object>(v => Equals(Prop(v, "CanAccessInventory"), false)),
+            It.Is<object>(v => Equals(Prop(v, "CanAccessInventory"), true)),
+            It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        // The new division, logged as a create.
+        audit.Verify(a => a.LogAsync(
+            "divisions", It.IsAny<int>(), AuditAction.Create,
+            null, It.IsAny<object>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    /// <summary>
+    /// An import that changed nothing must not look like it did — a skipped row is not a change,
+    /// and audit noise is what makes a real change hard to spot.
+    /// </summary>
+    [Fact]
+    public async Task ImportCsvAsync_SkippedRows_ProduceNoAuditRows()
+    {
+        List<Division> seed = [Div(1, 1, "Administrative Division")];
+        seed[0].CanAccessBudgetPlanning = true;
+        (DivisionService sut, _, Mock<IAuditService> audit) = BuildWithAudit(seed, [Office1]);
+
+        string csv = string.Join("\r\n",
+            "office_code,code,name,is_active,can_access_budget_planning,can_access_inventory,can_access_reports,can_manage_config,can_upload_aip,can_manage_users,can_manage_resource_links",
+            "PPDO,,Administrative Division,true,true,false,false,false,false,false,false");
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv, [Office1]);
+
+        Assert.Equal(1, result.Value!.Skipped);
+        audit.Verify(a => a.LogAsync(
+            It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>(),
+            It.IsAny<object?>(), It.IsAny<object?>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    private static object? Prop(object snapshot, string name)
+        => snapshot.GetType().GetProperty(name)?.GetValue(snapshot);
+
 }
