@@ -65,6 +65,39 @@ public sealed class ConfigClimateChangeTypologyFunctions
         return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK, ApiResponse<int>.Ok(count), ct);
     }
 
+    // ── GET /api/config/cc-typologies/csv ──
+    // Export is a read, but it stays on CanManageConfig rather than inheriting the list
+    // endpoint's Authenticated gate — that gate is deliberately broad because the AIP activity
+    // picker needs the list, which is not a reason to hand everyone a file (PPDO-19).
+    [Function("CcTypologiesCsvExport")]
+    public async Task<HttpResponseData> Export(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "config/cc-typologies/csv")] HttpRequestData req,
+        CancellationToken ct)
+    {
+        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanManageConfig, ct);
+        if (denied is not null) return denied;
+
+        string csv = await _typologies.ExportCsvAsync(ct);
+        return await ConfigHttp.CsvFileAsync(req, csv, "cc-typologies.csv", ct);
+    }
+
+    // ── POST /api/config/cc-typologies/csv  (upsert) ──
+    [Function("CcTypologiesCsvImport")]
+    public async Task<HttpResponseData> Import(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "config/cc-typologies/csv")] HttpRequestData req,
+        CancellationToken ct)
+    {
+        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanManageConfig, ct);
+        if (denied is not null) return denied;
+
+        string csv = await ConfigHttp.ReadTextAsync(req);
+        ServiceResult<CsvImportResult> result = await _typologies.ImportCsvAsync(csv, ct);
+        string? message = result.IsSuccess
+            ? $"{result.Value!.New} added, {result.Value.Updated} updated, {result.Value.Skipped} skipped."
+            : null;
+        return await ConfigHttp.FromResultAsync(req, result, ct, message: message);
+    }
+
     // ── GET /api/config/cc-typologies/{id} ──
     [Function("CcTypologiesGet")]
     public async Task<HttpResponseData> Get(

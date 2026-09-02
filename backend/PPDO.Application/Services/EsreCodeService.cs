@@ -172,6 +172,126 @@ namespace PPDO.Application.Services
             return ServiceResult<EsreCodeDto>.Ok(MapToDto(entity));
         }
 
+        // ── CSV (PPDO-19) ─────────────────────────────────────────────────────────
+
+        /// <summary>The export column order, and the order ImportCsvAsync reads fields in.</summary>
+        private static readonly string[] CsvHeaders = ["code", "name", "description", "is_active"];
+
+        /// <inheritdoc />
+        public async Task<string> ExportCsvAsync(CancellationToken cancellationToken = default)
+        {
+            IReadOnlyList<EsreCode> all = await _repo.GetAllAsync(cancellationToken);
+            IEnumerable<string?[]> rows = all
+                .OrderBy(t => t.Code, StringComparer.OrdinalIgnoreCase)
+                .Select(t => new string?[] { t.Code, t.Name, t.Description, t.IsActive ? "true" : "false" });
+            return Csv.Write(CsvHeaders, rows);
+        }
+
+        /// <inheritdoc />
+        public async Task<ServiceResult<CsvImportResult>> ImportCsvAsync(
+            string csvText, CancellationToken cancellationToken = default)
+        {
+            // Whitespace-only counts as empty. Csv.Parse would otherwise hand back one blank
+            // row and the caller would get "Row 1: Code is required." for an empty file, which
+            // describes the wrong problem. (A small, deliberate divergence from
+            // FundingSourceService.ImportCsvAsync, which still has that behaviour.)
+            if (string.IsNullOrWhiteSpace(csvText))
+                return ServiceResult<CsvImportResult>.BadRequest("The CSV file is empty.");
+
+            List<string[]> parsed = Csv.Parse(csvText);
+            if (parsed.Count == 0)
+                return ServiceResult<CsvImportResult>.BadRequest("The CSV file is empty.");
+
+            int start = parsed[0].Any(c => c.Trim().Equals("code", StringComparison.OrdinalIgnoreCase)) ? 1 : 0;
+
+            List<EsreCode> all = (await _repo.GetAllAsync(cancellationToken)).ToList();
+            Dictionary<string, EsreCode> byCode = all.ToDictionary(
+                t => t.Code.Trim(), t => t, StringComparer.OrdinalIgnoreCase);
+
+            int created = 0, updated = 0, skipped = 0;
+            List<string> errors = new();
+            // Emitted AFTER SaveChangesAsync — a created row has no Id before then (PPDO-19).
+            List<PendingAudit> audits = new();
+            DateTime now = DateTime.UtcNow;
+
+            for (int i = start; i < parsed.Count; i++)
+            {
+                string[] f    = parsed[i];
+                string   code = Normalize(Field(f, 0));
+                string   name = Field(f, 1).Trim();
+                string?  desc = Blank(Field(f, 2));
+                bool   active = Csv.ParseBool(Field(f, 3), fallback: true);
+
+                string? invalid = Validate(new UpsertEsreCodeDto(code, name, desc, active));
+                if (invalid is not null)
+                {
+                    skipped++;
+                    errors.Add($"Row {i + 1}: {invalid}");
+                    continue;
+                }
+
+                if (byCode.TryGetValue(code, out EsreCode? existing))
+                {
+                    bool changed =
+                        existing.Name != name ||
+                        Blank(existing.Description) != desc ||
+                        existing.IsActive != active;
+
+                    if (!changed) { skipped++; continue; }
+
+                    audits.Add(new PendingAudit(existing, AuditAction.Update, Snapshot(existing)));
+
+                    existing.Name        = name;
+                    existing.Description = desc;
+                    existing.IsActive    = active;
+                    existing.UpdatedAt   = now;
+                    await _repo.UpdateAsync(existing, cancellationToken);
+                    updated++;
+                }
+                else
+                {
+                    // ⚠️ This branch can create a FIFTH eSRE code, on purpose — see
+                    // IEsreCodeService.ImportCsvAsync. The vocabulary is closed today, not
+                    // forever, and this is how a newly issued code gets in without a release.
+                    // Do not "fix" this into a whitelist check.
+                    EsreCode entity = new()
+                    {
+                        Code        = code,
+                        Name        = name,
+                        Description = desc,
+                        IsActive    = active,
+                        CreatedAt   = now,
+                        UpdatedAt   = now,
+                    };
+                    await _repo.AddAsync(entity, cancellationToken);
+                    byCode[code] = entity;
+                    audits.Add(new PendingAudit(entity, AuditAction.Create, null));
+                    created++;
+                }
+            }
+
+            await _repo.SaveChangesAsync(cancellationToken);
+
+            _logger.LogInformation(
+                "eSRE codes CSV imported. New: {New}, Updated: {Updated}, Skipped: {Skipped}",
+                created, updated, skipped);
+
+            // One row per record actually changed. Skipped rows produce nothing.
+            foreach (PendingAudit a in audits)
+                await _audit.LogAsync("esre_codes", a.Entity.Id, a.Action,
+                    a.OldValues, Snapshot(a.Entity), cancellationToken);
+
+            return ServiceResult<CsvImportResult>.Ok(new CsvImportResult(created, updated, skipped, errors));
+        }
+
+        /// <summary>An audit entry held until the entities have Ids. See ImportCsvAsync.</summary>
+        private sealed record PendingAudit(EsreCode Entity, string Action, object? OldValues);
+
+        private static object Snapshot(EsreCode t) =>
+            new { t.Code, t.Name, t.Description, t.IsActive };
+
+        private static string Field(string[] row, int index) => index < row.Length ? row[index] : string.Empty;
+
         // ── helpers ───────────────────────────────────────────────────────────────
 
         private static string? Validate(UpsertEsreCodeDto dto)

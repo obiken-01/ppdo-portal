@@ -31,4 +31,18 @@ public interface IClimateChangeTypologyService
     /// <summary>Soft delete — sets IsActive = false. Never removes the row.</summary>
     Task<ServiceResult<ClimateChangeTypologyDto>> DeleteAsync(
         int id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Exports every typology as CSV: <c>code,name,category,description,is_active</c> (PPDO-19).
+    /// Includes inactive rows — an export is a backup, and a round-trip that silently dropped
+    /// the soft-deleted ones would reactivate nothing but would lose them on re-import.
+    /// </summary>
+    Task<string> ExportCsvAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Upserts typologies keyed on <c>code</c>. Returns new/updated/skipped counts (PPDO-19).
+    /// Every row this actually changes gets an audit entry; unchanged rows get none.
+    /// </summary>
+    Task<ServiceResult<CsvImportResult>> ImportCsvAsync(
+        string csvText, CancellationToken cancellationToken = default);
 }

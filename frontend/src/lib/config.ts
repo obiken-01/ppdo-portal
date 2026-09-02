@@ -623,6 +623,22 @@ export async function deactivateCcTypology(id: number): Promise<ClimateChangeTyp
   return unwrap(data);
 }
 
+/** GET /api/config/cc-typologies/csv — raw CSV text; includes inactive rows (PPDO-19). */
+export async function exportCcTypologiesCsv(): Promise<string> {
+  const { data } = await api.get<string>("/config/cc-typologies/csv", { responseType: "text" });
+  return data;
+}
+
+/** POST /api/config/cc-typologies/csv — upsert by code; returns counts (PPDO-19). */
+export async function importCcTypologiesCsv(csvText: string): Promise<CsvImportResult> {
+  const { data } = await api.post<ApiResponse<CsvImportResult>>(
+    "/config/cc-typologies/csv",
+    csvText,
+    { headers: { "Content-Type": "text/csv" } },
+  );
+  return unwrap(data);
+}
+
 // ---------------------------------------------------------------------------
 // ESRE codes (RAL-248)
 // ---------------------------------------------------------------------------
@@ -689,6 +705,26 @@ export async function updateEsreCode(
 export async function deactivateEsreCode(id: number): Promise<EsreCodeResponse> {
   const { data } = await api.delete<ApiResponse<EsreCodeResponse>>(
     `/config/esre-codes/${id}`,
+  );
+  return unwrap(data);
+}
+
+/** GET /api/config/esre-codes/csv — raw CSV text; includes inactive rows (PPDO-19). */
+export async function exportEsreCodesCsv(): Promise<string> {
+  const { data } = await api.get<string>("/config/esre-codes/csv", { responseType: "text" });
+  return data;
+}
+
+/**
+ * POST /api/config/esre-codes/csv — upsert by code; returns counts (PPDO-19).
+ * An import may introduce a code outside the seeded four — deliberate, see the backend's
+ * IEsreCodeService.ImportCsvAsync.
+ */
+export async function importEsreCodesCsv(csvText: string): Promise<CsvImportResult> {
+  const { data } = await api.post<ApiResponse<CsvImportResult>>(
+    "/config/esre-codes/csv",
+    csvText,
+    { headers: { "Content-Type": "text/csv" } },
   );
   return unwrap(data);
 }

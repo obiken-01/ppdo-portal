@@ -176,6 +176,135 @@ public sealed class ClimateChangeTypologyService : IClimateChangeTypologyService
         return ServiceResult<ClimateChangeTypologyDto>.Ok(MapToDto(entity));
     }
 
+    // ── CSV (PPDO-19) ─────────────────────────────────────────────────────────
+
+    /// <summary>The export column order, and the order ImportCsvAsync reads fields in.</summary>
+    private static readonly string[] CsvHeaders =
+        ["code", "name", "category", "description", "is_active"];
+
+    /// <inheritdoc />
+    public async Task<string> ExportCsvAsync(CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<ClimateChangeTypology> all = await _repo.GetAllAsync(cancellationToken);
+        IEnumerable<string?[]> rows = all
+            .OrderBy(t => t.Code, StringComparer.OrdinalIgnoreCase)
+            .Select(t => new string?[]
+                { t.Code, t.Name, t.Category, t.Description, t.IsActive ? "true" : "false" });
+        return Csv.Write(CsvHeaders, rows);
+    }
+
+    /// <inheritdoc />
+    public async Task<ServiceResult<CsvImportResult>> ImportCsvAsync(
+        string csvText, CancellationToken cancellationToken = default)
+    {
+        // Whitespace-only counts as empty. Csv.Parse would otherwise hand back one blank
+        // row and the caller would get "Row 1: Code is required." for an empty file, which
+        // describes the wrong problem. (A small, deliberate divergence from
+        // FundingSourceService.ImportCsvAsync, which still has that behaviour.)
+        if (string.IsNullOrWhiteSpace(csvText))
+            return ServiceResult<CsvImportResult>.BadRequest("The CSV file is empty.");
+
+        List<string[]> parsed = Csv.Parse(csvText);
+        if (parsed.Count == 0)
+            return ServiceResult<CsvImportResult>.BadRequest("The CSV file is empty.");
+
+        int start = parsed[0].Any(c => c.Trim().Equals("code", StringComparison.OrdinalIgnoreCase)) ? 1 : 0;
+
+        List<ClimateChangeTypology> all = (await _repo.GetAllAsync(cancellationToken)).ToList();
+        Dictionary<string, ClimateChangeTypology> byCode = all.ToDictionary(
+            t => t.Code.Trim(), t => t, StringComparer.OrdinalIgnoreCase);
+
+        int created = 0, updated = 0, skipped = 0;
+        List<string> errors = new();
+        // Audit rows are emitted AFTER SaveChangesAsync — a created row has no Id before then,
+        // and an audit entry keyed on 0 is worse than none (PPDO-19).
+        List<PendingAudit> audits = new();
+        DateTime now = DateTime.UtcNow;
+
+        for (int i = start; i < parsed.Count; i++)
+        {
+            string[] f        = parsed[i];
+            string   code     = Normalize(Field(f, 0));
+            string   name     = Field(f, 1).Trim();
+            string   category = Field(f, 2).Trim();
+            string?  desc     = Blank(Field(f, 3));
+            bool     active   = Csv.ParseBool(Field(f, 4), fallback: true);
+
+            // Reuse the create/update validator so a CSV cannot put a row into a state the form
+            // would have refused — a second, looser rule set here is how the two drift apart.
+            string? invalid = Validate(new UpsertClimateChangeTypologyDto(code, name, category, desc, active));
+            if (invalid is not null)
+            {
+                skipped++;
+                errors.Add($"Row {i + 1}: {invalid}");
+                continue;
+            }
+
+            // Store the canonical casing rather than whatever the file used.
+            category = Categories.First(c => c.Equals(category, StringComparison.OrdinalIgnoreCase));
+
+            if (byCode.TryGetValue(code, out ClimateChangeTypology? existing))
+            {
+                bool changed =
+                    existing.Name        != name     ||
+                    existing.Category    != category ||
+                    Blank(existing.Description) != desc ||
+                    existing.IsActive    != active;
+
+                if (!changed) { skipped++; continue; }
+
+                audits.Add(new PendingAudit(existing, AuditAction.Update, Snapshot(existing)));
+
+                existing.Name        = name;
+                existing.Category    = category;
+                existing.Description = desc;
+                existing.IsActive    = active;
+                existing.UpdatedAt   = now;
+                await _repo.UpdateAsync(existing, cancellationToken);
+                updated++;
+            }
+            else
+            {
+                ClimateChangeTypology entity = new()
+                {
+                    Code        = code,
+                    Name        = name,
+                    Category    = category,
+                    Description = desc,
+                    IsActive    = active,
+                    CreatedAt   = now,
+                    UpdatedAt   = now,
+                };
+                await _repo.AddAsync(entity, cancellationToken);
+                byCode[code] = entity;
+                audits.Add(new PendingAudit(entity, AuditAction.Create, null));
+                created++;
+            }
+        }
+
+        await _repo.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Climate change typologies CSV imported. New: {New}, Updated: {Updated}, Skipped: {Skipped}",
+            created, updated, skipped);
+
+        // One row per record actually changed, old -> new. Skipped rows produce nothing: an
+        // import that changed nothing must not look like it did.
+        foreach (PendingAudit a in audits)
+            await _audit.LogAsync("climate_change_typologies", a.Entity.Id, a.Action,
+                a.OldValues, Snapshot(a.Entity), cancellationToken);
+
+        return ServiceResult<CsvImportResult>.Ok(new CsvImportResult(created, updated, skipped, errors));
+    }
+
+    /// <summary>An audit entry held until the entities have Ids. See ImportCsvAsync.</summary>
+    private sealed record PendingAudit(ClimateChangeTypology Entity, string Action, object? OldValues);
+
+    private static object Snapshot(ClimateChangeTypology t) =>
+        new { t.Code, t.Name, t.Category, t.Description, t.IsActive };
+
+    private static string Field(string[] row, int index) => index < row.Length ? row[index] : string.Empty;
+
     // ── helpers ───────────────────────────────────────────────────────────────
 
     private static string? Validate(UpsertClimateChangeTypologyDto dto)
