@@ -520,14 +520,25 @@ function AllocationPageInner() {
 
   // ── Derived ───────────────────────────────────────────────────────────────
 
-  const isOfficeUser = me != null && !me.isHostOffice;
-
   // RAL-243 — two independent grants share this page. The PBO officer sets ceilings for
   // any office; the PPDO finance officer splits PPDO's ceiling across divisions and
   // assigns PPAs. Holding one does not grant the other, so each half gates separately.
   // The backend enforces both (AllocationFunctions) — this only keeps the UI honest.
   const canSetCeiling     = me?.canManagePboCeiling === true;
   const canSetAllocations = me?.canManagePpdoAllocation === true;
+
+  // PPDO-17 — the office axis, and the ONE place it is decided. The question is not "is this
+  // caller the host office?" but "is this caller cross-office?", which host-office membership
+  // and canManagePboCeiling answer independently: PPDO-2 grants authority over EVERY office's
+  // ceiling, and its holder is realistically a Provincial Budget Office employee, not a PPDO
+  // one. Gating the picker on the host office alone left that grant real but unreachable —
+  // the holder could only ever open the one office whose ceiling they have no reason to set.
+  //
+  // Mirrors OfficeScope.ResolveForCeiling on the backend, which widens the same two callers
+  // and is what actually enforces this (PPDO-18). Keep it a single named flag: a second
+  // inlined OR at one of the use sites is how the WFP division clamp ended up one dimension
+  // short.
+  const canChooseOffice = me != null && (me.isHostOffice === true || canSetCeiling);
   const selectedOffice = officeList.find((o) => o.id === selectedOfficeId) ?? null;
 
   // Division is a scoping axis for the host office (PPDO) only — BudgetPlanningScope,
@@ -586,13 +597,22 @@ function AllocationPageInner() {
 
   useEffect(() => {
     if (!me) return;
-    if (!me.isHostOffice) {
+    if (!canChooseOffice) {
       setSelectedOfficeId(me.officeId);
-    } else {
+      return;
+    }
+    if (me.isHostOffice) {
       const ppdo = findHostOffice(officeList);
       if (ppdo) setSelectedOfficeId(ppdo.id);
+      return;
     }
-  }, [me, officeList]);
+    // A cross-office ceiling holder who is NOT the host office starts with NO office
+    // selected (PPDO-17 step 3). Their own office is the one office whose ceiling they have
+    // no reason to set, so pre-filling it is actively misleading; defaulting to PPDO instead
+    // would be just as arbitrary, since PPDO has no more claim on their attention than any
+    // other office and the page writes a real budget figure. The existing empty state already
+    // covers this, so the cost of asking is one dropdown.
+  }, [me, canChooseOffice, officeList]);
 
   // ── Load allocation data when office, FY, or the fund list changes ───────
   // Division allocations now have a bulk-across-funds endpoint too (RAL-166 follow-up),
@@ -875,11 +895,7 @@ function AllocationPageInner() {
             <label className="text-sm text-slate-600 font-medium whitespace-nowrap">
               Office
             </label>
-            {isOfficeUser ? (
-              <span className="text-sm text-slate-600 font-medium">
-                {me?.officeName ?? `Office #${me?.officeId}`}
-              </span>
-            ) : (
+            {canChooseOffice ? (
               <OfficeSelect
                 className="w-64"
                 offices={officeList}
@@ -887,6 +903,10 @@ function AllocationPageInner() {
                 onChange={setSelectedOfficeId}
                 placeholder="— select office —"
               />
+            ) : (
+              <span className="text-sm text-slate-600 font-medium">
+                {me?.officeName ?? `Office #${me?.officeId}`}
+              </span>
             )}
           </div>
         </div>
@@ -913,7 +933,7 @@ function AllocationPageInner() {
         {/* Empty state */}
         {!loading && selectedOfficeId == null && (
           <p className="text-slate-600 text-sm py-6">
-            Select an office to configure allocation.
+            {labels.emptyOffice}
           </p>
         )}
 
