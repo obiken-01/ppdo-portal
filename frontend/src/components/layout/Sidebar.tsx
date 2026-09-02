@@ -124,6 +124,19 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
   const showManageUsers    = !isOfficeUser && me?.canManageUsers === true;
   const showAuditLog       = !isOfficeUser && me?.role === "SuperAdmin";
   const showBudgetPlanning = me?.canAccessBudgetPlanning === true;
+  // WFP — and the Report page, which renders a WFP — are PPDO-internal (PPDO-20).
+  // A guest office plans against its ceiling in the AIP and submits that; it has no
+  // division split to build a WFP from, and its users have never been shown the
+  // feature. PBO is a guest office too, so its cross-office ceiling grant does not
+  // widen this. Revisit when WFP is reworked after v1.8.0.
+  const showWfp            = !isOfficeUser && showBudgetPlanning;
+  // The allocation page is reachable two ways, and only one of them is cross-office.
+  // `CanManagePpdoAllocation` is host-office-exclusive (`docs/v1.8/Permission_Matrix.md`
+  // §4) — both its endpoints refuse a guest-office caller outright — so pairing it with
+  // isOfficeUser here stops the nav offering a page whose writes will 403. A guest office
+  // reaches it only through `CanManagePboCeiling`, which is deliberately cross-office.
+  const showAllocation     = (me?.canManagePpdoAllocation === true && !isOfficeUser)
+                          || me?.canManagePboCeiling === true;
   const showConfig         = !isOfficeUser && me?.canManageConfig === true;
   const showResourceLinks  = !isOfficeUser;
   const showDashboard      = !isOfficeUser;
@@ -351,20 +364,24 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
                   <span className="text-xs">•</span>
                   <span className="truncate">AIP</span>
                 </Link>
-                {(me?.canManagePpdoAllocation || me?.canManagePboCeiling) && (
+                {showAllocation && (
                   <Link href="/budget-planning/allocation" className={childLinkCls(isActive("/budget-planning/allocation"))}>
                     <span className="text-xs">•</span>
                     <span className="truncate">{allocationLabels(me).nav}</span>
                   </Link>
                 )}
-                <Link href="/budget-planning/wfp/entry" className={childLinkCls(isActive("/budget-planning/wfp"))}>
-                  <span className="text-xs">•</span>
-                  <span className="truncate">WFP</span>
-                </Link>
-                <Link href="/budget-planning/report" className={childLinkCls(isActive("/budget-planning/report"))}>
-                  <span className="text-xs">•</span>
-                  <span className="truncate">Report</span>
-                </Link>
+                {showWfp && (
+                  <>
+                    <Link href="/budget-planning/wfp/entry" className={childLinkCls(isActive("/budget-planning/wfp"))}>
+                      <span className="text-xs">•</span>
+                      <span className="truncate">WFP</span>
+                    </Link>
+                    <Link href="/budget-planning/report" className={childLinkCls(isActive("/budget-planning/report"))}>
+                      <span className="text-xs">•</span>
+                      <span className="truncate">Report</span>
+                    </Link>
+                  </>
+                )}
               </div>
             )}
           </div>
