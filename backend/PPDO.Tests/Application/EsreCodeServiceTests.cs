@@ -30,9 +30,9 @@ public sealed class EsreCodeServiceTests
         CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
     };
 
-    private static (EsreCodeService sut, Mock<IRepository<EsreCode>> repo) Build(List<EsreCode> seed)
+    private static (EsreCodeService sut, Mock<IEsreCodeRepository> repo) Build(List<EsreCode> seed)
     {
-        Mock<IRepository<EsreCode>> repo = new();
+        Mock<IEsreCodeRepository> repo = new();
         repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(seed);
         repo.Setup(r => r.AddAsync(It.IsAny<EsreCode>(), It.IsAny<CancellationToken>()))
             .Callback<EsreCode, CancellationToken>((e, _) => seed.Add(e))
@@ -62,7 +62,7 @@ public sealed class EsreCodeServiceTests
     [Fact]
     public async Task CreateAsync_WithDuplicateCodeDifferingOnlyByCase_ReturnsConflict()
     {
-        (EsreCodeService sut, Mock<IRepository<EsreCode>> repo) = Build([Code(1, "SS")]);
+        (EsreCodeService sut, Mock<IEsreCodeRepository> repo) = Build([Code(1, "SS")]);
 
         ServiceResult<EsreCodeDto> result = await sut.CreateAsync(Dto("ss"));
 
@@ -151,7 +151,7 @@ public sealed class EsreCodeServiceTests
         // AIP activities reference these codes on an audited document — a hard delete would make
         // a historical activity unreadable.
         List<EsreCode> seed = [Code(1, "SS")];
-        (EsreCodeService sut, Mock<IRepository<EsreCode>> repo) = Build(seed);
+        (EsreCodeService sut, Mock<IEsreCodeRepository> repo) = Build(seed);
 
         ServiceResult<EsreCodeDto> result = await sut.DeleteAsync(1);
 
@@ -171,7 +171,7 @@ public sealed class EsreCodeServiceTests
         // The audit log is read back in Recent Activity, so an entry claiming true -> false on a
         // row that was already inactive is worse than no entry at all (RAL-246).
         Mock<IAuditService> audit = new();
-        Mock<IRepository<EsreCode>> repo = new();
+        Mock<IEsreCodeRepository> repo = new();
         List<EsreCode> seed = [Code(1, "SS", active: false)];
         repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(seed);
         repo.Setup(r => r.UpdateAsync(It.IsAny<EsreCode>(), It.IsAny<CancellationToken>()))
@@ -185,5 +185,28 @@ public sealed class EsreCodeServiceTests
             "esre_codes", 1, It.IsAny<string>(),
             It.Is<object?>(o => Equals(Prop(o, "IsActive"), false)),
             It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // ── GetCountAsync (RAL-260) ───────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(ActiveFilter.Active, true)]
+    [InlineData(ActiveFilter.Inactive, false)]
+    [InlineData(ActiveFilter.All, null)]
+    public async Task GetCountAsync_MapsTheFilterAndCountsInSql(ActiveFilter filter, bool? expected)
+    {
+        // The count must reach the repository as a filter, not be measured off a materialised
+        // list — that is the whole point of the endpoint (RAL-232).
+        Mock<IEsreCodeRepository> repo = new();
+        repo.Setup(r => r.CountAsync(It.IsAny<bool?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(7);
+        EsreCodeService sut = new(
+            repo.Object, NullLogger<EsreCodeService>.Instance, Mock.Of<IAuditService>());
+
+        int count = await sut.GetCountAsync("abc", filter);
+
+        Assert.Equal(7, count);
+        repo.Verify(r => r.CountAsync(expected, "abc", It.IsAny<CancellationToken>()), Times.Once);
+        repo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 }

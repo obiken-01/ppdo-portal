@@ -174,6 +174,8 @@ var host = new HostBuilder()
         services.AddScoped<IBudgetCeilingRepository, BudgetCeilingRepository>();
         services.AddScoped<IDivisionAllocationRepository, DivisionAllocationRepository>();
         services.AddScoped<IAllocationRepository, AllocationRepository>();
+        services.AddScoped<IClimateChangeTypologyRepository, ClimateChangeTypologyRepository>();
+        services.AddScoped<IEsreCodeRepository, EsreCodeRepository>();
         services.AddScoped<IAllocationService, AllocationService>();
 
         // -- v1.4 WFP expenditure schema + computation pipeline (RAL-120) -----

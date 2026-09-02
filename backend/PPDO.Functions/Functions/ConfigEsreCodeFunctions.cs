@@ -51,6 +51,24 @@ namespace PPDO.Functions.Functions
                 req, HttpStatusCode.OK, ApiResponse<IReadOnlyList<EsreCodeDto>>.Ok(data), ct);
         }
 
+        // ── GET /api/config/esre-codes/count?search=&active=true|false|all ──
+        // Serves the Config dashboard tile. Same auth and same filters as List, so the two can
+        // never disagree — the shape RAL-232 established after a tile downloaded 1.57 MB to
+        // render a number.
+        [Function("EsreCodesCount")]
+        public async Task<HttpResponseData> Count(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "config/esre-codes/count")] HttpRequestData req,
+            CancellationToken ct)
+        {
+            (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, ConfigHttp.Authenticated, ct);
+            if (denied is not null) return denied;
+
+            int count = await _esreCodes.GetCountAsync(
+                req.Query["search"], ActiveFilterParser.Parse(req.Query["active"]), ct);
+
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK, ApiResponse<int>.Ok(count), ct);
+        }
+
         // ── GET /api/config/esre-codes/{id} ──
         [Function("EsreCodesGet")]
         public async Task<HttpResponseData> Get(

@@ -21,6 +21,13 @@ namespace PPDO.Application.Services
         Task<ServiceResult<EsreCodeDto>> UpdateAsync(
             int id, UpsertEsreCodeDto dto, CancellationToken cancellationToken = default);
 
+        /// <summary>
+        /// Counts rows matching the same filters the list applies, in SQL (RAL-260).
+        /// Serves the Config dashboard tile, which must never download a list to measure it.
+        /// </summary>
+        Task<int> GetCountAsync(
+            string? search, ActiveFilter active, CancellationToken cancellationToken = default);
+
         /// <summary>Soft delete — sets IsActive = false. Never removes the row.</summary>
         Task<ServiceResult<EsreCodeDto>> DeleteAsync(
             int id, CancellationToken cancellationToken = default);

@@ -16,12 +16,12 @@ namespace PPDO.Application.Services
     /// </summary>
     public class EsreCodeService : IEsreCodeService
     {
-        private readonly IRepository<EsreCode> _repo;
+        private readonly IEsreCodeRepository _repo;
         private readonly ILogger<EsreCodeService> _logger;
         private readonly IAuditService _audit;
 
         public EsreCodeService(
-            IRepository<EsreCode> repo,
+            IEsreCodeRepository repo,
             ILogger<EsreCodeService> logger,
             IAuditService audit)
         {
@@ -62,6 +62,14 @@ namespace PPDO.Application.Services
                 cancellationToken);
             return ServiceResult<EsreCodeDto>.Ok(MapToDto(entity));
         }
+
+        /// <inheritdoc />
+        /// <inheritdoc />
+        public async Task<int> GetCountAsync(
+            string? search, ActiveFilter active, CancellationToken cancellationToken = default)
+            // Pushed to SQL rather than counting GetAllAsync in memory. Four rows make the saving
+            // trivial; the point is that this tile is the one the next config page copies.
+            => await _repo.CountAsync(ToIsActive(active), search, cancellationToken);
 
         /// <inheritdoc />
         public async Task<ServiceResult<EsreCodeDto>> DeleteAsync(
@@ -173,6 +181,14 @@ namespace PPDO.Application.Services
 
             return null;
         }
+
+        /// <summary>Maps the tri-state filter to the repository's nullable flag; null = no filter.</summary>
+        private static bool? ToIsActive(ActiveFilter active) => active switch
+        {
+            ActiveFilter.Active   => true,
+            ActiveFilter.Inactive => false,
+            _                     => null,
+        };
 
         private static string Normalize(string code) => code.Trim().ToUpperInvariant();
 

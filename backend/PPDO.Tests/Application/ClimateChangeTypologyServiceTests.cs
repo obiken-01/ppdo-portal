@@ -21,10 +21,10 @@ public sealed class ClimateChangeTypologyServiceTests
         CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
     };
 
-    private static (ClimateChangeTypologyService sut, Mock<IRepository<ClimateChangeTypology>> repo)
+    private static (ClimateChangeTypologyService sut, Mock<IClimateChangeTypologyRepository> repo)
         Build(List<ClimateChangeTypology> seed)
     {
-        Mock<IRepository<ClimateChangeTypology>> repo = new();
+        Mock<IClimateChangeTypologyRepository> repo = new();
         repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(seed);
         repo.Setup(r => r.AddAsync(It.IsAny<ClimateChangeTypology>(), It.IsAny<CancellationToken>()))
             .Callback<ClimateChangeTypology, CancellationToken>((t, _) => seed.Add(t))
@@ -67,7 +67,7 @@ public sealed class ClimateChangeTypologyServiceTests
     {
         // Both separators appear in the real FY2027 data. Accepting one of these values would
         // put a multi-code string back into the vocabulary this table exists to replace.
-        (ClimateChangeTypologyService sut, Mock<IRepository<ClimateChangeTypology>> repo) = Build([]);
+        (ClimateChangeTypologyService sut, Mock<IClimateChangeTypologyRepository> repo) = Build([]);
 
         ServiceResult<ClimateChangeTypologyDto> result = await sut.CreateAsync(Dto(pasted));
 
@@ -93,7 +93,7 @@ public sealed class ClimateChangeTypologyServiceTests
         // AIP activities reference these codes on an audited document — a hard delete would
         // make a historical activity unreadable.
         List<ClimateChangeTypology> seed = [Cc(1, "A113-08")];
-        (ClimateChangeTypologyService sut, Mock<IRepository<ClimateChangeTypology>> repo) = Build(seed);
+        (ClimateChangeTypologyService sut, Mock<IClimateChangeTypologyRepository> repo) = Build(seed);
 
         ServiceResult<ClimateChangeTypologyDto> result = await sut.DeleteAsync(1);
 
@@ -129,7 +129,7 @@ public sealed class ClimateChangeTypologyServiceTests
         // The audit log is read back in Recent Activity, so an entry claiming true -> false on a
         // row that was already inactive is worse than no entry at all (RAL-246).
         Mock<IAuditService> audit = new();
-        Mock<IRepository<ClimateChangeTypology>> repo = new();
+        Mock<IClimateChangeTypologyRepository> repo = new();
         List<ClimateChangeTypology> seed = [Cc(1, "A113-08", active: false)];
         repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(seed);
         repo.Setup(r => r.UpdateAsync(It.IsAny<ClimateChangeTypology>(), It.IsAny<CancellationToken>()))
@@ -143,5 +143,28 @@ public sealed class ClimateChangeTypologyServiceTests
             "climate_change_typologies", 1, It.IsAny<string>(),
             It.Is<object?>(o => Equals(Prop(o, "IsActive"), false)),
             It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // ── GetCountAsync (RAL-260) ───────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(ActiveFilter.Active, true)]
+    [InlineData(ActiveFilter.Inactive, false)]
+    [InlineData(ActiveFilter.All, null)]
+    public async Task GetCountAsync_MapsTheFilterAndCountsInSql(ActiveFilter filter, bool? expected)
+    {
+        // The count must reach the repository as a filter, not be measured off a materialised
+        // list — that is the whole point of the endpoint (RAL-232).
+        Mock<IClimateChangeTypologyRepository> repo = new();
+        repo.Setup(r => r.CountAsync(It.IsAny<bool?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(7);
+        ClimateChangeTypologyService sut = new(
+            repo.Object, NullLogger<ClimateChangeTypologyService>.Instance, Mock.Of<IAuditService>());
+
+        int count = await sut.GetCountAsync("abc", filter);
+
+        Assert.Equal(7, count);
+        repo.Verify(r => r.CountAsync(expected, "abc", It.IsAny<CancellationToken>()), Times.Once);
+        repo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 }

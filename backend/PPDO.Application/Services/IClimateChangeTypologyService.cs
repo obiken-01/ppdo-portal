@@ -21,6 +21,13 @@ public interface IClimateChangeTypologyService
     Task<ServiceResult<ClimateChangeTypologyDto>> UpdateAsync(
         int id, UpsertClimateChangeTypologyDto dto, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Counts rows matching the same filters the list applies, in SQL (RAL-260).
+    /// Serves the Config dashboard tile, which must never download a list to measure it.
+    /// </summary>
+    Task<int> GetCountAsync(
+        string? search, ActiveFilter active, CancellationToken cancellationToken = default);
+
     /// <summary>Soft delete — sets IsActive = false. Never removes the row.</summary>
     Task<ServiceResult<ClimateChangeTypologyDto>> DeleteAsync(
         int id, CancellationToken cancellationToken = default);

@@ -47,6 +47,24 @@ public sealed class ConfigClimateChangeTypologyFunctions
             req, HttpStatusCode.OK, ApiResponse<IReadOnlyList<ClimateChangeTypologyDto>>.Ok(data), ct);
     }
 
+    // ── GET /api/config/cc-typologies/count?search=&active=true|false|all ──
+    // Serves the Config dashboard tile. Same auth and same filters as List, so the two can
+    // never disagree — the shape RAL-232 established after a tile downloaded 1.57 MB to
+    // render a number.
+    [Function("CcTypologiesCount")]
+    public async Task<HttpResponseData> Count(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "config/cc-typologies/count")] HttpRequestData req,
+        CancellationToken ct)
+    {
+        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, ConfigHttp.Authenticated, ct);
+        if (denied is not null) return denied;
+
+        int count = await _typologies.GetCountAsync(
+            req.Query["search"], ActiveFilterParser.Parse(req.Query["active"]), ct);
+
+        return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK, ApiResponse<int>.Ok(count), ct);
+    }
+
     // ── GET /api/config/cc-typologies/{id} ──
     [Function("CcTypologiesGet")]
     public async Task<HttpResponseData> Get(

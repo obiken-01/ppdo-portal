@@ -577,6 +577,21 @@ export async function listCcTypologies(
   return unwrap(data);
 }
 
+/**
+ * GET /api/config/cc-typologies/count — the Config dashboard tile's number (RAL-260).
+ * Counted in SQL; never fetch the list to take `.length` (RAL-232).
+ */
+export async function countCcTypologies(params: CcTypologyListParams = {}): Promise<number> {
+  const query: Record<string, string> = {};
+  if (params.search?.trim()) query.search = params.search.trim();
+  if (params.active) query.active = params.active;
+
+  const { data } = await api.get<ApiResponse<number>>("/config/cc-typologies/count", {
+    params: query,
+  });
+  return unwrap(data);
+}
+
 /** POST /api/config/cc-typologies */
 export async function createCcTypology(
   body: UpsertClimateChangeTypologyRequest,
@@ -629,6 +644,21 @@ export async function listEsreCodes(
     "/config/esre-codes",
     { params: query },
   );
+  return unwrap(data);
+}
+
+/**
+ * GET /api/config/esre-codes/count — the Config dashboard tile's number (RAL-260).
+ * Counted in SQL; never fetch the list to take `.length` (RAL-232).
+ */
+export async function countEsreCodes(params: EsreCodeListParams = {}): Promise<number> {
+  const query: Record<string, string> = {};
+  if (params.search?.trim()) query.search = params.search.trim();
+  if (params.active) query.active = params.active;
+
+  const { data } = await api.get<ApiResponse<number>>("/config/esre-codes/count", {
+    params: query,
+  });
   return unwrap(data);
 }
 

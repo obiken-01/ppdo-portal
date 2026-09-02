@@ -17,12 +17,12 @@ public sealed class ClimateChangeTypologyService : IClimateChangeTypologyService
     /// <summary>The two CCET categories, plus the bucket for a code that follows neither.</summary>
     private static readonly string[] Categories = ["Adaptation", "Mitigation", "Unclassified"];
 
-    private readonly IRepository<ClimateChangeTypology>    _repo;
+    private readonly IClimateChangeTypologyRepository      _repo;
     private readonly ILogger<ClimateChangeTypologyService> _logger;
     private readonly IAuditService                         _audit;
 
     public ClimateChangeTypologyService(
-        IRepository<ClimateChangeTypology> repo,
+        IClimateChangeTypologyRepository repo,
         ILogger<ClimateChangeTypologyService> logger,
         IAuditService audit)
     {
@@ -140,6 +140,13 @@ public sealed class ClimateChangeTypologyService : IClimateChangeTypologyService
     }
 
     /// <inheritdoc />
+    public async Task<int> GetCountAsync(
+        string? search, ActiveFilter active, CancellationToken cancellationToken = default)
+        // Pushed to SQL rather than counting GetAllAsync in memory — the tile that consumes this
+        // is the one the next config page copies, and RAL-232 is what that habit cost at scale.
+        => await _repo.CountAsync(ToIsActive(active), search, cancellationToken);
+
+    /// <inheritdoc />
     public async Task<ServiceResult<ClimateChangeTypologyDto>> DeleteAsync(
         int id, CancellationToken cancellationToken = default)
     {
@@ -188,6 +195,14 @@ public sealed class ClimateChangeTypologyService : IClimateChangeTypologyService
 
         return null;
     }
+
+    /// <summary>Maps the tri-state filter to the repository's nullable flag; null = no filter.</summary>
+    private static bool? ToIsActive(ActiveFilter active) => active switch
+    {
+        ActiveFilter.Active   => true,
+        ActiveFilter.Inactive => false,
+        _                     => null,
+    };
 
     private static string Normalize(string code) => code.Trim().ToUpperInvariant();
 
