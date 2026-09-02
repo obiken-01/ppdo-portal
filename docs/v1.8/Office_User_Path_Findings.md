@@ -214,7 +214,7 @@ will additionally have **reviewer** users, defined as:
 - ~~**read-only on content** — they view their office's work, they don't edit it;~~
   ⚠️ **Superseded 2026-08-25:** the department-head reviewer **may edit values** during review, and
   may comment instead of or as well as editing (tracker B1/B3). This matters beyond the AIP — the
-  planned `DenyReviewerWriteAsync` guard (RAL-256) was designed from the read-only reading;
+  planned `DenyReviewerWriteAsync` guard (PPDO-6) was designed from the read-only reading;
 - **the sole submit authority** — only a reviewer may send their office's work.
   ⚠️ **Refined 2026-08-25:** true for the hop **to PPDO**. There is an earlier hop the encoder makes
   themselves — encoder → department-head review — so "reviewer is the sole submitter" is not the
