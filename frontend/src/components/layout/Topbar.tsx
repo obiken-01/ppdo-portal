@@ -49,10 +49,19 @@ const SECTIONS: Section[] = [
   {
     root: "/config",
     rootLabel: "Configuration",
+    // One crumb per page in the Configuration sidebar group; each label matches that page's
+    // own ConfigPageHeader title. A page missing here silently falls back to the bare
+    // "Configuration" root, which is how the six below went unnoticed.
     crumbs: [
-      { prefix: "/config/accounts",        label: "Accounts" },
-      { prefix: "/config/offices",         label: "Offices" },
-      { prefix: "/config/funding-sources", label: "Funding Sources" },
+      { prefix: "/config/accounts",            label: "Accounts" },
+      { prefix: "/config/offices",             label: "Offices" },
+      { prefix: "/config/funding-sources",     label: "Funding Sources" },
+      { prefix: "/config/cc-typologies",       label: "Climate Change Typologies" },
+      { prefix: "/config/esre-codes",          label: "eSRE Codes" },
+      { prefix: "/config/price-index",         label: "Price Index" },
+      { prefix: "/config/divisions",           label: "Divisions" },
+      { prefix: "/config/procurement-presets", label: "Procurement Presets" },
+      { prefix: "/config/audit-log",           label: "Audit Log" },
     ],
   },
   {
