@@ -48,7 +48,7 @@ import Modal from "@/components/ui/Modal";
 import ConfirmDialog, {
   type ConfirmDialogProps,
 } from "@/components/ui/ConfirmDialog";
-import MessageDialog from "@/components/ui/MessageDialog";
+import CsvImportSummary from "@/components/ui/CsvImportSummary";
 import CsvUploadButton from "@/components/ui/CsvUploadButton";
 import CsvDownloadButton from "@/components/ui/CsvDownloadButton";
 import { useToast } from "@/components/ui/Toast";
@@ -498,55 +498,11 @@ export default function EsreCodesPage() {
         </Modal>
       )}
 
-      {/* ── CSV import summary ─────────────────────────────────── */}
       {importResult && (
-        <MessageDialog
-          title="Import complete"
-          variant={importResult.errors.length > 0 ? "warning" : "success"}
-          size="md"
-          onClose={() => setImportResult(null)}
-        >
-          <div className="space-y-3">
-            <div className="flex gap-4">
-              <Stat label="Added" value={importResult.new} tone="green" />
-              <Stat label="Updated" value={importResult.updated} tone="blue" />
-              <Stat label="Skipped" value={importResult.skipped} tone="slate" />
-            </div>
-            {importResult.errors.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-amber-500 uppercase tracking-wide mb-1">
-                  {importResult.errors.length} row{importResult.errors.length === 1 ? "" : "s"} skipped
-                </p>
-                <ul className="max-h-40 overflow-y-auto text-xs text-slate-600 list-disc pl-4 space-y-0.5">
-                  {importResult.errors.map((e, i) => (
-                    <li key={i}>{e}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        </MessageDialog>
+        <CsvImportSummary result={importResult} onClose={() => setImportResult(null)} />
       )}
 
       {confirm && <ConfirmDialog {...confirm} />}
-    </div>
-  );
-}
-
-/**
- * One number in the CSV import summary. Duplicated from the sibling config pages rather than
- * shared — extracting the five existing copies is its own cleanup, not this ticket's.
- */
-function Stat({ label, value, tone }: { label: string; value: number; tone: "green" | "blue" | "slate" }) {
-  const cls: Record<typeof tone, string> = {
-    green: "text-green-700",
-    blue: "text-info-500",
-    slate: "text-slate-600",
-  };
-  return (
-    <div className="flex-1 border border-slate-200 px-3 py-2 text-center">
-      <div className={`text-2xl font-bold ${cls[tone]}`}>{value}</div>
-      <div className="text-[11px] text-slate-600 uppercase tracking-wide">{label}</div>
     </div>
   );
 }
