@@ -33,11 +33,19 @@ public sealed class DivisionAllocationRepository : Repository<DivisionAllocation
 
     /// <inheritdoc />
     public async Task<bool> HasPositiveAllocationAsync(
-        int divisionId, int fiscalYear, int fundingSourceId, CancellationToken ct = default)
-        => await _context.Set<DivisionAllocation>()
-            .AnyAsync(a =>
-                a.DivisionId == divisionId && a.FiscalYear == fiscalYear
-                && a.FundingSourceId == fundingSourceId && a.Amount > 0, ct);
+        int officeId, int divisionId, int fiscalYear, int fundingSourceId, CancellationToken ct = default)
+        // Joined rather than resolved in the service: the office's divisions are not otherwise
+        // needed by the one caller, so fetching them to filter in memory would add a full-table
+        // read to answer a single EXISTS (PERFORMANCE_GUIDELINES.md).
+        => await (from a in _context.Set<DivisionAllocation>()
+                  join d in _context.Set<Division>() on a.DivisionId equals d.Id
+                  where a.DivisionId == divisionId
+                     && a.FiscalYear == fiscalYear
+                     && a.FundingSourceId == fundingSourceId
+                     && a.Amount > 0
+                     && d.OfficeId == officeId
+                  select a.Id)
+            .AnyAsync(ct);
 
     /// <inheritdoc />
     public async Task<IReadOnlyList<DivisionAllocation>> GetByFiscalYearAndFundingSourceAsync(

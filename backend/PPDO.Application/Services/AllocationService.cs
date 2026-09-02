@@ -414,9 +414,13 @@ public sealed class AllocationService : IAllocationService
             BudgetCeiling? ceiling = await _ceilingRepo.FindAsync(officeId, fiscalYear, generalFundId, ct);
             hasCeiling = ceiling is not null;
 
-            // HasAllocation — requires a positive amount, not just a row
+            // HasAllocation — requires a positive amount, not just a row, AND that the division
+            // actually belongs to this office (PPDO-30). officeId and divisionId arrive as two
+            // independent query-string parameters; before the office was passed down, a caller
+            // could name any division id and be told whether it had a budget — a cross-office
+            // leak, and a gate that answered about the wrong office entirely.
             hasAllocation = await _allocationRepo.HasPositiveAllocationAsync(
-                divisionId, fiscalYear, generalFundId, ct);
+                officeId, divisionId, fiscalYear, generalFundId, ct);
         }
 
         // HasProgramAssignment — at least one program assigned to this division for the office+FY.
