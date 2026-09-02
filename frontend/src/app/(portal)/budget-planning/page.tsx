@@ -1,437 +1,72 @@
 "use client";
 
 /**
- * Budget Planning Dashboard (RAL-80, RAL-60; PPDO-scoped rework — v1.4.5, RAL-161/162).
+ * Budget Planning Dashboard (PPDO-20 — docs/v1.8/Budget_Planning_Dashboard_Requirements.md).
  *
- * The readiness hub (RAL-60) — Allocation setup / LDIP / AIP / WFP, 2×2 — is the
- * primary view for everyone:
- *   - Office user (e.g. GSO): always locked to their own office (OfficeReadinessPanels).
- *     They never call GET /budget-planning/dashboard — that payload is PPDO's own and the
- *     endpoint 403s them (RAL-230). Their fiscal-year list comes from the standalone
- *     /budget-planning/fiscal-years endpoint instead.
- *   - PPDO user: the backend's GET /budget-planning/dashboard now always resolves the
- *     PPDO office internally — there is no "All Offices" mode or office picker any more
- *     (Budget Planning is effectively PPDO-only in practice). OfficeReadinessPanels is
- *     driven by dashboard.officeId once the PPDO-scoped dashboard call resolves.
+ * **One page, six bands, gated by flag.** Not per-role page variants: eight accounts would become
+ * eight components that drift apart. Every band below is independently gated on a permission the
+ * Permission Matrix already pins, and independently fetched, so one failing band leaves the rest
+ * of the page readable.
  *
- * PPDO additionally gets two new sections (v1.4.5): "Ceiling and allocation by fund" —
- * one pie chart per active funding source, one slice per division's allocation plus the
- * unallocated remainder of that fund's office-wide ceiling — and "WFP status by division"
- * — one row per division (WFP status, activity coverage, total allocated), expandable to
- * the per-fund breakdown. Both come back already server-side clamped to the caller's own
- * division for division-scoped Staff (never trust a client-side filter for this).
+ * What it replaced: a 2×2 readiness hub shown to everyone, plus two PPDO-only sections bolted
+ * underneath. Neither answered the question a person actually arrives with — *what do I have to
+ * do, and who am I waiting on?* The rail answers the first by putting the stages in their real
+ * order, the action card answers the second by naming the owner.
+ *
+ * Three things that are deliberate and easy to "fix" wrongly:
+ *
+ *   1. **WFP appears nowhere on this page, including for PPDO.** WFP is about to become an update
+ *      to what AIP creation already produced, so its present shape is the thing being replaced;
+ *      reporting on it now would teach a model that goes wrong within a release. It keeps its
+ *      sidebar link and quick button for PPDO users — the dashboard simply stops reporting on it.
+ *   2. **Money comes from the AIP** — "costed", not "planned in WFP". Follows from 1.
+ *   3. **A guest office gets three stages, not five with two struck through.** Division allocation
+ *      and PPA assignment are host-office-only. An earlier draft struck them through; that was
+ *      reversed — a guest office does not need to be told about stages that never apply to it.
+ *
+ * Everything submission-shaped is drawn from a constant. There is no submission entity in the
+ * schema until Phase 4; rendering the stage now means the layout does not move when it becomes
+ * real (spec §7).
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import Chart from "chart.js/auto";
-import { getDashboard, getFiscalYears, getOfficeDashboard, getRecentActivity } from "@/lib/budget-planning";
+import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
+import ActionCard from "@/components/ui/ActionCard";
+import PipelineRail, { PipelineRailSkeleton, type PipelineStage } from "@/components/ui/PipelineRail";
+import StackedFundBar from "@/components/ui/StackedFundBar";
+import {
+  getDashboard,
+  getDashboardOffices,
+  getFiscalYears,
+  getOfficeDashboard,
+  getRecentActivity,
+} from "@/lib/budget-planning";
 import { useMe } from "@/lib/me-cache";
 import { formatMoney } from "@/lib/money";
-import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import type {
-  DivisionWfpStatus,
-  FundCeiling,
   OfficeDashboard,
+  OfficeSummary,
   PpdoDashboard,
   RecentActivity,
 } from "@/types";
+import Band, { BandEmpty, TableBandSkeleton } from "./Band";
+import BulkCeilingModal from "./BulkCeilingModal";
+import ContextBar, { LockedField } from "./ContextBar";
+import DivisionTable from "./DivisionTable";
+import MoneyTiles, { MoneyTilesSkeleton, type MoneyTile } from "./MoneyTiles";
+import OfficeTable from "./OfficeTable";
 
 // ---------------------------------------------------------------------------
-// Spinner
+// Recent activity
 // ---------------------------------------------------------------------------
 
-function Spinner() {
-  return (
-    <span className="inline-block w-5 h-5 border-2 border-slate-300 border-t-transparent rounded-full animate-spin" />
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Status badge
-// ---------------------------------------------------------------------------
-
-function WfpStatusBadge({ status }: { status: string }) {
-  const cls =
-    status === "Final"
-      ? "bg-green-100 text-green-700"
-      : status === "Draft"
-      ? "bg-amber-100 text-amber-700"
-      : "bg-slate-100 text-slate-600";
-  return <span className={`px-2 py-0.5 text-xs font-medium ${cls}`}>{status}</span>;
-}
-
-// ---------------------------------------------------------------------------
-// Readiness hub — Allocation setup / LDIP / AIP / WFP panels for one office (RAL-60)
-// ---------------------------------------------------------------------------
-
-function ReadinessPanel({
-  title,
-  href,
-  children,
-}: {
-  title: string;
-  href: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="bg-white border border-slate-200 p-4 flex flex-col">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-xs font-semibold text-slate-600 uppercase tracking-wide">{title}</h3>
-        <Link href={href} className="text-xs font-medium text-green-600 hover:text-green-700">
-          Open →
-        </Link>
-      </div>
-      <div className="flex-1 text-sm text-slate-600 space-y-1.5">{children}</div>
-    </div>
-  );
-}
-
-function ReadinessSkeleton() {
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      {["Allocation Setup", "LDIP", "AIP", "WFP"].map((t) => (
-        <div key={t} className="bg-white border border-slate-200 p-4">
-          <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">{t}</p>
-          <Spinner />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/** Allocation setup / LDIP / AIP / WFP for one specific office+FY. */
-function OfficeReadinessPanels({
-  officeId,
-  fiscalYear,
-  dashboard,
-  loading,
-  error,
-  wfpStatus,
-  wfpAipRecordId,
-}: {
-  officeId: number;
-  fiscalYear: number | null;
-  dashboard: OfficeDashboard | null;
-  loading: boolean;
-  error: string | null;
-  wfpStatus: string | null;
-  wfpAipRecordId: number | null;
-}) {
-  const qs = `?officeId=${officeId}`;
-
-  if (loading) return <ReadinessSkeleton />;
-
-  if (error) {
-    return <div className="bg-white border border-slate-200 p-4 text-sm text-red-500">{error}</div>;
-  }
-
-  if (!dashboard) return null;
-
-  const { allocation, ldip, aip } = dashboard;
-
-  // Office-wide approximation of the setup-complete gate (Allocation_Requirements.md §4)
-  // — the real gate is per-division; this flags whether the office has even started.
-  const missingSetup: string[] = [];
-  if (allocation.ceilingAmount == null) missingSetup.push("ceiling");
-  if (allocation.allocated <= 0) missingSetup.push("division allocation");
-  if (allocation.assignedProgramCount === 0) missingSetup.push("PPA assignment");
-  const isSetupComplete = missingSetup.length === 0;
-
-  const wfpHref =
-    wfpAipRecordId != null
-      ? `/budget-planning/wfp/entry?aipId=${wfpAipRecordId}&officeId=${officeId}`
-      : `/budget-planning/wfp/entry${qs}`;
-  const wfpActionLabel = wfpStatus === "Final" ? "View" : wfpStatus === "Draft" ? "Continue" : "Start";
-
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      {/* Allocation setup */}
-      <ReadinessPanel title="Allocation Setup" href={`/budget-planning/allocation${qs}`}>
-        {isSetupComplete ? (
-          <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-100 px-1.5 py-0.5">
-            ✓ Setup complete
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5">
-            ⚠ Setup incomplete — missing {missingSetup.join(", ")}
-          </span>
-        )}
-        <p>
-          Ceiling:{" "}
-          <span className="font-medium">
-            {allocation.ceilingAmount != null ? `₱${formatMoney(allocation.ceilingAmount)}` : "Not set"}
-          </span>
-        </p>
-        {allocation.ceilingAmount != null && (
-          <p className={allocation.isOverAllocated ? "text-red-600 font-medium" : "text-slate-600"}>
-            Allocated ₱{formatMoney(allocation.allocated)} of ₱{formatMoney(allocation.ceilingAmount)} ·
-            Remaining ₱{formatMoney(allocation.remaining ?? 0)}
-            {allocation.isOverAllocated && " (over)"}
-          </p>
-        )}
-        <p className="text-xs text-slate-600">
-          PPAs: {allocation.assignedProgramCount} assigned
-          {allocation.unassignedProgramCount > 0 && (
-            <span className="ml-1 text-amber-600 font-medium">
-              · {allocation.unassignedProgramCount} unassigned
-            </span>
-          )}
-        </p>
-      </ReadinessPanel>
-
-      {/* LDIP */}
-      <ReadinessPanel title="LDIP" href={`/budget-planning/ldip${qs}`}>
-        {ldip.scopingSupported ? (
-          <>
-            <p className="font-medium">{ldip.total} record(s) · this office</p>
-            <p className="text-xs text-slate-600">
-              {ldip.breakdown.map((b) => `${b.count} ${b.status}`).join(" · ") || "No records yet"}
-            </p>
-          </>
-        ) : (
-          <p className="text-xs text-slate-600">Office scoping pending (RAL-61).</p>
-        )}
-      </ReadinessPanel>
-
-      {/* AIP */}
-      <ReadinessPanel title="AIP" href={`/budget-planning/aip${qs}`}>
-        {aip.exists ? (
-          <>
-            <p className="font-medium">
-              AIP created {aip.status && <span className="text-slate-600 font-normal">({aip.status})</span>}
-            </p>
-            <p className="text-xs text-slate-600">
-              {aip.programCount} program(s) · {aip.projectCount} project(s) · {aip.activityCount} activity(ies)
-            </p>
-          </>
-        ) : (
-          <p className="text-slate-600 text-xs">
-            No AIP for this office yet {fiscalYear ? `(FY ${fiscalYear})` : ""}.
-          </p>
-        )}
-      </ReadinessPanel>
-
-      {/* WFP */}
-      <ReadinessPanel title="WFP" href={`/budget-planning/wfp/entry${qs}`}>
-        {wfpStatus != null && wfpStatus !== "Not started" ? (
-          <>
-            <p className="font-medium">
-              WFP {wfpStatus === "Final" ? "finalized" : "in progress"}{" "}
-              <span className="text-slate-600 font-normal">({wfpStatus})</span>
-            </p>
-            <p className="text-xs text-slate-600">
-              <Link href={wfpHref} className="font-medium text-green-600 hover:text-green-700">
-                {wfpActionLabel} →
-              </Link>
-            </p>
-          </>
-        ) : (
-          <p className="text-slate-600 text-xs">
-            No WFP started for this office yet {fiscalYear ? `(FY ${fiscalYear})` : ""}.
-          </p>
-        )}
-      </ReadinessPanel>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Ceiling and allocation by fund — one pie chart per active funding source (v1.4.5)
-// ---------------------------------------------------------------------------
-
-const DIVISION_COLORS = ["#7F77DD", "#1D9E75", "#D85A30", "#D4537E", "#378ADD", "#BA7517", "#639922", "#993556"];
-const REMAINING_COLOR = "#B4B2A9";
-
-function divisionColor(index: number): string {
-  return DIVISION_COLORS[index % DIVISION_COLORS.length];
-}
-
-function pesoShort(n: number): string {
-  if (Math.abs(n) >= 1_000_000) return `₱${(n / 1_000_000).toFixed(1)}M`;
-  if (Math.abs(n) >= 1_000) return `₱${Math.round(n / 1000)}K`;
-  return `₱${Math.round(n)}`;
-}
-
-// Exactly one of recordId/recordGuid is set on a RecentActivity entry, depending on
-// whether the affected table has an int or Guid PK (e.g. wfp_expenditures vs users).
-// Guids are shortened to their first segment to keep the activity row compact.
+// Exactly one of recordId/recordGuid is set on an entry, depending on whether the affected table
+// has an int or Guid PK. Guids are shortened to their first segment to keep the row compact.
 function recordLabel(entry: RecentActivity): string {
   if (entry.recordId != null) return `#${entry.recordId}`;
   if (entry.recordGuid != null) return `#${entry.recordGuid.split("-")[0]}`;
   return "";
-}
-
-const centerTextPlugin = {
-  id: "centerText",
-  afterDraw(chart: Chart) {
-    const total = (chart.config as unknown as { _ceilingTotal?: number })._ceilingTotal;
-    if (total == null) return;
-    const { ctx, chartArea } = chart;
-    const cx = (chartArea.left + chartArea.right) / 2;
-    const cy = (chartArea.top + chartArea.bottom) / 2;
-    ctx.save();
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.font = "600 14px sans-serif";
-    ctx.fillStyle = "#1e293b";
-    ctx.fillText(pesoShort(total), cx, cy - 8);
-    ctx.font = "400 11px sans-serif";
-    ctx.fillStyle = "#64748b";
-    ctx.fillText("ceiling", cx, cy + 10);
-    ctx.restore();
-  },
-};
-
-const percentLabelPlugin = {
-  id: "percentLabel",
-  afterDatasetsDraw(chart: Chart) {
-    const meta = chart.getDatasetMeta(0);
-    const dataset = chart.data.datasets[0];
-    const total = (dataset.data as number[]).reduce((a, b) => a + b, 0);
-    if (total <= 0) return;
-    const { ctx } = chart;
-    ctx.save();
-    ctx.font = "600 11px sans-serif";
-    ctx.fillStyle = "#fff";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    meta.data.forEach((element, i) => {
-      const value = (dataset.data as number[])[i];
-      const pct = Math.round((value / total) * 100);
-      if (pct < 5) return;
-      const pos = (element as unknown as { tooltipPosition: () => { x: number; y: number } }).tooltipPosition();
-      ctx.fillText(`${pct}%`, pos.x, pos.y);
-    });
-    ctx.restore();
-  },
-};
-
-function FundCeilingCard({ fund }: { fund: FundCeiling }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const chartRef = useRef<Chart | null>(null);
-
-  useEffect(() => {
-    if (!canvasRef.current) return;
-
-    const labels = [...fund.byDivision.map((d) => d.divisionCode ?? d.divisionName), "Remaining"];
-    const data = [...fund.byDivision.map((d) => d.amount), Math.max(fund.remaining, 0)];
-    const colors = [...fund.byDivision.map((_, i) => divisionColor(i)), REMAINING_COLOR];
-
-    chartRef.current?.destroy();
-    const chart = new Chart<"doughnut", number[], string>(canvasRef.current, {
-      type: "doughnut",
-      data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 2, borderColor: "#fff" }] },
-      options: {
-        cutout: "62%",
-        plugins: {
-          legend: { display: false },
-          tooltip: { callbacks: { label: (c) => `${c.label}: ₱${formatMoney(c.raw as number)}` } },
-        },
-      },
-      plugins: [centerTextPlugin, percentLabelPlugin],
-    });
-    (chart.config as unknown as { _ceilingTotal: number })._ceilingTotal = fund.ceiling;
-    chart.update();
-    chartRef.current = chart;
-
-    return () => chart.destroy();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fund.fundingSourceId, fund.ceiling, fund.remaining, JSON.stringify(fund.byDivision)]);
-
-  return (
-    <div className="bg-white border border-slate-200 p-4">
-      <p className="text-sm font-semibold text-slate-800 mb-2">{fund.fundName}</p>
-      <div className="relative h-40 mb-2">
-        <canvas ref={canvasRef} />
-      </div>
-      <p className="text-xs mb-1.5">
-        <span
-          className="inline-block w-2 h-2 mr-1.5 align-middle"
-          style={{ backgroundColor: REMAINING_COLOR, borderRadius: "50%" }}
-        />
-        <span className="text-slate-600">Remaining</span>
-        <span className="float-right font-medium text-slate-600">₱{formatMoney(fund.remaining)}</span>
-      </p>
-      {fund.byDivision.map((d, i) => (
-        <p key={d.divisionId} className="text-xs mb-1">
-          <span
-            className="inline-block w-2 h-2 mr-1.5 align-middle"
-            style={{ backgroundColor: divisionColor(i), borderRadius: "50%" }}
-          />
-          <span className="text-slate-600">{d.divisionCode ?? d.divisionName}</span>
-          <span className="float-right text-slate-600">₱{formatMoney(d.amount)}</span>
-        </p>
-      ))}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// WFP status by division — click a row to see its per-fund allocation breakdown
-// ---------------------------------------------------------------------------
-
-function DivisionRow({ division }: { division: DivisionWfpStatus }) {
-  const [expanded, setExpanded] = useState(false);
-
-  const totalRemaining = division.allocationByFund.reduce((sum, f) => sum + f.remaining, 0);
-
-  return (
-    <>
-      <tr
-        className="border-t border-slate-100 cursor-pointer hover:bg-slate-50"
-        onClick={() => setExpanded((e) => !e)}
-      >
-        <td className="px-4 py-2.5 text-sm text-slate-600">
-          <span
-            className={`inline-block mr-1.5 transition-transform text-slate-400 ${expanded ? "rotate-90" : ""}`}
-          >
-            ›
-          </span>
-          {division.divisionName}
-        </td>
-        <td className="px-4 py-2.5">
-          <WfpStatusBadge status={division.wfpStatus} />
-        </td>
-        <td className="px-4 py-2.5 text-sm text-right text-slate-600">
-          {division.activitiesWithExpenditures} / {division.totalActivities}
-        </td>
-        <td className="px-4 py-2.5 text-sm text-right font-medium text-slate-600">
-          ₱{formatMoney(division.totalAllocated)}
-        </td>
-        <td className="px-4 py-2.5 text-sm text-right font-medium text-slate-600">
-          ₱{formatMoney(totalRemaining)}
-        </td>
-      </tr>
-      {expanded && (
-        <tr>
-          <td colSpan={5} className="p-0">
-            <table className="w-full">
-              <tbody>
-                {division.allocationByFund.length === 0 ? (
-                  <tr className="bg-slate-50">
-                    <td className="px-4 py-2 pl-10 text-xs text-slate-600" colSpan={5}>
-                      No allocation in any fund.
-                    </td>
-                  </tr>
-                ) : (
-                  division.allocationByFund.map((f) => (
-                    <tr key={f.fundingSourceId} className="bg-slate-50 text-xs">
-                      <td className="px-4 py-1.5 pl-10 text-slate-600">{f.fundName}</td>
-                      <td className="px-4 py-1.5" />
-                      <td className="px-4 py-1.5" />
-                      <td className="px-4 py-1.5 text-right text-slate-600">₱{formatMoney(f.amount)}</td>
-                      <td className="px-4 py-1.5 text-right text-slate-600">₱{formatMoney(f.remaining)}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </td>
-        </tr>
-      )}
-    </>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -439,330 +74,612 @@ function DivisionRow({ division }: { division: DivisionWfpStatus }) {
 // ---------------------------------------------------------------------------
 
 export default function BudgetPlanningPage() {
-  // On permission failure, an office user must NOT be sent to /dashboard — the
-  // office-user gate in the portal layout would bounce them straight back here,
-  // creating an infinite redirect loop. Send office users to /account (a terminal
-  // page they can always reach); PPDO users still fall back to /dashboard.
+  // On permission failure an office user must NOT be sent to /dashboard — the office-user gate in
+  // the portal layout would bounce them straight back here, an infinite redirect. Office users go
+  // to /account, a terminal page they can always reach.
   const user = useMe(
     (me) => me.canAccessBudgetPlanning,
-    (me) => (me.isHostOffice ? "/dashboard" : "/account"),
+    (me) => (me.isHostOffice ? "/dashboard" : "/account")
   );
 
   const [fiscalYear, setFiscalYear] = useState<number | null>(null);
-
-  // Fed by the PPDO dashboard for PPDO users and by /budget-planning/fiscal-years for
-  // office users — the FY selector reads this rather than `dashboard`, which is null for
-  // office users and would otherwise collapse their selector to a single option.
   const [availableFiscalYears, setAvailableFiscalYears] = useState<number[]>([]);
 
   const [dashboard, setDashboard] = useState<PpdoDashboard | null>(null);
-  const [activity, setActivity] = useState<RecentActivity[]>([]);
-
   const [dashboardLoading, setDashboardLoading] = useState(true);
-  const [activityLoading, setActivityLoading] = useState(true);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
-  const [activityError, setActivityError] = useState<string | null>(null);
 
   const [officeDashboard, setOfficeDashboard] = useState<OfficeDashboard | null>(null);
-  const [officeDashboardLoading, setOfficeDashboardLoading] = useState(false);
-  const [officeDashboardError, setOfficeDashboardError] = useState<string | null>(null);
+  const [officeLoading, setOfficeLoading] = useState(true);
+  const [officeError, setOfficeError] = useState<string | null>(null);
 
-  // ── Dashboard load ─────────────────────────────────────────────────────────
-  // PPDO only. GET /budget-planning/dashboard returns PPDO's own ceilings, per-division
-  // allocations, and per-division WFP status — the backend 403s office users (RAL-230),
-  // so this must never be called for them.
+  const [offices, setOffices] = useState<OfficeSummary[] | null>(null);
+  const [officesLoading, setOfficesLoading] = useState(false);
+  const [officesError, setOfficesError] = useState<string | null>(null);
 
-  const loadDashboard = useCallback(
-    (fy?: number) => {
-      setDashboardLoading(true);
-      setDashboardError(null);
-      getDashboard(fy)
-        .then((data) => {
-          setDashboard(data);
-          setAvailableFiscalYears(data.availableFiscalYears);
-          if (fy == null) setFiscalYear(data.fiscalYear);
-        })
-        .catch(() => setDashboardError("Failed to load dashboard data."))
-        .finally(() => setDashboardLoading(false));
-    },
-    []
-  );
+  const [activity, setActivity] = useState<RecentActivity[]>([]);
+  const [activityLoading, setActivityLoading] = useState(true);
+  const [activityError, setActivityError] = useState<string | null>(null);
 
-  // ── Initial data load ──────────────────────────────────────────────────────
-  // Waits for `user` — which path to take depends on whether they're PPDO or an office
-  // user, and useMe() resolves null on first render. Mirrors the recent-activity effect
-  // below, which already had to do the same.
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkNotice, setBulkNotice] = useState<string | null>(null);
+
+  // ── Derived permission shape ────────────────────────────────────────────
+  // Read once from the shared /auth/me context. Never per band — the WFP page once fired
+  // /auth/me four times per load (docs/PERFORMANCE_GUIDELINES.md).
+
+  const isHost = user?.isHostOffice === true;
+  const isSuperAdmin = user?.role === "SuperAdmin";
+  const canManageAllocation = user?.canManagePpdoAllocation === true;
+  const canManagePboCeiling = user?.canManagePboCeiling === true;
+  const canReviewAllOffices = user?.canReviewAllOffices === true;
+  const canReview = user?.canReviewBudgetPlanning === true;
+
+  // The office table's own gate — it must match the endpoint's, or the page requests a band it is
+  // about to be 403'd for. SuperAdmin resolves true on both flags server-side; naming it here
+  // keeps the client's gate honest rather than relying on that coincidence.
+  const hasCrossOfficeScope = canReviewAllOffices || canManagePboCeiling || isSuperAdmin;
+
+  // ── Loaders ─────────────────────────────────────────────────────────────
+
+  const loadDashboard = useCallback((fy?: number) => {
+    setDashboardLoading(true);
+    setDashboardError(null);
+    getDashboard(fy)
+      .then((data) => {
+        setDashboard(data);
+        setAvailableFiscalYears(data.availableFiscalYears);
+        if (fy == null) setFiscalYear(data.fiscalYear);
+      })
+      .catch(() => setDashboardError("Could not load the division breakdown."))
+      .finally(() => setDashboardLoading(false));
+  }, []);
 
   useEffect(() => {
     if (!user) return;
 
-    if (user.isHostOffice) {
+    if (isHost) {
       loadDashboard();
       return;
     }
 
-    // Office user: no PPDO dashboard to fetch, so the fiscal-year list has to come from
-    // somewhere legitimately theirs. /budget-planning/fiscal-years (RAL-166) is exactly
-    // that — distinct AIP fiscal years, no office-scoped data in the payload.
+    // A guest office has no PPDO dashboard to fetch, so the fiscal-year list has to come from
+    // somewhere legitimately theirs. /budget-planning/fiscal-years is exactly that — distinct AIP
+    // fiscal years, no office-scoped data in the payload.
     //
-    // Ordering matters: the office-readiness effect below is gated on `fiscalYear != null`,
-    // so it stays parked until this resolves. Sourcing the year from the office dashboard
-    // itself would deadlock — each would be waiting on the other.
+    // Ordering matters: the office-readiness effect is gated on fiscalYear, so it stays parked
+    // until this resolves. Sourcing the year from the office dashboard itself would deadlock —
+    // each would be waiting on the other.
     setDashboardLoading(false);
     getFiscalYears()
       .then((data) => {
         setAvailableFiscalYears(data.availableFiscalYears);
         setFiscalYear(data.fiscalYear);
       })
-      .catch(() => setDashboardError("Failed to load fiscal years."));
-  }, [user, loadDashboard]);
+      .catch(() => setDashboardError("Could not load fiscal years."));
+  }, [user, isHost, loadDashboard]);
+
+  // A host caller's office id is resolved server-side and only known once the dashboard lands; a
+  // guest caller's is their own.
+  const officeId = isHost ? dashboard?.officeId ?? null : user?.officeId ?? null;
+
+  const loadOfficeDashboard = useCallback(() => {
+    if (officeId == null || fiscalYear == null) return;
+    setOfficeLoading(true);
+    setOfficeError(null);
+    getOfficeDashboard(officeId, fiscalYear)
+      .then(setOfficeDashboard)
+      .catch(() => setOfficeError("Could not load this office's readiness."))
+      .finally(() => setOfficeLoading(false));
+  }, [officeId, fiscalYear]);
+
+  useEffect(loadOfficeDashboard, [loadOfficeDashboard]);
+
+  const loadOffices = useCallback(() => {
+    if (!hasCrossOfficeScope || fiscalYear == null) return;
+    setOfficesLoading(true);
+    setOfficesError(null);
+    getDashboardOffices(fiscalYear)
+      .then(setOffices)
+      .catch(() => setOfficesError("Could not load offices."))
+      .finally(() => setOfficesLoading(false));
+  }, [hasCrossOfficeScope, fiscalYear]);
+
+  useEffect(loadOffices, [loadOffices]);
 
   useEffect(() => {
     if (!user) return;
     setActivityLoading(true);
+    setActivityError(null);
     getRecentActivity(user.officeId ?? undefined)
       .then(setActivity)
-      .catch(() => setActivityError("Failed to load recent activity."))
+      .catch(() => setActivityError("Could not load recent activity."))
       .finally(() => setActivityLoading(false));
   }, [user]);
 
-  // ── Derived ────────────────────────────────────────────────────────────────
+  // ── Derived figures ─────────────────────────────────────────────────────
 
-  const isPpdo = user?.isHostOffice === true;
-
-  // Office user: locked to their own office. PPDO user: the PPDO-scoped dashboard
-  // resolves the office server-side — its id/code/name only become known once loaded.
-  const effectiveOfficeId = isPpdo ? dashboard?.officeId ?? null : user?.officeId ?? null;
-
-  const officeLabel = isPpdo
+  const officeLabel = isHost
     ? dashboard
       ? `${dashboard.officeCode} — ${dashboard.officeName}`
-      : "PPDO"
+      : "Host office"
     : user?.officeCode && user?.officeName
     ? `${user.officeCode} — ${user.officeName}`
-    : user?.officeCode ?? user?.officeName ?? "Your Office";
+    : user?.officeCode ?? user?.officeName ?? "Your office";
 
-  const navHref = (path: string) =>
-    effectiveOfficeId != null ? `${path}?officeId=${effectiveOfficeId}` : path;
-
-  // ── Office readiness hub load ────────────────────────────────────────────
-
-  useEffect(() => {
-    if (effectiveOfficeId == null || fiscalYear == null) {
-      setOfficeDashboard(null);
-      return;
+  /** Office-wide ceiling across every fund. Null when nothing is published at all. */
+  const officeCeiling = useMemo<number | null>(() => {
+    if (isHost) {
+      if (!dashboard) return null;
+      const published = dashboard.ceilingByFund.filter((f) => f.ceiling > 0);
+      return published.length > 0 ? published.reduce((sum, f) => sum + f.ceiling, 0) : null;
     }
-    let cancelled = false;
-    setOfficeDashboardLoading(true);
-    setOfficeDashboardError(null);
-    getOfficeDashboard(effectiveOfficeId, fiscalYear)
-      .then((data) => { if (!cancelled) setOfficeDashboard(data); })
-      .catch(() => { if (!cancelled) setOfficeDashboardError("Failed to load office readiness data."); })
-      .finally(() => { if (!cancelled) setOfficeDashboardLoading(false); });
-    return () => { cancelled = true; };
-  }, [effectiveOfficeId, fiscalYear]);
+    return officeDashboard?.allocation.ceilingAmount ?? null;
+  }, [isHost, dashboard, officeDashboard]);
 
-  // A PPDO user's own WFP status comes straight from the PPDO-scoped dashboard's
-  // wfpByDivision (their own division's row for Staff, or the "most advanced" status
-  // across divisions for finance/admin — mirroring the old office-status summary).
-  const ownWfpDivision =
-    isPpdo && dashboard
-      ? dashboard.wfpByDivision.find((d) => d.divisionId === user?.divisionId) ?? dashboard.wfpByDivision[0]
-      : null;
+  /**
+   * The division rows in scope. Already clamped server-side for a division-scoped Staff caller —
+   * never re-filter here, and never trust a client-side filter for this.
+   */
+  const divisions = useMemo(() => dashboard?.byDivision ?? [], [dashboard]);
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  const allocatedToDivisions = divisions.reduce((sum, d) => sum + d.allocated, 0);
+
+  /**
+   * ⚠️ **Costed and activity totals do not come from summing the division rows when the viewer
+   * sees every division.** A PPA assigned to two divisions counts in full against both — the row
+   * answers "what is this division responsible for" — so the sum overstates the office by its
+   * shared programs. Live on FY2027 that showed as 140 activities in the rail against 139 in the
+   * office table for the same office, which reads as a bug however it is documented.
+   *
+   * So: an all-divisions viewer gets the office's own figures, which agree with the office table.
+   * A division-clamped viewer gets their single row, which is both correct and the only thing they
+   * are entitled to see (the spec's "money tiles scoped to RMED").
+   */
+  const seesEveryDivision = canManageAllocation;
+  const costedInAip = seesEveryDivision
+    ? dashboard?.aip.costedInAip ?? 0
+    : divisions.reduce((sum, d) => sum + d.costedInAip, 0);
+  const activityTotal = seesEveryDivision
+    ? dashboard?.aip.activityCount ?? 0
+    : divisions.reduce((n, d) => n + d.totalActivities, 0);
+  const remaining = allocatedToDivisions - costedInAip;
+
+  const hasCeiling = officeCeiling != null;
+  const hasAip = isHost
+    ? divisions.some((d) => d.totalActivities > 0)
+    : officeDashboard?.aip.exists === true;
+
+  // ── Pipeline rail ───────────────────────────────────────────────────────
+  // The host office's five stages, a guest office's three. Every stage names its owner: roughly
+  // half the support traffic on this feature is "why can't I edit this?", and the answer is almost
+  // always that the stage belongs to somebody else.
+
+  const aipHref = officeId != null ? `/budget-planning/aip?officeId=${officeId}` : "/budget-planning/aip";
+  const allocationHref =
+    officeId != null
+      ? `/budget-planning/allocation?officeId=${officeId}${fiscalYear != null ? `&fiscalYear=${fiscalYear}` : ""}`
+      : "/budget-planning/allocation";
+
+  const stages = useMemo<PipelineStage[]>(() => {
+    const ceilingStage: PipelineStage = {
+      key: "ceiling",
+      label: "Ceiling",
+      owner: "Provincial Budget Office",
+      stage: hasCeiling ? "Done" : "Todo",
+      detail: hasCeiling ? `₱${formatMoney(officeCeiling!)} published` : "Not published yet",
+      href: canManagePboCeiling || canManageAllocation ? allocationHref : undefined,
+    };
+
+    const aipStage: PipelineStage = {
+      key: "aip",
+      label: "AIP",
+      // "Your division" is only true for a division-clamped encoder. A finance caller seeing every
+      // division owns none of them in particular, and a guest office has no division at all.
+      owner: !isHost ? "Your office" : canManageAllocation ? "PPDO divisions" : "Your division",
+      stage: hasAip ? "In progress" : "Todo",
+      detail: `${(isHost ? activityTotal : officeDashboard?.aip.activityCount ?? 0).toLocaleString("en-PH")} activities`,
+      href: aipHref,
+    };
+
+    const submissionStage: PipelineStage = {
+      key: "submission",
+      label: "AIP submission",
+      owner: canReview ? "You" : "Your office's reviewer",
+      // Constant until Phase 4 — spec §7. Do not derive this from anything; there is no
+      // submission entity to derive it from.
+      stage: "Todo",
+      detail: "Opens in a later release",
+    };
+
+    if (!isHost) return [ceilingStage, aipStage, submissionStage];
+
+    return [
+      ceilingStage,
+      {
+        key: "allocation",
+        label: "Division allocation",
+        owner: "PPDO finance",
+        stage: allocatedToDivisions > 0 ? "Done" : "Todo",
+        detail:
+          allocatedToDivisions > 0 ? `₱${formatMoney(allocatedToDivisions)} allocated` : "Not started",
+        risk: hasCeiling && allocatedToDivisions > officeCeiling! ? "Over ceiling" : undefined,
+        href: canManageAllocation ? allocationHref : undefined,
+      },
+      {
+        key: "ppa",
+        label: "PPA assignment",
+        owner: "PPDO finance",
+        stage:
+          (officeDashboard?.allocation.assignedProgramCount ?? 0) > 0
+            ? (officeDashboard?.allocation.unassignedProgramCount ?? 0) > 0
+              ? "In progress"
+              : "Done"
+            : "Todo",
+        detail:
+          officeDashboard == null
+            ? undefined
+            : `${officeDashboard.allocation.assignedProgramCount} assigned · ${officeDashboard.allocation.unassignedProgramCount} unassigned`,
+        href: canManageAllocation ? allocationHref : undefined,
+      },
+      aipStage,
+      submissionStage,
+    ];
+  }, [
+    isHost, hasCeiling, officeCeiling, hasAip, activityTotal, officeDashboard, allocatedToDivisions,
+    canManageAllocation, canManagePboCeiling, canReview, aipHref, allocationHref,
+  ]);
+
+  // ── Money tiles ─────────────────────────────────────────────────────────
+
+  const tiles = useMemo<MoneyTile[]>(() => {
+    /**
+     * The ceiling tile is the same in every view, and its read-only-ness keys on
+     * `CanManagePboCeiling` — **not** on `CanManagePpdoAllocation**, which governs the division
+     * split one level down. Two live findings drove that:
+     *
+     *   - A PPDO finance officer (allocation grant, no ceiling grant) saw the ceiling rendered as
+     *     editable. It is not: PPDO-18 gives them a read-only ceiling on the Allocation page, and
+     *     a tile that disagrees with the page it links to is how "why can't I edit this?" starts.
+     *   - The PBO officer was told "Set by PBO — read only" about their own office's ceiling,
+     *     which they publish from the office table immediately below it.
+     *
+     * It is always SHOWN, never hidden, even to an encoder who can do nothing with it — it is the
+     * figure their own allocation has to fit inside, and hiding it just moves the question to
+     * whoever they ask next.
+     */
+    const ceilingTile: MoneyTile = {
+      key: "ceiling",
+      label: "Office ceiling",
+      value: officeCeiling,
+      muted: !canManagePboCeiling,
+      hint: canManagePboCeiling ? "You publish this" : "Set by PBO — read only",
+    };
+
+    if (isHost) {
+      return [
+        ceilingTile,
+        {
+          key: "allocated",
+          label: canManageAllocation ? "Allocated to divisions" : "Allocated to you",
+          value: allocatedToDivisions,
+        },
+        { key: "costed", label: "Costed in AIP", value: costedInAip },
+        {
+          key: "remaining",
+          label: "Remaining",
+          value: remaining,
+          alert: remaining < 0,
+          hint: remaining < 0 ? "Costed past the allocation" : undefined,
+        },
+      ];
+    }
+
+    // A guest office has no division split, so its tiles are the office's own figures throughout.
+    // `costedInAip` on the office endpoint is what makes this possible — the cross-office endpoint
+    // computes the same number for every office, but correctly 403s a plain office user.
+    const guestCeiling = officeCeiling;
+    const guestCosted = officeDashboard?.aip.costedInAip ?? null;
+    return [
+      ceilingTile,
+      { key: "costed", label: "Costed in AIP", value: guestCosted },
+      {
+        key: "remaining",
+        label: "Remaining",
+        value: guestCeiling != null && guestCosted != null ? guestCeiling - guestCosted : null,
+        alert: guestCeiling != null && guestCosted != null && guestCosted > guestCeiling,
+        hint: guestCeiling == null ? "No ceiling published yet" : undefined,
+      },
+      {
+        key: "activities",
+        label: "AIP activities",
+        value: officeDashboard?.aip.activityCount ?? null,
+        count: true,
+      },
+    ];
+  }, [
+    isHost, officeCeiling, canManageAllocation, canManagePboCeiling,
+    allocatedToDivisions, costedInAip, remaining, officeDashboard,
+  ]);
+
+  // ── Action card ─────────────────────────────────────────────────────────
+  // The single next thing this person can do. Ordered by what actually blocks what.
+
+  const actionCard = useMemo(() => {
+    if (!hasCeiling) {
+      if (canManagePboCeiling) {
+        return (
+          <ActionCard
+            tone="blocked"
+            title="Publish this year's ceilings"
+            description={`No FY ${fiscalYear ?? "—"} ceiling is published for ${officeLabel}. Offices cannot submit until one is.`}
+            actionLabel="Set ceilings"
+            href={allocationHref}
+          />
+        );
+      }
+      return (
+        <ActionCard
+          tone="waiting"
+          title="Waiting on the Provincial Budget Office"
+          description={`No FY ${fiscalYear ?? "—"} ceiling has been published for ${officeLabel} yet. You can still draft your AIP — submission opens once the ceiling is set.`}
+          actionLabel="Open AIP"
+          href={aipHref}
+        />
+      );
+    }
+
+    if (!hasAip) {
+      return (
+        <ActionCard
+          title="Start this year's AIP"
+          description={`The ceiling is published. Enter FY ${fiscalYear ?? "—"} activities for ${officeLabel}.`}
+          actionLabel="Open AIP"
+          href={aipHref}
+        />
+      );
+    }
+
+    if (canReview) {
+      return (
+        <ActionCard
+          tone="waiting"
+          title="Submit when the AIP is complete"
+          description="You are this office's reviewer. Submission opens in a later release."
+          actionLabel="Submit AIP"
+          disabledReason="Submission opens in a later release"
+        />
+      );
+    }
+
+    return (
+      <ActionCard
+        tone="waiting"
+        title="Keep costing your AIP activities"
+        description="Your office's reviewer submits once every activity carries a cost."
+        actionLabel="Open AIP"
+        href={aipHref}
+      />
+    );
+  }, [hasCeiling, hasAip, canManagePboCeiling, canReview, fiscalYear, officeLabel, allocationHref, aipHref]);
+
+  // ── Fund bars ───────────────────────────────────────────────────────────
+  // Funds with neither a ceiling nor an allocation are hidden — an all-zero bar is noise.
+
+  const setUpFunds = (dashboard?.ceilingByFund ?? []).filter(
+    (fund) => fund.ceiling > 0 || fund.byDivision.some((d) => d.amount > 0)
+  );
+
+  const officesWithoutCeiling = (offices ?? []).filter((o) => o.ceilingAmount == null);
+  const priorFiscalYear = fiscalYear != null ? fiscalYear - 1 : null;
+
+  // ── Render ──────────────────────────────────────────────────────────────
 
   return (
     <div className="min-h-full bg-slate-100 font-sans">
-      <div className="max-w-6xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-5">
-
+      <div className="max-w-6xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-4">
         <ConfigPageHeader
-          title="Budget Planning Dashboard"
-          description={`FY overview · ${officeLabel}`}
+          title="Budget Planning"
+          description={`FY ${fiscalYear ?? "…"} · ${officeLabel}`}
         />
 
-        {/* Selectors row */}
-        <div className="flex flex-wrap items-center gap-3">
-          {/* FY selector */}
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
-              Fiscal Year
-            </label>
-            <select
-              className="border border-slate-200 bg-white text-sm text-slate-600 px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-green-500"
-              value={fiscalYear ?? ""}
-              onChange={(e) => {
-                const fy = Number(e.target.value);
-                setFiscalYear(fy);
-                // Office users have no PPDO dashboard to reload — the office-readiness
-                // effect re-runs off `fiscalYear` on its own.
-                if (isPpdo) loadDashboard(fy);
-              }}
-              disabled={dashboardLoading || officeDashboardLoading}
+        <ContextBar
+          fiscalYear={fiscalYear}
+          availableFiscalYears={availableFiscalYears}
+          fiscalYearDisabled={dashboardLoading || officeLoading}
+          onFiscalYearChange={(fy) => {
+            setFiscalYear(fy);
+            // A guest office has no host dashboard to reload — the office-readiness and offices
+            // effects re-run off fiscalYear on their own.
+            if (isHost) loadDashboard(fy);
+          }}
+          officeField={<LockedField label="Office" value={officeLabel} />}
+          // A guest office gets NO division field — division does not narrow them, and an inert
+          // control would imply it might.
+          divisionField={
+            isHost ? (
+              <LockedField
+                label="Division"
+                value={
+                  canManageAllocation
+                    ? "All divisions"
+                    : user?.division ?? "Unassigned"
+                }
+              />
+            ) : undefined
+          }
+        />
+
+        {actionCard}
+
+        {/* The rail's own error state. It is fed by the office-readiness fetch, so a failure there
+            must not blank the tiles or the tables below — errors are per band, not per page. */}
+        {dashboardLoading || officeLoading ? (
+          <PipelineRailSkeleton stages={isHost ? 5 : 3} />
+        ) : officeError ? (
+          <div className="bg-white border border-slate-200 p-4 flex flex-wrap items-center gap-3">
+            <p className="text-sm text-danger-500">{officeError}</p>
+            <button
+              type="button"
+              onClick={loadOfficeDashboard}
+              className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 text-xs font-medium transition-colors"
             >
-              {(availableFiscalYears.length > 0
-                ? availableFiscalYears
-                : fiscalYear
-                ? [fiscalYear]
-                : []
-              ).map((fy) => (
-                <option key={fy} value={fy}>
-                  FY {fy}
-                </option>
-              ))}
-            </select>
+              Retry
+            </button>
           </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
-              Office
-            </span>
-            <span className="text-sm text-slate-600 bg-white border border-slate-200 px-3 py-1.5">
-              {officeLabel}
-            </span>
-          </div>
-        </div>
-
-        {/* Nav buttons — carry the office into each flow */}
-        <div className="flex gap-2">
-          {[
-            { label: "LDIP", href: navHref("/budget-planning/ldip") },
-            { label: "AIP",  href: navHref("/budget-planning/aip")  },
-            { label: "WFP",  href: navHref("/budget-planning/wfp/entry")  },
-          ].map(({ label, href }) => (
-            <Link
-              key={label}
-              href={href}
-              className="px-5 py-2 bg-white border border-slate-200 text-sm font-semibold text-slate-800 hover:bg-green-50 hover:border-green-300 hover:text-green-700 transition-colors"
-            >
-              {label}
-            </Link>
-          ))}
-        </div>
-
-        {/* ── Readiness hub: Allocation setup / LDIP / AIP / WFP ────────────── */}
-        {effectiveOfficeId != null ? (
-          <OfficeReadinessPanels
-            officeId={effectiveOfficeId}
-            fiscalYear={fiscalYear}
-            dashboard={officeDashboard}
-            loading={officeDashboardLoading}
-            error={officeDashboardError}
-            wfpStatus={ownWfpDivision?.wfpStatus ?? null}
-            wfpAipRecordId={null}
-          />
         ) : (
-          <ReadinessSkeleton />
+          <PipelineRail stages={stages} />
         )}
 
-        {/* ── PPDO-only: Ceiling and allocation by fund ───────────────────── */}
-        {/* Funds with no ceiling AND no allocation set up yet are hidden — an
-            all-zero pie chart is noise, not information (Ralph's call). */}
-        {isPpdo && dashboard && (() => {
-          const setUpFunds = dashboard.ceilingByFund.filter(
-            (fund) => fund.ceiling > 0 || fund.byDivision.some((d) => d.amount > 0)
-          );
-          return setUpFunds.length > 0 && (
-            <div>
-              <h2 className="text-sm font-semibold text-slate-800 mb-2">
-                Ceiling and Allocation by Fund — FY {fiscalYear ?? "…"}
-              </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {setUpFunds.map((fund) => (
-                  <FundCeilingCard key={fund.fundingSourceId} fund={fund} />
-                ))}
-              </div>
-            </div>
-          );
-        })()}
+        {dashboardLoading || officeLoading ? <MoneyTilesSkeleton /> : <MoneyTiles tiles={tiles} />}
 
-        {/* ── PPDO-only: WFP status by division ───────────────────────────── */}
-        {isPpdo && (
-          <div className="bg-white border border-slate-200">
-            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-              <div>
-                <h2 className="text-sm font-semibold text-slate-800">
-                  WFP Status by Division — FY {fiscalYear ?? "…"}
-                </h2>
-                <p className="text-xs text-slate-600 mt-0.5">Click a row to see allocation per fund</p>
-              </div>
+        {/* ── Ceiling and allocation by fund — host office only ───────────── */}
+        {isHost && setUpFunds.length > 0 && (
+          <div>
+            <h2 className="text-sm font-semibold text-slate-800 mb-2">
+              Ceiling and allocation by fund — FY {fiscalYear ?? "…"}
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {setUpFunds.map((fund) => (
+                <StackedFundBar
+                  key={fund.fundingSourceId}
+                  fundName={fund.fundName}
+                  ceiling={fund.ceiling}
+                  remaining={fund.remaining}
+                  segments={fund.byDivision.map((d) => ({
+                    key: d.divisionId,
+                    label: d.divisionCode ?? d.divisionName,
+                    amount: d.amount,
+                  }))}
+                />
+              ))}
             </div>
-            {dashboardLoading ? (
-              <div className="px-5 py-6 flex items-center gap-2 text-sm text-slate-600">
-                <Spinner />
-                <span>Loading…</span>
-              </div>
-            ) : dashboardError ? (
-              <div className="px-5 py-4 text-sm text-red-500">{dashboardError}</div>
-            ) : !dashboard || dashboard.wfpByDivision.length === 0 ? (
-              <div className="px-5 py-6 text-sm text-slate-600">No active divisions found.</div>
+          </div>
+        )}
+
+        {/* ── Division table — host office only ───────────────────────────── */}
+        {isHost && (
+          <Band
+            title={`Divisions — FY ${fiscalYear ?? "…"}`}
+            description="Click a row to see allocation per fund"
+            loading={dashboardLoading}
+            error={dashboardError}
+            onRetry={() => loadDashboard(fiscalYear ?? undefined)}
+            skeleton={<TableBandSkeleton columns={6} />}
+          >
+            {divisions.length === 0 ? (
+              <BandEmpty message={`No records for FY ${fiscalYear ?? "—"} yet.`} />
             ) : (
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-slate-50">
-                    <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                      Division
-                    </th>
-                    <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                      WFP Status
-                    </th>
-                    <th className="px-4 py-2.5 text-right text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                      Activities Covered
-                    </th>
-                    <th className="px-4 py-2.5 text-right text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                      Total Allocated
-                    </th>
-                    <th className="px-4 py-2.5 text-right text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                      Remaining
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dashboard.wfpByDivision.map((division) => (
-                    <DivisionRow key={division.divisionId} division={division} />
-                  ))}
-                </tbody>
-              </table>
+              <DivisionTable
+                divisions={divisions}
+                canManageAllocation={canManageAllocation}
+                officeId={officeId}
+                fiscalYear={fiscalYear}
+              />
             )}
-          </div>
+          </Band>
         )}
 
-        {/* ── Recent activity (both views) ──────────────────────────────────── */}
-        <div className="bg-white border border-slate-200">
-          <div className="px-5 py-4 border-b border-slate-100">
-            <h2 className="text-sm font-semibold text-slate-800">Recent Activity</h2>
-            <p className="text-xs text-slate-600 mt-0.5">{officeLabel}</p>
-          </div>
-          <div className="divide-y divide-slate-50">
-            {activityLoading ? (
-              <div className="px-5 py-6 flex items-center gap-2 text-sm text-slate-600">
-                <Spinner />
-                <span>Loading activity…</span>
-              </div>
-            ) : activityError ? (
-              <div className="px-5 py-4 text-sm text-red-500">{activityError}</div>
-            ) : activity.length === 0 ? (
-              <div className="px-5 py-6 text-sm text-slate-600">No recent activity yet.</div>
+        {/* ── Office table — cross-office scope only ──────────────────────── */}
+        {hasCrossOfficeScope && (
+          <Band
+            title={`Offices — FY ${fiscalYear ?? "…"}`}
+            description={
+              canManagePboCeiling
+                ? "Ceilings you publish for every office"
+                : "Read-only across every office"
+            }
+            actions={
+              canManagePboCeiling && officesWithoutCeiling.length > 0 && priorFiscalYear != null ? (
+                <button
+                  type="button"
+                  onClick={() => setBulkOpen(true)}
+                  className="px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 text-sm font-medium transition-colors"
+                >
+                  Bulk set from FY {priorFiscalYear}
+                </button>
+              ) : undefined
+            }
+            loading={officesLoading}
+            error={officesError}
+            onRetry={loadOffices}
+            skeleton={<TableBandSkeleton columns={7} />}
+          >
+            {bulkNotice && <p className="px-5 pt-3 text-sm text-green-700">{bulkNotice}</p>}
+            {offices == null || offices.length === 0 ? (
+              <BandEmpty
+                message={`No offices have a FY ${fiscalYear ?? "—"} ceiling yet.`}
+                action={
+                  canManagePboCeiling ? (
+                    <Link
+                      href={allocationHref}
+                      className="px-3 py-2 bg-green-600 hover:bg-green-500 text-white text-sm font-medium transition-colors"
+                    >
+                      Set ceilings
+                    </Link>
+                  ) : undefined
+                }
+              />
             ) : (
-              activity.map((entry) => (
+              <OfficeTable
+                offices={offices}
+                fiscalYear={fiscalYear}
+                canSetCeiling={canManagePboCeiling}
+              />
+            )}
+          </Band>
+        )}
+
+        {/* ── Recent activity ────────────────────────────────────────────── */}
+        <Band
+          title="Recent activity"
+          description={officeLabel}
+          loading={activityLoading}
+          error={activityError}
+          onRetry={() => {
+            setActivityLoading(true);
+            setActivityError(null);
+            getRecentActivity(user?.officeId ?? undefined)
+              .then(setActivity)
+              .catch(() => setActivityError("Could not load recent activity."))
+              .finally(() => setActivityLoading(false));
+          }}
+          skeleton={<TableBandSkeleton rows={4} columns={2} />}
+        >
+          {activity.length === 0 ? (
+            <BandEmpty message="No recent activity yet." />
+          ) : (
+            <div className="divide-y divide-slate-50">
+              {activity.map((entry) => (
                 <div key={entry.id} className="px-5 py-3 flex items-start justify-between gap-4">
-                  <div className="text-sm text-slate-600">
-                    <span className="font-medium">{entry.actorName}</span>
+                  <p className="text-sm text-slate-600">
+                    <span className="font-medium text-slate-800">{entry.actorName}</span>
                     {" — "}
-                    <span className="text-slate-600">
-                      {entry.action.toLowerCase()} on {entry.tableName} {recordLabel(entry)}
-                    </span>
-                  </div>
-                  <span className="text-xs text-slate-600 whitespace-nowrap flex-shrink-0">
+                    {entry.action.toLowerCase()} on {entry.tableName} {recordLabel(entry)}
+                  </p>
+                  <span className="text-xs text-slate-500 whitespace-nowrap shrink-0">
                     {new Date(entry.changedAt).toLocaleString("en-PH", { timeZone: "Asia/Manila" })}
                   </span>
                 </div>
-              ))
-            )}
-          </div>
-        </div>
-
+              ))}
+            </div>
+          )}
+        </Band>
       </div>
+
+      {bulkOpen && fiscalYear != null && priorFiscalYear != null && (
+        <BulkCeilingModal
+          offices={officesWithoutCeiling}
+          fiscalYear={fiscalYear}
+          priorFiscalYear={priorFiscalYear}
+          onClose={() => setBulkOpen(false)}
+          onApplied={(created) => {
+            setBulkOpen(false);
+            setBulkNotice(`Published ${created} ceiling${created === 1 ? "" : "s"} for FY ${fiscalYear}.`);
+            loadOffices();
+          }}
+        />
+      )}
     </div>
   );
 }

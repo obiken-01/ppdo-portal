@@ -104,4 +104,51 @@ public sealed class AipRepository : Repository<AipRecord>, IAipRepository
             .Distinct()
             .OrderByDescending(y => y)
             .ToListAsync(ct);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<AipOfficeRollupDto>> GetOfficeRollupsAsync(
+        int aipRecordId, CancellationToken ct = default)
+        => await (
+                from office in _context.Set<AipOffice>()
+                where office.AipRecordId == aipRecordId
+                // Left joins: an office with no programs, or a program with no activities, must
+                // still come back as a row of zeroes. Dropping it would make an office that exists
+                // in the AIP but has nothing in it indistinguishable from one that was never
+                // added — two different things on the dashboard ("In progress" vs "Todo").
+                join program in _context.Set<AipProgram>() on office.Id equals program.OfficeId into programs
+                from program in programs.DefaultIfEmpty()
+                join project in _context.Set<AipProject>() on program.Id equals project.ProgramId into projects
+                from project in projects.DefaultIfEmpty()
+                join activity in _context.Set<AipActivity>() on project.Id equals activity.ProjectId into activities
+                from activity in activities.DefaultIfEmpty()
+                group activity by new { office.Id, office.RefCode } into g
+                select new AipOfficeRollupDto(
+                    g.Key.Id,
+                    g.Key.RefCode,
+                    g.Count(a => a != null),
+                    g.Count(a => a != null && a.Total != null && a.Total != 0m),
+                    g.Sum(a => a != null ? a.Total ?? 0m : 0m)))
+            .ToListAsync(ct);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<AipProgramRollupDto>> GetProgramRollupsAsync(
+        IReadOnlyList<int> aipOfficeIds, CancellationToken ct = default)
+    {
+        if (aipOfficeIds.Count == 0) return [];
+        return await (
+                from program in _context.Set<AipProgram>()
+                where aipOfficeIds.Contains(program.OfficeId)
+                join project in _context.Set<AipProject>() on program.Id equals project.ProgramId into projects
+                from project in projects.DefaultIfEmpty()
+                join activity in _context.Set<AipActivity>() on project.Id equals activity.ProjectId into activities
+                from activity in activities.DefaultIfEmpty()
+                group activity by new { program.OfficeId, program.RefCode } into g
+                select new AipProgramRollupDto(
+                    g.Key.OfficeId,
+                    g.Key.RefCode,
+                    g.Count(a => a != null),
+                    g.Count(a => a != null && a.Total != null && a.Total != 0m),
+                    g.Sum(a => a != null ? a.Total ?? 0m : 0m)))
+            .ToListAsync(ct);
+    }
 }

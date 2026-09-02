@@ -1,6 +1,7 @@
 using System.Net;
 using Microsoft.Azure.Functions.Worker.Http;
 using Moq;
+using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
 using PPDO.Application.Services;
 using PPDO.Domain.Entities;
@@ -75,13 +76,13 @@ public sealed class BudgetPlanningDashboardFunctionsTests
         officeId, FiscalYear,
         new AllocationSetupSummaryDto(null, 0m, null, false, 0, 0),
         new OfficeLdipSummaryDto(false, 0, Array.Empty<StatusBreakdownDto>()),
-        new OfficeAipSummaryDto(false, null, 0, 0, 0));
+        new OfficeAipSummaryDto(false, null, 0, 0, 0, 0m));
 
     private static PpdoDashboardDto MakePpdoDashboard() => new(
         FiscalYear, new[] { FiscalYear }, OwnOffice, "PPDO", "Provincial Planning and Development Office",
         new OfficeLdipSummaryDto(false, 0, Array.Empty<StatusBreakdownDto>()),
-        new OfficeAipSummaryDto(false, null, 0, 0, 0),
-        Array.Empty<DivisionWfpStatusDto>(),
+        new OfficeAipSummaryDto(false, null, 0, 0, 0, 0m),
+        Array.Empty<DivisionSummaryDto>(),
         Array.Empty<FundCeilingDto>());
 
     /// <summary>Captures the officeId the handler resolves and hands to the service.</summary>
@@ -304,5 +305,119 @@ public sealed class BudgetPlanningDashboardFunctionsTests
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Null(requested);
+    }
+
+    // ── GET /budget-planning/dashboard/offices (PPDO-20, ticket B) ─────────────
+    // The handler owns three things worth pinning: the fiscalYear 400, that BOTH halves of the
+    // gate answer with the same 403 body, and that the service — not the handler — decides scope.
+
+    private static FakeHttpRequestData OfficesRequest(string query)
+        => FunctionHttp.Get(query, path: "budget-planning/dashboard/offices");
+
+    private void ExpectOffices(ServiceResult<IReadOnlyList<OfficeSummaryDto>> result)
+        => _service.Setup(s => s.GetOfficesAsync(
+                It.IsAny<User>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(result);
+
+    private static OfficeSummaryDto OfficeRow(int id, string code) =>
+        new(id, code, $"Office {id}", IsHostOffice: false,
+            CeilingAmount: null, CostedInAip: 0m, ActivityCount: 0,
+            AipStatus: "Todo", SubmissionStatus: "Todo",
+            IsOverCeiling: false, ReviewerName: null);
+
+    [Fact]
+    public async Task GetDashboardOffices_WithInvalidToken_ReturnsUnauthorizedAndNeverCallsService()
+    {
+        _jwt.Setup(j => j.ValidateAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+
+        HttpResponseData response = await Sut.GetDashboardOffices(
+            OfficesRequest($"fiscalYear={FiscalYear}"), CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        _service.Verify(s => s.GetOfficesAsync(
+            It.IsAny<User>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetDashboardOffices_MissingFiscalYear_ReturnsBadRequestAndNeverCallsService()
+    {
+        Authenticate(MakeUser(OwnOffice));
+
+        HttpResponseData response = await Sut.GetDashboardOffices(
+            OfficesRequest(string.Empty), CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        _service.Verify(s => s.GetOfficesAsync(
+            It.IsAny<User>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetDashboardOffices_UnparseableFiscalYear_ReturnsBadRequest()
+    {
+        Authenticate(MakeUser(OwnOffice));
+
+        HttpResponseData response = await Sut.GetDashboardOffices(
+            OfficesRequest("fiscalYear=next-year"), CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetDashboardOffices_WithoutBudgetPlanningPermission_ReturnsForbiddenAndNeverCallsService()
+    {
+        Authenticate(MakeUser(OwnOffice), canAccessBudgetPlanning: false);
+
+        HttpResponseData response = await Sut.GetDashboardOffices(
+            OfficesRequest($"fiscalYear={FiscalYear}"), CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        _service.Verify(s => s.GetOfficesAsync(
+            It.IsAny<User>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetDashboardOffices_BothGateFailures_AnswerWithTheIdenticalBody()
+    {
+        // The spec forbids distinguishing "no feature" from "feature but no cross-office grant":
+        // a different body turns the 403 into an oracle for which grants an account holds.
+        Authenticate(MakeUser(OwnOffice), canAccessBudgetPlanning: false);
+        HttpResponseData noFeature = await Sut.GetDashboardOffices(
+            OfficesRequest($"fiscalYear={FiscalYear}"), CancellationToken.None);
+
+        _jwt.Reset();
+        _permissions.Reset();
+        _service.Reset();
+        Authenticate(MakeUser(OwnOffice));
+        ExpectOffices(ServiceResult<IReadOnlyList<OfficeSummaryDto>>.Forbidden(
+            "You do not have access to Budget Planning."));
+        HttpResponseData noScope = await Sut.GetDashboardOffices(
+            OfficesRequest($"fiscalYear={FiscalYear}"), CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.Forbidden, noFeature.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, noScope.StatusCode);
+        Assert.Equal(FunctionHttp.BodyText(noFeature), FunctionHttp.BodyText(noScope));
+    }
+
+    [Fact]
+    public async Task GetDashboardOffices_WithCrossOfficeScope_Returns200AndPassesTheCallerThrough()
+    {
+        // Scope belongs to the service, which is where the OfficeScope resolvers live. The
+        // handler's job is to hand it the authenticated caller — never an office id off the
+        // query string, which is what made RAL-229 an IDOR one endpoint over.
+        User caller = MakeUser(OwnOffice);
+        Authenticate(caller);
+        User? passed = null;
+        _service.Setup(s => s.GetOfficesAsync(
+                It.IsAny<User>(), FiscalYear, It.IsAny<CancellationToken>()))
+            .Callback((User u, int _, CancellationToken _) => passed = u)
+            .ReturnsAsync(ServiceResult<IReadOnlyList<OfficeSummaryDto>>.Ok(
+                [OfficeRow(1, "PPDO"), OfficeRow(2, "GSO")]));
+
+        HttpResponseData response = await Sut.GetDashboardOffices(
+            OfficesRequest($"fiscalYear={FiscalYear}"), CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Same(caller, passed);
     }
 }

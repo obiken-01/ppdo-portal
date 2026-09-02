@@ -104,6 +104,15 @@ office users land on a hub that reports nothing they can act on.
 - **Division rename** — an `SPD` division is reportedly being merged into `FPIP`. Does not affect
   this spec (nothing keys on a division code) but will affect sample data and screenshots.
 
+- **A PPA assigned to two divisions counts in full against both.** ⚠️ Found during implementation,
+  and it is live in FY2027: one PPDO program is assigned to two divisions, so the division column
+  sums to 140 activities against the office's real 139. The row answers "what is this division
+  responsible for", so counting it twice is right *per row* — but the column is then not additive,
+  and splitting the cost evenly instead would invent a number nobody entered. The dashboard works
+  around it by reading office totals from the office's own AIP rows rather than from that sum (see
+  §4.4). **Whether a shared assignment is intended at all is a question for the finance officers** —
+  if it is not, the fix belongs on the Allocation page's PPA tab, not here.
+
 ---
 
 ## 3. Behaviour
@@ -157,6 +166,11 @@ Every row below is a flag combination already pinned in `docs/v1.8/Permission_Ma
 | `GET /api/budget-planning/activity` | raw JSON | Recent activity, `?officeId` |
 
 > ⚠️ The envelope is inconsistent across these four and this spec does **not** fix it — see §7.
+
+> ⚠️ **`GET /dashboard/office` was NOT reused entirely unchanged** — see §4.4. Its
+> `OfficeAipSummaryDto` gained one field during implementation. The four endpoints' *plumbing* is
+> unchanged, which is what this section is about; one additive read field is not the re-plumbing
+> §7 rules out.
 
 ### 4.2 New — `GET /api/budget-planning/dashboard/offices`
 
@@ -259,6 +273,31 @@ Note also that **the per-division clamp for division-scoped Staff lives on this 
 service already narrows `WfpByDivision` and each `FundCeilingDto.ByDivision`. That clamp must survive
 the rename; it is the mechanism behind the §3.2 row "Money and tables clamped to RMED server-side".
 
+### 4.4 Changed — `OfficeAipSummaryDto` gains `CostedInAip`
+
+```csharp
+public record OfficeAipSummaryDto(
+    bool Exists, string? Status,
+    int ProgramCount, int ProjectCount, int ActivityCount,
+    decimal CostedInAip);          // ← added
+```
+
+Additive, on a DTO §4.1 had listed as reused unchanged. **Two problems forced it, both found by
+running the page against real data rather than by reading the spec.**
+
+1. **The page contradicted itself.** The rail and the tiles derived the office's totals by summing
+   `ByDivision`; the office table read the office's own AIP rows. Live on FY2027 that showed
+   *140 activities* in the rail against *139* in the office table, for the same office, on the same
+   screen — the shared-PPA case in §2's open follow-ups. Summing the per-division list is wrong by
+   construction, so the tiles now read this field. A division-clamped viewer still gets their own
+   row, which is both correct and all they are entitled to.
+
+2. **A guest office had no costed figure at all.** The only other endpoint that computes one is
+   §4.2, which correctly 403s a plain office user. Without this field the guest dashboard — the
+   half of V18-30 that motivated the whole ticket — could report activity *counts* but no money.
+
+Computed from activities already loaded by `BuildOfficeAipSummaryAsync`; no extra query.
+
 ---
 
 ## 5. Data model changes
@@ -335,12 +374,12 @@ page once fired it four times per load.
 | Ticket | Scope | Blocked by |
 |---|---|---|
 | **A** | Hide WFP + Report from guest offices — sidebar, route gate, prefetch | — (**done**, PR #279) |
-| **B** | `GET /dashboard/offices` + `OfficeSummaryDto` + scope resolution + tests | — |
-| **C** | Replace `DivisionWfpStatusDto` with `DivisionSummaryDto` (AIP-based), rename `WfpByDivision` → `ByDivision`, update the frontend type and the current page + tests. **Breaking response change** | — |
-| **D** | Shared components: `PipelineRail`, `StatusPill`, `StackedFundBar`, `ActionCard` | — |
-| **E** | Dashboard page rebuild — context bar, action band, rail, tiles | D |
-| **F** | Table lane — division table (PPDO) and office table (cross-office / PBO / admin) | B, C, D |
-| **G** | Ceiling row deep-links + bulk-set modal | F |
+| **B** | `GET /dashboard/offices` + `OfficeSummaryDto` + scope resolution + tests (**done**) | — |
+| **C** | Replace `DivisionWfpStatusDto` with `DivisionSummaryDto` (AIP-based), rename `WfpByDivision` → `ByDivision`, update the frontend type and the current page + tests. **Breaking response change** (**done**) | — |
+| **D** | Shared components: `PipelineRail`, `StatusPill`, `StackedFundBar`, `ActionCard` (**done**) | — |
+| **E** | Dashboard page rebuild — context bar, action band, rail, tiles (**done**) | D |
+| **F** | Table lane — division table (PPDO) and office table (cross-office / PBO / admin) (**done**) | B, C, D |
+| **G** | Ceiling row deep-links + bulk-set modal (**done**) | F |
 
 B, C and D are independent and parallelisable. **D is a good manual-implementation candidate** —
 small blast radius, presentational, and `RowActions` is a near-identical sibling to pattern-match

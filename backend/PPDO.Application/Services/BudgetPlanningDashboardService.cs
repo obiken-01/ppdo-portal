@@ -42,6 +42,9 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     private readonly IRepository<FundingSource>     _fundingSourceRepo;
     private readonly IAuditRepository               _auditRepo;
     private readonly IAllocationService             _allocationService;
+    private readonly IBudgetCeilingRepository       _ceilingRepo;
+    private readonly IUserRepository                _userRepo;
+    private readonly IPermissionService             _permissions;
 
     public BudgetPlanningDashboardService(
         ILdipRepository                ldipRepo,
@@ -53,7 +56,10 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         IRepository<Division>          divisionRepo,
         IRepository<FundingSource>     fundingSourceRepo,
         IAuditRepository               auditRepo,
-        IAllocationService             allocationService)
+        IAllocationService             allocationService,
+        IBudgetCeilingRepository       ceilingRepo,
+        IUserRepository                userRepo,
+        IPermissionService             permissions)
     {
         _ldipRepo          = ldipRepo;
         _aipRepo           = aipRepo;
@@ -65,6 +71,9 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         _fundingSourceRepo = fundingSourceRepo;
         _auditRepo         = auditRepo;
         _allocationService = allocationService;
+        _ceilingRepo       = ceilingRepo;
+        _userRepo          = userRepo;
+        _permissions       = permissions;
     }
 
     /// <inheritdoc />
@@ -100,15 +109,15 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         Dictionary<int, IReadOnlyList<DivisionAllocationDto>> allocationsByFund =
             await GetAllocationsByFundAsync(host.Id, resolvedFY, activeFunds, ct);
 
-        IReadOnlyList<DivisionWfpStatusDto> wfpByDivision =
-            await BuildWfpByDivisionAsync(host.Id, resolvedFY, divisions, activeFunds, allocationsByFund, ct);
+        IReadOnlyList<DivisionSummaryDto> byDivision =
+            await BuildByDivisionAsync(host, resolvedFY, divisions, activeFunds, allocationsByFund, ct);
         IReadOnlyList<FundCeilingDto> ceilingByFund =
             await BuildCeilingByFundAsync(
                 host.Id, resolvedFY, divisions, activeFunds, allocationsByFund, _allocationService, ct);
 
         return new PpdoDashboardDto(
             resolvedFY, availableFiscalYears, host.Id, host.OfficeCode, host.OfficeName,
-            ldip, aip, wfpByDivision, ceilingByFund);
+            ldip, aip, byDivision, ceilingByFund);
     }
 
     /// <inheritdoc />
@@ -148,47 +157,87 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
                 .ToList());
     }
 
-    private async Task<IReadOnlyList<DivisionWfpStatusDto>> BuildWfpByDivisionAsync(
-        int officeId, int fiscalYear, IReadOnlyList<Division> divisions,
+    /// <summary>
+    /// One row per in-scope division: its allocation, what it has costed in the AIP, and its AIP
+    /// stage (PPDO-20 — replaces BuildWfpByDivisionAsync).
+    ///
+    /// <b>How a division is linked to AIP money.</b> There is no division column on the AIP
+    /// hierarchy. The link is <c>program_divisions</c> — the PPA assignment — which is keyed by
+    /// program REF CODE and is deliberately permanent rather than per fiscal year (see
+    /// <see cref="ProgramDivision"/> for why an FK to aip_programs.Id would be wrong). So: resolve
+    /// the FY's AIP record, take the host office's AipOffice rows, roll every program up in SQL,
+    /// then attribute each program's rollup to whichever divisions its ref code is assigned to.
+    ///
+    /// ⚠️ <b>A program assigned to two divisions counts in full against both.</b> The column
+    /// answers "what is this division responsible for", not "how does the office total split", so
+    /// summing it down the page can exceed the office's own figure when a PPA is shared. Splitting
+    /// the cost evenly instead would invent a number nobody entered. If shared assignments become
+    /// common this needs a real answer — flagged as an open item on the PPDO-20 spec, not decided
+    /// here by accident.
+    /// </summary>
+    private async Task<IReadOnlyList<DivisionSummaryDto>> BuildByDivisionAsync(
+        Office host, int fiscalYear, IReadOnlyList<Division> divisions,
         IReadOnlyList<FundingSource> activeFunds,
         IReadOnlyDictionary<int, IReadOnlyList<DivisionAllocationDto>> allocationsByFund,
         CancellationToken ct)
     {
+        // Sequential throughout — DbContext is not thread-safe, and Task.WhenAll over two repo
+        // calls sharing it is what produced the GetStatsAsync production 500.
         AipRecord? primaryAip = await _aipRepo.GetLatestByFiscalYearAsync(fiscalYear, ct);
 
-        // One representative WfpRecord per division: prefer Final, else most recently updated.
-        Dictionary<int, WfpRecord> wfpByDivisionMap = [];
-        if (primaryAip is not null)
+        Dictionary<int, (int Costed, int Total, decimal Amount)> aipByDivision = [];
+
+        if (primaryAip is not null && host.OfficeRefCode is not null)
         {
-            IReadOnlyList<WfpRecord> records =
-                await _wfpRepo.GetFilteredAsync(primaryAip.Id, officeId, divisionId: null, ct);
-            wfpByDivisionMap = records
-                .Where(w => w.DivisionId.HasValue)
-                .GroupBy(w => w.DivisionId!.Value)
+            IReadOnlyList<AipOffice> aipOffices = await _aipRepo.GetOfficesByAipIdAsync(primaryAip.Id, ct);
+            List<int> hostAipOfficeIds = aipOffices
+                .Where(o => o.RefCode.EndsWith(host.OfficeRefCode, StringComparison.OrdinalIgnoreCase))
+                .Select(o => o.Id)
+                .ToList();
+
+            IReadOnlyList<AipProgramRollupDto> programRollups =
+                await _aipRepo.GetProgramRollupsAsync(hostAipOfficeIds, ct);
+
+            IReadOnlyList<ProgramAssignmentDto> assignments =
+                await _allocationService.GetProgramAssignmentsAsync(host.Id, fiscalYear, ct);
+            Dictionary<string, IReadOnlyList<int>> divisionsByProgramRefCode = assignments
+                .GroupBy(a => a.ProgramRefCode, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(
                     g => g.Key,
-                    g => g.OrderByDescending(w => w.Status == PlanningStatus.Final)
-                          .ThenByDescending(w => w.UpdatedAt)
-                          .First());
+                    g => (IReadOnlyList<int>)g.SelectMany(a => a.DivisionIds).Distinct().ToList(),
+                    StringComparer.OrdinalIgnoreCase);
+
+            foreach (AipProgramRollupDto rollup in programRollups)
+            {
+                if (!divisionsByProgramRefCode.TryGetValue(rollup.ProgramRefCode, out IReadOnlyList<int>? divisionIds))
+                    continue; // Unassigned PPA — belongs to no division row. Surfaced by the
+                              // allocation-setup panel's "unassigned" count, not silently spread.
+
+                foreach (int divisionId in divisionIds)
+                {
+                    (int Costed, int Total, decimal Amount) acc = aipByDivision.GetValueOrDefault(divisionId);
+                    aipByDivision[divisionId] = (
+                        acc.Costed + rollup.CostedActivityCount,
+                        acc.Total  + rollup.ActivityCount,
+                        acc.Amount + rollup.CostedTotal);
+                }
+            }
         }
 
-        // One grouped query for every division's ledger usage across every fund (RAL-176) —
-        // was previously not queried at all here, and the naive fix would be one
-        // SumUsedAmountAsync call per division per fund inside the loop below (an N+1 of the
-        // same shape GetAllocationsByFundAsync was written to avoid). Fetch once, look up
-        // in-memory per division+fund instead.
+        // The per-fund Used/Remaining breakdown stays the WFP ledger figure it has always been
+        // (RAL-176). Decisions 3 and 4 retire WFP from what the PAGE reports, not from this
+        // payload's fund rows — DivisionFundAmountDto is unchanged by the spec, and zeroing a
+        // field the Allocation page's ledger view depends on would be a silent data regression.
+        // One grouped query for every division across every fund; the naive alternative is a
+        // per-division-per-fund N+1 inside the loop below.
         IReadOnlyList<DivisionFundUsedAmountDto> usedAmounts = await _ledgerRepo.SumUsedAmountsByDivisionsAsync(
             divisions.Select(d => d.Id).ToList(), fiscalYear, ct);
         Dictionary<(int DivisionId, int FundingSourceId), decimal> usedByDivisionFund =
             usedAmounts.ToDictionary(u => (u.DivisionId, u.FundingSourceId), u => u.UsedAmount);
 
-        List<DivisionWfpStatusDto> result = [];
+        List<DivisionSummaryDto> result = [];
         foreach (Division division in divisions)
         {
-            // Sequential — DbContext is not thread-safe, never Task.WhenAll these.
-            WfpActivityCoverageDto coverage =
-                await _wfpExpRepo.GetActivityCoverageAsync(officeId, division.Id, fiscalYear, ct);
-
             List<DivisionFundAmountDto> allocationByFund = activeFunds
                 .Select(fund =>
                 {
@@ -200,13 +249,20 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
                 .Where(f => f.Amount > 0m)
                 .ToList();
 
-            wfpByDivisionMap.TryGetValue(division.Id, out WfpRecord? wfp);
+            (int Costed, int Total, decimal Amount) aip = aipByDivision.GetValueOrDefault(division.Id);
+            decimal allocated = allocationByFund.Sum(f => f.Amount);
 
-            result.Add(new DivisionWfpStatusDto(
+            result.Add(new DivisionSummaryDto(
                 division.Id, division.Code, division.Name,
-                wfp?.Status ?? "Not started",
-                coverage.ActivitiesWithExpenditures, coverage.TotalActivities,
-                allocationByFund.Sum(f => f.Amount),
+                allocated,
+                aip.Amount,
+                allocated - aip.Amount,
+                aip.Costed,
+                aip.Total,
+                PlanningStage.ForAip(primaryAip?.Status, aip.Total),
+                // Constant until Phase 4 adds a submission entity — spec §7. Rendered rather than
+                // omitted so the layout does not move when it becomes real.
+                PlanningStage.Todo,
                 allocationByFund));
         }
 
@@ -267,6 +323,111 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
                 a.RecordGuid,
                 a.ChangedBy?.FullName ?? "Unknown"))
             .ToList();
+    }
+
+    /// <inheritdoc />
+    public async Task<ServiceResult<IReadOnlyList<OfficeSummaryDto>>> GetOfficesAsync(
+        User caller, int fiscalYear, CancellationToken ct = default)
+    {
+        // ── Scope. The load-bearing part; read IBudgetPlanningDashboardService.GetOfficesAsync
+        // and OfficeScope's own remarks before touching it. Never OfficeScope.Resolve: teaching
+        // it either grant would promote a cross-office READER into a cross-office EDITOR at every
+        // write path that shares Resolve, with no diff at any write site to notice it.
+        bool canReviewAllOffices = await _permissions.CanReviewAllOfficesAsync(caller, ct);
+        bool canManagePboCeiling = await _permissions.CanManagePboCeilingAsync(caller, ct);
+
+        OfficeScope scope;
+        if (canReviewAllOffices)
+            scope = OfficeScope.ResolveForReview(caller, true);
+        else if (canManagePboCeiling)
+            scope = OfficeScope.ResolveForCeiling(caller, true);
+        else
+            // Forbidden, not an empty list — an empty list reads as "no offices exist", and a
+            // caller scoped to a single office has GetOfficeDashboardAsync to call instead.
+            return ServiceResult<IReadOnlyList<OfficeSummaryDto>>.Forbidden(
+                "You do not have access to Budget Planning.");
+
+        List<Office> offices = (await _officeRepo.GetAllAsync(ct))
+            .Where(o => o.IsActive && scope.Permits(o.Id))
+            .OrderByDescending(o => o.IsHostOffice)
+            .ThenBy(o => o.OfficeCode)
+            .ToList();
+        if (offices.Count == 0) return ServiceResult<IReadOnlyList<OfficeSummaryDto>>.Ok([]);
+
+        List<int> officeIds = offices.Select(o => o.Id).ToList();
+
+        // Three aggregate reads for the whole table, awaited sequentially. The per-office
+        // alternative — GetOfficeDashboardAsync in a loop — is four queries per office plus a
+        // ceiling read, i.e. ~70 round trips for fourteen offices.
+        IReadOnlyList<BudgetCeiling> ceilings = await _ceilingRepo.GetByFiscalYearAsync(fiscalYear, ct);
+        Dictionary<int, decimal> ceilingByOffice = ceilings
+            .GroupBy(c => c.OfficeId)
+            .ToDictionary(g => g.Key, g => g.Sum(c => c.Amount));
+
+        IReadOnlyDictionary<int, string> reviewerByOffice =
+            await _userRepo.GetReviewerNamesByOfficeAsync(officeIds, ct);
+
+        AipRecord? aip = await _aipRepo.GetLatestByFiscalYearAsync(fiscalYear, ct);
+        Dictionary<int, (int ActivityCount, decimal Costed)> aipByOffice =
+            await BuildAipRollupByOfficeAsync(aip, offices, ct);
+
+        List<OfficeSummaryDto> rows = [];
+        foreach (Office office in offices)
+        {
+            (int ActivityCount, decimal Costed) figures = aipByOffice.GetValueOrDefault(office.Id);
+
+            // Null vs 0m matters: null is "PBO has not published a ceiling", 0m is a published
+            // decision. The UI renders stage 1 differently for each, so do not coalesce.
+            decimal? ceiling = ceilingByOffice.TryGetValue(office.Id, out decimal c) ? c : null;
+
+            rows.Add(new OfficeSummaryDto(
+                office.Id,
+                office.OfficeCode,
+                office.OfficeName,
+                office.IsHostOffice,
+                ceiling,
+                figures.Costed,
+                figures.ActivityCount,
+                PlanningStage.ForAip(aip?.Status, figures.ActivityCount),
+                PlanningStage.Todo,      // Phase 4 — spec §7.
+                ceiling is decimal limit && figures.Costed > limit,
+                reviewerByOffice.GetValueOrDefault(office.Id)));
+        }
+
+        return ServiceResult<IReadOnlyList<OfficeSummaryDto>>.Ok(rows);
+    }
+
+    /// <summary>
+    /// OfficeId → (activity count, costed total) for every office in <paramref name="offices"/>,
+    /// from one grouped query over the fiscal year's AIP (PPDO-20).
+    ///
+    /// An office is matched to its AIP rows by <see cref="Office.OfficeRefCode"/> suffix, the same
+    /// rule <c>BuildOfficeAipSummaryAsync</c> has always used — AipOffice.RefCode is a full
+    /// BOM-segment code whose tail is the office's own. An office with no ref code configured
+    /// cannot be matched at all and is simply absent, which reads as Todo on its row.
+    /// </summary>
+    private async Task<Dictionary<int, (int ActivityCount, decimal Costed)>> BuildAipRollupByOfficeAsync(
+        AipRecord? aip, IReadOnlyList<Office> offices, CancellationToken ct)
+    {
+        if (aip is null) return [];
+
+        IReadOnlyList<AipOfficeRollupDto> rollups = await _aipRepo.GetOfficeRollupsAsync(aip.Id, ct);
+
+        Dictionary<int, (int ActivityCount, decimal Costed)> byOffice = [];
+        foreach (Office office in offices)
+        {
+            if (office.OfficeRefCode is null) continue;
+
+            List<AipOfficeRollupDto> matched = rollups
+                .Where(r => r.RefCode.EndsWith(office.OfficeRefCode, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (matched.Count == 0) continue;
+
+            byOffice[office.Id] =
+                (matched.Sum(r => r.ActivityCount), matched.Sum(r => r.CostedTotal));
+        }
+
+        return byOffice;
     }
 
     /// <inheritdoc />
@@ -342,11 +503,11 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     {
         Office? office = await _officeRepo.GetByIdAsync(officeId, cancellationToken);
         if (office?.OfficeRefCode is null)
-            return new OfficeAipSummaryDto(false, null, 0, 0, 0);
+            return new OfficeAipSummaryDto(false, null, 0, 0, 0, 0m);
 
         AipRecord? aipRecord = await _aipRepo.GetLatestByFiscalYearAsync(fiscalYear, cancellationToken);
         if (aipRecord is null)
-            return new OfficeAipSummaryDto(false, null, 0, 0, 0);
+            return new OfficeAipSummaryDto(false, null, 0, 0, 0, 0m);
 
         IReadOnlyList<AipOffice> aipOffices =
             await _aipRepo.GetOfficesByAipIdAsync(aipRecord.Id, cancellationToken);
@@ -354,7 +515,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
             .Where(o => o.RefCode.EndsWith(office.OfficeRefCode, StringComparison.OrdinalIgnoreCase))
             .ToList();
         if (matched.Count == 0)
-            return new OfficeAipSummaryDto(false, aipRecord.Status, 0, 0, 0);
+            return new OfficeAipSummaryDto(false, aipRecord.Status, 0, 0, 0, 0m);
 
         List<int> officeIds = matched.Select(o => o.Id).ToList();
         IReadOnlyList<AipProgram> programs =
@@ -367,6 +528,10 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
             await _aipRepo.GetActivitiesByProjectIdsAsync(projectIds, cancellationToken);
 
         return new OfficeAipSummaryDto(
-            true, aipRecord.Status, programs.Count, projects.Count, activities.Count);
+            true, aipRecord.Status, programs.Count, projects.Count, activities.Count,
+            // The office's OWN costed total. Summed from the activities already loaded above —
+            // no extra query — and deliberately NOT the sum of the per-division rows, which
+            // double-counts a PPA shared by two divisions. See the DTO's own remarks.
+            activities.Sum(a => a.Total ?? 0m));
     }
 }

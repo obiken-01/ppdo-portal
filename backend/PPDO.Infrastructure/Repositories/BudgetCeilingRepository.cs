@@ -30,4 +30,11 @@ public sealed class BudgetCeilingRepository : Repository<BudgetCeiling>, IBudget
         => await _context.Set<BudgetCeiling>()
             .Where(c => c.FiscalYear == fiscalYear && c.FundingSourceId == fundingSourceId)
             .ToListAsync(ct);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<BudgetCeiling>> GetByFiscalYearAsync(
+        int fiscalYear, CancellationToken ct = default)
+        => await _context.Set<BudgetCeiling>()
+            .Where(c => c.FiscalYear == fiscalYear)
+            .ToListAsync(ct);
 }

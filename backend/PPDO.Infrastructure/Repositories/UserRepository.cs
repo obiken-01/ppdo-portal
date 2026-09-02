@@ -86,4 +86,25 @@ public sealed class UserRepository : Repository<User>, IUserRepository
             .Where(u => ids.Contains(u.Id))
             .ToDictionaryAsync(u => u.Id, u => u.FullName, cancellationToken);
     }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<int, string>> GetReviewerNamesByOfficeAsync(
+        IReadOnlyList<int> officeIds, CancellationToken cancellationToken = default)
+    {
+        if (officeIds.Count == 0) return new Dictionary<int, string>();
+
+        // GroupBy + Min in SQL: one row per office, no user rows transferred. Min(FullName) is
+        // the "alphabetically first" rule from the interface — deterministic without an ORDER BY
+        // over the whole set.
+        List<KeyValuePair<int, string>> rows = await _context.Users
+            .Where(u => u.IsActive
+                     && u.OfficeId != null
+                     && officeIds.Contains(u.OfficeId.Value)
+                     && u.OverrideCanReviewBudgetPlanning == true)
+            .GroupBy(u => u.OfficeId!.Value)
+            .Select(g => new KeyValuePair<int, string>(g.Key, g.Min(u => u.FullName)!))
+            .ToListAsync(cancellationToken);
+
+        return rows.ToDictionary(r => r.Key, r => r.Value);
+    }
 }

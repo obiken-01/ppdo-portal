@@ -22,6 +22,12 @@ public sealed class BudgetPlanningDashboardFunctions
     private readonly IJwtMiddleware                  _jwt;
     private readonly IPermissionService              _permissions;
 
+    /// <summary>
+    /// The one 403 message the offices endpoint gives, whichever half of its gate failed
+    /// (PPDO-20). Must stay identical to the string <c>GetOfficesAsync</c> returns.
+    /// </summary>
+    private const string NoBudgetPlanningAccess = "You do not have access to Budget Planning.";
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -160,6 +166,50 @@ public sealed class BudgetPlanningDashboardFunctions
 
         return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK,
             ApiResponse<OfficeDashboardDto>.Ok(result), cancellationToken);
+    }
+
+    // ── GET /api/budget-planning/dashboard/offices?fiscalYear= ──────────────
+    // PPDO-20. One row per office in the caller's CROSS-OFFICE scope — the dashboard's office
+    // table. Read-only.
+    //
+    // The gate is two-part and both halves matter: CanAccessBudgetPlanning (the feature), then
+    // at least one cross-office grant (the scope). The scope half is resolved inside the service
+    // via OfficeScope.ResolveForReview / ResolveForCeiling — never OfficeScope.Resolve, which
+    // feeds the write paths.
+    //
+    // A caller with the feature but neither grant gets 403 with the SAME message as a caller
+    // without the feature. Distinguishing them would turn the error into an oracle for which
+    // grants an account holds.
+
+    [Function("GetBudgetPlanningDashboardOffices")]
+    public async Task<HttpResponseData> GetDashboardOffices(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "budget-planning/dashboard/offices")]
+        HttpRequestData req,
+        CancellationToken cancellationToken)
+    {
+        User? caller = await _jwt.ValidateAsync(GetAuthHeader(req), cancellationToken);
+        if (caller is null)
+            return req.CreateResponse(HttpStatusCode.Unauthorized);
+
+        // Written out rather than delegated to ConfigHttp.AuthorizeAsync so that BOTH halves of
+        // the gate answer with the identical enveloped 403. AuthorizeAsync returns a bodyless
+        // 403, and the service returns one carrying a message — a caller could tell "no feature"
+        // from "feature but no cross-office grant" by the response body alone, which is the
+        // enumeration the spec forbids.
+        if (!await _permissions.CanAccessBudgetPlanningAsync(caller, cancellationToken))
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.Forbidden,
+                ApiResponse<IReadOnlyList<OfficeSummaryDto>>.Fail(NoBudgetPlanningAccess),
+                cancellationToken);
+
+        if (!int.TryParse(req.Query["fiscalYear"], out int fiscalYear))
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<IReadOnlyList<OfficeSummaryDto>>.Fail("fiscalYear is required."),
+                cancellationToken);
+
+        ServiceResult<IReadOnlyList<OfficeSummaryDto>> result =
+            await _service.GetOfficesAsync(caller, fiscalYear, cancellationToken);
+
+        return await ConfigHttp.FromResultAsync(req, result, cancellationToken);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
