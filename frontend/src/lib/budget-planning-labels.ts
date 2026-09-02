@@ -31,6 +31,12 @@ export interface AllocationLabels {
   ceilingTab: string;
   /** Helper line above the fund-source list. */
   ceilingIntro: string;
+  /**
+   * Shown when no office is selected. A fifth surface as of PPDO-17: before the office
+   * picker existed, a PBO-only caller was always pre-filled to their own office and could
+   * never reach this state. Now it is the FIRST thing they see on every page load.
+   */
+  emptyOffice: string;
 }
 
 export function allocationLabels(me: AllocationLabelSubject | null): AllocationLabels {
@@ -44,6 +50,7 @@ export function allocationLabels(me: AllocationLabelSubject | null): AllocationL
       ceilingTab:  "Ceiling & Division Allocation",
       ceilingIntro:
         "One ceiling and division split per active fund source. General Fund is required; others are optional.",
+      emptyOffice: "Select an office to configure allocation.",
     };
   }
 
@@ -54,5 +61,6 @@ export function allocationLabels(me: AllocationLabelSubject | null): AllocationL
     ceilingTab:  "Ceilings",
     ceilingIntro:
       "One ceiling per active fund source. General Fund is required; others are optional.",
+    emptyOffice: "Select an office to set its budget ceilings.",
   };
 }
