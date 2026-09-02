@@ -163,24 +163,59 @@ query that forgets `.Include(...)` degrades to **more** restrictive, never to fu
 
 ---
 
-## 4. The cross-office exception (PPDO-5)
+## 4. The cross-office exceptions (PPDO-5, PPDO-2)
 
-`CanReviewAllOffices` is the **only** flag that widens data scope past the caller's own office.
-Every other flag narrows to it.
+Two flags widen data scope past the caller's own office. Every other flag narrows to it.
 
-It is consumed through a **separate entry point**, and that separation is the safety property:
+| Flag | Widens what | Entry point | Added |
+|---|---|---|---|
+| `CanReviewAllOffices` | every office's submissions, **read only** | `OfficeScope.ResolveForReview` | PPDO-5 |
+| `CanManagePboCeiling` | every office's allocation setup — the six allocation reads **and** the ceiling write | `OfficeScope.ResolveForCeiling` | PPDO-2, scoped by PPDO-18 |
+
+Each is consumed through its **own entry point**, and that separation is the safety property:
 
 ```
-OfficeScope.ResolveForReview(user, canReviewAllOffices)   READ paths only
-OfficeScope.Resolve(user)                                 everything else, including writes
+OfficeScope.ResolveForReview(user, canReviewAllOffices)    review READ paths only
+OfficeScope.ResolveForCeiling(user, canManagePboCeiling)   allocation reads + the ceiling PUT
+OfficeScope.Resolve(user)                                  everything else, including every other write
 ```
 
-`Resolve` feeds the write paths through `Clamp`. Teaching it this flag would silently promote a
-cross-office *reviewer* into a cross-office **editor** of every office's data, with no diff at any
-write site to notice it. Pinned by `Resolve_IgnoresTheCrossOfficeGrant_SoWritePathsStayScoped`.
+`Resolve` feeds the write paths through `Clamp`. Teaching it either flag would silently promote a
+cross-office *reviewer* into a cross-office **editor** of every office's data, or a PBO ceiling
+officer into an editor of every office's internal division split — with no diff at any write site to
+notice it. Pinned by `Resolve_IgnoresTheCrossOfficeGrant_SoWritePathsStayScoped` and
+`Resolve_IgnoresThePboCeilingGrant_SoAllocationWritesStayScoped`.
+
+**The two do not substitute for each other.** Reusing `ResolveForReview` for the ceiling grant would
+hand a comment-only reviewer a write; reusing `ResolveForCeiling` for review would hand a ceiling
+officer the review scope. Pinned by `TheTwoBypasses_DoNotLeakIntoEachOther`.
 
 A holder's own office is **ignored, not combined** — a reviewer sitting in GSO reviews every office,
 not GSO's rows plus everyone else's.
+
+> **Where the ceiling grant stops.** It is authority over an office's ceiling, not over what that
+> office does with it. `PUT /allocation/divisions` (the division split) and
+> `PUT /allocation/programs` (PPA assignment) stay on `Resolve` and are **host-office only** — see
+> the note below. `PUT /allocation/ceiling` is the one write the grant covers, and it carries no
+> office guard at all: the gate *is* the grant.
+
+### `CanManagePpdoAllocation` is exclusive to host-office users
+
+Settled 2026-09-02, after a live account — `pto.user`, Provincial Treasurer's Office — was found
+holding the flag by mistake. The flag's name and this table always said "PPDO", but nothing
+enforced it, and the Allocation page duly offered that account a division-allocation tab for its
+own office.
+
+Both endpoints on the flag now refuse a guest-office caller **outright**, for their own office as
+well as a foreign one. Enforcing "PPDO only" rather than merely "not someone else's office" means
+the endpoint stops depending on the grant being administered correctly, which is the thing that
+actually went wrong. A host-office caller still writes any office — that is how PPDO sets other
+offices up.
+
+> ⚠️ The flag is *not* office-scoped-per-caller. If a future office genuinely needs to split its
+> own ceiling across its own divisions, that is a **new** grant, not a widening of this one —
+> widening it would silently re-open what this note closed. Pinned by
+> `AllocationFunctionsTests.UpsertDivisions_AsOfficeUser_TargetingOwnOffice_IsAlsoForbidden`.
 
 ---
 

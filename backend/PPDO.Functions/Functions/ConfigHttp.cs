@@ -102,6 +102,20 @@ internal static class ConfigHttp
         => OfficeScope.Resolve(caller).Clamp(requestedOfficeId);
 
     /// <summary>
+    /// <see cref="ClampOfficeId"/> for the <b>allocation-setup reads</b> (v1.8.0 — PPDO-18): same
+    /// clamp, except that a holder of <c>CanManagePboCeiling</c> keeps the office id they asked
+    /// for. That grant is authority over every office's ceiling (RAL-243), so a plain clamp would
+    /// make it unreachable — the holder could only ever load their own office.
+    ///
+    /// <paramref name="canManagePboCeiling"/> must come from
+    /// <c>IPermissionService.CanManagePboCeilingAsync</c>. Reads only, plus the ceiling write the
+    /// grant itself covers; see <see cref="OfficeScope.ResolveForCeiling"/> for why it is a
+    /// separate entry point and must not be used on the other write paths.
+    /// </summary>
+    internal static int? ClampOfficeIdForCeiling(User caller, bool canManagePboCeiling, int? requestedOfficeId)
+        => OfficeScope.ResolveForCeiling(caller, canManagePboCeiling).Clamp(requestedOfficeId);
+
+    /// <summary>
     /// Returns a 403 when an office-scoped caller targets a record owned by a different office,
     /// or a record with no owning office (PPDO-only, e.g. LDIP's multi-office bulk uploads).
     /// Returns null when the caller may proceed.

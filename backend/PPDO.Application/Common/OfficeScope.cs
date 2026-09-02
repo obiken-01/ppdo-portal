@@ -94,6 +94,41 @@ public readonly struct OfficeScope
         => canReviewAllOffices ? All : Resolve(user);
 
     /// <summary>
+    /// Resolves the scope for a caller on the <b>allocation-setup surface</b> — ceilings and the
+    /// office's allocation setup around them (v1.8.0 — PPDO-18).
+    /// Identical to <see cref="Resolve"/>, except that a holder of <c>CanManagePboCeiling</c> is
+    /// scoped to every office even when they belong to one themselves.
+    ///
+    /// <paramref name="canManagePboCeiling"/> must come from
+    /// <c>IPermissionService.CanManagePboCeilingAsync</c> — passed in rather than read off the
+    /// user here because effective permission resolution belongs in <c>PermissionService</c> and
+    /// this type is deliberately pure. Same contract as <see cref="ResolveForReview"/>.
+    ///
+    /// <b>Why the grant reaches past the ceiling row itself.</b> RAL-243 gave the Provincial
+    /// Budget Office authority to set a ceiling for ANY office. The Allocation page that exercises
+    /// that authority loads the office's ceilings, its division split, its PPA assignments and its
+    /// setup status together, so scoping only the ceiling read would leave the holder looking at a
+    /// page that cannot render. The grant is therefore the office axis for that whole read
+    /// surface. It is NOT authority over another office's internal division split — those writes
+    /// stay on <see cref="Resolve"/>; see the warning below.
+    ///
+    /// <b>⚠️ Why this is a third entry point rather than a branch inside <see cref="Resolve"/>.</b>
+    /// Exactly the reason given on <see cref="ResolveForReview"/>, and it applies with more force
+    /// here because this grant legitimately covers reads AND the ceiling write. <see cref="Resolve"/>
+    /// feeds every other write path through <see cref="Clamp"/>; teaching it this flag would
+    /// silently promote a PBO ceiling officer into an editor of every office's division
+    /// allocations and PPA assignments, arriving with no diff at any write site to notice it.
+    /// Reusing <see cref="ResolveForReview"/> instead would be just as wrong in the other
+    /// direction — it would hand a comment-only cross-office reviewer the ceiling write. The three
+    /// resolvers answer three different questions; do not "simplify" them together.
+    ///
+    /// Pinned by <c>OfficeScopeTests.Resolve_IgnoresThePboCeilingGrant_SoAllocationWritesStayScoped</c>
+    /// and <c>TheTwoBypasses_DoNotLeakIntoEachOther</c>.
+    /// </summary>
+    public static OfficeScope ResolveForCeiling(User user, bool canManagePboCeiling)
+        => canManagePboCeiling ? All : Resolve(user);
+
+    /// <summary>
     /// Whether <paramref name="user"/> belongs to the host office, and so holds cross-office
     /// authority (DECISION F, RAL-258). The one place this question is answered — call it rather
     /// than reading <c>OfficeId is null</c> or comparing office codes to <c>"PPDO"</c>.
