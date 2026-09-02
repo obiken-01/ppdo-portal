@@ -333,17 +333,32 @@ export default function BudgetPlanningPage() {
   // ── Money tiles ─────────────────────────────────────────────────────────
 
   const tiles = useMemo<MoneyTile[]>(() => {
+    /**
+     * The ceiling tile is the same in every view, and its read-only-ness keys on
+     * `CanManagePboCeiling` — **not** on `CanManagePpdoAllocation**, which governs the division
+     * split one level down. Two live findings drove that:
+     *
+     *   - A PPDO finance officer (allocation grant, no ceiling grant) saw the ceiling rendered as
+     *     editable. It is not: PPDO-18 gives them a read-only ceiling on the Allocation page, and
+     *     a tile that disagrees with the page it links to is how "why can't I edit this?" starts.
+     *   - The PBO officer was told "Set by PBO — read only" about their own office's ceiling,
+     *     which they publish from the office table immediately below it.
+     *
+     * It is always SHOWN, never hidden, even to an encoder who can do nothing with it — it is the
+     * figure their own allocation has to fit inside, and hiding it just moves the question to
+     * whoever they ask next.
+     */
+    const ceilingTile: MoneyTile = {
+      key: "ceiling",
+      label: "Office ceiling",
+      value: officeCeiling,
+      muted: !canManagePboCeiling,
+      hint: canManagePboCeiling ? "You publish this" : "Set by PBO — read only",
+    };
+
     if (isHost) {
       return [
-        {
-          key: "ceiling",
-          label: "Office ceiling",
-          value: officeCeiling,
-          // Read-only for anyone who is not finance — shown, not hidden, because it is the number
-          // their own allocation has to fit inside.
-          muted: !canManageAllocation,
-          hint: canManageAllocation ? "All funds" : "Set by PBO — read only",
-        },
+        ceilingTile,
         {
           key: "allocated",
           label: canManageAllocation ? "Allocated to divisions" : "Allocated to you",
@@ -366,13 +381,7 @@ export default function BudgetPlanningPage() {
     const guestCeiling = officeCeiling;
     const guestCosted = officeDashboard?.aip.costedInAip ?? null;
     return [
-      {
-        key: "ceiling",
-        label: "Office ceiling",
-        value: guestCeiling,
-        muted: true,
-        hint: "Set by PBO — read only",
-      },
+      ceilingTile,
       { key: "costed", label: "Costed in AIP", value: guestCosted },
       {
         key: "remaining",
@@ -388,7 +397,10 @@ export default function BudgetPlanningPage() {
         count: true,
       },
     ];
-  }, [isHost, officeCeiling, canManageAllocation, allocatedToDivisions, costedInAip, remaining, officeDashboard]);
+  }, [
+    isHost, officeCeiling, canManageAllocation, canManagePboCeiling,
+    allocatedToDivisions, costedInAip, remaining, officeDashboard,
+  ]);
 
   // ── Action card ─────────────────────────────────────────────────────────
   // The single next thing this person can do. Ordered by what actually blocks what.
