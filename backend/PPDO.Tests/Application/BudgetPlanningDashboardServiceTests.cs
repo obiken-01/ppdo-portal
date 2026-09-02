@@ -1362,4 +1362,62 @@ public sealed class BudgetPlanningDashboardServiceTests
         Assert.True(result.Value![0].IsHostOffice);
         Assert.Equal("PPDO", result.Value![0].OfficeCode);
     }
+
+    [Fact]
+    public async Task GetDashboardAsync_ProgramAssignedToTwoDivisions_CountsInBoth_ButNotInTheOfficeTotal()
+    {
+        // The one case where the per-division column is deliberately NOT additive. A shared PPA is
+        // each division's responsibility in full, so both rows carry it — but the office's own
+        // total must still be the real figure, or the dashboard shows two different activity
+        // counts for the same office on one screen. Found live: the rail read 140 while the office
+        // table read 139, because one PPDO program is assigned to two divisions.
+        List<AipRecord> aips = [Aip(10, 2027, "Draft")];
+        List<Office> offices = [Off(PpdoOfficeId, "PPDO", refCode: "1-01-010")];
+        List<Division> divisions =
+        [
+            Div(1, PpdoOfficeId, "Administrative"),
+            Div(2, PpdoOfficeId, "ICT"),
+        ];
+
+        Mock<IAipRepository> aipRepo = AipMockWithOffices(10, AipOff(50, 10, "1000-000-1-01-010"));
+        // The office's real hierarchy: one program, one project, two activities worth ₱100 total.
+        aipRepo.Setup(r => r.GetProgramsByOfficeIdsAsync(
+                It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipProgram>)[AipProg(60, 50, "PROG-1")]);
+        aipRepo.Setup(r => r.GetProjectsByProgramIdsAsync(
+                It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipProject>)[AipProj(70, 60, "PROJ-1")]);
+        aipRepo.Setup(r => r.GetActivitiesByProjectIdsAsync(
+                It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipActivity>)
+            [
+                new AipActivity { Id = 80, ProjectId = 70, RefCode = "A1", Name = "A1", Total = 60m },
+                new AipActivity { Id = 81, ProjectId = 70, RefCode = "A2", Name = "A2", Total = 40m },
+            ]);
+
+        Mock<IAllocationService> allocation = AllocationMockWithDefaults();
+        allocation.Setup(a => a.GetProgramAssignmentsAsync(
+                PpdoOfficeId, 2027, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<ProgramAssignmentDto>)
+                [new ProgramAssignmentDto("1000-000-1-01-010", "PROG-1", "Program 1", "General", [1, 2])]);
+
+        (BudgetPlanningDashboardService sut, _) = Build(
+            [], aips, [], offices, [], divisions,
+            aipRepoMock: aipRepo, allocationMock: allocation,
+            programRollups: [new AipProgramRollupDto(50, "PROG-1", 2, 2, 100m)]);
+
+        PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027, divisionId: null);
+
+        // Both divisions carry the whole program — this is the documented rule, not a bug.
+        Assert.All(result.ByDivision, row =>
+        {
+            Assert.Equal(2, row.TotalActivities);
+            Assert.Equal(100m, row.CostedInAip);
+        });
+        Assert.Equal(200m, result.ByDivision.Sum(r => r.CostedInAip)); // the sum overstates…
+
+        // …and the office's own figures do not. This is what the dashboard tiles read.
+        Assert.Equal(2, result.Aip.ActivityCount);
+        Assert.Equal(100m, result.Aip.CostedInAip);
+    }
 }

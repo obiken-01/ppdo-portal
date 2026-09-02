@@ -503,11 +503,11 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     {
         Office? office = await _officeRepo.GetByIdAsync(officeId, cancellationToken);
         if (office?.OfficeRefCode is null)
-            return new OfficeAipSummaryDto(false, null, 0, 0, 0);
+            return new OfficeAipSummaryDto(false, null, 0, 0, 0, 0m);
 
         AipRecord? aipRecord = await _aipRepo.GetLatestByFiscalYearAsync(fiscalYear, cancellationToken);
         if (aipRecord is null)
-            return new OfficeAipSummaryDto(false, null, 0, 0, 0);
+            return new OfficeAipSummaryDto(false, null, 0, 0, 0, 0m);
 
         IReadOnlyList<AipOffice> aipOffices =
             await _aipRepo.GetOfficesByAipIdAsync(aipRecord.Id, cancellationToken);
@@ -515,7 +515,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
             .Where(o => o.RefCode.EndsWith(office.OfficeRefCode, StringComparison.OrdinalIgnoreCase))
             .ToList();
         if (matched.Count == 0)
-            return new OfficeAipSummaryDto(false, aipRecord.Status, 0, 0, 0);
+            return new OfficeAipSummaryDto(false, aipRecord.Status, 0, 0, 0, 0m);
 
         List<int> officeIds = matched.Select(o => o.Id).ToList();
         IReadOnlyList<AipProgram> programs =
@@ -528,6 +528,10 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
             await _aipRepo.GetActivitiesByProjectIdsAsync(projectIds, cancellationToken);
 
         return new OfficeAipSummaryDto(
-            true, aipRecord.Status, programs.Count, projects.Count, activities.Count);
+            true, aipRecord.Status, programs.Count, projects.Count, activities.Count,
+            // The office's OWN costed total. Summed from the activities already loaded above —
+            // no extra query — and deliberately NOT the sum of the per-division rows, which
+            // double-counts a PPA shared by two divisions. See the DTO's own remarks.
+            activities.Sum(a => a.Total ?? 0m));
     }
 }

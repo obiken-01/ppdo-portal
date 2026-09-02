@@ -308,16 +308,65 @@ export interface DivisionFundAmount {
   remaining: number;
 }
 
-/** One division's WFP status + activity coverage + allocation, PPDO-scoped (v1.4.5 — RAL-161). */
-export interface DivisionWfpStatus {
+/**
+ * The one status vocabulary the Budget Planning dashboard speaks (PPDO-20). Mirrors
+ * `PPDO.Application/Common/PlanningStage.cs` — the four values are the whole set the backend
+ * can emit for a stage.
+ *
+ * "Over ceiling" / "Behind" / "Cannot submit" are deliberately NOT members: they are exceptions
+ * that coexist with any stage, computed from their own booleans and rendered as separate risk
+ * pills. Folding them in here would lose the warning behind a status a reader skims past.
+ *
+ * "Review" exists so the vocabulary is complete at its one definition; nothing emits it until
+ * Phase 4 adds a submission entity.
+ */
+export type PlanningStage = "Todo" | "In progress" | "Review" | "Done";
+
+/**
+ * One division's AIP progress and money, host-office-scoped (PPDO-20 — replaces
+ * `DivisionWfpStatus`).
+ *
+ * ⚠️ Not the old type with a field added. Its predecessor's `wfpStatus` and
+ * `activitiesWithExpenditures` were WFP concepts; dashboard decisions 3 and 4 retire them from
+ * this page in favour of what the division has costed in the AIP.
+ *
+ * `divisionCode` is nullable — render `divisionName` when it is null, never an empty pill.
+ */
+export interface DivisionSummary {
   divisionId: number;
   divisionCode: string | null;
   divisionName: string;
-  wfpStatus: "Draft" | "Final" | "Not started";
-  activitiesWithExpenditures: number;
+  allocated: number;
+  costedInAip: number;
+  /** allocated − costedInAip. Equals `allocated` when the division has no AIP work yet. */
+  remaining: number;
+  costedActivityCount: number;
   totalActivities: number;
-  totalAllocated: number;
+  aipStatus: PlanningStage;
+  /** Constant "Todo" until Phase 4 adds a submission entity. */
+  submissionStatus: PlanningStage;
   allocationByFund: DivisionFundAmount[];
+}
+
+/**
+ * One office's row on the cross-office dashboard table (PPDO-20) — see
+ * `GET /budget-planning/dashboard/offices`. Read-only.
+ */
+export interface OfficeSummary {
+  officeId: number;
+  officeCode: string;
+  officeName: string;
+  isHostOffice: boolean;
+  /** Null means no ceiling has been published — distinct from a published zero. Do not coalesce. */
+  ceilingAmount: number | null;
+  costedInAip: number;
+  activityCount: number;
+  aipStatus: PlanningStage;
+  submissionStatus: PlanningStage;
+  /** Costed more than the published ceiling allows. Always false when none is published. */
+  isOverCeiling: boolean;
+  /** Null means nobody in that office can submit — the "Cannot submit / None — assign" state. */
+  reviewerName: string | null;
 }
 
 /** One division's share of a fund's office-wide ceiling. */
@@ -351,7 +400,7 @@ export interface FiscalYears {
 /**
  * The PPDO-scoped Budget Planning Dashboard (v1.4.5 — RAL-161). Replaces the old
  * multi-office PlanningDashboard — Budget Planning is permanently scoped to PPDO.
- * For a division-scoped Staff caller, the server clamps wfpByDivision and every
+ * For a division-scoped Staff caller, the server clamps byDivision and every
  * FundCeiling.byDivision entry to just that caller's own division.
  */
 export interface PpdoDashboard {
@@ -362,7 +411,7 @@ export interface PpdoDashboard {
   officeName: string;
   ldip: OfficeLdipSummary;
   aip: OfficeAipSummary;
-  wfpByDivision: DivisionWfpStatus[];
+  byDivision: DivisionSummary[];
   ceilingByFund: FundCeiling[];
 }
 
@@ -402,6 +451,13 @@ export interface OfficeAipSummary {
   programCount: number;
   projectCount: number;
   activityCount: number;
+  /**
+   * The office's OWN costed total (PPDO-20). **Not** the sum of `PpdoDashboard.byDivision`'s
+   * `costedInAip`: a PPA assigned to two divisions counts in full against both there, so that sum
+   * overstates the office by its shared programs. The dashboard tiles read this, which is what
+   * keeps the office total agreeing with the office table's row for the same office.
+   */
+  costedInAip: number;
 }
 
 export interface OfficeDashboard {

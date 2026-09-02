@@ -76,12 +76,12 @@ public sealed class BudgetPlanningDashboardFunctionsTests
         officeId, FiscalYear,
         new AllocationSetupSummaryDto(null, 0m, null, false, 0, 0),
         new OfficeLdipSummaryDto(false, 0, Array.Empty<StatusBreakdownDto>()),
-        new OfficeAipSummaryDto(false, null, 0, 0, 0));
+        new OfficeAipSummaryDto(false, null, 0, 0, 0, 0m));
 
     private static PpdoDashboardDto MakePpdoDashboard() => new(
         FiscalYear, new[] { FiscalYear }, OwnOffice, "PPDO", "Provincial Planning and Development Office",
         new OfficeLdipSummaryDto(false, 0, Array.Empty<StatusBreakdownDto>()),
-        new OfficeAipSummaryDto(false, null, 0, 0, 0),
+        new OfficeAipSummaryDto(false, null, 0, 0, 0, 0m),
         Array.Empty<DivisionSummaryDto>(),
         Array.Empty<FundCeilingDto>());
 

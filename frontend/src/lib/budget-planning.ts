@@ -8,10 +8,17 @@
  */
 
 import api from "./api";
-import type { ApiResponse, FiscalYears, OfficeDashboard, PpdoDashboard, RecentActivity } from "@/types";
+import type {
+  ApiResponse,
+  FiscalYears,
+  OfficeDashboard,
+  OfficeSummary,
+  PpdoDashboard,
+  RecentActivity,
+} from "@/types";
 
 /** PPDO-scoped (v1.4.5 — RAL-161) — the server always resolves the PPDO office internally and
- * clamps wfpByDivision/ceilingByFund to the caller's own division for division-scoped Staff. */
+ * clamps byDivision/ceilingByFund to the caller's own division for division-scoped Staff. */
 export async function getDashboard(fiscalYear?: number): Promise<PpdoDashboard> {
   const params = fiscalYear != null ? { fiscalYear } : {};
   const { data } = await api.get<PpdoDashboard>("/budget-planning/dashboard", { params });
@@ -39,6 +46,23 @@ export async function getOfficeDashboard(
   const { data } = await api.get<ApiResponse<OfficeDashboard>>(
     "/budget-planning/dashboard/office",
     { params: { officeId, fiscalYear } }
+  );
+  if (data.data == null) throw new Error(data.error ?? "Unexpected empty response.");
+  return data.data;
+}
+
+/**
+ * One row per office in the caller's CROSS-OFFICE scope (PPDO-20) — the dashboard's office table.
+ *
+ * 403s a caller who holds Budget Planning but no cross-office grant. That is the correct answer,
+ * not an error to surface: the page decides whether to render this band from the same flags, so a
+ * 403 here means the band should not have been requested. Callers gate on
+ * `canReviewAllOffices || canManagePboCeiling || role === "SuperAdmin"` before calling.
+ */
+export async function getDashboardOffices(fiscalYear: number): Promise<OfficeSummary[]> {
+  const { data } = await api.get<ApiResponse<OfficeSummary[]>>(
+    "/budget-planning/dashboard/offices",
+    { params: { fiscalYear } }
   );
   if (data.data == null) throw new Error(data.error ?? "Unexpected empty response.");
   return data.data;
