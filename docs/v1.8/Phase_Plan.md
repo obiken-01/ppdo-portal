@@ -312,6 +312,39 @@ WFP's generalised (§12.1). **Phase 2 can be ticketed.**
 | **V18-40** | New AIP record shape — office-owned, LDIP-like | ✅ **Unblocked 2026-08-26 (tracker B12-b).** PPDO gets an **ordinary office record** — no per-division records, no division column on `AipOffice`, and divisions never print. Division of work is carried on the **program**, via the existing `ProgramDivision` map, exactly as WFP does. A sub-unit that *does* print is an `AipOffice` row sharing the office ref code, distinguished by `(Sector, Name)` — already built, and how the province really encodes (§12.6) |
 
 
+### 4.1 Linear ticket linkage — Phase 2
+
+Created 2026-09-02 under the same v1.8.0 milestone, all children of the epic **PPDO-32**
+(*v1.8.0 Phase 2 — AIP Foundation*). Spec: **`docs/v1.8/AIP_Foundation_Spec.md`**.
+
+⚠️ **PPDO-32 is not PPDO-16.** The latter is "External AIP API for GSO — Phase 2", an unrelated
+epic in the Backlog milestone. Two different Phase 2s.
+
+| Item | Ticket | Item | Ticket | Item | Ticket |
+|---|---|---|---|---|---|
+| V18-32 | **PPDO-33** | V18-35 | **PPDO-34** | V18-38 | **PPDO-41** |
+| V18-33 | **PPDO-36** | V18-36 | **PPDO-35** | V18-39 | **PPDO-38** |
+| V18-34 | **PPDO-37** | V18-37 | **PPDO-40** | V18-40 | **PPDO-39** |
+
+**Order:** `PPDO-33` + `PPDO-34` in parallel → `PPDO-35`, `PPDO-36`, `PPDO-38` → `PPDO-37`,
+`PPDO-39` → `PPDO-40` → `PPDO-41`. Blocking relations are set in Linear, not just here.
+
+**Three open questions carried on the spec**, each with a default so nothing stalls silently:
+**P2-a** (does the detail page keep the province's ₱000 convention? — needs the finance officers,
+blocks PPDO-34), **P2-b** (FY gate mechanism — blocks PPDO-40), **P2-c** (expense vocabulary —
+blocks PPDO-36).
+
+⚠️ **Two corrections to §4 found by reading the code while writing the spec:**
+
+1. **V18-35's display half is 19 sites, not 2.** Two `₱000` headers (`aip/detail/page.tsx:2015`
+   *and* `:2016` — the CC columns are denominated in thousands too), six raw display cells, and
+   **eleven `MoneyInput` fields**. **Entry is in thousands as well as display**, which §4 does not
+   say: a value typed as `250` means ₱250,000 today, so fixing only the display makes every
+   subsequent edit divide the record by a thousand.
+2. **`types/budget-planning.ts:908`** documents LDIP's budget as "in thousands (₱000), **like AIP
+   totals**". That cross-reference goes false at V18-35 and has to move in the same commit — it is
+   exactly the kind of stale pointer the "name every boundary" rule below exists to prevent.
+
 **V18-35 detail — DECISION E, answered 2026-08-25 (units ≠ shape).**
 
 §4a's clean break was decided for the record *shape*, and the tracker (D2) correctly caught that it
