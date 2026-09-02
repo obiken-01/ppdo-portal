@@ -46,6 +46,9 @@ public sealed class AppDbContext : DbContext
     public DbSet<AipProgram> AipPrograms { get; set; } = null!;
     public DbSet<AipProject> AipProjects { get; set; } = null!;
     public DbSet<AipActivity> AipActivities { get; set; } = null!;
+
+    /// <summary>AIP expenditure lines (v1.8.0 Phase 2 — V18-33). Pesos; see the entity's remarks.</summary>
+    public DbSet<AipExpenditure> AipExpenditures { get; set; } = null!;
     public DbSet<WfpRecord> WfpRecords { get; set; } = null!;
     public DbSet<WfpActivity> WfpActivities { get; set; } = null!;
     public DbSet<WfpExpenditureLine> WfpExpenditureLines { get; set; } = null!;
