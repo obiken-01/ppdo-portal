@@ -525,7 +525,13 @@ function AllocationPageInner() {
   // assigns PPAs. Holding one does not grant the other, so each half gates separately.
   // The backend enforces both (AllocationFunctions) — this only keeps the UI honest.
   const canSetCeiling     = me?.canManagePboCeiling === true;
-  const canSetAllocations = me?.canManagePpdoAllocation === true;
+  // The host-office half mirrors the endpoints, which refuse a guest-office caller holding
+  // this grant outright — for their own office as well as a foreign one (PPDO-18,
+  // `docs/v1.8/Permission_Matrix.md` §4). It is not redundant with the grant: a live PTO
+  // account held it by mistake, and keying on the grant alone showed that account the
+  // division split for work its own endpoints refuse. Enforcing "PPDO only" rather than
+  // trusting the grant to be administered correctly is the point of the rule.
+  const canSetAllocations = me?.canManagePpdoAllocation === true && me?.isHostOffice === true;
 
   // PPDO-17 — the office axis, and the ONE place it is decided. The question is not "is this
   // caller the host office?" but "is this caller cross-office?", which host-office membership

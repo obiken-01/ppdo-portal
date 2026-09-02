@@ -18,6 +18,14 @@
 /** The slice of `MeResponse` these labels turn on. */
 export interface AllocationLabelSubject {
   canManagePpdoAllocation?: boolean;
+  /**
+   * Read alongside the grant because `CanManagePpdoAllocation` is host-office-exclusive
+   * (`docs/v1.8/Permission_Matrix.md` §4) — both endpoints refuse a guest-office caller
+   * outright, for their own office as well as a foreign one. A guest office holding the
+   * grant by mistake must therefore still read "Budget Ceilings": the division vocabulary
+   * would describe work its own endpoints will refuse.
+   */
+  isHostOffice?: boolean;
 }
 
 export interface AllocationLabels {
@@ -42,7 +50,13 @@ export interface AllocationLabels {
 export function allocationLabels(me: AllocationLabelSubject | null): AllocationLabels {
   // Anyone reaching this page without the PPDO grant holds the PBO one — the page
   // redirects users with neither (see the useMe guard on the page itself).
-  if (me?.canManagePpdoAllocation) {
+  //
+  // The host-office half is not redundant with the grant: a live PTO account held
+  // `CanManagePpdoAllocation` by mistake and was duly shown "Allocation", a division
+  // split tab, and the whole division vocabulary — for work its own endpoints refuse.
+  // Keying on the grant alone means this page stays correct only while the grant is
+  // administered correctly, which is exactly the assumption that failed.
+  if (me?.canManagePpdoAllocation && me?.isHostOffice) {
     return {
       nav:         "Allocation",
       title:       "Allocation",

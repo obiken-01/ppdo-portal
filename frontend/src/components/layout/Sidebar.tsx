@@ -130,6 +130,13 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
   // feature. PBO is a guest office too, so its cross-office ceiling grant does not
   // widen this. Revisit when WFP is reworked after v1.8.0.
   const showWfp            = !isOfficeUser && showBudgetPlanning;
+  // The allocation page is reachable two ways, and only one of them is cross-office.
+  // `CanManagePpdoAllocation` is host-office-exclusive (`docs/v1.8/Permission_Matrix.md`
+  // §4) — both its endpoints refuse a guest-office caller outright — so pairing it with
+  // isOfficeUser here stops the nav offering a page whose writes will 403. A guest office
+  // reaches it only through `CanManagePboCeiling`, which is deliberately cross-office.
+  const showAllocation     = (me?.canManagePpdoAllocation === true && !isOfficeUser)
+                          || me?.canManagePboCeiling === true;
   const showConfig         = !isOfficeUser && me?.canManageConfig === true;
   const showResourceLinks  = !isOfficeUser;
   const showDashboard      = !isOfficeUser;
@@ -357,7 +364,7 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
                   <span className="text-xs">•</span>
                   <span className="truncate">AIP</span>
                 </Link>
-                {(me?.canManagePpdoAllocation || me?.canManagePboCeiling) && (
+                {showAllocation && (
                   <Link href="/budget-planning/allocation" className={childLinkCls(isActive("/budget-planning/allocation"))}>
                     <span className="text-xs">•</span>
                     <span className="truncate">{allocationLabels(me).nav}</span>
