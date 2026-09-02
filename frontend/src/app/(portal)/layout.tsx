@@ -212,8 +212,10 @@ export default function PortalLayout({
         "/budget-planning",
         "/budget-planning/ldip",
         "/budget-planning/aip",
-        "/budget-planning/wfp",
       );
+      // WFP is PPDO-internal (PPDO-20) — a guest office cannot reach it, so prefetching
+      // it would only warm a route the gate below turns away.
+      if (!isOfficeUser) routes.push("/budget-planning/wfp");
     }
     routes.forEach((r) => router.prefetch(r));
   }, [me, router]);
@@ -229,8 +231,14 @@ export default function PortalLayout({
   // always reach) instead.
   useEffect(() => {
     if (!me || me.isHostOffice) return;
+    // WFP and the WFP-shaped Report page are PPDO-internal (PPDO-20) — hidden from the
+    // guest-office sidebar, so the route is closed here too rather than left reachable
+    // by a typed URL or a stale bookmark.
+    const ppdoOnlyBudgetPlanning =
+      pathname.startsWith("/budget-planning/wfp") ||
+      pathname.startsWith("/budget-planning/report");
     const allowed =
-      pathname.startsWith("/budget-planning") ||
+      (pathname.startsWith("/budget-planning") && !ppdoOnlyBudgetPlanning) ||
       // /profile only redirects to /account (RAL-252); allowing it lets that redirect land
       // instead of the gate racing it to landingPath.
       pathname.startsWith("/profile") ||
