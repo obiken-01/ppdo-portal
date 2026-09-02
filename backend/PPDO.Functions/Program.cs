@@ -108,6 +108,7 @@ var host = new HostBuilder()
         services.AddScoped<ICalendarEventRepository, CalendarEventRepository>();
         services.AddScoped<IAuditRepository, AuditRepository>();
         services.AddScoped<IAipRepository, AipRepository>();
+        services.AddScoped<IAipExpenditureRepository, AipExpenditureRepository>();
         services.AddScoped<ILdipRepository, LdipRepository>();
         services.AddScoped<IWfpRepository, WfpRepository>();
         services.AddScoped<IOfficeRepository, OfficeRepository>();
