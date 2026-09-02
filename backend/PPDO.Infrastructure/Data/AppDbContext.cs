@@ -36,6 +36,7 @@ public sealed class AppDbContext : DbContext
 
     public DbSet<Office> Offices { get; set; } = null!;
     public DbSet<FundingSource> FundingSources { get; set; } = null!;
+    public DbSet<ClimateChangeTypology> ClimateChangeTypologies { get; set; } = null!;
     public DbSet<Account> Accounts { get; set; } = null!;
     public DbSet<LdipRecord> LdipRecords { get; set; } = null!;
     public DbSet<LdipOffice> LdipOffices { get; set; } = null!;
@@ -73,6 +74,10 @@ public sealed class AppDbContext : DbContext
     // ── v1.7 Warehouse stock input (RAL-193) ─────────────────────────────────
 
     public DbSet<StockBalance> StockBalances { get; set; } = null!;
+
+
+    // ── v1.8 New AIP| eSRE Codes (RAL-248) ─────────────────────────────────
+    public DbSet<EsreCode> EsreCodes { get; set; } = null!;
 
     // ── Model configuration ───────────────────────────────────────────────────
 

@@ -303,3 +303,47 @@ export interface AuditLogPage {
   page: number;
   pageSize: number;
 }
+
+/**
+ * A CCET (Climate Change Expenditure Tagging) typology code — RAL-247.
+ * `category` is "Adaptation" | "Mitigation" | "Unclassified"; it is stored rather than derived
+ * from the code's leading letter so a code that breaks the convention can still be filed by hand.
+ */
+export interface ClimateChangeTypologyResponse {
+  id: number;
+  code: string;
+  name: string;
+  category: string;
+  description: string | null;
+  isActive: boolean;
+}
+
+export interface UpsertClimateChangeTypologyRequest {
+  code: string;
+  name: string;
+  category: string;
+  description?: string | null;
+  isActive: boolean;
+}
+
+/**
+ * An eSRE classification code — RAL-248. A closed vocabulary of four: SS (Social Services),
+ * ES (Economic Services), ID (Institutional Development), EN (Environmental Services).
+ *
+ * `code` is stored upper-case; `name` is what the picker labels the option with.
+ */
+export interface EsreCodeResponse {
+  id: number;
+  code: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+}
+
+/** Create/update body. `code` is the unique key and is upper-cased server-side. */
+export interface UpsertEsreCodeRequest {
+  code: string;
+  name: string;
+  description?: string | null;
+  isActive: boolean;
+}

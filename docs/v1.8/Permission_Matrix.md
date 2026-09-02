@@ -1,6 +1,6 @@
 # Permission Matrix
 
-> **V18-06 / RAL-245.** The single reference for *who can do what* in the PPDO Portal.
+> **V18-06 / PPDO-7.** The single reference for *who can do what* in the PPDO Portal.
 >
 > Every row here is pinned by a test in `backend/PPDO.Tests/Application/PermissionMatrixTests.cs`.
 > The two are a pair: change a rule and the corresponding row fails until both are updated. A flag
@@ -108,10 +108,10 @@ for each pair that could plausibly be conflated:
 
 | Flag | Who holds it | Added |
 |---|---|---|
-| `CanManagePpdoAllocation` | PPDO finance officer — splits PPDO's own ceiling across its divisions | RAL-97, renamed RAL-242 |
-| `CanManagePboCeiling` | PBO finance officer — sets the ceiling **for any office** | RAL-243 |
-| `CanReviewBudgetPlanning` | An office's reviewer — the department head who checks its work | RAL-244 |
-| `CanReviewAllOffices` | Designated PPDO users who review **every** office's submissions | RAL-257 |
+| `CanManagePpdoAllocation` | PPDO finance officer — splits PPDO's own ceiling across its divisions | RAL-97, renamed PPDO-9 |
+| `CanManagePboCeiling` | PBO finance officer — sets the ceiling **for any office** | PPDO-2 |
+| `CanReviewBudgetPlanning` | An office's reviewer — the department head who checks its work | PPDO-3 |
+| `CanReviewAllOffices` | Designated PPDO users who review **every** office's submissions | PPDO-5 |
 
 > ⚠️ `CanManagePboCeilingAsync` deliberately does **not** fall back to `CanManagePpdoAllocationAsync`.
 > OR-ing them would hand every PPDO finance officer authority over other offices' ceilings.
@@ -141,7 +141,7 @@ are independent — a caller can hold a flag and still see nothing.
 > mechanisms described PPDO and nothing kept them in agreement. Cross-office authority now comes
 > from `offices.is_host_office`, which frees null to mean what it means on the other axis:
 > unassigned, and therefore scoped to nothing. **Several tickets and comments still assert the old
-> inversion** (RAL-250's own description among them) — they are stale. A user with a null office has
+> inversion** (PPDO-4's own description among them) — they are stale. A user with a null office has
 > an incomplete record, not a privileged one.
 
 **Office wins over role.** The SuperAdmin/Admin bypass governs *feature flags*, not *data scope*. An
@@ -150,7 +150,7 @@ admin account deliberately tied to a guest office stays scoped to that office.
 **Failure direction.** Both resolvers read `User.Office` / `User.Division` navigation properties. A
 query that forgets `.Include(...)` degrades to **more** restrictive, never to full access.
 
-### 3.1 `BudgetPlanningScope` — division is a PPDO-only axis (RAL-250)
+### 3.1 `BudgetPlanningScope` — division is a PPDO-only axis (PPDO-4)
 
 | Caller | Office axis | Division axis |
 |---|---|---|
@@ -163,14 +163,14 @@ query that forgets `.Include(...)` degrades to **more** restrictive, never to fu
 
 ---
 
-## 4. The cross-office exceptions (RAL-257, RAL-243)
+## 4. The cross-office exceptions (PPDO-5, PPDO-2)
 
 Two flags widen data scope past the caller's own office. Every other flag narrows to it.
 
 | Flag | Widens what | Entry point | Added |
 |---|---|---|---|
-| `CanReviewAllOffices` | every office's submissions, **read only** | `OfficeScope.ResolveForReview` | RAL-257 |
-| `CanManagePboCeiling` | every office's allocation setup — the six allocation reads **and** the ceiling write | `OfficeScope.ResolveForCeiling` | RAL-243, scoped by PPDO-18 |
+| `CanReviewAllOffices` | every office's submissions, **read only** | `OfficeScope.ResolveForReview` | PPDO-5 |
+| `CanManagePboCeiling` | every office's allocation setup — the six allocation reads **and** the ceiling write | `OfficeScope.ResolveForCeiling` | PPDO-2, scoped by PPDO-18 |
 
 Each is consumed through its **own entry point**, and that separation is the safety property:
 
@@ -219,7 +219,7 @@ offices up.
 
 ---
 
-## 5. The subtractive exception (RAL-256)
+## 5. The subtractive exception (PPDO-6)
 
 Every flag above is **additive** — it only ever grants. `ReviewerWriteGuard` is the one rule that
 takes a write away, and it is applied to all 40 budget-planning write endpoints via
@@ -269,4 +269,4 @@ be routed through this guard — a comment-only reviewer who cannot comment is n
 
 ---
 
-*Permission Matrix — v1.8.0 — RAL-245 — 2026-08-28*
+*Permission Matrix — v1.8.0 — PPDO-7 — 2026-08-28*

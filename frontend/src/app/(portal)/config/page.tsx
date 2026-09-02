@@ -21,6 +21,8 @@ import {
   listDivisions,
   listFundingSources,
   listOffices,
+  countCcTypologies,
+  countEsreCodes,
   countPriceIndex,
 } from "@/lib/config";
 
@@ -46,6 +48,24 @@ const TILES: TileDef[] = [
     caption: "Chart of accounts for WFP expenditure entry.",
     href: "/config/accounts",
     load: async () => (await listAccounts({ active: "true" })).length,
+  },
+  {
+    key: "cc-typologies",
+    icon: "🌱",
+    name: "Climate Change Typologies",
+    caption: "CCET codes for tagging an AIP activity's climate-change contribution.",
+    href: "/config/cc-typologies",
+    // Count endpoint, not the list (RAL-232). This list is short, so the payload saved is
+    // small — but this is the tile the next config page copies.
+    load: async () => countCcTypologies({ active: "true" }),
+  },
+  {
+    key: "esre-codes",
+    icon: "🏷️",
+    name: "eSRE Codes",
+    caption: "eSRE classification an encoder tags an AIP activity with.",
+    href: "/config/esre-codes",
+    load: async () => countEsreCodes({ active: "true" }),
   },
   {
     key: "offices",
