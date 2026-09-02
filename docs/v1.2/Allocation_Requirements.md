@@ -150,11 +150,19 @@ program_divisions
 | Information and Communications Technology Division | ICT | MIS |
 | Open Governance and Civil Society Organization Engagement Division | OG-CSO | _(new)_ |
 
-> ⚠️ **The short labels above are the 2026-06-24 proposal, not what production runs (checked
-> 2026-09-02).** They were offered as "adopt or drop" and two were neither — they were adopted
-> under different codes. Live PPDO codes are:
+> ⚠️ **The short labels above are the 2026-06-24 proposal, not what production runs.** They were
+> offered as "adopt or drop" and two were neither — they were adopted under different codes.
 >
-> `ADMIN` · `PLANNING` · `RMED` · `FPIP` · `ICT` · `OG-CSO`
+> **Production, `SELECT code, name FROM divisions` on `ppdo-portal-db`, 2026-09-02:**
+>
+> | code | name |
+> |---|---|
+> | `ADMIN` | Administrative Division |
+> | `FPIP` | Fiscal Planning and Investment Programming Division |
+> | `ICT` | Information and Communications Technology Division |
+> | `OG-CSO` | Open Governance and Civil Society Organization Engagement Division |
+> | `PLANNING` | Sectoral Planning Division |
+> | `RMED` | Statistics Monitoring and Evaluation Division |
 >
 > So **`SECTORAL` → `PLANNING`**, **`SMED` → `RMED`**, and the ICT division is `ICT` (it was `MIS`
 > in the v1.7 dev snapshot recorded in `docs/v1.7/Mobile_And_Inventory_Findings.md` §4.1.1).
