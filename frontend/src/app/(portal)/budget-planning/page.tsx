@@ -274,7 +274,9 @@ export default function BudgetPlanningPage() {
     const aipStage: PipelineStage = {
       key: "aip",
       label: "AIP",
-      owner: isHost ? "Your division" : "Your office",
+      // "Your division" is only true for a division-clamped encoder. A finance caller seeing every
+      // division owns none of them in particular, and a guest office has no division at all.
+      owner: !isHost ? "Your office" : canManageAllocation ? "PPDO divisions" : "Your division",
       stage: hasAip ? "In progress" : "Todo",
       detail: `${(isHost ? activityTotal : officeDashboard?.aip.activityCount ?? 0).toLocaleString("en-PH")} activities`,
       href: aipHref,
