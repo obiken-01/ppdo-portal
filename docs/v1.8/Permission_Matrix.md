@@ -195,10 +195,27 @@ not GSO's rows plus everyone else's.
 
 > **Where the ceiling grant stops.** It is authority over an office's ceiling, not over what that
 > office does with it. `PUT /allocation/divisions` (the division split) and
-> `PUT /allocation/programs` (PPA assignment) stay on `Resolve`, and a guest-office caller is
-> **refused** there rather than clamped — silently rewriting which office a peso amount lands on is
-> a worse failure than a 403. `PUT /allocation/ceiling` is the one write the grant covers, and it
-> carries no office guard at all: the gate *is* the grant.
+> `PUT /allocation/programs` (PPA assignment) stay on `Resolve` and are **host-office only** — see
+> the note below. `PUT /allocation/ceiling` is the one write the grant covers, and it carries no
+> office guard at all: the gate *is* the grant.
+
+### `CanManagePpdoAllocation` is exclusive to host-office users
+
+Settled 2026-09-02, after a live account — `pto.user`, Provincial Treasurer's Office — was found
+holding the flag by mistake. The flag's name and this table always said "PPDO", but nothing
+enforced it, and the Allocation page duly offered that account a division-allocation tab for its
+own office.
+
+Both endpoints on the flag now refuse a guest-office caller **outright**, for their own office as
+well as a foreign one. Enforcing "PPDO only" rather than merely "not someone else's office" means
+the endpoint stops depending on the grant being administered correctly, which is the thing that
+actually went wrong. A host-office caller still writes any office — that is how PPDO sets other
+offices up.
+
+> ⚠️ The flag is *not* office-scoped-per-caller. If a future office genuinely needs to split its
+> own ceiling across its own divisions, that is a **new** grant, not a widening of this one —
+> widening it would silently re-open what this note closed. Pinned by
+> `AllocationFunctionsTests.UpsertDivisions_AsOfficeUser_TargetingOwnOffice_IsAlsoForbidden`.
 
 ---
 

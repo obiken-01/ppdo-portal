@@ -32,10 +32,11 @@ namespace PPDO.Functions.Functions;
 /// holder keep cross-office reads, everyone else is forced to their own office. The permission
 /// gates below are deliberately unchanged — the fix is the office axis, not the grant.
 ///
-/// The writes are scoped per grant, and the three are not the same:
-///   ceiling PUT           — cross-office by design; CanManagePboCeiling IS that authority.
-///   division-allocation   — refused for a guest-office caller targeting another office.
-///   PPA assignment        — host-office only; its payload carries no office id to compare.
+/// The writes are scoped per grant, and the two grants are not the same:
+///   ceiling PUT                       — cross-office by design; CanManagePboCeiling IS that authority.
+///   division-allocation + PPA assign  — host-office only; CanManagePpdoAllocation is exclusive to
+///                                       PPDO users, so a guest-office holder is a mis-grant and is
+///                                       refused outright rather than allowed to write its own office.
 /// Refused rather than clamped, unlike the reads: silently rewriting which office a peso amount
 /// lands on is a worse failure than a 403.
 ///
@@ -222,11 +223,15 @@ public sealed class AllocationFunctions
     }
 
     // ── PUT /api/budget-planning/allocation/divisions ─────────────────────────
-    // Office-scoped (PPDO-18). CanManagePpdoAllocation is authority over PPDO's own split across
-    // its own divisions — it is not a cross-office grant, and the PBO ceiling grant does not
-    // reach here either: setting an office's ceiling is not authority over how that office then
-    // splits it. Refused rather than clamped, unlike the reads — silently rewriting which office
-    // a peso amount lands on is a worse failure than a 403.
+    // Host-office only (PPDO-18). CanManagePpdoAllocation is exclusive to PPDO users — Ralph
+    // confirmed 2026-09-02 after a live account (pto.user, Provincial Treasurer's Office) was
+    // found holding it by mistake. So a guest-office holder is a MIS-GRANT, and this refuses them
+    // outright rather than letting them write their own office: the endpoint stops depending on
+    // the grant being administered correctly. A host caller still writes any office, which is how
+    // PPDO sets other offices up.
+    //
+    // The PBO ceiling grant does not reach here either — setting an office's ceiling is not
+    // authority over how that office then splits it across its divisions.
     [Function("AllocationUpsertDivisions")]
     public async Task<HttpResponseData> UpsertDivisions(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put",
@@ -237,16 +242,14 @@ public sealed class AllocationFunctions
             req, _jwt, _permissions, CanManagePpdoAllocation, ct);
         if (denied is not null || caller is null) return denied!;
 
+        if (!OfficeScope.Resolve(caller).SeeAll)
+            return req.CreateResponse(HttpStatusCode.Forbidden);
+
         UpsertAllocationsDto? body = await ConfigHttp.ReadBodyAsync<UpsertAllocationsDto>(req, ct);
         if (body is null)
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
                 ApiResponse<IReadOnlyList<DivisionAllocationDto>>.Fail(
                     "Request body is missing or malformed."), ct);
-
-        // After the body read, so a malformed payload is still a 400 — same ordering rule the
-        // GETs follow for a malformed officeId.
-        HttpResponseData? foreign = ConfigHttp.DenyForeignOffice(req, caller, body.OfficeId);
-        if (foreign is not null) return foreign;
 
         ServiceResult<IReadOnlyList<DivisionAllocationDto>> result = await _allocation.UpsertAllocationsAsync(
             body.OfficeId, body.FiscalYear, body.FundingSourceId, body.Allocations, ct);

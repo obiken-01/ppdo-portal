@@ -349,11 +349,12 @@ public sealed class AllocationFunctionsTests
         _allocation.VerifyNoOtherCalls();
     }
 
-    // ── Writes — the PPDO allocation PUTs are office-scoped ───────────────────
-    // CanManagePpdoAllocation is authority over PPDO's own split across its own divisions. It is
-    // NOT a cross-office grant, and a holder who sits in a guest office must not write another
-    // office's numbers. Refused rather than clamped: silently redirecting a peso amount to a
-    // different office than the one the caller named is a worse outcome than a 403.
+    // ── Writes — the PPDO allocation PUTs are host-office only ───────────────────
+    // CanManagePpdoAllocation is EXCLUSIVE to PPDO users (confirmed 2026-09-02, after a live
+    // account -- pto.user, Provincial Treasurer's Office -- was found holding it by mistake). So a
+    // guest-office holder is a mis-grant, and both endpoints refuse them outright rather than
+    // letting them write their own office. That way the endpoint stops depending on the grant
+    // being administered correctly, which is the thing that actually went wrong.
 
     private void AllowWrite(User caller)
         => _permissions.Setup(p => p.CanReviewAllOfficesAsync(caller, It.IsAny<CancellationToken>()))
@@ -383,10 +384,13 @@ public sealed class AllocationFunctionsTests
         Assert.Equal(ForeignOffice, captured);
     }
 
-    [Fact]
-    public async Task UpsertDivisions_AsOfficeUser_TargetingAForeignOffice_ReturnsForbidden()
+    [Theory]
+    [InlineData(Caller.PlainOfficeUser)]
+    [InlineData(Caller.PboCeilingHolder)]
+    public async Task UpsertDivisions_AsAnyGuestOfficeCaller_TargetingAForeignOffice_ReturnsForbidden(
+        Caller kind)
     {
-        User caller = Authenticate(Caller.PlainOfficeUser, canManagePpdoAllocation: true);
+        User caller = Authenticate(kind, canManagePpdoAllocation: true);
         AllowWrite(caller);
 
         HttpResponseData response = await Sut.UpsertDivisions(
@@ -401,35 +405,16 @@ public sealed class AllocationFunctionsTests
     }
 
     /// <summary>
-    /// The PBO ceiling grant does not reach this endpoint. A holder may set any office's CEILING;
-    /// how that office then splits it across its own divisions is the office's business.
+    /// The case that changed once the grant's meaning was settled. An earlier cut of PPDO-18 only
+    /// refused a FOREIGN office, which left a mis-granted account -- the real pto.user -- able to
+    /// write its own office's allocations through a PPDO-exclusive endpoint. A guest-office holder
+    /// is now refused for every office, their own included.
     /// </summary>
     [Fact]
-    public async Task UpsertDivisions_AsPboCeilingHolder_TargetingAForeignOffice_IsStillForbidden()
-    {
-        User caller = Authenticate(Caller.PboCeilingHolder, canManagePpdoAllocation: true);
-        AllowWrite(caller);
-
-        HttpResponseData response = await Sut.UpsertDivisions(
-            FunctionHttp.Put(
-                new UpsertAllocationsDto(ForeignOffice, FiscalYear, FundingSource,
-                    new[] { new UpsertDivisionAllocationDto(DivisionId, 500m) }),
-                path: "budget-planning/allocation/divisions"),
-            CancellationToken.None);
-
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-        _allocation.VerifyNoOtherCalls();
-    }
-
-    [Fact]
-    public async Task UpsertDivisions_AsOfficeUser_TargetingOwnOffice_IsAllowed()
+    public async Task UpsertDivisions_AsOfficeUser_TargetingOwnOffice_IsAlsoForbidden()
     {
         User caller = Authenticate(Caller.PlainOfficeUser, canManagePpdoAllocation: true);
         AllowWrite(caller);
-        _allocation.Setup(s => s.UpsertAllocationsAsync(
-                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(),
-                It.IsAny<IReadOnlyList<UpsertDivisionAllocationDto>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(ServiceResult<IReadOnlyList<DivisionAllocationDto>>.Ok(new[] { Allocation() }));
 
         HttpResponseData response = await Sut.UpsertDivisions(
             FunctionHttp.Put(
@@ -438,7 +423,8 @@ public sealed class AllocationFunctionsTests
                 path: "budget-planning/allocation/divisions"),
             CancellationToken.None);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        _allocation.VerifyNoOtherCalls();
     }
 
     /// <summary>
