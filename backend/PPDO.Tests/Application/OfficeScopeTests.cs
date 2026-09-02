@@ -291,4 +291,101 @@ public sealed class OfficeScopeTests
         Assert.True(OfficeScope.All.Permits(owningOfficeId: null));
         Assert.False(OfficeScope.For(42).Permits(owningOfficeId: null));
     }
+
+    // -- ResolveForCeiling -- the PBO ceiling carve-out (PPDO-18) --------------
+
+    /// <summary>
+    /// THE case this entry point exists for: a PBO finance officer sitting in a guest office.
+    /// CanManagePboCeiling is authority over EVERY office's ceiling, so a naive clamp on the
+    /// allocation endpoints would make the grant unreachable -- the holder could only ever load
+    /// their own office's setup.
+    /// </summary>
+    [Fact]
+    public void ResolveForCeiling_PboHolderInAGuestOffice_SeesEveryOffice()
+    {
+        OfficeScope scope = OfficeScope.ResolveForCeiling(
+            MakeUser(UserRole.Staff, GuestOffice), canManagePboCeiling: true);
+
+        Assert.True(scope.SeeAll);
+        Assert.Null(scope.OfficeId);
+        Assert.Equal(99, scope.Clamp(requestedOfficeId: 99));
+        Assert.True(scope.Permits(99));
+    }
+
+    /// <summary>A non-holder is completely unaffected -- ResolveForCeiling degrades to Resolve.</summary>
+    [Fact]
+    public void ResolveForCeiling_WithoutTheGrant_MatchesResolve()
+    {
+        User user = MakeUser(UserRole.Staff, GuestOffice);
+
+        OfficeScope ceiling = OfficeScope.ResolveForCeiling(user, canManagePboCeiling: false);
+        OfficeScope plain   = OfficeScope.Resolve(user);
+
+        Assert.Equal(plain.SeeAll,   ceiling.SeeAll);
+        Assert.Equal(plain.OfficeId, ceiling.OfficeId);
+        Assert.False(ceiling.SeeAll);
+        Assert.Equal(42, ceiling.Clamp(requestedOfficeId: 99));
+    }
+
+    /// <summary>A host-office caller already saw everything; the grant changes nothing for them.</summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ResolveForCeiling_HostOfficeUser_SeesEveryOfficeEitherWay(bool canManagePboCeiling)
+    {
+        OfficeScope scope = OfficeScope.ResolveForCeiling(
+            MakeUser(UserRole.Staff, HostOffice), canManagePboCeiling);
+
+        Assert.True(scope.SeeAll);
+    }
+
+    /// <summary>
+    /// The grant is not a substitute for having an office -- same reading as ResolveForReview.
+    /// The flag is the authority; the unassigned-sees-nothing rule is about the ABSENCE of a
+    /// grant, not an override of one.
+    /// </summary>
+    [Fact]
+    public void ResolveForCeiling_HolderWithNoOffice_StillSeesEveryOffice()
+    {
+        OfficeScope scope = OfficeScope.ResolveForCeiling(
+            MakeUser(UserRole.Staff, office: null), canManagePboCeiling: true);
+
+        Assert.True(scope.SeeAll);
+    }
+
+    /// <summary>
+    /// The containment guarantee, the same one ResolveForReview has. Resolve feeds the PPDO
+    /// allocation write paths, so it must never learn this flag: a PBO officer holds authority
+    /// over CEILINGS, not over another office's internal division split or its PPA assignments.
+    /// If this fails, the entry points have been "simplified" back together.
+    /// </summary>
+    [Fact]
+    public void Resolve_IgnoresThePboCeilingGrant_SoAllocationWritesStayScoped()
+    {
+        User pbo = MakeUser(UserRole.Staff, GuestOffice);
+        pbo.OverrideCanManagePboCeiling = true;
+
+        OfficeScope writeScope = OfficeScope.Resolve(pbo);
+
+        Assert.False(writeScope.SeeAll);
+        Assert.Equal(42, writeScope.OfficeId);
+        Assert.Equal(42, writeScope.Clamp(requestedOfficeId: 7));
+        Assert.False(writeScope.Permits(7));
+    }
+
+    /// <summary>
+    /// The two bypasses are independent axes and neither leaks into the other: a cross-office
+    /// REVIEWER does not thereby gain the ceiling scope, and a PBO ceiling holder does not
+    /// thereby gain the review scope.
+    /// </summary>
+    [Fact]
+    public void TheTwoBypasses_DoNotLeakIntoEachOther()
+    {
+        User user = MakeUser(UserRole.Staff, GuestOffice);
+
+        Assert.False(OfficeScope.ResolveForCeiling(user, canManagePboCeiling: false).SeeAll);
+        Assert.False(OfficeScope.ResolveForReview(user, canReviewAllOffices: false).SeeAll);
+        Assert.True(OfficeScope.ResolveForCeiling(user, canManagePboCeiling: true).SeeAll);
+        Assert.True(OfficeScope.ResolveForReview(user, canReviewAllOffices: true).SeeAll);
+    }
 }

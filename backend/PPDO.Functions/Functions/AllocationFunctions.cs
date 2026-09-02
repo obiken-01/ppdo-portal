@@ -24,6 +24,21 @@ namespace PPDO.Functions.Functions;
 /// the entry wizard 403'd for every non-finance Staff user once the office/division
 /// auto-select bug was fixed and they could actually reach this call).
 ///
+/// <b>Office scoping (v1.8.0 — PPDO-18).</b> Every GET here takes a caller-supplied officeId and,
+/// until this ticket, used it unchecked — so any Budget Planning user could read any other
+/// office's ceilings, division split, PPA assignments and setup status by editing the query
+/// string. Same class as the RAL-229 dashboard IDOR. All six are now clamped through
+/// <see cref="ConfigHttp.ClampOfficeIdForCeiling"/>: a host-office caller and a CanManagePboCeiling
+/// holder keep cross-office reads, everyone else is forced to their own office. The permission
+/// gates below are deliberately unchanged — the fix is the office axis, not the grant.
+///
+/// The writes are scoped per grant, and the three are not the same:
+///   ceiling PUT           — cross-office by design; CanManagePboCeiling IS that authority.
+///   division-allocation   — refused for a guest-office caller targeting another office.
+///   PPA assignment        — host-office only; its payload carries no office id to compare.
+/// Refused rather than clamped, unlike the reads: silently rewriting which office a peso amount
+/// lands on is a worse failure than a 403.
+///
 /// Amounts are in PESOS — no ×1000 conversion here (that lives in the WFP page layer).
 /// </summary>
 public sealed class AllocationFunctions
@@ -46,6 +61,16 @@ public sealed class AllocationFunctions
     private Task<bool> CanManagePboCeiling(User u)     => _permissions.CanManagePboCeilingAsync(u);
     private Task<bool> CanAccessBudgetPlanning(User u) => _permissions.CanAccessBudgetPlanningAsync(u);
 
+    /// <summary>
+    /// Clamps a caller-supplied officeId for the allocation-setup reads (PPDO-18). Call this
+    /// AFTER the endpoint's int.TryParse validation so a malformed officeId is still a 400 rather
+    /// than a silent fallback to the caller's own office.
+    /// </summary>
+    private async Task<int> ClampOfficeAsync(User caller, int requestedOfficeId, CancellationToken ct)
+        => ConfigHttp.ClampOfficeIdForCeiling(
+               caller, await _permissions.CanManagePboCeilingAsync(caller, ct), requestedOfficeId)
+           ?? requestedOfficeId;
+
     // ── GET /api/budget-planning/allocation/ceiling?officeId=&fiscalYear=&fundingSourceId= ─────
     // Read is gated on CanAccessBudgetPlanning (not CanManagePpdoAllocation): every WFP
     // user — including non-finance office users — needs to know whether a ceiling
@@ -56,8 +81,9 @@ public sealed class AllocationFunctions
             Route = "budget-planning/allocation/ceiling")] HttpRequestData req,
         CancellationToken ct)
     {
-        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccessBudgetPlanning, ct);
-        if (denied is not null) return denied;
+        (User? caller, HttpResponseData? denied) =
+            await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccessBudgetPlanning, ct);
+        if (denied is not null || caller is null) return denied!;
 
         if (!int.TryParse(req.Query["officeId"], out int officeId) ||
             !int.TryParse(req.Query["fiscalYear"], out int fiscalYear) ||
@@ -65,6 +91,8 @@ public sealed class AllocationFunctions
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
                 ApiResponse<BudgetCeilingDto>.Fail(
                     "officeId, fiscalYear, and fundingSourceId query parameters are required."), ct);
+
+        officeId = await ClampOfficeAsync(caller, officeId, ct);
 
         ServiceResult<BudgetCeilingDto> result =
             await _allocation.GetCeilingAsync(officeId, fiscalYear, fundingSourceId, ct);
@@ -80,14 +108,17 @@ public sealed class AllocationFunctions
             Route = "budget-planning/allocation/ceilings")] HttpRequestData req,
         CancellationToken ct)
     {
-        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccessBudgetPlanning, ct);
-        if (denied is not null) return denied;
+        (User? caller, HttpResponseData? denied) =
+            await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccessBudgetPlanning, ct);
+        if (denied is not null || caller is null) return denied!;
 
         if (!int.TryParse(req.Query["officeId"], out int officeId) ||
             !int.TryParse(req.Query["fiscalYear"], out int fiscalYear))
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
                 ApiResponse<IReadOnlyList<BudgetCeilingDto>>.Fail(
                     "officeId and fiscalYear query parameters are required."), ct);
+
+        officeId = await ClampOfficeAsync(caller, officeId, ct);
 
         IReadOnlyList<BudgetCeilingDto> data = await _allocation.GetCeilingsAsync(officeId, fiscalYear, ct);
         return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK,
@@ -99,6 +130,12 @@ public sealed class AllocationFunctions
     // ceiling is the Provincial Budget Office's authority and applies to any office;
     // the allocation grant only splits PPDO's own ceiling across its divisions. The two
     // are deliberately not OR-ed — see IPermissionService.CanManagePboCeilingAsync.
+    //
+    // Deliberately NOT office-clamped (PPDO-18). The gate IS the grant here: CanManagePboCeiling
+    // means "may set a ceiling for any office", so clamping body.OfficeId to the caller's own
+    // office would make RAL-243 unreachable and break the office picker in PPDO-17. Pinned by
+    // AllocationFunctionsTests.UpsertCeiling_AsPboHolderInAGuestOffice_WritesTheRequestedForeignOffice
+    // — do not add a clamp here "for consistency" with the two allocation writes below.
     [Function("AllocationUpsertCeiling")]
     public async Task<HttpResponseData> UpsertCeiling(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put",
@@ -140,6 +177,8 @@ public sealed class AllocationFunctions
                 ApiResponse<IReadOnlyList<DivisionAllocationDto>>.Fail(
                     "officeId, fiscalYear, and fundingSourceId query parameters are required."), ct);
 
+        officeId = await ClampOfficeAsync(caller, officeId, ct);
+
         IReadOnlyList<DivisionAllocationDto> data =
             await _allocation.GetAllocationsAsync(officeId, fiscalYear, fundingSourceId, ct);
 
@@ -170,6 +209,8 @@ public sealed class AllocationFunctions
                 ApiResponse<IReadOnlyList<DivisionAllocationDto>>.Fail(
                     "officeId and fiscalYear query parameters are required."), ct);
 
+        officeId = await ClampOfficeAsync(caller, officeId, ct);
+
         IReadOnlyList<DivisionAllocationDto> data =
             await _allocation.GetAllocationsForAllFundsAsync(officeId, fiscalYear, ct);
 
@@ -181,20 +222,31 @@ public sealed class AllocationFunctions
     }
 
     // ── PUT /api/budget-planning/allocation/divisions ─────────────────────────
+    // Office-scoped (PPDO-18). CanManagePpdoAllocation is authority over PPDO's own split across
+    // its own divisions — it is not a cross-office grant, and the PBO ceiling grant does not
+    // reach here either: setting an office's ceiling is not authority over how that office then
+    // splits it. Refused rather than clamped, unlike the reads — silently rewriting which office
+    // a peso amount lands on is a worse failure than a 403.
     [Function("AllocationUpsertDivisions")]
     public async Task<HttpResponseData> UpsertDivisions(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put",
             Route = "budget-planning/allocation/divisions")] HttpRequestData req,
         CancellationToken ct)
     {
-        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanManagePpdoAllocation, ct);
-        if (denied is not null) return denied;
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(
+            req, _jwt, _permissions, CanManagePpdoAllocation, ct);
+        if (denied is not null || caller is null) return denied!;
 
         UpsertAllocationsDto? body = await ConfigHttp.ReadBodyAsync<UpsertAllocationsDto>(req, ct);
         if (body is null)
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
                 ApiResponse<IReadOnlyList<DivisionAllocationDto>>.Fail(
                     "Request body is missing or malformed."), ct);
+
+        // After the body read, so a malformed payload is still a 400 — same ordering rule the
+        // GETs follow for a malformed officeId.
+        HttpResponseData? foreign = ConfigHttp.DenyForeignOffice(req, caller, body.OfficeId);
+        if (foreign is not null) return foreign;
 
         ServiceResult<IReadOnlyList<DivisionAllocationDto>> result = await _allocation.UpsertAllocationsAsync(
             body.OfficeId, body.FiscalYear, body.FundingSourceId, body.Allocations, ct);
@@ -212,14 +264,17 @@ public sealed class AllocationFunctions
             Route = "budget-planning/allocation/programs")] HttpRequestData req,
         CancellationToken ct)
     {
-        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccessBudgetPlanning, ct);
-        if (denied is not null) return denied;
+        (User? caller, HttpResponseData? denied) =
+            await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccessBudgetPlanning, ct);
+        if (denied is not null || caller is null) return denied!;
 
         if (!int.TryParse(req.Query["officeId"], out int officeId) ||
             !int.TryParse(req.Query["fiscalYear"], out int fiscalYear))
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
                 ApiResponse<IReadOnlyList<ProgramAssignmentDto>>.Fail(
                     "officeId and fiscalYear query parameters are required."), ct);
+
+        officeId = await ClampOfficeAsync(caller, officeId, ct);
 
         IReadOnlyList<ProgramAssignmentDto> data =
             await _allocation.GetProgramAssignmentsAsync(officeId, fiscalYear, ct);
@@ -228,14 +283,22 @@ public sealed class AllocationFunctions
     }
 
     // ── PUT /api/budget-planning/allocation/programs ──────────────────────────
+    // Host-office only (PPDO-18). The payload carries no office id — the office is resolved from
+    // OfficeRefCode inside the service — so there is nothing to clamp or compare at this layer.
+    // The only office authority assertable here is host-office, which is exactly what
+    // CanManagePpdoAllocation is. Same idiom as GetBudgetPlanningDashboard's RAL-230 guard.
     [Function("AllocationUpsertProgram")]
     public async Task<HttpResponseData> UpsertProgram(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put",
             Route = "budget-planning/allocation/programs")] HttpRequestData req,
         CancellationToken ct)
     {
-        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanManagePpdoAllocation, ct);
-        if (denied is not null) return denied;
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(
+            req, _jwt, _permissions, CanManagePpdoAllocation, ct);
+        if (denied is not null || caller is null) return denied!;
+
+        if (!OfficeScope.Resolve(caller).SeeAll)
+            return req.CreateResponse(HttpStatusCode.Forbidden);
 
         UpsertProgramAssignmentDto? body =
             await ConfigHttp.ReadBodyAsync<UpsertProgramAssignmentDto>(req, ct);
@@ -256,9 +319,9 @@ public sealed class AllocationFunctions
             Route = "budget-planning/allocation/status")] HttpRequestData req,
         CancellationToken ct)
     {
-        (_, HttpResponseData? denied) =
+        (User? caller, HttpResponseData? denied) =
             await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccessBudgetPlanning, ct);
-        if (denied is not null) return denied;
+        if (denied is not null || caller is null) return denied!;
 
         if (!int.TryParse(req.Query["officeId"], out int officeId)   ||
             !int.TryParse(req.Query["fiscalYear"], out int fiscalYear) ||
@@ -266,6 +329,8 @@ public sealed class AllocationFunctions
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
                 ApiResponse<AllocationSetupStatusDto>.Fail(
                     "officeId, fiscalYear, and divisionId query parameters are required."), ct);
+
+        officeId = await ClampOfficeAsync(caller, officeId, ct);
 
         AllocationSetupStatusDto status =
             await _allocation.GetSetupStatusAsync(officeId, fiscalYear, divisionId, ct);

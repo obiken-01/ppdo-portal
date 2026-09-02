@@ -163,24 +163,42 @@ query that forgets `.Include(...)` degrades to **more** restrictive, never to fu
 
 ---
 
-## 4. The cross-office exception (RAL-257)
+## 4. The cross-office exceptions (RAL-257, RAL-243)
 
-`CanReviewAllOffices` is the **only** flag that widens data scope past the caller's own office.
-Every other flag narrows to it.
+Two flags widen data scope past the caller's own office. Every other flag narrows to it.
 
-It is consumed through a **separate entry point**, and that separation is the safety property:
+| Flag | Widens what | Entry point | Added |
+|---|---|---|---|
+| `CanReviewAllOffices` | every office's submissions, **read only** | `OfficeScope.ResolveForReview` | RAL-257 |
+| `CanManagePboCeiling` | every office's allocation setup — the six allocation reads **and** the ceiling write | `OfficeScope.ResolveForCeiling` | RAL-243, scoped by PPDO-18 |
+
+Each is consumed through its **own entry point**, and that separation is the safety property:
 
 ```
-OfficeScope.ResolveForReview(user, canReviewAllOffices)   READ paths only
-OfficeScope.Resolve(user)                                 everything else, including writes
+OfficeScope.ResolveForReview(user, canReviewAllOffices)    review READ paths only
+OfficeScope.ResolveForCeiling(user, canManagePboCeiling)   allocation reads + the ceiling PUT
+OfficeScope.Resolve(user)                                  everything else, including every other write
 ```
 
-`Resolve` feeds the write paths through `Clamp`. Teaching it this flag would silently promote a
-cross-office *reviewer* into a cross-office **editor** of every office's data, with no diff at any
-write site to notice it. Pinned by `Resolve_IgnoresTheCrossOfficeGrant_SoWritePathsStayScoped`.
+`Resolve` feeds the write paths through `Clamp`. Teaching it either flag would silently promote a
+cross-office *reviewer* into a cross-office **editor** of every office's data, or a PBO ceiling
+officer into an editor of every office's internal division split — with no diff at any write site to
+notice it. Pinned by `Resolve_IgnoresTheCrossOfficeGrant_SoWritePathsStayScoped` and
+`Resolve_IgnoresThePboCeilingGrant_SoAllocationWritesStayScoped`.
+
+**The two do not substitute for each other.** Reusing `ResolveForReview` for the ceiling grant would
+hand a comment-only reviewer a write; reusing `ResolveForCeiling` for review would hand a ceiling
+officer the review scope. Pinned by `TheTwoBypasses_DoNotLeakIntoEachOther`.
 
 A holder's own office is **ignored, not combined** — a reviewer sitting in GSO reviews every office,
 not GSO's rows plus everyone else's.
+
+> **Where the ceiling grant stops.** It is authority over an office's ceiling, not over what that
+> office does with it. `PUT /allocation/divisions` (the division split) and
+> `PUT /allocation/programs` (PPA assignment) stay on `Resolve`, and a guest-office caller is
+> **refused** there rather than clamped — silently rewriting which office a peso amount lands on is
+> a worse failure than a 403. `PUT /allocation/ceiling` is the one write the grant covers, and it
+> carries no office guard at all: the gate *is* the grant.
 
 ---
 

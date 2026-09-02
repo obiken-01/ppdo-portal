@@ -191,12 +191,18 @@ public sealed class ReviewerWriteGuardCoverageTests
         // Admin-only), and a caller who trips that would make the 403 assertion pass for the wrong
         // reason. Admin is not auto-granted either reviewer flag, so the mocks below stay in
         // control of the variable actually under test.
+        //
+        // Host office, for the same reason one dimension over (PPDO-18). Some of these handlers
+        // now carry an office guard as well — AllocationUpsertProgram is host-office-only — and a
+        // guest-office caller trips it, which shows up here as the control case being refused for
+        // a reason that has nothing to do with the reviewer flag. The fixture caller has to clear
+        // every gate except the one under test.
         User caller = new()
         {
             Id       = Guid.NewGuid(),
             Role     = UserRole.Admin,
             OfficeId = 7,
-            Office   = new Office { Id = 7, OfficeCode = "GSO", IsHostOffice = false },
+            Office   = new Office { Id = 7, OfficeCode = "PPDO", IsHostOffice = true },
         };
 
         Mock<IJwtMiddleware> jwt = new();
