@@ -55,4 +55,56 @@ public interface IAipRepository : IRepository<AipRecord>
     /// fiscal-year picker, computed in SQL instead of loading every AipRecord to dedupe in memory.
     /// </summary>
     Task<IReadOnlyList<int>> GetDistinctFiscalYearsAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// One <see cref="AipOfficeRollupDto"/> per AipOffice row of <paramref name="aipRecordId"/>
+    /// (PPDO-20): how many activities the office has, how many carry money, and what they cost.
+    ///
+    /// <b>Why this exists rather than reusing the four hierarchy reads.</b>
+    /// <c>BuildOfficeAipSummaryAsync</c> walks offices → programs → projects → activities in four
+    /// round trips for ONE office. The offices table on the dashboard needs the same figures for
+    /// every office in scope, and repeating that walk would be fourteen offices × four queries,
+    /// materialising every activity row in the AIP just to count and sum them. This does the
+    /// GROUP BY in SQL and returns one small row per office
+    /// (<c>docs/PERFORMANCE_GUIDELINES.md</c>).
+    /// </summary>
+    Task<IReadOnlyList<AipOfficeRollupDto>> GetOfficeRollupsAsync(
+        int aipRecordId, CancellationToken ct = default);
+
+    /// <summary>
+    /// One <see cref="AipProgramRollupDto"/> per program under <paramref name="aipOfficeIds"/>
+    /// (PPDO-20) — the same aggregate as <see cref="GetOfficeRollupsAsync"/> one level down.
+    ///
+    /// Keyed by <see cref="AipProgram.RefCode"/> rather than its surrogate id because that is what
+    /// a division assignment matches on: <c>program_divisions</c> is deliberately ref-code-keyed
+    /// and survives a re-upload, while <c>aip_programs.Id</c> does not (see
+    /// <see cref="ProgramDivision"/>). Two program rows in one office can share a ref code only if
+    /// the import is malformed; the rollup sums them, which is the right answer either way.
+    /// </summary>
+    Task<IReadOnlyList<AipProgramRollupDto>> GetProgramRollupsAsync(
+        IReadOnlyList<int> aipOfficeIds, CancellationToken ct = default);
 }
+
+/// <summary>
+/// Activity counts and money for one AipOffice row (PPDO-20). "Costed" means the activity has a
+/// non-null, non-zero <see cref="AipActivity.Total"/> — money has actually been entered against
+/// it, which is what the dashboard reports on now that WFP expenditure coverage is gone from the
+/// page (Budget_Planning_Dashboard_Requirements.md §2, decisions 3 and 4).
+/// </summary>
+public sealed record AipOfficeRollupDto(
+    int     AipOfficeId,
+    string  RefCode,
+    int     ActivityCount,
+    int     CostedActivityCount,
+    decimal CostedTotal);
+
+/// <summary>
+/// The same rollup one level down, per program ref code (PPDO-20). See
+/// <see cref="IAipRepository.GetProgramRollupsAsync"/> for why the key is the ref code.
+/// </summary>
+public sealed record AipProgramRollupDto(
+    int     AipOfficeId,
+    string  ProgramRefCode,
+    int     ActivityCount,
+    int     CostedActivityCount,
+    decimal CostedTotal);

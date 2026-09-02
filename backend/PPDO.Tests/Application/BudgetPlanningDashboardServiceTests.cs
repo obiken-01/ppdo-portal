@@ -114,6 +114,58 @@ public sealed class BudgetPlanningDashboardServiceTests
     }
 
     /// <summary>
+    /// An <see cref="IAipRepository"/> mock whose four hierarchy reads all answer empty, with the
+    /// AipOffice read stubbed to <paramref name="aipOffices"/>. Needed by any test that supplies
+    /// its own aipRepoMock: <see cref="Build"/> only fills those defaults in when it creates the
+    /// mock itself, so a bare mock returns null into BuildOfficeAipSummaryAsync's Select.
+    /// </summary>
+    private static Mock<IAipRepository> AipMockWithOffices(int aipRecordId, params AipOffice[] aipOffices)
+    {
+        Mock<IAipRepository> aipRepo = new();
+        aipRepo.Setup(r => r.GetOfficesByAipIdAsync(aipRecordId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipOffice>)aipOffices);
+        aipRepo.Setup(r => r.GetProgramsByOfficeIdsAsync(
+                It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipProgram>)[]);
+        aipRepo.Setup(r => r.GetProjectsByProgramIdsAsync(
+                It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipProject>)[]);
+        aipRepo.Setup(r => r.GetActivitiesByProjectIdsAsync(
+                It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipActivity>)[]);
+        return aipRepo;
+    }
+
+    /// <summary>
+    /// An <see cref="IAllocationService"/> mock answering every read with "nothing configured".
+    /// <see cref="Build"/> uses it when no allocation mock is supplied; a test that needs to
+    /// override ONE read calls this and re-stubs that one, rather than starting from a bare mock
+    /// and having the other four return null mid-build.
+    /// </summary>
+    private static Mock<IAllocationService> AllocationMockWithDefaults()
+    {
+        Mock<IAllocationService> allocation = new();
+        allocation.Setup(a => a.GetGeneralFundIdAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(GfFundId);
+        allocation.Setup(a => a.GetCeilingAsync(
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ServiceResult<BudgetCeilingDto>.NotFound("no ceiling"));
+        allocation.Setup(a => a.GetCeilingsAsync(
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<BudgetCeilingDto>)[]);
+        allocation.Setup(a => a.GetAllocationsAsync(
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)[]);
+        allocation.Setup(a => a.GetAllocationsForAllFundsAsync(
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)[]);
+        allocation.Setup(a => a.GetProgramAssignmentsAsync(
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<ProgramAssignmentDto>)[]);
+        return allocation;
+    }
+
+    /// <summary>
     /// Builds a service with mocked dependencies. The audit mock is returned so callers can call
     /// Verify() on it. GetDashboardAsync resolves the office via OfficeCode == "PPDO" — tests that
     /// exercise it must include an office built with the default Off() code ("PPDO").
@@ -129,7 +181,12 @@ public sealed class BudgetPlanningDashboardServiceTests
         Mock<IAipRepository>? aipRepoMock = null,
         Mock<IAllocationService>? allocationMock = null,
         Mock<IWfpExpenditureRepository>? wfpExpRepoMock = null,
-        Mock<IWfpAllocationLedgerRepository>? ledgerRepoMock = null)
+        Mock<IWfpAllocationLedgerRepository>? ledgerRepoMock = null,
+        Mock<IBudgetCeilingRepository>? ceilingRepoMock = null,
+        Mock<IUserRepository>? userRepoMock = null,
+        Mock<IPermissionService>? permissionsMock = null,
+        List<AipOfficeRollupDto>? officeRollups = null,
+        List<AipProgramRollupDto>? programRollups = null)
     {
         divisions      ??= [];
         fundingSources ??= [];
@@ -162,6 +219,15 @@ public sealed class BudgetPlanningDashboardServiceTests
             aipRepo.Setup(r => r.GetActivitiesByProjectIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((IReadOnlyList<AipActivity>)[]);
         }
+        // Rollups are set up on EVERY aipRepo, caller-supplied or not: a caller-supplied mock is
+        // configured for the four hierarchy reads and would otherwise return null here. Tests that
+        // need real rollup data pass them through the officeRollups/programRollups parameters
+        // rather than configuring the mock themselves, so this setup can safely be unconditional.
+        aipRepo.Setup(r => r.GetOfficeRollupsAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipOfficeRollupDto>)(officeRollups ?? []));
+        aipRepo.Setup(r => r.GetProgramRollupsAsync(
+                It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipProgramRollupDto>)(programRollups ?? []));
 
         Mock<IWfpRepository> wfpRepo = new();
         wfpRepo.Setup(r => r.GetFilteredAsync(
@@ -174,6 +240,7 @@ public sealed class BudgetPlanningDashboardServiceTests
                     .ToList());
 
         Mock<IOfficeRepository> officeRepo = new();
+        officeRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(offices);
         officeRepo.Setup(r => r.GetByCodeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string code, CancellationToken _) => offices.FirstOrDefault(o => o.OfficeCode == code));
         officeRepo.Setup(r => r.GetHostOfficeAsync(It.IsAny<CancellationToken>()))
@@ -209,31 +276,39 @@ public sealed class BudgetPlanningDashboardServiceTests
                 It.IsAny<int>(), It.IsAny<int?>(), It.IsAny<IReadOnlyList<string>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(audits);
 
-        Mock<IAllocationService> allocation = allocationMock ?? new Mock<IAllocationService>();
-        if (allocationMock is null)
+        Mock<IAllocationService> allocation = allocationMock ?? AllocationMockWithDefaults();
+
+        Mock<IBudgetCeilingRepository> ceilingRepo = ceilingRepoMock ?? new Mock<IBudgetCeilingRepository>();
+        if (ceilingRepoMock is null)
         {
-            allocation.Setup(a => a.GetGeneralFundIdAsync(It.IsAny<CancellationToken>()))
-                .ReturnsAsync(GfFundId);
-            allocation.Setup(a => a.GetCeilingAsync(
-                    It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(ServiceResult<BudgetCeilingDto>.NotFound("no ceiling"));
-            allocation.Setup(a => a.GetCeilingsAsync(
-                    It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync((IReadOnlyList<BudgetCeilingDto>)[]);
-            allocation.Setup(a => a.GetAllocationsAsync(
-                    It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)[]);
-            allocation.Setup(a => a.GetAllocationsForAllFundsAsync(
-                    It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)[]);
-            allocation.Setup(a => a.GetProgramAssignmentsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync((IReadOnlyList<ProgramAssignmentDto>)[]);
+            ceilingRepo.Setup(r => r.GetByFiscalYearAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((IReadOnlyList<BudgetCeiling>)[]);
+        }
+
+        Mock<IUserRepository> userRepo = userRepoMock ?? new Mock<IUserRepository>();
+        if (userRepoMock is null)
+        {
+            userRepo.Setup(r => r.GetReviewerNamesByOfficeAsync(
+                    It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((IReadOnlyDictionary<int, string>)new Dictionary<int, string>());
+        }
+
+        // Default: no cross-office grant at all. Every GetOfficesAsync test opts in explicitly,
+        // so a test that forgets to grant one gets the Forbidden path rather than a silent pass.
+        Mock<IPermissionService> permissions = permissionsMock ?? new Mock<IPermissionService>();
+        if (permissionsMock is null)
+        {
+            permissions.Setup(p => p.CanReviewAllOfficesAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(false);
+            permissions.Setup(p => p.CanManagePboCeilingAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(false);
         }
 
         BudgetPlanningDashboardService svc = new(
             ldipRepo.Object, aipRepo.Object, wfpRepo.Object, wfpExpRepo.Object, ledgerRepo.Object,
             officeRepo.Object, divisionRepo.Object, fundingSourceRepo.Object,
-            auditRepo.Object, allocation.Object);
+            auditRepo.Object, allocation.Object,
+            ceilingRepo.Object, userRepo.Object, permissions.Object);
 
         return (svc, auditRepo);
     }
@@ -352,75 +427,130 @@ public sealed class BudgetPlanningDashboardServiceTests
         Assert.Equal(2, result.Ldip.Total);
     }
 
-    // ── GetDashboardAsync — WFP by division ───────────────────────────────
+    // ── GetDashboardAsync — AIP by division (PPDO-20) ─────────────────────
+    // These replace the WFP-by-division tests. The old DTO reported a WfpStatus and a count of
+    // activities carrying a WFP expenditure; decisions 3 and 4 of the PPDO-20 spec retire both
+    // from this page in favour of what the division has costed in the AIP.
 
     [Fact]
-    public async Task GetDashboardAsync_ActiveDivisionWithNoWfpRow_StatusIsNotStarted()
+    public async Task GetDashboardAsync_DivisionWithNoAipWork_IsTodoWithZeroes()
     {
         List<AipRecord> aips = [Aip(10, 2027, "Final")];
-        List<Office> offices = [Off(PpdoOfficeId, "PPDO")];
+        List<Office> offices = [Off(PpdoOfficeId, "PPDO", refCode: "1-01-010")];
         List<Division> divisions = [Div(1, PpdoOfficeId, "Administrative")];
         (BudgetPlanningDashboardService sut, _) = Build([], aips, [], offices, [], divisions);
 
         PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027, divisionId: null);
 
-        Assert.Single(result.WfpByDivision);
-        Assert.Equal("Not started", result.WfpByDivision[0].WfpStatus);
-        Assert.Equal("Administrative", result.WfpByDivision[0].DivisionName);
+        DivisionSummaryDto row = Assert.Single(result.ByDivision);
+        Assert.Equal("Administrative", row.DivisionName);
+        // The AIP record is Final, but this division contributed nothing to it. Todo, not Done —
+        // reporting an absent division as complete is how it goes unnoticed until the deadline.
+        Assert.Equal(PlanningStage.Todo, row.AipStatus);
+        Assert.Equal(0, row.TotalActivities);
+        Assert.Equal(0m, row.CostedInAip);
     }
 
     [Fact]
-    public async Task GetDashboardAsync_WfpRecordExists_ShowsItsStatus()
+    public async Task GetDashboardAsync_DivisionWithAssignedProgram_SumsThatProgramsAipMoney()
     {
-        List<AipRecord> aips = [Aip(10, 2027, "Final")];
-        List<Office> offices = [Off(PpdoOfficeId, "PPDO")];
+        List<AipRecord> aips = [Aip(10, 2027, "Draft")];
+        List<Office> offices = [Off(PpdoOfficeId, "PPDO", refCode: "1-01-010")];
         List<Division> divisions = [Div(1, PpdoOfficeId, "Administrative")];
-        List<WfpRecord> wfps = [Wfp(1, aipId: 10, officeId: PpdoOfficeId, status: "Draft", divisionId: 1)];
-        (BudgetPlanningDashboardService sut, _) = Build([], aips, wfps, offices, [], divisions);
+
+        Mock<IAipRepository> aipRepo = AipMockWithOffices(10, AipOff(50, 10, "1000-000-1-01-010"));
+
+        Mock<IAllocationService> allocation = AllocationMockWithDefaults();
+        allocation.Setup(a => a.GetProgramAssignmentsAsync(
+                PpdoOfficeId, 2027, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<ProgramAssignmentDto>)
+                [new ProgramAssignmentDto("1000-000-1-01-010", "PROG-1", "Program 1", "General", [1])]);
+
+        (BudgetPlanningDashboardService sut, _) = Build(
+            [], aips, [], offices, [], divisions,
+            aipRepoMock: aipRepo, allocationMock: allocation,
+            programRollups: [new AipProgramRollupDto(50, "PROG-1", 4, 3, 750_000m)]);
 
         PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027, divisionId: null);
 
-        Assert.Single(result.WfpByDivision);
-        Assert.Equal("Draft", result.WfpByDivision[0].WfpStatus);
+        DivisionSummaryDto row = Assert.Single(result.ByDivision);
+        Assert.Equal(750_000m, row.CostedInAip);
+        Assert.Equal(3, row.CostedActivityCount);
+        Assert.Equal(4, row.TotalActivities);
+        Assert.Equal(PlanningStage.InProgress, row.AipStatus);
     }
 
     [Fact]
-    public async Task GetDashboardAsync_MultipleWfpRecordsSameDivision_AnyFinal_ShowsFinal()
+    public async Task GetDashboardAsync_UnassignedProgram_CountsAgainstNoDivision()
     {
-        List<AipRecord> aips = [Aip(10, 2027, "Final")];
-        List<Office> offices = [Off(PpdoOfficeId, "PPDO")];
+        // An unassigned PPA is surfaced by the allocation-setup panel's "unassigned" count. It
+        // must not be spread across divisions here, which would silently invent attribution.
+        List<AipRecord> aips = [Aip(10, 2027, "Draft")];
+        List<Office> offices = [Off(PpdoOfficeId, "PPDO", refCode: "1-01-010")];
         List<Division> divisions = [Div(1, PpdoOfficeId, "Administrative")];
-        List<WfpRecord> wfps =
-        [
-            Wfp(1, aipId: 10, officeId: PpdoOfficeId, status: "Draft", divisionId: 1,
-                updatedAt: DateTime.UtcNow),
-            Wfp(2, aipId: 10, officeId: PpdoOfficeId, status: "Final", divisionId: 1,
-                updatedAt: DateTime.UtcNow.AddDays(-5)),
-        ];
-        (BudgetPlanningDashboardService sut, _) = Build([], aips, wfps, offices, [], divisions);
+
+        Mock<IAipRepository> aipRepo = AipMockWithOffices(10, AipOff(50, 10, "1000-000-1-01-010"));
+
+        (BudgetPlanningDashboardService sut, _) = Build(
+            [], aips, [], offices, [], divisions, aipRepoMock: aipRepo,
+            programRollups: [new AipProgramRollupDto(50, "PROG-UNASSIGNED", 4, 3, 750_000m)]);
 
         PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027, divisionId: null);
 
-        Assert.Equal("Final", result.WfpByDivision[0].WfpStatus);
+        Assert.Equal(0m, Assert.Single(result.ByDivision).CostedInAip);
     }
 
     [Fact]
-    public async Task GetDashboardAsync_ActivityCoverage_ReadFromRepository()
+    public async Task GetDashboardAsync_DivisionWithAllocationAndNoAip_RemainingEqualsAllocated()
     {
-        List<AipRecord> aips = [Aip(10, 2027, "Final")];
-        List<Office> offices = [Off(PpdoOfficeId, "PPDO")];
+        // Named in the PPDO-20 test focus: Remaining must be the allocation, never null or zero.
+        List<Office> offices = [Off(PpdoOfficeId, "PPDO", refCode: "1-01-010")];
         List<Division> divisions = [Div(1, PpdoOfficeId, "Administrative")];
-        Mock<IWfpExpenditureRepository> wfpExpRepo = new();
-        wfpExpRepo.Setup(r => r.GetActivityCoverageAsync(
-                PpdoOfficeId, 1, 2027, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new WfpActivityCoverageDto(3, 8));
+        List<FundingSource> funds = [Fund(GfFundId, "GF", "General Fund")];
+
+        Mock<IAllocationService> allocation = AllocationMockWithDefaults();
+        allocation.Setup(a => a.GetAllocationsForAllFundsAsync(
+                PpdoOfficeId, 2027, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)
+                [new DivisionAllocationDto(1, 1, "Administrative", 2027, GfFundId, "GF", "General Fund", 100_000m)]);
+
         (BudgetPlanningDashboardService sut, _) =
-            Build([], aips, [], offices, [], divisions, wfpExpRepoMock: wfpExpRepo);
+            Build([], [], [], offices, [], divisions, funds, allocationMock: allocation);
 
         PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027, divisionId: null);
 
-        Assert.Equal(3, result.WfpByDivision[0].ActivitiesWithExpenditures);
-        Assert.Equal(8, result.WfpByDivision[0].TotalActivities);
+        DivisionSummaryDto row = Assert.Single(result.ByDivision);
+        Assert.Equal(100_000m, row.Allocated);
+        Assert.Equal(0m, row.CostedInAip);
+        Assert.Equal(100_000m, row.Remaining);
+    }
+
+    [Fact]
+    public async Task GetDashboardAsync_DivisionWithNullCode_StillReturnsItsName()
+    {
+        // Allocation_Requirements.md §5 makes the code optional with the name as the fallback
+        // identifier — the UI must have a name to render instead of an empty pill.
+        List<Office> offices = [Off(PpdoOfficeId, "PPDO", refCode: "1-01-010")];
+        List<Division> divisions = [Div(1, PpdoOfficeId, "Administrative", code: null)];
+        (BudgetPlanningDashboardService sut, _) = Build([], [], [], offices, [], divisions);
+
+        PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027, divisionId: null);
+
+        DivisionSummaryDto row = Assert.Single(result.ByDivision);
+        Assert.Null(row.DivisionCode);
+        Assert.Equal("Administrative", row.DivisionName);
+    }
+
+    [Fact]
+    public async Task GetDashboardAsync_SubmissionStatus_IsTodoUntilPhase4()
+    {
+        List<Office> offices = [Off(PpdoOfficeId, "PPDO", refCode: "1-01-010")];
+        List<Division> divisions = [Div(1, PpdoOfficeId, "Administrative")];
+        (BudgetPlanningDashboardService sut, _) = Build([], [], [], offices, [], divisions);
+
+        PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027, divisionId: null);
+
+        Assert.Equal(PlanningStage.Todo, Assert.Single(result.ByDivision).SubmissionStatus);
     }
 
     // ── GetDashboardAsync — division clamp (RAL-161 / RAL-136 pattern) ────
@@ -438,8 +568,11 @@ public sealed class BudgetPlanningDashboardServiceTests
 
         PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027, divisionId: 2);
 
-        Assert.Single(result.WfpByDivision);
-        Assert.Equal(2, result.WfpByDivision[0].DivisionId);
+        // The division clamp survives the WfpByDivision → ByDivision rename (PPDO-20 test focus).
+        // This is the server-side mechanism behind "money and tables clamped to RMED" — it must be
+        // carried over, not dropped with the old DTO.
+        Assert.Single(result.ByDivision);
+        Assert.Equal(2, result.ByDivision[0].DivisionId);
         Assert.All(result.CeilingByFund, fund => Assert.Single(fund.ByDivision));
     }
 
@@ -457,7 +590,7 @@ public sealed class BudgetPlanningDashboardServiceTests
 
         PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027, divisionId: null);
 
-        Assert.Equal(2, result.WfpByDivision.Count); // inactive division excluded
+        Assert.Equal(2, result.ByDivision.Count); // inactive division excluded
     }
 
     // ── GetDashboardAsync — ceiling/allocation by fund ────────────────────
@@ -576,7 +709,7 @@ public sealed class BudgetPlanningDashboardServiceTests
 
         PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027, divisionId: null);
 
-        DivisionFundAmountDto fund = Assert.Single(result.WfpByDivision[0].AllocationByFund);
+        DivisionFundAmountDto fund = Assert.Single(result.ByDivision[0].AllocationByFund);
         Assert.Equal(100_000m, fund.Amount);
         Assert.Equal(35_000m, fund.Used);
         Assert.Equal(65_000m, fund.Remaining); // 100,000 - 35,000, independent of any fund ceiling
@@ -984,5 +1117,249 @@ public sealed class BudgetPlanningDashboardServiceTests
         Assert.Equal(1, result.Aip.ProgramCount);
         Assert.Equal(2, result.Aip.ProjectCount);
         Assert.Equal(3, result.Aip.ActivityCount);
+    }
+
+    // ── GetOfficesAsync — scope resolution (PPDO-20, ticket B) ────────────
+    // The load-bearing part of the endpoint. A wrong resolver here compiles cleanly and leaks
+    // data, which is why these are written first and why "own office only" is asserted to be an
+    // INVALID result for either grant — that outcome means OfficeScope.Resolve was used.
+
+    /// <summary>Caller in a guest office, so <c>OfficeScope.Resolve</c> would scope them to it.</summary>
+    private static User GuestOfficeCaller(int officeId, Office office) => new()
+    {
+        Id = Guid.NewGuid(), FullName = "Guest", Username = "guest", PasswordHash = "x",
+        OfficeId = officeId, Office = office,
+    };
+
+    private static BudgetCeiling Ceiling(int id, int officeId, int fundingSourceId, decimal amount,
+        int fiscalYear = 2028) => new()
+    {
+        Id = id, OfficeId = officeId, FiscalYear = fiscalYear,
+        FundingSourceId = fundingSourceId, Amount = amount,
+    };
+
+    private static (BudgetPlanningDashboardService Svc, User Caller) BuildForOffices(
+        List<Office> offices,
+        bool canReviewAllOffices = false,
+        bool canManagePboCeiling = false,
+        List<AipRecord>? aips = null,
+        List<AipOfficeRollupDto>? officeRollups = null,
+        Mock<IBudgetCeilingRepository>? ceilingRepoMock = null,
+        Mock<IUserRepository>? userRepoMock = null,
+        Mock<IAipRepository>? aipRepoMock = null)
+    {
+        // Deliberately a GUEST-office caller in every case: OfficeScope.Resolve would scope them
+        // to their own office, so "every office came back" is real evidence the cross-office
+        // resolver ran, not an artefact of the caller happening to sit in the host office.
+        Office guest = offices.First(o => !o.IsHostOffice);
+        User caller = GuestOfficeCaller(guest.Id, guest);
+
+        Mock<IPermissionService> permissions = new();
+        permissions.Setup(p => p.CanReviewAllOfficesAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(canReviewAllOffices);
+        permissions.Setup(p => p.CanManagePboCeilingAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(canManagePboCeiling);
+
+        (BudgetPlanningDashboardService svc, _) = Build(
+            [], aips ?? [], [], offices, [],
+            aipRepoMock: aipRepoMock,
+            ceilingRepoMock: ceilingRepoMock,
+            userRepoMock: userRepoMock,
+            permissionsMock: permissions,
+            officeRollups: officeRollups);
+
+        return (svc, caller);
+    }
+
+    private static List<Office> TwoOffices() =>
+    [
+        Off(1, "Provincial Planning and Development Office", code: "PPDO"),
+        Off(2, "General Services Office", code: "GSO", isHostOffice: false),
+    ];
+
+    [Fact]
+    public async Task GetOfficesAsync_CanReviewAllOffices_ReturnsEveryOffice()
+    {
+        (BudgetPlanningDashboardService sut, User caller) =
+            BuildForOffices(TwoOffices(), canReviewAllOffices: true);
+
+        ServiceResult<IReadOnlyList<OfficeSummaryDto>> result = await sut.GetOfficesAsync(caller, 2028);
+
+        Assert.True(result.IsSuccess);
+        // Not one row. The caller sits in GSO; one row would mean OfficeScope.Resolve was used
+        // and the cross-office grant silently did nothing.
+        Assert.Equal(2, result.Value!.Count);
+    }
+
+    [Fact]
+    public async Task GetOfficesAsync_CanManagePboCeiling_ReturnsEveryOffice()
+    {
+        (BudgetPlanningDashboardService sut, User caller) =
+            BuildForOffices(TwoOffices(), canManagePboCeiling: true);
+
+        ServiceResult<IReadOnlyList<OfficeSummaryDto>> result = await sut.GetOfficesAsync(caller, 2028);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Value!.Count);
+    }
+
+    [Fact]
+    public async Task GetOfficesAsync_NeitherGrant_IsForbidden_NotAnEmptyList()
+    {
+        // An empty list would read as "no offices exist". A caller legitimately scoped to one
+        // office has GetOfficeDashboardAsync to call instead.
+        (BudgetPlanningDashboardService sut, User caller) = BuildForOffices(TwoOffices());
+
+        ServiceResult<IReadOnlyList<OfficeSummaryDto>> result = await sut.GetOfficesAsync(caller, 2028);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
+    }
+
+    [Fact]
+    public async Task GetOfficesAsync_InactiveOffice_IsExcluded()
+    {
+        List<Office> offices =
+        [
+            Off(1, "PPDO", code: "PPDO"),
+            Off(2, "Retired Office", code: "OLD", active: false, isHostOffice: false),
+        ];
+        (BudgetPlanningDashboardService sut, User caller) =
+            BuildForOffices(offices, canReviewAllOffices: true);
+
+        ServiceResult<IReadOnlyList<OfficeSummaryDto>> result = await sut.GetOfficesAsync(caller, 2028);
+
+        Assert.Single(result.Value!);
+    }
+
+    // ── GetOfficesAsync — row content ─────────────────────────────────────
+
+    [Fact]
+    public async Task GetOfficesAsync_NoCeilingPublished_CeilingIsNull_NotZero()
+    {
+        // Null = PBO has not published. 0 = a published decision. Stage 1 renders differently
+        // for each, so the two must not be coalesced.
+        (BudgetPlanningDashboardService sut, User caller) =
+            BuildForOffices(TwoOffices(), canManagePboCeiling: true);
+
+        ServiceResult<IReadOnlyList<OfficeSummaryDto>> result = await sut.GetOfficesAsync(caller, 2028);
+
+        Assert.All(result.Value!, row => Assert.Null(row.CeilingAmount));
+    }
+
+    [Fact]
+    public async Task GetOfficesAsync_CeilingsAcrossFunds_AreSummedPerOffice()
+    {
+        Mock<IBudgetCeilingRepository> ceilingRepo = new();
+        ceilingRepo.Setup(r => r.GetByFiscalYearAsync(2028, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<BudgetCeiling>)
+            [
+                Ceiling(1, officeId: 2, fundingSourceId: 1, amount: 400_000m),
+                Ceiling(2, officeId: 2, fundingSourceId: 2, amount: 100_000m),
+            ]);
+
+        (BudgetPlanningDashboardService sut, User caller) = BuildForOffices(
+            TwoOffices(), canManagePboCeiling: true, ceilingRepoMock: ceilingRepo);
+
+        ServiceResult<IReadOnlyList<OfficeSummaryDto>> result = await sut.GetOfficesAsync(caller, 2028);
+
+        OfficeSummaryDto gso = result.Value!.Single(r => r.OfficeCode == "GSO");
+        Assert.Equal(500_000m, gso.CeilingAmount);
+        OfficeSummaryDto ppdo = result.Value!.Single(r => r.OfficeCode == "PPDO");
+        Assert.Null(ppdo.CeilingAmount);
+    }
+
+    [Fact]
+    public async Task GetOfficesAsync_CostedAboveCeiling_FlagsOverCeiling()
+    {
+        List<Office> offices =
+        [
+            Off(1, "PPDO", code: "PPDO", refCode: "1-01-010"),
+            Off(2, "GSO", code: "GSO", refCode: "1-02-020", isHostOffice: false),
+        ];
+
+        Mock<IBudgetCeilingRepository> ceilingRepo = new();
+        ceilingRepo.Setup(r => r.GetByFiscalYearAsync(2028, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<BudgetCeiling>)
+                [Ceiling(1, officeId: 2, fundingSourceId: 1, amount: 100_000m)]);
+
+        (BudgetPlanningDashboardService sut, User caller) = BuildForOffices(
+            offices, canReviewAllOffices: true,
+            aips: [Aip(10, 2028, "Draft")],
+            aipRepoMock: AipMockWithOffices(10),
+            ceilingRepoMock: ceilingRepo,
+            officeRollups: [new AipOfficeRollupDto(50, "1000-000-1-02-020", 3, 3, 150_000m)]);
+
+        ServiceResult<IReadOnlyList<OfficeSummaryDto>> result = await sut.GetOfficesAsync(caller, 2028);
+
+        OfficeSummaryDto gso = result.Value!.Single(r => r.OfficeCode == "GSO");
+        Assert.Equal(150_000m, gso.CostedInAip);
+        Assert.Equal(3, gso.ActivityCount);
+        Assert.True(gso.IsOverCeiling);
+        Assert.Equal(PlanningStage.InProgress, gso.AipStatus);
+
+        // No ceiling published for PPDO — nothing to be over, whatever it has costed.
+        Assert.False(result.Value!.Single(r => r.OfficeCode == "PPDO").IsOverCeiling);
+    }
+
+    [Fact]
+    public async Task GetOfficesAsync_OfficeWithNoReviewer_ReturnsNullReviewerName()
+    {
+        Mock<IUserRepository> userRepo = new();
+        userRepo.Setup(r => r.GetReviewerNamesByOfficeAsync(
+                It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyDictionary<int, string>)new Dictionary<int, string> { [1] = "R. Alcaide" });
+
+        (BudgetPlanningDashboardService sut, User caller) = BuildForOffices(
+            TwoOffices(), canReviewAllOffices: true, userRepoMock: userRepo);
+
+        ServiceResult<IReadOnlyList<OfficeSummaryDto>> result = await sut.GetOfficesAsync(caller, 2028);
+
+        Assert.Equal("R. Alcaide", result.Value!.Single(r => r.OfficeCode == "PPDO").ReviewerName);
+        // Null, not "" — the row's "Cannot submit / None — assign" state.
+        Assert.Null(result.Value!.Single(r => r.OfficeCode == "GSO").ReviewerName);
+    }
+
+    [Fact]
+    public async Task GetOfficesAsync_SubmissionStatus_IsTodoUntilPhase4()
+    {
+        (BudgetPlanningDashboardService sut, User caller) =
+            BuildForOffices(TwoOffices(), canReviewAllOffices: true);
+
+        ServiceResult<IReadOnlyList<OfficeSummaryDto>> result = await sut.GetOfficesAsync(caller, 2028);
+
+        Assert.All(result.Value!, row => Assert.Equal(PlanningStage.Todo, row.SubmissionStatus));
+    }
+
+    [Fact]
+    public async Task GetOfficesAsync_NoAipForTheYear_EveryRowIsTodo()
+    {
+        (BudgetPlanningDashboardService sut, User caller) =
+            BuildForOffices(TwoOffices(), canReviewAllOffices: true);
+
+        ServiceResult<IReadOnlyList<OfficeSummaryDto>> result = await sut.GetOfficesAsync(caller, 2029);
+
+        Assert.All(result.Value!, row =>
+        {
+            Assert.Equal(PlanningStage.Todo, row.AipStatus);
+            Assert.Equal(0m, row.CostedInAip);
+        });
+    }
+
+    [Fact]
+    public async Task GetOfficesAsync_HostOfficeSortsFirst()
+    {
+        List<Office> offices =
+        [
+            Off(2, "General Services Office", code: "GSO", isHostOffice: false),
+            Off(1, "Provincial Planning and Development Office", code: "PPDO"),
+        ];
+        (BudgetPlanningDashboardService sut, User caller) =
+            BuildForOffices(offices, canReviewAllOffices: true);
+
+        ServiceResult<IReadOnlyList<OfficeSummaryDto>> result = await sut.GetOfficesAsync(caller, 2028);
+
+        Assert.True(result.Value![0].IsHostOffice);
+        Assert.Equal("PPDO", result.Value![0].OfficeCode);
     }
 }
