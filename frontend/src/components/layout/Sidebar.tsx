@@ -408,6 +408,14 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
                       <span className="text-xs">•</span>
                       <span className="truncate">Funding Sources</span>
                     </Link>
+                    <Link href="/config/cc-typologies" className={childLinkCls(isActive("/config/cc-typologies"))}>
+                      <span className="text-xs">•</span>
+                      <span className="truncate">Climate Change Typologies</span>
+                    </Link>
+                    <Link href="/config/esre-codes" className={childLinkCls(isActive("/config/esre-codes"))}>
+                      <span className="text-xs">•</span>
+                      <span className="truncate">eSRE Codes</span>
+                    </Link>
                     <Link href="/config/price-index" className={childLinkCls(isActive("/config/price-index"))}>
                       <span className="text-xs">•</span>
                       <span className="truncate">Price Index</span>

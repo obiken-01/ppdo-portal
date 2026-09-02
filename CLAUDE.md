@@ -198,7 +198,7 @@ Interfaces / contracts first → Implementations → Tests
 
 ### RBAC / Permissions
 - Effective permission resolution always goes through `PermissionService` — never inline the logic
-- **`docs/v1.8/Permission_Matrix.md` is the reference for who can do what** (RAL-245): every flag × role ×
+- **`docs/v1.8/Permission_Matrix.md` is the reference for who can do what** (PPDO-7): every flag × role ×
   division default × override × scope, plus the cross-office read bypass and the one subtractive guard.
   Every row is pinned by `PermissionMatrixTests`, and a flag added without a row fails the build.
   ⚠️ A null `users.office_id` no longer means "PPDO, sees everything" — DECISION F (RAL-258) retired that
@@ -447,6 +447,19 @@ Run this seed on first migration. Do not change group names — they are referen
 ## Linear Project
 
 **PPDO Portal on Linear:** https://linear.app/ralphoksiprojects/project/ppdo-portal-bdecba26e877
+
+> ⚠️ **Ticket prefix changed 2026-09-02.** The project moved to its own Linear team, **PPDO-Dev**
+> (key `PPDO`). **New tickets are `PPDO-*`; reference those in new branches, commits and PRs.**
+>
+> The move renumbered only the issues that were **not archived** at the time — 28 of them. Every
+> issue Linear had already auto-archived (the 2026-08-27 batch and earlier — which is nearly all of
+> v0.1 → v1.7.4) stayed on the old `RalphOksiProjects` team and **kept its `RAL-` identifier**. So
+> both prefixes are live and correct, and v1.8.0 Phase 1 is legitimately split across the two.
+>
+> **Old identifiers still resolve** — `RAL-247` redirects to `PPDO-23`. The ~3,390 `RAL-` references
+> in this repo's code comments, docs and commit history were therefore left as they are, on purpose:
+> they are accurate historical record and they still click through. Do not bulk-rewrite them.
+> `docs/v1.8/Phase_Plan.md` §3.6 carries the per-ticket mapping for the v1.8.0 set.
 
 | Milestone | Issues |
 |---|---|
@@ -698,7 +711,7 @@ the index — what shipped in each release, and the PR that merged it to `main`.
 | v1.5 — PPMP Report | ✅ Done |
 | v1.6 — AIP Editing + Responsive Shell | ✅ Done |
 | v1.7 — Inventory (+ .1–.4 patches) | ✅ Done |
-| **v1.8.0 — AIP Redesign** | 🚧 **In planning** — RAL-241 epic, RAL-242…272, 7 phases / 73 items |
+| **v1.8.0 — AIP Redesign** | 🚧 **In progress** — PPDO-28 epic; Phase 1 children split `PPDO-*` / `RAL-*` (see Linear note above), 7 phases / 73 items |
 | `techdebt` | 🔁 Ongoing — non-feature cleanup; tickets move into the active version milestone when they go In Progress |
 
 ### v1.0.1 Patch — Changes (merged to main 2026-06-08)
@@ -755,8 +768,9 @@ the index — what shipped in each release, and the PR that merged it to `main`.
 
 ### Next: v1.8.0 — AIP Redesign (in planning)
 
-The largest single change attempted so far. **RAL-241** is the epic; **RAL-242…272** are the
-children, organized as **7 phases / 73 items**.
+The largest single change attempted so far. **PPDO-28** is the epic; its children carry a mix of
+`PPDO-*` and `RAL-*` identifiers after the 2026-09-02 team move (mapping in
+`docs/v1.8/Phase_Plan.md` §3.6), organized as **7 phases / 73 items**.
 
 - **Approach: redesign, not retrofit.** Clean fiscal-year break — **FY2027 stays on the old
   format, FY2028+ uses the new one, and there is no data migration.**

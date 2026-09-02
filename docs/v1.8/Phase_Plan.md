@@ -122,7 +122,7 @@ has held since v1.0.
 | **V18-01** | Rename `CanManageAllocation` → **Manage PPDO Allocation** | Mechanical but wide: `PermissionService`, Functions gates, `MeResponse`, user form, frontend types. Its own commit, no behaviour change | S |
 | **V18-02** | New per-user flag **`OverrideCanManagePboCeiling`** | PBO finance officer — may set `BudgetCeiling` for **any** office. Mirrors `CanManageAllocation`'s plumbing exactly; Admin **not** auto-granted | S |
 | **V18-03** | New per-user flag **`OverrideCanReviewBudgetPlanning`** (reviewer) | Resolution: SuperAdmin → true, else `Override ?? false`. Written generically for LDIP/WFP reuse, not AIP-only. ⚠️ **2026-08-25: exactly one reviewer per office** (tracker B4-c) — the flag alone permits several, so the constraint has to be built deliberately (V18-79) | M |
-| **V18-04** | **`DenyReviewerWriteAsync` guard** + apply to every budget-planning write endpoint | ⚠️ The codebase's **first subtractive permission**. Every existing flag only grants; `ConfigHttp.AuthorizeAsync(req, _jwt, CanX, ct)` cannot express "deny if caller has X". Needs its own helper and its own tests. ⚠️ **Re-scoped 2026-08-26 (tracker B11), and this is the ticket's main change:** the denial does not apply to "reviewers" as one group. There are **two reviewer kinds** — the **department-head reviewer may edit values** during review ("to update any minor details they found"), while the **PPDO reviewer may not** ("just comment"). So the guard must key on which reviewer role the caller holds, not on a single reviewer flag. Design it that way before writing the helper — RAL-256 | M |
+| **V18-04** | **`DenyReviewerWriteAsync` guard** + apply to every budget-planning write endpoint | ⚠️ The codebase's **first subtractive permission**. Every existing flag only grants; `ConfigHttp.AuthorizeAsync(req, _jwt, CanX, ct)` cannot express "deny if caller has X". Needs its own helper and its own tests. ⚠️ **Re-scoped 2026-08-26 (tracker B11), and this is the ticket's main change:** the denial does not apply to "reviewers" as one group. There are **two reviewer kinds** — the **department-head reviewer may edit values** during review ("to update any minor details they found"), while the **PPDO reviewer may not** ("just comment"). So the guard must key on which reviewer role the caller holds, not on a single reviewer flag. Design it that way before writing the helper — PPDO-6 | M |
 | **V18-05** | New flag — **cross-office reviewer**. ⚠️ **Renamed 2026-08-25: NOT `OverrideCanReviewLfc`** | **The LFC no longer reviews in the system** (tracker B5/B6): the cross-office reviewers are designated **PPDO users**, so the flag is `OverrideCanReviewAipConsolidated` (name to settle) and its holders are PPDO staff, not an external committee. Still the first permission that deliberately **bypasses** `OfficeScope` rather than combining with it, and still must not be built as "reviewer + all offices" — that would also inherit reviewer's write-denial. See §12.4 | M |
 | **V18-06** | Permission matrix doc + `PermissionService` test sweep | One table covering role × division flag × override × office/division scope for all 11 flags. The model is now large enough that "read the code" is no longer a reasonable answer | S |
 | **V18-07** | Audit-log coverage for permission, role, office and division changes | Confirm every write on `users`/`divisions` lands in the audit log; add what is missing. A precondition for accepting self-service password reset (§3.4) | S |
@@ -237,7 +237,7 @@ Read as the landing-target set. Each needs one thing done to it before it can be
 |---|---|---|---|
 | **V18-28** | Main Dashboard as a landing target | Currently unreachable for office users — `(portal)/layout.tsx:208-217` bounces them out of everything outside Budget Planning. Either that gate relaxes, or Main Dashboard is simply not offered to office users (recommended: not offered) | S |
 | **V18-29** | Inventory Dashboard as a landing target | Offered only when `CanAccessInventory` resolves true. No page change expected — a filter on the options list plus a guard | S |
-| **V18-30** | Budget Planning Dashboard as a landing target — and the office view | Office users currently get the readiness hub only (RAL-230, deliberately — an office dashboard "belongs to the redesign"). **✅ Answered 2026-08-25 (tracker D6): Phase 1 ships a real office dashboard**, not the hub. RAL-255 moves out of Backlog | M |
+| **V18-30** | Budget Planning Dashboard as a landing target — and the office view | Office users currently get the readiness hub only (RAL-230, deliberately — an office dashboard "belongs to the redesign"). **✅ Answered 2026-08-25 (tracker D6): Phase 1 ships a real office dashboard**, not the hub. PPDO-20 moves out of Backlog | M |
 | **V18-31** | User Profile as a landing target → resolves to `/account` | Depends on V18-21. Always available: `/account` is the one page every authenticated user can reach, which is also why it is the terminal fallback in §3.3's chain | S |
 
 **Phase 1 total: 31 work items**, in four clusters — permissions, configuration, landing, password
@@ -246,29 +246,46 @@ reset.
 ### 3.6 Linear ticket linkage
 
 Created 2026-08-20 under milestone *v1.8.0 — Office Users, AIP Redesign & Reviewer Flow*, all
-children of the epic **RAL-241** (*v1.8.0 Phase 1 — Identity, Configuration & Landing*). Ticket
+children of the epic **PPDO-28** (*v1.8.0 Phase 1 — Identity, Configuration & Landing*). Ticket
 descriptions carry scope, not implementation prompts — those follow `docs/TICKET_PROMPT_STANDARD.md`
 and get written when a ticket moves to In Progress.
 
+> ⚠️ **Identifiers changed on 2026-09-02.** The PPDO Portal project moved to a new Linear team,
+> **PPDO-Dev** (key `PPDO`). The move renumbered only the issues that were **not archived** at the
+> time; issues Linear had already auto-archived (the 2026-08-27 batch) stayed on the old
+> `RalphOksiProjects` team and **kept their `RAL-` identifiers**, even though their parent was
+> repointed to `PPDO-28`. So Phase 1's tickets are legitimately split across two prefixes — this is
+> the state in Linear, not a stale doc.
+>
+> Old identifiers still resolve: `RAL-247` redirects to `PPDO-23`. Every `RAL-` reference elsewhere
+> in this repo and in commit history remains clickable and has deliberately not been rewritten.
+> **New work references `PPDO-*`.**
+
 | Item | Ticket | Item | Ticket | Item | Ticket |
 |---|---|---|---|---|---|
-| V18-01 | RAL-242 | V18-12 | RAL-258 | V18-23 | RAL-265 |
-| V18-02 | RAL-243 | V18-13 | RAL-259 | V18-24 | RAL-269 |
-| V18-03 | RAL-244 | V18-14 | RAL-260 | V18-25 | RAL-266 |
-| V18-04 | RAL-256 | V18-15 | RAL-250 | V18-26 | RAL-254 |
-| V18-05 | RAL-257 | V18-16 | RAL-251 | V18-27 | RAL-267 |
-| V18-06 | RAL-245 | V18-17 | RAL-261 | V18-28 | RAL-270 |
-| V18-07 | RAL-246 | V18-18 | RAL-263 | V18-29 | RAL-271 |
-| V18-08 | RAL-268 | V18-19 | RAL-264 | V18-30 | RAL-255 |
-| V18-09 | RAL-247 | V18-20 | RAL-262 | V18-31 | RAL-272 |
-| V18-10 | RAL-248 | V18-21 | RAL-252 | | |
-| V18-11 | RAL-249 | V18-22 | RAL-253 | | |
+| V18-01 | **PPDO-9** | V18-12 | RAL-258 | V18-23 | RAL-265 |
+| V18-02 | **PPDO-2** | V18-13 | RAL-259 | V18-24 | RAL-269 |
+| V18-03 | **PPDO-3** | V18-14 | **PPDO-27** | V18-25 | RAL-266 |
+| V18-04 | **PPDO-6** | V18-15 | **PPDO-4** | V18-26 | RAL-254 |
+| V18-05 | **PPDO-5** | V18-16 | RAL-251 | V18-27 | RAL-267 |
+| V18-06 | **PPDO-7** | V18-17 | RAL-261 | V18-28 | RAL-270 |
+| V18-07 | **PPDO-8** | V18-18 | RAL-263 | V18-29 | RAL-271 |
+| V18-08 | RAL-268 | V18-19 | RAL-264 | V18-30 | **PPDO-20** |
+| V18-09 | **PPDO-23** | V18-20 | RAL-262 | V18-31 | RAL-272 |
+| V18-10 | **PPDO-25** | V18-21 | RAL-252 | | |
+| V18-11 | **PPDO-1** | V18-22 | RAL-253 | | |
 
-All are **Todo**. **RAL-255** (V18-30) was in Backlog pending Ralph's call; that call came on
-2026-08-25 (a real office dashboard — tracker D6), so it can move to Todo with the rest.
-Suggested starting order: **RAL-254** (the live shared-password finding) → **RAL-251** (landing
-schema + resolver, which five other tickets sit on) → **RAL-244**/**RAL-256** (reviewer flag and its
-guard, the longest pole in the permission cluster).
+Bold entries were renumbered by the team move; the rest are archived and keep their `RAL-` numbers.
+
+**Status as of 2026-09-02** (superseding the "all are Todo" note this table originally carried):
+V18-01…08, V18-11, V18-12, V18-15…29, V18-31 are **Done**. Still open: **PPDO-23** (V18-09) and
+**PPDO-25** (V18-10) in progress on `feature/v1.8.0-ral-247-cc-typology-config`; **PPDO-27**
+(V18-14) in progress; **PPDO-20** (V18-30) Todo.
+
+Two tickets outside the `V18-` numbering also sit in this milestone but are **not** children of
+PPDO-28: **PPDO-18** (office clamp on `AllocationFunctions` — a live cross-office read leak) and
+**PPDO-17** (allocation page office picker, pulling the picker half of V18-48 forward). A third,
+**PPDO-19** (CSV import/export for the two new config pages), is new scope filed 2026-09-01.
 
 Phases 2–7 are **not** ticketed — every one of them has at least one open decision in §9.
 
@@ -498,7 +515,7 @@ so nobody re-derives and re-proposes it.
 **What this means in practice:**
 
 - All ~73 work items stay under the existing milestone *"Office Users, AIP Redesign & Reviewer
-  Flow"* and the RAL-241 epic. No new milestones to create, no tickets to re-parent.
+  Flow"* and the PPDO-28 epic. No new milestones to create, no tickets to re-parent.
 - Phase 1 shipping is a **release** event, not a milestone boundary — the version ships when it
   ships, and anything that has to move afterwards moves as a patch.
 - The phases stay dependency-ordered regardless. Phase 2 still cannot be ticketed until DECISION A
@@ -531,7 +548,7 @@ is no boundary to imply it, so it has to be remembered deliberately.
    sized S → M. Remaining sub-question: the flag's name (`IsHostOffice` vs `IsPpdo`) — see §3.2.
 3. ~~**V18-30** — does Phase 1 ship a real Budget Planning dashboard for office users, or keep the
    readiness hub until the redesign?~~ ✅ **Answered 2026-08-25: yes, a real dashboard.**
-   **RAL-255 can leave Backlog** — it was the only Phase 1 ticket held there pending this call.
+   **PPDO-20 can leave Backlog** — it was the only Phase 1 ticket held there pending this call.
 4. ~~**V18-21** — delete the `/profile` stub and redirect to `/account`, or build `/profile` out?~~
    ✅ **Answered 2026-08-20: `/account`.** The stub goes; `/profile` redirects.
 5. ~~**§10** — split into v1.8.0 / v1.9.0 / v1.10.0, or keep one milestone?~~ ✅ **Answered
@@ -1237,9 +1254,9 @@ office kanban** — V18-82) · V18-74 (reduced to a report-side concern) · V18-
 
 ⚠️ **Phase 1 gains real work from the 2026-08-26 answers, which it did not have before.** Tracker
 B11 answers §12.8 Q7 by **splitting the reviewer into two roles with different powers** — the
-department-head reviewer edits and comments, the PPDO reviewer only comments. V18-04 / **RAL-256**
+department-head reviewer edits and comments, the PPDO reviewer only comments. V18-04 / **PPDO-6**
 is currently scoped as a single blanket "reviewers cannot write" denial, and that premise is now
-wrong: it must distinguish the two reviewer kinds. RAL-256 is a Phase 1 ticket, so this is the one
+wrong: it must distinguish the two reviewer kinds. PPDO-6 is a Phase 1 ticket, so this is the one
 item here that affects work which could start immediately. V18-03 and V18-79 move with it.
 
 ### 12.8 The ten items raised here — ✅ all answered 2026-08-26
@@ -1255,7 +1272,7 @@ blocks a phase.** What remains are three fragments and two readings, marked ⚠�
 | 4 | **The ref-code segment layout** | ⚠️ **Half-answered** (B9). The format is `8000-000-1-03-009-001-001-001` and the meeting sketch is to be ignored — but the **segment meanings and reset points are still missing**, and the count varies with depth. V18-76 cannot create indexed columns without a defined maximum depth (§12.5) |
 | 5 | **A ceiling cut after encoding** | ✅ **Confirmed 2026-08-26** — the encoded work **stands and fails at submit**; nothing is destroyed or flagged when the ceiling is cut. Consistent with DECISION C. ⚠️ Implementation trap in V18-48 — see §5 |
 | 6 | **Comment threading and lifecycle** | ✅ **Fully answered.** (B10) narrowed it to inline comments only, a "Mark as resolved" checkbox, and a soft unresolved-count warning on re-submit that the user may override — **narrowing DECISION 10**, which allowed a whole-submission comment. ✅ **2026-08-26 closes the two remaining gaps (§12.5): row-level anchoring, no threading, and only the authoring side resolves (an office cannot clear a PPDO reviewer's comment, nor an encoder their department head's)**; the unresolved count is split by the two authoring roles |
-| 7 | **The reviewer write-denial contradiction** | ✅ **Answered** (B11) — the denial does not go away, it **splits**: department-head reviewer edits and comments; PPDO reviewer comments only. RAL-256 / V18-04 must be re-scoped. The one Phase 1 consequence (§12.7) |
+| 7 | **The reviewer write-denial contradiction** | ✅ **Answered** (B11) — the denial does not go away, it **splits**: department-head reviewer edits and comments; PPDO reviewer comments only. PPDO-6 / V18-04 must be re-scoped. The one Phase 1 consequence (§12.7) |
 | 8 | **PPDO's own internal path** | ✅ **Yes to both** (B12) — PPDO divisions submit to a PPDO department-head reviewer, distinct from the consolidated reviewer; PPDO encoders see only their own division. ⚠️ `AIP_Redesign_Notes.md` §4 Q2 (record shape) is still open underneath (§12.6) |
 | 9 | **One reviewer per office** | ✅ **Convention, enforced softly** (B13) — an application-layer error on double assignment, deliberately not a database constraint, so future multi-reviewer support is a removal rather than a migration. No "on leave" rule needed |
 | 10 | **Four things read off the meeting photos** | ✅ All four answered — see below |

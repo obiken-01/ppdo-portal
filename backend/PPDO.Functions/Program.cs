@@ -143,6 +143,8 @@ var host = new HostBuilder()
         services.AddScoped<IDivisionService, DivisionService>();
         services.AddScoped<IAccountService, AccountService>();
         services.AddScoped<IFundingSourceService, FundingSourceService>();
+        services.AddScoped<IClimateChangeTypologyService, ClimateChangeTypologyService>();
+        services.AddScoped<IEsreCodeService, EsreCodeService>();
         services.AddScoped<IPriceIndexService, PriceIndexService>();
         services.AddScoped<IAuditLogService, AuditLogService>();
         services.AddScoped<IProcurementPresetRepository, ProcurementPresetRepository>();
@@ -172,6 +174,8 @@ var host = new HostBuilder()
         services.AddScoped<IBudgetCeilingRepository, BudgetCeilingRepository>();
         services.AddScoped<IDivisionAllocationRepository, DivisionAllocationRepository>();
         services.AddScoped<IAllocationRepository, AllocationRepository>();
+        services.AddScoped<IClimateChangeTypologyRepository, ClimateChangeTypologyRepository>();
+        services.AddScoped<IEsreCodeRepository, EsreCodeRepository>();
         services.AddScoped<IAllocationService, AllocationService>();
 
         // -- v1.4 WFP expenditure schema + computation pipeline (RAL-120) -----
