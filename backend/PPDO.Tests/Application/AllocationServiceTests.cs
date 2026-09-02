@@ -147,10 +147,14 @@ public sealed class AllocationServiceTests
                 (IReadOnlyList<DivisionAllocation>)allocList
                     .Where(a => divIds.Contains(a.DivisionId) && a.FiscalYear == fy)
                     .ToList());
+        // Emulates the real join on divisions.office_id (PPDO-30). Keeping the office half here
+        // matters: a double that ignored officeId would let the scope tests below pass without
+        // the production query ever checking ownership.
         allocRepo.Setup(r => r.HasPositiveAllocationAsync(
-                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((int divId, int fy, int fundId, CancellationToken _) =>
-                allocList.Any(a => a.DivisionId == divId && a.FiscalYear == fy && a.FundingSourceId == fundId && a.Amount > 0));
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int officeId, int divId, int fy, int fundId, CancellationToken _) =>
+                divList.Any(d => d.Id == divId && d.OfficeId == officeId)
+                && allocList.Any(a => a.DivisionId == divId && a.FiscalYear == fy && a.FundingSourceId == fundId && a.Amount > 0));
         allocRepo.Setup(r => r.GetByFiscalYearAndFundingSourceAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((int fy, int fundId, CancellationToken _) =>
                 (IReadOnlyList<DivisionAllocation>)allocList.Where(a => a.FiscalYear == fy && a.FundingSourceId == fundId).ToList());
@@ -562,6 +566,95 @@ public sealed class AllocationServiceTests
         Assert.False(status.HasCeiling);
         Assert.False(status.HasAllocation);
         Assert.True(status.HasProgramAssignment);   // unrelated to fund scoping
+    }
+
+    // -- PPDO-30: divisionId must belong to the office ------------------------
+    // officeId and divisionId reach GetSetupStatusAsync as two independent query-string
+    // parameters. Nothing tied them together, so hasAllocation answered "does ANY division with
+    // this id have a budget". Found live: pto.user, whose office owns no divisions at all, got
+    // hasAllocation=true for PPDO's ADMIN and PLANNING divisions by naming their ids.
+
+    /// <summary>
+    /// THE bug. Office 2 owns division 2 and has a ceiling of its own; division 1 belongs to
+    /// office 1 and carries a real allocation. Asking about office 2 while naming office 1's
+    /// division must NOT report that allocation.
+    /// </summary>
+    [Fact]
+    public async Task GetSetupStatus_DivisionBelongingToAnotherOffice_HasAllocationIsFalse()
+    {
+        Office ppdo    = MakeOffice(1, refCode: "01-010");
+        Office guest   = MakeOffice(2, code: "PTO", refCode: "02-020");
+        Division ppdoDiv  = MakeDivision(1, 1);          // PPDO's
+        Division guestDiv = MakeDivision(2, 2);          // the guest office's
+        BudgetCeiling guestCeiling = MakeCeiling(2, 2027, 1_000_000m);
+        DivisionAllocation ppdoAlloc = MakeAllocation(1, 1, 2027, 500_000m);  // PPDO's money
+
+        (AllocationService sut, _, _, _, _, _, _, _) = Build(
+            ceilings: [guestCeiling], allocations: [ppdoAlloc],
+            divisions: [ppdoDiv, guestDiv], offices: [ppdo, guest]);
+
+        // Office 2 asking about office 1's division.
+        AllocationSetupStatusDto status = await sut.GetSetupStatusAsync(2, 2027, divisionId: 1);
+
+        Assert.False(status.HasAllocation);
+        Assert.True(status.HasCeiling);   // the office's own ceiling is unaffected
+    }
+
+    /// <summary>The same call for a division the office DOES own still reports its allocation.</summary>
+    [Fact]
+    public async Task GetSetupStatus_DivisionBelongingToTheOffice_HasAllocationIsTrue()
+    {
+        Office guest = MakeOffice(2, code: "PTO", refCode: "02-020");
+        Division guestDiv = MakeDivision(2, 2);
+        BudgetCeiling guestCeiling = MakeCeiling(2, 2027, 1_000_000m);
+        DivisionAllocation guestAlloc = MakeAllocation(1, 2, 2027, 400_000m);
+
+        (AllocationService sut, _, _, _, _, _, _, _) = Build(
+            ceilings: [guestCeiling], allocations: [guestAlloc],
+            divisions: [guestDiv], offices: [guest]);
+
+        AllocationSetupStatusDto status = await sut.GetSetupStatusAsync(2, 2027, divisionId: 2);
+
+        Assert.True(status.HasAllocation);
+    }
+
+    /// <summary>A division id that exists nowhere reports nothing, rather than erroring.</summary>
+    [Fact]
+    public async Task GetSetupStatus_UnknownDivisionId_HasAllocationIsFalse()
+    {
+        Office office = MakeOffice(1, refCode: "01-010");
+        Division div  = MakeDivision(1, 1);
+        BudgetCeiling ceil = MakeCeiling(1, 2027, 1_000_000m);
+        DivisionAllocation alloc = MakeAllocation(1, 1, 2027, 500_000m);
+
+        (AllocationService sut, _, _, _, _, _, _, _) = Build(
+            ceilings: [ceil], allocations: [alloc], divisions: [div], offices: [office]);
+
+        AllocationSetupStatusDto status = await sut.GetSetupStatusAsync(1, 2027, divisionId: 99);
+
+        Assert.False(status.HasAllocation);
+    }
+
+    /// <summary>
+    /// The office is carried into the query, not filtered afterwards — a full-table division
+    /// load to answer one EXISTS is the thing PERFORMANCE_GUIDELINES.md forbids, and the fix
+    /// must not reintroduce it.
+    /// </summary>
+    [Fact]
+    public async Task GetSetupStatus_PassesTheOfficeIntoTheAllocationQuery()
+    {
+        Office office = MakeOffice(1, refCode: "01-010");
+        Division div  = MakeDivision(1, 1);
+        BudgetCeiling ceil = MakeCeiling(1, 2027, 1_000_000m);
+
+        (AllocationService sut, _, Mock<IDivisionAllocationRepository> allocRepo, _, _, _, _, _) =
+            Build(ceilings: [ceil], divisions: [div], offices: [office]);
+
+        await sut.GetSetupStatusAsync(1, 2027, 1);
+
+        allocRepo.Verify(
+            r => r.HasPositiveAllocationAsync(1, 1, 2027, GfFundId, It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
@@ -1017,7 +1110,7 @@ public sealed class AllocationServiceTests
 
         await sut.GetSetupStatusAsync(1, 2027, 1);
 
-        allocRepo.Verify(r => r.HasPositiveAllocationAsync(1, 2027, GfFundId, It.IsAny<CancellationToken>()), Times.Once);
+        allocRepo.Verify(r => r.HasPositiveAllocationAsync(1, 1, 2027, GfFundId, It.IsAny<CancellationToken>()), Times.Once);
         allocRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
