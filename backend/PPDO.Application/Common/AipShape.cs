@@ -1,4 +1,4 @@
-using PPDO.Domain.Entities;
+﻿using PPDO.Domain.Entities;
 
 namespace PPDO.Application.Common;
 
@@ -119,6 +119,40 @@ public static class AipShape
             : $"FY {fiscalYear} predates the office-owned AIP and cannot be created for one "
               + $"office. Office-owned records start at FY {FirstOfficeOwnedFiscalYear}.";
     }
+
+    /// <summary>
+    /// Why an <c>.xlsm</c> import may not target <paramref name="fiscalYear"/>, or null when it
+    /// may (V18-38 / PPDO-41).
+    ///
+    /// <para>
+    /// The importer builds the v1.6 multi-office shape and only that shape — one workbook carries
+    /// every office in the province — so it is <see cref="AipRecordShape.LegacyMultiOffice"/> by
+    /// construction and has no year from <see cref="FirstOfficeOwnedFiscalYear"/> on that can
+    /// accept it. The freeze is therefore the same partition <see cref="Mismatch"/> enforces,
+    /// reached from the one caller that cannot supply an owner even in principle.
+    /// </para>
+    ///
+    /// <para>
+    /// It has its own message rather than reusing <see cref="Mismatch"/>'s because that one tells
+    /// the caller to choose an office, which is advice an importer cannot take — the workbook
+    /// decides its offices, not the person uploading it. A refusal whose remedy is impossible
+    /// reads as a bug in the portal. This one names the year and the thing to do instead, which
+    /// is the whole of what V18-38 asks for.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ <b>The parser is deliberately left alone.</b> FY≤2027 still imports through it, including
+    /// the LDIP-seeded and re-upload paths, and freezing the years it may target is not the same
+    /// as retiring it.
+    /// </para>
+    /// </summary>
+    public static string? RefuseUpload(int fiscalYear)
+        => Required(fiscalYear) == AipRecordShape.OfficeOwned
+            ? $"FY {fiscalYear} AIPs are entered in the portal, not uploaded. The .xlsm import "
+              + "builds one record spanning every office, which is the shape only FY "
+              + $"{FirstOfficeOwnedFiscalYear - 1} and earlier use. Create the FY {fiscalYear} AIP "
+              + "from Budget Planning → AIP → New AIP instead."
+            : null;
 
     /// <summary>
     /// Why an <see cref="AipOffice"/> for <paramref name="officeConfigId"/> may not be added to

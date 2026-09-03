@@ -170,7 +170,7 @@ changes is what they filter on and what the numbers mean.
 |---|---|
 | Every scoped AIP read | Filters on `AipOffice.OfficeId` instead of a `RefCode` suffix match |
 | Every AIP response carrying money | Values are **pesos**. No shape change — the same fields, a different magnitude |
-| `POST /api/budget-planning/aip/upload` | Refuses FY≥2028 (V18-38) |
+| `POST /api/budget-planning/aip/upload` | ✅ Refuses FY≥2028 (V18-38, shipped 2026-09-03). So does `…/aip/confirm` — the preview gate spares the user a parsed 20 MB workbook, the confirm gate is the one that guards |
 
 ⚠️ **Every money field on every AIP DTO changes meaning without changing type.** A `decimal Total`
 of `250` becomes `250000`. Nothing in the type system catches a missed call site — which is why
@@ -397,7 +397,7 @@ Phase 2 adds no screen. Two existing surfaces change.
 | Surface | Change |
 |---|---|
 | **AIP detail page** | ✅ P2-a answered — headers keep `(in ₱000)`, cells divide at render, inputs multiply on save. Display and entry moved together, as they had to. Counts corrected while implementing: **10 cells** (the office-total footer row renders AIP money too) and **10 inputs** (the eleventh grep hit was the import line) |
-| **AIP upload** | FY≥2028 refused with a reason naming the fiscal year, not a generic validation error. The button is **disabled with a reason**, not hidden — the user has permission, the *state* forbids it (`Budget_Planning_Dashboard_Requirements.md` §6.1) |
+| **AIP upload** | ✅ Shipped 2026-09-03 (V18-38). FY≥2028 refused with a reason naming the fiscal year and the alternative, not a generic validation error. The dropzone and the Upload button are **disabled with the reason shown**, not hidden — the user has CanUploadAip, the *state* forbids it (`Budget_Planning_Dashboard_Requirements.md` §6.1). The detail page's **Re-upload** button is disabled the same way rather than linking to a page that refuses on arrival |
 
 Flat design, PPDO tokens, `slate-800` headings / `slate-600` body, never `text-slate-700`.
 
@@ -444,6 +444,12 @@ Flat design, PPDO tokens, `slate-800` headings / `slate-600` body, never `text-s
 - **Take a database backup before migration 3.** It is the only one that rewrites existing values
   across every fiscal year. Reversible arithmetically, but a restore is faster than a reasoning
   exercise at 9pm.
+- ⚠️ **Release note, not a defect: FY2027's stored AIP is permanently not a faithful copy of the
+  province's workbook.** Those rows were imported by the pre-RAL-238 parser, which read hierarchy
+  level from the wrong column (`Phase_Plan.md` §4b). Freezing the importer (V18-38) makes that
+  permanent — there is no longer a supported path that would re-import them correctly, and
+  re-importing FY2027 faithfully is explicitly out of scope. Say so in the v1.8.0 notes rather than
+  leaving it for whoever next diffs a portal FY2027 total against the province's file.
 - No new dependency, environment variable, or CORS origin.
 - No new Azure resource. If one is ever added: **Southeast Asia** (RAL-237).
 
@@ -507,21 +513,35 @@ is the class where a wrong choice compiles cleanly and leaks data.
 - [x] An FY2027 activity keeps its imported totals — the recompute does not zero it, and repeated
       runs stay safe
 - [x] Uploading an .xlsm for FY2028 is refused with a message naming the fiscal year — the
-      SERVER half (V18-37). The disabled-with-a-reason button is still V18-38's, and has to be:
-      a disabled button is a courtesy, not a guard
-- [x] Uploading an .xlsm for FY2027 still works unchanged
+      SERVER half (V18-37), now at BOTH import gates rather than confirm alone (V18-38)
+- [x] The refusal names the year and what to do instead, and is not Mismatch's "choose the office"
+      — advice an importer cannot take, since the workbook decides its offices (V18-38)
+- [x] `ParsePreviewAsync` refuses before `_parser.Parse` is reached — asserted by `Times.Never`,
+      not by the status code, so a gate placed after the parse would fail this (V18-38)
+- [x] The upload control is disabled with its reason visible, not hidden — the user holds
+      CanUploadAip and it is the fiscal year that forbids it
+      (`Budget_Planning_Dashboard_Requirements.md` §6.1) (V18-38)
+- [x] The detail page's Re-upload button is disabled with the same reason rather than linking to a
+      page that refuses on arrival (V18-38)
+- [x] The break year appears once on the frontend too — `frontend/src` is now scanned by the same
+      test, mutation-checked by planting a stray literal and watching it fail (V18-38)
+- [x] Uploading an .xlsm for FY2027 still works unchanged, first upload AND re-upload
 - [x] An office-owned record cannot be created in a historical year, and an owner-less one cannot
       be created from FY2028 on — both refused with the year named (V18-37)
 - [x] Carry-forward and LDIP-seeding into FY2028 are refused BEFORE any row is written — verified
       by asserting AddAsync/SaveChangesAsync are never reached, not by inspecting the result
 - [x] Re-uploading cannot carry a record across the boundary: the shape check sits above the
-      re-upload branch, which assigns rec.FiscalYear outright
+      re-upload branch, which assigns rec.FiscalYear outright.
+      ⚠️ **V18-40's test for this passed for the wrong reason and was corrected in V18-38.** It
+      seeded a `Manual` record, which replace-import refuses on entry source before it reaches the
+      shape guard — so the test stayed green with that guard deleted. Found by mutation, not by
+      review. Now seeded as `Upload`, and it asserts the year appears in the message
 - [x] An office-owned record refuses a second office's AipOffice child — the shape change reachable
       one node at a time, which no create-path gate can see
 - [x] The break year appears on exactly one production code path — asserted by a test that scans
       PPDO.Domain/Application/Infrastructure/Functions and fails the build on a second copy
-- [x] Disabling both guards turns exactly the 11 partition tests red and nothing else (mutation-
-      checked, not assumed)
+- [x] Disabling the guards turns exactly the partition tests red and nothing else — re-run per
+      guard after V18-38 (confirm alone: 3 red, including the corrected re-upload test)
 - [ ] Creating an FY2028 record from the portal UI — **not reachable in Phase 2 and not a defect.**
       The office picker is Phase 3 (AIP entry, §7). Selecting FY2028 in the manual-create form gets
       the server refusal naming the year, which is the honest state of a clean break part-built
