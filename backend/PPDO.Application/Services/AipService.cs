@@ -1,4 +1,4 @@
-using PPDO.Application.Common;
+﻿using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Interfaces;
@@ -218,6 +218,14 @@ public sealed class AipService : IAipService
         IReadOnlyList<FundingSource> knownFundingSources,
         CancellationToken ct = default)
     {
+        // ⚠️ V18-38 — the freeze's first gate, and the one the user actually meets. The confirm
+        // step below is guarded too and is the guard that counts; this one exists so the refusal
+        // arrives BEFORE a 20 MB workbook is parsed and a preview is built for a year that can
+        // never accept it. Walking someone through preview only to refuse at Confirm is a worse
+        // failure than the upload button being disabled in the first place.
+        if (AipShape.RefuseUpload(fiscalYear) is string frozen)
+            return ServiceResult<AipImportPreviewDto>.BadRequest(frozen);
+
         Dictionary<string, List<ParsedAipOffice>> parsed;
         try
         {
@@ -300,13 +308,18 @@ public sealed class AipService : IAipService
     public async Task<ServiceResult<AipRecordDto>> ConfirmImportAsync(
         AipImportConfirmDto dto, Guid uploadedById, CancellationToken ct = default)
     {
-        // ⚠️ V18-37 — the workbook carries every office in one file, so an import is legacy-shaped
-        // by construction and there is no year from FY2028 on that can accept one. V18-38 disables
-        // the button; this is the server-side half and has to stand on its own, because a disabled
-        // button is a courtesy and not a guard. Placed before the re-upload branch too: replacing
-        // a record's hierarchy from a workbook is just as shape-bound as creating one.
-        if (AipShape.Mismatch(dto.FiscalYear, officeId: null) is string shapeError)
-            return ServiceResult<AipRecordDto>.BadRequest(shapeError);
+        // ⚠️ V18-37/V18-38 — the workbook carries every office in one file, so an import is
+        // legacy-shaped by construction and there is no year from the break on that can accept
+        // one. V18-38 disables the button; this is the server-side half and has to stand on its
+        // own, because a disabled button is a courtesy and not a guard. Placed before the
+        // re-upload branch too: replacing a record's hierarchy from a workbook is just as
+        // shape-bound as creating one, and re-upload is the path that reaches a year the record
+        // did not start in.
+        //
+        // RefuseUpload rather than the general Mismatch: same partition, but Mismatch tells the
+        // caller to choose an office, and an importer cannot — the workbook decides its offices.
+        if (AipShape.RefuseUpload(dto.FiscalYear) is string frozen)
+            return ServiceResult<AipRecordDto>.BadRequest(frozen);
 
         // Load funding source lookup for snapshot population — needed by both paths below.
         IReadOnlyList<FundingSource> fsList = await _fsRepo.GetAllAsync(ct);

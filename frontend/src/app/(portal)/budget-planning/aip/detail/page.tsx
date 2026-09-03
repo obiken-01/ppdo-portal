@@ -27,6 +27,7 @@ import {
 } from "@/lib/aip";
 import { listLdip, getLdipById } from "@/lib/ldip";
 import { listOffices, listFundingSources } from "@/lib/config";
+import { aipUploadRefusal } from "@/lib/aip-shape";
 import {
   AIP_MONTHS, AIP_ESRE_OPTIONS, AIP_SECTOR_OPTIONS, AIP_SECTOR_PREFIX, AIP_FUNCTION_BANDS,
 } from "@/lib/aipConstants";
@@ -1871,6 +1872,13 @@ export default function AipDetailPage() {
   const projectCount  = useMemo(() => record?.offices.flatMap((o) => o.programs).flatMap((p) => p.projects).length ?? 0, [record]);
   const activityCount = useMemo(() => record?.offices.flatMap((o) => o.programs).flatMap((p) => p.projects).flatMap((p) => p.activities).length ?? 0, [record]);
 
+  // V18-38 — re-upload runs the same .xlsm importer as a first upload, so it is frozen to the
+  // same fiscal years. Records this can fire on should not exist (only an upload sets
+  // entrySource "Upload", and uploads can no longer reach these years) — but rows imported
+  // before the freeze can, so the button is disabled with its reason rather than sending the
+  // user to a page that refuses them on arrival.
+  const reuploadFrozen = record ? aipUploadRefusal(record.fiscalYear) : null;
+
   const activeOffices = useMemo(
     () => sectors.find(([s]) => s === activeTab)?.[1] ?? [],
     [sectors, activeTab]
@@ -1947,7 +1955,14 @@ export default function AipDetailPage() {
               reference (FK Restrict), so the backend rejects it; hide the button instead of
               letting the user hit that error. */}
           {record.status === "Draft" && record.entrySource === "Upload" && me?.canUploadAip === true && (
-            record.hasWfpUsage ? (
+            reuploadFrozen ? (
+              <span
+                className="px-3 py-1.5 text-sm font-medium text-slate-400 bg-slate-100 border border-slate-200 whitespace-nowrap cursor-not-allowed"
+                title={reuploadFrozen}
+              >
+                Re-upload File
+              </span>
+            ) : record.hasWfpUsage ? (
               <span
                 className="px-3 py-1.5 text-sm font-medium text-slate-400 bg-slate-100 border border-slate-200 whitespace-nowrap cursor-not-allowed"
                 title="A Work Financial Plan has already been built from this AIP. Archive this record and upload the corrected file as a new AIP instead."
@@ -1969,7 +1984,13 @@ export default function AipDetailPage() {
         </div>
       </div>
       {record.status === "Draft" && record.entrySource === "Upload" && me?.canUploadAip === true &&
-        record.hasWfpUsage && (
+        reuploadFrozen && (
+        <div className="mb-4 -mt-2 border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
+          Re-upload is disabled &mdash; {reuploadFrozen}
+        </div>
+      )}
+      {record.status === "Draft" && record.entrySource === "Upload" && me?.canUploadAip === true &&
+        !reuploadFrozen && record.hasWfpUsage && (
         <div className="mb-4 -mt-2 border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
           Re-upload is disabled — a Work Financial Plan has already been built from this AIP. Archive
           this record and upload the corrected file as a new AIP instead.

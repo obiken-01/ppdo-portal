@@ -1,4 +1,4 @@
-using Moq;
+﻿using Moq;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
 using PPDO.Application.Services;
@@ -144,8 +144,13 @@ public sealed partial class AipServiceTests
         // It is blocked because the shape check sits ABOVE the re-upload branch rather than beside
         // the create guard. If it is ever moved down to "where records are created", this test is
         // what notices.
+        //
+        // ⚠️ Seeded as an Upload record on purpose (V18-38). Replace-import refuses a non-Upload
+        // target before it reaches anything else, so a Manual seed here is refused for a reason
+        // that has nothing to do with the partition — and this test went on passing with the shape
+        // guard deleted. Asserting the message names the year is the other half of that fix.
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build(
-            RecordSeed(null, LastLegacyFy), [], officeSeed: []);
+            RecordSeed(null, LastLegacyFy, entrySource: "Upload"), [], officeSeed: []);
 
         ServiceResult<AipRecordDto> result = await sut.ConfirmImportAsync(
             ImportConfirm(FirstNewFy) with { TargetRecordId = AipRecordId },
@@ -153,6 +158,84 @@ public sealed partial class AipServiceTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains(FirstNewFy.ToString(), result.Error!);
+    }
+
+    [Fact]
+    public async Task ConfirmImport_ReUploadIntoAHistoricalRecord_IsStillAllowed()
+    {
+        // The freeze's blast radius, checked from the direction the ticket asks about. Re-upload
+        // is the path most easily broken by a guard placed a line too high, and FY≤2027 records
+        // are the ones people still correct this way.
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build(
+            RecordSeed(null, LastLegacyFy, entrySource: "Upload"), [], officeSeed: []);
+
+        ServiceResult<AipRecordDto> result = await sut.ConfirmImportAsync(
+            ImportConfirm(LastLegacyFy) with { TargetRecordId = AipRecordId },
+            Guid.NewGuid(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(LastLegacyFy, result.Value!.FiscalYear);
+        Assert.Null(result.Value!.OfficeId);
+    }
+
+    [Fact]
+    public async Task ParsePreview_FromTheBreakOnward_IsRefusedBeforeTheWorkbookIsRead()
+    {
+        // V18-38 — the freeze the user actually meets. Confirm is guarded too and is the guard
+        // that counts, but refusing only there walks someone through parsing a 20 MB workbook and
+        // reviewing a preview for a year that could never have accepted it. Asserting the parser
+        // is never invoked is the whole point: a refusal placed after Parse would pass a test that
+        // only checked the status code.
+        var (sut, _, _, _, parser, _, _, _, _, _, _, _, _) = Build([], []);
+
+        ServiceResult<AipImportPreviewDto> result = await sut.ParsePreviewAsync(
+            new MemoryStream(), FirstNewFy, [], CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains(FirstNewFy.ToString(), result.Error!);
+        parser.Verify(pr => pr.Parse(It.IsAny<Stream>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ParsePreview_AHistoricalYear_StillReachesTheParser()
+    {
+        // The other half, and the one that keeps the freeze from becoming a retirement. FY≤2027
+        // is the only reason the parser still exists; a gate that stopped those years too would
+        // pass every refusal test above and break the single working use.
+        var (sut, _, _, _, parser, _, _, _, _, _, _, _, _) = Build([], []);
+        parser.Setup(pr => pr.Parse(It.IsAny<Stream>()))
+            .Returns(new Dictionary<string, List<ParsedAipOffice>>());
+
+        ServiceResult<AipImportPreviewDto> result = await sut.ParsePreviewAsync(
+            new MemoryStream(), LastLegacyFy, [], CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(LastLegacyFy, result.Value!.FiscalYear);
+        parser.Verify(pr => pr.Parse(It.IsAny<Stream>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Import_TheRefusal_TellsTheUploaderSomethingAnUploaderCanAct_On()
+    {
+        // Both import gates refuse through RefuseUpload rather than the general Mismatch. Mismatch
+        // says "choose the office this record is for", which an importer cannot do — the workbook
+        // decides its offices, not the person uploading it — so that message reads as a portal bug
+        // to the only person who ever sees it here. Named at the service level, not just on the
+        // policy, because swapping the call back is a one-word edit.
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
+
+        ServiceResult<AipImportPreviewDto> preview = await sut.ParsePreviewAsync(
+            new MemoryStream(), FirstNewFy, [], CancellationToken.None);
+        ServiceResult<AipRecordDto> confirm = await sut.ConfirmImportAsync(
+            ImportConfirm(FirstNewFy), Guid.NewGuid(), CancellationToken.None);
+
+        foreach (string message in new[] { preview.Error!, confirm.Error! })
+        {
+            Assert.Contains("entered in the portal", message, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Choose the office", message, StringComparison.OrdinalIgnoreCase);
+        }
     }
 
     // ── Carry-forward and LDIP seeding — the paths that leaked ────────────────
@@ -291,13 +374,24 @@ public sealed partial class AipServiceTests
     private static AipImportConfirmDto ImportConfirm(int fiscalYear) =>
         new(fiscalYear, "aip.xlsm", LdipId: null, SectorOffices: []);
 
-    /// <summary>One record in the given shape, with no offices under it yet.</summary>
-    private static List<AipRecord> RecordSeed(int? ownerOfficeId, int fiscalYear) =>
+    /// <summary>
+    /// One record in the given shape, with no offices under it yet.
+    ///
+    /// <para>
+    /// ⚠️ <paramref name="entrySource"/> is not cosmetic on the re-upload path: replace-import
+    /// refuses anything that is not an <c>Upload</c> record before it looks at anything else, so a
+    /// <c>Manual</c> seed never reaches the shape guard and a test written over one passes whether
+    /// that guard exists or not (V18-38 — found by disabling the guard and watching the test stay
+    /// green).
+    /// </para>
+    /// </summary>
+    private static List<AipRecord> RecordSeed(
+        int? ownerOfficeId, int fiscalYear, string entrySource = "Manual") =>
     [
         new()
         {
             Id = AipRecordId, FiscalYear = fiscalYear, OfficeId = ownerOfficeId,
-            EntrySource = "Manual", Status = "Draft",
+            EntrySource = entrySource, Status = "Draft",
             UploadedById = Guid.NewGuid(), UploadedAt = DateTime.UtcNow,
         },
     ];

@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using PPDO.Application.Common;
 
 namespace PPDO.Tests.Application;
@@ -103,6 +103,50 @@ public sealed class AipShapeTests
         Assert.NotEqual(tooEarly, tooLate);
     }
 
+    // ── The .xlsm freeze (V18-38 / PPDO-41) ──────────────────────────
+
+    [Theory]
+    [InlineData(2026)]
+    [InlineData(2027)]
+    public void RefuseUpload_AHistoricalYear_Allows(int fiscalYear)
+    {
+        // The importer is frozen, not retired. FY≤2027 is the only thing it is still needed for,
+        // so a freeze that also stopped those years would break the one working use it has left.
+        Assert.Null(AipShape.RefuseUpload(fiscalYear));
+    }
+
+    [Theory]
+    [InlineData(2028)]
+    [InlineData(2029)]
+    [InlineData(2035)]
+    public void RefuseUpload_FromTheBreakOnward_Refuses(int fiscalYear)
+        => Assert.NotNull(AipShape.RefuseUpload(fiscalYear));
+
+    [Fact]
+    public void RefuseUpload_NamesTheYearAndWhatToDoInstead()
+    {
+        // The ticket's actual requirement, and the reason this does not reuse Mismatch. A generic
+        // validation error leaves the user with no next step; Mismatch's message gives them one
+        // they cannot take, since the workbook decides its offices and the person uploading it
+        // does not.
+        string refusal = AipShape.RefuseUpload(2028)!;
+
+        Assert.Contains("2028", refusal);
+        Assert.Contains("entered in the portal", refusal, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Choose the office", refusal, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void RefuseUpload_TracksTheBreakYearRatherThanRestatingIt()
+    {
+        // Pins the freeze to the SAME partition the create paths use. Were the break to move, an
+        // upload gate carrying its own copy of the year would keep refusing the wrong set — the
+        // exact drift TheBreakYear_IsHardcodedInExactlyOnePlace exists to prevent, in the one form
+        // that test cannot see: a second literal that happens to agree today.
+        Assert.Null(AipShape.RefuseUpload(AipShape.FirstOfficeOwnedFiscalYear - 1));
+        Assert.NotNull(AipShape.RefuseUpload(AipShape.FirstOfficeOwnedFiscalYear));
+    }
+
     // ── ⚠️ The decision this file mainly exists to keep ───────────────────────
 
     [Fact]
@@ -138,6 +182,22 @@ public sealed class AipShapeTests
                     if (Regex.IsMatch(StripComment(line), @"\b2028\b"))
                         offenders.Add($"{project}/{Path.GetFileName(file)}: {line.Trim()}");
                 }
+            }
+        }
+
+        // V18-38 added a client-side copy of the partition, so the frontend is scanned on the same
+        // rule for the same reason: moving the break must stay one edit per side. The sweep is
+        // deliberately narrow — frontend/src only, so no build output and no node_modules.
+        string frontendSrc = RepoPath(Path.Combine("frontend", "src"));
+        foreach (string file in Directory.EnumerateFiles(frontendSrc, "*.ts*", SearchOption.AllDirectories))
+        {
+            // The policy itself is the one place on this side allowed to name it.
+            if (Path.GetFileName(file) == "aip-shape.ts") continue;
+
+            foreach (string line in File.ReadLines(file))
+            {
+                if (Regex.IsMatch(StripComment(line), @"\b2028\b"))
+                    offenders.Add($"frontend/src/{Path.GetFileName(file)}: {line.Trim()}");
             }
         }
 
