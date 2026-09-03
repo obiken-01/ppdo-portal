@@ -32,10 +32,10 @@ public sealed class WfpCeilingServiceTests
         IsActive = true, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
     };
 
-    private static AipActivity MakeAipActivity(decimal totalInThousands) => new()
+    private static AipActivity MakeAipActivity(decimal totalInPesos) => new()
     {
         Id = AipActivityId, ProjectId = 1, RefCode = "1000-000-1-01-011-001-001-001",
-        Name = "Sample Activity", Total = totalInThousands,
+        Name = "Sample Activity", Total = totalInPesos,
     };
 
     private static FundingSource MakeFundingSource(int id, string code, string name) => new()
@@ -55,7 +55,7 @@ public sealed class WfpCeilingServiceTests
         Mock<IRepository<FundingSource>>     fundingSourceRepo)
         Build(
             WfpExpenditureContext? context = null,
-            decimal aipTotalThousands = 1000m,
+            decimal aipTotalPesos = 1_000_000m,
             decimal divisionAllocationAmount = 1000000m,
             List<Division>? divisions = null,
             List<FundingSource>? fundingSources = null)
@@ -73,7 +73,7 @@ public sealed class WfpCeilingServiceTests
             .ReturnsAsync(context);
 
         aipRepo.Setup(r => r.GetActivityByIdAsync(AipActivityId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(MakeAipActivity(aipTotalThousands));
+            .ReturnsAsync(MakeAipActivity(aipTotalPesos));
 
         divisionRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(divisions ?? [MakeDivision()]);
@@ -110,8 +110,8 @@ public sealed class WfpCeilingServiceTests
     [Fact]
     public async Task ValidateExpenditureSave_UnderBothCeilings_ReturnsNull()
     {
-        // AIP budget = 100,000 pesos (100 thousand). Others already used 50,000.
-        var (sut, wfpExpRepo, _, ledgerRepo, _, _, _, _) = Build(aipTotalThousands: 100m, divisionAllocationAmount: 80000m);
+        // AIP budget = ₱100,000 as stored. Others already used 50,000.
+        var (sut, wfpExpRepo, _, ledgerRepo, _, _, _, _) = Build(aipTotalPesos: 100_000m, divisionAllocationAmount: 80000m);
         wfpExpRepo.Setup(r => r.SumTotalByAipActivityAsync(
                 AipActivityId, OfficeId, FiscalYear, It.IsAny<int?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(50000m);
@@ -132,7 +132,7 @@ public sealed class WfpCeilingServiceTests
     [Fact]
     public async Task ValidateExpenditureSave_OverAipBudgetOnly_ReturnsError()
     {
-        var (sut, wfpExpRepo, _, ledgerRepo, _, _, _, _) = Build(aipTotalThousands: 100m, divisionAllocationAmount: 1_000_000m);
+        var (sut, wfpExpRepo, _, ledgerRepo, _, _, _, _) = Build(aipTotalPesos: 100_000m, divisionAllocationAmount: 1_000_000m);
         wfpExpRepo.Setup(r => r.SumTotalByAipActivityAsync(
                 AipActivityId, OfficeId, FiscalYear, It.IsAny<int?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(90000m);
@@ -154,7 +154,7 @@ public sealed class WfpCeilingServiceTests
     [Fact]
     public async Task ValidateExpenditureSave_OverDivisionAllocationOnly_ReturnsError()
     {
-        var (sut, wfpExpRepo, _, ledgerRepo, _, _, _, _) = Build(aipTotalThousands: 100_000m, divisionAllocationAmount: 50000m);
+        var (sut, wfpExpRepo, _, ledgerRepo, _, _, _, _) = Build(aipTotalPesos: 100_000_000m, divisionAllocationAmount: 50000m);
         wfpExpRepo.Setup(r => r.SumTotalByAipActivityAsync(
                 AipActivityId, OfficeId, FiscalYear, It.IsAny<int?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(0m); // AIP budget is enormous (100M pesos) — never the cause here
@@ -176,7 +176,7 @@ public sealed class WfpCeilingServiceTests
     [Fact]
     public async Task ValidateExpenditureSave_OverBothCeilings_ReturnsError()
     {
-        var (sut, wfpExpRepo, _, ledgerRepo, _, _, _, _) = Build(aipTotalThousands: 60m, divisionAllocationAmount: 50000m);
+        var (sut, wfpExpRepo, _, ledgerRepo, _, _, _, _) = Build(aipTotalPesos: 60_000m, divisionAllocationAmount: 50000m);
         wfpExpRepo.Setup(r => r.SumTotalByAipActivityAsync(
                 AipActivityId, OfficeId, FiscalYear, It.IsAny<int?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(55000m); // AIP budget = 60,000; would-be = 55,000+10,000 = 65,000 > 60,000
@@ -196,7 +196,7 @@ public sealed class WfpCeilingServiceTests
     [Fact]
     public async Task ValidateExpenditureSave_ExactlyAtBothBoundaries_ReturnsNull()
     {
-        var (sut, wfpExpRepo, _, ledgerRepo, _, _, _, _) = Build(aipTotalThousands: 100m, divisionAllocationAmount: 80000m);
+        var (sut, wfpExpRepo, _, ledgerRepo, _, _, _, _) = Build(aipTotalPesos: 100_000m, divisionAllocationAmount: 80000m);
         wfpExpRepo.Setup(r => r.SumTotalByAipActivityAsync(
                 AipActivityId, OfficeId, FiscalYear, It.IsAny<int?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(80000m); // would-be AIP = 80,000 + 20,000 = 100,000 == budget exactly
@@ -216,7 +216,7 @@ public sealed class WfpCeilingServiceTests
     [Fact]
     public async Task ValidateExpenditureSave_WhenUpdating_ExcludesTheExpendituresOwnOldTotal()
     {
-        var (sut, wfpExpRepo, _, ledgerRepo, _, _, _, _) = Build(aipTotalThousands: 100m, divisionAllocationAmount: 1_000_000m);
+        var (sut, wfpExpRepo, _, ledgerRepo, _, _, _, _) = Build(aipTotalPesos: 100_000m, divisionAllocationAmount: 1_000_000m);
 
         // Verify the exclude id is actually passed through to both sum queries.
         wfpExpRepo.Setup(r => r.SumTotalByAipActivityAsync(
@@ -240,7 +240,7 @@ public sealed class WfpCeilingServiceTests
     {
         // A legacy/no-division WFP record — only the AIP check applies.
         WfpExpenditureContext context = new(WfpRecordId, DivisionId: null, OfficeId, FiscalYear, AipActivityId);
-        var (sut, wfpExpRepo, _, ledgerRepo, _, allocation, _, _) = Build(context, aipTotalThousands: 100m);
+        var (sut, wfpExpRepo, _, ledgerRepo, _, allocation, _, _) = Build(context, aipTotalPesos: 100_000m);
         wfpExpRepo.Setup(r => r.SumTotalByAipActivityAsync(
                 AipActivityId, OfficeId, FiscalYear, It.IsAny<int?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(10000m);
@@ -261,7 +261,7 @@ public sealed class WfpCeilingServiceTests
         // expenditure of 15,000 must be checked against GAD's allocation and rejected — even
         // though it would be trivially within GF's — proving the check uses the expenditure's
         // OWN fund, not always General Fund.
-        var (sut, wfpExpRepo, _, ledgerRepo, _, allocation, _, _) = Build(aipTotalThousands: 100_000m);
+        var (sut, wfpExpRepo, _, ledgerRepo, _, allocation, _, _) = Build(aipTotalPesos: 100_000_000m);
         allocation.Setup(a => a.GetAllocationsAsync(OfficeId, FiscalYear, GadFundId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)
                 [new DivisionAllocationDto(2, DivisionId, "Planning Division", FiscalYear, GadFundId, "GAD", "5% GAD Fund", 10_000m)]);
@@ -285,7 +285,7 @@ public sealed class WfpCeilingServiceTests
     {
         // Same division, same activity: a GF expenditure and a GAD expenditure are each
         // checked against their OWN fund's allocation, independently of the other fund's usage.
-        var (sut, wfpExpRepo, _, ledgerRepo, _, allocation, _, _) = Build(aipTotalThousands: 1_000_000m);
+        var (sut, wfpExpRepo, _, ledgerRepo, _, allocation, _, _) = Build(aipTotalPesos: 1_000_000_000m);
         allocation.Setup(a => a.GetAllocationsAsync(OfficeId, FiscalYear, GfFundId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)
                 [new DivisionAllocationDto(1, DivisionId, "Planning Division", FiscalYear, GfFundId, "GF", "General Fund", 100_000m)]);
@@ -320,7 +320,7 @@ public sealed class WfpCeilingServiceTests
     {
         // The AIP-budget check (§2 D3) stays aggregate across ALL funds — a GF expenditure and
         // a GAD expenditure on the same activity both count against the same AIP total.
-        var (sut, wfpExpRepo, _, ledgerRepo, _, allocation, _, _) = Build(aipTotalThousands: 100m, divisionAllocationAmount: 1_000_000m);
+        var (sut, wfpExpRepo, _, ledgerRepo, _, allocation, _, _) = Build(aipTotalPesos: 100_000m, divisionAllocationAmount: 1_000_000m);
         // AIP budget = 100,000. Other expenditures across ALL funds already used 90,000.
         wfpExpRepo.Setup(r => r.SumTotalByAipActivityAsync(
                 AipActivityId, OfficeId, FiscalYear, It.IsAny<int?>(), It.IsAny<CancellationToken>()))
@@ -342,7 +342,7 @@ public sealed class WfpCeilingServiceTests
     [Fact]
     public async Task ValidateExpenditureSave_NullFundingSource_TreatedAsGeneralFund()
     {
-        var (sut, wfpExpRepo, _, ledgerRepo, _, allocation, _, _) = Build(aipTotalThousands: 100_000m, divisionAllocationAmount: 10_000m);
+        var (sut, wfpExpRepo, _, ledgerRepo, _, allocation, _, _) = Build(aipTotalPesos: 100_000_000m, divisionAllocationAmount: 10_000m);
         wfpExpRepo.Setup(r => r.SumTotalByAipActivityAsync(
                 AipActivityId, OfficeId, FiscalYear, It.IsAny<int?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(0m);
@@ -503,12 +503,12 @@ public sealed class WfpCeilingServiceTests
         ledgerRepo.Verify(r => r.UpdateAsync(gadRow, It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    // ── Read status (×1000 conversion happens exactly here) ───────────────────
+    // ── Read status ───────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task GetStatus_ConvertsAipTotalFromThousandsToPesos()
+    public async Task GetStatus_ReportsTheAipTotalAsStored()
     {
-        var (sut, wfpExpRepo, _, ledgerRepo, _, _, _, _) = Build(aipTotalThousands: 250m, divisionAllocationAmount: 90000m);
+        var (sut, wfpExpRepo, _, ledgerRepo, _, _, _, _) = Build(aipTotalPesos: 250_000m, divisionAllocationAmount: 90000m);
         wfpExpRepo.Setup(r => r.SumTotalByAipActivityAsync(
                 AipActivityId, OfficeId, FiscalYear, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(75000m);
@@ -517,7 +517,7 @@ public sealed class WfpCeilingServiceTests
 
         WfpCeilingStatusDto status = await sut.GetStatusAsync(AipActivityId, DivisionId, FiscalYear, CancellationToken.None);
 
-        Assert.Equal(250000m, status.AipBudget); // 250 (thousands) x 1000
+        Assert.Equal(250000m, status.AipBudget); // pesos as stored — no conversion (V18-35)
         Assert.Equal(75000m, status.AipUsed);
         Assert.Equal(90000m, status.DivisionAllocation);  // General Fund's, at the top level
         Assert.Equal(60000m, status.DivisionRemaining);   // 90,000 - 30,000
@@ -527,7 +527,7 @@ public sealed class WfpCeilingServiceTests
     public async Task GetStatus_IncludesOneFundsEntryPerActiveFundingSource()
     {
         var (sut, wfpExpRepo, _, ledgerRepo, _, allocation, _, _) = Build(
-            aipTotalThousands: 100m,
+            aipTotalPesos: 100_000m,
             fundingSources: [MakeFundingSource(GfFundId, "GF", "General Fund"), MakeFundingSource(GadFundId, "GAD", "5% GAD Fund")]);
         wfpExpRepo.Setup(r => r.SumTotalByAipActivityAsync(
                 AipActivityId, OfficeId, FiscalYear, null, It.IsAny<CancellationToken>()))
@@ -570,7 +570,7 @@ public sealed class WfpCeilingServiceTests
     [Fact]
     public async Task ValidateRecordForFinalize_ActivityOverAipBudget_ReturnsError()
     {
-        var (sut, wfpExpRepo, wfpRepo, ledgerRepo, _, _, _, _) = Build(aipTotalThousands: 50m, divisionAllocationAmount: 1_000_000m);
+        var (sut, wfpExpRepo, wfpRepo, ledgerRepo, _, _, _, _) = Build(aipTotalPesos: 50_000m, divisionAllocationAmount: 1_000_000m);
         WfpRecord record = new() { Id = WfpRecordId, OfficeId = OfficeId, FiscalYear = FiscalYear, DivisionId = null };
         wfpRepo.Setup(r => r.GetByIntIdAsync(WfpRecordId, It.IsAny<CancellationToken>())).ReturnsAsync(record);
         wfpRepo.Setup(r => r.GetActivitiesByWfpIdAsync(WfpRecordId, It.IsAny<CancellationToken>()))
@@ -587,7 +587,7 @@ public sealed class WfpCeilingServiceTests
     [Fact]
     public async Task ValidateRecordForFinalize_WithinBothCeilings_ReturnsNull()
     {
-        var (sut, wfpExpRepo, wfpRepo, ledgerRepo, _, _, _, _) = Build(aipTotalThousands: 100m, divisionAllocationAmount: 80000m);
+        var (sut, wfpExpRepo, wfpRepo, ledgerRepo, _, _, _, _) = Build(aipTotalPesos: 100_000m, divisionAllocationAmount: 80000m);
         WfpRecord record = new() { Id = WfpRecordId, OfficeId = OfficeId, FiscalYear = FiscalYear, DivisionId = DivisionId };
         wfpRepo.Setup(r => r.GetByIntIdAsync(WfpRecordId, It.IsAny<CancellationToken>())).ReturnsAsync(record);
         wfpRepo.Setup(r => r.GetActivitiesByWfpIdAsync(WfpRecordId, It.IsAny<CancellationToken>()))
@@ -608,7 +608,7 @@ public sealed class WfpCeilingServiceTests
     [Fact]
     public async Task ValidateRecordForFinalize_OneOfMultipleFundsOverAllocation_ReturnsError()
     {
-        var (sut, wfpExpRepo, wfpRepo, ledgerRepo, _, allocation, _, _) = Build(aipTotalThousands: 1_000_000m);
+        var (sut, wfpExpRepo, wfpRepo, ledgerRepo, _, allocation, _, _) = Build(aipTotalPesos: 1_000_000_000m);
         WfpRecord record = new() { Id = WfpRecordId, OfficeId = OfficeId, FiscalYear = FiscalYear, DivisionId = DivisionId };
         wfpRepo.Setup(r => r.GetByIntIdAsync(WfpRecordId, It.IsAny<CancellationToken>())).ReturnsAsync(record);
         wfpRepo.Setup(r => r.GetActivitiesByWfpIdAsync(WfpRecordId, It.IsAny<CancellationToken>()))

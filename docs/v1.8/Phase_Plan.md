@@ -299,6 +299,12 @@ absorbed into V18-12, so V18-32 builds on a settled office identity. ~~DECISION 
 ✅ 2026-08-25 — **one pot drawn down in sequence**, with AIP getting its own tables rather than
 WFP's generalised (§12.1). **Phase 2 can be ticketed.**
 
+> ⚠️ **V18-35 shipped the release's only data-rewriting migration.** `MigrateAipAmountsToPesos`
+> multiplies six columns on every `aip_activities` row in place. Its production steps — capture
+> the per-year `SUM(total)` baseline first, confirm a restore path, verify the ratio is exactly
+> 1000 afterwards — live in **`docs/v1.8/Pre_Deployment_Checklist.md`**, which must be worked
+> through before `release/1.8.0` merges to `main`.
+
 | # | Work item | Notes |
 |---|---|---|
 | **V18-32** | Ownership FK: `AipOffice` → `offices.id` | Office identity is `RefCode` **string matching** today — there is no column to scope on. This is where ownership is created |

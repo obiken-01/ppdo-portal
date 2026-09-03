@@ -64,6 +64,27 @@ function fmt(n: number | null | undefined): string {
   return n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// ── Units: pesos in storage, ₱000 on this page (V18-35 / PPDO-34, decision P2-a) ──────────────
+//
+// AIP amounts are stored in PESOS for every fiscal year. The province's AIP form is denominated
+// in thousands and the encoders read and type it that way, so this page — and only this page —
+// converts at its edge: divide when drawing a figure, multiply when saving one. The "(in ₱000)"
+// column headers stay true, and nothing a user sees or types changed when storage did.
+//
+// ⚠️ Both directions or neither. Converting only the display leaves every subsequent edit
+// dividing the record by a thousand, because the input would post back what it was shown.
+const PESOS_PER_DISPLAY_UNIT = 1000;
+
+/** Pesos as stored → the ₱000 figure this page shows and accepts. */
+function toDisplayUnits(pesos: number | null | undefined): number | null {
+  return pesos == null ? null : pesos / PESOS_PER_DISPLAY_UNIT;
+}
+
+/** A ₱000 figure typed on this page → pesos for storage. */
+function toStorageUnits(displayed: number | null | undefined): number | null {
+  return displayed == null ? null : displayed * PESOS_PER_DISPLAY_UNIT;
+}
+
 function sumActivities(
   office: AipOfficeDetail,
   field: keyof Pick<AipActivityDetail, "ps" | "mooe" | "co" | "total">
@@ -238,7 +259,7 @@ function AmtTD({ value, bold = false, white = false }: { value: number | null | 
     <td className={`px-2 py-1.5 text-right text-xs tabular-nums whitespace-nowrap ${
       white ? "text-white font-semibold" : bold ? "font-semibold text-slate-800" : "text-slate-600"
     }`}>
-      {fmt(value)}
+      {fmt(toDisplayUnits(value))}
     </td>
   );
 }
@@ -272,11 +293,13 @@ function ActivityRow({
   const [endDate, setEndDate]                       = useState(act.endDate ?? "");
   const [expectedOutputs, setExpectedOutputs]       = useState(act.expectedOutputs ?? "");
   const [fundingSourceId, setFundingSourceId]       = useState(act.fundingSourceId != null ? String(act.fundingSourceId) : "");
-  const [ps, setPs]                     = useState<number | null>(act.ps);
-  const [mooe, setMooe]                 = useState<number | null>(act.mooe);
-  const [co, setCo]                     = useState<number | null>(act.co);
-  const [ccAdaptation, setCcAdaptation] = useState<number | null>(act.ccAdaptation);
-  const [ccMitigation, setCcMitigation] = useState<number | null>(act.ccMitigation);
+  // Money state is held in DISPLAY units (₱000) for as long as it is on screen — the inputs show
+  // it, the live row total sums it, and handleSave converts it back to pesos on the way out.
+  const [ps, setPs]                     = useState<number | null>(toDisplayUnits(act.ps));
+  const [mooe, setMooe]                 = useState<number | null>(toDisplayUnits(act.mooe));
+  const [co, setCo]                     = useState<number | null>(toDisplayUnits(act.co));
+  const [ccAdaptation, setCcAdaptation] = useState<number | null>(toDisplayUnits(act.ccAdaptation));
+  const [ccMitigation, setCcMitigation] = useState<number | null>(toDisplayUnits(act.ccMitigation));
   const [ccTypologyCode, setCcTypologyCode] = useState(act.ccTypologyCode ?? "");
 
   function startEdit() {
@@ -287,11 +310,11 @@ function ActivityRow({
     setEndDate(act.endDate ?? "");
     setExpectedOutputs(act.expectedOutputs ?? "");
     setFundingSourceId(act.fundingSourceId != null ? String(act.fundingSourceId) : "");
-    setPs(act.ps);
-    setMooe(act.mooe);
-    setCo(act.co);
-    setCcAdaptation(act.ccAdaptation);
-    setCcMitigation(act.ccMitigation);
+    setPs(toDisplayUnits(act.ps));
+    setMooe(toDisplayUnits(act.mooe));
+    setCo(toDisplayUnits(act.co));
+    setCcAdaptation(toDisplayUnits(act.ccAdaptation));
+    setCcMitigation(toDisplayUnits(act.ccMitigation));
     setCcTypologyCode(act.ccTypologyCode ?? "");
     setError(null);
     setEditing(true);
@@ -310,7 +333,11 @@ function ActivityRow({
         endDate: endDate || null,
         expectedOutputs: expectedOutputs.trim() || null,
         fundingSourceId: fundingSourceId ? Number(fundingSourceId) : null,
-        ps, mooe, co, ccAdaptation, ccMitigation,
+        ps:           toStorageUnits(ps),
+        mooe:         toStorageUnits(mooe),
+        co:           toStorageUnits(co),
+        ccAdaptation: toStorageUnits(ccAdaptation),
+        ccMitigation: toStorageUnits(ccMitigation),
         ccTypologyCode: ccTypologyCode.trim() || null,
       });
       onSaved(updated);
@@ -523,7 +550,12 @@ function AddActivityRow({
         endDate: endDate || null,
         expectedOutputs: expectedOutputs.trim() || null,
         fundingSourceRaw: fundingSourceRaw || null,
-        ps, mooe, co, ccAdaptation, ccMitigation,
+        // Typed in ₱000 like every other figure on this page — converted to pesos on the way out.
+        ps:           toStorageUnits(ps),
+        mooe:         toStorageUnits(mooe),
+        co:           toStorageUnits(co),
+        ccAdaptation: toStorageUnits(ccAdaptation),
+        ccMitigation: toStorageUnits(ccMitigation),
         ccTypologyCode: ccTypologyCode.trim() || null,
       });
       onAdded(created);

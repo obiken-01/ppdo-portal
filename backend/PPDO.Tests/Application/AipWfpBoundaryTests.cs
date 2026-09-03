@@ -11,10 +11,10 @@ namespace PPDO.Tests.Application;
 ///
 /// <para>
 /// An AIP activity's budget and a WFP expenditure's total meet in exactly one place: the ceiling
-/// check in <see cref="WfpCeilingService"/>. That comparison has silently carried a ×1000
+/// check in <see cref="WfpCeilingService"/>. That comparison silently carried a ×1000
 /// thousands-to-pesos conversion for months at three separate sites, and nothing asserted the
-/// resulting peso figure — <see cref="WfpCeilingServiceTests"/> pins the conversion on the read
-/// path only, and its reject cases assert that AN error came back, not which number produced it.
+/// resulting peso figure — <see cref="WfpCeilingServiceTests"/> pinned it on the read path only,
+/// and its reject cases assert that AN error came back, not which number produced it.
 /// A wrong factor is permissive and silent: the ceiling stops tripping, and the first symptom is
 /// a WFP over its AIP activity, found by someone adding up a printed report by hand.
 /// </para>
@@ -28,11 +28,11 @@ namespace PPDO.Tests.Application;
 /// </para>
 ///
 /// <para>
-/// ⚠️ V18-35 (PPDO-34) migrates <c>aip_activities.total</c> from thousands to pesos and deletes
-/// the ×1000 sites. That changes exactly one line here — <see cref="StoredAipActivityTotal"/>.
-/// Every assertion stays as written, because ₱250,000 of AIP budget is ₱250,000 of WFP ceiling
-/// on both sides of the migration. If the migration gets the conversion wrong, this file turns
-/// red; if it is right, this file is untouched apart from that one constant.
+/// ✅ V18-35 (PPDO-34) has since migrated <c>aip_activities.total</c> from thousands to pesos and
+/// deleted all three ×1000 sites. It changed exactly one line here —
+/// <see cref="StoredAipActivityTotal"/>, from <c>250m</c> to <c>250_000m</c>. Every assertion
+/// below is byte-for-byte what it was before the migration, because ₱250,000 of AIP budget is
+/// ₱250,000 of WFP ceiling on both sides of it. That is the evidence the migration was right.
 /// </para>
 /// </summary>
 public sealed class AipWfpBoundaryTests
@@ -41,9 +41,10 @@ public sealed class AipWfpBoundaryTests
 
     /// <summary>
     /// What <c>aip_activities.total</c> stores for an activity budgeted at ₱250,000.
-    /// Thousands today; V18-35 rewrites this single line to <c>250_000m</c>.
+    /// Pesos since V18-35; this line read <c>250m</c> before that migration, and it is the only
+    /// line in the file the migration touched.
     /// </summary>
-    private const decimal StoredAipActivityTotal = 250m;
+    private const decimal StoredAipActivityTotal = 250_000m;
 
     /// <summary>
     /// What that activity is worth as a WFP ceiling: ₱250,000. Not ₱250. Not ₱250,000,000.

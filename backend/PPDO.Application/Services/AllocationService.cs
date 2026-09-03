@@ -13,8 +13,8 @@ namespace PPDO.Application.Services;
 /// (§2 D7 in docs/v1.4.3/v1.4.3_Requirements.md — only General Fund is mandatory to unlock
 /// WFP entry; other funds are optional).
 ///
-/// Amounts are in PESOS. AIP totals are in thousands — the ×1000 conversion lives in
-/// the WFP page layer only and must never appear here.
+/// Amounts are in PESOS — and so are AIP totals since V18-35 (PPDO-34) migrated them off
+/// thousands. There is no unit conversion anywhere on this path any more; do not add one.
 ///
 /// Supplemental AIP carry-forward (D6): ProgramDivision rows are keyed by
 /// (OfficeRefCode, ProgramRefCode) so they survive supplemental AIP re-uploads that

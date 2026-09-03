@@ -8,6 +8,13 @@ namespace PPDO.Tests.Infrastructure;
 /// Unit tests for <see cref="AipXlsmParser"/> (RAL-64).
 /// Builds minimal in-memory XLWorkbook instances and asserts the parsed hierarchy.
 /// Covers: level detection by segment count, multi-line continuation, sheet filtering.
+///
+/// <para>
+/// ⚠️ <b>Units.</b> The province's workbook is denominated in ₱000; storage is PESOS since V18-35
+/// (PPDO-34). Every amount asserted here is therefore the cell value ×1000 — a cell holding
+/// <c>500000.0</c> parses to ₱500,000,000. That is a conversion at the import edge, not a
+/// survivor of the ×1000 the migration deleted from the ceiling path.
+/// </para>
 /// </summary>
 public sealed class AipXlsmParserTests
 {
@@ -118,9 +125,53 @@ public sealed class AipXlsmParserTests
         Assert.Equal("Build something",  act.Name);
         Assert.Equal("SS",               act.EsreCode);
         Assert.Equal("GF",               act.FundingSourceRaw);
-        Assert.Equal(500000m,            act.Ps);
-        Assert.Equal(200000m,            act.Mooe);
-        Assert.Equal(700000m,            act.Total);
+        Assert.Equal(500000000m,            act.Ps);
+        Assert.Equal(200000000m,            act.Mooe);
+        Assert.Equal(700000000m,            act.Total);
+    }
+
+    // ── Source units: the workbook is ₱000, storage is pesos (V18-35 / PPDO-34) ───
+
+    [Fact]
+    public void Parse_AmountsAreConvertedFromWorkbookThousandsToPesos()
+    {
+        // The one assertion that would catch the import edge losing its conversion. Without it
+        // an upload writes thousands into a peso column and silently divides the record by 1000
+        // — the same failure the unit migration exists to remove, relocated to the import path.
+        using Stream s = BuildStream(wb =>
+        {
+            IXLWorksheet ws = wb.Worksheets.Add("GENERAL_FY2027");
+            ws.Cell(14, 1).Value  = "A-B-C-D-1-1-1-1";
+            ws.Cell(14, 5).Value  = "Activity";
+            ws.Cell(14, 12).Value = 250.0;   // PS, as the province writes it: ₱250 thousand
+            ws.Cell(14, 16).Value = 10.0;    // CC Adaptation, likewise
+        });
+
+        ParsedAipActivity act = _sut.Parse(s)["GENERAL"][0].Programs[0].Projects[0].Activities[0];
+
+        // ₱250,000. Not ₱250 — and the computed Total follows its components.
+        Assert.Equal(250_000m, act.Ps);
+        Assert.Equal(250_000m, act.Total);
+        Assert.Equal(10_000m,  act.CcAdaptation);
+    }
+
+    [Fact]
+    public void Parse_BlankAmountCell_StaysNull_RatherThanBecomingZero()
+    {
+        // NULL × 1000 must stay NULL: an uncosted activity has no amount, and a 0 would read as
+        // "costed at nothing" everywhere downstream, including the dashboard's costed counts.
+        using Stream s = BuildStream(wb =>
+        {
+            IXLWorksheet ws = wb.Worksheets.Add("GENERAL_FY2027");
+            ws.Cell(14, 1).Value = "A-B-C-D-1-1-1-1";
+            ws.Cell(14, 5).Value = "Uncosted activity";
+        });
+
+        ParsedAipActivity act = _sut.Parse(s)["GENERAL"][0].Programs[0].Projects[0].Activities[0];
+
+        Assert.Null(act.Ps);
+        Assert.Null(act.CcAdaptation);
+        Assert.Null(act.Total);
     }
 
     // ── Program/project-level line items (RAL-108) ─────────────────────────────
@@ -158,10 +209,10 @@ public sealed class AipXlsmParserTests
         Assert.Equal("December", prog.LineItem.EndDate);
         Assert.Equal("Human rights protected", prog.LineItem.ExpectedOutputs);
         Assert.Equal("GF",       prog.LineItem.FundingSourceRaw);
-        Assert.Equal(50000m,     prog.LineItem.Ps);
+        Assert.Equal(50000000m,     prog.LineItem.Ps);
         // Computed (RAL-144 convention), same as a real activity row — never trusted from a
         // source Total column.
-        Assert.Equal(50000m,     prog.LineItem.Total);
+        Assert.Equal(50000000m,     prog.LineItem.Total);
     }
 
     [Fact]
@@ -187,8 +238,8 @@ public sealed class AipXlsmParserTests
         Assert.NotNull(proj.LineItem);
         Assert.Equal("A-B-C-D-1-1-1", proj.LineItem!.RefCode);
         Assert.Equal("GAD",   proj.LineItem.FundingSourceRaw);
-        Assert.Equal(25000m,  proj.LineItem.Mooe);
-        Assert.Equal(25000m,  proj.LineItem.Total);
+        Assert.Equal(25000000m,  proj.LineItem.Mooe);
+        Assert.Equal(25000000m,  proj.LineItem.Total);
     }
 
     [Fact]
@@ -251,9 +302,9 @@ public sealed class AipXlsmParserTests
 
         ParsedAipActivity act = result["OTHERS"][0].Programs[0].Projects[0].Activities[0];
         Assert.Null(act.Ps);
-        Assert.Equal(2320.50m, act.Mooe);
+        Assert.Equal(2320500m, act.Mooe);
         Assert.Null(act.Co);
-        Assert.Equal(2320.50m, act.Total);
+        Assert.Equal(2320500m, act.Total);
     }
 
     [Fact]
@@ -277,7 +328,7 @@ public sealed class AipXlsmParserTests
         Dictionary<string, List<ParsedAipOffice>> result = _sut.Parse(s);
 
         ParsedAipActivity act = result["OTHERS"][0].Programs[0].Projects[0].Activities[0];
-        Assert.Equal(1875.00m, act.Total);
+        Assert.Equal(1875000m, act.Total);
     }
 
     [Fact]
@@ -390,7 +441,7 @@ public sealed class AipXlsmParserTests
         ParsedAipProject proj = result["SOCIAL"][0].Programs[0].Projects[0];
         Assert.Single(proj.Activities);
         Assert.Equal("Actually an activity", proj.Activities[0].Name);
-        Assert.Equal(1836.614m, proj.Activities[0].Mooe);
+        Assert.Equal(1836614m, proj.Activities[0].Mooe);
         // Must NOT have become a second project.
         Assert.Single(result["SOCIAL"][0].Programs[0].Projects);
     }
@@ -419,7 +470,7 @@ public sealed class AipXlsmParserTests
         ParsedAipProject proj = result["ECONOMIC"][0].Programs[0].Projects[0];
         Assert.Single(proj.Activities);
         Assert.Equal("Operation of Seed Production Farm", proj.Activities[0].Name);
-        Assert.Equal(2032.945m, proj.Activities[0].Mooe);
+        Assert.Equal(2032945m, proj.Activities[0].Mooe);
     }
 
     [Fact]
@@ -478,8 +529,8 @@ public sealed class AipXlsmParserTests
         Assert.Equal("Mining Compliance, Monitoring, and Support", proj.Name);
         Assert.False(string.IsNullOrWhiteSpace(proj.RefCode));   // synthesized, but present
         Assert.Equal(2, proj.Activities.Count);
-        Assert.Equal(1531.25m,  proj.Activities[0].Mooe);
-        Assert.Equal(10642.50m, proj.Activities[1].Mooe);
+        Assert.Equal(1531250m,  proj.Activities[0].Mooe);
+        Assert.Equal(10642500m, proj.Activities[1].Mooe);
     }
 
     [Fact]
@@ -503,7 +554,7 @@ public sealed class AipXlsmParserTests
         ParsedAipProgram prog = result["OTHERS"][0].Programs[0];
         Assert.Single(prog.Projects);
         Assert.Single(prog.Projects[0].Activities);
-        Assert.Equal(12892.50m, prog.Projects[0].Activities[0].Mooe);
+        Assert.Equal(12892500m, prog.Projects[0].Activities[0].Mooe);
     }
 
     [Fact]
@@ -535,9 +586,9 @@ public sealed class AipXlsmParserTests
         ParsedAipProject proj = result["GENERAL"][0].Programs[0].Projects[0];
         Assert.Equal(2, proj.Activities.Count);
         Assert.Equal("Enactment of ordinances", proj.Activities[0].Name);
-        Assert.Equal(130129.93m, proj.Activities[0].Mooe);
+        Assert.Equal(130129930m, proj.Activities[0].Mooe);
         Assert.Equal("Creation and filing up complementary legislative posts", proj.Activities[1].Name);
-        Assert.Equal(8850.00m, proj.Activities[1].Mooe);
+        Assert.Equal(8850000m, proj.Activities[1].Mooe);
         Assert.False(string.IsNullOrWhiteSpace(proj.Activities[1].RefCode));
     }
 
@@ -566,7 +617,7 @@ public sealed class AipXlsmParserTests
         ParsedAipProject proj = result["GENERAL"][0].Programs[0].Projects[0];
         ParsedAipActivity act = Assert.Single(proj.Activities);
         Assert.Equal("First part second part", act.Name);
-        Assert.Equal(500.0m, act.Mooe);
+        Assert.Equal(500000m, act.Mooe);
     }
 
     [Fact]
@@ -639,10 +690,10 @@ public sealed class AipXlsmParserTests
         Assert.Equal("Planning Project", proj.Name);
         ParsedAipActivity act = Assert.Single(proj.Activities);
         Assert.Equal("Planning Activity", act.Name);
-        Assert.Equal(100.5m,  act.Ps);
-        Assert.Equal(200.25m, act.Mooe);
-        Assert.Equal(300.0m,  act.Co);
-        Assert.Equal(600.75m, act.Total);
+        Assert.Equal(100500m,  act.Ps);
+        Assert.Equal(200250m, act.Mooe);
+        Assert.Equal(300000m,  act.Co);
+        Assert.Equal(600750m, act.Total);
     }
 
     [Fact]

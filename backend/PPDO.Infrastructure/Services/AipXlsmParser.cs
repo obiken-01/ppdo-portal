@@ -346,9 +346,9 @@ public sealed class AipXlsmParser : IAipXlsmParser
 
     private static LineItemFields ReadLineItemFields(IXLWorksheet ws, int row)
     {
-        decimal? ps   = ParseDecimal(ws.Cell(row, 12));
-        decimal? mooe = ParseDecimal(ws.Cell(row, 13));
-        decimal? co   = ParseDecimal(ws.Cell(row, 14));
+        decimal? ps   = ParseMoney(ws.Cell(row, 12));
+        decimal? mooe = ParseMoney(ws.Cell(row, 13));
+        decimal? co   = ParseMoney(ws.Cell(row, 14));
         return new LineItemFields(
             EsreCode:           NullIfBlank(ws.Cell(row, 6).GetString()),
             ImplementingOffice: NullIfBlank(ws.Cell(row, 7).GetString()),
@@ -365,8 +365,8 @@ public sealed class AipXlsmParser : IAipXlsmParser
             Total:              (ps.HasValue || mooe.HasValue || co.HasValue)
                                     ? (ps ?? 0m) + (mooe ?? 0m) + (co ?? 0m)
                                     : null,
-            CcAdaptation:       ParseDecimal(ws.Cell(row, 16)),
-            CcMitigation:       ParseDecimal(ws.Cell(row, 17)),
+            CcAdaptation:       ParseMoney(ws.Cell(row, 16)),
+            CcMitigation:       ParseMoney(ws.Cell(row, 17)),
             CcTypologyCode:     NullIfBlank(ws.Cell(row, 18).GetString()));
     }
 
@@ -384,6 +384,21 @@ public sealed class AipXlsmParser : IAipXlsmParser
         string t = (value ?? string.Empty).Trim();
         return t.Length == 0 ? null : t;
     }
+
+    /// <summary>
+    /// The province's AIP workbook is denominated in ₱000 — a cell reading <c>250</c> means
+    /// ₱250,000. Storage is PESOS since V18-35 (PPDO-34), so the file's own unit is converted
+    /// here, at the import edge, and never again downstream.
+    ///
+    /// ⚠️ This is not a survivor of the ×1000 the migration deleted. Those six sites converted
+    /// between two of OUR units and are gone. This one converts the SOURCE DOCUMENT's unit into
+    /// ours, the same edge conversion the AIP detail page does for display — without it every
+    /// upload would write thousands into a peso column and silently divide the record by 1000.
+    /// </summary>
+    private const decimal PesosPerWorkbookUnit = 1000m;
+
+    /// <summary>A money cell from the workbook, converted from ₱000 to pesos. NULL stays NULL.</summary>
+    private static decimal? ParseMoney(IXLCell cell) => ParseDecimal(cell) * PesosPerWorkbookUnit;
 
     private static decimal? ParseDecimal(IXLCell cell)
     {

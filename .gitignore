@@ -186,3 +186,13 @@ __pycache__/
 # copies are local working state and are not diffable by git.
 # Retrospective action item 9 — docs/v1.8/RETROSPECTIVE.md §3.7.
 docs/**/*.backup*.xlsx
+
+# Database exports and backups. This repository is PUBLIC and production carries real
+# personnel names and budget figures — a .bacpac or .bak committed here publishes them.
+# Keep rehearsal copies outside the repo entirely; these patterns are the safety net,
+# not the plan. See docs/v1.8/Units_Migration_Runbook.md §1a.
+*.bacpac
+*.bak
+*.dacpac
+*.mdf
+*.ldf

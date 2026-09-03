@@ -905,7 +905,8 @@ export interface LdipRecord {
 // ── LDIP hierarchy (RAL-61) — ref codes are server-computed, never client-sent ──
 
 /**
- * One program row. Budget is in thousands (₱000), like AIP totals.
+ * One program row. Budget is in thousands (₱000) — NOT like AIP totals, which are pesos since
+ * V18-35 (PPDO-34). LDIP deliberately did not move; see LdipProgram.Budget on the backend.
  * The detail fields below (RAL-113) are populated only for upload-derived
  * programs — null for programs added through the manual "+ Add Program" flow.
  */
