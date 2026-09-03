@@ -27,7 +27,8 @@ public sealed class LdipProgramConfiguration : IEntityTypeConfiguration<LdipProg
             .IsRequired()
             .HasMaxLength(500);
 
-        // Stored in thousands (₱000), like AIP totals.
+        // Stored in thousands (₱000). AIP totals moved to pesos at V18-35; this did not — see
+        // LdipProgram.Budget's unit invariant.
         builder.Property(p => p.Budget)
             .HasColumnName("budget")
             .HasColumnType("decimal(18,2)")
