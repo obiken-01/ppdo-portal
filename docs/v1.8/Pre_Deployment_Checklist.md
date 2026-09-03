@@ -11,8 +11,10 @@
 
 ## 1. Database — the one irreversible part
 
-v1.8.0 carries migrations that production has never seen — **13 as of the end of Phase 2**, and the
-count grows as later phases land. Recheck it at release time with:
+v1.8.0 carries migrations that production has never seen — **15 as of the end of Phase 2**, and the
+count grows as later phases land. **Recheck it at release time rather than trusting this number**;
+it has already drifted once (it read 13 between 2026-09-03 morning and the end of the phase, having
+been written before V18-32's and V18-40's migrations landed):
 
 ```bash
 git diff --name-only main release/1.8.0 -- backend/PPDO.Infrastructure/Data/Migrations | grep -v Designer
@@ -20,10 +22,17 @@ git diff --name-only main release/1.8.0 -- backend/PPDO.Infrastructure/Data/Migr
 
 All of them so far are additive (new tables, columns, permission flags) except one:
 
-| Migration | Kind |
-|---|---|
-| `20260824030231_AddLandingPage` … `20260902131412_AddAipExpenditures` (12) | Schema, additive |
-| **`20260903004121_MigrateAipAmountsToPesos`** | ⚠️ **Rewrites existing values in place** |
+| Order | Migration | Kind |
+|---|---|---|
+| 1–12 | `20260824030231_AddLandingPage` … `20260902131412_AddAipExpenditures` | Schema, additive |
+| **13** | **`20260903004121_MigrateAipAmountsToPesos`** | ⚠️ **Rewrites existing values in place** |
+| 14 | `20260903023255_AddAipOfficeOwnershipFk` (V18-32 / PPDO-33) | Schema, additive — **plus a backfill** |
+| 15 | `20260903045149_AddAipRecordOwningOffice` (V18-40 / PPDO-39) | Schema, additive |
+
+⚠️ **#14 writes data, and that is still additive.** It adds `aip_offices.office_id` and fills it
+from the ref-code suffix, so every row it touches is a column it created in the same migration.
+It cannot alter a pre-existing value. What it *can* do is leave rows unmatched — see the backfill
+step below, which is the one that matters.
 
 `MigrateAipAmountsToPesos` multiplies six money columns on every `aip_activities` row, every
 fiscal year, by 1000 (V18-35 / PPDO-34). It is the only migration in the release that can destroy
@@ -57,8 +66,17 @@ data rather than add to it.
       migration's own `Down`: see the note below.
 
 - [ ] **Apply the migrations** — `dotnet ef database update` against Azure SQL, with
-      `SqlConnectionString` pointing at `ppdo-portal-db`. They apply in timestamp order, so the
-      units migration runs last, after `AddAipExpenditures` has created its table.
+      `SqlConnectionString` pointing at `ppdo-portal-db`. One command applies all 15, in timestamp
+      order.
+
+      ⚠️ **The units migration is #13 of 15, not last** — an earlier draft of this checklist said
+      it ran last, and it does not. Two schema migrations sort after it. That is **safe, and worth
+      understanding rather than working around**: neither of them touches `aip_activities` money
+      columns at all (#14 adds and fills `aip_offices.office_id`, #15 adds `aip_records.office_id`),
+      so the ratio check below is still valid run at the end. **Do not reorder them by hand** —
+      renaming migrations to force the units one last would break the applied-migrations history for
+      no gain. What does matter is the order already guaranteed: `AddAipExpenditures` (#12) creates
+      its table before #13 runs.
 
 - [ ] **Re-run the baseline query and check the ratio.** Every fiscal year's `SUM(total)` must be
       **exactly** its before-value × 1000. Not approximately — exactly. A year that is off by any

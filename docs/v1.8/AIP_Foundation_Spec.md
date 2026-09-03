@@ -375,18 +375,34 @@ way and gating them would add a branch with nothing behind it. And **nothing con
 endpoint, service method or migration that changes `OfficeId` on an existing record, and there
 should not be one. If a shape is wrong, the record is archived and recreated.
 
-### 5.6 Migrations — three, and they are ordered
+### 5.6 Migrations — four, and they apply in timestamp order
 
-| Order | Migration | Ticket |
+✅ **Corrected 2026-09-03, at the end of the phase.** This section planned three migrations under
+names that were never used, and estimated the release's total at five. Both numbers were wrong; the
+list below is what actually shipped.
+
+| Order in the release | Migration (real name) | Ticket |
 |---|---|---|
-| 1 | `AddAipOfficeOwnership` — FK + index + backfill | V18-32 |
-| 2 | `AddAipExpenditures` — new table | V18-33 |
-| 3 | `ConvertAipAmountsToPesos` — data-only | V18-35 |
+| 12 | `AddAipExpenditures` — new table | V18-33 |
+| 13 | `MigrateAipAmountsToPesos` — data-only ⚠️ | V18-35 |
+| 14 | `AddAipOfficeOwnershipFk` — FK + index + backfill | V18-32 |
+| 15 | `AddAipRecordOwningOffice` — FK + index | V18-40 |
 
-⚠️ **CI does not run migrations.** Each needs a manual `dotnet ef database update` against Azure
-SQL. `release/1.8.0` already carries two pending from Phase 1 (`AddClimateChangeTypologies`,
-`AddEsreCodes`), so v1.8.0 reaches production with **five** manual migrations. Write the order down
-in the release checklist; #3 is data-only and must run after the schema is settled.
+The **fourth** was not planned here because V18-40 (the office-owned record shape) was scoped after
+this section was written. It is the reason "three" became four.
+
+⚠️ **CI does not run migrations.** One manual `dotnet ef database update` against Azure SQL
+applies them all. **v1.8.0 reaches production with 15 pending migrations, not five** — this section
+counted only Phase 1's two AIP-adjacent ones (`AddClimateChangeTypologies`, `AddEsreCodes`) and
+missed Phase 1's identity, password-reset and permission migrations entirely.
+
+⚠️ **The units migration is #13, not last.** It does not need to be: #14 and #15 add columns to
+`aip_offices` and `aip_records` and never touch `aip_activities` money. The ordering that does
+matter is #12 before #13.
+
+⚠️ **`docs/v1.8/Pre_Deployment_Checklist.md` §1 is the authority on the count and the order**,
+not this section — it is rechecked at release time against `git diff`, and this one is a plan
+written before the code. If they disagree again, believe the checklist.
 
 ---
 
@@ -424,7 +440,7 @@ Flat design, PPDO tokens, `slate-800` headings / `slate-600` body, never `text-s
 
 ## 8. Deployment notes
 
-- **Three migrations, manually applied, in the §5.6 order.** Five total for v1.8.0.
+- **Four migrations from this phase, manually applied** (§5.6). **15 pending for v1.8.0 as a whole** — counted at the end of Phase 2 and rechecked at release time against `git diff`; `Pre_Deployment_Checklist.md` §1 is the authority.
 - ⚠️ **Check for pre-existing FY≥2028 owner-less records before the release, and archive any that
   are still active.** V18-37 governs new writes; it cannot reach rows already in the table. The
   local dev database was found (2026-09-03, live check) to hold eleven FY2028 records with a null

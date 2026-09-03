@@ -155,8 +155,13 @@ dotnet ef database update --project PPDO.Infrastructure --startup-project PPDO.F
   --connection "<Azure SQL connection string for ppdo-portal-db>"
 ```
 
-Applies in timestamp order, so `AddAipExpenditures` creates its table first and
-`MigrateAipAmountsToPesos` runs last.
+Applies in timestamp order, so `AddAipExpenditures` creates its table before
+`MigrateAipAmountsToPesos` runs — which is the ordering this migration depends on.
+
+⚠️ **It is not the last migration in the release**, despite an earlier version of this line
+saying so. Two schema migrations sort after it (`AddAipOfficeOwnershipFk`,
+`AddAipRecordOwningOffice`). Neither touches `aip_activities` money columns, so §5's after-scripts
+are valid run once everything has applied — there is no need to stop partway.
 
 ---
 
@@ -374,9 +379,10 @@ Script 2's output — those are the values that must not change.
 ### 4. Apply every pending migration
 
 The restored copy is at production's schema, so this rehearses **every migration v1.8.0 has
-accumulated by then**, in order — not just this one. That count grows as later phases land (it was
-13 when this was written, at the end of Phase 2), which is a reason to rehearse late rather than
-early: one dry run covers the whole release.
+accumulated by then**, in order — not just this one. That count grows as later phases land (**15**
+at the end of Phase 2; this line read 13 for a few hours before V18-32's and V18-40's migrations
+landed, which is exactly why it should be recounted rather than quoted). That is a reason to
+rehearse late rather than early: one dry run covers the whole release.
 
 ```bash
 cd backend
