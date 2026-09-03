@@ -20,7 +20,8 @@
  *
  * Ref codes shown here are PREVIEWS — the server recomputes all AIP ref codes
  * on every save, so they are authoritative. Budgets are entered and stored in
- * thousands (₱000), like AIP totals.
+ * thousands (₱000). AIP amounts moved to pesos at V18-35 (PPDO-34); LDIP did not —
+ * an LDIP budget is a multi-year total and crosses into no peso-denominated code.
  */
 
 import { useEffect, useMemo, useState } from "react";
