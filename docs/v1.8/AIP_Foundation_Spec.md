@@ -65,11 +65,11 @@ without migrating historical data.
 
 | # | Question | Blocks | Default if unanswered |
 |---|---|---|---|
-| **P2-a** | After the migration, does the AIP detail page **drop** the `(in ₱000)` headers and show full pesos, or **divide by 1000 at render** to keep the province's convention? | V18-35 | Divide at render — the province's own form is denominated in thousands, and changing what the page looks like is a bigger change than this ticket is asking for |
+| ~~**P2-a**~~ ✅ **answered 2026-09-03 — divide at render** | After the migration, does the AIP detail page **drop** the `(in ₱000)` headers and show full pesos, or **divide by 1000 at render** to keep the province's convention? | V18-35 | Shipped as the default: the headers stay, `toDisplayUnits`/`toStorageUnits` convert at the page edge, and nothing an encoder sees or types changed when storage did. Phase 5's printable form has to render thousands to match the province's form regardless, so showing raw pesos would only have relocated the conversion |
 | **P2-b** | Does the FY partition gate on a **literal `fiscalYear` check inside shared endpoints**, or **new endpoints beside untouched old ones**? | V18-37 | New endpoints. A literal check inside a shared handler is a branch that must stay correct forever in a file nobody re-reads |
 | **P2-c** | Does `aip_expenditures` reuse the existing `accounts` config table, or does AIP need its own expense vocabulary? | V18-33 | Reuse `accounts` — it is the same chart of accounts, and WFP already snapshots from it |
 
-P2-a is the only one that needs a person outside the dev team (the finance officers). P2-b and P2-c
+P2-a needed a person outside the dev team (the finance officers) and is now answered. P2-b and P2-c
 are engineering calls that can be made when the ticket starts.
 
 ---
@@ -255,7 +255,7 @@ Phase 2 adds no screen. Two existing surfaces change.
 
 | Surface | Change |
 |---|---|
-| **AIP detail page** | Per P2-a. Either headers lose `(in ₱000)` and cells show full pesos, or cells divide by 1000 at render and inputs multiply on save. **Whichever is chosen, display and entry must move together** — 6 cells and 11 inputs |
+| **AIP detail page** | ✅ P2-a answered — headers keep `(in ₱000)`, cells divide at render, inputs multiply on save. Display and entry moved together, as they had to. Counts corrected while implementing: **10 cells** (the office-total footer row renders AIP money too) and **10 inputs** (the eleventh grep hit was the import line) |
 | **AIP upload** | FY≥2028 refused with a reason naming the fiscal year, not a generic validation error. The button is **disabled with a reason**, not hidden — the user has permission, the *state* forbids it (`Budget_Planning_Dashboard_Requirements.md` §6.1) |
 
 Flat design, PPDO tokens, `slate-800` headings / `slate-600` body, never `text-slate-700`.
@@ -321,12 +321,19 @@ is the class where a wrong choice compiles cleanly and leaks data.
 - [ ] Every scoped AIP read filters on aip_offices.office_id; no RefCode.EndsWith remains on a
       scoping path (grep it)
 - [ ] The backfill reports unmatched rows rather than dropping them, and the count is recorded
-- [ ] SUM(total) per fiscal year after migration = SUM(total) before x 1000, exactly, every year
-- [ ] All six x1000 sites are deleted — not made FY-conditional (grep "* 1000")
-- [ ] The AIP detail page's 2 headers, 6 cells and 11 inputs agree with each other and with P2-a
+- [x] SUM(total) per fiscal year after migration = SUM(total) before x 1000, exactly, every year
+      (verified locally, 3 fiscal years; production runs the same check per the pre-deployment
+      checklist, and the baseline must be captured BEFORE applying or it cannot be checked at all)
+- [x] All six x1000 sites are deleted — not made FY-conditional (grep "* 1000")
+- [x] The AIP detail page’s 2 headers, 10 cells and 10 inputs agree with each other and with P2-a (divide at render)
 - [ ] Typing 250 into an AIP amount and reloading shows the same number it showed before Phase 2
-- [ ] types/budget-planning.ts:908's "like AIP totals" cross-reference is corrected
-- [ ] A WFP expenditure against a known AIP activity gets the same accept/reject verdict as before
+      (⚠️ still unrun — needs a portal login)
+- [x] types/budget-planning.ts:908's "like AIP totals" cross-reference is corrected — and it turned
+      out to be SIX files, not one: LdipDtos, LdipService, LdipProgramConfiguration,
+      AllocationService, types/budget-planning.ts, LdipForm.tsx
+- [x] AipXlsmParser converts the workbook's ₱000 into pesos at the import edge — NOT in the ticket,
+      and without it every upload writes thousands into a peso column
+- [x] A WFP expenditure against a known AIP activity gets the same accept/reject verdict as before
 - [ ] An activity with no expenditure rows reports Total 0, not null
 - [ ] An FY2027 activity keeps its imported totals — the recompute does not zero it
 - [ ] Uploading an .xlsm for FY2028 is refused with a message naming the fiscal year
