@@ -420,6 +420,12 @@ seam for the first time — this note is what should stop it happening silently.
 
 ## 5. Phase 3 — AIP Entry ✅ unblocked
 
+> 📖 **Specified 2026-09-03 in `docs/v1.8/AIP_Entry_Spec.md`** — that document is
+> authoritative for this phase; the table below is the work-item list it expands. Ticketed as
+> epic **PPDO-48**, children **PPDO-49…PPDO-59**. Two open questions live in the spec's §2
+> (**P3-a** procurement scope, **P3-b** the `ProgramDivision` program-half FK); neither blocks
+> the phase, each blocks one ticket.
+
 ~~#5 (programs outside the LDIP)~~ ✅ closed list, LDIP only. ~~C (block or warn)~~ ✅ block at
 submit. ~~D (allocations vs ceiling)~~ ✅ allocations may total less than the ceiling. ~~**DECISION
 G** — the +30% uplift on MOOE/CO~~ ✅ answered 2026-08-26: **presentation-only**, so V18-46 never
