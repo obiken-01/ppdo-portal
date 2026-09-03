@@ -51,6 +51,8 @@ public record AipOfficeDto(
 public record AipRecordDto(
     int      Id,
     int      FiscalYear,
+    // The owning config office (V18-40), or null for a legacy multi-office record.
+    int?     OfficeId,
     string   EntrySource,
     string?  OriginalFilename,
     Guid     UploadedById,
@@ -149,7 +151,12 @@ public record AipImportConfirmDto(
 // by the client (see AipService.NextRefCode / the AipSector prefix map).
 
 /// <summary>Body of POST /api/budget-planning/aip — creates a blank Manual-entry AipRecord.</summary>
-public record CreateAipRecordDto(int FiscalYear);
+/// <summary>
+/// Body of POST /api/budget-planning/aip. <see cref="OfficeConfigId"/> chooses the record SHAPE
+/// (V18-40): supply it for an office-owned record, omit it for the legacy multi-office one. Which
+/// shape a given fiscal year should use is V18-37's gate, not this DTO's business.
+/// </summary>
+public record CreateAipRecordDto(int FiscalYear, int? OfficeConfigId = null);
 
 /// <summary>
 /// Body of POST /api/budget-planning/aip/{aipId}/offices. <see cref="OfficeConfigId"/> is the

@@ -5,6 +5,12 @@
 export interface AipRecordResponse {
   id: number;
   fiscalYear: number;
+  /**
+   * The config office that owns this record (V18-40), or null for a legacy multi-office record.
+   * Null is that shape's permanent value — a pre-FY2028 record spans every office and has no
+   * single owner — not a field waiting to be populated.
+   */
+  officeId: number | null;
   entrySource: string;
   originalFilename: string | null;
   uploadedById: string;
