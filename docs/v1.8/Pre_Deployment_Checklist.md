@@ -11,8 +11,14 @@
 
 ## 1. Database — the one irreversible part
 
-v1.8.0 carries **13 migrations** that production has never seen. Twelve are additive (new tables,
-columns, permission flags). One is not:
+v1.8.0 carries migrations that production has never seen — **13 as of the end of Phase 2**, and the
+count grows as later phases land. Recheck it at release time with:
+
+```bash
+git diff --name-only main release/1.8.0 -- backend/PPDO.Infrastructure/Data/Migrations | grep -v Designer
+```
+
+All of them so far are additive (new tables, columns, permission flags) except one:
 
 | Migration | Kind |
 |---|---|

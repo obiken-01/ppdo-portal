@@ -309,6 +309,14 @@ the migrated UI that row holds a genuine peso amount, and `Down` divides *that* 
 against it before the real one. Costs nothing and exercises production's actual rows through the
 actual UI.
 
+**When: once v1.8.0 is release-ready**, immediately before the production deploy — not now, and not
+once per ticket. Later phases will add migrations of their own, and a single late rehearsal covers
+the whole release's set in one pass.
+
+**`<REHEARSAL_DB>` is a placeholder throughout this appendix** — substitute whatever the restore is
+actually named. The only constraints are that it is **not** `PPDOPortalDev` (see step 2) and that
+the same name is used in every step, including the teardown in step 6.
+
 ⚠️ **This puts real personnel names and budget figures on a laptop.** Keep the `.bacpac` outside the
 repository — `*.bacpac` and `*.bak` are git-ignored as a safety net, not as the plan — and complete
 the teardown in step 6. Do not screenshot the rehearsal database into any document that leaves the
@@ -351,27 +359,29 @@ migrated. The rehearsal needs its own:
 
 ```bash
 sqlpackage /Action:Import \
-  /TargetServerName:".\SQLEXPRESS" /TargetDatabaseName:"PPDOPortalUat" \
+  /TargetServerName:".\SQLEXPRESS" /TargetDatabaseName:"<REHEARSAL_DB>" \
   /TargetTrustServerCertificate:True \
   /SourceFile:"D:\RalphFiles\PPDO\_rehearsal\ppdo-prod-YYYYMMDD.bacpac"
 ```
 
-Or SSMS → right-click **Databases → Import Data-tier Application…**, target name `PPDOPortalUat`.
+Or SSMS → right-click **Databases → Import Data-tier Application…**, target name `<REHEARSAL_DB>`.
 
 ### 3. Capture the baseline and the test subjects
 
-Run **Script 1** (§2) and **Script 2** (§3) against `PPDOPortalUat`. Fill in §6's table from
+Run **Script 1** (§2) and **Script 2** (§3) against `<REHEARSAL_DB>`. Fill in §6's table from
 Script 2's output — those are the values that must not change.
 
 ### 4. Apply every pending migration
 
-The restored copy is at production's schema, so this rehearses **all 13** of v1.8.0's migrations in
-order, not just this one:
+The restored copy is at production's schema, so this rehearses **every migration v1.8.0 has
+accumulated by then**, in order — not just this one. That count grows as later phases land (it was
+13 when this was written, at the end of Phase 2), which is a reason to rehearse late rather than
+early: one dry run covers the whole release.
 
 ```bash
 cd backend
 dotnet ef database update --project PPDO.Infrastructure --startup-project PPDO.Functions \
-  --connection "Server=.\SQLEXPRESS;Database=PPDOPortalUat;Trusted_Connection=True;TrustServerCertificate=True;"
+  --connection "Server=.\SQLEXPRESS;Database=<REHEARSAL_DB>;Trusted_Connection=True;TrustServerCertificate=True;"
 ```
 
 ### 5. Verify
@@ -386,7 +396,7 @@ catches this for you.
 ### 6. Teardown
 
 ```sql
-DROP DATABASE PPDOPortalUat;
+DROP DATABASE <REHEARSAL_DB>;
 ```
 
 Then delete the `.bacpac` and the `_rehearsal` folder. The data has no reason to outlive the check.
