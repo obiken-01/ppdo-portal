@@ -35,9 +35,29 @@ public sealed partial class AipServiceTests
         IsActive = true, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
     };
 
-    private static AipRecord Rec(int id, string status = "Draft") => new()
+    /// <summary>
+    /// A fiscal year on the legacy multi-office shape, and the year before it.
+    ///
+    /// <para>
+    /// ⚠️ The carry-forward and LDIP-seed tests below used to run 2027 → 2028, which V18-37 now
+    /// correctly refuses: both paths find-or-create an <b>unowned</b> record, and FY2028 onward has
+    /// no shape that can accept one. They are testing carry-forward mechanics rather than the
+    /// partition, so they were moved down a year rather than deleted or exempted — a test that
+    /// reaches for FY2028 through a legacy path is asserting the leak PPDO-40 closed.
+    /// </para>
+    ///
+    /// <para>
+    /// Source and target are deliberately <b>different</b> years. Seeding both at 2027 would make
+    /// the mock's <c>GetLatestByFiscalYearAsync(target)</c> return the source record, so a test
+    /// meaning "no target record exists yet" would quietly stop testing that.
+    /// </para>
+    /// </summary>
+    private const int LegacyFy = 2027;
+    private const int PriorFy  = LegacyFy - 1;
+
+    private static AipRecord Rec(int id, string status = "Draft", int fiscalYear = LegacyFy) => new()
     {
-        Id = id, FiscalYear = 2027, EntrySource = "Upload",
+        Id = id, FiscalYear = fiscalYear, EntrySource = "Upload",
         UploadedById = UserId, UploadedAt = DateTime.UtcNow, Status = status,
     };
 
@@ -1427,12 +1447,12 @@ public sealed partial class AipServiceTests
     {
         var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
-        ServiceResult<AipRecordDto> result = await sut.CreateManualRecordAsync(new CreateAipRecordDto(2028), UserId);
+        ServiceResult<AipRecordDto> result = await sut.CreateManualRecordAsync(new CreateAipRecordDto(LegacyFy), UserId);
 
         Assert.True(result.IsSuccess);
         Assert.Equal("Manual", result.Value!.EntrySource);
         Assert.Equal("Draft", result.Value.Status);
-        Assert.Equal(2028, result.Value.FiscalYear);
+        Assert.Equal(LegacyFy, result.Value.FiscalYear);
         aipRepo.Verify(r => r.AddAsync(It.IsAny<AipRecord>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -1661,7 +1681,7 @@ public sealed partial class AipServiceTests
     [Fact]
     public async Task CopyOfficeFromPriorYear_TargetRecordMissing_CreatesManualDraftRecordAndOffice()
     {
-        AipRecord sourceRec = Rec(1, PlanningStatus.Final);
+        AipRecord sourceRec = Rec(1, PlanningStatus.Final, fiscalYear: PriorFy);
         AipOffice office = SourceOffice();
         AipProgram progA = SourceProgramA();
         AipProject proj = SourceProject(40, 30, "1000-000-1-01-010-001-001");
@@ -1671,7 +1691,7 @@ public sealed partial class AipServiceTests
             projectSeed: [proj], actSeed: [act]);
 
         ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
-            new CopyAipOfficeDto(20, 2028, [30]), UserId, HostCaller());
+            new CopyAipOfficeDto(20, LegacyFy, [30]), UserId, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal("1000-000-1-01-010", result.Value!.RefCode);
@@ -1679,7 +1699,7 @@ public sealed partial class AipServiceTests
         Assert.Equal("GENERAL", result.Value.Sector);
         Assert.Single(result.Value.Programs);
         aipRepo.Verify(r => r.AddAsync(
-            It.Is<AipRecord>(r => r.FiscalYear == 2028 && r.EntrySource == "Manual" && r.Status == PlanningStatus.Draft),
+            It.Is<AipRecord>(r => r.FiscalYear == LegacyFy && r.EntrySource == "Manual" && r.Status == PlanningStatus.Draft),
             It.IsAny<CancellationToken>()), Times.Once);
         officeRepo.Verify(r => r.AddAsync(It.IsAny<AipOffice>(), It.IsAny<CancellationToken>()), Times.Once);
         audit.Verify(a => a.LogAsync("aip_offices", It.IsAny<int>(), AuditAction.Create,
@@ -1689,7 +1709,7 @@ public sealed partial class AipServiceTests
     [Fact]
     public async Task CopyOfficeFromPriorYear_ClonesFullSubtree_PreservesFieldsExceptIdAndIsCreation()
     {
-        AipRecord sourceRec = Rec(1, PlanningStatus.Final);
+        AipRecord sourceRec = Rec(1, PlanningStatus.Final, fiscalYear: PriorFy);
         AipOffice office = SourceOffice();
         AipProgram progA = SourceProgramA();
         AipProject proj = SourceProject(40, 30, "1000-000-1-01-010-001-001");
@@ -1699,7 +1719,7 @@ public sealed partial class AipServiceTests
             projectSeed: [proj], actSeed: [act]);
 
         ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
-            new CopyAipOfficeDto(20, 2028, [30]), UserId, HostCaller());
+            new CopyAipOfficeDto(20, LegacyFy, [30]), UserId, HostCaller());
 
         Assert.True(result.IsSuccess);
         AipProgramDto copiedProgram = result.Value!.Programs.Single();
@@ -1733,10 +1753,10 @@ public sealed partial class AipServiceTests
     [Fact]
     public async Task CopyOfficeFromPriorYear_TargetRecordExistsAsManualDraft_ReusesRecord_CreatesOffice()
     {
-        AipRecord sourceRec = Rec(1, PlanningStatus.Final);
+        AipRecord sourceRec = Rec(1, PlanningStatus.Final, fiscalYear: PriorFy);
         AipRecord targetRec = new()
         {
-            Id = 2, FiscalYear = 2028, EntrySource = "Manual",
+            Id = 2, FiscalYear = LegacyFy, EntrySource = "Manual",
             UploadedById = UserId, UploadedAt = DateTime.UtcNow, Status = PlanningStatus.Draft,
         };
         AipOffice office = SourceOffice();
@@ -1745,7 +1765,7 @@ public sealed partial class AipServiceTests
             [sourceRec, targetRec], [], officeSeed: [office], programSeed: [progA]);
 
         ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
-            new CopyAipOfficeDto(20, 2028, [30]), UserId, HostCaller());
+            new CopyAipOfficeDto(20, LegacyFy, [30]), UserId, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal(2, result.Value!.AipRecordId); // reused the existing target record, not a new one
@@ -1759,10 +1779,10 @@ public sealed partial class AipServiceTests
     public async Task CopyOfficeFromPriorYear_TargetRecordNotDraftManual_ReturnsBadRequest(
         string entrySource, string status)
     {
-        AipRecord sourceRec = Rec(1, PlanningStatus.Final);
+        AipRecord sourceRec = Rec(1, PlanningStatus.Final, fiscalYear: PriorFy);
         AipRecord targetRec = new()
         {
-            Id = 2, FiscalYear = 2028, EntrySource = entrySource,
+            Id = 2, FiscalYear = LegacyFy, EntrySource = entrySource,
             UploadedById = UserId, UploadedAt = DateTime.UtcNow, Status = status,
         };
         AipOffice office = SourceOffice();
@@ -1771,7 +1791,7 @@ public sealed partial class AipServiceTests
             [sourceRec, targetRec], [], officeSeed: [office], programSeed: [progA]);
 
         ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
-            new CopyAipOfficeDto(20, 2028, [30]), UserId, HostCaller());
+            new CopyAipOfficeDto(20, LegacyFy, [30]), UserId, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -1784,10 +1804,10 @@ public sealed partial class AipServiceTests
         // AipService (GetLatestByFiscalYearAsync filters them out — same rule
         // CreateManualRecordAsync relies on) — carry-forward is no different: an Archived target
         // year is treated as if nothing exists yet, and a fresh Manual Draft record is created.
-        AipRecord sourceRec = Rec(1, PlanningStatus.Final);
+        AipRecord sourceRec = Rec(1, PlanningStatus.Final, fiscalYear: PriorFy);
         AipRecord archivedTargetRec = new()
         {
-            Id = 2, FiscalYear = 2028, EntrySource = "Manual",
+            Id = 2, FiscalYear = LegacyFy, EntrySource = "Manual",
             UploadedById = UserId, UploadedAt = DateTime.UtcNow, Status = PlanningStatus.Archived,
         };
         AipOffice office = SourceOffice();
@@ -1796,22 +1816,22 @@ public sealed partial class AipServiceTests
             [sourceRec, archivedTargetRec], [], officeSeed: [office], programSeed: [progA]);
 
         ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
-            new CopyAipOfficeDto(20, 2028, [30]), UserId, HostCaller());
+            new CopyAipOfficeDto(20, LegacyFy, [30]), UserId, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.NotEqual(2, result.Value!.AipRecordId); // a new record, not the archived one
         aipRepo.Verify(r => r.AddAsync(
-            It.Is<AipRecord>(r => r.FiscalYear == 2028 && r.Status == PlanningStatus.Draft),
+            It.Is<AipRecord>(r => r.FiscalYear == LegacyFy && r.Status == PlanningStatus.Draft),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task CopyOfficeFromPriorYear_TargetOfficeAlreadyExists_AddsProgramsToIt_NoNewOffice()
     {
-        AipRecord sourceRec = Rec(1, PlanningStatus.Final);
+        AipRecord sourceRec = Rec(1, PlanningStatus.Final, fiscalYear: PriorFy);
         AipRecord targetRec = new()
         {
-            Id = 2, FiscalYear = 2028, EntrySource = "Manual",
+            Id = 2, FiscalYear = LegacyFy, EntrySource = "Manual",
             UploadedById = UserId, UploadedAt = DateTime.UtcNow, Status = PlanningStatus.Draft,
         };
         AipOffice sourceOff = SourceOffice();
@@ -1822,7 +1842,7 @@ public sealed partial class AipServiceTests
             [sourceRec, targetRec], [], officeSeed: [sourceOff, targetOff], programSeed: [progA]);
 
         ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
-            new CopyAipOfficeDto(20, 2028, [30]), UserId, HostCaller());
+            new CopyAipOfficeDto(20, LegacyFy, [30]), UserId, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal(21, result.Value!.Id); // reused the existing target office, not a new one
@@ -1839,10 +1859,10 @@ public sealed partial class AipServiceTests
         // the copy, not just the newly-added slice — the frontend replaces the whole office node
         // in its tree with this response, so a partial list would silently drop the office's
         // pre-existing programs from the UI.
-        AipRecord sourceRec = Rec(1, PlanningStatus.Final);
+        AipRecord sourceRec = Rec(1, PlanningStatus.Final, fiscalYear: PriorFy);
         AipRecord targetRec = new()
         {
-            Id = 2, FiscalYear = 2028, EntrySource = "Manual",
+            Id = 2, FiscalYear = LegacyFy, EntrySource = "Manual",
             UploadedById = UserId, UploadedAt = DateTime.UtcNow, Status = PlanningStatus.Draft,
         };
         AipOffice sourceOff = SourceOffice();
@@ -1856,7 +1876,7 @@ public sealed partial class AipServiceTests
             programSeed: [progA, preExisting]);
 
         ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
-            new CopyAipOfficeDto(20, 2028, [30]), UserId, HostCaller());
+            new CopyAipOfficeDto(20, LegacyFy, [30]), UserId, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal(2, result.Value!.Programs.Count);
@@ -1867,7 +1887,7 @@ public sealed partial class AipServiceTests
     [Fact]
     public async Task CopyOfficeFromPriorYear_ProgramNotBelongingToSourceOffice_ReturnsBadRequest()
     {
-        AipRecord sourceRec = Rec(1, PlanningStatus.Final);
+        AipRecord sourceRec = Rec(1, PlanningStatus.Final, fiscalYear: PriorFy);
         AipOffice office = SourceOffice();
         AipProgram progA = SourceProgramA(); // Id 30, belongs to office 20
         var (sut, _, _, _, _, _, officeRepo, _, _, _, _, _, _) = Build(
@@ -1875,7 +1895,7 @@ public sealed partial class AipServiceTests
 
         // 999 does not belong to office 20.
         ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
-            new CopyAipOfficeDto(20, 2028, [30, 999]), UserId, HostCaller());
+            new CopyAipOfficeDto(20, LegacyFy, [30, 999]), UserId, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -1886,10 +1906,10 @@ public sealed partial class AipServiceTests
     [Fact]
     public async Task CopyOfficeFromPriorYear_ProgramRefCodeAlreadyExistsUnderTargetOffice_ReturnsBadRequest_NoSideEffects()
     {
-        AipRecord sourceRec = Rec(1, PlanningStatus.Final);
+        AipRecord sourceRec = Rec(1, PlanningStatus.Final, fiscalYear: PriorFy);
         AipRecord targetRec = new()
         {
-            Id = 2, FiscalYear = 2028, EntrySource = "Manual",
+            Id = 2, FiscalYear = LegacyFy, EntrySource = "Manual",
             UploadedById = UserId, UploadedAt = DateTime.UtcNow, Status = PlanningStatus.Draft,
         };
         AipOffice sourceOff = SourceOffice();
@@ -1903,7 +1923,7 @@ public sealed partial class AipServiceTests
             programSeed: [progA, existingTargetProgram]);
 
         ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
-            new CopyAipOfficeDto(20, 2028, [30]), UserId, HostCaller());
+            new CopyAipOfficeDto(20, LegacyFy, [30]), UserId, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -1915,11 +1935,11 @@ public sealed partial class AipServiceTests
     [Fact]
     public async Task CopyOfficeFromPriorYear_SourceOfficeNotFound_ReturnsNotFound()
     {
-        AipRecord sourceRec = Rec(1, PlanningStatus.Final);
+        AipRecord sourceRec = Rec(1, PlanningStatus.Final, fiscalYear: PriorFy);
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([sourceRec], []);
 
         ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
-            new CopyAipOfficeDto(999, 2028, [30]), UserId, HostCaller());
+            new CopyAipOfficeDto(999, LegacyFy, [30]), UserId, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
@@ -1928,12 +1948,12 @@ public sealed partial class AipServiceTests
     [Fact]
     public async Task CopyOfficeFromPriorYear_EmptyProgramIds_ReturnsBadRequest()
     {
-        AipRecord sourceRec = Rec(1, PlanningStatus.Final);
+        AipRecord sourceRec = Rec(1, PlanningStatus.Final, fiscalYear: PriorFy);
         AipOffice office = SourceOffice();
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([sourceRec], [], officeSeed: [office]);
 
         ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
-            new CopyAipOfficeDto(20, 2028, []), UserId, HostCaller());
+            new CopyAipOfficeDto(20, LegacyFy, []), UserId, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -1942,10 +1962,10 @@ public sealed partial class AipServiceTests
     [Fact]
     public async Task CopyOfficeFromPriorYear_ExistingTargetOffice_TwoProgramsSelected_BothAddedInOneTransaction()
     {
-        AipRecord sourceRec = Rec(1, PlanningStatus.Final);
+        AipRecord sourceRec = Rec(1, PlanningStatus.Final, fiscalYear: PriorFy);
         AipRecord targetRec = new()
         {
-            Id = 2, FiscalYear = 2028, EntrySource = "Manual",
+            Id = 2, FiscalYear = LegacyFy, EntrySource = "Manual",
             UploadedById = UserId, UploadedAt = DateTime.UtcNow, Status = PlanningStatus.Draft,
         };
         AipOffice sourceOff = SourceOffice();
@@ -1956,7 +1976,7 @@ public sealed partial class AipServiceTests
             [sourceRec, targetRec], [], officeSeed: [sourceOff, targetOff], programSeed: [progA, progB]);
 
         ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
-            new CopyAipOfficeDto(20, 2028, [30, 31]), UserId, HostCaller());
+            new CopyAipOfficeDto(20, LegacyFy, [30, 31]), UserId, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal(2, result.Value!.Programs.Count);
@@ -2004,7 +2024,7 @@ public sealed partial class AipServiceTests
             [], [], officeConfigSeed: officeConfigs, ldipRecordSeed: [ldipRec], ldipOfficeSeed: [group]);
 
         ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
-            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId, HostCaller());
+            new SeedAipProgramsFromLdipDto(LegacyFy, 7, "GENERAL", [80]), UserId, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal("1000-000-1-01-010", result.Value!.RefCode);
@@ -2012,7 +2032,7 @@ public sealed partial class AipServiceTests
         Assert.Equal("GENERAL", result.Value.Sector);
         Assert.Single(result.Value.Programs);
         aipRepo.Verify(r => r.AddAsync(
-            It.Is<AipRecord>(r => r.FiscalYear == 2028 && r.EntrySource == "Manual" && r.Status == PlanningStatus.Draft),
+            It.Is<AipRecord>(r => r.FiscalYear == LegacyFy && r.EntrySource == "Manual" && r.Status == PlanningStatus.Draft),
             It.IsAny<CancellationToken>()), Times.Once);
         officeRepo.Verify(r => r.AddAsync(It.IsAny<AipOffice>(), It.IsAny<CancellationToken>()), Times.Once);
         audit.Verify(a => a.LogAsync("aip_offices", It.IsAny<int>(), AuditAction.Create,
@@ -2031,7 +2051,7 @@ public sealed partial class AipServiceTests
             [], [], officeConfigSeed: officeConfigs, ldipRecordSeed: [ldipRec], ldipOfficeSeed: [group]);
 
         ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
-            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId, HostCaller());
+            new SeedAipProgramsFromLdipDto(LegacyFy, 7, "GENERAL", [80]), UserId, HostCaller());
 
         Assert.True(result.IsSuccess);
         AipProgramDto seeded = result.Value!.Programs.Single();
@@ -2047,7 +2067,7 @@ public sealed partial class AipServiceTests
     {
         AipRecord targetRec = new()
         {
-            Id = 2, FiscalYear = 2028, EntrySource = "Manual",
+            Id = 2, FiscalYear = LegacyFy, EntrySource = "Manual",
             UploadedById = UserId, UploadedAt = DateTime.UtcNow, Status = PlanningStatus.Draft,
         };
         List<Office> officeConfigs = [MakeOffice(7, "PPDO", "01-010")];
@@ -2059,7 +2079,7 @@ public sealed partial class AipServiceTests
             [targetRec], [], officeConfigSeed: officeConfigs, ldipRecordSeed: [ldipRec], ldipOfficeSeed: [group]);
 
         ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
-            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId, HostCaller());
+            new SeedAipProgramsFromLdipDto(LegacyFy, 7, "GENERAL", [80]), UserId, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal(2, result.Value!.AipRecordId); // reused the existing target record, not a new one
@@ -2074,7 +2094,7 @@ public sealed partial class AipServiceTests
     {
         AipRecord targetRec = new()
         {
-            Id = 2, FiscalYear = 2028, EntrySource = entrySource,
+            Id = 2, FiscalYear = LegacyFy, EntrySource = entrySource,
             UploadedById = UserId, UploadedAt = DateTime.UtcNow, Status = status,
         };
         List<Office> officeConfigs = [MakeOffice(7, "PPDO", "01-010")];
@@ -2086,7 +2106,7 @@ public sealed partial class AipServiceTests
             [targetRec], [], officeConfigSeed: officeConfigs, ldipRecordSeed: [ldipRec], ldipOfficeSeed: [group]);
 
         ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
-            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId, HostCaller());
+            new SeedAipProgramsFromLdipDto(LegacyFy, 7, "GENERAL", [80]), UserId, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2097,7 +2117,7 @@ public sealed partial class AipServiceTests
     {
         AipRecord targetRec = new()
         {
-            Id = 2, FiscalYear = 2028, EntrySource = "Manual",
+            Id = 2, FiscalYear = LegacyFy, EntrySource = "Manual",
             UploadedById = UserId, UploadedAt = DateTime.UtcNow, Status = PlanningStatus.Draft,
         };
         AipOffice targetOff = new() { Id = 21, AipRecordId = 2, RefCode = "1000-000-1-01-010", Name = "PPDO", Sector = "GENERAL" };
@@ -2111,7 +2131,7 @@ public sealed partial class AipServiceTests
             ldipRecordSeed: [ldipRec], ldipOfficeSeed: [group]);
 
         ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
-            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId, HostCaller());
+            new SeedAipProgramsFromLdipDto(LegacyFy, 7, "GENERAL", [80]), UserId, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal(21, result.Value!.Id); // reused the existing target office, not a new one
@@ -2126,7 +2146,7 @@ public sealed partial class AipServiceTests
     {
         AipRecord targetRec = new()
         {
-            Id = 2, FiscalYear = 2028, EntrySource = "Manual",
+            Id = 2, FiscalYear = LegacyFy, EntrySource = "Manual",
             UploadedById = UserId, UploadedAt = DateTime.UtcNow, Status = PlanningStatus.Draft,
         };
         AipOffice targetOff = new() { Id = 21, AipRecordId = 2, RefCode = "1000-000-1-01-010", Name = "PPDO", Sector = "GENERAL" };
@@ -2142,7 +2162,7 @@ public sealed partial class AipServiceTests
             officeConfigSeed: officeConfigs, ldipRecordSeed: [ldipRec], ldipOfficeSeed: [group]);
 
         ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
-            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId, HostCaller());
+            new SeedAipProgramsFromLdipDto(LegacyFy, 7, "GENERAL", [80]), UserId, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal(2, result.Value!.Programs.Count);
@@ -2163,7 +2183,7 @@ public sealed partial class AipServiceTests
 
         // 999 does not belong to group 70.
         ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
-            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80, 999]), UserId, HostCaller());
+            new SeedAipProgramsFromLdipDto(LegacyFy, 7, "GENERAL", [80, 999]), UserId, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2176,7 +2196,7 @@ public sealed partial class AipServiceTests
     {
         AipRecord targetRec = new()
         {
-            Id = 2, FiscalYear = 2028, EntrySource = "Manual",
+            Id = 2, FiscalYear = LegacyFy, EntrySource = "Manual",
             UploadedById = UserId, UploadedAt = DateTime.UtcNow, Status = PlanningStatus.Draft,
         };
         AipOffice targetOff = new() { Id = 21, AipRecordId = 2, RefCode = "1000-000-1-01-010", Name = "PPDO", Sector = "GENERAL" };
@@ -2192,7 +2212,7 @@ public sealed partial class AipServiceTests
             officeConfigSeed: officeConfigs, ldipRecordSeed: [ldipRec], ldipOfficeSeed: [group]);
 
         ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
-            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId, HostCaller());
+            new SeedAipProgramsFromLdipDto(LegacyFy, 7, "GENERAL", [80]), UserId, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2214,7 +2234,7 @@ public sealed partial class AipServiceTests
             [], [], officeConfigSeed: officeConfigs, ldipRecordSeed: [ldipRec], ldipOfficeSeed: [group]);
 
         ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
-            new SeedAipProgramsFromLdipDto(2028, 7, "SOCIAL", [80]), UserId, HostCaller());
+            new SeedAipProgramsFromLdipDto(LegacyFy, 7, "SOCIAL", [80]), UserId, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2228,7 +2248,7 @@ public sealed partial class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], officeConfigSeed: officeConfigs);
 
         ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
-            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", []), UserId, HostCaller());
+            new SeedAipProgramsFromLdipDto(LegacyFy, 7, "GENERAL", []), UserId, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2240,7 +2260,7 @@ public sealed partial class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
         ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
-            new SeedAipProgramsFromLdipDto(2028, 999, "GENERAL", [80]), UserId, HostCaller());
+            new SeedAipProgramsFromLdipDto(LegacyFy, 999, "GENERAL", [80]), UserId, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
@@ -2259,7 +2279,7 @@ public sealed partial class AipServiceTests
 
         // Request uses uppercase "GENERAL" (AIP's own convention) — must still match.
         ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
-            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId, HostCaller());
+            new SeedAipProgramsFromLdipDto(LegacyFy, 7, "GENERAL", [80]), UserId, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal("GENERAL", result.Value!.Sector); // stored uppercase on the AIP side
@@ -2299,7 +2319,7 @@ public sealed partial class AipServiceTests
             ldipOfficeSeed: [olderGroup, archivedGroup, newestGroup]);
 
         ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
-            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId, HostCaller());
+            new SeedAipProgramsFromLdipDto(LegacyFy, 7, "GENERAL", [80]), UserId, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal("Newest Program", result.Value!.Programs.Single().Name);
@@ -2342,7 +2362,7 @@ public sealed partial class AipServiceTests
             ldipOfficeSeed: [archivedOwnGroup, uploadGroup, otherOfficeGroup]);
 
         ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
-            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [90]), UserId, HostCaller());
+            new SeedAipProgramsFromLdipDto(LegacyFy, 7, "GENERAL", [90]), UserId, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal("Uploaded Program", result.Value!.Programs.Single().Name);
@@ -2366,7 +2386,7 @@ public sealed partial class AipServiceTests
             ldipOfficeSeed: [ownGroup, uploadGroup]);
 
         ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
-            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId, HostCaller());
+            new SeedAipProgramsFromLdipDto(LegacyFy, 7, "GENERAL", [80]), UserId, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal("Own Program", result.Value!.Programs.Single().Name); // Tier 1, not the upload doc
@@ -2384,7 +2404,7 @@ public sealed partial class AipServiceTests
             [], [], officeConfigSeed: officeConfigs, ldipRecordSeed: [uploadRec], ldipOfficeSeed: [uploadGroup]);
 
         ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
-            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [90]), UserId, HostCaller());
+            new SeedAipProgramsFromLdipDto(LegacyFy, 7, "GENERAL", [90]), UserId, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);

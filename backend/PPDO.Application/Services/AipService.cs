@@ -300,6 +300,14 @@ public sealed class AipService : IAipService
     public async Task<ServiceResult<AipRecordDto>> ConfirmImportAsync(
         AipImportConfirmDto dto, Guid uploadedById, CancellationToken ct = default)
     {
+        // ⚠️ V18-37 — the workbook carries every office in one file, so an import is legacy-shaped
+        // by construction and there is no year from FY2028 on that can accept one. V18-38 disables
+        // the button; this is the server-side half and has to stand on its own, because a disabled
+        // button is a courtesy and not a guard. Placed before the re-upload branch too: replacing
+        // a record's hierarchy from a workbook is just as shape-bound as creating one.
+        if (AipShape.Mismatch(dto.FiscalYear, officeId: null) is string shapeError)
+            return ServiceResult<AipRecordDto>.BadRequest(shapeError);
+
         // Load funding source lookup for snapshot population — needed by both paths below.
         IReadOnlyList<FundingSource> fsList = await _fsRepo.GetAllAsync(ct);
         Dictionary<string, FundingSource> fsDict =
@@ -442,6 +450,14 @@ public sealed class AipService : IAipService
         // An office id means an office-owned record; its absence means the legacy multi-office
         // one. PPDO takes the same path as every other office — there is deliberately no branch
         // for it here, and adding one is what tracker B12-b ruled out.
+        //
+        // V18-37: the caller no longer gets a free choice — the fiscal year decides. Checked
+        // BEFORE the office lookup on purpose: a caller asking for an office-owned FY2027 record
+        // has made one mistake, the year, and answering "office 999 not found" (which may also be
+        // true) would send them off to fix the wrong thing.
+        if (AipShape.Mismatch(dto.FiscalYear, dto.OfficeConfigId) is string shapeError)
+            return ServiceResult<AipRecordDto>.BadRequest(shapeError);
+
         Office? owningOffice = null;
         if (dto.OfficeConfigId is int officeConfigId)
         {
@@ -509,6 +525,18 @@ public sealed class AipService : IAipService
         if (!OfficeScope.Resolve(caller).Permits(office.Id))
             return ServiceResult<AipOfficeDto>.NotFound($"Office {dto.OfficeConfigId} not found or inactive.");
 
+        // ⚠️ V18-37 — the other door into a shape change, and the one no create-path gate can see.
+        // Nothing here "converts" a record, but add two different offices to an office-owned record
+        // and it spans several, which IS the legacy shape, reached a node at a time.
+        //
+        // The scope check above does not cover this: it stops a GUEST office reaching another
+        // office's record and says nothing about the host-office admin, who legitimately sees every
+        // office and would otherwise be free to do exactly this. BadRequest rather than the
+        // NotFound used just above — that one hides existence; this caller may see the record and
+        // is being told the operation is wrong for its shape.
+        if (AipShape.RefuseForeignOffice(rec, office.Id, office.OfficeName) is string shapeError)
+            return ServiceResult<AipOfficeDto>.BadRequest(shapeError);
+
         if (string.IsNullOrWhiteSpace(office.OfficeRefCode))
             return ServiceResult<AipOfficeDto>.BadRequest(
                 $"Office '{office.OfficeName}' has no AIP reference code configured. Set it in Office Config first.");
@@ -547,6 +575,18 @@ public sealed class AipService : IAipService
     public async Task<ServiceResult<AipOfficeDto>> CopyOfficeFromPriorYearAsync(
         CopyAipOfficeDto dto, Guid createdById, User caller, CancellationToken ct = default)
     {
+        // ⚠️ V18-37, and this one was a live leak rather than a hypothetical. The find-or-create
+        // below builds its target record with no owner set, so before this guard, carrying forward
+        // into FY2028 wrote a legacy-shape record into a year that must not have one — silently,
+        // with nothing downstream positioned to notice. Carry-forward into the new shape is Phase 3
+        // work; until it exists the refusal is the honest answer.
+        //
+        // First statement in the method, deliberately: a refusal that arrives after the record has
+        // been added leaves the wrong-shaped row behind and merely reports an error about it, which
+        // is the original bug with a message attached.
+        if (AipShape.Mismatch(dto.TargetFiscalYear, officeId: null) is string shapeError)
+            return ServiceResult<AipOfficeDto>.BadRequest(shapeError);
+
         if (dto.ProgramIds is null || dto.ProgramIds.Count == 0)
             return ServiceResult<AipOfficeDto>.BadRequest("Select at least one program to copy.");
 
@@ -743,6 +783,14 @@ public sealed class AipService : IAipService
     public async Task<ServiceResult<AipOfficeDto>> SeedProgramsFromLdipAsync(
         SeedAipProgramsFromLdipDto dto, Guid createdById, User caller, CancellationToken ct = default)
     {
+        // ⚠️ V18-37 — the same live leak as CopyOfficeFromPriorYearAsync, for the same reason: the
+        // find-or-create below constructs an unowned record. Note that the DTO already names an
+        // office, which makes this look like it could simply own the record it creates — it cannot,
+        // because that office is the LDIP SOURCE being read from, not a decision about who owns the
+        // target. Conflating the two is how this path would acquire the new shape by accident.
+        if (AipShape.Mismatch(dto.TargetFiscalYear, officeId: null) is string shapeError)
+            return ServiceResult<AipOfficeDto>.BadRequest(shapeError);
+
         if (dto.LdipProgramIds is null || dto.LdipProgramIds.Count == 0)
             return ServiceResult<AipOfficeDto>.BadRequest("Select at least one program to seed.");
 

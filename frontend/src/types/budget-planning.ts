@@ -92,6 +92,16 @@ export interface AipImportConfirmRequest {
 
 export interface CreateAipRecordRequest {
   fiscalYear: number;
+  /**
+   * The office this record is for. Chooses the record SHAPE (V18-40), and from FY2028 on it is
+   * required — the fiscal year decides which shape is legal and the server refuses the mismatch
+   * (V18-37). Omit it for a historical year, where a record spans every office and has no owner.
+   *
+   * ⚠️ No UI supplies this yet: the office picker is Phase 3 (AIP entry), so selecting FY2028 in
+   * the manual-create form currently gets a server refusal naming the year. That is the honest
+   * state of a clean break part-built, not a bug to route around by loosening the gate.
+   */
+  officeConfigId?: number;
 }
 
 export interface CreateAipOfficeRequest {
