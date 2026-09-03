@@ -47,7 +47,23 @@ without migrating historical data.
    one. But `AipActivity.Total` means **pesos on every row regardless of fiscal year**. Anyone who
    reads "clean break" as covering units will reintroduce exactly the bug §5.3 exists to remove.
 
-4. **PPDO gets an ordinary office record** (tracker B12-b, 2026-08-26). No per-division AIP records,
+4. ✅ **Shipped 2026-09-03 (V18-40).** `AipRecord.OfficeId` → `offices.id`, nullable, Restrict,
+   indexed on `(office_id, fiscal_year)`. Two shapes now live in one table: **office-owned**
+   (owner set — the FY≥2028 shape) and **legacy multi-office** (owner null).
+
+   ⚠️ **That null is permanent and correct, not a backfill that has yet to run** — the opposite of
+   `AipOffice.OfficeId`, whose nulls are unmatched rows to be resolved. A pre-FY2028 record spans
+   every office in the province, so there is no owner to fill in. Hence no backfill in the
+   migration, and no conversion between shapes (V18-37).
+
+   ⚠️ **The create guard had to become shape-aware.** "Is there an AIP for FY 2028" was the right
+   question while one record spanned every office; under the office-owned shape it reports the
+   *first* office's record as a conflict for every other office in the province. Office-owned
+   creates ask `GetByOfficeAndFiscalYearAsync` instead. The index is deliberately **not unique** —
+   the rule counts only non-Archived records, which an index cannot express, so the service owns it
+   (the same call `LdipRecord` made).
+
+   **PPDO gets an ordinary office record** (tracker B12-b, 2026-08-26). No per-division AIP records,
    no division column on `AipOffice`, and divisions never print. Division of work is carried on the
    **program**, through the existing `ProgramDivision` map, exactly as WFP does.
 
@@ -371,6 +387,12 @@ is the class where a wrong choice compiles cleanly and leaks data.
 ## 10. Acceptance checklist
 
 ```
+- [x] An FY2028 record belongs to exactly one office (V18-40)
+- [x] PPDO's record is structurally identical to a guest office's — no branch anywhere, pinned by
+      a test that asserts the two creates produce the same shape
+- [x] No division column exists on aip_offices OR aip_records — asserted against the EF model, so
+      adding one fails the build rather than passing review
+- [x] Two offices can each hold a record for the same fiscal year; one office cannot hold two
 - [x] Every scoped AIP read filters on aip_offices.office_id; no RefCode.EndsWith remains on a
       scoping path (grep it). ONE deliberate use survives, in AipOfficeOwnership.ResolveOfficeId —
       it ESTABLISHES the FK for a newly uploaded office and is not a read path

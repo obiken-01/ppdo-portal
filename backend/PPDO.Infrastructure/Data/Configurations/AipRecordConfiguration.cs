@@ -47,10 +47,26 @@ public sealed class AipRecordConfiguration : IEntityTypeConfiguration<AipRecord>
             .HasColumnName("source_id");
 
         // Source chain index (amendment/supplemental tracing).
+        builder.Property(a => a.OfficeId)
+            .HasColumnName("office_id");
+
+        // The read path for the office-owned shape: "this office's AIP for this fiscal year"
+        // (V18-40). NOT unique — the one-per-(office, FY) rule counts only non-Archived records,
+        // which a database index cannot express, so the service owns it. Same call LdipRecord made.
+        builder.HasIndex(a => new { a.OfficeId, a.FiscalYear })
+            .HasDatabaseName("IX_aip_records_office_id_fiscal_year");
+
         builder.HasIndex(a => a.SourceId)
             .HasDatabaseName("IX_aip_source_id");
 
         // Restrict: never delete a user who has uploaded planning records.
+        // Restrict: deleting a config office must never delete that office's AIP history.
+        builder.HasOne(a => a.Office)
+            .WithMany()
+            .HasForeignKey(a => a.OfficeId)
+            .HasConstraintName("FK_aip_records_offices_office_id")
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.HasOne(a => a.UploadedBy)
             .WithMany()
             .HasForeignKey(a => a.UploadedById)

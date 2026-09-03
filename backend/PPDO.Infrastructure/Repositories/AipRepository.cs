@@ -119,6 +119,16 @@ public sealed class AipRepository : Repository<AipRecord>, IAipRepository
     }
 
     /// <inheritdoc />
+    public async Task<AipRecord?> GetByOfficeAndFiscalYearAsync(
+        int officeId, int fiscalYear, CancellationToken ct = default)
+        => await _context.Set<AipRecord>()
+            .Where(r => r.OfficeId == officeId
+                     && r.FiscalYear == fiscalYear
+                     && r.Status != PlanningStatus.Archived)
+            .OrderBy(r => r.Id)
+            .FirstOrDefaultAsync(ct);
+
+    /// <inheritdoc />
     public async Task<AipRecord?> GetLatestByFiscalYearAsync(int fiscalYear, CancellationToken ct = default)
         => await _context.Set<AipRecord>()
             .Where(r => r.FiscalYear == fiscalYear && r.Status != PlanningStatus.Archived)

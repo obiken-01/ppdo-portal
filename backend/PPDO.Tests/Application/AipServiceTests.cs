@@ -202,6 +202,16 @@ public sealed class AipServiceTests
         aipRepo.Setup(r => r.GetActivityByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((int id, CancellationToken _) => actList.FirstOrDefault(a => a.Id == id));
 
+        // GetByOfficeAndFiscalYearAsync (V18-40) — the office-owned shape's conflict question.
+        // Mirrors the real implementation: non-Archived, that office, that year.
+        aipRepo.Setup(r => r.GetByOfficeAndFiscalYearAsync(
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int officeId, int fy, CancellationToken _) => aipSeed
+                .Where(r => r.OfficeId == officeId && r.FiscalYear == fy
+                         && r.Status != PlanningStatus.Archived)
+                .OrderBy(r => r.Id)
+                .FirstOrDefault());
+
         // GetLatestByFiscalYearAsync (RAL-165) — mirrors AipRepository's real implementation:
         // the single non-Archived record for the year, ordered by Id ascending.
         aipRepo.Setup(r => r.GetLatestByFiscalYearAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
@@ -357,6 +367,89 @@ public sealed class AipServiceTests
         await sut.GetByIdAsync(7, HostCaller(), CancellationToken.None);
 
         aipRepo.Verify(r => r.GetOfficesByAipIdAsync(7, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // ── Record shape: office-owned vs legacy multi-office (V18-40 / PPDO-39) ──
+
+    [Fact]
+    public async Task CreateManualRecord_WithAnOffice_BelongsToThatOfficeAlone()
+    {
+        List<Office> offices = [MakeOffice(7, "PPDO", "01-010")];
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], officeConfigSeed: offices);
+
+        ServiceResult<AipRecordDto> result = await sut.CreateManualRecordAsync(
+            new CreateAipRecordDto(2028, OfficeConfigId: 7), Guid.NewGuid(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(7, result.Value!.OfficeId);
+    }
+
+    [Fact]
+    public async Task CreateManualRecord_WithoutAnOffice_IsTheLegacyMultiOfficeShape()
+    {
+        // Null is that shape's permanent, correct value — a record spanning every office has no
+        // single owner. It is not a backfill waiting to happen.
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
+
+        ServiceResult<AipRecordDto> result = await sut.CreateManualRecordAsync(
+            new CreateAipRecordDto(2027), Guid.NewGuid(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Value!.OfficeId);
+    }
+
+    [Fact]
+    public async Task CreateManualRecord_PpdoAndAGuestOffice_TakeTheIdenticalPath()
+    {
+        // ⚠️ The decision tracker B12-b protects. PPDO must be an ORDINARY office here — no
+        // per-division records, no branch. If a special case ever creeps in, these two assertions
+        // stop matching each other and every downstream feature starts carrying two code paths.
+        List<Office> offices = [MakeOffice(7, "PPDO", "01-010"), MakeOffice(8, "GSO", "01-015")];
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], officeConfigSeed: offices);
+        Guid by = Guid.NewGuid();
+
+        ServiceResult<AipRecordDto> ppdo = await sut.CreateManualRecordAsync(
+            new CreateAipRecordDto(2028, OfficeConfigId: 7), by, CancellationToken.None);
+        ServiceResult<AipRecordDto> gso = await sut.CreateManualRecordAsync(
+            new CreateAipRecordDto(2028, OfficeConfigId: 8), by, CancellationToken.None);
+
+        Assert.True(ppdo.IsSuccess);
+        Assert.True(gso.IsSuccess);
+        Assert.Equal(7, ppdo.Value!.OfficeId);
+        Assert.Equal(8, gso.Value!.OfficeId);
+        Assert.Equal(ppdo.Value.EntrySource, gso.Value.EntrySource);
+        Assert.Equal(ppdo.Value.Status,      gso.Value.Status);
+    }
+
+    [Fact]
+    public async Task CreateManualRecord_SameOfficeTwiceInOneFiscalYear_IsRefused()
+    {
+        AipRecord existing = new()
+        {
+            Id = 60, FiscalYear = 2028, OfficeId = 7, EntrySource = "Manual",
+            UploadedById = Guid.NewGuid(), UploadedAt = DateTime.UtcNow, Status = "Draft",
+        };
+        List<Office> offices = [MakeOffice(7, "PPDO", "01-010")];
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([existing], [], officeConfigSeed: offices);
+
+        ServiceResult<AipRecordDto> result = await sut.CreateManualRecordAsync(
+            new CreateAipRecordDto(2028, OfficeConfigId: 7), Guid.NewGuid(), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("PPDO", result.Error!);
+    }
+
+    [Fact]
+    public async Task CreateManualRecord_UnknownOffice_IsRefused_RatherThanCreatingAnUnownedRecord()
+    {
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], officeConfigSeed: []);
+
+        ServiceResult<AipRecordDto> result = await sut.CreateManualRecordAsync(
+            new CreateAipRecordDto(2028, OfficeConfigId: 999), Guid.NewGuid(), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
     }
 
     // ── Office scoping on the read path (V18-39 / PPDO-38) ────────────────────

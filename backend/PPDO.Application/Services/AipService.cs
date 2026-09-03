@@ -438,21 +438,40 @@ public sealed class AipService : IAipService
     public async Task<ServiceResult<AipRecordDto>> CreateManualRecordAsync(
         CreateAipRecordDto dto, Guid createdById, CancellationToken ct = default)
     {
-        // Same guard as ConfirmImportAsync's create path — one active AIP per fiscal year,
-        // regardless of whether it originated from an upload or manual entry.
-        AipRecord? conflict = await _aipRepo.GetLatestByFiscalYearAsync(dto.FiscalYear, ct);
+        // ── Which shape? (V18-40) ─────────────────────────────────────────────
+        // An office id means an office-owned record; its absence means the legacy multi-office
+        // one. PPDO takes the same path as every other office — there is deliberately no branch
+        // for it here, and adding one is what tracker B12-b ruled out.
+        Office? owningOffice = null;
+        if (dto.OfficeConfigId is int officeConfigId)
+        {
+            owningOffice = await _officeConfigRepo.GetByIdAsync(officeConfigId, ct);
+            if (owningOffice is null || !owningOffice.IsActive)
+                return ServiceResult<AipRecordDto>.NotFound(
+                    $"Office {officeConfigId} not found or inactive.");
+        }
+
+        // ⚠️ The conflict question differs by shape. For an office-owned record it must be scoped
+        // to that office: asking "is there any AIP for FY 2028" would report the FIRST office's
+        // record as a conflict for every other office in the province.
+        AipRecord? conflict = owningOffice is not null
+            ? await _aipRepo.GetByOfficeAndFiscalYearAsync(owningOffice.Id, dto.FiscalYear, ct)
+            : await _aipRepo.GetLatestByFiscalYearAsync(dto.FiscalYear, ct);
+
         if (conflict is not null)
         {
             string hint = conflict.Status == PlanningStatus.Draft
                 ? "Archive the existing record first before creating a new one."
                 : "The existing record must be unlocked by an admin before a new one is allowed.";
+            string scope = owningOffice is not null ? $"for {owningOffice.OfficeName} " : string.Empty;
             return ServiceResult<AipRecordDto>.BadRequest(
-                $"An AIP for FY {dto.FiscalYear} already exists with status '{conflict.Status}'. {hint}");
+                $"An AIP {scope}for FY {dto.FiscalYear} already exists with status '{conflict.Status}'. {hint}");
         }
 
         AipRecord rec = new()
         {
             FiscalYear   = dto.FiscalYear,
+            OfficeId     = owningOffice?.Id,
             EntrySource  = "Manual",
             UploadedById = createdById,
             UploadedAt   = DateTime.UtcNow,
@@ -461,7 +480,7 @@ public sealed class AipService : IAipService
         await _aipRepo.AddAsync(rec, ct);
         await _aipRepo.SaveChangesAsync(ct);
         await _audit.LogAsync("aip_records", rec.Id, AuditAction.Create,
-            null, new { rec.FiscalYear, rec.EntrySource, rec.Status }, ct);
+            null, new { rec.FiscalYear, rec.OfficeId, rec.EntrySource, rec.Status }, ct);
 
         return ServiceResult<AipRecordDto>.Ok(MapToDto(rec));
     }
@@ -1547,7 +1566,7 @@ public sealed class AipService : IAipService
     // ── Mapping ───────────────────────────────────────────────────────────────
 
     private static AipRecordDto MapToDto(AipRecord r) => new(
-        r.Id, r.FiscalYear, r.EntrySource, r.OriginalFilename,
+        r.Id, r.FiscalYear, r.OfficeId, r.EntrySource, r.OriginalFilename,
         r.UploadedById, r.UploadedAt, r.Status, r.LdipId, r.SourceId,
         OfficeCount: 0, UploadedByName: null);
 
@@ -1555,7 +1574,7 @@ public sealed class AipService : IAipService
         AipRecord r,
         Dictionary<int, int> officeCounts,
         IReadOnlyDictionary<Guid, string> userNames) => new(
-        r.Id, r.FiscalYear, r.EntrySource, r.OriginalFilename,
+        r.Id, r.FiscalYear, r.OfficeId, r.EntrySource, r.OriginalFilename,
         r.UploadedById, r.UploadedAt, r.Status, r.LdipId, r.SourceId,
         OfficeCount: officeCounts.GetValueOrDefault(r.Id, 0),
         UploadedByName: userNames.GetValueOrDefault(r.UploadedById));
