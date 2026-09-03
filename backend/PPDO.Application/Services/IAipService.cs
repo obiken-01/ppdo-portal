@@ -11,14 +11,14 @@ namespace PPDO.Application.Services;
 /// </summary>
 public interface IAipService
 {
-    Task<IReadOnlyList<AipRecordDto>> GetAllAsync(int? fiscalYear, string? status, CancellationToken ct = default);
-    Task<ServiceResult<AipRecordDetailDto>> GetByIdAsync(int id, CancellationToken ct = default);
+    Task<IReadOnlyList<AipRecordDto>> GetAllAsync(int? fiscalYear, string? status, User caller, CancellationToken ct = default);
+    Task<ServiceResult<AipRecordDetailDto>> GetByIdAsync(int id, User caller, CancellationToken ct = default);
 
     /// <summary>
     /// Returns a slim hierarchy (Id, RefCode, Name, amounts, funding source) for the WFP
     /// activity grid. Omits heavy free-text fields — ~10× smaller than GetByIdAsync.
     /// </summary>
-    Task<ServiceResult<AipRecordSummaryDto>> GetSummaryByIdAsync(int id, CancellationToken ct = default);
+    Task<ServiceResult<AipRecordSummaryDto>> GetSummaryByIdAsync(int id, User caller, CancellationToken ct = default);
 
     /// <summary>
     /// Parses an XLSM stream and returns a preview without persisting anything.

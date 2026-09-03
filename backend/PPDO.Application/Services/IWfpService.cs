@@ -1,3 +1,4 @@
+using PPDO.Domain.Entities;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
 
@@ -47,7 +48,7 @@ public interface IWfpService
     /// Loads the parent AIP hierarchy and config-office name internally.
     /// Returns <c>NotFound</c> if the WFP or its AIP record does not exist.
     /// </summary>
-    Task<ServiceResult<byte[]>> ExportReportAsync(int id, CancellationToken ct = default);
+    Task<ServiceResult<byte[]>> ExportReportAsync(int id, User caller, CancellationToken ct = default);
 
     /// <summary>Wipes all WFP records (cascade removes activities/lines). Returns deleted count.</summary>
     Task<int> PurgeAllAsync(CancellationToken ct = default);

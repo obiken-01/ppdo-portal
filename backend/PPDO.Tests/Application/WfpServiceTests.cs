@@ -4,6 +4,7 @@ using PPDO.Application.DTOs.BudgetPlanning;
 using PPDO.Application.DTOs.Config;
 using PPDO.Application.Services;
 using PPDO.Domain.Entities;
+using PPDO.Domain.Enums;
 using PPDO.Domain.Interfaces;
 
 namespace PPDO.Tests.Application;
@@ -17,6 +18,22 @@ namespace PPDO.Tests.Application;
 /// </summary>
 public sealed class WfpServiceTests
 {
+    /// <summary>
+    /// The caller for an export. A host-office Admin, so the AIP hierarchy the export reads is
+    /// unnarrowed — these assertions are about the workbook, not about scoping (V18-39).
+    /// </summary>
+    private static User ExportCaller() => new()
+    {
+        Id = Guid.NewGuid(), Username = "ppdo.admin", PasswordHash = "h", FullName = "PPDO Admin",
+        Role = UserRole.Admin, OfficeId = 1, DivisionId = null,
+        Office = new Office
+        {
+            Id = 1, OfficeCode = "PPDO", OfficeName = "PPDO", IsHostOffice = true, IsActive = true,
+            CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+        },
+        IsActive = true, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+    };
+
     private static readonly Guid UserId = Guid.NewGuid();
 
     // v1.4.3 (RAL-154): the legacy division-budget check resolves General Fund via GetGeneralFundIdAsync.
@@ -176,7 +193,7 @@ public sealed class WfpServiceTests
         Mock<IAllocationService> allocSvc   = allocationMock ?? new();
         allocSvc.Setup(s => s.GetGeneralFundIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(GfFundId);
 
-        aipSvc.Setup(s => s.GetByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        aipSvc.Setup(s => s.GetByIdAsync(It.IsAny<int>(), It.IsAny<User>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(ServiceResult<AipRecordDetailDto>.NotFound("AIP not found."));
         officeSvc.Setup(s => s.GetByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(ServiceResult<OfficeDto>.NotFound("Office not found."));
@@ -649,7 +666,7 @@ public sealed class WfpServiceTests
     {
         var (sut, _, _, _, _, _) = Build([], [], [], []);
 
-        ServiceResult<byte[]> result = await sut.ExportReportAsync(999, CancellationToken.None);
+        ServiceResult<byte[]> result = await sut.ExportReportAsync(999, ExportCaller(), CancellationToken.None);
 
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
     }
@@ -661,7 +678,7 @@ public sealed class WfpServiceTests
         WfpRecord rec = WfpRec(1, PlanningStatus.Draft, aipId: 2, officeId: 3);
         var (sut, _, _, _, _, _) = Build([rec], [], [], []);
 
-        ServiceResult<byte[]> result = await sut.ExportReportAsync(1, CancellationToken.None);
+        ServiceResult<byte[]> result = await sut.ExportReportAsync(1, ExportCaller(), CancellationToken.None);
 
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
     }
@@ -867,7 +884,7 @@ public sealed class WfpServiceTests
             DateTime.UtcNow, "Final", null, null, []);
 
         Mock<IAipService> aipSvc = new();
-        aipSvc.Setup(s => s.GetByIdAsync(2, It.IsAny<CancellationToken>()))
+        aipSvc.Setup(s => s.GetByIdAsync(2, It.IsAny<User>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(ServiceResult<AipRecordDetailDto>.Ok(aipDetail));
 
         OfficeDto officeDto = new(3, "PPDO", "Provincial Planning and Development Office", null, true);
@@ -895,7 +912,7 @@ public sealed class WfpServiceTests
             aipSvc.Object, officeSvc.Object, excelSvc.Object, allocSvc.Object, ceilingSvc.Object,
             expenditureRepo.Object);
 
-        ServiceResult<byte[]> result = await sut.ExportReportAsync(42, CancellationToken.None);
+        ServiceResult<byte[]> result = await sut.ExportReportAsync(42, ExportCaller(), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(expectedBytes, result.Value!);
