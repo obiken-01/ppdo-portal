@@ -370,7 +370,7 @@ public sealed class WfpService : IWfpService
     // ── Export (RAL-79) ───────────────────────────────────────────────────────
 
     public async Task<ServiceResult<byte[]>> ExportReportAsync(
-        int id, CancellationToken ct = default)
+        int id, User caller, CancellationToken ct = default)
     {
         ServiceResult<WfpRecordDetailDto> wfpResult = await GetByIdAsync(id, ct);
         if (!wfpResult.IsSuccess)
@@ -378,7 +378,7 @@ public sealed class WfpService : IWfpService
 
         WfpRecordDetailDto wfp = wfpResult.Value!;
 
-        ServiceResult<AipRecordDetailDto> aipResult = await _aip.GetByIdAsync(wfp.AipRecordId, ct);
+        ServiceResult<AipRecordDetailDto> aipResult = await _aip.GetByIdAsync(wfp.AipRecordId, caller, ct);
         if (!aipResult.IsSuccess)
             return ServiceResult<byte[]>.NotFound("Parent AIP record not found.");
 

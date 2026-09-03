@@ -30,6 +30,7 @@ public sealed class AipService : IAipService
     private readonly IRepository<AipProject>  _projectRepo;
     private readonly IRepository<AipActivity> _activityRepo;
     private readonly ILdipRepository _ldipRepo;
+    private readonly IAllocationRepository _allocationRepo;
 
     public AipService(
         IAipRepository             aipRepo,
@@ -44,7 +45,8 @@ public sealed class AipService : IAipService
         IRepository<AipProgram>  programRepo,
         IRepository<AipProject>  projectRepo,
         IRepository<AipActivity> activityRepo,
-        ILdipRepository ldipRepo)
+        ILdipRepository ldipRepo,
+        IAllocationRepository allocationRepo)
     {
         _aipRepo    = aipRepo;
         _fsRepo     = fsRepo;
@@ -59,12 +61,24 @@ public sealed class AipService : IAipService
         _projectRepo      = projectRepo;
         _activityRepo     = activityRepo;
         _ldipRepo         = ldipRepo;
+        _allocationRepo   = allocationRepo;
     }
 
     // ── Read ──────────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// The host office's <see cref="ProgramDivision"/> rows, loaded ONLY when the division axis
+    /// will actually narrow something (V18-39). A guest-office caller can never be narrowed by
+    /// division, so issuing this query for them would be a round trip whose result is discarded.
+    /// </summary>
+    private async Task<IReadOnlyList<ProgramDivision>> LoadHostAssignmentsAsync(
+        AipReadScope scope, CancellationToken ct)
+        => scope.HostOfficeIdForAssignments is int hostOfficeId
+            ? await _allocationRepo.GetProgramDivisionsByOfficeIdAsync(hostOfficeId, ct)
+            : [];
+
     public async Task<IReadOnlyList<AipRecordDto>> GetAllAsync(
-        int? fiscalYear, string? status, CancellationToken ct = default)
+        int? fiscalYear, string? status, User caller, CancellationToken ct = default)
     {
         IEnumerable<AipRecord> q = await _aipRepo.GetAllAsync(ct);
         if (fiscalYear.HasValue) q = q.Where(r => r.FiscalYear == fiscalYear.Value);
@@ -75,7 +89,13 @@ public sealed class AipService : IAipService
 
         // Scope office count to only the AIP ids being returned (not the whole table).
         List<int> aipIds = records.Select(r => r.Id).ToList();
-        IReadOnlyList<AipOffice> offices = await _aipRepo.GetOfficesByAipIdsAsync(aipIds, ct);
+        IReadOnlyList<AipOffice> allOffices = await _aipRepo.GetOfficesByAipIdsAsync(aipIds, ct);
+
+        // ...and then to the offices this caller may see (V18-39). Without it a guest office is
+        // told the record contains 37 offices when it can open exactly one of them — a misleading
+        // count rather than a data leak, but it comes from the same unscoped read.
+        IReadOnlyList<AipOffice> offices = AipReadScope.Resolve(caller).FilterOffices(allOffices);
+
         Dictionary<int, int> officeCounts = offices
             .GroupBy(o => o.AipRecordId)
             .ToDictionary(g => g.Key, g => g.Count());
@@ -88,16 +108,25 @@ public sealed class AipService : IAipService
     }
 
     public async Task<ServiceResult<AipRecordDetailDto>> GetByIdAsync(
-        int id, CancellationToken ct = default)
+        int id, User caller, CancellationToken ct = default)
     {
         AipRecord? rec = await _aipRepo.GetByIntIdAsync(id, ct);
         if (rec is null)
             return ServiceResult<AipRecordDetailDto>.NotFound($"AIP record {id} not found.");
 
         // Load each hierarchy level scoped to the ids from the level above.
-        IReadOnlyList<AipOffice>   offices  = await _aipRepo.GetOfficesByAipIdAsync(id, ct);
+        IReadOnlyList<AipOffice> allOffices = await _aipRepo.GetOfficesByAipIdAsync(id, ct);
+
+        // ⚠️ V18-39 — until this ticket, this endpoint returned EVERY office's full AIP hierarchy
+        // to any caller with Budget Planning access. No production guest-office accounts existed
+        // yet, which is the only reason that was not a live leak.
+        AipReadScope scope = AipReadScope.Resolve(caller);
+        IReadOnlyList<AipOffice> offices = scope.FilterOffices(allOffices);
+
         List<int> officeIds  = offices.Select(o => o.Id).ToList();
-        IReadOnlyList<AipProgram>  programs = await _aipRepo.GetProgramsByOfficeIdsAsync(officeIds, ct);
+        IReadOnlyList<AipProgram> allPrograms = await _aipRepo.GetProgramsByOfficeIdsAsync(officeIds, ct);
+        IReadOnlyList<AipProgram> programs = scope.FilterPrograms(
+            allPrograms, offices, await LoadHostAssignmentsAsync(scope, ct));
         List<int> programIds = programs.Select(p => p.Id).ToList();
         IReadOnlyList<AipProject>  projects = await _aipRepo.GetProjectsByProgramIdsAsync(programIds, ct);
         List<int> projectIds = projects.Select(j => j.Id).ToList();
@@ -134,15 +163,23 @@ public sealed class AipService : IAipService
     }
 
     public async Task<ServiceResult<AipRecordSummaryDto>> GetSummaryByIdAsync(
-        int id, CancellationToken ct = default)
+        int id, User caller, CancellationToken ct = default)
     {
         AipRecord? rec = await _aipRepo.GetByIntIdAsync(id, ct);
         if (rec is null)
             return ServiceResult<AipRecordSummaryDto>.NotFound($"AIP record {id} not found.");
 
-        IReadOnlyList<AipOffice>   offices  = await _aipRepo.GetOfficesByAipIdAsync(id, ct);
+        // Same two-axis scope as GetByIdAsync — this is the grid the detail page actually renders,
+        // so leaving it unscoped would defeat scoping the heavier sibling (V18-39).
+        AipReadScope scope = AipReadScope.Resolve(caller);
+        IReadOnlyList<AipOffice> offices =
+            scope.FilterOffices(await _aipRepo.GetOfficesByAipIdAsync(id, ct));
+
         List<int> officeIds  = offices.Select(o => o.Id).ToList();
-        IReadOnlyList<AipProgram>  programs = await _aipRepo.GetProgramsByOfficeIdsAsync(officeIds, ct);
+        IReadOnlyList<AipProgram> programs = scope.FilterPrograms(
+            await _aipRepo.GetProgramsByOfficeIdsAsync(officeIds, ct),
+            offices,
+            await LoadHostAssignmentsAsync(scope, ct));
         List<int> programIds = programs.Select(p => p.Id).ToList();
         IReadOnlyList<AipProject>  projects = await _aipRepo.GetProjectsByProgramIdsAsync(programIds, ct);
         List<int> projectIds = projects.Select(j => j.Id).ToList();

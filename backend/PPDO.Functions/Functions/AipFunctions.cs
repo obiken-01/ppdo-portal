@@ -48,7 +48,7 @@ public sealed class AipFunctions
         if (denied is not null) return denied;
 
         int? fiscalYear = int.TryParse(req.Query["fiscalYear"], out int fy) ? fy : null;
-        IReadOnlyList<AipRecordDto> data = await _aip.GetAllAsync(fiscalYear, req.Query["status"], ct);
+        IReadOnlyList<AipRecordDto> data = await _aip.GetAllAsync(fiscalYear, req.Query["status"], caller!, ct);
         return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK,
             ApiResponse<IReadOnlyList<AipRecordDto>>.Ok(data), ct);
     }
@@ -62,7 +62,7 @@ public sealed class AipFunctions
         (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
         if (denied is not null) return denied;
 
-        return await ConfigHttp.FromResultAsync(req, await _aip.GetByIdAsync(id, ct), ct);
+        return await ConfigHttp.FromResultAsync(req, await _aip.GetByIdAsync(id, caller!, ct), ct);
     }
 
     // ── GET /api/budget-planning/aip/{id}/summary ─────────────────────────────
@@ -74,7 +74,7 @@ public sealed class AipFunctions
         (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
         if (denied is not null) return denied;
 
-        return await ConfigHttp.FromResultAsync(req, await _aip.GetSummaryByIdAsync(id, ct), ct);
+        return await ConfigHttp.FromResultAsync(req, await _aip.GetSummaryByIdAsync(id, caller!, ct), ct);
     }
 
     // ── POST /api/budget-planning/aip/upload?fiscalYear= ─────────────────────

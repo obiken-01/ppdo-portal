@@ -112,6 +112,25 @@ not the rules.
 | Any user, `office_id` null | Unassigned record | AIP read | `NoOffice` (id 0) → sees nothing. Empty states, not an error (DECISION F) |
 | Cross-office reviewer | `CanReviewAllOffices` | AIP read | Every office, **read-only**, via `OfficeScope.ResolveForReview` — never `Resolve` |
 
+✅ **Shipped 2026-09-03 as `AipReadScope`** (`PPDO.Application/Common/AipReadScope.cs`) — the first
+consumer `BudgetPlanningScope` has ever had. Two findings worth recording:
+
+1. **AIP reads were not scoped at all.** `GetByIdAsync` returned *every* office's full hierarchy to
+   any caller with Budget Planning access, and the handlers bound `caller` without using it. Only
+   the absence of production guest-office accounts kept that from being a live cross-office leak.
+   The list endpoint's office count was unscoped for the same reason.
+2. **The two axes attach to different levels.** Office filters `AipOffice` on its ownership FK;
+   division filters `AipProgram` through `ProgramDivision`, because division of work is carried on
+   the program (§2 decision 4). And the division filter applies **only to the host office's own AIP
+   offices** — a division belongs to an office, so PPDO's internal division of labour says nothing
+   about GSO's programs, and a division-scoped PPDO caller still sees every guest office in full.
+   This matches what `BudgetPlanningDashboardService` already does over `hostAipOfficeIds`.
+
+⚠️ **The AIP *write* paths are still unscoped** — `UpdateOfficeAsync` and siblings check existence
+and Draft status but not ownership, so any caller with Budget Planning access can edit another
+office's AIP node by id. Out of V18-39's scope (reads), filed separately, and it must land before
+guest-office accounts are created.
+
 ⚠️ **`OfficeScope` × `DivisionScope` is genuinely two-axis and is new** (V18-39). WFP applies both
 always; LDIP applies office only. AIP applies office always and division **only when the caller is
 PPDO**. Neither existing resolver expresses that, and `BudgetPlanningScope` — which exists to pair
@@ -379,7 +398,10 @@ is the class where a wrong choice compiles cleanly and leaks data.
       runs stay safe
 - [ ] Uploading an .xlsm for FY2028 is refused with a message naming the fiscal year
 - [ ] Uploading an .xlsm for FY2027 still works unchanged
-- [ ] A guest-office user sees only their office's AIP; a query-string officeId is clamped, not 403
+- [x] A guest-office user sees only their office's AIP
+- [n/a] A query-string officeId is clamped, not 403 — **no AIP read endpoint accepts one.** The
+      read surface is `/aip`, `/aip/{id}` and `/aip/{id}/summary`; scope comes from the JWT, so
+      there is nothing for a caller to supply and nothing to clamp. Recorded rather than invented
 - [ ] A PPDO user's AIP view narrows by division; a guest office's does not
 - [ ] A user with office_id null sees empty states, not an error and not everything
 - [ ] 1644+ tests green; PermissionMatrixTests still passes Matrix_CoversEveryFlagOnThePermissionService

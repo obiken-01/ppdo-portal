@@ -18,6 +18,23 @@ public sealed class AipServiceTests
 {
     private static readonly Guid UserId = Guid.NewGuid();
 
+    /// <summary>
+    /// A host-office (PPDO) Admin — sees every office, narrowed by no division. These tests
+    /// predate V18-39's scoping and assert over the whole hierarchy, so the caller that changes
+    /// nothing is the right one for them. The scope rule itself is pinned by AipReadScopeTests.
+    /// </summary>
+    private static User HostCaller() => new()
+    {
+        Id = Guid.NewGuid(), Username = "ppdo.admin", PasswordHash = "h", FullName = "PPDO Admin",
+        Role = UserRole.Admin, OfficeId = 1, DivisionId = null,
+        Office = new Office
+        {
+            Id = 1, OfficeCode = "PPDO", OfficeName = "PPDO", IsHostOffice = true, IsActive = true,
+            CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+        },
+        IsActive = true, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+    };
+
     private static AipRecord Rec(int id, string status = "Draft") => new()
     {
         Id = id, FiscalYear = 2027, EntrySource = "Upload",
@@ -90,6 +107,11 @@ public sealed class AipServiceTests
         // Unset it and every office lands unowned, which is invisible rather than loud.
         officeConfigRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(officeConfigList);
+
+        Mock<IAllocationRepository> allocationRepo = new();
+        allocationRepo.Setup(r => r.GetProgramDivisionsByOfficeIdAsync(
+                It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<ProgramDivision>)[]);
 
         Mock<IRepository<AipProgram>> programRepo = new();
         programRepo.Setup(r => r.AddAsync(It.IsAny<AipProgram>(), It.IsAny<CancellationToken>()))
@@ -231,7 +253,7 @@ public sealed class AipServiceTests
             aipRepo.Object, fsRepo.Object, userRepo.Object,
             parser.Object, audit.Object, ctx, officeRepo.Object, wfpRepo.Object,
             officeConfigRepo.Object, programRepo.Object, projectRepo.Object, activityRepo.Object,
-            ldipRepo.Object);
+            ldipRepo.Object, allocationRepo.Object);
 
         return (sut, aipRepo, fsRepo, userRepo, parser, audit, officeRepo, wfpRepo,
             officeConfigRepo, programRepo, projectRepo, activityRepo, ldipRepo);
@@ -254,7 +276,7 @@ public sealed class AipServiceTests
 
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeSeed: offices);
 
-        IReadOnlyList<AipRecordDto> result = await sut.GetAllAsync(null, null);
+        IReadOnlyList<AipRecordDto> result = await sut.GetAllAsync(null, null, HostCaller());
 
         Assert.Single(result);
         Assert.Equal(2, result[0].OfficeCount);
@@ -271,7 +293,7 @@ public sealed class AipServiceTests
 
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], userSeed: users);
 
-        IReadOnlyList<AipRecordDto> result = await sut.GetAllAsync(null, null);
+        IReadOnlyList<AipRecordDto> result = await sut.GetAllAsync(null, null, HostCaller());
 
         Assert.Single(result);
         Assert.Equal("Ralph Alcaide", result[0].UploadedByName);
@@ -285,7 +307,7 @@ public sealed class AipServiceTests
 
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], []);
 
-        IReadOnlyList<AipRecordDto> result = await sut.GetAllAsync(null, null);
+        IReadOnlyList<AipRecordDto> result = await sut.GetAllAsync(null, null, HostCaller());
 
         Assert.Single(result);
         Assert.Null(result[0].UploadedByName);
@@ -304,7 +326,7 @@ public sealed class AipServiceTests
 
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build(seed, []);
 
-        IReadOnlyList<AipRecordDto> result = await sut.GetAllAsync(2027, null);
+        IReadOnlyList<AipRecordDto> result = await sut.GetAllAsync(2027, null, HostCaller());
 
         Assert.Single(result);
         Assert.Equal(2027, result[0].FiscalYear);
@@ -318,7 +340,7 @@ public sealed class AipServiceTests
         AipRecord rec = Rec(5);
         var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], []);
 
-        await sut.GetByIdAsync(5, CancellationToken.None);
+        await sut.GetByIdAsync(5, HostCaller(), CancellationToken.None);
 
         // Scoped lookup must be called; full-table scan must NOT.
         aipRepo.Verify(r => r.GetByIntIdAsync(5, It.IsAny<CancellationToken>()), Times.Once);
@@ -332,9 +354,96 @@ public sealed class AipServiceTests
         List<AipOffice> offices = [new() { Id = 1, AipRecordId = 7, RefCode = "X", Name = "O", Sector = "GENERAL" }];
         var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeSeed: offices);
 
-        await sut.GetByIdAsync(7, CancellationToken.None);
+        await sut.GetByIdAsync(7, HostCaller(), CancellationToken.None);
 
         aipRepo.Verify(r => r.GetOfficesByAipIdAsync(7, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // ── Office scoping on the read path (V18-39 / PPDO-38) ────────────────────
+
+    /// <summary>A guest-office caller — no cross-office access, whatever division they carry.</summary>
+    private static User GuestCaller(int officeId, int? divisionId = null) => new()
+    {
+        Id = Guid.NewGuid(), Username = "gso.staff", PasswordHash = "h", FullName = "GSO Staff",
+        Role = UserRole.Staff, OfficeId = officeId, DivisionId = divisionId,
+        Office = new Office
+        {
+            Id = officeId, OfficeCode = "GSO", OfficeName = "GSO", IsHostOffice = false,
+            IsActive = true, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+        },
+        IsActive = true, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+    };
+
+    private static List<AipOffice> TwoOfficesOneEach(int aipId) =>
+    [
+        new() { Id = 1, AipRecordId = aipId, RefCode = "1000-000-1-01-010", Name = "PPDO", Sector = "GENERAL", OfficeId = 1 },
+        new() { Id = 2, AipRecordId = aipId, RefCode = "1000-000-1-01-015", Name = "GSO",  Sector = "GENERAL", OfficeId = 2 },
+    ];
+
+    [Fact]
+    public async Task GetById_GuestOfficeCaller_SeesOnlyItsOwnOffice()
+    {
+        // ⚠️ Before V18-39 this endpoint returned EVERY office's hierarchy to any caller with
+        // Budget Planning access. Only the absence of production guest-office accounts kept that
+        // from being a live cross-office leak.
+        AipRecord rec = Rec(30);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: TwoOfficesOneEach(30));
+
+        ServiceResult<AipRecordDetailDto> result =
+            await sut.GetByIdAsync(30, GuestCaller(officeId: 2), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("GSO", Assert.Single(result.Value!.Offices).Name);
+    }
+
+    [Fact]
+    public async Task GetById_HostOfficeCaller_SeesEveryOffice()
+    {
+        AipRecord rec = Rec(31);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: TwoOfficesOneEach(31));
+
+        ServiceResult<AipRecordDetailDto> result =
+            await sut.GetByIdAsync(31, HostCaller(), CancellationToken.None);
+
+        Assert.Equal(2, result.Value!.Offices.Count);
+    }
+
+    [Fact]
+    public async Task GetById_CallerWithNoOffice_SeesNoOffices_ButNotAnError()
+    {
+        // Unassigned sees nothing (DECISION F). An empty result, not a 403 — the record exists and
+        // the caller may ask about it; they simply own none of it.
+        AipRecord rec = Rec(32);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: TwoOfficesOneEach(32));
+
+        User noOffice = GuestCaller(officeId: 2);
+        noOffice.OfficeId = null;
+        noOffice.Office   = null;
+
+        ServiceResult<AipRecordDetailDto> result =
+            await sut.GetByIdAsync(32, noOffice, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(result.Value!.Offices);
+    }
+
+    [Fact]
+    public async Task GetSummaryById_GuestOfficeCaller_IsScopedTheSameWay()
+    {
+        // The summary is what the detail page's grid actually renders. Scoping only its heavier
+        // sibling would leave the leak open on the endpoint people use.
+        AipRecord rec = Rec(33);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: TwoOfficesOneEach(33));
+
+        ServiceResult<AipRecordSummaryDto> result =
+            await sut.GetSummaryByIdAsync(33, GuestCaller(officeId: 2), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("GSO", Assert.Single(result.Value!.Offices).Name);
     }
 
     [Fact]
@@ -343,7 +452,7 @@ public sealed class AipServiceTests
         AipRecord rec = Rec(8);
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], aipIdsWithWfp: [8]);
 
-        ServiceResult<AipRecordDetailDto> result = await sut.GetByIdAsync(8, CancellationToken.None);
+        ServiceResult<AipRecordDetailDto> result = await sut.GetByIdAsync(8, HostCaller(), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.True(result.Value!.HasWfpUsage);
@@ -355,7 +464,7 @@ public sealed class AipServiceTests
         AipRecord rec = Rec(9);
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], []);
 
-        ServiceResult<AipRecordDetailDto> result = await sut.GetByIdAsync(9, CancellationToken.None);
+        ServiceResult<AipRecordDetailDto> result = await sut.GetByIdAsync(9, HostCaller(), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.False(result.Value!.HasWfpUsage);
@@ -367,7 +476,7 @@ public sealed class AipServiceTests
         AipRecord rec = Rec(9);
         var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], []);
 
-        await sut.GetSummaryByIdAsync(9, CancellationToken.None);
+        await sut.GetSummaryByIdAsync(9, HostCaller(), CancellationToken.None);
 
         aipRepo.Verify(r => r.GetByIntIdAsync(9, It.IsAny<CancellationToken>()), Times.Once);
         aipRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
@@ -409,7 +518,7 @@ public sealed class AipServiceTests
         ];
         var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _, _) = Build(recs, [], officeSeed: allOffices);
 
-        IReadOnlyList<AipRecordDto> result = await sut.GetAllAsync(null, null);
+        IReadOnlyList<AipRecordDto> result = await sut.GetAllAsync(null, null, HostCaller());
 
         // GetOfficesByAipIdsAsync must be called; GetAllAsync on offices (old pattern) must NOT.
         aipRepo.Verify(r => r.GetOfficesByAipIdsAsync(
@@ -982,7 +1091,7 @@ public sealed class AipServiceTests
     {
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
-        ServiceResult<AipRecordSummaryDto> result = await sut.GetSummaryByIdAsync(99, CancellationToken.None);
+        ServiceResult<AipRecordSummaryDto> result = await sut.GetSummaryByIdAsync(99, HostCaller(), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
@@ -994,7 +1103,7 @@ public sealed class AipServiceTests
         AipRecord rec = Rec(5);
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], []);
 
-        ServiceResult<AipRecordSummaryDto> result = await sut.GetSummaryByIdAsync(5, CancellationToken.None);
+        ServiceResult<AipRecordSummaryDto> result = await sut.GetSummaryByIdAsync(5, HostCaller(), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(5, result.Value!.Id);
@@ -1026,7 +1135,7 @@ public sealed class AipServiceTests
             projectSeed: [proj],
             actSeed:     [act]);
 
-        ServiceResult<AipRecordSummaryDto> result = await sut.GetSummaryByIdAsync(10, CancellationToken.None);
+        ServiceResult<AipRecordSummaryDto> result = await sut.GetSummaryByIdAsync(10, HostCaller(), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         AipOfficeSummaryDto  offDto  = Assert.Single(result.Value!.Offices);
@@ -1066,7 +1175,7 @@ public sealed class AipServiceTests
             projectSeed: [proj],
             actSeed:     [act]);
 
-        ServiceResult<AipRecordSummaryDto> result = await sut.GetSummaryByIdAsync(20, CancellationToken.None);
+        ServiceResult<AipRecordSummaryDto> result = await sut.GetSummaryByIdAsync(20, HostCaller(), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         AipActivitySummaryDto dto = result.Value!.Offices[0].Programs[0].Projects[0].Activities[0];
@@ -1189,7 +1298,7 @@ public sealed class AipServiceTests
 
         var (sut, _, _, userRepo, _, _, _, _, _, _, _, _, _) = Build([rec], [], userSeed: [uploader]);
 
-        IReadOnlyList<AipRecordDto> result = await sut.GetAllAsync(null, null);
+        IReadOnlyList<AipRecordDto> result = await sut.GetAllAsync(null, null, HostCaller());
 
         Assert.Equal("Jane Uploader", result[0].UploadedByName);
         userRepo.Verify(r => r.GetNamesByIdsAsync(

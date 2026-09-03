@@ -171,10 +171,10 @@ public sealed class WfpFunctions
             Route = "budget-planning/wfp/{id:int}/report")] HttpRequestData req,
         int id, CancellationToken ct)
     {
-        (User? _, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
         if (denied is not null) return denied;
 
-        ServiceResult<byte[]> result = await _wfp.ExportReportAsync(id, ct);
+        ServiceResult<byte[]> result = await _wfp.ExportReportAsync(id, caller!, ct);
         if (!result.IsSuccess)
             return await ConfigHttp.FromResultAsync(req, result, ct);
 
