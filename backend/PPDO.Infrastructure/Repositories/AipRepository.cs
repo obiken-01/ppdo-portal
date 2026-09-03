@@ -149,10 +149,11 @@ public sealed class AipRepository : Repository<AipRecord>, IAipRepository
                 from project in projects.DefaultIfEmpty()
                 join activity in _context.Set<AipActivity>() on project.Id equals activity.ProjectId into activities
                 from activity in activities.DefaultIfEmpty()
-                group activity by new { office.Id, office.RefCode } into g
+                group activity by new { office.Id, office.RefCode, office.OfficeId } into g
                 select new AipOfficeRollupDto(
                     g.Key.Id,
                     g.Key.RefCode,
+                    g.Key.OfficeId,
                     g.Count(a => a != null),
                     g.Count(a => a != null && a.Total != null && a.Total != 0m),
                     g.Sum(a => a != null ? a.Total ?? 0m : 0m)))

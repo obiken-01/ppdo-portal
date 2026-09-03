@@ -42,11 +42,28 @@ public sealed class AipOfficeConfiguration : IEntityTypeConfiguration<AipOffice>
         builder.HasIndex(o => o.RefCode)
             .HasDatabaseName("IX_aip_offices_ref_code");
 
+        builder.Property(o => o.OfficeId)
+            .HasColumnName("office_id");
+
+        // The read path since V18-32. Every scoped AIP read is "this record's offices, owned by
+        // this office" — the same shape the suffix match used to serve, now indexable.
+        builder.HasIndex(o => new { o.AipRecordId, o.OfficeId })
+            .HasDatabaseName("IX_aip_offices_aip_record_id_office_id");
+
         // Cascade: deleting an AIP record removes its entire hierarchy.
         builder.HasOne(o => o.AipRecord)
             .WithMany(r => r.Offices)
             .HasForeignKey(o => o.AipRecordId)
             .HasConstraintName("FK_aip_offices_aip_records_aip_record_id")
             .OnDelete(DeleteBehavior.Cascade);
+
+        // V18-32 — ownership is a real FK. Restrict, not Cascade, and the contrast with the line
+        // above is deliberate: deleting an AIP RECORD should take its hierarchy with it, but
+        // deleting a config OFFICE must never silently delete a fiscal year of that office's AIP.
+        builder.HasOne(o => o.Office)
+            .WithMany()
+            .HasForeignKey(o => o.OfficeId)
+            .HasConstraintName("FK_aip_offices_offices_office_id")
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

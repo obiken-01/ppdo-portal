@@ -68,6 +68,26 @@ data rather than add to it.
       year must be unchanged. An uncosted activity has no amount; it must not have become 0, which
       would read as "costed at nothing" in the dashboard's costed counts.
 
+- [ ] **Record the AIP ownership backfill's unmatched count** (V18-32 / PPDO-33). That migration is
+      additive — it adds `aip_offices.office_id` and fills it from the ref-code suffix — so it
+      cannot destroy anything. What it can do is leave rows unmatched, and **an unmatched row is
+      invisible to every scoped read**: the office simply sees no AIP, with no error anywhere. Run
+      after applying, and resolve anything it returns before announcing the release:
+
+      ```sql
+      SELECT r.fiscal_year,
+             COUNT(*)                                                  AS aip_offices,
+             SUM(CASE WHEN a.office_id IS NULL THEN 1 ELSE 0 END)      AS unmatched
+      FROM   aip_offices a JOIN aip_records r ON r.id = a.aip_record_id
+      GROUP  BY r.fiscal_year ORDER BY r.fiscal_year;
+
+      SELECT a.ref_code, a.name FROM aip_offices a WHERE a.office_id IS NULL;
+      ```
+
+      Local rehearsal: 56 rows, 55 matched, 1 unmatched (`3000-000-1-01-004` — no configured office
+      carries `01-004`). Production will differ; a non-zero count is expected and fine, but it must
+      be *seen*.
+
 > ⚠️ **`Down` is not a general rollback.** It divides by 1000, which exactly reverses the multiply
 > — but only while nothing has been written since. The moment a user saves an AIP activity through
 > the migrated UI, that row holds a genuine peso amount, and rolling back divides *that* by 1000

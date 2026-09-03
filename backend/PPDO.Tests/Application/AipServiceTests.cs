@@ -86,6 +86,10 @@ public sealed class AipServiceTests
         Mock<IOfficeRepository> officeConfigRepo = new();
         officeConfigRepo.Setup(r => r.GetByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((int id, CancellationToken _) => officeConfigList.FirstOrDefault(o => o.Id == id));
+        // V18-32 — confirm-import resolves each uploaded office's ownership FK from this list.
+        // Unset it and every office lands unowned, which is invisible rather than loud.
+        officeConfigRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(officeConfigList);
 
         Mock<IRepository<AipProgram>> programRepo = new();
         programRepo.Setup(r => r.AddAsync(It.IsAny<AipProgram>(), It.IsAny<CancellationToken>()))

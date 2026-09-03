@@ -278,7 +278,7 @@ public sealed class AllocationService : IAllocationService
         // Load AIP offices and filter by ref-code suffix match (same as WFP).
         IReadOnlyList<AipOffice> aipOffices = await _aipRepo.GetOfficesByAipIdAsync(aipRecord.Id, ct);
         List<AipOffice> matchedOffices = aipOffices
-            .Where(o => o.RefCode.EndsWith(office.OfficeRefCode, StringComparison.OrdinalIgnoreCase))
+            .Where(o => o.OfficeId == office.Id)
             .ToList();
         if (matchedOffices.Count == 0) return [];
 
@@ -330,17 +330,7 @@ public sealed class AllocationService : IAllocationService
     /// </summary>
     private async Task<int?> ResolveConfigOfficeIdAsync(
         string aipOfficeRefCode, CancellationToken ct)
-    {
-        if (string.IsNullOrWhiteSpace(aipOfficeRefCode)) return null;
-
-        IReadOnlyList<Office> offices = await GetAllOfficesAsync(ct);
-        return offices
-            .Where(o => !string.IsNullOrWhiteSpace(o.OfficeRefCode)
-                     && aipOfficeRefCode.EndsWith(o.OfficeRefCode!, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(o => o.OfficeRefCode!.Length)
-            .Select(o => (int?)o.Id)
-            .FirstOrDefault();
-    }
+        => AipOfficeOwnership.ResolveOfficeId(aipOfficeRefCode, await GetAllOfficesAsync(ct));
 
     public async Task<ServiceResult<ProgramAssignmentDto>> UpsertProgramAssignmentAsync(
         UpsertProgramAssignmentDto dto, CancellationToken ct = default)
@@ -436,7 +426,7 @@ public sealed class AllocationService : IAllocationService
             {
                 IReadOnlyList<AipOffice> aipOffices = await _aipRepo.GetOfficesByAipIdAsync(rec.Id, ct);
                 List<string> matchedRefs = aipOffices
-                    .Where(o => o.RefCode.EndsWith(office.OfficeRefCode, StringComparison.OrdinalIgnoreCase))
+                    .Where(o => o.OfficeId == office.Id)
                     .Select(o => o.RefCode)
                     .ToList();
 
@@ -518,7 +508,7 @@ public sealed class AllocationService : IAllocationService
         {
             if (office.OfficeRefCode is null) continue;
             List<AipOffice> matches = aipOffices
-                .Where(ao => ao.RefCode.EndsWith(office.OfficeRefCode, StringComparison.OrdinalIgnoreCase))
+                .Where(ao => ao.OfficeId == office.Id)
                 .ToList();
             if (matches.Count > 0) matchedByOfficeId[office.Id] = matches;
         }

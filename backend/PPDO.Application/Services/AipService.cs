@@ -268,12 +268,16 @@ public sealed class AipService : IAipService
         Dictionary<string, FundingSource> fsDict =
             fsList.ToDictionary(f => f.Code, StringComparer.OrdinalIgnoreCase);
 
+        // Config offices, loaded once, to resolve each uploaded office's ownership FK (V18-32).
+        // Sequential with the read above, not Task.WhenAll — they share one DbContext.
+        IReadOnlyList<Office> configOffices = await _officeConfigRepo.GetAllAsync(ct);
+
         // Re-upload path (RAL-178) — replace an existing record's hierarchy in place.
         // Bypasses the one-active-AIP-per-fiscal-year guard below entirely: that guard exists
         // to stop a SECOND competing record for the year, not the record being replaced (which
         // GetLatestByFiscalYearAsync would otherwise find as a false "conflict" — itself).
         if (dto.TargetRecordId is int targetId)
-            return await ReplaceImportAsync(targetId, dto, fsDict, ct);
+            return await ReplaceImportAsync(targetId, dto, fsDict, configOffices, ct);
 
         // Guard: only one active (Draft or Final) AIP per fiscal year.
         AipRecord? conflict = await _aipRepo.GetLatestByFiscalYearAsync(dto.FiscalYear, ct);
@@ -303,7 +307,7 @@ public sealed class AipService : IAipService
             UploadedAt       = now,
             Status           = PlanningStatus.Draft,
             LdipId           = dto.LdipId,
-            Offices          = BuildOffices(dto.SectorOffices, fsDict),
+            Offices          = BuildOffices(dto.SectorOffices, fsDict, configOffices),
         };
 
         await _aipRepo.AddAsync(aipRecord, ct);
@@ -329,7 +333,8 @@ public sealed class AipService : IAipService
     /// Logged as an Update (not a Create).
     /// </summary>
     private async Task<ServiceResult<AipRecordDto>> ReplaceImportAsync(
-        int targetId, AipImportConfirmDto dto, Dictionary<string, FundingSource> fsDict, CancellationToken ct)
+        int targetId, AipImportConfirmDto dto, Dictionary<string, FundingSource> fsDict,
+        IReadOnlyList<Office> configOffices, CancellationToken ct)
     {
         AipRecord? rec = await _aipRepo.GetByIntIdAsync(targetId, ct);
         if (rec is null)
@@ -358,7 +363,7 @@ public sealed class AipService : IAipService
         rec.FiscalYear       = dto.FiscalYear;
         rec.OriginalFilename = dto.OriginalFilename;
         rec.UploadedAt       = DateTime.UtcNow;
-        rec.Offices          = BuildOffices(dto.SectorOffices, fsDict);
+        rec.Offices          = BuildOffices(dto.SectorOffices, fsDict, configOffices);
 
         await _aipRepo.UpdateAsync(rec, ct);
         await _aipRepo.SaveChangesAsync(ct);
@@ -371,8 +376,15 @@ public sealed class AipService : IAipService
         return ServiceResult<AipRecordDto>.Ok(MapToDto(rec));
     }
 
+    /// <summary>
+    /// ⚠️ <paramref name="offices"/> is what sets <see cref="AipOffice.OfficeId"/> (V18-32). Without
+    /// it every uploaded office row lands unowned, and an unowned row is invisible to every scoped
+    /// read — the office's own AIP would simply not appear, with no error anywhere.
+    /// </summary>
     private static List<AipOffice> BuildOffices(
-        Dictionary<string, List<ParsedAipOfficeDto>> sectorOffices, Dictionary<string, FundingSource> fsDict) =>
+        Dictionary<string, List<ParsedAipOfficeDto>> sectorOffices,
+        Dictionary<string, FundingSource> fsDict,
+        IReadOnlyList<Office> offices) =>
         sectorOffices
             .SelectMany(kvp => kvp.Value)
             .Select(officeDto => new AipOffice
@@ -380,6 +392,7 @@ public sealed class AipService : IAipService
                 RefCode  = officeDto.RefCode,
                 Name     = officeDto.Name,
                 Sector   = officeDto.Sector,
+                OfficeId = AipOfficeOwnership.ResolveOfficeId(officeDto.RefCode, offices),
                 Programs = BuildPrograms(officeDto.Programs, fsDict),
             }).ToList();
 

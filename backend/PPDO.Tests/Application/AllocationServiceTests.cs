@@ -45,8 +45,11 @@ public sealed class AllocationServiceTests
         new() { Id = id, FiscalYear = fy, EntrySource = "Upload", Status = "Draft",
                 UploadedById = Guid.NewGuid(), UploadedAt = DateTime.UtcNow };
 
-    private static AipOffice MakeAipOffice(int id, int aipId, string refCode) =>
-        new() { Id = id, AipRecordId = aipId, RefCode = refCode, Name = "Office", Sector = "Sector A" };
+    // officeId defaults to 1 — the config office these tests scope against. Scoping matches on
+    // the FK since V18-32, not on the ref code.
+    private static AipOffice MakeAipOffice(int id, int aipId, string refCode, int? officeId = 1) =>
+        new() { Id = id, AipRecordId = aipId, RefCode = refCode, Name = "Office", Sector = "Sector A",
+                OfficeId = officeId };
 
     private static AipProgram MakeAipProgram(int id, int officeId, string refCode) =>
         new() { Id = id, OfficeId = officeId, RefCode = refCode, Name = $"Program {refCode}" };

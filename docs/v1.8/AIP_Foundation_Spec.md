@@ -51,9 +51,15 @@ without migrating historical data.
    no division column on `AipOffice`, and divisions never print. Division of work is carried on the
    **program**, through the existing `ProgramDivision` map, exactly as WFP does.
 
-5. **Office identity is a real FK** (DECISION F, shipped in Phase 1). `AipOffice.OfficeId` →
-   `offices.id`. `RefCode` stays as the AIP-side re-link key and the backfill audit trail, the same
-   division of labour `ProgramDivision` already uses.
+5. **Office identity is a real FK.** `AipOffice.OfficeId` → `offices.id`. `RefCode` stays as the
+   AIP-side re-link key and the backfill audit trail, the same division of labour `ProgramDivision`
+   already uses.
+
+   ⚠️ **Corrected 2026-09-03: this was wrongly recorded as "shipped in Phase 1 (DECISION F)".** It
+   was not. DECISION F shipped `users.office_id` and `offices.is_host_office`, a different column on
+   a different table. `AipOffice` had no ownership column at all until **V18-32 (PPDO-33)** added it,
+   and nine `RefCode.EndsWith` scoping sites were still live across five services when that ticket
+   started. Anyone reading the old wording would have skipped the ticket as already done.
 
 6. **LDIP is not moving to pesos, and that is not an inconsistency.** The rule is not *one unit
    everywhere*; it is **units may differ, but only where the value never crosses a boundary, and
@@ -346,9 +352,13 @@ is the class where a wrong choice compiles cleanly and leaks data.
 ## 10. Acceptance checklist
 
 ```
-- [ ] Every scoped AIP read filters on aip_offices.office_id; no RefCode.EndsWith remains on a
-      scoping path (grep it)
-- [ ] The backfill reports unmatched rows rather than dropping them, and the count is recorded
+- [x] Every scoped AIP read filters on aip_offices.office_id; no RefCode.EndsWith remains on a
+      scoping path (grep it). ONE deliberate use survives, in AipOfficeOwnership.ResolveOfficeId —
+      it ESTABLISHES the FK for a newly uploaded office and is not a read path
+- [x] The backfill reports unmatched rows rather than dropping them, and the count is recorded.
+      Local rehearsal 2026-09-03: 56 AIP offices, 55 matched, 1 unmatched (`3000-000-1-01-004`, a
+      nameless row whose `01-004` has no configured office). Production count is captured by the
+      runbook step before the release
 - [x] SUM(total) per fiscal year after migration = SUM(total) before x 1000, exactly, every year
       (verified locally, 3 fiscal years; production runs the same check per the pre-deployment
       checklist, and the baseline must be captured BEFORE applying or it cannot be checked at all)

@@ -71,9 +71,13 @@ public sealed class BudgetPlanningDashboardServiceTests
         CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
     };
 
-    private static AipOffice AipOff(int id, int aipRecordId, string refCode, string sector = "General") => new()
+    // officeId defaults to 1 — the host (PPDO) office most of these tests scope against. Scoping
+    // matches on the FK since V18-32; pass it explicitly for a guest office or an unowned row.
+    private static AipOffice AipOff(
+        int id, int aipRecordId, string refCode, string sector = "General", int? officeId = 1) => new()
     {
         Id = id, AipRecordId = aipRecordId, RefCode = refCode, Name = "Office", Sector = sector,
+        OfficeId = officeId,
     };
 
     private static AipProgram AipProg(int id, int officeId, string refCode) => new()
@@ -1069,7 +1073,10 @@ public sealed class BudgetPlanningDashboardServiceTests
         List<AipRecord> aips = [Aip(10, 2027, "Final")];
         Mock<IAipRepository> aipRepo = new();
         aipRepo.Setup(r => r.GetOfficesByAipIdAsync(10, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IReadOnlyList<AipOffice>)[AipOff(100, 10, "3000-000-1-01-099")]);
+            // Unowned since V18-32: "no matching AIP office" is now a null FK, not a ref code that
+            // fails to suffix-match. The test name's "RefCode" is kept for continuity with the
+            // behaviour it guards — an office with AIP rows that are not its own sees no AIP.
+            .ReturnsAsync((IReadOnlyList<AipOffice>)[AipOff(100, 10, "3000-000-1-01-099", officeId: null)]);
         (BudgetPlanningDashboardService sut, _) =
             Build([], aips, [], offices, [], aipRepoMock: aipRepo);
 
@@ -1288,7 +1295,7 @@ public sealed class BudgetPlanningDashboardServiceTests
             aips: [Aip(10, 2028, "Draft")],
             aipRepoMock: AipMockWithOffices(10),
             ceilingRepoMock: ceilingRepo,
-            officeRollups: [new AipOfficeRollupDto(50, "1000-000-1-02-020", 3, 3, 150_000m)]);
+            officeRollups: [new AipOfficeRollupDto(50, "1000-000-1-02-020", OfficeId: 2, 3, 3, 150_000m)]);
 
         ServiceResult<IReadOnlyList<OfficeSummaryDto>> result = await sut.GetOfficesAsync(caller, 2028);
 

@@ -191,7 +191,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         {
             IReadOnlyList<AipOffice> aipOffices = await _aipRepo.GetOfficesByAipIdAsync(primaryAip.Id, ct);
             List<int> hostAipOfficeIds = aipOffices
-                .Where(o => o.RefCode.EndsWith(host.OfficeRefCode, StringComparison.OrdinalIgnoreCase))
+                .Where(o => o.OfficeId == host.Id)
                 .Select(o => o.Id)
                 .ToList();
 
@@ -419,7 +419,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
             if (office.OfficeRefCode is null) continue;
 
             List<AipOfficeRollupDto> matched = rollups
-                .Where(r => r.RefCode.EndsWith(office.OfficeRefCode, StringComparison.OrdinalIgnoreCase))
+                .Where(r => r.OfficeId == office.Id)
                 .ToList();
             if (matched.Count == 0) continue;
 
@@ -512,7 +512,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         IReadOnlyList<AipOffice> aipOffices =
             await _aipRepo.GetOfficesByAipIdAsync(aipRecord.Id, cancellationToken);
         List<AipOffice> matched = aipOffices
-            .Where(o => o.RefCode.EndsWith(office.OfficeRefCode, StringComparison.OrdinalIgnoreCase))
+            .Where(o => o.OfficeId == office.Id)
             .ToList();
         if (matched.Count == 0)
             return new OfficeAipSummaryDto(false, aipRecord.Status, 0, 0, 0, 0m);

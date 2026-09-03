@@ -133,6 +133,9 @@ public interface IAipRepository : IRepository<AipRecord>
 public sealed record AipOfficeRollupDto(
     int     AipOfficeId,
     string  RefCode,
+    // The config office that owns this AIP office (V18-32), or null for an unmatched legacy row.
+    // Scoping matches on this; RefCode is carried for display and re-linking only.
+    int?    OfficeId,
     int     ActivityCount,
     int     CostedActivityCount,
     decimal CostedTotal);
