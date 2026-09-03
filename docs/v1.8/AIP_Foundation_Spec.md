@@ -87,7 +87,8 @@ Phase 2 is mostly structural, so most rows below are invariants rather than inte
 | Units migrate uniformly | Any `aip_activities` row, any fiscal year | Migration runs | `sum(total) after == sum(total) before × 1000`, exactly. Same for `ps`, `mooe`, `co`, `cc_adaptation`, `cc_mitigation` |
 | The AIP↔WFP seam still agrees | A WFP expenditure against an AIP activity of ₱250,000 | Ceiling check runs | Same accept/reject verdict as before the migration — the ×1000 is gone from **both** sides at once |
 | Activity totals are derived | An activity with three `aip_expenditures` rows | An expenditure is added, edited or deleted | `Ps`/`Mooe`/`Co`/`Total` on the activity are recomputed and **stored**; every report reads the stored value |
-| An activity with no expenditures | New activity, nothing costed | Read | `Total == 0`, not null. Null means "never computed", which no longer exists as a state |
+| An activity whose lines were all deleted | It had lines; the last is removed | Recompute after the delete | `Total == 0`, not null. Null meant "never computed", which no longer exists as a state once an activity has had lines |
+| An activity that never had lines | FY≤2027, imported | Any recompute | **Untouched.** Same `LineCount` 0 as the row above, opposite outcome — see §5.4 |
 | Old fiscal years keep working | FY2027 record | Opened | Renders in the v1.6 shape, unchanged, with peso values |
 | New fiscal years use the new shape | FY2028 record | Opened | New shape. **No migration path between the two** — a record does not change shape when its year changes |
 | Upload is historical-only | A user uploads an `.xlsm` for FY2028 | Submit | Refused with a message naming the reason. FY≤2027 upload is unchanged |
@@ -226,8 +227,35 @@ every write to a child row. Every report reads the stored value — recomputing 
 `GROUP BY` under the printable form and the external API.
 
 FY≤2027 activities have no expenditure rows. They keep their imported values and **must not be
-recomputed to zero** — the recompute runs only where a child row exists, or a whole fiscal year is
-silently wiped.
+recomputed to zero**, or a whole fiscal year is silently wiped.
+
+⚠️ **Corrected during implementation (2026-09-03): "runs only where a child row exists" cannot be
+the whole rule, because it contradicts the next requirement.** Two activities with **zero lines**
+mean opposite things:
+
+| Activity with no lines | Correct outcome |
+|---|---|
+| FY≤2027, imported from the workbook, never had children | **Leave its figures alone** |
+| Had lines, the last one was just deleted | **Total → 0** |
+
+Both present identically — `LineCount` 0, all amounts 0, since a `SUM` over no rows and a `SUM` of
+zeroes are the same number. **The data cannot settle it, so the caller does.**
+`IAipRepository.ApplyActivityTotalsAsync` takes a `zeroWhenNoLines` flag that **defaults to the safe
+reading**, and the Application seam exposes it as two named methods rather than a boolean at the
+call site:
+
+| Called after | Method | No-lines behaviour |
+|---|---|---|
+| adding or editing a line, or a bulk/defensive pass | `RecalculateAsync` | leave alone |
+| **deleting** a line | `RecalculateAfterLineDeleteAsync` | write 0 |
+
+Only a caller that has just deleted a line knows the activity was expenditure-derived a moment ago.
+Defaulting the other way would mean the cost of forgetting the flag is a stale total rather than an
+erased fiscal year.
+
+Note that an activity with lines that all sum to zero **is** written — it is costed, at zero.
+`LineCount` is the only thing separating that from the imported case, which is why
+`SumByActivityIdAsync` returns it.
 
 ### 5.5 FY partition (V18-37)
 
@@ -334,8 +362,11 @@ is the class where a wrong choice compiles cleanly and leaks data.
 - [x] AipXlsmParser converts the workbook's ₱000 into pesos at the import edge — NOT in the ticket,
       and without it every upload writes thousands into a peso column
 - [x] A WFP expenditure against a known AIP activity gets the same accept/reject verdict as before
-- [ ] An activity with no expenditure rows reports Total 0, not null
-- [ ] An FY2027 activity keeps its imported totals — the recompute does not zero it
+- [x] Deleting an activity's LAST expenditure line takes its Total to 0, not null
+- [x] An activity whose lines all sum to zero is written (costed at zero) — distinguished from one
+      that never had lines by LineCount alone
+- [x] An FY2027 activity keeps its imported totals — the recompute does not zero it, and repeated
+      runs stay safe
 - [ ] Uploading an .xlsm for FY2028 is refused with a message naming the fiscal year
 - [ ] Uploading an .xlsm for FY2027 still works unchanged
 - [ ] A guest-office user sees only their office's AIP; a query-string officeId is clamped, not 403
@@ -352,7 +383,8 @@ is the class where a wrong choice compiles cleanly and leaks data.
 |---|---|
 | `AipServiceTests` | Ownership resolves by `OfficeId`; an `AipOffice` with a null `OfficeId` is visible to nobody but the host office; a `RefCode` that would match by suffix but whose `OfficeId` is a different office resolves to **`OfficeId`** — the FK wins, or the migration achieved nothing |
 | **`AipWfpBoundaryTests`** (new — V18-36) | The one place the two documents meet numerically. An explicit accept **and** reject case against a known AIP activity total, asserting the peso figure literally. ⚠️ Assert the number, not the relationship: a test written as `aipBudget == activity.Total * factor` passes whatever `factor` is |
-| `AipExpenditureTests` | Adding, editing and deleting a child row each recompute the parent; three rows sum correctly; deleting the last one leaves `Total == 0`, not null |
+| `AipActivityTotalsRecomputeTests` (Sqlite) | Adding, editing and deleting a child row each recompute the parent; three rows sum per component; deleting the last one leaves `Total == 0`, not null; an activity with no lines is untouched across repeated runs |
+| `AipActivityTotalsServiceTests` (Moq) | The two service methods differ only in the `zeroWhenNoLines` flag and pass the right one; no save when the parent was left alone |
 | `AipExpenditureTests` | An FY2027 activity with **no** child rows is left untouched by the recompute |
 | `OfficeScopeTests` / new `AipScopeTests` | The two-axis rule: PPDO caller narrows by division, guest-office caller does not; a guest office's division id is ignored rather than honoured |
 | `AipUploadTests` | FY2028 refused, FY2027 accepted, and the refusal message names the year |
