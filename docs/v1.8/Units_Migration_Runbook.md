@@ -303,5 +303,101 @@ the migrated UI that row holds a genuine peso amount, and `Down` divides *that* 
 
 ---
 
-*Written 2026-09-03 alongside PPDO-34. Rehearsed on a local database; not yet run against
-production.*
+## Appendix A — The local rehearsal, step by step
+
+✅ **Chosen approach, 2026-09-03.** Restore a copy of production locally and run the whole migration
+against it before the real one. Costs nothing and exercises production's actual rows through the
+actual UI.
+
+⚠️ **This puts real personnel names and budget figures on a laptop.** Keep the `.bacpac` outside the
+repository — `*.bacpac` and `*.bak` are git-ignored as a safety net, not as the plan — and complete
+the teardown in step 6. Do not screenshot the rehearsal database into any document that leaves the
+machine.
+
+### Who does which half
+
+The export needs the production SQL credential, so it is a manual step. Everything after the
+`.bacpac` exists on disk uses Windows auth and can be scripted or handed to Claude.
+
+| Step | Who |
+|---|---|
+| 1 — export from Azure | **Ralph** (needs the prod credential) |
+| 2–5 — import, migrate, verify, UI checks | scriptable / Claude |
+| 6 — teardown | either |
+
+### 1. Export production
+
+Easiest with SSMS, which is already installed: connect to `ppdo-portal-server`, right-click
+`ppdo-portal-db` → **Tasks → Export Data-tier Application…** → save to e.g.
+`D:\RalphFiles\PPDO\_rehearsal\ppdo-prod-YYYYMMDD.bacpac`. **Outside the repo.**
+
+Scriptable alternative — `dotnet tool install -g microsoft.sqlpackage`, then:
+
+```bash
+sqlpackage /Action:Export \
+  /SourceServerName:"ppdo-portal-server.database.windows.net" \
+  /SourceDatabaseName:"ppdo-portal-db" \
+  /SourceUser:"<admin>" /SourcePassword:"<password>" \
+  /TargetFile:"D:\RalphFiles\PPDO\_rehearsal\ppdo-prod-YYYYMMDD.bacpac"
+```
+
+Export takes a transactionally consistent snapshot; it does not lock or modify production. Your
+laptop's IP must be on the Azure SQL firewall.
+
+### 2. Import as a SEPARATE local database
+
+⚠️ **Do not import over `PPDOPortalDev`.** That is your working dev database, and it is already
+migrated. The rehearsal needs its own:
+
+```bash
+sqlpackage /Action:Import \
+  /TargetServerName:".\SQLEXPRESS" /TargetDatabaseName:"PPDOPortalUat" \
+  /TargetTrustServerCertificate:True \
+  /SourceFile:"D:\RalphFiles\PPDO\_rehearsal\ppdo-prod-YYYYMMDD.bacpac"
+```
+
+Or SSMS → right-click **Databases → Import Data-tier Application…**, target name `PPDOPortalUat`.
+
+### 3. Capture the baseline and the test subjects
+
+Run **Script 1** (§2) and **Script 2** (§3) against `PPDOPortalUat`. Fill in §6's table from
+Script 2's output — those are the values that must not change.
+
+### 4. Apply every pending migration
+
+The restored copy is at production's schema, so this rehearses **all 13** of v1.8.0's migrations in
+order, not just this one:
+
+```bash
+cd backend
+dotnet ef database update --project PPDO.Infrastructure --startup-project PPDO.Functions \
+  --connection "Server=.\SQLEXPRESS;Database=PPDOPortalUat;Trusted_Connection=True;TrustServerCertificate=True;"
+```
+
+### 5. Verify
+
+Run **Script 3** (§5) — every row must read PASS. Then point the Functions app at the rehearsal
+database (`SqlConnectionString` in `backend/PPDO.Functions/local.settings.json`, temporarily) and
+work through §6's UI checks against real data.
+
+⚠️ **Put `local.settings.json` back to `PPDOPortalDev` afterwards.** It is git-ignored, so nothing
+catches this for you.
+
+### 6. Teardown
+
+```sql
+DROP DATABASE PPDOPortalUat;
+```
+
+Then delete the `.bacpac` and the `_rehearsal` folder. The data has no reason to outlive the check.
+
+### What a green rehearsal does and does not license
+
+It says the migration is correct for production's data **as of the export**. It does not replace
+§2's baseline capture in the real maintenance window, because prod moves in between — and the
+baseline is the only thing that makes the post-migration number checkable.
+
+---
+
+*Written 2026-09-03 alongside PPDO-34. Rehearsed on a local development database; the production-copy
+rehearsal in Appendix A is agreed and not yet run. Nothing here has been run against production.*
