@@ -307,8 +307,73 @@ Note that an activity with lines that all sum to zero **is** written — it is c
 
 ### 5.5 FY partition (V18-37)
 
-FY≤2027 → v1.6 shape. FY≥2028 → new shape. **No migration between them**, and no record changes
-shape. Gate mechanism is **P2-b**.
+FY≤2027 → v1.6 shape (legacy multi-office, `AipRecord.OfficeId` null). FY≥2028 → new shape
+(office-owned, `OfficeId` set). **No migration between them**, and no record changes shape.
+
+#### P2-b — settled 2026-09-03: one named policy, not new endpoints
+
+**Decision: a single `AipShape` policy in `PPDO.Application/Common/`, consulted by every path that
+creates an AIP record.** No endpoint is duplicated and no endpoint is removed.
+
+The spec's original default was *new endpoints beside untouched old ones*, on the reasoning that
+the new path would then carry no legacy branch. Implementation showed that reasoning does not hold
+here, for two concrete reasons:
+
+1. **Duplicating the endpoint does not remove the fiscal-year check.** A new office-owned create
+   endpoint still has to refuse FY2027, and the legacy one still has to refuse FY2028 — otherwise
+   the gate is bypassed by posting the wrong year to the wrong route. Both routes end up carrying
+   the check, so the split adds surface *on top of* it rather than instead of it.
+2. **Two of the four create paths are not creates by name.** `CopyOfficeFromPriorYearAsync` and
+   `SeedProgramsFromLdipAsync` *find-or-create* their target record. They would have had to be
+   duplicated too, and neither reads as a record-creation endpoint from the outside — which is
+   exactly how one of them gets missed.
+
+The objection the original default was protecting against is real and stands: *a literal
+`fiscalYear >= 2028` branch in a file nobody re-reads*. The answer to it is to make the branch a
+**named, tested, greppable thing that exists once**, not to fork the routes. `AipShape` sits beside
+`AipReadScope`, `OfficeScope`, `BudgetPlanningScope`, `AipOfficeOwnership` and `ReviewerWriteGuard`,
+which are the same move for the same reason.
+
+**The boundary year is a single constant**, `AipShape.FirstOfficeOwnedFiscalYear`. A test asserts
+no other file hardcodes it, so moving the break — should the province ever slip FY2028 — is one
+edit rather than a hunt.
+
+#### The four gated paths
+
+| Path | Was | Now |
+|---|---|---|
+| `ConfirmImportAsync` (`.xlsm` import) | always legacy | legacy only; FY≥2028 refused |
+| `CreateManualRecordAsync` | shape chosen by DTO (V18-40) | shape must match the fiscal year |
+| `CopyOfficeFromPriorYearAsync` | always legacy | legacy only; FY≥2028 refused |
+| `SeedProgramsFromLdipAsync` | always legacy | legacy only; FY≥2028 refused |
+
+⚠️ **The last two were a live shape leak, not a hypothetical one.** Both find-or-create with
+`GetLatestByFiscalYearAsync` and construct a record with `OfficeId` unset. Pointed at FY2028 before
+this ticket, they silently produced a legacy-shape record in a year that must not have one — with
+no error, and nothing downstream to notice. Carry-forward and LDIP seeding into FY2028+ are Phase 3
+work; until then the gate refuses them rather than letting them write the wrong shape.
+
+#### The other door into a shape change
+
+A record's shape is also reachable **one node at a time**. `AddOfficeAsync` on an office-owned
+record could add an `AipOffice` belonging to a *different* office, and after two such calls the
+record spans several offices — the legacy shape, arrived at without any record ever being
+"converted". So the gate covers that too: **on an office-owned record, only the owning office may
+have an `AipOffice` child.** The check is not a scope check and does not replace one; `OfficeScope`
+already stops a guest office reaching another's record, but it says nothing about a PPDO admin, who
+legitimately sees every office and would otherwise be able to do this.
+
+The refusal is a `BadRequest` naming both offices, not the `NotFound` used by the ownership guard
+(PPDO-46). Those hide *existence*; this one hides nothing — the caller may see the record, they are
+being told the operation is wrong for its shape.
+
+#### What is deliberately not gated
+
+**Reads, and every write to an existing node.** A record's shape is a property of the row, already
+settled at creation; `GetByIdAsync` and the program/project/activity writes behave the same either
+way and gating them would add a branch with nothing behind it. And **nothing converts**: there is no
+endpoint, service method or migration that changes `OfficeId` on an existing record, and there
+should not be one. If a shape is wrong, the record is archived and recreated.
 
 ### 5.6 Migrations — three, and they are ordered
 
@@ -360,6 +425,22 @@ Flat design, PPDO tokens, `slate-800` headings / `slate-600` body, never `text-s
 ## 8. Deployment notes
 
 - **Three migrations, manually applied, in the §5.6 order.** Five total for v1.8.0.
+- ⚠️ **Check for pre-existing FY≥2028 owner-less records before the release, and archive any that
+  are still active.** V18-37 governs new writes; it cannot reach rows already in the table. The
+  local dev database was found (2026-09-03, live check) to hold eleven FY2028 records with a null
+  `office_id` — the exact combination the partition forbids — left over from earlier testing. All
+  were Archived, so they are inert: the create guard counts only non-Archived records, and an
+  archived row cannot be written to. An **active** one would be worse than untidy, because it would
+  block that year's real office-owned records through the one-per-year conflict guard.
+
+  ```sql
+  SELECT id, fiscal_year, office_id, entry_source, status
+  FROM   aip_records
+  WHERE  fiscal_year >= 2028 AND office_id IS NULL AND status <> 'Archived';
+  ```
+
+  Expect zero rows in production — FY2028 planning has not started there. Archive anything returned
+  rather than deleting it or backfilling an owner: there is no correct owner to fill in (§5.5).
 - **Take a database backup before migration 3.** It is the only one that rewrites existing values
   across every fiscal year. Reversible arithmetically, but a restore is faster than a reasoning
   exercise at 9pm.
@@ -425,8 +506,25 @@ is the class where a wrong choice compiles cleanly and leaks data.
       that never had lines by LineCount alone
 - [x] An FY2027 activity keeps its imported totals — the recompute does not zero it, and repeated
       runs stay safe
-- [ ] Uploading an .xlsm for FY2028 is refused with a message naming the fiscal year
-- [ ] Uploading an .xlsm for FY2027 still works unchanged
+- [x] Uploading an .xlsm for FY2028 is refused with a message naming the fiscal year — the
+      SERVER half (V18-37). The disabled-with-a-reason button is still V18-38's, and has to be:
+      a disabled button is a courtesy, not a guard
+- [x] Uploading an .xlsm for FY2027 still works unchanged
+- [x] An office-owned record cannot be created in a historical year, and an owner-less one cannot
+      be created from FY2028 on — both refused with the year named (V18-37)
+- [x] Carry-forward and LDIP-seeding into FY2028 are refused BEFORE any row is written — verified
+      by asserting AddAsync/SaveChangesAsync are never reached, not by inspecting the result
+- [x] Re-uploading cannot carry a record across the boundary: the shape check sits above the
+      re-upload branch, which assigns rec.FiscalYear outright
+- [x] An office-owned record refuses a second office's AipOffice child — the shape change reachable
+      one node at a time, which no create-path gate can see
+- [x] The break year appears on exactly one production code path — asserted by a test that scans
+      PPDO.Domain/Application/Infrastructure/Functions and fails the build on a second copy
+- [x] Disabling both guards turns exactly the 11 partition tests red and nothing else (mutation-
+      checked, not assumed)
+- [ ] Creating an FY2028 record from the portal UI — **not reachable in Phase 2 and not a defect.**
+      The office picker is Phase 3 (AIP entry, §7). Selecting FY2028 in the manual-create form gets
+      the server refusal naming the year, which is the honest state of a clean break part-built
 - [x] A guest-office user sees only their office's AIP
 - [n/a] A query-string officeId is clamped, not 403 — **no AIP read endpoint accepts one.** The
       read surface is `/aip`, `/aip/{id}` and `/aip/{id}/summary`; scope comes from the JWT, so
