@@ -467,7 +467,7 @@ public sealed class AipService : IAipService
     }
 
     public async Task<ServiceResult<AipOfficeDto>> AddOfficeAsync(
-        int aipRecordId, CreateAipOfficeDto dto, CancellationToken ct = default)
+        int aipRecordId, CreateAipOfficeDto dto, User caller, CancellationToken ct = default)
     {
         AipRecord? rec = await _aipRepo.GetByIntIdAsync(aipRecordId, ct);
         if (rec is null)
@@ -483,6 +483,13 @@ public sealed class AipService : IAipService
         Office? office = await _officeConfigRepo.GetByIdAsync(dto.OfficeConfigId, ct);
         if (office is null || !office.IsActive)
             return ServiceResult<AipOfficeDto>.NotFound($"Office {dto.OfficeConfigId} not found or inactive.");
+
+        // Ownership is decided by the office the caller ASKED to add, not by a node's parent —
+        // this creates the node, so there is nothing to walk up from yet. Same NotFound as an
+        // office that does not exist, for the reason on CheckWritableAsync.
+        if (!OfficeScope.Resolve(caller).Permits(office.Id))
+            return ServiceResult<AipOfficeDto>.NotFound($"Office {dto.OfficeConfigId} not found or inactive.");
+
         if (string.IsNullOrWhiteSpace(office.OfficeRefCode))
             return ServiceResult<AipOfficeDto>.BadRequest(
                 $"Office '{office.OfficeName}' has no AIP reference code configured. Set it in Office Config first.");
@@ -519,7 +526,7 @@ public sealed class AipService : IAipService
     }
 
     public async Task<ServiceResult<AipOfficeDto>> CopyOfficeFromPriorYearAsync(
-        CopyAipOfficeDto dto, Guid createdById, CancellationToken ct = default)
+        CopyAipOfficeDto dto, Guid createdById, User caller, CancellationToken ct = default)
     {
         if (dto.ProgramIds is null || dto.ProgramIds.Count == 0)
             return ServiceResult<AipOfficeDto>.BadRequest("Select at least one program to copy.");
@@ -715,7 +722,7 @@ public sealed class AipService : IAipService
     }
 
     public async Task<ServiceResult<AipOfficeDto>> SeedProgramsFromLdipAsync(
-        SeedAipProgramsFromLdipDto dto, Guid createdById, CancellationToken ct = default)
+        SeedAipProgramsFromLdipDto dto, Guid createdById, User caller, CancellationToken ct = default)
     {
         if (dto.LdipProgramIds is null || dto.LdipProgramIds.Count == 0)
             return ServiceResult<AipOfficeDto>.BadRequest("Select at least one program to seed.");
@@ -908,13 +915,13 @@ public sealed class AipService : IAipService
     }
 
     public async Task<ServiceResult<AipProgramDto>> AddProgramAsync(
-        int officeId, CreateAipProgramDto dto, CancellationToken ct = default)
+        int officeId, CreateAipProgramDto dto, User caller, CancellationToken ct = default)
     {
         AipOffice? office = await _aipRepo.GetOfficeByIdAsync(officeId, ct);
         if (office is null)
             return ServiceResult<AipProgramDto>.NotFound($"AIP office {officeId} not found.");
 
-        ServiceResult<AipProgramDto>? statusError = await CheckDraftAsync<AipProgramDto>(office.AipRecordId, ct);
+        ServiceResult<AipProgramDto>? statusError = await CheckWritableAsync<AipProgramDto>(office, caller, $"AIP office {officeId} not found.", ct);
         if (statusError is not null) return statusError;
 
         if (string.IsNullOrWhiteSpace(dto.Name))
@@ -955,7 +962,7 @@ public sealed class AipService : IAipService
     }
 
     public async Task<ServiceResult<AipProjectDto>> AddProjectAsync(
-        int programId, CreateAipProjectDto dto, CancellationToken ct = default)
+        int programId, CreateAipProjectDto dto, User caller, CancellationToken ct = default)
     {
         AipProgram? program = await _aipRepo.GetProgramByIdAsync(programId, ct);
         if (program is null)
@@ -965,7 +972,7 @@ public sealed class AipService : IAipService
         if (office is null)
             return ServiceResult<AipProjectDto>.NotFound($"AIP office {program.OfficeId} not found.");
 
-        ServiceResult<AipProjectDto>? statusError = await CheckDraftAsync<AipProjectDto>(office.AipRecordId, ct);
+        ServiceResult<AipProjectDto>? statusError = await CheckWritableAsync<AipProjectDto>(office, caller, $"AIP program {programId} not found.", ct);
         if (statusError is not null) return statusError;
 
         if (string.IsNullOrWhiteSpace(dto.Name))
@@ -986,7 +993,7 @@ public sealed class AipService : IAipService
     }
 
     public async Task<ServiceResult<AipActivityDto>> AddActivityAsync(
-        int projectId, CreateAipActivityDto dto, CancellationToken ct = default)
+        int projectId, CreateAipActivityDto dto, User caller, CancellationToken ct = default)
     {
         AipProject? project = await _aipRepo.GetProjectByIdAsync(projectId, ct);
         if (project is null)
@@ -1000,7 +1007,7 @@ public sealed class AipService : IAipService
         if (office is null)
             return ServiceResult<AipActivityDto>.NotFound($"AIP office {program.OfficeId} not found.");
 
-        ServiceResult<AipActivityDto>? statusError = await CheckDraftAsync<AipActivityDto>(office.AipRecordId, ct);
+        ServiceResult<AipActivityDto>? statusError = await CheckWritableAsync<AipActivityDto>(office, caller, $"AIP project {projectId} not found.", ct);
         if (statusError is not null) return statusError;
 
         if (string.IsNullOrWhiteSpace(dto.Name))
@@ -1052,13 +1059,13 @@ public sealed class AipService : IAipService
     // ── Inline office/program/project edit (detail-page CRUD follow-up to RAL-179) ──
 
     public async Task<ServiceResult<AipOfficeDto>> UpdateOfficeAsync(
-        int officeId, UpdateAipOfficeDto dto, CancellationToken ct = default)
+        int officeId, UpdateAipOfficeDto dto, User caller, CancellationToken ct = default)
     {
         AipOffice? office = await _aipRepo.GetOfficeByIdAsync(officeId, ct);
         if (office is null)
             return ServiceResult<AipOfficeDto>.NotFound($"AIP office {officeId} not found.");
 
-        ServiceResult<AipOfficeDto>? statusError = await CheckDraftAsync<AipOfficeDto>(office.AipRecordId, ct, "edit");
+        ServiceResult<AipOfficeDto>? statusError = await CheckWritableAsync<AipOfficeDto>(office, caller, $"AIP office {officeId} not found.", ct, "edit");
         if (statusError is not null) return statusError;
 
         if (string.IsNullOrWhiteSpace(dto.Name))
@@ -1086,7 +1093,7 @@ public sealed class AipService : IAipService
     }
 
     public async Task<ServiceResult<AipProgramDto>> UpdateProgramAsync(
-        int programId, UpdateAipProgramDto dto, CancellationToken ct = default)
+        int programId, UpdateAipProgramDto dto, User caller, CancellationToken ct = default)
     {
         AipProgram? program = await _aipRepo.GetProgramByIdAsync(programId, ct);
         if (program is null)
@@ -1096,7 +1103,7 @@ public sealed class AipService : IAipService
         if (office is null)
             return ServiceResult<AipProgramDto>.NotFound($"AIP office {program.OfficeId} not found.");
 
-        ServiceResult<AipProgramDto>? statusError = await CheckDraftAsync<AipProgramDto>(office.AipRecordId, ct, "edit");
+        ServiceResult<AipProgramDto>? statusError = await CheckWritableAsync<AipProgramDto>(office, caller, $"AIP program {programId} not found.", ct, "edit");
         if (statusError is not null) return statusError;
 
         if (string.IsNullOrWhiteSpace(dto.Name))
@@ -1131,7 +1138,7 @@ public sealed class AipService : IAipService
     }
 
     public async Task<ServiceResult<AipProjectDto>> UpdateProjectAsync(
-        int projectId, UpdateAipProjectDto dto, CancellationToken ct = default)
+        int projectId, UpdateAipProjectDto dto, User caller, CancellationToken ct = default)
     {
         AipProject? project = await _aipRepo.GetProjectByIdAsync(projectId, ct);
         if (project is null)
@@ -1144,7 +1151,7 @@ public sealed class AipService : IAipService
         if (office is null)
             return ServiceResult<AipProjectDto>.NotFound($"AIP office {program.OfficeId} not found.");
 
-        ServiceResult<AipProjectDto>? statusError = await CheckDraftAsync<AipProjectDto>(office.AipRecordId, ct, "edit");
+        ServiceResult<AipProjectDto>? statusError = await CheckWritableAsync<AipProjectDto>(office, caller, $"AIP project {projectId} not found.", ct, "edit");
         if (statusError is not null) return statusError;
 
         if (string.IsNullOrWhiteSpace(dto.Name))
@@ -1164,7 +1171,7 @@ public sealed class AipService : IAipService
     // ── Inline activity edit (RAL-179) ────────────────────────────────────────
 
     public async Task<ServiceResult<AipActivityDto>> UpdateActivityAsync(
-        int aipRecordId, int activityId, UpdateAipActivityDto dto, CancellationToken ct = default)
+        int aipRecordId, int activityId, UpdateAipActivityDto dto, User caller, CancellationToken ct = default)
     {
         AipActivity? activity = await _aipRepo.GetActivityByIdAsync(activityId, ct);
         if (activity is null)
@@ -1183,7 +1190,7 @@ public sealed class AipService : IAipService
             return ServiceResult<AipActivityDto>.NotFound(
                 $"AIP activity {activityId} does not belong to AIP record {aipRecordId}.");
 
-        ServiceResult<AipActivityDto>? statusError = await CheckDraftAsync<AipActivityDto>(office.AipRecordId, ct, "edit");
+        ServiceResult<AipActivityDto>? statusError = await CheckWritableAsync<AipActivityDto>(office, caller, $"AIP activity {activityId} not found.", ct, "edit");
         if (statusError is not null) return statusError;
 
         if (string.IsNullOrWhiteSpace(dto.Name))
@@ -1244,13 +1251,13 @@ public sealed class AipService : IAipService
 
     // ── Delete (mistakes happen — mirrors the Add* guard chain) ───────────────
 
-    public async Task<ServiceResult<bool>> DeleteOfficeAsync(int officeId, CancellationToken ct = default)
+    public async Task<ServiceResult<bool>> DeleteOfficeAsync(int officeId, User caller, CancellationToken ct = default)
     {
         AipOffice? office = await _aipRepo.GetOfficeByIdAsync(officeId, ct);
         if (office is null)
             return ServiceResult<bool>.NotFound($"AIP office {officeId} not found.");
 
-        ServiceResult<bool>? statusError = await CheckDraftAsync<bool>(office.AipRecordId, ct, "delete from");
+        ServiceResult<bool>? statusError = await CheckWritableAsync<bool>(office, caller, $"AIP office {officeId} not found.", ct, "delete from");
         if (statusError is not null) return statusError;
 
         // DB cascade (AipOffice -> AipProgram -> AipProject -> AipActivity) removes the whole subtree.
@@ -1262,7 +1269,7 @@ public sealed class AipService : IAipService
         return ServiceResult<bool>.Ok(true);
     }
 
-    public async Task<ServiceResult<bool>> DeleteProgramAsync(int programId, CancellationToken ct = default)
+    public async Task<ServiceResult<bool>> DeleteProgramAsync(int programId, User caller, CancellationToken ct = default)
     {
         AipProgram? program = await _aipRepo.GetProgramByIdAsync(programId, ct);
         if (program is null)
@@ -1272,7 +1279,7 @@ public sealed class AipService : IAipService
         if (office is null)
             return ServiceResult<bool>.NotFound($"AIP office {program.OfficeId} not found.");
 
-        ServiceResult<bool>? statusError = await CheckDraftAsync<bool>(office.AipRecordId, ct, "delete from");
+        ServiceResult<bool>? statusError = await CheckWritableAsync<bool>(office, caller, $"AIP program {programId} not found.", ct, "delete from");
         if (statusError is not null) return statusError;
 
         // DB cascade (AipProgram -> AipProject -> AipActivity) removes the whole subtree.
@@ -1284,7 +1291,7 @@ public sealed class AipService : IAipService
         return ServiceResult<bool>.Ok(true);
     }
 
-    public async Task<ServiceResult<bool>> DeleteProjectAsync(int projectId, CancellationToken ct = default)
+    public async Task<ServiceResult<bool>> DeleteProjectAsync(int projectId, User caller, CancellationToken ct = default)
     {
         AipProject? project = await _aipRepo.GetProjectByIdAsync(projectId, ct);
         if (project is null)
@@ -1297,7 +1304,7 @@ public sealed class AipService : IAipService
         if (office is null)
             return ServiceResult<bool>.NotFound($"AIP office {program.OfficeId} not found.");
 
-        ServiceResult<bool>? statusError = await CheckDraftAsync<bool>(office.AipRecordId, ct, "delete from");
+        ServiceResult<bool>? statusError = await CheckWritableAsync<bool>(office, caller, $"AIP project {projectId} not found.", ct, "delete from");
         if (statusError is not null) return statusError;
 
         // DB cascade (AipProject -> AipActivity) removes the activities under it.
@@ -1309,7 +1316,7 @@ public sealed class AipService : IAipService
         return ServiceResult<bool>.Ok(true);
     }
 
-    public async Task<ServiceResult<bool>> DeleteActivityAsync(int activityId, CancellationToken ct = default)
+    public async Task<ServiceResult<bool>> DeleteActivityAsync(int activityId, User caller, CancellationToken ct = default)
     {
         AipActivity? activity = await _aipRepo.GetActivityByIdAsync(activityId, ct);
         if (activity is null)
@@ -1325,7 +1332,7 @@ public sealed class AipService : IAipService
         if (office is null)
             return ServiceResult<bool>.NotFound($"AIP office {program.OfficeId} not found.");
 
-        ServiceResult<bool>? statusError = await CheckDraftAsync<bool>(office.AipRecordId, ct, "delete from");
+        ServiceResult<bool>? statusError = await CheckWritableAsync<bool>(office, caller, $"AIP activity {activityId} not found.", ct, "delete from");
         if (statusError is not null) return statusError;
 
         await _activityRepo.DeleteAsync(activity, ct);
@@ -1338,11 +1345,35 @@ public sealed class AipService : IAipService
 
     /// <summary>Shared Draft-status guard for the manual-entry Add*/Update*/Delete* methods,
     /// keyed off the AipRecord reached by walking up from whichever node the caller is touching.</summary>
-    private async Task<ServiceResult<T>?> CheckDraftAsync<T>(int aipRecordId, CancellationToken ct, string action = "add to")
+    /// <summary>
+    /// The single gate every AIP write passes through: <b>may this caller write this node, and is
+    /// its record still editable?</b> Returns null when the write may proceed.
+    ///
+    /// <para>
+    /// ⚠️ <b>The ownership check comes first, and it answers NotFound rather than Forbidden.</b>
+    /// <paramref name="notFoundMessage"/> is the caller's own "no such node" message, so a node the
+    /// caller may not touch and a node that does not exist are byte-for-byte indistinguishable. A
+    /// 403 would confirm that the node exists and belongs to another office — exactly the existence
+    /// check the read paths clamp to avoid (V18-39). Clamping, the read side's answer, is not
+    /// available here: a write names one node, and redirecting it to a different one would silently
+    /// write to the wrong row, which is worse than any refusal.
+    /// </para>
+    ///
+    /// <para>
+    /// The cost is a puzzling error for a PPDO admin who mistypes an id. That is a support question;
+    /// the alternative is a disclosure.
+    /// </para>
+    /// </summary>
+    private async Task<ServiceResult<T>?> CheckWritableAsync<T>(
+        AipOffice office, User caller, string notFoundMessage,
+        CancellationToken ct, string action = "add to")
     {
-        AipRecord? rec = await _aipRepo.GetByIntIdAsync(aipRecordId, ct);
+        if (!OfficeScope.Resolve(caller).Permits(office.OfficeId))
+            return ServiceResult<T>.NotFound(notFoundMessage);
+
+        AipRecord? rec = await _aipRepo.GetByIntIdAsync(office.AipRecordId, ct);
         if (rec is null)
-            return ServiceResult<T>.NotFound($"AIP record {aipRecordId} not found.");
+            return ServiceResult<T>.NotFound($"AIP record {office.AipRecordId} not found.");
         if (rec.Status != PlanningStatus.Draft)
             return ServiceResult<T>.BadRequest(
                 $"Cannot {action} a '{rec.Status}' record. Unlock it back to Draft first.");
@@ -1421,10 +1452,14 @@ public sealed class AipService : IAipService
     // ── Field updates (v1.4 Q1/Q2 — captured during WFP data entry) ────────────
 
     public async Task<ServiceResult<AipProgramDto>> UpdateProgramFunctionBandAsync(
-        int programId, string? functionBand, CancellationToken ct = default)
+        int programId, string? functionBand, User caller, CancellationToken ct = default)
     {
         AipProgram? program = await _aipRepo.GetProgramByIdAsync(programId, ct);
         if (program is null)
+            return ServiceResult<AipProgramDto>.NotFound($"AIP program {programId} not found.");
+
+        AipOffice? bandOffice = await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
+        if (bandOffice is null || !OfficeScope.Resolve(caller).Permits(bandOffice.OfficeId))
             return ServiceResult<AipProgramDto>.NotFound($"AIP program {programId} not found.");
 
         if (!TryCanonicalizeFunctionBand(functionBand, out string? canonical, out string? error))
@@ -1444,10 +1479,19 @@ public sealed class AipService : IAipService
     }
 
     public async Task<ServiceResult<AipActivityDto>> UpdateActivityIsCreationAsync(
-        int activityId, bool isCreation, CancellationToken ct = default)
+        int activityId, bool isCreation, User caller, CancellationToken ct = default)
     {
         AipActivity? activity = await _aipRepo.GetActivityByIdAsync(activityId, ct);
         if (activity is null)
+            return ServiceResult<AipActivityDto>.NotFound($"AIP activity {activityId} not found.");
+
+        // The full walk up to the owning office — activity → project → program → AipOffice.
+        AipProject? creationProject = await _aipRepo.GetProjectByIdAsync(activity.ProjectId, ct);
+        AipProgram? creationProgram = creationProject is null
+            ? null : await _aipRepo.GetProgramByIdAsync(creationProject.ProgramId, ct);
+        AipOffice?  creationOffice  = creationProgram is null
+            ? null : await _aipRepo.GetOfficeByIdAsync(creationProgram.OfficeId, ct);
+        if (creationOffice is null || !OfficeScope.Resolve(caller).Permits(creationOffice.OfficeId))
             return ServiceResult<AipActivityDto>.NotFound($"AIP activity {activityId} not found.");
 
         bool oldValue = activity.IsCreation;

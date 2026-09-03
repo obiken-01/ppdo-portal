@@ -14,7 +14,7 @@ namespace PPDO.Tests.Application;
 /// — after RAL-93 — server-side scoped reads via <see cref="IAipRepository"/>.
 /// All repositories and IAipXlsmParser are mocked.
 /// </summary>
-public sealed class AipServiceTests
+public sealed partial class AipServiceTests
 {
     private static readonly Guid UserId = Guid.NewGuid();
 
@@ -1192,10 +1192,10 @@ public sealed class AipServiceTests
     public async Task UpdateProgramFunctionBand_ValidValue_PersistsCanonicalizedValue()
     {
         AipProgram prog = new() { Id = 301, OfficeId = 201, RefCode = "P", Name = "Prog" };
-        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], programSeed: [prog]);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], officeSeed: [new AipOffice { Id = 201, AipRecordId = 1, RefCode = "O", Name = "Office", Sector = "GENERAL", OfficeId = 1 }], programSeed: [prog]);
 
         ServiceResult<AipProgramDto> result =
-            await sut.UpdateProgramFunctionBandAsync(301, "core", CancellationToken.None);
+            await sut.UpdateProgramFunctionBandAsync(301, "core", HostCaller(), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal("CORE", result.Value!.FunctionBand);
@@ -1208,10 +1208,10 @@ public sealed class AipServiceTests
         // Function band is required (v1.4 follow-up) — clearing it back to null/empty is no
         // longer a valid operation; the existing value is left untouched.
         AipProgram prog = new() { Id = 302, OfficeId = 201, RefCode = "P", Name = "Prog", FunctionBand = "SUPPORT" };
-        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], programSeed: [prog]);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], officeSeed: [new AipOffice { Id = 201, AipRecordId = 1, RefCode = "O", Name = "Office", Sector = "GENERAL", OfficeId = 1 }], programSeed: [prog]);
 
         ServiceResult<AipProgramDto> result =
-            await sut.UpdateProgramFunctionBandAsync(302, "", CancellationToken.None);
+            await sut.UpdateProgramFunctionBandAsync(302, "", HostCaller(), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -1222,10 +1222,10 @@ public sealed class AipServiceTests
     public async Task UpdateProgramFunctionBand_InvalidValue_ReturnsBadRequest()
     {
         AipProgram prog = new() { Id = 303, OfficeId = 201, RefCode = "P", Name = "Prog" };
-        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], programSeed: [prog]);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], officeSeed: [new AipOffice { Id = 201, AipRecordId = 1, RefCode = "O", Name = "Office", Sector = "GENERAL", OfficeId = 1 }], programSeed: [prog]);
 
         ServiceResult<AipProgramDto> result =
-            await sut.UpdateProgramFunctionBandAsync(303, "BOGUS", CancellationToken.None);
+            await sut.UpdateProgramFunctionBandAsync(303, "BOGUS", HostCaller(), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -1238,7 +1238,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
         ServiceResult<AipProgramDto> result =
-            await sut.UpdateProgramFunctionBandAsync(999, "CORE", CancellationToken.None);
+            await sut.UpdateProgramFunctionBandAsync(999, "CORE", HostCaller(), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
@@ -1250,10 +1250,10 @@ public sealed class AipServiceTests
     public async Task UpdateActivityIsCreation_True_Persists()
     {
         AipActivity act = new() { Id = 501, ProjectId = 401, RefCode = "A", Name = "Act" };
-        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], actSeed: [act]);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], officeSeed: [new AipOffice { Id = 201, AipRecordId = 1, RefCode = "O", Name = "Office", Sector = "GENERAL", OfficeId = 1 }], programSeed: [new AipProgram { Id = 301, OfficeId = 201, RefCode = "P", Name = "Prog" }], projectSeed: [new AipProject { Id = 401, ProgramId = 301, RefCode = "J", Name = "Proj" }], actSeed: [act]);
 
         ServiceResult<AipActivityDto> result =
-            await sut.UpdateActivityIsCreationAsync(501, true, CancellationToken.None);
+            await sut.UpdateActivityIsCreationAsync(501, true, HostCaller(), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.True(result.Value!.IsCreation);
@@ -1264,10 +1264,10 @@ public sealed class AipServiceTests
     public async Task UpdateActivityIsCreation_False_Persists()
     {
         AipActivity act = new() { Id = 502, ProjectId = 401, RefCode = "A", Name = "Act", IsCreation = true };
-        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], actSeed: [act]);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], officeSeed: [new AipOffice { Id = 201, AipRecordId = 1, RefCode = "O", Name = "Office", Sector = "GENERAL", OfficeId = 1 }], programSeed: [new AipProgram { Id = 301, OfficeId = 201, RefCode = "P", Name = "Prog" }], projectSeed: [new AipProject { Id = 401, ProgramId = 301, RefCode = "J", Name = "Proj" }], actSeed: [act]);
 
         ServiceResult<AipActivityDto> result =
-            await sut.UpdateActivityIsCreationAsync(502, false, CancellationToken.None);
+            await sut.UpdateActivityIsCreationAsync(502, false, HostCaller(), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.False(result.Value!.IsCreation);
@@ -1280,7 +1280,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
         ServiceResult<AipActivityDto> result =
-            await sut.UpdateActivityIsCreationAsync(999, true, CancellationToken.None);
+            await sut.UpdateActivityIsCreationAsync(999, true, HostCaller(), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
@@ -1363,7 +1363,7 @@ public sealed class AipServiceTests
             Build([rec], [], officeConfigSeed: offices);
 
         ServiceResult<AipOfficeDto> result =
-            await sut.AddOfficeAsync(1, new CreateAipOfficeDto(7, "GENERAL"));
+            await sut.AddOfficeAsync(1, new CreateAipOfficeDto(7, "GENERAL"), HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal("1000-000-1-01-010", result.Value!.RefCode);
@@ -1383,7 +1383,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
 
         ServiceResult<AipOfficeDto> result =
-            await sut.AddOfficeAsync(1, new CreateAipOfficeDto(7, sector));
+            await sut.AddOfficeAsync(1, new CreateAipOfficeDto(7, sector), HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal($"{expectedPrefix}-000-1-01-010", result.Value!.RefCode);
@@ -1397,8 +1397,8 @@ public sealed class AipServiceTests
         List<Office> offices = [MakeOffice(7, "PPDO", "01-010")];
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
 
-        ServiceResult<AipOfficeDto> first  = await sut.AddOfficeAsync(1, new CreateAipOfficeDto(7, "GENERAL"));
-        ServiceResult<AipOfficeDto> second = await sut.AddOfficeAsync(1, new CreateAipOfficeDto(7, "SOCIAL"));
+        ServiceResult<AipOfficeDto> first  = await sut.AddOfficeAsync(1, new CreateAipOfficeDto(7, "GENERAL"), HostCaller());
+        ServiceResult<AipOfficeDto> second = await sut.AddOfficeAsync(1, new CreateAipOfficeDto(7, "SOCIAL"), HostCaller());
 
         Assert.True(first.IsSuccess);
         Assert.True(second.IsSuccess);
@@ -1412,8 +1412,8 @@ public sealed class AipServiceTests
         List<Office> offices = [MakeOffice(7, "PPDO", "01-010")];
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
 
-        await sut.AddOfficeAsync(1, new CreateAipOfficeDto(7, "GENERAL"));
-        ServiceResult<AipOfficeDto> second = await sut.AddOfficeAsync(1, new CreateAipOfficeDto(7, "GENERAL"));
+        await sut.AddOfficeAsync(1, new CreateAipOfficeDto(7, "GENERAL"), HostCaller());
+        ServiceResult<AipOfficeDto> second = await sut.AddOfficeAsync(1, new CreateAipOfficeDto(7, "GENERAL"), HostCaller());
 
         Assert.False(second.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, second.Code);
@@ -1427,7 +1427,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
 
         ServiceResult<AipOfficeDto> result = await sut.AddOfficeAsync(
-            1, new CreateAipOfficeDto(7, "ECONOMIC", "Provincial Planning and Development Office - Special Projects"));
+            1, new CreateAipOfficeDto(7, "ECONOMIC", "Provincial Planning and Development Office - Special Projects"), HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal("Provincial Planning and Development Office - Special Projects", result.Value!.Name);
@@ -1442,7 +1442,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
 
         ServiceResult<AipOfficeDto> result = await sut.AddOfficeAsync(
-            1, new CreateAipOfficeDto(7, "GENERAL", "   "));
+            1, new CreateAipOfficeDto(7, "GENERAL", "   "), HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal("PPDO", result.Value!.Name);
@@ -1459,9 +1459,9 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
 
         ServiceResult<AipOfficeDto> first  = await sut.AddOfficeAsync(
-            1, new CreateAipOfficeDto(7, "SOCIAL", "Office of the Governor - Warden"));
+            1, new CreateAipOfficeDto(7, "SOCIAL", "Office of the Governor - Warden"), HostCaller());
         ServiceResult<AipOfficeDto> second = await sut.AddOfficeAsync(
-            1, new CreateAipOfficeDto(7, "SOCIAL", "Office of the Governor - AKAP-HUB"));
+            1, new CreateAipOfficeDto(7, "SOCIAL", "Office of the Governor - AKAP-HUB"), HostCaller());
 
         Assert.True(first.IsSuccess);
         Assert.True(second.IsSuccess);
@@ -1476,9 +1476,9 @@ public sealed class AipServiceTests
         List<Office> offices = [MakeOffice(7, "Office of the Governor", "01-001")];
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
 
-        await sut.AddOfficeAsync(1, new CreateAipOfficeDto(7, "SOCIAL", "Office of the Governor - Warden"));
+        await sut.AddOfficeAsync(1, new CreateAipOfficeDto(7, "SOCIAL", "Office of the Governor - Warden"), HostCaller());
         ServiceResult<AipOfficeDto> second = await sut.AddOfficeAsync(
-            1, new CreateAipOfficeDto(7, "SOCIAL", "office of the governor - warden"));
+            1, new CreateAipOfficeDto(7, "SOCIAL", "office of the governor - warden"), HostCaller());
 
         Assert.False(second.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, second.Code);
@@ -1491,7 +1491,7 @@ public sealed class AipServiceTests
         List<Office> offices = [MakeOffice(7, "PPDO", "01-010")];
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
 
-        ServiceResult<AipOfficeDto> result = await sut.AddOfficeAsync(1, new CreateAipOfficeDto(7, "MADEUP"));
+        ServiceResult<AipOfficeDto> result = await sut.AddOfficeAsync(1, new CreateAipOfficeDto(7, "MADEUP"), HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -1504,7 +1504,7 @@ public sealed class AipServiceTests
         List<Office> offices = [MakeOffice(7, "PPDO", null)];
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
 
-        ServiceResult<AipOfficeDto> result = await sut.AddOfficeAsync(1, new CreateAipOfficeDto(7, "GENERAL"));
+        ServiceResult<AipOfficeDto> result = await sut.AddOfficeAsync(1, new CreateAipOfficeDto(7, "GENERAL"), HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -1517,7 +1517,7 @@ public sealed class AipServiceTests
         List<Office> offices = [MakeOffice(7, "PPDO", "01-010", isActive: false)];
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
 
-        ServiceResult<AipOfficeDto> result = await sut.AddOfficeAsync(1, new CreateAipOfficeDto(7, "GENERAL"));
+        ServiceResult<AipOfficeDto> result = await sut.AddOfficeAsync(1, new CreateAipOfficeDto(7, "GENERAL"), HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
@@ -1530,7 +1530,7 @@ public sealed class AipServiceTests
         List<Office> offices = [MakeOffice(7, "PPDO", "01-010")];
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeConfigSeed: offices);
 
-        ServiceResult<AipOfficeDto> result = await sut.AddOfficeAsync(1, new CreateAipOfficeDto(7, "GENERAL"));
+        ServiceResult<AipOfficeDto> result = await sut.AddOfficeAsync(1, new CreateAipOfficeDto(7, "GENERAL"), HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -1578,7 +1578,7 @@ public sealed class AipServiceTests
             projectSeed: [proj], actSeed: [act]);
 
         ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
-            new CopyAipOfficeDto(20, 2028, [30]), UserId);
+            new CopyAipOfficeDto(20, 2028, [30]), UserId, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal("1000-000-1-01-010", result.Value!.RefCode);
@@ -1606,7 +1606,7 @@ public sealed class AipServiceTests
             projectSeed: [proj], actSeed: [act]);
 
         ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
-            new CopyAipOfficeDto(20, 2028, [30]), UserId);
+            new CopyAipOfficeDto(20, 2028, [30]), UserId, HostCaller());
 
         Assert.True(result.IsSuccess);
         AipProgramDto copiedProgram = result.Value!.Programs.Single();
@@ -1652,7 +1652,7 @@ public sealed class AipServiceTests
             [sourceRec, targetRec], [], officeSeed: [office], programSeed: [progA]);
 
         ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
-            new CopyAipOfficeDto(20, 2028, [30]), UserId);
+            new CopyAipOfficeDto(20, 2028, [30]), UserId, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal(2, result.Value!.AipRecordId); // reused the existing target record, not a new one
@@ -1678,7 +1678,7 @@ public sealed class AipServiceTests
             [sourceRec, targetRec], [], officeSeed: [office], programSeed: [progA]);
 
         ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
-            new CopyAipOfficeDto(20, 2028, [30]), UserId);
+            new CopyAipOfficeDto(20, 2028, [30]), UserId, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -1703,7 +1703,7 @@ public sealed class AipServiceTests
             [sourceRec, archivedTargetRec], [], officeSeed: [office], programSeed: [progA]);
 
         ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
-            new CopyAipOfficeDto(20, 2028, [30]), UserId);
+            new CopyAipOfficeDto(20, 2028, [30]), UserId, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.NotEqual(2, result.Value!.AipRecordId); // a new record, not the archived one
@@ -1729,7 +1729,7 @@ public sealed class AipServiceTests
             [sourceRec, targetRec], [], officeSeed: [sourceOff, targetOff], programSeed: [progA]);
 
         ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
-            new CopyAipOfficeDto(20, 2028, [30]), UserId);
+            new CopyAipOfficeDto(20, 2028, [30]), UserId, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal(21, result.Value!.Id); // reused the existing target office, not a new one
@@ -1763,7 +1763,7 @@ public sealed class AipServiceTests
             programSeed: [progA, preExisting]);
 
         ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
-            new CopyAipOfficeDto(20, 2028, [30]), UserId);
+            new CopyAipOfficeDto(20, 2028, [30]), UserId, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal(2, result.Value!.Programs.Count);
@@ -1782,7 +1782,7 @@ public sealed class AipServiceTests
 
         // 999 does not belong to office 20.
         ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
-            new CopyAipOfficeDto(20, 2028, [30, 999]), UserId);
+            new CopyAipOfficeDto(20, 2028, [30, 999]), UserId, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -1810,7 +1810,7 @@ public sealed class AipServiceTests
             programSeed: [progA, existingTargetProgram]);
 
         ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
-            new CopyAipOfficeDto(20, 2028, [30]), UserId);
+            new CopyAipOfficeDto(20, 2028, [30]), UserId, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -1826,7 +1826,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([sourceRec], []);
 
         ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
-            new CopyAipOfficeDto(999, 2028, [30]), UserId);
+            new CopyAipOfficeDto(999, 2028, [30]), UserId, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
@@ -1840,7 +1840,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([sourceRec], [], officeSeed: [office]);
 
         ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
-            new CopyAipOfficeDto(20, 2028, []), UserId);
+            new CopyAipOfficeDto(20, 2028, []), UserId, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -1863,7 +1863,7 @@ public sealed class AipServiceTests
             [sourceRec, targetRec], [], officeSeed: [sourceOff, targetOff], programSeed: [progA, progB]);
 
         ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
-            new CopyAipOfficeDto(20, 2028, [30, 31]), UserId);
+            new CopyAipOfficeDto(20, 2028, [30, 31]), UserId, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal(2, result.Value!.Programs.Count);
@@ -1911,7 +1911,7 @@ public sealed class AipServiceTests
             [], [], officeConfigSeed: officeConfigs, ldipRecordSeed: [ldipRec], ldipOfficeSeed: [group]);
 
         ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
-            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId);
+            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal("1000-000-1-01-010", result.Value!.RefCode);
@@ -1938,7 +1938,7 @@ public sealed class AipServiceTests
             [], [], officeConfigSeed: officeConfigs, ldipRecordSeed: [ldipRec], ldipOfficeSeed: [group]);
 
         ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
-            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId);
+            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId, HostCaller());
 
         Assert.True(result.IsSuccess);
         AipProgramDto seeded = result.Value!.Programs.Single();
@@ -1966,7 +1966,7 @@ public sealed class AipServiceTests
             [targetRec], [], officeConfigSeed: officeConfigs, ldipRecordSeed: [ldipRec], ldipOfficeSeed: [group]);
 
         ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
-            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId);
+            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal(2, result.Value!.AipRecordId); // reused the existing target record, not a new one
@@ -1993,7 +1993,7 @@ public sealed class AipServiceTests
             [targetRec], [], officeConfigSeed: officeConfigs, ldipRecordSeed: [ldipRec], ldipOfficeSeed: [group]);
 
         ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
-            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId);
+            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2018,7 +2018,7 @@ public sealed class AipServiceTests
             ldipRecordSeed: [ldipRec], ldipOfficeSeed: [group]);
 
         ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
-            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId);
+            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal(21, result.Value!.Id); // reused the existing target office, not a new one
@@ -2049,7 +2049,7 @@ public sealed class AipServiceTests
             officeConfigSeed: officeConfigs, ldipRecordSeed: [ldipRec], ldipOfficeSeed: [group]);
 
         ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
-            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId);
+            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal(2, result.Value!.Programs.Count);
@@ -2070,7 +2070,7 @@ public sealed class AipServiceTests
 
         // 999 does not belong to group 70.
         ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
-            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80, 999]), UserId);
+            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80, 999]), UserId, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2099,7 +2099,7 @@ public sealed class AipServiceTests
             officeConfigSeed: officeConfigs, ldipRecordSeed: [ldipRec], ldipOfficeSeed: [group]);
 
         ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
-            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId);
+            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2121,7 +2121,7 @@ public sealed class AipServiceTests
             [], [], officeConfigSeed: officeConfigs, ldipRecordSeed: [ldipRec], ldipOfficeSeed: [group]);
 
         ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
-            new SeedAipProgramsFromLdipDto(2028, 7, "SOCIAL", [80]), UserId);
+            new SeedAipProgramsFromLdipDto(2028, 7, "SOCIAL", [80]), UserId, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2135,7 +2135,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], officeConfigSeed: officeConfigs);
 
         ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
-            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", []), UserId);
+            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", []), UserId, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2147,7 +2147,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
         ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
-            new SeedAipProgramsFromLdipDto(2028, 999, "GENERAL", [80]), UserId);
+            new SeedAipProgramsFromLdipDto(2028, 999, "GENERAL", [80]), UserId, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
@@ -2166,7 +2166,7 @@ public sealed class AipServiceTests
 
         // Request uses uppercase "GENERAL" (AIP's own convention) — must still match.
         ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
-            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId);
+            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal("GENERAL", result.Value!.Sector); // stored uppercase on the AIP side
@@ -2206,7 +2206,7 @@ public sealed class AipServiceTests
             ldipOfficeSeed: [olderGroup, archivedGroup, newestGroup]);
 
         ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
-            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId);
+            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal("Newest Program", result.Value!.Programs.Single().Name);
@@ -2249,7 +2249,7 @@ public sealed class AipServiceTests
             ldipOfficeSeed: [archivedOwnGroup, uploadGroup, otherOfficeGroup]);
 
         ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
-            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [90]), UserId);
+            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [90]), UserId, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal("Uploaded Program", result.Value!.Programs.Single().Name);
@@ -2273,7 +2273,7 @@ public sealed class AipServiceTests
             ldipOfficeSeed: [ownGroup, uploadGroup]);
 
         ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
-            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId);
+            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [80]), UserId, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal("Own Program", result.Value!.Programs.Single().Name); // Tier 1, not the upload doc
@@ -2291,7 +2291,7 @@ public sealed class AipServiceTests
             [], [], officeConfigSeed: officeConfigs, ldipRecordSeed: [uploadRec], ldipOfficeSeed: [uploadGroup]);
 
         ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
-            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [90]), UserId);
+            new SeedAipProgramsFromLdipDto(2028, 7, "GENERAL", [90]), UserId, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2305,7 +2305,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, programRepo, _, _, _) = Build([rec], [], officeSeed: offices);
 
         ServiceResult<AipProgramDto> result =
-            await sut.AddProgramAsync(20, new CreateAipProgramDto("Program One", null));
+            await sut.AddProgramAsync(20, new CreateAipProgramDto("Program One", null), HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal("1000-000-1-01-010-001", result.Value!.RefCode);
@@ -2322,7 +2322,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeSeed: offices, programSeed: programs);
 
         ServiceResult<AipProgramDto> result =
-            await sut.AddProgramAsync(20, new CreateAipProgramDto("Program Two", "STRATEGIC"));
+            await sut.AddProgramAsync(20, new CreateAipProgramDto("Program Two", "STRATEGIC"), HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal("1000-000-1-01-010-004", result.Value!.RefCode);
@@ -2336,7 +2336,7 @@ public sealed class AipServiceTests
         List<AipOffice> offices = [new() { Id = 20, AipRecordId = 1, RefCode = "1000-000-1-01-010", Name = "PPDO", Sector = "GENERAL" }];
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeSeed: offices);
 
-        ServiceResult<AipProgramDto> result = await sut.AddProgramAsync(20, new CreateAipProgramDto("  ", null));
+        ServiceResult<AipProgramDto> result = await sut.AddProgramAsync(20, new CreateAipProgramDto("  ", null), HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2349,7 +2349,7 @@ public sealed class AipServiceTests
         List<AipOffice> offices = [new() { Id = 20, AipRecordId = 1, RefCode = "1000-000-1-01-010", Name = "PPDO", Sector = "GENERAL" }];
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeSeed: offices);
 
-        ServiceResult<AipProgramDto> result = await sut.AddProgramAsync(20, new CreateAipProgramDto("X", null));
+        ServiceResult<AipProgramDto> result = await sut.AddProgramAsync(20, new CreateAipProgramDto("X", null), HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2360,7 +2360,7 @@ public sealed class AipServiceTests
     {
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
-        ServiceResult<AipProgramDto> result = await sut.AddProgramAsync(999, new CreateAipProgramDto("X", null));
+        ServiceResult<AipProgramDto> result = await sut.AddProgramAsync(999, new CreateAipProgramDto("X", null), HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
@@ -2376,7 +2376,7 @@ public sealed class AipServiceTests
             Build([rec], [], officeSeed: offices, programSeed: programs);
 
         ServiceResult<AipProjectDto> result =
-            await sut.AddProjectAsync(30, new CreateAipProjectDto("Project One"));
+            await sut.AddProjectAsync(30, new CreateAipProjectDto("Project One"), HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal("1000-000-1-01-010-001-001", result.Value!.RefCode);
@@ -2388,7 +2388,7 @@ public sealed class AipServiceTests
     {
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
-        ServiceResult<AipProjectDto> result = await sut.AddProjectAsync(999, new CreateAipProjectDto("X"));
+        ServiceResult<AipProjectDto> result = await sut.AddProjectAsync(999, new CreateAipProjectDto("X"), HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
@@ -2402,7 +2402,7 @@ public sealed class AipServiceTests
         List<AipProgram> programs = [new() { Id = 30, OfficeId = 20, RefCode = "1000-000-1-01-010-001", Name = "Program" }];
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [], officeSeed: offices, programSeed: programs);
 
-        ServiceResult<AipProjectDto> result = await sut.AddProjectAsync(30, new CreateAipProjectDto("X"));
+        ServiceResult<AipProjectDto> result = await sut.AddProjectAsync(30, new CreateAipProjectDto("X"), HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2422,7 +2422,7 @@ public sealed class AipServiceTests
             "Activity One", "SS", "PPDO", "January", "December", "Outputs", "GF",
             1000m, 500m, 250m, null, null, null);
 
-        ServiceResult<AipActivityDto> result = await sut.AddActivityAsync(40, dto);
+        ServiceResult<AipActivityDto> result = await sut.AddActivityAsync(40, dto, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal("1000-000-1-01-010-001-001-001", result.Value!.RefCode);
@@ -2445,7 +2445,7 @@ public sealed class AipServiceTests
         CreateAipActivityDto dto = new(
             "Activity One", null, null, null, null, null, null, null, null, null, null, null, null);
 
-        ServiceResult<AipActivityDto> result = await sut.AddActivityAsync(40, dto);
+        ServiceResult<AipActivityDto> result = await sut.AddActivityAsync(40, dto, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Null(result.Value!.Total);
@@ -2464,7 +2464,7 @@ public sealed class AipServiceTests
         CreateAipActivityDto dto = new(
             "Activity One", "XX", null, null, null, null, null, null, null, null, null, null, null);
 
-        ServiceResult<AipActivityDto> result = await sut.AddActivityAsync(40, dto);
+        ServiceResult<AipActivityDto> result = await sut.AddActivityAsync(40, dto, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2483,7 +2483,7 @@ public sealed class AipServiceTests
         CreateAipActivityDto dto = new(
             "Activity One", null, null, null, null, null, "UNKNOWN-CODE", null, null, null, null, null, null);
 
-        ServiceResult<AipActivityDto> result = await sut.AddActivityAsync(40, dto);
+        ServiceResult<AipActivityDto> result = await sut.AddActivityAsync(40, dto, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Null(result.Value!.FundingSourceId);
@@ -2496,7 +2496,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
         CreateAipActivityDto dto = new("X", null, null, null, null, null, null, null, null, null, null, null, null);
-        ServiceResult<AipActivityDto> result = await sut.AddActivityAsync(999, dto);
+        ServiceResult<AipActivityDto> result = await sut.AddActivityAsync(999, dto, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
@@ -2513,7 +2513,7 @@ public sealed class AipServiceTests
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects);
 
         CreateAipActivityDto dto = new("X", null, null, null, null, null, null, null, null, null, null, null, null);
-        ServiceResult<AipActivityDto> result = await sut.AddActivityAsync(40, dto);
+        ServiceResult<AipActivityDto> result = await sut.AddActivityAsync(40, dto, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2561,7 +2561,7 @@ public sealed class AipServiceTests
             "Updated Name", "ES", "PPDO", "March", "June", "New outputs", 1,
             2000m, 1000m, 500m, null, null, null);
 
-        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto);
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal("Updated Name", result.Value!.Name);
@@ -2586,7 +2586,7 @@ public sealed class AipServiceTests
         UpdateAipActivityDto dto = new(
             "Name", null, null, null, null, null, null, null, null, null, null, null, null);
 
-        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto);
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Null(result.Value!.FundingSourceId);
@@ -2601,7 +2601,7 @@ public sealed class AipServiceTests
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         UpdateAipActivityDto dto = new("Name", null, null, null, null, null, null, null, null, null, null, null, null);
-        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto);
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Null(result.Value!.Total);
@@ -2615,7 +2615,7 @@ public sealed class AipServiceTests
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         UpdateAipActivityDto dto = new("   ", null, null, null, null, null, null, null, null, null, null, null, null);
-        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto);
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2629,7 +2629,7 @@ public sealed class AipServiceTests
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         UpdateAipActivityDto dto = new("Name", "ZZ", null, null, null, null, null, null, null, null, null, null, null);
-        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto);
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2643,7 +2643,7 @@ public sealed class AipServiceTests
             Build([rec], [Fs(1, "GF")], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         UpdateAipActivityDto dto = new("Name", null, null, null, null, null, 999, null, null, null, null, null, null);
-        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto);
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2657,7 +2657,7 @@ public sealed class AipServiceTests
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         UpdateAipActivityDto dto = new("Name", null, null, null, null, null, null, null, null, null, null, null, null);
-        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto);
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2669,7 +2669,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
         UpdateAipActivityDto dto = new("Name", null, null, null, null, null, null, null, null, null, null, null, null);
-        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 999, dto);
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 999, dto, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
@@ -2683,7 +2683,7 @@ public sealed class AipServiceTests
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         UpdateAipActivityDto dto = new("Name", null, null, null, null, null, null, null, null, null, null, null, null);
-        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(999, 50, dto);
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(999, 50, dto, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
@@ -2696,7 +2696,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, programRepo, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
-        ServiceResult<bool> result = await sut.DeleteProgramAsync(30);
+        ServiceResult<bool> result = await sut.DeleteProgramAsync(30, HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.True(result.Value);
@@ -2710,7 +2710,7 @@ public sealed class AipServiceTests
     {
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
-        ServiceResult<bool> result = await sut.DeleteProgramAsync(999);
+        ServiceResult<bool> result = await sut.DeleteProgramAsync(999, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
@@ -2723,7 +2723,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, programRepo, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
-        ServiceResult<bool> result = await sut.DeleteProgramAsync(30);
+        ServiceResult<bool> result = await sut.DeleteProgramAsync(30, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2737,7 +2737,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, projectRepo, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
-        ServiceResult<bool> result = await sut.DeleteProjectAsync(40);
+        ServiceResult<bool> result = await sut.DeleteProjectAsync(40, HostCaller());
 
         Assert.True(result.IsSuccess);
         projectRepo.Verify(r => r.DeleteAsync(
@@ -2750,7 +2750,7 @@ public sealed class AipServiceTests
     {
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
-        ServiceResult<bool> result = await sut.DeleteProjectAsync(999);
+        ServiceResult<bool> result = await sut.DeleteProjectAsync(999, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
@@ -2763,7 +2763,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, projectRepo, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
-        ServiceResult<bool> result = await sut.DeleteProjectAsync(40);
+        ServiceResult<bool> result = await sut.DeleteProjectAsync(40, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2777,7 +2777,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, activityRepo, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
-        ServiceResult<bool> result = await sut.DeleteActivityAsync(50);
+        ServiceResult<bool> result = await sut.DeleteActivityAsync(50, HostCaller());
 
         Assert.True(result.IsSuccess);
         activityRepo.Verify(r => r.DeleteAsync(
@@ -2790,7 +2790,7 @@ public sealed class AipServiceTests
     {
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
-        ServiceResult<bool> result = await sut.DeleteActivityAsync(999);
+        ServiceResult<bool> result = await sut.DeleteActivityAsync(999, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
@@ -2803,7 +2803,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, activityRepo, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
-        ServiceResult<bool> result = await sut.DeleteActivityAsync(50);
+        ServiceResult<bool> result = await sut.DeleteActivityAsync(50, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2819,7 +2819,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
-        ServiceResult<AipOfficeDto> result = await sut.UpdateOfficeAsync(20, new UpdateAipOfficeDto("New Office Name"));
+        ServiceResult<AipOfficeDto> result = await sut.UpdateOfficeAsync(20, new UpdateAipOfficeDto("New Office Name"), HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal("New Office Name", result.Value!.Name);
@@ -2833,7 +2833,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
-        ServiceResult<AipOfficeDto> result = await sut.UpdateOfficeAsync(20, new UpdateAipOfficeDto("   "));
+        ServiceResult<AipOfficeDto> result = await sut.UpdateOfficeAsync(20, new UpdateAipOfficeDto("   "), HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2847,7 +2847,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
-        ServiceResult<AipOfficeDto> result = await sut.UpdateOfficeAsync(20, new UpdateAipOfficeDto("A Different Name"));
+        ServiceResult<AipOfficeDto> result = await sut.UpdateOfficeAsync(20, new UpdateAipOfficeDto("A Different Name"), HostCaller());
 
         Assert.True(result.IsSuccess);
     }
@@ -2860,7 +2860,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
-        ServiceResult<AipOfficeDto> result = await sut.UpdateOfficeAsync(20, new UpdateAipOfficeDto("Sibling Sub-Office"));
+        ServiceResult<AipOfficeDto> result = await sut.UpdateOfficeAsync(20, new UpdateAipOfficeDto("Sibling Sub-Office"), HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2871,7 +2871,7 @@ public sealed class AipServiceTests
     {
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
-        ServiceResult<AipOfficeDto> result = await sut.UpdateOfficeAsync(999, new UpdateAipOfficeDto("Name"));
+        ServiceResult<AipOfficeDto> result = await sut.UpdateOfficeAsync(999, new UpdateAipOfficeDto("Name"), HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
@@ -2884,7 +2884,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
-        ServiceResult<AipOfficeDto> result = await sut.UpdateOfficeAsync(20, new UpdateAipOfficeDto("Name"));
+        ServiceResult<AipOfficeDto> result = await sut.UpdateOfficeAsync(20, new UpdateAipOfficeDto("Name"), HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2897,7 +2897,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
-        ServiceResult<AipProgramDto> result = await sut.UpdateProgramAsync(30, new UpdateAipProgramDto("New Program Name", "STRATEGIC"));
+        ServiceResult<AipProgramDto> result = await sut.UpdateProgramAsync(30, new UpdateAipProgramDto("New Program Name", "STRATEGIC"), HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal("New Program Name", result.Value!.Name);
@@ -2912,7 +2912,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
-        ServiceResult<AipProgramDto> result = await sut.UpdateProgramAsync(30, new UpdateAipProgramDto("New Name", null));
+        ServiceResult<AipProgramDto> result = await sut.UpdateProgramAsync(30, new UpdateAipProgramDto("New Name", null), HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal("SUPPORT", result.Value!.FunctionBand);
@@ -2925,7 +2925,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
-        ServiceResult<AipProgramDto> result = await sut.UpdateProgramAsync(30, new UpdateAipProgramDto("  ", null));
+        ServiceResult<AipProgramDto> result = await sut.UpdateProgramAsync(30, new UpdateAipProgramDto("  ", null), HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2938,7 +2938,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
-        ServiceResult<AipProgramDto> result = await sut.UpdateProgramAsync(30, new UpdateAipProgramDto("Name", "BOGUS"));
+        ServiceResult<AipProgramDto> result = await sut.UpdateProgramAsync(30, new UpdateAipProgramDto("Name", "BOGUS"), HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2949,7 +2949,7 @@ public sealed class AipServiceTests
     {
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
-        ServiceResult<AipProgramDto> result = await sut.UpdateProgramAsync(999, new UpdateAipProgramDto("Name", null));
+        ServiceResult<AipProgramDto> result = await sut.UpdateProgramAsync(999, new UpdateAipProgramDto("Name", null), HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
@@ -2962,7 +2962,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
-        ServiceResult<AipProgramDto> result = await sut.UpdateProgramAsync(30, new UpdateAipProgramDto("Name", null));
+        ServiceResult<AipProgramDto> result = await sut.UpdateProgramAsync(30, new UpdateAipProgramDto("Name", null), HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2975,7 +2975,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
-        ServiceResult<AipProjectDto> result = await sut.UpdateProjectAsync(40, new UpdateAipProjectDto("New Project Name"));
+        ServiceResult<AipProjectDto> result = await sut.UpdateProjectAsync(40, new UpdateAipProjectDto("New Project Name"), HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal("New Project Name", result.Value!.Name);
@@ -2988,7 +2988,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
-        ServiceResult<AipProjectDto> result = await sut.UpdateProjectAsync(40, new UpdateAipProjectDto(" "));
+        ServiceResult<AipProjectDto> result = await sut.UpdateProjectAsync(40, new UpdateAipProjectDto(" "), HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2999,7 +2999,7 @@ public sealed class AipServiceTests
     {
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
-        ServiceResult<AipProjectDto> result = await sut.UpdateProjectAsync(999, new UpdateAipProjectDto("Name"));
+        ServiceResult<AipProjectDto> result = await sut.UpdateProjectAsync(999, new UpdateAipProjectDto("Name"), HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
@@ -3012,7 +3012,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
-        ServiceResult<AipProjectDto> result = await sut.UpdateProjectAsync(40, new UpdateAipProjectDto("Name"));
+        ServiceResult<AipProjectDto> result = await sut.UpdateProjectAsync(40, new UpdateAipProjectDto("Name"), HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -3025,7 +3025,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, officeRepo, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
-        ServiceResult<bool> result = await sut.DeleteOfficeAsync(20);
+        ServiceResult<bool> result = await sut.DeleteOfficeAsync(20, HostCaller());
 
         Assert.True(result.IsSuccess);
         officeRepo.Verify(r => r.DeleteAsync(
@@ -3038,7 +3038,7 @@ public sealed class AipServiceTests
     {
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
-        ServiceResult<bool> result = await sut.DeleteOfficeAsync(999);
+        ServiceResult<bool> result = await sut.DeleteOfficeAsync(999, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
@@ -3051,7 +3051,7 @@ public sealed class AipServiceTests
         var (sut, _, _, _, _, _, officeRepo, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
-        ServiceResult<bool> result = await sut.DeleteOfficeAsync(20);
+        ServiceResult<bool> result = await sut.DeleteOfficeAsync(20, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);

@@ -50,53 +50,53 @@ public interface IAipService
     /// <summary>Adds an office (level 1) to a Draft AipRecord. RefCode is auto-derived from
     /// the sector prefix + the config Office's OfficeRefCode.</summary>
     Task<ServiceResult<AipOfficeDto>> AddOfficeAsync(
-        int aipRecordId, CreateAipOfficeDto dto, CancellationToken ct = default);
+        int aipRecordId, CreateAipOfficeDto dto, User caller, CancellationToken ct = default);
 
     /// <summary>Adds a program (level 2) under an office. RefCode auto-increments within the office.</summary>
     Task<ServiceResult<AipProgramDto>> AddProgramAsync(
-        int officeId, CreateAipProgramDto dto, CancellationToken ct = default);
+        int officeId, CreateAipProgramDto dto, User caller, CancellationToken ct = default);
 
     /// <summary>Adds a project (level 3) under a program. RefCode auto-increments within the program.</summary>
     Task<ServiceResult<AipProjectDto>> AddProjectAsync(
-        int programId, CreateAipProjectDto dto, CancellationToken ct = default);
+        int programId, CreateAipProjectDto dto, User caller, CancellationToken ct = default);
 
     /// <summary>Adds an activity (level 4, leaf) under a project. RefCode auto-increments within
     /// the project; Total is computed as Ps+Mooe+Co (null only when all three are blank).</summary>
     Task<ServiceResult<AipActivityDto>> AddActivityAsync(
-        int projectId, CreateAipActivityDto dto, CancellationToken ct = default);
+        int projectId, CreateAipActivityDto dto, User caller, CancellationToken ct = default);
 
     /// <summary>RAL-179 — updates an existing activity's editable fields in place. RefCode,
     /// ProjectId, and identity are immutable; FundingSourceId re-resolves FundingSourceSnapshot.
     /// Only allowed while the parent AipRecord is Draft. <paramref name="aipRecordId"/> is a
     /// defensive cross-check that the activity actually belongs to that record.</summary>
     Task<ServiceResult<AipActivityDto>> UpdateActivityAsync(
-        int aipRecordId, int activityId, UpdateAipActivityDto dto, CancellationToken ct = default);
+        int aipRecordId, int activityId, UpdateAipActivityDto dto, User caller, CancellationToken ct = default);
 
     /// <summary>Renames an office (only Name is editable — RefCode/Sector are immutable).
     /// Draft-only.</summary>
     Task<ServiceResult<AipOfficeDto>> UpdateOfficeAsync(
-        int officeId, UpdateAipOfficeDto dto, CancellationToken ct = default);
+        int officeId, UpdateAipOfficeDto dto, User caller, CancellationToken ct = default);
 
     /// <summary>Updates a program's Name and FunctionBand together (detail-page full edit,
     /// distinct from the narrower UpdateProgramFunctionBandAsync used by WFP entry). Draft-only.</summary>
     Task<ServiceResult<AipProgramDto>> UpdateProgramAsync(
-        int programId, UpdateAipProgramDto dto, CancellationToken ct = default);
+        int programId, UpdateAipProgramDto dto, User caller, CancellationToken ct = default);
 
     /// <summary>Renames a project (only Name is editable). Draft-only.</summary>
     Task<ServiceResult<AipProjectDto>> UpdateProjectAsync(
-        int projectId, UpdateAipProjectDto dto, CancellationToken ct = default);
+        int projectId, UpdateAipProjectDto dto, User caller, CancellationToken ct = default);
 
     /// <summary>Deletes an office and its whole subtree (programs, projects, activities). Draft-only.</summary>
-    Task<ServiceResult<bool>> DeleteOfficeAsync(int officeId, CancellationToken ct = default);
+    Task<ServiceResult<bool>> DeleteOfficeAsync(int officeId, User caller, CancellationToken ct = default);
 
     /// <summary>Deletes a program and its whole subtree (projects, activities). Draft-only.</summary>
-    Task<ServiceResult<bool>> DeleteProgramAsync(int programId, CancellationToken ct = default);
+    Task<ServiceResult<bool>> DeleteProgramAsync(int programId, User caller, CancellationToken ct = default);
 
     /// <summary>Deletes a project and its activities. Draft-only.</summary>
-    Task<ServiceResult<bool>> DeleteProjectAsync(int projectId, CancellationToken ct = default);
+    Task<ServiceResult<bool>> DeleteProjectAsync(int projectId, User caller, CancellationToken ct = default);
 
     /// <summary>Deletes a single activity. Draft-only.</summary>
-    Task<ServiceResult<bool>> DeleteActivityAsync(int activityId, CancellationToken ct = default);
+    Task<ServiceResult<bool>> DeleteActivityAsync(int activityId, User caller, CancellationToken ct = default);
 
     /// <summary>
     /// RAL-180 — copies selected programs (with their full project/activity subtrees) from a
@@ -110,7 +110,7 @@ public interface IAipService
     /// skip/overwrite). No lineage is recorded between the two years' rows.
     /// </summary>
     Task<ServiceResult<AipOfficeDto>> CopyOfficeFromPriorYearAsync(
-        CopyAipOfficeDto dto, Guid createdById, CancellationToken ct = default);
+        CopyAipOfficeDto dto, Guid createdById, User caller, CancellationToken ct = default);
 
     /// <summary>
     /// RAL-181 — seeds bare-shell AipProgram rows (Name+RefCode only, FunctionBand=CORE) from
@@ -125,7 +125,7 @@ public interface IAipService
     /// copied — see the ticket's "why LDIP amounts don't carry over" reasoning.
     /// </summary>
     Task<ServiceResult<AipOfficeDto>> SeedProgramsFromLdipAsync(
-        SeedAipProgramsFromLdipDto dto, Guid createdById, CancellationToken ct = default);
+        SeedAipProgramsFromLdipDto dto, Guid createdById, User caller, CancellationToken ct = default);
 
     Task<ServiceResult<AipRecordDto>> FinalizeAsync(int id, CancellationToken ct = default);
     Task<ServiceResult<AipRecordDto>> UnlockAsync(int id, CancellationToken ct = default);
@@ -138,13 +138,13 @@ public interface IAipService
     /// (AipService.ConfirmImportAsync) so the field is never left unset.
     /// </summary>
     Task<ServiceResult<AipProgramDto>> UpdateProgramFunctionBandAsync(
-        int programId, string? functionBand, CancellationToken ct = default);
+        int programId, string? functionBand, User caller, CancellationToken ct = default);
 
     /// <summary>
     /// Sets an activity's "…-CREATION" PS flag (v1.4 Q2). No validation beyond existence.
     /// </summary>
     Task<ServiceResult<AipActivityDto>> UpdateActivityIsCreationAsync(
-        int activityId, bool isCreation, CancellationToken ct = default);
+        int activityId, bool isCreation, User caller, CancellationToken ct = default);
 
     /// <summary>Wipes all AIP records (cascade removes hierarchy). Returns deleted AipRecord count.</summary>
     Task<int> PurgeAllAsync(CancellationToken ct = default);

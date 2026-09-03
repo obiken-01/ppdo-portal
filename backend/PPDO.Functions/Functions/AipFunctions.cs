@@ -161,7 +161,7 @@ public sealed class AipFunctions
                 ApiResponse<AipOfficeDto>.Fail("Request body is missing or malformed."), ct);
 
         return await ConfigHttp.FromResultAsync(req,
-            await _aip.AddOfficeAsync(aipId, body, ct), ct, HttpStatusCode.Created);
+            await _aip.AddOfficeAsync(aipId, body, caller!, ct), ct, HttpStatusCode.Created);
     }
 
     // ── POST /api/budget-planning/aip/copy-office ─────────────────────────────
@@ -183,7 +183,7 @@ public sealed class AipFunctions
                 ApiResponse<AipOfficeDto>.Fail("Request body is missing or malformed."), ct);
 
         return await ConfigHttp.FromResultAsync(req,
-            await _aip.CopyOfficeFromPriorYearAsync(body, caller!.Id, ct), ct, HttpStatusCode.Created);
+            await _aip.CopyOfficeFromPriorYearAsync(body, caller!.Id, caller!, ct), ct, HttpStatusCode.Created);
     }
 
     // ── POST /api/budget-planning/aip/seed-programs-from-ldip ─────────────────
@@ -204,7 +204,7 @@ public sealed class AipFunctions
                 ApiResponse<AipOfficeDto>.Fail("Request body is missing or malformed."), ct);
 
         return await ConfigHttp.FromResultAsync(req,
-            await _aip.SeedProgramsFromLdipAsync(body, caller!.Id, ct), ct, HttpStatusCode.Created);
+            await _aip.SeedProgramsFromLdipAsync(body, caller!.Id, caller!, ct), ct, HttpStatusCode.Created);
     }
 
     // ── POST /api/budget-planning/aip/offices/{officeId}/programs ────────────
@@ -222,7 +222,7 @@ public sealed class AipFunctions
                 ApiResponse<AipProgramDto>.Fail("Request body is missing or malformed."), ct);
 
         return await ConfigHttp.FromResultAsync(req,
-            await _aip.AddProgramAsync(officeId, body, ct), ct, HttpStatusCode.Created);
+            await _aip.AddProgramAsync(officeId, body, caller!, ct), ct, HttpStatusCode.Created);
     }
 
     // ── POST /api/budget-planning/aip/programs/{programId}/projects ──────────
@@ -240,7 +240,7 @@ public sealed class AipFunctions
                 ApiResponse<AipProjectDto>.Fail("Request body is missing or malformed."), ct);
 
         return await ConfigHttp.FromResultAsync(req,
-            await _aip.AddProjectAsync(programId, body, ct), ct, HttpStatusCode.Created);
+            await _aip.AddProjectAsync(programId, body, caller!, ct), ct, HttpStatusCode.Created);
     }
 
     // ── POST /api/budget-planning/aip/projects/{projectId}/activities ────────
@@ -258,7 +258,7 @@ public sealed class AipFunctions
                 ApiResponse<AipActivityDto>.Fail("Request body is missing or malformed."), ct);
 
         return await ConfigHttp.FromResultAsync(req,
-            await _aip.AddActivityAsync(projectId, body, ct), ct, HttpStatusCode.Created);
+            await _aip.AddActivityAsync(projectId, body, caller!, ct), ct, HttpStatusCode.Created);
     }
 
     // ── PUT /api/budget-planning/aip/offices/{officeId} ───────────────────────
@@ -276,7 +276,7 @@ public sealed class AipFunctions
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
                 ApiResponse<AipOfficeDto>.Fail("Request body is missing or malformed."), ct);
 
-        return await ConfigHttp.FromResultAsync(req, await _aip.UpdateOfficeAsync(officeId, body, ct), ct);
+        return await ConfigHttp.FromResultAsync(req, await _aip.UpdateOfficeAsync(officeId, body, caller!, ct), ct);
     }
 
     // ── PUT /api/budget-planning/aip/programs/{programId} ─────────────────────
@@ -293,7 +293,7 @@ public sealed class AipFunctions
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
                 ApiResponse<AipProgramDto>.Fail("Request body is missing or malformed."), ct);
 
-        return await ConfigHttp.FromResultAsync(req, await _aip.UpdateProgramAsync(programId, body, ct), ct);
+        return await ConfigHttp.FromResultAsync(req, await _aip.UpdateProgramAsync(programId, body, caller!, ct), ct);
     }
 
     // ── PUT /api/budget-planning/aip/projects/{projectId} ─────────────────────
@@ -310,7 +310,7 @@ public sealed class AipFunctions
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
                 ApiResponse<AipProjectDto>.Fail("Request body is missing or malformed."), ct);
 
-        return await ConfigHttp.FromResultAsync(req, await _aip.UpdateProjectAsync(projectId, body, ct), ct);
+        return await ConfigHttp.FromResultAsync(req, await _aip.UpdateProjectAsync(projectId, body, caller!, ct), ct);
     }
 
     // ── PUT /api/budget-planning/aip/{id}/activities/{activityId} ────────────
@@ -330,7 +330,7 @@ public sealed class AipFunctions
                 ApiResponse<AipActivityDto>.Fail("Request body is missing or malformed."), ct);
 
         return await ConfigHttp.FromResultAsync(req,
-            await _aip.UpdateActivityAsync(id, activityId, body, ct), ct);
+            await _aip.UpdateActivityAsync(id, activityId, body, caller!, ct), ct);
     }
 
     // ── DELETE /api/budget-planning/aip/offices/{officeId} ────────────────────
@@ -343,7 +343,7 @@ public sealed class AipFunctions
         (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
-        return await ConfigHttp.FromResultAsync(req, await _aip.DeleteOfficeAsync(officeId, ct), ct);
+        return await ConfigHttp.FromResultAsync(req, await _aip.DeleteOfficeAsync(officeId, caller!, ct), ct);
     }
 
     // ── DELETE /api/budget-planning/aip/programs/{programId} ─────────────────
@@ -357,7 +357,7 @@ public sealed class AipFunctions
         (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
-        return await ConfigHttp.FromResultAsync(req, await _aip.DeleteProgramAsync(programId, ct), ct);
+        return await ConfigHttp.FromResultAsync(req, await _aip.DeleteProgramAsync(programId, caller!, ct), ct);
     }
 
     // ── DELETE /api/budget-planning/aip/projects/{projectId} ─────────────────
@@ -369,7 +369,7 @@ public sealed class AipFunctions
         (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
-        return await ConfigHttp.FromResultAsync(req, await _aip.DeleteProjectAsync(projectId, ct), ct);
+        return await ConfigHttp.FromResultAsync(req, await _aip.DeleteProjectAsync(projectId, caller!, ct), ct);
     }
 
     // ── DELETE /api/budget-planning/aip/activities/{activityId} ──────────────
@@ -381,7 +381,7 @@ public sealed class AipFunctions
         (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
-        return await ConfigHttp.FromResultAsync(req, await _aip.DeleteActivityAsync(activityId, ct), ct);
+        return await ConfigHttp.FromResultAsync(req, await _aip.DeleteActivityAsync(activityId, caller!, ct), ct);
     }
 
     // ── DELETE /api/budget-planning/aip/{id}  (archive) ──────────────────────
@@ -440,7 +440,7 @@ public sealed class AipFunctions
                 ApiResponse<AipProgramDto>.Fail("Request body is missing or malformed."), ct);
 
         return await ConfigHttp.FromResultAsync(req,
-            await _aip.UpdateProgramFunctionBandAsync(id, body.FunctionBand, ct), ct);
+            await _aip.UpdateProgramFunctionBandAsync(id, body.FunctionBand, caller!, ct), ct);
     }
 
     // ── PUT /api/budget-planning/aip/activities/{id:int}/is-creation ─────────
@@ -459,6 +459,6 @@ public sealed class AipFunctions
                 ApiResponse<AipActivityDto>.Fail("Request body is missing or malformed."), ct);
 
         return await ConfigHttp.FromResultAsync(req,
-            await _aip.UpdateActivityIsCreationAsync(id, body.IsCreation, ct), ct);
+            await _aip.UpdateActivityIsCreationAsync(id, body.IsCreation, caller!, ct), ct);
     }
 }

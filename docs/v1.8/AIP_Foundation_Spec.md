@@ -126,10 +126,17 @@ consumer `BudgetPlanningScope` has ever had. Two findings worth recording:
    about GSO's programs, and a division-scoped PPDO caller still sees every guest office in full.
    This matches what `BudgetPlanningDashboardService` already does over `hostAipOfficeIds`.
 
-⚠️ **The AIP *write* paths are still unscoped** — `UpdateOfficeAsync` and siblings check existence
-and Draft status but not ownership, so any caller with Budget Planning access can edit another
-office's AIP node by id. Out of V18-39's scope (reads), filed separately, and it must land before
-guest-office accounts are created.
+✅ **The AIP *write* paths are now scoped too** (PPDO-46, 2026-09-03). They checked existence and
+Draft status but not ownership, so any caller with Budget Planning access could edit or delete
+another office's AIP node by id. `CheckDraftAsync` became `CheckWritableAsync` — ownership first,
+then draft state — covering the 11 write paths that already funnelled through it, with five
+outliers guarded individually.
+
+⚠️ **The refusal is `NotFound`, not `Forbidden`, and each call site passes its own message** so a
+node the caller may not touch is byte-identical to one that does not exist. A 403 would confirm the
+node exists and belongs to another office — the same existence check the reads clamp to avoid.
+Clamping itself is not available on a write: a write names one node, and redirecting it to another
+would silently write to the wrong row.
 
 ⚠️ **`OfficeScope` × `DivisionScope` is genuinely two-axis and is new** (V18-39). WFP applies both
 always; LDIP applies office only. AIP applies office always and division **only when the caller is
