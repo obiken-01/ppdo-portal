@@ -23,6 +23,13 @@ columns, permission flags). One is not:
 fiscal year, by 1000 (V18-35 / PPDO-34). It is the only migration in the release that can destroy
 data rather than add to it.
 
+> 📖 **`docs/v1.8/Units_Migration_Runbook.md` is the step-by-step**: the before/after SQL, the
+> manual test cases, how to read a failure, and when `Down` is and is not a valid rollback. The
+> summary below is the checklist; the runbook is what you actually work from on the day.
+
+- [ ] **Rehearse against a copy of production first** (runbook §1a). A local restore of a prod
+      `.bacpac` costs nothing and exercises the real rows through the real UI.
+
 - [ ] **Capture the baseline sums first.** Non-negotiable — run this against production and keep
       the output. Applied without a baseline, the question "is this number right?" has no answer
       afterwards, because the correct value and a 1000×-wrong value look equally plausible.
