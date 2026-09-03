@@ -91,6 +91,34 @@ public sealed class AipRepository : Repository<AipRecord>, IAipRepository
         => await _context.Set<AipActivity>().FirstOrDefaultAsync(a => a.Id == id, ct);
 
     /// <inheritdoc />
+    public async Task<bool> ApplyActivityTotalsAsync(
+        int activityId,
+        AipExpenditureTotalsDto totals,
+        bool zeroWhenNoLines = false,
+        CancellationToken ct = default)
+    {
+        // ⚠️ The guard, before anything is loaded or written. "No lines" is either an FY≤2027
+        // activity that has never had children — every historical row is one — or an activity whose
+        // last line the caller just deleted. The data cannot tell them apart, so the caller does.
+        // Defaulting to the safe reading means the failure mode of forgetting the flag is a total
+        // that stays stale, not a fiscal year silently written to ₱0.
+        if (totals.LineCount == 0 && !zeroWhenNoLines) return false;
+
+        AipActivity? activity = await _context.Set<AipActivity>()
+            .FirstOrDefaultAsync(a => a.Id == activityId, ct);
+        if (activity is null) return false;
+
+        activity.Ps    = totals.Ps;
+        activity.Mooe  = totals.Mooe;
+        activity.Co    = totals.Co;
+        // Never null once lines exist: deleting the last line leaves 0, not null. Null meant
+        // "never computed", which stops being a state that exists for an activity with children.
+        activity.Total = totals.Total;
+
+        return true;   // staged only — the calling service owns SaveChangesAsync
+    }
+
+    /// <inheritdoc />
     public async Task<AipRecord?> GetLatestByFiscalYearAsync(int fiscalYear, CancellationToken ct = default)
         => await _context.Set<AipRecord>()
             .Where(r => r.FiscalYear == fiscalYear && r.Status != PlanningStatus.Archived)

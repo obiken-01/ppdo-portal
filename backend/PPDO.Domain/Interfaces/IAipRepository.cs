@@ -43,6 +43,45 @@ public interface IAipRepository : IRepository<AipRecord>
     Task<AipActivity?> GetActivityByIdAsync(int id, CancellationToken ct = default);
 
     /// <summary>
+    /// Writes <paramref name="totals"/> — summed from the activity's <c>aip_expenditures</c> rows by
+    /// <see cref="IAipExpenditureRepository.SumByActivityIdAsync"/> — onto the parent activity's
+    /// stored <c>Ps</c>/<c>Mooe</c>/<c>Co</c>/<c>Total</c> (v1.8.0 Phase 2 — V18-34).
+    ///
+    /// <para>
+    /// ⚠️ <b>An activity with zero expenditure lines is ambiguous, and the two readings are
+    /// opposites.</b> It is either an FY≤2027 activity imported from the province's workbook, which
+    /// has never had child rows and whose figures must survive untouched — or an activity whose
+    /// last line was just deleted, which must fall to 0. Both present as
+    /// <see cref="AipExpenditureTotalsDto.LineCount"/> 0 with zero amounts; a SUM over no rows and a
+    /// SUM of zeroes are indistinguishable, so the data cannot settle it.
+    /// </para>
+    ///
+    /// <para>
+    /// Only the caller knows which it is, so it says so via <paramref name="zeroWhenNoLines"/>,
+    /// which defaults to the safe reading. Getting this wrong in the permissive direction wipes a
+    /// fiscal year of historical figures silently.
+    /// </para>
+    ///
+    /// <para>
+    /// Follows the unit-of-work rule the rest of the project uses: this stages the change, the
+    /// calling Application service owns <c>SaveChangesAsync</c>.
+    /// </para>
+    /// </summary>
+    /// <param name="zeroWhenNoLines">
+    /// <c>false</c> (default) — leave an activity with no lines alone. Correct for any recompute
+    /// that was not caused by a write to this activity's own lines, including a bulk pass, because
+    /// it cannot wipe an imported activity.
+    /// <c>true</c> — write the zeroes. Correct <b>only</b> when the caller has just deleted a line
+    /// from this activity and therefore knows it was expenditure-derived a moment ago.
+    /// </param>
+    /// <returns>True when the parent was updated; false when it was deliberately left alone.</returns>
+    Task<bool> ApplyActivityTotalsAsync(
+        int activityId,
+        AipExpenditureTotalsDto totals,
+        bool zeroWhenNoLines = false,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// The single non-Archived AipRecord for <paramref name="fiscalYear"/> (v1.4.5 — RAL-161).
     /// AIP records aren't office-scoped — one record spans every office via its AipOffice
     /// children — so this is a plain WHERE FiscalYear = @fy query, not filtered by office.

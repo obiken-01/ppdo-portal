@@ -167,6 +167,7 @@ var host = new HostBuilder()
         services.AddScoped<ILdipXlsmParser, LdipXlsmParser>();
         services.AddScoped<ILdipService, LdipService>();
         services.AddScoped<IAipService, AipService>();
+        services.AddScoped<IAipActivityTotalsService, AipActivityTotalsService>();
         services.AddScoped<IWfpService, WfpService>();
 
         // -- v1.2 Allocation (RAL-99) -----------------------------------------
