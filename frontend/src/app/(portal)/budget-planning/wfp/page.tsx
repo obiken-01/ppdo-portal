@@ -271,7 +271,7 @@ function ExpenditurePopup({
       if (net > 0 && quarterly > net + 0.001)
         errs.push(`Line ${i + 1} (${l.expenditureType}): quarterly total ${formatMoney(quarterly)} exceeds net appropriation ${formatMoney(net)}.`);
     });
-    const aipBudget = activity.total != null ? activity.total * 1000 : null;
+    const aipBudget = activity.total != null ? activity.total : null;
     if (aipBudget != null) {
       const totalApprop = localLines.reduce((sum, l) => sum + l.totalAppropriation, 0);
       if (totalApprop > aipBudget + 0.001)
@@ -374,7 +374,7 @@ function ExpenditurePopup({
       <p className="mb-4 text-sm text-slate-600">
         AIP Budget:{" "}
         <span className="font-semibold tabular-nums text-slate-800">
-          {activity.total != null ? formatMoney(activity.total * 1000) : "—"}
+          {activity.total != null ? formatMoney(activity.total) : "—"}
         </span>
       </p>
 
@@ -1041,8 +1041,8 @@ function WfpPageInner() {
   const canBypassDivision =
     me?.role === "SuperAdmin" || me?.role === "Admin" || me?.canManagePpdoAllocation === true;
 
-  // Gross total of all draft expenditure lines (in pesos — no ×1000 here).
-  // AIP totals are stored in thousands; division allocation is in pesos.
+  // Gross total of all draft expenditure lines. Everything on this page is pesos — AIP totals
+  // included, since V18-35 (PPDO-34) migrated them off thousands and deleted the ×1000s here.
   // Per D5: validation uses GROSS (totalAppropriation, not net).
   const divisionGrossTotal = useMemo(
     () =>
@@ -1406,7 +1406,7 @@ function WfpPageInner() {
                                               {fmtCurrency(total)}
                                             </td>
                                             <td className="px-3 py-2 text-right tabular-nums text-slate-600 text-xs">
-                                              {activity.total != null ? formatMoney(activity.total * 1000) : "—"}
+                                              {activity.total != null ? formatMoney(activity.total) : "—"}
                                             </td>
                                             <td className="px-3 py-2 text-right tabular-nums">
                                               {fmtCurrency(sumQ(activity.id, "q1"))}
