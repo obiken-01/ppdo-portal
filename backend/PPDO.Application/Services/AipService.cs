@@ -1021,18 +1021,29 @@ public sealed class AipService : IAipService
             functionBand = canonical!;
         }
 
-        IReadOnlyList<AipProgram> siblings = await _aipRepo.GetProgramsByOfficeIdsAsync([officeId], ct);
-        string refCode = NextRefCode(office.RefCode, siblings.Select(p => p.RefCode));
+        // V18-44: the sibling read and the insert are one allocation, retried on a unique-index
+        // rejection. Previously these were two independent statements, so a second encoder adding
+        // under the same office computed the same code and got an unhandled 500.
+        AipProgram? entity = await RefCodeAllocator.AllocateAsync(
+            office.RefCode,
+            async token => (await _aipRepo.GetProgramsByOfficeIdsAsync([officeId], token)).Select(p => p.RefCode),
+            refCode => new AipProgram
+            {
+                OfficeId     = officeId,
+                RefCode      = refCode,
+                Name         = dto.Name.Trim(),
+                FunctionBand = functionBand,
+            },
+            async (e, token) =>
+            {
+                await _programRepo.AddAsync(e, token);
+                await _programRepo.SaveChangesAsync(token);
+            },
+            ct);
 
-        AipProgram entity = new()
-        {
-            OfficeId     = officeId,
-            RefCode      = refCode,
-            Name         = dto.Name.Trim(),
-            FunctionBand = functionBand,
-        };
-        await _programRepo.AddAsync(entity, ct);
-        await _programRepo.SaveChangesAsync(ct);
+        if (entity is null)
+            return ServiceResult<AipProgramDto>.Conflict(
+                "Another program was added to this office at the same moment. Please try again.");
         await _audit.LogAsync("aip_programs", entity.Id, AuditAction.Create,
             null, new { entity.OfficeId, entity.RefCode, entity.Name, entity.FunctionBand }, ct);
 
@@ -1058,12 +1069,21 @@ public sealed class AipService : IAipService
         if (string.IsNullOrWhiteSpace(dto.Name))
             return ServiceResult<AipProjectDto>.BadRequest("Project name is required.");
 
-        IReadOnlyList<AipProject> siblings = await _aipRepo.GetProjectsByProgramIdsAsync([programId], ct);
-        string refCode = NextRefCode(program.RefCode, siblings.Select(j => j.RefCode));
+        // V18-44 — see AddProgramAsync.
+        AipProject? entity = await RefCodeAllocator.AllocateAsync(
+            program.RefCode,
+            async token => (await _aipRepo.GetProjectsByProgramIdsAsync([programId], token)).Select(j => j.RefCode),
+            refCode => new AipProject { ProgramId = programId, RefCode = refCode, Name = dto.Name.Trim() },
+            async (e, token) =>
+            {
+                await _projectRepo.AddAsync(e, token);
+                await _projectRepo.SaveChangesAsync(token);
+            },
+            ct);
 
-        AipProject entity = new() { ProgramId = programId, RefCode = refCode, Name = dto.Name.Trim() };
-        await _projectRepo.AddAsync(entity, ct);
-        await _projectRepo.SaveChangesAsync(ct);
+        if (entity is null)
+            return ServiceResult<AipProjectDto>.Conflict(
+                "Another project was added to this program at the same moment. Please try again.");
         await _audit.LogAsync("aip_projects", entity.Id, AuditAction.Create,
             null, new { entity.ProgramId, entity.RefCode, entity.Name }, ct);
 
@@ -1101,14 +1121,16 @@ public sealed class AipService : IAipService
             ? null
             : fsList.FirstOrDefault(f => f.Code.Equals(dto.FundingSourceRaw, StringComparison.OrdinalIgnoreCase));
 
-        IReadOnlyList<AipActivity> siblings = await _aipRepo.GetActivitiesByProjectIdsAsync([projectId], ct);
-        string refCode = NextRefCode(project.RefCode, siblings.Select(a => a.RefCode));
-
         decimal? total = dto.Ps is null && dto.Mooe is null && dto.Co is null
             ? null
             : (dto.Ps ?? 0) + (dto.Mooe ?? 0) + (dto.Co ?? 0);
 
-        AipActivity entity = new()
+        // V18-44 — see AddProgramAsync. This is the level that races most: several encoders
+        // costing activities under one project is the ordinary way an office works.
+        AipActivity? entity = await RefCodeAllocator.AllocateAsync(
+            project.RefCode,
+            async token => (await _aipRepo.GetActivitiesByProjectIdsAsync([projectId], token)).Select(a => a.RefCode),
+            refCode => new AipActivity
         {
             ProjectId             = projectId,
             RefCode               = refCode,
@@ -1127,9 +1149,17 @@ public sealed class AipService : IAipService
             CcAdaptation          = dto.CcAdaptation,
             CcMitigation          = dto.CcMitigation,
             CcTypologyCode        = dto.CcTypologyCode,
-        };
-        await _activityRepo.AddAsync(entity, ct);
-        await _activityRepo.SaveChangesAsync(ct);
+            },
+            async (e, token) =>
+            {
+                await _activityRepo.AddAsync(e, token);
+                await _activityRepo.SaveChangesAsync(token);
+            },
+            ct);
+
+        if (entity is null)
+            return ServiceResult<AipActivityDto>.Conflict(
+                "Another activity was added to this project at the same moment. Please try again.");
         await _audit.LogAsync("aip_activities", entity.Id, AuditAction.Create,
             null, new { entity.ProjectId, entity.RefCode, entity.Name, entity.Total }, ct);
 
@@ -1462,15 +1492,11 @@ public sealed class AipService : IAipService
 
     /// <summary>Next zero-padded 3-digit segment appended to <paramref name="parentRefCode"/>,
     /// one past the highest existing sibling suffix (e.g. "...-001-001-002-001" then "...-002").</summary>
-    private static string NextRefCode(string parentRefCode, IEnumerable<string> siblingRefCodes)
-    {
-        int next = siblingRefCodes
-            .Select(rc => rc.Split('-')[^1])
-            .Select(s => int.TryParse(s, out int n) ? n : 0)
-            .DefaultIfEmpty(0)
-            .Max() + 1;
-        return $"{parentRefCode}-{next:D3}";
-    }
+    // NextRefCode moved to RefCodeAllocator (V18-44 / PPDO-50). It now lives beside the retry
+    // that makes allocation safe, because the two are one operation: computing a code without
+    // re-computing it when the insert loses a race is what produced the 500 this ticket removes.
+    // The old version also mapped an unparseable last segment to 0 rather than skipping it — see
+    // RefCodeAllocator.NextRefCode's remarks for why that mattered.
 
     // ── Status transitions ────────────────────────────────────────────────────
 

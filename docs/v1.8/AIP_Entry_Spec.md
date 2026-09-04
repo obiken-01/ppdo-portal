@@ -84,9 +84,26 @@ have already flipped are not flipped back.
     office-owned shape one record *is* one office — so the record is the natural carrier. A direct
     consequence of V18-40, and not available before it.
 
-11. **Ref codes are generated server-side, in SQL, scoped to the parent.** Segments 1–5 are office
-    identity and are **not generated at all**; the job is allocating a sibling-unique `seq`. Format
-    pinned to DBM Budget Operations Manual for LGUs, 2023 Ed., Figure 4 + Annexes C/D.
+11. **Ref codes are allocated server-side, scoped to the parent, and retried on conflict.**
+    Segments 1–5 are office identity and are **not generated at all**; the job is allocating a
+    sibling-unique `seq`. Format pinned to DBM Budget Operations Manual for LGUs, 2023 Ed.,
+    Figure 4 + Annexes C/D.
+
+    ↩️ **Revised 2026-09-04 during V18-44, per `SPEC_STANDARD.md` §3.** This originally read
+    *"generated server-side, **in SQL**"*, on the assumption that the database had to serialise the
+    allocation. Reading the code showed that assumption was already satisfied by something else:
+    **unique indexes on `(ParentId, RefCode)` exist at all three levels**, so a duplicate was
+    never writable. Generation also already existed (`AipService.NextRefCode`), and the sibling
+    queries were already parent-scoped in SQL — so the plan's `GeneratePRNoAsync` full-table-scan
+    warning did not apply either.
+
+    What was actually broken was the **gap** between generation and the index: load siblings →
+    compute → insert, with nothing in between, so a losing racer was rejected by the index and
+    surfaced as an **unhandled exception and a 500**. Moving the computation into SQL would have
+    duplicated a guarantee the index already gives, cost the readable C# generator and its direct
+    testability, and still not have decided what the loser should see. The fix is
+    `RefCodeAllocator`: re-read the siblings and re-attempt, bounded at 3, returning a 409 on
+    exhaustion. The index stays the authority; it simply stops being a crash.
 
 12. **No new permission flags.** Encoder is `CanAccessBudgetPlanning`; department-head reviewer is
     `CanReviewBudgetPlanning` (PPDO-3); the cross-office bypass is `CanReviewAllOffices` (PPDO-5).
@@ -158,6 +175,8 @@ of programs.
 | New sub-office group | Encoder types a name not in the suggestions | Program is added | A new group starts under the same office ref code; program numbering **continues across groups**, it does not restart |
 | Group removal renumbers | Three programs across two groups; the middle one is removed | Removal saves | Numbering closes the gap — no holes |
 | Concurrent edit | Two encoders in one office, same activity | Both save | Second save is refused with "changed by someone else"; nothing is silently overwritten (P3-c default) |
+| Concurrent **create** | Two encoders adding an activity under one project at the same moment | Both save | ✅ **Both succeed**, with distinct sibling-unique codes (V18-44). The loser re-reads and takes the next code — it is not asked to retry by hand |
+| Create loses repeatedly | Sustained contention under one parent | Third attempt also loses | **409**, naming the node type. Not a 500, and not an unbounded retry holding the request open |
 | Activity with no lines | An activity created but never costed | Any recompute | **Untouched.** `LineCount` 0 and `Total` null — never costed |
 | Activity whose lines were all deleted | It had lines; the last is removed | Recompute after delete | `Total == 0`, not null — costed at zero. **Same `LineCount`, opposite meaning** from the row above |
 | Multi-fund off by default | A new expenditure line | Encoder opens the form | One fund field. The toggle reveals per-line fund selection; each line still carries exactly one fund |
@@ -223,6 +242,7 @@ All routes are **JWT-protected**; none appears on `CLAUDE.md`'s public list. Env
 | Submit fails completeness | 400 | **A list**, one entry per failing activity, each naming the node and what is missing — not a single sentence |
 | Submit fails ceiling | 400 | Names the fund, ceiling, encoded total and overage. **Not** "over ceiling" |
 | Concurrent edit lost the race | 409 | `"This activity was changed by someone else. Reload to see the current version."` |
+| Ref-code allocation lost 3 races | 409 | `"Another activity was added to this project at the same moment. Please try again."` — per node type (V18-44) |
 
 ⚠️ **List endpoints return slim DTOs.** The AIP detail response once produced a **1.2 MB** payload.
 The entry page's tree must not ship free-text fields a grid never renders, and any list that grows
