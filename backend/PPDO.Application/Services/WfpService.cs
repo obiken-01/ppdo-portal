@@ -99,6 +99,13 @@ public sealed class WfpService : IWfpService
     public async Task<ServiceResult<WfpRecordDto>> SaveAsync(
         SaveWfpDto dto, Guid createdById, CancellationToken ct = default)
     {
+        // ⚠️ V18-81 — first statement, before the lookup and before any write. This path is
+        // find-or-create, so a refusal placed lower would already have added the row: the original
+        // bug with an error message attached. Above the existing-record branch too, deliberately —
+        // editing an FY2028 record draws on the allocation exactly as creating one does.
+        if (WfpSupportedYears.RefuseCreate(dto.FiscalYear) is string unsupported)
+            return ServiceResult<WfpRecordDto>.BadRequest(unsupported);
+
         // Find existing WFP for (aipRecordId, officeId, divisionId) — single SQL lookup.
         WfpRecord? existing = await _wfpRepo.FindByAipOfficeAndDivisionAsync(
             dto.AipRecordId, dto.OfficeId, dto.DivisionId, ct);
@@ -331,6 +338,12 @@ public sealed class WfpService : IWfpService
         int aipRecordId, int officeId, int? divisionId, int fiscalYear, int aipActivityId,
         Guid createdById, CancellationToken ct = default)
     {
+        // ⚠️ V18-81 — see SaveAsync. This is the path most easily missed: it does not read as a
+        // create endpoint from outside, it is the v1.4 entry wizard's find-or-create, and that is
+        // exactly the shape of the two leaks V18-37 found.
+        if (WfpSupportedYears.RefuseCreate(fiscalYear) is string unsupported)
+            return ServiceResult<WfpActivityRefDto>.BadRequest(unsupported);
+
         WfpRecord? record = await _wfpRepo.FindByAipOfficeAndDivisionAsync(aipRecordId, officeId, divisionId, ct);
 
         if (record is not null && record.Status != PlanningStatus.Draft)
