@@ -796,13 +796,22 @@ public sealed class AipService : IAipService
     public async Task<ServiceResult<AipOfficeDto>> SeedProgramsFromLdipAsync(
         SeedAipProgramsFromLdipDto dto, Guid createdById, User caller, CancellationToken ct = default)
     {
-        // ⚠️ V18-37 — the same live leak as CopyOfficeFromPriorYearAsync, for the same reason: the
-        // find-or-create below constructs an unowned record. Note that the DTO already names an
-        // office, which makes this look like it could simply own the record it creates — it cannot,
-        // because that office is the LDIP SOURCE being read from, not a decision about who owns the
-        // target. Conflating the two is how this path would acquire the new shape by accident.
-        if (AipShape.Mismatch(dto.TargetFiscalYear, officeId: null) is string shapeError)
-            return ServiceResult<AipOfficeDto>.BadRequest(shapeError);
+        // ⚠️ V18-41 REOPENED THIS PATH FOR FY≥2028, and the reasoning V18-37 left here has to be
+        // read carefully because it has been half-superseded.
+        //
+        // V18-37 refused the break year outright, because the find-or-create below built an
+        // UNOWNED record. Its note said the DTO's office "is the LDIP SOURCE being read from, not
+        // a decision about who owns the target" — and that was right about the code as it then
+        // stood, but it is not a law. Under the closed-list rule (V18-41) an office may only seed
+        // from ITS OWN LDIP, so source and target office are necessarily the same office. That is
+        // what makes an office-owned target derivable here, and it is derivable for no other
+        // reason: if seeding ever grows a cross-office mode, this collapses and the guard returns.
+        //
+        // So the shape is now chosen by the year rather than refused:
+        //   FY≤2027 → legacy multi-office record, owner null, found by year alone (unchanged)
+        //   FY≥2028 → office-owned record, owner = this office, found by (office, year)
+        bool officeOwnedTarget =
+            AipShape.Required(dto.TargetFiscalYear) == AipRecordShape.OfficeOwned;
 
         if (dto.LdipProgramIds is null || dto.LdipProgramIds.Count == 0)
             return ServiceResult<AipOfficeDto>.BadRequest("Select at least one program to seed.");
@@ -869,8 +878,17 @@ public sealed class AipService : IAipService
 
         List<LdipProgram> programsToSeed = dto.LdipProgramIds.Select(id => sourceProgramsById[id]).ToList();
 
-        // Find-or-create the target AipRecord — identical rule to CopyOfficeFromPriorYearAsync.
-        AipRecord? targetRecord = await _aipRepo.GetLatestByFiscalYearAsync(dto.TargetFiscalYear, ct);
+        // Find-or-create the target AipRecord.
+        //
+        // ⚠️ The LOOKUP differs by shape, and getting it wrong is the bug V18-40 already found
+        // once. "Is there an AIP for FY 2028" was the right question while one record spanned every
+        // office; under the office-owned shape it returns the FIRST office's record and would
+        // report it as a conflict for every other office in the province — or worse, seed this
+        // office's programs into someone else's record.
+        AipRecord? targetRecord = officeOwnedTarget
+            ? await _aipRepo.GetByOfficeAndFiscalYearAsync(dto.OfficeConfigId, dto.TargetFiscalYear, ct)
+            : await _aipRepo.GetLatestByFiscalYearAsync(dto.TargetFiscalYear, ct);
+
         bool creatingRecord = targetRecord is null;
         if (targetRecord is not null
             && (targetRecord.EntrySource != "Manual" || targetRecord.Status != PlanningStatus.Draft))
@@ -886,6 +904,11 @@ public sealed class AipService : IAipService
             targetRecord = new AipRecord
             {
                 FiscalYear   = dto.TargetFiscalYear,
+                // Null for a legacy record and the office for an owned one — the single field
+                // that decides the shape (V18-40). AipShape.Mismatch would refuse the wrong
+                // combination, which is why this reads from officeOwnedTarget rather than always
+                // setting or always omitting it.
+                OfficeId     = officeOwnedTarget ? dto.OfficeConfigId : null,
                 EntrySource  = "Manual",
                 UploadedById = createdById,
                 UploadedAt   = DateTime.UtcNow,
@@ -933,6 +956,14 @@ public sealed class AipService : IAipService
             targetOffice = new AipOffice
             {
                 AipRecordId = targetRecord.Id,
+                // ⚠️ V18-41 — the ownership FK (V18-32), set here for the first time on this path.
+                // Without it AipReadScope filters this row out entirely
+                // (`offices.Where(o => o.OfficeId == scope.Office.OfficeId)`), so the office that
+                // just seeded its own programs would open the AIP and see nothing, with no error
+                // anywhere — precisely the failure V18-32's migration warns unmatched rows cause.
+                // Safe to set from the DTO for the same reason the record's owner is: the closed
+                // list means an office only ever seeds from its own LDIP.
+                OfficeId    = dto.OfficeConfigId,
                 RefCode     = sourceGroup.RefCode,
                 Name        = sourceGroup.Name,
                 Sector      = sector,
@@ -1003,6 +1034,15 @@ public sealed class AipService : IAipService
 
         ServiceResult<AipProgramDto>? statusError = await CheckWritableAsync<AipProgramDto>(office, caller, $"AIP office {officeId} not found.", ct);
         if (statusError is not null) return statusError;
+
+        // ⚠️ V18-41 — the closed list. From the break year on, programs come from the LDIP and
+        // this free-typed path is closed. Checked BEFORE the name-required validation on purpose:
+        // a caller in FY2028 with a blank name has one problem, not two, and "Program name is
+        // required" would send them to fill in a field that is not going to be accepted either way.
+        AipRecord? record = await _aipRepo.GetByIntIdAsync(office.AipRecordId, ct);
+        if (record is not null
+            && AipProgramSource.RefuseFreeTypedProgram(record.FiscalYear) is string closedList)
+            return ServiceResult<AipProgramDto>.BadRequest(closedList);
 
         if (string.IsNullOrWhiteSpace(dto.Name))
             return ServiceResult<AipProgramDto>.BadRequest("Program name is required.");

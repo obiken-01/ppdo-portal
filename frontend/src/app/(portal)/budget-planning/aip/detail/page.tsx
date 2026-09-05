@@ -27,7 +27,7 @@ import {
 } from "@/lib/aip";
 import { listLdip, getLdipById } from "@/lib/ldip";
 import { listOffices, listFundingSources } from "@/lib/config";
-import { aipUploadRefusal } from "@/lib/aip-shape";
+import { aipProgramsAreLdipOnly, aipUploadRefusal } from "@/lib/aip-shape";
 import {
   AIP_MONTHS, AIP_ESRE_OPTIONS, AIP_SECTOR_OPTIONS, AIP_SECTOR_PREFIX, AIP_FUNCTION_BANDS,
 } from "@/lib/aipConstants";
@@ -490,6 +490,12 @@ function ActivityRow({
 interface TreeActions {
   aipRecordId: number;
   canEdit: boolean;
+  /**
+   * V18-41 — why programs cannot be typed in for this record's fiscal year, or null when
+   * they can. Computed once from the record rather than per row: every office in a record
+   * shares its year, so asking per row would be the same answer N times.
+   */
+  programsLdipOnly: string | null;
   fundingSources: FundingSourceResponse[];
   onRequestConfirm: (props: ConfirmDialogProps) => void;
   onOfficeUpdated: (updated: AipOfficeDetail) => void;
@@ -952,7 +958,12 @@ function ProgramRow({
 
 // ── Add Program (inline form row, appended under an expanded office) ────────────
 
-function AddProgramRow({ officeId, onAdded }: { officeId: number; onAdded: (newProgram: AipProgramDetail) => void }) {
+function AddProgramRow({ officeId, onAdded, ldipOnly }: {
+  officeId: number;
+  onAdded: (newProgram: AipProgramDetail) => void;
+  /** V18-41 — non-null means this year takes its programs from the LDIP only. */
+  ldipOnly: string | null;
+}) {
   const [open, setOpen]                 = useState(false);
   const [name, setName]                 = useState("");
   const [functionBand, setFunctionBand] = useState("CORE");
@@ -972,6 +983,24 @@ function AddProgramRow({ officeId, onAdded }: { officeId: number; onAdded: (newP
     } finally {
       setSaving(false);
     }
+  }
+
+  // V18-41 — disabled with the reason, not hidden. The user has the permission; the fiscal
+  // year is what forbids it (Budget_Planning_Dashboard_Requirements.md §6.1). Hiding it would
+  // leave someone hunting for a control that used to be there, with nothing to explain why.
+  if (ldipOnly) {
+    return (
+      <tr className="bg-white border-t border-slate-100">
+        <td colSpan={16} className="px-2 py-1.5 pl-5">
+          <span className="text-xs text-slate-400 cursor-not-allowed" title={ldipOnly}>
+            + Add Program
+          </span>
+          <span className="text-[10px] text-slate-600 ml-2">
+            Programs for this fiscal year come from the LDIP — use “Seed from LDIP” above.
+          </span>
+        </td>
+      </tr>
+    );
   }
 
   if (!open) {
@@ -1133,7 +1162,11 @@ function OfficeRow({
       ))}
 
       {open && actions.canEdit && (
-        <AddProgramRow officeId={office.id} onAdded={(newProg) => actions.onProgramAdded(office.id, newProg)} />
+        <AddProgramRow
+          officeId={office.id}
+          onAdded={(newProg) => actions.onProgramAdded(office.id, newProg)}
+          ldipOnly={actions.programsLdipOnly}
+        />
       )}
     </>
   );
@@ -1523,11 +1556,18 @@ function CarryForwardOfficePanel({
 // this office with a sector group match); this panel mirrors that same resolution client-side
 // just to show the user real program checkboxes to pick from before submitting.
 function SeedFromLdipPanel({
-  targetFiscalYear, officeConfigs, onSeeded,
+  targetFiscalYear, officeConfigs, onSeeded, ldipOnly,
 }: {
   targetFiscalYear: number;
   officeConfigs: OfficeResponse[];
   onSeeded: (office: AipOfficeDetail) => void;
+  /**
+   * V18-41 — non-null when the LDIP is this year's ONLY program source. Changes nothing about
+   * how seeding works; it changes how hard the "no LDIP" case lands. For FY≤2027 an office
+   * without an LDIP can still hand-enter its programs, so that message is informational. From
+   * the break year on the same message means the office cannot build an AIP at all yet.
+   */
+  ldipOnly: string | null;
 }) {
   const [open, setOpen]                     = useState(false);
   const [officeConfigId, setOfficeConfigId] = useState("");
@@ -1578,7 +1618,13 @@ function SeedFromLdipPanel({
       }
 
       if (!found) {
-        setError(`This office has no LDIP for the ${sector} sector.`);
+        setError(
+          ldipOnly
+            ? `This office has no LDIP for the ${sector} sector, and FY${targetFiscalYear} AIP ` +
+              `programs can only come from the LDIP. Create the office's ${sector} LDIP first — ` +
+              `there is no other way to add programs for this year.`
+            : `This office has no LDIP for the ${sector} sector.`
+        );
         return;
       }
       setSourceGroup(found);
@@ -1887,6 +1933,7 @@ export default function AipDetailPage() {
   const actions: TreeActions | null = record ? {
     aipRecordId: record.id,
     canEdit: record.status === "Draft",
+    programsLdipOnly: aipProgramsAreLdipOnly(record.fiscalYear),
     fundingSources,
     onRequestConfirm: requestConfirm,
     onOfficeUpdated: handleOfficeUpdated,
@@ -2003,7 +2050,12 @@ export default function AipDetailPage() {
         <div className="flex flex-wrap items-start gap-3 mb-4">
           <AddOfficePanel aipRecordId={record.id} officeConfigs={officeConfigs} onAdded={handleOfficeAdded} />
           <CarryForwardOfficePanel targetFiscalYear={record.fiscalYear} onCopied={handleOfficeCarriedForward} />
-          <SeedFromLdipPanel targetFiscalYear={record.fiscalYear} officeConfigs={officeConfigs} onSeeded={handleOfficeCarriedForward} />
+          <SeedFromLdipPanel
+            targetFiscalYear={record.fiscalYear}
+            officeConfigs={officeConfigs}
+            onSeeded={handleOfficeCarriedForward}
+            ldipOnly={aipProgramsAreLdipOnly(record.fiscalYear)}
+          />
         </div>
       )}
 
