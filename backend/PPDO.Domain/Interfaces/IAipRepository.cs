@@ -1,4 +1,4 @@
-using PPDO.Domain.Entities;
+﻿using PPDO.Domain.Entities;
 
 namespace PPDO.Domain.Interfaces;
 
@@ -88,21 +88,6 @@ public interface IAipRepository : IRepository<AipRecord>
     /// Ordered by Id for determinism when more than one non-Archived record exists for the year.
     /// </summary>
     Task<AipRecord?> GetLatestByFiscalYearAsync(int fiscalYear, CancellationToken ct = default);
-
-    /// <summary>
-    /// The single non-Archived office-owned AipRecord for (<paramref name="officeId"/>,
-    /// <paramref name="fiscalYear"/>), or null (V18-40).
-    ///
-    /// <para>
-    /// ⚠️ <b>Not interchangeable with <see cref="GetLatestByFiscalYearAsync"/>.</b> That one asks
-    /// "is there an AIP for this year at all", which was the right question while one record
-    /// spanned every office. Under the office-owned shape it would report office A's record as a
-    /// conflict when office B tries to create its own — so the create guard must ask THIS question
-    /// whenever a record has an owner.
-    /// </para>
-    /// </summary>
-    Task<AipRecord?> GetByOfficeAndFiscalYearAsync(
-        int officeId, int fiscalYear, CancellationToken ct = default);
 
     /// <summary>
     /// Distinct AipRecord.FiscalYear values, newest first (v1.4.5 — RAL-161) — the Dashboard's

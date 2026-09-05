@@ -1,7 +1,11 @@
 /**
- * The AIP fiscal-year partition, client side (v1.8.0 Phase 2 — V18-38 / PPDO-41).
+ * The fiscal year at which the AIP changes PROCESS, client side (v1.8.0 — V18-38, V18-41).
  *
- * Mirrors `PPDO.Application/Common/AipShape` and exists for the same reason: the break year is
+ * ↩️ Was `aip-shape.ts`, renamed 2026-09-05 (PPDO-61) along with the record-shape partition it
+ * mirrored. There are no longer two record shapes: one base AIP record per fiscal year holds every
+ * office. What survived is the year — from FY2028 the AIP is entered rather than uploaded.
+ *
+ * Mirrors `PPDO.Application/Common/AipFiscalYears` and exists for the same reason: the break year is
  * written **once**, so moving it — should the province ever slip FY2028 — is one edit per side
  * rather than a hunt through pages. `AipShapeTests.TheBreakYear_IsHardcodedInExactlyOnePlace`
  * scans this directory too and fails the build if the literal reappears anywhere else.
@@ -12,18 +16,18 @@
  */
 
 /**
- * The first fiscal year on the office-owned AIP shape. FY2027 is the last year on the legacy
- * multi-office shape — this names the first NEW year, not the last old one.
+ * The first fiscal year on the new process: entered, not uploaded. FY2027 is the last uploaded
+ * year — this names the first NEW year, not the last old one.
  */
-export const FIRST_OFFICE_OWNED_FISCAL_YEAR = 2028;
+export const FIRST_ENTERED_FISCAL_YEAR = 2028;
 
 /**
  * Why an `.xlsm` upload may not target `fiscalYear`, or `null` when it may.
  *
- * The importer builds one record spanning every office in the province, which is the shape only
- * historical years use. From the break onward the AIP is **entered** in the portal instead, so the
- * message names the year and the alternative rather than reading as a validation failure — the
- * user has the permission, the year does not have the shape.
+ * From the break year the AIP is **entered** by the offices rather than imported from a workbook,
+ * so a file upload would overwrite what they have typed. The message names the year and the
+ * alternative rather than reading as a validation failure — the user has the permission, it is the
+ * fiscal year that forbids this.
  */
 /**
  * Why an AIP program cannot be typed in by hand for `fiscalYear`, or `null` when it can
@@ -36,7 +40,7 @@ export const FIRST_OFFICE_OWNED_FISCAL_YEAR = 2028;
  * ⚠️ Courtesy, not a guard. `AipService.AddProgramAsync` refuses this independently.
  */
 export function aipProgramsAreLdipOnly(fiscalYear: number): string | null {
-  if (fiscalYear < FIRST_OFFICE_OWNED_FISCAL_YEAR) return null;
+  if (fiscalYear < FIRST_ENTERED_FISCAL_YEAR) return null;
   return (
     `FY ${fiscalYear} AIP programs come from this office's LDIP and cannot be typed in. Use ` +
     `“Seed from LDIP” to add the programs you need. If a program is missing there, add it to the ` +
@@ -45,10 +49,10 @@ export function aipProgramsAreLdipOnly(fiscalYear: number): string | null {
 }
 
 export function aipUploadRefusal(fiscalYear: number): string | null {
-  if (fiscalYear < FIRST_OFFICE_OWNED_FISCAL_YEAR) return null;
+  if (fiscalYear < FIRST_ENTERED_FISCAL_YEAR) return null;
   return (
-    `FY ${fiscalYear} AIPs are entered in the portal, not uploaded. The .xlsm import builds one ` +
-    `record spanning every office, which is the shape only FY ${FIRST_OFFICE_OWNED_FISCAL_YEAR - 1} ` +
-    `and earlier use. Use the Manual Entry tab to start the FY ${fiscalYear} AIP instead.`
+    `FY ${fiscalYear} AIPs are entered in the portal, not uploaded. From FY ` +
+    `${FIRST_ENTERED_FISCAL_YEAR} each office builds its own part of the AIP directly, so importing ` +
+    `a workbook would overwrite what they have entered.`
   );
 }

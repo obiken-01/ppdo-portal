@@ -281,12 +281,12 @@ public sealed class WfpServiceTests
         var (sut, wfpRepo, _, _, _, _) = Build([], [], [], []);
 
         ServiceResult<WfpRecordDto> result = await sut.SaveAsync(
-            SimpleDto(2, 3, 10, fiscalYear: AipShape.FirstOfficeOwnedFiscalYear),
+            SimpleDto(2, 3, 10, fiscalYear: AipFiscalYears.FirstEnteredFiscalYear),
             UserId, CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
-        Assert.Contains(AipShape.FirstOfficeOwnedFiscalYear.ToString(), result.Error!);
+        Assert.Contains(AipFiscalYears.FirstEnteredFiscalYear.ToString(), result.Error!);
         wfpRepo.Verify(r => r.AddAsync(It.IsAny<WfpRecord>(), It.IsAny<CancellationToken>()), Times.Never);
         wfpRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -301,7 +301,7 @@ public sealed class WfpServiceTests
 
         ServiceResult<WfpActivityRefDto> result = await sut.EnsureActivityAsync(
             aipRecordId: 2, officeId: 3, divisionId: null,
-            fiscalYear: AipShape.FirstOfficeOwnedFiscalYear, aipActivityId: 10,
+            fiscalYear: AipFiscalYears.FirstEnteredFiscalYear, aipActivityId: 10,
             UserId, CancellationToken.None);
 
         Assert.False(result.IsSuccess);
@@ -318,7 +318,7 @@ public sealed class WfpServiceTests
         var (sut, wfpRepo, _, _, _, _) = Build([], [], [], []);
 
         ServiceResult<WfpRecordDto> result = await sut.SaveAsync(
-            SimpleDto(2, 3, 10, fiscalYear: AipShape.FirstOfficeOwnedFiscalYear - 1),
+            SimpleDto(2, 3, 10, fiscalYear: AipFiscalYears.FirstEnteredFiscalYear - 1),
             UserId, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
@@ -336,7 +336,7 @@ public sealed class WfpServiceTests
         var (sut, wfpRepo, _, _, _, _) = Build([existing], [], [], []);
 
         ServiceResult<WfpRecordDto> result = await sut.SaveAsync(
-            SimpleDto(2, 3, 10, fiscalYear: AipShape.FirstOfficeOwnedFiscalYear),
+            SimpleDto(2, 3, 10, fiscalYear: AipFiscalYears.FirstEnteredFiscalYear),
             UserId, CancellationToken.None);
 
         Assert.False(result.IsSuccess);
@@ -349,9 +349,9 @@ public sealed class WfpServiceTests
         // The message is read by someone deciding what to do about a document they are required to
         // produce. "Not allowed" would tell the province something untrue about their own process:
         // the answer to tracker C2 may well make this supported here.
-        string refusal = WfpSupportedYears.RefuseCreate(AipShape.FirstOfficeOwnedFiscalYear)!;
+        string refusal = WfpSupportedYears.RefuseCreate(AipFiscalYears.FirstEnteredFiscalYear)!;
 
-        Assert.Contains(AipShape.FirstOfficeOwnedFiscalYear.ToString(), refusal);
+        Assert.Contains(AipFiscalYears.FirstEnteredFiscalYear.ToString(), refusal);
         Assert.Contains("yet", refusal, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -362,8 +362,8 @@ public sealed class WfpServiceTests
         // so if the province slips the break these must move together. A second literal that
         // happens to agree today is the drift TheBreakYear_IsHardcodedInExactlyOnePlace cannot
         // see, because it only forbids the number — not a copy that tracks it by accident.
-        Assert.Null(WfpSupportedYears.RefuseCreate(AipShape.FirstOfficeOwnedFiscalYear - 1));
-        Assert.NotNull(WfpSupportedYears.RefuseCreate(AipShape.FirstOfficeOwnedFiscalYear));
+        Assert.Null(WfpSupportedYears.RefuseCreate(AipFiscalYears.FirstEnteredFiscalYear - 1));
+        Assert.NotNull(WfpSupportedYears.RefuseCreate(AipFiscalYears.FirstEnteredFiscalYear));
     }
 
     // ── Save — snapshot population ────────────────────────────────────────────

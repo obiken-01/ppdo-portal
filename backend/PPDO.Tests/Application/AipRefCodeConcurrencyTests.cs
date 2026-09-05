@@ -40,8 +40,8 @@ public sealed class AipRefCodeConcurrencyTests
 
     private static AipRecord Record() => new()
     {
-        Id = AipRecordId, FiscalYear = AipShape.FirstOfficeOwnedFiscalYear,
-        OfficeId = OfficeConfigId, EntrySource = "Manual", Status = PlanningStatus.Draft,
+        Id = AipRecordId, FiscalYear = AipFiscalYears.FirstEnteredFiscalYear,
+        EntrySource = "Manual", Status = PlanningStatus.Draft,
         UploadedById = Guid.NewGuid(), UploadedAt = DateTime.UtcNow,
     };
 
