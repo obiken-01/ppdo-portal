@@ -276,23 +276,163 @@ public sealed partial class AipServiceTests
         aipRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    // ↩️ REPLACED by V18-41 (PPDO-51). This asserted that LDIP seeding into the break year was
+    // refused outright, which was correct while the path could only build an UNOWNED record.
+    // V18-41 makes seeding the ONLY way programs enter an FY2028 AIP, so refusing it would leave
+    // that year with no program source at all.
+    //
+    // What V18-37 actually cared about is unchanged and is what the replacement pins: seeding must
+    // never leave an owner-less record in a year that requires an owner. The old test got that by
+    // forbidding the path; this one gets it by checking the shape of what the path produces, which
+    // is the stronger check — it would still fail if seeding started creating unowned records
+    // again, and the old one would not have noticed the difference.
     [Fact]
-    public async Task SeedProgramsFromLdip_IntoAYearFromTheBreakOnward_IsRefused()
+    public async Task SeedProgramsFromLdip_IntoAYearFromTheBreakOnward_ProducesAnOfficeOwnedRecord()
     {
-        var (recs, offices, programs, projects, acts) = HostOwnedTree();
-        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build(recs, [], officeSeed: offices,
-            programSeed: programs, projectSeed: projects, actSeed: acts,
-            officeConfigSeed: PartitionOffices());
+        // No prior AIP tree: seeding reads from the LDIP, not from a previous year's AIP, so
+        // anything in aip_* here would only be a source of unrelated conflicts.
+        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], officeSeed: [],
+            officeConfigSeed: PartitionOffices(), ldipRecordSeed: LdipSeedFor(PartitionOfficeId),
+            ldipOfficeSeed: LdipGroupsFor(PartitionOfficeId));
 
         ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
             new SeedAipProgramsFromLdipDto(
                 TargetFiscalYear: FirstNewFy, OfficeConfigId: PartitionOfficeId,
-                Sector: "GENERAL", LdipProgramIds: [1]),
+                Sector: "GENERAL", LdipProgramIds: [SeededLdipProgramId]),
             Guid.NewGuid(), WriteHostCaller(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        aipRepo.Verify(r => r.AddAsync(
+            It.Is<AipRecord>(rec => rec.OfficeId == PartitionOfficeId), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task SeedProgramsFromLdip_IntoAHistoricalYear_StillProducesAnOwnerLessRecord()
+    {
+        // The other side of the partition, unchanged by V18-41. Without this, a seed path that
+        // simply always set an owner would pass the test above and silently give FY2027 the wrong
+        // shape — which AipShape.Mismatch would then refuse on every later write to it.
+        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], officeSeed: [],
+            officeConfigSeed: PartitionOffices(), ldipRecordSeed: LdipSeedFor(PartitionOfficeId),
+            ldipOfficeSeed: LdipGroupsFor(PartitionOfficeId));
+
+        ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
+            new SeedAipProgramsFromLdipDto(
+                TargetFiscalYear: LastLegacyFy, OfficeConfigId: PartitionOfficeId,
+                Sector: "GENERAL", LdipProgramIds: [SeededLdipProgramId]),
+            Guid.NewGuid(), WriteHostCaller(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        aipRepo.Verify(r => r.AddAsync(
+            It.Is<AipRecord>(rec => rec.OfficeId == null), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task SeedProgramsFromLdip_TheSeededOffice_CarriesItsOwnershipFk()
+    {
+        // ⚠️ Without this the seeded programs are INVISIBLE to the office that just seeded them.
+        // AipReadScope filters on AipOffice.OfficeId, so a null there means the office opens its
+        // own FY2028 AIP and sees nothing — no error, no empty-state explanation, just absence.
+        // The same failure V18-32's migration warns unmatched rows cause. The seed path never set
+        // this field before V18-41; only the importer did.
+        var (sut, _, _, _, _, _, officeRepo, _, _, _, _, _, _) = Build([], [], officeSeed: [],
+            officeConfigSeed: PartitionOffices(), ldipRecordSeed: LdipSeedFor(PartitionOfficeId),
+            ldipOfficeSeed: LdipGroupsFor(PartitionOfficeId));
+
+        await sut.SeedProgramsFromLdipAsync(
+            new SeedAipProgramsFromLdipDto(
+                TargetFiscalYear: FirstNewFy, OfficeConfigId: PartitionOfficeId,
+                Sector: "GENERAL", LdipProgramIds: [SeededLdipProgramId]),
+            Guid.NewGuid(), WriteHostCaller(), CancellationToken.None);
+
+        officeRepo.Verify(r => r.AddAsync(
+            It.Is<AipOffice>(o => o.OfficeId == PartitionOfficeId), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    // ── The closed list (V18-41 / PPDO-51) ────────────────────────────
+
+    [Fact]
+    public async Task AddProgram_AFreeTypedNameFromTheBreakOnward_IsRefused()
+    {
+        // The LDIP is a closed list from the break year on, so the free-typed path is the one
+        // door that has to close — otherwise "programs come from the LDIP" is a convention the
+        // UI follows and the API does not.
+        List<AipRecord> recs = RecordSeed(PartitionOfficeId, FirstNewFy);
+        List<AipOffice> offices =
+        [
+            new() { Id = 10, AipRecordId = AipRecordId, RefCode = "1000-000-1-01-010",
+                    Name = "PPDO", Sector = AipSector.General, OfficeId = PartitionOfficeId },
+        ];
+        var (sut, _, _, _, _, _, _, _, _, programRepo, _, _, _) =
+            Build(recs, [], officeSeed: offices, officeConfigSeed: PartitionOffices());
+
+        ServiceResult<AipProgramDto> result = await sut.AddProgramAsync(
+            10, new CreateAipProgramDto("Invented program"), WriteHostCaller(), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
-        Assert.Contains(FirstNewFy.ToString(), result.Error!);
+        Assert.Contains("LDIP", result.Error!);
+        programRepo.Verify(r => r.AddAsync(It.IsAny<AipProgram>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task AddProgram_AFreeTypedNameInAHistoricalYear_IsStillAllowed()
+    {
+        // FY≤2027 manual entry has always let an office name its own programs, and those records
+        // came from a workbook containing whatever the province typed. Closing the free-typed path
+        // for them would break the one working use — the same shape of mistake as freezing the
+        // importer for historical years would have been.
+        List<AipRecord> recs = RecordSeed(null, LastLegacyFy);
+        List<AipOffice> offices =
+        [
+            new() { Id = 10, AipRecordId = AipRecordId, RefCode = "1000-000-1-01-010",
+                    Name = "PPDO", Sector = AipSector.General, OfficeId = PartitionOfficeId },
+        ];
+        var (sut, _, _, _, _, _, _, _, _, programRepo, _, _, _) =
+            Build(recs, [], officeSeed: offices, officeConfigSeed: PartitionOffices());
+
+        ServiceResult<AipProgramDto> result = await sut.AddProgramAsync(
+            10, new CreateAipProgramDto("Hand-entered program"), WriteHostCaller(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        programRepo.Verify(r => r.AddAsync(It.IsAny<AipProgram>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task AddProgram_TheRefusal_ComesBeforeTheNameRequiredCheck()
+    {
+        // Ordering matters for the message, not the outcome. A caller in FY2028 with a blank name
+        // has ONE problem — the year — and "Program name is required" would send them to fill in
+        // a field that was never going to be accepted. Same reasoning as V18-37 putting its shape
+        // check above the office lookup.
+        List<AipRecord> recs = RecordSeed(PartitionOfficeId, FirstNewFy);
+        List<AipOffice> offices =
+        [
+            new() { Id = 10, AipRecordId = AipRecordId, RefCode = "1000-000-1-01-010",
+                    Name = "PPDO", Sector = AipSector.General, OfficeId = PartitionOfficeId },
+        ];
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
+            Build(recs, [], officeSeed: offices, officeConfigSeed: PartitionOffices());
+
+        ServiceResult<AipProgramDto> result = await sut.AddProgramAsync(
+            10, new CreateAipProgramDto("   "), WriteHostCaller(), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("LDIP", result.Error!);
+        Assert.DoesNotContain("name is required", result.Error!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TheClosedListRefusal_TracksTheBreakYear_AndNamesTheLdip()
+    {
+        Assert.Null(AipProgramSource.RefuseFreeTypedProgram(AipShape.FirstOfficeOwnedFiscalYear - 1));
+
+        string refusal = AipProgramSource.RefuseFreeTypedProgram(AipShape.FirstOfficeOwnedFiscalYear)!;
+        Assert.Contains("LDIP", refusal);
+        Assert.Contains(AipShape.FirstOfficeOwnedFiscalYear.ToString(), refusal);
     }
 
     // ── The other door: changing shape one node at a time ────────────────────
@@ -368,6 +508,48 @@ public sealed partial class AipServiceTests
             "A record-level method now takes an office id — that is a shape conversion seam: "
             + string.Join(", ", offenders));
     }
+
+    // ── LDIP fixtures for V18-41's seeding tests ────────────────────────
+
+    private const int SeededLdipRecordId  = 400;
+    private const int SeededLdipOfficeId  = 401;
+    private const int SeededLdipProgramId = 402;
+
+    /// <summary>
+    /// A Tier-1 LDIP record — one the office owns outright (<c>LdipRecord.OfficeId</c> set), which
+    /// the seed path resolves by sector text. Deliberately not the Tier-2 multi-office shape: that
+    /// one is matched by computed ref code and would make these tests about ref-code derivation
+    /// rather than about the record shape they exist to pin.
+    /// </summary>
+    private static List<LdipRecord> LdipSeedFor(int officeConfigId) =>
+    [
+        new()
+        {
+            Id = SeededLdipRecordId, OfficeId = officeConfigId,
+            RefCode = "LDIP-2028-2030", Title = "LDIP",
+            FiscalYearStart = 2028, FiscalYearEnd = 2030,
+            EntryMode = "New", Status = PlanningStatus.Draft,
+            CreatedById = Guid.NewGuid(),
+            CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+        },
+    ];
+
+    private static List<LdipOffice> LdipGroupsFor(int officeConfigId) =>
+    [
+        new()
+        {
+            Id = SeededLdipOfficeId, LdipRecordId = SeededLdipRecordId,
+            RefCode = "1000-000-1-01-010", Name = "PPDO", Sector = AipSector.General,
+            Programs =
+            [
+                new LdipProgram
+                {
+                    Id = SeededLdipProgramId, LdipOfficeId = SeededLdipOfficeId,
+                    RefCode = "1000-000-1-01-010-001", Name = "Seeded program",
+                },
+            ],
+        },
+    ];
 
     // ── Fixtures ─────────────────────────────────────────────────────────────
 

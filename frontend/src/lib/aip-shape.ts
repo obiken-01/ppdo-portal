@@ -25,6 +25,25 @@ export const FIRST_OFFICE_OWNED_FISCAL_YEAR = 2028;
  * message names the year and the alternative rather than reading as a validation failure — the
  * user has the permission, the year does not have the shape.
  */
+/**
+ * Why an AIP program cannot be typed in by hand for `fiscalYear`, or `null` when it can
+ * (V18-41 / PPDO-51).
+ *
+ * From the break year on the LDIP is a **closed list**: an office may only add programs its LDIP
+ * already contains. There is no "propose a new program" path — if a program is missing, it is
+ * missing from the LDIP, and that is where it has to be added.
+ *
+ * ⚠️ Courtesy, not a guard. `AipService.AddProgramAsync` refuses this independently.
+ */
+export function aipProgramsAreLdipOnly(fiscalYear: number): string | null {
+  if (fiscalYear < FIRST_OFFICE_OWNED_FISCAL_YEAR) return null;
+  return (
+    `FY ${fiscalYear} AIP programs come from this office's LDIP and cannot be typed in. Use ` +
+    `“Seed from LDIP” to add the programs you need. If a program is missing there, add it to the ` +
+    `LDIP first — the AIP cannot contain a program the LDIP does not.`
+  );
+}
+
 export function aipUploadRefusal(fiscalYear: number): string | null {
   if (fiscalYear < FIRST_OFFICE_OWNED_FISCAL_YEAR) return null;
   return (
