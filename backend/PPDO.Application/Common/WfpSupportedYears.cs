@@ -61,7 +61,7 @@ public static class WfpSupportedYears
     /// ⚠️ <b>Call it as the FIRST statement of the method.</b> Both WFP write paths are
     /// <i>find-or-create</i>: a refusal that arrives after the record has been added is the
     /// original bug with an error message attached. This is the same failure V18-37 found in
-    /// <c>CopyOfficeFromPriorYearAsync</c> and <c>SeedProgramsFromLdipAsync</c>, where the guard
+    /// <c>SeedProgramsFromLdipAsync</c> and the since-removed carry-forward, where the guard
     /// had to move to the top for the same reason.
     /// </para>
     ///
