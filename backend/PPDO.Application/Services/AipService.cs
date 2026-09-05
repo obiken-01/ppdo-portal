@@ -223,7 +223,7 @@ public sealed class AipService : IAipService
         // arrives BEFORE a 20 MB workbook is parsed and a preview is built for a year that can
         // never accept it. Walking someone through preview only to refuse at Confirm is a worse
         // failure than the upload button being disabled in the first place.
-        if (AipShape.RefuseUpload(fiscalYear) is string frozen)
+        if (AipFiscalYears.RefuseUpload(fiscalYear) is string frozen)
             return ServiceResult<AipImportPreviewDto>.BadRequest(frozen);
 
         Dictionary<string, List<ParsedAipOffice>> parsed;
@@ -318,7 +318,7 @@ public sealed class AipService : IAipService
         //
         // RefuseUpload rather than the general Mismatch: same partition, but Mismatch tells the
         // caller to choose an office, and an importer cannot — the workbook decides its offices.
-        if (AipShape.RefuseUpload(dto.FiscalYear) is string frozen)
+        if (AipFiscalYears.RefuseUpload(dto.FiscalYear) is string frozen)
             return ServiceResult<AipRecordDto>.BadRequest(frozen);
 
         // Load funding source lookup for snapshot population — needed by both paths below.
@@ -459,48 +459,31 @@ public sealed class AipService : IAipService
     public async Task<ServiceResult<AipRecordDto>> CreateManualRecordAsync(
         CreateAipRecordDto dto, Guid createdById, CancellationToken ct = default)
     {
-        // ── Which shape? (V18-40) ─────────────────────────────────────────────
-        // An office id means an office-owned record; its absence means the legacy multi-office
-        // one. PPDO takes the same path as every other office — there is deliberately no branch
-        // for it here, and adding one is what tracker B12-b ruled out.
+        // ⚠️ One base AIP record per fiscal year, holding every office (PPDO-61, 2026-09-05).
+        // This method used to choose a record SHAPE from dto.OfficeConfigId — an office id meant an
+        // office-owned record, its absence the legacy multi-office one — and V18-37 then made the
+        // fiscal year decide instead of the caller. Both are gone: there is one shape, so there is
+        // nothing to choose and nothing to refuse.
         //
-        // V18-37: the caller no longer gets a free choice — the fiscal year decides. Checked
-        // BEFORE the office lookup on purpose: a caller asking for an office-owned FY2027 record
-        // has made one mistake, the year, and answering "office 999 not found" (which may also be
-        // true) would send them off to fix the wrong thing.
-        if (AipShape.Mismatch(dto.FiscalYear, dto.OfficeConfigId) is string shapeError)
-            return ServiceResult<AipRecordDto>.BadRequest(shapeError);
-
-        Office? owningOffice = null;
-        if (dto.OfficeConfigId is int officeConfigId)
-        {
-            owningOffice = await _officeConfigRepo.GetByIdAsync(officeConfigId, ct);
-            if (owningOffice is null || !owningOffice.IsActive)
-                return ServiceResult<AipRecordDto>.NotFound(
-                    $"Office {officeConfigId} not found or inactive.");
-        }
-
-        // ⚠️ The conflict question differs by shape. For an office-owned record it must be scoped
-        // to that office: asking "is there any AIP for FY 2028" would report the FIRST office's
-        // record as a conflict for every other office in the province.
-        AipRecord? conflict = owningOffice is not null
-            ? await _aipRepo.GetByOfficeAndFiscalYearAsync(owningOffice.Id, dto.FiscalYear, ct)
-            : await _aipRepo.GetLatestByFiscalYearAsync(dto.FiscalYear, ct);
+        // ⚠️ The conflict question goes back to being ONE question per year. V18-40 had to scope it
+        // per office, because asking "is there any AIP for FY 2028" would have reported the first
+        // office's record as a conflict for every other office in the province. With one record per
+        // year that scoping is not just unnecessary, it would be wrong — a second record for a year
+        // that already has one is exactly what must be refused.
+        AipRecord? conflict = await _aipRepo.GetLatestByFiscalYearAsync(dto.FiscalYear, ct);
 
         if (conflict is not null)
         {
             string hint = conflict.Status == PlanningStatus.Draft
                 ? "Archive the existing record first before creating a new one."
                 : "The existing record must be unlocked by an admin before a new one is allowed.";
-            string scope = owningOffice is not null ? $"for {owningOffice.OfficeName} " : string.Empty;
             return ServiceResult<AipRecordDto>.BadRequest(
-                $"An AIP {scope}for FY {dto.FiscalYear} already exists with status '{conflict.Status}'. {hint}");
+                $"An AIP for FY {dto.FiscalYear} already exists with status '{conflict.Status}'. {hint}");
         }
 
         AipRecord rec = new()
         {
             FiscalYear   = dto.FiscalYear,
-            OfficeId     = owningOffice?.Id,
             EntrySource  = "Manual",
             UploadedById = createdById,
             UploadedAt   = DateTime.UtcNow,
@@ -509,7 +492,7 @@ public sealed class AipService : IAipService
         await _aipRepo.AddAsync(rec, ct);
         await _aipRepo.SaveChangesAsync(ct);
         await _audit.LogAsync("aip_records", rec.Id, AuditAction.Create,
-            null, new { rec.FiscalYear, rec.OfficeId, rec.EntrySource, rec.Status }, ct);
+            null, new { rec.FiscalYear, rec.EntrySource, rec.Status }, ct);
 
         return ServiceResult<AipRecordDto>.Ok(MapToDto(rec));
     }
@@ -547,8 +530,10 @@ public sealed class AipService : IAipService
         // office and would otherwise be free to do exactly this. BadRequest rather than the
         // NotFound used just above — that one hides existence; this caller may see the record and
         // is being told the operation is wrong for its shape.
-        if (AipShape.RefuseForeignOffice(rec, office.Id, office.OfficeName) is string shapeError)
-            return ServiceResult<AipOfficeDto>.BadRequest(shapeError);
+        // ⚠️ V18-37's foreign-office gate was removed here (PPDO-61). It refused adding a second
+        // office to an office-owned record, because two offices under one record WAS the legacy
+        // shape reached a node at a time. With one base record per year holding every office, that
+        // is now the normal and required case — the gate would block the model itself.
 
         if (string.IsNullOrWhiteSpace(office.OfficeRefCode))
             return ServiceResult<AipOfficeDto>.BadRequest(
@@ -588,17 +573,12 @@ public sealed class AipService : IAipService
     public async Task<ServiceResult<AipOfficeDto>> CopyOfficeFromPriorYearAsync(
         CopyAipOfficeDto dto, Guid createdById, User caller, CancellationToken ct = default)
     {
-        // ⚠️ V18-37, and this one was a live leak rather than a hypothetical. The find-or-create
-        // below builds its target record with no owner set, so before this guard, carrying forward
-        // into FY2028 wrote a legacy-shape record into a year that must not have one — silently,
-        // with nothing downstream positioned to notice. Carry-forward into the new shape is Phase 3
-        // work; until it exists the refusal is the honest answer.
+        // ⚠️ V18-37's shape guard was removed here (PPDO-61) — there is one shape now, so a record
+        // with no owner is correct in every year and there is nothing left to refuse.
         //
-        // First statement in the method, deliberately: a refusal that arrives after the record has
-        // been added leaves the wrong-shaped row behind and merely reports an error about it, which
-        // is the original bug with a message attached.
-        if (AipShape.Mismatch(dto.TargetFiscalYear, officeId: null) is string shapeError)
-            return ServiceResult<AipOfficeDto>.BadRequest(shapeError);
+        // ℹ️ This whole method is removed by PPDO-63: the PDC wants offices building their AIP from
+        // scratch, and carry-forward also bypasses the closed list and copies a prior year's
+        // amounts. It is left standing here only to keep this ticket to the shape reversal.
 
         if (dto.ProgramIds is null || dto.ProgramIds.Count == 0)
             return ServiceResult<AipOfficeDto>.BadRequest("Select at least one program to copy.");
@@ -796,22 +776,14 @@ public sealed class AipService : IAipService
     public async Task<ServiceResult<AipOfficeDto>> SeedProgramsFromLdipAsync(
         SeedAipProgramsFromLdipDto dto, Guid createdById, User caller, CancellationToken ct = default)
     {
-        // ⚠️ V18-41 REOPENED THIS PATH FOR FY≥2028, and the reasoning V18-37 left here has to be
-        // read carefully because it has been half-superseded.
+        // ⚠️ PPDO-61 (2026-09-05): the shape branch that used to sit here is gone. V18-37 refused
+        // the break year outright because this path builds an unowned record; V18-41 then made it
+        // build an office-owned one for FY≥2028. Both are moot — there is one shape, and an
+        // unowned record is now correct in every year.
         //
-        // V18-37 refused the break year outright, because the find-or-create below built an
-        // UNOWNED record. Its note said the DTO's office "is the LDIP SOURCE being read from, not
-        // a decision about who owns the target" — and that was right about the code as it then
-        // stood, but it is not a law. Under the closed-list rule (V18-41) an office may only seed
-        // from ITS OWN LDIP, so source and target office are necessarily the same office. That is
-        // what makes an office-owned target derivable here, and it is derivable for no other
-        // reason: if seeding ever grows a cross-office mode, this collapses and the guard returns.
-        //
-        // So the shape is now chosen by the year rather than refused:
-        //   FY≤2027 → legacy multi-office record, owner null, found by year alone (unchanged)
-        //   FY≥2028 → office-owned record, owner = this office, found by (office, year)
-        bool officeOwnedTarget =
-            AipShape.Required(dto.TargetFiscalYear) == AipRecordShape.OfficeOwned;
+        // ℹ️ PPDO-62 turns this method into a RE-SYNC: it will require the year to already be open
+        // rather than find-or-creating the record below, and add only programs not already present.
+        // Until then it keeps the find-or-create it has always had.
 
         if (dto.LdipProgramIds is null || dto.LdipProgramIds.Count == 0)
             return ServiceResult<AipOfficeDto>.BadRequest("Select at least one program to seed.");
@@ -885,9 +857,7 @@ public sealed class AipService : IAipService
         // office; under the office-owned shape it returns the FIRST office's record and would
         // report it as a conflict for every other office in the province — or worse, seed this
         // office's programs into someone else's record.
-        AipRecord? targetRecord = officeOwnedTarget
-            ? await _aipRepo.GetByOfficeAndFiscalYearAsync(dto.OfficeConfigId, dto.TargetFiscalYear, ct)
-            : await _aipRepo.GetLatestByFiscalYearAsync(dto.TargetFiscalYear, ct);
+        AipRecord? targetRecord = await _aipRepo.GetLatestByFiscalYearAsync(dto.TargetFiscalYear, ct);
 
         bool creatingRecord = targetRecord is null;
         if (targetRecord is not null
@@ -904,11 +874,6 @@ public sealed class AipService : IAipService
             targetRecord = new AipRecord
             {
                 FiscalYear   = dto.TargetFiscalYear,
-                // Null for a legacy record and the office for an owned one — the single field
-                // that decides the shape (V18-40). AipShape.Mismatch would refuse the wrong
-                // combination, which is why this reads from officeOwnedTarget rather than always
-                // setting or always omitting it.
-                OfficeId     = officeOwnedTarget ? dto.OfficeConfigId : null,
                 EntrySource  = "Manual",
                 UploadedById = createdById,
                 UploadedAt   = DateTime.UtcNow,
@@ -1737,7 +1702,7 @@ public sealed class AipService : IAipService
     // ── Mapping ───────────────────────────────────────────────────────────────
 
     private static AipRecordDto MapToDto(AipRecord r) => new(
-        r.Id, r.FiscalYear, r.OfficeId, r.EntrySource, r.OriginalFilename,
+        r.Id, r.FiscalYear, r.EntrySource, r.OriginalFilename,
         r.UploadedById, r.UploadedAt, r.Status, r.LdipId, r.SourceId,
         OfficeCount: 0, UploadedByName: null);
 
@@ -1745,7 +1710,7 @@ public sealed class AipService : IAipService
         AipRecord r,
         Dictionary<int, int> officeCounts,
         IReadOnlyDictionary<Guid, string> userNames) => new(
-        r.Id, r.FiscalYear, r.OfficeId, r.EntrySource, r.OriginalFilename,
+        r.Id, r.FiscalYear, r.EntrySource, r.OriginalFilename,
         r.UploadedById, r.UploadedAt, r.Status, r.LdipId, r.SourceId,
         OfficeCount: officeCounts.GetValueOrDefault(r.Id, 0),
         UploadedByName: userNames.GetValueOrDefault(r.UploadedById));

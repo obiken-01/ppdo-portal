@@ -7,100 +7,32 @@ using PPDO.Domain.Interfaces;
 
 namespace PPDO.Tests.Application;
 
-/// <summary>
-/// The FY partition applied at the four paths that create an AIP record, plus the one path that
-/// could change a record's shape a node at a time (v1.8.0 Phase 2 — V18-37 / PPDO-40).
+/// What FY2028 onward does differently, enforced at the service (v1.8.0 Phase 3).
 ///
 /// <para>
-/// <see cref="AipShapeTests"/> pins the policy in isolation. This file pins that the policy is
-/// actually <b>reached</b> — which is the half that breaks, since a create path that forgets to
-/// ask still compiles and still passes every test it had before.
+/// ↩️ <b>Was <c>AipFyPartitionTests</c>, retitled 2026-09-05 (PPDO-61).</b> Nine tests went with the
+/// record-shape partition they pinned. The break year survives them: from FY2028 the AIP is
+/// <b>entered rather than uploaded</b> (V18-38) and its programs come from the <b>LDIP as a closed
+/// list</b> (V18-41). The record's structure is no longer part of it — one base record per fiscal
+/// year holds every office, in every year.
 /// </para>
 ///
 /// <para>
-/// ⚠️ <b>Two of these were a live leak, not a hypothetical.</b> <c>CopyOfficeFromPriorYearAsync</c>
-/// and <c>SeedProgramsFromLdipAsync</c> find-or-create their target record with no owner set.
-/// Pointed at FY2028 before this ticket they wrote a legacy-shape record into a year that must not
-/// have one — silently, with nothing downstream positioned to notice.
+/// <see cref="AipFiscalYearsTests"/> pins the policy in isolation. This file pins that the policy
+/// is actually <b>reached</b> — which is the half that breaks, since a path that forgets to ask
+/// still compiles and still passes every test it had before.
 /// </para>
 /// </summary>
 public sealed partial class AipServiceTests
 {
     private const int PartitionOfficeId = 7;
-    private const int LastLegacyFy      = AipShape.FirstOfficeOwnedFiscalYear - 1;
-    private const int FirstNewFy        = AipShape.FirstOfficeOwnedFiscalYear;
+    private const int LastLegacyFy      = AipFiscalYears.FirstEnteredFiscalYear - 1;
+    private const int FirstNewFy        = AipFiscalYears.FirstEnteredFiscalYear;
 
     private static List<Office> PartitionOffices() =>
         [MakeOffice(PartitionOfficeId, "PPDO", "01-010"), MakeOffice(8, "GSO", "01-015")];
 
     // ── Manual create — the one path that can already ask for either shape ────
-
-    [Fact]
-    public async Task CreateManualRecord_OfficeOwnedShapeInAHistoricalYear_IsRefused()
-    {
-        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
-            Build([], [], officeConfigSeed: PartitionOffices());
-
-        ServiceResult<AipRecordDto> result = await sut.CreateManualRecordAsync(
-            new CreateAipRecordDto(LastLegacyFy, OfficeConfigId: PartitionOfficeId),
-            Guid.NewGuid(), CancellationToken.None);
-
-        Assert.False(result.IsSuccess);
-        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
-        Assert.Contains(LastLegacyFy.ToString(), result.Error!);
-    }
-
-    [Fact]
-    public async Task CreateManualRecord_LegacyShapeFromTheBreakOnward_IsRefused()
-    {
-        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
-            Build([], [], officeConfigSeed: PartitionOffices());
-
-        ServiceResult<AipRecordDto> result = await sut.CreateManualRecordAsync(
-            new CreateAipRecordDto(FirstNewFy), Guid.NewGuid(), CancellationToken.None);
-
-        Assert.False(result.IsSuccess);
-        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
-        Assert.Contains(FirstNewFy.ToString(), result.Error!);
-    }
-
-    [Fact]
-    public async Task CreateManualRecord_EitherShapeInItsOwnYear_IsAllowed()
-    {
-        // The partition must not be a blanket refusal — both shapes stay creatable, each in the
-        // years that are its own. Without this the two tests above would pass on a service that
-        // simply rejected everything.
-        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
-            Build([], [], officeConfigSeed: PartitionOffices());
-        Guid by = Guid.NewGuid();
-
-        ServiceResult<AipRecordDto> legacy = await sut.CreateManualRecordAsync(
-            new CreateAipRecordDto(LastLegacyFy), by, CancellationToken.None);
-        ServiceResult<AipRecordDto> owned = await sut.CreateManualRecordAsync(
-            new CreateAipRecordDto(FirstNewFy, OfficeConfigId: PartitionOfficeId), by, CancellationToken.None);
-
-        Assert.True(legacy.IsSuccess);
-        Assert.Null(legacy.Value!.OfficeId);
-        Assert.True(owned.IsSuccess);
-        Assert.Equal(PartitionOfficeId, owned.Value!.OfficeId);
-    }
-
-    [Fact]
-    public async Task CreateManualRecord_TheShapeCheckRunsBeforeTheOfficeLookup()
-    {
-        // Ordering matters for the message, not the outcome. A caller asking for an office-owned
-        // FY2027 record has made ONE mistake — the year — and telling them the office is unknown
-        // (it may well be) sends them to fix the wrong thing.
-        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], officeConfigSeed: []);
-
-        ServiceResult<AipRecordDto> result = await sut.CreateManualRecordAsync(
-            new CreateAipRecordDto(LastLegacyFy, OfficeConfigId: 999),
-            Guid.NewGuid(), CancellationToken.None);
-
-        Assert.False(result.IsSuccess);
-        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
-        Assert.DoesNotContain("999", result.Error!);
-    }
 
     // ── .xlsm import — legacy only; the freeze itself is V18-38 ───────────────
 
@@ -129,7 +61,6 @@ public sealed partial class AipServiceTests
             ImportConfirm(LastLegacyFy), Guid.NewGuid(), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.Null(result.Value!.OfficeId);
     }
 
     [Fact]
@@ -150,7 +81,7 @@ public sealed partial class AipServiceTests
         // that has nothing to do with the partition — and this test went on passing with the shape
         // guard deleted. Asserting the message names the year is the other half of that fix.
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build(
-            RecordSeed(null, LastLegacyFy, entrySource: "Upload"), [], officeSeed: []);
+            RecordSeed(LastLegacyFy, entrySource: "Upload"), [], officeSeed: []);
 
         ServiceResult<AipRecordDto> result = await sut.ConfirmImportAsync(
             ImportConfirm(FirstNewFy) with { TargetRecordId = AipRecordId },
@@ -168,7 +99,7 @@ public sealed partial class AipServiceTests
         // is the path most easily broken by a guard placed a line too high, and FY≤2027 records
         // are the ones people still correct this way.
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build(
-            RecordSeed(null, LastLegacyFy, entrySource: "Upload"), [], officeSeed: []);
+            RecordSeed(LastLegacyFy, entrySource: "Upload"), [], officeSeed: []);
 
         ServiceResult<AipRecordDto> result = await sut.ConfirmImportAsync(
             ImportConfirm(LastLegacyFy) with { TargetRecordId = AipRecordId },
@@ -176,7 +107,6 @@ public sealed partial class AipServiceTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal(LastLegacyFy, result.Value!.FiscalYear);
-        Assert.Null(result.Value!.OfficeId);
     }
 
     [Fact]
@@ -241,78 +171,11 @@ public sealed partial class AipServiceTests
     // ── Carry-forward and LDIP seeding — the paths that leaked ────────────────
 
     [Fact]
-    public async Task CopyOfficeFromPriorYear_IntoAYearFromTheBreakOnward_IsRefused()
+    public async Task SeedProgramsFromLdip_CreatesTheTargetRecordForTheRequestedYear()
     {
-        var (recs, offices, programs, projects, acts) = HostOwnedTree();
-        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build(recs, [], officeSeed: offices,
-            programSeed: programs, projectSeed: projects, actSeed: acts,
-            officeConfigSeed: PartitionOffices());
-
-        ServiceResult<AipOfficeDto> result = await sut.CopyOfficeFromPriorYearAsync(
-            new CopyAipOfficeDto(SourceOfficeId: 10, TargetFiscalYear: FirstNewFy, ProgramIds: [20]),
-            Guid.NewGuid(), WriteHostCaller(), CancellationToken.None);
-
-        Assert.False(result.IsSuccess);
-        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
-        Assert.Contains(FirstNewFy.ToString(), result.Error!);
-    }
-
-    [Fact]
-    public async Task CopyOfficeFromPriorYear_RefusesBeforeWritingAnything()
-    {
-        // ⚠️ The property that actually matters. A refusal that arrives after the record has been
-        // added leaves the wrong-shaped row behind and merely reports an error about it — which is
-        // the original bug with an error message attached.
-        var (recs, offices, programs, projects, acts) = HostOwnedTree();
-        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _, _) = Build(recs, [], officeSeed: offices,
-            programSeed: programs, projectSeed: projects, actSeed: acts,
-            officeConfigSeed: PartitionOffices());
-
-        await sut.CopyOfficeFromPriorYearAsync(
-            new CopyAipOfficeDto(SourceOfficeId: 10, TargetFiscalYear: FirstNewFy, ProgramIds: [20]),
-            Guid.NewGuid(), WriteHostCaller(), CancellationToken.None);
-
-        aipRepo.Verify(r => r.AddAsync(It.IsAny<AipRecord>(), It.IsAny<CancellationToken>()), Times.Never);
-        aipRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
-    }
-
-    // ↩️ REPLACED by V18-41 (PPDO-51). This asserted that LDIP seeding into the break year was
-    // refused outright, which was correct while the path could only build an UNOWNED record.
-    // V18-41 makes seeding the ONLY way programs enter an FY2028 AIP, so refusing it would leave
-    // that year with no program source at all.
-    //
-    // What V18-37 actually cared about is unchanged and is what the replacement pins: seeding must
-    // never leave an owner-less record in a year that requires an owner. The old test got that by
-    // forbidding the path; this one gets it by checking the shape of what the path produces, which
-    // is the stronger check — it would still fail if seeding started creating unowned records
-    // again, and the old one would not have noticed the difference.
-    [Fact]
-    public async Task SeedProgramsFromLdip_IntoAYearFromTheBreakOnward_ProducesAnOfficeOwnedRecord()
-    {
-        // No prior AIP tree: seeding reads from the LDIP, not from a previous year's AIP, so
-        // anything in aip_* here would only be a source of unrelated conflicts.
-        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], officeSeed: [],
-            officeConfigSeed: PartitionOffices(), ldipRecordSeed: LdipSeedFor(PartitionOfficeId),
-            ldipOfficeSeed: LdipGroupsFor(PartitionOfficeId));
-
-        ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
-            new SeedAipProgramsFromLdipDto(
-                TargetFiscalYear: FirstNewFy, OfficeConfigId: PartitionOfficeId,
-                Sector: "GENERAL", LdipProgramIds: [SeededLdipProgramId]),
-            Guid.NewGuid(), WriteHostCaller(), CancellationToken.None);
-
-        Assert.True(result.IsSuccess);
-        aipRepo.Verify(r => r.AddAsync(
-            It.Is<AipRecord>(rec => rec.OfficeId == PartitionOfficeId), It.IsAny<CancellationToken>()),
-            Times.Once);
-    }
-
-    [Fact]
-    public async Task SeedProgramsFromLdip_IntoAHistoricalYear_StillProducesAnOwnerLessRecord()
-    {
-        // The other side of the partition, unchanged by V18-41. Without this, a seed path that
-        // simply always set an owner would pass the test above and silently give FY2027 the wrong
-        // shape — which AipShape.Mismatch would then refuse on every later write to it.
+        // ↩️ Was "StillProducesAnOwnerLessRecord" (PPDO-61). Records no longer have an owner at
+        // all, so what is left worth pinning is that seeding find-or-creates the record for the
+        // year it was ASKED for — not the latest, and not one it happened to find.
         var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], officeSeed: [],
             officeConfigSeed: PartitionOffices(), ldipRecordSeed: LdipSeedFor(PartitionOfficeId),
             ldipOfficeSeed: LdipGroupsFor(PartitionOfficeId));
@@ -325,7 +188,7 @@ public sealed partial class AipServiceTests
 
         Assert.True(result.IsSuccess);
         aipRepo.Verify(r => r.AddAsync(
-            It.Is<AipRecord>(rec => rec.OfficeId == null), It.IsAny<CancellationToken>()),
+            It.Is<AipRecord>(rec => rec.FiscalYear == LastLegacyFy), It.IsAny<CancellationToken>()),
             Times.Once);
     }
 
@@ -360,7 +223,7 @@ public sealed partial class AipServiceTests
         // The LDIP is a closed list from the break year on, so the free-typed path is the one
         // door that has to close — otherwise "programs come from the LDIP" is a convention the
         // UI follows and the API does not.
-        List<AipRecord> recs = RecordSeed(PartitionOfficeId, FirstNewFy);
+        List<AipRecord> recs = RecordSeed(FirstNewFy);
         List<AipOffice> offices =
         [
             new() { Id = 10, AipRecordId = AipRecordId, RefCode = "1000-000-1-01-010",
@@ -385,7 +248,7 @@ public sealed partial class AipServiceTests
         // came from a workbook containing whatever the province typed. Closing the free-typed path
         // for them would break the one working use — the same shape of mistake as freezing the
         // importer for historical years would have been.
-        List<AipRecord> recs = RecordSeed(null, LastLegacyFy);
+        List<AipRecord> recs = RecordSeed(LastLegacyFy);
         List<AipOffice> offices =
         [
             new() { Id = 10, AipRecordId = AipRecordId, RefCode = "1000-000-1-01-010",
@@ -408,7 +271,7 @@ public sealed partial class AipServiceTests
         // has ONE problem — the year — and "Program name is required" would send them to fill in
         // a field that was never going to be accepted. Same reasoning as V18-37 putting its shape
         // check above the office lookup.
-        List<AipRecord> recs = RecordSeed(PartitionOfficeId, FirstNewFy);
+        List<AipRecord> recs = RecordSeed(FirstNewFy);
         List<AipOffice> offices =
         [
             new() { Id = 10, AipRecordId = AipRecordId, RefCode = "1000-000-1-01-010",
@@ -428,49 +291,14 @@ public sealed partial class AipServiceTests
     [Fact]
     public void TheClosedListRefusal_TracksTheBreakYear_AndNamesTheLdip()
     {
-        Assert.Null(AipProgramSource.RefuseFreeTypedProgram(AipShape.FirstOfficeOwnedFiscalYear - 1));
+        Assert.Null(AipProgramSource.RefuseFreeTypedProgram(AipFiscalYears.FirstEnteredFiscalYear - 1));
 
-        string refusal = AipProgramSource.RefuseFreeTypedProgram(AipShape.FirstOfficeOwnedFiscalYear)!;
+        string refusal = AipProgramSource.RefuseFreeTypedProgram(AipFiscalYears.FirstEnteredFiscalYear)!;
         Assert.Contains("LDIP", refusal);
-        Assert.Contains(AipShape.FirstOfficeOwnedFiscalYear.ToString(), refusal);
+        Assert.Contains(AipFiscalYears.FirstEnteredFiscalYear.ToString(), refusal);
     }
 
     // ── The other door: changing shape one node at a time ────────────────────
-
-    [Fact]
-    public async Task AddOffice_AForeignOfficeOntoAnOfficeOwnedRecord_IsRefused()
-    {
-        // ⚠️ No record is "converted" here and no gate on the create paths would see it. Add two
-        // offices to an office-owned record and it spans several offices — the legacy shape,
-        // reached through a different door. OfficeScope does not cover this: it stops a GUEST
-        // reaching another office's record, and says nothing about a host admin, who legitimately
-        // sees every office and would otherwise be able to do exactly this.
-        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build(
-            RecordSeed(PartitionOfficeId, FirstNewFy), [], officeSeed: [],
-            officeConfigSeed: PartitionOffices());
-
-        ServiceResult<AipOfficeDto> result = await sut.AddOfficeAsync(
-            AipRecordId, new CreateAipOfficeDto(OfficeConfigId: 8, Sector: "GENERAL", Name: null),
-            WriteHostCaller(), CancellationToken.None);
-
-        Assert.False(result.IsSuccess);
-        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
-    }
-
-    [Fact]
-    public async Task AddOffice_TheOwningOfficeOntoItsOwnRecord_IsAllowed()
-    {
-        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build(
-            RecordSeed(PartitionOfficeId, FirstNewFy), [], officeSeed: [],
-            officeConfigSeed: PartitionOffices());
-
-        ServiceResult<AipOfficeDto> result = await sut.AddOfficeAsync(
-            AipRecordId,
-            new CreateAipOfficeDto(OfficeConfigId: PartitionOfficeId, Sector: "GENERAL", Name: null),
-            WriteHostCaller(), CancellationToken.None);
-
-        Assert.True(result.IsSuccess);
-    }
 
     [Fact]
     public async Task AddOffice_AnyOfficeOntoALegacyRecord_IsUntouched()
@@ -478,7 +306,7 @@ public sealed partial class AipServiceTests
         // The legacy shape is multi-office by definition. The new rule must not reach back and
         // break the years it does not govern.
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build(
-            RecordSeed(null, LastLegacyFy), [], officeSeed: [],
+            RecordSeed(LastLegacyFy), [], officeSeed: [],
             officeConfigSeed: PartitionOffices());
 
         ServiceResult<AipOfficeDto> result = await sut.AddOfficeAsync(
@@ -567,12 +395,11 @@ public sealed partial class AipServiceTests
     /// green).
     /// </para>
     /// </summary>
-    private static List<AipRecord> RecordSeed(
-        int? ownerOfficeId, int fiscalYear, string entrySource = "Manual") =>
+    private static List<AipRecord> RecordSeed(int fiscalYear, string entrySource = "Manual") =>
     [
         new()
         {
-            Id = AipRecordId, FiscalYear = fiscalYear, OfficeId = ownerOfficeId,
+            Id = AipRecordId, FiscalYear = fiscalYear,
             EntrySource = entrySource, Status = "Draft",
             UploadedById = Guid.NewGuid(), UploadedAt = DateTime.UtcNow,
         },

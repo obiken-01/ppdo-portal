@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useMe } from "@/lib/me-cache";
 import { aipErrorMessage, getAipById, uploadAipFile, createManualAipRecord } from "@/lib/aip";
-import { aipUploadRefusal } from "@/lib/aip-shape";
+import { aipUploadRefusal } from "@/lib/aip-fiscal-years";
 
 const CURRENT_YEAR = new Date().getFullYear();
 const FY_OPTIONS = [CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1, CURRENT_YEAR + 2];

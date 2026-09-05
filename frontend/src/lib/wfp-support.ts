@@ -1,11 +1,11 @@
-import { FIRST_OFFICE_OWNED_FISCAL_YEAR } from "@/lib/aip-shape";
+import { FIRST_ENTERED_FISCAL_YEAR } from "@/lib/aip-fiscal-years";
 
 /**
  * Which fiscal years this portal will build a WFP for, client side
  * (v1.8.0 Phase 3 — V18-81 / PPDO-49).
  *
  * Mirrors `PPDO.Application/Common/WfpSupportedYears`, including its shape: the break year is not
- * restated here, it is read from {@link FIRST_OFFICE_OWNED_FISCAL_YEAR}. That coupling is
+ * restated here, it is read from {@link FIRST_ENTERED_FISCAL_YEAR}. That coupling is
  * deliberate — the reason FY2028 is uncertain is precisely that the AIP changes shape there, so if
  * the province ever slips the break, the WFP refusal must move with it in the same edit.
  * `AipShapeTests.TheBreakYear_IsHardcodedInExactlyOnePlace` scans this directory and fails the
@@ -25,10 +25,10 @@ import { FIRST_OFFICE_OWNED_FISCAL_YEAR } from "@/lib/aip-shape";
  * "not allowed" would tell the province something untrue about their own process.
  */
 export function wfpUnsupportedReason(fiscalYear: number): string | null {
-  if (fiscalYear < FIRST_OFFICE_OWNED_FISCAL_YEAR) return null;
+  if (fiscalYear < FIRST_ENTERED_FISCAL_YEAR) return null;
   return (
     `FY ${fiscalYear} Work Financial Plans are not built in this portal yet. The FY ${fiscalYear} ` +
     `AIP is entered here, but its WFP is not — where that document is produced has not been ` +
-    `settled. FY ${FIRST_OFFICE_OWNED_FISCAL_YEAR - 1} and earlier are unaffected.`
+    `settled. FY ${FIRST_ENTERED_FISCAL_YEAR - 1} and earlier are unaffected.`
   );
 }

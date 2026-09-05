@@ -6,7 +6,7 @@ namespace PPDO.Application.Common;
 ///
 /// <para>
 /// <b>The LDIP is a closed list</b> (open question #5, answered 2026-08-25). From
-/// <see cref="AipShape.FirstOfficeOwnedFiscalYear"/> on, an office may only add programs its LDIP
+/// <see cref="AipFiscalYears.FirstEnteredFiscalYear"/> on, an office may only add programs its LDIP
 /// already contains — it cannot invent one. There is therefore <b>no "propose a new program" path
 /// and no approval flow for one</b>: a branch the original plan anticipated, and that does not
 /// exist. Anyone reading this expecting to build it has the wrong version.
@@ -32,7 +32,7 @@ public static class AipProgramSource
     /// </para>
     /// </summary>
     public static string? RefuseFreeTypedProgram(int fiscalYear)
-        => fiscalYear >= AipShape.FirstOfficeOwnedFiscalYear
+        => fiscalYear >= AipFiscalYears.FirstEnteredFiscalYear
             ? $"FY {fiscalYear} AIP programs come from this office's LDIP and cannot be typed in. "
               + "Use “Seed from LDIP” to add the programs you need. If a program is missing "
               + "there, add it to the LDIP first — the AIP cannot contain a program the LDIP does "

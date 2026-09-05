@@ -26,11 +26,11 @@ namespace PPDO.Application.Common;
 /// </para>
 ///
 /// <para>
-/// ⚠️ <b>The break year is <see cref="AipShape.FirstOfficeOwnedFiscalYear"/> and is not restated
+/// ⚠️ <b>The break year is <see cref="AipFiscalYears.FirstEnteredFiscalYear"/> and is not restated
 /// here.</b> That coupling is deliberate and real, not incidental: the reason FY2028 is uncertain
 /// is precisely that the AIP changes shape there. Should the province slip the break, the WFP
 /// refusal must move with it in the same edit — which is why
-/// <c>AipShapeTests.TheBreakYear_IsHardcodedInExactlyOnePlace</c> fails the build if the literal
+/// <c>AipFiscalYearsTests.TheBreakYear_IsHardcodedInExactlyOnePlace</c> fails the build if the literal
 /// reappears anywhere, this file included.
 /// </para>
 ///
@@ -74,10 +74,10 @@ public static class WfpSupportedYears
     /// </para>
     /// </summary>
     public static string? RefuseCreate(int fiscalYear)
-        => fiscalYear >= AipShape.FirstOfficeOwnedFiscalYear
+        => fiscalYear >= AipFiscalYears.FirstEnteredFiscalYear
             ? $"FY {fiscalYear} Work Financial Plans are not built in this portal yet. The FY "
               + $"{fiscalYear} AIP is entered here, but its WFP is not — where that document is "
               + "produced has not been settled. FY "
-              + $"{AipShape.FirstOfficeOwnedFiscalYear - 1} and earlier are unaffected."
+              + $"{AipFiscalYears.FirstEnteredFiscalYear - 1} and earlier are unaffected."
             : null;
 }

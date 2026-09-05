@@ -1,4 +1,4 @@
-namespace PPDO.Domain.Entities;
+﻿namespace PPDO.Domain.Entities;
 
 /// <summary>
 /// Annual Investment Program record. Independent from LDIP (optional FK only). The
@@ -6,20 +6,18 @@ namespace PPDO.Domain.Entities;
 /// Status workflow: Draft / Final / Archived.
 ///
 /// <para>
-/// <b>Two shapes live in this table (V18-40 / PPDO-39).</b>
+/// <b>One record per fiscal year, holding every office</b> (PPDO-61, 2026-09-05). An Admin opens
+/// the year, which creates this record and populates each office's programs from its own LDIP;
+/// the offices then build their own <see cref="AipOffice"/> subtree.
 /// </para>
-/// <list type="bullet">
-///   <item><description>
-///     <b>Legacy, multi-office</b> — <see cref="OfficeId"/> null. One record holds
-///     <see cref="AipOffice"/> children for every office in the province. This is how every
-///     FY≤2027 record was imported, and it is <i>why</i> there was nothing to scope on, why one
-///     office could not submit independently of another, and why review had nothing to attach to.
-///   </description></item>
-///   <item><description>
-///     <b>Office-owned</b> — <see cref="OfficeId"/> set. One record per office per fiscal year,
-///     exactly like <see cref="LdipRecord"/>. The FY≥2028 shape.
-///   </description></item>
-/// </list>
+///
+/// <para>
+/// ↩️ V18-40 briefly added an <c>OfficeId</c> here, so that FY≥2028 could hold one record per
+/// office. That was withdrawn before it ever reached production. <b>Office identity lives on
+/// <see cref="AipOffice"/>, and only there</b> — which is what every scoped read already filters
+/// on (<c>AipReadScope</c>). Do not reintroduce an owner on this row: two carriers of the same
+/// fact is how they drift apart.
+/// </para>
 ///
 /// <para>
 /// ⚠️ <b>PPDO is an ordinary office here</b> (tracker B12-b, 2026-08-26). No per-division AIP
@@ -43,19 +41,6 @@ public sealed class AipRecord
     /// <summary>Fiscal year — e.g. 2027.</summary>
     public int FiscalYear { get; set; }
 
-    /// <summary>
-    /// FK to the config office that owns this record (V18-40), or null for a legacy multi-office
-    /// record.
-    ///
-    /// <para>
-    /// ⚠️ <b>Null is permanent for legacy rows, not a backfill that has yet to run.</b> That is the
-    /// difference from <c>AipOffice.OfficeId</c>, whose nulls are unmatched rows to be resolved. A
-    /// pre-FY2028 record genuinely has no single owner — it spans every office — so there is no
-    /// value that could be filled in, and no migration between the two shapes (V18-37).
-    /// </para>
-    /// </summary>
-    public int? OfficeId { get; set; }
-
     /// <summary>"Upload" or "Manual". Max 10 characters.</summary>
     public string EntrySource { get; set; } = string.Empty;
 
@@ -78,9 +63,6 @@ public sealed class AipRecord
     public int? SourceId { get; set; }
 
     // ── Navigation ────────────────────────────────────────────────────────────
-
-    /// <summary>The owning config office. Null on a legacy multi-office record.</summary>
-    public Office? Office { get; set; }
 
     /// <summary>The user who uploaded/created this record.</summary>
     public User? UploadedBy { get; set; }

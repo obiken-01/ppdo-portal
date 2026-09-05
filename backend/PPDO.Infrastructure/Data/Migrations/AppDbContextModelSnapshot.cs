@@ -462,10 +462,6 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasColumnType("int")
                         .HasColumnName("ldip_id");
 
-                    b.Property<int?>("OfficeId")
-                        .HasColumnType("int")
-                        .HasColumnName("office_id");
-
                     b.Property<string>("OriginalFilename")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)")
@@ -501,9 +497,6 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasDatabaseName("IX_aip_source_id");
 
                     b.HasIndex("UploadedById");
-
-                    b.HasIndex("OfficeId", "FiscalYear")
-                        .HasDatabaseName("IX_aip_records_office_id_fiscal_year");
 
                     b.ToTable("aip_records", (string)null);
                 });
@@ -3091,12 +3084,6 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("FK_aip_records_ldip_records_ldip_id");
 
-                    b.HasOne("PPDO.Domain.Entities.Office", "Office")
-                        .WithMany()
-                        .HasForeignKey("OfficeId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("FK_aip_records_offices_office_id");
-
                     b.HasOne("PPDO.Domain.Entities.AipRecord", "Source")
                         .WithMany()
                         .HasForeignKey("SourceId")
@@ -3111,8 +3098,6 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasConstraintName("FK_aip_records_Users_uploaded_by");
 
                     b.Navigation("Ldip");
-
-                    b.Navigation("Office");
 
                     b.Navigation("Source");
 

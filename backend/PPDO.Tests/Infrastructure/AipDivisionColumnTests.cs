@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using PPDO.Domain.Entities;
 using PPDO.Infrastructure.Data;
@@ -6,7 +6,15 @@ using PPDO.Infrastructure.Data;
 namespace PPDO.Tests.Infrastructure;
 
 /// <summary>
-/// The FY≥2028 AIP record shape (v1.8.0 Phase 2 — V18-40 / PPDO-39): office-owned, LDIP-like.
+/// The AIP is scoped by OFFICE, never by division (tracker B12-b).
+///
+/// <para>
+/// ↩️ <b>Was <c>AipRecordShapeTests</c>, trimmed 2026-09-05 (PPDO-61).</b> Five tests pinned
+/// <c>AipRecord.OfficeId</c> — its FK, its optionality, its restrict behaviour and its index — and
+/// went with the column when the office-owned shape was withdrawn. The two that remain were never
+/// about that shape: they are the B12-b decision, which is unchanged and still the thing most
+/// likely to be undone by accident.
+/// </para>
 ///
 /// <para>
 /// These are relational-mapping assertions rather than behaviour, because the thing worth pinning
@@ -14,7 +22,7 @@ namespace PPDO.Tests.Infrastructure;
 /// that compiles and passes every behavioural test. No database is opened.
 /// </para>
 /// </summary>
-public sealed class AipRecordShapeTests
+public sealed class AipDivisionColumnTests
 {
     private static IModel Model()
     {
@@ -62,58 +70,4 @@ public sealed class AipRecordShapeTests
             fk => fk.PrincipalEntityType.ClrType == typeof(Division));
     }
 
-    // ── The owning-office FK ──────────────────────────────────────────────────
-
-    [Fact]
-    public void AipRecord_IsOwnedByAnOffice_ByForeignKey()
-    {
-        IForeignKey office = Assert.Single(Entity<AipRecord>().GetForeignKeys(),
-            fk => fk.PrincipalEntityType.ClrType == typeof(Office));
-
-        Assert.Equal(nameof(AipRecord.OfficeId), Assert.Single(office.Properties).Name);
-    }
-
-    [Fact]
-    public void AipRecord_OwningOffice_IsOptional_BecauseLegacyRecordsHaveNoSingleOwner()
-    {
-        // ⚠️ Null here is PERMANENT and correct, not a backfill that has yet to run — the
-        // difference from AipOffice.OfficeId, whose nulls are unmatched rows to resolve. A legacy
-        // record spans every office in the province, so there is no owner to fill in. Making this
-        // required would force a migration to invent one.
-        IForeignKey office = Assert.Single(Entity<AipRecord>().GetForeignKeys(),
-            fk => fk.PrincipalEntityType.ClrType == typeof(Office));
-
-        Assert.False(office.IsRequired);
-    }
-
-    [Fact]
-    public void AipRecord_DeletingAnOffice_IsRestricted_SoItsAipHistorySurvives()
-    {
-        IForeignKey office = Assert.Single(Entity<AipRecord>().GetForeignKeys(),
-            fk => fk.PrincipalEntityType.ClrType == typeof(Office));
-
-        Assert.Equal(DeleteBehavior.Restrict, office.DeleteBehavior);
-    }
-
-    [Fact]
-    public void AipRecord_IsIndexedByOfficeAndFiscalYear_TheOfficeOwnedReadPath()
-    {
-        Assert.Contains(Entity<AipRecord>().GetIndexes(), index =>
-            index.Properties.Count == 2 &&
-            index.Properties[0].Name == nameof(AipRecord.OfficeId) &&
-            index.Properties[1].Name == nameof(AipRecord.FiscalYear));
-    }
-
-    [Fact]
-    public void AipRecord_OfficeAndFiscalYearIndex_IsNotUnique()
-    {
-        // The one-per-(office, FY) rule counts only NON-ARCHIVED records, which a unique index
-        // cannot express — archiving and re-creating is a supported flow. The service owns the
-        // rule; the index exists for the read. LdipRecord made the same call.
-        IIndex index = Assert.Single(Entity<AipRecord>().GetIndexes(), i =>
-            i.Properties.Count == 2 &&
-            i.Properties[0].Name == nameof(AipRecord.OfficeId));
-
-        Assert.False(index.IsUnique);
-    }
 }
