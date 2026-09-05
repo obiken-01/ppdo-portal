@@ -43,29 +43,40 @@ without migrating historical data.
    for **every** fiscal year, then the six ×1000 sites are **deleted**, not made FY-conditional.
    Reasoning in §5.3; it is the most important paragraph in this document.
 
-3. **Shape partitions, units do not.** FY≤2027 keeps the v1.6 record shape; FY≥2028 uses the new
-   one. But `AipActivity.Total` means **pesos on every row regardless of fiscal year**. Anyone who
-   reads "clean break" as covering units will reintroduce exactly the bug §5.3 exists to remove.
+3. ↩️ **WITHDRAWN 2026-09-05 — the record shape does not partition after all.** This read *"FY≤2027
+   keeps the v1.6 record shape; FY≥2028 uses the new one."* Ralph settled the opposite on
+   2026-09-05: **one base AIP record per fiscal year, holding every office**, for FY2028+ exactly as
+   for FY2027. See decision 4 for what that reverses and why the reversal is cheap.
 
-4. ✅ **Shipped 2026-09-03 (V18-40).** `AipRecord.OfficeId` → `offices.id`, nullable, Restrict,
-   indexed on `(office_id, fiscal_year)`. Two shapes now live in one table: **office-owned**
-   (owner set — the FY≥2028 shape) and **legacy multi-office** (owner null).
+   **What this decision was originally protecting still stands, and is the half worth keeping:**
+   `AipActivity.Total` means **pesos on every row regardless of fiscal year**. Anyone who reads
+   "clean break" as covering units will reintroduce exactly the bug §5.3 exists to remove. The
+   clean break is about *process* — FY2028 is entered rather than uploaded — not about the record's
+   structure and never about its units.
 
-   ⚠️ **That null is permanent and correct, not a backfill that has yet to run** — the opposite of
-   `AipOffice.OfficeId`, whose nulls are unmatched rows to be resolved. A pre-FY2028 record spans
-   every office in the province, so there is no owner to fill in. Hence no backfill in the
-   migration, and no conversion between shapes (V18-37).
+4. ↩️ **REVERSED 2026-09-05 — `AipRecord.OfficeId` and the office-owned shape are withdrawn.**
 
-   ⚠️ **The create guard had to become shape-aware.** "Is there an AIP for FY 2028" was the right
-   question while one record spanned every office; under the office-owned shape it reports the
-   *first* office's record as a conflict for every other office in the province. Office-owned
-   creates ask `GetByOfficeAndFiscalYearAsync` instead. The index is deliberately **not unique** —
-   the rule counts only non-Archived records, which an index cannot express, so the service owns it
-   (the same call `LdipRecord` made).
+   V18-40 shipped an ownership FK on `AipRecord` so that FY≥2028 could hold **one record per office
+   per year**. Ralph settled the model on 2026-09-05 and it is the opposite: **one base AIP record
+   per fiscal year, holding every office**, created and archived by an Admin, with each office's
+   programs populated from its own LDIP at creation. Offices then populate their own subtree.
 
-   **PPDO gets an ordinary office record** (tracker B12-b, 2026-08-26). No per-division AIP records,
-   no division column on `AipOffice`, and divisions never print. Division of work is carried on the
-   **program**, through the existing `ProgramDivision` map, exactly as WFP does.
+   **Why this is being reversed rather than argued with.** The office-owned shape was an engineering
+   inference from the §12.6 workflow — per-office states implied a per-office record. That inference
+   was wrong about *where* the state has to live, not about the state: `AipOffice` already carries
+   the ownership FK (decision 5), so per-office status, locking and submission all work on the
+   office row. The province's own model is one AIP document per year, and the PDC wants offices
+   building into it from scratch. Nothing in the workflow needed a per-office *record*.
+
+   **The reversal is cheap, and that is why it happens now rather than being lived with.** The
+   migration `AddAipRecordOwningOffice` **has never run against production** — v1.8.0 has not
+   deployed — so it is dropped from the release rather than reversed. V18-42, the phase's largest
+   ticket, had not started. See §5.5 for what changes and what survives.
+
+   **PPDO gets an ordinary office row** (tracker B12-b, 2026-08-26) — unchanged by this reversal.
+   No per-division AIP records, no division column on `AipOffice`, and divisions never print.
+   Division of work is carried on the **program**, through the existing `ProgramDivision` map,
+   exactly as WFP does.
 
 5. **Office identity is a real FK.** `AipOffice.OfficeId` → `offices.id`. `RefCode` stays as the
    AIP-side re-link key and the backfill audit trail, the same division of labour `ProgramDivision`
@@ -112,7 +123,7 @@ Phase 2 is mostly structural, so most rows below are invariants rather than inte
 | An activity whose lines were all deleted | It had lines; the last is removed | Recompute after the delete | `Total == 0`, not null. Null meant "never computed", which no longer exists as a state once an activity has had lines |
 | An activity that never had lines | FY≤2027, imported | Any recompute | **Untouched.** Same `LineCount` 0 as the row above, opposite outcome — see §5.4 |
 | Old fiscal years keep working | FY2027 record | Opened | Renders in the v1.6 shape, unchanged, with peso values |
-| New fiscal years use the new shape | FY2028 record | Opened | New shape. **No migration path between the two** — a record does not change shape when its year changes |
+| ~~New fiscal years use the new shape~~ | ↩️ **Withdrawn 2026-09-05** | | Every fiscal year uses one base record holding every office. FY2028 differs in how it is *filled* — entered, not uploaded — not in its structure. See §2 decision 4 |
 | Upload is historical-only | A user uploads an `.xlsm` for FY2028 | Submit | Refused with a message naming the reason. FY≤2027 upload is unchanged |
 
 ### 3.2 Permission and scope
@@ -305,75 +316,40 @@ Note that an activity with lines that all sum to zero **is** written — it is c
 `LineCount` is the only thing separating that from the imported case, which is why
 `SumByActivityIdAsync` returns it.
 
-### 5.5 FY partition (V18-37)
+### 5.5 ~~FY partition (V18-37)~~ — ↩️ WITHDRAWN 2026-09-05
 
-FY≤2027 → v1.6 shape (legacy multi-office, `AipRecord.OfficeId` null). FY≥2028 → new shape
-(office-owned, `OfficeId` set). **No migration between them**, and no record changes shape.
+**There is no FY partition of the record shape.** Every fiscal year uses **one base AIP record
+holding every office**. FY2028+ differs from FY2027 in *how the record is filled* — entered by
+offices rather than uploaded from a workbook — not in its structure.
 
-#### P2-b — settled 2026-09-03: one named policy, not new endpoints
+This section previously specified `AipShape`, a single named policy consulted by four create paths,
+partitioning FY≤2027 (legacy multi-office) from FY≥2028 (office-owned). Decision 4 records why that
+is reversed and why the reversal is cheap.
 
-**Decision: a single `AipShape` policy in `PPDO.Application/Common/`, consulted by every path that
-creates an AIP record.** No endpoint is duplicated and no endpoint is removed.
+#### What the withdrawal takes with it
 
-The spec's original default was *new endpoints beside untouched old ones*, on the reasoning that
-the new path would then carry no legacy branch. Implementation showed that reasoning does not hold
-here, for two concrete reasons:
+| Thing | Fate |
+|---|---|
+| `AipRecord.OfficeId` + migration `AddAipRecordOwningOffice` | **Dropped from the release.** Never ran against production |
+| `AipShape.Required` / `.Of` / `.Mismatch` / `RefuseForeignOffice` | Removed — there are no two shapes to tell apart |
+| The shape-aware create guard (`GetByOfficeAndFiscalYearAsync`) | Reverts to one question per year |
+| The `AddOfficeAsync` foreign-office gate | Removed — a record holding several offices is now the normal case, not a corrupted one |
 
-1. **Duplicating the endpoint does not remove the fiscal-year check.** A new office-owned create
-   endpoint still has to refuse FY2027, and the legacy one still has to refuse FY2028 — otherwise
-   the gate is bypassed by posting the wrong year to the wrong route. Both routes end up carrying
-   the check, so the split adds surface *on top of* it rather than instead of it.
-2. **Two of the four create paths are not creates by name.** `CopyOfficeFromPriorYearAsync` and
-   `SeedProgramsFromLdipAsync` *find-or-create* their target record. They would have had to be
-   duplicated too, and neither reads as a record-creation endpoint from the outside — which is
-   exactly how one of them gets missed.
+#### What survives, and why it matters more now
 
-The objection the original default was protecting against is real and stands: *a literal
-`fiscalYear >= 2028` branch in a file nobody re-reads*. The answer to it is to make the branch a
-**named, tested, greppable thing that exists once**, not to fork the routes. `AipShape` sits beside
-`AipReadScope`, `OfficeScope`, `BudgetPlanningScope`, `AipOfficeOwnership` and `ReviewerWriteGuard`,
-which are the same move for the same reason.
+⚠️ **`AipOffice.OfficeId` (decision 5, V18-32) becomes the *only* carrier of office identity on the
+AIP.** Under the office-owned shape there were two — the record's owner and the office row's. With
+the record's owner gone, every scoping decision in Budget Planning rests on this one column.
+`AipReadScope` already filters on it and needs no change; `PPDO-60` (rows created without it) stops
+being untidiness and becomes the single point of failure for office isolation. **Fix PPDO-60 before
+guest-office accounts go live.**
 
-**The boundary year is a single constant**, `AipShape.FirstOfficeOwnedFiscalYear`. A test asserts
-no other file hardcodes it, so moving the break — should the province ever slip FY2028 — is one
-edit rather than a hunt.
-
-#### The four gated paths
-
-| Path | Was | Now |
-|---|---|---|
-| `ConfirmImportAsync` (`.xlsm` import) | always legacy | legacy only; FY≥2028 refused |
-| `CreateManualRecordAsync` | shape chosen by DTO (V18-40) | shape must match the fiscal year |
-| `CopyOfficeFromPriorYearAsync` | always legacy | legacy only; FY≥2028 refused |
-| `SeedProgramsFromLdipAsync` | always legacy | legacy only; FY≥2028 refused |
-
-⚠️ **The last two were a live shape leak, not a hypothetical one.** Both find-or-create with
-`GetLatestByFiscalYearAsync` and construct a record with `OfficeId` unset. Pointed at FY2028 before
-this ticket, they silently produced a legacy-shape record in a year that must not have one — with
-no error, and nothing downstream to notice. Carry-forward and LDIP seeding into FY2028+ are Phase 3
-work; until then the gate refuses them rather than letting them write the wrong shape.
-
-#### The other door into a shape change
-
-A record's shape is also reachable **one node at a time**. `AddOfficeAsync` on an office-owned
-record could add an `AipOffice` belonging to a *different* office, and after two such calls the
-record spans several offices — the legacy shape, arrived at without any record ever being
-"converted". So the gate covers that too: **on an office-owned record, only the owning office may
-have an `AipOffice` child.** The check is not a scope check and does not replace one; `OfficeScope`
-already stops a guest office reaching another's record, but it says nothing about a PPDO admin, who
-legitimately sees every office and would otherwise be able to do this.
-
-The refusal is a `BadRequest` naming both offices, not the `NotFound` used by the ownership guard
-(PPDO-46). Those hide *existence*; this one hides nothing — the caller may see the record, they are
-being told the operation is wrong for its shape.
-
-#### What is deliberately not gated
-
-**Reads, and every write to an existing node.** A record's shape is a property of the row, already
-settled at creation; `GetByIdAsync` and the program/project/activity writes behave the same either
-way and gating them would add a branch with nothing behind it. And **nothing converts**: there is no
-endpoint, service method or migration that changes `OfficeId` on an existing record, and there
-should not be one. If a shape is wrong, the record is archived and recreated.
+⚠️ **`AipShape.FirstOfficeOwnedFiscalYear` survives, renamed to what it actually marks.** It is no
+longer "the first office-owned year" — it is **the first year on the new process**: entered not
+uploaded, and no WFP built in this portal. Two shipped guards read it (V18-38's upload freeze,
+V18-81's WFP refusal) and both keep their behaviour unchanged; only the rationale rewords, from
+*"the importer can only produce the old shape"* to *"FY2028 is entered, not uploaded"*. The
+one-place-only rule and its build-failing scan stay exactly as they are.
 
 ### 5.6 Migrations — four, and they apply in timestamp order
 
@@ -386,10 +362,14 @@ list below is what actually shipped.
 | 12 | `AddAipExpenditures` — new table | V18-33 |
 | 13 | `MigrateAipAmountsToPesos` — data-only ⚠️ | V18-35 |
 | 14 | `AddAipOfficeOwnershipFk` — FK + index + backfill | V18-32 |
-| 15 | `AddAipRecordOwningOffice` — FK + index | V18-40 |
+| ~~15~~ | ~~`AddAipRecordOwningOffice`~~ — ↩️ **dropped from the release 2026-09-05.** Never ran against production; §2 decision 4 | ~~V18-40~~ |
 
 The **fourth** was not planned here because V18-40 (the office-owned record shape) was scoped after
 this section was written. It is the reason "three" became four.
+
+↩️ **And then became three again on 2026-09-05**, when V18-40's migration was dropped with the
+shape it supported. **Recount against `git diff` at release time rather than trusting any number
+here** — this line has now been wrong in both directions.
 
 ⚠️ **CI does not run migrations.** One manual `dotnet ef database update` against Azure SQL
 applies them all. **v1.8.0 reaches production with 15 pending migrations, not five** — this section
@@ -443,6 +423,9 @@ Flat design, PPDO tokens, `slate-800` headings / `slate-600` body, never `text-s
 - **Four migrations from this phase, manually applied** (§5.6). **15 pending for v1.8.0 as a whole** — counted at the end of Phase 2 and rechecked at release time against `git diff`; `Pre_Deployment_Checklist.md` §1 is the authority.
 - ⚠️ **Check for pre-existing FY≥2028 owner-less records before the release, and archive any that
   are still active.** V18-37 governs new writes; it cannot reach rows already in the table. The
+  ↩️ **Largely moot after 2026-09-05:** with the office-owned shape withdrawn, an FY2028 record
+  with a null owner is the *correct* shape, not a forbidden one. What remains worth checking is
+  simply that FY2028 does not already hold more than one active base record. The
   local dev database was found (2026-09-03, live check) to hold eleven FY2028 records with a null
   `office_id` — the exact combination the partition forbids — left over from earlier testing. All
   were Archived, so they are inert: the create guard counts only non-Archived records, and an
@@ -481,7 +464,7 @@ Flat design, PPDO tokens, `slate-800` headings / `slate-600` body, never `text-s
 | **V18-33** | `aip_expenditures` table + entity + configuration + repository | M | — |
 | **V18-34** | Derived, recomputed activity totals | M | V18-33 |
 | **V18-39** | AIP scope resolver — `OfficeScope` × `DivisionScope` | M | V18-32 |
-| **V18-40** | New AIP record shape — office-owned, LDIP-like | L | V18-32 |
+| ~~**V18-40**~~ | ~~New AIP record shape — office-owned, LDIP-like~~ — ↩️ **reversed 2026-09-05** | ~~L~~ | ~~V18-32~~ |
 | **V18-37** | FY partition, FY≤2027 vs FY≥2028 | M | V18-40 |
 | **V18-38** | Freeze `.xlsm` upload to historical years | S | V18-37 |
 
@@ -497,7 +480,8 @@ is the class where a wrong choice compiles cleanly and leaks data.
 ## 10. Acceptance checklist
 
 ```
-- [x] An FY2028 record belongs to exactly one office (V18-40)
+- [x] ~~An FY2028 record belongs to exactly one office (V18-40)~~ — ↩️ **withdrawn 2026-09-05.** An
+      FY2028 record holds every office, exactly as FY2027 does
 - [x] PPDO's record is structurally identical to a guest office's — no branch anywhere, pinned by
       a test that asserts the two creates produce the same shape
 - [x] No division column exists on aip_offices OR aip_records — asserted against the EF model, so
@@ -542,8 +526,9 @@ is the class where a wrong choice compiles cleanly and leaks data.
 - [x] The break year appears once on the frontend too — `frontend/src` is now scanned by the same
       test, mutation-checked by planting a stray literal and watching it fail (V18-38)
 - [x] Uploading an .xlsm for FY2027 still works unchanged, first upload AND re-upload
-- [x] An office-owned record cannot be created in a historical year, and an owner-less one cannot
-      be created from FY2028 on — both refused with the year named (V18-37)
+- [x] ~~An office-owned record cannot be created in a historical year, and an owner-less one cannot
+      be created from FY2028 on~~ — ↩️ **withdrawn 2026-09-05.** There is one shape, so there is
+      nothing to refuse
 - [x] Carry-forward and LDIP-seeding into FY2028 are refused BEFORE any row is written — verified
       by asserting AddAsync/SaveChangesAsync are never reached, not by inspecting the result
 - [x] Re-uploading cannot carry a record across the boundary: the shape check sits above the
@@ -552,8 +537,8 @@ is the class where a wrong choice compiles cleanly and leaks data.
       seeded a `Manual` record, which replace-import refuses on entry source before it reaches the
       shape guard — so the test stayed green with that guard deleted. Found by mutation, not by
       review. Now seeded as `Upload`, and it asserts the year appears in the message
-- [x] An office-owned record refuses a second office's AipOffice child — the shape change reachable
-      one node at a time, which no create-path gate can see
+- [x] ~~An office-owned record refuses a second office's AipOffice child~~ — ↩️ **withdrawn
+      2026-09-05.** A record holding several offices is now the normal case, not a corruption
 - [x] The break year appears on exactly one production code path — asserted by a test that scans
       PPDO.Domain/Application/Infrastructure/Functions and fails the build on a second copy
 - [x] Disabling the guards turns exactly the partition tests red and nothing else — re-run per
