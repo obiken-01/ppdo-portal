@@ -40,6 +40,7 @@ import Modal from "@/components/ui/Modal";
 import MoneyInput from "@/components/ui/MoneyInput";
 import OfficeSelect from "@/components/ui/OfficeSelect";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
+import { wfpUnsupportedReason } from "@/lib/wfp-support";
 import { useToast } from "@/components/ui/Toast";
 import { formatMoney } from "@/lib/money";
 import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
@@ -1058,7 +1059,13 @@ function WfpPageInner() {
     (setupStatus == null ||
       (setupStatus.hasAllocation && setupStatus.hasProgramAssignment));
 
+  // V18-81 — the selected AIP decides the year, so this is known before Save is pressed.
+  // Disabled with the reason showing, not hidden: the user has the permission, the fiscal year
+  // is what forbids it (Budget_Planning_Dashboard_Requirements.md §6.1).
+  const wfpUnsupported = aipDetail ? wfpUnsupportedReason(aipDetail.fiscalYear) : null;
+
   const canSave =
+    wfpUnsupported === null &&
     aipDetail != null &&
     selectedAipId != null &&
     selectedOfficeId != null &&
@@ -1206,8 +1213,20 @@ function WfpPageInner() {
           )}
         </div>
 
+        {/* Unsupported fiscal year (V18-81) — shown ABOVE the setup banner, because setup is
+            irrelevant for a year no WFP can be built in. Two banners here would ask the user to
+            fix something that would not help. */}
+        {wfpUnsupported && (
+          <div className="mb-4 px-4 py-3 bg-amber-50 border border-amber-300 text-amber-800 text-sm flex flex-col gap-1">
+            <span className="font-semibold">
+              WFP entry is not available for FY {aipDetail?.fiscalYear}.
+            </span>
+            <span>{wfpUnsupported}</span>
+          </div>
+        )}
+
         {/* Setup-incomplete banner */}
-        {!setupComplete && hasCeiling !== null && (
+        {!wfpUnsupported && !setupComplete && hasCeiling !== null && (
           <div className="mb-4 px-4 py-3 bg-amber-50 border border-amber-300 text-amber-800 text-sm flex flex-col gap-1">
             <span className="font-semibold">WFP entry is blocked — allocation setup incomplete:</span>
             <ul className="list-disc list-inside">
@@ -1243,6 +1262,13 @@ function WfpPageInner() {
         ) : !selectedAipId || !selectedOfficeId ? (
           <p className="text-slate-600 text-sm py-8">
             Select an AIP and an office to view the WFP grid.
+          </p>
+        ) : wfpUnsupported ? (
+          // The banner above already says why. Without this branch the body still reads
+          // "complete the allocation setup … to start entering WFP data", which contradicts it
+          // and sends the user to do work that cannot help.
+          <p className="text-slate-600 text-sm py-8">
+            There is nothing to enter here for this fiscal year.
           </p>
         ) : !setupComplete ? (
           <p className="text-slate-600 text-sm py-8">
@@ -1460,11 +1486,12 @@ function WfpPageInner() {
       {/* Sticky Save footer */}
       <div className="sticky bottom-0 bg-white border-t border-slate-200 px-6 py-3 flex items-center justify-between">
         <span className="text-sm text-amber-600 font-medium">
-          {hasUnsaved ? "You have unsaved changes." : ""}
+          {wfpUnsupported ? "" : hasUnsaved ? "You have unsaved changes." : ""}
         </span>
         <button
           onClick={handleSave}
           disabled={!canSave}
+          title={wfpUnsupported ?? undefined}
           className="px-5 py-2 bg-green-600 text-white text-sm font-medium hover:bg-green-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
         >
           {saving && (

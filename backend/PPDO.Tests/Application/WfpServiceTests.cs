@@ -1,4 +1,4 @@
-using Moq;
+﻿using Moq;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
 using PPDO.Application.DTOs.Config;
@@ -69,8 +69,9 @@ public sealed class WfpServiceTests
         int aipId, int officeId, int aipActivityId,
         decimal totalAppropriation = 1000m, bool applyReserve = false,
         decimal q1 = 250m, decimal q2 = 250m, decimal q3 = 250m, decimal q4 = 250m,
-        int? accountId = null, int? fsId = null, int? divisionId = null) => new(
-        aipId, officeId, 2027, divisionId,
+        int? accountId = null, int? fsId = null, int? divisionId = null,
+        int fiscalYear = 2027) => new(
+        aipId, officeId, fiscalYear, divisionId,
         [new SaveWfpActivityDto(aipActivityId, [
             new SaveWfpExpenditureLineDto(
                 "PS", null, null, null, null,
@@ -265,6 +266,104 @@ public sealed class WfpServiceTests
             SimpleDto(2, 3, 10), UserId, CancellationToken.None);
 
         Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
+    }
+
+    // ── The FY2028+ refusal (V18-81 / PPDO-49) ──────────────────────
+
+    [Fact]
+    public async Task Save_FromTheAipBreakOnward_IsRefusedBeforeAnyRowIsWritten()
+    {
+        // ⚠️ Both WFP write paths are find-or-create, so WHERE the guard sits is the whole point:
+        // a refusal arriving after AddAsync is the original bug with a message attached. Asserting
+        // AddAsync is never reached is what pins that — a guard placed lower would still return
+        // BadRequest and still pass a test that only checked the status code. This is the exact
+        // failure V18-37 found in CopyOfficeFromPriorYearAsync and SeedProgramsFromLdipAsync.
+        var (sut, wfpRepo, _, _, _, _) = Build([], [], [], []);
+
+        ServiceResult<WfpRecordDto> result = await sut.SaveAsync(
+            SimpleDto(2, 3, 10, fiscalYear: AipShape.FirstOfficeOwnedFiscalYear),
+            UserId, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains(AipShape.FirstOfficeOwnedFiscalYear.ToString(), result.Error!);
+        wfpRepo.Verify(r => r.AddAsync(It.IsAny<WfpRecord>(), It.IsAny<CancellationToken>()), Times.Never);
+        wfpRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task EnsureActivity_FromTheAipBreakOnward_IsRefusedBeforeAnyRowIsWritten()
+    {
+        // ⚠️ The path most easily missed. EnsureActivityAsync does not read as a create endpoint
+        // from outside — it is the v1.4 entry wizard's find-or-create — which is precisely how the
+        // equivalent leak survived into V18-37.
+        var (sut, wfpRepo, _, _, _, _) = Build([], [], [], []);
+
+        ServiceResult<WfpActivityRefDto> result = await sut.EnsureActivityAsync(
+            aipRecordId: 2, officeId: 3, divisionId: null,
+            fiscalYear: AipShape.FirstOfficeOwnedFiscalYear, aipActivityId: 10,
+            UserId, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        wfpRepo.Verify(r => r.AddAsync(It.IsAny<WfpRecord>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Save_TheLastSupportedYear_IsStillAllowed()
+    {
+        // The other half, and the one that keeps this from being a blanket block. FY≤2027 is
+        // every WFP the province actually has; a guard that caught those too would pass both
+        // refusal tests above and break the only working use.
+        var (sut, wfpRepo, _, _, _, _) = Build([], [], [], []);
+
+        ServiceResult<WfpRecordDto> result = await sut.SaveAsync(
+            SimpleDto(2, 3, 10, fiscalYear: AipShape.FirstOfficeOwnedFiscalYear - 1),
+            UserId, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        wfpRepo.Verify(r => r.AddAsync(It.IsAny<WfpRecord>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Save_AnExistingRecordInARefusedYear_IsAlsoRefused()
+    {
+        // ⚠️ Broader than the ticket title, and deliberately so. Blocking only CREATION would
+        // leave a pre-existing FY2028 record freely editable, and an edit draws on the allocation
+        // exactly as a create does — so the double-count this exists to prevent would still be
+        // reachable. V18-37 made the same call, putting its guard above the re-upload branch.
+        WfpRecord existing = WfpRec(1, PlanningStatus.Draft, 2, 3);
+        var (sut, wfpRepo, _, _, _, _) = Build([existing], [], [], []);
+
+        ServiceResult<WfpRecordDto> result = await sut.SaveAsync(
+            SimpleDto(2, 3, 10, fiscalYear: AipShape.FirstOfficeOwnedFiscalYear),
+            UserId, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        wfpRepo.Verify(r => r.UpdateAsync(It.IsAny<WfpRecord>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public void TheRefusal_SaysNotYet_AndNamesTheYear()
+    {
+        // The message is read by someone deciding what to do about a document they are required to
+        // produce. "Not allowed" would tell the province something untrue about their own process:
+        // the answer to tracker C2 may well make this supported here.
+        string refusal = WfpSupportedYears.RefuseCreate(AipShape.FirstOfficeOwnedFiscalYear)!;
+
+        Assert.Contains(AipShape.FirstOfficeOwnedFiscalYear.ToString(), refusal);
+        Assert.Contains("yet", refusal, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TheRefusal_TracksTheAipBreakYearRatherThanRestatingIt()
+    {
+        // Pins the coupling. The reason FY2028 is uncertain is that the AIP changes shape there,
+        // so if the province slips the break these must move together. A second literal that
+        // happens to agree today is the drift TheBreakYear_IsHardcodedInExactlyOnePlace cannot
+        // see, because it only forbids the number — not a copy that tracks it by accident.
+        Assert.Null(WfpSupportedYears.RefuseCreate(AipShape.FirstOfficeOwnedFiscalYear - 1));
+        Assert.NotNull(WfpSupportedYears.RefuseCreate(AipShape.FirstOfficeOwnedFiscalYear));
     }
 
     // ── Save — snapshot population ────────────────────────────────────────────

@@ -60,6 +60,7 @@ import MoneyInput from "@/components/ui/MoneyInput";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
 import { formatMoney } from "@/lib/money";
+import { wfpUnsupportedReason } from "@/lib/wfp-support";
 import type {
   AccountResponse,
   AipActivitySummary,
@@ -884,6 +885,19 @@ function WfpEntryPageInner() {
   // ── Loaded reference data ────────────────────────────────────────────────
 
   const [aipDetail, setAipDetail] = useState<AipRecordSummary | null>(null);
+
+  // V18-81 — the selected AIP decides the year. Checked here rather than only at the button
+  // because this wizard's create is an EFFECT, not a click: selecting an activity fires
+  // ensureWfpActivity on its own, so the refusal has to stop the call, not a control.
+  //
+  // ⚠️ Read from aipList, NOT aipDetail. Effect B only loads aipDetail once a division is
+  // selected, so keying off it would make the user pick a division before learning that no WFP
+  // can be built for the year at all. The mount-time list already carries fiscalYear.
+  const wfpUnsupported = (() => {
+    if (selectedAipId == null) return null;
+    const selected = aipList.find((a) => a.id === selectedAipId);
+    return selected ? wfpUnsupportedReason(selected.fiscalYear) : null;
+  })();
   const [accounts, setAccounts] = useState<AccountResponse[]>([]);
   const [fundingSources, setFundingSources] = useState<FundingSourceResponse[]>([]);
   const [priceIndex, setPriceIndex] = useState<PriceIndexPickerItem[]>([]);
@@ -1202,7 +1216,10 @@ function WfpEntryPageInner() {
       selectedAipId == null ||
       selectedOfficeId == null ||
       selectedDivisionId == null ||
-      aipDetail == null
+      aipDetail == null ||
+      // V18-81 — do not find-or-create a WFP record for a year the server will refuse. Letting
+      // this fire would show the user a toast for something they did not ask for, by selecting.
+      wfpUnsupported !== null
     ) {
       setActivityRef(null);
       setExpenditures([]);
@@ -1434,7 +1451,19 @@ function WfpEntryPageInner() {
         </div>
       )}
 
-      {resourcesLoading ? null : selectedDivisionId == null ? (
+      {resourcesLoading ? null : wfpUnsupported ? (
+        // ⚠️ Ahead of BOTH the division prompt and the setup banner, deliberately. The fiscal
+        // year is known the moment an AIP is selected — a division is not needed to determine it.
+        // Asking someone to pick a division, or to go fix allocation setup, for a year in which no
+        // WFP can be built sends them to do work that cannot help.
+        <div className="px-4 py-3 bg-amber-50 border border-amber-300 text-amber-800 text-sm">
+          <span className="font-semibold block mb-1">
+            WFP entry is not available for FY{" "}
+            {aipList.find((a) => a.id === selectedAipId)?.fiscalYear}.
+          </span>
+          {wfpUnsupported}
+        </div>
+      ) : selectedDivisionId == null ? (
         <p className="text-slate-600 text-sm py-8">
           Select an AIP, office, and division to start entering WFP expenditures. This wizard is
           division-scoped — a specific division must be chosen even for admin/finance users.
