@@ -20,7 +20,7 @@
 ## 1. Goal
 
 **FY2028 is currently impossible to create.** V18-38 froze the `.xlsm` importer at FY2027, and the
-office-owned record shape it froze in favour of has no screen behind it. Phase 2 built the
+shape it froze in favour of has no screen behind it. Phase 2 built the
 structure and shipped no feature, deliberately; this is the phase where an office can actually
 build its AIP.
 
@@ -80,17 +80,60 @@ have already flipped are not flipped back.
    fund-scoped check in the system (its own header: step 1 is aggregate across funding sources,
    only step 2 is per-fund).
 
-10. **Workflow status lives on `AipRecord`.** Submit is "the whole office's work", and under the
-    office-owned shape one record *is* one office — so the record is the natural carrier. A direct
-    consequence of V18-40, and not available before it.
+10. ↩️ **CORRECTED 2026-09-05 — workflow status lives on `AipOffice`, not `AipRecord`.**
+
+    This read *"under the office-owned shape one record is one office — so the record is the
+    natural carrier."* The office-owned shape is withdrawn (`AIP_Foundation_Spec.md` §2 decision 4):
+    **one base record per fiscal year holds every office**, so the record cannot carry a per-office
+    state. `AipOffice` is now the carrier, and it already has the ownership FK the state needs to
+    hang off.
+
+    ⚠️ **The workflow itself is unchanged.** §12.6's five states, who may edit in each, and both
+    submits are exactly as specified — only the column moves. That is the whole cost of the
+    reversal on this side, which is why it was cheap to make.
 
 11. **Ref codes are generated server-side, in SQL, scoped to the parent.** Segments 1–5 are office
     identity and are **not generated at all**; the job is allocating a sibling-unique `seq`. Format
     pinned to DBM Budget Operations Manual for LGUs, 2023 Ed., Figure 4 + Annexes C/D.
 
-12. **No new permission flags.** Encoder is `CanAccessBudgetPlanning`; department-head reviewer is
+12. ✅ **The base record is opened once per fiscal year, by an Admin** (settled 2026-09-05).
+
+    One base `AipRecord` per FY holds every office. An **Admin or SuperAdmin** creates it — which
+    also populates each configured office's programs from that office's own LDIP — and only an
+    Admin may archive it. Offices then populate their own subtree, provided PBO has set their
+    ceiling.
+
+    ⚠️ **This is a permission change, not just a screen.** Today `POST /budget-planning/aip` and
+    the archive endpoint are both gated on `CanAccessBudgetPlanning`, so **any** budget-planning
+    user can open or archive a fiscal year. Archiving in particular hides a whole year's work from
+    every office at once.
+
+    ⚠️ **Record creation becomes deliberate.** Two existing controls find-or-create a base record
+    as a *side effect* — the very thing that made this model's absence hard to see. Carry-forward
+    is removed outright (decision 13); LDIP seeding stops being a create path and becomes a
+    **re-sync** for programs added to an LDIP after the year was opened.
+
+13. ↩️ **Carry Forward Office is REMOVED** (settled 2026-09-05). The PDC wants offices building
+    their AIP **from scratch**; carrying last year's structure forward is not wanted.
+
+    Two further reasons it goes rather than lying dormant. It **bypasses the closed list** — it
+    copies programs from a prior *AIP*, not from the LDIP, so a carried-forward program need not
+    exist in the office's current LDIP. And it **copies activity amounts** from a different fiscal
+    year, which once V18-45/46 land would put money in the ceiling and reservation ledger that
+    nobody entered this year.
+
+    ⚠️ It is already unreachable in practice — it requires a Manual+Draft target, and FY2027's
+    record is Upload-sourced — so removal is low risk. Leaving it dormant is the higher risk:
+    dead find-or-create paths are the specific hazard here, and carry-forward was **one of the two
+    silent leaks V18-37 found**.
+
+14. **No new permission flags.** Encoder is `CanAccessBudgetPlanning`; department-head reviewer is
     `CanReviewBudgetPlanning` (PPDO-3); the cross-office bypass is `CanReviewAllOffices` (PPDO-5).
     All three shipped in Phase 1. Phase 3 consumes them and adds none.
+
+    ℹ️ **Decision 12's Admin gate is a ROLE check, not a new flag** — `IsAdminOrAbove(user)`,
+    which already exists. Worth stating because "Admin only" reads like a flag and adding one would
+    need a `Permission_Matrix.md` row and would fail `PermissionMatrixTests` without it.
 
 ### 2.1 Why deferring the netting rule is safe — read before "simplifying" it
 
@@ -150,11 +193,13 @@ of programs.
 
 | Case | Given | When | Then |
 |---|---|---|---|
-| Happy path — build | An FY2028 office-owned record, Draft, with LDIP-seeded programs | Encoder adds a sub-office group, program, project, activity and one expenditure line | Each node gets a server-generated sibling-unique ref code; the activity's `Ps/Mooe/Co/Total` are recomputed and **stored** from its lines |
+| Happy path — build | An open FY2028 base record whose office row already holds this office's LDIP-seeded programs | Encoder adds a sub-office group, project, activity and one expenditure line | Each node gets a server-generated sibling-unique ref code; the activity's `Ps/Mooe/Co/Total` are recomputed and **stored** from its lines |
 | Happy path — submit | Every activity has ≥1 line, totals > 0, CC and eSRE present, GF `mooe + co` within ceiling | Encoder submits | Record moves Draft → Department review. The whole office moves in one action |
 | Programs are a closed list | An office whose LDIP has 4 programs | Encoder opens the program picker | Exactly those 4, and no free-text name field anywhere on the page |
 | Empty LDIP | An office with no LDIP for the sector | Encoder opens the program picker | Empty state naming the LDIP as the prerequisite — **not** a blank picker or a spinner |
-| First record | An office with no FY2028 AIP | Encoder opens AIP Entry | Offered creation of the office-owned record for their own office; no office picker for a guest-office user |
+| Year not opened yet | No FY2028 base record exists | Encoder opens AIP Entry | Empty state saying the fiscal year has not been opened yet and an Admin must open it. **The encoder is not offered a create action** — opening a year is Admin-only (§2 decision 12) |
+| Year opened, office has no LDIP | Base record exists; this office had no LDIP when it was opened | Encoder opens AIP Entry | Empty state naming the LDIP as the prerequisite, and the re-sync action once one exists |
+| Programs added to the LDIP later | Base record already open; a program is added to the office's LDIP in February | Encoder re-syncs from LDIP | The new program appears; existing programs and their subtrees are untouched |
 | New sub-office group | Encoder types a name not in the suggestions | Program is added | A new group starts under the same office ref code; program numbering **continues across groups**, it does not restart |
 | Group removal renumbers | Three programs across two groups; the middle one is removed | Removal saves | Numbering closes the gap — no holes |
 | Concurrent edit | Two encoders in one office, same activity | Both save | Second save is refused with "changed by someone else"; nothing is silently overwritten (P3-c default) |
@@ -232,16 +277,24 @@ with the record paginates server-side (`docs/PERFORMANCE_GUIDELINES.md`).
 
 ## 5. Data model changes
 
-### 5.1 `aip_records` — workflow status (V18-49)
+### 5.1 `aip_offices` — workflow status (V18-49)
+
+↩️ **Moved off `aip_records` on 2026-09-05** (§2 decision 10). One base record per year holds every
+office, so the record cannot carry a state that belongs to one office.
 
 ```
-ALTER TABLE aip_records ADD workflow_status NVARCHAR(30) NOT NULL DEFAULT 'Draft'
-CREATE INDEX IX_aip_records_workflow_status ON aip_records(office_id, fiscal_year, workflow_status)
+ALTER TABLE aip_offices ADD workflow_status NVARCHAR(30) NOT NULL DEFAULT 'Draft'
+CREATE INDEX IX_aip_offices_workflow_status ON aip_offices(office_id, workflow_status)
 ```
 
-**Distinct from the existing `status` column**, which is `PlanningStatus` (`Draft` / `Final` /
-`Archived`) and is shared with LDIP and WFP. The workflow has five states that vocabulary cannot
-express, and overloading it would change LDIP's and WFP's meaning too.
+**Distinct from `aip_records.status`**, which is `PlanningStatus` (`Draft` / `Final` / `Archived`)
+and is shared with LDIP and WFP. The workflow has five states that vocabulary cannot express, and
+overloading it would change LDIP's and WFP's meaning too.
+
+⚠️ **The two now mean different things at different levels, and that is deliberate.**
+`aip_records.status` is the *year*'s state — Admin opens it as Draft and archives it. 
+`aip_offices.workflow_status` is one office's progress through review. An office cannot be past
+Draft in an Archived year; the service owns that rule, not a constraint.
 
 ⚠️ **Introduce all five states in one migration, implement only the first transition.** The states
 are settled (§12.6) — `Draft`, `DepartmentReview`, `SubmittedToPpdo`, `ReturnedByPpdo`,
@@ -249,8 +302,8 @@ are settled (§12.6) — `Draft`, `DepartmentReview`, `SubmittedToPpdo`, `Return
 where the column's domain does not match the documented workflow. Phase 3 writes only
 `Draft → DepartmentReview`; Phase 4 uses the rest.
 
-Migration: `AddAipWorkflowStatus`. snake_case, per `NAMING_CONVENTIONS.md` — `aip_records` is a
-v1.6 table and already snake_case.
+Migration: `AddAipOfficeWorkflowStatus`. snake_case, per `NAMING_CONVENTIONS.md` — `aip_offices` is
+a v1.6 table and already snake_case.
 
 ### 5.2 `aip_division_allocation_ledger` — new table (V18-45)
 
@@ -353,6 +406,9 @@ extract first in its own PR, or build Entry as a genuinely separate page and lea
   constraint V18-44 should record where the generator lives.
 - **Amendment after approval** — V18-73, and the terminal authority is the **SP resolution**, not
   the LFC.
+- **Carry Forward Office** — ↩️ **removed**, not deferred (§2 decision 13). The PDC wants
+  offices building from scratch, and the feature bypassed the closed list and copied a prior
+  year's amounts.
 - **Retiring or changing `WfpCeilingService`** — decision 9. Zero diff.
 - **Re-importing FY2027 faithfully** — out of scope permanently; V18-38 froze the importer, so
   FY2027's pre-RAL-238 import is now permanent.
@@ -380,8 +436,15 @@ extract first in its own PR, or build Entry as a genuinely separate page and lea
 
 Epic **PPDO-48**. Blocking relations are wired in Linear, not only described here.
 
+↩️ **Revised 2026-09-05** by the shape reversal (§2 decisions 4, 12, 13). Three tickets are added
+ahead of the entry UI, because V18-42 cannot be built until the record it fills exists in the
+right shape.
+
 | Ticket | # | Size | Blocked by |
 |---|---|---|---|
+| **PPDO-61** 🆕 | Reverse the office-owned shape — drop `AipRecord.OfficeId`, its migration and `AipShape`'s partition | M | — |
+| **PPDO-62** 🆕 | Open a fiscal year — Admin creates the base record, programs populate from every office's LDIP; LDIP seeding becomes a re-sync | M | PPDO-61 |
+| **PPDO-63** 🆕 | Remove Carry Forward Office | S | PPDO-61 |
 | PPDO-49 | V18-81 — block FY2028+ WFP creation | S | — |
 | PPDO-50 | V18-44 — ref-code generation | M | — |
 | PPDO-51 | V18-41 — programs from a valid LDIP | S | — |
@@ -394,8 +457,13 @@ Epic **PPDO-48**. Blocking relations are wired in Linear, not only described her
 | PPDO-58 | V18-48 — PBO ceiling management UI | S | — |
 | PPDO-59 | V18-49 — completeness checklist + submit gate | M | PPDO-52, PPDO-56 |
 
-**Order:** `49 + 50 + 51` in parallel → `52` → `53`, `54` · `55` → `56` → `57` · then `59` · `58`
+**Order (revised 2026-09-05):** `61` → `62` + `63` · `50` and `49` are independent and already in
+review · `51` folds into `62` · then `52` → `53`, `54` · `55` → `56` → `57` · then `59` · `58`
 anytime.
+
+⚠️ **PPDO-51 (V18-41) is superseded in part.** Its closed-list rule stands and its server guard is
+kept; its *office-owned seeding* is exactly what PPDO-61 reverses, and the population it built moves
+into PPDO-62's year-opening action. PR #298 should be amended rather than merged — see the ticket.
 
 **Manual-implementation candidates** (per CLAUDE.md): **PPDO-49** and **PPDO-57** — small blast
 radius, `dotnet test` feedback with no app running, reversible, and each has a sibling to
