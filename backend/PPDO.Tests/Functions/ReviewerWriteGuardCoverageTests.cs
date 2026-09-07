@@ -42,6 +42,7 @@ public sealed class ReviewerWriteGuardCoverageTests
         typeof(AllocationFunctions),
         typeof(WfpExpenditureFunctions),
         typeof(WfpProcurementPresetFunctions),
+        typeof(AipExpenditureFunctions),
     ];
 
     private static readonly string[] WriteVerbs = ["post", "put", "delete", "patch"];
@@ -68,8 +69,14 @@ public sealed class ReviewerWriteGuardCoverageTests
         // POST /budget-planning/aip/copy-office was removed with carry-forward. One endpoint, and
         // the floor moved by exactly one — if it ever needs to drop by more than the number of
         // endpoints a ticket knowingly deletes, something else has gone wrong with discovery.
-        Assert.True(found.Count >= 39,
-            $"Expected at least 39 budget-planning write endpoints, found {found.Count}. " +
+        //
+        // ↩️ 39 → 42 on 2026-09-07 (PPDO-52): AipExpenditureFunctions' POST, PUT and DELETE.
+        // ⚠️ Raising the floor was NOT enough on its own — the new class also had to be added to
+        // BudgetPlanningFunctionTypes above. Until it was, the count stayed at 39 and all three
+        // endpoints were silently uncovered while every test still passed. This file's safety net
+        // has one hand-maintained hole in it, and that list is it.
+        Assert.True(found.Count >= 42,
+            $"Expected at least 42 budget-planning write endpoints, found {found.Count}. " +
             "If endpoints were legitimately removed, lower this floor deliberately — do not " +
             "delete the assertion, or the coverage theories start passing vacuously.");
     }

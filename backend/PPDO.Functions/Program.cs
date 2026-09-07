@@ -195,6 +195,7 @@ var host = new HostBuilder()
         // a WFP expenditure stays bound by the lesser of its AIP activity amount and the fund's
         // remaining allocation.
         services.AddScoped<IAipCeilingService, AipCeilingService>();
+        services.AddScoped<IAipExpenditureService, AipExpenditureService>();
     })
     .ConfigureLogging((context, logging) =>
     {

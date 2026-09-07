@@ -1359,52 +1359,16 @@ public sealed class AipService : IAipService
     /// the alternative is a disclosure.
     /// </para>
     /// </summary>
-    private async Task<ServiceResult<T>?> CheckWritableAsync<T>(
+    /// <summary>
+    /// Delegates to <see cref="AipWriteGuard"/>, which owns the three checks. Kept as a thin
+    /// wrapper so the ~20 call sites below read unchanged; the rule itself moved out when the
+    /// expenditure endpoints became a second service needing it (PPDO-52). Two copies would drift
+    /// silently — the forgotten one would just stop refusing.
+    /// </summary>
+    private Task<ServiceResult<T>?> CheckWritableAsync<T>(
         AipOffice office, User caller, string notFoundMessage,
         CancellationToken ct, string action = "add to")
-    {
-        if (!OfficeScope.Resolve(caller).Permits(office.OfficeId))
-            return ServiceResult<T>.NotFound(notFoundMessage);
-
-        AipRecord? rec = await _aipRepo.GetByIntIdAsync(office.AipRecordId, ct);
-        if (rec is null)
-            return ServiceResult<T>.NotFound($"AIP record {office.AipRecordId} not found.");
-        if (rec.Status != PlanningStatus.Draft)
-            return ServiceResult<T>.BadRequest(
-                $"Cannot {action} a '{rec.Status}' record. Unlock it back to Draft first.");
-
-        // ⚠️ V18-42 / PPDO-52 — the SECOND gate, and it is deliberately here rather than on the new
-        // entry endpoints alone. Every existing write path (add/edit/delete of office, program,
-        // project, activity) runs through this method, so putting the check anywhere else would
-        // leave a submitted office editable through the paths that already exist.
-        //
-        // Two independent gates, at two levels: the record's status is the YEAR's (an Admin
-        // archived it), the office's workflow status is THIS OFFICE's (the encoder submitted it).
-        // Passing one says nothing about the other.
-        //
-        // ⚠️ The message names the state. "Read-only" alone leaves the encoder with no idea who
-        // holds their work or how to get it back, which is the UI-states failure this project has
-        // hit more than any other.
-        if (!AipWorkflowStatus.IsEncoderEditable(office.WorkflowStatus))
-            return ServiceResult<T>.BadRequest(
-                $"Cannot {action} this office's AIP while it is in {DescribeWorkflow(office.WorkflowStatus)}. "
-                + "It has been submitted and is no longer editable here.");
-
-        return null;
-    }
-
-    /// <summary>
-    /// A workflow state as a person reads it. Used in refusal messages, so an encoder is told who
-    /// holds their work rather than only that they cannot touch it.
-    /// </summary>
-    private static string DescribeWorkflow(string status) => status switch
-    {
-        AipWorkflowStatus.DepartmentReview => "department review",
-        AipWorkflowStatus.SubmittedToPpdo  => "review by PPDO",
-        AipWorkflowStatus.ReturnedByPpdo   => "the returned-by-PPDO state",
-        AipWorkflowStatus.Consolidated     => "the consolidated AIP",
-        _                                  => $"the '{status}' state",
-    };
+        => AipWriteGuard.CheckAsync<T>(office, caller, _aipRepo, notFoundMessage, ct, action);
 
     /// <summary>Next zero-padded 3-digit segment appended to <paramref name="parentRefCode"/>,
     /// one past the highest existing sibling suffix (e.g. "...-001-001-002-001" then "...-002").</summary>
