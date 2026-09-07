@@ -20,9 +20,8 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { addAipProgramsWithGroup, aipErrorMessage } from "@/lib/aip";
-import { listLdip, getLdipById } from "@/lib/ldip";
-import type { AipOfficeDetail, LdipOfficeGroup, LdipRecord } from "@/types";
+import { addAipProgramsWithGroup, getAipAddablePrograms, aipErrorMessage } from "@/lib/aip";
+import type { AipOfficeDetail, AipAddablePrograms } from "@/types";
 
 const SECTORS = ["GENERAL", "SOCIAL", "ECONOMIC", "OTHERS"] as const;
 
@@ -40,14 +39,20 @@ export default function AipAddProgramsPanel({
   const [groupName, setGroupName] = useState("");
   const [checked, setChecked] = useState<Set<number>>(new Set());
 
-  const [group, setGroup]     = useState<LdipOfficeGroup | null>(null);
+  const [group, setGroup]     = useState<AipAddablePrograms | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving]   = useState(false);
   const [error, setError]     = useState<string | null>(null);
   const [noLdip, setNoLdip]   = useState(false);
 
-  // Load the office's LDIP programs for the chosen sector. Re-runs when the sector changes,
-  // because the closed list is per sector.
+  // What this office may add for the chosen sector. Re-runs when the sector changes, because the
+  // closed list is per sector.
+  //
+  // ⚠️ The SERVER resolves which LDIP this is, and the client must not. The rule is two-tier — the
+  // office's own LDIP first, then a multi-office bulk LDIP matched on ref code — and an earlier
+  // version of this panel reimplemented it, picked a different record from the one the add path
+  // resolved, and every add came back "LDIP program id(s) … do not belong to this office's GENERAL
+  // LDIP". Both halves were individually right. Found by live-testing.
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -57,19 +62,15 @@ export default function AipAddProgramsPanel({
       setGroup(null);
       setChecked(new Set());
       try {
-        const records: LdipRecord[] = await listLdip({ officeId: officeConfigId });
-        const usable = records.find((r) => r.status === "Final") ?? records[0];
-        if (!usable) { if (!cancelled) setNoLdip(true); return; }
-
-        const detail = await getLdipById(usable.id);
-        const match = detail.groups.find(
-          (g: LdipOfficeGroup) => g.sector.toUpperCase() === sector.toUpperCase()
-        );
-        if (cancelled) return;
-        if (!match) { setNoLdip(true); return; }
-        setGroup(match);
+        const addable = await getAipAddablePrograms(officeConfigId, sector);
+        if (!cancelled) setGroup(addable);
       } catch (e) {
-        if (!cancelled) setError(aipErrorMessage(e, "Could not load this office's LDIP."));
+        // "no LDIP for this sector" comes back as a 400 with a sentence naming the LDIP — show it
+        // as the empty state rather than as an error, because it is a prerequisite, not a fault.
+        if (!cancelled) {
+          const message = aipErrorMessage(e, "Could not load this office's LDIP.");
+          if (message.includes("has no LDIP")) setNoLdip(true); else setError(message);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -139,7 +140,7 @@ export default function AipAddProgramsPanel({
           <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
             (Preview) Office AIP ref code
           </label>
-          <input readOnly value={group?.refCode ?? "—"}
+          <input readOnly value={group?.groupRefCode ?? "—"}
             className="w-full border border-slate-300 bg-slate-50 px-2 py-1.5 font-mono text-sm text-slate-600" />
         </div>
 
@@ -187,12 +188,13 @@ export default function AipAddProgramsPanel({
             </p>
             <ul className="max-h-64 space-y-1 overflow-y-auto">
               {group.programs.map((p) => (
-                <li key={p.id}>
+                <li key={p.ldipProgramId}>
                   <label className="flex cursor-pointer items-start gap-2 py-1 text-sm text-slate-800">
-                    <input type="checkbox" checked={checked.has(p.id)} className="mt-1"
+                    {/* ⚠️ ldipProgramId, not any AIP id — this is what the add endpoint expects. */}
+                    <input type="checkbox" checked={checked.has(p.ldipProgramId)} className="mt-1"
                       onChange={(e) => {
                         const next = new Set(checked);
-                        if (e.target.checked) next.add(p.id); else next.delete(p.id);
+                        if (e.target.checked) next.add(p.ldipProgramId); else next.delete(p.ldipProgramId);
                         setChecked(next);
                       }} />
                     <span>

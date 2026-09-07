@@ -79,10 +79,17 @@ public sealed class AipSubmitGateTests
         EsreCode = "ID", CcTypologyCode = "TYP1", Total = 500_000m,
     };
 
+    /// <summary>Activities with one line each, all of them naming a funding source.</summary>
     private void GivenLines(params int[] activityIdsWithLines)
         => _expRepo.Setup(r => r.CountByActivityIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipActivityLineCountDto>)
-                activityIdsWithLines.Select(id => new AipActivityLineCountDto(id, 1)).ToList());
+                activityIdsWithLines.Select(id => new AipActivityLineCountDto(id, 1, 0)).ToList());
+
+    /// <summary>One activity with a line that names no funding source.</summary>
+    private void GivenFundlessLine(int activityId)
+        => _expRepo.Setup(r => r.CountByActivityIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipActivityLineCountDto>)
+                [new AipActivityLineCountDto(activityId, 1, 1)]);
 
     private static User Encoder() => new()
     {
@@ -141,6 +148,26 @@ public sealed class AipSubmitGateTests
 
         Assert.False(result.IsSuccess);
         Assert.Contains("was removed", result.Error!);
+    }
+
+    /// <summary>
+    /// ⚠️ The check that only a live pass would have asked for. A fundless line is <b>invisible to
+    /// the ceiling</b> — that check sums General Fund only, and null is not the General Fund — so
+    /// without this an office encodes any amount against no fund, satisfies "has at least one
+    /// line", contributes nothing to its ceiling and submits cleanly.
+    /// </summary>
+    [Fact]
+    public async Task Submit_ActivityWithALineThatNamesNoFundingSource_IsRefused()
+    {
+        AipSubmitService sut = Build(GoodActivity());
+        GivenFundlessLine(700);
+
+        ServiceResult<AipSubmitResultDto> result = await sut.SubmitAsync(RecordId, Encoder());
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("no funding source", result.Error!);
+        // The message says WHY it matters, not just that a field is blank.
+        Assert.Contains("not counted against any ceiling", result.Error!);
     }
 
     [Fact]

@@ -228,6 +228,14 @@ export interface AipOfficeDetail {
   refCode: string;
   name: string;
   sector: string;
+  /**
+   * The config office that owns this group (added by PPDO-52).
+   *
+   * ⚠️ The entry page needs this to show a host-office user only their OWN office. Without it the
+   * page rendered all 25 offices' trees above a checklist covering just the caller's — found by
+   * live-testing. Null only for an unmatched legacy row.
+   */
+  officeId: number | null;
   programs: AipProgramDetail[];
 }
 
@@ -1151,4 +1159,26 @@ export interface AipSubmitResult {
   workflowStatus: string;
   /** How many sub-office group rows moved. An office with three printed blocks moves all three. */
   groupsMoved: number;
+}
+
+/**
+ * One LDIP program the office may add. `ldipProgramId` is what
+ * `AddAipProgramsWithGroupRequest.ldipProgramIds` expects — named for what it is, because it is NOT
+ * the AIP program's id and mixing them up produces a "does not belong to this office's LDIP"
+ * refusal that reads like a permissions bug.
+ */
+export interface AipAddableProgram {
+  ldipProgramId: number;
+  refCode: string;
+  name: string;
+}
+
+/**
+ * ⚠️ Resolved SERVER-side, by the same two-tier rule the add path uses. The client must not pick
+ * the LDIP record itself — a client-side copy of that rule diverged and every add was refused.
+ */
+export interface AipAddablePrograms {
+  groupRefCode: string;
+  groupName: string;
+  programs: AipAddableProgram[];
 }

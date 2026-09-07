@@ -109,5 +109,13 @@ public sealed record AipActivityFundTotalsDto(
     decimal Mooe,
     decimal Co);
 
-/// <summary>How many expenditure lines one activity has (V18-49). Absent means zero.</summary>
-public sealed record AipActivityLineCountDto(int ActivityId, int LineCount);
+/// <summary>
+/// How many expenditure lines one activity has, and how many of them name no funding source
+/// (V18-49). Absent from the result means zero lines.
+///
+/// ⚠️ <see cref="LinesWithoutFund"/> exists because a fundless line is <b>invisible to the ceiling
+/// check</b>: that check sums General Fund only, and a null fund is not the General Fund. Without
+/// this an office could encode ₱50M against no fund, pass "has at least one line", contribute
+/// nothing to its ceiling and submit cleanly. Found by live-testing.
+/// </summary>
+public sealed record AipActivityLineCountDto(int ActivityId, int LineCount, int LinesWithoutFund);

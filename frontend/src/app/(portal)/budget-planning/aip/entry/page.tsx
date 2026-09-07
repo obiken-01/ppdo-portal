@@ -20,7 +20,7 @@
  * sidebar into AIP Entry and AIP Review as separately gated siblings.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useMe } from "@/lib/me-cache";
 import {
@@ -35,7 +35,7 @@ import AipExpenditureTable from "@/components/aip/entry/AipExpenditureTable";
 import AipSubmitChecklist from "@/components/aip/entry/AipSubmitChecklist";
 import { listAipExpenditures } from "@/lib/aip";
 import type {
-  AipRecordDetail, AipOfficeDetail, AipActivityDetail, AipExpenditure,
+  AipRecordDetail, AipOfficeDetail, AipActivityDetail, AipExpenditure, AipExpenditureWriteResult,
   AccountResponse, FundingSourceResponse, AipReadiness,
 } from "@/types";
 
@@ -58,14 +58,20 @@ export default function AipEntryPage() {
 
   const officeId = me?.officeId ?? null;
 
-  // ⚠️ Scoping is the SERVER's job here, and it is not duplicated client-side because it cannot
-  // be: AipOfficeDetail carries no config-office id, so there is nothing to filter on. AipReadScope
-  // already clamps a guest office to its own rows. A no-op .filter() with a reassuring comment
-  // would be worse than none — it reads as a second line of defence that does not exist.
+  // Only the caller's own office's groups.
   //
-  // ℹ️ A host-office (PPDO) user legitimately receives every office in the record. Narrowing that
-  // for entry needs an office id on the DTO, which is a server change, not a client one.
-  const myGroups: AipOfficeDetail[] = record?.offices ?? [];
+  // ⚠️ This is NOT a security boundary — AipReadScope already clamps a guest office server-side,
+  // and a guest never receives another office's rows. It exists because a HOST-office (PPDO) user
+  // legitimately receives every office in the record, and rendering all 25 trees above a checklist
+  // that covers only their own office is incoherent: found by live-testing, where an encoder saw
+  // another office's programs above a panel reading "0 activities in this office".
+  //
+  // The readiness endpoint narrows the same way (AipSubmitService.ResolveAsync), so the tree and
+  // the checklist now describe the same set of work.
+  const myGroups: AipOfficeDetail[] = useMemo(
+    () => (record?.offices ?? []).filter((o) => officeId != null && o.officeId === officeId),
+    [record, officeId]
+  );
 
   const workflowStatus = readiness?.workflowStatus ?? "Draft";
   const canEdit = workflowStatus === "Draft";
@@ -186,7 +192,16 @@ export default function AipEntryPage() {
                 <GroupBlock
                   key={group.id} group={group} canEdit={canEdit}
                   accounts={accounts} funds={funds}
-                  onChanged={() => { void load(); void refreshReadiness(); }}
+                  // Structural changes (a new project or activity) need the tree back.
+                  onStructureChanged={() => { void load(); void refreshReadiness(); }}
+                  // ⚠️ An expenditure change must NOT reload the record. Doing so remounts the
+                  // whole tree and the activity the encoder is working inside snaps shut — found
+                  // by live-testing. The write endpoint returns the recomputed activity precisely
+                  // so the row can update in place, which is also one fewer round trip per line.
+                  onActivityTotals={(r) => {
+                    setRecord((prev) => prev && applyActivityTotals(prev, r));
+                    void refreshReadiness();
+                  }}
                 />
               ))}
 
@@ -214,13 +229,14 @@ export default function AipEntryPage() {
 // ── One sub-office group ──────────────────────────────────────────────────
 
 function GroupBlock({
-  group, canEdit, accounts, funds, onChanged,
+  group, canEdit, accounts, funds, onStructureChanged, onActivityTotals,
 }: {
   group: AipOfficeDetail;
   canEdit: boolean;
   accounts: AccountResponse[];
   funds: FundingSourceResponse[];
-  onChanged: () => void;
+  onStructureChanged: () => void;
+  onActivityTotals: (result: AipExpenditureWriteResult) => void;
 }) {
   return (
     <div className="border border-slate-200 bg-white">
@@ -248,7 +264,7 @@ function GroupBlock({
                   <div className="mt-1 space-y-2 pl-4">
                     {project.activities.map((activity) => (
                       <ActivityBlock key={activity.id} activity={activity} canEdit={canEdit}
-                        accounts={accounts} funds={funds} onChanged={onChanged} />
+                        accounts={accounts} funds={funds} onTotals={onActivityTotals} />
                     ))}
                     {canEdit && (
                       <InlineAdd label="+ Add activity" placeholder="Activity description"
@@ -259,7 +275,7 @@ function GroupBlock({
                             fundingSourceRaw: null, ps: null, mooe: null, co: null,
                             ccAdaptation: null, ccMitigation: null, ccTypologyCode: null,
                           });
-                          onChanged();
+                          onStructureChanged();
                         }} />
                     )}
                   </div>
@@ -267,7 +283,7 @@ function GroupBlock({
               ))}
               {canEdit && (
                 <InlineAdd label="+ Add project" placeholder="Project name"
-                  onAdd={async (name) => { await addAipProject(program.id, { name }); onChanged(); }} />
+                  onAdd={async (name) => { await addAipProject(program.id, { name }); onStructureChanged(); }} />
               )}
             </div>
           </div>
@@ -280,13 +296,13 @@ function GroupBlock({
 // ── One activity, with its expenditure lines ──────────────────────────────
 
 function ActivityBlock({
-  activity, canEdit, accounts, funds, onChanged,
+  activity, canEdit, accounts, funds, onTotals,
 }: {
   activity: AipActivityDetail;
   canEdit: boolean;
   accounts: AccountResponse[];
   funds: FundingSourceResponse[];
-  onChanged: () => void;
+  onTotals: (result: AipExpenditureWriteResult) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [lines, setLines] = useState<AipExpenditure[] | null>(null);
@@ -320,15 +336,44 @@ function ActivityBlock({
             activityId={activity.id} lines={lines} accounts={accounts} fundingSources={funds}
             canEdit={canEdit}
             onChanged={(result) => {
-              // Refetch this activity's lines, and let the parent refresh totals and the checklist.
+              // Refetch just this activity's lines, and hand the recomputed totals upward. The
+              // record is NOT reloaded, so this row stays open and stays where it is.
               void listAipExpenditures(activity.id).then(setLines).catch(() => undefined);
-              void result;
-              onChanged();
+              onTotals(result);
             }} />
         )
       )}
     </div>
   );
+}
+
+/**
+ * Replaces one activity's totals in the tree, immutably.
+ *
+ * ⚠️ Exists so an expenditure save does not have to reload the record. Reloading remounts every
+ * ActivityBlock, and each keeps its own open/closed state — so the row the encoder is typing in
+ * closes under them. Found by live-testing.
+ */
+function applyActivityTotals(
+  record: AipRecordDetail, r: AipExpenditureWriteResult
+): AipRecordDetail {
+  return {
+    ...record,
+    offices: record.offices.map((office) => ({
+      ...office,
+      programs: office.programs.map((program) => ({
+        ...program,
+        projects: program.projects.map((project) => ({
+          ...project,
+          activities: project.activities.map((activity) =>
+            activity.id === r.activityId
+              ? { ...activity, ps: r.activityPs, mooe: r.activityMooe, co: r.activityCo, total: r.activityTotal }
+              : activity
+          ),
+        })),
+      })),
+    })),
+  };
 }
 
 // ── Small pieces ──────────────────────────────────────────────────────────

@@ -134,6 +134,16 @@ public interface IAipService
     /// makes the closed list meaningful.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// The LDIP programs an office may add for one sector, resolved by the <b>same</b> two-tier
+    /// rule <see cref="AddProgramsWithGroupAsync"/> uses (V18-42 / PPDO-52).
+    ///
+    /// ⚠️ The entry panel must call this rather than resolving the LDIP itself. See
+    /// <see cref="AipAddableProgramsDto"/> for the divergence that made it necessary.
+    /// </summary>
+    Task<ServiceResult<AipAddableProgramsDto>> GetAddableProgramsAsync(
+        int officeConfigId, string sector, User caller, CancellationToken ct = default);
+
     Task<ServiceResult<AipOfficeDto>> AddProgramsWithGroupAsync(
         int aipRecordId, AddAipProgramsWithGroupDto dto, User caller, CancellationToken ct = default);
 

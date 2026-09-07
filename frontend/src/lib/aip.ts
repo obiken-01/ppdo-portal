@@ -32,6 +32,7 @@ import type {
   SaveAipExpenditureRequest,
   AipExpenditureWriteResult,
   AddAipProgramsWithGroupRequest,
+  AipAddablePrograms,
   AipCeilingStatus,
   AipReadiness,
   AipSubmitResult,
@@ -355,6 +356,23 @@ export async function submitAip(aipId: number): Promise<AipSubmitResult> {
 export async function getAipCeiling(aipId: number): Promise<AipCeilingStatus> {
   const { data } = await api.get<ApiResponse<AipCeilingStatus>>(
     `/budget-planning/aip/${aipId}/ceiling`
+  );
+  return unwrap(data);
+}
+
+/**
+ * The LDIP programs this office may add for a sector.
+ *
+ * ⚠️ Ask the server rather than resolving the LDIP here. The resolution is two-tier — the office's
+ * own LDIP first, then a multi-office bulk LDIP matched on ref code — and a client-side copy of it
+ * diverged from the server's, so the picker offered programs the add path then refused.
+ */
+export async function getAipAddablePrograms(
+  officeConfigId: number, sector: string
+): Promise<AipAddablePrograms> {
+  const { data } = await api.get<ApiResponse<AipAddablePrograms>>(
+    "/budget-planning/aip/addable-programs",
+    { params: { officeConfigId, sector } }
   );
   return unwrap(data);
 }

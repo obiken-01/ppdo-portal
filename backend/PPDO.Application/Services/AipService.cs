@@ -148,7 +148,7 @@ public sealed class AipService : IAipService
                     return new AipProgramDto(p.Id, p.OfficeId, p.RefCode, p.Name, projDtos, p.FunctionBand);
                 })
                 .ToList();
-            return new AipOfficeDto(o.Id, o.AipRecordId, o.RefCode, o.Name, o.Sector, progDtos);
+            return new AipOfficeDto(o.Id, o.AipRecordId, o.RefCode, o.Name, o.Sector, o.OfficeId, progDtos);
         }).ToList();
 
         // Drives the frontend's Re-upload button gating — see ReplaceImportAsync's guard below.
@@ -636,7 +636,7 @@ public sealed class AipService : IAipService
 
         return ServiceResult<AipOfficeDto>.Ok(
             new AipOfficeDto(entity.Id, entity.AipRecordId, entity.RefCode, entity.Name, entity.Sector,
-                Array.Empty<AipProgramDto>()));
+                entity.OfficeId, Array.Empty<AipProgramDto>()));
     }
 
     /// <summary>
@@ -867,7 +867,7 @@ public sealed class AipService : IAipService
 
         return ServiceResult<AipOfficeDto>.Ok(
             new AipOfficeDto(targetOffice.Id, targetOffice.AipRecordId, targetOffice.RefCode,
-                targetOffice.Name, targetOffice.Sector, programDtos));
+                targetOffice.Name, targetOffice.Sector, targetOffice.OfficeId, programDtos));
     }
 
     public async Task<ServiceResult<AipProgramDto>> AddProgramAsync(
@@ -1084,7 +1084,7 @@ public sealed class AipService : IAipService
 
         return ServiceResult<AipOfficeDto>.Ok(
             new AipOfficeDto(office.Id, office.AipRecordId, office.RefCode, office.Name, office.Sector,
-                Array.Empty<AipProgramDto>()));
+                office.OfficeId, Array.Empty<AipProgramDto>()));
     }
 
     public async Task<ServiceResult<AipProgramDto>> UpdateProgramAsync(
@@ -1380,6 +1380,42 @@ public sealed class AipService : IAipService
 
     // ── Status transitions ────────────────────────────────────────────────────
 
+    /// <inheritdoc />
+    public async Task<ServiceResult<AipAddableProgramsDto>> GetAddableProgramsAsync(
+        int officeConfigId, string sector, User caller, CancellationToken ct = default)
+    {
+        if (!AipSector.Prefixes.TryGetValue(sector?.Trim() ?? string.Empty, out string? prefix))
+            return ServiceResult<AipAddableProgramsDto>.BadRequest(
+                $"Sector must be one of: {string.Join(", ", AipSector.Prefixes.Keys)}.");
+        string normalised = sector!.Trim().ToUpperInvariant();
+
+        Office? office = await _officeConfigRepo.GetByIdAsync(officeConfigId, ct);
+        if (office is null || !office.IsActive)
+            return ServiceResult<AipAddableProgramsDto>.NotFound(
+                $"Office {officeConfigId} not found or inactive.");
+
+        if (!OfficeScope.Resolve(caller).Permits(office.Id))
+            return ServiceResult<AipAddableProgramsDto>.NotFound(
+                $"Office {officeConfigId} not found or inactive.");
+
+        // ⚠️ The SAME resolver the write path uses. That is the entire point of this method — a
+        // second copy of the two-tier rule is what produced the "does not belong to this office's
+        // LDIP" refusals the entry panel hit on every add.
+        LdipOffice? group = await ResolveLdipGroupAsync(office, normalised, prefix, ct);
+        if (group is null)
+            return ServiceResult<AipAddableProgramsDto>.BadRequest(
+                $"'{office.OfficeName}' has no LDIP for the {normalised} sector. The LDIP is where "
+                + "programs come from, so it has to exist before the AIP can be built.");
+
+        return ServiceResult<AipAddableProgramsDto>.Ok(new AipAddableProgramsDto(
+            group.RefCode,
+            group.Name,
+            group.Programs
+                .OrderBy(p => p.RefCode, StringComparer.Ordinal)
+                .Select(p => new AipAddableProgramDto(p.Id, p.RefCode, p.Name))
+                .ToList()));
+    }
+
     // ── Sub-office group + programs, in one call (V18-42 / PPDO-52) ──────────
 
     /// <inheritdoc />
@@ -1518,7 +1554,7 @@ public sealed class AipService : IAipService
             : await _aipRepo.GetProgramsByOfficeIdsAsync([target.Id], ct);
 
         return ServiceResult<AipOfficeDto>.Ok(new AipOfficeDto(
-            target.Id, target.AipRecordId, target.RefCode, target.Name, target.Sector,
+            target.Id, target.AipRecordId, target.RefCode, target.Name, target.Sector, target.OfficeId,
             allInGroup.Select(p => new AipProgramDto(
                 p.Id, target.Id, p.RefCode, p.Name, Array.Empty<AipProjectDto>(), p.FunctionBand))
                 .ToList()));

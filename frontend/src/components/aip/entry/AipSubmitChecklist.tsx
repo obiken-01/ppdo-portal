@@ -21,6 +21,7 @@ const KIND_LABELS: Record<string, string> = {
   "no-lines": "Not costed",
   "costed-at-zero": "Costing removed",
   "zero-total": "Totals ₱0",
+  "missing-fund": "No funding source",
   "missing-esre": "Missing eSRE code",
   "missing-cc-typology": "Missing CC typology",
   ceiling: "Over ceiling",

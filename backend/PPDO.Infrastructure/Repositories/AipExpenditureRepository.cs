@@ -73,7 +73,10 @@ public sealed class AipExpenditureRepository : Repository<AipExpenditure>, IAipE
         return await _context.Set<AipExpenditure>()
             .Where(e => activityIds.Contains(e.ActivityId))
             .GroupBy(e => e.ActivityId)
-            .Select(g => new AipActivityLineCountDto(g.Key, g.Count()))
+            .Select(g => new AipActivityLineCountDto(
+                g.Key,
+                g.Count(),
+                g.Count(e => e.FundingSourceId == null)))
             .ToListAsync(ct);
     }
 

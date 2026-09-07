@@ -173,6 +173,32 @@ public sealed class AipFunctions
             await _aip.AddOfficeAsync(aipId, body, caller!, ct), ct, HttpStatusCode.Created);
     }
 
+    // ── GET /api/budget-planning/aip/addable-programs?officeConfigId=&sector= ─
+    // V18-42 / PPDO-52. The entry panel's program picker.
+    //
+    // ⚠️ Read-only, and it exists so the client does NOT resolve the LDIP itself. The two-tier
+    // resolution lives in one place; a client-side copy diverged and refused every add.
+    [Function("AipAddablePrograms")]
+    public async Task<HttpResponseData> AddablePrograms(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get",
+            Route = "budget-planning/aip/addable-programs")] HttpRequestData req,
+        CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) =
+            await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        System.Collections.Specialized.NameValueCollection q =
+            System.Web.HttpUtility.ParseQueryString(req.Url.Query);
+
+        if (!int.TryParse(q["officeConfigId"], out int officeConfigId))
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<AipAddableProgramsDto>.Fail("officeConfigId is required."), ct);
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _aip.GetAddableProgramsAsync(officeConfigId, q["sector"] ?? "", caller!, ct), ct);
+    }
+
     // ── POST /api/budget-planning/aip/{aipId}/programs ────────────────────────
     // V18-42 / PPDO-52, spec §4 — the encoder's first stage: a sub-office group and the programs
     // going into it, in one call, because they are one interaction.

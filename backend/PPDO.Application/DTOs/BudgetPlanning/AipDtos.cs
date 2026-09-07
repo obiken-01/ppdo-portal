@@ -46,6 +46,18 @@ public record AipOfficeDto(
     string RefCode,
     string Name,
     string Sector,
+    /// <summary>
+    /// The config <c>offices</c> row that owns this group (V18-32), added by PPDO-52.
+    ///
+    /// ⚠️ <b>The entry page needs it and could not be written correctly without it.</b> A
+    /// host-office user legitimately receives every office in the record, so with no owner on the
+    /// DTO the page rendered all 25 offices' trees while its checklist covered only the caller's
+    /// own — an encoder saw someone else's programs above a panel saying "0 activities in this
+    /// office". Found by live-testing, not review.
+    ///
+    /// Null only for an unmatched legacy row, exactly as on <c>AipOffice.OfficeId</c>.
+    /// </summary>
+    int?   OfficeId,
     IReadOnlyList<AipProgramDto> Programs);
 
 public record AipRecordDto(
@@ -228,6 +240,33 @@ public record AddAipProgramsWithGroupDto(
     string              Sector,
     string?             GroupName,
     IReadOnlyList<int>  LdipProgramIds);
+
+/// <summary>
+/// One LDIP program an office may add to its AIP (V18-42 / PPDO-52).
+///
+/// <see cref="LdipProgramId"/> is the id <c>AddAipProgramsWithGroupDto.LdipProgramIds</c> expects —
+/// deliberately named for what it is, because it is NOT the AIP program's id and confusing the two
+/// produces a "does not belong to this office's LDIP" refusal that looks like a permissions bug.
+/// </summary>
+public record AipAddableProgramDto(int LdipProgramId, string RefCode, string Name);
+
+/// <summary>
+/// What an office may add for one sector, resolved <b>server-side</b> (V18-42 / PPDO-52).
+///
+/// ⚠️ <b>This endpoint exists because the client must not resolve the LDIP itself.</b>
+/// <c>ResolveLdipGroupAsync</c> is two-tier — the office's own LDIP first, then a multi-office bulk
+/// LDIP matched on ref code — and its own remarks already noted the frontend mirrored it a third
+/// time. A fourth copy in the entry panel diverged in practice: the panel offered programs from one
+/// LDIP record while the server resolved a different one, and every add was refused with
+/// <i>"LDIP program id(s) … do not belong to this office's GENERAL LDIP"</i>. Found by live-testing.
+///
+/// Both halves were individually correct. Serving the list from the same resolver the write path
+/// uses makes them agree by construction rather than by two teams keeping two copies in step.
+/// </summary>
+public record AipAddableProgramsDto(
+    string  GroupRefCode,
+    string  GroupName,
+    IReadOnlyList<AipAddableProgramDto> Programs);
 
 public record CreateAipProgramDto(string Name, string? FunctionBand = null);
 

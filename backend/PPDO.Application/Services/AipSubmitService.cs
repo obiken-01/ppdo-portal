@@ -117,14 +117,16 @@ public sealed class AipSubmitService : IAipSubmitService
 
         IReadOnlyList<AipActivityLineCountDto> counts =
             await _expRepo.CountByActivityIdsAsync(activities.Select(a => a.Id).ToList(), ct);
-        Dictionary<int, int> lineCountByActivity = counts.ToDictionary(c => c.ActivityId, c => c.LineCount);
+        Dictionary<int, AipActivityLineCountDto> countsByActivity =
+            counts.ToDictionary(c => c.ActivityId);
 
         List<AipReadinessIssueDto> issues = [];
 
         foreach (AipActivity activity in activities)
         {
             // Absent means zero — CountByActivityIdsAsync omits activities with no lines.
-            int lineCount = lineCountByActivity.GetValueOrDefault(activity.Id, 0);
+            AipActivityLineCountDto? counted = countsByActivity.GetValueOrDefault(activity.Id);
+            int lineCount = counted?.LineCount ?? 0;
 
             if (lineCount == 0)
             {
@@ -147,6 +149,17 @@ public sealed class AipSubmitService : IAipSubmitService
                     "zero-total", activity.Id, activity.RefCode,
                     $"'{activity.Name}' has expenditure lines but totals ₱0. Enter the amounts."));
             }
+
+            // ⚠️ A line with no funding source is INVISIBLE to the ceiling check, which sums
+            // General Fund only — a null fund is not the General Fund. Without this an office can
+            // encode any amount against no fund, satisfy "has at least one line", contribute
+            // nothing to its ceiling and submit cleanly. Found by live-testing, not review.
+            if (counted is { LinesWithoutFund: > 0 })
+                issues.Add(new AipReadinessIssueDto(
+                    "missing-fund", activity.Id, activity.RefCode,
+                    $"'{activity.Name}' has {counted.LinesWithoutFund} expenditure line"
+                    + $"{(counted.LinesWithoutFund == 1 ? "" : "s")} with no funding source. "
+                    + "A line without a fund is not counted against any ceiling."));
 
             if (string.IsNullOrWhiteSpace(activity.EsreCode))
                 issues.Add(new AipReadinessIssueDto(
