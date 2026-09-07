@@ -192,6 +192,10 @@ export default function AipEntryPage() {
                 <GroupBlock
                   key={group.id} group={group} canEdit={canEdit}
                   accounts={accounts} funds={funds}
+                  // Which fund the ceiling actually checks (V18-46 is General Fund only), so the
+                  // picker can mark it. An encoder otherwise has no way to tell why GF behaves
+                  // differently from every other fund at submit.
+                  generalFundId={readiness?.ceiling?.generalFundId ?? null}
                   // Structural changes (a new project or activity) need the tree back.
                   onStructureChanged={() => { void load(); void refreshReadiness(); }}
                   // ⚠️ An expenditure change must NOT reload the record. Doing so remounts the
@@ -229,12 +233,13 @@ export default function AipEntryPage() {
 // ── One sub-office group ──────────────────────────────────────────────────
 
 function GroupBlock({
-  group, canEdit, accounts, funds, onStructureChanged, onActivityTotals,
+  group, canEdit, accounts, funds, generalFundId, onStructureChanged, onActivityTotals,
 }: {
   group: AipOfficeDetail;
   canEdit: boolean;
   accounts: AccountResponse[];
   funds: FundingSourceResponse[];
+  generalFundId: number | null;
   onStructureChanged: () => void;
   onActivityTotals: (result: AipExpenditureWriteResult) => void;
 }) {
@@ -264,7 +269,8 @@ function GroupBlock({
                   <div className="mt-1 space-y-2 pl-4">
                     {project.activities.map((activity) => (
                       <ActivityBlock key={activity.id} activity={activity} canEdit={canEdit}
-                        accounts={accounts} funds={funds} onTotals={onActivityTotals} />
+                        accounts={accounts} funds={funds} generalFundId={generalFundId}
+                        onTotals={onActivityTotals} />
                     ))}
                     {canEdit && (
                       <InlineAdd label="+ Add activity" placeholder="Activity description"
@@ -296,12 +302,13 @@ function GroupBlock({
 // ── One activity, with its expenditure lines ──────────────────────────────
 
 function ActivityBlock({
-  activity, canEdit, accounts, funds, onTotals,
+  activity, canEdit, accounts, funds, generalFundId, onTotals,
 }: {
   activity: AipActivityDetail;
   canEdit: boolean;
   accounts: AccountResponse[];
   funds: FundingSourceResponse[];
+  generalFundId: number | null;
   onTotals: (result: AipExpenditureWriteResult) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -334,7 +341,7 @@ function ActivityBlock({
         ) : (
           <AipExpenditureTable
             activityId={activity.id} lines={lines} accounts={accounts} fundingSources={funds}
-            canEdit={canEdit}
+            canEdit={canEdit} generalFundId={generalFundId}
             onChanged={(result) => {
               // Refetch just this activity's lines, and hand the recomputed totals upward. The
               // record is NOT reloaded, so this row stays open and stays where it is.
