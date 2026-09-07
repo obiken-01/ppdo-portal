@@ -32,9 +32,7 @@ public sealed partial class AipServiceTests
     private static List<Office> PartitionOffices() =>
         [MakeOffice(PartitionOfficeId, "PPDO", "01-010"), MakeOffice(8, "GSO", "01-015")];
 
-    // ── Manual create — the one path that can already ask for either shape ────
-
-    // ── .xlsm import — legacy only; the freeze itself is V18-38 ───────────────
+    // ── The .xlsm freeze (V18-38 / PPDO-41) ───────────────────────────
 
     [Fact]
     public async Task ConfirmImport_FromTheBreakOnward_IsRefused()
@@ -168,14 +166,105 @@ public sealed partial class AipServiceTests
         }
     }
 
-    // ── Carry-forward and LDIP seeding — the paths that leaked ────────────────
+    // ── Opening a fiscal year (V18-41 / PPDO-62) ──────────────────────
 
     [Fact]
-    public async Task SeedProgramsFromLdip_CreatesTheTargetRecordForTheRequestedYear()
+    public async Task OpenFiscalYear_PopulatesEachOfficeFromItsOwnLdip()
     {
-        // ↩️ Was "StillProducesAnOwnerLessRecord" (PPDO-61). Records no longer have an owner at
-        // all, so what is left worth pinning is that seeding find-or-creates the record for the
-        // year it was ASKED for — not the latest, and not one it happened to find.
+        // The whole point of the action: an office should find its programs already there when it
+        // first opens the page, without anyone having pressed a per-office button.
+        var (sut, _, _, _, _, _, officeRepo, _, _, _, _, _, _) = Build([], [], officeSeed: [],
+            officeConfigSeed: PartitionOffices(), ldipRecordSeed: LdipSeedFor(PartitionOfficeId),
+            ldipOfficeSeed: LdipGroupsFor(PartitionOfficeId));
+
+        ServiceResult<OpenAipFiscalYearResultDto> result = await sut.OpenFiscalYearAsync(
+            new OpenAipFiscalYearDto(FirstNewFy), Guid.NewGuid(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, result.Value!.OfficesPopulated);
+        officeRepo.Verify(r => r.AddAsync(
+            It.Is<AipOffice>(o => o.OfficeId == PartitionOfficeId && o.Programs.Count == 1),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task OpenFiscalYear_TheSeededOffices_CarryTheirOwnershipFk()
+    {
+        // ⚠️ Without this the whole year is INVISIBLE to the offices it was opened for.
+        // AipReadScope filters on AipOffice.OfficeId, and after PPDO-61 that column is the only
+        // carrier of office identity on the AIP — a null means the office opens its own AIP and
+        // sees nothing, with no error and no empty-state explanation.
+        var (sut, _, _, _, _, _, officeRepo, _, _, _, _, _, _) = Build([], [], officeSeed: [],
+            officeConfigSeed: PartitionOffices(), ldipRecordSeed: LdipSeedFor(PartitionOfficeId),
+            ldipOfficeSeed: LdipGroupsFor(PartitionOfficeId));
+
+        await sut.OpenFiscalYearAsync(
+            new OpenAipFiscalYearDto(FirstNewFy), Guid.NewGuid(), CancellationToken.None);
+
+        officeRepo.Verify(r => r.AddAsync(
+            It.Is<AipOffice>(o => o.OfficeId == null), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task OpenFiscalYear_AnOfficeWithNoLdip_IsReportedRatherThanSilentlySkipped()
+    {
+        // ⚠️ The report is the point, not a nicety. An office absent from the base record cannot
+        // build its AIP and has no way to find out why — it opens the page and there is nothing
+        // there. GSO (office 8) has no LDIP in this fixture; PPDO does.
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], officeSeed: [],
+            officeConfigSeed: PartitionOffices(), ldipRecordSeed: LdipSeedFor(PartitionOfficeId),
+            ldipOfficeSeed: LdipGroupsFor(PartitionOfficeId));
+
+        ServiceResult<OpenAipFiscalYearResultDto> result = await sut.OpenFiscalYearAsync(
+            new OpenAipFiscalYearDto(FirstNewFy), Guid.NewGuid(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Contains("GSO", result.Value!.OfficesWithoutLdip);
+        Assert.DoesNotContain("PPDO", result.Value.OfficesWithoutLdip);
+    }
+
+    [Fact]
+    public async Task OpenFiscalYear_CopiesNoAmountsFromTheLdip()
+    {
+        // ⚠️ LdipProgram.Budget is a MULTI-YEAR total across FiscalYearStart..End, not a single-FY
+        // figure. Copying it would seed every office with numbers that mean something else, and
+        // V18-46's ceiling check would then be measuring a quantity nobody entered.
+        var (sut, _, _, _, _, _, officeRepo, _, _, _, _, _, _) = Build([], [], officeSeed: [],
+            officeConfigSeed: PartitionOffices(), ldipRecordSeed: LdipSeedFor(PartitionOfficeId),
+            ldipOfficeSeed: LdipGroupsFor(PartitionOfficeId));
+
+        await sut.OpenFiscalYearAsync(
+            new OpenAipFiscalYearDto(FirstNewFy), Guid.NewGuid(), CancellationToken.None);
+
+        // Bare shells only: name and ref code, no project/activity subtree to carry money in.
+        officeRepo.Verify(r => r.AddAsync(
+            It.Is<AipOffice>(o => o.Programs.All(prog => prog.Projects.Count == 0)),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task OpenFiscalYear_AYearThatIsAlreadyOpen_IsRefused()
+    {
+        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _, _) = Build(
+            RecordSeed(FirstNewFy), [], officeSeed: [], officeConfigSeed: PartitionOffices());
+
+        ServiceResult<OpenAipFiscalYearResultDto> result = await sut.OpenFiscalYearAsync(
+            new OpenAipFiscalYearDto(FirstNewFy), Guid.NewGuid(), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains(FirstNewFy.ToString(), result.Error!);
+        aipRepo.Verify(r => r.AddAsync(It.IsAny<AipRecord>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // ── LDIP seeding ────────────────────────────────────────────
+
+    [Fact]
+    public async Task SeedProgramsFromLdip_IntoAYearThatIsNotOpen_IsRefused()
+    {
+        // ↩️ Was "CreatesTheTargetRecordForTheRequestedYear" (PPDO-62), which was itself a rewrite
+        // of V18-37's shape test. It has now inverted: seeding no longer brings a year into
+        // existence, it syncs into one an Admin already opened. Third meaning for the same lines,
+        // and each rewrite kept whatever was still true rather than starting from a blank test.
         var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], officeSeed: [],
             officeConfigSeed: PartitionOffices(), ldipRecordSeed: LdipSeedFor(PartitionOfficeId),
             ldipOfficeSeed: LdipGroupsFor(PartitionOfficeId));
@@ -186,10 +275,9 @@ public sealed partial class AipServiceTests
                 Sector: "GENERAL", LdipProgramIds: [SeededLdipProgramId]),
             Guid.NewGuid(), WriteHostCaller(), CancellationToken.None);
 
-        Assert.True(result.IsSuccess);
-        aipRepo.Verify(r => r.AddAsync(
-            It.Is<AipRecord>(rec => rec.FiscalYear == LastLegacyFy), It.IsAny<CancellationToken>()),
-            Times.Once);
+        Assert.False(result.IsSuccess);
+        Assert.Contains("not been opened", result.Error!);
+        aipRepo.Verify(r => r.AddAsync(It.IsAny<AipRecord>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -200,7 +288,8 @@ public sealed partial class AipServiceTests
         // own FY2028 AIP and sees nothing — no error, no empty-state explanation, just absence.
         // The same failure V18-32's migration warns unmatched rows cause. The seed path never set
         // this field before V18-41; only the importer did.
-        var (sut, _, _, _, _, _, officeRepo, _, _, _, _, _, _) = Build([], [], officeSeed: [],
+        var (sut, _, _, _, _, _, officeRepo, _, _, _, _, _, _) = Build(
+            RecordSeed(FirstNewFy), [], officeSeed: [],
             officeConfigSeed: PartitionOffices(), ldipRecordSeed: LdipSeedFor(PartitionOfficeId),
             ldipOfficeSeed: LdipGroupsFor(PartitionOfficeId));
 
@@ -298,7 +387,7 @@ public sealed partial class AipServiceTests
         Assert.Contains(AipFiscalYears.FirstEnteredFiscalYear.ToString(), refusal);
     }
 
-    // ── The other door: changing shape one node at a time ────────────────────
+    // ── Adding offices to a record ─────────────────────────────────────
 
     [Fact]
     public async Task AddOffice_AnyOfficeOntoALegacyRecord_IsUntouched()

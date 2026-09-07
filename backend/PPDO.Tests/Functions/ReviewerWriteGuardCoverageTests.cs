@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Reflection;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
@@ -64,8 +64,12 @@ public sealed class ReviewerWriteGuardCoverageTests
     {
         List<(Type, MethodInfo, string)> found = DiscoverWriteEndpoints();
 
-        Assert.True(found.Count >= 40,
-            $"Expected at least 40 budget-planning write endpoints, found {found.Count}. " +
+        // ↩️ 40 → 39 on 2026-09-05 (PPDO-63), lowered deliberately as this message instructs:
+        // POST /budget-planning/aip/copy-office was removed with carry-forward. One endpoint, and
+        // the floor moved by exactly one — if it ever needs to drop by more than the number of
+        // endpoints a ticket knowingly deletes, something else has gone wrong with discovery.
+        Assert.True(found.Count >= 39,
+            $"Expected at least 39 budget-planning write endpoints, found {found.Count}. " +
             "If endpoints were legitimately removed, lower this floor deliberately — do not " +
             "delete the assertion, or the coverage theories start passing vacuously.");
     }

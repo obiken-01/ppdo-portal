@@ -1,4 +1,4 @@
-using PPDO.Application.Common;
+﻿using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
 using PPDO.Domain.Entities;
 
@@ -44,8 +44,8 @@ public interface IAipService
 
     /// <summary>Creates a blank Manual-entry AipRecord. Subject to the same one-active-AIP-per-
     /// fiscal-year guard as ConfirmImportAsync's create path.</summary>
-    Task<ServiceResult<AipRecordDto>> CreateManualRecordAsync(
-        CreateAipRecordDto dto, Guid createdById, CancellationToken ct = default);
+    Task<ServiceResult<OpenAipFiscalYearResultDto>> OpenFiscalYearAsync(
+        OpenAipFiscalYearDto dto, Guid createdById, CancellationToken ct = default);
 
     /// <summary>Adds an office (level 1) to a Draft AipRecord. RefCode is auto-derived from
     /// the sector prefix + the config Office's OfficeRefCode.</summary>
@@ -99,26 +99,12 @@ public interface IAipService
     Task<ServiceResult<bool>> DeleteActivityAsync(int activityId, User caller, CancellationToken ct = default);
 
     /// <summary>
-    /// RAL-180 — copies selected programs (with their full project/activity subtrees) from a
-    /// source office into a target fiscal year's office, carrying every field forward except
-    /// Id (fresh identity) and Activity.IsCreation (resets to false — a WFP-entry-time
-    /// classification, not something that should silently persist across fiscal years).
-    /// Find-or-creates the target AipRecord (Manual, Draft) and the target AipOffice (matched
-    /// by RefCode) as needed. Rejects if the target record exists but isn't a Draft
-    /// Manual-entry record, if any requested program doesn't belong to the source office, or
-    /// if any selected program's RefCode already exists under the target office (no silent
-    /// skip/overwrite). No lineage is recorded between the two years' rows.
-    /// </summary>
-    Task<ServiceResult<AipOfficeDto>> CopyOfficeFromPriorYearAsync(
-        CopyAipOfficeDto dto, Guid createdById, User caller, CancellationToken ct = default);
-
-    /// <summary>
     /// RAL-181 — seeds bare-shell AipProgram rows (Name+RefCode only, FunctionBand=CORE) from
     /// the matching LdipOffice's programs for the given office+sector. Resolves the LdipOffice by
     /// scanning the config office's non-Archived LdipRecords (newest first) for the first one that
     /// has a sector group matching <see cref="SeedAipProgramsFromLdipDto.Sector"/> (case-insensitive
     /// — LDIP stores "General"/"Social"/…, AIP stores "GENERAL"/"SOCIAL"/…). Find-or-creates the
-    /// target AipRecord/AipOffice using the same rule as <see cref="CopyOfficeFromPriorYearAsync"/>.
+    /// target AipRecord/AipOffice.
     /// Rejects if no matching LdipOffice exists, if any selected LDIP program doesn't belong to it,
     /// or if any selected program's RefCode already exists under the target office. No Project/
     /// Activity rows are created and no LDIP budget/funding-source/schedule/CC/alignment fields are

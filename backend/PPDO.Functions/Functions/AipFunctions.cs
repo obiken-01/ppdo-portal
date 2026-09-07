@@ -125,25 +125,34 @@ public sealed class AipFunctions
             await _aip.ConfirmImportAsync(body, caller!.Id, ct), ct, HttpStatusCode.Created);
     }
 
-    // ── Manual entry (RAL-62) — gated on CanAccessBudgetPlanning, NOT CanUploadAip ──
-    // Office users who can never upload an .xlsm can still build an AIP by hand.
-
-    // ── POST /api/budget-planning/aip  (create blank Manual AipRecord) ───────
-    [Function("AipCreateManual")]
-    public async Task<HttpResponseData> CreateManual(
+    // ── POST /api/budget-planning/aip  (open a fiscal year) ────────────────
+    // ⚠️ ADMIN ONLY (PPDO-62). Opening a year creates the one base record every office builds
+    // into, and archiving it hides a whole year's work from every office at once. Both were
+    // CanAccessBudgetPlanning before, i.e. any budget-planning user.
+    //
+    // The role check sits here rather than in PermissionService, matching AipUnlock / LdipUnlock /
+    // WfpUnlock: a ROLE is not a flag. Flags carry per-user overrides and a Permission_Matrix.md
+    // row enforced by PermissionMatrixTests; this has neither.
+    [Function("AipOpenFiscalYear")]
+    public async Task<HttpResponseData> OpenFiscalYear(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/aip")] HttpRequestData req,
         CancellationToken ct)
     {
         (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
-        CreateAipRecordDto? body = await ConfigHttp.ReadBodyAsync<CreateAipRecordDto>(req, ct);
+        if (caller!.Role is not (UserRole.SuperAdmin or UserRole.Admin))
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.Forbidden,
+                ApiResponse<OpenAipFiscalYearResultDto>.Fail(
+                    "Only an administrator can open a fiscal year for AIP entry."), ct);
+
+        OpenAipFiscalYearDto? body = await ConfigHttp.ReadBodyAsync<OpenAipFiscalYearDto>(req, ct);
         if (body is null)
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
-                ApiResponse<AipRecordDto>.Fail("Request body is missing or malformed."), ct);
+                ApiResponse<OpenAipFiscalYearResultDto>.Fail("Request body is missing or malformed."), ct);
 
         return await ConfigHttp.FromResultAsync(req,
-            await _aip.CreateManualRecordAsync(body, caller!.Id, ct), ct, HttpStatusCode.Created);
+            await _aip.OpenFiscalYearAsync(body, caller.Id, ct), ct, HttpStatusCode.Created);
     }
 
     // ── POST /api/budget-planning/aip/{aipId}/offices ─────────────────────────
@@ -164,32 +173,10 @@ public sealed class AipFunctions
             await _aip.AddOfficeAsync(aipId, body, caller!, ct), ct, HttpStatusCode.Created);
     }
 
-    // ── POST /api/budget-planning/aip/copy-office ─────────────────────────────
-    // RAL-180 — carry forward selected programs (with full subtrees) from a prior fiscal
-    // year's office into the target fiscal year, creating the target record/office if needed.
-    // CanAccessBudgetPlanning, not CanUploadAip — same reasoning as manual entry (RAL-62/179):
-    // this isn't a new file import, office users should be able to do it too.
-    [Function("AipCopyOffice")]
-    public async Task<HttpResponseData> CopyOffice(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/aip/copy-office")] HttpRequestData req,
-        CancellationToken ct)
-    {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
-        if (denied is not null) return denied;
-
-        CopyAipOfficeDto? body = await ConfigHttp.ReadBodyAsync<CopyAipOfficeDto>(req, ct);
-        if (body is null)
-            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
-                ApiResponse<AipOfficeDto>.Fail("Request body is missing or malformed."), ct);
-
-        return await ConfigHttp.FromResultAsync(req,
-            await _aip.CopyOfficeFromPriorYearAsync(body, caller!.Id, caller!, ct), ct, HttpStatusCode.Created);
-    }
-
     // ── POST /api/budget-planning/aip/seed-programs-from-ldip ─────────────────
     // RAL-181 — seed an office's AIP programs (Name+RefCode only, bare shells) from that
     // office's existing LDIP for the given sector. CanAccessBudgetPlanning, same reasoning as
-    // CopyOffice/manual entry — not a new file import.
+    // manual entry — not a new file import.
     [Function("AipSeedProgramsFromLdip")]
     public async Task<HttpResponseData> SeedProgramsFromLdip(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/aip/seed-programs-from-ldip")] HttpRequestData req,
@@ -392,6 +379,12 @@ public sealed class AipFunctions
     {
         (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
+
+        // ⚠️ ADMIN ONLY (PPDO-62) - archiving a base record hides a whole fiscal year's work from
+        // every office at once. See AipOpenFiscalYear for why this is a role check, not a flag.
+        if (caller!.Role is not (UserRole.SuperAdmin or UserRole.Admin))
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.Forbidden,
+                ApiResponse<bool>.Fail("Only an administrator can archive an AIP record."), ct);
 
         return await ConfigHttp.FromResultAsync(req, await _aip.ArchiveAsync(id, ct), ct);
     }

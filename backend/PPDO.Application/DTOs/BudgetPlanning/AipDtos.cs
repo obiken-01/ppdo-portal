@@ -150,16 +150,31 @@ public record AipImportConfirmDto(
 
 /// <summary>Body of POST /api/budget-planning/aip — creates a blank Manual-entry AipRecord.</summary>
 /// <summary>
-/// Body of POST /api/budget-planning/aip — opens a fiscal year.
+/// Body of POST /api/budget-planning/aip — opens a fiscal year (PPDO-62). Admin/SuperAdmin only.
 ///
 /// <para>
 /// ↩️ V18-40's <c>OfficeConfigId</c> was removed (PPDO-61): it chose a record shape, and there is
 /// only one. <b>One base record per fiscal year holds every office</b>, so the year is all this
-/// needs. PPDO-62 makes opening a year an Admin action that also populates each office's programs
-/// from its LDIP.
+/// needs.
 /// </para>
 /// </summary>
-public record CreateAipRecordDto(int FiscalYear);
+public record OpenAipFiscalYearDto(int FiscalYear);
+
+/// <summary>
+/// What opening a fiscal year did (PPDO-62).
+/// </summary>
+/// <param name="Record">The base record that now holds every office.</param>
+/// <param name="OfficesPopulated">How many <c>AipOffice</c> rows were created across all sectors.</param>
+/// <param name="OfficesWithoutLdip">
+/// ⚠️ <b>Names of active offices that got nothing, because they have no LDIP in any sector.</b>
+/// This is a real output, not a nicety: such an office cannot build its AIP and has no way to
+/// discover why — it opens the page and finds nothing. Surface this list; do not swallow it
+/// because the operation "succeeded".
+/// </param>
+public record OpenAipFiscalYearResultDto(
+    AipRecordDto Record,
+    int OfficesPopulated,
+    IReadOnlyList<string> OfficesWithoutLdip);
 
 /// <summary>
 /// Body of POST /api/budget-planning/aip/{aipId}/offices. <see cref="OfficeConfigId"/> is the
@@ -173,16 +188,9 @@ public record CreateAipRecordDto(int FiscalYear);
 public record CreateAipOfficeDto(int OfficeConfigId, string Sector, string? Name = null);
 
 /// <summary>
-/// RAL-180 — carry forward selected programs (with full project/activity subtrees) from
-/// <see cref="SourceOfficeId"/> into the target fiscal year. Target AipRecord/AipOffice are
-/// found-or-created by the service.
-/// </summary>
-public record CopyAipOfficeDto(int SourceOfficeId, int TargetFiscalYear, IReadOnlyList<int> ProgramIds);
-
-/// <summary>
 /// RAL-181 — seed an AIP office's programs (Name+RefCode only, no Project/Activity rows) from
 /// that office's existing LDIP for <see cref="Sector"/>. Target AipRecord/AipOffice are
-/// found-or-created by the service using the same rule as <see cref="CopyAipOfficeDto"/>.
+/// found-or-created by the service.
 /// </summary>
 public record SeedAipProgramsFromLdipDto(
     int TargetFiscalYear, int OfficeConfigId, string Sector, IReadOnlyList<int> LdipProgramIds);

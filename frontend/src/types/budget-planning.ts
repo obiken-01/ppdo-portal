@@ -84,13 +84,21 @@ export interface AipImportConfirmRequest {
 
 // ── AIP manual entry (RAL-62) — one node at a time ────────────────────────────
 
-export interface CreateAipRecordRequest {
+/** Opens a fiscal year (PPDO-62) — Admin/SuperAdmin only. */
+export interface OpenAipFiscalYearRequest {
   fiscalYear: number;
+}
+
+/** What opening a fiscal year did. */
+export interface OpenAipFiscalYearResult {
+  record: AipRecordResponse;
+  officesPopulated: number;
   /**
-   * ↩️ `officeConfigId` was removed 2026-09-05 (PPDO-61). It chose a record SHAPE, and there is
-   * only one: **one base AIP record per fiscal year holds every office**. PPDO-62 makes opening a
-   * year an Admin action that also populates each office's programs from its LDIP.
+   * ⚠️ Active offices that got nothing, because they have no LDIP in any sector. Show this —
+   * such an office cannot build its AIP and has no way to find out why: it opens the page and
+   * there is simply nothing there.
    */
+  officesWithoutLdip: string[];
 }
 
 export interface CreateAipOfficeRequest {
@@ -99,14 +107,6 @@ export interface CreateAipOfficeRequest {
   /** Defaults to the config office's name server-side when omitted/blank — override for
    * sub-office/program-cluster rows sharing the same office (e.g. "...- SPECIAL PROJECTS"). */
   name?: string | null;
-}
-
-/** RAL-180 — carry forward selected programs (with full subtrees) from a prior fiscal
- * year's office into the target fiscal year. Target record/office are found-or-created. */
-export interface CopyAipOfficeRequest {
-  sourceOfficeId: number;
-  targetFiscalYear: number;
-  programIds: number[];
 }
 
 /** RAL-181 — seed an office's AIP programs (Name+RefCode only, bare shells) from that

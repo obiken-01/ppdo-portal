@@ -277,7 +277,7 @@ public sealed class WfpServiceTests
         // a refusal arriving after AddAsync is the original bug with a message attached. Asserting
         // AddAsync is never reached is what pins that — a guard placed lower would still return
         // BadRequest and still pass a test that only checked the status code. This is the exact
-        // failure V18-37 found in CopyOfficeFromPriorYearAsync and SeedProgramsFromLdipAsync.
+        // failure V18-37 found in SeedProgramsFromLdipAsync and the since-removed carry-forward.
         var (sut, wfpRepo, _, _, _, _) = Build([], [], [], []);
 
         ServiceResult<WfpRecordDto> result = await sut.SaveAsync(

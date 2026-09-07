@@ -12,9 +12,9 @@ import type {
   AipRecordSummary,
   AipImportPreviewResponse,
   AipImportConfirmRequest,
-  CreateAipRecordRequest,
+  OpenAipFiscalYearRequest,
+  OpenAipFiscalYearResult,
   CreateAipOfficeRequest,
-  CopyAipOfficeRequest,
   SeedAipProgramsFromLdipRequest,
   CreateAipProgramRequest,
   CreateAipProjectRequest,
@@ -95,28 +95,18 @@ export async function confirmAipImport(body: AipImportConfirmRequest): Promise<A
 }
 
 // ---------------------------------------------------------------------------
-// AIP manual entry (RAL-62) — one node at a time
+// Opening a fiscal year (PPDO-62) — Admin only; creates the one base record and
+// populates every office's programs from its own LDIP.
 // ---------------------------------------------------------------------------
 
-export async function createManualAipRecord(body: CreateAipRecordRequest): Promise<AipRecordResponse> {
-  const { data } = await api.post<ApiResponse<AipRecordResponse>>("/budget-planning/aip", body);
+export async function openAipFiscalYear(body: OpenAipFiscalYearRequest): Promise<OpenAipFiscalYearResult> {
+  const { data } = await api.post<ApiResponse<OpenAipFiscalYearResult>>("/budget-planning/aip", body);
   return unwrap(data);
 }
 
 export async function addAipOffice(aipId: number, body: CreateAipOfficeRequest): Promise<AipOfficeDetail> {
   const { data } = await api.post<ApiResponse<AipOfficeDetail>>(
     `/budget-planning/aip/${aipId}/offices`, body
-  );
-  return unwrap(data);
-}
-
-// ---------------------------------------------------------------------------
-// AIP carry-forward (RAL-180) — copy selected programs from a prior fiscal year's office
-// ---------------------------------------------------------------------------
-
-export async function copyAipOfficeFromPriorYear(body: CopyAipOfficeRequest): Promise<AipOfficeDetail> {
-  const { data } = await api.post<ApiResponse<AipOfficeDetail>>(
-    "/budget-planning/aip/copy-office", body
   );
   return unwrap(data);
 }

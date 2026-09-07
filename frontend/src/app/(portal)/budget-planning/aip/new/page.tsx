@@ -4,7 +4,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useMe } from "@/lib/me-cache";
-import { aipErrorMessage, getAipById, uploadAipFile, createManualAipRecord } from "@/lib/aip";
+import { aipErrorMessage, getAipById, uploadAipFile, openAipFiscalYear } from "@/lib/aip";
 import { aipUploadRefusal } from "@/lib/aip-fiscal-years";
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -240,21 +240,32 @@ function UploadTab({ replaceId }: { replaceId: number | null }) {
 // Activity, plus editing) happens on the detail page's own inline table controls, so adding
 // and editing an AIP share one UI instead of two.
 
-function ManualEntryTab() {
+function ManualEntryTab({ isAdmin }: { isAdmin: boolean }) {
   const router = useRouter();
 
   const [fiscalYear, setFiscalYear] = useState<number>(CURRENT_YEAR);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [skipped, setSkipped] = useState<string[] | null>(null);
 
   async function handleStart() {
     setCreating(true);
     setCreateError(null);
+    setSkipped(null);
     try {
-      const rec = await createManualAipRecord({ fiscalYear });
-      router.push(`/budget-planning/aip/detail?id=${rec.id}`);
+      const result = await openAipFiscalYear({ fiscalYear });
+
+      // ⚠️ Offices with no LDIP got nothing and cannot build their AIP. Hold the user here to
+      // show them rather than navigating away — nobody would otherwise learn which offices are
+      // missing until one of them opens an empty page and asks why.
+      if (result.officesWithoutLdip.length > 0) {
+        setSkipped(result.officesWithoutLdip);
+        setCreating(false);
+        return;
+      }
+      router.push(`/budget-planning/aip/detail?id=${result.record.id}`);
     } catch (err) {
-      setCreateError(aipErrorMessage(err, "Could not start a new AIP. Please try again."));
+      setCreateError(aipErrorMessage(err, "Could not open the fiscal year. Please try again."));
       setCreating(false);
     }
   }
@@ -273,20 +284,43 @@ function ManualEntryTab() {
           {FY_OPTIONS.map((y) => <option key={y} value={y}>{y}</option>)}
         </select>
       </div>
+      {!isAdmin && (
+        <div className="border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span className="font-semibold">Opening a fiscal year is an administrator action.</span>{" "}
+          It creates the AIP every office builds into, and fills in each office&apos;s programs from
+          its LDIP. Ask an administrator to open the year; you can then enter your office&apos;s part.
+        </div>
+      )}
       {createError && (
         <div className="border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">
           {createError}
         </div>
       )}
+      {skipped && (
+        <div className="border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 space-y-1">
+          <p className="font-semibold">
+            FY {fiscalYear} is open, but {skipped.length} office
+            {skipped.length === 1 ? " has" : "s have"} no LDIP and got no programs:
+          </p>
+          <ul className="list-disc list-inside">
+            {skipped.map((name) => <li key={name}>{name}</li>)}
+          </ul>
+          <p className="text-xs">
+            Create their LDIP, then use &ldquo;Seed from LDIP&rdquo; on the AIP to bring the
+            programs in. Until then those offices cannot build their AIP.
+          </p>
+        </div>
+      )}
       <div className="flex items-center gap-3">
         <button
           onClick={handleStart}
-          disabled={creating}
+          disabled={creating || !isAdmin}
+          title={isAdmin ? undefined : "Only an administrator can open a fiscal year."}
           className={`px-5 py-2 text-sm font-medium text-white transition-colors ${
-            creating ? "bg-green-300 cursor-not-allowed" : "bg-green-700 hover:bg-green-800"
+            creating || !isAdmin ? "bg-green-300 cursor-not-allowed" : "bg-green-700 hover:bg-green-800"
           }`}
         >
-          {creating ? "Starting…" : "Start New AIP"}
+          {creating ? "Opening…" : "Open Fiscal Year"}
         </button>
         <Link
           href="/budget-planning/aip"
@@ -365,7 +399,9 @@ function AipNewInner() {
           </div>
 
           {activeTab === "upload" && canUpload && <UploadTab replaceId={replaceId} />}
-          {activeTab === "manual" && <ManualEntryTab />}
+          {activeTab === "manual" && (
+            <ManualEntryTab isAdmin={me?.role === "Admin" || me?.role === "SuperAdmin"} />
+          )}
         </div>
 
         {/* ── Right column: help panel ── */}
