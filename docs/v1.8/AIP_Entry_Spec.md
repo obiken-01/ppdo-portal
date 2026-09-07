@@ -180,11 +180,42 @@ have already flipped are not flipped back.
     not a copied artefact. ⚠️ This is the one field the “no schedule concepts” rule above does
     **not** reach — do not remove it while stripping the period dimension.
 
-16. **The `ProgramDivision` program-half FK is closed in Phase 3** (P3-b answered 2026-09-07,
-    matching this spec's default). ⚠️ **It gets its OWN ticket — PPDO-65, landing before
-    V18-42** — rather than being folded into it: it is a backend change carrying a migration and
-    a legacy path that must keep working, and V18-42 is already the largest item in the phase.
-    See §5.4.
+16. ↩️ **The `ProgramDivision` program half STAYS a ref-code string. V18-42 re-links it on
+    renumber instead** (P3-b, settled 2026-09-07). ⚠️ **This reverses what §5.4 and an earlier
+    version of this decision said** — they prescribed an FK to `aip_programs.id`, and that is
+    wrong. PPDO-65 was raised for it and is cancelled; the work folds into V18-42.
+
+    **Why the FK is wrong.** §5.4 argued only that the string existed because a re-upload
+    recreates programs with fresh IDs, and FY2028+ has no upload. True, and incomplete — there
+    is a **second, independent** reason, recorded on `ProgramDivision` itself since RAL-249:
+    the assignment is **deliberately permanent across fiscal years**, *"one assignment serves
+    every FY whose program carries the same ref code."*
+
+    That is live in code, not merely documented. `AllocationService.GetProgramAssignmentsAsync`
+    scopes `ProgramDivision` rows by **office FK only, with no fiscal year**, then matches them
+    to the requested year's programs by `ProgramRefCode`. Since decision 12 gave each fiscal
+    year its own AIP record, FY2029's `aip_programs` rows are **different rows** from FY2028's.
+    An FK to `aip_programs.id` therefore **pins the assignment to one year**: assign in FY2028
+    and FY2029 comes back with nothing assigned, silently. That is a worse failure than the one
+    it was meant to fix, and `ProgramDivision`'s class comment says so outright — *"Do not
+    'finish the job' by adding one. RAL-249 explored this and stopped here on purpose."*
+
+    **The defect has no live trigger today.** `UpdateProgramAsync` writes only `Name` and
+    `FunctionBand`; `UpdateAipProgramRequest` carries only those two. `AipProgram.RefCode` is
+    set at creation and edited by no path, and `DeleteProgramAsync` does not renumber —
+    `RefCodeAllocator` says as much, that renumbering *"is a numbering question owned by
+    V18-42"*.
+
+    ⚠️ **V18-42 is what creates the trigger**, which is why the fix belongs there. Its
+    acceptance line *"removing a middle program renumbers without leaving a gap"* means ref
+    codes start changing — and that is exactly when assignments detach.
+
+    **The rule: whenever V18-42 renumbers a program's `RefCode`, it updates the matching
+    `ProgramDivision.ProgramRefCode` rows in the same transaction.** Cross-fiscal-year
+    permanence is preserved, no migration is needed, and the actual failure is closed at its
+    source. ⚠️ Same transaction, not a follow-up write: a renumber that commits without its
+    re-link leaves assignments pointing at codes no program carries, which is the original bug
+    with extra steps.
 
 17. **`workflow_status`'s migration belongs to V18-42, not V18-49** (settled 2026-09-07). §5.1
     filed it under V18-49, but **V18-42 ships the submit action itself** and the read-only state
@@ -219,7 +250,7 @@ Known, accepted, and worth re-reading when netting is built.
 | # | Question | Blocks | Default if unanswered |
 |---|---|---|---|
 | ~~**P3-a**~~ | ✅ **ANSWERED 2026-09-07 — the FULL WFP treatment**: picker, presets, arithmetic and duplicate warning all come across. ↩️ **Against this table's default**, so read decision 15 rather than this row — including the two things that must *not* come across | V18-80 | ~~Item selection + cost~~ — overridden |
-| ~~**P3-b**~~ | ✅ **ANSWERED 2026-09-07 — yes, close it now**, as the default proposed, but **in its own ticket (PPDO-65) ahead of V18-42** rather than inside it. See decision 16 and §5.4 | V18-42 (PPDO visibility) | Default confirmed |
+| ~~**P3-b**~~ | ↩️ **ANSWERED 2026-09-07 — NO, the string stays; V18-42 re-links on renumber.** ⚠️ **Against this table's default and against §5.4's own recommendation**, both of which missed that the assignment is permanent across fiscal years. Read decision 16 | V18-42 (PPDO visibility) | ~~Yes, close the FK~~ — **overridden, it would break cross-FY permanence** |
 | **P3-c** | **Two encoders in one office editing at once** (tracker D5 confirms two or more per office). Optimistic concurrency per node, or last-write-wins? | V18-42 | Optimistic concurrency **per node**, surfaced as "this activity was changed by someone else — reload". Last-write-wins on a shared document loses an encoder's work with no signal, which is the failure nobody reports because nobody notices it happened |
 | **P3-d** | **Ref-code segment meanings and reset points.** The format is confirmed; the meanings are not, and segment count varies with depth. Tracker **B9-b** | **Not Phase 3** — V18-76 | V18-44 needs neither: allocating a sibling-unique `seq` is independent of what the segments mean. Recorded here because this is where someone will first want the answer |
 
@@ -398,11 +429,25 @@ phase serves, a durable program identity exists for the first time.
 
 That does not make it free: FY≤2027 stays re-uploadable, so any FK must tolerate the legacy path.
 
-✅ **DECIDED 2026-09-07 — close it, in its own ticket.** P3-b is answered as this section proposed.
-It ships as **PPDO-65**, ahead of and blocking V18-42, rather than inside it: the change is backend
-plus a migration plus a legacy re-upload path that must keep working, and V18-42 is already the
-phase's largest item. Folding the two together produces exactly the unreviewable diff §6.4 warns
-about.
+↩️ **DECIDED 2026-09-07 — the FK is NOT added. This section's recommendation above is WRONG and is
+kept only as the record of a reversed argument.** Read §2 decision 16 instead.
+
+**What this section missed.** The re-upload argument is sound as far as it goes, but it is only half
+the reason the program half is a string. The other half is on `ProgramDivision` itself: the
+assignment is **permanent across fiscal years** — one row serves every FY whose program carries the
+same ref code — and `AllocationService.GetProgramAssignmentsAsync` implements exactly that, scoping
+by office FK with **no fiscal year** and matching on `ProgramRefCode`. With one AIP record per
+fiscal year (decision 12), an FK to `aip_programs.id` pins each assignment to a single year and the
+next year silently resolves to none. `ProgramDivision`'s class comment has said so since RAL-249:
+*"Do not 'finish the job' by adding one."*
+
+✅ **What happens instead: V18-42 re-links on renumber** — when it changes a program's `RefCode`, it
+updates the matching `ProgramDivision.ProgramRefCode` rows **in the same transaction**. No new
+column, no migration, cross-FY permanence intact.
+
+ℹ️ Note also that the defect has **no live trigger before V18-42**: `RefCode` is set at creation and
+no update path edits it. V18-42's renumbering is what makes this urgent, which is the other reason
+it belongs there rather than in a ticket ahead of it.
 
 ### 5.5 Migration order
 
@@ -508,10 +553,14 @@ Epic **PPDO-48**. Blocking relations are wired in Linear, not only described her
 ahead of the entry UI, because V18-42 cannot be built until the record it fills exists in the
 right shape.
 
-↩️ **Revised again 2026-09-07** by decisions 15–17. **Two more tickets land ahead of V18-42** —
-PPDO-64 (the §6.4 extraction, which had no ticket to extract into) and PPDO-65 (P3-b's FK). And
+↩️ **Revised again 2026-09-07** by decisions 15–17. **PPDO-64 lands ahead of V18-42** — the §6.4
+extraction, which both this spec and PPDO-52 demanded and neither had filed a ticket for. And
 **PPDO-54 grows M → L**: P3-a chose the full WFP treatment, so it carries the picker, presets and
 duplicate rule rather than a select and a number field.
+
+↩️ **PPDO-65 was raised for P3-b's FK and is CANCELLED** — the FK would have broken cross-fiscal-year
+permanence (decision 16). Its replacement is a rule inside V18-42, not a ticket: re-link
+`ProgramDivision` on renumber, same transaction.
 
 | Ticket | # | Size | Blocked by |
 |---|---|---|---|
@@ -522,8 +571,8 @@ duplicate rule rather than a select and a number field.
 | PPDO-50 | V18-44 — ref-code generation | M | — |
 | PPDO-51 | V18-41 — programs from a valid LDIP | S | — |
 | **PPDO-64** 🆕 | §6.4 — extract `aip/detail/page.tsx`; pure move, no behaviour change | M | — |
-| **PPDO-65** 🆕 | P3-b — close the `ProgramDivision` program-half FK (§5.4) | M | — |
-| PPDO-52 | V18-42 — three-stage entry UI **+ the `workflow_status` migration** (decision 17) | **L** | PPDO-50, PPDO-62, **PPDO-64**, **PPDO-65** |
+| ~~PPDO-65~~ | ~~P3-b — close the `ProgramDivision` program-half FK~~ ↩️ **CANCELLED** — folded into PPDO-52 as re-link-on-renumber (decision 16) | — | — |
+| PPDO-52 | V18-42 — three-stage entry UI **+ the `workflow_status` migration** (decision 17) **+ ProgramDivision re-link on renumber** (decision 16) | **L** | PPDO-50, PPDO-62, **PPDO-64** |
 | PPDO-53 | V18-43 — multi-fund toggle | S | PPDO-52 |
 | PPDO-54 | V18-80 — procurement lines from the Price Index, **full WFP treatment** (decision 15) | **L** | PPDO-52 · ~~P3-a~~ ✅ |
 | PPDO-55 | V18-45 — reservation ledger | M | PPDO-49 |
@@ -534,12 +583,12 @@ duplicate rule rather than a select and a number field.
 
 **Order (revised 2026-09-07).** `61`, `62`, `63`, `49`, `50`, `51` are ✅ merged. What remains:
 
-    64 -> 65 -> 52 -> 53 -> 59      entry track (59 also needs 56)
-          55 -> 56 -> 57            ledger/ceiling track, shares no files with the entry track
-          58 anytime, 54 last
+    64 -> 52 -> 53 -> 59            entry track (59 also needs 56)
+    55 -> 56 -> 57                  ledger/ceiling track, shares no files with the entry track
+    58 anytime, 54 last
 
-`64` and `65` both land before `52` and are independent of each other. `54` is last and is the
-natural slip candidate if v1.8.0 needs trimming — it is now **L**, and nothing depends on it.
+`64` is the only thing left ahead of `52`. `54` is last and is the natural slip candidate if
+v1.8.0 needs trimming — it is now **L**, and nothing depends on it.
 
 ⚠️ **PPDO-51 (V18-41) is superseded in part.** Its closed-list rule stands and its server guard is
 kept; its *office-owned seeding* is exactly what PPDO-61 reverses, and the population it built moves
@@ -565,6 +614,8 @@ component.
 - [ ] An office with no LDIP sees an empty state naming the LDIP — not a blank picker
 - [ ] Typing a new sub-office group name starts a new group; program numbering continues across groups rather than restarting
 - [ ] Removing a middle program renumbers without leaving a gap
+- [ ] After that renumber, every affected program **keeps its division assignment** — a PPDO
+      encoder in that division still sees it, and a prior fiscal year's assignment is unchanged
 - [ ] Two browsers editing the same activity: the second save shows "changed by someone else", and the first encoder's value survives
 - [ ] Deleting an activity's last expenditure line leaves `Total` **0**; an activity that never had lines still shows **no** total
 - [ ] Entering ₱2M over the GF ceiling is **allowed** while encoding, with no blocking dialog
@@ -585,7 +636,7 @@ component.
 
 | Class | Cover |
 |---|---|
-| `AipEntryServiceTests` (new) | The three-stage create path; sibling-unique ref codes under concurrent creates; program numbering across groups and after removal |
+| `AipEntryServiceTests` (new) | The three-stage create path; sibling-unique ref codes under concurrent creates; program numbering across groups and after removal. **Plus the `ProgramDivision` re-link (decision 16): a renumber preserves the assignment, and a rolled-back renumber leaves neither half applied** |
 | `AipCeilingServiceTests` (new) | **One test per trap, each named**: GF-only, PS exempt, rounded figures, base-not-uplifted. Plus blank-row-means-zero, and the office-level (division-less) shape |
 | `AipSubmitGateTests` (new) | Each failing condition **individually**, not just the happy path; never-costed vs costed-at-zero; the over-ceiling refusal's wording |
 | `AipReadScopeTests` (extend) | The new entry call sites — guest clamp, host-office division filter, and that the division filter does **not** reach guest offices |
