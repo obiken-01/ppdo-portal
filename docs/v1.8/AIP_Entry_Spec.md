@@ -174,9 +174,11 @@ have already flipped are not flipped back.
     normal. With no periods, the AIP's scope is **the activity's own expenditure lines**.
     Re-derive the rule; do not transliterate it.
 
-    ❓ **One field left open — `numberOfDays`.** `qty × unitPrice × numberOfDays` is a WFP
-    scheduling notion. Keep it for parity unless Ralph says otherwise. Flagged rather than
-    decided, because it is the one place “copy WFP” is genuinely ambiguous.
+    ✅ **`numberOfDays` is KEPT — settled 2026-09-07, and not merely for parity.** It was left
+    open here on the reading that `qty × unitPrice × numberOfDays` is a scheduling notion the
+    plan does not need. **PPDO employees asked for it**, so it is a requirement in its own right,
+    not a copied artefact. ⚠️ This is the one field the “no schedule concepts” rule above does
+    **not** reach — do not remove it while stripping the period dimension.
 
 16. **The `ProgramDivision` program-half FK is closed in Phase 3** (P3-b answered 2026-09-07,
     matching this spec's default). ⚠️ **It gets its OWN ticket — PPDO-65, landing before
