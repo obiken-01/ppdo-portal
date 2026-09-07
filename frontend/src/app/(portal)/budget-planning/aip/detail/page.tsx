@@ -28,6 +28,14 @@ import {
 import { listLdip, getLdipById } from "@/lib/ldip";
 import { listOffices, listFundingSources } from "@/lib/config";
 import { aipProgramsAreLdipOnly, aipUploadRefusal } from "@/lib/aip-fiscal-years";
+import {
+  sumActivities,
+  replaceActivity, removeActivityFromTree, addActivityToTree,
+  replaceProject, removeProjectFromTree, addProjectToTree,
+  replaceProgram, removeProgramFromTree, addProgramToTree,
+  replaceOffice, removeOfficeFromTree, addOfficeToTree,
+  groupBySector, toggleSet, allCollapsed,
+} from "@/lib/aip-tree";
 import { fmt, toDisplayUnits, toStorageUnits } from "@/lib/aip-units";
 import {
   AIP_MONTHS, AIP_ESRE_OPTIONS, AIP_SECTOR_OPTIONS, AIP_SECTOR_PREFIX, AIP_FUNCTION_BANDS,
@@ -56,145 +64,6 @@ function Chevron({ open, className = "" }: { open: boolean; className?: string }
       <polyline points="4,2 8,6 4,10" />
     </svg>
   );
-}
-
-function sumActivities(
-  office: AipOfficeDetail,
-  field: keyof Pick<AipActivityDetail, "ps" | "mooe" | "co" | "total">
-): number {
-  return office.programs
-    .flatMap((p) => p.projects)
-    .flatMap((p) => p.activities)
-    .reduce((s, a) => s + (a[field] ?? 0), 0);
-}
-
-// RAL-179 — immutably replaces one activity in the nested tree after a successful inline edit.
-function replaceActivity(record: AipRecordDetail, updated: AipActivityDetail): AipRecordDetail {
-  return {
-    ...record,
-    offices: record.offices.map((o) => ({
-      ...o,
-      programs: o.programs.map((p) => ({
-        ...p,
-        projects: p.projects.map((j) =>
-          j.id !== updated.projectId ? j : {
-            ...j,
-            activities: j.activities.map((a) => (a.id === updated.id ? updated : a)),
-          }
-        ),
-      })),
-    })),
-  };
-}
-
-// ── Detail-page CRUD follow-up to RAL-179 — generic immutable tree updates for the other three
-// levels. Every DTO already carries its immediate parent's id (officeId/programId/projectId), so
-// these locate the right spot the same way replaceActivity does above — no need to thread parent
-// ids through component props separately.
-
-function removeActivityFromTree(record: AipRecordDetail, projectId: number, activityId: number): AipRecordDetail {
-  return {
-    ...record,
-    offices: record.offices.map((o) => ({
-      ...o,
-      programs: o.programs.map((p) => ({
-        ...p,
-        projects: p.projects.map((j) =>
-          j.id !== projectId ? j : { ...j, activities: j.activities.filter((a) => a.id !== activityId) }
-        ),
-      })),
-    })),
-  };
-}
-
-function addActivityToTree(record: AipRecordDetail, projectId: number, newActivity: AipActivityDetail): AipRecordDetail {
-  return {
-    ...record,
-    offices: record.offices.map((o) => ({
-      ...o,
-      programs: o.programs.map((p) => ({
-        ...p,
-        projects: p.projects.map((j) =>
-          j.id !== projectId ? j : { ...j, activities: [...j.activities, newActivity] }
-        ),
-      })),
-    })),
-  };
-}
-
-function replaceProject(record: AipRecordDetail, updated: AipProjectDetail): AipRecordDetail {
-  return {
-    ...record,
-    offices: record.offices.map((o) => ({
-      ...o,
-      programs: o.programs.map((p) =>
-        p.id !== updated.programId ? p : { ...p, projects: p.projects.map((j) => (j.id === updated.id ? updated : j)) }
-      ),
-    })),
-  };
-}
-
-function removeProjectFromTree(record: AipRecordDetail, programId: number, projectId: number): AipRecordDetail {
-  return {
-    ...record,
-    offices: record.offices.map((o) => ({
-      ...o,
-      programs: o.programs.map((p) =>
-        p.id !== programId ? p : { ...p, projects: p.projects.filter((j) => j.id !== projectId) }
-      ),
-    })),
-  };
-}
-
-function addProjectToTree(record: AipRecordDetail, programId: number, newProject: AipProjectDetail): AipRecordDetail {
-  return {
-    ...record,
-    offices: record.offices.map((o) => ({
-      ...o,
-      programs: o.programs.map((p) =>
-        p.id !== programId ? p : { ...p, projects: [...p.projects, newProject] }
-      ),
-    })),
-  };
-}
-
-function replaceProgram(record: AipRecordDetail, updated: AipProgramDetail): AipRecordDetail {
-  return {
-    ...record,
-    offices: record.offices.map((o) =>
-      o.id !== updated.officeId ? o : { ...o, programs: o.programs.map((p) => (p.id === updated.id ? updated : p)) }
-    ),
-  };
-}
-
-function removeProgramFromTree(record: AipRecordDetail, officeId: number, programId: number): AipRecordDetail {
-  return {
-    ...record,
-    offices: record.offices.map((o) =>
-      o.id !== officeId ? o : { ...o, programs: o.programs.filter((p) => p.id !== programId) }
-    ),
-  };
-}
-
-function addProgramToTree(record: AipRecordDetail, officeId: number, newProgram: AipProgramDetail): AipRecordDetail {
-  return {
-    ...record,
-    offices: record.offices.map((o) =>
-      o.id !== officeId ? o : { ...o, programs: [...o.programs, newProgram] }
-    ),
-  };
-}
-
-function replaceOffice(record: AipRecordDetail, updated: AipOfficeDetail): AipRecordDetail {
-  return { ...record, offices: record.offices.map((o) => (o.id === updated.id ? updated : o)) };
-}
-
-function removeOfficeFromTree(record: AipRecordDetail, officeId: number): AipRecordDetail {
-  return { ...record, offices: record.offices.filter((o) => o.id !== officeId) };
-}
-
-function addOfficeToTree(record: AipRecordDetail, newOffice: AipOfficeDetail): AipRecordDetail {
-  return { ...record, offices: [...record.offices, newOffice] };
 }
 
 // ── Status badge ──────────────────────────────────────────────────────────────
@@ -1499,37 +1368,6 @@ function SeedFromLdipPanel({
       </div>
     </div>
   );
-}
-
-// ── Sector grouping ────────────────────────────────────────────────────────────
-
-const SECTOR_ORDER = ["GENERAL", "SOCIAL", "ECONOMIC", "OTHERS"];
-
-function groupBySector(offices: AipOfficeDetail[]): [string, AipOfficeDetail[]][] {
-  const map = new Map<string, AipOfficeDetail[]>();
-  for (const o of offices) {
-    const s = (o.sector ?? "OTHERS").toUpperCase();
-    if (!map.has(s)) map.set(s, []);
-    map.get(s)!.push(o);
-  }
-  const result: [string, AipOfficeDetail[]][] = [];
-  for (const s of SECTOR_ORDER)           if (map.has(s)) result.push([s, map.get(s)!]);
-  for (const [s, list] of Array.from(map.entries()))  if (!SECTOR_ORDER.includes(s)) result.push([s, list]);
-  return result;
-}
-
-function toggleSet<T>(prev: Set<T>, key: T): Set<T> {
-  const next = new Set(prev);
-  if (next.has(key)) next.delete(key); else next.add(key);
-  return next;
-}
-
-function allCollapsed(offices: AipOfficeDetail[]) {
-  return {
-    offices:  new Set(offices.map((o) => o.id)),
-    programs: new Set(offices.flatMap((o) => o.programs).map((p) => p.id)),
-    projects: new Set(offices.flatMap((o) => o.programs).flatMap((p) => p.projects).map((p) => p.id)),
-  };
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
