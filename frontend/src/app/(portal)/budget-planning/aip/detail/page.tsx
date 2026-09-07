@@ -28,6 +28,7 @@ import {
 import { listLdip, getLdipById } from "@/lib/ldip";
 import { listOffices, listFundingSources } from "@/lib/config";
 import { aipProgramsAreLdipOnly, aipUploadRefusal } from "@/lib/aip-fiscal-years";
+import { fmt, toDisplayUnits, toStorageUnits } from "@/lib/aip-units";
 import {
   AIP_MONTHS, AIP_ESRE_OPTIONS, AIP_SECTOR_OPTIONS, AIP_SECTOR_PREFIX, AIP_FUNCTION_BANDS,
 } from "@/lib/aipConstants";
@@ -55,34 +56,6 @@ function Chevron({ open, className = "" }: { open: boolean; className?: string }
       <polyline points="4,2 8,6 4,10" />
     </svg>
   );
-}
-
-// ── Number helpers ─────────────────────────────────────────────────────────────
-
-function fmt(n: number | null | undefined): string {
-  if (n == null || n === 0) return "—";
-  return n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-// ── Units: pesos in storage, ₱000 on this page (V18-35 / PPDO-34, decision P2-a) ──────────────
-//
-// AIP amounts are stored in PESOS for every fiscal year. The province's AIP form is denominated
-// in thousands and the encoders read and type it that way, so this page — and only this page —
-// converts at its edge: divide when drawing a figure, multiply when saving one. The "(in ₱000)"
-// column headers stay true, and nothing a user sees or types changed when storage did.
-//
-// ⚠️ Both directions or neither. Converting only the display leaves every subsequent edit
-// dividing the record by a thousand, because the input would post back what it was shown.
-const PESOS_PER_DISPLAY_UNIT = 1000;
-
-/** Pesos as stored → the ₱000 figure this page shows and accepts. */
-function toDisplayUnits(pesos: number | null | undefined): number | null {
-  return pesos == null ? null : pesos / PESOS_PER_DISPLAY_UNIT;
-}
-
-/** A ₱000 figure typed on this page → pesos for storage. */
-function toStorageUnits(displayed: number | null | undefined): number | null {
-  return displayed == null ? null : displayed * PESOS_PER_DISPLAY_UNIT;
 }
 
 function sumActivities(
