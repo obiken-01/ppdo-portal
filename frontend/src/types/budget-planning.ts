@@ -1180,5 +1180,16 @@ export interface AipAddableProgram {
 export interface AipAddablePrograms {
   groupRefCode: string;
   groupName: string;
+  /**
+   * The LDIP record these programs come from.
+   *
+   * ⚠️ Surfaced because the resolver's second tier is a **multi-office** LDIP owned by no single
+   * office — so "which LDIP is this?" cannot be answered from the office alone, and until PPDO-52
+   * that record was invisible on the LDIP page to everyone.
+   */
+  ldipRefCode: string | null;
+  ldipTitle: string | null;
+  /** True when the source is a shared multi-office LDIP rather than this office's own. */
+  isSharedLdip: boolean;
   programs: AipAddableProgram[];
 }

@@ -263,9 +263,25 @@ public record AipAddableProgramDto(int LdipProgramId, string RefCode, string Nam
 /// Both halves were individually correct. Serving the list from the same resolver the write path
 /// uses makes them agree by construction rather than by two teams keeping two copies in step.
 /// </summary>
+/// <param name="LdipRefCode">
+/// The LDIP record these programs come from.
+///
+/// ⚠️ Returned so the encoder can answer "where did these come from?" without leaving the page.
+/// The resolver is two-tier and its second tier is a <b>multi-office</b> LDIP owned by no single
+/// office — which the LDIP list could not show anyone until this ticket. Naming the source here is
+/// what makes the closed list explicable rather than mysterious.
+/// </param>
+/// <param name="LdipTitle">That record's title, for humans.</param>
+/// <param name="IsSharedLdip">
+/// True when the source is a multi-office LDIP rather than this office's own. Worth surfacing:
+/// it explains why the record may not look like "your" LDIP.
+/// </param>
 public record AipAddableProgramsDto(
     string  GroupRefCode,
     string  GroupName,
+    string? LdipRefCode,
+    string? LdipTitle,
+    bool    IsSharedLdip,
     IReadOnlyList<AipAddableProgramDto> Programs);
 
 public record CreateAipProgramDto(string Name, string? FunctionBand = null);

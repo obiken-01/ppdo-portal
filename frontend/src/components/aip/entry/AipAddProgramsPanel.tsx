@@ -183,9 +183,26 @@ export default function AipAddProgramsPanel({
           </p>
         ) : group && group.programs.length > 0 ? (
           <>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
-              Programs in the {sector} LDIP
-            </p>
+            <div className="mb-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                Programs in the {sector} LDIP
+              </p>
+              {/* ⚠️ Names the source record. The resolver's second tier is a multi-office LDIP
+                  owned by no single office, so without this the encoder has no way to tell which
+                  document their closed list came from — which is exactly the question that sent
+                  someone hunting through the LDIP page. */}
+              {group.ldipRefCode && (
+                <p className="mt-0.5 text-xs text-slate-600">
+                  From <span className="font-mono text-slate-800">{group.ldipRefCode}</span>
+                  {group.ldipTitle ? ` — ${group.ldipTitle}` : ""}
+                  {group.isSharedLdip && (
+                    <span className="ml-1">
+                      {" · "}a shared multi-office LDIP, so it is not listed under your own office
+                    </span>
+                  )}
+                </p>
+              )}
+            </div>
             <ul className="max-h-64 space-y-1 overflow-y-auto">
               {group.programs.map((p) => (
                 <li key={p.ldipProgramId}>

@@ -1407,9 +1407,17 @@ public sealed class AipService : IAipService
                 $"'{office.OfficeName}' has no LDIP for the {normalised} sector. The LDIP is where "
                 + "programs come from, so it has to exist before the AIP can be built.");
 
+        // Name the source. The resolver's second tier is a multi-office LDIP owned by no single
+        // office, so "which LDIP is this?" is not answerable from the office alone.
+        LdipRecord? sourceRecord = (await _ldipRepo.GetListAsync(null, null, ct))
+            .FirstOrDefault(r => r.Id == group.LdipRecordId);
+
         return ServiceResult<AipAddableProgramsDto>.Ok(new AipAddableProgramsDto(
             group.RefCode,
             group.Name,
+            sourceRecord?.RefCode,
+            sourceRecord?.Title,
+            IsSharedLdip: sourceRecord?.OfficeId is null,
             group.Programs
                 .OrderBy(p => p.RefCode, StringComparer.Ordinal)
                 .Select(p => new AipAddableProgramDto(p.Id, p.RefCode, p.Name))

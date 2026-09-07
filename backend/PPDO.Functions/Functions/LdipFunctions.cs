@@ -63,9 +63,24 @@ public sealed class LdipFunctions
         (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
         if (denied is not null) return denied;
 
-        // Office users are always scoped to their own office; PPDO may filter.
-        int? officeId = caller!.OfficeId
-            ?? (int.TryParse(req.Query["officeId"], out int parsed) ? parsed : null);
+        // ⚠️ The comment above this line used to say "PPDO may filter" — and the code did not do
+        // that. `caller.OfficeId ?? query` clamps EVERY user with an office to it, and since
+        // DECISION F every user has one. So the ?officeId= filter was unreachable, and more
+        // importantly a **multi-office LDIP** (`office_id IS NULL`) was invisible to everybody,
+        // including SuperAdmin.
+        //
+        // That is not cosmetic. The two-tier resolver behind the AIP falls back to exactly those
+        // shared records, so on a database whose own-office LDIPs are archived, the document every
+        // office's AIP is built from could not be opened by anyone. Found by Ralph, who went
+        // looking for the LDIP his AIP programs came from and could not find it.
+        //
+        // Host-office users now see every record, including the shared ones, and may still narrow
+        // with ?officeId=. Guest offices stay clamped to their own — a multi-office LDIP holds
+        // every office's programs, so widening it for them would be a cross-office leak.
+        bool isHost = OfficeScope.IsHostOfficeUser(caller!);
+        int? officeId = isHost
+            ? (int.TryParse(req.Query["officeId"], out int parsed) ? parsed : null)
+            : caller!.OfficeId;
 
         IReadOnlyList<LdipRecordDto> data = await _ldip.GetAllAsync(req.Query["status"], officeId, ct);
         return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK,

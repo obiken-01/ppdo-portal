@@ -76,6 +76,11 @@ export default function AipEntryPage() {
   const workflowStatus = readiness?.workflowStatus ?? "Draft";
   const canEdit = workflowStatus === "Draft";
 
+  // The division filter applies to the HOST office only, and only when the user has a division —
+  // the same condition AipReadScope uses. A guest office is never division-filtered, so telling
+  // them about it would be a lie.
+  const divisionFiltered = me?.isHostOffice === true && me.divisionId != null && !!me.division;
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -153,6 +158,19 @@ export default function AipEntryPage() {
         <p className="mb-4 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
       )}
 
+      {/* ⚠️ Say that a filter is on. AipReadScope shows a HOST-office user only the programs
+          assigned to their own division (spec §3.3) — correct, and completely invisible: a group
+          whose programs belong to another division renders as "0 programs", which reads as missing
+          data. Someone went and checked the LDIP because of it. The plan warned about this
+          mechanism in exactly those words: "the failure looks like missing data, not an error". */}
+      {divisionFiltered && (
+        <p className="mb-4 border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          Showing the programs assigned to <strong className="text-slate-800">{me!.division}</strong>.
+          Your office&rsquo;s other programs are here but belong to other divisions — ask an
+          administrator if one should be assigned to yours.
+        </p>
+      )}
+
       {loading ? (
         <EntrySkeleton />
       ) : notOpened ? (
@@ -196,6 +214,7 @@ export default function AipEntryPage() {
                   // picker can mark it. An encoder otherwise has no way to tell why GF behaves
                   // differently from every other fund at submit.
                   generalFundId={readiness?.ceiling?.generalFundId ?? null}
+                  divisionFiltered={divisionFiltered}
                   // Structural changes (a new project or activity) need the tree back.
                   onStructureChanged={() => { void load(); void refreshReadiness(); }}
                   // ⚠️ An expenditure change must NOT reload the record. Doing so remounts the
@@ -233,13 +252,16 @@ export default function AipEntryPage() {
 // ── One sub-office group ──────────────────────────────────────────────────
 
 function GroupBlock({
-  group, canEdit, accounts, funds, generalFundId, onStructureChanged, onActivityTotals,
+  group, canEdit, accounts, funds, generalFundId, divisionFiltered,
+  onStructureChanged, onActivityTotals,
 }: {
   group: AipOfficeDetail;
   canEdit: boolean;
   accounts: AccountResponse[];
   funds: FundingSourceResponse[];
   generalFundId: number | null;
+  /** True when this user only sees their own division's programs — changes what "0" means. */
+  divisionFiltered: boolean;
   onStructureChanged: () => void;
   onActivityTotals: (result: AipExpenditureWriteResult) => void;
 }) {
@@ -251,6 +273,15 @@ function GroupBlock({
         <p className="mt-0.5 text-xs text-slate-600">
           {group.sector} · {group.programs.length} program{group.programs.length === 1 ? "" : "s"}
         </p>
+        {/* ⚠️ "0 programs" on its own is indistinguishable from an empty group. When the division
+            filter is on, an empty block far more often means "assigned elsewhere" than "nothing
+            here" — so say which. */}
+        {group.programs.length === 0 && divisionFiltered && (
+          <p className="mt-1 text-xs text-slate-600">
+            None of this group&rsquo;s programs are assigned to your division. They exist — they are
+            just someone else&rsquo;s to encode.
+          </p>
+        )}
       </div>
 
       <div className="divide-y divide-slate-200">
