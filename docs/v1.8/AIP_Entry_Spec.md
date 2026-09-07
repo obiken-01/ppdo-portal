@@ -210,17 +210,39 @@ have already flipped are not flipped back.
     acceptance line *"removing a middle program renumbers without leaving a gap"* means ref
     codes start changing — and that is exactly when assignments detach.
 
-    **The rule: whenever V18-42 renumbers a program's `RefCode`, it updates the matching
-    `ProgramDivision.ProgramRefCode` rows in the same transaction.** Cross-fiscal-year
-    permanence is preserved, no migration is needed, and the actual failure is closed at its
-    source. ⚠️ Same transaction, not a follow-up write: a renumber that commits without its
-    re-link leaves assignments pointing at codes no program carries, which is the original bug
-    with extra steps.
+    ↩️ **SUPERSEDED 2026-09-07 — there is no renumber to hook onto, so no re-link is built.**
+    The rule was to be "when V18-42 renumbers a program's `RefCode`, update the matching
+    `ProgramDivision.ProgramRefCode` rows in the same transaction". Reading the code before
+    building it showed the premise is false: **V18-42 does not renumber, because AIP program ref
+    codes are inherited verbatim from the LDIP** and are never allocated or rewritten in the AIP
+    (`SeedProgramsFromLdipAsync` and `AddProgramsWithGroupAsync` both do `RefCode = p.RefCode`).
+
+    **P3-b therefore closes with no action.** `ProgramDivision` keeps matching on a ref code that
+    does not change, so the assignment cannot detach. See decision 18 for the numbering rule this
+    rests on, and `AipProgramGroupTests` for the tests that hold it in place.
 
 17. **`workflow_status`'s migration belongs to V18-42, not V18-49** (settled 2026-09-07). §5.1
     filed it under V18-49, but **V18-42 ships the submit action itself** and the read-only state
     that follows it — neither can be built against a column that does not exist. V18-42 adds the
     column with all five states; **V18-49 keeps the rules about when submitting is allowed.**
+
+18. ↩️ **The AIP does NOT renumber programs. Ref codes match the LDIP's, permanently**
+    (settled 2026-09-07). ⚠️ **This contradicts §10's acceptance line "removing a middle program
+    renumbers without leaving a gap", which is withdrawn** — see §10.
+
+    **The numbering that line describes already exists, one document upstream.**
+    `LdipService.BuildHierarchy` keys its sequence on the group ref code, so LDIP programs are
+    numbered continuously across groups sharing a code; and because LDIP saves full-replace the
+    hierarchy, removals there renumber with no gaps. The AIP copies those codes verbatim. The
+    acceptance line was inherited from the `LdipForm.tsx` description decision 2 says to lift, and
+    it describes that form's behaviour rather than a requirement on this one.
+
+    **Why not renumber here.** Renumbering in the AIP would break the correspondence between an
+    AIP program and the LDIP program it came from — which is precisely what makes the closed list
+    (V18-41) mean anything. A gap in a printed sequence is cosmetic; a program that no longer maps
+    back to its source is not.
+
+    ℹ️ Deleting an AIP program therefore leaves a gap in the printed numbering. Accepted.
 
 ### 2.1 Why deferring the netting rule is safe — read before "simplifying" it
 
@@ -613,9 +635,12 @@ component.
 - [ ] The program picker lists exactly the office's LDIP programs, and there is no free-text program-name field on the page
 - [ ] An office with no LDIP sees an empty state naming the LDIP — not a blank picker
 - [ ] Typing a new sub-office group name starts a new group; program numbering continues across groups rather than restarting
-- [ ] Removing a middle program renumbers without leaving a gap
-- [ ] After that renumber, every affected program **keeps its division assignment** — a PPDO
-      encoder in that division still sees it, and a prior fiscal year's assignment is unchanged
+- [ ] ~~Removing a middle program renumbers without leaving a gap~~ ↩️ **WITHDRAWN 2026-09-07**
+      (decision 18) — the AIP does not renumber. Replaced by the two lines below
+- [ ] An AIP program's ref code is **byte-for-byte its LDIP program's**, and a gap in the LDIP's
+      numbering survives into the AIP unclosed
+- [ ] Deleting an AIP program leaves the surviving programs' ref codes **unchanged**, and every
+      division assignment still resolves
 - [ ] Two browsers editing the same activity: the second save shows "changed by someone else", and the first encoder's value survives
 - [ ] Deleting an activity's last expenditure line leaves `Total` **0**; an activity that never had lines still shows **no** total
 - [ ] Entering ₱2M over the GF ceiling is **allowed** while encoding, with no blocking dialog
@@ -636,7 +661,8 @@ component.
 
 | Class | Cover |
 |---|---|
-| `AipEntryServiceTests` (new) | The three-stage create path; sibling-unique ref codes under concurrent creates; program numbering across groups and after removal. **Plus the `ProgramDivision` re-link (decision 16): a renumber preserves the assignment, and a rolled-back renumber leaves neither half applied** |
+| `AipEntryServiceTests` (new) | The three-stage create path; sibling-unique ref codes under concurrent creates for **projects and activities** (programs do not allocate — decision 18) |
+| `AipProgramGroupTests` (new) | Program ref codes inherited verbatim from the LDIP, asserted as literals; an LDIP numbering gap preserved; a second group name starting a second `AipOffice` row under one ref code; the closed list refusing a foreign LDIP program |
 | `AipCeilingServiceTests` (new) | **One test per trap, each named**: GF-only, PS exempt, rounded figures, base-not-uplifted. Plus blank-row-means-zero, and the office-level (division-less) shape |
 | `AipSubmitGateTests` (new) | Each failing condition **individually**, not just the happy path; never-costed vs costed-at-zero; the over-ceiling refusal's wording |
 | `AipReadScopeTests` (extend) | The new entry call sites — guest clamp, host-office division filter, and that the division filter does **not** reach guest offices |

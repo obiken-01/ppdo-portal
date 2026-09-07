@@ -1476,6 +1476,7 @@ public sealed class AipService : IAipService
             FunctionBand = AipFunctionBand.Core,
         }).ToList();
 
+        bool creatingGroup = target is null;
         if (target is null)
         {
             target = new AipOffice
@@ -1508,8 +1509,13 @@ public sealed class AipService : IAipService
             AddedLdipProgramIds = dto.LdipProgramIds,
         }, ct);
 
-        IReadOnlyList<AipProgram> allInGroup =
-            await _aipRepo.GetProgramsByOfficeIdsAsync([target.Id], ct);
+        // When the group was just created, the programs in hand ARE the group's whole contents —
+        // re-reading them is a round trip for an answer we already have. When it existed, the
+        // response must carry its pre-existing programs too, so the caller does not lose the rows
+        // it was already showing (the completeness rule SeedProgramsFromLdipAsync follows).
+        IReadOnlyList<AipProgram> allInGroup = creatingGroup
+            ? programs
+            : await _aipRepo.GetProgramsByOfficeIdsAsync([target.Id], ct);
 
         return ServiceResult<AipOfficeDto>.Ok(new AipOfficeDto(
             target.Id, target.AipRecordId, target.RefCode, target.Name, target.Sector,
