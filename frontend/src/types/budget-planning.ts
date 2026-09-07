@@ -162,6 +162,30 @@ export interface UpdateAipActivityRequest {
   ccTypologyCode?: string | null;
 }
 
+/**
+ * An entered-year activity's **descriptive** fields — the AIP Entry page's editor (PPDO-52).
+ *
+ * ⚠️ **No `ps`, `mooe`, `co` or `fundingSourceId`, and adding them would be a data-loss bug.**
+ * On an entered year those are derived from the activity's expenditure lines — the server
+ * recomputes PS/MOOE/CO on every line write, and the fund lives on the lines (one per line). Use
+ * this for the entry page; `UpdateAipActivityRequest` is the detail page's whole-row edit and it
+ * *does* own those fields, so sending it from here would zero a costing nobody touched.
+ *
+ * ⚠️ `esreCode` and `ccTypologyCode` are the two the submit gate blocks on.
+ */
+export interface UpdateAipActivityDetailsRequest {
+  name: string;
+  esreCode?: string | null;
+  implementingOffice?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  expectedOutputs?: string | null;
+  /** Not derived from lines — expenditure lines carry only PS/MOOE/CO, so this is the only home. */
+  ccAdaptation?: number | null;
+  ccMitigation?: number | null;
+  ccTypologyCode?: string | null;
+}
+
 // ── AIP inline office/program/project edit (detail-page CRUD) ────────────────
 
 export interface UpdateAipOfficeRequest {
@@ -228,6 +252,14 @@ export interface AipOfficeDetail {
   refCode: string;
   name: string;
   sector: string;
+  /**
+   * The config office that owns this group (added by PPDO-52).
+   *
+   * ⚠️ The entry page needs this to show a host-office user only their OWN office. Without it the
+   * page rendered all 25 offices' trees above a checklist covering just the caller's — found by
+   * live-testing. Null only for an unmatched legacy row.
+   */
+  officeId: number | null;
   programs: AipProgramDetail[];
 }
 
@@ -1048,4 +1080,160 @@ export interface LdipImportConfirmRequest {
    * The target must be a Draft, Upload-entry-mode record. Omit to create a new record.
    */
   targetRecordId?: number;
+}
+
+// ---------------------------------------------------------------------------
+// AIP entry — v1.8.0 Phase 3 (PPDO-52, 56, 59)
+// ---------------------------------------------------------------------------
+
+/**
+ * One expenditure line under an activity.
+ *
+ * ⚠️ Amounts are PESOS and BASE — on the wire and in the inputs alike. Only read-only cells
+ * convert to ₱000, via `lib/aip-units`; nothing multiplies on the way to the server. The +30%
+ * uplift belongs to the printed form only and never appears here.
+ */
+export interface AipExpenditure {
+  id: number;
+  activityId: number;
+  accountId: number | null;
+  accountNumber: string | null;
+  accountTitle: string | null;
+  fundingSourceId: number | null;
+  fundingSourceCode: string | null;
+  fundingSourceName: string | null;
+  ps: number;
+  mooe: number;
+  co: number;
+  total: number;
+}
+
+export interface SaveAipExpenditureRequest {
+  accountId: number | null;
+  /** ⚠️ Exactly one fund per line. Multi-fund is several lines, never one line naming two. */
+  fundingSourceId: number | null;
+  ps: number;
+  mooe: number;
+  co: number;
+}
+
+/**
+ * What an expenditure write returns — the line plus its activity's recomputed totals, so the tree
+ * updates without a refetch.
+ *
+ * ⚠️ `activityTotal` is null when the activity was NEVER costed and 0 when its lines were all
+ * deleted. Same `lineCount`, opposite meanings; the submit checklist tells them apart.
+ */
+export interface AipExpenditureWriteResult {
+  line: AipExpenditure | null;
+  activityId: number;
+  activityPs: number | null;
+  activityMooe: number | null;
+  activityCo: number | null;
+  activityTotal: number | null;
+  lineCount: number;
+}
+
+/**
+ * ⚠️ **No `groupName`.** The sub-office group is derived server-side from `ldipProgramIds` —
+ * every LDIP program belongs to exactly one group, so the answer is unambiguous and cannot be
+ * mistyped. The field used to exist as free text; a typed name could name a block matching no
+ * LDIP row, and the AIP is the document that prints. Programs spanning two groups are refused.
+ */
+export interface AddAipProgramsWithGroupRequest {
+  officeConfigId: number;
+  sector: string;
+  ldipProgramIds: number[];
+}
+
+/**
+ * The office's ceiling position. General Fund only, PS exempt, base figures rounded up to the
+ * thousand per activity before summing.
+ *
+ * ⚠️ `remaining` MAY BE NEGATIVE and must render as such — it is the only signal an office gets
+ * that PBO cut its ceiling below what is already encoded. Never clamp it.
+ */
+export interface AipCeilingStatus {
+  generalFundId: number | null;
+  /** ⚠️ False is not "unlimited" — an unset ceiling is treated as ZERO. */
+  ceilingSet: boolean;
+  ceiling: number;
+  encodedBaseRounded: number;
+  remaining: number;
+  withinCeiling: boolean;
+}
+
+/** One reason submit is blocked. `kind` is the stable slug to switch on; `message` is for display. */
+export interface AipReadinessIssue {
+  kind: string;
+  activityId: number | null;
+  refCode: string | null;
+  message: string;
+}
+
+/** ⚠️ A gate, not a summary — there is no "submit anyway". */
+export interface AipReadiness {
+  aipRecordId: number;
+  officeId: number;
+  workflowStatus: string;
+  canSubmit: boolean;
+  activityCount: number;
+  issues: AipReadinessIssue[];
+  ceiling: AipCeilingStatus | null;
+}
+
+export interface AipSubmitResult {
+  aipRecordId: number;
+  officeId: number;
+  workflowStatus: string;
+  /** How many sub-office group rows moved. An office with three printed blocks moves all three. */
+  groupsMoved: number;
+}
+
+/**
+ * One LDIP program the office may add. `ldipProgramId` is what
+ * `AddAipProgramsWithGroupRequest.ldipProgramIds` expects — named for what it is, because it is NOT
+ * the AIP program's id and mixing them up produces a "does not belong to this office's LDIP"
+ * refusal that reads like a permissions bug.
+ */
+export interface AipAddableProgram {
+  ldipProgramId: number;
+  refCode: string;
+  name: string;
+}
+
+/**
+ * ⚠️ Resolved SERVER-side, by the same two-tier rule the add path uses. The client must not pick
+ * the LDIP record itself — a client-side copy of that rule diverged and every add was refused.
+ */
+export interface AipAddablePrograms {
+  /**
+   * The LDIP record these programs come from.
+   *
+   * ⚠️ Surfaced because the resolver's second tier is a **multi-office** LDIP owned by no single
+   * office — so "which LDIP is this?" cannot be answered from the office alone, and until PPDO-52
+   * that record was invisible on the LDIP page to everyone.
+   */
+  ldipRefCode: string | null;
+  ldipTitle: string | null;
+  /** True when the source is a shared multi-office LDIP rather than this office's own. */
+  isSharedLdip: boolean;
+  /**
+   * ⚠️ **Every** sub-office group in the sector, not one. The province's LDIP puts four blocks
+   * under `3000-000-1-01-001` (WARDEN / AKAP-HUB / HOUSING / LOCAL SCHOOL BOARD); a single-group
+   * shape here is what made three of them unofferable and their programs unreachable.
+   */
+  groups: AipAddableGroup[];
+}
+
+/**
+ * One sub-office group and its programs.
+ *
+ * ⚠️ `groupRefCode` is **not** unique in a response — several groups legitimately share it, and
+ * `groupName` is what separates them. The pair is the group's identity, matching `AipOffice`.
+ */
+export interface AipAddableGroup {
+  groupRefCode: string;
+  groupName: string;
+  programs: AipAddableProgram[];
 }

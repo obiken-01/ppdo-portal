@@ -4,10 +4,10 @@
  * Extracted verbatim from `aip/detail/page.tsx` (PPDO-64). No behaviour change.
  */
 
-import MoneyInput from "@/components/ui/MoneyInput";
+import AipMoneyInput from "@/components/aip/AipMoneyInput";
 import { useState } from "react";
 import { aipErrorMessage, deleteAipActivity, updateAipActivity } from "@/lib/aip";
-import { fmt, toDisplayUnits, toStorageUnits } from "@/lib/aip-units";
+import { fmtPesos } from "@/lib/aip-units";
 import { AIP_ESRE_OPTIONS, AIP_MONTHS } from "@/lib/aipConstants";
 import { AmtTD, inputCls, selectCls } from "@/components/aip/AipTreeCells";
 import type { ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
@@ -39,13 +39,15 @@ export default function ActivityRow({
   const [endDate, setEndDate]                       = useState(act.endDate ?? "");
   const [expectedOutputs, setExpectedOutputs]       = useState(act.expectedOutputs ?? "");
   const [fundingSourceId, setFundingSourceId]       = useState(act.fundingSourceId != null ? String(act.fundingSourceId) : "");
-  // Money state is held in DISPLAY units (₱000) for as long as it is on screen — the inputs show
-  // it, the live row total sums it, and handleSave converts it back to pesos on the way out.
-  const [ps, setPs]                     = useState<number | null>(toDisplayUnits(act.ps));
-  const [mooe, setMooe]                 = useState<number | null>(toDisplayUnits(act.mooe));
-  const [co, setCo]                     = useState<number | null>(toDisplayUnits(act.co));
-  const [ccAdaptation, setCcAdaptation] = useState<number | null>(toDisplayUnits(act.ccAdaptation));
-  const [ccMitigation, setCcMitigation] = useState<number | null>(toDisplayUnits(act.ccMitigation));
+  // ⚠️ Money state is PESOS throughout — what is stored, what the ₱ inputs show, what the live row
+  // total sums, and what is posted. Nothing converts on the way in or out.
+  // ↩️ It was held in ₱000 and multiplied on save (decision P2-a, reversed 2026-09-07); only the
+  // read-only cells divide now, via AmtTD. Each input carries its own `= x ₱000` echo.
+  const [ps, setPs]                     = useState<number | null>(act.ps);
+  const [mooe, setMooe]                 = useState<number | null>(act.mooe);
+  const [co, setCo]                     = useState<number | null>(act.co);
+  const [ccAdaptation, setCcAdaptation] = useState<number | null>(act.ccAdaptation);
+  const [ccMitigation, setCcMitigation] = useState<number | null>(act.ccMitigation);
   const [ccTypologyCode, setCcTypologyCode] = useState(act.ccTypologyCode ?? "");
 
   function startEdit() {
@@ -56,11 +58,11 @@ export default function ActivityRow({
     setEndDate(act.endDate ?? "");
     setExpectedOutputs(act.expectedOutputs ?? "");
     setFundingSourceId(act.fundingSourceId != null ? String(act.fundingSourceId) : "");
-    setPs(toDisplayUnits(act.ps));
-    setMooe(toDisplayUnits(act.mooe));
-    setCo(toDisplayUnits(act.co));
-    setCcAdaptation(toDisplayUnits(act.ccAdaptation));
-    setCcMitigation(toDisplayUnits(act.ccMitigation));
+    setPs(act.ps);
+    setMooe(act.mooe);
+    setCo(act.co);
+    setCcAdaptation(act.ccAdaptation);
+    setCcMitigation(act.ccMitigation);
     setCcTypologyCode(act.ccTypologyCode ?? "");
     setError(null);
     setEditing(true);
@@ -79,11 +81,7 @@ export default function ActivityRow({
         endDate: endDate || null,
         expectedOutputs: expectedOutputs.trim() || null,
         fundingSourceId: fundingSourceId ? Number(fundingSourceId) : null,
-        ps:           toStorageUnits(ps),
-        mooe:         toStorageUnits(mooe),
-        co:           toStorageUnits(co),
-        ccAdaptation: toStorageUnits(ccAdaptation),
-        ccMitigation: toStorageUnits(ccMitigation),
+        ps, mooe, co, ccAdaptation, ccMitigation,
         ccTypologyCode: ccTypologyCode.trim() || null,
       });
       onSaved(updated);
@@ -191,14 +189,14 @@ export default function ActivityRow({
           {fundingSources.map((f) => <option key={f.id} value={f.id}>{f.code}</option>)}
         </select>
       </td>
-      <td className="px-1 py-1.5"><MoneyInput value={ps} onChange={setPs} className="w-full" /></td>
-      <td className="px-1 py-1.5"><MoneyInput value={mooe} onChange={setMooe} className="w-full" /></td>
-      <td className="px-1 py-1.5"><MoneyInput value={co} onChange={setCo} className="w-full" /></td>
+      <td className="px-1 py-1.5"><AipMoneyInput value={ps} onChange={setPs} /></td>
+      <td className="px-1 py-1.5"><AipMoneyInput value={mooe} onChange={setMooe} /></td>
+      <td className="px-1 py-1.5"><AipMoneyInput value={co} onChange={setCo} /></td>
       <td className="px-2 py-1.5 text-right text-xs tabular-nums font-semibold text-slate-800">
-        {fmt((ps ?? 0) + (mooe ?? 0) + (co ?? 0))}
+        {fmtPesos((ps ?? 0) + (mooe ?? 0) + (co ?? 0))}
       </td>
-      <td className="px-1 py-1.5"><MoneyInput value={ccAdaptation} onChange={setCcAdaptation} className="w-full" /></td>
-      <td className="px-1 py-1.5"><MoneyInput value={ccMitigation} onChange={setCcMitigation} className="w-full" /></td>
+      <td className="px-1 py-1.5"><AipMoneyInput value={ccAdaptation} onChange={setCcAdaptation} /></td>
+      <td className="px-1 py-1.5"><AipMoneyInput value={ccMitigation} onChange={setCcMitigation} /></td>
       <td className="px-2 py-1.5">
         <input value={ccTypologyCode} onChange={(e) => setCcTypologyCode(e.target.value)} className={inputCls} />
       </td>

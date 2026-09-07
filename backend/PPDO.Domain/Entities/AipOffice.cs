@@ -52,6 +52,30 @@ public sealed class AipOffice
     /// </summary>
     public int? OfficeId { get; set; }
 
+    /// <summary>
+    /// This office's progress through AIP review (V18-42 / PPDO-52, spec §5.1). One of
+    /// <c>AipWorkflowStatus</c>'s five values; <c>"Draft"</c> for every existing row.
+    ///
+    /// <para>
+    /// ⚠️ <b>Not the same thing as <see cref="AipRecord.Status"/>, and not interchangeable with
+    /// it.</b> The record's status is the <i>fiscal year's</i> state — an Admin opens the year and
+    /// archives it, and LDIP and WFP share that vocabulary. This is <i>one office's</i> position in
+    /// a five-state review workflow that the record's three-state vocabulary cannot express.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ It lives here rather than on the record because <b>one base record holds every office</b>
+    /// since PPDO-61. A record cannot carry a state that belongs to one of the thirty-odd offices
+    /// inside it.
+    /// </para>
+    ///
+    /// <para>
+    /// An office cannot be past Draft in an archived year. That rule is the service's, not a
+    /// constraint's — the two columns are independent at the schema level on purpose.
+    /// </para>
+    /// </summary>
+    public string WorkflowStatus { get; set; } = "Draft";
+
     // ── Navigation ────────────────────────────────────────────────────────────
 
     /// <summary>The parent AIP record.</summary>

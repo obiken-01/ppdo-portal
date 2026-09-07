@@ -39,6 +39,53 @@ public interface IAipExpenditureRepository : IRepository<AipExpenditure>
     /// </summary>
     Task<AipExpenditureTotalsDto> SumByActivityIdAsync(int activityId, CancellationToken ct = default);
 
+    /// <summary>
+    /// One row per activity belonging to config office <paramref name="configOfficeId"/> anywhere
+    /// in AIP record <paramref name="aipRecordId"/>, carrying that activity's MOOE and CO summed
+    /// over its lines for <paramref name="fundingSourceId"/> only (V18-46).
+    ///
+    /// <para>
+    /// ⚠️ <b>Scoped to the CONFIG office, across every one of its sub-office group rows — not to a
+    /// single <c>AipOffice</c> row.</b> ↩️ It used to take an <c>aipOfficeId</c>, which made the
+    /// ceiling see one group's work and none of the others'. The ceiling is an office-level bound
+    /// (<c>AipSubmitService</c>: "checked once for the office, not per group"), and the caller was
+    /// passing <c>Groups[0]</c>, so every group after the first was invisible to it: an office
+    /// could encode unlimited General Fund money in a second block and submit cleanly. PGO has
+    /// eight group rows and the entire ceiling was computed from one of them. Found by
+    /// live-testing after the LDIP sub-office fix multiplied the number of groups per office.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ <b>Returns per-activity figures, deliberately un-summed.</b> The ceiling rule rounds each
+    /// printed figure UP to the thousand and only then adds (DECISION 9), so the caller must see
+    /// the individual figures. Returning a single total here would force the rounding to happen
+    /// after the sum, which is a different — and smaller — number than the form prints.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ PS is not returned at all. It is exempt from the ceiling as an expense class
+    /// (tracker A6-2), and returning it invites a caller to add it in.
+    /// </para>
+    ///
+    /// Activities with no lines for this fund are omitted rather than returned as zero rows;
+    /// a zero contributes nothing to a sum either way.
+    /// </summary>
+    Task<IReadOnlyList<AipActivityFundTotalsDto>> SumMooeCoByConfigOfficeAndFundAsync(
+        int aipRecordId, int configOfficeId, int fundingSourceId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Line counts for a set of activities, computed in SQL (V18-49 / PPDO-59).
+    ///
+    /// ⚠️ Counts, not rows. The submit checklist asks only "does this activity have any lines?" for
+    /// every activity in an office — loading the lines themselves to count them would pull an
+    /// office's entire expenditure table into memory to answer a yes/no question per activity.
+    ///
+    /// ⚠️ Activities with no lines are <b>omitted</b>, not returned as zero. The caller must treat
+    /// an absent id as zero, which it has to do anyway: a SUM/COUNT over no rows produces no group.
+    /// </summary>
+    Task<IReadOnlyList<AipActivityLineCountDto>> CountByActivityIdsAsync(
+        IReadOnlyList<int> activityIds, CancellationToken ct = default);
+
     // ── No write methods here, deliberately ───────────────────────────────────
     // Writes go through the base IRepository<T>'s Add/Update/Delete, with the calling Application
     // service owning SaveChangesAsync — the unit-of-work rule stated on Repository<T> and followed
@@ -65,3 +112,26 @@ public sealed record AipExpenditureTotalsDto(
     decimal Co,
     decimal Total,
     int LineCount);
+
+/// <summary>
+/// One activity's MOOE and CO for a single funding source, computed in SQL (V18-46 / PPDO-56).
+/// Pesos, and <b>base</b> figures — the +30% uplift is presentation-only and never reaches here.
+///
+/// Deliberately carries no PS and no Total: PS is exempt from the ceiling check as an expense
+/// class, and a Total would be the sum of an exempt and a non-exempt component.
+/// </summary>
+public sealed record AipActivityFundTotalsDto(
+    int     ActivityId,
+    decimal Mooe,
+    decimal Co);
+
+/// <summary>
+/// How many expenditure lines one activity has, and how many of them name no funding source
+/// (V18-49). Absent from the result means zero lines.
+///
+/// ⚠️ <see cref="LinesWithoutFund"/> exists because a fundless line is <b>invisible to the ceiling
+/// check</b>: that check sums General Fund only, and a null fund is not the General Fund. Without
+/// this an office could encode ₱50M against no fund, pass "has at least one line", contribute
+/// nothing to its ceiling and submit cleanly. Found by live-testing.
+/// </summary>
+public sealed record AipActivityLineCountDto(int ActivityId, int LineCount, int LinesWithoutFund);

@@ -187,6 +187,49 @@ public sealed partial class AipServiceTests
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    /// <summary>
+    /// ⚠️ <b>One <c>AipOffice</c> row per LDIP sub-office group, not one per sector.</b>
+    ///
+    /// <para>
+    /// This is the defect a live PGO login found: opening the year resolved a single
+    /// <c>LdipOffice</c> per (office, sector) via <c>FirstOrDefault</c>, so PGO's SOCIAL sector
+    /// seeded only <c>- WARDEN</c> and left <c>- AKAP-HUB</c>, <c>- HOUSING</c> and
+    /// <c>- LOCAL SCHOOL BOARD</c> out. The same resolver backed the picker, so the dropped
+    /// programs could not be added by hand either — <b>no error surfaced anywhere</b>, which is why
+    /// it read as missing LDIP data and sent someone to check the LDIP page. Across the province's
+    /// real file that was 19 programs in 5 groups.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ Asserted per group name rather than by count alone. A count assertion passes if the seed
+    /// creates two rows for the wrong group.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task OpenFiscalYear_SeedsEverySubOfficeGroupInASector_NotJustTheFirst()
+    {
+        var (sut, _, _, _, _, _, officeRepo, _, _, _, _, _, _) = Build([], [], officeSeed: [],
+            officeConfigSeed: PartitionOffices(), ldipRecordSeed: LdipSeedFor(PartitionOfficeId),
+            ldipOfficeSeed: LdipSubOfficeGroupsFor(PartitionOfficeId));
+
+        ServiceResult<OpenAipFiscalYearResultDto> result = await sut.OpenFiscalYearAsync(
+            new OpenAipFiscalYearDto(FirstNewFy), Guid.NewGuid(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(3, result.Value!.OfficesPopulated);
+
+        foreach (string groupName in new[] { "PPDO", "PPDO - AKAP-HUB", "PPDO - HOUSING" })
+        {
+            officeRepo.Verify(r => r.AddAsync(
+                It.Is<AipOffice>(o =>
+                    o.Name == groupName
+                    && o.RefCode == "1000-000-1-01-010"
+                    && o.OfficeId == PartitionOfficeId
+                    && o.Programs.Count == 1),
+                It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
     [Fact]
     public async Task OpenFiscalYear_TheSeededOffices_CarryTheirOwnershipFk()
     {
@@ -450,6 +493,35 @@ public sealed partial class AipServiceTests
             CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
         },
     ];
+
+    /// <summary>
+    /// Three GENERAL groups under <b>one</b> ref code, one program each — the shape the province's
+    /// LDIP actually has (its <c>3000-000-1-01-001</c> carries WARDEN, AKAP-HUB, HOUSING and LOCAL
+    /// SCHOOL BOARD). <see cref="LdipGroupsFor"/>'s single group cannot express the bug at all: with
+    /// nothing to drop, it passed throughout.
+    /// </summary>
+    private static List<LdipOffice> LdipSubOfficeGroupsFor(int officeConfigId)
+    {
+        string[] names = ["PPDO", "PPDO - AKAP-HUB", "PPDO - HOUSING"];
+        return names.Select((name, i) => new LdipOffice
+        {
+            Id            = SeededLdipOfficeId + i,
+            LdipRecordId  = SeededLdipRecordId,
+            RefCode       = "1000-000-1-01-010",
+            Name          = name,
+            Sector        = AipSector.General,
+            Programs =
+            [
+                new LdipProgram
+                {
+                    Id           = SeededLdipProgramId + i,
+                    LdipOfficeId = SeededLdipOfficeId + i,
+                    RefCode      = $"1000-000-1-01-010-00{i + 1}",
+                    Name         = $"Seeded program {i + 1}",
+                },
+            ],
+        }).ToList();
+    }
 
     private static List<LdipOffice> LdipGroupsFor(int officeConfigId) =>
     [

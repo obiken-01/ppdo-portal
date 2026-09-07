@@ -72,6 +72,22 @@ public interface IAipService
     Task<ServiceResult<AipActivityDto>> UpdateActivityAsync(
         int aipRecordId, int activityId, UpdateAipActivityDto dto, User caller, CancellationToken ct = default);
 
+    /// <summary>
+    /// PPDO-52 — updates an entered-year activity's <b>descriptive</b> fields, leaving its money
+    /// alone. This is the AIP Entry page's editor; <see cref="UpdateActivityAsync"/> is the detail
+    /// page's whole-row one.
+    ///
+    /// <para>
+    /// ⚠️ <b>The two are not interchangeable, and the difference is data loss.</b> That one
+    /// assigns <c>Ps</c>/<c>Mooe</c>/<c>Co</c>/<c>Total</c>/<c>FundingSourceId</c> unconditionally
+    /// from its DTO, which is right for a page whose form owns those fields. On an entered year
+    /// they are derived from the activity's expenditure lines, so a description edit routed
+    /// through it would zero a costing nobody touched. See <see cref="UpdateAipActivityDetailsDto"/>.
+    /// </para>
+    /// </summary>
+    Task<ServiceResult<AipActivityDto>> UpdateActivityDetailsAsync(
+        int activityId, UpdateAipActivityDetailsDto dto, User caller, CancellationToken ct = default);
+
     /// <summary>Renames an office (only Name is editable — RefCode/Sector are immutable).
     /// Draft-only.</summary>
     Task<ServiceResult<AipOfficeDto>> UpdateOfficeAsync(
@@ -112,6 +128,40 @@ public interface IAipService
     /// </summary>
     Task<ServiceResult<AipOfficeDto>> SeedProgramsFromLdipAsync(
         SeedAipProgramsFromLdipDto dto, Guid createdById, User caller, CancellationToken ct = default);
+
+    /// <summary>
+    /// Adds programs from the office's LDIP under a named <b>sub-office group</b>, creating that
+    /// group if it does not exist yet (V18-42 / PPDO-52, spec §4). The encoder's first stage.
+    ///
+    /// <para>
+    /// <b>⚠️ How this differs from <see cref="SeedProgramsFromLdipAsync"/>, which it otherwise
+    /// resembles closely.</b> That method finds its target <c>AipOffice</c> by <b>ref code
+    /// alone</b>, so it always lands on the first group under that code and cannot start a second.
+    /// This one keys on <b>(ref code, group name)</b>, which is what lets one office carry several
+    /// printed blocks — the province's FY2027 SOCIAL sheet has three under one code.
+    /// </para>
+    ///
+    /// <para>
+    /// ℹ️ <b>Program ref codes are not allocated here.</b> They are inherited verbatim from the
+    /// LDIP program, as seeding has always done. The LDIP is where program numbering lives: it
+    /// numbers continuously across groups sharing a ref code and renumbers on removal, because
+    /// LDIP saves full-replace the hierarchy. Allocating a fresh code here would break the
+    /// correspondence between an AIP program and the LDIP program it came from, which is what
+    /// makes the closed list meaningful.
+    /// </para>
+    /// </summary>
+    /// <summary>
+    /// The LDIP programs an office may add for one sector, resolved by the <b>same</b> two-tier
+    /// rule <see cref="AddProgramsWithGroupAsync"/> uses (V18-42 / PPDO-52).
+    ///
+    /// ⚠️ The entry panel must call this rather than resolving the LDIP itself. See
+    /// <see cref="AipAddableProgramsDto"/> for the divergence that made it necessary.
+    /// </summary>
+    Task<ServiceResult<AipAddableProgramsDto>> GetAddableProgramsAsync(
+        int officeConfigId, string sector, User caller, CancellationToken ct = default);
+
+    Task<ServiceResult<AipOfficeDto>> AddProgramsWithGroupAsync(
+        int aipRecordId, AddAipProgramsWithGroupDto dto, User caller, CancellationToken ct = default);
 
     Task<ServiceResult<AipRecordDto>> FinalizeAsync(int id, CancellationToken ct = default);
     Task<ServiceResult<AipRecordDto>> UnlockAsync(int id, CancellationToken ct = default);

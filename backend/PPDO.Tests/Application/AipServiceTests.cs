@@ -1848,6 +1848,62 @@ public sealed partial class AipServiceTests
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    /// <summary>
+    /// ⚠️ <b>The target office is keyed on <c>(RefCode, Name)</c>, not on <c>RefCode</c> alone.</b>
+    ///
+    /// <para>
+    /// Several sub-office groups legitimately share one ref code — the province's
+    /// <c>3000-000-1-01-001</c> carries WARDEN, AKAP-HUB, HOUSING and LOCAL SCHOOL BOARD. Matching
+    /// on the code alone finds whichever row happens to come back first, so re-syncing AKAP-HUB's
+    /// programs would append them to <b>WARDEN's printed block</b> — silently, and into a document
+    /// that prints. The fixture below therefore puts the wrong-name row FIRST; a code-only match
+    /// picks it and this test fails.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task SeedFromLdip_ASiblingGroupSharingTheRefCode_IsNotMistakenForTheTarget()
+    {
+        AipRecord targetRec = new()
+        {
+            Id = 2, FiscalYear = LegacyFy, EntrySource = "Manual",
+            UploadedById = UserId, UploadedAt = DateTime.UtcNow, Status = PlanningStatus.Draft,
+        };
+        // Same ref code, different block — and deliberately ahead of the real target in the list.
+        AipOffice sibling = new()
+        {
+            Id = 20, AipRecordId = 2, RefCode = "1000-000-1-01-010",
+            Name = "PPDO - WARDEN", Sector = "GENERAL", OfficeId = 7,
+        };
+        AipOffice targetOff = new()
+        {
+            Id = 21, AipRecordId = 2, RefCode = "1000-000-1-01-010",
+            Name = "PPDO - AKAP-HUB", Sector = "GENERAL", OfficeId = 7,
+        };
+
+        LdipRecord ldipRec = LdipRec(5, 7);
+        LdipOffice wardenGroup = LdipGroup(70, 5, name: "PPDO - WARDEN");
+        wardenGroup.Programs.Add(LdipProg(80, 70, "1000-000-1-01-010-001", "Warden program"));
+        LdipOffice akapGroup = LdipGroup(71, 5, name: "PPDO - AKAP-HUB");
+        akapGroup.Programs.Add(LdipProg(90, 71, "1000-000-1-01-010-004", "AKAP program"));
+
+        var (sut, _, _, _, _, _, officeRepo, _, _, programRepo, _, _, _) = Build(
+            [targetRec], [], officeSeed: [sibling, targetOff], officeConfigSeed: [MakeOffice(7, "PPDO", "01-010")],
+            ldipRecordSeed: [ldipRec], ldipOfficeSeed: [wardenGroup, akapGroup]);
+
+        ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
+            new SeedAipProgramsFromLdipDto(LegacyFy, 7, "GENERAL", [90]), UserId, HostCaller());
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(21, result.Value!.Id);
+        Assert.Equal("PPDO - AKAP-HUB", result.Value.Name);
+        officeRepo.Verify(r => r.AddAsync(It.IsAny<AipOffice>(), It.IsAny<CancellationToken>()), Times.Never);
+        // The program lands under AKAP-HUB (21), never under WARDEN (20).
+        programRepo.Verify(r => r.AddAsync(
+            It.Is<AipProgram>(p => p.OfficeId == 21), It.IsAny<CancellationToken>()), Times.Once);
+        programRepo.Verify(r => r.AddAsync(
+            It.Is<AipProgram>(p => p.OfficeId == 20), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     [Fact]
     public async Task SeedFromLdip_TargetOfficeAlreadyHasOtherPrograms_ResponseIncludesBoth()
     {
@@ -2507,6 +2563,132 @@ public sealed partial class AipServiceTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    // ── Entry-page activity editor (PPDO-52) ─────────────────────────────────
+
+    /// <summary>
+    /// ⚠️ <b>The reason <c>UpdateActivityDetailsAsync</c> exists at all.</b> On an entered year
+    /// PS/MOOE/CO/Total are recomputed from the activity's expenditure lines and the fund lives on
+    /// the lines, so a description edit must not touch any of them. <c>UpdateActivityAsync</c>
+    /// assigns all five unconditionally from its DTO — routing the entry page's editor through it
+    /// would have zeroed a costing the encoder never opened, silently and on save.
+    /// </summary>
+    [Fact]
+    public async Task UpdateActivityDetails_LeavesTheDerivedMoneyAndFundUntouched()
+    {
+        var (rec, offices, programs, projects, activities) = SeedActivityTree();
+        // A costed activity, exactly as AipExpenditureService would have left it.
+        activities[0].Ps                    = 2000m;
+        activities[0].Mooe                  = 1000m;
+        activities[0].Co                    = 500m;
+        activities[0].Total                 = 3500m;
+        activities[0].FundingSourceId       = 1;
+        activities[0].FundingSourceSnapshot = "GF";
+
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [Fs(1, "GF")], officeSeed: offices, programSeed: programs,
+                  projectSeed: projects, actSeed: activities);
+
+        UpdateAipActivityDetailsDto dto = new(
+            "Updated Name", "ES", "PPDO", "March", "June", "New outputs", 10m, 5m, "TYP1");
+
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityDetailsAsync(50, dto, HostCaller());
+
+        Assert.True(result.IsSuccess);
+        // The descriptive fields did change.
+        Assert.Equal("Updated Name", result.Value!.Name);
+        Assert.Equal("ES", result.Value.EsreCode);
+        Assert.Equal("TYP1", result.Value.CcTypologyCode);
+        Assert.Equal(10m, result.Value.CcAdaptation);
+        Assert.Equal(5m, result.Value.CcMitigation);
+
+        // ⚠️ And the money did not. These five assertions are the test.
+        Assert.Equal(2000m, result.Value.Ps);
+        Assert.Equal(1000m, result.Value.Mooe);
+        Assert.Equal(500m,  result.Value.Co);
+        Assert.Equal(3500m, result.Value.Total);
+        Assert.Equal(1,     result.Value.FundingSourceId);
+    }
+
+    /// <summary>
+    /// The two fields the submit gate blocks on (<c>missing-esre</c>, <c>missing-cc-typology</c>)
+    /// are reachable from this editor. Before it existed the entry page hardcoded both to null and
+    /// offered no way to set them, so an encoder could never satisfy their own gate.
+    /// </summary>
+    [Fact]
+    public async Task UpdateActivityDetails_SetsTheTwoFieldsTheSubmitGateBlocksOn()
+    {
+        var (rec, offices, programs, projects, activities) = SeedActivityTree();
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs,
+                  projectSeed: projects, actSeed: activities);
+
+        Assert.Null(activities[0].EsreCode);
+        Assert.Null(activities[0].CcTypologyCode);
+
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityDetailsAsync(
+            50, new("Activity", "SS", null, null, null, null, null, null, "CCA-1"), HostCaller());
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("SS", result.Value!.EsreCode);
+        Assert.Equal("CCA-1", result.Value.CcTypologyCode);
+    }
+
+    /// <summary>Lower-case in, canonical upper-case stored — same normalisation as the detail page.</summary>
+    [Fact]
+    public async Task UpdateActivityDetails_EsreCodeIsNormalisedAndValidated()
+    {
+        var (rec, offices, programs, projects, activities) = SeedActivityTree();
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs,
+                  projectSeed: projects, actSeed: activities);
+
+        ServiceResult<AipActivityDto> ok = await sut.UpdateActivityDetailsAsync(
+            50, new("Activity", "es", null, null, null, null, null, null, null), HostCaller());
+        Assert.True(ok.IsSuccess);
+        Assert.Equal("ES", ok.Value!.EsreCode);
+
+        ServiceResult<AipActivityDto> bad = await sut.UpdateActivityDetailsAsync(
+            50, new("Activity", "XX", null, null, null, null, null, null, null), HostCaller());
+        Assert.False(bad.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, bad.Code);
+    }
+
+    /// <summary>
+    /// ⚠️ The full write guard, not just an office-scope check. An office already handed to its
+    /// department head must not be editable — otherwise the document under review changes beneath
+    /// the reviewer.
+    /// </summary>
+    [Fact]
+    public async Task UpdateActivityDetails_AnOfficePastDraft_IsRefused()
+    {
+        var (rec, offices, programs, projects, activities) = SeedActivityTree();
+        offices[0].WorkflowStatus = AipWorkflowStatus.DepartmentReview;
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs,
+                  projectSeed: projects, actSeed: activities);
+
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityDetailsAsync(
+            50, new("Renamed", null, null, null, null, null, null, null, null), HostCaller());
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task UpdateActivityDetails_EmptyName_ReturnsBadRequest()
+    {
+        var (rec, offices, programs, projects, activities) = SeedActivityTree();
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs,
+                  projectSeed: projects, actSeed: activities);
+
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityDetailsAsync(
+            50, new("   ", null, null, null, null, null, null, null, null), HostCaller());
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
     }
 
     [Fact]

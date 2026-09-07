@@ -63,4 +63,52 @@ public sealed class AipExpenditureRepository : Repository<AipExpenditure>, IAipE
         // No rows at all means no group, so FirstOrDefault returns null rather than a zero row.
         return totals ?? new AipExpenditureTotalsDto(0m, 0m, 0m, 0m, 0);
     }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<AipActivityLineCountDto>> CountByActivityIdsAsync(
+        IReadOnlyList<int> activityIds, CancellationToken ct = default)
+    {
+        if (activityIds.Count == 0) return [];
+
+        return await _context.Set<AipExpenditure>()
+            .Where(e => activityIds.Contains(e.ActivityId))
+            .GroupBy(e => e.ActivityId)
+            .Select(g => new AipActivityLineCountDto(
+                g.Key,
+                g.Count(),
+                g.Count(e => e.FundingSourceId == null)))
+            .ToListAsync(ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<AipActivityFundTotalsDto>> SumMooeCoByConfigOfficeAndFundAsync(
+        int aipRecordId, int configOfficeId, int fundingSourceId, CancellationToken ct = default)
+        // One GROUP BY across the office's whole subtree, joined down office → program → project →
+        // activity. The alternative — walk the tree, then one sum per activity — is the N+1 that
+        // cost ~60 sequential round trips on the dashboard (RAL-166), and an office's AIP has far
+        // more activities than a dashboard has divisions.
+        //
+        // ⚠️ Matched on the CONFIG office (AipOffice.OfficeId), not on one AipOffice row, and
+        // bounded to the record. An office owns one group row per sub-office per sector — PGO has
+        // eight in FY2028 — and the ceiling is a single office-level bound over all of them.
+        // Scoping this to one row is what let seven of PGO's eight groups encode General Fund
+        // money that no ceiling check could see.
+        //
+        // ⚠️ Filtered to ONE funding source by the caller, which passes General Fund. Non-GF funds
+        // are excluded here by an explicit argument rather than by having no ceiling row — a
+        // missing allocation resolves to 0m, so absence would silently forbid a fund instead of
+        // ignoring it (V18-46 trap 3).
+        //
+        // ⚠️ Grouped per ACTIVITY and returned un-summed, because the ceiling rounds each figure
+        // up to the thousand before adding (DECISION 9). Summing here would round after the sum.
+        => await _context.Set<AipExpenditure>()
+            .Where(e => e.FundingSourceId == fundingSourceId
+                     && e.Activity.Project.Program.Office.AipRecordId == aipRecordId
+                     && e.Activity.Project.Program.Office.OfficeId == configOfficeId)
+            .GroupBy(e => e.ActivityId)
+            .Select(g => new AipActivityFundTotalsDto(
+                g.Key,
+                g.Sum(e => (decimal?)e.Mooe) ?? 0m,
+                g.Sum(e => (decimal?)e.Co) ?? 0m))
+            .ToListAsync(ct);
 }

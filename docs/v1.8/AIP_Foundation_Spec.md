@@ -98,7 +98,7 @@ without migrating historical data.
 
 | # | Question | Blocks | Default if unanswered |
 |---|---|---|---|
-| ~~**P2-a**~~ ✅ **answered 2026-09-03 — divide at render** | After the migration, does the AIP detail page **drop** the `(in ₱000)` headers and show full pesos, or **divide by 1000 at render** to keep the province's convention? | V18-35 | Shipped as the default: the headers stay, `toDisplayUnits`/`toStorageUnits` convert at the page edge, and nothing an encoder sees or types changed when storage did. Phase 5's printable form has to render thousands to match the province's form regardless, so showing raw pesos would only have relocated the conversion |
+| ~~**P2-a**~~ ✅ **answered 2026-09-03 — divide at render** · ↩️ **half REVERSED 2026-09-07** | After the migration, does the AIP detail page **drop** the `(in ₱000)` headers and show full pesos, or **divide by 1000 at render** to keep the province's convention? | V18-35 | Shipped as the default: the headers stay, `toDisplayUnits`/`toStorageUnits` convert at the page edge, and nothing an encoder sees or types changed when storage did. Phase 5's printable form has to render thousands to match the province's form regardless, so showing raw pesos would only have relocated the conversion | ↩️ **The ENTRY half was wrong and is reversed (Ralph, 2026-09-07).** The requirement was always *"let them put the value they want whether it's 1,234,567.89 and it will be saved as it is, but when displayed in the UI or part of a report, it will be in thousand pesos"* — so **inputs are PESOS**, and only read-only cells divide. The symmetric pair stored ₱1.23bn for a typed 1,234,567.89; the archived FY2028 test data still carries a ₱4,657,655,000 line typed as 4,657,655. `toStorageUnits` is deleted, not deprecated. Display stays **exact** (1,234.57) so an encoder can reconcile a cell against what they typed; DECISION 9's round-**up** keeps its narrower scope — the ceiling check and Phase 5's printed form |
 | **P2-b** | Does the FY partition gate on a **literal `fiscalYear` check inside shared endpoints**, or **new endpoints beside untouched old ones**? | V18-37 | New endpoints. A literal check inside a shared handler is a branch that must stay correct forever in a file nobody re-reads |
 | **P2-c** | Does `aip_expenditures` reuse the existing `accounts` config table, or does AIP need its own expense vocabulary? | V18-33 | Reuse `accounts` — it is the same chart of accounts, and WFP already snapshots from it |
 
@@ -392,7 +392,7 @@ Phase 2 adds no screen. Two existing surfaces change.
 
 | Surface | Change |
 |---|---|
-| **AIP detail page** | ✅ P2-a answered — headers keep `(in ₱000)`, cells divide at render, inputs multiply on save. Display and entry moved together, as they had to. Counts corrected while implementing: **10 cells** (the office-total footer row renders AIP money too) and **10 inputs** (the eleventh grep hit was the import line) |
+| **AIP detail page** | ✅ P2-a answered — headers keep `(in ₱000)` and cells divide at render. ⚠️ **"inputs multiply on save" was reversed 2026-09-07 — inputs are pesos and multiply nothing.** Display and entry moved together, as they had to. Counts corrected while implementing: **10 cells** (the office-total footer row renders AIP money too) and **10 inputs** (the eleventh grep hit was the import line) |
 | **AIP upload** | ✅ Shipped 2026-09-03 (V18-38). FY≥2028 refused with a reason naming the fiscal year and the alternative, not a generic validation error. The dropzone and the Upload button are **disabled with the reason shown**, not hidden — the user has CanUploadAip, the *state* forbids it (`Budget_Planning_Dashboard_Requirements.md` §6.1). The detail page's **Re-upload** button is disabled the same way rather than linking to a page that refuses on arrival |
 
 Flat design, PPDO tokens, `slate-800` headings / `slate-600` body, never `text-slate-700`.
@@ -498,7 +498,7 @@ is the class where a wrong choice compiles cleanly and leaks data.
       (verified locally, 3 fiscal years; production runs the same check per the pre-deployment
       checklist, and the baseline must be captured BEFORE applying or it cannot be checked at all)
 - [x] All six x1000 sites are deleted — not made FY-conditional (grep "* 1000")
-- [x] The AIP detail page’s 2 headers, 10 cells and 10 inputs agree with each other and with P2-a (divide at render)
+- [x] The AIP detail page’s 2 headers and 10 cells divide at render; its 10 inputs are pesos and convert nothing (P2-a as revised 2026-09-07)
 - [ ] Typing 250 into an AIP amount and reloading shows the same number it showed before Phase 2
       (⚠️ still unrun — needs a portal login)
 - [x] types/budget-planning.ts:908's "like AIP totals" cross-reference is corrected — and it turned

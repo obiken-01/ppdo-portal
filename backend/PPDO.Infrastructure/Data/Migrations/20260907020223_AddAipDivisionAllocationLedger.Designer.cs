@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PPDO.Infrastructure.Data;
 
@@ -11,9 +12,11 @@ using PPDO.Infrastructure.Data;
 namespace PPDO.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260907020223_AddAipDivisionAllocationLedger")]
+    partial class AddAipDivisionAllocationLedger
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -381,18 +384,12 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasColumnType("nvarchar(20)")
                         .HasColumnName("sector");
 
-                    b.Property<string>("WorkflowStatus")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)")
-                        .HasDefaultValue("Draft")
-                        .HasColumnName("workflow_status");
-
                     b.HasKey("Id");
 
                     b.HasIndex("AipRecordId")
                         .HasDatabaseName("IX_aip_offices_aip_record_id");
+
+                    b.HasIndex("OfficeId");
 
                     b.HasIndex("RefCode")
                         .HasDatabaseName("IX_aip_offices_ref_code");
@@ -402,9 +399,6 @@ namespace PPDO.Infrastructure.Data.Migrations
 
                     b.HasIndex("AipRecordId", "RefCode")
                         .HasDatabaseName("IX_aip_offices_aip_record_id_ref_code");
-
-                    b.HasIndex("OfficeId", "WorkflowStatus")
-                        .HasDatabaseName("IX_aip_offices_workflow_status");
 
                     b.ToTable("aip_offices", (string)null);
                 });

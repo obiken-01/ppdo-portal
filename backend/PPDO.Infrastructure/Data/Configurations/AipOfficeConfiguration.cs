@@ -50,6 +50,28 @@ public sealed class AipOfficeConfiguration : IEntityTypeConfiguration<AipOffice>
         builder.HasIndex(o => new { o.AipRecordId, o.OfficeId })
             .HasDatabaseName("IX_aip_offices_aip_record_id_office_id");
 
+        // V18-42 / PPDO-52 — one office's position in the review workflow (spec §5.1).
+        //
+        // ⚠️ NVARCHAR(30), not an enum column and not the 20 that aip_records.status uses:
+        // "DepartmentReview" and "SubmittedToPpdo" are 16 characters, so 20 leaves almost no room
+        // for a sixth state and the column would need widening the first time Phase 4 adds one.
+        //
+        // ⚠️ Defaulted in SQL as well as in the entity. Existing rows predate this column and must
+        // land on Draft without a backfill statement; a default only in C# would leave them empty
+        // strings, which is not one of the five states and would fail every read that switches on
+        // it.
+        builder.Property(o => o.WorkflowStatus)
+            .HasColumnName("workflow_status")
+            .IsRequired()
+            .HasMaxLength(30)
+            .HasDefaultValue("Draft");
+
+        // (office_id, workflow_status) — the Phase 4 review queue's read: "every office of mine
+        // sitting in this state". Leading with office_id rather than the status keeps it useful
+        // for the single-office lookup this phase makes, too.
+        builder.HasIndex(o => new { o.OfficeId, o.WorkflowStatus })
+            .HasDatabaseName("IX_aip_offices_workflow_status");
+
         // Cascade: deleting an AIP record removes its entire hierarchy.
         builder.HasOne(o => o.AipRecord)
             .WithMany(r => r.Offices)

@@ -173,6 +173,59 @@ public sealed class AipFunctions
             await _aip.AddOfficeAsync(aipId, body, caller!, ct), ct, HttpStatusCode.Created);
     }
 
+    // ── GET /api/budget-planning/aip/addable-programs?officeConfigId=&sector= ─
+    // V18-42 / PPDO-52. The entry panel's program picker.
+    //
+    // ⚠️ Read-only, and it exists so the client does NOT resolve the LDIP itself. The two-tier
+    // resolution lives in one place; a client-side copy diverged and refused every add.
+    [Function("AipAddablePrograms")]
+    public async Task<HttpResponseData> AddablePrograms(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get",
+            Route = "budget-planning/aip/addable-programs")] HttpRequestData req,
+        CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) =
+            await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        System.Collections.Specialized.NameValueCollection q =
+            System.Web.HttpUtility.ParseQueryString(req.Url.Query);
+
+        if (!int.TryParse(q["officeConfigId"], out int officeConfigId))
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<AipAddableProgramsDto>.Fail("officeConfigId is required."), ct);
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _aip.GetAddableProgramsAsync(officeConfigId, q["sector"] ?? "", caller!, ct), ct);
+    }
+
+    // ── POST /api/budget-planning/aip/{aipId}/programs ────────────────────────
+    // V18-42 / PPDO-52, spec §4 — the encoder's first stage: a sub-office group and the programs
+    // going into it, in one call, because they are one interaction.
+    //
+    // ⚠️ Not a duplicate of seed-programs-from-ldip below. That one keys its target office on ref
+    // code alone and so can only reach the first group under it; this one keys on
+    // (ref code, group name) and can start a second.
+    [Function("AipAddProgramsWithGroup")]
+    public async Task<HttpResponseData> AddProgramsWithGroup(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post",
+            Route = "budget-planning/aip/{aipId:int}/programs")] HttpRequestData req,
+        int aipId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) =
+            await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        AddAipProgramsWithGroupDto? body =
+            await ConfigHttp.ReadBodyAsync<AddAipProgramsWithGroupDto>(req, ct);
+        if (body is null)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<AipOfficeDto>.Fail("Request body is missing or malformed."), ct);
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _aip.AddProgramsWithGroupAsync(aipId, body, caller!, ct), ct, HttpStatusCode.Created);
+    }
+
     // ── POST /api/budget-planning/aip/seed-programs-from-ldip ─────────────────
     // RAL-181 — seed an office's AIP programs (Name+RefCode only, bare shells) from that
     // office's existing LDIP for the given sector. CanAccessBudgetPlanning, same reasoning as
@@ -453,5 +506,26 @@ public sealed class AipFunctions
 
         return await ConfigHttp.FromResultAsync(req,
             await _aip.UpdateActivityIsCreationAsync(id, body.IsCreation, caller!, ct), ct);
+    }
+
+    // ── PUT /api/budget-planning/aip/activities/{id}/details ──────────────────
+    // PPDO-52 — the AIP Entry page's activity editor. Deliberately narrower than AipUpdateActivity:
+    // it cannot touch PS/MOOE/CO or the funding source, because on an entered year those are
+    // derived from the activity's expenditure lines. See UpdateAipActivityDetailsDto.
+    [Function("AipUpdateActivityDetails")]
+    public async Task<HttpResponseData> UpdateActivityDetails(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "budget-planning/aip/activities/{id:int}/details")] HttpRequestData req,
+        int id, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        UpdateAipActivityDetailsDto? body = await ConfigHttp.ReadBodyAsync<UpdateAipActivityDetailsDto>(req, ct);
+        if (body is null)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<AipActivityDto>.Fail("Request body is missing or malformed."), ct);
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _aip.UpdateActivityDetailsAsync(id, body, caller!, ct), ct);
     }
 }
