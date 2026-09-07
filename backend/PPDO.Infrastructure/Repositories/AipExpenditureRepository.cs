@@ -65,6 +65,19 @@ public sealed class AipExpenditureRepository : Repository<AipExpenditure>, IAipE
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<AipActivityLineCountDto>> CountByActivityIdsAsync(
+        IReadOnlyList<int> activityIds, CancellationToken ct = default)
+    {
+        if (activityIds.Count == 0) return [];
+
+        return await _context.Set<AipExpenditure>()
+            .Where(e => activityIds.Contains(e.ActivityId))
+            .GroupBy(e => e.ActivityId)
+            .Select(g => new AipActivityLineCountDto(g.Key, g.Count()))
+            .ToListAsync(ct);
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<AipActivityFundTotalsDto>> SumMooeCoByOfficeAndFundAsync(
         int aipOfficeId, int fundingSourceId, CancellationToken ct = default)
         // One GROUP BY across the office's whole subtree, joined down program → project →

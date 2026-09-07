@@ -196,6 +196,7 @@ var host = new HostBuilder()
         // remaining allocation.
         services.AddScoped<IAipCeilingService, AipCeilingService>();
         services.AddScoped<IAipExpenditureService, AipExpenditureService>();
+        services.AddScoped<IAipSubmitService, AipSubmitService>();
     })
     .ConfigureLogging((context, logging) =>
     {

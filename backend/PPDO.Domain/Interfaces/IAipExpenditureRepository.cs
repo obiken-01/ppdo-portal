@@ -57,6 +57,19 @@ public interface IAipExpenditureRepository : IRepository<AipExpenditure>
     Task<IReadOnlyList<AipActivityFundTotalsDto>> SumMooeCoByOfficeAndFundAsync(
         int aipOfficeId, int fundingSourceId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Line counts for a set of activities, computed in SQL (V18-49 / PPDO-59).
+    ///
+    /// ⚠️ Counts, not rows. The submit checklist asks only "does this activity have any lines?" for
+    /// every activity in an office — loading the lines themselves to count them would pull an
+    /// office's entire expenditure table into memory to answer a yes/no question per activity.
+    ///
+    /// ⚠️ Activities with no lines are <b>omitted</b>, not returned as zero. The caller must treat
+    /// an absent id as zero, which it has to do anyway: a SUM/COUNT over no rows produces no group.
+    /// </summary>
+    Task<IReadOnlyList<AipActivityLineCountDto>> CountByActivityIdsAsync(
+        IReadOnlyList<int> activityIds, CancellationToken ct = default);
+
     // ── No write methods here, deliberately ───────────────────────────────────
     // Writes go through the base IRepository<T>'s Add/Update/Delete, with the calling Application
     // service owning SaveChangesAsync — the unit-of-work rule stated on Repository<T> and followed
@@ -95,3 +108,6 @@ public sealed record AipActivityFundTotalsDto(
     int     ActivityId,
     decimal Mooe,
     decimal Co);
+
+/// <summary>How many expenditure lines one activity has (V18-49). Absent means zero.</summary>
+public sealed record AipActivityLineCountDto(int ActivityId, int LineCount);
