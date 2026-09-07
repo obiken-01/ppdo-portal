@@ -507,4 +507,25 @@ public sealed class AipFunctions
         return await ConfigHttp.FromResultAsync(req,
             await _aip.UpdateActivityIsCreationAsync(id, body.IsCreation, caller!, ct), ct);
     }
+
+    // ── PUT /api/budget-planning/aip/activities/{id}/details ──────────────────
+    // PPDO-52 — the AIP Entry page's activity editor. Deliberately narrower than AipUpdateActivity:
+    // it cannot touch PS/MOOE/CO or the funding source, because on an entered year those are
+    // derived from the activity's expenditure lines. See UpdateAipActivityDetailsDto.
+    [Function("AipUpdateActivityDetails")]
+    public async Task<HttpResponseData> UpdateActivityDetails(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "budget-planning/aip/activities/{id:int}/details")] HttpRequestData req,
+        int id, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        UpdateAipActivityDetailsDto? body = await ConfigHttp.ReadBodyAsync<UpdateAipActivityDetailsDto>(req, ct);
+        if (body is null)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<AipActivityDto>.Fail("Request body is missing or malformed."), ct);
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _aip.UpdateActivityDetailsAsync(id, body, caller!, ct), ct);
+    }
 }

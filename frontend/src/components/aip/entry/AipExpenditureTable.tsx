@@ -20,8 +20,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import MoneyInput from "@/components/ui/MoneyInput";
+import Lookup from "@/components/ui/Lookup";
 import { fmt, toDisplayUnits, toStorageUnits } from "@/lib/aip-units";
-import { selectCls } from "@/components/aip/AipTreeCells";
 import {
   addAipExpenditure, updateAipExpenditure, deleteAipExpenditure, aipErrorMessage,
 } from "@/lib/aip";
@@ -38,6 +38,25 @@ interface Draft {
 }
 
 const EMPTY: Draft = { accountId: "", fundingSourceId: "", ps: null, mooe: null, co: null };
+
+// ── Picker accessors ────────────────────────────────────────────────────────
+//
+// ⚠️ Accounts and funds are picked with `Lookup`, the shared type-to-filter combobox the WFP
+// expenditure form uses — NOT a plain <select>. There are ~148 accounts in the config, and a
+// native select over that many is a scroll-and-hunt with no way to search. Same component, same
+// behaviour as WFP, so an encoder who knows one form knows the other.
+//
+// ⚠️ Defined at module scope, not inline per render: the three pickers below must label and search
+// an account identically, and three inline copies is how "3-11-010" finds a row in one picker and
+// nothing in another.
+const accountLabel  = (a: AccountResponse) => `${a.accountNumber} · ${a.accountTitle}`;
+const accountSearch = (a: AccountResponse) => `${a.accountNumber} ${a.accountTitle} ${a.expenseClass}`;
+const fundSearch    = (f: FundingSourceResponse) => `${f.code} ${f.name}`;
+
+/** The fund's label, marking the one fund the ceiling actually checks. */
+function fundLabel(f: FundingSourceResponse, generalFundId: number | null): string {
+  return `${f.code}${f.id === generalFundId ? " (ceiling applies)" : ""}`;
+}
 
 /** Distinct funds actually in use, ignoring lines that name none. */
 function distinctFunds(lines: AipExpenditure[]): number[] {
@@ -211,15 +230,18 @@ export default function AipExpenditureTable({
           {!multiFund && (
             <label className="flex items-center gap-2 text-xs text-slate-600">
               Funding source
-              <select value={activityFund} disabled={busy} className={`${selectCls} w-auto`}
-                onChange={(e) => void changeActivityFund(e.target.value)}>
-                <option value="">— Fund —</option>
-                {fundingSources.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.code}{f.id === generalFundId ? " (ceiling applies)" : ""}
-                  </option>
-                ))}
-              </select>
+              <Lookup
+                items={fundingSources}
+                value={activityFund ? Number(activityFund) : null}
+                onChange={(id) => void changeActivityFund(id == null ? "" : String(id))}
+                getId={(f) => f.id}
+                getLabel={(f) => fundLabel(f, generalFundId)}
+                getSearchText={fundSearch}
+                allOptionLabel="— Fund —"
+                placeholder="Search funds…"
+                disabled={busy}
+                className="w-56"
+              />
             </label>
           )}
         </div>
@@ -306,27 +328,33 @@ function EditRow({
 }) {
   return (
     <tr className="border-t border-slate-200 bg-amber-50">
-      <td className="py-1.5 pr-2">
-        <select value={draft.accountId} className={selectCls}
-          onChange={(e) => setDraft({ ...draft, accountId: e.target.value })}>
-          <option value="">— Account —</option>
-          {accounts.map((a) => (
-            <option key={a.id} value={a.id}>{a.accountNumber} · {a.accountTitle}</option>
-          ))}
-        </select>
+      <td className="py-1.5 pr-2 min-w-[14rem]">
+        <Lookup
+          items={accounts}
+          value={draft.accountId ? Number(draft.accountId) : null}
+          onChange={(id) => setDraft({ ...draft, accountId: id == null ? "" : String(id) })}
+          getId={(a) => a.id}
+          getLabel={accountLabel}
+          getSearchText={accountSearch}
+          allOptionLabel="— Account —"
+          placeholder="Search accounts…"
+          disabled={busy}
+        />
       </td>
       {showFund && (
-        <td className="py-1.5 pr-2">
+        <td className="py-1.5 pr-2 min-w-[10rem]">
           {/* ⚠️ One fund per line even here. A second fund is a second line. */}
-          <select value={draft.fundingSourceId} className={selectCls}
-            onChange={(e) => setDraft({ ...draft, fundingSourceId: e.target.value })}>
-            <option value="">— Fund —</option>
-            {fundingSources.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.code}{f.id === generalFundId ? " (ceiling applies)" : ""}
-              </option>
-            ))}
-          </select>
+          <Lookup
+            items={fundingSources}
+            value={draft.fundingSourceId ? Number(draft.fundingSourceId) : null}
+            onChange={(id) => setDraft({ ...draft, fundingSourceId: id == null ? "" : String(id) })}
+            getId={(f) => f.id}
+            getLabel={(f) => fundLabel(f, generalFundId)}
+            getSearchText={fundSearch}
+            allOptionLabel="— Fund —"
+            placeholder="Search funds…"
+            disabled={busy}
+          />
         </td>
       )}
       <td className="py-1.5 pr-1"><MoneyInput value={draft.ps}   onChange={(v) => setDraft({ ...draft, ps: v })} /></td>

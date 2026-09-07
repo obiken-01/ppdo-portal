@@ -72,6 +72,22 @@ public interface IAipService
     Task<ServiceResult<AipActivityDto>> UpdateActivityAsync(
         int aipRecordId, int activityId, UpdateAipActivityDto dto, User caller, CancellationToken ct = default);
 
+    /// <summary>
+    /// PPDO-52 — updates an entered-year activity's <b>descriptive</b> fields, leaving its money
+    /// alone. This is the AIP Entry page's editor; <see cref="UpdateActivityAsync"/> is the detail
+    /// page's whole-row one.
+    ///
+    /// <para>
+    /// ⚠️ <b>The two are not interchangeable, and the difference is data loss.</b> That one
+    /// assigns <c>Ps</c>/<c>Mooe</c>/<c>Co</c>/<c>Total</c>/<c>FundingSourceId</c> unconditionally
+    /// from its DTO, which is right for a page whose form owns those fields. On an entered year
+    /// they are derived from the activity's expenditure lines, so a description edit routed
+    /// through it would zero a costing nobody touched. See <see cref="UpdateAipActivityDetailsDto"/>.
+    /// </para>
+    /// </summary>
+    Task<ServiceResult<AipActivityDto>> UpdateActivityDetailsAsync(
+        int activityId, UpdateAipActivityDetailsDto dto, User caller, CancellationToken ct = default);
+
     /// <summary>Renames an office (only Name is editable — RefCode/Sector are immutable).
     /// Draft-only.</summary>
     Task<ServiceResult<AipOfficeDto>> UpdateOfficeAsync(

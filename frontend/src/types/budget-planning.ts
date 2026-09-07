@@ -162,6 +162,30 @@ export interface UpdateAipActivityRequest {
   ccTypologyCode?: string | null;
 }
 
+/**
+ * An entered-year activity's **descriptive** fields — the AIP Entry page's editor (PPDO-52).
+ *
+ * ⚠️ **No `ps`, `mooe`, `co` or `fundingSourceId`, and adding them would be a data-loss bug.**
+ * On an entered year those are derived from the activity's expenditure lines — the server
+ * recomputes PS/MOOE/CO on every line write, and the fund lives on the lines (one per line). Use
+ * this for the entry page; `UpdateAipActivityRequest` is the detail page's whole-row edit and it
+ * *does* own those fields, so sending it from here would zero a costing nobody touched.
+ *
+ * ⚠️ `esreCode` and `ccTypologyCode` are the two the submit gate blocks on.
+ */
+export interface UpdateAipActivityDetailsRequest {
+  name: string;
+  esreCode?: string | null;
+  implementingOffice?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  expectedOutputs?: string | null;
+  /** Not derived from lines — expenditure lines carry only PS/MOOE/CO, so this is the only home. */
+  ccAdaptation?: number | null;
+  ccMitigation?: number | null;
+  ccTypologyCode?: string | null;
+}
+
 // ── AIP inline office/program/project edit (detail-page CRUD) ────────────────
 
 export interface UpdateAipOfficeRequest {

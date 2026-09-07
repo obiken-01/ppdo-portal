@@ -32,6 +32,7 @@ import { FIRST_ENTERED_FISCAL_YEAR } from "@/lib/aip-fiscal-years";
 import { fmt, toDisplayUnits } from "@/lib/aip-units";
 import AipAddProgramsPanel from "@/components/aip/entry/AipAddProgramsPanel";
 import AipExpenditureTable from "@/components/aip/entry/AipExpenditureTable";
+import AipActivityFields from "@/components/aip/entry/AipActivityFields";
 import AipSubmitChecklist from "@/components/aip/entry/AipSubmitChecklist";
 import { listAipExpenditures } from "@/lib/aip";
 import type {
@@ -225,6 +226,14 @@ export default function AipEntryPage() {
                     setRecord((prev) => prev && applyActivityTotals(prev, r));
                     void refreshReadiness();
                   }}
+                  // ⚠️ Readiness is refreshed too, not just the tree: eSRE and CC typology are
+                  // two of the checks the submit gate blocks on, so saving them has to move the
+                  // checklist at the top of the page or the encoder fixes something and sees no
+                  // change.
+                  onActivityDetails={(updated) => {
+                    setRecord((prev) => prev && patchActivity(prev, updated.id, updated));
+                    void refreshReadiness();
+                  }}
                 />
               ))}
 
@@ -252,7 +261,7 @@ export default function AipEntryPage() {
 
 function GroupBlock({
   group, canEdit, accounts, funds, generalFundId, divisionFiltered,
-  onStructureChanged, onActivityTotals,
+  onStructureChanged, onActivityTotals, onActivityDetails,
 }: {
   group: AipOfficeDetail;
   canEdit: boolean;
@@ -263,6 +272,7 @@ function GroupBlock({
   divisionFiltered: boolean;
   onStructureChanged: () => void;
   onActivityTotals: (result: AipExpenditureWriteResult) => void;
+  onActivityDetails: (updated: AipActivityDetail) => void;
 }) {
   return (
     <div className="border border-slate-200 bg-white">
@@ -300,7 +310,7 @@ function GroupBlock({
                     {project.activities.map((activity) => (
                       <ActivityBlock key={activity.id} activity={activity} canEdit={canEdit}
                         accounts={accounts} funds={funds} generalFundId={generalFundId}
-                        onTotals={onActivityTotals} />
+                        onTotals={onActivityTotals} onDetails={onActivityDetails} />
                     ))}
                     {canEdit && (
                       <InlineAdd label="+ Add activity" placeholder="Activity description"
@@ -332,7 +342,7 @@ function GroupBlock({
 // ── One activity, with its expenditure lines ──────────────────────────────
 
 function ActivityBlock({
-  activity, canEdit, accounts, funds, generalFundId, onTotals,
+  activity, canEdit, accounts, funds, generalFundId, onTotals, onDetails,
 }: {
   activity: AipActivityDetail;
   canEdit: boolean;
@@ -340,6 +350,7 @@ function ActivityBlock({
   funds: FundingSourceResponse[];
   generalFundId: number | null;
   onTotals: (result: AipExpenditureWriteResult) => void;
+  onDetails: (updated: AipActivityDetail) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [lines, setLines] = useState<AipExpenditure[] | null>(null);
@@ -364,11 +375,17 @@ function ActivityBlock({
       </button>
 
       {open && (
-        lines === null ? (
-          <div className="space-y-2 px-4 py-3">
-            {[0, 1].map((i) => <div key={i} className="h-4 w-full animate-pulse bg-slate-100" />)}
-          </div>
-        ) : (
+        <>
+          {/* ⚠️ Above the lines, not below. eSRE and CC typology block submit just as hard as a
+              missing costing does, and an encoder who opens an activity to cost it should see
+              what else it still needs in the same glance. */}
+          <AipActivityFields activity={activity} canEdit={canEdit} onSaved={onDetails} />
+
+          {lines === null ? (
+            <div className="space-y-2 px-4 py-3">
+              {[0, 1].map((i) => <div key={i} className="h-4 w-full animate-pulse bg-slate-100" />)}
+            </div>
+          ) : (
           <AipExpenditureTable
             activityId={activity.id} lines={lines} accounts={accounts} fundingSources={funds}
             canEdit={canEdit} generalFundId={generalFundId}
@@ -378,21 +395,22 @@ function ActivityBlock({
               void listAipExpenditures(activity.id).then(setLines).catch(() => undefined);
               onTotals(result);
             }} />
-        )
+          )}
+        </>
       )}
     </div>
   );
 }
 
 /**
- * Replaces one activity's totals in the tree, immutably.
+ * Replaces one activity in the tree, immutably, merging `patch` over it.
  *
- * ⚠️ Exists so an expenditure save does not have to reload the record. Reloading remounts every
- * ActivityBlock, and each keeps its own open/closed state — so the row the encoder is typing in
- * closes under them. Found by live-testing.
+ * ⚠️ Exists so a save does not have to reload the record. Reloading remounts every ActivityBlock,
+ * and each keeps its own open/closed state — so the row the encoder is working in closes under
+ * them. Found by live-testing.
  */
-function applyActivityTotals(
-  record: AipRecordDetail, r: AipExpenditureWriteResult
+function patchActivity(
+  record: AipRecordDetail, activityId: number, patch: Partial<AipActivityDetail>
 ): AipRecordDetail {
   return {
     ...record,
@@ -403,14 +421,21 @@ function applyActivityTotals(
         projects: program.projects.map((project) => ({
           ...project,
           activities: project.activities.map((activity) =>
-            activity.id === r.activityId
-              ? { ...activity, ps: r.activityPs, mooe: r.activityMooe, co: r.activityCo, total: r.activityTotal }
-              : activity
+            activity.id === activityId ? { ...activity, ...patch } : activity
           ),
         })),
       })),
     })),
   };
+}
+
+/** The totals half of the above — what an expenditure write hands back. */
+function applyActivityTotals(
+  record: AipRecordDetail, r: AipExpenditureWriteResult
+): AipRecordDetail {
+  return patchActivity(record, r.activityId, {
+    ps: r.activityPs, mooe: r.activityMooe, co: r.activityCo, total: r.activityTotal,
+  });
 }
 
 // ── Small pieces ──────────────────────────────────────────────────────────

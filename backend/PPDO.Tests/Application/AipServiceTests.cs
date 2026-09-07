@@ -2565,6 +2565,132 @@ public sealed partial class AipServiceTests
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
     }
 
+    // ── Entry-page activity editor (PPDO-52) ─────────────────────────────────
+
+    /// <summary>
+    /// ⚠️ <b>The reason <c>UpdateActivityDetailsAsync</c> exists at all.</b> On an entered year
+    /// PS/MOOE/CO/Total are recomputed from the activity's expenditure lines and the fund lives on
+    /// the lines, so a description edit must not touch any of them. <c>UpdateActivityAsync</c>
+    /// assigns all five unconditionally from its DTO — routing the entry page's editor through it
+    /// would have zeroed a costing the encoder never opened, silently and on save.
+    /// </summary>
+    [Fact]
+    public async Task UpdateActivityDetails_LeavesTheDerivedMoneyAndFundUntouched()
+    {
+        var (rec, offices, programs, projects, activities) = SeedActivityTree();
+        // A costed activity, exactly as AipExpenditureService would have left it.
+        activities[0].Ps                    = 2000m;
+        activities[0].Mooe                  = 1000m;
+        activities[0].Co                    = 500m;
+        activities[0].Total                 = 3500m;
+        activities[0].FundingSourceId       = 1;
+        activities[0].FundingSourceSnapshot = "GF";
+
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [Fs(1, "GF")], officeSeed: offices, programSeed: programs,
+                  projectSeed: projects, actSeed: activities);
+
+        UpdateAipActivityDetailsDto dto = new(
+            "Updated Name", "ES", "PPDO", "March", "June", "New outputs", 10m, 5m, "TYP1");
+
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityDetailsAsync(50, dto, HostCaller());
+
+        Assert.True(result.IsSuccess);
+        // The descriptive fields did change.
+        Assert.Equal("Updated Name", result.Value!.Name);
+        Assert.Equal("ES", result.Value.EsreCode);
+        Assert.Equal("TYP1", result.Value.CcTypologyCode);
+        Assert.Equal(10m, result.Value.CcAdaptation);
+        Assert.Equal(5m, result.Value.CcMitigation);
+
+        // ⚠️ And the money did not. These five assertions are the test.
+        Assert.Equal(2000m, result.Value.Ps);
+        Assert.Equal(1000m, result.Value.Mooe);
+        Assert.Equal(500m,  result.Value.Co);
+        Assert.Equal(3500m, result.Value.Total);
+        Assert.Equal(1,     result.Value.FundingSourceId);
+    }
+
+    /// <summary>
+    /// The two fields the submit gate blocks on (<c>missing-esre</c>, <c>missing-cc-typology</c>)
+    /// are reachable from this editor. Before it existed the entry page hardcoded both to null and
+    /// offered no way to set them, so an encoder could never satisfy their own gate.
+    /// </summary>
+    [Fact]
+    public async Task UpdateActivityDetails_SetsTheTwoFieldsTheSubmitGateBlocksOn()
+    {
+        var (rec, offices, programs, projects, activities) = SeedActivityTree();
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs,
+                  projectSeed: projects, actSeed: activities);
+
+        Assert.Null(activities[0].EsreCode);
+        Assert.Null(activities[0].CcTypologyCode);
+
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityDetailsAsync(
+            50, new("Activity", "SS", null, null, null, null, null, null, "CCA-1"), HostCaller());
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("SS", result.Value!.EsreCode);
+        Assert.Equal("CCA-1", result.Value.CcTypologyCode);
+    }
+
+    /// <summary>Lower-case in, canonical upper-case stored — same normalisation as the detail page.</summary>
+    [Fact]
+    public async Task UpdateActivityDetails_EsreCodeIsNormalisedAndValidated()
+    {
+        var (rec, offices, programs, projects, activities) = SeedActivityTree();
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs,
+                  projectSeed: projects, actSeed: activities);
+
+        ServiceResult<AipActivityDto> ok = await sut.UpdateActivityDetailsAsync(
+            50, new("Activity", "es", null, null, null, null, null, null, null), HostCaller());
+        Assert.True(ok.IsSuccess);
+        Assert.Equal("ES", ok.Value!.EsreCode);
+
+        ServiceResult<AipActivityDto> bad = await sut.UpdateActivityDetailsAsync(
+            50, new("Activity", "XX", null, null, null, null, null, null, null), HostCaller());
+        Assert.False(bad.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, bad.Code);
+    }
+
+    /// <summary>
+    /// ⚠️ The full write guard, not just an office-scope check. An office already handed to its
+    /// department head must not be editable — otherwise the document under review changes beneath
+    /// the reviewer.
+    /// </summary>
+    [Fact]
+    public async Task UpdateActivityDetails_AnOfficePastDraft_IsRefused()
+    {
+        var (rec, offices, programs, projects, activities) = SeedActivityTree();
+        offices[0].WorkflowStatus = AipWorkflowStatus.DepartmentReview;
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs,
+                  projectSeed: projects, actSeed: activities);
+
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityDetailsAsync(
+            50, new("Renamed", null, null, null, null, null, null, null, null), HostCaller());
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task UpdateActivityDetails_EmptyName_ReturnsBadRequest()
+    {
+        var (rec, offices, programs, projects, activities) = SeedActivityTree();
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs,
+                  projectSeed: projects, actSeed: activities);
+
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityDetailsAsync(
+            50, new("   ", null, null, null, null, null, null, null, null), HostCaller());
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
     [Fact]
     public async Task DeleteProgram_ExistingDraftProgram_RemovesIt()
     {

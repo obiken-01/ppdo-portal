@@ -79,7 +79,9 @@ export default function AipAddProgramsPanel({
     return () => { cancelled = true; };
   }, [open, sector, officeConfigId]);
 
-  const groups = addable?.groups ?? [];
+  // ⚠️ Memoised, not `addable?.groups ?? []` inline: the fallback allocates a fresh array on
+  // every render, which would make the selection memo below recompute every time.
+  const groups = useMemo(() => addable?.groups ?? [], [addable]);
 
   /**
    * Which group the current selection belongs to, or null when it spans several.

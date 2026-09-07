@@ -32,6 +32,7 @@ import type {
   SaveAipExpenditureRequest,
   AipExpenditureWriteResult,
   AddAipProgramsWithGroupRequest,
+  UpdateAipActivityDetailsRequest,
   AipAddablePrograms,
   AipCeilingStatus,
   AipReadiness,
@@ -263,6 +264,22 @@ export async function updateAipProgramFunctionBand(
     { functionBand }
   );
   unwrap(data);
+}
+
+/**
+ * The AIP Entry page's activity editor — descriptive fields only (PPDO-52).
+ *
+ * ⚠️ Deliberately NOT `updateAipActivity`. That one owns ps/mooe/co/fundingSourceId and writes
+ * them unconditionally; on an entered year those are derived from the expenditure lines, so
+ * saving a description through it would zero the costing. The endpoint cannot accept them.
+ */
+export async function updateAipActivityDetails(
+  activityId: number, body: UpdateAipActivityDetailsRequest
+): Promise<AipActivityDetail> {
+  const { data } = await api.put<ApiResponse<AipActivityDetail>>(
+    `/budget-planning/aip/activities/${activityId}/details`, body
+  );
+  return unwrap(data);
 }
 
 export async function updateAipActivityIsCreation(

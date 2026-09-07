@@ -417,3 +417,41 @@ public record AipRecordSummaryDto(
 public record UpdateAipProgramFunctionBandDto(string? FunctionBand);
 
 public record UpdateAipActivityIsCreationDto(bool IsCreation);
+
+/// <summary>
+/// An entered-year activity's <b>descriptive</b> fields — everything the AIP form prints about an
+/// activity except its money (V18-42 / PPDO-52).
+///
+/// <para>
+/// ⚠️ <b>There is deliberately no <c>Ps</c>, <c>Mooe</c>, <c>Co</c> or <c>FundingSourceId</c>
+/// here, and adding them would be a data-loss bug.</b> On an entered year those four are
+/// <i>derived</i>: <c>AipExpenditureService</c> recomputes the activity's PS/MOOE/CO from its
+/// expenditure lines on every line write, and the fund lives on the lines (one fund per line, so
+/// an activity has no single fund to store). <c>UpdateAipActivityDto</c> — the detail page's
+/// whole-row edit — assigns all four unconditionally from the request, so reusing it to save a
+/// description would silently zero a costing the encoder never touched.
+/// </para>
+///
+/// <para>
+/// ℹ️ <see cref="CcAdaptation"/> and <see cref="CcMitigation"/> ARE here despite being money.
+/// They are not derived from anything — expenditure lines carry only PS/MOOE/CO — so the activity
+/// row is the only place they can be entered.
+/// </para>
+///
+/// <para>
+/// ⚠️ <see cref="EsreCode"/> and <see cref="CcTypologyCode"/> are the two fields the submit gate
+/// blocks on (<c>missing-esre</c>, <c>missing-cc-typology</c>). Before this DTO existed the entry
+/// page created activities with both hardcoded to null and offered no editor, so an encoder
+/// working only from that page could never satisfy their own submit gate.
+/// </para>
+/// </summary>
+public record UpdateAipActivityDetailsDto(
+    string   Name,
+    string?  EsreCode,
+    string?  ImplementingOffice,
+    string?  StartDate,
+    string?  EndDate,
+    string?  ExpectedOutputs,
+    decimal? CcAdaptation,
+    decimal? CcMitigation,
+    string?  CcTypologyCode);

@@ -1334,6 +1334,66 @@ public sealed class AipService : IAipService
         return ServiceResult<AipActivityDto>.Ok(MapActivityToDto(activity));
     }
 
+    /// <inheritdoc />
+    public async Task<ServiceResult<AipActivityDto>> UpdateActivityDetailsAsync(
+        int activityId, UpdateAipActivityDetailsDto dto, User caller, CancellationToken ct = default)
+    {
+        AipActivity? activity = await _aipRepo.GetActivityByIdAsync(activityId, ct);
+        if (activity is null)
+            return ServiceResult<AipActivityDto>.NotFound($"AIP activity {activityId} not found.");
+
+        // The full walk up to the owning office — activity → project → program → AipOffice.
+        AipProject? project = await _aipRepo.GetProjectByIdAsync(activity.ProjectId, ct);
+        AipProgram? program = project is null ? null : await _aipRepo.GetProgramByIdAsync(project.ProgramId, ct);
+        AipOffice?  office  = program is null ? null : await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
+        if (office is null)
+            return ServiceResult<AipActivityDto>.NotFound($"AIP activity {activityId} not found.");
+
+        // ⚠️ The full guard, not just an office-scope check: it also refuses an archived record and
+        // an office already past Draft. An encoder whose office is sitting with the department head
+        // must not be able to edit the document under review.
+        ServiceResult<AipActivityDto>? refused = await CheckWritableAsync<AipActivityDto>(
+            office, caller, $"AIP activity {activityId} not found.", ct, "edit");
+        if (refused is not null) return refused;
+
+        if (string.IsNullOrWhiteSpace(dto.Name))
+            return ServiceResult<AipActivityDto>.BadRequest("Activity name is required.");
+        if (!string.IsNullOrWhiteSpace(dto.EsreCode)
+            && !AipEsreCode.AllowedValues.Contains(dto.EsreCode.Trim().ToUpperInvariant()))
+            return ServiceResult<AipActivityDto>.BadRequest(
+                $"eSRE code must be one of: {string.Join(", ", AipEsreCode.AllowedValues)}.");
+
+        object old = new
+        {
+            activity.Name, activity.EsreCode, activity.ImplementingOffice, activity.StartDate,
+            activity.EndDate, activity.ExpectedOutputs,
+            activity.CcAdaptation, activity.CcMitigation, activity.CcTypologyCode,
+        };
+
+        activity.Name               = dto.Name.Trim();
+        activity.EsreCode           = string.IsNullOrWhiteSpace(dto.EsreCode) ? null : dto.EsreCode.Trim().ToUpperInvariant();
+        activity.ImplementingOffice = dto.ImplementingOffice;
+        activity.StartDate          = dto.StartDate;
+        activity.EndDate            = dto.EndDate;
+        activity.ExpectedOutputs    = dto.ExpectedOutputs;
+        activity.CcAdaptation       = dto.CcAdaptation;
+        activity.CcMitigation       = dto.CcMitigation;
+        activity.CcTypologyCode     = dto.CcTypologyCode;
+
+        // ⚠️ Ps/Mooe/Co/Total/FundingSourceId are NOT assigned, and that is the whole point of this
+        // method rather than a reuse of UpdateActivityAsync. They belong to the expenditure lines.
+
+        await _aipRepo.SaveChangesAsync(ct);
+        await _audit.LogAsync("aip_activities", activity.Id, AuditAction.Update, old, new
+        {
+            activity.Name, activity.EsreCode, activity.ImplementingOffice, activity.StartDate,
+            activity.EndDate, activity.ExpectedOutputs,
+            activity.CcAdaptation, activity.CcMitigation, activity.CcTypologyCode,
+        }, ct);
+
+        return ServiceResult<AipActivityDto>.Ok(MapActivityToDto(activity));
+    }
+
     // ── Delete (mistakes happen — mirrors the Add* guard chain) ───────────────
 
     public async Task<ServiceResult<bool>> DeleteOfficeAsync(int officeId, User caller, CancellationToken ct = default)
