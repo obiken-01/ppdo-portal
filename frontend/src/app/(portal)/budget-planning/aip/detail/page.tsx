@@ -29,6 +29,9 @@ import { listLdip, getLdipById } from "@/lib/ldip";
 import { listOffices, listFundingSources } from "@/lib/config";
 import { aipProgramsAreLdipOnly, aipUploadRefusal } from "@/lib/aip-fiscal-years";
 import {
+  Chevron, StatusBadge, TH, AmtTD, selectCls, inputCls,
+} from "@/components/aip/AipTreeCells";
+import {
   sumActivities,
   replaceActivity, removeActivityFromTree, addActivityToTree,
   replaceProject, removeProjectFromTree, addProjectToTree,
@@ -53,65 +56,9 @@ import type {
   LdipOfficeGroup,
 } from "@/types";
 
-// ── Chevron ────────────────────────────────────────────────────────────────────
-
-function Chevron({ open, className = "" }: { open: boolean; className?: string }) {
-  return (
-    <svg viewBox="0 0 12 12" width="10" height="10"
-      className={`inline-block shrink-0 transition-transform duration-100 ${open ? "rotate-90" : ""} ${className}`}
-      fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-    >
-      <polyline points="4,2 8,6 4,10" />
-    </svg>
-  );
-}
-
-// ── Status badge ──────────────────────────────────────────────────────────────
-
-function StatusBadge({ status }: { status: string }) {
-  const cls =
-    status === "Final"  ? "bg-green-100 text-green-700" :
-    status === "Draft"  ? "bg-amber-100 text-amber-700" :
-                          "bg-slate-100 text-slate-600";
-  return <span className={`px-2 py-0.5 text-xs font-medium ${cls}`}>{status}</span>;
-}
-
-// ── Table header cell ──────────────────────────────────────────────────────────
-
-function TH({ children, align = "left", rowSpan, colSpan }: {
-  children: React.ReactNode;
-  align?: "left" | "right" | "center";
-  rowSpan?: number;
-  colSpan?: number;
-}) {
-  const a = align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left";
-  return (
-    <th rowSpan={rowSpan} colSpan={colSpan}
-      className={`px-2 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-600 whitespace-nowrap border-b border-slate-300 bg-slate-100 ${a}`}
-    >
-      {children}
-    </th>
-  );
-}
-
-// ── Amount cell ────────────────────────────────────────────────────────────────
-
-function AmtTD({ value, bold = false, white = false }: { value: number | null | undefined; bold?: boolean; white?: boolean }) {
-  return (
-    <td className={`px-2 py-1.5 text-right text-xs tabular-nums whitespace-nowrap ${
-      white ? "text-white font-semibold" : bold ? "font-semibold text-slate-800" : "text-slate-600"
-    }`}>
-      {fmt(toDisplayUnits(value))}
-    </td>
-  );
-}
-
 // ── Activity row (RAL-179 — inline edit) ─────────────────────────────────────
 // A read-only row that swaps to an edit form in place when the user clicks Edit — no whole-page
 // submit, Save/Cancel per row. RefCode/ProjectId/identity are never editable here.
-
-const selectCls = "border border-slate-300 bg-white text-xs px-1.5 py-1 text-slate-600 w-full focus:outline-none focus:ring-1 focus:ring-green-600";
-const inputCls  = "border border-slate-300 bg-white text-xs px-1.5 py-1 text-slate-600 w-full focus:outline-none focus:ring-1 focus:ring-green-600";
 
 function ActivityRow({
   act, aipRecordId, canEdit, fundingSources, onSaved, onDeleted, onRequestConfirm,
