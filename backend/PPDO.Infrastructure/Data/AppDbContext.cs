@@ -71,6 +71,13 @@ public sealed class AppDbContext : DbContext
     public DbSet<WfpExpenditurePeriod> WfpExpenditurePeriods { get; set; } = null!;
     public DbSet<WfpProcurementItem> WfpProcurementItems { get; set; } = null!;
     public DbSet<WfpDivisionAllocationLedger> WfpDivisionAllocationLedgers { get; set; } = null!;
+
+    /// <summary>
+    /// V18-45 / PPDO-55 — the AIP's own reservation ledger. Its own table, mirroring the WFP one
+    /// above rather than generalising it (DECISION A); the WFP ledger takes a zero diff.
+    /// </summary>
+    public DbSet<AipDivisionAllocationLedger> AipDivisionAllocationLedgers { get; set; } = null!;
+
     public DbSet<ProcurementPreset> ProcurementPresets { get; set; } = null!;
     public DbSet<ProcurementPresetItem> ProcurementPresetItems { get; set; } = null!;
 

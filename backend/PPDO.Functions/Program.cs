@@ -188,6 +188,7 @@ var host = new HostBuilder()
 
         // -- v1.4 WFP ceiling monitoring + division-allocation ledger (RAL-122) --
         services.AddScoped<IWfpAllocationLedgerRepository, WfpAllocationLedgerRepository>();
+        services.AddScoped<IAipAllocationLedgerRepository, AipAllocationLedgerRepository>();
         services.AddScoped<IWfpCeilingService, WfpCeilingService>();
     })
     .ConfigureLogging((context, logging) =>
