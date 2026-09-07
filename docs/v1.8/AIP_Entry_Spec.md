@@ -324,6 +324,8 @@ of programs.
 | PS does not count | An office at its GF ceiling on `mooe + co`, with large PS | Encoder submits | **Passes.** PS is exempt as an expense class |
 | Uplift is not in the check | An office exactly at its ceiling | Encoder submits | Passes — and the printed form will read 30% over. ⚠️ **Intended** (DECISION G); Phase 5's form spec must say so |
 | Guest office, no divisions | A guest office with a ceiling and no division rows | Submit runs the ceiling check | Checked at **office** level. No synthetic division row is created |
+| Guest office reservation | A guest office's activity is costed | The reservation ledger is upserted | **No row, deliberately.** Division is not a scoping axis for them at all, so `ProgramDivision` is never even consulted — an empty assignment lookup must not be what stands in for "guest office" (V18-47) |
+| Host program with no division | A **PPDO** program that no `ProgramDivision` row claims | The reservation ledger is upserted | **No row — but this one is a misconfiguration**, not a resting state: the activity reserves nothing against any division allocation. Logged at `Warning` naming the office and program ref codes. It is **not** shared across every division, which would make each division's figures overlap |
 | Blank ceiling ≠ unlimited | A fund with no allocation row | Submit runs the check | Non-GF funds are excluded **by an explicit rule**. A blank GF row means **zero**, not unlimited (`GetDivisionAllocationAsync` → `0m`) |
 | FY2027 unchanged | An FY2027 legacy record | Opened | Renders in the v1.6 shape. **No entry flow, no submit, no ledger** — Phase 3 is FY2028+ only |
 | FY2028 WFP refused | Any office | WFP creation for FY2028 | Refused as "not supported yet", naming the year (V18-81) |

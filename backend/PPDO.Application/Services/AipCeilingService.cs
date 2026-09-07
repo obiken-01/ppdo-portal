@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
 using PPDO.Domain.Entities;
@@ -17,8 +18,14 @@ namespace PPDO.Application.Services;
 /// office's work to review in one go, so the bound is the office's own General Fund ceiling. The
 /// division dimension lives in the reservation ledger, which exists for the deferred WFP netting
 /// and for the per-division dashboard — it is not what gates submit. That is why a guest office
-/// with no divisions needs no special case here and gets no synthetic division row (spec §3.2);
-/// V18-47 / PPDO-57 formalises that shape rather than adding a second code path.
+/// with no divisions needs no special case in the <i>check</i> and gets no synthetic division row
+/// (spec §3.2).
+///
+/// <b>The ledger is where the two office shapes do diverge</b> (V18-47 / PPDO-57), and the
+/// divergence is named rather than inferred: see
+/// <see cref="UpsertLedgerForActivityAsync"/>. A guest office and a host-office program with no
+/// division assignment both write no row, and only one of them is a problem — before PPDO-57 both
+/// were a null division id and the problem was unreportable.
 ///
 /// <b><see cref="IWfpCeilingService"/> takes a zero diff.</b> Its allocation check stays live for
 /// FY2028+, and a WFP expenditure remains bound by the lesser of its AIP activity amount and the
@@ -30,20 +37,26 @@ public sealed class AipCeilingService : IAipCeilingService
     private readonly IAipExpenditureRepository      _expRepo;
     private readonly IAipAllocationLedgerRepository _ledgerRepo;
     private readonly IAllocationRepository          _allocationRepo;
+    private readonly IOfficeRepository              _officeRepo;
     private readonly IAllocationService             _allocation;
+    private readonly ILogger<AipCeilingService>     _logger;
 
     public AipCeilingService(
         IAipRepository                 aipRepo,
         IAipExpenditureRepository      expRepo,
         IAipAllocationLedgerRepository ledgerRepo,
         IAllocationRepository          allocationRepo,
-        IAllocationService             allocation)
+        IOfficeRepository              officeRepo,
+        IAllocationService             allocation,
+        ILogger<AipCeilingService>     logger)
     {
         _aipRepo        = aipRepo;
         _expRepo        = expRepo;
         _ledgerRepo     = ledgerRepo;
         _allocationRepo = allocationRepo;
+        _officeRepo     = officeRepo;
         _allocation     = allocation;
+        _logger         = logger;
     }
 
     // ── Read status ───────────────────────────────────────────────────────────
@@ -129,10 +142,39 @@ public sealed class AipCeilingService : IAipCeilingService
         AipActivity? activity = await _aipRepo.GetActivityByIdAsync(aipActivityId, ct);
         if (activity is null) return;
 
-        AipLedgerContext? context = await ResolveLedgerContextAsync(activity, ct);
-        // No division to attribute the reservation to — a guest office. Checked at office level,
-        // and deliberately given no synthetic division row (spec §3.2).
-        if (context is null) return;
+        AipLedgerAttribution attribution = await ResolveAttributionAsync(activity, ct);
+
+        // ⚠️ Only one of these four outcomes writes a row. Two of the other three matter and are
+        // not the same as each other — collapsing them back into a null division is what
+        // V18-47 / PPDO-57 exists to stop: one is the correct resting state of a guest office, the
+        // other is a host-office misconfiguration that silently reserves nothing.
+        switch (attribution.Kind)
+        {
+            case LedgerAttributionKind.GuestOffice:
+                // Division is not a scoping axis for a guest office at all (Permission_Matrix
+                // §3.1, PPDO-4) — not "no divisions configured yet". There is nothing to attribute
+                // the reservation to and nothing is wrong. Their bound is the office-level ceiling
+                // in GetStatusAsync, and no synthetic division row is invented for them.
+                return;
+
+            case LedgerAttributionKind.HostProgramUnassigned:
+                // A host-office program that no ProgramDivision row claims. It reserves nothing
+                // against any division allocation, and until this line nothing anywhere said so.
+                // It is NOT shared across every division — that would make each division's figures
+                // overlap, the same reason AipReadScope.FilterPrograms excludes it from a
+                // division-scoped view. The allocation-setup panel is where it gets fixed.
+                _logger.LogWarning(
+                    "AIP activity reserves against no division: its program is unassigned in the "
+                    + "host office. AipActivityId: {AipActivityId}, OfficeRefCode: {OfficeRefCode}, "
+                    + "ProgramRefCode: {ProgramRefCode}",
+                    aipActivityId, attribution.OfficeRefCode, attribution.ProgramRefCode);
+                return;
+
+            case LedgerAttributionKind.Unresolvable:
+                return;
+        }
+
+        AipLedgerContext context = attribution.Context!;
 
         IReadOnlyList<AipExpenditure> lines = await _expRepo.GetByActivityIdAsync(aipActivityId, ct);
 
@@ -206,32 +248,58 @@ public sealed class AipCeilingService : IAipCeilingService
         return total;
     }
 
-    private async Task<AipLedgerContext?> ResolveLedgerContextAsync(
+    /// <summary>
+    /// Which shape an activity's reservation is in — see <see cref="LedgerAttributionKind"/>
+    /// (V18-47 / PPDO-57).
+    ///
+    /// ⚠️ <b>The guest-office branch returns before <c>ProgramDivision</c> is ever queried.</b>
+    /// That ordering is the whole point: a guest office is not "a host office whose assignment
+    /// lookup came back empty", so it must not reach a lookup whose empty result would be a
+    /// misconfiguration. Asking and ignoring the answer would leave the two shapes one refactor
+    /// away from being the same code path again.
+    /// </summary>
+    private async Task<AipLedgerAttribution> ResolveAttributionAsync(
         AipActivity activity, CancellationToken ct)
     {
         AipProject? project = await _aipRepo.GetProjectByIdAsync(activity.ProjectId, ct);
-        if (project is null) return null;
+        if (project is null) return AipLedgerAttribution.Unresolvable;
 
         AipProgram? program = await _aipRepo.GetProgramByIdAsync(project.ProgramId, ct);
-        if (program is null) return null;
+        if (program is null) return AipLedgerAttribution.Unresolvable;
 
         AipOffice? office = await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
-        if (office is null) return null;
+        if (office is null) return AipLedgerAttribution.Unresolvable;
 
         AipRecord? record = await _aipRepo.GetByIntIdAsync(office.AipRecordId, ct);
-        if (record is null) return null;
+        if (record is null) return AipLedgerAttribution.Unresolvable;
 
-        if (office.OfficeId is not int configOfficeId) return null;
+        if (office.OfficeId is not int configOfficeId) return AipLedgerAttribution.Unresolvable;
+
+        // ⚠️ Host is read from Office.IsHostOffice, never from "has divisions" and never from the
+        // code "PPDO" (DECISION F / RAL-258). A host office that has not configured a division yet
+        // is a host office with a misconfigured program, not a guest office — and a filtered unique
+        // index guarantees at most one row carries the flag.
+        Office? configOffice = await _officeRepo.GetByIdAsync(configOfficeId, ct);
+        if (configOffice is null) return AipLedgerAttribution.Unresolvable;
+
+        if (!configOffice.IsHostOffice)
+            return AipLedgerAttribution.GuestOffice;
 
         int? divisionId = await ResolveDivisionIdAsync(office, program, ct);
-        if (divisionId is null) return null;
+        if (divisionId is null)
+            return AipLedgerAttribution.Unassigned(office.RefCode, program.RefCode);
 
-        return new AipLedgerContext(divisionId.Value, configOfficeId, record.FiscalYear);
+        return AipLedgerAttribution.ToDivision(
+            new AipLedgerContext(divisionId.Value, configOfficeId, record.FiscalYear));
     }
 
     /// <summary>
-    /// The division a program's reservation is attributed to, or null when there is none —
-    /// a guest office, or a host-office program not yet assigned.
+    /// The division a host-office program's reservation is attributed to, or null when no
+    /// <c>ProgramDivision</c> row claims it.
+    ///
+    /// ⚠️ <b>Only ever called for the host office</b> — see <see cref="ResolveAttributionAsync"/>.
+    /// A null here means an unassigned host program, one specific and fixable state, never a guest
+    /// office.
     ///
     /// ⚠️ Resolved through <c>ProgramDivision</c>, which is keyed on the program's <b>ref code</b>,
     /// not an FK. That is deliberate and must stay: the assignment is permanent across fiscal
@@ -266,4 +334,53 @@ public sealed class AipCeilingService : IAipCeilingService
 
     /// <summary>Where one activity's reservation is posted. Internal to this service.</summary>
     private sealed record AipLedgerContext(int DivisionId, int ConfigOfficeId, int FiscalYear);
+
+    /// <summary>
+    /// The four outcomes of resolving where an activity's reservation belongs — three of which
+    /// write no ledger row, for three different reasons (V18-47 / PPDO-57).
+    /// </summary>
+    private enum LedgerAttributionKind
+    {
+        /// <summary>A host-office program assigned to a division. The row is written.</summary>
+        Division,
+
+        /// <summary>
+        /// A guest office. Division is not a scoping axis for them, so there is nothing to
+        /// attribute to and nothing wrong. Their bound is the office-level ceiling.
+        /// </summary>
+        GuestOffice,
+
+        /// <summary>
+        /// A host-office program no <c>ProgramDivision</c> row claims — a misconfiguration that
+        /// silently reserves nothing. Logged.
+        /// </summary>
+        HostProgramUnassigned,
+
+        /// <summary>
+        /// A node in the chain does not exist, or an <c>AipOffice</c> the V18-32 backfill could not
+        /// match to a config office. Nothing to do and nothing to say.
+        /// </summary>
+        Unresolvable,
+    }
+
+    /// <summary>
+    /// The resolution result. A record rather than an <c>int?</c> so that "no division" has to be
+    /// read as one of three named states at every call site — the collapse this ticket removes.
+    /// </summary>
+    private sealed record AipLedgerAttribution(
+        LedgerAttributionKind Kind,
+        AipLedgerContext?     Context        = null,
+        string?               OfficeRefCode  = null,
+        string?               ProgramRefCode = null)
+    {
+        public static readonly AipLedgerAttribution GuestOffice   = new(LedgerAttributionKind.GuestOffice);
+        public static readonly AipLedgerAttribution Unresolvable  = new(LedgerAttributionKind.Unresolvable);
+
+        public static AipLedgerAttribution ToDivision(AipLedgerContext context)
+            => new(LedgerAttributionKind.Division, Context: context);
+
+        public static AipLedgerAttribution Unassigned(string officeRefCode, string programRefCode)
+            => new(LedgerAttributionKind.HostProgramUnassigned,
+                   OfficeRefCode: officeRefCode, ProgramRefCode: programRefCode);
+    }
 }
