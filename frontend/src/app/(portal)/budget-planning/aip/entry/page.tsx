@@ -36,7 +36,8 @@ import AipActivityFields from "@/components/aip/entry/AipActivityFields";
 import AipSubmitChecklist from "@/components/aip/entry/AipSubmitChecklist";
 import { listAipExpenditures } from "@/lib/aip";
 import type {
-  AipRecordDetail, AipOfficeDetail, AipActivityDetail, AipExpenditure, AipExpenditureWriteResult,
+  AipRecordDetail, AipOfficeDetail, AipProjectDetail, AipActivityDetail, AipExpenditure,
+  AipExpenditureWriteResult,
   AccountResponse, FundingSourceResponse, AipReadiness,
 } from "@/types";
 
@@ -216,8 +217,21 @@ export default function AipEntryPage() {
                   // differently from every other fund at submit.
                   generalFundId={readiness?.ceiling?.generalFundId ?? null}
                   divisionFiltered={divisionFiltered}
-                  // Structural changes (a new project or activity) need the tree back.
-                  onStructureChanged={() => { void load(); void refreshReadiness(); }}
+                  // ⚠️ A new project or activity is SPLICED in, not reloaded. `load()` here was
+                  // reported as "the page reloads when a user creates a new activity or project":
+                  // it clears `record`, so the skeleton flashes, the scroll jumps to the top and
+                  // every expanded activity closes — right after an action taken deep in the tree.
+                  //
+                  // Readiness is refreshed for both. A new activity adds a "not costed" issue, and
+                  // a new project can clear the office-level "empty" one.
+                  onProjectAdded={(project) => {
+                    setRecord((prev) => prev && addProjectToTree(prev, project));
+                    void refreshReadiness();
+                  }}
+                  onActivityAdded={(activity) => {
+                    setRecord((prev) => prev && addActivityToTree(prev, activity));
+                    void refreshReadiness();
+                  }}
                   // ⚠️ An expenditure change must NOT reload the record. Doing so remounts the
                   // whole tree and the activity the encoder is working inside snaps shut — found
                   // by live-testing. The write endpoint returns the recomputed activity precisely
@@ -261,7 +275,7 @@ export default function AipEntryPage() {
 
 function GroupBlock({
   group, canEdit, accounts, funds, generalFundId, divisionFiltered,
-  onStructureChanged, onActivityTotals, onActivityDetails,
+  onProjectAdded, onActivityAdded, onActivityTotals, onActivityDetails,
 }: {
   group: AipOfficeDetail;
   canEdit: boolean;
@@ -270,7 +284,8 @@ function GroupBlock({
   generalFundId: number | null;
   /** True when this user only sees their own division's programs — changes what "0" means. */
   divisionFiltered: boolean;
-  onStructureChanged: () => void;
+  onProjectAdded: (project: AipProjectDetail) => void;
+  onActivityAdded: (activity: AipActivityDetail) => void;
   onActivityTotals: (result: AipExpenditureWriteResult) => void;
   onActivityDetails: (updated: AipActivityDetail) => void;
 }) {
@@ -315,13 +330,14 @@ function GroupBlock({
                     {canEdit && (
                       <InlineAdd label="+ Add activity" placeholder="Activity description"
                         onAdd={async (name) => {
-                          await addAipActivity(project.id, {
+                          // ⚠️ The created node is USED, not discarded. Discarding it is what
+                          // forced the reload that made the page appear to refresh.
+                          onActivityAdded(await addAipActivity(project.id, {
                             name, esreCode: null, implementingOffice: null,
                             startDate: null, endDate: null, expectedOutputs: null,
                             fundingSourceRaw: null, ps: null, mooe: null, co: null,
                             ccAdaptation: null, ccMitigation: null, ccTypologyCode: null,
-                          });
-                          onStructureChanged();
+                          }));
                         }} />
                     )}
                   </div>
@@ -329,7 +345,7 @@ function GroupBlock({
               ))}
               {canEdit && (
                 <InlineAdd label="+ Add project" placeholder="Project name"
-                  onAdd={async (name) => { await addAipProject(program.id, { name }); onStructureChanged(); }} />
+                  onAdd={async (name) => onProjectAdded(await addAipProject(program.id, { name }))} />
               )}
             </div>
           </div>
@@ -424,6 +440,53 @@ function patchActivity(
             activity.id === activityId ? { ...activity, ...patch } : activity
           ),
         })),
+      })),
+    })),
+  };
+}
+
+/**
+ * Appends a newly created project to its program, immutably.
+ *
+ * ⚠️ Exists for the same reason `patchActivity` does. `addAipProject` returns the created node
+ * carrying its own `programId`, so the tree can absorb it directly — calling `load()` instead
+ * tears the whole tree down and rebuilds it, which flashes the skeleton, scrolls to the top and
+ * closes every expanded activity. It reads as the page reloading, and that is what it was
+ * reported as.
+ */
+function addProjectToTree(record: AipRecordDetail, project: AipProjectDetail): AipRecordDetail {
+  return {
+    ...record,
+    offices: record.offices.map((office) => ({
+      ...office,
+      programs: office.programs.map((program) =>
+        program.id === project.programId
+          ? { ...program, projects: [...program.projects, project] }
+          : program
+      ),
+    })),
+  };
+}
+
+/**
+ * Appends a newly created activity to its project, immutably.
+ *
+ * ℹ️ Appended, not inserted by ref code. A new node always takes the next code in its parent's
+ * sequence (`RefCodeAllocator`), so the end of the list is its sorted position — the same order a
+ * reload would produce.
+ */
+function addActivityToTree(record: AipRecordDetail, activity: AipActivityDetail): AipRecordDetail {
+  return {
+    ...record,
+    offices: record.offices.map((office) => ({
+      ...office,
+      programs: office.programs.map((program) => ({
+        ...program,
+        projects: program.projects.map((project) =>
+          project.id === activity.projectId
+            ? { ...project, activities: [...project.activities, activity] }
+            : project
+        ),
       })),
     })),
   };

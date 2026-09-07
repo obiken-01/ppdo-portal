@@ -40,7 +40,10 @@ export default function AipSubmitChecklist({
   /** Non-null when the office has already been submitted — names the state holding the work. */
   readOnlyReason: string | null;
 }) {
-  const [expanded, setExpanded] = useState(true);
+  // ⚠️ Collapsed by default. The button already carries the count, so the summary an encoder
+  // needs is visible without the list; expanded, an office with 80 uncosted activities pushed its
+  // own tree off the screen behind a wall of issues it had not asked to read yet.
+  const [expanded, setExpanded] = useState(false);
   const { ceiling, issues, canSubmit } = readiness;
 
   // Group by kind so an office with 80 uncosted activities shows one heading and a count rather
