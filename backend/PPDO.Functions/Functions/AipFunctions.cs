@@ -173,6 +173,33 @@ public sealed class AipFunctions
             await _aip.AddOfficeAsync(aipId, body, caller!, ct), ct, HttpStatusCode.Created);
     }
 
+    // ── POST /api/budget-planning/aip/{aipId}/programs ────────────────────────
+    // V18-42 / PPDO-52, spec §4 — the encoder's first stage: a sub-office group and the programs
+    // going into it, in one call, because they are one interaction.
+    //
+    // ⚠️ Not a duplicate of seed-programs-from-ldip below. That one keys its target office on ref
+    // code alone and so can only reach the first group under it; this one keys on
+    // (ref code, group name) and can start a second.
+    [Function("AipAddProgramsWithGroup")]
+    public async Task<HttpResponseData> AddProgramsWithGroup(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post",
+            Route = "budget-planning/aip/{aipId:int}/programs")] HttpRequestData req,
+        int aipId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) =
+            await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        AddAipProgramsWithGroupDto? body =
+            await ConfigHttp.ReadBodyAsync<AddAipProgramsWithGroupDto>(req, ct);
+        if (body is null)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<AipOfficeDto>.Fail("Request body is missing or malformed."), ct);
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _aip.AddProgramsWithGroupAsync(aipId, body, caller!, ct), ct, HttpStatusCode.Created);
+    }
+
     // ── POST /api/budget-planning/aip/seed-programs-from-ldip ─────────────────
     // RAL-181 — seed an office's AIP programs (Name+RefCode only, bare shells) from that
     // office's existing LDIP for the given sector. CanAccessBudgetPlanning, same reasoning as

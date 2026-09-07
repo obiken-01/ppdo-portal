@@ -1380,6 +1380,144 @@ public sealed class AipService : IAipService
 
     // ── Status transitions ────────────────────────────────────────────────────
 
+    // ── Sub-office group + programs, in one call (V18-42 / PPDO-52) ──────────
+
+    /// <inheritdoc />
+    public async Task<ServiceResult<AipOfficeDto>> AddProgramsWithGroupAsync(
+        int aipRecordId, AddAipProgramsWithGroupDto dto, User caller, CancellationToken ct = default)
+    {
+        AipRecord? record = await _aipRepo.GetByIntIdAsync(aipRecordId, ct);
+        if (record is null)
+            return ServiceResult<AipOfficeDto>.NotFound($"AIP record {aipRecordId} not found.");
+
+        if (record.Status != PlanningStatus.Draft)
+            return ServiceResult<AipOfficeDto>.BadRequest(
+                $"Cannot add to a '{record.Status}' record. Unlock it back to Draft first.");
+
+        if (dto.LdipProgramIds is null || dto.LdipProgramIds.Count == 0)
+            return ServiceResult<AipOfficeDto>.BadRequest("Select at least one program to add.");
+
+        if (!AipSector.Prefixes.TryGetValue(dto.Sector?.Trim() ?? string.Empty, out string? prefix))
+            return ServiceResult<AipOfficeDto>.BadRequest(
+                $"Sector must be one of: {string.Join(", ", AipSector.Prefixes.Keys)}.");
+        string sector = dto.Sector!.Trim().ToUpperInvariant();
+
+        Office? office = await _officeConfigRepo.GetByIdAsync(dto.OfficeConfigId, ct);
+        if (office is null || !office.IsActive)
+            return ServiceResult<AipOfficeDto>.NotFound(
+                $"Office {dto.OfficeConfigId} not found or inactive.");
+
+        // ⚠️ Ownership before anything else is revealed. NotFound rather than Forbidden, and the
+        // same sentence a genuinely missing office produces — a write names one node, so clamping
+        // is not available, and 403 would confirm the office exists (PPDO-46).
+        if (!OfficeScope.Resolve(caller).Permits(office.Id))
+            return ServiceResult<AipOfficeDto>.NotFound(
+                $"Office {dto.OfficeConfigId} not found or inactive.");
+
+        LdipOffice? sourceGroup = await ResolveLdipGroupAsync(office, sector, prefix, ct);
+        if (sourceGroup is null)
+            return ServiceResult<AipOfficeDto>.BadRequest(
+                $"'{office.OfficeName}' has no LDIP for the {sector} sector. The LDIP is where "
+                + "programs come from, so it has to exist before the AIP can be built.");
+
+        // The closed list, enforced server-side: every requested id must belong to this office's
+        // own LDIP group. V18-41 shipped the rule; this path is a second door into it.
+        Dictionary<int, LdipProgram> sourceById = sourceGroup.Programs.ToDictionary(p => p.Id);
+        List<int> unknownIds = dto.LdipProgramIds.Where(id => !sourceById.ContainsKey(id)).ToList();
+        if (unknownIds.Count > 0)
+            return ServiceResult<AipOfficeDto>.BadRequest(
+                $"LDIP program id(s) {string.Join(", ", unknownIds)} do not belong to this office's "
+                + $"{sector} LDIP.");
+
+        // Names are uppercased to match how office and program rows are written in the source AIP
+        // files, and how LdipService normalises the same field.
+        string groupName = string.IsNullOrWhiteSpace(dto.GroupName)
+            ? sourceGroup.Name
+            : dto.GroupName.Trim().ToUpperInvariant();
+
+        // ⚠️ THE DIFFERENCE FROM SeedProgramsFromLdipAsync, and the reason this method exists.
+        // That one matches on RefCode alone, so it can only ever reach the first group under a
+        // code. Keying on (RefCode, Name) is what lets a second, third and fourth block exist
+        // under one office — which real AIPs have.
+        IReadOnlyList<AipOffice> existing = await _aipRepo.GetOfficesByAipIdAsync(record.Id, ct);
+        AipOffice? target = existing.FirstOrDefault(o =>
+            o.RefCode == sourceGroup.RefCode
+            && string.Equals(o.Name, groupName, StringComparison.OrdinalIgnoreCase));
+
+        if (target is not null)
+        {
+            ServiceResult<AipOfficeDto>? refused = await CheckWritableAsync<AipOfficeDto>(
+                target, caller, $"AIP office {target.Id} not found.", ct);
+            if (refused is not null) return refused;
+        }
+
+        List<LdipProgram> toAdd = dto.LdipProgramIds.Select(id => sourceById[id]).ToList();
+
+        // ⚠️ Collision is checked against THIS GROUP only, not the whole ref code. The same LDIP
+        // program legitimately cannot appear twice in one printed block, but two blocks under one
+        // office are separate rows on the form and may each carry it.
+        if (target is not null)
+        {
+            IReadOnlyList<AipProgram> inGroup =
+                await _aipRepo.GetProgramsByOfficeIdsAsync([target.Id], ct);
+            List<string> collisions = toAdd.Select(p => p.RefCode)
+                .Intersect(inGroup.Select(p => p.RefCode))
+                .ToList();
+            if (collisions.Count > 0)
+                return ServiceResult<AipOfficeDto>.BadRequest(
+                    "These programs are already in this group: " + string.Join(", ", collisions) + ".");
+        }
+
+        // ℹ️ RefCode is inherited from the LDIP program, never allocated. See IAipService.
+        List<AipProgram> programs = toAdd.Select(p => new AipProgram
+        {
+            RefCode      = p.RefCode,
+            Name         = p.Name,
+            FunctionBand = AipFunctionBand.Core,
+        }).ToList();
+
+        if (target is null)
+        {
+            target = new AipOffice
+            {
+                AipRecordId = record.Id,
+                OfficeId    = dto.OfficeConfigId,
+                RefCode     = sourceGroup.RefCode,
+                Name        = groupName,
+                Sector      = sector,
+                Programs    = programs,
+            };
+            await _officeRepo.AddAsync(target, ct);
+            await _officeRepo.SaveChangesAsync(ct);
+        }
+        else
+        {
+            foreach (AipProgram program in programs)
+            {
+                program.OfficeId = target.Id;
+                await _programRepo.AddAsync(program, ct);
+            }
+            await _programRepo.SaveChangesAsync(ct);
+        }
+
+        await _audit.LogAsync("aip_offices", target.Id, AuditAction.Update, null, new
+        {
+            target.AipRecordId,
+            target.RefCode,
+            GroupName          = target.Name,
+            AddedLdipProgramIds = dto.LdipProgramIds,
+        }, ct);
+
+        IReadOnlyList<AipProgram> allInGroup =
+            await _aipRepo.GetProgramsByOfficeIdsAsync([target.Id], ct);
+
+        return ServiceResult<AipOfficeDto>.Ok(new AipOfficeDto(
+            target.Id, target.AipRecordId, target.RefCode, target.Name, target.Sector,
+            allInGroup.Select(p => new AipProgramDto(
+                p.Id, target.Id, p.RefCode, p.Name, Array.Empty<AipProjectDto>(), p.FunctionBand))
+                .ToList()));
+    }
+
     public async Task<ServiceResult<AipRecordDto>> FinalizeAsync(
         int id, CancellationToken ct = default)
     {

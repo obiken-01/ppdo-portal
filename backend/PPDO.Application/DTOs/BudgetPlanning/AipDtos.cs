@@ -195,6 +195,40 @@ public record CreateAipOfficeDto(int OfficeConfigId, string Sector, string? Name
 public record SeedAipProgramsFromLdipDto(
     int TargetFiscalYear, int OfficeConfigId, string Sector, IReadOnlyList<int> LdipProgramIds);
 
+/// <summary>
+/// Body of <c>POST /api/budget-planning/aip/{aipId}/programs</c> (V18-42 / PPDO-52, spec §4).
+///
+/// <b>The sub-office group and the programs arrive together because they are one interaction</b>
+/// (§2 decision 2). The encoder picks a sector, names the group, ticks programs from the LDIP and
+/// presses Add — exactly what <c>LdipForm.tsx</c> already does, which PPDO-52 says to lift rather
+/// than redesign.
+///
+/// <para>
+/// ⚠️ <see cref="GroupName"/> is what this endpoint exists for. <c>SeedProgramsFromLdipAsync</c>
+/// finds its target <c>AipOffice</c> by <b>ref code alone</b> and takes the name from the LDIP, so
+/// it can only ever reach the FIRST group under a ref code — it cannot start a second. Real AIPs
+/// need several: the province's FY2027 SOCIAL sheet carries three <c>3000-000-1-01-001</c> office
+/// rows (<i>OFFICE OF THE GOVERNOR - WARDEN</i>, <i>- AKAP-HUB</i>, <i>- HOUSING</i>), each heading
+/// its own block with its own shaded subtotal.
+/// </para>
+///
+/// <para>
+/// ⚠️ The group is <b>not</b> the division. It is the <c>(Sector, Name)</c> pair on
+/// <c>AipOffice</c>, it <b>prints</b>, and it applies to every office. A division is
+/// <c>ProgramDivision</c>, host-office only, and never prints (spec §3.1).
+/// </para>
+///
+/// <para>
+/// Null or blank <see cref="GroupName"/> means "the office's default group" and takes the LDIP
+/// group's own name, which is what an office with no sub-offices wants.
+/// </para>
+/// </summary>
+public record AddAipProgramsWithGroupDto(
+    int                 OfficeConfigId,
+    string              Sector,
+    string?             GroupName,
+    IReadOnlyList<int>  LdipProgramIds);
+
 public record CreateAipProgramDto(string Name, string? FunctionBand = null);
 
 public record CreateAipProjectDto(string Name);

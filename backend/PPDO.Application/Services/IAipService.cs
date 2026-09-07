@@ -113,6 +113,30 @@ public interface IAipService
     Task<ServiceResult<AipOfficeDto>> SeedProgramsFromLdipAsync(
         SeedAipProgramsFromLdipDto dto, Guid createdById, User caller, CancellationToken ct = default);
 
+    /// <summary>
+    /// Adds programs from the office's LDIP under a named <b>sub-office group</b>, creating that
+    /// group if it does not exist yet (V18-42 / PPDO-52, spec §4). The encoder's first stage.
+    ///
+    /// <para>
+    /// <b>⚠️ How this differs from <see cref="SeedProgramsFromLdipAsync"/>, which it otherwise
+    /// resembles closely.</b> That method finds its target <c>AipOffice</c> by <b>ref code
+    /// alone</b>, so it always lands on the first group under that code and cannot start a second.
+    /// This one keys on <b>(ref code, group name)</b>, which is what lets one office carry several
+    /// printed blocks — the province's FY2027 SOCIAL sheet has three under one code.
+    /// </para>
+    ///
+    /// <para>
+    /// ℹ️ <b>Program ref codes are not allocated here.</b> They are inherited verbatim from the
+    /// LDIP program, as seeding has always done. The LDIP is where program numbering lives: it
+    /// numbers continuously across groups sharing a ref code and renumbers on removal, because
+    /// LDIP saves full-replace the hierarchy. Allocating a fresh code here would break the
+    /// correspondence between an AIP program and the LDIP program it came from, which is what
+    /// makes the closed list meaningful.
+    /// </para>
+    /// </summary>
+    Task<ServiceResult<AipOfficeDto>> AddProgramsWithGroupAsync(
+        int aipRecordId, AddAipProgramsWithGroupDto dto, User caller, CancellationToken ct = default);
+
     Task<ServiceResult<AipRecordDto>> FinalizeAsync(int id, CancellationToken ct = default);
     Task<ServiceResult<AipRecordDto>> UnlockAsync(int id, CancellationToken ct = default);
     Task<ServiceResult<AipRecordDto>> ArchiveAsync(int id, CancellationToken ct = default);
