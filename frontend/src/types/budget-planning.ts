@@ -1049,3 +1049,106 @@ export interface LdipImportConfirmRequest {
    */
   targetRecordId?: number;
 }
+
+// ---------------------------------------------------------------------------
+// AIP entry — v1.8.0 Phase 3 (PPDO-52, 56, 59)
+// ---------------------------------------------------------------------------
+
+/**
+ * One expenditure line under an activity.
+ *
+ * ⚠️ Amounts are PESOS and BASE. The page converts to ₱000 at its edge via `lib/aip-units`, and
+ * the +30% uplift belongs to the printed form only — it never appears here.
+ */
+export interface AipExpenditure {
+  id: number;
+  activityId: number;
+  accountId: number | null;
+  accountNumber: string | null;
+  accountTitle: string | null;
+  fundingSourceId: number | null;
+  fundingSourceCode: string | null;
+  fundingSourceName: string | null;
+  ps: number;
+  mooe: number;
+  co: number;
+  total: number;
+}
+
+export interface SaveAipExpenditureRequest {
+  accountId: number | null;
+  /** ⚠️ Exactly one fund per line. Multi-fund is several lines, never one line naming two. */
+  fundingSourceId: number | null;
+  ps: number;
+  mooe: number;
+  co: number;
+}
+
+/**
+ * What an expenditure write returns — the line plus its activity's recomputed totals, so the tree
+ * updates without a refetch.
+ *
+ * ⚠️ `activityTotal` is null when the activity was NEVER costed and 0 when its lines were all
+ * deleted. Same `lineCount`, opposite meanings; the submit checklist tells them apart.
+ */
+export interface AipExpenditureWriteResult {
+  line: AipExpenditure | null;
+  activityId: number;
+  activityPs: number | null;
+  activityMooe: number | null;
+  activityCo: number | null;
+  activityTotal: number | null;
+  lineCount: number;
+}
+
+export interface AddAipProgramsWithGroupRequest {
+  officeConfigId: number;
+  sector: string;
+  /** Blank means the office's default block, which takes the LDIP group's own name. */
+  groupName: string | null;
+  ldipProgramIds: number[];
+}
+
+/**
+ * The office's ceiling position. General Fund only, PS exempt, base figures rounded up to the
+ * thousand per activity before summing.
+ *
+ * ⚠️ `remaining` MAY BE NEGATIVE and must render as such — it is the only signal an office gets
+ * that PBO cut its ceiling below what is already encoded. Never clamp it.
+ */
+export interface AipCeilingStatus {
+  generalFundId: number | null;
+  /** ⚠️ False is not "unlimited" — an unset ceiling is treated as ZERO. */
+  ceilingSet: boolean;
+  ceiling: number;
+  encodedBaseRounded: number;
+  remaining: number;
+  withinCeiling: boolean;
+}
+
+/** One reason submit is blocked. `kind` is the stable slug to switch on; `message` is for display. */
+export interface AipReadinessIssue {
+  kind: string;
+  activityId: number | null;
+  refCode: string | null;
+  message: string;
+}
+
+/** ⚠️ A gate, not a summary — there is no "submit anyway". */
+export interface AipReadiness {
+  aipRecordId: number;
+  officeId: number;
+  workflowStatus: string;
+  canSubmit: boolean;
+  activityCount: number;
+  issues: AipReadinessIssue[];
+  ceiling: AipCeilingStatus | null;
+}
+
+export interface AipSubmitResult {
+  aipRecordId: number;
+  officeId: number;
+  workflowStatus: string;
+  /** How many sub-office group rows moved. An office with three printed blocks moves all three. */
+  groupsMoved: number;
+}

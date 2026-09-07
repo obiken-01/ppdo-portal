@@ -364,6 +364,13 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
                   <span className="text-xs">•</span>
                   <span className="truncate">AIP</span>
                 </Link>
+                {/* PPDO-52 — the encoder's own tab, separate from the AIP list/detail above.
+                    V18-83 will split this further into AIP Entry and AIP Review as separately
+                    gated siblings; this is the Entry half. */}
+                <Link href="/budget-planning/aip/entry" className={childLinkCls(isActive("/budget-planning/aip/entry"))}>
+                  <span className="text-xs">•</span>
+                  <span className="truncate">AIP Entry</span>
+                </Link>
                 {showAllocation && (
                   <Link href="/budget-planning/allocation" className={childLinkCls(isActive("/budget-planning/allocation"))}>
                     <span className="text-xs">•</span>

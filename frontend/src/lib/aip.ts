@@ -28,6 +28,13 @@ import type {
   AipProjectDetail,
   AipActivityDetail,
   ApiResponse,
+  AipExpenditure,
+  SaveAipExpenditureRequest,
+  AipExpenditureWriteResult,
+  AddAipProgramsWithGroupRequest,
+  AipCeilingStatus,
+  AipReadiness,
+  AipSubmitResult,
 } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -266,4 +273,88 @@ export async function updateAipActivityIsCreation(
     { isCreation }
   );
   unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// AIP entry — v1.8.0 Phase 3 (PPDO-52, 56, 59)
+// ---------------------------------------------------------------------------
+
+/**
+ * Adds programs from the office's LDIP under a named sub-office group, creating the group if it
+ * does not exist (PPDO-52).
+ *
+ * ⚠️ Not the same as `seedAipProgramsFromLdip`, which it resembles. That one finds its target
+ * office by REF CODE ALONE and so can only ever reach the first group under it. This keys on
+ * (ref code, group name), which is what lets one office carry several printed blocks — the
+ * province's FY2027 SOCIAL sheet has three under one office.
+ */
+export async function addAipProgramsWithGroup(
+  aipId: number,
+  body: AddAipProgramsWithGroupRequest
+): Promise<AipOfficeDetail> {
+  const { data } = await api.post<ApiResponse<AipOfficeDetail>>(
+    `/budget-planning/aip/${aipId}/programs`, body
+  );
+  return unwrap(data);
+}
+
+export async function listAipExpenditures(activityId: number): Promise<AipExpenditure[]> {
+  const { data } = await api.get<ApiResponse<AipExpenditure[]>>(
+    `/budget-planning/aip/activities/${activityId}/expenditures`
+  );
+  return unwrap(data);
+}
+
+export async function addAipExpenditure(
+  activityId: number, body: SaveAipExpenditureRequest
+): Promise<AipExpenditureWriteResult> {
+  const { data } = await api.post<ApiResponse<AipExpenditureWriteResult>>(
+    `/budget-planning/aip/activities/${activityId}/expenditures`, body
+  );
+  return unwrap(data);
+}
+
+export async function updateAipExpenditure(
+  id: number, body: SaveAipExpenditureRequest
+): Promise<AipExpenditureWriteResult> {
+  const { data } = await api.put<ApiResponse<AipExpenditureWriteResult>>(
+    `/budget-planning/aip/expenditures/${id}`, body
+  );
+  return unwrap(data);
+}
+
+/**
+ * ⚠️ Returns the recomputed activity rather than nothing. Deleting the last line takes the
+ * activity's total to 0, and the caller must render that — discarding the result leaves the page
+ * showing the pre-delete figure until someone reloads.
+ */
+export async function deleteAipExpenditure(id: number): Promise<AipExpenditureWriteResult> {
+  const { data } = await api.delete<ApiResponse<AipExpenditureWriteResult>>(
+    `/budget-planning/aip/expenditures/${id}`
+  );
+  return unwrap(data);
+}
+
+/** What is blocking submit. Side-effect free — safe to refetch as the encoder works. */
+export async function getAipReadiness(aipId: number): Promise<AipReadiness> {
+  const { data } = await api.get<ApiResponse<AipReadiness>>(
+    `/budget-planning/aip/${aipId}/readiness`
+  );
+  return unwrap(data);
+}
+
+/** Moves every one of this office's sub-office group rows to department review, in one action. */
+export async function submitAip(aipId: number): Promise<AipSubmitResult> {
+  const { data } = await api.post<ApiResponse<AipSubmitResult>>(
+    `/budget-planning/aip/${aipId}/submit`, {}
+  );
+  return unwrap(data);
+}
+
+/** ⚠️ `remaining` may be negative. Render the sign; never clamp it. */
+export async function getAipCeiling(aipId: number): Promise<AipCeilingStatus> {
+  const { data } = await api.get<ApiResponse<AipCeilingStatus>>(
+    `/budget-planning/aip/${aipId}/ceiling`
+  );
+  return unwrap(data);
 }
