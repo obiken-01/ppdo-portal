@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using PPDO.Application.Common;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Interfaces;
 using PPDO.Infrastructure.Data;
@@ -53,6 +54,43 @@ public sealed class AipExpenditureRepositoryTests : IDisposable
                 total TEXT NOT NULL DEFAULT '0',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
+            );
+            """);
+
+        // The hierarchy SumMooeCoByConfigOfficeAndFundAsync joins through, minimal columns only:
+        // office → program → project → activity. Kept as raw DDL to match this file's existing
+        // "only the tables under test" approach rather than EnsureCreated over the whole model.
+        setup.Database.ExecuteSqlRaw("""
+            CREATE TABLE aip_offices (
+                id INTEGER PRIMARY KEY,
+                aip_record_id INTEGER NOT NULL,
+                ref_code TEXT NOT NULL DEFAULT '',
+                name TEXT NOT NULL DEFAULT '',
+                sector TEXT NOT NULL DEFAULT '',
+                office_id INTEGER NULL,
+                workflow_status TEXT NOT NULL DEFAULT 'Draft'
+            );
+            CREATE TABLE aip_programs (
+                id INTEGER PRIMARY KEY,
+                office_id INTEGER NOT NULL,
+                ref_code TEXT NOT NULL DEFAULT '',
+                name TEXT NOT NULL DEFAULT '',
+                function_band TEXT NOT NULL DEFAULT 'Core'
+            );
+            CREATE TABLE aip_projects (
+                id INTEGER PRIMARY KEY,
+                program_id INTEGER NOT NULL,
+                ref_code TEXT NOT NULL DEFAULT '',
+                name TEXT NOT NULL DEFAULT '',
+                is_synthetic INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE aip_activities (
+                id INTEGER PRIMARY KEY,
+                project_id INTEGER NOT NULL,
+                ref_code TEXT NOT NULL DEFAULT '',
+                name TEXT NOT NULL DEFAULT '',
+                is_creation INTEGER NOT NULL DEFAULT 0,
+                is_synthetic INTEGER NOT NULL DEFAULT 0
             );
             """);
     }
@@ -217,5 +255,86 @@ public sealed class AipExpenditureRepositoryTests : IDisposable
 
         Assert.Equal(0m, totals.Total);
         Assert.Equal(1, totals.LineCount);
+    }
+
+    // ── The office-wide ceiling sum (V18-46, corrected 2026-09-07) ────────────
+
+    /// <summary>
+    /// ⚠️ <b>The ceiling spans every sub-office group the office owns, not one of them.</b>
+    ///
+    /// <para>
+    /// This query used to take an <c>aipOfficeId</c> — a single group row — while its caller passed
+    /// <c>Groups[0]</c> and the ceiling it was compared against was the whole office's. PGO owns
+    /// eight group rows in FY2028, so seven of them could hold unlimited General Fund money that no
+    /// ceiling check ever saw, and the office would submit cleanly. Found by live-testing: a
+    /// ₱500,000 MOOE line sat under AKAP-HUB and the strip read "Encoded —".
+    /// </para>
+    ///
+    /// <para>
+    /// The fixture is built to fail the old behaviour specifically: the money is in the SECOND
+    /// group, and there is a third group belonging to a DIFFERENT config office holding a large
+    /// amount that must not be counted.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task SumMooeCoByConfigOfficeAndFund_SpansEveryGroupOfTheOffice_AndNoOtherOffice()
+    {
+        const int record = 44, ourOffice = 1, otherOffice = 9, gf = 1, otherFund = 3;
+
+        await SeedTreeAsync(
+            // (aipOfficeId, aipRecordId, configOfficeId, activityId)
+            (560, record, ourOffice,   9001),   // group 1 — the one the old code looked at
+            (561, record, ourOffice,   9002),   // group 2 — invisible before this fix
+            (562, record, ourOffice,   9003),   // group 3 — wrong fund, must be ignored
+            (563, record, otherOffice, 9004),   // another office entirely
+            (564, 43,     ourOffice,   9005));  // our office, but a different (archived) record
+
+        await SeedAsync(
+            WithFund(Line(9001, mooe: 100_000m, co: 0m), gf),
+            WithFund(Line(9002, mooe: 500_000m, co: 25_000m), gf),
+            WithFund(Line(9003, mooe: 999_000m, co: 0m), otherFund),
+            WithFund(Line(9004, mooe: 888_000m, co: 0m), gf),
+            WithFund(Line(9005, mooe: 777_000m, co: 0m), gf));
+
+        await using AppDbContext ctx = new(_options);
+        IReadOnlyList<AipActivityFundTotalsDto> rows = await NewRepo(ctx)
+            .SumMooeCoByConfigOfficeAndFundAsync(record, ourOffice, gf);
+
+        // Both of our office's GF activities, from two different group rows.
+        Assert.Equal([9001, 9002], rows.Select(r => r.ActivityId).OrderBy(i => i).ToArray());
+        Assert.Equal(600_000m, rows.Sum(r => r.Mooe));
+        Assert.Equal(25_000m,  rows.Sum(r => r.Co));
+    }
+
+    /// <summary>
+    /// One activity per group row, wired office → program → project → activity.
+    ///
+    /// ⚠️ Inserted with raw SQL, not EF. The harness creates only the columns this query joins
+    /// through, and an EF insert writes every mapped column — so entity inserts would force the
+    /// fixture to mirror four entities' full schemas just to test one JOIN.
+    /// </summary>
+    private async Task SeedTreeAsync(
+        params (int AipOfficeId, int AipRecordId, int ConfigOfficeId, int ActivityId)[] groups)
+    {
+        await using AppDbContext ctx = new(_options);
+        foreach ((int officeId, int recordId, int configOfficeId, int activityId) in groups)
+        {
+            await ctx.Database.ExecuteSqlRawAsync($"""
+                INSERT INTO aip_offices (id, aip_record_id, ref_code, name, sector, office_id)
+                    VALUES ({officeId}, {recordId}, 'rc', 'GROUP {officeId}', 'GENERAL', {configOfficeId});
+                INSERT INTO aip_programs (id, office_id, ref_code, name)
+                    VALUES ({officeId * 10}, {officeId}, 'p', 'Program');
+                INSERT INTO aip_projects (id, program_id, ref_code, name)
+                    VALUES ({officeId * 100}, {officeId * 10}, 'pr', 'Project');
+                INSERT INTO aip_activities (id, project_id, ref_code, name)
+                    VALUES ({activityId}, {officeId * 100}, 'a', 'Activity');
+                """);
+        }
+    }
+
+    private static AipExpenditure WithFund(AipExpenditure line, int fundingSourceId)
+    {
+        line.FundingSourceId = fundingSourceId;
+        return line;
     }
 }

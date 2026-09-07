@@ -91,8 +91,10 @@ public sealed class AipCeilingServiceTests
             .Select((a, i) => new AipActivityFundTotalsDto(1000 + i, a.Mooe, a.Co))
             .ToList();
 
-        _expRepo.Setup(r => r.SumMooeCoByOfficeAndFundAsync(
-                AipOfficeId, fundId, It.IsAny<CancellationToken>()))
+        // ⚠️ Keyed on (record, CONFIG office), not on the AipOffice row the caller passes in — the
+        // ceiling is one office-level bound over every sub-office group the office owns.
+        _expRepo.Setup(r => r.SumMooeCoByConfigOfficeAndFundAsync(
+                AipRecordId, ConfigOfficeId, fundId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(rows);
     }
 
@@ -115,8 +117,8 @@ public sealed class AipCeilingServiceTests
 
         Assert.Null(error);
         // The GAD fund was never queried. Had it been summed in, ₱400k + GAD would be the figure.
-        _expRepo.Verify(r => r.SumMooeCoByOfficeAndFundAsync(
-            AipOfficeId, GadFundId, It.IsAny<CancellationToken>()), Times.Never);
+        _expRepo.Verify(r => r.SumMooeCoByConfigOfficeAndFundAsync(
+            AipRecordId, ConfigOfficeId, GadFundId, It.IsAny<CancellationToken>()), Times.Never);
     }
 
     // ── Trap 2: PS is exempt ──────────────────────────────────────────────────

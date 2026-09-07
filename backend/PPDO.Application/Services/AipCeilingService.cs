@@ -75,7 +75,12 @@ public sealed class AipCeilingService : IAipCeilingService
         bool    ceilingSet = ceilingResult.IsSuccess;
         decimal ceiling    = ceilingSet ? ceilingResult.Value!.Amount : 0m;
 
-        decimal encoded = await SumEncodedBaseRoundedAsync(aipOfficeId, gfId.Value, ct);
+        // ⚠️ record + CONFIG office, not the AipOffice row that was passed in. The ceiling is one
+        // bound for the whole office and an office owns several group rows; summing only the row
+        // the caller happened to hand over made every other group's General Fund work invisible to
+        // its own ceiling.
+        decimal encoded = await SumEncodedBaseRoundedAsync(
+            record.Id, configOfficeId, gfId.Value, ct);
 
         // ⚠️ No Math.Max. A negative remaining is the signal a ceiling was cut below encoded work,
         // and it is exactly what must block submit (A5-b).
@@ -188,10 +193,11 @@ public sealed class AipCeilingService : IAipCeilingService
     /// columns.
     /// </summary>
     private async Task<decimal> SumEncodedBaseRoundedAsync(
-        int aipOfficeId, int generalFundId, CancellationToken ct)
+        int aipRecordId, int configOfficeId, int generalFundId, CancellationToken ct)
     {
         IReadOnlyList<AipActivityFundTotalsDto> perActivity =
-            await _expRepo.SumMooeCoByOfficeAndFundAsync(aipOfficeId, generalFundId, ct);
+            await _expRepo.SumMooeCoByConfigOfficeAndFundAsync(
+                aipRecordId, configOfficeId, generalFundId, ct);
 
         decimal total = 0m;
         foreach (AipActivityFundTotalsDto a in perActivity)

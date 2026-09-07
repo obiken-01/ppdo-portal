@@ -40,22 +40,38 @@ public interface IAipExpenditureRepository : IRepository<AipExpenditure>
     Task<AipExpenditureTotalsDto> SumByActivityIdAsync(int activityId, CancellationToken ct = default);
 
     /// <summary>
-    /// One row per activity under <paramref name="aipOfficeId"/>, carrying that activity's MOOE
-    /// and CO summed over its lines for <paramref name="fundingSourceId"/> only (V18-46).
+    /// One row per activity belonging to config office <paramref name="configOfficeId"/> anywhere
+    /// in AIP record <paramref name="aipRecordId"/>, carrying that activity's MOOE and CO summed
+    /// over its lines for <paramref name="fundingSourceId"/> only (V18-46).
     ///
+    /// <para>
+    /// ⚠️ <b>Scoped to the CONFIG office, across every one of its sub-office group rows — not to a
+    /// single <c>AipOffice</c> row.</b> ↩️ It used to take an <c>aipOfficeId</c>, which made the
+    /// ceiling see one group's work and none of the others'. The ceiling is an office-level bound
+    /// (<c>AipSubmitService</c>: "checked once for the office, not per group"), and the caller was
+    /// passing <c>Groups[0]</c>, so every group after the first was invisible to it: an office
+    /// could encode unlimited General Fund money in a second block and submit cleanly. PGO has
+    /// eight group rows and the entire ceiling was computed from one of them. Found by
+    /// live-testing after the LDIP sub-office fix multiplied the number of groups per office.
+    /// </para>
+    ///
+    /// <para>
     /// ⚠️ <b>Returns per-activity figures, deliberately un-summed.</b> The ceiling rule rounds each
     /// printed figure UP to the thousand and only then adds (DECISION 9), so the caller must see
     /// the individual figures. Returning a single total here would force the rounding to happen
     /// after the sum, which is a different — and smaller — number than the form prints.
+    /// </para>
     ///
+    /// <para>
     /// ⚠️ PS is not returned at all. It is exempt from the ceiling as an expense class
     /// (tracker A6-2), and returning it invites a caller to add it in.
+    /// </para>
     ///
     /// Activities with no lines for this fund are omitted rather than returned as zero rows;
     /// a zero contributes nothing to a sum either way.
     /// </summary>
-    Task<IReadOnlyList<AipActivityFundTotalsDto>> SumMooeCoByOfficeAndFundAsync(
-        int aipOfficeId, int fundingSourceId, CancellationToken ct = default);
+    Task<IReadOnlyList<AipActivityFundTotalsDto>> SumMooeCoByConfigOfficeAndFundAsync(
+        int aipRecordId, int configOfficeId, int fundingSourceId, CancellationToken ct = default);
 
     /// <summary>
     /// Line counts for a set of activities, computed in SQL (V18-49 / PPDO-59).

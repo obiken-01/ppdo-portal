@@ -81,12 +81,18 @@ public sealed class AipExpenditureRepository : Repository<AipExpenditure>, IAipE
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<AipActivityFundTotalsDto>> SumMooeCoByOfficeAndFundAsync(
-        int aipOfficeId, int fundingSourceId, CancellationToken ct = default)
-        // One GROUP BY across the office's whole subtree, joined down program → project →
+    public async Task<IReadOnlyList<AipActivityFundTotalsDto>> SumMooeCoByConfigOfficeAndFundAsync(
+        int aipRecordId, int configOfficeId, int fundingSourceId, CancellationToken ct = default)
+        // One GROUP BY across the office's whole subtree, joined down office → program → project →
         // activity. The alternative — walk the tree, then one sum per activity — is the N+1 that
         // cost ~60 sequential round trips on the dashboard (RAL-166), and an office's AIP has far
         // more activities than a dashboard has divisions.
+        //
+        // ⚠️ Matched on the CONFIG office (AipOffice.OfficeId), not on one AipOffice row, and
+        // bounded to the record. An office owns one group row per sub-office per sector — PGO has
+        // eight in FY2028 — and the ceiling is a single office-level bound over all of them.
+        // Scoping this to one row is what let seven of PGO's eight groups encode General Fund
+        // money that no ceiling check could see.
         //
         // ⚠️ Filtered to ONE funding source by the caller, which passes General Fund. Non-GF funds
         // are excluded here by an explicit argument rather than by having no ceiling row — a
@@ -97,7 +103,8 @@ public sealed class AipExpenditureRepository : Repository<AipExpenditure>, IAipE
         // up to the thousand before adding (DECISION 9). Summing here would round after the sum.
         => await _context.Set<AipExpenditure>()
             .Where(e => e.FundingSourceId == fundingSourceId
-                     && e.Activity.Project.Program.OfficeId == aipOfficeId)
+                     && e.Activity.Project.Program.Office.AipRecordId == aipRecordId
+                     && e.Activity.Project.Program.Office.OfficeId == configOfficeId)
             .GroupBy(e => e.ActivityId)
             .Select(g => new AipActivityFundTotalsDto(
                 g.Key,
