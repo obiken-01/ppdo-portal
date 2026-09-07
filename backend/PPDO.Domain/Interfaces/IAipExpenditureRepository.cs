@@ -39,6 +39,24 @@ public interface IAipExpenditureRepository : IRepository<AipExpenditure>
     /// </summary>
     Task<AipExpenditureTotalsDto> SumByActivityIdAsync(int activityId, CancellationToken ct = default);
 
+    /// <summary>
+    /// One row per activity under <paramref name="aipOfficeId"/>, carrying that activity's MOOE
+    /// and CO summed over its lines for <paramref name="fundingSourceId"/> only (V18-46).
+    ///
+    /// ⚠️ <b>Returns per-activity figures, deliberately un-summed.</b> The ceiling rule rounds each
+    /// printed figure UP to the thousand and only then adds (DECISION 9), so the caller must see
+    /// the individual figures. Returning a single total here would force the rounding to happen
+    /// after the sum, which is a different — and smaller — number than the form prints.
+    ///
+    /// ⚠️ PS is not returned at all. It is exempt from the ceiling as an expense class
+    /// (tracker A6-2), and returning it invites a caller to add it in.
+    ///
+    /// Activities with no lines for this fund are omitted rather than returned as zero rows;
+    /// a zero contributes nothing to a sum either way.
+    /// </summary>
+    Task<IReadOnlyList<AipActivityFundTotalsDto>> SumMooeCoByOfficeAndFundAsync(
+        int aipOfficeId, int fundingSourceId, CancellationToken ct = default);
+
     // ── No write methods here, deliberately ───────────────────────────────────
     // Writes go through the base IRepository<T>'s Add/Update/Delete, with the calling Application
     // service owning SaveChangesAsync — the unit-of-work rule stated on Repository<T> and followed
@@ -65,3 +83,15 @@ public sealed record AipExpenditureTotalsDto(
     decimal Co,
     decimal Total,
     int LineCount);
+
+/// <summary>
+/// One activity's MOOE and CO for a single funding source, computed in SQL (V18-46 / PPDO-56).
+/// Pesos, and <b>base</b> figures — the +30% uplift is presentation-only and never reaches here.
+///
+/// Deliberately carries no PS and no Total: PS is exempt from the ceiling check as an expense
+/// class, and a Total would be the sum of an exempt and a non-exempt component.
+/// </summary>
+public sealed record AipActivityFundTotalsDto(
+    int     ActivityId,
+    decimal Mooe,
+    decimal Co);

@@ -63,4 +63,29 @@ public sealed class AipExpenditureRepository : Repository<AipExpenditure>, IAipE
         // No rows at all means no group, so FirstOrDefault returns null rather than a zero row.
         return totals ?? new AipExpenditureTotalsDto(0m, 0m, 0m, 0m, 0);
     }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<AipActivityFundTotalsDto>> SumMooeCoByOfficeAndFundAsync(
+        int aipOfficeId, int fundingSourceId, CancellationToken ct = default)
+        // One GROUP BY across the office's whole subtree, joined down program → project →
+        // activity. The alternative — walk the tree, then one sum per activity — is the N+1 that
+        // cost ~60 sequential round trips on the dashboard (RAL-166), and an office's AIP has far
+        // more activities than a dashboard has divisions.
+        //
+        // ⚠️ Filtered to ONE funding source by the caller, which passes General Fund. Non-GF funds
+        // are excluded here by an explicit argument rather than by having no ceiling row — a
+        // missing allocation resolves to 0m, so absence would silently forbid a fund instead of
+        // ignoring it (V18-46 trap 3).
+        //
+        // ⚠️ Grouped per ACTIVITY and returned un-summed, because the ceiling rounds each figure
+        // up to the thousand before adding (DECISION 9). Summing here would round after the sum.
+        => await _context.Set<AipExpenditure>()
+            .Where(e => e.FundingSourceId == fundingSourceId
+                     && e.Activity.Project.Program.OfficeId == aipOfficeId)
+            .GroupBy(e => e.ActivityId)
+            .Select(g => new AipActivityFundTotalsDto(
+                g.Key,
+                g.Sum(e => (decimal?)e.Mooe) ?? 0m,
+                g.Sum(e => (decimal?)e.Co) ?? 0m))
+            .ToListAsync(ct);
 }

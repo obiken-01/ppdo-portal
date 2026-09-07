@@ -190,6 +190,11 @@ var host = new HostBuilder()
         services.AddScoped<IWfpAllocationLedgerRepository, WfpAllocationLedgerRepository>();
         services.AddScoped<IAipAllocationLedgerRepository, AipAllocationLedgerRepository>();
         services.AddScoped<IWfpCeilingService, WfpCeilingService>();
+
+        // V18-46 / PPDO-56 — the AIP's own ceiling check. Alongside the WFP one, not replacing it:
+        // a WFP expenditure stays bound by the lesser of its AIP activity amount and the fund's
+        // remaining allocation.
+        services.AddScoped<IAipCeilingService, AipCeilingService>();
     })
     .ConfigureLogging((context, logging) =>
     {
