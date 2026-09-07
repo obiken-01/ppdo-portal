@@ -4,10 +4,10 @@
  * Extracted verbatim from `aip/detail/page.tsx` (PPDO-64). No behaviour change.
  */
 
-import MoneyInput from "@/components/ui/MoneyInput";
+import AipMoneyInput from "@/components/aip/AipMoneyInput";
 import { useState } from "react";
 import { addAipActivity, aipErrorMessage } from "@/lib/aip";
-import { fmt, toStorageUnits } from "@/lib/aip-units";
+import { fmtPesos } from "@/lib/aip-units";
 import { AIP_ESRE_OPTIONS, AIP_MONTHS } from "@/lib/aipConstants";
 import { inputCls, selectCls } from "@/components/aip/AipTreeCells";
 import type { AipActivityDetail, FundingSourceResponse } from "@/types";
@@ -59,11 +59,11 @@ export default function AddActivityRow({
         expectedOutputs: expectedOutputs.trim() || null,
         fundingSourceRaw: fundingSourceRaw || null,
         // Typed in ₱000 like every other figure on this page — converted to pesos on the way out.
-        ps:           toStorageUnits(ps),
-        mooe:         toStorageUnits(mooe),
-        co:           toStorageUnits(co),
-        ccAdaptation: toStorageUnits(ccAdaptation),
-        ccMitigation: toStorageUnits(ccMitigation),
+        ps:           ps,
+        mooe:         mooe,
+        co:           co,
+        ccAdaptation: ccAdaptation,
+        ccMitigation: ccMitigation,
         ccTypologyCode: ccTypologyCode.trim() || null,
       });
       onAdded(created);
@@ -124,14 +124,14 @@ export default function AddActivityRow({
           {fundingSources.map((f) => <option key={f.id} value={f.code}>{f.code}</option>)}
         </select>
       </td>
-      <td className="px-1 py-1.5"><MoneyInput value={ps} onChange={setPs} className="w-full" /></td>
-      <td className="px-1 py-1.5"><MoneyInput value={mooe} onChange={setMooe} className="w-full" /></td>
-      <td className="px-1 py-1.5"><MoneyInput value={co} onChange={setCo} className="w-full" /></td>
+      <td className="px-1 py-1.5"><AipMoneyInput value={ps} onChange={setPs} /></td>
+      <td className="px-1 py-1.5"><AipMoneyInput value={mooe} onChange={setMooe} /></td>
+      <td className="px-1 py-1.5"><AipMoneyInput value={co} onChange={setCo} /></td>
       <td className="px-2 py-1.5 text-right text-xs tabular-nums font-semibold text-slate-800">
-        {fmt((ps ?? 0) + (mooe ?? 0) + (co ?? 0))}
+        {fmtPesos((ps ?? 0) + (mooe ?? 0) + (co ?? 0))}
       </td>
-      <td className="px-1 py-1.5"><MoneyInput value={ccAdaptation} onChange={setCcAdaptation} className="w-full" /></td>
-      <td className="px-1 py-1.5"><MoneyInput value={ccMitigation} onChange={setCcMitigation} className="w-full" /></td>
+      <td className="px-1 py-1.5"><AipMoneyInput value={ccAdaptation} onChange={setCcAdaptation} /></td>
+      <td className="px-1 py-1.5"><AipMoneyInput value={ccMitigation} onChange={setCcMitigation} /></td>
       <td className="px-2 py-1.5">
         <input value={ccTypologyCode} onChange={(e) => setCcTypologyCode(e.target.value)} className={inputCls} />
       </td>

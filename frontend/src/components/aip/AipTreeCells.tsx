@@ -10,7 +10,7 @@
  * "tidier" abstraction here is a restyle of the document, not a refactor. Leave them.
  */
 
-import { fmt, toDisplayUnits } from "@/lib/aip-units";
+import { fmtThousands } from "@/lib/aip-units";
 
 // ── Chevron ────────────────────────────────────────────────────────────────────
 
@@ -60,7 +60,8 @@ export function AmtTD({ value, bold = false, white = false }: { value: number | 
     <td className={`px-2 py-1.5 text-right text-xs tabular-nums whitespace-nowrap ${
       white ? "text-white font-semibold" : bold ? "font-semibold text-slate-800" : "text-slate-600"
     }`}>
-      {fmt(toDisplayUnits(value))}
+      {/* ⚠️ `value` is PESOS; this renders thousands. Every AIP grid cell goes through here. */}
+      {fmtThousands(value)}
     </td>
   );
 }

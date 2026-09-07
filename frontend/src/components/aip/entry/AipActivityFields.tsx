@@ -22,9 +22,9 @@
  */
 
 import { useState } from "react";
-import MoneyInput from "@/components/ui/MoneyInput";
+import AipMoneyInput from "@/components/aip/AipMoneyInput";
 import { updateAipActivityDetails, aipErrorMessage } from "@/lib/aip";
-import { toDisplayUnits, toStorageUnits } from "@/lib/aip-units";
+import { fmtThousands } from "@/lib/aip-units";
 import { AIP_ESRE_OPTIONS, AIP_MONTHS } from "@/lib/aipConstants";
 import { inputCls, selectCls } from "@/components/aip/AipTreeCells";
 import type { AipActivityDetail } from "@/types";
@@ -47,10 +47,10 @@ export default function AipActivityFields({
   const [endDate, setEndDate]                       = useState(activity.endDate ?? "");
   const [expectedOutputs, setExpectedOutputs]       = useState(activity.expectedOutputs ?? "");
   const [ccTypologyCode, setCcTypologyCode]         = useState(activity.ccTypologyCode ?? "");
-  // Held in DISPLAY units (₱000) while on screen, converted back on save — the same edge rule the
-  // rest of the AIP surfaces follow. Both directions or neither (see lib/aip-units).
-  const [ccAdaptation, setCcAdaptation] = useState<number | null>(toDisplayUnits(activity.ccAdaptation));
-  const [ccMitigation, setCcMitigation] = useState<number | null>(toDisplayUnits(activity.ccMitigation));
+  // ⚠️ PESOS, both on screen and on the wire — the input shows exactly what is stored. Only the
+  // read-only cells divide (see lib/aip-units).
+  const [ccAdaptation, setCcAdaptation] = useState<number | null>(activity.ccAdaptation);
+  const [ccMitigation, setCcMitigation] = useState<number | null>(activity.ccMitigation);
 
   function beginEdit() {
     setName(activity.name);
@@ -60,8 +60,8 @@ export default function AipActivityFields({
     setEndDate(activity.endDate ?? "");
     setExpectedOutputs(activity.expectedOutputs ?? "");
     setCcTypologyCode(activity.ccTypologyCode ?? "");
-    setCcAdaptation(toDisplayUnits(activity.ccAdaptation));
-    setCcMitigation(toDisplayUnits(activity.ccMitigation));
+    setCcAdaptation(activity.ccAdaptation);
+    setCcMitigation(activity.ccMitigation);
     setError(null);
     setEditing(true);
   }
@@ -78,8 +78,8 @@ export default function AipActivityFields({
         startDate: startDate || null,
         endDate: endDate || null,
         expectedOutputs: expectedOutputs.trim() || null,
-        ccAdaptation: toStorageUnits(ccAdaptation),
-        ccMitigation: toStorageUnits(ccMitigation),
+        ccAdaptation,
+        ccMitigation,
         ccTypologyCode: ccTypologyCode.trim() || null,
       });
       onSaved(updated);
@@ -172,13 +172,15 @@ export default function AipActivityFields({
         <div>
           {/* ⚠️ CC amounts live on the activity, not on the expenditure lines — lines carry only
               PS/MOOE/CO, so this form is the only place they can be entered. */}
-          <Label>CC adaptation (₱000)</Label>
-          <MoneyInput value={ccAdaptation} onChange={setCcAdaptation} className="w-full" />
+          {/* ⚠️ The label says pesos while the read view above says ₱000 — both are true, and the
+              input's own `= x ₱000` echo is what joins them. */}
+          <Label>CC adaptation (pesos)</Label>
+          <AipMoneyInput value={ccAdaptation} onChange={setCcAdaptation} />
         </div>
 
         <div>
-          <Label>CC mitigation (₱000)</Label>
-          <MoneyInput value={ccMitigation} onChange={setCcMitigation} className="w-full" />
+          <Label>CC mitigation (pesos)</Label>
+          <AipMoneyInput value={ccMitigation} onChange={setCcMitigation} />
         </div>
 
         <div className="sm:col-span-3">
@@ -233,9 +235,13 @@ function Field({
   );
 }
 
-/** ₱000, matching every other money figure on this page. Null and 0 both read as absent. */
+/**
+ * ₱000, matching every other read-only money figure on this page.
+ *
+ * Returns null rather than an em dash for absent values, because `Field` distinguishes "—" from
+ * "Not set — needed to submit" itself.
+ */
 function money(pesos: number | null | undefined): string | null {
-  const v = toDisplayUnits(pesos);
-  if (v == null || v === 0) return null;
-  return v.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const rendered = fmtThousands(pesos);
+  return rendered === "—" ? null : rendered;
 }

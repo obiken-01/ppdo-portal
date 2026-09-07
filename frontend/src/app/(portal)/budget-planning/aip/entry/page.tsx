@@ -29,7 +29,7 @@ import {
 } from "@/lib/aip";
 import { listAccounts, listFundingSources } from "@/lib/config";
 import { FIRST_ENTERED_FISCAL_YEAR } from "@/lib/aip-fiscal-years";
-import { fmt, toDisplayUnits } from "@/lib/aip-units";
+import { fmtThousands } from "@/lib/aip-units";
 import AipAddProgramsPanel from "@/components/aip/entry/AipAddProgramsPanel";
 import AipExpenditureTable from "@/components/aip/entry/AipExpenditureTable";
 import AipActivityFields from "@/components/aip/entry/AipActivityFields";
@@ -386,7 +386,7 @@ function ActivityBlock({
         </span>
         <span className="whitespace-nowrap text-sm tabular-nums text-slate-800">
           {/* ⚠️ null and 0 are different states here — never costed vs costed at zero (V18-34). */}
-          {activity.total == null ? "—" : fmt(toDisplayUnits(activity.total))}
+          {activity.total == null ? "—" : fmtThousands(activity.total)}
         </span>
       </button>
 

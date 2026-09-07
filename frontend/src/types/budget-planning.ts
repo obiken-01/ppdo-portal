@@ -1089,8 +1089,9 @@ export interface LdipImportConfirmRequest {
 /**
  * One expenditure line under an activity.
  *
- * ⚠️ Amounts are PESOS and BASE. The page converts to ₱000 at its edge via `lib/aip-units`, and
- * the +30% uplift belongs to the printed form only — it never appears here.
+ * ⚠️ Amounts are PESOS and BASE — on the wire and in the inputs alike. Only read-only cells
+ * convert to ₱000, via `lib/aip-units`; nothing multiplies on the way to the server. The +30%
+ * uplift belongs to the printed form only and never appears here.
  */
 export interface AipExpenditure {
   id: number;

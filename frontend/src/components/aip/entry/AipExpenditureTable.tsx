@@ -13,15 +13,15 @@
  * ⚠️ **Default single** (whiteboard W8). The toggle exists so the multi-fund case is *possible*,
  * not so every encoder meets it. Most activities draw on one fund and should stay one field.
  *
- * ⚠️ **Amounts are typed and shown in ₱000 and stored in pesos**, converted here at the edge in
- * both directions. One direction without the other divides the record by a thousand on the next
- * save, and it looks entirely plausible on screen.
+ * ⚠️ **Amounts are typed in PESOS and shown in ₱000.** The inputs post exactly what was typed;
+ * only the saved cells divide. Each input carries a live `= x ₱000` echo, because an input and
+ * the cell it saves into legitimately show different numbers and nothing else on screen says so.
  */
 
 import { useEffect, useMemo, useState } from "react";
-import MoneyInput from "@/components/ui/MoneyInput";
+import AipMoneyInput from "@/components/aip/AipMoneyInput";
 import Lookup from "@/components/ui/Lookup";
-import { fmt, toDisplayUnits, toStorageUnits } from "@/lib/aip-units";
+import { fmtThousands, fmtPesos } from "@/lib/aip-units";
 import {
   addAipExpenditure, updateAipExpenditure, deleteAipExpenditure, aipErrorMessage,
 } from "@/lib/aip";
@@ -116,9 +116,11 @@ export default function AipExpenditureTable({
       const body = {
         accountId: draft.accountId ? Number(draft.accountId) : null,
         fundingSourceId,
-        ps:   toStorageUnits(draft.ps)   ?? 0,
-        mooe: toStorageUnits(draft.mooe) ?? 0,
-        co:   toStorageUnits(draft.co)   ?? 0,
+        // ⚠️ Posted as typed. These are already pesos — multiplying here is decision P2-a's
+        // reversed half, and it is what stored ₱4,657,655,000 for a typed 4,657,655.
+        ps:   draft.ps   ?? 0,
+        mooe: draft.mooe ?? 0,
+        co:   draft.co   ?? 0,
       };
       const result = existingId === null
         ? await addAipExpenditure(activityId, body)
@@ -188,9 +190,10 @@ export default function AipExpenditureTable({
     setDraft({
       accountId: line.accountId != null ? String(line.accountId) : "",
       fundingSourceId: line.fundingSourceId != null ? String(line.fundingSourceId) : "",
-      ps:   toDisplayUnits(line.ps),
-      mooe: toDisplayUnits(line.mooe),
-      co:   toDisplayUnits(line.co),
+      // Pesos in, pesos out — the draft holds exactly what the row stores.
+      ps:   line.ps,
+      mooe: line.mooe,
+      co:   line.co,
     });
   }
 
@@ -282,10 +285,10 @@ export default function AipExpenditureTable({
                 <tr key={line.id} className="border-t border-slate-200">
                   <td className="py-1.5 text-slate-800">{line.accountTitle ?? "—"}</td>
                   {multiFund && <td className="py-1.5 text-slate-600">{line.fundingSourceCode ?? "—"}</td>}
-                  <td className="py-1.5 text-right tabular-nums text-slate-800">{fmt(toDisplayUnits(line.ps))}</td>
-                  <td className="py-1.5 text-right tabular-nums text-slate-800">{fmt(toDisplayUnits(line.mooe))}</td>
-                  <td className="py-1.5 text-right tabular-nums text-slate-800">{fmt(toDisplayUnits(line.co))}</td>
-                  <td className="py-1.5 text-right font-semibold tabular-nums text-slate-800">{fmt(toDisplayUnits(line.total))}</td>
+                  <td className="py-1.5 text-right tabular-nums text-slate-800">{fmtThousands(line.ps)}</td>
+                  <td className="py-1.5 text-right tabular-nums text-slate-800">{fmtThousands(line.mooe)}</td>
+                  <td className="py-1.5 text-right tabular-nums text-slate-800">{fmtThousands(line.co)}</td>
+                  <td className="py-1.5 text-right font-semibold tabular-nums text-slate-800">{fmtThousands(line.total)}</td>
                   <td className="py-1.5 text-right">
                     {canEdit && (
                       <>
@@ -357,11 +360,14 @@ function EditRow({
           />
         </td>
       )}
-      <td className="py-1.5 pr-1"><MoneyInput value={draft.ps}   onChange={(v) => setDraft({ ...draft, ps: v })} /></td>
-      <td className="py-1.5 pr-1"><MoneyInput value={draft.mooe} onChange={(v) => setDraft({ ...draft, mooe: v })} /></td>
-      <td className="py-1.5 pr-1"><MoneyInput value={draft.co}   onChange={(v) => setDraft({ ...draft, co: v })} /></td>
-      <td className="py-1.5 text-right tabular-nums text-slate-600">
-        {fmt((draft.ps ?? 0) + (draft.mooe ?? 0) + (draft.co ?? 0))}
+      <td className="py-1.5 pr-1"><AipMoneyInput value={draft.ps}   onChange={(v) => setDraft({ ...draft, ps: v })} /></td>
+      <td className="py-1.5 pr-1"><AipMoneyInput value={draft.mooe} onChange={(v) => setDraft({ ...draft, mooe: v })} /></td>
+      <td className="py-1.5 pr-1"><AipMoneyInput value={draft.co}   onChange={(v) => setDraft({ ...draft, co: v })} /></td>
+      <td className="py-1.5 text-right align-top tabular-nums text-slate-600">
+        {/* ⚠️ PESOS while editing, not thousands. This sums the three ₱ inputs immediately to its
+            left, so it has to agree with them; the row reverts to thousands once saved. */}
+        {fmtPesos((draft.ps ?? 0) + (draft.mooe ?? 0) + (draft.co ?? 0))}
+        <span className="mt-0.5 block text-[10px] leading-3 text-slate-600">pesos</span>
       </td>
       <td className="py-1.5 text-right whitespace-nowrap">
         <button type="button" onClick={onSave} disabled={busy}
