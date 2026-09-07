@@ -152,6 +152,43 @@ have already flipped are not flipped back.
     which already exists. Worth stating because "Admin only" reads like a flag and adding one would
     need a `Permission_Matrix.md` row and would fail `PermissionMatrixTests` without it.
 
+15. **AIP procurement lines get the FULL WFP treatment** (P3-a answered 2026-09-07).
+    ↩️ **This overrides the default this spec carried** — it said item-selection-plus-cost, on
+    the reasoning that the AIP is a *plan* and the arithmetic exists in WFP because it is a
+    *schedule*. Parity was chosen instead: encoders already know the WFP table, and two
+    procurement UIs that behave differently is its own cost.
+
+    **Copy, from `WfpProcurementItemTable.tsx`:** the price-index picker (searchable over the
+    ~6,400-row catalogue, fetched off the critical path with its own loading state — RAL-231),
+    the line arithmetic, presets (RAL-119 — “load” copies an editable *snapshot*, not a live
+    link) and the duplicate-item warning (RAL-153).
+
+    ⚠️ **Do NOT copy the period dimension — this is the whole difficulty of the ticket.**
+    `periodNo`, `frequency`, `annualQuarterChoice`, the reserve fields, `computeWfpRollUpPreview`
+    and `mergeWfpPeriodAndItemAmounts` are *schedule* concepts. An AIP activity carries **one
+    annual figure**. Copying the component wholesale imports a scheduling model the AIP does not
+    have, and it would reach the printed form.
+
+    ⚠️ **The duplicate rule does not survive that removal unchanged.** RAL-153 scopes the
+    warning to the active *period*, precisely because the same item recurring across periods is
+    normal. With no periods, the AIP's scope is **the activity's own expenditure lines**.
+    Re-derive the rule; do not transliterate it.
+
+    ❓ **One field left open — `numberOfDays`.** `qty × unitPrice × numberOfDays` is a WFP
+    scheduling notion. Keep it for parity unless Ralph says otherwise. Flagged rather than
+    decided, because it is the one place “copy WFP” is genuinely ambiguous.
+
+16. **The `ProgramDivision` program-half FK is closed in Phase 3** (P3-b answered 2026-09-07,
+    matching this spec's default). ⚠️ **It gets its OWN ticket — PPDO-65, landing before
+    V18-42** — rather than being folded into it: it is a backend change carrying a migration and
+    a legacy path that must keep working, and V18-42 is already the largest item in the phase.
+    See §5.4.
+
+17. **`workflow_status`'s migration belongs to V18-42, not V18-49** (settled 2026-09-07). §5.1
+    filed it under V18-49, but **V18-42 ships the submit action itself** and the read-only state
+    that follows it — neither can be built against a column that does not exist. V18-42 adds the
+    column with all five states; **V18-49 keeps the rules about when submitting is allowed.**
+
 ### 2.1 Why deferring the netting rule is safe — read before "simplifying" it
 
 The AIP row is a **reservation** the WFP **relieves** as it commits. The two ledgers must net, not
@@ -179,13 +216,13 @@ Known, accepted, and worth re-reading when netting is built.
 
 | # | Question | Blocks | Default if unanswered |
 |---|---|---|---|
-| **P3-a** | **How far do AIP procurement lines go?** Full WFP treatment (presets, duplicate warnings, quantity × unit price) or item selection plus a cost? Tracker **W13-b** | V18-80 | Item selection + cost. The AIP is a *plan*; the arithmetic and presets exist in WFP because it is a *schedule*. Building the full treatment speculatively is the larger and less reversible mistake |
-| **P3-b** | **Does Phase 3 close the `ProgramDivision` program-half FK?** PPDO-1 shipped the office side only; a **program** ref-code change still silently detaches its division assignment — and Phase 3 makes that assignment load-bearing for what a PPDO user can see | V18-42 (PPDO visibility) | **Yes, and this is the moment.** See §5.4 — the reason the program side stayed a string *lapses* for FY2028+ |
+| ~~**P3-a**~~ | ✅ **ANSWERED 2026-09-07 — the FULL WFP treatment**: picker, presets, arithmetic and duplicate warning all come across. ↩️ **Against this table's default**, so read decision 15 rather than this row — including the two things that must *not* come across | V18-80 | ~~Item selection + cost~~ — overridden |
+| ~~**P3-b**~~ | ✅ **ANSWERED 2026-09-07 — yes, close it now**, as the default proposed, but **in its own ticket (PPDO-65) ahead of V18-42** rather than inside it. See decision 16 and §5.4 | V18-42 (PPDO visibility) | Default confirmed |
 | **P3-c** | **Two encoders in one office editing at once** (tracker D5 confirms two or more per office). Optimistic concurrency per node, or last-write-wins? | V18-42 | Optimistic concurrency **per node**, surfaced as "this activity was changed by someone else — reload". Last-write-wins on a shared document loses an encoder's work with no signal, which is the failure nobody reports because nobody notices it happened |
 | **P3-d** | **Ref-code segment meanings and reset points.** The format is confirmed; the meanings are not, and segment count varies with depth. Tracker **B9-b** | **Not Phase 3** — V18-76 | V18-44 needs neither: allocating a sibling-unique `seq` is independent of what the segments mean. Recorded here because this is where someone will first want the answer |
 
-**P3-a and P3-b are the two worth asking about now.** P3-c is an engineering call with an obvious
-answer; P3-d blocks nothing in this phase.
+✅ **P3-a and P3-b are answered** (2026-09-07) — decisions 15 and 16. P3-c is an engineering call
+with an obvious answer; P3-d blocks nothing in this phase.
 
 ---
 
@@ -297,7 +334,11 @@ with the record paginates server-side (`docs/PERFORMANCE_GUIDELINES.md`).
 
 ## 5. Data model changes
 
-### 5.1 `aip_offices` — workflow status (V18-49)
+### 5.1 `aip_offices` — workflow status (V18-42)
+
+↩️ **Reassigned from V18-49 to V18-42 on 2026-09-07** (§2 decision 17). This section sat under
+V18-49 while V18-42 shipped the submit action and the read-only state that follows it — both of
+which need the column. **V18-42 adds it; V18-49 adds the rules for when submit is allowed.**
 
 ↩️ **Moved off `aip_records` on 2026-09-05** (§2 decision 10). One base record per year holds every
 office, so the record cannot carry a state that belongs to one office.
@@ -354,7 +395,12 @@ with fresh surrogate IDs. **FY2028+ has no upload** — V18-38 froze it. So for 
 phase serves, a durable program identity exists for the first time.
 
 That does not make it free: FY≤2027 stays re-uploadable, so any FK must tolerate the legacy path.
-**This is P3-b, and it is the one open question that could change V18-42's shape.**
+
+✅ **DECIDED 2026-09-07 — close it, in its own ticket.** P3-b is answered as this section proposed.
+It ships as **PPDO-65**, ahead of and blocking V18-42, rather than inside it: the change is backend
+plus a migration plus a legacy re-upload path that must keep working, and V18-42 is already the
+phase's largest item. Folding the two together produces exactly the unreviewable diff §6.4 warns
+about.
 
 ### 5.5 Migration order
 
@@ -460,6 +506,11 @@ Epic **PPDO-48**. Blocking relations are wired in Linear, not only described her
 ahead of the entry UI, because V18-42 cannot be built until the record it fills exists in the
 right shape.
 
+↩️ **Revised again 2026-09-07** by decisions 15–17. **Two more tickets land ahead of V18-42** —
+PPDO-64 (the §6.4 extraction, which had no ticket to extract into) and PPDO-65 (P3-b's FK). And
+**PPDO-54 grows M → L**: P3-a chose the full WFP treatment, so it carries the picker, presets and
+duplicate rule rather than a select and a number field.
+
 | Ticket | # | Size | Blocked by |
 |---|---|---|---|
 | **PPDO-61** 🆕 | Reverse the office-owned shape — drop `AipRecord.OfficeId`, its migration and `AipShape`'s partition | M | — |
@@ -468,18 +519,25 @@ right shape.
 | PPDO-49 | V18-81 — block FY2028+ WFP creation | S | — |
 | PPDO-50 | V18-44 — ref-code generation | M | — |
 | PPDO-51 | V18-41 — programs from a valid LDIP | S | — |
-| PPDO-52 | V18-42 — three-stage entry UI | **L** | PPDO-50, PPDO-51 |
+| **PPDO-64** 🆕 | §6.4 — extract `aip/detail/page.tsx`; pure move, no behaviour change | M | — |
+| **PPDO-65** 🆕 | P3-b — close the `ProgramDivision` program-half FK (§5.4) | M | — |
+| PPDO-52 | V18-42 — three-stage entry UI **+ the `workflow_status` migration** (decision 17) | **L** | PPDO-50, PPDO-62, **PPDO-64**, **PPDO-65** |
 | PPDO-53 | V18-43 — multi-fund toggle | S | PPDO-52 |
-| PPDO-54 | V18-80 — procurement lines from the Price Index | M | PPDO-52 · **P3-a** |
+| PPDO-54 | V18-80 — procurement lines from the Price Index, **full WFP treatment** (decision 15) | **L** | PPDO-52 · ~~P3-a~~ ✅ |
 | PPDO-55 | V18-45 — reservation ledger | M | PPDO-49 |
 | PPDO-56 | V18-46 — ceiling service | M | PPDO-55 |
 | PPDO-57 | V18-47 — office-level ceiling checks | S | PPDO-56 |
 | PPDO-58 | V18-48 — PBO ceiling management UI | S | — |
-| PPDO-59 | V18-49 — completeness checklist + submit gate | M | PPDO-52, PPDO-56 |
+| PPDO-59 | V18-49 — completeness checklist + submit gate (**no longer carries the migration**) | M | PPDO-52, PPDO-56 |
 
-**Order (revised 2026-09-05):** `61` → `62` + `63` · `50` and `49` are independent and already in
-review · `51` folds into `62` · then `52` → `53`, `54` · `55` → `56` → `57` · then `59` · `58`
-anytime.
+**Order (revised 2026-09-07).** `61`, `62`, `63`, `49`, `50`, `51` are ✅ merged. What remains:
+
+    64 -> 65 -> 52 -> 53 -> 59      entry track (59 also needs 56)
+          55 -> 56 -> 57            ledger/ceiling track, shares no files with the entry track
+          58 anytime, 54 last
+
+`64` and `65` both land before `52` and are independent of each other. `54` is last and is the
+natural slip candidate if v1.8.0 needs trimming — it is now **L**, and nothing depends on it.
 
 ⚠️ **PPDO-51 (V18-41) is superseded in part.** Its closed-list rule stands and its server guard is
 kept; its *office-owned seeding* is exactly what PPDO-61 reverses, and the population it built moves
