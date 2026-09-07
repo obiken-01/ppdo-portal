@@ -1848,6 +1848,62 @@ public sealed partial class AipServiceTests
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    /// <summary>
+    /// ⚠️ <b>The target office is keyed on <c>(RefCode, Name)</c>, not on <c>RefCode</c> alone.</b>
+    ///
+    /// <para>
+    /// Several sub-office groups legitimately share one ref code — the province's
+    /// <c>3000-000-1-01-001</c> carries WARDEN, AKAP-HUB, HOUSING and LOCAL SCHOOL BOARD. Matching
+    /// on the code alone finds whichever row happens to come back first, so re-syncing AKAP-HUB's
+    /// programs would append them to <b>WARDEN's printed block</b> — silently, and into a document
+    /// that prints. The fixture below therefore puts the wrong-name row FIRST; a code-only match
+    /// picks it and this test fails.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task SeedFromLdip_ASiblingGroupSharingTheRefCode_IsNotMistakenForTheTarget()
+    {
+        AipRecord targetRec = new()
+        {
+            Id = 2, FiscalYear = LegacyFy, EntrySource = "Manual",
+            UploadedById = UserId, UploadedAt = DateTime.UtcNow, Status = PlanningStatus.Draft,
+        };
+        // Same ref code, different block — and deliberately ahead of the real target in the list.
+        AipOffice sibling = new()
+        {
+            Id = 20, AipRecordId = 2, RefCode = "1000-000-1-01-010",
+            Name = "PPDO - WARDEN", Sector = "GENERAL", OfficeId = 7,
+        };
+        AipOffice targetOff = new()
+        {
+            Id = 21, AipRecordId = 2, RefCode = "1000-000-1-01-010",
+            Name = "PPDO - AKAP-HUB", Sector = "GENERAL", OfficeId = 7,
+        };
+
+        LdipRecord ldipRec = LdipRec(5, 7);
+        LdipOffice wardenGroup = LdipGroup(70, 5, name: "PPDO - WARDEN");
+        wardenGroup.Programs.Add(LdipProg(80, 70, "1000-000-1-01-010-001", "Warden program"));
+        LdipOffice akapGroup = LdipGroup(71, 5, name: "PPDO - AKAP-HUB");
+        akapGroup.Programs.Add(LdipProg(90, 71, "1000-000-1-01-010-004", "AKAP program"));
+
+        var (sut, _, _, _, _, _, officeRepo, _, _, programRepo, _, _, _) = Build(
+            [targetRec], [], officeSeed: [sibling, targetOff], officeConfigSeed: [MakeOffice(7, "PPDO", "01-010")],
+            ldipRecordSeed: [ldipRec], ldipOfficeSeed: [wardenGroup, akapGroup]);
+
+        ServiceResult<AipOfficeDto> result = await sut.SeedProgramsFromLdipAsync(
+            new SeedAipProgramsFromLdipDto(LegacyFy, 7, "GENERAL", [90]), UserId, HostCaller());
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(21, result.Value!.Id);
+        Assert.Equal("PPDO - AKAP-HUB", result.Value.Name);
+        officeRepo.Verify(r => r.AddAsync(It.IsAny<AipOffice>(), It.IsAny<CancellationToken>()), Times.Never);
+        // The program lands under AKAP-HUB (21), never under WARDEN (20).
+        programRepo.Verify(r => r.AddAsync(
+            It.Is<AipProgram>(p => p.OfficeId == 21), It.IsAny<CancellationToken>()), Times.Once);
+        programRepo.Verify(r => r.AddAsync(
+            It.Is<AipProgram>(p => p.OfficeId == 20), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     [Fact]
     public async Task SeedFromLdip_TargetOfficeAlreadyHasOtherPrograms_ResponseIncludesBoth()
     {

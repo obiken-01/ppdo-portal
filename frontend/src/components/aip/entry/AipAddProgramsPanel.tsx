@@ -1,18 +1,21 @@
 "use client";
 
 /**
- * Stage 1 of entry: the sub-office group and its programs, in one form (V18-42 / PPDO-52).
+ * Stage 1 of entry: pick programs from the office's LDIP (V18-42 / PPDO-52).
  *
- * ⚠️ **The interaction is LIFTED from `LdipForm.tsx` (RAL-61), not redesigned.** Pick a sector →
- * see the office-level ref-code preview → name the group, choosing an existing name from the
- * suggestions to add to it or typing a new one to start another → tick programs → Add. Redesigning
- * it is how the two forms end up subtly different, and the AIP one is the one that prints.
+ * ⚠️ **The sub-office group is NOT typed here — it comes from the LDIP.** ↩️ This panel used to
+ * lift `LdipForm.tsx`'s interaction wholesale: choose a sector, then *name* the group in a free-text
+ * box with a datalist of existing names, blank meaning "the default block". That was wrong twice
+ * over. The grouping is already settled in the LDIP (the province's SOCIAL sector really does hold
+ * `OFFICE OF THE GOVERNOR - WARDEN`, `- AKAP-HUB`, `- HOUSING` and `- LOCAL SCHOOL BOARD`), so
+ * asking an encoder to retype it invited a printed block matching no LDIP row; and a base record
+ * that already follows the LDIP's grouping leaves nothing for them to invent. Programs are now
+ * listed under their own group heading and the server derives the group from the ticked ids.
  *
- * ⚠️ **The sub-office group is NOT the division.** Both attach at program level and they are
+ * ⚠️ **The sub-office group is still not the division.** Both attach at program level and they are
  * orthogonal: the group is the `(Sector, Name)` pair on `AipOffice` and it **prints** as an office
  * row with its own shaded subtotal; a division is `ProgramDivision`, host-office only, and never
- * appears on the form. Real example — three `3000-000-1-01-001` rows on the province's FY2027
- * SOCIAL sheet: `OFFICE OF THE GOVERNOR - WARDEN`, `- AKAP-HUB`, `- HOUSING`.
+ * appears on the form.
  *
  * ⚠️ **Programs are a closed list.** They come from the office's LDIP and cannot be typed. There is
  * no "propose a new program" path — if one is missing it is missing from the LDIP, and that is
@@ -26,20 +29,17 @@ import type { AipOfficeDetail, AipAddablePrograms } from "@/types";
 const SECTORS = ["GENERAL", "SOCIAL", "ECONOMIC", "OTHERS"] as const;
 
 export default function AipAddProgramsPanel({
-  aipRecordId, officeConfigId, existingGroupNames, onAdded,
+  aipRecordId, officeConfigId, onAdded,
 }: {
   aipRecordId: number;
   officeConfigId: number;
-  /** Names already used under the chosen sector — the datalist that lets a user re-target a group. */
-  existingGroupNames: string[];
   onAdded: (office: AipOfficeDetail) => void;
 }) {
   const [open, setOpen]       = useState(false);
   const [sector, setSector]   = useState<string>(SECTORS[0]);
-  const [groupName, setGroupName] = useState("");
   const [checked, setChecked] = useState<Set<number>>(new Set());
 
-  const [group, setGroup]     = useState<AipAddablePrograms | null>(null);
+  const [addable, setAddable] = useState<AipAddablePrograms | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving]   = useState(false);
   const [error, setError]     = useState<string | null>(null);
@@ -59,11 +59,11 @@ export default function AipAddProgramsPanel({
       setLoading(true);
       setError(null);
       setNoLdip(false);
-      setGroup(null);
+      setAddable(null);
       setChecked(new Set());
       try {
-        const addable = await getAipAddablePrograms(officeConfigId, sector);
-        if (!cancelled) setGroup(addable);
+        const result = await getAipAddablePrograms(officeConfigId, sector);
+        if (!cancelled) setAddable(result);
       } catch (e) {
         // "no LDIP for this sector" comes back as a 400 with a sentence naming the LDIP — show it
         // as the empty state rather than as an error, because it is a prerequisite, not a fault.
@@ -79,10 +79,23 @@ export default function AipAddProgramsPanel({
     return () => { cancelled = true; };
   }, [open, sector, officeConfigId]);
 
-  const targetsExisting = useMemo(
-    () => existingGroupNames.some((n) => n.toUpperCase() === groupName.trim().toUpperCase()),
-    [existingGroupNames, groupName]
-  );
+  const groups = addable?.groups ?? [];
+
+  /**
+   * Which group the current selection belongs to, or null when it spans several.
+   *
+   * ⚠️ The server refuses a cross-group selection rather than splitting it — each group is its own
+   * printed row — so the panel says so *before* the request instead of surfacing a 400 the encoder
+   * has to decode. The same rule, stated in the two places it is felt.
+   */
+  const selectedGroupNames = useMemo(() => {
+    const names = groups
+      .filter((g) => g.programs.some((p) => checked.has(p.ldipProgramId)))
+      .map((g) => g.groupName);
+    return names;
+  }, [groups, checked]);
+
+  const spansGroups = selectedGroupNames.length > 1;
 
   async function add() {
     setSaving(true);
@@ -91,12 +104,10 @@ export default function AipAddProgramsPanel({
       const office = await addAipProgramsWithGroup(aipRecordId, {
         officeConfigId,
         sector,
-        groupName: groupName.trim() || null,
         ldipProgramIds: Array.from(checked),
       });
       onAdded(office);
       setChecked(new Set());
-      setGroupName("");
       setOpen(false);
     } catch (e) {
       setError(aipErrorMessage(e, "Could not add the programs."));
@@ -121,53 +132,22 @@ export default function AipAddProgramsPanel({
           Add programs
         </h3>
         <p className="mt-0.5 text-xs text-slate-600">
-          A sub-office group and the programs going into it. Programs come from this office&rsquo;s LDIP.
+          Programs come from this office&rsquo;s LDIP, and each stays in the sub-office group the
+          LDIP puts it in.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
-        <div>
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Sector
-          </label>
-          <select value={sector} onChange={(e) => setSector(e.target.value)}
-            className="w-full border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-green-600">
-            {SECTORS.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </div>
-
-        <div>
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-            (Preview) Office AIP ref code
-          </label>
-          <input readOnly value={group?.groupRefCode ?? "—"}
-            className="w-full border border-slate-300 bg-slate-50 px-2 py-1.5 font-mono text-sm text-slate-600" />
-        </div>
-
-        <div className="sm:col-span-2">
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Office / sub-office name
-            <span className="ml-1 font-normal normal-case text-slate-600">
-              {/* The whole point of the datalist: an existing name re-targets that group, a new
-                  one starts another. Saying which is happening removes the guesswork. */}
-              {groupName.trim() === ""
-                ? "— leave blank for this office's default block"
-                : targetsExisting
-                  ? "— adds to this existing group"
-                  : "— starts a new group (a sector can hold several sub-offices)"}
-            </span>
-          </label>
-          <input value={groupName} onChange={(e) => setGroupName(e.target.value.toUpperCase())}
-            list="aip-group-names" maxLength={500}
-            placeholder='e.g. "OFFICE OF THE GOVERNOR - WARDEN"'
-            className="w-full border border-slate-300 bg-white px-2 py-1.5 text-sm uppercase text-slate-800 focus:outline-none focus:ring-1 focus:ring-green-600" />
-          <datalist id="aip-group-names">
-            {existingGroupNames.map((n) => <option key={n} value={n} />)}
-          </datalist>
-        </div>
+      <div className="p-4">
+        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+          Sector
+        </label>
+        <select value={sector} onChange={(e) => setSector(e.target.value)}
+          className="w-full border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-green-600 sm:w-64">
+          {SECTORS.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
       </div>
 
-      {/* ── The closed list ──────────────────────────────────────────────── */}
+      {/* ── The closed list, grouped ─────────────────────────────────────── */}
       <div className="border-t border-slate-200 px-4 py-3">
         {loading ? (
           // Skeleton rows rather than a spinner, so the panel does not jump when they land.
@@ -181,52 +161,76 @@ export default function AipAddProgramsPanel({
             This office has no {sector} LDIP, so there are no programs to add. The AIP cannot contain
             a program the LDIP does not — add it to the LDIP first.
           </p>
-        ) : group && group.programs.length > 0 ? (
+        ) : groups.length > 0 ? (
           <>
-            <div className="mb-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-                Programs in the {sector} LDIP
+            {/* ⚠️ Names the source record. The resolver's second tier is a multi-office LDIP
+                owned by no single office, so without this the encoder has no way to tell which
+                document their closed list came from — which is exactly the question that sent
+                someone hunting through the LDIP page. */}
+            {addable?.ldipRefCode && (
+              <p className="mb-2 text-xs text-slate-600">
+                From <span className="font-mono text-slate-800">{addable.ldipRefCode}</span>
+                {addable.ldipTitle ? ` — ${addable.ldipTitle}` : ""}
+                {addable.isSharedLdip && (
+                  <span className="ml-1">
+                    {" · "}a shared multi-office LDIP, so it is not listed under your own office
+                  </span>
+                )}
               </p>
-              {/* ⚠️ Names the source record. The resolver's second tier is a multi-office LDIP
-                  owned by no single office, so without this the encoder has no way to tell which
-                  document their closed list came from — which is exactly the question that sent
-                  someone hunting through the LDIP page. */}
-              {group.ldipRefCode && (
-                <p className="mt-0.5 text-xs text-slate-600">
-                  From <span className="font-mono text-slate-800">{group.ldipRefCode}</span>
-                  {group.ldipTitle ? ` — ${group.ldipTitle}` : ""}
-                  {group.isSharedLdip && (
-                    <span className="ml-1">
-                      {" · "}a shared multi-office LDIP, so it is not listed under your own office
-                    </span>
+            )}
+
+            <div className="max-h-72 space-y-3 overflow-y-auto">
+              {groups.map((group) => (
+                <div key={`${group.groupRefCode}|${group.groupName}`}>
+                  {/* The group heading IS the sub-office. Several groups share a ref code, so the
+                      name is what tells them apart — showing the code alone would render four
+                      identical headings on PGO's SOCIAL sector. */}
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-800">
+                    {group.groupName}
+                  </p>
+                  <p className="font-mono text-xs text-slate-600">{group.groupRefCode}</p>
+
+                  {group.programs.length === 0 ? (
+                    <p className="mt-1 text-xs text-slate-600">No programs in this group.</p>
+                  ) : (
+                    <ul className="mt-1 space-y-1">
+                      {group.programs.map((p) => (
+                        <li key={p.ldipProgramId}>
+                          <label className="flex cursor-pointer items-start gap-2 py-1 text-sm text-slate-800">
+                            {/* ⚠️ ldipProgramId, not any AIP id — this is what the add endpoint
+                                expects, and it is also what tells the server which group. */}
+                            <input type="checkbox" checked={checked.has(p.ldipProgramId)} className="mt-1"
+                              onChange={(e) => {
+                                const next = new Set(checked);
+                                if (e.target.checked) next.add(p.ldipProgramId);
+                                else next.delete(p.ldipProgramId);
+                                setChecked(next);
+                              }} />
+                            <span>
+                              <span className="mr-2 font-mono text-xs text-slate-600">{p.refCode}</span>
+                              {p.name}
+                            </span>
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
                   )}
-                </p>
-              )}
-            </div>
-            <ul className="max-h-64 space-y-1 overflow-y-auto">
-              {group.programs.map((p) => (
-                <li key={p.ldipProgramId}>
-                  <label className="flex cursor-pointer items-start gap-2 py-1 text-sm text-slate-800">
-                    {/* ⚠️ ldipProgramId, not any AIP id — this is what the add endpoint expects. */}
-                    <input type="checkbox" checked={checked.has(p.ldipProgramId)} className="mt-1"
-                      onChange={(e) => {
-                        const next = new Set(checked);
-                        if (e.target.checked) next.add(p.ldipProgramId); else next.delete(p.ldipProgramId);
-                        setChecked(next);
-                      }} />
-                    <span>
-                      <span className="mr-2 font-mono text-xs text-slate-600">{p.refCode}</span>
-                      {p.name}
-                    </span>
-                  </label>
-                </li>
+                </div>
               ))}
-            </ul>
+            </div>
           </>
         ) : (
           <p className="text-sm text-slate-600">This LDIP sector has no programs yet.</p>
         )}
       </div>
+
+      {spansGroups && (
+        <p className="mx-4 mb-3 border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-slate-800">
+          You have picked programs from {selectedGroupNames.length} groups (
+          {selectedGroupNames.join(", ")}). Each group is its own row on the AIP form, so add them
+          one group at a time.
+        </p>
+      )}
 
       {error && (
         <p className="mx-4 mb-3 border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>
@@ -237,7 +241,7 @@ export default function AipAddProgramsPanel({
           className="border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50">
           Cancel
         </button>
-        <button type="button" onClick={add} disabled={saving || checked.size === 0}
+        <button type="button" onClick={add} disabled={saving || checked.size === 0 || spansGroups}
           className="bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800 disabled:cursor-not-allowed disabled:bg-slate-300">
           {saving ? "Adding…" : `Add ${checked.size || ""} program${checked.size === 1 ? "" : "s"}`}
         </button>

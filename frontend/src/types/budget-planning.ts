@@ -1109,11 +1109,15 @@ export interface AipExpenditureWriteResult {
   lineCount: number;
 }
 
+/**
+ * ⚠️ **No `groupName`.** The sub-office group is derived server-side from `ldipProgramIds` —
+ * every LDIP program belongs to exactly one group, so the answer is unambiguous and cannot be
+ * mistyped. The field used to exist as free text; a typed name could name a block matching no
+ * LDIP row, and the AIP is the document that prints. Programs spanning two groups are refused.
+ */
 export interface AddAipProgramsWithGroupRequest {
   officeConfigId: number;
   sector: string;
-  /** Blank means the office's default block, which takes the LDIP group's own name. */
-  groupName: string | null;
   ldipProgramIds: number[];
 }
 
@@ -1178,8 +1182,6 @@ export interface AipAddableProgram {
  * the LDIP record itself — a client-side copy of that rule diverged and every add was refused.
  */
 export interface AipAddablePrograms {
-  groupRefCode: string;
-  groupName: string;
   /**
    * The LDIP record these programs come from.
    *
@@ -1191,5 +1193,22 @@ export interface AipAddablePrograms {
   ldipTitle: string | null;
   /** True when the source is a shared multi-office LDIP rather than this office's own. */
   isSharedLdip: boolean;
+  /**
+   * ⚠️ **Every** sub-office group in the sector, not one. The province's LDIP puts four blocks
+   * under `3000-000-1-01-001` (WARDEN / AKAP-HUB / HOUSING / LOCAL SCHOOL BOARD); a single-group
+   * shape here is what made three of them unofferable and their programs unreachable.
+   */
+  groups: AipAddableGroup[];
+}
+
+/**
+ * One sub-office group and its programs.
+ *
+ * ⚠️ `groupRefCode` is **not** unique in a response — several groups legitimately share it, and
+ * `groupName` is what separates them. The pair is the group's identity, matching `AipOffice`.
+ */
+export interface AipAddableGroup {
+  groupRefCode: string;
+  groupName: string;
   programs: AipAddableProgram[];
 }

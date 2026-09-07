@@ -64,7 +64,7 @@ public sealed partial class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = BuildForGroups();
 
         ServiceResult<AipOfficeDto> result = await sut.AddProgramsWithGroupAsync(
-            300, new AddAipProgramsWithGroupDto(7, "GENERAL", "PPDO - MAIN", [80]), HostCaller());
+            300, new AddAipProgramsWithGroupDto(7, "GENERAL", [80]), HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal("1000-000-1-01-010-003", result.Value!.Programs.Single().RefCode);
@@ -80,7 +80,7 @@ public sealed partial class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = BuildForGroups();
 
         ServiceResult<AipOfficeDto> result = await sut.AddProgramsWithGroupAsync(
-            300, new AddAipProgramsWithGroupDto(7, "GENERAL", "PPDO - MAIN", [80, 81]), HostCaller());
+            300, new AddAipProgramsWithGroupDto(7, "GENERAL", [80, 81]), HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal(
@@ -89,27 +89,32 @@ public sealed partial class AipServiceTests
     }
 
     // ── Sub-office groups ─────────────────────────────────────────────────────
+    //
+    // ⚠️ These used to drive the group off a CALLER-SUPPLIED name. It is now derived from the
+    // ticked LDIP programs, because the LDIP already carries the grouping — so the fixture below
+    // holds two real groups under one ref code rather than one group and a free-text box.
 
     /// <summary>
-    /// The reason this endpoint exists. <c>SeedProgramsFromLdipAsync</c> matches its target office
-    /// on ref code alone and so can only ever reach the first group; a second group name must start
-    /// a second <c>AipOffice</c> row under the same code.
+    /// The reason this endpoint exists. <c>SeedProgramsFromLdipAsync</c> used to match its target
+    /// office on ref code alone and so could only ever reach the first group; a program from a
+    /// second LDIP group must start a second <c>AipOffice</c> row under the same code.
     /// </summary>
     [Fact]
-    public async Task AddProgramsWithGroup_ASecondGroupNameStartsASecondOfficeRowUnderTheSameRefCode()
+    public async Task AddProgramsWithGroup_AProgramFromASecondLdipGroupStartsASecondOfficeRowUnderTheSameRefCode()
     {
         List<AipOffice> existing =
         [
             new()
             {
                 Id = 400, AipRecordId = 300, RefCode = "1000-000-1-01-010",
-                Name = "PPDO - MAIN", Sector = "GENERAL", OfficeId = 7,
+                Name = "PPDO", Sector = "GENERAL", OfficeId = 7,
             },
         ];
         var (sut, _, _, _, _, _, officeRepo, _, _, _, _, _, _) = BuildForGroups(existing);
 
+        // 90 belongs to the AKAP-HUB group, not to the "PPDO" row that already exists.
         ServiceResult<AipOfficeDto> result = await sut.AddProgramsWithGroupAsync(
-            300, new AddAipProgramsWithGroupDto(7, "GENERAL", "PPDO - AKAP-HUB", [80]), HostCaller());
+            300, new AddAipProgramsWithGroupDto(7, "GENERAL", [90]), HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal("PPDO - AKAP-HUB", result.Value!.Name);
@@ -117,39 +122,66 @@ public sealed partial class AipServiceTests
         officeRepo.Verify(r => r.AddAsync(It.IsAny<AipOffice>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    /// <summary>An existing group name adds into that group rather than creating a duplicate row.</summary>
+    /// <summary>
+    /// A program from a group that already has its row adds into that row rather than creating a
+    /// duplicate. The match is case-insensitive on the group name.
+    /// </summary>
     [Fact]
-    public async Task AddProgramsWithGroup_AnExistingGroupNameAddsIntoThatGroup()
+    public async Task AddProgramsWithGroup_AProgramFromAnAlreadyPresentGroupAddsIntoThatRow()
     {
         List<AipOffice> existing =
         [
             new()
             {
                 Id = 400, AipRecordId = 300, RefCode = "1000-000-1-01-010",
-                Name = "PPDO - MAIN", Sector = "GENERAL", OfficeId = 7,
+                Name = "ppdo", Sector = "GENERAL", OfficeId = 7,
             },
         ];
         var (sut, _, _, _, _, _, officeRepo, _, _, _, _, _, _) = BuildForGroups(existing);
 
         ServiceResult<AipOfficeDto> result = await sut.AddProgramsWithGroupAsync(
-            300, new AddAipProgramsWithGroupDto(7, "GENERAL", "ppdo - main", [80]), HostCaller());
+            300, new AddAipProgramsWithGroupDto(7, "GENERAL", [80]), HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal(400, result.Value!.Id);
         officeRepo.Verify(r => r.AddAsync(It.IsAny<AipOffice>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    /// <summary>A blank group name means the office's default block, taking the LDIP group's own name.</summary>
+    /// <summary>
+    /// ⚠️ The group name is the LDIP group's, never the caller's. This is the test that fails if
+    /// anyone reintroduces a caller-supplied name — the AIP prints this string, and a name that
+    /// matches no LDIP row is how the printed form and the source document drift apart.
+    /// </summary>
     [Fact]
-    public async Task AddProgramsWithGroup_ABlankGroupNameTakesTheLdipGroupsOwnName()
+    public async Task AddProgramsWithGroup_TheGroupNameComesFromTheLdipGroupTheProgramsBelongTo()
     {
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = BuildForGroups();
 
         ServiceResult<AipOfficeDto> result = await sut.AddProgramsWithGroupAsync(
-            300, new AddAipProgramsWithGroupDto(7, "GENERAL", null, [80]), HostCaller());
+            300, new AddAipProgramsWithGroupDto(7, "GENERAL", [90]), HostCaller());
 
         Assert.True(result.IsSuccess);
-        Assert.Equal("PPDO", result.Value!.Name);
+        Assert.Equal("PPDO - AKAP-HUB", result.Value!.Name);
+    }
+
+    /// <summary>
+    /// ⚠️ Refused, not silently split into two rows. Each group is its own printed office row with
+    /// its own subtotal, so fanning one request into two would invent structure the encoder never
+    /// asked for and cannot see on the page.
+    /// </summary>
+    [Fact]
+    public async Task AddProgramsWithGroup_ASelectionSpanningTwoGroupsIsRefusedNotSplit()
+    {
+        var (sut, _, _, _, _, _, officeRepo, _, _, _, _, _, _) = BuildForGroups();
+
+        ServiceResult<AipOfficeDto> result = await sut.AddProgramsWithGroupAsync(
+            300, new AddAipProgramsWithGroupDto(7, "GENERAL", [80, 90]), HostCaller());
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        // Both group names, so the encoder can see what to untick.
+        Assert.Contains("PPDO - AKAP-HUB", result.Error!);
+        officeRepo.Verify(r => r.AddAsync(It.IsAny<AipOffice>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     // ── The closed list ───────────────────────────────────────────────────────
@@ -160,7 +192,7 @@ public sealed partial class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = BuildForGroups();
 
         ServiceResult<AipOfficeDto> result = await sut.AddProgramsWithGroupAsync(
-            300, new AddAipProgramsWithGroupDto(7, "GENERAL", "PPDO - MAIN", [999]), HostCaller());
+            300, new AddAipProgramsWithGroupDto(7, "GENERAL", [999]), HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -173,7 +205,7 @@ public sealed partial class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = BuildForGroups();
 
         ServiceResult<AipOfficeDto> result = await sut.AddProgramsWithGroupAsync(
-            300, new AddAipProgramsWithGroupDto(7, "SOCIAL", "PPDO - MAIN", [80]), HostCaller());
+            300, new AddAipProgramsWithGroupDto(7, "SOCIAL", [80]), HostCaller());
 
         Assert.False(result.IsSuccess);
         // ⚠️ Names the LDIP as the prerequisite. An empty picker would leave the encoder with no
@@ -181,15 +213,60 @@ public sealed partial class AipServiceTests
         Assert.Contains("LDIP", result.Error!);
     }
 
+    // ── The picker sees every group ───────────────────────────────────────────
+
+    /// <summary>
+    /// ⚠️ The bug this file's fixture was widened for. The picker and the seed both went through one
+    /// resolver that returned a single group, so a sector's second, third and fourth sub-offices had
+    /// no route into the AIP from any direction and produced no error — reported live as "the
+    /// programs under AKAP are not displayed".
+    /// </summary>
+    [Fact]
+    public async Task GetAddablePrograms_ReturnsEverySubOfficeGroupInTheSector()
+    {
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = BuildForGroups();
+
+        ServiceResult<AipAddableProgramsDto> result =
+            await sut.GetAddableProgramsAsync(7, "GENERAL", HostCaller());
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(
+            ["PPDO", "PPDO - AKAP-HUB"],
+            result.Value!.Groups.Select(g => g.GroupName).OrderBy(n => n, StringComparer.Ordinal).ToArray());
+
+        // Same ref code on both — the name is what separates them.
+        Assert.All(result.Value.Groups, g => Assert.Equal("1000-000-1-01-010", g.GroupRefCode));
+
+        // And the programs land under the right group, not pooled.
+        Assert.Equal(
+            [80, 81],
+            result.Value.Groups.Single(g => g.GroupName == "PPDO")
+                .Programs.Select(p => p.LdipProgramId).OrderBy(i => i).ToArray());
+        Assert.Equal(
+            [90],
+            result.Value.Groups.Single(g => g.GroupName == "PPDO - AKAP-HUB")
+                .Programs.Select(p => p.LdipProgramId).ToArray());
+    }
+
     // ── Fixture ───────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Config office 7 ("PPDO", ref "01-010") with a Final LDIP whose GENERAL group holds two
-    /// programs numbered <c>-003</c> and <c>-007</c>.
+    /// Config office 7 ("PPDO", ref "01-010") with a Final LDIP whose GENERAL sector holds
+    /// <b>two</b> groups under one ref code — "PPDO" (programs <c>-003</c> and <c>-007</c>) and
+    /// "PPDO - AKAP-HUB" (program <c>-011</c>).
     ///
-    /// ⚠️ Those numbers are deliberately non-contiguous and deliberately not <c>-001</c>. A fixture
-    /// numbered 001, 002 would pass whether codes were inherited or freshly allocated, and would
-    /// therefore prove nothing about the rule this file exists to defend.
+    /// <para>
+    /// ⚠️ <b>Two groups, not one, and that is load-bearing.</b> A single-group fixture passed the
+    /// whole time the resolver was dropping every group but the first — it had nothing to drop.
+    /// This mirrors the province's real LDIP, where <c>3000-000-1-01-001</c> carries WARDEN,
+    /// AKAP-HUB, HOUSING and LOCAL SCHOOL BOARD.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ The program numbers are deliberately non-contiguous and deliberately not <c>-001</c>. A
+    /// fixture numbered 001, 002 would pass whether codes were inherited or freshly allocated, and
+    /// would therefore prove nothing about the rule this file exists to defend.
+    /// </para>
     /// </summary>
     private static (AipService, Mock<IAipRepository>, Mock<IRepository<FundingSource>>,
                     Mock<IUserRepository>, Mock<IAipXlsmParser>, Mock<IAuditService>,
@@ -199,15 +276,19 @@ public sealed partial class AipServiceTests
         BuildForGroups(List<AipOffice>? officeSeed = null)
     {
         LdipRecord ldipRec = LdipRec(5, 7);
+
         LdipOffice group = LdipGroup(70, 5);
         group.Programs.Add(LdipProg(80, 70, "1000-000-1-01-010-003", "LDIP PROGRAM A"));
         group.Programs.Add(LdipProg(81, 70, "1000-000-1-01-010-007", "LDIP PROGRAM B"));
+
+        LdipOffice subOffice = LdipGroup(71, 5, name: "PPDO - AKAP-HUB");
+        subOffice.Programs.Add(LdipProg(90, 71, "1000-000-1-01-010-011", "LDIP PROGRAM C"));
 
         return Build(
             OpenEnteredYear(), [],
             officeSeed: officeSeed ?? [],
             officeConfigSeed: [MakeOffice(7, "PPDO", "01-010")],
             ldipRecordSeed: [ldipRec],
-            ldipOfficeSeed: [group]);
+            ldipOfficeSeed: [group, subOffice]);
     }
 }

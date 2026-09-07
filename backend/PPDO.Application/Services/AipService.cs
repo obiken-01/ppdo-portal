@@ -521,30 +521,41 @@ public sealed class AipService : IAipService
 
             foreach ((string sector, string prefix) in AipSector.Prefixes)
             {
-                LdipOffice? group = await ResolveLdipGroupAsync(office, sector, prefix, ct);
-                if (group is null || group.Programs.Count == 0) continue;
+                // ⚠️ ALL groups for the sector, one AipOffice each — not the first one. The LDIP
+                // already carries the sub-office grouping (PGO's SOCIAL sector really does hold
+                // WARDEN, AKAP-HUB, HOUSING and LOCAL SCHOOL BOARD), and seeding one of them is
+                // what made the other three's programs unreachable from the entry page. Following
+                // the LDIP here is also what removes the need for an encoder to invent a group
+                // during entry at all.
+                IReadOnlyList<LdipOffice> groups =
+                    await ResolveLdipGroupsAsync(office, sector, prefix, ct);
 
-                anySector = true;
-                created.Add(new AipOffice
+                foreach (LdipOffice group in groups)
                 {
-                    AipRecordId = rec.Id,
-                    // ⚠️ The ownership FK. AipReadScope filters on it, so a null here means the
-                    // office opens its own AIP and sees nothing — no error, just absence. After
-                    // PPDO-61 this column is the ONLY carrier of office identity (PPDO-60).
-                    OfficeId    = office.Id,
-                    RefCode     = group.RefCode,
-                    Name        = group.Name,
-                    Sector      = sector.ToUpperInvariant(),
-                    // Bare shells: Name + RefCode only. No amounts — LdipProgram.Budget is a
-                    // MULTI-YEAR total across FiscalYearStart..End, not a single-FY figure, so
-                    // copying it would seed every activity with a number that means something else.
-                    Programs    = group.Programs.Select(lp => new AipProgram
+                    if (group.Programs.Count == 0) continue;
+
+                    anySector = true;
+                    created.Add(new AipOffice
                     {
-                        RefCode      = lp.RefCode,
-                        Name         = lp.Name,
-                        FunctionBand = AipFunctionBand.Core,
-                    }).ToList(),
-                });
+                        AipRecordId = rec.Id,
+                        // ⚠️ The ownership FK. AipReadScope filters on it, so a null here means the
+                        // office opens its own AIP and sees nothing — no error, just absence. After
+                        // PPDO-61 this column is the ONLY carrier of office identity (PPDO-60).
+                        OfficeId    = office.Id,
+                        RefCode     = group.RefCode,
+                        Name        = group.Name,
+                        Sector      = sector.ToUpperInvariant(),
+                        // Bare shells: Name + RefCode only. No amounts — LdipProgram.Budget is a
+                        // MULTI-YEAR total across FiscalYearStart..End, not a single-FY figure, so
+                        // copying it would seed every activity with a number that means something else.
+                        Programs    = group.Programs.Select(lp => new AipProgram
+                        {
+                            RefCode      = lp.RefCode,
+                            Name         = lp.Name,
+                            FunctionBand = AipFunctionBand.Core,
+                        }).ToList(),
+                    });
+                }
             }
 
             if (!anySector) withoutLdip.Add(office.OfficeName);
@@ -640,14 +651,36 @@ public sealed class AipService : IAipService
     }
 
     /// <summary>
-    /// The <see cref="LdipOffice"/> group an office's AIP programs come from, resolved in two
-    /// tiers, or null when that office has no LDIP for the sector.
+    /// <b>Every</b> <see cref="LdipOffice"/> group an office's AIP programs may come from for one
+    /// sector, resolved in two tiers, or empty when that office has no LDIP for the sector.
+    ///
+    /// <para>
+    /// ⚠️ <b>A sector holds SEVERAL groups, and returning one of them silently loses the rest.</b>
+    /// ↩️ This method used to return a single <c>LdipOffice?</c> via <c>FirstOrDefault</c>, and
+    /// <see cref="LdipOffice"/>'s own summary has always said the opposite: <i>"A sector may hold
+    /// MULTIPLE groups sharing that same ref code, distinguished by Name"</i>. Because every caller
+    /// below went through here, opening a fiscal year seeded only the first group per sector and
+    /// the picker could not offer the others either — so the dropped programs were unreachable
+    /// from every direction, with no error anywhere. On the province's real LDIP that lost 19
+    /// programs across 5 groups: <c>OFFICE OF THE GOVERNOR - AKAP-HUB</c>, <c>- HOUSING</c> and
+    /// <c>- LOCAL SCHOOL BOARD</c> (only <c>- WARDEN</c> survived), <c>- ABE</c> and <c>- PCDO</c>
+    /// (only <c>- TOURISM</c>), and <c>OPA - PESO</c> (only <c>- LEDIPO</c>). Reported from a live
+    /// PGO login as "the programs under AKAP are not displayed".
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ <b>Groups come from ONE source record, never merged across records.</b> Both tiers stop
+    /// at the first record that yields any match and return all of that record's matches. Unioning
+    /// across records would let an archived-then-superseded document contribute rows beside a
+    /// current one, and the caller could not tell which document it was looking at — which is the
+    /// question <c>AipAddableProgramsDto.LdipRefCode</c> exists to answer.
+    /// </para>
     ///
     /// <para>
     /// <b>Tier 1 — the office's own LDIP records</b> (<c>LdipRecord.OfficeId</c> = this office;
-    /// entry modes New/Amendment/Supplemental). Scan non-Archived records newest-first for the
-    /// first sector group match. Sector text match is safe here because a record scoped to one
-    /// office only ever returns groups belonging to that office.
+    /// entry modes New/Amendment/Supplemental). Scan non-Archived records newest-first for sector
+    /// group matches. Sector text match is safe here because a record scoped to one office only
+    /// ever returns groups belonging to that office.
     /// </para>
     ///
     /// <para>
@@ -666,31 +699,77 @@ public sealed class AipService : IAipService
     /// mirrors it a third time, which is a known duplication, not a new one.
     /// </para>
     /// </summary>
-    private async Task<LdipOffice?> ResolveLdipGroupAsync(
+    private async Task<IReadOnlyList<LdipOffice>> ResolveLdipGroupsAsync(
         Office office, string sector, string prefix, CancellationToken ct)
     {
         IReadOnlyList<LdipRecord> ownRecords = await _ldipRepo.GetListAsync(office.Id, null, ct);
         foreach (LdipRecord ldipRecord in ownRecords.Where(r => r.Status != PlanningStatus.Archived))
         {
             IReadOnlyList<LdipOffice> groups = await _ldipRepo.GetOfficeGroupsAsync(ldipRecord.Id, ct);
-            LdipOffice? match = groups.FirstOrDefault(
-                g => g.Sector.Equals(sector, StringComparison.OrdinalIgnoreCase));
-            if (match is not null) return match;
+            List<LdipOffice> matches = groups
+                .Where(g => g.Sector.Equals(sector, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(g => g.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (matches.Count > 0) return matches;
         }
 
-        if (string.IsNullOrWhiteSpace(office.OfficeRefCode)) return null;
+        if (string.IsNullOrWhiteSpace(office.OfficeRefCode)) return [];
 
         string expectedRefCode = $"{prefix}-000-1-{office.OfficeRefCode}";
         IReadOnlyList<LdipRecord> allRecords = await _ldipRepo.GetListAsync(null, null, ct);
         foreach (LdipRecord ldipRecord in allRecords.Where(r => r.OfficeId is null && r.Status != PlanningStatus.Archived))
         {
             IReadOnlyList<LdipOffice> groups = await _ldipRepo.GetOfficeGroupsAsync(ldipRecord.Id, ct);
-            LdipOffice? match = groups.FirstOrDefault(
-                g => g.RefCode.Equals(expectedRefCode, StringComparison.OrdinalIgnoreCase));
-            if (match is not null) return match;
+            List<LdipOffice> matches = groups
+                .Where(g => g.RefCode.Equals(expectedRefCode, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(g => g.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (matches.Count > 0) return matches;
         }
 
-        return null;
+        return [];
+    }
+
+    /// <summary>
+    /// The one group among <paramref name="groups"/> that owns every requested LDIP program id, or
+    /// a refusal naming what went wrong.
+    ///
+    /// <para>
+    /// ⚠️ <b>The group is derived from the programs, never named by the caller.</b> Sub-office
+    /// grouping is already settled in the LDIP, so asking an encoder to retype a group name during
+    /// AIP entry invites a block that does not match the document it came from. The programs
+    /// already carry the answer.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ A selection spanning two groups is <b>refused, not split</b>. Each group is a separate
+    /// printed office row with its own shaded subtotal, so silently fanning one request into two
+    /// rows would create structure the encoder did not ask for and cannot see.
+    /// </para>
+    /// </summary>
+    private static ServiceResult<LdipOffice> ResolveRequestedGroup(
+        IReadOnlyList<LdipOffice> groups, IReadOnlyList<int> ldipProgramIds, string sector)
+    {
+        Dictionary<int, LdipOffice> ownerByProgramId = groups
+            .SelectMany(g => g.Programs.Select(p => (p.Id, Group: g)))
+            .ToDictionary(x => x.Id, x => x.Group);
+
+        List<int> unknownIds = ldipProgramIds.Where(id => !ownerByProgramId.ContainsKey(id)).ToList();
+        if (unknownIds.Count > 0)
+            return ServiceResult<LdipOffice>.BadRequest(
+                $"LDIP program id(s) {string.Join(", ", unknownIds)} do not belong to this office's "
+                + $"{sector} LDIP.");
+
+        List<LdipOffice> distinct = ldipProgramIds
+            .Select(id => ownerByProgramId[id]).Distinct().ToList();
+
+        if (distinct.Count > 1)
+            return ServiceResult<LdipOffice>.BadRequest(
+                "The selected programs come from different sub-office groups ("
+                + string.Join(", ", distinct.Select(g => g.Name).Order(StringComparer.OrdinalIgnoreCase))
+                + "). Each group is its own row on the AIP form, so add them one group at a time.");
+
+        return ServiceResult<LdipOffice>.Ok(distinct[0]);
     }
 
     public async Task<ServiceResult<AipOfficeDto>> SeedProgramsFromLdipAsync(
@@ -738,19 +817,24 @@ public sealed class AipService : IAipService
         if (office is null || !office.IsActive)
             return ServiceResult<AipOfficeDto>.NotFound($"Office {dto.OfficeConfigId} not found or inactive.");
 
-        LdipOffice? sourceGroup = await ResolveLdipGroupAsync(office, sector, prefix, ct);
+        IReadOnlyList<LdipOffice> candidateGroups =
+            await ResolveLdipGroupsAsync(office, sector, prefix, ct);
 
-        if (sourceGroup is null)
+        if (candidateGroups.Count == 0)
             return ServiceResult<AipOfficeDto>.BadRequest(
                 $"'{office.OfficeName}' has no LDIP for the {sector} sector.");
 
-        // Every requested LDIP program must actually belong to the resolved group.
+        // Every requested LDIP program must actually belong to the resolved office, and all of them
+        // to one of its groups — the same rule AddProgramsWithGroupAsync applies, from the same
+        // helper. A sector holds several groups, so "the resolved group" is only meaningful once
+        // the programs have picked one.
+        ServiceResult<LdipOffice> groupResult =
+            ResolveRequestedGroup(candidateGroups, dto.LdipProgramIds, sector);
+        if (!groupResult.IsSuccess)
+            return ServiceResult<AipOfficeDto>.BadRequest(groupResult.Error!);
+
+        LdipOffice sourceGroup = groupResult.Value!;
         Dictionary<int, LdipProgram> sourceProgramsById = sourceGroup.Programs.ToDictionary(p => p.Id);
-        List<int> unknownIds = dto.LdipProgramIds.Where(id => !sourceProgramsById.ContainsKey(id)).ToList();
-        if (unknownIds.Count > 0)
-            return ServiceResult<AipOfficeDto>.BadRequest(
-                $"LDIP program id(s) {string.Join(", ", unknownIds)} do not belong to this office's " +
-                $"{sector} LDIP.");
 
         List<LdipProgram> programsToSeed = dto.LdipProgramIds.Select(id => sourceProgramsById[id]).ToList();
 
@@ -763,10 +847,16 @@ public sealed class AipService : IAipService
         // what made the missing year-opening model hard to see in the first place, and it is how
         // a base record could appear without anyone intending to create one.
 
-        // Find-or-create the target AipOffice — same RefCode as the LdipOffice group (year-
-        // independent, derived the same way on both sides: sector prefix + office ref code).
+        // Find-or-create the target AipOffice, keyed on the group's (RefCode, Name) pair.
+        //
+        // ⚠️ RefCode ALONE is not the key, and matching on it alone is a real defect: four groups
+        // share 3000-000-1-01-001, so a re-sync of AKAP-HUB's programs would have found WARDEN's
+        // row and appended them to the wrong printed block. (RefCode, Name) is the identity
+        // LdipOffice and AipOffice both document, and what AddProgramsWithGroupAsync already used.
         IReadOnlyList<AipOffice> targetOffices = await _aipRepo.GetOfficesByAipIdAsync(targetRecord!.Id, ct);
-        AipOffice? targetOffice = targetOffices.FirstOrDefault(o => o.RefCode == sourceGroup.RefCode);
+        AipOffice? targetOffice = targetOffices.FirstOrDefault(o =>
+            o.RefCode == sourceGroup.RefCode
+            && string.Equals(o.Name, sourceGroup.Name, StringComparison.OrdinalIgnoreCase));
         bool creatingOffice = targetOffice is null;
 
         // Collision guard — reject the whole request if any selected program's RefCode already
@@ -1401,26 +1491,32 @@ public sealed class AipService : IAipService
         // ⚠️ The SAME resolver the write path uses. That is the entire point of this method — a
         // second copy of the two-tier rule is what produced the "does not belong to this office's
         // LDIP" refusals the entry panel hit on every add.
-        LdipOffice? group = await ResolveLdipGroupAsync(office, normalised, prefix, ct);
-        if (group is null)
+        IReadOnlyList<LdipOffice> groups =
+            await ResolveLdipGroupsAsync(office, normalised, prefix, ct);
+        if (groups.Count == 0)
             return ServiceResult<AipAddableProgramsDto>.BadRequest(
                 $"'{office.OfficeName}' has no LDIP for the {normalised} sector. The LDIP is where "
                 + "programs come from, so it has to exist before the AIP can be built.");
 
         // Name the source. The resolver's second tier is a multi-office LDIP owned by no single
         // office, so "which LDIP is this?" is not answerable from the office alone.
+        //
+        // ℹ️ Every group comes from one record — the resolver stops at the first record that
+        // matches — so reading the id off the first group describes all of them.
         LdipRecord? sourceRecord = (await _ldipRepo.GetListAsync(null, null, ct))
-            .FirstOrDefault(r => r.Id == group.LdipRecordId);
+            .FirstOrDefault(r => r.Id == groups[0].LdipRecordId);
 
         return ServiceResult<AipAddableProgramsDto>.Ok(new AipAddableProgramsDto(
-            group.RefCode,
-            group.Name,
             sourceRecord?.RefCode,
             sourceRecord?.Title,
             IsSharedLdip: sourceRecord?.OfficeId is null,
-            group.Programs
-                .OrderBy(p => p.RefCode, StringComparer.Ordinal)
-                .Select(p => new AipAddableProgramDto(p.Id, p.RefCode, p.Name))
+            groups.Select(g => new AipAddableGroupDto(
+                g.RefCode,
+                g.Name,
+                g.Programs
+                    .OrderBy(p => p.RefCode, StringComparer.Ordinal)
+                    .Select(p => new AipAddableProgramDto(p.Id, p.RefCode, p.Name))
+                    .ToList()))
                 .ToList()));
     }
 
@@ -1458,26 +1554,25 @@ public sealed class AipService : IAipService
             return ServiceResult<AipOfficeDto>.NotFound(
                 $"Office {dto.OfficeConfigId} not found or inactive.");
 
-        LdipOffice? sourceGroup = await ResolveLdipGroupAsync(office, sector, prefix, ct);
-        if (sourceGroup is null)
+        IReadOnlyList<LdipOffice> candidateGroups =
+            await ResolveLdipGroupsAsync(office, sector, prefix, ct);
+        if (candidateGroups.Count == 0)
             return ServiceResult<AipOfficeDto>.BadRequest(
                 $"'{office.OfficeName}' has no LDIP for the {sector} sector. The LDIP is where "
                 + "programs come from, so it has to exist before the AIP can be built.");
 
         // The closed list, enforced server-side: every requested id must belong to this office's
-        // own LDIP group. V18-41 shipped the rule; this path is a second door into it.
-        Dictionary<int, LdipProgram> sourceById = sourceGroup.Programs.ToDictionary(p => p.Id);
-        List<int> unknownIds = dto.LdipProgramIds.Where(id => !sourceById.ContainsKey(id)).ToList();
-        if (unknownIds.Count > 0)
-            return ServiceResult<AipOfficeDto>.BadRequest(
-                $"LDIP program id(s) {string.Join(", ", unknownIds)} do not belong to this office's "
-                + $"{sector} LDIP.");
+        // own LDIP, and all of them to ONE of its groups. V18-41 shipped the rule; this path is a
+        // second door into it. The group falls out of the programs — see the DTO for why nobody
+        // gets to type it.
+        ServiceResult<LdipOffice> groupResult =
+            ResolveRequestedGroup(candidateGroups, dto.LdipProgramIds, sector);
+        if (!groupResult.IsSuccess)
+            return ServiceResult<AipOfficeDto>.BadRequest(groupResult.Error!);
 
-        // Names are uppercased to match how office and program rows are written in the source AIP
-        // files, and how LdipService normalises the same field.
-        string groupName = string.IsNullOrWhiteSpace(dto.GroupName)
-            ? sourceGroup.Name
-            : dto.GroupName.Trim().ToUpperInvariant();
+        LdipOffice sourceGroup = groupResult.Value!;
+        Dictionary<int, LdipProgram> sourceById = sourceGroup.Programs.ToDictionary(p => p.Id);
+        string groupName = sourceGroup.Name;
 
         // ⚠️ THE DIFFERENCE FROM SeedProgramsFromLdipAsync, and the reason this method exists.
         // That one matches on RefCode alone, so it can only ever reach the first group under a

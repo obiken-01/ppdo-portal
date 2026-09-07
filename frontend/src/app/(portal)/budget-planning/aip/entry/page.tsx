@@ -200,7 +200,7 @@ export default function AipEntryPage() {
                 canEdit ? (
                   <AipAddProgramsPanel
                     aipRecordId={record.id} officeConfigId={officeId}
-                    existingGroupNames={[]} onAdded={() => void load()} />
+                    onAdded={() => void load()} />
                 ) : undefined
               }
             />
@@ -231,7 +231,6 @@ export default function AipEntryPage() {
               {canEdit && (
                 <AipAddProgramsPanel
                   aipRecordId={record.id} officeConfigId={officeId}
-                  existingGroupNames={myGroups.map((g) => g.name)}
                   onAdded={() => void load()} />
               )}
             </>

@@ -231,14 +231,17 @@ public record SeedAipProgramsFromLdipDto(
 /// </para>
 ///
 /// <para>
-/// Null or blank <see cref="GroupName"/> means "the office's default group" and takes the LDIP
-/// group's own name, which is what an office with no sub-offices wants.
+/// ⚠️ <b>There is no group-name parameter, deliberately.</b> ↩️ It used to carry one, free text,
+/// with blank meaning "the LDIP group's own name". The sub-office grouping is already settled in
+/// the LDIP, so the group is <b>derived from <see cref="LdipProgramIds"/></b> — every LDIP program
+/// belongs to exactly one group, which makes the answer unambiguous and impossible to mistype.
+/// A typed name could name a block that matches no LDIP row, and the AIP is the document that
+/// prints. A selection spanning two groups is refused rather than split.
 /// </para>
 /// </summary>
 public record AddAipProgramsWithGroupDto(
     int                 OfficeConfigId,
     string              Sector,
-    string?             GroupName,
     IReadOnlyList<int>  LdipProgramIds);
 
 /// <summary>
@@ -276,12 +279,32 @@ public record AipAddableProgramDto(int LdipProgramId, string RefCode, string Nam
 /// True when the source is a multi-office LDIP rather than this office's own. Worth surfacing:
 /// it explains why the record may not look like "your" LDIP.
 /// </param>
+/// <param name="Groups">
+/// Every sub-office group the LDIP holds for this sector, each with its own programs.
+///
+/// ⚠️ <b>A list, not one group.</b> The province's LDIP really does put four blocks under
+/// <c>3000-000-1-01-001</c> (WARDEN / AKAP-HUB / HOUSING / LOCAL SCHOOL BOARD), and a single-group
+/// shape here is what made three of them unofferable — the picker could not show what the resolver
+/// would not return. Empty means the sector has groups but no programs in them.
+/// </param>
 public record AipAddableProgramsDto(
-    string  GroupRefCode,
-    string  GroupName,
     string? LdipRefCode,
     string? LdipTitle,
     bool    IsSharedLdip,
+    IReadOnlyList<AipAddableGroupDto> Groups);
+
+/// <summary>
+/// One sub-office group inside <see cref="AipAddableProgramsDto"/>, and the programs under it.
+///
+/// <para>
+/// ⚠️ The <c>(RefCode, Name)</c> pair here <b>is</b> the group's identity — the same pair
+/// <c>AipOffice</c> uses. Several groups in one response legitimately share
+/// <see cref="GroupRefCode"/>; <see cref="GroupName"/> is what separates them.
+/// </para>
+/// </summary>
+public record AipAddableGroupDto(
+    string  GroupRefCode,
+    string  GroupName,
     IReadOnlyList<AipAddableProgramDto> Programs);
 
 public record CreateAipProgramDto(string Name, string? FunctionBand = null);
