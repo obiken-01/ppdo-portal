@@ -45,15 +45,18 @@ namespace PPDO.Functions.Functions;
 public sealed class AllocationFunctions
 {
     private readonly IAllocationService _allocation;
+    private readonly IAipCeilingService _aipCeiling;
     private readonly IJwtMiddleware     _jwt;
     private readonly IPermissionService _permissions;
 
     public AllocationFunctions(
         IAllocationService  allocation,
+        IAipCeilingService  aipCeiling,
         IJwtMiddleware      jwt,
         IPermissionService  permissions)
     {
         _allocation  = allocation;
+        _aipCeiling  = aipCeiling;
         _jwt         = jwt;
         _permissions = permissions;
     }
@@ -124,6 +127,46 @@ public sealed class AllocationFunctions
         IReadOnlyList<BudgetCeilingDto> data = await _allocation.GetCeilingsAsync(officeId, fiscalYear, ct);
         return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK,
             ApiResponse<IReadOnlyList<BudgetCeilingDto>>.Ok(data), ct);
+    }
+
+    // ── GET /api/budget-planning/allocation/ceiling-usage?officeId=&fiscalYear= ────
+    //
+    // What the office has actually encoded against its General Fund ceiling (V18-48 / PPDO-58).
+    //
+    // ⚠️ This exists because a ceiling cut is NON-DESTRUCTIVE (A5-b). PBO cuts a ceiling, nothing
+    // is deleted or flagged, and until now PBO saw no consequence at all — the negative remaining
+    // appeared only on the encoder's own submit checklist, in an office PBO does not belong to.
+    // Setting a figure with no view of what it lands on is the gap this closes.
+    //
+    // Same read gate and the SAME office clamp as every other GET here (PPDO-18): a host-office
+    // caller and a CanManagePboCeiling holder keep the cross-office read, everyone else is forced
+    // to their own office. The clamp is what makes this safe to expose on the broader
+    // CanAccessBudgetPlanning gate rather than the PBO grant.
+    [Function("AllocationGetCeilingUsage")]
+    public async Task<HttpResponseData> GetCeilingUsage(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get",
+            Route = "budget-planning/allocation/ceiling-usage")] HttpRequestData req,
+        CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) =
+            await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccessBudgetPlanning, ct);
+        if (denied is not null || caller is null) return denied!;
+
+        if (!int.TryParse(req.Query["officeId"], out int officeId) ||
+            !int.TryParse(req.Query["fiscalYear"], out int fiscalYear))
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<AipCeilingStatusDto>.Fail(
+                    "officeId and fiscalYear query parameters are required."), ct);
+
+        officeId = await ClampOfficeAsync(caller, officeId, ct);
+
+        // ⚠️ Null data with 200, not 404. "There is no FY2028 AIP yet" is an ordinary, expected
+        // state of the page — PBO sets ceilings before offices encode — and a 404 would render as
+        // an error banner on a page that is working correctly. The client shows nothing rather
+        // than an encoded total of ₱0, which would be a claim about the office's work.
+        AipCeilingStatusDto? usage = await _aipCeiling.GetStatusForOfficeAsync(officeId, fiscalYear, ct);
+        return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK,
+            ApiResponse<AipCeilingStatusDto?>.Ok(usage), ct);
     }
 
     // ── PUT /api/budget-planning/allocation/ceiling ───────────────────────────

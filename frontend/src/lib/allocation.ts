@@ -9,6 +9,7 @@
 
 import api from "./api";
 import type {
+  AipCeilingStatus,
   ApiResponse,
   AllocationSetupStatusDto,
   BudgetCeilingDto,
@@ -66,6 +67,28 @@ export async function getCeilings(
 ): Promise<BudgetCeilingDto[]> {
   const { data } = await api.get<ApiResponse<BudgetCeilingDto[]>>(
     "/budget-planning/allocation/ceilings",
+    { params: { officeId, fiscalYear } }
+  );
+  return unwrap(data);
+}
+
+/**
+ * What an office has actually encoded against its General Fund ceiling (V18-48 / PPDO-58).
+ *
+ * ⚠️ **Returns null when there is nothing to compare against** — no AIP record for that fiscal
+ * year, or that office holding no rows in it. That is NOT an encoded total of ₱0: PBO sets
+ * ceilings before offices encode, and showing ₱0 would claim the office had encoded nothing.
+ * Callers must render the null case as absence, not as zero.
+ *
+ * General Fund only, MOOE + CO only (PS is exempt) — the same figures the office's own submit
+ * gate uses, so the two screens cannot disagree.
+ */
+export async function getCeilingUsage(
+  officeId: number,
+  fiscalYear: number
+): Promise<AipCeilingStatus | null> {
+  const { data } = await api.get<ApiResponse<AipCeilingStatus | null>>(
+    "/budget-planning/allocation/ceiling-usage",
     { params: { officeId, fiscalYear } }
   );
   return unwrap(data);

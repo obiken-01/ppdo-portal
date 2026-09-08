@@ -33,6 +33,13 @@
  *   GET/PUT /api/budget-planning/allocation/divisions?officeId=&fiscalYear=&fundingSourceId=
  *   GET/PUT /api/budget-planning/allocation/programs?officeId=&fiscalYear=
  *   GET     /api/budget-planning/allocation/status?officeId=&fiscalYear=&divisionId=
+ *   GET     /api/budget-planning/allocation/ceiling-usage?officeId=&fiscalYear= (V18-48/PPDO-58)
+ *
+ * ⚠️ **A ceiling cut is non-destructive** (A5-b): encoded work stands and fails at the office's own
+ * submit gate. There is deliberately no confirmation dialog beyond the ordinary one and no cascade.
+ * What there IS, as of PPDO-58, is the `ceiling-usage` strip on the General Fund card — so the
+ * person making the cut can see the negative remaining it creates. Before that, only the office
+ * being cut could see it, on a page PBO cannot reach.
  */
 
 import { Fragment, useEffect, useMemo, useState } from "react";
@@ -44,6 +51,7 @@ import {
   allocationErrorMessage,
   getAllocationsAllFunds,
   getCeilings,
+  getCeilingUsage,
   getPrograms,
   upsertAllocations,
   upsertCeiling,
@@ -55,6 +63,7 @@ import { useToast } from "@/components/ui/Toast";
 import { formatMoney } from "@/lib/money";
 import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import type {
+  AipCeilingStatus,
   BudgetCeilingDto,
   DivisionResponse,
   FundingSourceResponse,
@@ -154,12 +163,70 @@ function AllocationBar({
 }
 
 // ---------------------------------------------------------------------------
+// CeilingUsage — what the office has actually encoded (V18-48 / PPDO-58)
+// ---------------------------------------------------------------------------
+
+/**
+ * The consequence of the ceiling above it.
+ *
+ * ⚠️ **This is the whole point of PPDO-58.** A ceiling cut is non-destructive (A5-b): nothing is
+ * deleted, nothing cascades, and no dialog appears. So before this strip existed, PBO could cut a
+ * ceiling below what an office had already encoded and see *nothing at all* — the negative
+ * remaining showed up only on that office's own submit checklist, which PBO cannot reach.
+ *
+ * ⚠️ **`remaining` is rendered exactly as the server sends it, negative included.** No
+ * `Math.max(0, …)` here or anywhere between the ledger and this line. That negative is the only
+ * signal either side gets that the cut created work the office must now revise.
+ *
+ * ⚠️ **General Fund only, MOOE + CO only.** Ceilings are GF-only (DECISION H, withdrawn and
+ * re-settled 2026-08-26) and PS is exempt as an expense class, so this strip is rendered on the
+ * General Fund card alone. Repeating it on other funds' cards with a blank figure would read as
+ * "nothing encoded yet" rather than "not checked against this fund".
+ */
+function CeilingUsage({ usage }: { usage: AipCeilingStatus | null }) {
+  // Absence, not zero. `null` means there is no AIP for this year to compare against — PBO
+  // routinely sets ceilings before anyone encodes — and "Encoded ₱0" would be a claim about the
+  // office's work rather than an admission that there is nothing to report.
+  if (usage === null) return null;
+
+  const over = usage.remaining < 0;
+
+  return (
+    <div className="mb-4 border border-slate-200 bg-slate-50 px-3 py-2">
+      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm tabular-nums">
+        <span className="text-slate-600">
+          Encoded (MOOE + CO){" "}
+          <span className="font-medium text-slate-800">₱{formatMoney(usage.encodedBaseRounded)}</span>
+        </span>
+        <span className={over ? "text-red-600" : "text-slate-600"}>
+          Remaining{" "}
+          <span className={`font-semibold ${over ? "text-red-600" : "text-slate-800"}`}>
+            ₱{formatMoney(usage.remaining)}
+          </span>
+        </span>
+        {over && (
+          <span className="text-xs font-medium text-red-600">
+            Over ceiling — this office cannot submit until it revises or the ceiling is raised
+          </span>
+        )}
+      </div>
+      <p className="mt-1 text-[11px] text-slate-600">
+        What this office has encoded in its AIP against the General Fund ceiling. MOOE and Capital
+        Outlay only — Personal Services is exempt. Figures are rounded up to the thousand per
+        activity, the way the printed form builds them.
+      </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // FundSection — one ceiling + division-allocation block per funding source (RAL-155)
 // ---------------------------------------------------------------------------
 
 function FundSection({
   fund,
   isGeneralFund,
+  ceilingUsage,
   expanded,
   onToggleExpand,
   selectedOffice,
@@ -180,6 +247,8 @@ function FundSection({
 }: {
   fund: FundingSourceResponse;
   isGeneralFund: boolean;
+  /** GF card only — see CeilingUsage. Null on every other fund, and when there is no AIP yet. */
+  ceilingUsage: AipCeilingStatus | null;
   expanded: boolean;
   onToggleExpand: () => void;
   selectedOffice: OfficeResponse | null;
@@ -264,9 +333,15 @@ function FundSection({
         </div>
       )}
       {canSetCeiling && ceiling && (
-        <p className="mb-4 text-xs text-slate-600">Saved ceiling: ₱{formatMoney(ceiling.amount)}</p>
+        <p className="mb-1 text-xs text-slate-600">Saved ceiling: ₱{formatMoney(ceiling.amount)}</p>
       )}
-      {(!canSetCeiling || !ceiling) && <div className="mb-4" />}
+      {(!canSetCeiling || !ceiling) && <div className="mb-2" />}
+
+      {/* ⚠️ Directly under the ceiling it refers to, and above the division split — the split is
+          PPDO's internal mechanic, while this is what EVERY office does with the ceiling. A PBO
+          reader has no division block at all, so placing it below would put it last on a page
+          whose only other content is the input they just changed. */}
+      {isGeneralFund && <CeilingUsage usage={ceilingUsage} />}
 
       {/* The division split belongs to the PPDO finance officer. Without that grant the
           whole block is hidden rather than shown disabled — for a PBO officer setting a
@@ -409,8 +484,9 @@ function FundSection({
             Required
           </span>
           {/* Deliberately says nothing about divisions: a PBO reader never meets that
-              concept, and the rule holds either way. Present tense only — the AIP-side
-              General-Fund-only check is V18-46/FY2028+ and has not shipped. */}
+              concept, and the rule holds either way. ↩️ The "has not shipped" caveat that stood
+              here is gone: V18-46/PPDO-56 shipped the AIP-side General-Fund-only check, and
+              PPDO-58 puts its result on this very card. */}
           <InfoTip label="Why is only the General Fund ceiling required?">
             General Fund is the only required ceiling. Ceilings on other fund sources are
             optional &mdash; set one for any fund this office will encode against, since each
@@ -473,6 +549,14 @@ function AllocationPageInner() {
 
   const [officeList, setOfficeList] = useState<OfficeResponse[]>([]);
   const [selectedOfficeId, setSelectedOfficeId] = useState<number | null>(null);
+  /**
+   * What the selected office has encoded against its General Fund ceiling (V18-48 / PPDO-58).
+   *
+   * ⚠️ `null` means "nothing to compare against" — no AIP for that year, or the office holds no
+   * rows in it — and is rendered as ABSENCE, never as ₱0 encoded. PBO routinely sets ceilings
+   * before any office encodes, so ₱0 would be a false reassurance rather than a missing value.
+   */
+  const [ceilingUsage, setCeilingUsage] = useState<AipCeilingStatus | null>(null);
   const [selectedFiscalYear, setSelectedFiscalYear] = useState<number>(
     new Date().getFullYear() + 1
   );
@@ -628,6 +712,7 @@ function AllocationPageInner() {
     if (selectedOfficeId == null) {
       setDivisions([]);
       setCeilings({});
+      setCeilingUsage(null);
       setCeilingInputs({});
       setAllocationInputsByFund({});
       setPrograms([]);
@@ -676,6 +761,13 @@ function AllocationPageInner() {
           allocInputsByFund[fund.id] = inputs;
         }
         setAllocationInputsByFund(allocInputsByFund);
+
+        // ⚠️ Deliberately NOT in the Promise.all above and deliberately swallowed. This figure
+        // is context for the ceiling, not a prerequisite for editing it — an AIP-side failure
+        // must not stop PBO setting a ceiling, which is the page's actual job.
+        void getCeilingUsage(selectedOfficeId!, selectedFiscalYear)
+          .then((usage) => { if (!cancelled) setCeilingUsage(usage); })
+          .catch(() => { if (!cancelled) setCeilingUsage(null); });
 
         setPrograms(progs);
         const assignments: Record<string, number[]> = {};
@@ -726,6 +818,20 @@ function AllocationPageInner() {
       });
       setCeilings((prev) => ({ ...prev, [fundId]: result }));
       toast.success("Saved", "Budget ceiling updated.");
+
+      // ⚠️ Refetch the usage strip, and ONLY for the General Fund — it is the only fund the
+      // AIP ceiling check reads. Without this the strip keeps showing the remaining computed
+      // against the PREVIOUS ceiling: PBO cuts ₱10,000,000 to ₱50,000 over ₱66,000 of encoded
+      // work and the page still reports ₱9,934,000 left, which is the exact opposite of the
+      // signal this ticket exists to give them. `remaining` is server-computed from the SAVED
+      // ceiling, so it cannot be derived client-side from the input.
+      //
+      // Found by browser-testing, not by tsc — the types are identical either way.
+      if (generalFund != null && fundId === generalFund.id) {
+        void getCeilingUsage(selectedOfficeId, selectedFiscalYear)
+          .then(setCeilingUsage)
+          .catch(() => { /* the ceiling saved; a stale strip must not surface as a save error */ });
+      }
     } catch (err) {
       toast.error("Save failed", allocationErrorMessage(err, "Could not save ceiling."));
     } finally {
@@ -981,6 +1087,7 @@ function AllocationPageInner() {
                       key={fund.id}
                       fund={fund}
                       isGeneralFund={generalFund != null && fund.id === generalFund.id}
+                      ceilingUsage={ceilingUsage}
                       expanded={
                         (generalFund != null && fund.id === generalFund.id) ||
                         expandedFundIds.has(fund.id)

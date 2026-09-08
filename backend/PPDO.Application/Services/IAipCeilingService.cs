@@ -45,6 +45,36 @@ public interface IAipCeilingService
         int aipOfficeId, CancellationToken ct = default);
 
     /// <summary>
+    /// The same status, addressed the way the <b>Provincial Budget Office</b> addresses an office
+    /// — by config office and fiscal year, rather than by a row in one AIP record
+    /// (V18-48 / PPDO-58).
+    ///
+    /// <para>
+    /// PBO sets ceilings for offices it does not belong to, so it cannot use
+    /// <see cref="GetStatusAsync"/>'s address: that takes an <c>aipOfficeId</c>, and the endpoint
+    /// above it resolves the caller's <i>own</i> group row. This overload exists so a cross-office
+    /// authority can ask "what has that office encoded against the ceiling I am about to cut?"
+    /// — the question PBO otherwise has no way to answer, since a cut is non-destructive and shows
+    /// them nothing (A5-b).
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ <b>Returns null when the question cannot be asked, never a zeroed status.</b> No AIP
+    /// record for that fiscal year, or that office holding no rows in it, is <i>"nothing to
+    /// compare against"</i> — reporting it as an encoded total of ₱0 would tell PBO the office had
+    /// encoded nothing, which is a different and reassuring claim. Same distinction as
+    /// <c>CeilingSet</c>, one level up.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ <b>Authorisation is the caller's job</b>, as everywhere else in this service. This
+    /// answers about any office it is asked about; the endpoint gates it on the cross-office grant.
+    /// </para>
+    /// </summary>
+    Task<AipCeilingStatusDto?> GetStatusForOfficeAsync(
+        int configOfficeId, int fiscalYear, CancellationToken ct = default);
+
+    /// <summary>
     /// The submit-time gate. Returns <c>null</c> when the office is within its General Fund
     /// ceiling, or a message naming <b>the fund, the ceiling, the encoded total and the
     /// overage</b> — not the bare phrase "over ceiling", which tells an encoder nothing about how
