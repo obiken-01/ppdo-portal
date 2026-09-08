@@ -7,8 +7,16 @@ using PPDO.Domain.Enums;
 namespace PPDO.Tests.Application;
 
 /// <summary>
-/// The second write gate: an office that has been submitted is no longer editable by its encoder
-/// (V18-42 / PPDO-52).
+/// The second write gate: an office that has gone to PPDO is no longer editable by anyone in it
+/// (V18-42 / PPDO-52, boundary moved by V18-52 / PPDO-70).
+///
+/// <para>
+/// ↩️ <b>The boundary moved on 2026-09-08.</b> Phase 3 closed the office at the encoder's first
+/// submit; the workflow says it closes at <see cref="AipWorkflowStatus.SubmittedToPpdo"/>
+/// (<c>AIP_Review_Spec.md</c> decision 4). During department review the encoder and the department
+/// head <b>both</b> still edit — what the encoder loses at the first submit is the ability to move
+/// the work on, not the ability to work on it.
+/// </para>
 ///
 /// <para>
 /// ⚠️ <b>This gate lives inside <c>CheckWritableAsync</c>, not on the new entry endpoints</b>, and
@@ -61,17 +69,13 @@ public sealed partial class AipServiceTests
     // ── Every other state is closed to the encoder ────────────────────────────
 
     /// <summary>
-    /// ⚠️ Driven from <see cref="AipWorkflowStatus.All"/> rather than a hand-written list, so a
-    /// sixth state added in Phase 4 is refused by default instead of silently becoming editable.
-    /// A new state is far more likely to be review-ish than draft-ish, and the safe default for an
-    /// unknown one is closed.
+    /// ⚠️ The two states in which the office has handed its work upward. Once at PPDO nobody in
+    /// the office edits — including the department head, who could a moment earlier.
     /// </summary>
     [Theory]
-    [InlineData(AipWorkflowStatus.DepartmentReview)]
     [InlineData(AipWorkflowStatus.SubmittedToPpdo)]
-    [InlineData(AipWorkflowStatus.ReturnedByPpdo)]
     [InlineData(AipWorkflowStatus.Consolidated)]
-    public async Task UpdateActivity_OnceTheOfficeIsPastDraft_IsRefused(string status)
+    public async Task UpdateActivity_OnceTheOfficeHasGoneToPpdo_IsRefused(string status)
     {
         AipService sut = BuildSut(OfficeInState(status));
 
@@ -82,14 +86,40 @@ public sealed partial class AipServiceTests
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
     }
 
-    [Fact]
-    public async Task EveryWorkflowStateExceptDraftIsClosedToTheEncoder()
+    /// <summary>
+    /// ⚠️ <b>The test this ticket exists for</b> (PPDO-70). Against Phase 3's <c>Draft</c>-only
+    /// rule both of these are refused — which is the behaviour the workflow says is wrong. The
+    /// department head's remit is to fix minor details during review; freezing the encoder out
+    /// makes the department head retype every one of them personally.
+    /// </summary>
+    [Theory]
+    [InlineData(AipWorkflowStatus.DepartmentReview)]
+    [InlineData(AipWorkflowStatus.ReturnedByPpdo)]
+    public async Task UpdateActivity_WhileTheOfficeStillHoldsIt_IsAllowed(string status)
     {
-        // Pins the rule itself, independently of any endpoint: exactly one of the five states is
-        // editable. If a sixth is added and made editable, this fails and asks for a decision.
+        AipService sut = BuildSut(OfficeInState(status));
+
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(
+            AipRecordId, 40, UpdateActivity(), WriteHostCaller(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+    }
+
+    /// <summary>
+    /// Pins the rule itself, independently of any endpoint.
+    ///
+    /// ⚠️ Written as the exact expected set rather than a count, so a sixth state added later is
+    /// refused by default: it fails here and asks for a decision instead of silently inheriting
+    /// whichever side of the boundary the implementation happened to put it on. A new state is far
+    /// more likely to be review-ish than draft-ish, and closed is the safe default.
+    /// </summary>
+    [Fact]
+    public void OnlyTheOfficeHeldStatesAreEditable()
+    {
         Assert.Equal(
-            [AipWorkflowStatus.Draft],
-            AipWorkflowStatus.All.Where(AipWorkflowStatus.IsEncoderEditable).ToArray());
+            [AipWorkflowStatus.Draft, AipWorkflowStatus.DepartmentReview,
+             AipWorkflowStatus.ReturnedByPpdo],
+            AipWorkflowStatus.All.Where(AipWorkflowStatus.IsOfficeEditable).ToArray());
     }
 
     // ── The message names the state ───────────────────────────────────────────
@@ -102,13 +132,13 @@ public sealed partial class AipServiceTests
     [Fact]
     public async Task UpdateActivity_WhenRefused_TheMessageNamesTheStateHoldingTheWork()
     {
-        AipService sut = BuildSut(OfficeInState(AipWorkflowStatus.DepartmentReview));
+        AipService sut = BuildSut(OfficeInState(AipWorkflowStatus.SubmittedToPpdo));
 
         ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(
             AipRecordId, 40, UpdateActivity(), WriteHostCaller(), CancellationToken.None);
 
-        Assert.Contains("department review", result.Error, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("submitted", result.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("review by PPDO", result.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("sent on", result.Error, StringComparison.OrdinalIgnoreCase);
     }
 
     // ── The two gates are independent ─────────────────────────────────────────
@@ -122,7 +152,9 @@ public sealed partial class AipServiceTests
     public async Task UpdateActivity_DraftRecordButSubmittedOffice_IsStillRefused()
     {
         // The record seeded by HostOwnedTree() is Draft; only the office has moved on.
-        AipService sut = BuildSut(OfficeInState(AipWorkflowStatus.DepartmentReview));
+        // ⚠️ SubmittedToPpdo, not DepartmentReview — since PPDO-70 the latter is editable, so it
+        // would no longer demonstrate anything about the two gates being independent.
+        AipService sut = BuildSut(OfficeInState(AipWorkflowStatus.SubmittedToPpdo));
 
         ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(
             AipRecordId, 40, UpdateActivity(), WriteHostCaller(), CancellationToken.None);
