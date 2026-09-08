@@ -2656,15 +2656,21 @@ public sealed partial class AipServiceTests
     }
 
     /// <summary>
-    /// ⚠️ The full write guard, not just an office-scope check. An office already handed to its
-    /// department head must not be editable — otherwise the document under review changes beneath
-    /// the reviewer.
+    /// ⚠️ The full write guard, not just an office-scope check. An office already handed to PPDO
+    /// must not be editable — otherwise the document under review changes beneath the reviewer.
+    ///
+    /// ↩️ <b>Was <c>DepartmentReview</c> until PPDO-70.</b> The concern above is real and the
+    /// workflow accepts it knowingly at the first hop: during department review the encoder and
+    /// the department head are <i>meant</i> to keep working, and the reviewer is a colleague in
+    /// the same office rather than an outside party (<c>AIP_Review_Spec.md</c> decision 4). It
+    /// stops being acceptable once the work is with PPDO, which is where the lock now sits — so
+    /// this test moved rather than being deleted.
     /// </summary>
     [Fact]
-    public async Task UpdateActivityDetails_AnOfficePastDraft_IsRefused()
+    public async Task UpdateActivityDetails_AnOfficeAlreadyWithPpdo_IsRefused()
     {
         var (rec, offices, programs, projects, activities) = SeedActivityTree();
-        offices[0].WorkflowStatus = AipWorkflowStatus.DepartmentReview;
+        offices[0].WorkflowStatus = AipWorkflowStatus.SubmittedToPpdo;
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs,
                   projectSeed: projects, actSeed: activities);

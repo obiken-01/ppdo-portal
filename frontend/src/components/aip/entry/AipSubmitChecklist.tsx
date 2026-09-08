@@ -44,10 +44,20 @@ export type AipSubmitStage =
   | { kind: "encoder"; onSubmit: () => void }
   | { kind: "toPpdo"; resubmit: boolean; onSubmit: () => void }
   /**
-   * Nobody here can move it on. `holder` names **who has the work** — "your department head",
-   * "PPDO" — never a bare "read-only", which tells a reader nothing about how to get it back.
+   * The office still holds the work and can edit it, but **this** reader cannot send it on —
+   * they are an encoder and the second hop is the department head's (PPDO-69).
+   *
+   * ⚠️ Distinct from `locked`, and the distinction is the whole point: telling an encoder in
+   * department review that the page "cannot be changed here" would be false since PPDO-70, and
+   * they would stop trying to fix the things their department head just asked them to fix.
    */
-  | { kind: "readOnly"; holder: string };
+  | { kind: "awaitingReviewer"; holder: string }
+  /**
+   * Nobody in the office can edit — the work is with PPDO or already consolidated. `holder` names
+   * **who has it**, never a bare "read-only", which tells a reader nothing about how to get it
+   * back.
+   */
+  | { kind: "locked"; holder: string };
 
 const STAGE_COPY = {
   encoder: {
@@ -96,18 +106,21 @@ export default function AipSubmitChecklist({
   }, {});
 
   const copy =
-    stage.kind === "readOnly"
-      ? STAGE_COPY.encoder // heading only; the button is not rendered in this branch
-      : stage.kind === "toPpdo" && stage.resubmit
-        ? STAGE_COPY.resubmit
-        : STAGE_COPY[stage.kind];
+    stage.kind === "toPpdo"
+      ? (stage.resubmit ? STAGE_COPY.resubmit : STAGE_COPY.toPpdo)
+      : STAGE_COPY.encoder;
+  // ⚠️ The JSX below re-tests `stage.kind` rather than reusing this, so TypeScript narrows the
+  // union in each branch. A boolean alias reads better but discards the narrowing, and then
+  // `stage.holder` and `stage.onSubmit` need non-null assertions that would silently survive a
+  // future stage being added to the wrong side.
+  const hasAction = stage.kind === "encoder" || stage.kind === "toPpdo";
 
   return (
     <div className="border border-slate-200 bg-white">
       <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
         <div>
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-800">
-            {stage.kind === "readOnly" ? "Submit" : copy.heading}
+            {hasAction ? copy.heading : "Submit"}
           </h2>
           <p className="mt-0.5 text-xs text-slate-600">
             {readiness.activityCount} activit{readiness.activityCount === 1 ? "y" : "ies"} in this
@@ -115,13 +128,7 @@ export default function AipSubmitChecklist({
           </p>
         </div>
 
-        {stage.kind === "readOnly" ? (
-          // ⚠️ Names the state rather than just disabling the button. An encoder who is told
-          // "read-only" has no idea who holds their work or how to get it back.
-          <span className="border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">
-            With {stage.holder}
-          </span>
-        ) : (
+        {stage.kind === "encoder" || stage.kind === "toPpdo" ? (
           <button
             type="button"
             onClick={stage.onSubmit}
@@ -130,6 +137,12 @@ export default function AipSubmitChecklist({
           >
             {submitting ? copy.busy : copy.button}
           </button>
+        ) : (
+          // ⚠️ Names who holds the work rather than just hiding the button. An encoder told only
+          // "read-only" has no idea who has their work or how to get it back.
+          <span className="border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">
+            With {stage.holder}
+          </span>
         )}
       </div>
 
@@ -160,10 +173,21 @@ export default function AipSubmitChecklist({
       )}
 
       {/* ── Issues ───────────────────────────────────────────────────────── */}
-      {canSubmit ? (
+      {/* ⚠️ A LOCKED office never shows the issue list, even when there are issues. It read
+          "2 items to fix before submitting" while the work sat with PPDO — naming work the office
+          cannot do, for a submit it cannot make. The outstanding items are the reviewer's business
+          at that point, and the office's only useful information is who has the document.
+          Found by live-testing the state, not by review. */}
+      {stage.kind === "locked" ? (
         <p className="px-4 py-3 text-sm text-slate-600">
-          {stage.kind === "readOnly"
-            ? `This office’s AIP is with ${stage.holder} and cannot be changed here.`
+          This office&rsquo;s AIP is with {stage.holder} and cannot be changed here.
+        </p>
+      ) : canSubmit ? (
+        <p className="px-4 py-3 text-sm text-slate-600">
+          {stage.kind === "awaitingReviewer"
+            // ⚠️ Says what is still possible, not only what is not. The office CAN keep editing
+            // here — only sending it on is someone else's to do.
+            ? `Your department head has this office’s AIP. You can still make changes; only they can send it on to PPDO.`
             : copy.ready}
         </p>
       ) : (

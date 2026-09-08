@@ -30,6 +30,7 @@ import {
 import { listAccounts, listFundingSources, listPriceIndexForPicker } from "@/lib/config";
 import { FIRST_ENTERED_FISCAL_YEAR } from "@/lib/aip-fiscal-years";
 import { fmtThousands } from "@/lib/aip-units";
+import { AIP_WORKFLOW, isOfficeEditable, describeAipHolder } from "@/lib/aip-workflow";
 import AipAddProgramsPanel from "@/components/aip/entry/AipAddProgramsPanel";
 import AipExpenditureTable from "@/components/aip/entry/AipExpenditureTable";
 import AipActivityFields from "@/components/aip/entry/AipActivityFields";
@@ -83,8 +84,11 @@ export default function AipEntryPage() {
     [record, officeId]
   );
 
-  const workflowStatus = readiness?.workflowStatus ?? "Draft";
-  const canEdit = workflowStatus === "Draft";
+  const workflowStatus = readiness?.workflowStatus ?? AIP_WORKFLOW.draft;
+  // ↩️ Was `=== "Draft"` until PPDO-70. The office keeps editing through department review and
+  // after a PPDO return; the lock falls when the work reaches PPDO. Mirrors the server's
+  // AipWorkflowStatus.IsOfficeEditable — change both together.
+  const canEdit = isOfficeEditable(workflowStatus);
 
   // The division filter applies to the HOST office only, and only when the user has a division —
   // the same condition AipReadScope uses. A guest office is never division-filtered, so telling
@@ -168,20 +172,25 @@ export default function AipEntryPage() {
   /**
    * Which of the two submits this reader is standing at, if either.
    *
-   * ⚠️ Deliberately independent of `canEdit`. A department head whose office is in department
-   * review cannot edit the tree (that lock is PPDO-70's to move) but must still be able to send
-   * the work on — those are different permissions and conflating them strands the office.
+   * ⚠️ **Deliberately independent of `canEdit`** — they answer different questions. Since PPDO-70
+   * an encoder in department review *can* edit and *cannot* send the work on; conflating the two
+   * either strands the office or tells them their work is frozen when it is not.
    */
   const submitStage: AipSubmitStage =
-    workflowStatus === "Draft"
+    workflowStatus === AIP_WORKFLOW.draft
       ? { kind: "encoder", onSubmit: doSubmit }
-      : canReview && (workflowStatus === "DepartmentReview" || workflowStatus === "ReturnedByPpdo")
-        ? {
-            kind: "toPpdo",
-            resubmit: workflowStatus === "ReturnedByPpdo",
-            onSubmit: doSubmitToPpdo,
-          }
-        : { kind: "readOnly", holder: describeStatus(workflowStatus) };
+      : workflowStatus === AIP_WORKFLOW.departmentReview ||
+          workflowStatus === AIP_WORKFLOW.returnedByPpdo
+        ? canReview
+          ? {
+              kind: "toPpdo",
+              resubmit: workflowStatus === AIP_WORKFLOW.returnedByPpdo,
+              onSubmit: doSubmitToPpdo,
+            }
+          // An encoder while their department head holds it: still editable, just not theirs to
+          // send on.
+          : { kind: "awaitingReviewer", holder: describeAipHolder(workflowStatus) }
+        : { kind: "locked", holder: describeAipHolder(workflowStatus) };
 
   // ── Shell ───────────────────────────────────────────────────────────────
   // ⚠️ The header and the year picker render immediately, in every state. Gating the whole page on
@@ -645,12 +654,4 @@ function EntrySkeleton() {
   );
 }
 
-function describeStatus(status: string): string {
-  switch (status) {
-    case "DepartmentReview": return "your department head";
-    case "SubmittedToPpdo":  return "PPDO";
-    case "ReturnedByPpdo":   return "you — returned by PPDO";
-    case "Consolidated":     return "the consolidated AIP";
-    default:                 return status;
-  }
-}
+

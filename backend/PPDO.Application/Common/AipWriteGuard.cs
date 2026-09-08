@@ -22,8 +22,11 @@ namespace PPDO.Application.Common;
 /// exist (PPDO-46). A write names one node, so clamping is not available: redirecting it would
 /// write to the wrong row.</item>
 /// <item><b>The year's state</b> — <c>aip_records.status</c>. An Admin archived it.</item>
-/// <item><b>This office's state</b> — <c>aip_offices.workflow_status</c>. The encoder submitted
-/// it. ⚠️ Independent of the year's: a Draft record with a submitted office is closed.</item>
+/// <item><b>This office's state</b> — <c>aip_offices.workflow_status</c>. ⚠️ Independent of the
+/// year's: a Draft record whose office has gone to PPDO is closed. ↩️ <b>The boundary moved in
+/// PPDO-70</b>: it is <see cref="AipWorkflowStatus.SubmittedToPpdo"/> that closes an office, not
+/// the encoder's first submit — during department review the encoder and the department head both
+/// still edit (<c>AIP_Review_Spec.md</c> decision 4).</item>
 /// </list>
 ///
 /// <para>
@@ -57,10 +60,10 @@ public static class AipWriteGuard
             return ServiceResult<T>.BadRequest(
                 $"Cannot {action} a '{rec.Status}' record. Unlock it back to Draft first.");
 
-        if (!AipWorkflowStatus.IsEncoderEditable(office.WorkflowStatus))
+        if (!AipWorkflowStatus.IsOfficeEditable(office.WorkflowStatus))
             return ServiceResult<T>.BadRequest(
                 $"Cannot {action} this office's AIP while it is in {Describe(office.WorkflowStatus)}. "
-                + "It has been submitted and is no longer editable here.");
+                + "It has been sent on and is no longer editable here.");
 
         return null;
     }
