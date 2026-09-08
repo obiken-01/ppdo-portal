@@ -54,7 +54,13 @@ public sealed class AipExpenditureService : IAipExpenditureService
             return ServiceResult<IReadOnlyList<AipExpenditureDto>>.NotFound(NotFound(activityId));
 
         IReadOnlyList<AipExpenditure> lines = await _expRepo.GetByActivityIdAsync(activityId, ct);
-        return ServiceResult<IReadOnlyList<AipExpenditureDto>>.Ok(lines.Select(Map).ToList());
+
+        // ⚠️ One query for every line's items, not one per line — see the repository method's
+        // remarks. An activity with 20 lines would otherwise cost 21 round trips to render.
+        ILookup<int, AipProcurementItem> itemsByLine = await LoadItemsAsync(lines, ct);
+
+        return ServiceResult<IReadOnlyList<AipExpenditureDto>>.Ok(
+            lines.Select(l => Map(l, itemsByLine[l.Id])).ToList());
     }
 
     // ── Add ───────────────────────────────────────────────────────────────────
@@ -74,6 +80,10 @@ public sealed class AipExpenditureService : IAipExpenditureService
         if (Validate(dto.Ps, dto.Mooe, dto.Co) is string invalid)
             return ServiceResult<AipExpenditureWriteResultDto>.BadRequest(invalid);
 
+        ServiceResult<AipExpenditureWriteResultDto>? itemsInvalid =
+            ValidateItems<AipExpenditureWriteResultDto>(dto.ProcurementItems);
+        if (itemsInvalid is not null) return itemsInvalid;
+
         AipExpenditure line = new()
         {
             ActivityId = activityId,
@@ -84,10 +94,25 @@ public sealed class AipExpenditureService : IAipExpenditureService
             UpdatedAt = DateTime.UtcNow,
         };
         await ApplySnapshotsAsync(line, dto.AccountId, dto.FundingSourceId, ct);
+
+        // ⚠️ Routing runs BEFORE Recalculate, and overwrites the typed amounts rather than adding
+        // to them — an itemised line's cost is its items' cost, full stop.
+        if (await ApplyProcurementRoutingAsync<AipExpenditureWriteResultDto>(
+                line, dto.AccountId, dto.ProcurementItems, ct) is { } routingError)
+            return routingError;
+
         line.Recalculate();
 
         await _expRepo.AddAsync(line, ct);
         await _expRepo.SaveChangesAsync(ct);
+
+        // The line's id only exists after the save above, so the items are attached second — one
+        // extra save, and the alternative is inserting orphans keyed on 0.
+        if (BuildItems(dto.ProcurementItems) is { Count: > 0 } newItems)
+        {
+            await _expRepo.ReplaceProcurementItemsAsync(line.Id, newItems, ct);
+            await _expRepo.SaveChangesAsync(ct);
+        }
 
         await _audit.LogAsync("aip_expenditures", line.Id, AuditAction.Create,
             null, new { line.ActivityId, line.Ps, line.Mooe, line.Co, line.Total }, ct);
@@ -119,6 +144,10 @@ public sealed class AipExpenditureService : IAipExpenditureService
         if (Validate(dto.Ps, dto.Mooe, dto.Co) is string invalid)
             return ServiceResult<AipExpenditureWriteResultDto>.BadRequest(invalid);
 
+        ServiceResult<AipExpenditureWriteResultDto>? itemsInvalid =
+            ValidateItems<AipExpenditureWriteResultDto>(dto.ProcurementItems);
+        if (itemsInvalid is not null) return itemsInvalid;
+
         object before = new { line.AccountId, line.FundingSourceId, line.Ps, line.Mooe, line.Co, line.Total };
 
         line.Ps   = dto.Ps;
@@ -126,9 +155,34 @@ public sealed class AipExpenditureService : IAipExpenditureService
         line.Co   = dto.Co;
         line.UpdatedAt = DateTime.UtcNow;
         await ApplySnapshotsAsync(line, dto.AccountId, dto.FundingSourceId, ct);
+
+        // ⚠️ null and empty differ here (see UpdateAipExpenditureDto): null leaves the existing
+        // items alone, so a caller that never learned about procurement cannot silently strip them;
+        // an empty list is an explicit "remove them all" and returns the line to a typed amount.
+        IReadOnlyList<AipProcurementItem> existingItems = dto.ProcurementItems is null
+            ? await _expRepo.GetProcurementItemsByExpenditureIdsAsync([line.Id], ct)
+            : [];
+
+        if (dto.ProcurementItems is null)
+        {
+            if (existingItems.Count > 0 &&
+                await ApplyRoutedTotalAsync<AipExpenditureWriteResultDto>(
+                    line, dto.AccountId, existingItems.Sum(i => i.LineTotal), ct) is { } keepError)
+                return keepError;
+        }
+        else if (await ApplyProcurementRoutingAsync<AipExpenditureWriteResultDto>(
+                     line, dto.AccountId, dto.ProcurementItems, ct) is { } routingError)
+        {
+            return routingError;
+        }
+
         line.Recalculate();
 
         await _expRepo.UpdateAsync(line, ct);
+
+        if (dto.ProcurementItems is not null)
+            await _expRepo.ReplaceProcurementItemsAsync(line.Id, BuildItems(dto.ProcurementItems), ct);
+
         await _expRepo.SaveChangesAsync(ct);
 
         await _audit.LogAsync("aip_expenditures", line.Id, AuditAction.Update, before,
@@ -190,8 +244,14 @@ public sealed class AipExpenditureService : IAipExpenditureService
         AipActivity? activity = await _aipRepo.GetActivityByIdAsync(activityId, ct);
         AipExpenditureTotalsDto totals = await _expRepo.SumByActivityIdAsync(activityId, ct);
 
+        // The written line is returned with its items so the page can re-render the row without a
+        // refetch — the whole reason this DTO carries the line at all.
+        IReadOnlyList<AipProcurementItem> items = line is null
+            ? []
+            : await _expRepo.GetProcurementItemsByExpenditureIdsAsync([line.Id], ct);
+
         return ServiceResult<AipExpenditureWriteResultDto>.Ok(new AipExpenditureWriteResultDto(
-            line is null ? null : Map(line),
+            line is null ? null : Map(line, items),
             activityId,
             activity?.Ps, activity?.Mooe, activity?.Co, activity?.Total,
             totals.LineCount));
@@ -266,14 +326,129 @@ public sealed class AipExpenditureService : IAipExpenditureService
             ? "PS, MOOE and CO cannot be negative."
             : null;
 
+    // ── Procurement items (V18-80 / PPDO-54) ──────────────────────────────────
+
+    /// <summary>
+    /// ⚠️ Rejects what the arithmetic cannot express. A negative quantity or price is not a plan;
+    /// a <c>numberOfDays</c> of zero silently zeroes a line the encoder just costed, which reads as
+    /// the save having failed. Days default to 1 for everything that is not day-based, so zero is
+    /// never the value someone meant.
+    /// </summary>
+    private static ServiceResult<T>? ValidateItems<T>(IReadOnlyList<SaveAipProcurementItemDto>? items)
+    {
+        if (items is null) return null;
+
+        foreach (SaveAipProcurementItemDto i in items)
+        {
+            if (string.IsNullOrWhiteSpace(i.Name))
+                return ServiceResult<T>.BadRequest("Every procurement item needs a name.");
+            if (i.Qty < 0m || i.UnitPrice < 0m)
+                return ServiceResult<T>.BadRequest(
+                    $"'{i.Name}' has a negative quantity or unit price.");
+            if (i.NumberOfDays <= 0m)
+                return ServiceResult<T>.BadRequest(
+                    $"'{i.Name}' has a number of days of {i.NumberOfDays}. Use 1 for items that are "
+                    + "not charged per day.");
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Derives the line's PS / MOOE / CO from its items, when it has any. A line with no items is
+    /// left exactly as the caller typed it.
+    /// </summary>
+    private async Task<ServiceResult<T>?> ApplyProcurementRoutingAsync<T>(
+        AipExpenditure line, int? accountId,
+        IReadOnlyList<SaveAipProcurementItemDto>? items, CancellationToken ct)
+    {
+        if (items is null || items.Count == 0) return null;
+
+        decimal total = items.Sum(i => i.Qty * i.UnitPrice * i.NumberOfDays);
+        return await ApplyRoutedTotalAsync<T>(line, accountId, total, ct);
+    }
+
+    /// <summary>
+    /// Puts <paramref name="total"/> in the one column the account's expense class names, and zeroes
+    /// the other two.
+    ///
+    /// ⚠️ Refuses rather than defaulting when the account is missing or its expense class is
+    /// unrecognised — see <see cref="AipProcurementRouting"/>. Defaulting to MOOE would put money in
+    /// the wrong column of a statutory form <i>and</i> move the office's General Fund ceiling
+    /// consumption, both silently.
+    /// </summary>
+    private async Task<ServiceResult<T>?> ApplyRoutedTotalAsync<T>(
+        AipExpenditure line, int? accountId, decimal total, CancellationToken ct)
+    {
+        Account? account = accountId is int aid
+            ? (await _accountRepo.GetAllAsync(ct)).FirstOrDefault(a => a.Id == aid)
+            : null;
+
+        if (account is null)
+            return ServiceResult<T>.BadRequest(
+                "An itemised line needs an account, so its total knows whether it is PS, MOOE or "
+                + "Capital Outlay. Pick an account or remove the procurement items.");
+
+        if (AipProcurementRouting.Route(account.ExpenseClass, total) is not { } routed)
+            return ServiceResult<T>.BadRequest(
+                $"Account {account.AccountNumber} has no recognised expense class "
+                + $"('{account.ExpenseClass}'), so an itemised total cannot be placed in PS, MOOE or "
+                + "Capital Outlay. Fix the account in Configuration → Accounts.");
+
+        line.Ps   = routed.Ps;
+        line.Mooe = routed.Mooe;
+        line.Co   = routed.Co;
+        return null;
+    }
+
+    /// <summary>
+    /// Maps the save DTOs to entities, computing every <c>LineTotal</c> server-side.
+    /// <see cref="AipProcurementItem.LineTotal"/> has a private setter, so this cannot be bypassed.
+    /// </summary>
+    private static List<AipProcurementItem> BuildItems(IReadOnlyList<SaveAipProcurementItemDto>? items)
+    {
+        if (items is null) return [];
+
+        List<AipProcurementItem> built = [];
+        foreach (SaveAipProcurementItemDto i in items)
+        {
+            AipProcurementItem item = new()
+            {
+                PriceIndexItemId = i.PriceIndexItemId,
+                Name         = i.Name.Trim(),
+                Unit         = i.Unit.Trim(),
+                UnitPrice    = i.UnitPrice,
+                Qty          = i.Qty,
+                NumberOfDays = i.NumberOfDays,
+            };
+            item.Recalculate();
+            built.Add(item);
+        }
+        return built;
+    }
+
+    private async Task<ILookup<int, AipProcurementItem>> LoadItemsAsync(
+        IReadOnlyList<AipExpenditure> lines, CancellationToken ct)
+    {
+        IReadOnlyList<AipProcurementItem> items =
+            await _expRepo.GetProcurementItemsByExpenditureIdsAsync(
+                lines.Select(l => l.Id).ToList(), ct);
+
+        return items.ToLookup(i => i.ExpenditureId);
+    }
+
     private static string NotFound(int activityId) => $"AIP activity {activityId} not found.";
     private static string NotFoundLine(int id)     => $"AIP expenditure {id} not found.";
 
-    private static AipExpenditureDto Map(AipExpenditure e) => new(
+    private static AipExpenditureDto Map(
+        AipExpenditure e, IEnumerable<AipProcurementItem>? items = null) => new(
         e.Id, e.ActivityId,
         e.AccountId, e.AccountNumberSnapshot, e.AccountTitleSnapshot,
         e.FundingSourceId, e.FundingSourceSnapshot, e.FundingSourceNameSnapshot,
-        e.Ps, e.Mooe, e.Co, e.Total);
+        e.Ps, e.Mooe, e.Co, e.Total,
+        (items ?? []).Select(i => new AipProcurementItemDto(
+            i.Id, i.PriceIndexItemId, i.Name, i.Unit,
+            i.UnitPrice, i.Qty, i.NumberOfDays, i.LineTotal)).ToList());
 
     private sealed record AipContext(AipActivity Activity, AipOffice Office);
 }
