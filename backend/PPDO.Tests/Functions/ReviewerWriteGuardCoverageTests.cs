@@ -57,6 +57,75 @@ public sealed class ReviewerWriteGuardCoverageTests
     }
 
     /// <summary>
+    /// Endpoints whose <b>own authority is a reviewer flag</b>, so an ordinary budget-planning user
+    /// cannot reach them at all (v1.8.0 Phase 4).
+    ///
+    /// <para>
+    /// ⚠️ <b>This is not an exemption from the guard — it is an exemption from two theories whose
+    /// premise does not hold here.</b> Both
+    /// <see cref="WriteEndpoint_OrdinaryUserIsNotRefused_SoTheGuardIsWhatCausesThe403"/> and
+    /// <see cref="WriteEndpoint_TreatsADepartmentHeadReviewerLikeAnyOtherUser"/> compare a
+    /// department-head reviewer against an ordinary user, and both assume the ordinary user gets
+    /// <i>through</i> the permission gate. For an endpoint gated on
+    /// <c>CanReviewBudgetPlanning</c> that is false by design: the ordinary user is refused by the
+    /// endpoint's own gate, long before <c>ReviewerWriteGuard</c> is consulted.
+    /// </para>
+    ///
+    /// <para>
+    /// These endpoints stay in <see cref="WriteEndpoint_RefusesACrossOfficeReviewer"/>, which is
+    /// still true and still worth asserting, and each one gets a dedicated test naming the gate it
+    /// actually has — see <see cref="SubmitToPpdo_IsGatedOnTheDepartmentHeadFlag"/>. Adding a name
+    /// here without adding that test would be a hole in the net, not a correction to it.
+    /// </para>
+    /// </summary>
+    private static readonly HashSet<string> ReviewerGatedEndpoints =
+    [
+        // PPDO-69 — the second submit. The department head's alone; an encoder must be refused.
+        $"{nameof(AipSubmitFunctions)}.{nameof(AipSubmitFunctions.SubmitToPpdo)}",
+    ];
+
+    /// <summary>
+    /// The write endpoints an ordinary budget-planning user can reach — the set the two
+    /// attribution theories below are actually about.
+    /// </summary>
+    public static TheoryData<string, string> OrdinaryReachableWriteEndpoints()
+    {
+        TheoryData<string, string> data = new();
+        foreach ((Type type, MethodInfo method, _) in DiscoverWriteEndpoints())
+        {
+            if (ReviewerGatedEndpoints.Contains($"{type.Name}.{method.Name}")) continue;
+            data.Add(type.FullName!, method.Name);
+        }
+        return data;
+    }
+
+    /// <summary>
+    /// The gate <see cref="AipSubmitFunctions.SubmitToPpdo"/> actually has, asserted directly
+    /// because the theories above deliberately skip it.
+    ///
+    /// ⚠️ The plan's "encoders cannot submit" applies to <b>this</b> hop only — the encoder's own
+    /// submit one route up is theirs by right. An implementation that gated this on
+    /// <c>CanAccessBudgetPlanning</c> like its neighbour would let any encoder push their own work
+    /// past their department head, which is the entire point of the second hop.
+    /// </summary>
+    [Fact]
+    public async Task SubmitToPpdo_IsGatedOnTheDepartmentHeadFlag()
+    {
+        string ordinary = await OutcomeAsync(
+            typeof(AipSubmitFunctions).FullName!, nameof(AipSubmitFunctions.SubmitToPpdo),
+            crossOfficeReviewer: false, departmentHeadReviewer: false);
+        string departmentHead = await OutcomeAsync(
+            typeof(AipSubmitFunctions).FullName!, nameof(AipSubmitFunctions.SubmitToPpdo),
+            crossOfficeReviewer: false, departmentHeadReviewer: true);
+
+        Assert.Equal($"status:{HttpStatusCode.Forbidden}", ordinary);
+        // Past the gate. It then reaches a mocked service and throws rather than returning a
+        // status — ServiceResult is sealed with a private constructor, so Moq cannot fabricate one
+        // — which is exactly how the other theories read "got through" too.
+        Assert.NotEqual($"status:{HttpStatusCode.Forbidden}", departmentHead);
+    }
+
+    /// <summary>
     /// Guards the discovery itself. If a refactor changes the attribute shape and this returns
     /// nothing, every theory below would vacuously pass — so assert the count is in the expected
     /// range instead. The exact number is allowed to grow; it must never collapse.
@@ -79,8 +148,10 @@ public sealed class ReviewerWriteGuardCoverageTests
         // BudgetPlanningFunctionTypes above. Until it was, the count stayed at 39 and all three
         // endpoints were silently uncovered while every test still passed. This file's safety net
         // has one hand-maintained hole in it, and that list is it.
-        Assert.True(found.Count >= 45,
-            $"Expected at least 45 budget-planning write endpoints, found {found.Count}. " +
+        // ↩️ 45 → 46 on 2026-09-08 (PPDO-69): AipSubmitFunctions
+        //    POST /aip/{aipId}/offices/{officeId}/submit-to-ppdo — the second submit.
+        Assert.True(found.Count >= 46,
+            $"Expected at least 46 budget-planning write endpoints, found {found.Count}. " +
             "If endpoints were legitimately removed, lower this floor deliberately — do not " +
             "delete the assertion, or the coverage theories start passing vacuously.");
     }
@@ -108,7 +179,7 @@ public sealed class ReviewerWriteGuardCoverageTests
     /// would show up here as 403-vs-something-else.
     /// </summary>
     [Theory]
-    [MemberData(nameof(WriteEndpoints))]
+    [MemberData(nameof(OrdinaryReachableWriteEndpoints))]
     public async Task WriteEndpoint_TreatsADepartmentHeadReviewerLikeAnyOtherUser(
         string typeName, string methodName)
     {
@@ -148,7 +219,7 @@ public sealed class ReviewerWriteGuardCoverageTests
     /// only one of them is refused — so the 403 is attributable to the guard and nothing else.
     /// </summary>
     [Theory]
-    [MemberData(nameof(WriteEndpoints))]
+    [MemberData(nameof(OrdinaryReachableWriteEndpoints))]
     public async Task WriteEndpoint_OrdinaryUserIsNotRefused_SoTheGuardIsWhatCausesThe403(
         string typeName, string methodName)
     {

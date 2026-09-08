@@ -326,4 +326,192 @@ public sealed class AipSubmitGateTests
         Assert.Contains(result.Value.Issues, i => i.ActivityId == 701 && i.Kind == "missing-cc-typology");
         Assert.All(result.Value.Issues, i => Assert.False(string.IsNullOrWhiteSpace(i.RefCode)));
     }
+
+    // ── The second submit: department head → PPDO (V18-51 / PPDO-69) ──────────
+    //
+    // ⚠️ There are TWO submits. Everything above tests the encoder's (Draft → DepartmentReview).
+    // These test the department head's (→ SubmittedToPpdo), which has a different authority, two
+    // valid starting states, and re-runs the same gate.
+
+    /// <summary>The department head. Same office; the authority difference is the flag, checked at the handler.</summary>
+    private static User DeptHead() => new()
+    {
+        Id = Guid.NewGuid(), Username = "dh", PasswordHash = "h", FullName = "Department Head",
+        Role = UserRole.Staff, OfficeId = OfficeId,
+        Office = new Office { Id = OfficeId, OfficeCode = "O7", OfficeName = "PPDO", IsActive = true },
+        OverrideCanReviewBudgetPlanning = true,
+        IsActive = true, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+    };
+
+    private void GivenGroupsAt(string status)
+    {
+        foreach (AipOffice g in _groups) g.WorkflowStatus = status;
+    }
+
+    /// <summary>A second sub-office group, so "every group moves together" is actually exercised.</summary>
+    private void GivenASecondGroup()
+        => _groups.Add(new AipOffice
+        {
+            Id = GroupB, AipRecordId = RecordId, OfficeId = OfficeId,
+            RefCode = "3000-000-1-01-010", Name = "PPDO - ANNEX", Sector = "SOCIAL",
+            WorkflowStatus = _groups[0].WorkflowStatus,
+        });
+
+    [Fact]
+    public async Task SubmitToPpdo_FromDepartmentReview_MovesEveryGroupTogether()
+    {
+        AipSubmitService sut = Build(GoodActivity());
+        GivenLines(700);
+        GivenGroupsAt(AipWorkflowStatus.DepartmentReview);
+        GivenASecondGroup();
+
+        ServiceResult<AipSubmitResultDto> result =
+            await sut.SubmitToPpdoAsync(RecordId, OfficeId, DeptHead());
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(AipWorkflowStatus.SubmittedToPpdo, result.Value!.WorkflowStatus);
+        Assert.Equal(2, result.Value.GroupsMoved);
+        // ⚠️ The point of the test: one office is several rows, and half-moving it would leave the
+        // office in two states at once with nothing on screen saying so.
+        Assert.All(_groups, g => Assert.Equal(AipWorkflowStatus.SubmittedToPpdo, g.WorkflowStatus));
+    }
+
+    /// <summary>Re-submitting after PPDO sent the work back is the SAME transition, not a third one.</summary>
+    [Fact]
+    public async Task SubmitToPpdo_FromReturnedByPpdo_IsAllowedAsAResubmit()
+    {
+        AipSubmitService sut = Build(GoodActivity());
+        GivenLines(700);
+        GivenGroupsAt(AipWorkflowStatus.ReturnedByPpdo);
+
+        ServiceResult<AipSubmitResultDto> result =
+            await sut.SubmitToPpdoAsync(RecordId, OfficeId, DeptHead());
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(AipWorkflowStatus.SubmittedToPpdo, _groups[0].WorkflowStatus);
+    }
+
+    [Fact]
+    public async Task SubmitToPpdo_WhileStillDraft_IsRefusedAndSaysTheFirstSubmitIsMissing()
+    {
+        AipSubmitService sut = Build(GoodActivity());
+        GivenLines(700); // Draft is the default state
+
+        ServiceResult<AipSubmitResultDto> result =
+            await sut.SubmitToPpdoAsync(RecordId, OfficeId, DeptHead());
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("not been submitted for department review", result.Error!);
+        Assert.Equal(AipWorkflowStatus.Draft, _groups[0].WorkflowStatus);
+    }
+
+    /// <summary>A double-click or a stale tab. Answering "done" would claim edits went on that did not.</summary>
+    [Fact]
+    public async Task SubmitToPpdo_WhenAlreadyWithPpdo_IsRefusedNamingTheState()
+    {
+        AipSubmitService sut = Build(GoodActivity());
+        GivenLines(700);
+        GivenGroupsAt(AipWorkflowStatus.SubmittedToPpdo);
+
+        ServiceResult<AipSubmitResultDto> result =
+            await sut.SubmitToPpdoAsync(RecordId, OfficeId, DeptHead());
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("review by PPDO", result.Error!);
+    }
+
+    /// <summary>
+    /// ⚠️ NotFound, not Forbidden — an office the caller does not own must be indistinguishable
+    /// from one that does not exist (PPDO-46), or the response enumerates the province.
+    /// </summary>
+    [Fact]
+    public async Task SubmitToPpdo_ForAnOfficeThatIsNotTheCallers_IsNotFoundNotForbidden()
+    {
+        AipSubmitService sut = Build(GoodActivity());
+        GivenLines(700);
+        GivenGroupsAt(AipWorkflowStatus.DepartmentReview);
+
+        ServiceResult<AipSubmitResultDto> result =
+            await sut.SubmitToPpdoAsync(RecordId, officeId: OfficeId + 1, DeptHead());
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+        Assert.Equal(AipWorkflowStatus.DepartmentReview, _groups[0].WorkflowStatus);
+    }
+
+    /// <summary>
+    /// ⚠️ The discriminating test for this ticket. The department head MAY edit values during
+    /// review (spec decision 4), so the figures that passed the encoder's gate are not necessarily
+    /// the figures being sent to PPDO. A version that trusted the first pass lets a review that
+    /// broke the ceiling through the only gate that enforces it.
+    /// </summary>
+    [Fact]
+    public async Task SubmitToPpdo_WhenAReviewEditBrokeTheCeiling_IsRefused()
+    {
+        AipSubmitService sut = Build(GoodActivity());
+        GivenLines(700);
+        GivenGroupsAt(AipWorkflowStatus.DepartmentReview);
+        _ceiling.Setup(c => c.ValidateForSubmitAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("General Fund: encoded ₱1,400,000 exceeds the ₱1,000,000 ceiling by ₱400,000.");
+
+        ServiceResult<AipSubmitResultDto> result =
+            await sut.SubmitToPpdoAsync(RecordId, OfficeId, DeptHead());
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("exceeds the", result.Error!);
+        Assert.Equal(AipWorkflowStatus.DepartmentReview, _groups[0].WorkflowStatus);
+    }
+
+    /// <summary>An activity stripped of its last line during review is caught here too.</summary>
+    [Fact]
+    public async Task SubmitToPpdo_WhenAReviewEditRemovedTheLastLine_IsRefused()
+    {
+        AipSubmitService sut = Build(GoodActivity());
+        GivenLines(); // every line gone
+        GivenGroupsAt(AipWorkflowStatus.DepartmentReview);
+
+        ServiceResult<AipSubmitResultDto> result =
+            await sut.SubmitToPpdoAsync(RecordId, OfficeId, DeptHead());
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(AipWorkflowStatus.DepartmentReview, _groups[0].WorkflowStatus);
+    }
+
+    /// <summary>
+    /// ⚠️ Named actions, not UPDATE. A transition logged as UPDATE is indistinguishable from any
+    /// other column change without parsing JSON, which would make PPDO-77's history a scan.
+    /// Both hops are asserted so the chain reads end to end.
+    /// </summary>
+    [Fact]
+    public async Task BothSubmits_AreAuditedUnderTheirOwnActionNames()
+    {
+        AipSubmitService sut = Build(GoodActivity());
+        GivenLines(700);
+
+        await sut.SubmitAsync(RecordId, Encoder());
+        await sut.SubmitToPpdoAsync(RecordId, OfficeId, DeptHead());
+
+        _audit.Verify(a => a.LogAsync("aip_offices", It.IsAny<int>(), AuditAction.SubmitToDeptHead,
+            It.IsAny<object?>(), It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Once);
+        _audit.Verify(a => a.LogAsync("aip_offices", It.IsAny<int>(), AuditAction.SubmitToPpdo,
+            It.IsAny<object?>(), It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>
+    /// ⚠️ Ten characters, hard. <c>audit_log.action</c> is <c>nvarchar(10)</c>; nothing in the
+    /// build catches an over-long value because the in-memory provider does not enforce the width,
+    /// so it would fail on the first real write to SQL Server. This spec's first draft proposed
+    /// twelve-character names.
+    /// </summary>
+    [Fact]
+    public void EveryAuditActionFitsTheColumn()
+    {
+        string[] all =
+        [
+            AuditAction.Create, AuditAction.Update, AuditAction.Delete,
+            AuditAction.SubmitToDeptHead, AuditAction.SubmitToPpdo,
+        ];
+
+        Assert.All(all, a => Assert.InRange(a.Length, 1, 10));
+    }
 }

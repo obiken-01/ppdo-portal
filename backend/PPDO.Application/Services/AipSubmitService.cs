@@ -81,7 +81,7 @@ public sealed class AipSubmitService : IAipSubmitService
         }
         await _officeRepo.SaveChangesAsync(ct);
 
-        await _audit.LogAsync("aip_offices", ctx.Groups[0].Id, AuditAction.Update,
+        await _audit.LogAsync("aip_offices", ctx.Groups[0].Id, AuditAction.SubmitToDeptHead,
             new { WorkflowStatus = AipWorkflowStatus.Draft },
             new
             {
@@ -96,6 +96,87 @@ public sealed class AipSubmitService : IAipSubmitService
 
         return ServiceResult<AipSubmitResultDto>.Ok(new AipSubmitResultDto(
             aipRecordId, ctx.OfficeId, AipWorkflowStatus.DepartmentReview, ctx.Groups.Count));
+    }
+
+    // ── Submit onward to PPDO (V18-51 / PPDO-69) ──────────────────────────────
+
+    /// <summary>
+    /// The states this hop may start from. <c>ReturnedByPpdo</c> is here because a re-submit after
+    /// PPDO sends work back is the <b>same</b> transition, not a third one — the office fixed what
+    /// was asked and the department head sends it on again.
+    /// </summary>
+    private static readonly string[] SubmittableToPpdo =
+    [
+        AipWorkflowStatus.DepartmentReview,
+        AipWorkflowStatus.ReturnedByPpdo,
+    ];
+
+    public async Task<ServiceResult<AipSubmitResultDto>> SubmitToPpdoAsync(
+        int aipRecordId, int officeId, User caller, CancellationToken ct = default)
+    {
+        ReadinessContext? ctx = await ResolveAsync(aipRecordId, caller, ct);
+        if (ctx is null)
+            return ServiceResult<AipSubmitResultDto>.NotFound($"AIP record {aipRecordId} not found.");
+
+        // ⚠️ NotFound, not Forbidden, and the same sentence either way: an office the caller does
+        // not own must be indistinguishable from one that does not exist (PPDO-46). ResolveAsync
+        // has already narrowed to the caller's own office, so a mismatch here means they asked
+        // about someone else's — or their own office changed under a stale tab.
+        if (ctx.Groups.Count == 0 || ctx.OfficeId != officeId)
+            return ServiceResult<AipSubmitResultDto>.NotFound(
+                $"AIP office {officeId} not found in record {aipRecordId}.");
+
+        if (ctx.Record.Status != PlanningStatus.Draft)
+            return ServiceResult<AipSubmitResultDto>.BadRequest(
+                $"The FY {ctx.Record.FiscalYear} AIP is '{ctx.Record.Status}' and cannot be submitted.");
+
+        // ⚠️ Refused by naming the state, including the case that looks like success. Submitting an
+        // office already at PPDO is a double-click or a stale tab; answering "done" would tell the
+        // department head their edits went on when they did not.
+        List<AipOffice> wrongState = ctx.Groups
+            .Where(g => !SubmittableToPpdo.Contains(g.WorkflowStatus))
+            .ToList();
+        if (wrongState.Count > 0)
+            return ServiceResult<AipSubmitResultDto>.BadRequest(
+                ctx.Groups[0].WorkflowStatus == AipWorkflowStatus.Draft
+                    ? "This office's AIP has not been submitted for department review yet, so it "
+                      + "cannot be sent on to PPDO."
+                    : $"This office's AIP is in {AipWriteGuard.Describe(wrongState[0].WorkflowStatus)} "
+                      + "and cannot be sent to PPDO from there.");
+
+        // ⚠️ Run the whole checklist again. The department head may edit values during review
+        // (spec decision 4), so an edit made in good faith can push the office over its ceiling or
+        // strip the last line off an activity — and this is the last gate before PPDO sees it.
+        AipReadinessDto readiness = await BuildAsync(ctx, ct);
+        if (!readiness.CanSubmit)
+            return ServiceResult<AipSubmitResultDto>.BadRequest(FormatRefusal(readiness));
+
+        // Captured before the loop: after it, every row reads SubmittedToPpdo and the state the
+        // office came from — which is what makes a re-submit legible in the history — is gone.
+        string from = ctx.Groups[0].WorkflowStatus;
+
+        foreach (AipOffice group in ctx.Groups)
+        {
+            group.WorkflowStatus = AipWorkflowStatus.SubmittedToPpdo;
+            await _officeRepo.UpdateAsync(group, ct);
+        }
+        await _officeRepo.SaveChangesAsync(ct);
+
+        await _audit.LogAsync("aip_offices", ctx.Groups[0].Id, AuditAction.SubmitToPpdo,
+            new { WorkflowStatus = from },
+            new
+            {
+                WorkflowStatus = AipWorkflowStatus.SubmittedToPpdo,
+                GroupIds       = ctx.Groups.Select(g => g.Id).ToArray(),
+            }, ct);
+
+        _logger.LogInformation(
+            "AIP submitted to PPDO. AipRecordId: {AipRecordId}, OfficeId: {OfficeId}, From: {From}, "
+            + "Groups: {GroupCount}, Activities: {ActivityCount}",
+            aipRecordId, ctx.OfficeId, from, ctx.Groups.Count, readiness.ActivityCount);
+
+        return ServiceResult<AipSubmitResultDto>.Ok(new AipSubmitResultDto(
+            aipRecordId, ctx.OfficeId, AipWorkflowStatus.SubmittedToPpdo, ctx.Groups.Count));
     }
 
     // ── The checklist ─────────────────────────────────────────────────────────

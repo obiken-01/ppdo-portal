@@ -345,12 +345,18 @@ work changed. The read joins and tolerates a missing node.
 **No new table** (decision 12). `AuditAction` today is `CREATE` / `UPDATE` / `DELETE`; add:
 
 ```
-SubmitToPpdo · ReturnByPpdo · AcceptByPpdo
+SUBMIT_DH · SUBMIT_PPD · RETURN_PPD · ACCEPT_PPD
 ```
 
 with `table_name = "aip_offices"`, `record_id` = the `AipOffice` row, and old/new values carrying
-the workflow status. The Phase 3 encoder submit should gain a constant too (`SubmitForReview`) so
-the history reads as one chain rather than starting mid-ladder.
+the workflow status. The Phase 3 encoder submit gains `SUBMIT_DH` so the history reads as one chain
+rather than starting mid-ladder.
+
+⚠️ **`audit_log.action` is `nvarchar(10)`** — set in `AuditLogConfiguration`, and this spec's first
+draft proposed `SubmitToPpdo` / `ReturnByPpdo` / `AcceptByPpdo`, all of which are 12 characters and
+would have failed on the first real write to SQL Server. Corrected in PPDO-69. **Count any further
+action name against ten before adding it**; nothing in the build catches an over-long one, because
+the in-memory provider used by the unit tests does not enforce the width.
 
 ⚠️ **This is the one place the reuse is not free.** A transition written as a generic `UPDATE` would
 be indistinguishable from any other column change without parsing the JSON. That is exactly why the

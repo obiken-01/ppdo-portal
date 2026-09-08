@@ -24,7 +24,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useMe } from "@/lib/me-cache";
 import {
-  listAip, getAipById, getAipReadiness, submitAip,
+  listAip, getAipById, getAipReadiness, submitAip, submitAipToPpdo,
   addAipProject, addAipActivity, aipErrorMessage,
 } from "@/lib/aip";
 import { listAccounts, listFundingSources, listPriceIndexForPicker } from "@/lib/config";
@@ -33,7 +33,7 @@ import { fmtThousands } from "@/lib/aip-units";
 import AipAddProgramsPanel from "@/components/aip/entry/AipAddProgramsPanel";
 import AipExpenditureTable from "@/components/aip/entry/AipExpenditureTable";
 import AipActivityFields from "@/components/aip/entry/AipActivityFields";
-import AipSubmitChecklist from "@/components/aip/entry/AipSubmitChecklist";
+import AipSubmitChecklist, { type AipSubmitStage } from "@/components/aip/entry/AipSubmitChecklist";
 import { AipLevelChip, AipRefCode, aipHeaderRow } from "@/components/aip/entry/AipHierarchy";
 import { listAipExpenditures } from "@/lib/aip";
 import type {
@@ -47,6 +47,9 @@ const YEARS = [0, 1, 2].map((n) => FIRST_ENTERED_FISCAL_YEAR + n);
 
 export default function AipEntryPage() {
   const me = useMe((m) => m.canAccessBudgetPlanning);
+  // The department-head reviewer's grant. Office scoping is not in the flag — the server narrows
+  // to the caller's own office — so this only decides whether the second submit is offered here.
+  const canReview = me?.canReviewBudgetPlanning === true;
 
   const [fiscalYear, setFiscalYear] = useState(FIRST_ENTERED_FISCAL_YEAR);
   const [record, setRecord]   = useState<AipRecordDetail | null>(null);
@@ -141,6 +144,45 @@ export default function AipEntryPage() {
     }
   }
 
+  /**
+   * The second hop (PPDO-69): the department head sends the reviewed work on to PPDO.
+   *
+   * ⚠️ A separate call with a separate authority, not a variant of `doSubmit`. The server re-runs
+   * the whole completeness and ceiling gate here — the department head may have edited values
+   * during review — so this can be refused even though the encoder's submit passed.
+   */
+  async function doSubmitToPpdo() {
+    if (!record || officeId == null) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await submitAipToPpdo(record.id, officeId);
+      await load();
+    } catch (e) {
+      setError(aipErrorMessage(e, "Could not send this AIP to PPDO."));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  /**
+   * Which of the two submits this reader is standing at, if either.
+   *
+   * ⚠️ Deliberately independent of `canEdit`. A department head whose office is in department
+   * review cannot edit the tree (that lock is PPDO-70's to move) but must still be able to send
+   * the work on — those are different permissions and conflating them strands the office.
+   */
+  const submitStage: AipSubmitStage =
+    workflowStatus === "Draft"
+      ? { kind: "encoder", onSubmit: doSubmit }
+      : canReview && (workflowStatus === "DepartmentReview" || workflowStatus === "ReturnedByPpdo")
+        ? {
+            kind: "toPpdo",
+            resubmit: workflowStatus === "ReturnedByPpdo",
+            onSubmit: doSubmitToPpdo,
+          }
+        : { kind: "readOnly", holder: describeStatus(workflowStatus) };
+
   // ── Shell ───────────────────────────────────────────────────────────────
   // ⚠️ The header and the year picker render immediately, in every state. Gating the whole page on
   // a spinner and then swapping in a full-height tree is the CLS failure PERFORMANCE_GUIDELINES
@@ -197,9 +239,8 @@ export default function AipEntryPage() {
           {readiness && (
             <AipSubmitChecklist
               readiness={readiness}
-              onSubmit={doSubmit}
+              stage={submitStage}
               submitting={submitting}
-              readOnlyReason={canEdit ? null : `With ${describeStatus(workflowStatus)}`}
             />
           )}
 

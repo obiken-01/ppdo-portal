@@ -47,4 +47,35 @@ public interface IAipSubmitService
     /// </summary>
     Task<ServiceResult<AipSubmitResultDto>> SubmitAsync(
         int aipRecordId, User caller, CancellationToken ct = default);
+
+    /// <summary>
+    /// The <b>second</b> submit: the office's department head sends the reviewed work on to PPDO
+    /// (V18-51 / PPDO-69, <c>AIP_Review_Spec.md</c> §3.2). From <c>DepartmentReview</c> — or from
+    /// <c>ReturnedByPpdo</c>, which is the re-submit after PPDO sent it back.
+    ///
+    /// <para>
+    /// <b>⚠️ There are two submits and they have different authorities.</b>
+    /// <see cref="SubmitAsync"/> is the encoder's, and shipped in Phase 3. This one is the
+    /// department-head reviewer's <i>alone</i> — the caller must hold
+    /// <c>CanReviewBudgetPlanning</c>, checked at the handler as every other feature gate is.
+    /// The plan's original "encoders cannot submit" applies only to this hop.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>⚠️ The completeness and ceiling checks run again here, and that is not belt-and-braces.</b>
+    /// The department head <i>may edit values</i> during review (spec decision 4) — that is what the
+    /// review is for — so the figures that passed the encoder's gate are not necessarily the figures
+    /// being sent to PPDO. Trusting the earlier pass would let a review that broke the ceiling
+    /// through the only gate that enforces it.
+    /// </para>
+    /// </summary>
+    /// <param name="officeId">
+    /// The office being submitted. ⚠️ Must be the caller's own; a mismatch is
+    /// <c>NotFound</c>, not <c>Forbidden</c>, so the response cannot be used to discover which
+    /// offices exist (PPDO-46). It is in the signature — despite always equalling the caller's own
+    /// office — so this route reads the same as the return and accept routes beside it, and so a
+    /// stale tab cannot submit an office the user has since moved away from.
+    /// </param>
+    Task<ServiceResult<AipSubmitResultDto>> SubmitToPpdoAsync(
+        int aipRecordId, int officeId, User caller, CancellationToken ct = default);
 }
