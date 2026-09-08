@@ -450,6 +450,21 @@ below covers. See **V18-80** (§12.7).
 
 ## 6. Phase 4 — Review & Consolidation ✅ unblocked
 
+> ⚠️ **Superseded 2026-09-08 by `docs/v1.8/AIP_Review_Spec.md` (PPDO-68). Read that, not this
+> table.** Phase 4 is ticketed as epic **PPDO-67** with children **PPDO-68…79**.
+>
+> Three rows below are stale and the spec says so in full: **V18-50** shipped in Phase 3 as a
+> separate `AipWorkflowStatus` with all five states, *not* by extending `PlanningStatus`;
+> **V18-57** split into the kanban (PPDO-78) and the history (PPDO-77); and the "two shaping
+> questions" named in the paragraph below were both answered on 2026-08-26 (§12.8 Q6 and Q8).
+>
+> Two further questions were open until 2026-09-08 and are now settled in the spec: during
+> `DepartmentReview` **both encoder and department head may edit** (the lock falls at
+> `SubmittedToPpdo` — this reverses what Phase 3 shipped), and an office reaches `Consolidated`
+> by an **explicit per-office Accept** by a PPDO reviewer.
+>
+> §12.4, §12.5, §12.5a, §12.6, §12.7 and §12.8 remain current and are what the spec collects.
+
 ~~#10 (reject/return, comment level)~~ and ~~the five §6.4 questions~~ ✅ all answered 2026-08-25 —
 the workflow is written out in §12.6 and the reviewer is now a **PPDO user, not the LFC** (§12.4).
 **Phase 4 can be ticketed**, subject to the two shaping questions in §12.8 (comment threading, and
