@@ -59,8 +59,40 @@ const EMPTY: Draft = {
 // ⚠️ Defined at module scope, not inline per render: the three pickers below must label and search
 // an account identically, and three inline copies is how "3-11-010" finds a row in one picker and
 // nothing in another.
-const accountLabel  = (a: AccountResponse) => `${a.accountNumber} · ${a.accountTitle}`;
+// ⚠️ The expense class is IN the label, not only in the search text. It decides which column an
+// itemised line's money lands in, so an encoder needs it while choosing — not only after. It was
+// already searchable, which meant the one field that changes the outcome was findable but invisible.
+const accountLabel  = (a: AccountResponse) =>
+  `${a.accountNumber} · ${a.accountTitle}${a.expenseClass ? ` — ${a.expenseClass}` : ""}`;
 const accountSearch = (a: AccountResponse) => `${a.accountNumber} ${a.accountTitle} ${a.expenseClass}`;
+
+/**
+ * Where this account's money goes, said out loud (PPDO-58 follow-up).
+ *
+ * ⚠️ **The wording differs by whether the line is itemised, because the account's authority does.**
+ * On an itemised line the class is *determinative* — the server routes Σ line-total into that one
+ * column and zeroes the other two. On a typed line the encoder still fills all three columns by
+ * hand, so the class is only *advisory*. Saying "goes to MOOE" on a typed line would be a claim the
+ * form does not enforce, and an encoder who believed it would stop checking which box they were in.
+ */
+function ExpenseClassNote({ expenseClass, itemised }: { expenseClass?: string; itemised: boolean }) {
+  const known = expenseClass?.trim().toUpperCase();
+  const recognised = known === "PS" || known === "MOOE" || known === "CO";
+
+  // ⚠️ Silent on an unrecognised class, deliberately. The itemised case is already explained by the
+  // amber banner in the procurement panel — which says what to DO about it — and two messages for
+  // one condition trains people to read neither. On a typed line it is harmless and needs no note.
+  if (!recognised) return null;
+
+  return (
+    <span className="flex items-center gap-1 whitespace-nowrap text-[11px] text-slate-600">
+      <span className="rounded-full bg-green-100 px-1.5 py-0.5 font-semibold text-green-800">
+        {known}
+      </span>
+      {itemised ? "← items total goes here" : "account class"}
+    </span>
+  );
+}
 const fundSearch    = (f: FundingSourceResponse) => `${f.code} ${f.name}`;
 
 /** The fund's label, marking the one fund the ceiling actually checks. */
@@ -511,7 +543,7 @@ function EditRow({
   return (
     <>
       <tr className="border-t border-slate-200 bg-amber-50">
-        <td className="py-1.5 pr-2 min-w-[14rem]">
+        <td className="py-1.5 pr-2 min-w-[14rem] align-top">
           <Lookup
             items={accounts}
             value={accountId}
@@ -523,6 +555,13 @@ function EditRow({
             placeholder="Search accounts…"
             disabled={busy}
           />
+          {/* Directly under the picker that determines it, so the answer is where the question
+              was asked — not in a legend elsewhere on the row. */}
+          {accountId !== null && (
+            <div className="mt-1">
+              <ExpenseClassNote expenseClass={expenseClass} itemised={itemised} />
+            </div>
+          )}
         </td>
         {showFund && (
           <td className="py-1.5 pr-2 min-w-[10rem]">
