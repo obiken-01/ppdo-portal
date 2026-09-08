@@ -1,4 +1,4 @@
-﻿namespace PPDO.Application.DTOs.BudgetPlanning;
+namespace PPDO.Application.DTOs.BudgetPlanning;
 
 // ── Read DTOs ─────────────────────────────────────────────────────────────────
 
@@ -22,7 +22,28 @@ public record AipActivityDto(
     decimal? CcMitigation,
     string?  CcTypologyCode,
     bool     IsCreation,
-    bool     IsSynthetic = false);
+    bool     IsSynthetic = false,
+    /// <summary>
+    /// The distinct funding-source codes this activity's expenditure lines draw on, in the order
+    /// they were first used — the form's Funding Source column (7), which prints them joined
+    /// (<c>5% CF/ NGA</c>). Added by PPDO-80.
+    ///
+    /// <para>
+    /// ⚠️ <b>This is not <see cref="FundingSourceSnapshot"/> and does not replace it.</b> On an
+    /// entered year the fund lives on the LINE — one per line, Phase 2 decision 4 — so an activity
+    /// drawing on two funds stores none itself and the snapshot is null. On an FY≤2027 uploaded
+    /// activity the reverse holds: there are no lines, so this is empty and the snapshot is the
+    /// only answer. A reader wanting "what funds is this on?" must consider both.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ Empty on every write path that does not load lines — an activity just created has none,
+    /// which is correct. The two paths where it would be <i>wrong</i> to leave it empty are the
+    /// details save and the expenditure write, because the entry page splices those responses
+    /// straight into its tree instead of reloading; both fill it.
+    /// </para>
+    /// </summary>
+    IReadOnlyList<string>? FundCodes = null);
 
 public record AipProjectDto(
     int    Id,

@@ -184,8 +184,18 @@ public sealed class AipSubmitGateTests
         Assert.Contains("eSRE", result.Error!);
     }
 
+    /// <summary>
+    /// ↩️ **Inverted by PPDO-81** — this used to assert the submit was REFUSED. CC typology is
+    /// optional: column (14) is filled only for an activity carrying a climate-change component,
+    /// and most do not, so the old rule made encoders invent a code for every ordinary operating
+    /// activity. The test is kept rather than deleted, pointing the other way, because the
+    /// behaviour it pins is a deliberate decision someone will otherwise "restore" as a bug fix.
+    ///
+    /// Whitespace, not null, on purpose: the removed check used <c>IsNullOrWhiteSpace</c>, so a
+    /// blank-but-present code is the value a partial revert would start refusing again.
+    /// </summary>
     [Fact]
-    public async Task Submit_ActivityMissingClimateChangeTypology_IsRefused()
+    public async Task Submit_ActivityWithNoClimateChangeTypology_IsAllowed()
     {
         AipActivity noCc = GoodActivity();
         noCc.CcTypologyCode = "  ";
@@ -194,8 +204,7 @@ public sealed class AipSubmitGateTests
 
         ServiceResult<AipSubmitResultDto> result = await sut.SubmitAsync(RecordId, Encoder());
 
-        Assert.False(result.IsSuccess);
-        Assert.Contains("climate-change", result.Error!);
+        Assert.True(result.IsSuccess);
     }
 
     [Fact]
@@ -315,16 +324,41 @@ public sealed class AipSubmitGateTests
     public async Task Readiness_ListsOneIssuePerFailingActivityNamingTheNode()
     {
         AipActivity a = GoodActivity(700); a.EsreCode = null;
-        AipActivity b = GoodActivity(701); b.CcTypologyCode = null;
+        // ↩️ Was a missing CC typology until PPDO-81 dropped that check. An uncosted activity is
+        // used instead, so this still proves the per-node shape with two DIFFERENT failures —
+        // re-pointing it at a second missing eSRE would have tested one rule twice.
+        AipActivity b = GoodActivity(701); b.Total = null;
         AipSubmitService sut = Build(a, b);
-        GivenLines(700, 701);
+        GivenLines(700);   // 701 gets no lines and no Total, so it fails as never costed.
 
         ServiceResult<AipReadinessDto> result = await sut.GetReadinessAsync(RecordId, Encoder());
 
         Assert.Equal(2, result.Value!.Issues.Count);
         Assert.Contains(result.Value.Issues, i => i.ActivityId == 700 && i.Kind == "missing-esre");
-        Assert.Contains(result.Value.Issues, i => i.ActivityId == 701 && i.Kind == "missing-cc-typology");
+        Assert.Contains(result.Value.Issues, i => i.ActivityId == 701 && i.Kind == "no-lines");
         Assert.All(result.Value.Issues, i => Assert.False(string.IsNullOrWhiteSpace(i.RefCode)));
+    }
+
+    /// <summary>
+    /// ⚠️ **CC typology is optional and submit must not block on it** (PPDO-81).
+    ///
+    /// Column (14) is filled only for an activity carrying a climate-change component, and most do
+    /// not. The gate used to refuse a blank, which forced encoders to invent a code for every
+    /// ordinary operating activity — fiction in a column the province reports on. This pins the
+    /// absence of that check, because "we removed a rule" is otherwise invisible to the suite.
+    /// </summary>
+    [Fact]
+    public async Task Readiness_DoesNotBlockOnAMissingCcTypologyCode()
+    {
+        AipActivity a = GoodActivity(700);
+        a.CcTypologyCode = null;
+        AipSubmitService sut = Build(a);
+        GivenLines(700);
+
+        ServiceResult<AipReadinessDto> result = await sut.GetReadinessAsync(RecordId, Encoder());
+
+        Assert.Empty(result.Value!.Issues);
+        Assert.True(result.Value.CanSubmit);
     }
 
     // ── The second submit: department head → PPDO (V18-51 / PPDO-69) ──────────

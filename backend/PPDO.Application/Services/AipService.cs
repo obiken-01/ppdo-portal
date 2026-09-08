@@ -1,4 +1,4 @@
-﻿using PPDO.Application.Common;
+using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Interfaces;
@@ -31,6 +31,13 @@ public sealed class AipService : IAipService
     private readonly IRepository<AipActivity> _activityRepo;
     private readonly ILdipRepository _ldipRepo;
     private readonly IAllocationRepository _allocationRepo;
+    /// <summary>
+    /// Read-only here, and only ever for <c>FundCodes</c> (PPDO-80). The AIP tree must print the
+    /// form's Funding Source column, and on an entered year that answer lives on the expenditure
+    /// lines rather than on the activity row. Writes to those lines stay in
+    /// <c>AipExpenditureService</c>.
+    /// </summary>
+    private readonly IAipExpenditureRepository _expRepo;
 
     public AipService(
         IAipRepository             aipRepo,
@@ -46,7 +53,8 @@ public sealed class AipService : IAipService
         IRepository<AipProject>  projectRepo,
         IRepository<AipActivity> activityRepo,
         ILdipRepository ldipRepo,
-        IAllocationRepository allocationRepo)
+        IAllocationRepository allocationRepo,
+        IAipExpenditureRepository expRepo)
     {
         _aipRepo    = aipRepo;
         _fsRepo     = fsRepo;
@@ -62,6 +70,7 @@ public sealed class AipService : IAipService
         _activityRepo     = activityRepo;
         _ldipRepo         = ldipRepo;
         _allocationRepo   = allocationRepo;
+        _expRepo          = expRepo;
     }
 
     // ── Read ──────────────────────────────────────────────────────────────────
@@ -132,6 +141,22 @@ public sealed class AipService : IAipService
         List<int> projectIds = projects.Select(j => j.Id).ToList();
         IReadOnlyList<AipActivity> acts     = await _aipRepo.GetActivitiesByProjectIdsAsync(projectIds, ct);
 
+        // The form's Funding Source column (7), for every activity in the record, in one query
+        // (PPDO-80). Scoped by record rather than by the id list above: it costs the same, and a
+        // host-office caller's `acts` runs to thousands of ids.
+        //
+        // ⚠️ Sequential await, never Task.WhenAll with the reads above — they share one DbContext,
+        // which is not thread-safe (the GetStatsAsync production 500, CLAUDE.md).
+        IReadOnlyList<AipActivityFundCodeDto> fundRows =
+            await _expRepo.GetFundCodesByAipRecordAsync(id, ct);
+        // Grouped once, not searched per activity: the linear scan would be O(activities × lines).
+        // Absent id means "no funded line", which the lookup below turns into an empty list.
+        Dictionary<int, IReadOnlyList<string>> fundCodes = fundRows
+            .GroupBy(r => r.ActivityId)
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlyList<string>)g.Select(r => r.Code).ToList());
+
         // Build nested DTO hierarchy.
         IReadOnlyList<AipOfficeDto> officeDtos = offices.Select(o =>
         {
@@ -142,7 +167,9 @@ public sealed class AipService : IAipService
                     IReadOnlyList<AipProjectDto> projDtos = projects
                         .Where(j => j.ProgramId == p.Id)
                         .Select(j => new AipProjectDto(j.Id, j.ProgramId, j.RefCode, j.Name,
-                            acts.Where(a => a.ProjectId == j.Id).Select(MapActivityToDto).ToList(),
+                            acts.Where(a => a.ProjectId == j.Id)
+                                .Select(a => MapActivityToDto(a, fundCodes.GetValueOrDefault(a.Id)))
+                                .ToList(),
                             j.IsSynthetic))
                         .ToList();
                     return new AipProgramDto(p.Id, p.OfficeId, p.RefCode, p.Name, projDtos, p.FunctionBand);
@@ -950,7 +977,11 @@ public sealed class AipService : IAipService
                 p.Id, targetOffice.Id, p.RefCode, p.Name,
                 allTargetProjects.Where(j => j.ProgramId == p.Id).Select(j => new AipProjectDto(
                     j.Id, p.Id, j.RefCode, j.Name,
-                    allTargetActivities.Where(a => a.ProjectId == j.Id).Select(MapActivityToDto).ToList(),
+                    // A lambda, not the method group: PPDO-80's optional `fundCodes` parameter
+                    // makes the group match Select's (item, index) overload too. No codes are
+                    // passed because these activities were just seeded and have no lines yet.
+                    allTargetActivities.Where(a => a.ProjectId == j.Id)
+                        .Select(a => MapActivityToDto(a)).ToList(),
                     j.IsSynthetic)).ToList(),
                 p.FunctionBand)).ToList();
         }
@@ -1391,7 +1422,11 @@ public sealed class AipService : IAipService
             activity.CcAdaptation, activity.CcMitigation, activity.CcTypologyCode,
         }, ct);
 
-        return ServiceResult<AipActivityDto>.Ok(MapActivityToDto(activity));
+        // ⚠️ The codes are re-read rather than left empty. The entry page splices this response
+        // into its tree instead of reloading it (see that page's `patchActivity`), so an empty
+        // list here would blank the row's fund cell the moment an encoder saved a description.
+        IReadOnlyList<string> fundCodes = await _expRepo.GetFundCodesByActivityIdAsync(activity.Id, ct);
+        return ServiceResult<AipActivityDto>.Ok(MapActivityToDto(activity, fundCodes));
     }
 
     // ── Delete (mistakes happen — mirrors the Add* guard chain) ───────────────
@@ -1933,11 +1968,20 @@ public sealed class AipService : IAipService
         OfficeCount: officeCounts.GetValueOrDefault(r.Id, 0),
         UploadedByName: userNames.GetValueOrDefault(r.UploadedById));
 
-    private static AipActivityDto MapActivityToDto(AipActivity a) => new(
+    /// <param name="fundCodes">
+    /// The codes this activity's expenditure lines draw on, when the caller has loaded them.
+    ///
+    /// ⚠️ Defaulted to null rather than made required, because "no lines were read" and "the lines
+    /// name no fund" are the same empty list to a reader and only one of them is a bug. Every
+    /// caller that hands the result to a page which SPLICES it into an already-rendered tree —
+    /// the details save, the expenditure write — must pass it; a create legitimately has none.
+    /// </param>
+    private static AipActivityDto MapActivityToDto(
+        AipActivity a, IReadOnlyList<string>? fundCodes = null) => new(
         a.Id, a.ProjectId, a.RefCode, a.Name, a.EsreCode, a.ImplementingOffice,
         a.StartDate, a.EndDate, a.ExpectedOutputs, a.FundingSourceId, a.FundingSourceSnapshot,
         a.Ps, a.Mooe, a.Co, a.Total, a.CcAdaptation, a.CcMitigation, a.CcTypologyCode,
-        a.IsCreation, a.IsSynthetic);
+        a.IsCreation, a.IsSynthetic, fundCodes ?? []);
 
     /// <summary>The only 3 values <c>function_band</c> may hold (case-insensitive on input, canonicalized on save).</summary>
     private static readonly string[] AllowedFunctionBands =

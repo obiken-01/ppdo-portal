@@ -1,4 +1,4 @@
-﻿using Moq;
+using Moq;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
 using PPDO.Application.Services;
@@ -269,11 +269,20 @@ public sealed partial class AipServiceTests
         CallerContext ctx = new();
         ctx.SetUserId(UserId);
 
+        // PPDO-80: the tree read attaches each activity's fund codes. Defaulted to "no funded
+        // lines" here — every test in this file asserts on the hierarchy, not on the funds, and a
+        // loose mock would make an activity's funds depend on mock ordering rather than on data.
+        Mock<IAipExpenditureRepository> expRepo = new();
+        expRepo.Setup(r => r.GetFundCodesByAipRecordAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipActivityFundCodeDto>)[]);
+        expRepo.Setup(r => r.GetFundCodesByActivityIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<string>)[]);
+
         AipService sut = new(
             aipRepo.Object, fsRepo.Object, userRepo.Object,
             parser.Object, audit.Object, ctx, officeRepo.Object, wfpRepo.Object,
             officeConfigRepo.Object, programRepo.Object, projectRepo.Object, activityRepo.Object,
-            ldipRepo.Object, allocationRepo.Object);
+            ldipRepo.Object, allocationRepo.Object, expRepo.Object);
 
         return (sut, aipRepo, fsRepo, userRepo, parser, audit, officeRepo, wfpRepo,
             officeConfigRepo, programRepo, projectRepo, activityRepo, ldipRepo);

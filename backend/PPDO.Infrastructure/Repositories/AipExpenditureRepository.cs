@@ -110,6 +110,49 @@ public sealed class AipExpenditureRepository : Repository<AipExpenditure>, IAipE
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<AipActivityFundCodeDto>> GetFundCodesByAipRecordAsync(
+        int aipRecordId, CancellationToken ct = default)
+    {
+        // GROUP BY (activity, code) across the record's whole subtree — one query for a tree of
+        // any size. The per-activity form of this would be one query per row, which on a
+        // host-office read is thousands: the N+1 that cost ~60 round trips on the dashboard
+        // (RAL-166), an order of magnitude worse.
+        //
+        // ⚠️ MIN(id) travels with each code because SQL cannot build the joined "GF/GAD Fund"
+        // string. The caller joins them, and this is the key that makes that join stable and in
+        // entry order — see AipActivityFundCodeDto.
+        List<AipActivityFundCodeDto> rows = await _context.Set<AipExpenditure>()
+            .Where(e => e.Activity.Project.Program.Office.AipRecordId == aipRecordId
+                     && e.FundingSourceSnapshot != null)
+            .GroupBy(e => new { e.ActivityId, Code = e.FundingSourceSnapshot! })
+            .Select(g => new AipActivityFundCodeDto(
+                g.Key.ActivityId, g.Key.Code, g.Min(e => e.Id)))
+            .ToListAsync(ct);
+
+        // Ordered after materialising: the sort is over one small projected row set, and ordering
+        // a GroupBy by an aggregate is the kind of expression that silently falls back to client
+        // evaluation anyway. The filter and the grouping — the parts that touch the table — are
+        // both in SQL.
+        return rows
+            .OrderBy(r => r.ActivityId)
+            .ThenBy(r => r.FirstLineId)
+            .ToList();
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<string>> GetFundCodesByActivityIdAsync(
+        int activityId, CancellationToken ct = default)
+    {
+        List<AipActivityFundCodeDto> rows = await _context.Set<AipExpenditure>()
+            .Where(e => e.ActivityId == activityId && e.FundingSourceSnapshot != null)
+            .GroupBy(e => e.FundingSourceSnapshot!)
+            .Select(g => new AipActivityFundCodeDto(activityId, g.Key, g.Min(e => e.Id)))
+            .ToListAsync(ct);
+
+        return rows.OrderBy(r => r.FirstLineId).Select(r => r.Code).ToList();
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<AipActivityFundTotalsDto>> SumMooeCoByConfigOfficeAndFundAsync(
         int aipRecordId, int configOfficeId, int fundingSourceId, CancellationToken ct = default)
         // One GROUP BY across the office's whole subtree, joined down office → program → project →

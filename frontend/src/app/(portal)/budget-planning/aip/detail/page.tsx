@@ -18,6 +18,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMe } from "@/lib/me-cache";
+import { canOpenAipRecords, budgetPlanningFallback } from "@/lib/budget-planning-access";
 import { getAipById, aipErrorMessage } from "@/lib/aip";
 import { listOffices, listFundingSources } from "@/lib/config";
 import { aipProgramsAreLdipOnly, aipUploadRefusal } from "@/lib/aip-fiscal-years";
@@ -60,7 +61,10 @@ export default function AipDetailPage() {
   const searchParams = useSearchParams();
   const id           = parseInt(searchParams.get("id") ?? "", 10);
 
-  const me = useMe((m) => m.canAccessBudgetPlanning);
+  // PPDO-81 — Admin/SuperAdmin, matching the list this is reached from. ⚠️ This is also the read
+  // view for FY≤2027 uploaded AIPs, so a guest office no longer has a route to last year's approved
+  // document; that is an accepted consequence, not an oversight — see canOpenAipRecords.
+  const me = useMe(canOpenAipRecords, budgetPlanningFallback);
   const [record,  setRecord]  = useState<AipRecordDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState<string | null>(null);

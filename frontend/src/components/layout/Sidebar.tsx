@@ -26,6 +26,7 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import api from "@/lib/api";
 import { allocationLabels } from "@/lib/budget-planning-labels";
+import { canOpenAipRecords, canOpenLdip } from "@/lib/budget-planning-access";
 import { auth } from "@/lib/auth";
 import { clearMeCache } from "@/lib/me-cache";
 import { APP_VERSION } from "@/lib/version";
@@ -138,6 +139,13 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
   const showAllocation     = (me?.canManagePpdoAllocation === true && !isOfficeUser)
                           || me?.canManagePboCeiling === true;
   const showConfig         = !isOfficeUser && me?.canManageConfig === true;
+  // PPDO-81 — the AIP record list is where the base record is created, finalized and archived, and
+  // all three are Admin actions. An encoder's surface is AIP Entry below. LDIP is hidden from a
+  // GUEST office rather than from non-admins: PPDO planning staff work in it, but a guest office
+  // that finds a program missing would come here to add it and every write control is Admin-only.
+  // Both rules live in lib/budget-planning-access so the nav and the route guard cannot drift.
+  const showAipRecords     = me != null && canOpenAipRecords(me);
+  const showLdip           = me != null && canOpenLdip(me);
   const showResourceLinks  = !isOfficeUser;
   const showDashboard      = !isOfficeUser;
   const showAnnouncements  = !isOfficeUser && isAdmin;
@@ -356,17 +364,25 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
                   <span className="text-xs">•</span>
                   <span className="truncate">Dashboard</span>
                 </Link>
-                <Link href="/budget-planning/ldip" className={childLinkCls(isActive("/budget-planning/ldip"))}>
-                  <span className="text-xs">•</span>
-                  <span className="truncate">LDIP</span>
-                </Link>
-                <Link href="/budget-planning/aip" className={childLinkCls(isActive("/budget-planning/aip"))}>
-                  <span className="text-xs">•</span>
-                  <span className="truncate">AIP</span>
-                </Link>
+                {showLdip && (
+                  <Link href="/budget-planning/ldip" className={childLinkCls(isActive("/budget-planning/ldip"))}>
+                    <span className="text-xs">•</span>
+                    <span className="truncate">LDIP</span>
+                  </Link>
+                )}
+                {showAipRecords && (
+                  <Link href="/budget-planning/aip" className={childLinkCls(pathname === "/budget-planning/aip" || isActive("/budget-planning/aip/detail") || isActive("/budget-planning/aip/new") || isActive("/budget-planning/aip/import-preview"))}>
+                    <span className="text-xs">•</span>
+                    <span className="truncate">AIP</span>
+                  </Link>
+                )}
                 {/* PPDO-52 — the encoder's own tab, separate from the AIP list/detail above.
                     V18-83 will split this further into AIP Entry and AIP Review as separately
-                    gated siblings; this is the Entry half. */}
+                    gated siblings; this is the Entry half.
+
+                    ⚠️ Ungated on purpose, unlike the AIP item above: this is the ONE budget-planning
+                    page every office has, and since PPDO-81 hid the record list it is the only AIP
+                    surface most users see. */}
                 <Link href="/budget-planning/aip/entry" className={childLinkCls(isActive("/budget-planning/aip/entry"))}>
                   <span className="text-xs">•</span>
                   <span className="truncate">AIP Entry</span>

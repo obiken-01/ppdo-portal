@@ -44,6 +44,7 @@ import {
 } from "@/lib/budget-planning";
 import { useMe } from "@/lib/me-cache";
 import { formatMoney } from "@/lib/money";
+import { FIRST_ENTERED_FISCAL_YEAR } from "@/lib/aip-fiscal-years";
 import type {
   OfficeDashboard,
   OfficeSummary,
@@ -255,7 +256,17 @@ export default function BudgetPlanningPage() {
   // half the support traffic on this feature is "why can't I edit this?", and the answer is almost
   // always that the stage belongs to somebody else.
 
-  const aipHref = officeId != null ? `/budget-planning/aip?officeId=${officeId}` : "/budget-planning/aip";
+  // ⚠️ **AIP Entry, not the AIP record list** (PPDO-81). The list creates, finalizes and archives
+  // the base record and is now Admin-only; entry is where the reader of this hub actually works, and
+  // it is the page every office has. It carries no `officeId` because it scopes to the caller's own
+  // office server-side — passing one would imply a choice that does not exist.
+  //
+  // The fiscal year IS carried, so the hub and the page it hands off to agree on which year is being
+  // planned. Only from the break year, below which there is no entry process to hand off to.
+  const aipEntryHref =
+    fiscalYear != null && fiscalYear >= FIRST_ENTERED_FISCAL_YEAR
+      ? `/budget-planning/aip/entry?fiscalYear=${fiscalYear}`
+      : "/budget-planning/aip/entry";
   const allocationHref =
     officeId != null
       ? `/budget-planning/allocation?officeId=${officeId}${fiscalYear != null ? `&fiscalYear=${fiscalYear}` : ""}`
@@ -279,7 +290,7 @@ export default function BudgetPlanningPage() {
       owner: !isHost ? "Your office" : canManageAllocation ? "PPDO divisions" : "Your division",
       stage: hasAip ? "In progress" : "Todo",
       detail: `${(isHost ? activityTotal : officeDashboard?.aip.activityCount ?? 0).toLocaleString("en-PH")} activities`,
-      href: aipHref,
+      href: aipEntryHref,
     };
 
     const submissionStage: PipelineStage = {
@@ -327,7 +338,7 @@ export default function BudgetPlanningPage() {
     ];
   }, [
     isHost, hasCeiling, officeCeiling, hasAip, activityTotal, officeDashboard, allocatedToDivisions,
-    canManageAllocation, canManagePboCeiling, canReview, aipHref, allocationHref,
+    canManageAllocation, canManagePboCeiling, canReview, aipEntryHref, allocationHref,
   ]);
 
   // ── Money tiles ─────────────────────────────────────────────────────────
@@ -423,8 +434,8 @@ export default function BudgetPlanningPage() {
           tone="waiting"
           title="Waiting on the Provincial Budget Office"
           description={`No FY ${fiscalYear ?? "—"} ceiling has been published for ${officeLabel} yet. You can still draft your AIP — submission opens once the ceiling is set.`}
-          actionLabel="Open AIP"
-          href={aipHref}
+          actionLabel="AIP Entry"
+          href={aipEntryHref}
         />
       );
     }
@@ -434,8 +445,8 @@ export default function BudgetPlanningPage() {
         <ActionCard
           title="Start this year's AIP"
           description={`The ceiling is published. Enter FY ${fiscalYear ?? "—"} activities for ${officeLabel}.`}
-          actionLabel="Open AIP"
-          href={aipHref}
+          actionLabel="AIP Entry"
+          href={aipEntryHref}
         />
       );
     }
@@ -457,11 +468,11 @@ export default function BudgetPlanningPage() {
         tone="waiting"
         title="Keep costing your AIP activities"
         description="Your office's reviewer submits once every activity carries a cost."
-        actionLabel="Open AIP"
-        href={aipHref}
+        actionLabel="AIP Entry"
+        href={aipEntryHref}
       />
     );
-  }, [hasCeiling, hasAip, canManagePboCeiling, canReview, fiscalYear, officeLabel, allocationHref, aipHref]);
+  }, [hasCeiling, hasAip, canManagePboCeiling, canReview, fiscalYear, officeLabel, allocationHref, aipEntryHref]);
 
   // ── Fund bars ───────────────────────────────────────────────────────────
   // Funds with neither a ceiling nor an allocation are hidden — an all-zero bar is noise.

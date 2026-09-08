@@ -23,7 +23,9 @@ const KIND_LABELS: Record<string, string> = {
   "zero-total": "Totals ₱0",
   "missing-fund": "No funding source",
   "missing-esre": "Missing eSRE code",
-  "missing-cc-typology": "Missing CC typology",
+  // ↩️ "missing-cc-typology" is gone from the server's gate (PPDO-81) — CC typology is optional.
+  // The entry is left OUT rather than kept "just in case": an unknown slug already falls back to
+  // the issue's own message, so a stale label here would be worse than none.
   ceiling: "Over ceiling",
   empty: "Nothing to submit",
 };
@@ -147,24 +149,24 @@ export default function AipSubmitChecklist({
       </div>
 
       {/* ── Ceiling strip ─────────────────────────────────────────────────── */}
-      {/* ⚠️ ₱000, like the tree below it. ↩️ These three rendered raw PESOS while every figure
+      {/* ⚠️ Thousands of pesos, like the tree below it. ↩️ These three rendered raw PESOS while every figure
           beneath them rendered thousands, so the strip and the work it describes sat 1,000× apart
           on one screen and neither call site looked wrong. That is why `fmt` is no longer exported
           unit-less — every formatter now names its unit. */}
       {ceiling && (
         <div className="grid grid-cols-1 gap-px border-b border-slate-200 bg-slate-200 sm:grid-cols-3">
-          <Figure label="General Fund ceiling (₱000)"
+          <Figure label="General Fund ceiling (in thousand pesos)"
             value={ceiling.ceilingSet ? fmtThousandsReadout(ceiling.ceiling) : "Not set"}
             // ⚠️ An unset ceiling is ZERO, not unlimited. Saying so here stops an encoder reading
             // a blank as headroom.
             hint={ceiling.ceilingSet ? undefined : "PBO has not set your ceiling — treated as ₱0"} />
-          <Figure label="Encoded (MOOE + CO) (₱000)" value={fmtThousandsReadout(ceiling.encodedBaseRounded)}
+          <Figure label="Encoded (MOOE + CO) (in thousand pesos)" value={fmtThousandsReadout(ceiling.encodedBaseRounded)}
             // ⚠️ Keep this next to the figure. It is the only thing explaining why the strip does
             // not reconcile with the tree: DECISION 9 rounds each activity UP to the thousand
             // before summing, so three ₱1,200 activities read 3.60 below and 6.00 here.
             hint="Rounded up to the thousand per activity, PS exempt" />
           <Figure
-            label="Remaining (₱000)"
+            label="Remaining (in thousand pesos)"
             value={fmtThousandsReadout(ceiling.remaining)}
             negative={ceiling.remaining < 0}
             hint={ceiling.remaining < 0 ? "Over ceiling — this blocks submit" : undefined}

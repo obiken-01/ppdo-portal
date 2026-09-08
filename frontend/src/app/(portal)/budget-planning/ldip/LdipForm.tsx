@@ -30,6 +30,7 @@ import { useRouter } from "next/navigation";
 import { createLdip, finalizeLdip, ldipErrorMessage, unlockLdip, updateLdip, updateLdipProgram } from "@/lib/ldip";
 import { listOffices } from "@/lib/config";
 import { useMe } from "@/lib/me-cache";
+import { canOpenLdip, budgetPlanningFallback } from "@/lib/budget-planning-access";
 import { formatMoney } from "@/lib/money";
 import MoneyInput from "@/components/ui/MoneyInput";
 import OfficeSelect from "@/components/ui/OfficeSelect";
@@ -309,10 +310,7 @@ function SectionHead({ num, title, hint }: { num: number; title: string; hint?: 
 export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
   const router = useRouter();
   const { toast } = useToast();
-  const me = useMe(
-    (m) => m.canAccessBudgetPlanning,
-    (m) => (m.isHostOffice ? "/dashboard" : "/account"),
-  );
+  const me = useMe(canOpenLdip, budgetPlanningFallback);  // PPDO-81 — host office only.
 
   const isEdit = record != null;
   // Uploaded multi-office records (RAL-113) have no single office — editing them

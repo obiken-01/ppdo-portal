@@ -250,11 +250,17 @@ public sealed class AipExpenditureService : IAipExpenditureService
             ? []
             : await _expRepo.GetProcurementItemsByExpenditureIdsAsync([line.Id], ct);
 
+        // ⚠️ Re-read after the write, not derived from the line just written. Adding a line can
+        // introduce a fund, and deleting one can remove the last line naming a fund — neither is
+        // visible from the written line alone, and the page renders this cell without reloading.
+        IReadOnlyList<string> fundCodes = await _expRepo.GetFundCodesByActivityIdAsync(activityId, ct);
+
         return ServiceResult<AipExpenditureWriteResultDto>.Ok(new AipExpenditureWriteResultDto(
             line is null ? null : Map(line, items),
             activityId,
             activity?.Ps, activity?.Mooe, activity?.Co, activity?.Total,
-            totals.LineCount));
+            totals.LineCount,
+            fundCodes));
     }
 
     // ── Internals ─────────────────────────────────────────────────────────────
