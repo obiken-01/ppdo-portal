@@ -23,7 +23,9 @@ const KIND_LABELS: Record<string, string> = {
   "zero-total": "Totals ₱0",
   "missing-fund": "No funding source",
   "missing-esre": "Missing eSRE code",
-  "missing-cc-typology": "Missing CC typology",
+  // ↩️ "missing-cc-typology" is gone from the server's gate (PPDO-81) — CC typology is optional.
+  // The entry is left OUT rather than kept "just in case": an unknown slug already falls back to
+  // the issue's own message, so a stale label here would be worse than none.
   ceiling: "Over ceiling",
   empty: "Nothing to submit",
 };

@@ -412,7 +412,36 @@ export default function AipExpenditureTable({
           No expenditure lines yet. An activity must carry at least one to be submitted.
         </p>
       ) : (
-        <table className="mt-2 w-full text-xs">
+        <table className="mt-2 w-full table-fixed text-xs">
+          {/*
+            ⚠️ **`table-fixed` plus an explicit colgroup, and both halves are load-bearing.**
+
+            Under the browser's default `table-auto` the column widths are recomputed from the
+            widest cell in each column — so the moment a row went into edit mode, its account
+            picker and three money inputs seized width from the numeric columns and *every* row
+            shifted under a header that no longer sat above the right figures. The saved rows'
+            `CO` and `Total` collapsed into each other while the edit row's inputs spread out
+            beneath the wrong labels. Reported as "the field alignment is weird here".
+
+            Fixing only the edit row would not have worked: auto layout is a property of the whole
+            table, so a wide cell anywhere re-lays out everything. The widths therefore have to be
+            declared once, up here, where the header, the saved rows and the edit row all read the
+            same grid whatever is inside them.
+
+            ⚠️ The account column deliberately has NO width — under `table-fixed` the unsized
+            column absorbs the remainder, so account titles get whatever the numbers do not need,
+            and the numbers never lose to a long title. The money inputs are `w-full` with
+            `min-w-0` (`MoneyInput`), so they shrink into their share rather than forcing it wider.
+          */}
+          <colgroup>
+            <col />
+            {multiFund && <col className="w-[10%]" />}
+            <col className="w-[15%]" />
+            <col className="w-[15%]" />
+            <col className="w-[15%]" />
+            <col className="w-[12%]" />
+            <col className="w-[11%]" />
+          </colgroup>
           <thead>
             <tr className="text-left text-slate-600">
               <th className="py-1 font-medium">Account</th>
@@ -543,7 +572,9 @@ function EditRow({
   return (
     <>
       <tr className="border-t border-slate-200 bg-amber-50">
-        <td className="py-1.5 pr-2 min-w-[14rem] align-top">
+        {/* ⚠️ No `min-w` — the colgroup owns every width now, and a min-width here would be the
+            one cell able to override it and reintroduce the shifting this table just fixed. */}
+        <td className="py-1.5 pr-2 align-top">
           <Lookup
             items={accounts}
             value={accountId}
@@ -564,7 +595,7 @@ function EditRow({
           )}
         </td>
         {showFund && (
-          <td className="py-1.5 pr-2 min-w-[10rem]">
+          <td className="py-1.5 pr-2 align-top">
             {/* ⚠️ One fund per line even here. A second fund is a second line. */}
             <Lookup
               items={fundingSources}
@@ -584,15 +615,18 @@ function EditRow({
             derived figure is an invitation to type a number that the next save overwrites. */}
         {itemised ? (
           <>
-            <td className="py-1.5 pr-1 text-right tabular-nums text-slate-600">{fmtPesos(shown.ps)}</td>
-            <td className="py-1.5 pr-1 text-right tabular-nums text-slate-600">{fmtPesos(shown.mooe)}</td>
-            <td className="py-1.5 pr-1 text-right tabular-nums text-slate-600">{fmtPesos(shown.co)}</td>
+            <td className="py-1.5 pr-1 text-right align-top tabular-nums text-slate-600">{fmtPesos(shown.ps)}</td>
+            <td className="py-1.5 pr-1 text-right align-top tabular-nums text-slate-600">{fmtPesos(shown.mooe)}</td>
+            <td className="py-1.5 pr-1 text-right align-top tabular-nums text-slate-600">{fmtPesos(shown.co)}</td>
           </>
         ) : (
           <>
-            <td className="py-1.5 pr-1"><AipMoneyInput value={draft.ps}   onChange={(v) => setDraft({ ...draft, ps: v })} /></td>
-            <td className="py-1.5 pr-1"><AipMoneyInput value={draft.mooe} onChange={(v) => setDraft({ ...draft, mooe: v })} /></td>
-            <td className="py-1.5 pr-1"><AipMoneyInput value={draft.co}   onChange={(v) => setDraft({ ...draft, co: v })} /></td>
+            {/* ⚠️ `align-top`, matching the account cell. The account picker carries an expense-class
+                note under it, so a vertically-centred input would float half a line below the two
+                beside it whenever that note appeared. */}
+            <td className="py-1.5 pr-1 align-top"><AipMoneyInput value={draft.ps}   onChange={(v) => setDraft({ ...draft, ps: v })} /></td>
+            <td className="py-1.5 pr-1 align-top"><AipMoneyInput value={draft.mooe} onChange={(v) => setDraft({ ...draft, mooe: v })} /></td>
+            <td className="py-1.5 pr-1 align-top"><AipMoneyInput value={draft.co}   onChange={(v) => setDraft({ ...draft, co: v })} /></td>
           </>
         )}
 
@@ -602,7 +636,7 @@ function EditRow({
           {fmtPesos(shown.ps + shown.mooe + shown.co)}
           <span className="mt-0.5 block text-[10px] leading-3 text-slate-600">pesos</span>
         </td>
-        <td className="py-1.5 text-right whitespace-nowrap">
+        <td className="py-1.5 text-right align-top whitespace-nowrap">
           <button type="button" onClick={onSave} disabled={busy}
             className="font-medium text-green-700 hover:underline disabled:opacity-50">Save</button>
           <button type="button" onClick={onCancel} disabled={busy}

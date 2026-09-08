@@ -17,6 +17,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { getLdipById, ldipErrorMessage, uploadLdipFile } from "@/lib/ldip";
 import { useMe } from "@/lib/me-cache";
+import { canOpenLdip, budgetPlanningFallback } from "@/lib/budget-planning-access";
 import LdipForm from "../LdipForm";
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -313,7 +314,7 @@ function TabBar({
 }
 
 function LdipNewInner() {
-  const me = useMe((m) => m.canAccessBudgetPlanning, (m) => (m.isHostOffice ? "/dashboard" : "/account"));
+  const me = useMe(canOpenLdip, budgetPlanningFallback);  // PPDO-81 — host office only.
   const canUpload = me?.canUploadAip === true;
 
   // RAL-114 — re-upload into an existing record (?replaceId=). Upload-only, so it

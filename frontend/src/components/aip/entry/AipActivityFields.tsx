@@ -4,11 +4,15 @@
  * An entered-year activity's descriptive fields, on the AIP Entry page (V18-42 / PPDO-52).
  *
  * ⚠️ **This exists because the entry page was a dead end without it.** It created activities with
- * `esreCode` and `ccTypologyCode` hardcoded to null and offered no editor, while
- * `AipSubmitService` blocks submit on both (`missing-esre`, `missing-cc-typology`). An encoder
- * working only from this page could never satisfy their own gate. The two fields are marked
- * "needed to submit" here for that reason — the checklist at the top of the page says *what* is
- * missing; this says it where it is fixed.
+ * `esreCode` hardcoded to null and offered no editor, while `AipSubmitService` blocks submit on it
+ * (`missing-esre`). An encoder working only from this page could never satisfy their own gate.
+ * eSRE is marked "needed to submit" here for that reason — the checklist at the top of the page
+ * says *what* is missing; this says it where it is fixed.
+ *
+ * ⚠️ **CC typology is NOT one of them and must not be labelled as one** (PPDO-81). It was, and the
+ * gate refused a blank — but column (14) is filled only for an activity that actually carries a
+ * climate-change component, and most do not. Marking it required made encoders invent a code for
+ * every ordinary operating activity, which puts fiction in a column the province reports on.
  *
  * ⚠️ **No PS / MOOE / CO / funding source, deliberately.** On an entered year those come from the
  * activity's expenditure lines below — the server recomputes them on every line write, and the
@@ -127,7 +131,9 @@ export default function AipActivityFields({
             </div>
             <Field label="CC adaptation (in thousand pesos)" value={money(activity.ccAdaptation)} />
             <Field label="CC mitigation (in thousand pesos)" value={money(activity.ccMitigation)} />
-            <Field label="CC typology" value={activity.ccTypologyCode} required />
+            {/* ⚠️ Not `required` — an em dash here means "no climate-change component", which is
+                the normal case, not an omission (PPDO-81). */}
+            <Field label="CC typology" value={activity.ccTypologyCode} />
           </dl>
           {canEdit && (
             <button type="button" onClick={beginEdit}
@@ -206,10 +212,11 @@ export default function AipActivityFields({
         </div>
 
         <div>
-          {/* ⚠️ The other field the submit gate blocks on. Free text on both this form and the
-              detail page's — there is no canonical list of typology codes in the config, so
-              inventing a select here would reject codes the province actually uses. */}
-          <Label hint="needed to submit">CC typology code</Label>
+          {/* ⚠️ Optional — the submit gate does NOT block on this (PPDO-81); leave it blank on an
+              activity with no climate-change component. Free text on both this form and the detail
+              page's — there is no canonical list of typology codes in the config, so inventing a
+              select here would reject codes the province actually uses. */}
+          <Label>CC typology code</Label>
           <input value={ccTypologyCode} onChange={(e) => setCcTypologyCode(e.target.value)}
             className={inputCls} />
         </div>

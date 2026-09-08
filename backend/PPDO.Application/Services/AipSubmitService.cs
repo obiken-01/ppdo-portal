@@ -247,10 +247,16 @@ public sealed class AipSubmitService : IAipSubmitService
                     "missing-esre", activity.Id, activity.RefCode,
                     $"'{activity.Name}' has no eSRE code."));
 
-            if (string.IsNullOrWhiteSpace(activity.CcTypologyCode))
-                issues.Add(new AipReadinessIssueDto(
-                    "missing-cc-typology", activity.Id, activity.RefCode,
-                    $"'{activity.Name}' has no climate-change typology code."));
+            // ⚠️ **CC typology is NOT checked here, and must not be re-added** (PPDO-81). It used
+            // to be — `missing-cc-typology` — on the assumption that every column the AIP form
+            // prints is required. It is not: column (14) is filled only for an activity that
+            // actually carries a climate-change component, and most do not. Blocking submit on it
+            // forced encoders to invent a code for every ordinary operating activity, which is
+            // worse than a blank cell — it puts fiction in a column the province reports on.
+            //
+            // ↩️ eSRE above stays required. The two were introduced together and read as a pair,
+            // but they are not one: eSRE classifies EVERY activity, so a blank there is genuinely
+            // incomplete.
         }
 
         // ⚠️ An office with nothing in it is not "ready" — it is empty. Submitting it would hand a

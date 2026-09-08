@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useMe } from "@/lib/me-cache";
+import { canOpenAipRecords, budgetPlanningFallback } from "@/lib/budget-planning-access";
 import { aipErrorMessage, getAipById, uploadAipFile, openAipFiscalYear } from "@/lib/aip";
 import { aipUploadRefusal } from "@/lib/aip-fiscal-years";
 
@@ -343,7 +344,9 @@ function AipNewInner() {
   // RAL-62 — page gate relaxed from canUploadAip to canAccessBudgetPlanning so office users
   // (who can never upload an .xlsm) can still reach the Manual Entry tab. me.canUploadAip
   // (checked below) independently gates the Upload tab itself.
-  const me = useMe((m) => m.canAccessBudgetPlanning, "/budget-planning/aip");
+  // PPDO-81. ⚠️ The fallback can no longer be "/budget-planning/aip" — that page now refuses the
+  // same people this one does, so the redirect would bounce twice and land nowhere useful.
+  const me = useMe(canOpenAipRecords, budgetPlanningFallback);
   const canUpload = me?.canUploadAip === true;
 
   const [activeTab, setActiveTab] = useState<Tab>("upload");

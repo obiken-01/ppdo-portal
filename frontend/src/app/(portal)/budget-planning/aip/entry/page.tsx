@@ -22,6 +22,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useMe } from "@/lib/me-cache";
 import {
   listAip, getAipById, getAipReadiness, submitAip, submitAipToPpdo,
@@ -58,7 +59,19 @@ export default function AipEntryPage() {
   // to the caller's own office — so this only decides whether the second submit is offered here.
   const canReview = me?.canReviewBudgetPlanning === true;
 
-  const [fiscalYear, setFiscalYear] = useState(FIRST_ENTERED_FISCAL_YEAR);
+  // ⚠️ The year is read from the URL so the Budget Planning hub can hand off the year it was
+  // showing (PPDO-81) — the hub names a fiscal year in every sentence on it, and landing on a
+  // different one reads as the link having gone somewhere else.
+  //
+  // ⚠️ Validated against YEARS rather than trusted: a hand-edited `?fiscalYear=2019` would otherwise
+  // put the picker in a state it cannot offer, and every query below would run against a year with
+  // no entry process at all. An unusable value falls back to the default rather than erroring —
+  // there is nothing the reader could do about it.
+  const searchParams = useSearchParams();
+  const requestedYear = Number(searchParams.get("fiscalYear"));
+  const [fiscalYear, setFiscalYear] = useState(
+    YEARS.includes(requestedYear) ? requestedYear : FIRST_ENTERED_FISCAL_YEAR
+  );
   const [record, setRecord]   = useState<AipRecordDetail | null>(null);
   const [readiness, setReadiness] = useState<AipReadiness | null>(null);
   const [accounts, setAccounts]   = useState<AccountResponse[]>([]);
