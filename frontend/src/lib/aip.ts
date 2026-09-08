@@ -369,6 +369,27 @@ export async function submitAip(aipId: number): Promise<AipSubmitResult> {
   return unwrap(data);
 }
 
+/**
+ * The **second** submit: the department head sends the reviewed work on to PPDO (PPDO-69).
+ *
+ * ⚠️ Not the same call as `submitAip` above, and not the same authority. That one is the
+ * encoder's (Draft → department review); this one requires `canReviewBudgetPlanning` and runs
+ * from department review — or from returned-by-PPDO, which is the re-submit.
+ *
+ * ⚠️ The completeness and ceiling checks run **again** server-side, because the department head
+ * may have edited values during review. A success here is not implied by the checklist having
+ * been green when the encoder submitted.
+ */
+export async function submitAipToPpdo(
+  aipId: number,
+  officeId: number
+): Promise<AipSubmitResult> {
+  const { data } = await api.post<ApiResponse<AipSubmitResult>>(
+    `/budget-planning/aip/${aipId}/offices/${officeId}/submit-to-ppdo`, {}
+  );
+  return unwrap(data);
+}
+
 /** ⚠️ `remaining` may be negative. Render the sign; never clamp it. */
 export async function getAipCeiling(aipId: number): Promise<AipCeilingStatus> {
   const { data } = await api.get<ApiResponse<AipCeilingStatus>>(

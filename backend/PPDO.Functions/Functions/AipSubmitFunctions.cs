@@ -48,6 +48,13 @@ public sealed class AipSubmitFunctions
 
     private Task<bool> CanAccess(User u) => _permissions.CanAccessBudgetPlanningAsync(u);
 
+    /// <summary>
+    /// The department-head reviewer's grant. ⚠️ Office scoping is <b>not</b> in this flag — it is a
+    /// per-user boolean with no office in it — so the service narrows to the caller's own office
+    /// and refuses a mismatch as NotFound. The flag says "may review", not "may review office N".
+    /// </summary>
+    private Task<bool> CanReview(User u) => _permissions.CanReviewBudgetPlanningAsync(u);
+
     // ── GET /api/budget-planning/aip/{aipId}/readiness ───────────────────────
     [Function("AipReadiness")]
     public async Task<HttpResponseData> Readiness(
@@ -77,6 +84,31 @@ public sealed class AipSubmitFunctions
         // No body: what is submitted is decided by who is asking, not by what they send.
         return await ConfigHttp.FromResultAsync(req,
             await _submit.SubmitAsync(aipId, caller!, ct), ct);
+    }
+
+    // ── POST /api/budget-planning/aip/{aipId}/offices/{officeId}/submit-to-ppdo ──
+    //
+    // ⚠️ The SECOND submit, and it is gated differently from the first. The encoder's submit above
+    // needs only CanAccessBudgetPlanning; this one is the department-head reviewer's alone
+    // (CanReviewBudgetPlanning) — that is the whole content of the plan's "encoders cannot submit",
+    // which applies to this hop and not to the one above it.
+    //
+    // ⚠️ AuthorizeAsync, not AuthorizeWriteAsync. The reviewer write-denial exists to stop a
+    // cross-office PPDO reviewer editing another office's content; sending your own office's work
+    // onward is not content, and routing it through that guard would deny the action to anyone
+    // holding both flags. ReviewerWriteGuard's own remarks call this out by name.
+    [Function("AipSubmitToPpdo")]
+    public async Task<HttpResponseData> SubmitToPpdo(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post",
+            Route = "budget-planning/aip/{aipId:int}/offices/{officeId:int}/submit-to-ppdo")] HttpRequestData req,
+        int aipId, int officeId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) =
+            await ConfigHttp.AuthorizeAsync(req, _jwt, CanReview, ct);
+        if (denied is not null) return denied;
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _submit.SubmitToPpdoAsync(aipId, officeId, caller!, ct), ct);
     }
 
     // ── GET /api/budget-planning/aip/{aipId}/ceiling ─────────────────────────

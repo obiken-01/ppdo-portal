@@ -28,17 +28,59 @@ const KIND_LABELS: Record<string, string> = {
   empty: "Nothing to submit",
 };
 
+/**
+ * Which hop this reader is standing at (PPDO-69).
+ *
+ * ⚠️ **There are two submits, and they are not the same action.** The encoder's hands the office's
+ * work to its own department head; the department head's sends it on to PPDO. They have different
+ * authorities, different copy, and different consequences — the second one is the last point at
+ * which anything is editable. Rendering one button labelled "Submit" for both would make the
+ * irreversible step look identical to the reversible one.
+ *
+ * The page decides which applies, because it already owns the workflow status and the caller's
+ * flags; this component owns only the wording.
+ */
+export type AipSubmitStage =
+  | { kind: "encoder"; onSubmit: () => void }
+  | { kind: "toPpdo"; resubmit: boolean; onSubmit: () => void }
+  /**
+   * Nobody here can move it on. `holder` names **who has the work** — "your department head",
+   * "PPDO" — never a bare "read-only", which tells a reader nothing about how to get it back.
+   */
+  | { kind: "readOnly"; holder: string };
+
+const STAGE_COPY = {
+  encoder: {
+    heading: "Submit for department review",
+    button: "Submit",
+    busy: "Submitting…",
+    ready: "Everything checks out. Submitting hands this office’s whole AIP to the department head in one action.",
+  },
+  toPpdo: {
+    heading: "Send to PPDO",
+    button: "Send to PPDO",
+    busy: "Sending…",
+    // ⚠️ Says what becomes true, not just what the button does. This is the hop after which
+    // nobody in the office can edit anything (spec decision 5), and an encoder who discovers
+    // that by finding their fields disabled has been told too late.
+    ready: "Everything checks out. Sending locks this office’s AIP — nobody here can edit it while PPDO has it.",
+  },
+  resubmit: {
+    heading: "Re-submit to PPDO",
+    button: "Re-submit to PPDO",
+    busy: "Sending…",
+    ready: "Everything checks out. Re-sending locks this office’s AIP again while PPDO reviews the changes.",
+  },
+} as const;
+
 export default function AipSubmitChecklist({
   readiness,
-  onSubmit,
+  stage,
   submitting,
-  readOnlyReason,
 }: {
   readiness: AipReadiness;
-  onSubmit: () => void;
+  stage: AipSubmitStage;
   submitting: boolean;
-  /** Non-null when the office has already been submitted — names the state holding the work. */
-  readOnlyReason: string | null;
 }) {
   // ⚠️ Collapsed by default. The button already carries the count, so the summary an encoder
   // needs is visible without the list; expanded, an office with 80 uncosted activities pushed its
@@ -53,12 +95,19 @@ export default function AipSubmitChecklist({
     return acc;
   }, {});
 
+  const copy =
+    stage.kind === "readOnly"
+      ? STAGE_COPY.encoder // heading only; the button is not rendered in this branch
+      : stage.kind === "toPpdo" && stage.resubmit
+        ? STAGE_COPY.resubmit
+        : STAGE_COPY[stage.kind];
+
   return (
     <div className="border border-slate-200 bg-white">
       <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
         <div>
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-800">
-            Submit for department review
+            {stage.kind === "readOnly" ? "Submit" : copy.heading}
           </h2>
           <p className="mt-0.5 text-xs text-slate-600">
             {readiness.activityCount} activit{readiness.activityCount === 1 ? "y" : "ies"} in this
@@ -66,20 +115,20 @@ export default function AipSubmitChecklist({
           </p>
         </div>
 
-        {readOnlyReason ? (
+        {stage.kind === "readOnly" ? (
           // ⚠️ Names the state rather than just disabling the button. An encoder who is told
           // "read-only" has no idea who holds their work or how to get it back.
           <span className="border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">
-            {readOnlyReason}
+            With {stage.holder}
           </span>
         ) : (
           <button
             type="button"
-            onClick={onSubmit}
+            onClick={stage.onSubmit}
             disabled={!canSubmit || submitting}
             className="bg-green-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-green-800 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
-            {submitting ? "Submitting…" : "Submit"}
+            {submitting ? copy.busy : copy.button}
           </button>
         )}
       </div>
@@ -113,8 +162,9 @@ export default function AipSubmitChecklist({
       {/* ── Issues ───────────────────────────────────────────────────────── */}
       {canSubmit ? (
         <p className="px-4 py-3 text-sm text-slate-600">
-          Everything checks out. Submitting hands this office&rsquo;s whole AIP to the department
-          head in one action.
+          {stage.kind === "readOnly"
+            ? `This office’s AIP is with ${stage.holder} and cannot be changed here.`
+            : copy.ready}
         </p>
       ) : (
         <div className="px-4 py-3">
