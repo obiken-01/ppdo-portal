@@ -19,6 +19,13 @@
  * ↩️ The field set and its controls are lifted from `AipActivityRow.tsx` (the detail page's inline
  * edit) rather than redesigned — same eSRE options, same month selects — so an encoder who knows
  * one knows the other, and the two forms cannot drift apart in what they accept.
+ *
+ * ⚠️ **The field ORDER is the printed form's column order** (PPDO-80), not a grouping by kind:
+ * description (2) → eSRE → implementing office (3) → start (4) → end (5) → expected outputs (6) →
+ * CC adaptation (12) → CC mitigation (13) → CC typology (14). An encoder works with the Annex B
+ * sheet open beside this form and fills it left-to-right; any other order makes them hunt. **The
+ * read view and the edit view must stay in the same order as each other** — they are the same
+ * fields, and a reader who expands a row and then clicks Edit must not have them move.
  */
 
 import { useState } from "react";
@@ -30,11 +37,21 @@ import { inputCls, selectCls } from "@/components/aip/AipTreeCells";
 import type { AipActivityDetail } from "@/types";
 
 export default function AipActivityFields({
-  activity, canEdit, onSaved,
+  activity, canEdit, onSaved, defaultImplementingOffice = null,
 }: {
   activity: AipActivityDetail;
   canEdit: boolean;
   onSaved: (updated: AipActivityDetail) => void;
+  /**
+   * The reader's own office CODE, used when this activity carries no implementing office yet
+   * (PPDO-80). Codes, not names — the form's column (3) prints `OPV`, and `OPV/LFC/HRMO` where an
+   * activity is run jointly, which is why the field stays freely editable text.
+   *
+   * ⚠️ A prefill, never a lock: it fills an EMPTY field and never overwrites a value already
+   * there. An encoder who typed a joint office and then reopened the form would otherwise find
+   * their own office silently back in the box.
+   */
+  defaultImplementingOffice?: string | null;
 }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving]   = useState(false);
@@ -42,7 +59,8 @@ export default function AipActivityFields({
 
   const [name, setName]                             = useState(activity.name);
   const [esreCode, setEsreCode]                     = useState(activity.esreCode ?? "");
-  const [implementingOffice, setImplementingOffice] = useState(activity.implementingOffice ?? "");
+  const [implementingOffice, setImplementingOffice] =
+    useState(activity.implementingOffice ?? defaultImplementingOffice ?? "");
   const [startDate, setStartDate]                   = useState(activity.startDate ?? "");
   const [endDate, setEndDate]                       = useState(activity.endDate ?? "");
   const [expectedOutputs, setExpectedOutputs]       = useState(activity.expectedOutputs ?? "");
@@ -55,7 +73,7 @@ export default function AipActivityFields({
   function beginEdit() {
     setName(activity.name);
     setEsreCode(activity.esreCode ?? "");
-    setImplementingOffice(activity.implementingOffice ?? "");
+    setImplementingOffice(activity.implementingOffice ?? defaultImplementingOffice ?? "");
     setStartDate(activity.startDate ?? "");
     setEndDate(activity.endDate ?? "");
     setExpectedOutputs(activity.expectedOutputs ?? "");
@@ -96,17 +114,20 @@ export default function AipActivityFields({
     return (
       <div className="border-b border-slate-200 px-4 py-3">
         <div className="flex items-start justify-between gap-3">
+          {/* ⚠️ The printed form's column order, and the same order as the edit view below —
+              see this file's header. Expected outputs sits in the middle rather than at the end
+              because that is where column (6) is; it spans the row only because it is free text. */}
           <dl className="grid flex-1 grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3">
             <Field label="eSRE code" value={activity.esreCode} required />
-            <Field label="CC typology" value={activity.ccTypologyCode} required />
             <Field label="Implementing office" value={activity.implementingOffice} />
             <Field label="Start" value={activity.startDate} />
             <Field label="End" value={activity.endDate} />
-            <Field label="CC adaptation (₱000)" value={money(activity.ccAdaptation)} />
-            <Field label="CC mitigation (₱000)" value={money(activity.ccMitigation)} />
             <div className="col-span-2 sm:col-span-3">
               <Field label="Expected outputs" value={activity.expectedOutputs} />
             </div>
+            <Field label="CC adaptation (in thousand pesos)" value={money(activity.ccAdaptation)} />
+            <Field label="CC mitigation (in thousand pesos)" value={money(activity.ccMitigation)} />
+            <Field label="CC typology" value={activity.ccTypologyCode} required />
           </dl>
           {canEdit && (
             <button type="button" onClick={beginEdit}
@@ -139,15 +160,9 @@ export default function AipActivityFields({
         </div>
 
         <div>
-          {/* ⚠️ The other one. Free text on both this form and the detail page's — there is no
-              canonical list of typology codes in the config, so inventing a select here would
-              reject codes the province actually uses. */}
-          <Label hint="needed to submit">CC typology code</Label>
-          <input value={ccTypologyCode} onChange={(e) => setCcTypologyCode(e.target.value)}
-            className={inputCls} />
-        </div>
-
-        <div>
+          {/* ⚠️ Free text, and it must stay free text even though it is prefilled from the
+              reader's own office. The form prints joint implementations as `OPV/LFC/HRMO`, so a
+              select over the office list could not express a real row. */}
           <Label>Implementing office</Label>
           <input value={implementingOffice} onChange={(e) => setImplementingOffice(e.target.value)}
             className={inputCls} />
@@ -169,11 +184,18 @@ export default function AipActivityFields({
           </select>
         </div>
 
+        <div className="sm:col-span-3">
+          <Label>Expected outputs</Label>
+          <textarea value={expectedOutputs} onChange={(e) => setExpectedOutputs(e.target.value)} rows={2}
+            className={`${inputCls} resize-vertical`} />
+        </div>
+
         <div>
           {/* ⚠️ CC amounts live on the activity, not on the expenditure lines — lines carry only
               PS/MOOE/CO, so this form is the only place they can be entered. */}
-          {/* ⚠️ The label says pesos while the read view above says ₱000 — both are true, and the
-              input's own `= x ₱000` echo is what joins them. */}
+          {/* ⚠️ The label says pesos while the read view above says thousands — both are true, and
+              the input's own `= x ₱000` echo is what joins them. Inputs are pesos everywhere on an
+              AIP surface (see lib/aip-units); only read-only cells divide. */}
           <Label>CC adaptation (pesos)</Label>
           <AipMoneyInput value={ccAdaptation} onChange={setCcAdaptation} />
         </div>
@@ -183,10 +205,13 @@ export default function AipActivityFields({
           <AipMoneyInput value={ccMitigation} onChange={setCcMitigation} />
         </div>
 
-        <div className="sm:col-span-3">
-          <Label>Expected outputs</Label>
-          <textarea value={expectedOutputs} onChange={(e) => setExpectedOutputs(e.target.value)} rows={2}
-            className={`${inputCls} resize-vertical`} />
+        <div>
+          {/* ⚠️ The other field the submit gate blocks on. Free text on both this form and the
+              detail page's — there is no canonical list of typology codes in the config, so
+              inventing a select here would reject codes the province actually uses. */}
+          <Label hint="needed to submit">CC typology code</Label>
+          <input value={ccTypologyCode} onChange={(e) => setCcTypologyCode(e.target.value)}
+            className={inputCls} />
         </div>
       </div>
 
@@ -236,7 +261,7 @@ function Field({
 }
 
 /**
- * ₱000, matching every other read-only money figure on this page.
+ * Thousands of pesos, matching every other read-only money figure on this page.
  *
  * Returns null rather than an em dash for absent values, because `Field` distinguishes "—" from
  * "Not set — needed to submit" itself.

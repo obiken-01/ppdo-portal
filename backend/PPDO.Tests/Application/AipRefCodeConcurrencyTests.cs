@@ -165,7 +165,10 @@ public sealed class AipRefCodeConcurrencyTests
             new Mock<IAipXlsmParser>().Object, new Mock<IAuditService>().Object, new CallerContext(),
             new Mock<IRepository<AipOffice>>().Object, wfpRepo.Object, officeConfigRepo.Object,
             new Mock<IRepository<AipProgram>>().Object, new Mock<IRepository<AipProject>>().Object,
-            activityRepo.Object, new Mock<ILdipRepository>().Object, allocationRepo.Object);
+            activityRepo.Object, new Mock<ILdipRepository>().Object, allocationRepo.Object,
+            // PPDO-80. Never reached: these tests exercise ref-code allocation on create, and a
+            // created activity has no expenditure lines to draw a fund code from.
+            new Mock<IAipExpenditureRepository>().Object);
 
         return (sut, activities, activityRepo);
     }

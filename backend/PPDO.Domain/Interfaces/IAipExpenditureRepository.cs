@@ -86,6 +86,41 @@ public interface IAipExpenditureRepository : IRepository<AipExpenditure>
     Task<IReadOnlyList<AipActivityLineCountDto>> CountByActivityIdsAsync(
         IReadOnlyList<int> activityIds, CancellationToken ct = default);
 
+    /// <summary>
+    /// The distinct funding-source codes each activity in one AIP record draws on, in the order
+    /// they were first used (PPDO-80).
+    ///
+    /// ⚠️ <b>The activity row cannot answer this itself.</b> On an entered year the fund lives on
+    /// the expenditure LINE — one fund per line, Phase 2 decision 4 — so an activity drawing on
+    /// two funds has no single fund to store, and <c>AipActivity.FundingSourceSnapshot</c> stays
+    /// null. The tree renders collapsed activities without loading their lines, so without this
+    /// the form's Funding Source column (7) could not be shown at all.
+    ///
+    /// ⚠️ Scoped by RECORD, not by an id list. The tree read hands out every activity in the
+    /// record for a host-office caller, and passing thousands of ids through <c>Contains</c> is
+    /// the shape this avoids; the join down office → program → project → activity costs nothing
+    /// extra, and <see cref="SumMooeCoByConfigOfficeAndFundAsync"/> already takes it.
+    ///
+    /// ⚠️ Reads <c>FundingSourceSnapshot</c>, not a join to the config table — the code a line was
+    /// entered under is what the form must print, even after somebody renames the fund.
+    ///
+    /// Lines naming no fund are omitted. An activity with no funded line produces no rows at all
+    /// rather than an empty entry, so a caller must treat an absent id as "no funds".
+    /// </summary>
+    Task<IReadOnlyList<AipActivityFundCodeDto>> GetFundCodesByAipRecordAsync(
+        int aipRecordId, CancellationToken ct = default);
+
+    /// <summary>
+    /// The single-activity form of <see cref="GetFundCodesByAipRecordAsync"/>, already joined into
+    /// display order.
+    ///
+    /// Exists because both single-activity writes — an expenditure line, and the details save —
+    /// return the activity for the page to splice into its tree WITHOUT reloading. Leaving the
+    /// codes off either one blanks the fund cell the moment an encoder edits the row.
+    /// </summary>
+    Task<IReadOnlyList<string>> GetFundCodesByActivityIdAsync(
+        int activityId, CancellationToken ct = default);
+
     // ── Procurement items (V18-80 / PPDO-54) ──────────────────────────────────
 
     /// <summary>
@@ -166,3 +201,16 @@ public sealed record AipActivityFundTotalsDto(
 /// nothing to its ceiling and submit cleanly. Found by live-testing.
 /// </summary>
 public sealed record AipActivityLineCountDto(int ActivityId, int LineCount, int LinesWithoutFund);
+
+/// <summary>
+/// One funding-source code used by one activity, with the id of the earliest line that used it
+/// (PPDO-80). Follows the repository-projection convention — declared beside its interface, not in
+/// Application.
+///
+/// ⚠️ <see cref="FirstLineId"/> is an ORDERING key, not data for display. SQL cannot build the
+/// joined <c>GF/GAD Fund</c> string, so the codes come back one per row and the caller joins them;
+/// this is what makes that join reproduce the order the encoder entered the funds in. Sorting the
+/// codes alphabetically instead would silently reorder a printed cell between two loads of the
+/// same unchanged data.
+/// </summary>
+public sealed record AipActivityFundCodeDto(int ActivityId, string Code, int FirstLineId);

@@ -355,7 +355,7 @@ export default function AipExpenditureTable({
     <div className="border-l-2 border-slate-200 bg-slate-50 px-4 py-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-800">
-          Expenditures <span className="font-normal text-slate-600">(in ₱000)</span>
+          Expenditures <span className="font-normal text-slate-600">(in thousand pesos)</span>
         </h4>
         {canEdit && !editing && (
           <button type="button" onClick={() => { setAdding(true); setDraft(EMPTY); }}

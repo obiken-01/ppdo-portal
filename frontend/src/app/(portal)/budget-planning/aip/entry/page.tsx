@@ -29,7 +29,6 @@ import {
 } from "@/lib/aip";
 import { listAccounts, listFundingSources, listPriceIndexForPicker } from "@/lib/config";
 import { FIRST_ENTERED_FISCAL_YEAR } from "@/lib/aip-fiscal-years";
-import { fmtThousands } from "@/lib/aip-units";
 import { AIP_WORKFLOW, isOfficeEditable, describeAipHolder } from "@/lib/aip-workflow";
 import AipAddProgramsPanel from "@/components/aip/entry/AipAddProgramsPanel";
 import AipExpenditureTable from "@/components/aip/entry/AipExpenditureTable";
@@ -39,6 +38,10 @@ import {
   AipCommentsProvider, AipCommentFilterBar, AipCommentAnchor,
 } from "@/components/aip/entry/AipComments";
 import { AipLevelChip, AipRefCode, aipHeaderRow } from "@/components/aip/entry/AipHierarchy";
+import {
+  AipFigureStrip, AipFundPill, AipUnitCaption, activityFundLabel, sumActivityAmounts,
+  type AipRowAmounts,
+} from "@/components/aip/entry/AipRowFigures";
 import { listAipExpenditures } from "@/lib/aip";
 import type {
   AipRecordDetail, AipOfficeDetail, AipProjectDetail, AipActivityDetail, AipExpenditure,
@@ -281,6 +284,10 @@ export default function AipEntryPage() {
                 <GroupBlock
                   key={group.id} group={group} canEdit={canEdit}
                   accounts={accounts} funds={funds}
+                  // ⚠️ The CODE, not the office name. The form's Implementing Office column (3)
+                  // prints codes — "OPV", and "OPV/LFC/HRMO" where an activity is run jointly —
+                  // so a default of the full name would be retyped by every encoder (PPDO-80).
+                  defaultImplementingOffice={me?.officeCode ?? null}
                   priceIndex={priceIndex} priceIndexLoading={priceIndexLoading}
                   // Which fund the ceiling actually checks (V18-46 is General Fund only), so the
                   // picker can mark it. An encoder otherwise has no way to tell why GF behaves
@@ -346,7 +353,7 @@ export default function AipEntryPage() {
 
 function GroupBlock({
   group, canEdit, accounts, funds, generalFundId, divisionFiltered,
-  priceIndex, priceIndexLoading,
+  priceIndex, priceIndexLoading, defaultImplementingOffice,
   onProjectAdded, onActivityAdded, onActivityTotals, onActivityDetails,
 }: {
   group: AipOfficeDetail;
@@ -356,6 +363,8 @@ function GroupBlock({
   generalFundId: number | null;
   priceIndex: PriceIndexPickerItem[];
   priceIndexLoading: boolean;
+  /** The reader's own office code, prefilled into Implementing Office. Null when unassigned. */
+  defaultImplementingOffice: string | null;
   /** True when this user only sees their own division's programs — changes what "0" means. */
   divisionFiltered: boolean;
   onProjectAdded: (project: AipProjectDetail) => void;
@@ -363,17 +372,39 @@ function GroupBlock({
   onActivityTotals: (result: AipExpenditureWriteResult) => void;
   onActivityDetails: (updated: AipActivityDetail) => void;
 }) {
+  // The office subtotal the form prints across columns (8)–(13) — PPDO-80. Summed from the tree
+  // rather than fetched: every activity in this group is already in memory, so an endpoint would
+  // be a round trip for arithmetic already done. Memoised because the reduce walks the whole group
+  // and this component re-renders on every expand, edit and line write below it.
+  const amounts: AipRowAmounts = useMemo(
+    () => sumActivityAmounts(
+      group.programs.flatMap((p) => p.projects.flatMap((j) => j.activities))
+    ),
+    [group]
+  );
+
   return (
     <div className="border border-slate-200 bg-white">
       <div className={`border-b border-b-slate-200 px-4 py-3 ${aipHeaderRow("office")}`}>
-        <div className="flex items-center gap-2">
-          <AipLevelChip level="office" />
-          <AipRefCode code={group.refCode} />
+        <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
+          <div>
+            <div className="flex items-center gap-2">
+              <AipLevelChip level="office" />
+              <AipRefCode code={group.refCode} />
+            </div>
+            <h2 className="mt-1 text-sm font-semibold uppercase tracking-wide text-slate-800">{group.name}</h2>
+            <p className="mt-0.5 text-xs text-slate-600">
+              {group.sector} · {group.programs.length} program{group.programs.length === 1 ? "" : "s"}
+            </p>
+          </div>
+          {/* ⚠️ The unit is named HERE and not on the activity rows below. Both are ₱000, and
+              saying so once per block is what keeps the office subtotal and the leaf figures
+              legible as the same unit without repeating the caption on every row. */}
+          <div className="flex flex-col items-end gap-1">
+            <AipFigureStrip amounts={amounts} emphasis="strong" />
+            <AipUnitCaption />
+          </div>
         </div>
-        <h2 className="mt-1 text-sm font-semibold uppercase tracking-wide text-slate-800">{group.name}</h2>
-        <p className="mt-0.5 text-xs text-slate-600">
-          {group.sector} · {group.programs.length} program{group.programs.length === 1 ? "" : "s"}
-        </p>
         {/* ⚠️ "0 programs" on its own is indistinguishable from an empty group. When the division
             filter is on, an empty block far more often means "assigned elsewhere" than "nothing
             here" — so say which. */}
@@ -420,6 +451,7 @@ function GroupBlock({
                       <ActivityBlock key={activity.id} activity={activity} canEdit={canEdit}
                         accounts={accounts} funds={funds} generalFundId={generalFundId}
                         priceIndex={priceIndex} priceIndexLoading={priceIndexLoading}
+                        defaultImplementingOffice={defaultImplementingOffice}
                         onTotals={onActivityTotals} onDetails={onActivityDetails} />
                     ))}
                     {canEdit && (
@@ -428,7 +460,10 @@ function GroupBlock({
                           // ⚠️ The created node is USED, not discarded. Discarding it is what
                           // forced the reload that made the page appear to refresh.
                           onActivityAdded(await addAipActivity(project.id, {
-                            name, esreCode: null, implementingOffice: null,
+                            // ⚠️ Written at CREATE, not only prefilled in the edit form. An
+                            // activity nobody opens afterwards still has to print an implementing
+                            // office, and it is the encoder's own office in all but the joint case.
+                            name, esreCode: null, implementingOffice: defaultImplementingOffice,
                             startDate: null, endDate: null, expectedOutputs: null,
                             fundingSourceRaw: null, ps: null, mooe: null, co: null,
                             ccAdaptation: null, ccMitigation: null, ccTypologyCode: null,
@@ -454,7 +489,7 @@ function GroupBlock({
 
 function ActivityBlock({
   activity, canEdit, accounts, funds, generalFundId, priceIndex, priceIndexLoading,
-  onTotals, onDetails,
+  defaultImplementingOffice, onTotals, onDetails,
 }: {
   activity: AipActivityDetail;
   canEdit: boolean;
@@ -463,6 +498,7 @@ function ActivityBlock({
   generalFundId: number | null;
   priceIndex: PriceIndexPickerItem[];
   priceIndexLoading: boolean;
+  defaultImplementingOffice: string | null;
   onTotals: (result: AipExpenditureWriteResult) => void;
   onDetails: (updated: AipActivityDetail) => void;
 }) {
@@ -477,8 +513,8 @@ function ActivityBlock({
   return (
     <div className="border border-slate-200 bg-white">
       <button type="button" onClick={() => setOpen((v) => !v)}
-        className={`flex w-full items-start justify-between gap-3 px-3 py-2 text-left hover:bg-green-25 ${aipHeaderRow("activity")}`}>
-        <span className="flex flex-wrap items-center gap-2">
+        className={`flex w-full flex-wrap items-start justify-between gap-x-4 gap-y-2 px-3 py-2 text-left hover:bg-green-25 ${aipHeaderRow("activity")}`}>
+        <span className="flex flex-1 flex-wrap items-center gap-2">
           {/* A disclosure caret, because this is the one level that opens. Decorative, so
               slate-300 is the right token; the chip beside it carries the meaning. */}
           <span aria-hidden className="text-slate-300">{open ? "▾" : "▸"}</span>
@@ -486,11 +522,15 @@ function ActivityBlock({
           <AipRefCode code={activity.refCode} />
           {/* Normal weight — the leaf. Every level above it is heavier, so depth reads downward. */}
           <span className="text-sm text-slate-800">{activity.name}</span>
+          {/* The form's Funding Source column (7), beside the description rather than in the
+              numeric strip: it is not a figure, and putting a word among six right-aligned
+              numbers breaks their alignment on every row that has one (PPDO-80). */}
+          <AipFundPill label={activityFundLabel(activity)} />
         </span>
-        <span className="whitespace-nowrap text-sm tabular-nums text-slate-800">
-          {/* ⚠️ null and 0 are different states here — never costed vs costed at zero (V18-34). */}
-          {activity.total == null ? "—" : fmtThousands(activity.total)}
-        </span>
+        {/* ⚠️ Replaces a lone Total. The form prints (8)(9)(10) separately and an encoder
+            reconciles them column by column — a single Total can only be checked against a figure
+            the sheet never prints. */}
+        <AipFigureStrip amounts={activity} />
       </button>
 
       {/* ⚠️ Outside the disclosure <button>, not inside it: nesting a button in a button is
@@ -504,7 +544,8 @@ function ActivityBlock({
           {/* ⚠️ Above the lines, not below. eSRE and CC typology block submit just as hard as a
               missing costing does, and an encoder who opens an activity to cost it should see
               what else it still needs in the same glance. */}
-          <AipActivityFields activity={activity} canEdit={canEdit} onSaved={onDetails} />
+          <AipActivityFields activity={activity} canEdit={canEdit} onSaved={onDetails}
+            defaultImplementingOffice={defaultImplementingOffice} />
 
           {lines === null ? (
             <div className="space-y-2 px-4 py-3">
@@ -608,6 +649,10 @@ function applyActivityTotals(
 ): AipRecordDetail {
   return patchActivity(record, r.activityId, {
     ps: r.activityPs, mooe: r.activityMooe, co: r.activityCo, total: r.activityTotal,
+    // ⚠️ Patched with the totals, not separately. Adding a line can introduce a fund and deleting
+    // one can remove the last line naming a fund — neither is visible from the amounts, and the
+    // tree is never reloaded, so leaving this out strands the row's fund cell on a stale value.
+    fundCodes: r.activityFundCodes,
   });
 }
 

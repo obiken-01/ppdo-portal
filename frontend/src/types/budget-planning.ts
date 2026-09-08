@@ -225,6 +225,20 @@ export interface AipActivityDetail {
   isCreation: boolean;
   /** RAL-108: true when this activity was materialized from a program/project-level line item. */
   isSynthetic: boolean;
+  /**
+   * The distinct funding-source codes this activity's expenditure lines draw on, in first-use
+   * order — the AIP form's Funding Source column (7), which prints them joined (PPDO-80).
+   *
+   * ⚠️ **Not a replacement for `fundingSourceSnapshot`, and neither one alone is the answer.** On
+   * an entered year the fund lives on the LINE, so an activity drawing on two funds stores none
+   * itself and the snapshot is null; on an FY≤2027 uploaded activity there are no lines, so this
+   * is empty and the snapshot is all there is. Render both through `activityFundLabel`.
+   *
+   * ⚠️ Empty from `addAipActivity` (a new activity has no lines — correct) but **filled** by
+   * `updateAipActivityDetails` and by every expenditure write, because the entry page splices
+   * those responses into its tree rather than reloading it.
+   */
+  fundCodes: string[];
 }
 
 export interface AipProjectDetail {
@@ -1180,6 +1194,14 @@ export interface AipExpenditureWriteResult {
   activityCo: number | null;
   activityTotal: number | null;
   lineCount: number;
+  /**
+   * The activity's funding-source codes after this write, in first-use order (PPDO-80).
+   *
+   * ⚠️ Present for the same reason the totals are: the entry page updates the row in place and
+   * never reloads the record, so without this the fund cell would keep naming a fund whose only
+   * line was just deleted.
+   */
+  activityFundCodes: string[];
 }
 
 /**

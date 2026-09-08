@@ -306,6 +306,78 @@ public sealed class AipExpenditureRepositoryTests : IDisposable
         Assert.Equal(25_000m,  rows.Sum(r => r.Co));
     }
 
+    // ── The form's Funding Source column (PPDO-80) ────────────────────────────
+
+    [Fact]
+    public async Task GetFundCodesByActivityId_DeduplicatesAndKeepsFirstUseOrder()
+    {
+        // GAD is used first, GF second, then GAD again. The printed cell must read "GAD Fund/GF"
+        // — the order the encoder entered them — and must not repeat GAD.
+        //
+        // ⚠️ Alphabetical order would pass a naive assertion here by accident, so GF is
+        // deliberately the code that sorts FIRST while being used SECOND.
+        await SeedAsync(
+            WithFundCode(Line(ActivityA, mooe: 100m), "GAD Fund"),
+            WithFundCode(Line(ActivityA, mooe: 200m), "GF"),
+            WithFundCode(Line(ActivityA, co:   300m), "GAD Fund"));
+
+        await using AppDbContext ctx = new(_options);
+        IReadOnlyList<string> codes = await NewRepo(ctx).GetFundCodesByActivityIdAsync(ActivityA);
+
+        Assert.Equal(["GAD Fund", "GF"], codes);
+    }
+
+    [Fact]
+    public async Task GetFundCodesByActivityId_IgnoresLinesNamingNoFund()
+    {
+        // A fundless line is a real state — it is what V18-49's `LinesWithoutFund` check exists to
+        // catch — so this read must skip it rather than print an empty segment into "GF/".
+        await SeedAsync(
+            WithFundCode(Line(ActivityA, mooe: 100m), "GF"),
+            Line(ActivityA, mooe: 200m));
+
+        await using AppDbContext ctx = new(_options);
+
+        Assert.Equal(["GF"], await NewRepo(ctx).GetFundCodesByActivityIdAsync(ActivityA));
+    }
+
+    [Fact]
+    public async Task GetFundCodesByActivityId_NoLines_ReturnsEmpty()
+    {
+        // An uncosted activity, and every FY≤2027 uploaded one. Empty, not an error — the caller
+        // falls back to the activity's own snapshot.
+        await using AppDbContext ctx = new(_options);
+
+        Assert.Empty(await NewRepo(ctx).GetFundCodesByActivityIdAsync(ActivityA));
+    }
+
+    [Fact]
+    public async Task GetFundCodesByAipRecord_GroupsPerActivity_AndStopsAtTheRecordBoundary()
+    {
+        const int record = 77, otherRecord = 78, configOffice = 1;
+
+        await SeedTreeAsync(
+            (700, record,      configOffice, 7001),
+            (701, record,      configOffice, 7002),
+            (702, otherRecord, configOffice, 7003));
+
+        await SeedAsync(
+            WithFundCode(Line(7001, mooe: 10m), "GF"),
+            WithFundCode(Line(7001, mooe: 20m), "GAD Fund"),
+            WithFundCode(Line(7002, co:   30m), "20% DF"),
+            // Another record entirely. Included because the record filter is the whole reason this
+            // method takes a record id rather than the caller's activity ids.
+            WithFundCode(Line(7003, mooe: 40m), "NGA"));
+
+        await using AppDbContext ctx = new(_options);
+        IReadOnlyList<AipActivityFundCodeDto> rows =
+            await NewRepo(ctx).GetFundCodesByAipRecordAsync(record);
+
+        Assert.Equal(["GF", "GAD Fund"], rows.Where(r => r.ActivityId == 7001).Select(r => r.Code));
+        Assert.Equal(["20% DF"],         rows.Where(r => r.ActivityId == 7002).Select(r => r.Code));
+        Assert.DoesNotContain(rows, r => r.ActivityId == 7003);
+    }
+
     /// <summary>
     /// One activity per group row, wired office → program → project → activity.
     ///
@@ -335,6 +407,17 @@ public sealed class AipExpenditureRepositoryTests : IDisposable
     private static AipExpenditure WithFund(AipExpenditure line, int fundingSourceId)
     {
         line.FundingSourceId = fundingSourceId;
+        return line;
+    }
+
+    /// <summary>
+    /// A line carrying the funding-source CODE as snapshotted at entry, which is what the AIP form
+    /// prints — not the FK. The two are set independently on purpose here: the fund-code reads
+    /// must be proven to follow the snapshot, since that is the value that survives a rename.
+    /// </summary>
+    private static AipExpenditure WithFundCode(AipExpenditure line, string code)
+    {
+        line.FundingSourceSnapshot = code;
         return line;
     }
 }

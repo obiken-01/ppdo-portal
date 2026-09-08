@@ -112,4 +112,14 @@ public sealed record AipExpenditureWriteResultDto(
     decimal?           ActivityMooe,
     decimal?           ActivityCo,
     decimal?           ActivityTotal,
-    int                LineCount);
+    int                LineCount,
+    /// <summary>
+    /// The distinct funding-source codes the activity now draws on, in first-use order — the
+    /// form's Funding Source column (7), rendered joined (PPDO-80).
+    ///
+    /// ⚠️ <b>It belongs on the write result and not only on the tree read</b> for the same reason
+    /// the totals do: the entry page updates the row in place and never reloads the record, so
+    /// without this the fund cell would go stale the moment a line naming a new fund was added —
+    /// or keep naming a fund whose only line was just deleted.
+    /// </summary>
+    IReadOnlyList<string> ActivityFundCodes);
