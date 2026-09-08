@@ -38,6 +38,35 @@ public sealed class AipExpenditureRepository : Repository<AipExpenditure>, IAipE
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<AipProcurementItem>> GetProcurementItemsByExpenditureIdsAsync(
+        IReadOnlyList<int> expenditureIds, CancellationToken ct = default)
+    {
+        if (expenditureIds.Count == 0) return [];
+        return await _context.Set<AipProcurementItem>()
+            .Where(i => expenditureIds.Contains(i.ExpenditureId))
+            .OrderBy(i => i.ExpenditureId).ThenBy(i => i.Id)
+            .ToListAsync(ct);
+    }
+
+    /// <inheritdoc />
+    public async Task ReplaceProcurementItemsAsync(
+        int expenditureId, IReadOnlyList<AipProcurementItem> items, CancellationToken ct = default)
+    {
+        List<AipProcurementItem> existing = await _context.Set<AipProcurementItem>()
+            .Where(i => i.ExpenditureId == expenditureId)
+            .ToListAsync(ct);
+
+        _context.Set<AipProcurementItem>().RemoveRange(existing);
+
+        foreach (AipProcurementItem item in items)
+            item.ExpenditureId = expenditureId;
+
+        await _context.Set<AipProcurementItem>().AddRangeAsync(items, ct);
+        // No SaveChangesAsync — the calling service owns the unit of work, so the replace commits
+        // in the same transaction as the parent line's own change.
+    }
+
+    /// <inheritdoc />
     public async Task<AipExpenditureTotalsDto> SumByActivityIdAsync(
         int activityId, CancellationToken ct = default)
     {

@@ -21,7 +21,44 @@ public sealed record AipExpenditureDto(
     decimal  Ps,
     decimal  Mooe,
     decimal  Co,
-    decimal  Total);
+    decimal  Total,
+    IReadOnlyList<AipProcurementItemDto> ProcurementItems);
+
+/// <summary>
+/// One procurement item under an AIP expenditure line (V18-80 / PPDO-54).
+///
+/// <b>No period, frequency, annual-quarter or reserve field appears here</b>, and none may be
+/// added: those are WFP <i>schedule</i> concepts and an AIP activity carries one annual figure.
+/// <see cref="NumberOfDays"/> is the deliberate exception — it was asked for in its own right, not
+/// carried across for parity.
+///
+/// Name / Unit / UnitPrice are the values snapshotted at save time, not the Price Index's current
+/// ones, so a saved plan still prints what it was costed at.
+/// </summary>
+public sealed record AipProcurementItemDto(
+    int      Id,
+    int?     PriceIndexItemId,
+    string   Name,
+    string   Unit,
+    decimal  UnitPrice,
+    decimal  Qty,
+    decimal  NumberOfDays,
+    decimal  LineTotal);
+
+/// <summary>
+/// One procurement item as submitted with its parent expenditure line (V18-80 / PPDO-54).
+///
+/// ⚠️ <see cref="AipProcurementItemDto.LineTotal"/> has no counterpart here on purpose: the total
+/// is computed server-side from qty × unitPrice × numberOfDays and never accepted from a caller,
+/// the same rule as the line's own Total.
+/// </summary>
+public sealed record SaveAipProcurementItemDto(
+    int?     PriceIndexItemId,
+    string   Name,
+    string   Unit,
+    decimal  UnitPrice,
+    decimal  Qty,
+    decimal  NumberOfDays);
 
 /// <summary>
 /// Body of <c>POST /api/budget-planning/aip/activities/{activityId}/expenditures</c>.
@@ -41,18 +78,24 @@ public sealed record CreateAipExpenditureDto(
     int?     FundingSourceId,
     decimal  Ps,
     decimal  Mooe,
-    decimal  Co);
+    decimal  Co,
+    IReadOnlyList<SaveAipProcurementItemDto>? ProcurementItems = null);
 
 /// <summary>
 /// Body of <c>PUT /api/budget-planning/aip/expenditures/{id}</c>. Same shape as the create — a line
 /// is small enough that a partial update would only add a way to leave it half-changed.
+///
+/// ⚠️ <see cref="ProcurementItems"/> <b>replaces the line's items wholesale</b>, so an empty list
+/// removes them all and returns the line to a typed amount. Null and empty therefore mean
+/// different things on an update: null leaves the existing items alone.
 /// </summary>
 public sealed record UpdateAipExpenditureDto(
     int?     AccountId,
     int?     FundingSourceId,
     decimal  Ps,
     decimal  Mooe,
-    decimal  Co);
+    decimal  Co,
+    IReadOnlyList<SaveAipProcurementItemDto>? ProcurementItems = null);
 
 /// <summary>
 /// What an expenditure write returns: the line, plus its activity's recomputed totals so the page

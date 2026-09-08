@@ -87,6 +87,16 @@ public sealed class AipExpenditure
     public FundingSource? FundingSource { get; set; }
 
     /// <summary>
+    /// The procurement items this line is itemised into, if any (V18-80 / PPDO-54). Empty for a
+    /// line whose amount was simply typed.
+    ///
+    /// ⚠️ When this is non-empty the line's amount is <b>derived, not typed</b>: Σ
+    /// <see cref="AipProcurementItem.LineTotal"/> lands in the one column matching the account's
+    /// expense class, and the other two are zero. See <c>AipExpenditureService</c>.
+    /// </summary>
+    public ICollection<AipProcurementItem> ProcurementItems { get; set; } = new List<AipProcurementItem>();
+
+    /// <summary>
     /// Recomputes <see cref="Total"/> from the three components. Call after any change to
     /// <see cref="Ps"/>, <see cref="Mooe"/> or <see cref="Co"/>; the repository does this on every
     /// save so no caller has to remember.

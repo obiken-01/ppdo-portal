@@ -86,7 +86,38 @@ public interface IAipExpenditureRepository : IRepository<AipExpenditure>
     Task<IReadOnlyList<AipActivityLineCountDto>> CountByActivityIdsAsync(
         IReadOnlyList<int> activityIds, CancellationToken ct = default);
 
-    // ── No write methods here, deliberately ───────────────────────────────────
+    // ── Procurement items (V18-80 / PPDO-54) ──────────────────────────────────
+
+    /// <summary>
+    /// The procurement items belonging to a set of expenditure lines, in one query.
+    ///
+    /// ⚠️ Bulk by design. The entry table renders every line of an activity with its items, so the
+    /// per-line form of this would be one query per line — the N+1 that
+    /// <see cref="GetByActivityIdsAsync"/> exists to avoid one level up. It is a separate call
+    /// rather than an <c>Include</c> on the line reads because the ledger upsert and the ceiling
+    /// sum read those same lines and need no items; fattening them would make every caller pay.
+    ///
+    /// Ordered by expenditure then id, so a rendered list is stable between loads.
+    /// </summary>
+    Task<IReadOnlyList<AipProcurementItem>> GetProcurementItemsByExpenditureIdsAsync(
+        IReadOnlyList<int> expenditureIds, CancellationToken ct = default);
+
+    /// <summary>
+    /// Replaces one line's procurement items wholesale — deletes what is there, adds
+    /// <paramref name="items"/>. Does <b>not</b> save; the calling service owns the unit of work,
+    /// as everywhere else here.
+    ///
+    /// ⚠️ <b>The one write method on this interface</b>, against the note below, and for a reason
+    /// the note's argument does not cover: replacing a set is not an Add, an Update or a Delete of
+    /// a single entity, and expressing it through the generic repository would mean the service
+    /// loading every existing row purely to hand each one back for deletion. Keeping the
+    /// delete-then-insert in one place is also what stops a caller inserting the new items and
+    /// forgetting the old ones, which is a silent doubling of the line's cost.
+    /// </summary>
+    Task ReplaceProcurementItemsAsync(
+        int expenditureId, IReadOnlyList<AipProcurementItem> items, CancellationToken ct = default);
+
+    // ── No other write methods here, deliberately ─────────────────────────────
     // Writes go through the base IRepository<T>'s Add/Update/Delete, with the calling Application
     // service owning SaveChangesAsync — the unit-of-work rule stated on Repository<T> and followed
     // by every feature repository in the project (IWfpExpenditureRepository is read-only too).

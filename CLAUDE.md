@@ -800,6 +800,7 @@ The largest single change attempted so far. **PPDO-28** is the epic; its childre
 | `docs/GIT_CONVENTIONS.md` | Branching, committing, releasing |
 | `docs/BUG_REPORT_STANDARD.md` | Filing a bug |
 | `docs/v1.8/RETROSPECTIVE.md` | Planning a release or changing process |
+| `docs/AI_DLC_Evaluation.md` | Considering an external AI development-workflow framework (AI-DLC assessed 2026-09-08 — cherry-pick, do not install) |
 | `docs/v1.8/Pre_Deployment_Checklist.md` | Merging `release/1.8.0` → `main` — v1.8.0 ships a migration that **rewrites existing AIP amounts**, so the baseline sums and restore path are captured before it runs |
 
 ---

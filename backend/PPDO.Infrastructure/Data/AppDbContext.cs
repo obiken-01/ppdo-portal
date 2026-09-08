@@ -49,6 +49,12 @@ public sealed class AppDbContext : DbContext
 
     /// <summary>AIP expenditure lines (v1.8.0 Phase 2 — V18-33). Pesos; see the entity's remarks.</summary>
     public DbSet<AipExpenditure> AipExpenditures { get; set; } = null!;
+
+    /// <summary>
+    /// AIP procurement line items (v1.8.0 Phase 3 — V18-80). Sourced from the Price Index; no
+    /// period dimension, unlike <see cref="WfpProcurementItems"/>.
+    /// </summary>
+    public DbSet<AipProcurementItem> AipProcurementItems { get; set; } = null!;
     public DbSet<WfpRecord> WfpRecords { get; set; } = null!;
     public DbSet<WfpActivity> WfpActivities { get; set; } = null!;
     public DbSet<WfpExpenditureLine> WfpExpenditureLines { get; set; } = null!;

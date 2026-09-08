@@ -1106,6 +1106,46 @@ export interface AipExpenditure {
   mooe: number;
   co: number;
   total: number;
+  /**
+   * The items this line is itemised into (V18-80). Empty for a line whose amount was typed.
+   *
+   * ⚠️ When this is non-empty the line's ps/mooe/co are DERIVED, not typed: the server puts the
+   * items' total in the one column the account's expense class names. The entry table shows the
+   * amount read-only for such a line.
+   */
+  procurementItems: AipProcurementItem[];
+}
+
+/**
+ * One procurement item on an AIP expenditure line (V18-80 / PPDO-54).
+ *
+ * ⚠️ **No period, frequency, annual-quarter or reserve field, and none may be added** — those are
+ * WFP *schedule* concepts and an AIP activity carries one annual figure. `numberOfDays` is the
+ * deliberate exception: PPDO employees asked for it, so it is a requirement in its own right
+ * rather than a leftover of the period model.
+ *
+ * name/unit/unitPrice are what the Price Index said at save time, not what it says now.
+ */
+export interface AipProcurementItem {
+  id: number;
+  priceIndexItemId: number | null;
+  name: string;
+  unit: string;
+  unitPrice: number;
+  qty: number;
+  numberOfDays: number;
+  /** qty × unitPrice × numberOfDays, computed server-side. */
+  lineTotal: number;
+}
+
+/** ⚠️ No `lineTotal` — the server computes it and never accepts one. */
+export interface SaveAipProcurementItemRequest {
+  priceIndexItemId: number | null;
+  name: string;
+  unit: string;
+  unitPrice: number;
+  qty: number;
+  numberOfDays: number;
 }
 
 export interface SaveAipExpenditureRequest {
@@ -1115,6 +1155,14 @@ export interface SaveAipExpenditureRequest {
   ps: number;
   mooe: number;
   co: number;
+  /**
+   * Replaces the line's items wholesale. An empty array removes them all and returns the line to a
+   * typed amount; omitting the field entirely leaves existing items untouched.
+   *
+   * ⚠️ When this is non-empty the server DERIVES ps/mooe/co from it and discards whatever was sent
+   * in those three fields — it does not add the two together the way WFP does.
+   */
+  procurementItems?: SaveAipProcurementItemRequest[];
 }
 
 /**
