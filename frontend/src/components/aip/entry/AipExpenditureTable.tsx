@@ -18,8 +18,9 @@
  * the cell it saves into legitimately show different numbers and nothing else on screen says so.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import AipMoneyInput from "@/components/aip/AipMoneyInput";
+import AipProcurementItemTable from "@/components/aip/entry/AipProcurementItemTable";
 import Lookup from "@/components/ui/Lookup";
 import { fmtThousands, fmtPesos } from "@/lib/aip-units";
 import {
@@ -27,6 +28,7 @@ import {
 } from "@/lib/aip";
 import type {
   AipExpenditure, AipExpenditureWriteResult, AccountResponse, FundingSourceResponse,
+  PriceIndexPickerItem, SaveAipProcurementItemRequest,
 } from "@/types";
 
 interface Draft {
@@ -35,9 +37,17 @@ interface Draft {
   ps: number | null;
   mooe: number | null;
   co: number | null;
+  /**
+   * Procurement items for this line (V18-80). Non-empty means the amount is DERIVED — the three
+   * money inputs go read-only and the server routes the items' total into the column the account's
+   * expense class names.
+   */
+  procurementItems: SaveAipProcurementItemRequest[];
 }
 
-const EMPTY: Draft = { accountId: "", fundingSourceId: "", ps: null, mooe: null, co: null };
+const EMPTY: Draft = {
+  accountId: "", fundingSourceId: "", ps: null, mooe: null, co: null, procurementItems: [],
+};
 
 // ── Picker accessors ────────────────────────────────────────────────────────
 //
@@ -63,8 +73,80 @@ function distinctFunds(lines: AipExpenditure[]): number[] {
   return Array.from(new Set(lines.map((l) => l.fundingSourceId).filter((id): id is number => id != null)));
 }
 
+/**
+ * Which column an itemised line's total lands in, for the on-screen preview only.
+ *
+ * ⚠️ **The server is authoritative** — `AipProcurementRouting` decides for real, and refuses when
+ * the class is missing or unrecognised. This mirror exists so the encoder sees the figure move
+ * before saving; it deliberately returns null in the same cases rather than guessing MOOE, so the
+ * preview never shows a number the save is about to reject.
+ */
+function routedPreview(
+  expenseClass: string | undefined, total: number,
+): { ps: number; mooe: number; co: number } | null {
+  switch (expenseClass?.trim().toUpperCase()) {
+    case "PS":   return { ps: total, mooe: 0, co: 0 };
+    case "MOOE": return { ps: 0, mooe: total, co: 0 };
+    case "CO":   return { ps: 0, mooe: 0, co: total };
+    default:     return null;
+  }
+}
+
+const itemsTotal = (items: SaveAipProcurementItemRequest[]) =>
+  items.reduce((sum, i) => sum + i.qty * i.unitPrice * i.numberOfDays, 0);
+
+/**
+ * A saved line's procurement items, read-only (V18-80).
+ *
+ * ⚠️ Rendered from the SNAPSHOTTED name / unit / price on the row, never re-resolved against the
+ * current Price Index — a plan costed in September must still show September's prices after the
+ * catalogue is updated. That is the whole reason those columns are stored.
+ *
+ * This is the display half the review tab reuses: it renders identically whether or not the caller
+ * can edit, so a reviewer and an encoder read the same figures.
+ */
+function ProcurementItemsReadOnly({ items, columns }: {
+  items: AipExpenditure["procurementItems"];
+  columns: number;
+}) {
+  return (
+    <tr className="border-t border-slate-100 bg-slate-50/60">
+      <td colSpan={columns} className="px-3 py-2">
+        <table className="w-full text-[11px]">
+          <thead>
+            <tr className="text-left text-slate-600">
+              <th className="py-0.5 font-medium">Item</th>
+              <th className="py-0.5 font-medium">Unit</th>
+              <th className="py-0.5 text-right font-medium">Unit price</th>
+              <th className="py-0.5 text-right font-medium">Qty</th>
+              <th className="py-0.5 text-right font-medium">Days</th>
+              <th className="py-0.5 text-right font-medium">Line total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((i) => (
+              <tr key={i.id} className="border-t border-slate-100">
+                <td className="py-0.5 text-slate-800">{i.name}</td>
+                <td className="py-0.5 text-slate-600">{i.unit || "—"}</td>
+                <td className="py-0.5 text-right tabular-nums text-slate-600">{fmtPesos(i.unitPrice)}</td>
+                <td className="py-0.5 text-right tabular-nums text-slate-600">{i.qty}</td>
+                <td className="py-0.5 text-right tabular-nums text-slate-600">{i.numberOfDays}</td>
+                <td className="py-0.5 text-right tabular-nums font-medium text-slate-800">{fmtPesos(i.lineTotal)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="mt-1 text-[10px] text-slate-600">
+          Prices are as costed, not the Price Index&apos;s current ones.
+        </p>
+      </td>
+    </tr>
+  );
+}
+
 export default function AipExpenditureTable({
-  activityId, lines, accounts, fundingSources, canEdit, generalFundId, onChanged,
+  activityId, lines, accounts, fundingSources, canEdit, generalFundId,
+  priceIndex, priceIndexLoading, onChanged,
 }: {
   activityId: number;
   lines: AipExpenditure[];
@@ -73,6 +155,9 @@ export default function AipExpenditureTable({
   canEdit: boolean;
   /** Marked in the fund list, because it is the only fund the ceiling checks. */
   generalFundId: number | null;
+  /** The ~6,400-row catalogue, fetched off the page's critical path (RAL-231). */
+  priceIndex: PriceIndexPickerItem[];
+  priceIndexLoading: boolean;
   onChanged: (result: AipExpenditureWriteResult) => void;
 }) {
   const [adding, setAdding]       = useState(false);
@@ -80,6 +165,9 @@ export default function AipExpenditureTable({
   const [editingId, setEditingId] = useState<number | null>(null);
   const [busy, setBusy]           = useState(false);
   const [error, setError]         = useState<string | null>(null);
+  // Which saved lines have their procurement items expanded. Collapsed by default: an activity with
+  // several itemised lines would otherwise open as a wall of item rows.
+  const [expanded, setExpanded]   = useState<Set<number>>(new Set());
 
   const funds = useMemo(() => distinctFunds(lines), [lines]);
 
@@ -118,9 +206,16 @@ export default function AipExpenditureTable({
         fundingSourceId,
         // ⚠️ Posted as typed. These are already pesos — multiplying here is decision P2-a's
         // reversed half, and it is what stored ₱4,657,655,000 for a typed 4,657,655.
+        //
+        // ⚠️ When the line is itemised the server DISCARDS these three and derives them from the
+        // items instead. They are still sent so an un-itemised line behaves exactly as before, and
+        // so that removing every item leaves a line with figures rather than nothing.
         ps:   draft.ps   ?? 0,
         mooe: draft.mooe ?? 0,
         co:   draft.co   ?? 0,
+        // Always sent — an empty array is an explicit "this line has no items", which is what
+        // returns an itemised line to a typed amount.
+        procurementItems: draft.procurementItems,
       };
       const result = existingId === null
         ? await addAipExpenditure(activityId, body)
@@ -159,6 +254,9 @@ export default function AipExpenditureTable({
           accountId: line.accountId,
           fundingSourceId: next ? Number(next) : null,
           ps: line.ps, mooe: line.mooe, co: line.co,
+          // ⚠️ `procurementItems` is deliberately ABSENT, not empty. Omitting it leaves each line's
+          // items untouched; an empty array here would silently delete every itemised line's costing
+          // just because the encoder changed the activity's fund.
         });
       }
       if (last) onChanged(last);
@@ -194,7 +292,29 @@ export default function AipExpenditureTable({
       ps:   line.ps,
       mooe: line.mooe,
       co:   line.co,
+      // The stored ids are dropped: the draft carries the SAVE shape, which has no id and no
+      // lineTotal, because the server recomputes both.
+      procurementItems: line.procurementItems.map((i) => ({
+        priceIndexItemId: i.priceIndexItemId,
+        name: i.name,
+        unit: i.unit,
+        unitPrice: i.unitPrice,
+        qty: i.qty,
+        numberOfDays: i.numberOfDays,
+      })),
     });
+  }
+
+  /**
+   * Price-index items used by the activity's OTHER lines — what makes the duplicate warning
+   * activity-scoped rather than line-scoped (the re-derivation of RAL-153; see
+   * `AipProcurementItemTable`).
+   */
+  function siblingItemIds(currentLineId: number | null): number[] {
+    return lines
+      .filter((l) => l.id !== currentLineId)
+      .flatMap((l) => l.procurementItems.map((i) => i.priceIndexItemId))
+      .filter((id): id is number => id != null);
   }
 
   const editing = adding || editingId !== null;
@@ -280,10 +400,32 @@ export default function AipExpenditureTable({
                 <EditRow key={line.id} draft={draft} setDraft={setDraft} accounts={accounts}
                   fundingSources={fundingSources} generalFundId={generalFundId}
                   showFund={multiFund} busy={busy}
+                  priceIndex={priceIndex} priceIndexLoading={priceIndexLoading}
+                  siblingPriceIndexItemIds={siblingItemIds(line.id)}
                   onSave={() => save(line.id)} onCancel={() => setEditingId(null)} />
               ) : (
-                <tr key={line.id} className="border-t border-slate-200">
-                  <td className="py-1.5 text-slate-800">{line.accountTitle ?? "—"}</td>
+                <Fragment key={line.id}>
+                <tr className="border-t border-slate-200">
+                  <td className="py-1.5 text-slate-800">
+                    {line.accountTitle ?? "—"}
+                    {/* Says the amount is derived rather than typed, on the row where someone would
+                        otherwise wonder why it cannot be edited to. */}
+                    {line.procurementItems.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setExpanded((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(line.id)) next.delete(line.id); else next.add(line.id);
+                          return next;
+                        })}
+                        className="ml-1.5 text-[10px] text-slate-600 hover:underline"
+                      >
+                        · {line.procurementItems.length} item
+                        {line.procurementItems.length === 1 ? "" : "s"}
+                        {expanded.has(line.id) ? " ▴" : " ▾"}
+                      </button>
+                    )}
+                  </td>
                   {multiFund && <td className="py-1.5 text-slate-600">{line.fundingSourceCode ?? "—"}</td>}
                   <td className="py-1.5 text-right tabular-nums text-slate-800">{fmtThousands(line.ps)}</td>
                   <td className="py-1.5 text-right tabular-nums text-slate-800">{fmtThousands(line.mooe)}</td>
@@ -300,12 +442,20 @@ export default function AipExpenditureTable({
                     )}
                   </td>
                 </tr>
+                {expanded.has(line.id) && line.procurementItems.length > 0 && (
+                  <ProcurementItemsReadOnly
+                    items={line.procurementItems}
+                    columns={multiFund ? 7 : 6} />
+                )}
+                </Fragment>
               )
             )}
             {adding && (
               <EditRow draft={draft} setDraft={setDraft} accounts={accounts}
                 fundingSources={fundingSources} generalFundId={generalFundId}
                 showFund={multiFund} busy={busy}
+                priceIndex={priceIndex} priceIndexLoading={priceIndexLoading}
+                siblingPriceIndexItemIds={siblingItemIds(null)}
                 onSave={() => save(null)} onCancel={() => setAdding(false)} />
             )}
           </tbody>
@@ -316,7 +466,8 @@ export default function AipExpenditureTable({
 }
 
 function EditRow({
-  draft, setDraft, accounts, fundingSources, generalFundId, showFund, busy, onSave, onCancel,
+  draft, setDraft, accounts, fundingSources, generalFundId, showFund, busy,
+  priceIndex, priceIndexLoading, siblingPriceIndexItemIds, onSave, onCancel,
 }: {
   draft: Draft;
   setDraft: (d: Draft) => void;
@@ -326,55 +477,135 @@ function EditRow({
   /** False in single-fund mode — the activity's own field supplies the fund. */
   showFund: boolean;
   busy: boolean;
+  priceIndex: PriceIndexPickerItem[];
+  priceIndexLoading: boolean;
+  siblingPriceIndexItemIds: number[];
   onSave: () => void;
   onCancel: () => void;
 }) {
+  const itemised = draft.procurementItems.length > 0;
+  const accountId = draft.accountId ? Number(draft.accountId) : null;
+  const expenseClass = accounts.find((a) => a.id === accountId)?.expenseClass;
+
+  // ⚠️ Only consulted while itemised. An un-itemised line keeps the typed values untouched — the
+  // whole pre-PPDO-54 path is unchanged.
+  const routed = itemised ? routedPreview(expenseClass, itemsTotal(draft.procurementItems)) : null;
+  const shown = routed ?? { ps: draft.ps ?? 0, mooe: draft.mooe ?? 0, co: draft.co ?? 0 };
+
+  // The column count, so the procurement panel's cell spans the whole row.
+  const columns = showFund ? 7 : 6;
+
+  function toggleItemised(on: boolean) {
+    setDraft(on
+      ? {
+          ...draft,
+          procurementItems: [
+            { priceIndexItemId: null, name: "", unit: "", unitPrice: 0, qty: 1, numberOfDays: 1 },
+          ],
+        }
+      // ⚠️ Turning it off empties the items AND leaves the typed figures where they are, so the
+      // line falls back to what the encoder had entered rather than to zero.
+      : { ...draft, procurementItems: [] });
+  }
+
   return (
-    <tr className="border-t border-slate-200 bg-amber-50">
-      <td className="py-1.5 pr-2 min-w-[14rem]">
-        <Lookup
-          items={accounts}
-          value={draft.accountId ? Number(draft.accountId) : null}
-          onChange={(id) => setDraft({ ...draft, accountId: id == null ? "" : String(id) })}
-          getId={(a) => a.id}
-          getLabel={accountLabel}
-          getSearchText={accountSearch}
-          allOptionLabel="— Account —"
-          placeholder="Search accounts…"
-          disabled={busy}
-        />
-      </td>
-      {showFund && (
-        <td className="py-1.5 pr-2 min-w-[10rem]">
-          {/* ⚠️ One fund per line even here. A second fund is a second line. */}
+    <>
+      <tr className="border-t border-slate-200 bg-amber-50">
+        <td className="py-1.5 pr-2 min-w-[14rem]">
           <Lookup
-            items={fundingSources}
-            value={draft.fundingSourceId ? Number(draft.fundingSourceId) : null}
-            onChange={(id) => setDraft({ ...draft, fundingSourceId: id == null ? "" : String(id) })}
-            getId={(f) => f.id}
-            getLabel={(f) => fundLabel(f, generalFundId)}
-            getSearchText={fundSearch}
-            allOptionLabel="— Fund —"
-            placeholder="Search funds…"
+            items={accounts}
+            value={accountId}
+            onChange={(id) => setDraft({ ...draft, accountId: id == null ? "" : String(id) })}
+            getId={(a) => a.id}
+            getLabel={accountLabel}
+            getSearchText={accountSearch}
+            allOptionLabel="— Account —"
+            placeholder="Search accounts…"
             disabled={busy}
           />
         </td>
-      )}
-      <td className="py-1.5 pr-1"><AipMoneyInput value={draft.ps}   onChange={(v) => setDraft({ ...draft, ps: v })} /></td>
-      <td className="py-1.5 pr-1"><AipMoneyInput value={draft.mooe} onChange={(v) => setDraft({ ...draft, mooe: v })} /></td>
-      <td className="py-1.5 pr-1"><AipMoneyInput value={draft.co}   onChange={(v) => setDraft({ ...draft, co: v })} /></td>
-      <td className="py-1.5 text-right align-top tabular-nums text-slate-600">
-        {/* ⚠️ PESOS while editing, not thousands. This sums the three ₱ inputs immediately to its
-            left, so it has to agree with them; the row reverts to thousands once saved. */}
-        {fmtPesos((draft.ps ?? 0) + (draft.mooe ?? 0) + (draft.co ?? 0))}
-        <span className="mt-0.5 block text-[10px] leading-3 text-slate-600">pesos</span>
-      </td>
-      <td className="py-1.5 text-right whitespace-nowrap">
-        <button type="button" onClick={onSave} disabled={busy}
-          className="font-medium text-green-700 hover:underline disabled:opacity-50">Save</button>
-        <button type="button" onClick={onCancel} disabled={busy}
-          className="ml-2 text-slate-600 hover:underline disabled:opacity-50">Cancel</button>
-      </td>
-    </tr>
+        {showFund && (
+          <td className="py-1.5 pr-2 min-w-[10rem]">
+            {/* ⚠️ One fund per line even here. A second fund is a second line. */}
+            <Lookup
+              items={fundingSources}
+              value={draft.fundingSourceId ? Number(draft.fundingSourceId) : null}
+              onChange={(id) => setDraft({ ...draft, fundingSourceId: id == null ? "" : String(id) })}
+              getId={(f) => f.id}
+              getLabel={(f) => fundLabel(f, generalFundId)}
+              getSearchText={fundSearch}
+              allOptionLabel="— Fund —"
+              placeholder="Search funds…"
+              disabled={busy}
+            />
+          </td>
+        )}
+
+        {/* ⚠️ Read-only once itemised. The amount is the items' amount — an editable field beside a
+            derived figure is an invitation to type a number that the next save overwrites. */}
+        {itemised ? (
+          <>
+            <td className="py-1.5 pr-1 text-right tabular-nums text-slate-600">{fmtPesos(shown.ps)}</td>
+            <td className="py-1.5 pr-1 text-right tabular-nums text-slate-600">{fmtPesos(shown.mooe)}</td>
+            <td className="py-1.5 pr-1 text-right tabular-nums text-slate-600">{fmtPesos(shown.co)}</td>
+          </>
+        ) : (
+          <>
+            <td className="py-1.5 pr-1"><AipMoneyInput value={draft.ps}   onChange={(v) => setDraft({ ...draft, ps: v })} /></td>
+            <td className="py-1.5 pr-1"><AipMoneyInput value={draft.mooe} onChange={(v) => setDraft({ ...draft, mooe: v })} /></td>
+            <td className="py-1.5 pr-1"><AipMoneyInput value={draft.co}   onChange={(v) => setDraft({ ...draft, co: v })} /></td>
+          </>
+        )}
+
+        <td className="py-1.5 text-right align-top tabular-nums text-slate-600">
+          {/* ⚠️ PESOS while editing, not thousands. This sums the three figures immediately to its
+              left, so it has to agree with them; the row reverts to thousands once saved. */}
+          {fmtPesos(shown.ps + shown.mooe + shown.co)}
+          <span className="mt-0.5 block text-[10px] leading-3 text-slate-600">pesos</span>
+        </td>
+        <td className="py-1.5 text-right whitespace-nowrap">
+          <button type="button" onClick={onSave} disabled={busy}
+            className="font-medium text-green-700 hover:underline disabled:opacity-50">Save</button>
+          <button type="button" onClick={onCancel} disabled={busy}
+            className="ml-2 text-slate-600 hover:underline disabled:opacity-50">Cancel</button>
+        </td>
+      </tr>
+
+      {/* ── Procurement items (V18-80) ──────────────────────────────────────── */}
+      <tr className="bg-amber-50">
+        <td colSpan={columns} className="px-1 pb-3">
+          <label className="flex items-center gap-2 text-xs text-slate-600">
+            <input type="checkbox" checked={itemised} disabled={busy}
+              onChange={(e) => toggleItemised(e.target.checked)} />
+            Cost this line from the Price Index
+          </label>
+
+          {itemised && (
+            <div className="mt-2">
+              {/* ⚠️ Named before the save fails. The server refuses an itemised line whose account
+                  has no expense class rather than guessing MOOE, so saying so here saves the
+                  encoder a round trip into an error they cannot act on from the message alone. */}
+              {routed === null && (
+                <p className="mb-2 border border-amber-200 bg-amber-100 px-3 py-2 text-[11px] text-amber-800">
+                  {accountId === null
+                    ? "Pick an account first — it decides whether these items are PS, MOOE or Capital Outlay."
+                    : "This account has no PS / MOOE / CO expense class, so an itemised total has no "
+                      + "column to go in. Fix it in Configuration → Accounts, or pick another account."}
+                </p>
+              )}
+
+              <AipProcurementItemTable
+                accountId={accountId}
+                items={draft.procurementItems}
+                onItemsChange={(procurementItems) => setDraft({ ...draft, procurementItems })}
+                priceIndex={priceIndex}
+                priceIndexLoading={priceIndexLoading}
+                siblingPriceIndexItemIds={siblingPriceIndexItemIds}
+              />
+            </div>
+          )}
+        </td>
+      </tr>
+    </>
   );
 }

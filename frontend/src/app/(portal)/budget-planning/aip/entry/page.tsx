@@ -27,7 +27,7 @@ import {
   listAip, getAipById, getAipReadiness, submitAip,
   addAipProject, addAipActivity, aipErrorMessage,
 } from "@/lib/aip";
-import { listAccounts, listFundingSources } from "@/lib/config";
+import { listAccounts, listFundingSources, listPriceIndexForPicker } from "@/lib/config";
 import { FIRST_ENTERED_FISCAL_YEAR } from "@/lib/aip-fiscal-years";
 import { fmtThousands } from "@/lib/aip-units";
 import AipAddProgramsPanel from "@/components/aip/entry/AipAddProgramsPanel";
@@ -38,7 +38,7 @@ import { listAipExpenditures } from "@/lib/aip";
 import type {
   AipRecordDetail, AipOfficeDetail, AipProjectDetail, AipActivityDetail, AipExpenditure,
   AipExpenditureWriteResult,
-  AccountResponse, FundingSourceResponse, AipReadiness,
+  AccountResponse, FundingSourceResponse, AipReadiness, PriceIndexPickerItem,
 } from "@/types";
 
 /** FY2028 onward. The entry process does not exist below the break year. */
@@ -52,6 +52,10 @@ export default function AipEntryPage() {
   const [readiness, setReadiness] = useState<AipReadiness | null>(null);
   const [accounts, setAccounts]   = useState<AccountResponse[]>([]);
   const [funds, setFunds]         = useState<FundingSourceResponse[]>([]);
+  // ⚠️ ~6,400 rows, so it is fetched off the critical path with its own loading flag (RAL-231).
+  // Without the flag the item picker is indistinguishable from an empty catalogue while it lands.
+  const [priceIndex, setPriceIndex] = useState<PriceIndexPickerItem[]>([]);
+  const [priceIndexLoading, setPriceIndexLoading] = useState(true);
 
   const [loading, setLoading]   = useState(true);
   const [notOpened, setNotOpened] = useState(false);
@@ -111,6 +115,10 @@ export default function AipEntryPage() {
   useEffect(() => {
     void listAccounts().then(setAccounts).catch(() => setAccounts([]));
     void listFundingSources({ active: "true" }).then(setFunds).catch(() => setFunds([]));
+    void listPriceIndexForPicker({ active: "true" })
+      .then(setPriceIndex)
+      .catch(() => setPriceIndex([]))
+      .finally(() => setPriceIndexLoading(false));
   }, []);
 
   async function refreshReadiness() {
@@ -212,6 +220,7 @@ export default function AipEntryPage() {
                 <GroupBlock
                   key={group.id} group={group} canEdit={canEdit}
                   accounts={accounts} funds={funds}
+                  priceIndex={priceIndex} priceIndexLoading={priceIndexLoading}
                   // Which fund the ceiling actually checks (V18-46 is General Fund only), so the
                   // picker can mark it. An encoder otherwise has no way to tell why GF behaves
                   // differently from every other fund at submit.
@@ -275,6 +284,7 @@ export default function AipEntryPage() {
 
 function GroupBlock({
   group, canEdit, accounts, funds, generalFundId, divisionFiltered,
+  priceIndex, priceIndexLoading,
   onProjectAdded, onActivityAdded, onActivityTotals, onActivityDetails,
 }: {
   group: AipOfficeDetail;
@@ -282,6 +292,8 @@ function GroupBlock({
   accounts: AccountResponse[];
   funds: FundingSourceResponse[];
   generalFundId: number | null;
+  priceIndex: PriceIndexPickerItem[];
+  priceIndexLoading: boolean;
   /** True when this user only sees their own division's programs — changes what "0" means. */
   divisionFiltered: boolean;
   onProjectAdded: (project: AipProjectDetail) => void;
@@ -325,6 +337,7 @@ function GroupBlock({
                     {project.activities.map((activity) => (
                       <ActivityBlock key={activity.id} activity={activity} canEdit={canEdit}
                         accounts={accounts} funds={funds} generalFundId={generalFundId}
+                        priceIndex={priceIndex} priceIndexLoading={priceIndexLoading}
                         onTotals={onActivityTotals} onDetails={onActivityDetails} />
                     ))}
                     {canEdit && (
@@ -358,13 +371,16 @@ function GroupBlock({
 // ── One activity, with its expenditure lines ──────────────────────────────
 
 function ActivityBlock({
-  activity, canEdit, accounts, funds, generalFundId, onTotals, onDetails,
+  activity, canEdit, accounts, funds, generalFundId, priceIndex, priceIndexLoading,
+  onTotals, onDetails,
 }: {
   activity: AipActivityDetail;
   canEdit: boolean;
   accounts: AccountResponse[];
   funds: FundingSourceResponse[];
   generalFundId: number | null;
+  priceIndex: PriceIndexPickerItem[];
+  priceIndexLoading: boolean;
   onTotals: (result: AipExpenditureWriteResult) => void;
   onDetails: (updated: AipActivityDetail) => void;
 }) {
@@ -405,6 +421,7 @@ function ActivityBlock({
           <AipExpenditureTable
             activityId={activity.id} lines={lines} accounts={accounts} fundingSources={funds}
             canEdit={canEdit} generalFundId={generalFundId}
+            priceIndex={priceIndex} priceIndexLoading={priceIndexLoading}
             onChanged={(result) => {
               // Refetch just this activity's lines, and hand the recomputed totals upward. The
               // record is NOT reloaded, so this row stays open and stays where it is.
