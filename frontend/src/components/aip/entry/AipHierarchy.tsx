@@ -28,14 +28,24 @@
 
 export type AipLevel = "office" | "program" | "project" | "activity";
 
-const LEVEL_STYLES: Record<AipLevel, { label: string; chip: string; rail: string }> = {
-  // Strongest: the office owns the card, so its chip carries the brand green.
-  office:   { label: "Office",   chip: "bg-green-100 text-green-800",  rail: "border-green-600" },
-  program:  { label: "Program",  chip: "bg-green-50 text-green-800",   rail: "border-green-400" },
-  project:  { label: "Project",  chip: "bg-slate-200 text-slate-800",  rail: "border-slate-300" },
-  // The activity already sits in its own bordered card with its total on the right, so its chip is
-  // the quietest — it is identifying a row the eye has already found.
-  activity: { label: "Activity", chip: "bg-slate-100 text-slate-600",  rail: "border-slate-200" },
+/**
+ * One descending green ladder, applied to three things at once.
+ *
+ * ⚠️ **The chip is always a step DARKER than the row it sits on**, never the same tint. Running the
+ * row and its chip down the ramp together would make the chip vanish into its own background at
+ * exactly the depth where the reader most needs it. So the row steps green-100 → 50 → 25 → white
+ * while the chip steps green-600 → 200 → 100 → 50, and every pair keeps its contrast.
+ *
+ * ⚠️ Four levels, and the ramp only has three faint greens (100 / 50 / 25). The fourth step is
+ * **white** — the activity — which is also correct on its own terms: it is the leaf, it sits in its
+ * own bordered card, and a tint there would fight the expanded content below it.
+ */
+const LEVEL_STYLES: Record<AipLevel, { label: string; chip: string; rail: string; row: string }> = {
+  office:   { label: "Office",   chip: "bg-green-600 text-white",     rail: "border-green-600", row: "bg-green-100" },
+  program:  { label: "Program",  chip: "bg-green-200 text-green-900", rail: "border-green-400", row: "bg-green-50"  },
+  project:  { label: "Project",  chip: "bg-green-100 text-green-800", rail: "border-green-200", row: "bg-green-25"  },
+  // White, not a fourth tint: the activity is the leaf and carries expanded content beneath it.
+  activity: { label: "Activity", chip: "bg-green-50 text-green-800",  rail: "border-slate-200", row: "bg-white"     },
 };
 
 /**
@@ -52,9 +62,12 @@ export function AipLevelChip({ level }: { level: AipLevel }) {
   );
 }
 
-/** The left rail for a level's block. Depth as colour strength, reinforcing the indent. */
-export function aipRail(level: AipLevel): string {
-  return `border-l-2 ${LEVEL_STYLES[level].rail}`;
+/**
+ * The tinted background for a level's header row, plus its rail — the two always travel together,
+ * so a caller cannot tint a row one level and rail it another.
+ */
+export function aipHeaderRow(level: AipLevel): string {
+  return `${LEVEL_STYLES[level].row} border-l-2 ${LEVEL_STYLES[level].rail}`;
 }
 
 /**

@@ -34,7 +34,7 @@ import AipAddProgramsPanel from "@/components/aip/entry/AipAddProgramsPanel";
 import AipExpenditureTable from "@/components/aip/entry/AipExpenditureTable";
 import AipActivityFields from "@/components/aip/entry/AipActivityFields";
 import AipSubmitChecklist from "@/components/aip/entry/AipSubmitChecklist";
-import { AipLevelChip, AipRefCode, aipRail } from "@/components/aip/entry/AipHierarchy";
+import { AipLevelChip, AipRefCode, aipHeaderRow } from "@/components/aip/entry/AipHierarchy";
 import { listAipExpenditures } from "@/lib/aip";
 import type {
   AipRecordDetail, AipOfficeDetail, AipProjectDetail, AipActivityDetail, AipExpenditure,
@@ -304,7 +304,7 @@ function GroupBlock({
 }) {
   return (
     <div className="border border-slate-200 bg-white">
-      <div className={`border-b border-slate-200 bg-slate-50 px-4 py-3 ${aipRail("office")}`}>
+      <div className={`border-b border-b-slate-200 px-4 py-3 ${aipHeaderRow("office")}`}>
         <div className="flex items-center gap-2">
           <AipLevelChip level="office" />
           <AipRefCode code={group.refCode} />
@@ -326,19 +326,24 @@ function GroupBlock({
 
       <div className="divide-y divide-slate-200">
         {group.programs.map((program) => (
-          <div key={program.id} className={`ml-3 px-4 py-3 ${aipRail("program")}`}>
-            <div className="flex items-center gap-2">
-              <AipLevelChip level="program" />
-              <AipRefCode code={program.refCode} />
+          <div key={program.id} className="ml-3">
+            {/* ⚠️ The tint is on the HEADER strip, not the block. Tinting the whole block would
+                make each nested level sit on its parent's colour, and the ladder would read as
+                one wash instead of four steps. */}
+            <div className={`px-4 py-2 ${aipHeaderRow("program")}`}>
+              <div className="flex items-center gap-2">
+                <AipLevelChip level="program" />
+                <AipRefCode code={program.refCode} />
+              </div>
+              {/* Semibold, a step below the office's uppercase heading and a step above the
+                  project's medium — the type carries the level even without the chip. */}
+              <p className="mt-0.5 text-sm font-semibold text-slate-800">{program.name}</p>
             </div>
-            {/* Semibold, a step below the office's uppercase heading and a step above the
-                project's medium — the type carries the level even without the chip. */}
-            <p className="mt-1 text-sm font-semibold text-slate-800">{program.name}</p>
 
-            <div className="mt-3 space-y-3 pl-4">
+            <div className="mt-2 space-y-3 px-4 pb-3 pl-4">
               {program.projects.map((project) => (
-                <div key={project.id} className={`pl-3 ${aipRail("project")}`}>
-                  <div className="flex flex-wrap items-center gap-2">
+                <div key={project.id}>
+                  <div className={`flex flex-wrap items-center gap-2 px-3 py-1.5 ${aipHeaderRow("project")}`}>
                     <AipLevelChip level="project" />
                     <AipRefCode code={project.refCode} />
                     <span className="text-sm font-medium text-slate-800">{project.name}</span>
@@ -405,7 +410,7 @@ function ActivityBlock({
   return (
     <div className="border border-slate-200 bg-white">
       <button type="button" onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-start justify-between gap-3 px-3 py-2 text-left hover:bg-slate-50">
+        className={`flex w-full items-start justify-between gap-3 px-3 py-2 text-left hover:bg-green-25 ${aipHeaderRow("activity")}`}>
         <span className="flex flex-wrap items-center gap-2">
           {/* A disclosure caret, because this is the one level that opens. Decorative, so
               slate-300 is the right token; the chip beside it carries the meaning. */}
