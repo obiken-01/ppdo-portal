@@ -796,6 +796,7 @@ The largest single change attempted so far. **PPDO-28** is the epic; its childre
 | `docs/NAMING_CONVENTIONS.md` | Adding a table or column |
 | `docs/v1.8/Permission_Matrix.md` | Adding or changing a permission flag, a scope rule, or a gated endpoint |
 | `docs/v1.8/AIP_Entry_Spec.md` | Any v1.8.0 Phase 3 ticket (AIP Entry — PPDO-48 and its children) |
+| `docs/v1.8/AIP_Review_Spec.md` | Any v1.8.0 Phase 4 ticket (AIP Review — PPDO-67 and its children). ⚠️ Supersedes `Phase_Plan.md` §6 |
 | `docs/TEST_CONVENTIONS.md` | Writing tests or a PR test plan |
 | `docs/GIT_CONVENTIONS.md` | Branching, committing, releasing |
 | `docs/BUG_REPORT_STANDARD.md` | Filing a bug |
