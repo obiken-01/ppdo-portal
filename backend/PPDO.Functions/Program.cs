@@ -109,6 +109,7 @@ var host = new HostBuilder()
         services.AddScoped<IAuditRepository, AuditRepository>();
         services.AddScoped<IAipRepository, AipRepository>();
         services.AddScoped<IAipExpenditureRepository, AipExpenditureRepository>();
+        services.AddScoped<IAipReviewCommentRepository, AipReviewCommentRepository>();
         services.AddScoped<ILdipRepository, LdipRepository>();
         services.AddScoped<IWfpRepository, WfpRepository>();
         services.AddScoped<IOfficeRepository, OfficeRepository>();
@@ -197,6 +198,7 @@ var host = new HostBuilder()
         services.AddScoped<IAipCeilingService, AipCeilingService>();
         services.AddScoped<IAipExpenditureService, AipExpenditureService>();
         services.AddScoped<IAipSubmitService, AipSubmitService>();
+        services.AddScoped<IAipReviewCommentService, AipReviewCommentService>();
     })
     .ConfigureLogging((context, logging) =>
     {

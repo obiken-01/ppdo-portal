@@ -1285,3 +1285,62 @@ export interface AipAddableGroup {
   groupName: string;
   programs: AipAddableProgram[];
 }
+
+// ── AIP review comments (v1.8.0 Phase 4 — V18-53 / PPDO-71) ─────────────────
+
+/** Which kind of row a comment is anchored to. ⚠️ A row, never a field (spec decision 7). */
+export type AipCommentNodeType = "Program" | "Project" | "Activity";
+
+/**
+ * Which side wrote a comment.
+ *
+ * ⚠️ Exactly two — **the encoder never comments**. They read comments, act on them and re-submit.
+ * That is why the unresolved tally splits two ways and not three.
+ */
+export type AipCommentSide = "DepartmentHead" | "Ppdo";
+
+export interface AipReviewComment {
+  id: number;
+  aipOfficeId: number;
+  nodeType: AipCommentNodeType;
+  nodeId: number;
+  /** Null when the anchored row has since been deleted — see `isOrphaned`. */
+  nodeRefCode: string | null;
+  body: string;
+  authorId: string;
+  authorName: string;
+  authorSide: AipCommentSide;
+  createdAt: string;
+  resolvedAt: string | null;
+  resolvedByName: string | null;
+  /**
+   * ⚠️ Whether **this** reader may resolve it — false for the side it is addressed to, however
+   * senior. Hide the control on false; the server refuses it regardless, so this is convenience,
+   * never enforcement.
+   */
+  canResolve: boolean;
+  /** The anchored row is gone. Render as orphaned; never drop the comment. */
+  isOrphaned: boolean;
+}
+
+/** ⚠️ Two numbers, never merged — the reader can resolve neither set themselves. */
+export interface AipUnresolvedCounts {
+  fromDepartmentHead: number;
+  fromPpdo: number;
+  total: number;
+}
+
+export interface AipReviewComments {
+  aipRecordId: number;
+  officeId: number;
+  comments: AipReviewComment[];
+  unresolved: AipUnresolvedCounts;
+  /** False for an encoder — the composer is not offered. */
+  canComment: boolean;
+}
+
+export interface CreateAipReviewCommentRequest {
+  nodeType: AipCommentNodeType;
+  nodeId: number;
+  body: string;
+}
