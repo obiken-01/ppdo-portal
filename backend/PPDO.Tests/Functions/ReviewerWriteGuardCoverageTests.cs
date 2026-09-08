@@ -44,6 +44,7 @@ public sealed class ReviewerWriteGuardCoverageTests
         typeof(WfpProcurementPresetFunctions),
         typeof(AipExpenditureFunctions),
         typeof(AipSubmitFunctions),
+        typeof(AipReviewCommentFunctions),
     ];
 
     private static readonly string[] WriteVerbs = ["post", "put", "delete", "patch"];
@@ -85,8 +86,71 @@ public sealed class ReviewerWriteGuardCoverageTests
     ];
 
     /// <summary>
-    /// The write endpoints an ordinary budget-planning user can reach — the set the two
-    /// attribution theories below are actually about.
+    /// Endpoints that are POSTs but are <b>not content writes</b>, so the guard must NOT deny a
+    /// cross-office reviewer — it must let them through (v1.8.0 Phase 4).
+    ///
+    /// <para>
+    /// ⚠️ <b>This is the opposite exemption from <see cref="ReviewerGatedEndpoints"/>, and it is
+    /// the more dangerous list of the two</b>, because a genuine content write added here would
+    /// silently lose its guard. Every entry must be an action the PPDO consolidated reviewer is
+    /// supposed to perform — commenting and resolving are their whole job, and
+    /// <c>ReviewerWriteGuard</c>'s own remarks name them: "a comment-only reviewer who cannot
+    /// comment is not a reviewer."
+    /// </para>
+    ///
+    /// <para>
+    /// They are excluded only from the two theories that assert the reviewer is <i>refused</i>;
+    /// they keep the department-head-vs-ordinary theory, and they gain
+    /// <see cref="CommentEndpoints_LetACrossOfficeReviewerThrough"/>, which asserts the positive
+    /// directly. An entry added here without that assertion is a hole in the net.
+    /// </para>
+    /// </summary>
+    private static readonly HashSet<string> NotContentWriteEndpoints =
+    [
+        // PPDO-71 — inline review comments. The cross-office reviewer is the main author.
+        $"{nameof(AipReviewCommentFunctions)}.{nameof(AipReviewCommentFunctions.Create)}",
+        $"{nameof(AipReviewCommentFunctions)}.{nameof(AipReviewCommentFunctions.Resolve)}",
+    ];
+
+    /// <summary>Write endpoints that genuinely guard content — the set the two theories cover.</summary>
+    public static TheoryData<string, string> GuardedWriteEndpoints()
+    {
+        TheoryData<string, string> data = new();
+        foreach ((Type type, MethodInfo method, _) in DiscoverWriteEndpoints())
+        {
+            string key = $"{type.Name}.{method.Name}";
+            if (ReviewerGatedEndpoints.Contains(key) || NotContentWriteEndpoints.Contains(key)) continue;
+            data.Add(type.FullName!, method.Name);
+        }
+        return data;
+    }
+
+    /// <summary>
+    /// The positive assertion behind <see cref="NotContentWriteEndpoints"/>: a cross-office
+    /// reviewer reaches these rather than being refused.
+    ///
+    /// ⚠️ Stated as "not 403", not as a success status — these handlers run on past the guard into
+    /// mocked services that cannot produce a real <c>ServiceResult</c> and throw instead, which is
+    /// exactly how the other theories read "got through".
+    /// </summary>
+    [Theory]
+    [InlineData(nameof(AipReviewCommentFunctions.Create))]
+    [InlineData(nameof(AipReviewCommentFunctions.Resolve))]
+    public async Task CommentEndpoints_LetACrossOfficeReviewerThrough(string methodName)
+    {
+        string outcome = await OutcomeAsync(
+            typeof(AipReviewCommentFunctions).FullName!, methodName,
+            crossOfficeReviewer: true, departmentHeadReviewer: false);
+
+        Assert.NotEqual($"status:{HttpStatusCode.Forbidden}", outcome);
+    }
+
+    /// <summary>
+    /// The write endpoints an ordinary budget-planning user can reach.
+    ///
+    /// Wider than <see cref="GuardedWriteEndpoints"/>: it keeps the comment endpoints, because
+    /// "a department head behaves like any other user here" is true of those too — it is only the
+    /// assertions about the cross-office reviewer being <i>refused</i> that do not apply to them.
     /// </summary>
     public static TheoryData<string, string> OrdinaryReachableWriteEndpoints()
     {
@@ -148,16 +212,20 @@ public sealed class ReviewerWriteGuardCoverageTests
         // BudgetPlanningFunctionTypes above. Until it was, the count stayed at 39 and all three
         // endpoints were silently uncovered while every test still passed. This file's safety net
         // has one hand-maintained hole in it, and that list is it.
+        // ↩️ 46 → 48 on 2026-09-08 (PPDO-71): AipReviewCommentFunctions' POST comment and
+        //    POST resolve. ⚠️ Adding the class to BudgetPlanningFunctionTypes is the half that
+        //    actually matters — until it was added the count sat at 46 and both endpoints were
+        //    silently uncovered while every test still passed.
         // ↩️ 45 → 46 on 2026-09-08 (PPDO-69): AipSubmitFunctions
         //    POST /aip/{aipId}/offices/{officeId}/submit-to-ppdo — the second submit.
-        Assert.True(found.Count >= 46,
-            $"Expected at least 46 budget-planning write endpoints, found {found.Count}. " +
+        Assert.True(found.Count >= 48,
+            $"Expected at least 48 budget-planning write endpoints, found {found.Count}. " +
             "If endpoints were legitimately removed, lower this floor deliberately — do not " +
             "delete the assertion, or the coverage theories start passing vacuously.");
     }
 
     [Theory]
-    [MemberData(nameof(WriteEndpoints))]
+    [MemberData(nameof(GuardedWriteEndpoints))]
     public async Task WriteEndpoint_RefusesACrossOfficeReviewer(string typeName, string methodName)
     {
         HttpResponseData response = await InvokeAsync(
@@ -219,7 +287,7 @@ public sealed class ReviewerWriteGuardCoverageTests
     /// only one of them is refused — so the 403 is attributable to the guard and nothing else.
     /// </summary>
     [Theory]
-    [MemberData(nameof(OrdinaryReachableWriteEndpoints))]
+    [MemberData(nameof(GuardedWriteEndpoints))]
     public async Task WriteEndpoint_OrdinaryUserIsNotRefused_SoTheGuardIsWhatCausesThe403(
         string typeName, string methodName)
     {

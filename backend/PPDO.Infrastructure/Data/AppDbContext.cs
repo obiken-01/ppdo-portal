@@ -55,6 +55,13 @@ public sealed class AppDbContext : DbContext
     /// period dimension, unlike <see cref="WfpProcurementItems"/>.
     /// </summary>
     public DbSet<AipProcurementItem> AipProcurementItems { get; set; } = null!;
+
+    /// <summary>
+    /// Inline AIP review comments (v1.8.0 Phase 4 — V18-53). Anchored to a tree row, resolvable
+    /// only by the side that wrote them, and never deleted once resolved.
+    /// </summary>
+    public DbSet<AipReviewComment> AipReviewComments { get; set; } = null!;
+
     public DbSet<WfpRecord> WfpRecords { get; set; } = null!;
     public DbSet<WfpActivity> WfpActivities { get; set; } = null!;
     public DbSet<WfpExpenditureLine> WfpExpenditureLines { get; set; } = null!;

@@ -35,6 +35,9 @@ import AipAddProgramsPanel from "@/components/aip/entry/AipAddProgramsPanel";
 import AipExpenditureTable from "@/components/aip/entry/AipExpenditureTable";
 import AipActivityFields from "@/components/aip/entry/AipActivityFields";
 import AipSubmitChecklist, { type AipSubmitStage } from "@/components/aip/entry/AipSubmitChecklist";
+import {
+  AipCommentsProvider, AipCommentFilterBar, AipCommentAnchor,
+} from "@/components/aip/entry/AipComments";
 import { AipLevelChip, AipRefCode, aipHeaderRow } from "@/components/aip/entry/AipHierarchy";
 import { listAipExpenditures } from "@/lib/aip";
 import type {
@@ -244,6 +247,9 @@ export default function AipEntryPage() {
           body="An administrator opens the fiscal year, which creates the AIP and populates every office's programs from its LDIP. Once that is done, your office's programs will appear here."
         />
       ) : record && officeId != null ? (
+        // One fetch of the office's comments for the whole tree — a gutter control per row
+        // fetching its own would be an N+1 that only shows up on a big office.
+        <AipCommentsProvider aipRecordId={record.id} officeId={officeId}>
         <div className="space-y-4">
           {readiness && (
             <AipSubmitChecklist
@@ -252,6 +258,10 @@ export default function AipEntryPage() {
               submitting={submitting}
             />
           )}
+
+          {/* Renders nothing when there is nothing outstanding — a permanent "0 unresolved" strip
+              would be noise on the page encoders use most. */}
+          <AipCommentFilterBar />
 
           {myGroups.length === 0 ? (
             <EmptyState
@@ -319,6 +329,7 @@ export default function AipEntryPage() {
             </>
           )}
         </div>
+        </AipCommentsProvider>
       ) : (
         // A user with no office resolves to "sees nothing" rather than "sees everything" —
         // DECISION F. An empty state, not an error.
@@ -388,6 +399,7 @@ function GroupBlock({
               {/* Semibold, a step below the office's uppercase heading and a step above the
                   project's medium — the type carries the level even without the chip. */}
               <p className="mt-0.5 text-sm font-semibold text-slate-800">{program.name}</p>
+              <AipCommentAnchor nodeType="Program" nodeId={program.id} />
             </div>
 
             <div className="mt-2 space-y-3 px-4 pb-3 pl-4">
@@ -397,6 +409,11 @@ function GroupBlock({
                     <AipLevelChip level="project" />
                     <AipRefCode code={project.refCode} />
                     <span className="text-sm font-medium text-slate-800">{project.name}</span>
+                  </div>
+                  {/* Outside the header strip: it is a flex row, and an anchor inside it would sit
+                      on the same line as the title and wrap badly once a thread opens. */}
+                  <div className="px-3">
+                    <AipCommentAnchor nodeType="Project" nodeId={project.id} />
                   </div>
                   <div className="mt-2 space-y-2 pl-4">
                     {project.activities.map((activity) => (
@@ -475,6 +492,12 @@ function ActivityBlock({
           {activity.total == null ? "—" : fmtThousands(activity.total)}
         </span>
       </button>
+
+      {/* ⚠️ Outside the disclosure <button>, not inside it: nesting a button in a button is
+          invalid HTML, and the click would toggle the activity open instead of the thread. */}
+      <div className="px-3 pb-1">
+        <AipCommentAnchor nodeType="Activity" nodeId={activity.id} />
+      </div>
 
       {open && (
         <>
