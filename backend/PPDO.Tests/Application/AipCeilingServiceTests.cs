@@ -475,6 +475,70 @@ public sealed class AipCeilingServiceTests
         _officeRepo.VerifyNoOtherCalls();
     }
 
+    // ── Addressed by office + fiscal year, for PBO (V18-48 / PPDO-58) ─────────
+
+    /// <summary>
+    /// PBO asks by config office and fiscal year, because it sets ceilings for offices it does not
+    /// belong to and has no <c>aipOfficeId</c> to hand. The answer is the same office-level figure
+    /// <see cref="AipCeilingService.GetStatusAsync"/> gives.
+    /// </summary>
+    [Fact]
+    public async Task GetStatusForOffice_ResolvesTheOfficeAndReturnsItsOfficeLevelPosition()
+    {
+        _aipRepo.Setup(r => r.GetLatestByFiscalYearAsync(FiscalYear, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AipRecord { Id = AipRecordId, FiscalYear = FiscalYear });
+        _aipRepo.Setup(r => r.GetOfficesByAipIdAsync(AipRecordId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<AipOffice>
+            {
+                new() { Id = 900, OfficeId = 99, AipRecordId = AipRecordId },          // another office
+                new() { Id = AipOfficeId, OfficeId = ConfigOfficeId, AipRecordId = AipRecordId },
+            });
+        GivenOffice();
+        GivenGeneralFund();
+        GivenCeiling(1_000_000m);
+        GivenLines(GeneralFundId, (Mooe: 2_500_000m, Co: 0m));
+
+        AipCeilingStatusDto? status =
+            await Build().GetStatusForOfficeAsync(ConfigOfficeId, FiscalYear);
+
+        Assert.NotNull(status);
+        // ⚠️ Negative, and not clamped — this is the figure PBO must see after cutting a ceiling
+        // below encoded work. A Math.Max(0, …) anywhere between here and the screen hides the only
+        // signal that the cut created a problem (A5-b).
+        Assert.Equal(-1_500_000m, status!.Remaining);
+        Assert.False(status.WithinCeiling);
+    }
+
+    /// <summary>
+    /// ⚠️ No AIP record for the year is <b>null</b>, never a zeroed status. PBO sets ceilings
+    /// before offices encode anything, so this is an ordinary state — but reporting it as an
+    /// encoded total of ₱0 would tell PBO the office had encoded nothing, which is a different and
+    /// far more reassuring claim than "there is nothing to compare against yet".
+    /// </summary>
+    [Fact]
+    public async Task GetStatusForOffice_WhenTheFiscalYearHasNoAipRecord_ReturnsNullNotAZeroedStatus()
+    {
+        _aipRepo.Setup(r => r.GetLatestByFiscalYearAsync(FiscalYear, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((AipRecord?)null);
+
+        Assert.Null(await Build().GetStatusForOfficeAsync(ConfigOfficeId, FiscalYear));
+    }
+
+    /// <summary>Same rule when the record exists but this office holds no rows in it.</summary>
+    [Fact]
+    public async Task GetStatusForOffice_WhenTheOfficeHasNoRowsInThatRecord_ReturnsNull()
+    {
+        _aipRepo.Setup(r => r.GetLatestByFiscalYearAsync(FiscalYear, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AipRecord { Id = AipRecordId, FiscalYear = FiscalYear });
+        _aipRepo.Setup(r => r.GetOfficesByAipIdAsync(AipRecordId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<AipOffice>
+            {
+                new() { Id = 900, OfficeId = 99, AipRecordId = AipRecordId },
+            });
+
+        Assert.Null(await Build().GetStatusForOfficeAsync(ConfigOfficeId, FiscalYear));
+    }
+
     // ── The rounding rule itself ──────────────────────────────────────────────
 
     [Theory]

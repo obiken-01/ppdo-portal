@@ -103,6 +103,29 @@ public sealed class AipCeilingService : IAipCeilingService
             gfId, ceilingSet, ceiling, encoded, remaining, WithinCeiling: remaining >= 0m);
     }
 
+    /// <inheritdoc />
+    public async Task<AipCeilingStatusDto?> GetStatusForOfficeAsync(
+        int configOfficeId, int fiscalYear, CancellationToken ct = default)
+    {
+        AipRecord? record = await _aipRepo.GetLatestByFiscalYearAsync(fiscalYear, ct);
+        if (record is null) return null;
+
+        IReadOnlyList<AipOffice> offices = await _aipRepo.GetOfficesByAipIdAsync(record.Id, ct);
+
+        // ⚠️ ANY one of the office's group rows gives the office-level answer, because
+        // GetStatusAsync sums by CONFIG office across every group row the office owns — that was
+        // PPDO-56's fix, and it is the reason this can be a one-line delegation rather than a
+        // second implementation. Ordered by id so the same row is picked every call; the figure is
+        // identical either way, but a stable choice keeps the two paths comparable when debugging.
+        AipOffice? mine = offices
+            .Where(o => o.OfficeId == configOfficeId)
+            .OrderBy(o => o.Id)
+            .FirstOrDefault();
+
+        // Null, not a zeroed status — "no AIP to compare against" is not "encoded nothing".
+        return mine is null ? null : await GetStatusAsync(mine.Id, ct);
+    }
+
     // ── The submit gate ───────────────────────────────────────────────────────
 
     /// <inheritdoc />

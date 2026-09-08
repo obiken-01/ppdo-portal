@@ -45,10 +45,12 @@ public sealed class AllocationFunctionsTests
     private const int DivisionId    = 7;
 
     private readonly Mock<IAllocationService>  _allocation  = new(MockBehavior.Strict);
+    private readonly Mock<IAipCeilingService>  _aipCeiling  = new(MockBehavior.Strict);
     private readonly Mock<IJwtMiddleware>      _jwt         = new(MockBehavior.Strict);
     private readonly Mock<IPermissionService>  _permissions = new(MockBehavior.Loose);
 
-    private AllocationFunctions Sut => new(_allocation.Object, _jwt.Object, _permissions.Object);
+    private AllocationFunctions Sut =>
+        new(_allocation.Object, _aipCeiling.Object, _jwt.Object, _permissions.Object);
 
     // ── Callers ───────────────────────────────────────────────────────────────
 
@@ -151,6 +153,15 @@ public sealed class AllocationFunctionsTests
                 invoke = r => Sut.GetCeilings(r, CancellationToken.None);
                 break;
 
+            case "ceiling-usage":
+                query = $"officeId={ForeignOffice}&fiscalYear={FiscalYear}";
+                _aipCeiling.Setup(s => s.GetStatusForOfficeAsync(
+                        It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                    .Callback((int o, int _, CancellationToken _) => captured = o)
+                    .ReturnsAsync(new AipCeilingStatusDto(1, true, 1_000_000m, 400_000m, 600_000m, true));
+                invoke = r => Sut.GetCeilingUsage(r, CancellationToken.None);
+                break;
+
             case "divisions":
                 query = $"officeId={ForeignOffice}&fiscalYear={FiscalYear}&fundingSourceId={FundingSource}";
                 _allocation.Setup(s => s.GetAllocationsAsync(
@@ -210,6 +221,11 @@ public sealed class AllocationFunctionsTests
     [InlineData("ceilings",            Caller.PlainOfficeUser)]
     [InlineData("ceilings",            Caller.HostOffice)]
     [InlineData("ceilings",            Caller.PboCeilingHolder)]
+    // V18-48 / PPDO-58. This one reports what another office has ENCODED, so an unclamped read
+    // would leak a foreign office's spending plan, not just its configured ceiling.
+    [InlineData("ceiling-usage",       Caller.PlainOfficeUser)]
+    [InlineData("ceiling-usage",       Caller.HostOffice)]
+    [InlineData("ceiling-usage",       Caller.PboCeilingHolder)]
     [InlineData("divisions",           Caller.PlainOfficeUser)]
     [InlineData("divisions",           Caller.HostOffice)]
     [InlineData("divisions",           Caller.PboCeilingHolder)]
