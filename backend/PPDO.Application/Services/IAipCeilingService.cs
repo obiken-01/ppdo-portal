@@ -60,8 +60,19 @@ public interface IAipCeilingService
     /// A fund the activity no longer uses is recomputed down to zero rather than left stale at its
     /// last positive amount — the staleness bug RAL-154 fixed on the WFP side.
     ///
-    /// No-ops when the activity's office has no division to attribute the reservation to; guest
-    /// offices are checked at office level and get no synthetic division row (V18-47 / PPDO-57).
+    /// <b>⚠️ Two different situations write no row here, and they are not the same</b>
+    /// (V18-47 / PPDO-57):
+    /// <list type="bullet">
+    /// <item><b>A guest office.</b> Division is not a scoping axis for them at all
+    /// (<c>Permission_Matrix.md</c> §3.1, PPDO-4) — not "no divisions configured yet". They are
+    /// bound by the office-level ceiling in <see cref="GetStatusAsync"/> and get <b>no synthetic
+    /// division row</b>. Correct, expected, silent.</item>
+    /// <item><b>A host-office program no <c>ProgramDivision</c> row claims.</b> A
+    /// misconfiguration: it reserves nothing against any division allocation. Logged at
+    /// <c>Warning</c>, and fixed on the allocation-setup panel.</item>
+    /// </list>
+    /// Resolving both to a null division id, as this did before PPDO-57, made the second
+    /// indistinguishable from the first and therefore invisible.
     /// </summary>
     Task UpsertLedgerForActivityAsync(int aipActivityId, CancellationToken ct = default);
 }
