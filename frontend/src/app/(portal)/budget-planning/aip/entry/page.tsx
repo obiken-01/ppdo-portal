@@ -34,6 +34,7 @@ import AipAddProgramsPanel from "@/components/aip/entry/AipAddProgramsPanel";
 import AipExpenditureTable from "@/components/aip/entry/AipExpenditureTable";
 import AipActivityFields from "@/components/aip/entry/AipActivityFields";
 import AipSubmitChecklist from "@/components/aip/entry/AipSubmitChecklist";
+import { AipLevelChip, AipRefCode, aipRail } from "@/components/aip/entry/AipHierarchy";
 import { listAipExpenditures } from "@/lib/aip";
 import type {
   AipRecordDetail, AipOfficeDetail, AipProjectDetail, AipActivityDetail, AipExpenditure,
@@ -303,9 +304,12 @@ function GroupBlock({
 }) {
   return (
     <div className="border border-slate-200 bg-white">
-      <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-        <p className="font-mono text-xs text-slate-600">{group.refCode}</p>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-800">{group.name}</h2>
+      <div className={`border-b border-slate-200 bg-slate-50 px-4 py-3 ${aipRail("office")}`}>
+        <div className="flex items-center gap-2">
+          <AipLevelChip level="office" />
+          <AipRefCode code={group.refCode} />
+        </div>
+        <h2 className="mt-1 text-sm font-semibold uppercase tracking-wide text-slate-800">{group.name}</h2>
         <p className="mt-0.5 text-xs text-slate-600">
           {group.sector} · {group.programs.length} program{group.programs.length === 1 ? "" : "s"}
         </p>
@@ -322,18 +326,24 @@ function GroupBlock({
 
       <div className="divide-y divide-slate-200">
         {group.programs.map((program) => (
-          <div key={program.id} className="px-4 py-3">
-            <p className="font-mono text-xs text-slate-600">{program.refCode}</p>
-            <p className="text-sm font-medium text-slate-800">{program.name}</p>
+          <div key={program.id} className={`ml-3 px-4 py-3 ${aipRail("program")}`}>
+            <div className="flex items-center gap-2">
+              <AipLevelChip level="program" />
+              <AipRefCode code={program.refCode} />
+            </div>
+            {/* Semibold, a step below the office's uppercase heading and a step above the
+                project's medium — the type carries the level even without the chip. */}
+            <p className="mt-1 text-sm font-semibold text-slate-800">{program.name}</p>
 
-            <div className="mt-2 space-y-2 pl-4">
+            <div className="mt-3 space-y-3 pl-4">
               {program.projects.map((project) => (
-                <div key={project.id}>
-                  <p className="text-sm text-slate-800">
-                    <span className="mr-2 font-mono text-xs text-slate-600">{project.refCode}</span>
-                    {project.name}
-                  </p>
-                  <div className="mt-1 space-y-2 pl-4">
+                <div key={project.id} className={`pl-3 ${aipRail("project")}`}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <AipLevelChip level="project" />
+                    <AipRefCode code={project.refCode} />
+                    <span className="text-sm font-medium text-slate-800">{project.name}</span>
+                  </div>
+                  <div className="mt-2 space-y-2 pl-4">
                     {project.activities.map((activity) => (
                       <ActivityBlock key={activity.id} activity={activity} canEdit={canEdit}
                         accounts={accounts} funds={funds} generalFundId={generalFundId}
@@ -393,12 +403,17 @@ function ActivityBlock({
   }, [open, lines, activity.id]);
 
   return (
-    <div className="border border-slate-200">
+    <div className="border border-slate-200 bg-white">
       <button type="button" onClick={() => setOpen((v) => !v)}
         className="flex w-full items-start justify-between gap-3 px-3 py-2 text-left hover:bg-slate-50">
-        <span className="text-sm text-slate-800">
-          <span className="mr-2 font-mono text-xs text-slate-600">{activity.refCode}</span>
-          {activity.name}
+        <span className="flex flex-wrap items-center gap-2">
+          {/* A disclosure caret, because this is the one level that opens. Decorative, so
+              slate-300 is the right token; the chip beside it carries the meaning. */}
+          <span aria-hidden className="text-slate-300">{open ? "▾" : "▸"}</span>
+          <AipLevelChip level="activity" />
+          <AipRefCode code={activity.refCode} />
+          {/* Normal weight — the leaf. Every level above it is heavier, so depth reads downward. */}
+          <span className="text-sm text-slate-800">{activity.name}</span>
         </span>
         <span className="whitespace-nowrap text-sm tabular-nums text-slate-800">
           {/* ⚠️ null and 0 are different states here — never costed vs costed at zero (V18-34). */}
