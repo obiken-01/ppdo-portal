@@ -13,7 +13,10 @@
  */
 
 import api from "./api";
-import type { ApiResponse, AipOfficeReview, AipSubmitResult } from "@/types";
+import type {
+  ApiResponse, AipOfficeReview, AipSubmitResult,
+  AipReviewSearchParams, AipReviewSearchResult,
+} from "@/types";
 
 function unwrap<T>(body: ApiResponse<T>): T {
   if (body.data == null) throw new Error(body.error ?? "Unexpected empty response.");
@@ -60,6 +63,39 @@ export async function acceptAipOffice(
 ): Promise<AipSubmitResult> {
   const { data } = await api.post<ApiResponse<AipSubmitResult>>(
     `/budget-planning/aip/${aipId}/offices/${officeId}/accept`, {}
+  );
+  return unwrap(data);
+}
+
+/**
+ * The query-first AIP Review search (V18-75 / PPDO-76).
+ *
+ * ⚠️ **`refCode` goes over the wire raw.** The server splits it on `OR` or a comma — a second
+ * parser here would be a second thing to keep in step, and the two would disagree the first time
+ * one of them learned a new separator.
+ *
+ * ⚠️ **`title` is never split, anywhere.** A project may legitimately be called
+ * "Aid or relief distribution".
+ *
+ * ⚠️ Multi-selects travel as one comma-joined parameter. That comma is transport only — it is not
+ * the typed OR-list, and it never touches the title.
+ */
+export async function searchAipReview(
+  params: AipReviewSearchParams
+): Promise<AipReviewSearchResult> {
+  const query: Record<string, string> = { fiscalYear: String(params.fiscalYear) };
+
+  if (params.officeIds?.length) query.officeIds = params.officeIds.join(",");
+  if (params.sectors?.length) query.sectors = params.sectors.join(",");
+  if (params.workflowStatuses?.length) query.workflowStatuses = params.workflowStatuses.join(",");
+  if (params.refCode?.trim()) query.refCode = params.refCode.trim();
+  if (params.title?.trim()) query.title = params.title.trim();
+  if (params.mine) query.mine = "true";
+  if (params.page != null) query.page = String(params.page);
+  if (params.pageSize != null) query.pageSize = String(params.pageSize);
+
+  const { data } = await api.get<ApiResponse<AipReviewSearchResult>>(
+    "/budget-planning/aip/review/search", { params: query }
   );
   return unwrap(data);
 }

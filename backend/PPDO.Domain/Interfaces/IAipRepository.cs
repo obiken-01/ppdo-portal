@@ -122,7 +122,99 @@ public interface IAipRepository : IRepository<AipRecord>
     /// </summary>
     Task<IReadOnlyList<AipProgramRollupDto>> GetProgramRollupsAsync(
         IReadOnlyList<int> aipOfficeIds, CancellationToken ct = default);
+
+    /// <summary>
+    /// One page of the AIP Review search (v1.8.0 Phase 4 — V18-75 / PPDO-76,
+    /// <c>AIP_Review_Spec.md</c> §4.1), plus the chip counts the filter panel renders.
+    ///
+    /// <para>
+    /// <b>⚠️ Every filter is applied in SQL, and that is the whole point of this method.</b> The
+    /// obvious implementation — load the record's offices, programs, projects and activities and
+    /// filter the tree in memory — passes every test on local dev data and falls over on the real
+    /// record, which is thousands of nodes across nineteen offices. It is also the exact pattern
+    /// <c>docs/PERFORMANCE_GUIDELINES.md</c> exists to prevent.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ <b>Scope is the caller's job, not this method's.</b> Pass an already-resolved
+    /// <see cref="AipReviewSearchQuery.OfficeIds"/>; the repository applies whatever it is given.
+    /// Putting <c>OfficeScope</c> down here would hide the security decision inside a query.
+    /// </para>
+    /// </summary>
+    Task<AipReviewSearchPage> SearchReviewNodesAsync(
+        AipReviewSearchQuery query, CancellationToken ct = default);
 }
+
+/// <summary>
+/// The parsed, already-scoped filter set for one AIP Review search (PPDO-76).
+///
+/// <para>
+/// ⚠️ <b>Everything here is a parsed value, never raw user input.</b> The OR-list splitting and the
+/// scope clamp both happen in the Application layer; by the time a query reaches the repository the
+/// only question left is which rows match.
+/// </para>
+/// </summary>
+/// <param name="OfficeIds">
+/// Config office ids to include. ⚠️ <b>Empty means "no office filter", not "no offices"</b> — a
+/// caller that means "nothing" must not call at all. A clamped guest office passes exactly one id.
+/// </param>
+/// <param name="RefCodePrefixes">
+/// Zero or more <b>prefixes</b>, OR-ed together. ⚠️ Matched as <c>LIKE 'x%'</c> — never
+/// <c>LIKE '%x%'</c>, which cannot use an index and is what the spec forbids by name.
+/// </param>
+/// <param name="Title">
+/// Free text over the node name, matched as a substring. ⚠️ <b>A single value, never OR-split</b> —
+/// a project title may legitimately contain the word "or".
+/// </param>
+public sealed record AipReviewSearchQuery(
+    int                 AipRecordId,
+    IReadOnlyList<int>  OfficeIds,
+    IReadOnlyList<string> Sectors,
+    IReadOnlyList<string> WorkflowStatuses,
+    IReadOnlyList<string> RefCodePrefixes,
+    string?             Title,
+    int                 Skip,
+    int                 Take);
+
+/// <summary>
+/// One matching node — a program, project or activity — as the results grid renders it (PPDO-76).
+///
+/// <para>
+/// ⚠️ <b>Slim on purpose.</b> No amounts, no expected outputs, no descriptions: the grid shows none
+/// of them, and a fat AIP DTO once produced a 1.2 MB response
+/// (<c>docs/PERFORMANCE_GUIDELINES.md</c>). A reviewer who wants the figures opens the row.
+/// </para>
+/// </summary>
+/// <param name="Level"><c>Program</c>, <c>Project</c> or <c>Activity</c>.</param>
+/// <param name="OfficeId">
+/// The <b>config</b> office that owns this node's group — what the result row links on. Null only
+/// for a legacy row the V18-32 backfill could not match.
+/// </param>
+public sealed record AipReviewNodeRow(
+    string  Level,
+    int     NodeId,
+    string  RefCode,
+    string  Name,
+    int     AipOfficeId,
+    string  AipOfficeName,
+    int?    OfficeId,
+    string  Sector,
+    string  WorkflowStatus);
+
+/// <summary>
+/// A page of search results with its chip counts (PPDO-76).
+///
+/// <para>
+/// ⚠️ <b>Each count set is computed with its own field's filter removed</b> — standard facet
+/// behaviour. Counting with every filter applied would make a selected chip show its own total and
+/// every sibling show zero, which turns "Select multiple to combine" into a lie.
+/// </para>
+/// </summary>
+public sealed record AipReviewSearchPage(
+    IReadOnlyList<AipReviewNodeRow> Items,
+    int                             TotalCount,
+    IReadOnlyDictionary<string,int> SectorCounts,
+    IReadOnlyDictionary<string,int> WorkflowStatusCounts);
 
 /// <summary>
 /// Activity counts and money for one AipOffice row (PPDO-20). "Costed" means the activity has a

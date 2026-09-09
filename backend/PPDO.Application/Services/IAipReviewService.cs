@@ -130,4 +130,38 @@ public interface IAipReviewService
     /// </summary>
     Task<ServiceResult<AipOfficeReviewDto>> GetOfficeForReviewAsync(
         int aipRecordId, int officeId, User caller, CancellationToken ct = default);
+
+    /// <summary>
+    /// The query-first AIP Review search: one page of matching programs, projects and activities
+    /// (V18-75 / PPDO-76, spec §4.1 and decisions 15–17).
+    ///
+    /// <para>
+    /// <b>⚠️ A result is a NODE, not an office.</b> The spec never says so outright, but §4.1's
+    /// <c>title</c> field searches "program / project / activity name", which only makes sense if a
+    /// row is one of those. Each row carries the office it belongs to so the result can link into
+    /// the review screen.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>⚠️ The gate here is <c>CanAccessBudgetPlanning</c>, not the reviewer flag</b> — §4
+    /// verbatim — and scope is applied by <b>clamping</b> through
+    /// <see cref="OfficeScope.ResolveForReview"/> rather than refusing: a guest office asking about
+    /// somebody else gets its own rows back, never a 403 that would confirm the other office
+    /// exists (spec §3.4). The <i>page</i> is gated more tightly than this endpoint, because every
+    /// result links into a reviewer-only screen; that is a UI decision and it does not belong here.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ <b><c>Mine</c> is resolved from the caller's own permissions, never from a client-supplied
+    /// role.</b> For a cross-office reviewer it means the offices actually waiting on them
+    /// (<c>SubmittedToPpdo</c>); for anyone else it means their own office.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ Returns an empty page — not <c>NotFound</c> — when the fiscal year has no open record.
+    /// "Nothing to search yet" is a state the page renders, not an error it reports.
+    /// </para>
+    /// </summary>
+    Task<ServiceResult<AipReviewSearchResultDto>> SearchAsync(
+        AipReviewSearchRequestDto request, User caller, CancellationToken ct = default);
 }

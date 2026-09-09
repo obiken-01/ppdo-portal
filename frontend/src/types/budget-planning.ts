@@ -1261,6 +1261,67 @@ export interface AipSubmitResult {
 }
 
 /**
+ * One AIP Review search result — a program, project or activity (V18-75 / PPDO-76).
+ *
+ * ⚠️ **A result is a node, not an office.** The search matches on program / project / activity
+ * names, so a row is one of those; `officeId` is what the row links on.
+ *
+ * ⚠️ `level` uses the same three names as `AipReviewComment.nodeType`, deliberately — one
+ * vocabulary for "which kind of AIP row is this", so the two features cannot drift apart.
+ */
+export interface AipReviewSearchRow {
+  level: AipCommentNodeType;
+  nodeId: number;
+  refCode: string;
+  name: string;
+  /** Null only for a legacy row with no matched owner — rendered, but not linkable. */
+  officeId: number | null;
+  officeName: string;
+  sector: string;
+  workflowStatus: string;
+}
+
+/**
+ * A page of search results plus the counts the filter chips render (PPDO-76).
+ *
+ * ⚠️ **`totalCount` is the whole match, not this page.** The pager needs it, and reading it as the
+ * page size makes every search look like it found exactly what fits on screen.
+ *
+ * ⚠️ **Each count set ignores its own filter.** With SOCIAL selected the sector chips still report
+ * GENERAL's count — that is what tells the reader there is something else to combine with.
+ */
+export interface AipReviewSearchResult {
+  /** The record the rows came from — the caller searched by fiscal year, not by id. */
+  aipRecordId: number;
+  fiscalYear: number;
+  items: AipReviewSearchRow[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  sectorCounts: Record<string, number>;
+  workflowStatusCounts: Record<string, number>;
+}
+
+/**
+ * What the search page sends.
+ *
+ * ⚠️ **`refCode` is a raw typed string**, not a parsed list: the server splits it on `OR` or a
+ * comma. ⚠️ **`title` is never split** — a project may legitimately be called "Aid or relief".
+ */
+export interface AipReviewSearchParams {
+  fiscalYear: number;
+  officeIds?: number[];
+  sectors?: string[];
+  workflowStatuses?: string[];
+  refCode?: string;
+  title?: string;
+  /** "Everything applicable to me" — resolved server-side from the caller's own permissions. */
+  mine?: boolean;
+  page?: number;
+  pageSize?: number;
+}
+
+/**
  * One office's whole AIP as the PPDO consolidated reviewer reads it (V18-56 / PPDO-74).
  *
  * ⚠️ **The office, not the record.** The reviewer works one office at a time, and the record holds

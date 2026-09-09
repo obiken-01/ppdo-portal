@@ -388,6 +388,16 @@ from the path"* — is what the tree already is. **Confirm `IX` coverage on `Aip
 `Sector` when PPDO-76 is built**; adding an index is a smaller change than the five-column migration,
 and it is the only part of V18-76 that may still be warranted.
 
+↩️ **Confirmed in PPDO-76: no index, and no migration.** `AipOfficeConfiguration` already declares
+`(AipRecordId, RefCode)` unique, `(AipRecordId)`, `(RefCode)`, `(AipRecordId, OfficeId)` and
+`(OfficeId, WorkflowStatus)` — so the office axis is covered twice over. **`Sector` was deliberately
+left unindexed:** every search is scoped to one AIP record first, which is ~25–40 office rows, and
+an index cannot beat a scan of forty rows that the `(AipRecordId, …)` index has already isolated.
+The office-level filters are applied to that set *before* the joins, so the sector predicate never
+sees the node tables at all. Adding one would be cargo-cult indexing — a migration, a write cost and
+a thing to maintain, bought for nothing. Revisit only if an AIP record ever holds office rows in the
+thousands, which the one-record-per-fiscal-year model (PPDO-61) rules out.
+
 ### 5.4 No change to `aip_offices`
 
 `workflow_status` already holds all five states, introduced in one migration by Phase 3
@@ -412,7 +422,7 @@ precisely so review could reuse the pieces rather than fork a 2,000-line page.
 | **Empty (no matches)** | Distinct from the initial state: "No AIP rows match these filters", with a clear-filters action |
 | **Success** | Result rows linking into 6.2. Chips show per-value counts, as PR List does |
 | **Error** | Inline error with retry; filters preserved |
-| **Forbidden** | The page is **hidden from the sidebar** for users without a reviewer flag, not disabled |
+| **Forbidden** | The page is **hidden from the sidebar** for users without a reviewer flag, not disabled. ↩️ *Settled in PPDO-76:* the **page** is gated on `CanReviewAllOffices` and redirects anyone else, while the **endpoint** keeps §4's `CanAccessBudgetPlanning` gate and *clamps* a guest office to its own rows. §3.4's "guest-office encoder opens AIP Review" row described the endpoint's behaviour, not a UI that exists — every result links into §6.2's reviewer-only screen, so a non-reviewer searching would hit a dead end on every row. The endpoint stays permissive so a 403 cannot be used to discover which offices exist (PPDO-46), and so an office-facing surface can be added later without reopening the scope rule |
 
 ### 6.2 AIP Review — one office (PPDO-74)
 
