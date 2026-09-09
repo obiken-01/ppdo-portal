@@ -1261,6 +1261,32 @@ export interface AipSubmitResult {
 }
 
 /**
+ * One office's whole AIP as the PPDO consolidated reviewer reads it (V18-56 / PPDO-74).
+ *
+ * ⚠️ **The office, not the record.** The reviewer works one office at a time, and the record holds
+ * every office in the province — so this is what the review screen fetches instead of the record
+ * detail the entry page uses.
+ *
+ * ⚠️ **There is no `canReturn` / `canAccept` here, deliberately.** Both are a function of
+ * `workflowStatus` for the only role that can reach this endpoint, and a second carrier of the same
+ * fact is one that can disagree with it. The server refuses the transition regardless of what the
+ * page offered.
+ */
+export interface AipOfficeReview {
+  aipRecordId: number;
+  fiscalYear: number;
+  officeId: number;
+  /** The config office's name — what the confirm dialog says out loud before an irreversible move. */
+  officeName: string;
+  officeCode: string;
+  /** The shared state of every group row; they move together. */
+  workflowStatus: string;
+  activityCount: number;
+  /** One entry per sub-office group. Several is normal, and they are reviewed as one body of work. */
+  groups: AipOfficeDetail[];
+}
+
+/**
  * One LDIP program the office may add. `ldipProgramId` is what
  * `AddAipProgramsWithGroupRequest.ldipProgramIds` expects — named for what it is, because it is NOT
  * the AIP program's id and mixing them up produces a "does not belong to this office's LDIP"

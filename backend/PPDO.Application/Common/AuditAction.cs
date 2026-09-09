@@ -42,8 +42,14 @@ public static class AuditAction
     /// </summary>
     public const string ReturnByPpdo = "RETURN_PPD";
 
-    // ⚠️ Reserved for the ticket that adds that transition, so it is not invented twice with a
-    // different spelling — PPDO-74 (accept):
-    //     ACCEPT_PPD   PPDO accepted it into the AIP      (→ Consolidated)
-    // Not declared until used; an unused constant reads as a feature that exists.
+    /// <summary>
+    /// A PPDO consolidated reviewer accepted the office into the consolidated AIP
+    /// (→ Consolidated). PPDO-74.
+    ///
+    /// ⚠️ Ten characters exactly, and the spelling PPDO-69 reserved here in advance — declared now
+    /// that the transition exists. It is the terminal action in the chain
+    /// <c>SUBMIT_DH → SUBMIT_PPD → (RETURN_PPD ⇄ SUBMIT_PPD) → ACCEPT_PPD</c> that PPDO-77 reads
+    /// back as history.
+    /// </summary>
+    public const string AcceptByPpdo = "ACCEPT_PPD";
 }

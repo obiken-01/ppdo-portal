@@ -1976,12 +1976,15 @@ public sealed class AipService : IAipService
     /// caller that hands the result to a page which SPLICES it into an already-rendered tree —
     /// the details save, the expenditure write — must pass it; a create legitimately has none.
     /// </param>
+    /// <summary>
+    /// ⚠️ Delegates to <see cref="AipTreeMapper.MapActivity"/> — the mapping moved there in PPDO-74
+    /// so the review screen builds the same activity shape rather than a second one that compiles
+    /// just as well and drifts the day a column is added. Kept as a local name because this file
+    /// calls it from several places.
+    /// </summary>
     private static AipActivityDto MapActivityToDto(
-        AipActivity a, IReadOnlyList<string>? fundCodes = null) => new(
-        a.Id, a.ProjectId, a.RefCode, a.Name, a.EsreCode, a.ImplementingOffice,
-        a.StartDate, a.EndDate, a.ExpectedOutputs, a.FundingSourceId, a.FundingSourceSnapshot,
-        a.Ps, a.Mooe, a.Co, a.Total, a.CcAdaptation, a.CcMitigation, a.CcTypologyCode,
-        a.IsCreation, a.IsSynthetic, fundCodes ?? []);
+        AipActivity a, IReadOnlyList<string>? fundCodes = null)
+        => AipTreeMapper.MapActivity(a, fundCodes);
 
     /// <summary>The only 3 values <c>function_band</c> may hold (case-insensitive on input, canonicalized on save).</summary>
     private static readonly string[] AllowedFunctionBands =

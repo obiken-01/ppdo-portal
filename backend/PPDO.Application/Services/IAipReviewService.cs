@@ -74,4 +74,60 @@ public interface IAipReviewService
     /// </summary>
     Task<ServiceResult<AipSubmitResultDto>> ReturnToOfficeAsync(
         int aipRecordId, int officeId, User caller, CancellationToken ct = default);
+
+    /// <summary>
+    /// Takes one office's whole AIP into the consolidated document: <c>SubmittedToPpdo</c> →
+    /// <c>Consolidated</c>, across every group row at once (V18-56 / PPDO-74, decision 6).
+    ///
+    /// <para>
+    /// <b>⚠️ The mirror of <see cref="ReturnToOfficeAsync"/>, and refused the same way on purpose.</b>
+    /// A state produced by <i>another reviewer's</i> action (<c>ReturnedByPpdo</c>,
+    /// <c>Consolidated</c>) is a <b>409</b>; a state the office never sent up (<c>Draft</c>,
+    /// <c>DepartmentReview</c>) is a <b>400</b>. Spec §3.3 answers <c>ReturnedByPpdo</c> twice —
+    /// 409 in its concurrency row, 400 in its "accept a returned office" row — and 409 is correct:
+    /// §10's checklist states that exact race, and only another reviewer can have put the office
+    /// there. A 400 would tell the reviewer who lost the race that they made the mistake.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>⚠️ No completeness or ceiling re-run.</b> Those gate work moving <i>forward through the
+    /// office</i> — the encoder's submit and the department head's. Accept is PPDO closing its own
+    /// reading of work that already passed both gates on its way up; re-running them here would let
+    /// a ceiling changed after submission block a reviewer from recording a decision they have
+    /// already taken.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ <b>There is no un-accept.</b> <c>Consolidated</c> is terminal in shipped code and the
+    /// return path refuses from it with a 409, so an accepted office cannot currently be re-opened
+    /// — spec §7 leaves that open ("only by a PPDO reviewer, through the existing return path"),
+    /// and building it is a ticket, not a quiet addition here.
+    /// </para>
+    /// </summary>
+    Task<ServiceResult<AipSubmitResultDto>> AcceptOfficeAsync(
+        int aipRecordId, int officeId, User caller, CancellationToken ct = default);
+
+    /// <summary>
+    /// One office's whole AIP, read-only, for the cross-office review screen (V18-56 / PPDO-74,
+    /// spec §6.2).
+    ///
+    /// <para>
+    /// <b>⚠️ Why this is not <c>AipService.GetByIdAsync</c> with a filter.</b> That read scopes
+    /// through <see cref="AipReadScope"/>, which does two things wrong for a reviewer. It resolves
+    /// the office axis from <c>BudgetPlanningScope</c> — so a reviewer who does not sit in the host
+    /// office would be clamped to their own office and see nothing — and it applies the
+    /// <b>division</b> axis to the host office's own programs, which would silently drop programs
+    /// from a review of PPDO's own AIP. A review is of the <i>whole</i> office by definition.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ <b>Gated on <c>CanReviewAllOffices</c>, and only that.</b> Not on host-office membership
+    /// (tracker B4's tempting wrong axis), and not widened to let an office read itself here — the
+    /// office reads its own work on the entry page, which carries the editability rules that belong
+    /// to it. Every refusal is a <b>404</b> worded identically to a missing office (PPDO-46), so the
+    /// response cannot be used to enumerate the record.
+    /// </para>
+    /// </summary>
+    Task<ServiceResult<AipOfficeReviewDto>> GetOfficeForReviewAsync(
+        int aipRecordId, int officeId, User caller, CancellationToken ct = default);
 }

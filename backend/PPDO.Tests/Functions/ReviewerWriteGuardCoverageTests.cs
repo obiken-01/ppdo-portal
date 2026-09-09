@@ -90,6 +90,11 @@ public sealed class ReviewerWriteGuardCoverageTests
         // flag (this set) AND the action is not a content write (the set below). Its dedicated
         // assertion is Return_IsGatedOnTheCrossOfficeReviewerFlag.
         $"{nameof(AipReviewFunctions)}.{nameof(AipReviewFunctions.Return)}",
+
+        // PPDO-74 — the accept. Return's mirror in every respect, including this one: same gate,
+        // same both-sets membership, dedicated assertion in
+        // Accept_IsGatedOnTheCrossOfficeReviewerFlag.
+        $"{nameof(AipReviewFunctions)}.{nameof(AipReviewFunctions.Accept)}",
     ];
 
     /// <summary>
@@ -124,6 +129,11 @@ public sealed class ReviewerWriteGuardCoverageTests
         // gives this route a body that changes anything about the office's plan, it stops
         // qualifying and must come out of this list.
         $"{nameof(AipReviewFunctions)}.{nameof(AipReviewFunctions.Return)}",
+
+        // PPDO-74 — accepting an office into the consolidated AIP. Same reasoning as the return
+        // directly above: the cross-office reviewer is the only caller who may do it, and it moves
+        // a workflow column and touches no figures.
+        $"{nameof(AipReviewFunctions)}.{nameof(AipReviewFunctions.Accept)}",
     ];
 
     /// <summary>Write endpoints that genuinely guard content — the set the two theories cover.</summary>
@@ -238,6 +248,35 @@ public sealed class ReviewerWriteGuardCoverageTests
     }
 
     /// <summary>
+    /// The same three-way assertion for accept (PPDO-74), which sits in both exemption sets for the
+    /// same reasons the return does.
+    ///
+    /// <para>
+    /// ⚠️ <b>The department-head row is the one worth having.</b> Accept is what closes an office
+    /// into the consolidated AIP, and a department head who could press it would be accepting their
+    /// own office's work — signing off on themselves. The two reviewer flags are one word apart in
+    /// every sentence about them, which is exactly why this is asserted rather than assumed.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Accept_IsGatedOnTheCrossOfficeReviewerFlag()
+    {
+        string ordinary = await OutcomeAsync(
+            typeof(AipReviewFunctions).FullName!, nameof(AipReviewFunctions.Accept),
+            crossOfficeReviewer: false, departmentHeadReviewer: false);
+        string departmentHead = await OutcomeAsync(
+            typeof(AipReviewFunctions).FullName!, nameof(AipReviewFunctions.Accept),
+            crossOfficeReviewer: false, departmentHeadReviewer: true);
+        string crossOffice = await OutcomeAsync(
+            typeof(AipReviewFunctions).FullName!, nameof(AipReviewFunctions.Accept),
+            crossOfficeReviewer: true, departmentHeadReviewer: false);
+
+        Assert.Equal($"status:{HttpStatusCode.Forbidden}", ordinary);
+        Assert.Equal($"status:{HttpStatusCode.Forbidden}", departmentHead);
+        Assert.NotEqual($"status:{HttpStatusCode.Forbidden}", crossOffice);
+    }
+
+    /// <summary>
     /// Guards the discovery itself. If a refactor changes the attribute shape and this returns
     /// nothing, every theory below would vacuously pass — so assert the count is in the expected
     /// range instead. The exact number is allowed to grow; it must never collapse.
@@ -270,8 +309,11 @@ public sealed class ReviewerWriteGuardCoverageTests
         //    POST /aip/{aipId}/offices/{officeId}/return. ⚠️ As every note above says: adding the
         //    class to BudgetPlanningFunctionTypes is the half that matters. Raising this floor
         //    alone would have failed loudly, which is the net working.
-        Assert.True(found.Count >= 49,
-            $"Expected at least 49 budget-planning write endpoints, found {found.Count}. " +
+        // ↩️ 49 → 50 on 2026-09-09 (PPDO-74): AipReviewFunctions
+        //    POST /aip/{aipId}/offices/{officeId}/accept. The class was already in
+        //    BudgetPlanningFunctionTypes from PPDO-72, so this floor is the only half to move.
+        Assert.True(found.Count >= 50,
+            $"Expected at least 50 budget-planning write endpoints, found {found.Count}. " +
             "If endpoints were legitimately removed, lower this floor deliberately — do not " +
             "delete the assertion, or the coverage theories start passing vacuously.");
     }
