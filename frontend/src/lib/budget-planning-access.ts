@@ -58,6 +58,30 @@ export function canOpenLdip(me: MeResponse): boolean {
 }
 
 /**
+ * The **AIP Review** pages — `/budget-planning/aip/review` and its `search` child (PPDO-79).
+ * The PPDO consolidated reviewer's grant, and nothing weaker.
+ *
+ * ⚠️ **`canReviewAllOffices`, NOT `canReviewBudgetPlanning`** — and the two are one word apart in
+ * every sentence about them, which is why this is written down. There are two reviewers in v1.8.0
+ * Phase 4 and they differ on exactly one point: the **department-head** reviewer works on their own
+ * office and may edit it, which is what `aip/entry` is for and where that editability lives; the
+ * **PPDO consolidated** reviewer reads every office and edits none. Review is the cross-office
+ * surface, so a department head landing here would get a page about somebody else's work with no
+ * action on it. (`AIP_Review_Spec.md` §3.1, §6.1 — §6.1 settled this in PPDO-76.)
+ *
+ * ⚠️ **Not `isHostOffice`, and not Admin.** Sitting in PPDO is the tempting wrong axis (tracker
+ * B4): a PPDO *division encoder* is in the host office and has no business reading another office's
+ * budget figures. `admin` and `jose.santos` are both Admins in PPDO and only one of them holds this
+ * flag — proof the gate is the flag and not the role.
+ *
+ * ⚠️ Courtesy, as this file's header says. `AipReviewFunctions` refuses the cross-office read,
+ * return and accept on its own account; hiding the nav item only spares somebody a redirect.
+ */
+export function canOpenAipReview(me: MeResponse): boolean {
+  return me.canAccessBudgetPlanning && me.canReviewAllOffices;
+}
+
+/**
  * Where to send somebody who reached one of the above without the grant.
  *
  * The Budget Planning hub, which anyone holding `canAccessBudgetPlanning` can open — it names the
