@@ -179,6 +179,113 @@ public sealed class AipReviewService : IAipReviewService
                 AipTreeMapper.GroupFundCodes(fundRows))));
     }
 
+    // ── The query-first search (V18-75 / PPDO-76) ─────────────────────────────
+
+    /// <summary>Page size ceiling. A client asking for more gets this; the grid pages instead.</summary>
+    private const int MaxPageSize = 100;
+
+    public async Task<ServiceResult<AipReviewSearchResultDto>> SearchAsync(
+        AipReviewSearchRequestDto request, User caller, CancellationToken ct = default)
+    {
+        AipRecord? record = await _aipRepo.GetLatestByFiscalYearAsync(request.FiscalYear, ct);
+
+        int page     = Math.Max(1, request.Page);
+        int pageSize = Math.Clamp(request.PageSize <= 0 ? 25 : request.PageSize, 1, MaxPageSize);
+
+        // ⚠️ An unopened year is an EMPTY page, not a 404. The reviewer has done nothing wrong, and
+        // the page has a state for "nothing to search yet" — turning it into an error would put a
+        // red banner in front of a perfectly ordinary situation at the start of a season.
+        if (record is null)
+            return ServiceResult<AipReviewSearchResultDto>.Ok(new AipReviewSearchResultDto(
+                0, request.FiscalYear, [], 0, page, pageSize,
+                new Dictionary<string, int>(), new Dictionary<string, int>()));
+
+        bool crossOffice = await _permissions.CanReviewAllOfficesAsync(caller, ct);
+        OfficeScope scope = OfficeScope.ResolveForReview(caller, crossOffice);
+
+        // ⚠️ CLAMP, never refuse. A guest office that asks about another office gets its own rows
+        // back — a 403 would confirm the other office exists, which is the enumeration PPDO-46
+        // closed off. The clamp reaches the repository as an ordinary one-value office filter.
+        List<int> officeIds = (request.OfficeIds ?? []).Distinct().ToList();
+        if (!scope.SeeAll)
+            officeIds = scope.OfficeId is int only && only != OfficeScope.NoOffice ? [only] : [];
+
+        List<string> statuses = (request.WorkflowStatuses ?? []).ToList();
+
+        // ⚠️ "Everything applicable to me", resolved HERE from the caller's own flags — never from
+        // anything the client sent. For a cross-office reviewer the useful answer is their actual
+        // queue: the offices sitting at PPDO waiting on a decision. For anybody else it is their
+        // own office, which is the only work they have.
+        if (request.Mine)
+        {
+            if (crossOffice)
+            {
+                if (statuses.Count == 0) statuses.Add(AipWorkflowStatus.SubmittedToPpdo);
+            }
+            else if (caller.OfficeId is int mine && officeIds.Count == 0)
+            {
+                officeIds.Add(mine);
+            }
+        }
+
+        // ⚠️ A caller with no office resolves to "sees nothing" (DECISION F). Short-circuit rather
+        // than querying: an empty office filter means "no filter", so falling through would show
+        // them every office in the province.
+        if (!scope.SeeAll && officeIds.Count == 0)
+            return ServiceResult<AipReviewSearchResultDto>.Ok(new AipReviewSearchResultDto(
+                record.Id, record.FiscalYear, [], 0, page, pageSize,
+                new Dictionary<string, int>(), new Dictionary<string, int>()));
+
+        AipReviewSearchPage result = await _aipRepo.SearchReviewNodesAsync(
+            new AipReviewSearchQuery(
+                record.Id,
+                officeIds,
+                (request.Sectors ?? []).ToList(),
+                statuses,
+                SplitCodeList(request.RefCode),
+                // ⚠️ Passed through whole. This is the field that must NOT be split.
+                request.Title,
+                Skip: (page - 1) * pageSize,
+                Take: pageSize),
+            ct);
+
+        return ServiceResult<AipReviewSearchResultDto>.Ok(new AipReviewSearchResultDto(
+            record.Id,
+            record.FiscalYear,
+            result.Items.Select(r => new AipReviewSearchRowDto(
+                r.Level, r.NodeId, r.RefCode, r.Name,
+                r.OfficeId, r.AipOfficeName, r.Sector, r.WorkflowStatus)).ToList(),
+            result.TotalCount,
+            page,
+            pageSize,
+            result.SectorCounts,
+            result.WorkflowStatusCounts));
+    }
+
+    /// <summary>
+    /// Splits a typed ref-code list on <c>OR</c> or a comma — <c>"1000-…-010 OR 3000-…-010"</c>.
+    ///
+    /// <para>
+    /// <b>⚠️ A flat set, never a tree.</b> No precedence, no nesting, no <c>AND</c>: this is a
+    /// separator, not an expression language (decision 16). If this method ever needs to return
+    /// anything but a list, the decision has been reversed by accident.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ <b>Code-shaped fields only.</b> The same splitting applied to the title field would break
+    /// any project legitimately named "Aid or relief distribution" — which is why the title is
+    /// passed through whole and this method is never called on it.
+    /// </para>
+    /// </summary>
+    private static List<string> SplitCodeList(string? raw)
+        => string.IsNullOrWhiteSpace(raw)
+            ? []
+            : raw.Split([" OR ", " or ", ","], StringSplitOptions.RemoveEmptyEntries)
+                 .Select(v => v.Trim())
+                 .Where(v => v.Length > 0)
+                 .Distinct(StringComparer.OrdinalIgnoreCase)
+                 .ToList();
+
     // ── Internals ─────────────────────────────────────────────────────────────
 
     /// <summary>

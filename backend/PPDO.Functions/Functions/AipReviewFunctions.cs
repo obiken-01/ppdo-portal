@@ -1,3 +1,8 @@
+﻿using System.Collections.Specialized;
+using System.Net;
+using System.Web;
+using PPDO.Application.Common;
+using PPDO.Application.DTOs.BudgetPlanning;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using PPDO.Application.Services;
@@ -51,6 +56,15 @@ public sealed class AipReviewFunctions
 
     /// <summary>The cross-office consolidated reviewer's grant (RAL-257).</summary>
     private Task<bool> CanReviewAllOffices(User u) => _permissions.CanReviewAllOfficesAsync(u);
+
+    /// <summary>
+    /// The ordinary budget-planning grant — the gate on the SEARCH only (PPDO-76).
+    ///
+    /// ⚠️ Weaker than every other route on this class, on purpose: the search clamps a guest office
+    /// to its own rows rather than refusing it, so that a 403 cannot be used to discover which
+    /// offices exist (§3.4, PPDO-46).
+    /// </summary>
+    private Task<bool> CanAccessBudgetPlanning(User u) => _permissions.CanAccessBudgetPlanningAsync(u);
 
     // ── POST /api/budget-planning/aip/{aipId}/offices/{officeId}/return ───────
     //
@@ -110,4 +124,81 @@ public sealed class AipReviewFunctions
         return await ConfigHttp.FromResultAsync(req,
             await _review.GetOfficeForReviewAsync(aipId, officeId, caller!, ct), ct);
     }
+
+    // ── GET /api/budget-planning/aip/review/search ────────────────────────────
+    //
+    // V18-75 / PPDO-76, spec §4.1. The query-first review page.
+    //
+    // ⚠️ Gated on CanAccessBudgetPlanning, NOT on the reviewer flag, and that is deliberate: §3.4
+    // says a guest office asking about somebody else is CLAMPED to its own rows rather than
+    // refused, because a 403 would confirm the other office exists (PPDO-46). The clamp lives in
+    // the service, where the scope resolver is.
+    //
+    // ⚠️ The PAGE is gated more tightly than this route — every result links into the
+    // reviewer-only screen above, so the client hides it from anyone without CanReviewAllOffices.
+    // That is a UI decision about dead ends, not a security boundary, and it does not belong here.
+    //
+    // ⚠️ Route ordering: "review" is not an int, so this cannot collide with
+    // budget-planning/aip/{aipId:int} — the constraint is what keeps them apart.
+    [Function("AipReviewSearch")]
+    public async Task<HttpResponseData> Search(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get",
+            Route = "budget-planning/aip/review/search")] HttpRequestData req,
+        CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) =
+            await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccessBudgetPlanning, ct);
+        if (denied is not null) return denied;
+
+        NameValueCollection q = HttpUtility.ParseQueryString(req.Url.Query);
+
+        AipReviewSearchRequestDto request = new(
+            FiscalYear:       TryInt(q["fiscalYear"], 0),
+            OfficeIds:        SplitInts(q["officeIds"]),
+            Sectors:          SplitStrings(q["sectors"]),
+            WorkflowStatuses: SplitStrings(q["workflowStatuses"]),
+            // ⚠️ Passed through raw. The OR-list splitting is the service's job — doing it here
+            // would put a second parser on the boundary, and the title must never meet one at all.
+            RefCode:          q["refCode"],
+            Title:            q["title"],
+            Mine:             string.Equals(q["mine"], "true", StringComparison.OrdinalIgnoreCase),
+            Page:             TryInt(q["page"], 1),
+            PageSize:         TryInt(q["pageSize"], 25));
+
+        if (request.FiscalYear <= 0)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<AipReviewSearchResultDto>.Fail("fiscalYear is required."), ct);
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _review.SearchAsync(request, caller!, ct), ct);
+    }
+
+    private static int TryInt(string? raw, int fallback)
+        => int.TryParse(raw, out int value) ? value : fallback;
+
+    /// <summary>
+    /// A repeated multi-select value, sent as one comma-separated parameter.
+    ///
+    /// ⚠️ A comma here is only a transport separator for a list the client already holds as chips —
+    /// it is not the typed "OR" list, which reaches the service unparsed and is split there.
+    /// </summary>
+    private static List<string> SplitStrings(string? raw)
+        => string.IsNullOrWhiteSpace(raw)
+            ? []
+            : raw.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                 .Select(v => v.Trim())
+                 .Where(v => v.Length > 0)
+                 .ToList();
+
+    /// <summary>
+    /// The same, as ids. ⚠️ Unparseable entries are dropped rather than failing the request: a
+    /// malformed id cannot widen the result — scope is applied afterwards regardless — and a 400
+    /// here would break the page on a stale bookmark.
+    /// </summary>
+    private static List<int> SplitInts(string? raw)
+        => SplitStrings(raw)
+            .Select(v => int.TryParse(v, out int id) ? id : (int?)null)
+            .Where(id => id is not null)
+            .Select(id => id!.Value)
+            .ToList();
 }
