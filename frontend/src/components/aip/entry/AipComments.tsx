@@ -23,6 +23,7 @@ import type {
   AipCommentSide,
   AipReviewComment,
   AipReviewComments,
+  AipUnresolvedCounts,
 } from "@/types";
 import { getAipComments, addAipComment, resolveAipComment } from "@/lib/aip-comments";
 import { aipErrorMessage } from "@/lib/aip";
@@ -117,6 +118,23 @@ export function AipCommentsProvider({
 
 function useComments(): CommentsState | null {
   return useContext(Ctx);
+}
+
+/**
+ * The unresolved tally for the office this provider is loaded for, or null when there is no
+ * provider or the fetch failed (PPDO-72).
+ *
+ * ⚠️ **Reads what the provider already holds — it does not fetch.** The whole reason the tree's
+ * comments are loaded once at the top is that a per-consumer fetch is an N+1 nobody notices until
+ * an office has fifty activities; a second request just for the re-submit warning would reopen
+ * that on the one page encoders use most.
+ *
+ * ⚠️ **Null is not zero.** A failed comment fetch must not be rendered as "nothing outstanding" —
+ * the caller decides what to do with not-knowing, and for the re-submit gate that means letting
+ * the re-submit through rather than inventing a warning or blocking on a request that failed.
+ */
+export function useUnresolvedCounts(): AipUnresolvedCounts | null {
+  return useComments()?.data?.unresolved ?? null;
 }
 
 // ── The tally, as filter buttons ────────────────────────────────────────────

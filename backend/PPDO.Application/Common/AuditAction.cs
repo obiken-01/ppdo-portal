@@ -32,9 +32,18 @@ public static class AuditAction
     /// <summary>Department head sent the office's work on to PPDO (→ SubmittedToPpdo).</summary>
     public const string SubmitToPpdo = "SUBMIT_PPD";
 
-    // ⚠️ Reserved for the tickets that add those transitions, so they are not invented twice with
-    // different spellings — PPDO-72 (return) and PPDO-74 (accept):
-    //     RETURN_PPD   PPDO returned the office's work    (→ ReturnedByPpdo)
+    /// <summary>
+    /// A PPDO consolidated reviewer sent the office's work back for changes (→ ReturnedByPpdo).
+    /// PPDO-72.
+    ///
+    /// ⚠️ Exactly ten characters, which is the whole budget. The spelling was reserved here by
+    /// PPDO-69 rather than left to this ticket precisely so it could not be invented a second time
+    /// as something longer.
+    /// </summary>
+    public const string ReturnByPpdo = "RETURN_PPD";
+
+    // ⚠️ Reserved for the ticket that adds that transition, so it is not invented twice with a
+    // different spelling — PPDO-74 (accept):
     //     ACCEPT_PPD   PPDO accepted it into the AIP      (→ Consolidated)
     // Not declared until used; an unused constant reads as a feature that exists.
 }

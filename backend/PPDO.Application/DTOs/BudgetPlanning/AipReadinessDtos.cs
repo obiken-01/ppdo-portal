@@ -50,7 +50,16 @@ public sealed record AipReadinessDto(
     IReadOnlyList<AipReadinessIssueDto>  Issues,
     AipCeilingStatusDto?                 Ceiling);
 
-/// <summary>What a successful submit returns: where the office's work now sits.</summary>
+/// <summary>
+/// Where the office's work now sits after a workflow transition.
+///
+/// ⚠️ <b>Named for submit, but it carries every transition</b> — PPDO-72's return returns it too,
+/// and PPDO-74's accept will. It holds nothing submit-specific: the four fields answer "which
+/// office, in which record, moved to which state, across how many group rows", which is the same
+/// question at every hop. Kept as one type rather than cloned per transition so a client that
+/// handles one handles all of them; renaming it would churn PPDO-69's shipped code and its
+/// frontend type for no behaviour.
+/// </summary>
 public sealed record AipSubmitResultDto(
     int    AipRecordId,
     int    OfficeId,
