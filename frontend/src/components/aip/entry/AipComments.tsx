@@ -341,7 +341,10 @@ function CommentRow({
           </button>
         )}
       </div>
-      <p className="mt-0.5 whitespace-pre-wrap text-slate-700">{comment.body}</p>
+      {/* ⚠️ slate-600, not slate-700 — the latter is not a PPDO token and silently falls back to
+          stock Tailwind's blue-tinted slate (DESIGN_SYSTEM.md §1). Fixed in PPDO-74, where the
+          same comment bodies render on a second page. */}
+      <p className="mt-0.5 whitespace-pre-wrap text-slate-600">{comment.body}</p>
       {/* ⚠️ An orphaned comment is kept and labelled, never dropped: it is part of the record of
           why the work changed, and the row it questioned being deleted is often the answer. */}
       {comment.isOrphaned && (

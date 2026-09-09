@@ -70,4 +70,44 @@ public sealed class AipReviewFunctions
         return await ConfigHttp.FromResultAsync(req,
             await _review.ReturnToOfficeAsync(aipId, officeId, caller!, ct), ct);
     }
+
+    // ── POST /api/budget-planning/aip/{aipId}/offices/{officeId}/accept ───────
+    //
+    // The other half of the reviewer's decision (PPDO-74): SubmittedToPpdo → Consolidated, one
+    // office at a time. Same gate, same no-body shape and the same guard-free treatment as Return —
+    // it moves a workflow column and touches no figures.
+    [Function("AipReviewAccept")]
+    public async Task<HttpResponseData> Accept(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post",
+            Route = "budget-planning/aip/{aipId:int}/offices/{officeId:int}/accept")] HttpRequestData req,
+        int aipId, int officeId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) =
+            await ConfigHttp.AuthorizeAsync(req, _jwt, CanReviewAllOffices, ct);
+        if (denied is not null) return denied;
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _review.AcceptOfficeAsync(aipId, officeId, caller!, ct), ct);
+    }
+
+    // ── GET /api/budget-planning/aip/{aipId}/offices/{officeId}/review ────────
+    //
+    // ⚠️ Gated on CanReviewAllOffices like the two actions, NOT on CanAccessBudgetPlanning. This is
+    // the reviewer's surface; an office reads its own AIP on the entry page, which carries the
+    // editability rules that belong to it. Widening this to "the office may read itself here too"
+    // would give one record two reads under two different scope resolvers, which is how the two
+    // drift apart.
+    [Function("AipReviewOfficeRead")]
+    public async Task<HttpResponseData> GetForReview(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get",
+            Route = "budget-planning/aip/{aipId:int}/offices/{officeId:int}/review")] HttpRequestData req,
+        int aipId, int officeId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) =
+            await ConfigHttp.AuthorizeAsync(req, _jwt, CanReviewAllOffices, ct);
+        if (denied is not null) return denied;
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _review.GetOfficeForReviewAsync(aipId, officeId, caller!, ct), ct);
+    }
 }

@@ -59,3 +59,32 @@ export function describeAipHolder(status: string): string {
       return status;
   }
 }
+
+/**
+ * The same sentence read from the **PPDO reviewer's** side of the desk (PPDO-74).
+ *
+ * ⚠️ **This exists because `describeAipHolder` is written in the second person for the office**,
+ * and reusing it on the review screen said the opposite of the truth: an office PPDO had just sent
+ * back rendered as "with you — returned by PPDO" to the reviewer, when the office is precisely who
+ * holds it. Found by live-testing, not by the compiler — both are strings and both render.
+ *
+ * ⚠️ **Two functions, not one with a flag.** Every state reads differently from the two sides, so a
+ * parameter would only mean "which of these two switch statements" — and a caller that forgets to
+ * pass it silently gets the other side's voice, which is the bug this pair replaces.
+ */
+export function describeAipHolderForReviewer(status: string): string {
+  switch (status) {
+    case AIP_WORKFLOW.draft:
+      return "the office, still drafting";
+    case AIP_WORKFLOW.departmentReview:
+      return "the office's department head";
+    case AIP_WORKFLOW.submittedToPpdo:
+      return "PPDO — awaiting your decision";
+    case AIP_WORKFLOW.returnedByPpdo:
+      return "the office — you sent it back";
+    case AIP_WORKFLOW.consolidated:
+      return "the consolidated AIP — already accepted";
+    default:
+      return status;
+  }
+}

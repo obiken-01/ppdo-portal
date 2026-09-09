@@ -32,11 +32,21 @@ public sealed class AipReviewServiceTests
     private const int OtherOffice = 8;   // where the PPDO reviewer sits
     private const int GroupA      = 950;
     private const int GroupB      = 951;
+    private const int AlienGroup  = 952; // a DIFFERENT office's row, in the same record
 
-    private readonly Mock<IAipRepository>         _aipRepo    = new();
-    private readonly Mock<IRepository<AipOffice>> _officeRepo = new();
-    private readonly Mock<IPermissionService>     _permissions = new();
-    private readonly Mock<IAuditService>          _audit      = new();
+    private const string OfficeName = "Provincial Agriculture Office";
+    private const string OfficeCode = "OPAG";
+
+    private const int ProgramId  = 3100;
+    private const int ProjectId  = 3200;
+    private const int ActivityId = 3300;
+
+    private readonly Mock<IAipRepository>            _aipRepo     = new();
+    private readonly Mock<IRepository<AipOffice>>    _officeRepo  = new();
+    private readonly Mock<IPermissionService>        _permissions = new();
+    private readonly Mock<IAuditService>             _audit       = new();
+    private readonly Mock<IOfficeRepository>         _officeConfigRepo = new();
+    private readonly Mock<IAipExpenditureRepository> _expRepo     = new();
 
     /// <summary>
     /// Two group rows for one office — the province's FY2027 SOCIAL sheet has three. Every test
@@ -59,6 +69,18 @@ public sealed class AipReviewServiceTests
         },
     ];
 
+    /// <summary>
+    /// Another office's group row in the <b>same record</b>. ⚠️ Every read and every transition
+    /// must leave it alone; a fixture holding only the office under test cannot see a filter that
+    /// was never applied.
+    /// </summary>
+    private readonly AipOffice _alienGroup = new()
+    {
+        Id = AlienGroup, AipRecordId = RecordId, OfficeId = OtherOffice,
+        RefCode = "1000-000-1-01-011", Name = "SOMEONE ELSE", Sector = "GENERAL",
+        WorkflowStatus = AipWorkflowStatus.SubmittedToPpdo,
+    };
+
     private string _recordStatus = PlanningStatus.Draft;
 
     private AipReviewService Build()
@@ -70,15 +92,70 @@ public sealed class AipReviewServiceTests
                 Status = _recordStatus, UploadedById = Guid.NewGuid(), UploadedAt = DateTime.UtcNow,
             });
         _aipRepo.Setup(r => r.GetOfficesByAipIdAsync(RecordId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() => _groups);
+            .ReturnsAsync(() => [.. _groups, _alienGroup]);
 
         _officeRepo.Setup(r => r.UpdateAsync(It.IsAny<AipOffice>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         _officeRepo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
+        SetUpTheTree();
+
         return new AipReviewService(
-            _aipRepo.Object, _officeRepo.Object, _permissions.Object, _audit.Object,
-            NullLogger<AipReviewService>.Instance);
+            _aipRepo.Object, _officeRepo.Object, _officeConfigRepo.Object, _expRepo.Object,
+            _permissions.Object, _audit.Object, NullLogger<AipReviewService>.Instance);
+    }
+
+    /// <summary>
+    /// One program → one project → one activity under group A, plus the config office row and one
+    /// funded expenditure line. ⚠️ The program/project/activity stubs answer <b>only</b> for the ids
+    /// they are asked about, so a read that forgot to narrow to this office would come back empty
+    /// rather than quietly passing.
+    /// </summary>
+    private void SetUpTheTree()
+    {
+        _officeConfigRepo.Setup(r => r.GetByIdAsync(OfficeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Office
+            {
+                Id = OfficeId, OfficeCode = OfficeCode, OfficeName = OfficeName,
+                IsActive = true, IsHostOffice = false,
+            });
+
+        _aipRepo.Setup(r => r.GetProgramsByOfficeIdsAsync(
+                It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<int> ids, CancellationToken _) =>
+                ids.Contains(GroupA)
+                    ? [new AipProgram
+                        {
+                            Id = ProgramId, OfficeId = GroupA, RefCode = "1000-000-1-01-010-001",
+                            Name = "Agricultural Productivity", FunctionBand = AipFunctionBand.Core,
+                        }]
+                    : []);
+
+        _aipRepo.Setup(r => r.GetProjectsByProgramIdsAsync(
+                It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<int> ids, CancellationToken _) =>
+                ids.Contains(ProgramId)
+                    ? [new AipProject
+                        {
+                            Id = ProjectId, ProgramId = ProgramId,
+                            RefCode = "1000-000-1-01-010-001-001", Name = "Rice Support",
+                        }]
+                    : []);
+
+        _aipRepo.Setup(r => r.GetActivitiesByProjectIdsAsync(
+                It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<int> ids, CancellationToken _) =>
+                ids.Contains(ProjectId)
+                    ? [new AipActivity
+                        {
+                            Id = ActivityId, ProjectId = ProjectId,
+                            RefCode = "1000-000-1-01-010-001-001-001", Name = "Seed distribution",
+                            Ps = 0m, Mooe = 500m, Co = 0m, Total = 500m,
+                        }]
+                    : []);
+
+        _expRepo.Setup(r => r.GetFundCodesByAipRecordAsync(RecordId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new AipActivityFundCodeDto(ActivityId, "GF", 1)]);
     }
 
     // ── Callers ───────────────────────────────────────────────────────────────
@@ -303,5 +380,249 @@ public sealed class AipReviewServiceTests
             await sut.ReturnToOfficeAsync(4242, OfficeId, PpdoReviewer());
 
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    // ══ Accept (V18-56 / PPDO-74) ═════════════════════════════════════════════
+    //
+    // ⚠️ Accept is return's mirror image, and its refusals are deliberately the SAME split rather
+    // than a new one: a reviewer-produced state is a 409 (somebody got there first) and a pre-PPDO
+    // state is a 400 (nothing was ever sent up). The two actions sit side by side on one screen, so
+    // a reviewer who loses a race must read the same sentence whichever button they pressed.
+
+    [Fact]
+    public async Task AcceptOffice_FromSubmittedToPpdo_MovesEveryGroupTogether()
+    {
+        AipReviewService sut = Build();
+
+        ServiceResult<AipSubmitResultDto> result =
+            await sut.AcceptOfficeAsync(RecordId, OfficeId, PpdoReviewer());
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(AipWorkflowStatus.Consolidated, result.Value!.WorkflowStatus);
+        Assert.Equal(2, result.Value.GroupsMoved);
+
+        Assert.All(_groups, g => Assert.Equal(AipWorkflowStatus.Consolidated, g.WorkflowStatus));
+        _officeRepo.Verify(r => r.UpdateAsync(It.IsAny<AipOffice>(), It.IsAny<CancellationToken>()),
+            Times.Exactly(2));
+        _officeRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>
+    /// ⚠️ Accepting <b>closes</b> the office — its own people must not be able to edit their way
+    /// into the consolidated document after PPDO has taken it. Asserted through
+    /// <c>IsOfficeEditable</c> rather than by naming the state, because that predicate is what
+    /// every write path actually consults.
+    /// </summary>
+    [Fact]
+    public async Task AcceptOffice_LeavesTheWorkClosedToTheOffice()
+    {
+        AipReviewService sut = Build();
+
+        await sut.AcceptOfficeAsync(RecordId, OfficeId, PpdoReviewer());
+
+        Assert.All(_groups, g => Assert.False(AipWorkflowStatus.IsOfficeEditable(g.WorkflowStatus)));
+    }
+
+    /// <summary>One row for the transition, keyed on the first group — the shape every hop uses.</summary>
+    [Fact]
+    public async Task AcceptOffice_WritesOneAuditRowNamingTheTransition()
+    {
+        AipReviewService sut = Build();
+
+        await sut.AcceptOfficeAsync(RecordId, OfficeId, PpdoReviewer());
+
+        _audit.Verify(a => a.LogAsync(
+            "aip_offices", GroupA, AuditAction.AcceptByPpdo,
+            It.IsAny<object?>(), It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>
+    /// The concurrent case from spec §10: reviewer A returns the office, reviewer B then accepts.
+    ///
+    /// <para>
+    /// ⚠️ <b>409, not 400</b> — and §3.3 answers this one state twice, in two different rows. The
+    /// checklist's concrete line and the shape of <c>ReturnToOfficeAsync</c> settle it: this state
+    /// was produced by <i>another reviewer's action</i>, which is precisely what a 409 is for. A
+    /// 400 here would tell reviewer B that their colleague's return was their own mistake.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task AcceptOffice_AfterSomebodyElseReturnedIt_IsConflictNotBadRequest()
+    {
+        GivenEveryGroupIs(AipWorkflowStatus.ReturnedByPpdo);
+        AipReviewService sut = Build();
+
+        ServiceResult<AipSubmitResultDto> result =
+            await sut.AcceptOfficeAsync(RecordId, OfficeId, PpdoReviewer());
+
+        Assert.Equal(ServiceErrorCode.Conflict, result.Code);
+        // The same sentence the losing return produces — one race, one wording.
+        Assert.Equal(
+            "This office was already returned by someone else. Reload to see the current state.",
+            result.Error);
+        Assert.All(_groups, g => Assert.Equal(AipWorkflowStatus.ReturnedByPpdo, g.WorkflowStatus));
+    }
+
+    [Fact]
+    public async Task AcceptOffice_AlreadyAccepted_IsConflictNamingTheState()
+    {
+        GivenEveryGroupIs(AipWorkflowStatus.Consolidated);
+        AipReviewService sut = Build();
+
+        ServiceResult<AipSubmitResultDto> result =
+            await sut.AcceptOfficeAsync(RecordId, OfficeId, PpdoReviewer());
+
+        Assert.Equal(ServiceErrorCode.Conflict, result.Code);
+        Assert.Contains(AipWriteGuard.Describe(AipWorkflowStatus.Consolidated), result.Error);
+        Assert.Contains("Reload", result.Error);
+    }
+
+    [Theory]
+    [InlineData(AipWorkflowStatus.Draft)]
+    [InlineData(AipWorkflowStatus.DepartmentReview)]
+    public async Task AcceptOffice_NeverSentToPpdo_IsBadRequestNotConflict(string status)
+    {
+        GivenEveryGroupIs(status);
+        AipReviewService sut = Build();
+
+        ServiceResult<AipSubmitResultDto> result =
+            await sut.AcceptOfficeAsync(RecordId, OfficeId, PpdoReviewer());
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("nothing to accept", result.Error);
+        Assert.All(_groups, g => Assert.Equal(status, g.WorkflowStatus));
+    }
+
+    [Fact]
+    public async Task AcceptOffice_ByAHostOfficeUserWithoutTheReviewerFlag_IsNotFound()
+    {
+        AipReviewService sut = Build();
+
+        ServiceResult<AipSubmitResultDto> result =
+            await sut.AcceptOfficeAsync(RecordId, OfficeId, HostOfficeNonReviewer());
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+        Assert.Equal($"AIP office {OfficeId} not found in record {RecordId}.", result.Error);
+        Assert.All(_groups, g => Assert.Equal(AipWorkflowStatus.SubmittedToPpdo, g.WorkflowStatus));
+    }
+
+    [Fact]
+    public async Task AcceptOffice_ByAnEncoder_IsNotFound()
+    {
+        AipReviewService sut = Build();
+
+        ServiceResult<AipSubmitResultDto> result =
+            await sut.AcceptOfficeAsync(RecordId, OfficeId, Encoder());
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+        Assert.All(_groups, g => Assert.Equal(AipWorkflowStatus.SubmittedToPpdo, g.WorkflowStatus));
+    }
+
+    // ══ The review read (V18-56 / PPDO-74) ════════════════════════════════════
+
+    [Fact]
+    public async Task GetOfficeForReview_ReturnsThisOfficesOwnTreeAndNobodyElses()
+    {
+        AipReviewService sut = Build();
+
+        ServiceResult<AipOfficeReviewDto> result =
+            await sut.GetOfficeForReviewAsync(RecordId, OfficeId, PpdoReviewer());
+
+        Assert.True(result.IsSuccess);
+        AipOfficeReviewDto dto = result.Value!;
+
+        // Both group rows of this office, and only them — the other office in the record is absent.
+        Assert.Equal(2, dto.Groups.Count);
+        Assert.All(dto.Groups, g => Assert.Equal(OfficeId, g.OfficeId));
+
+        Assert.Equal(2028, dto.FiscalYear);
+        Assert.Equal(AipWorkflowStatus.SubmittedToPpdo, dto.WorkflowStatus);
+        Assert.Equal(OfficeName, dto.OfficeName);
+        Assert.Equal(OfficeCode, dto.OfficeCode);
+
+        // The tree is assembled, not flattened: one program → one project → one activity.
+        Assert.Equal(ActivityId,
+            dto.Groups[0].Programs.Single().Projects.Single().Activities.Single().Id);
+        Assert.Equal(1, dto.ActivityCount);
+    }
+
+    /// <summary>
+    /// ⚠️ An activity's fund codes ride along on this read, exactly as they do on the entry page —
+    /// the form's Funding Source column (7). Leaving them out renders every row on the review
+    /// screen with a blank fund while the same row on the entry page shows one, which reads as the
+    /// office having failed to set it.
+    /// </summary>
+    [Fact]
+    public async Task GetOfficeForReview_CarriesTheActivityFundCodes()
+    {
+        AipReviewService sut = Build();
+
+        ServiceResult<AipOfficeReviewDto> result =
+            await sut.GetOfficeForReviewAsync(RecordId, OfficeId, PpdoReviewer());
+
+        AipActivityDto activity =
+            result.Value!.Groups[0].Programs.Single().Projects.Single().Activities.Single();
+        Assert.Equal(["GF"], activity.FundCodes);
+    }
+
+    /// <summary>
+    /// ⚠️ <b>The division axis must NOT narrow a review read.</b> A PPDO reviewer who also sits in
+    /// a division still reviews the WHOLE office — division scoping exists so an encoder sees only
+    /// their own division's programs on the entry page. Applying it here would drop programs from a
+    /// review silently, and a missing program looks like missing data rather than an error.
+    /// </summary>
+    [Fact]
+    public async Task GetOfficeForReview_IsNotNarrowedByTheReviewersOwnDivision()
+    {
+        User reviewer = MakeUser(OtherOffice, hostOffice: true, ppdoReviewer: true);
+        reviewer.DivisionId = 3;
+        AipReviewService sut = Build();
+
+        ServiceResult<AipOfficeReviewDto> result =
+            await sut.GetOfficeForReviewAsync(RecordId, OfficeId, reviewer);
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Value!.Groups[0].Programs);
+    }
+
+    [Fact]
+    public async Task GetOfficeForReview_ByAHostOfficeUserWithoutTheReviewerFlag_IsNotFound()
+    {
+        AipReviewService sut = Build();
+
+        ServiceResult<AipOfficeReviewDto> result =
+            await sut.GetOfficeForReviewAsync(RecordId, OfficeId, HostOfficeNonReviewer());
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+        Assert.Equal($"AIP office {OfficeId} not found in record {RecordId}.", result.Error);
+    }
+
+    /// <summary>
+    /// ⚠️ Their own office, and still NotFound: this endpoint is the <i>reviewer's</i> surface. An
+    /// office reads its own work on the entry page, which carries the editability rules that belong
+    /// to it. Serving it here as well would give the office a second read of itself under a
+    /// different scope resolver, which is how the two drift apart.
+    /// </summary>
+    [Fact]
+    public async Task GetOfficeForReview_ByAnEncoderOfThatVeryOffice_IsNotFound()
+    {
+        AipReviewService sut = Build();
+
+        ServiceResult<AipOfficeReviewDto> result =
+            await sut.GetOfficeForReviewAsync(RecordId, OfficeId, Encoder());
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Fact]
+    public async Task GetOfficeForReview_MissingOffice_IsNotFound()
+    {
+        AipReviewService sut = Build();
+
+        ServiceResult<AipOfficeReviewDto> result =
+            await sut.GetOfficeForReviewAsync(RecordId, 4242, PpdoReviewer());
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+        Assert.Equal($"AIP office {4242} not found in record {RecordId}.", result.Error);
     }
 }

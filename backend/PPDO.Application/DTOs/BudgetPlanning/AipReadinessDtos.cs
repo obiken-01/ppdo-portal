@@ -65,3 +65,40 @@ public sealed record AipSubmitResultDto(
     int    OfficeId,
     string WorkflowStatus,
     int    GroupsMoved);
+
+/// <summary>
+/// One office's whole AIP as the PPDO consolidated reviewer reads it (V18-56 / PPDO-74,
+/// <c>AIP_Review_Spec.md</c> §6.2).
+///
+/// <para>
+/// ⚠️ <b>The office, not the record.</b> The reviewer works one office at a time — that is the
+/// granularity of both actions they hold (tracker B5) — and the record carries every office in the
+/// province. Serving the record here would ship twenty-five trees to render one.
+/// </para>
+///
+/// <para>
+/// ⚠️ <b>No <c>CanReturn</c> / <c>CanAccept</c> flag, deliberately.</b> Both are a pure function of
+/// <see cref="WorkflowStatus"/> for the only role that can reach this endpoint, and a second
+/// carrier of the same fact is one that can disagree with it. The server refuses the transition on
+/// its own account regardless of what the client offered.
+/// </para>
+/// </summary>
+/// <param name="OfficeName">The config office's name — what the confirm dialog must say out loud.</param>
+/// <param name="OfficeCode">Its short code, which is what the printed form's column (3) carries.</param>
+/// <param name="WorkflowStatus">
+/// The office's shared state across every group row (decision 21). ⚠️ Read from the first group:
+/// the rows move together, so a disagreement is a defect elsewhere, not a case to render.
+/// </param>
+/// <param name="Groups">
+/// The sub-office groups, each a full tree. ⚠️ Several is normal — one office holds one row per
+/// sub-office group, and they are reviewed as one body of work.
+/// </param>
+public sealed record AipOfficeReviewDto(
+    int                         AipRecordId,
+    int                         FiscalYear,
+    int                         OfficeId,
+    string                      OfficeName,
+    string                      OfficeCode,
+    string                      WorkflowStatus,
+    int                         ActivityCount,
+    IReadOnlyList<AipOfficeDto> Groups);
