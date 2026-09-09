@@ -13,8 +13,10 @@
  */
 
 import { useState } from "react";
-import type { AipReadiness, AipReadinessIssue } from "@/types";
+import type { AipReadiness, AipReadinessIssue, AipUnresolvedCounts } from "@/types";
 import { fmtThousandsReadout } from "@/lib/aip-units";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { useUnresolvedCounts } from "./AipComments";
 
 /** Issue kinds grouped for display. The slug is switched on, never the message. */
 const KIND_LABELS: Record<string, string> = {
@@ -117,6 +119,28 @@ export default function AipSubmitChecklist({
   // future stage being added to the wrong side.
   const hasAction = stage.kind === "encoder" || stage.kind === "toPpdo";
 
+  // ── The unresolved-comment warning on re-submit (PPDO-72) ──────────────────
+  //
+  // ⚠️ **Soft, and it must stay soft.** An office may legitimately re-submit with a comment
+  // outstanding — the reviewer's remark may have been answered on the phone, or overtaken by a
+  // change elsewhere. The gate exists to stop an *accidental* re-submit by someone who never
+  // expanded a collapsed comment, not to enforce that every remark was actioned. Do not turn this
+  // into a disabled button.
+  //
+  // ⚠️ Scoped to the **re-submit** hop only. The spec puts the warning there (decision 10), and at
+  // the first submit-to-PPDO the only possible unresolved comments are the department head's own —
+  // which they can resolve themselves, so warning them about their own notes helps nobody.
+  const unresolved: AipUnresolvedCounts | null = useUnresolvedCounts();
+  const [confirming, setConfirming] = useState(false);
+
+  const needsUnresolvedWarning =
+    stage.kind === "toPpdo" && stage.resubmit && (unresolved?.total ?? 0) > 0;
+
+  function onActionClick() {
+    if (needsUnresolvedWarning) setConfirming(true);
+    else if (stage.kind === "encoder" || stage.kind === "toPpdo") stage.onSubmit();
+  }
+
   return (
     <div className="border border-slate-200 bg-white">
       <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
@@ -133,7 +157,7 @@ export default function AipSubmitChecklist({
         {stage.kind === "encoder" || stage.kind === "toPpdo" ? (
           <button
             type="button"
-            onClick={stage.onSubmit}
+            onClick={onActionClick}
             disabled={!canSubmit || submitting}
             className="bg-green-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-green-800 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
@@ -231,7 +255,55 @@ export default function AipSubmitChecklist({
           )}
         </div>
       )}
+
+      {confirming && stage.kind === "toPpdo" && unresolved && (
+        <ConfirmDialog
+          title="Re-submit with unresolved comments?"
+          message={unresolvedWarning(unresolved)}
+          confirmLabel="Re-submit anyway"
+          cancelLabel="Go back"
+          variant="warning"
+          onConfirm={stage.onSubmit}
+          onClose={() => setConfirming(false)}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * The warning sentence, naming **both** counts separately.
+ *
+ * ⚠️ **Never one merged total.** There are exactly two authoring sides and the reader can resolve
+ * neither of them — only the side that wrote a comment may clear it — so a single figure would
+ * imply an action they do not have. The split also carries the information that actually changes
+ * whether someone re-submits: "2 still open from PPDO" is a different situation from "2 still open
+ * from your own department head", and one merged "4 unresolved" hides which.
+ *
+ * ⚠️ Says the comments **stay** open rather than that they will be lost — nothing is discarded on
+ * re-submit, and telling an office otherwise would push them into resolving comments they have no
+ * right to resolve.
+ */
+function unresolvedWarning({ fromPpdo, fromDepartmentHead }: AipUnresolvedCounts): string {
+  // ⚠️ The word "unresolved" sits with the FIRST count, not at the end of the list. Appending it
+  // ("2 from PPDO and 1 from your department head unresolved") strands the only word that says
+  // what the numbers are, and the sentence has to be re-read to parse.
+  const parts: string[] = [];
+  if (fromPpdo > 0) {
+    parts.push(`${fromPpdo} unresolved comment${fromPpdo === 1 ? "" : "s"} from PPDO`);
+  }
+  if (fromDepartmentHead > 0) {
+    parts.push(
+      fromPpdo > 0
+        ? `${fromDepartmentHead} from your department head`
+        : `${fromDepartmentHead} unresolved comment${fromDepartmentHead === 1 ? "" : "s"} from your department head`
+    );
+  }
+
+  return (
+    `This office still has ${parts.join(" and ")}. ` +
+    "They stay on the record, and PPDO will see them alongside the re-submitted work. " +
+    "You can send it on anyway."
   );
 }
 

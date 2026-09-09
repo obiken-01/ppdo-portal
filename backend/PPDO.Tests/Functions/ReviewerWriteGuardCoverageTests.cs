@@ -45,6 +45,7 @@ public sealed class ReviewerWriteGuardCoverageTests
         typeof(AipExpenditureFunctions),
         typeof(AipSubmitFunctions),
         typeof(AipReviewCommentFunctions),
+        typeof(AipReviewFunctions),
     ];
 
     private static readonly string[] WriteVerbs = ["post", "put", "delete", "patch"];
@@ -83,6 +84,12 @@ public sealed class ReviewerWriteGuardCoverageTests
     [
         // PPDO-69 — the second submit. The department head's alone; an encoder must be refused.
         $"{nameof(AipSubmitFunctions)}.{nameof(AipSubmitFunctions.SubmitToPpdo)}",
+
+        // PPDO-72 — the return. Gated on CanReviewAllOffices, so an ordinary user never reaches
+        // it. ⚠️ It is in BOTH exemption sets, which no other endpoint is: the gate is a reviewer
+        // flag (this set) AND the action is not a content write (the set below). Its dedicated
+        // assertion is Return_IsGatedOnTheCrossOfficeReviewerFlag.
+        $"{nameof(AipReviewFunctions)}.{nameof(AipReviewFunctions.Return)}",
     ];
 
     /// <summary>
@@ -110,6 +117,13 @@ public sealed class ReviewerWriteGuardCoverageTests
         // PPDO-71 — inline review comments. The cross-office reviewer is the main author.
         $"{nameof(AipReviewCommentFunctions)}.{nameof(AipReviewCommentFunctions.Create)}",
         $"{nameof(AipReviewCommentFunctions)}.{nameof(AipReviewCommentFunctions.Resolve)}",
+
+        // PPDO-72 — returning an office to its encoders. The cross-office reviewer is the ONLY
+        // caller who may do it, so the guard must let them through. ⚠️ It moves a workflow column
+        // and touches no figures — that is what makes it not a content write. If a future ticket
+        // gives this route a body that changes anything about the office's plan, it stops
+        // qualifying and must come out of this list.
+        $"{nameof(AipReviewFunctions)}.{nameof(AipReviewFunctions.Return)}",
     ];
 
     /// <summary>Write endpoints that genuinely guard content — the set the two theories cover.</summary>
@@ -190,6 +204,40 @@ public sealed class ReviewerWriteGuardCoverageTests
     }
 
     /// <summary>
+    /// The gate <see cref="AipReviewFunctions.Return"/> actually has (PPDO-72), asserted directly
+    /// because it sits in both exemption sets and so is skipped by every theory.
+    ///
+    /// <para>
+    /// ⚠️ <b>Both directions matter and they pull opposite ways.</b> The cross-office reviewer must
+    /// get <i>through</i> — they are the only caller who may return an office, and routing this
+    /// route through <c>AuthorizeWriteAsync</c> would 403 exactly them, which is the mistake
+    /// <c>ReviewerWriteGuard</c>'s own remarks warn about. A department-head reviewer must be
+    /// <i>refused</i> — <c>CanReviewBudgetPlanning</c> is their own office only, and returning is a
+    /// PPDO action; conflating the two flags would let any department head return their own work.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Return_IsGatedOnTheCrossOfficeReviewerFlag()
+    {
+        string ordinary = await OutcomeAsync(
+            typeof(AipReviewFunctions).FullName!, nameof(AipReviewFunctions.Return),
+            crossOfficeReviewer: false, departmentHeadReviewer: false);
+        string departmentHead = await OutcomeAsync(
+            typeof(AipReviewFunctions).FullName!, nameof(AipReviewFunctions.Return),
+            crossOfficeReviewer: false, departmentHeadReviewer: true);
+        string crossOffice = await OutcomeAsync(
+            typeof(AipReviewFunctions).FullName!, nameof(AipReviewFunctions.Return),
+            crossOfficeReviewer: true, departmentHeadReviewer: false);
+
+        Assert.Equal($"status:{HttpStatusCode.Forbidden}", ordinary);
+        Assert.Equal($"status:{HttpStatusCode.Forbidden}", departmentHead);
+
+        // Past the gate. It then reaches a mocked service and throws rather than returning a
+        // status, which is how every other test here reads "got through".
+        Assert.NotEqual($"status:{HttpStatusCode.Forbidden}", crossOffice);
+    }
+
+    /// <summary>
     /// Guards the discovery itself. If a refactor changes the attribute shape and this returns
     /// nothing, every theory below would vacuously pass — so assert the count is in the expected
     /// range instead. The exact number is allowed to grow; it must never collapse.
@@ -218,8 +266,12 @@ public sealed class ReviewerWriteGuardCoverageTests
         //    silently uncovered while every test still passed.
         // ↩️ 45 → 46 on 2026-09-08 (PPDO-69): AipSubmitFunctions
         //    POST /aip/{aipId}/offices/{officeId}/submit-to-ppdo — the second submit.
-        Assert.True(found.Count >= 48,
-            $"Expected at least 48 budget-planning write endpoints, found {found.Count}. " +
+        // ↩️ 48 → 49 on 2026-09-09 (PPDO-72): AipReviewFunctions
+        //    POST /aip/{aipId}/offices/{officeId}/return. ⚠️ As every note above says: adding the
+        //    class to BudgetPlanningFunctionTypes is the half that matters. Raising this floor
+        //    alone would have failed loudly, which is the net working.
+        Assert.True(found.Count >= 49,
+            $"Expected at least 49 budget-planning write endpoints, found {found.Count}. " +
             "If endpoints were legitimately removed, lower this floor deliberately — do not " +
             "delete the assertion, or the coverage theories start passing vacuously.");
     }
