@@ -329,7 +329,15 @@ function LoginPageInner() {
   const searchParams = useSearchParams();
   const [serverError, setServerError] = useState<string | null>(null);
   const [apiStatus, setApiStatus] = useState<ApiStatus>("checking");
+  // Guards against a native (non-JS) form submission — which would GET the
+  // current URL with username/password as query params — if the button is
+  // clicked before React finishes hydrating and attaches handleSubmit.
+  const [mounted, setMounted] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const reasonParam = searchParams.get("reason");
   const logoutReason = isRefreshErrorReason(reasonParam) ? LOGOUT_REASON_MESSAGES[reasonParam] : null;
@@ -476,7 +484,7 @@ function LoginPageInner() {
             Sign in to your PPDO staff account
           </p>
 
-          <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-5">
+          <form method="post" onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-5">
             {/* Username */}
             <div>
               <label
@@ -550,7 +558,7 @@ function LoginPageInner() {
             {/* Submit button */}
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={!mounted || isSubmitting}
               className="w-full bg-green-600 text-white font-semibold py-2.5 rounded-lg text-sm
                          hover:bg-green-500 active:bg-green-700 transition-colors
                          focus:outline-none focus:ring-2 focus:ring-green-600 focus:ring-offset-2
@@ -559,7 +567,7 @@ function LoginPageInner() {
               {isSubmitting && (
                 <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
               )}
-              {isSubmitting ? "Signing in…" : "Sign In"}
+              {!mounted ? "Loading…" : isSubmitting ? "Signing in…" : "Sign In"}
             </button>
           </form>
 
