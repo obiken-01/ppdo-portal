@@ -26,7 +26,7 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import api from "@/lib/api";
 import { allocationLabels } from "@/lib/budget-planning-labels";
-import { canOpenAipRecords, canOpenLdip } from "@/lib/budget-planning-access";
+import { canOpenAipRecords, canOpenAipReview, canOpenLdip } from "@/lib/budget-planning-access";
 import { auth } from "@/lib/auth";
 import { clearMeCache } from "@/lib/me-cache";
 import { APP_VERSION } from "@/lib/version";
@@ -146,6 +146,11 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
   // Both rules live in lib/budget-planning-access so the nav and the route guard cannot drift.
   const showAipRecords     = me != null && canOpenAipRecords(me);
   const showLdip           = me != null && canOpenLdip(me);
+  // PPDO-79 — the cross-office review surface. ⚠️ `canReviewAllOffices`, never the department-head
+  // flag: the two reviewers differ on exactly one point, and the department head's surface is
+  // AIP Entry. Same file as the two above, for the same reason — the nav and the route guard read
+  // one rule.
+  const showAipReview      = me != null && canOpenAipReview(me);
   const showResourceLinks  = !isOfficeUser;
   const showDashboard      = !isOfficeUser;
   const showAnnouncements  = !isOfficeUser && isAdmin;
@@ -370,23 +375,36 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
                     <span className="truncate">LDIP</span>
                   </Link>
                 )}
+                {/* ↩️ Labelled "AIP Records", not "AIP" (PPDO-79). With Entry and Review beside it,
+                    three items all beginning "AIP" is one more than a reader will parse — and
+                    "Records" is what this page actually is: the record list and detail, Admin-only.
+                    The route is unchanged; only the label moved. */}
                 {showAipRecords && (
                   <Link href="/budget-planning/aip" className={childLinkCls(pathname === "/budget-planning/aip" || isActive("/budget-planning/aip/detail") || isActive("/budget-planning/aip/new") || isActive("/budget-planning/aip/import-preview"))}>
                     <span className="text-xs">•</span>
-                    <span className="truncate">AIP</span>
+                    <span className="truncate">AIP Records</span>
                   </Link>
                 )}
                 {/* PPDO-52 — the encoder's own tab, separate from the AIP list/detail above.
-                    V18-83 will split this further into AIP Entry and AIP Review as separately
-                    gated siblings; this is the Entry half.
-
-                    ⚠️ Ungated on purpose, unlike the AIP item above: this is the ONE budget-planning
-                    page every office has, and since PPDO-81 hid the record list it is the only AIP
-                    surface most users see. */}
+                    ⚠️ Ungated on purpose, unlike the two items around it: this is the ONE
+                    budget-planning page every office has, and since PPDO-81 hid the record list it
+                    is the only AIP surface most users see. */}
                 <Link href="/budget-planning/aip/entry" className={childLinkCls(isActive("/budget-planning/aip/entry"))}>
                   <span className="text-xs">•</span>
                   <span className="truncate">AIP Entry</span>
                 </Link>
+                {/* PPDO-79 — the PPDO consolidated reviewer's home.
+                    ⚠️ Points at the SEARCH, not at `/aip/review`: the search is the landing, and the
+                    one-office screen is reached from a result rather than typed.
+                    ⚠️ Active on the whole `/aip/review` subtree, so the item stays lit when a
+                    reviewer follows a result into an office — otherwise the nav appears to lose
+                    its place on the click it exists to enable. */}
+                {showAipReview && (
+                  <Link href="/budget-planning/aip/review/search" className={childLinkCls(isActive("/budget-planning/aip/review"))}>
+                    <span className="text-xs">•</span>
+                    <span className="truncate">AIP Review</span>
+                  </Link>
+                )}
                 {showAllocation && (
                   <Link href="/budget-planning/allocation" className={childLinkCls(isActive("/budget-planning/allocation"))}>
                     <span className="text-xs">•</span>

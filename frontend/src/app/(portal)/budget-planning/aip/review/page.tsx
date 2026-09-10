@@ -24,8 +24,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMe } from "@/lib/me-cache";
+import { canOpenAipReview, budgetPlanningFallback } from "@/lib/budget-planning-access";
 import { listAip, listAipExpenditures, aipErrorMessage } from "@/lib/aip";
 import { listAccounts, listFundingSources } from "@/lib/config";
 import {
@@ -53,16 +54,32 @@ import type {
 const YEARS = [0, 1, 2].map((n) => FIRST_ENTERED_FISCAL_YEAR + n);
 
 export default function AipReviewPage() {
-  // ⚠️ **The page guard, and it redirects rather than rendering a refusal.** `AIP Review` is hidden
-  // from the sidebar for users without the cross-office grant (spec §6.1: hidden, not disabled), so
-  // anyone arriving here without it typed or was sent the URL — which is exactly the negative case
-  // this ticket has to hold. This is not the enforcement: every route the page calls is gated on
-  // the same flag server-side and answers a 403 regardless of what is rendered.
-  useMe((m) => m.canReviewAllOffices);
-
   const searchParams = useSearchParams();
   const officeIdParam = Number(searchParams.get("officeId"));
   const officeId = Number.isFinite(officeIdParam) && officeIdParam > 0 ? officeIdParam : null;
+
+  // ⚠️ **The page guard, and it redirects rather than rendering a refusal.** `AIP Review` is hidden
+  // from the sidebar for users without the cross-office grant (spec §6.1: hidden, not disabled), so
+  // anyone arriving here without it typed or was sent the URL — which is exactly the negative case
+  // PPDO-74 had to hold. This is not the enforcement: every route the page calls is gated on the
+  // same flag server-side and answers a 403 regardless of what is rendered.
+  //
+  // ⚠️ Reads the SHARED rule (PPDO-79) so the sidebar and this page cannot disagree, and falls back
+  // to the Budget Planning hub rather than `/dashboard` — a guest-office user has no dashboard, so
+  // that would be a redirect to another redirect.
+  useMe(canOpenAipReview, budgetPlanningFallback);
+
+  // ⚠️ **No office named means "help me find one", and that page now exists** — PPDO-76's search.
+  // Until it shipped this rendered an interim empty state saying office selection would arrive with
+  // it; leaving that copy would describe a missing feature that is now one click away.
+  const router = useRouter();
+  useEffect(() => {
+    if (officeIdParam <= 0 || !Number.isFinite(officeIdParam)) {
+      router.replace("/budget-planning/aip/review/search");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [officeIdParam]);
+
 
   const requestedYear = Number(searchParams.get("fiscalYear"));
   const fiscalYear = YEARS.includes(requestedYear) ? requestedYear : FIRST_ENTERED_FISCAL_YEAR;
@@ -217,12 +234,9 @@ export default function AipReviewPage() {
       )}
 
       {officeId == null ? (
-        // The interim landing. ⚠️ Deliberately NOT a search panel — PPDO-76 owns finding work, and
-        // a second finder here would have to be removed the week it lands.
-        <EmptyState
-          title="Choose an office to review"
-          body="Open an office by adding its id to the address — ?officeId=12. Searching and the readiness board arrive with the AIP Review search page."
-        />
+        // Redirecting to the search (see the effect above). A skeleton rather than a message: the
+        // redirect is immediate, and a sentence nobody has time to read is worse than nothing.
+        <ReviewSkeleton />
       ) : loading ? (
         <ReviewSkeleton />
       ) : notOpened ? (

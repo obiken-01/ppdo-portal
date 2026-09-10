@@ -29,6 +29,7 @@ import { useMe } from "@/lib/me-cache";
 import { searchAipReview } from "@/lib/aip-review";
 import { aipErrorMessage } from "@/lib/aip";
 import { listOffices } from "@/lib/config";
+import { canOpenAipReview, budgetPlanningFallback } from "@/lib/budget-planning-access";
 import { FIRST_ENTERED_FISCAL_YEAR } from "@/lib/aip-fiscal-years";
 import { AIP_SECTOR_OPTIONS } from "@/lib/aipConstants";
 import { AIP_WORKFLOW, describeAipHolderForReviewer } from "@/lib/aip-workflow";
@@ -72,10 +73,14 @@ const EMPTY: Filters = {
 const PAGE_SIZE = 25;
 
 export default function AipReviewSearchPage() {
-  // ⚠️ Same guard as the review screen this page links into. The endpoint is deliberately more
-  // permissive — it clamps a guest office rather than refusing it — but every result here opens a
-  // reviewer-only screen, so a page full of dead ends is worse than no page.
-  useMe((m) => m.canReviewAllOffices);
+  // ⚠️ Same guard as the review screen this page links into, and it reads the SHARED rule so the
+  // sidebar and this page cannot disagree (PPDO-79). The endpoint is deliberately more permissive —
+  // it clamps a guest office rather than refusing it — but every result here opens a reviewer-only
+  // screen, so a page full of dead ends is worse than no page.
+  //
+  // ⚠️ The fallback is the Budget Planning hub, not `/dashboard`: a guest-office user has no
+  // dashboard, and sending them there is a redirect to another redirect.
+  useMe(canOpenAipReview, budgetPlanningFallback);
 
   const [fiscalYear, setFiscalYear] = useState(FIRST_ENTERED_FISCAL_YEAR);
   const [draft, setDraft] = useState<Filters>(EMPTY);
