@@ -53,6 +53,10 @@ public sealed class DivisionConfiguration : IEntityTypeConfiguration<Division>
         builder.Property(d => d.CanManageConfig)
             .HasColumnName("can_manage_config").IsRequired().HasDefaultValue(false);
 
+        // Null means "no default" — the resolver falls through to the next level.
+        builder.Property(d => d.LandingPage)
+            .HasColumnName("landing_page");
+
         builder.Property(d => d.CreatedAt)
             .HasColumnName("created_at")
             .HasDefaultValueSql("GETUTCDATE()");

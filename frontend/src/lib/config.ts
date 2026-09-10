@@ -18,12 +18,18 @@ import type {
   AuditLogPage,
   CsvImportResult,
   DivisionResponse,
+  ClimateChangeTypologyResponse,
+  EsreCodeResponse,
   FundingSourceResponse,
   OfficeResponse,
   PriceIndexItemResponse,
+  PriceIndexPage,
+  PriceIndexPickerItem,
   ProcurementPresetResponse,
   UpsertAccountRequest,
   UpsertDivisionRequest,
+  UpsertClimateChangeTypologyRequest,
+  UpsertEsreCodeRequest,
   UpsertFundingSourceRequest,
   UpsertOfficeRequest,
   UpsertPriceIndexItemRequest,
@@ -121,12 +127,15 @@ export async function listOffices(params: OfficeListParams = {}): Promise<Office
   return unwrap(data);
 }
 
-/** office_code of PPDO itself — the default office for PPDO-internal budget-planning users (those with no me.officeId). */
-export const PPDO_OFFICE_CODE = "PPDO";
-
-/** Finds the PPDO office row in an already-loaded office list, or null if not configured/loaded yet. */
-export function findPpdoOffice(offices: OfficeResponse[]): OfficeResponse | null {
-  return offices.find((o) => o.officeCode === PPDO_OFFICE_CODE) ?? null;
+/**
+ * Finds the host office in an already-loaded office list, or null if none is flagged.
+ *
+ * Replaces matching on the literal code "PPDO" (DECISION F, RAL-258): the flag is set on one row
+ * in the database and survives the office being renamed, whereas the string had to be kept in
+ * agreement by hand across the backend and this file.
+ */
+export function findHostOffice(offices: OfficeResponse[]): OfficeResponse | null {
+  return offices.find((o) => o.isHostOffice) ?? null;
 }
 
 /** POST /api/config/offices — create a new office. */
@@ -153,6 +162,66 @@ export async function listPriceIndex(
   if (params.active) query.active = params.active;
 
   const { data } = await api.get<ApiResponse<PriceIndexItemResponse[]>>("/config/price-index", {
+    params: query,
+  });
+  return unwrap(data);
+}
+
+export interface PriceIndexPagedParams extends PriceIndexListParams {
+  sortBy?: string;
+  sortDir?: "asc" | "desc";
+  page?: number;
+  pageSize?: number;
+}
+
+/**
+ * GET /api/config/price-index/paged — filtered, sorted, paged read for the management grid
+ * (RAL-233). Prefer this over {@link listPriceIndex} for that page; the plain list endpoint
+ * still backs the CSV export path, which must return everything.
+ */
+export async function getPriceIndexPage(params: PriceIndexPagedParams = {}): Promise<PriceIndexPage> {
+  const query: Record<string, string | number> = {};
+  if (params.search?.trim()) query.search = params.search.trim();
+  if (params.active) query.active = params.active;
+  if (params.sortBy) query.sortBy = params.sortBy;
+  if (params.sortDir) query.sortDir = params.sortDir;
+  query.page = params.page ?? 1;
+  query.pageSize = params.pageSize ?? 50;
+
+  const { data } = await api.get<ApiResponse<PriceIndexPage>>("/config/price-index/paged", { params: query });
+  return unwrap(data);
+}
+
+/**
+ * GET /api/config/price-index/count — row count only (RAL-232).
+ *
+ * For callers that need a number, not the catalogue. The Config dashboard tile used to fetch the
+ * whole ~1.57 MB list and read `.length`.
+ */
+export async function countPriceIndex(params: PriceIndexListParams = {}): Promise<number> {
+  const query: Record<string, string> = {};
+  if (params.search?.trim()) query.search = params.search.trim();
+  if (params.active) query.active = params.active;
+
+  const { data } = await api.get<ApiResponse<number>>("/config/price-index/count", { params: query });
+  return unwrap(data);
+}
+
+/**
+ * GET /api/config/price-index/picker — slim list for item pickers (RAL-232).
+ *
+ * Five fields instead of nine: ~686 KB rather than ~1,569 KB over the real catalogue. Prefer this
+ * over {@link listPriceIndex} unless you genuinely need category / priceUpdatedAt / isActive /
+ * stockCardNo — currently only the price-index management grid does.
+ */
+export async function listPriceIndexForPicker(
+  params: PriceIndexListParams = {},
+): Promise<PriceIndexPickerItem[]> {
+  const query: Record<string, string> = {};
+  if (params.search?.trim()) query.search = params.search.trim();
+  if (params.active) query.active = params.active;
+
+  const { data } = await api.get<ApiResponse<PriceIndexPickerItem[]>>("/config/price-index/picker", {
     params: query,
   });
   return unwrap(data);
@@ -481,5 +550,181 @@ export async function listAuditLog(params: AuditLogListParams = {}): Promise<Aud
 /** GET /api/config/audit-log/tables — distinct table names, drives the table filter dropdown. */
 export async function listAuditLogTableNames(): Promise<string[]> {
   const { data } = await api.get<ApiResponse<string[]>>("/config/audit-log/tables");
+  return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// Climate change typologies (RAL-247)
+// ---------------------------------------------------------------------------
+
+export interface CcTypologyListParams {
+  search?: string;
+  active?: ActiveFilter;
+}
+
+/** GET /api/config/cc-typologies — readable by any authenticated user (AIP picker data). */
+export async function listCcTypologies(
+  params: CcTypologyListParams = {},
+): Promise<ClimateChangeTypologyResponse[]> {
+  const query: Record<string, string> = {};
+  if (params.search?.trim()) query.search = params.search.trim();
+  if (params.active) query.active = params.active;
+
+  const { data } = await api.get<ApiResponse<ClimateChangeTypologyResponse[]>>(
+    "/config/cc-typologies",
+    { params: query },
+  );
+  return unwrap(data);
+}
+
+/**
+ * GET /api/config/cc-typologies/count — the Config dashboard tile's number (RAL-260).
+ * Counted in SQL; never fetch the list to take `.length` (RAL-232).
+ */
+export async function countCcTypologies(params: CcTypologyListParams = {}): Promise<number> {
+  const query: Record<string, string> = {};
+  if (params.search?.trim()) query.search = params.search.trim();
+  if (params.active) query.active = params.active;
+
+  const { data } = await api.get<ApiResponse<number>>("/config/cc-typologies/count", {
+    params: query,
+  });
+  return unwrap(data);
+}
+
+/** POST /api/config/cc-typologies */
+export async function createCcTypology(
+  body: UpsertClimateChangeTypologyRequest,
+): Promise<ClimateChangeTypologyResponse> {
+  const { data } = await api.post<ApiResponse<ClimateChangeTypologyResponse>>(
+    "/config/cc-typologies",
+    body,
+  );
+  return unwrap(data);
+}
+
+/** PUT /api/config/cc-typologies/{id} */
+export async function updateCcTypology(
+  id: number,
+  body: UpsertClimateChangeTypologyRequest,
+): Promise<ClimateChangeTypologyResponse> {
+  const { data } = await api.put<ApiResponse<ClimateChangeTypologyResponse>>(
+    `/config/cc-typologies/${id}`,
+    body,
+  );
+  return unwrap(data);
+}
+
+/** DELETE /api/config/cc-typologies/{id} — soft delete; the row stays, is_active goes false. */
+export async function deactivateCcTypology(id: number): Promise<ClimateChangeTypologyResponse> {
+  const { data } = await api.delete<ApiResponse<ClimateChangeTypologyResponse>>(
+    `/config/cc-typologies/${id}`,
+  );
+  return unwrap(data);
+}
+
+/** GET /api/config/cc-typologies/csv — raw CSV text; includes inactive rows (PPDO-19). */
+export async function exportCcTypologiesCsv(): Promise<string> {
+  const { data } = await api.get<string>("/config/cc-typologies/csv", { responseType: "text" });
+  return data;
+}
+
+/** POST /api/config/cc-typologies/csv — upsert by code; returns counts (PPDO-19). */
+export async function importCcTypologiesCsv(csvText: string): Promise<CsvImportResult> {
+  const { data } = await api.post<ApiResponse<CsvImportResult>>(
+    "/config/cc-typologies/csv",
+    csvText,
+    { headers: { "Content-Type": "text/csv" } },
+  );
+  return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// ESRE codes (RAL-248)
+// ---------------------------------------------------------------------------
+
+export interface EsreCodeListParams {
+  search?: string;
+  active?: ActiveFilter;
+}
+
+/** GET /api/config/esre-codes — readable by any authenticated user (AIP picker data). */
+export async function listEsreCodes(
+  params: EsreCodeListParams = {},
+): Promise<EsreCodeResponse[]> {
+  const query: Record<string, string> = {};
+  if (params.search?.trim()) query.search = params.search.trim();
+  if (params.active) query.active = params.active;
+
+  const { data } = await api.get<ApiResponse<EsreCodeResponse[]>>(
+    "/config/esre-codes",
+    { params: query },
+  );
+  return unwrap(data);
+}
+
+/**
+ * GET /api/config/esre-codes/count — the Config dashboard tile's number (RAL-260).
+ * Counted in SQL; never fetch the list to take `.length` (RAL-232).
+ */
+export async function countEsreCodes(params: EsreCodeListParams = {}): Promise<number> {
+  const query: Record<string, string> = {};
+  if (params.search?.trim()) query.search = params.search.trim();
+  if (params.active) query.active = params.active;
+
+  const { data } = await api.get<ApiResponse<number>>("/config/esre-codes/count", {
+    params: query,
+  });
+  return unwrap(data);
+}
+
+/** POST /api/config/esre-codes */
+export async function createEsreCode(
+  body: UpsertEsreCodeRequest,
+): Promise<EsreCodeResponse> {
+  const { data } = await api.post<ApiResponse<EsreCodeResponse>>(
+    "/config/esre-codes",
+    body,
+  );
+  return unwrap(data);
+}
+
+/** PUT /api/config/esre-codes/{id} */
+export async function updateEsreCode(
+  id: number,
+  body: UpsertEsreCodeRequest,
+): Promise<EsreCodeResponse> {
+  const { data } = await api.put<ApiResponse<EsreCodeResponse>>(
+    `/config/esre-codes/${id}`,
+    body,
+  );
+  return unwrap(data);
+}
+
+/** DELETE /api/config/esre-codes/{id} — soft delete; the row stays, is_active goes false. */
+export async function deactivateEsreCode(id: number): Promise<EsreCodeResponse> {
+  const { data } = await api.delete<ApiResponse<EsreCodeResponse>>(
+    `/config/esre-codes/${id}`,
+  );
+  return unwrap(data);
+}
+
+/** GET /api/config/esre-codes/csv — raw CSV text; includes inactive rows (PPDO-19). */
+export async function exportEsreCodesCsv(): Promise<string> {
+  const { data } = await api.get<string>("/config/esre-codes/csv", { responseType: "text" });
+  return data;
+}
+
+/**
+ * POST /api/config/esre-codes/csv — upsert by code; returns counts (PPDO-19).
+ * An import may introduce a code outside the seeded four — deliberate, see the backend's
+ * IEsreCodeService.ImportCsvAsync.
+ */
+export async function importEsreCodesCsv(csvText: string): Promise<CsvImportResult> {
+  const { data } = await api.post<ApiResponse<CsvImportResult>>(
+    "/config/esre-codes/csv",
+    csvText,
+    { headers: { "Content-Type": "text/csv" } },
+  );
   return unwrap(data);
 }

@@ -45,6 +45,91 @@ internal static class ConfigHttp
         return (caller, null);
     }
 
+    /// <summary>
+    /// <see cref="AuthorizeAsync"/> plus the reviewer write-denial (v1.8.0 — RAL-256).
+    /// <b>Use this on every budget-planning endpoint that WRITES content</b>; keep
+    /// <see cref="AuthorizeAsync"/> for reads.
+    ///
+    /// The additive predicate and the subtractive guard are two different questions and both have
+    /// to be asked: <paramref name="permit"/> answers "may this caller use this feature at all?",
+    /// and <see cref="ReviewerWriteGuard"/> answers "is this caller a comment-only reviewer?".
+    /// A predicate cannot express the second — returning false from it is indistinguishable from
+    /// a missing grant — which is why this wrapper exists rather than a cleverer predicate.
+    ///
+    /// Order matters: the permission check runs first, so a caller who cannot reach the feature
+    /// still gets the same 403 they always did, and the denial never becomes an oracle for who
+    /// holds a reviewer flag.
+    ///
+    /// The rule is not "reviewers cannot write" — read <see cref="ReviewerWriteGuard"/> before
+    /// changing anything here. The department-head reviewer may edit; only the cross-office
+    /// consolidated reviewer is denied.
+    /// </summary>
+    internal static async Task<(User? caller, HttpResponseData? denied)> AuthorizeWriteAsync(
+        HttpRequestData req,
+        IJwtMiddleware jwt,
+        IPermissionService permissions,
+        Func<User, Task<bool>> permit,
+        CancellationToken cancellationToken)
+    {
+        (User? caller, HttpResponseData? denied) = await AuthorizeAsync(req, jwt, permit, cancellationToken);
+        if (denied is not null) return (null, denied);
+
+        if (await ReviewerWriteGuard.DeniesWriteAsync(caller!, permissions, cancellationToken))
+            return (null, req.CreateResponse(HttpStatusCode.Forbidden));
+
+        return (caller, null);
+    }
+
+    // ── Office scoping (v1.8.0 — RAL-228) ─────────────────────────────────────
+    // Thin wrappers over OfficeScope so endpoints don't re-implement the rule. The logic and
+    // its tests live in PPDO.Application/Common/OfficeScope.cs — read its XML doc before
+    // changing either of these.
+    //
+    // ⚠️ This comment used to say a null OfficeId means PPDO-internal (full access) here but
+    // "see nothing" in DivisionScope. DECISION F (RAL-258) retired that inversion: cross-office
+    // authority is Office.IsHostOffice, and a null office id now means unassigned — sees nothing
+    // — on both axes. Corrected in RAL-256; see BudgetPlanningScope for the two rules side by side.
+
+    /// <summary>
+    /// Clamps a caller-supplied office id to what the caller may actually use: an office user
+    /// always gets their own office whatever they asked for, a PPDO caller gets the requested
+    /// value through unchanged.
+    ///
+    /// Prefer this over validate-and-reject — there is no error path to get wrong, and a client
+    /// cannot probe for other offices' ids by watching which ones 403.
+    /// </summary>
+    internal static int? ClampOfficeId(User caller, int? requestedOfficeId)
+        => OfficeScope.Resolve(caller).Clamp(requestedOfficeId);
+
+    /// <summary>
+    /// <see cref="ClampOfficeId"/> for the <b>allocation-setup reads</b> (v1.8.0 — PPDO-18): same
+    /// clamp, except that a holder of <c>CanManagePboCeiling</c> keeps the office id they asked
+    /// for. That grant is authority over every office's ceiling (RAL-243), so a plain clamp would
+    /// make it unreachable — the holder could only ever load their own office.
+    ///
+    /// <paramref name="canManagePboCeiling"/> must come from
+    /// <c>IPermissionService.CanManagePboCeilingAsync</c>. Reads only, plus the ceiling write the
+    /// grant itself covers; see <see cref="OfficeScope.ResolveForCeiling"/> for why it is a
+    /// separate entry point and must not be used on the other write paths.
+    /// </summary>
+    internal static int? ClampOfficeIdForCeiling(User caller, bool canManagePboCeiling, int? requestedOfficeId)
+        => OfficeScope.ResolveForCeiling(caller, canManagePboCeiling).Clamp(requestedOfficeId);
+
+    /// <summary>
+    /// Returns a 403 when an office-scoped caller targets a record owned by a different office,
+    /// or a record with no owning office (PPDO-only, e.g. LDIP's multi-office bulk uploads).
+    /// Returns null when the caller may proceed.
+    ///
+    /// Use this only where the record's owning office is already known and refusing is the
+    /// correct answer; for caller-supplied ids on list/query endpoints use
+    /// <see cref="ClampOfficeId"/> instead. Generalises <c>LdipFunctions.DenyForeignOfficeAsync</c>.
+    /// </summary>
+    internal static HttpResponseData? DenyForeignOffice(
+        HttpRequestData req, User caller, int? owningOfficeId)
+        => OfficeScope.Resolve(caller).Permits(owningOfficeId)
+            ? null
+            : req.CreateResponse(HttpStatusCode.Forbidden);
+
     internal static async Task<T?> ReadBodyAsync<T>(HttpRequestData req, CancellationToken cancellationToken)
     {
         try { return await JsonSerializer.DeserializeAsync<T>(req.Body, Json, cancellationToken); }

@@ -231,7 +231,7 @@ export default function ReceiveDeliveryPage() {
   useEffect(() => {
     fetchMe()
       .then((data) => {
-        if (!data.canAccessInventory) { router.replace(data.officeId != null ? "/budget-planning" : "/dashboard"); return; }
+        if (!data.canAccessInventory) { router.replace(!data.isHostOffice ? "/budget-planning" : "/dashboard"); return; }
         setMe(data);
         setReceivedBy(data.fullName);
       })

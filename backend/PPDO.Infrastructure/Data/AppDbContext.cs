@@ -36,6 +36,7 @@ public sealed class AppDbContext : DbContext
 
     public DbSet<Office> Offices { get; set; } = null!;
     public DbSet<FundingSource> FundingSources { get; set; } = null!;
+    public DbSet<ClimateChangeTypology> ClimateChangeTypologies { get; set; } = null!;
     public DbSet<Account> Accounts { get; set; } = null!;
     public DbSet<LdipRecord> LdipRecords { get; set; } = null!;
     public DbSet<LdipOffice> LdipOffices { get; set; } = null!;
@@ -45,6 +46,22 @@ public sealed class AppDbContext : DbContext
     public DbSet<AipProgram> AipPrograms { get; set; } = null!;
     public DbSet<AipProject> AipProjects { get; set; } = null!;
     public DbSet<AipActivity> AipActivities { get; set; } = null!;
+
+    /// <summary>AIP expenditure lines (v1.8.0 Phase 2 — V18-33). Pesos; see the entity's remarks.</summary>
+    public DbSet<AipExpenditure> AipExpenditures { get; set; } = null!;
+
+    /// <summary>
+    /// AIP procurement line items (v1.8.0 Phase 3 — V18-80). Sourced from the Price Index; no
+    /// period dimension, unlike <see cref="WfpProcurementItems"/>.
+    /// </summary>
+    public DbSet<AipProcurementItem> AipProcurementItems { get; set; } = null!;
+
+    /// <summary>
+    /// Inline AIP review comments (v1.8.0 Phase 4 — V18-53). Anchored to a tree row, resolvable
+    /// only by the side that wrote them, and never deleted once resolved.
+    /// </summary>
+    public DbSet<AipReviewComment> AipReviewComments { get; set; } = null!;
+
     public DbSet<WfpRecord> WfpRecords { get; set; } = null!;
     public DbSet<WfpActivity> WfpActivities { get; set; } = null!;
     public DbSet<WfpExpenditureLine> WfpExpenditureLines { get; set; } = null!;
@@ -67,12 +84,23 @@ public sealed class AppDbContext : DbContext
     public DbSet<WfpExpenditurePeriod> WfpExpenditurePeriods { get; set; } = null!;
     public DbSet<WfpProcurementItem> WfpProcurementItems { get; set; } = null!;
     public DbSet<WfpDivisionAllocationLedger> WfpDivisionAllocationLedgers { get; set; } = null!;
+
+    /// <summary>
+    /// V18-45 / PPDO-55 — the AIP's own reservation ledger. Its own table, mirroring the WFP one
+    /// above rather than generalising it (DECISION A); the WFP ledger takes a zero diff.
+    /// </summary>
+    public DbSet<AipDivisionAllocationLedger> AipDivisionAllocationLedgers { get; set; } = null!;
+
     public DbSet<ProcurementPreset> ProcurementPresets { get; set; } = null!;
     public DbSet<ProcurementPresetItem> ProcurementPresetItems { get; set; } = null!;
 
     // ── v1.7 Warehouse stock input (RAL-193) ─────────────────────────────────
 
     public DbSet<StockBalance> StockBalances { get; set; } = null!;
+
+
+    // ── v1.8 New AIP| eSRE Codes (RAL-248) ─────────────────────────────────
+    public DbSet<EsreCode> EsreCodes { get; set; } = null!;
 
     // ── Model configuration ───────────────────────────────────────────────────
 

@@ -25,11 +25,13 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import api from "@/lib/api";
+import { allocationLabels } from "@/lib/budget-planning-labels";
+import { canOpenAipRecords, canOpenLdip } from "@/lib/budget-planning-access";
 import { auth } from "@/lib/auth";
 import { clearMeCache } from "@/lib/me-cache";
+import { APP_VERSION } from "@/lib/version";
 import type { MeResponse } from "@/types";
-
-const APP_VERSION = "v1.7.4";
+import { resolveLandingPath } from "@/lib/landing";
 
 interface SidebarProps {
   me: MeResponse | null;
@@ -114,7 +116,7 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
 
   // Non-PPDO office users (officeId set) get Budget Planning ONLY — no Dashboard,
   // Inventory, Resource Links (PPDO-internal), Configuration, or User Management.
-  const isOfficeUser       = me != null && me.officeId != null;
+  const isOfficeUser       = me != null && !me.isHostOffice;
 
   const hasInventory       = me?.canAccessInventory      === true;
   const hasReport          = me?.canAccessReports         === true;
@@ -123,7 +125,27 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
   const showManageUsers    = !isOfficeUser && me?.canManageUsers === true;
   const showAuditLog       = !isOfficeUser && me?.role === "SuperAdmin";
   const showBudgetPlanning = me?.canAccessBudgetPlanning === true;
+  // WFP — and the Report page, which renders a WFP — are PPDO-internal (PPDO-20).
+  // A guest office plans against its ceiling in the AIP and submits that; it has no
+  // division split to build a WFP from, and its users have never been shown the
+  // feature. PBO is a guest office too, so its cross-office ceiling grant does not
+  // widen this. Revisit when WFP is reworked after v1.8.0.
+  const showWfp            = !isOfficeUser && showBudgetPlanning;
+  // The allocation page is reachable two ways, and only one of them is cross-office.
+  // `CanManagePpdoAllocation` is host-office-exclusive (`docs/v1.8/Permission_Matrix.md`
+  // §4) — both its endpoints refuse a guest-office caller outright — so pairing it with
+  // isOfficeUser here stops the nav offering a page whose writes will 403. A guest office
+  // reaches it only through `CanManagePboCeiling`, which is deliberately cross-office.
+  const showAllocation     = (me?.canManagePpdoAllocation === true && !isOfficeUser)
+                          || me?.canManagePboCeiling === true;
   const showConfig         = !isOfficeUser && me?.canManageConfig === true;
+  // PPDO-81 — the AIP record list is where the base record is created, finalized and archived, and
+  // all three are Admin actions. An encoder's surface is AIP Entry below. LDIP is hidden from a
+  // GUEST office rather than from non-admins: PPDO planning staff work in it, but a guest office
+  // that finds a program missing would come here to add it and every write control is Admin-only.
+  // Both rules live in lib/budget-planning-access so the nav and the route guard cannot drift.
+  const showAipRecords     = me != null && canOpenAipRecords(me);
+  const showLdip           = me != null && canOpenLdip(me);
   const showResourceLinks  = !isOfficeUser;
   const showDashboard      = !isOfficeUser;
   const showAnnouncements  = !isOfficeUser && isAdmin;
@@ -163,13 +185,15 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
           print:hidden`}
       >
 
-      {/* ── Logo / brand — click to go to Dashboard ─────────────────────── */}
+      {/* ── Logo / brand — click to go to this user's landing page ──────── */}
+      {/* Not hardcoded to /dashboard: office users cannot open it, so the brand
+          link used to eject them the moment they clicked it (RAL-263). */}
       <Link
-        href="/dashboard"
+        href={resolveLandingPath(me)}
         className="flex items-center gap-3 px-5 py-3 border-b border-green-600 hover:bg-green-600 transition-colors group"
       >
         <Image
-          src="/images/ppdo-logo-placeholder.webp"
+          src="/images/ppdo-logo.webp"
           alt="PPDO"
           width={48}
           height={48}
@@ -340,28 +364,47 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
                   <span className="text-xs">•</span>
                   <span className="truncate">Dashboard</span>
                 </Link>
-                <Link href="/budget-planning/ldip" className={childLinkCls(isActive("/budget-planning/ldip"))}>
-                  <span className="text-xs">•</span>
-                  <span className="truncate">LDIP</span>
-                </Link>
-                <Link href="/budget-planning/aip" className={childLinkCls(isActive("/budget-planning/aip"))}>
-                  <span className="text-xs">•</span>
-                  <span className="truncate">AIP</span>
-                </Link>
-                {me?.canManageAllocation && (
-                  <Link href="/budget-planning/allocation" className={childLinkCls(isActive("/budget-planning/allocation"))}>
+                {showLdip && (
+                  <Link href="/budget-planning/ldip" className={childLinkCls(isActive("/budget-planning/ldip"))}>
                     <span className="text-xs">•</span>
-                    <span className="truncate">Allocation</span>
+                    <span className="truncate">LDIP</span>
                   </Link>
                 )}
-                <Link href="/budget-planning/wfp/entry" className={childLinkCls(isActive("/budget-planning/wfp"))}>
+                {showAipRecords && (
+                  <Link href="/budget-planning/aip" className={childLinkCls(pathname === "/budget-planning/aip" || isActive("/budget-planning/aip/detail") || isActive("/budget-planning/aip/new") || isActive("/budget-planning/aip/import-preview"))}>
+                    <span className="text-xs">•</span>
+                    <span className="truncate">AIP</span>
+                  </Link>
+                )}
+                {/* PPDO-52 — the encoder's own tab, separate from the AIP list/detail above.
+                    V18-83 will split this further into AIP Entry and AIP Review as separately
+                    gated siblings; this is the Entry half.
+
+                    ⚠️ Ungated on purpose, unlike the AIP item above: this is the ONE budget-planning
+                    page every office has, and since PPDO-81 hid the record list it is the only AIP
+                    surface most users see. */}
+                <Link href="/budget-planning/aip/entry" className={childLinkCls(isActive("/budget-planning/aip/entry"))}>
                   <span className="text-xs">•</span>
-                  <span className="truncate">WFP</span>
+                  <span className="truncate">AIP Entry</span>
                 </Link>
-                <Link href="/budget-planning/report" className={childLinkCls(isActive("/budget-planning/report"))}>
-                  <span className="text-xs">•</span>
-                  <span className="truncate">Report</span>
-                </Link>
+                {showAllocation && (
+                  <Link href="/budget-planning/allocation" className={childLinkCls(isActive("/budget-planning/allocation"))}>
+                    <span className="text-xs">•</span>
+                    <span className="truncate">{allocationLabels(me).nav}</span>
+                  </Link>
+                )}
+                {showWfp && (
+                  <>
+                    <Link href="/budget-planning/wfp/entry" className={childLinkCls(isActive("/budget-planning/wfp"))}>
+                      <span className="text-xs">•</span>
+                      <span className="truncate">WFP</span>
+                    </Link>
+                    <Link href="/budget-planning/report" className={childLinkCls(isActive("/budget-planning/report"))}>
+                      <span className="text-xs">•</span>
+                      <span className="truncate">Report</span>
+                    </Link>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -404,6 +447,14 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
                     <Link href="/config/funding-sources" className={childLinkCls(isActive("/config/funding-sources"))}>
                       <span className="text-xs">•</span>
                       <span className="truncate">Funding Sources</span>
+                    </Link>
+                    <Link href="/config/cc-typologies" className={childLinkCls(isActive("/config/cc-typologies"))}>
+                      <span className="text-xs">•</span>
+                      <span className="truncate">Climate Change Typologies</span>
+                    </Link>
+                    <Link href="/config/esre-codes" className={childLinkCls(isActive("/config/esre-codes"))}>
+                      <span className="text-xs">•</span>
+                      <span className="truncate">eSRE Codes</span>
                     </Link>
                     <Link href="/config/price-index" className={childLinkCls(isActive("/config/price-index"))}>
                       <span className="text-xs">•</span>

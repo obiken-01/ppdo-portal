@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { MeResponse } from "@/types";
+import { allocationLabels } from "@/lib/budget-planning-labels";
 
 interface TopbarProps {
   me: MeResponse | null;
@@ -17,6 +18,8 @@ interface TopbarProps {
 interface Crumb {
   prefix: string;
   label: string;
+  /** Overrides `label` when the page names itself differently per role (see allocationLabels). */
+  labelFor?: (me: MeResponse | null) => string;
   parent?: { label: string; href: string };
   match?: (pathname: string) => boolean; // override prefix matching for dynamic routes
 }
@@ -46,10 +49,19 @@ const SECTIONS: Section[] = [
   {
     root: "/config",
     rootLabel: "Configuration",
+    // One crumb per page in the Configuration sidebar group; each label matches that page's
+    // own ConfigPageHeader title. A page missing here silently falls back to the bare
+    // "Configuration" root, which is how the six below went unnoticed.
     crumbs: [
-      { prefix: "/config/accounts",        label: "Accounts" },
-      { prefix: "/config/offices",         label: "Offices" },
-      { prefix: "/config/funding-sources", label: "Funding Sources" },
+      { prefix: "/config/accounts",            label: "Accounts" },
+      { prefix: "/config/offices",             label: "Offices" },
+      { prefix: "/config/funding-sources",     label: "Funding Sources" },
+      { prefix: "/config/cc-typologies",       label: "Climate Change Typologies" },
+      { prefix: "/config/esre-codes",          label: "eSRE Codes" },
+      { prefix: "/config/price-index",         label: "Price Index" },
+      { prefix: "/config/divisions",           label: "Divisions" },
+      { prefix: "/config/procurement-presets", label: "Procurement Presets" },
+      { prefix: "/config/audit-log",           label: "Audit Log" },
     ],
   },
   {
@@ -70,7 +82,7 @@ const SECTIONS: Section[] = [
       { prefix: "/budget-planning/aip/detail", label: "Detail", parent: { label: "AIP", href: "/budget-planning/aip" } },
       { prefix: "/budget-planning/aip",        label: "AIP"        },
       { prefix: "/budget-planning/ldip",       label: "LDIP"       },
-      { prefix: "/budget-planning/allocation", label: "Allocation" },
+      { prefix: "/budget-planning/allocation", label: "Allocation", labelFor: (me) => allocationLabels(me).nav },
       { prefix: "/budget-planning/wfp",        label: "WFP"        },
     ],
   },
@@ -84,7 +96,15 @@ function matchesCrumb(pathname: string, crumb: Crumb): boolean {
   return crumb.match ? crumb.match(pathname) : matchesPrefix(pathname, crumb.prefix);
 }
 
-function SectionBreadcrumb({ section, pathname }: { section: Section; pathname: string }) {
+function SectionBreadcrumb({
+  section,
+  pathname,
+  me,
+}: {
+  section: Section;
+  pathname: string;
+  me: MeResponse | null;
+}) {
   const sub = section.crumbs.find((c) => matchesCrumb(pathname, c));
 
   return (
@@ -109,7 +129,9 @@ function SectionBreadcrumb({ section, pathname }: { section: Section; pathname: 
             </>
           )}
           <span className="text-slate-300">›</span>
-          <span className="font-semibold text-slate-800">{sub.label}</span>
+          <span className="font-semibold text-slate-800">
+            {sub.labelFor ? sub.labelFor(me) : sub.label}
+          </span>
         </>
       ) : (
         <span className="font-semibold text-slate-800">{section.rootLabel}</span>
@@ -135,7 +157,7 @@ export default function Topbar({ me, title, onMenuClick }: TopbarProps) {
         </button>
 
         {section ? (
-          <SectionBreadcrumb section={section} pathname={pathname} />
+          <SectionBreadcrumb section={section} pathname={pathname} me={me} />
         ) : (
           <h1 className="text-sm font-semibold text-slate-800 truncate">{title}</h1>
         )}

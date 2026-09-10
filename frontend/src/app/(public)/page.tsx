@@ -31,7 +31,9 @@ export const metadata: Metadata = {
     description: DESCRIPTION,
     url: "/",
     siteName: "PPDO Portal",
-    images: [{ url: "/images/ppdo-logo-placeholder.png", width: 512, height: 512 }],
+    // Dimensions must match the file — this declared 512×512 for a 256×256 image,
+    // which makes scrapers reserve the wrong space in the link preview.
+    images: [{ url: "/images/ppdo-logo.png", width: 256, height: 256 }],
     locale: "en_PH",
     type: "website",
   },
@@ -39,7 +41,7 @@ export const metadata: Metadata = {
     card: "summary",
     title: TITLE,
     description: DESCRIPTION,
-    images: ["/images/ppdo-logo-placeholder.png"],
+    images: ["/images/ppdo-logo.png"],
   },
 };
 
@@ -49,7 +51,7 @@ const jsonLd = {
   name: "Provincial Planning and Development Office",
   alternateName: "PPDO Occidental Mindoro",
   url: SITE_URL,
-  logo: `${SITE_URL}/images/ppdo-logo-placeholder.png`,
+  logo: `${SITE_URL}/images/ppdo-logo.png`,
   address: {
     "@type": "PostalAddress",
     addressRegion: "Occidental Mindoro",
@@ -90,7 +92,7 @@ export default function LandingPage() {
               <div className="flex flex-col items-center text-center gap-1 flex-1 min-w-0">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src="/images/ppdo-logo-placeholder.png"
+                  src="/images/ppdo-logo.png"
                   alt="PPDO Logo"
                   width={56}
                   height={56}

@@ -1,0 +1,682 @@
+# v1.8.0 Phase 3 — AIP Entry
+
+> **Authoritative spec.** Governed by `docs/SPEC_STANDARD.md`. Written 2026-09-03.
+>
+> Read first: `docs/v1.8/Phase_Plan.md` §5 (the work items this expands), §12.1 (the AIP↔WFP
+> seam), §12.3 (ceilings), §12.5a (the kanban), §12.6 + §12.6a (the workflow, and the sub-office
+> group), §12.7 · `docs/v1.8/AIP_Foundation_Spec.md` (Phase 2, which this builds on) ·
+> `docs/v1.8/Permission_Matrix.md` · `docs/PERFORMANCE_GUIDELINES.md` · `docs/DESIGN_SYSTEM.md` ·
+> `docs/NAMING_CONVENTIONS.md`.
+>
+> Phase 2 is complete and merged to `release/1.8.0`. Nothing here waits on it.
+>
+> ℹ️ **Filename note.** `SPEC_STANDARD.md` §1 names authoritative docs `<Feature>_Requirements.md`.
+> This folder's two existing authoritative specs are `AIP_Foundation_Spec.md` and
+> `AIP_Form_Spec.md`, so this one follows the local convention instead. The standard governs the
+> *contents*; the deviation is the filename only, and is deliberate.
+
+---
+
+## 1. Goal
+
+**FY2028 is currently impossible to create.** V18-38 froze the `.xlsm` importer at FY2027, and the
+shape it froze in favour of has no screen behind it. Phase 2 built the
+structure and shipped no feature, deliberately; this is the phase where an office can actually
+build its AIP.
+
+An encoder picks programs from their office's LDIP, groups them under a sub-office heading, adds
+projects and activities, and composes each activity's cost out of expenditure lines. When the
+office is finished, one action submits the whole office's work for department review — and that
+submit is the only place the ceiling is enforced.
+
+---
+
+## 2. Decisions (settled)
+
+Every decision below is already recorded in `Phase_Plan.md` or the open-items tracker. It is
+repeated here with its reasoning so a ticket does not have to reconstruct it, and so the two that
+have already flipped are not flipped back.
+
+1. **Programs come from the LDIP, which is a closed list** (open question #5, 2026-08-25). An
+   office cannot add a program the LDIP does not contain. There is therefore **no "propose a new
+   program" path and no approval flow for one** — a branch the original plan anticipated and that
+   does not exist.
+
+2. **Entry is three stages, not two** (2026-08-26). The plan said project/activity then
+   expenditures; encoders must also create the **sub-office group**, and it is entered *with* the
+   program rather than as a separate step. `LdipForm.tsx` (RAL-61) already implements exactly this
+   interaction and is to be **lifted, not redesigned** (§12.6a).
+
+3. **The sub-office group is not the division.** Both attach at program level and they are
+   orthogonal. This is the most confusable pair in the phase, so it is tabulated in §3.1 rather
+   than described. Getting it wrong produces a document that is wrong in a way no unit test
+   reaches, because the group **prints** and the division never does.
+
+4. **One funding source per expenditure line**, with multi-fund expressed as several lines
+   (Phase 2 decision 4). The UI defaults to single (whiteboard W8) — the toggle exists so the
+   multi-fund case is *possible*, not so every encoder meets it.
+
+5. **The ceiling is validated at submit, never during entry** (DECISION C). Over-ceiling encoding
+   is allowed and expected. V18-49's checklist *is* the ceiling gate; built as a dismissible
+   summary, there is no ceiling enforcement anywhere in the system.
+
+6. **The ceiling check sums `mooe + co`, General Fund only, PS exempt, on rounded base figures.**
+   ↩️ DECISION H (all-fund ceilings) was adopted 2026-08-25 and **withdrawn 2026-08-26**. This has
+   now flipped twice — §12.3 is the authority, and it must not be re-derived from meeting notes.
+   The +30% uplift of DECISION G is **presentation-only** and is not part of the comparison
+   (tracker G3).
+
+7. **A ceiling cut is non-destructive** (A5-b, 2026-08-26). Encoded work stands, nothing is flagged
+   or deleted, and the office learns at submit. No cascade, and no confirmation dialog beyond the
+   ordinary one.
+
+8. **AIP gets its own reservation ledger, and no netting mechanism** (DECISION A, reduced
+   2026-08-26). `AipDivisionAllocationLedger` mirrors the WFP ledger rather than generalising it.
+   The relief rule stays written down and unbuilt — §2.1 is what makes that safe.
+
+9. **`WfpCeilingService` gets a zero diff.** The plan once proposed retiring its allocation check
+   for FY2028+; reversed 2026-08-26. The check lives in four already-FY-parameterised methods, so
+   "retire for FY2028+" would **add four conditionals rather than delete code**, and it is the only
+   fund-scoped check in the system (its own header: step 1 is aggregate across funding sources,
+   only step 2 is per-fund).
+
+10. ↩️ **CORRECTED 2026-09-05 — workflow status lives on `AipOffice`, not `AipRecord`.**
+
+    This read *"under the office-owned shape one record is one office — so the record is the
+    natural carrier."* The office-owned shape is withdrawn (`AIP_Foundation_Spec.md` §2 decision 4):
+    **one base record per fiscal year holds every office**, so the record cannot carry a per-office
+    state. `AipOffice` is now the carrier, and it already has the ownership FK the state needs to
+    hang off.
+
+    ⚠️ **The workflow itself is unchanged.** §12.6's five states, who may edit in each, and both
+    submits are exactly as specified — only the column moves. That is the whole cost of the
+    reversal on this side, which is why it was cheap to make.
+
+11. **Ref codes are allocated server-side, scoped to the parent, and retried on conflict.**
+    Segments 1–5 are office identity and are **not generated at all**; the job is allocating a
+    sibling-unique `seq`. Format pinned to DBM Budget Operations Manual for LGUs, 2023 Ed.,
+    Figure 4 + Annexes C/D.
+
+    ↩️ **Revised 2026-09-04 during V18-44, per `SPEC_STANDARD.md` §3.** This originally read
+    *"generated server-side, **in SQL**"*, on the assumption that the database had to serialise the
+    allocation. Reading the code showed that assumption was already satisfied by something else:
+    **unique indexes on `(ParentId, RefCode)` exist at all three levels**, so a duplicate was
+    never writable. Generation also already existed (`AipService.NextRefCode`), and the sibling
+    queries were already parent-scoped in SQL — so the plan's `GeneratePRNoAsync` full-table-scan
+    warning did not apply either.
+
+    What was actually broken was the **gap** between generation and the index: load siblings →
+    compute → insert, with nothing in between, so a losing racer was rejected by the index and
+    surfaced as an **unhandled exception and a 500**. Moving the computation into SQL would have
+    duplicated a guarantee the index already gives, cost the readable C# generator and its direct
+    testability, and still not have decided what the loser should see. The fix is
+    `RefCodeAllocator`: re-read the siblings and re-attempt, bounded at 3, returning a 409 on
+    exhaustion. The index stays the authority; it simply stops being a crash.
+
+12. ✅ **The base record is opened once per fiscal year, by an Admin** (settled 2026-09-05).
+
+    One base `AipRecord` per FY holds every office. An **Admin or SuperAdmin** creates it — which
+    also populates each configured office's programs from that office's own LDIP — and only an
+    Admin may archive it. Offices then populate their own subtree, provided PBO has set their
+    ceiling.
+
+    ⚠️ **This is a permission change, not just a screen.** Today `POST /budget-planning/aip` and
+    the archive endpoint are both gated on `CanAccessBudgetPlanning`, so **any** budget-planning
+    user can open or archive a fiscal year. Archiving in particular hides a whole year's work from
+    every office at once.
+
+    ⚠️ **Record creation becomes deliberate.** Two existing controls find-or-create a base record
+    as a *side effect* — the very thing that made this model's absence hard to see. Carry-forward
+    is removed outright (decision 13); LDIP seeding stops being a create path and becomes a
+    **re-sync** for programs added to an LDIP after the year was opened.
+
+13. ↩️ **Carry Forward Office is REMOVED** (settled 2026-09-05). The PDC wants offices building
+    their AIP **from scratch**; carrying last year's structure forward is not wanted.
+
+    Two further reasons it goes rather than lying dormant. It **bypasses the closed list** — it
+    copies programs from a prior *AIP*, not from the LDIP, so a carried-forward program need not
+    exist in the office's current LDIP. And it **copies activity amounts** from a different fiscal
+    year, which once V18-45/46 land would put money in the ceiling and reservation ledger that
+    nobody entered this year.
+
+    ⚠️ It is already unreachable in practice — it requires a Manual+Draft target, and FY2027's
+    record is Upload-sourced — so removal is low risk. Leaving it dormant is the higher risk:
+    dead find-or-create paths are the specific hazard here, and carry-forward was **one of the two
+    silent leaks V18-37 found**.
+
+14. **No new permission flags.** Encoder is `CanAccessBudgetPlanning`; department-head reviewer is
+    `CanReviewBudgetPlanning` (PPDO-3); the cross-office bypass is `CanReviewAllOffices` (PPDO-5).
+    All three shipped in Phase 1. Phase 3 consumes them and adds none.
+
+    ℹ️ **Decision 12's Admin gate is a ROLE check, not a new flag** — `IsAdminOrAbove(user)`,
+    which already exists. Worth stating because "Admin only" reads like a flag and adding one would
+    need a `Permission_Matrix.md` row and would fail `PermissionMatrixTests` without it.
+
+15. **AIP procurement lines get the FULL WFP treatment** (P3-a answered 2026-09-07).
+    ↩️ **This overrides the default this spec carried** — it said item-selection-plus-cost, on
+    the reasoning that the AIP is a *plan* and the arithmetic exists in WFP because it is a
+    *schedule*. Parity was chosen instead: encoders already know the WFP table, and two
+    procurement UIs that behave differently is its own cost.
+
+    **Copy, from `WfpProcurementItemTable.tsx`:** the price-index picker (searchable over the
+    ~6,400-row catalogue, fetched off the critical path with its own loading state — RAL-231),
+    the line arithmetic, presets (RAL-119 — “load” copies an editable *snapshot*, not a live
+    link) and the duplicate-item warning (RAL-153).
+
+    ⚠️ **Do NOT copy the period dimension — this is the whole difficulty of the ticket.**
+    `periodNo`, `frequency`, `annualQuarterChoice`, the reserve fields, `computeWfpRollUpPreview`
+    and `mergeWfpPeriodAndItemAmounts` are *schedule* concepts. An AIP activity carries **one
+    annual figure**. Copying the component wholesale imports a scheduling model the AIP does not
+    have, and it would reach the printed form.
+
+    ⚠️ **The duplicate rule does not survive that removal unchanged.** RAL-153 scopes the
+    warning to the active *period*, precisely because the same item recurring across periods is
+    normal. With no periods, the AIP's scope is **the activity's own expenditure lines**.
+    Re-derive the rule; do not transliterate it.
+
+    ✅ **`numberOfDays` is KEPT — settled 2026-09-07, and not merely for parity.** It was left
+    open here on the reading that `qty × unitPrice × numberOfDays` is a scheduling notion the
+    plan does not need. **PPDO employees asked for it**, so it is a requirement in its own right,
+    not a copied artefact. ⚠️ This is the one field the “no schedule concepts” rule above does
+    **not** reach — do not remove it while stripping the period dimension.
+
+16. ↩️ **The `ProgramDivision` program half STAYS a ref-code string. V18-42 re-links it on
+    renumber instead** (P3-b, settled 2026-09-07). ⚠️ **This reverses what §5.4 and an earlier
+    version of this decision said** — they prescribed an FK to `aip_programs.id`, and that is
+    wrong. PPDO-65 was raised for it and is cancelled; the work folds into V18-42.
+
+    **Why the FK is wrong.** §5.4 argued only that the string existed because a re-upload
+    recreates programs with fresh IDs, and FY2028+ has no upload. True, and incomplete — there
+    is a **second, independent** reason, recorded on `ProgramDivision` itself since RAL-249:
+    the assignment is **deliberately permanent across fiscal years**, *"one assignment serves
+    every FY whose program carries the same ref code."*
+
+    That is live in code, not merely documented. `AllocationService.GetProgramAssignmentsAsync`
+    scopes `ProgramDivision` rows by **office FK only, with no fiscal year**, then matches them
+    to the requested year's programs by `ProgramRefCode`. Since decision 12 gave each fiscal
+    year its own AIP record, FY2029's `aip_programs` rows are **different rows** from FY2028's.
+    An FK to `aip_programs.id` therefore **pins the assignment to one year**: assign in FY2028
+    and FY2029 comes back with nothing assigned, silently. That is a worse failure than the one
+    it was meant to fix, and `ProgramDivision`'s class comment says so outright — *"Do not
+    'finish the job' by adding one. RAL-249 explored this and stopped here on purpose."*
+
+    **The defect has no live trigger today.** `UpdateProgramAsync` writes only `Name` and
+    `FunctionBand`; `UpdateAipProgramRequest` carries only those two. `AipProgram.RefCode` is
+    set at creation and edited by no path, and `DeleteProgramAsync` does not renumber —
+    `RefCodeAllocator` says as much, that renumbering *"is a numbering question owned by
+    V18-42"*.
+
+    ⚠️ **V18-42 is what creates the trigger**, which is why the fix belongs there. Its
+    acceptance line *"removing a middle program renumbers without leaving a gap"* means ref
+    codes start changing — and that is exactly when assignments detach.
+
+    ↩️ **SUPERSEDED 2026-09-07 — there is no renumber to hook onto, so no re-link is built.**
+    The rule was to be "when V18-42 renumbers a program's `RefCode`, update the matching
+    `ProgramDivision.ProgramRefCode` rows in the same transaction". Reading the code before
+    building it showed the premise is false: **V18-42 does not renumber, because AIP program ref
+    codes are inherited verbatim from the LDIP** and are never allocated or rewritten in the AIP
+    (`SeedProgramsFromLdipAsync` and `AddProgramsWithGroupAsync` both do `RefCode = p.RefCode`).
+
+    **P3-b therefore closes with no action.** `ProgramDivision` keeps matching on a ref code that
+    does not change, so the assignment cannot detach. See decision 18 for the numbering rule this
+    rests on, and `AipProgramGroupTests` for the tests that hold it in place.
+
+17. **`workflow_status`'s migration belongs to V18-42, not V18-49** (settled 2026-09-07). §5.1
+    filed it under V18-49, but **V18-42 ships the submit action itself** and the read-only state
+    that follows it — neither can be built against a column that does not exist. V18-42 adds the
+    column with all five states; **V18-49 keeps the rules about when submitting is allowed.**
+
+18. ↩️ **The AIP does NOT renumber programs. Ref codes match the LDIP's, permanently**
+    (settled 2026-09-07). ⚠️ **This contradicts §10's acceptance line "removing a middle program
+    renumbers without leaving a gap", which is withdrawn** — see §10.
+
+    **The numbering that line describes already exists, one document upstream.**
+    `LdipService.BuildHierarchy` keys its sequence on the group ref code, so LDIP programs are
+    numbered continuously across groups sharing a code; and because LDIP saves full-replace the
+    hierarchy, removals there renumber with no gaps. The AIP copies those codes verbatim. The
+    acceptance line was inherited from the `LdipForm.tsx` description decision 2 says to lift, and
+    it describes that form's behaviour rather than a requirement on this one.
+
+    **Why not renumber here.** Renumbering in the AIP would break the correspondence between an
+    AIP program and the LDIP program it came from — which is precisely what makes the closed list
+    (V18-41) mean anything. A gap in a printed sequence is cosmetic; a program that no longer maps
+    back to its source is not.
+
+    ℹ️ Deleting an AIP program therefore leaves a gap in the printed numbering. Accepted.
+
+### 2.1 Why deferring the netting rule is safe — read before "simplifying" it
+
+The AIP row is a **reservation** the WFP **relieves** as it commits. The two ledgers must net, not
+add:
+
+```
+allocation consumed = WFP committed + AIP reserved not yet converted
+```
+
+⚠️ **Relief must be per ACTIVITY, not per fund.** Per-fund relief strands reservations whenever the
+fund mix changes: ₱6M reserved as GF, later detailed as ₱4M GF + ₱2M GAD, leaves ₱2M of stale GF
+reserved forever.
+
+**None of that is built in Phase 3, and that is correct**, because V18-81 blocks FY2028+ WFP
+creation in this system. With no FY2028 WFP here, there is nothing to net against. **V18-81 must
+land before V18-45** — without it the reduced ledger leaves an open correctness question rather
+than a closed one. The rule is recorded here and in the ledger's own class remarks so that whoever
+builds it later does not re-derive the per-fund version.
+
+⚠️ **One gap this leaves, given General-Fund-only ceilings:** an activity **planned under an
+unchecked fund and detailed under GF** consumes GF allocation with no AIP reservation behind it.
+Known, accepted, and worth re-reading when netting is built.
+
+### Open — must be answered before the ticket that needs it
+
+| # | Question | Blocks | Default if unanswered |
+|---|---|---|---|
+| ~~**P3-a**~~ | ✅ **ANSWERED 2026-09-07 — the FULL WFP treatment**: picker, presets, arithmetic and duplicate warning all come across. ↩️ **Against this table's default**, so read decision 15 rather than this row — including the two things that must *not* come across | V18-80 | ~~Item selection + cost~~ — overridden |
+| ~~**P3-b**~~ | ↩️ **ANSWERED 2026-09-07 — NO, the string stays; V18-42 re-links on renumber.** ⚠️ **Against this table's default and against §5.4's own recommendation**, both of which missed that the assignment is permanent across fiscal years. Read decision 16 | V18-42 (PPDO visibility) | ~~Yes, close the FK~~ — **overridden, it would break cross-FY permanence** |
+| **P3-c** | **Two encoders in one office editing at once** (tracker D5 confirms two or more per office). Optimistic concurrency per node, or last-write-wins? | V18-42 | Optimistic concurrency **per node**, surfaced as "this activity was changed by someone else — reload". Last-write-wins on a shared document loses an encoder's work with no signal, which is the failure nobody reports because nobody notices it happened |
+| **P3-d** | **Ref-code segment meanings and reset points.** The format is confirmed; the meanings are not, and segment count varies with depth. Tracker **B9-b** | **Not Phase 3** — V18-76 | V18-44 needs neither: allocating a sibling-unique `seq` is independent of what the segments mean. Recorded here because this is where someone will first want the answer |
+
+✅ **P3-a and P3-b are answered** (2026-09-07) — decisions 15 and 16. P3-c is an engineering call
+with an obvious answer; P3-d blocks nothing in this phase.
+
+---
+
+## 3. Behaviour
+
+### 3.1 The two program-level axes — the table this phase exists to keep straight
+
+| | Sub-office group | Division |
+|---|---|---|
+| **Stored on** | `AipOffice` — the `(Sector, Name)` pair | `ProgramDivision` → `DivisionId` |
+| **Printed on the AIP form?** | **Yes** — it is an office row, with its own shaded subtotal | **No** — never appears |
+| **Applies to** | every office | **the host office (PPDO) only** |
+| **Cardinality** | a program sits in exactly one group | a program may be assigned to several divisions |
+| **Purpose** | how the document is *structured* | how the work is *divided* |
+| **Who creates it** | the encoder, while adding a program | PPDO, on the Allocation page's PPA→Division tab |
+
+Real example from the province's FY2027 file: three `3000-000-1-01-001` office rows on the SOCIAL
+sheet — `OFFICE OF THE GOVERNOR - WARDEN`, `- AKAP-HUB`, `- HOUSING` — each heading its own block
+of programs.
+
+### 3.2 Core
+
+| Case | Given | When | Then |
+|---|---|---|---|
+| Happy path — build | An open FY2028 base record whose office row already holds this office's LDIP-seeded programs | Encoder adds a sub-office group, project, activity and one expenditure line | Each node gets a server-generated sibling-unique ref code; the activity's `Ps/Mooe/Co/Total` are recomputed and **stored** from its lines |
+| Happy path — submit | Every activity has ≥1 line, totals > 0, CC and eSRE present, GF `mooe + co` within ceiling | Encoder submits | Record moves Draft → Department review. The whole office moves in one action |
+| Programs are a closed list | An office whose LDIP has 4 programs | Encoder opens the program picker | Exactly those 4, and no free-text name field anywhere on the page |
+| Empty LDIP | An office with no LDIP for the sector | Encoder opens the program picker | Empty state naming the LDIP as the prerequisite — **not** a blank picker or a spinner |
+| Year not opened yet | No FY2028 base record exists | Encoder opens AIP Entry | Empty state saying the fiscal year has not been opened yet and an Admin must open it. **The encoder is not offered a create action** — opening a year is Admin-only (§2 decision 12) |
+| Year opened, office has no LDIP | Base record exists; this office had no LDIP when it was opened | Encoder opens AIP Entry | Empty state naming the LDIP as the prerequisite, and the re-sync action once one exists |
+| Programs added to the LDIP later | Base record already open; a program is added to the office's LDIP in February | Encoder re-syncs from LDIP | The new program appears; existing programs and their subtrees are untouched |
+| New sub-office group | Encoder types a name not in the suggestions | Program is added | A new group starts under the same office ref code; program numbering **continues across groups**, it does not restart |
+| Group removal renumbers | Three programs across two groups; the middle one is removed | Removal saves | Numbering closes the gap — no holes |
+| Concurrent edit | Two encoders in one office, same activity | Both save | Second save is refused with "changed by someone else"; nothing is silently overwritten (P3-c default) |
+| Concurrent **create** | Two encoders adding an activity under one project at the same moment | Both save | ✅ **Both succeed**, with distinct sibling-unique codes (V18-44). The loser re-reads and takes the next code — it is not asked to retry by hand |
+| Create loses repeatedly | Sustained contention under one parent | Third attempt also loses | **409**, naming the node type. Not a 500, and not an unbounded retry holding the request open |
+| Activity with no lines | An activity created but never costed | Any recompute | **Untouched.** `LineCount` 0 and `Total` null — never costed |
+| Activity whose lines were all deleted | It had lines; the last is removed | Recompute after delete | `Total == 0`, not null — costed at zero. **Same `LineCount`, opposite meaning** from the row above |
+| Multi-fund off by default | A new expenditure line | Encoder opens the form | One fund field. The toggle reveals per-line fund selection; each line still carries exactly one fund |
+| Over-ceiling encoding | Office ₱2M over its GF ceiling | Encoder keeps entering | **Allowed.** No block, no dialog that stops work — the gate is submit |
+| Ceiling cut mid-encoding | PBO cuts the ceiling below what is encoded | Encoder reloads | Work stands, nothing flagged or deleted; `remaining` shows a **negative** figure |
+| Submit blocked by ceiling | GF `mooe + co` exceeds the ceiling | Encoder submits | Refused, naming the fund, the ceiling, the encoded total and the overage. Record stays Draft |
+| Submit blocked by completeness | One activity has no expenditure lines | Encoder submits | Refused, naming the activity and what is missing. Record stays Draft |
+| PS does not count | An office at its GF ceiling on `mooe + co`, with large PS | Encoder submits | **Passes.** PS is exempt as an expense class |
+| Uplift is not in the check | An office exactly at its ceiling | Encoder submits | Passes — and the printed form will read 30% over. ⚠️ **Intended** (DECISION G); Phase 5's form spec must say so |
+| Guest office, no divisions | A guest office with a ceiling and no division rows | Submit runs the ceiling check | Checked at **office** level. No synthetic division row is created |
+| Guest office reservation | A guest office's activity is costed | The reservation ledger is upserted | **No row, deliberately.** Division is not a scoping axis for them at all, so `ProgramDivision` is never even consulted — an empty assignment lookup must not be what stands in for "guest office" (V18-47) |
+| Host program with no division | A **PPDO** program that no `ProgramDivision` row claims | The reservation ledger is upserted | **No row — but this one is a misconfiguration**, not a resting state: the activity reserves nothing against any division allocation. Logged at `Warning` naming the office and program ref codes. It is **not** shared across every division, which would make each division's figures overlap |
+| Blank ceiling ≠ unlimited | A fund with no allocation row | Submit runs the check | Non-GF funds are excluded **by an explicit rule**. A blank GF row means **zero**, not unlimited (`GetDivisionAllocationAsync` → `0m`) |
+| FY2027 unchanged | An FY2027 legacy record | Opened | Renders in the v1.6 shape. **No entry flow, no submit, no ledger** — Phase 3 is FY2028+ only |
+| FY2028 WFP refused | Any office | WFP creation for FY2028 | Refused as "not supported yet", naming the year (V18-81) |
+
+### 3.3 Permission and scope
+
+Every row is already pinned by `docs/v1.8/Permission_Matrix.md`. Phase 3 adds no flag; it adds
+**call sites** that must use the existing resolvers.
+
+| Account | Given | When | Then |
+|---|---|---|---|
+| Guest-office encoder | `CanAccessBudgetPlanning`, own office | Opens AIP Entry | Their own office's record only. **Division is not a factor** for them |
+| Guest-office encoder supplies another `officeId` | Query string | Read | **Clamped** to their own office — their data back, not a 403 that confirms the other office exists |
+| Guest-office encoder targets another office's node | A node id they do not own | Write | **`NotFound`**, not `Forbidden` (PPDO-46). Clamping is not available on a write: a write names one node, and redirecting it would write to the wrong row |
+| PPDO (host) encoder | Division D | Reads their office's AIP | Only programs assigned to **division D** via `ProgramDivision`. ⚠️ **Host office only** — this filter must not apply to guest offices |
+| PPDO encoder | Division D | Reads a **guest** office's AIP | Every program in it. PPDO's internal division of labour says nothing about GSO's programs |
+| Department-head reviewer | `CanReviewBudgetPlanning`, own office | Record in Department review | **May edit values directly**, not only comment (tracker B3). The reviewer write-denial does not apply to this role |
+| PPDO consolidated reviewer | `CanReviewAllOffices` | Any office's record | Read-only, via `OfficeScope.ResolveForReview` — **never** `Resolve`. Comment-only; `ReviewerWriteGuard` denies writes |
+| Any user, `office_id` null | Unassigned | Any read | `OfficeScope.NoOffice` (id 0) → sees nothing. Empty states, not an error (DECISION F) |
+| SuperAdmin | Resolves every flag true | Any write | **Exempt from the subtractive reviewer guard** — a naive guard locks SuperAdmin out of every budget-planning write |
+
+⚠️ **PPDO runs the same ladder as everyone else** (tracker B12). PPDO's divisions submit to a **PPDO
+department-head reviewer**, distinct from the PPDO consolidated reviewer. PPDO's record is an
+**ordinary office record** — no per-division records, no division column on `AipOffice`, and
+divisions never print.
+
+---
+
+## 4. API contract
+
+All routes are **JWT-protected**; none appears on `CLAUDE.md`'s public list. Envelope is
+`ApiResponse<T>` (`{ data, error, message }`); services return `ServiceResult<T>`.
+
+| Endpoint | Gate | Notes |
+|---|---|---|
+| `POST /api/budget-planning/aip/{aipId}/programs` | `CanAccessBudgetPlanning` | Adds a program from the LDIP **plus its sub-office group**, in one call — they are one interaction (decision 2) |
+| `POST /api/budget-planning/aip/projects` | `CanAccessBudgetPlanning` | Ref code generated server-side |
+| `POST /api/budget-planning/aip/activities` | `CanAccessBudgetPlanning` | Ref code generated server-side |
+| `POST /api/budget-planning/aip/activities/{activityId}/expenditures` | `CanAccessBudgetPlanning` | Triggers the V18-34 recompute |
+| `PUT /api/budget-planning/aip/expenditures/{id}` | `CanAccessBudgetPlanning` | Recompute |
+| `DELETE /api/budget-planning/aip/expenditures/{id}` | `CanAccessBudgetPlanning` | Recompute — to `0`, not null, if it was the last line |
+| `GET /api/budget-planning/aip/{aipId}/readiness` | `CanAccessBudgetPlanning` | The submit checklist's state, so the UI can show it **before** the user presses submit |
+| `POST /api/budget-planning/aip/{aipId}/submit` | `CanAccessBudgetPlanning` | Draft → Department review. Runs V18-49's checks |
+| `GET /api/budget-planning/aip/{aipId}/ceiling` | `CanAccessBudgetPlanning` | Exposes `remaining`, which **may be negative** |
+
+### Error shapes
+
+| Case | Status | Shape |
+|---|---|---|
+| Node belongs to another office | **404** | `"AIP activity {id} not found."` — byte-identical to a node that does not exist (PPDO-46) |
+| Record not Draft | 400 | Names the current state and who holds it |
+| Fiscal year is legacy | 400 | `AipShape.Mismatch` — names the year and the shape that year takes |
+| Submit fails completeness | 400 | **A list**, one entry per failing activity, each naming the node and what is missing — not a single sentence |
+| Submit fails ceiling | 400 | Names the fund, ceiling, encoded total and overage. **Not** "over ceiling" |
+| Concurrent edit lost the race | 409 | `"This activity was changed by someone else. Reload to see the current version."` |
+| Ref-code allocation lost 3 races | 409 | `"Another activity was added to this project at the same moment. Please try again."` — per node type (V18-44) |
+
+⚠️ **List endpoints return slim DTOs.** The AIP detail response once produced a **1.2 MB** payload.
+The entry page's tree must not ship free-text fields a grid never renders, and any list that grows
+with the record paginates server-side (`docs/PERFORMANCE_GUIDELINES.md`).
+
+---
+
+## 5. Data model changes
+
+### 5.1 `aip_offices` — workflow status (V18-42)
+
+↩️ **Reassigned from V18-49 to V18-42 on 2026-09-07** (§2 decision 17). This section sat under
+V18-49 while V18-42 shipped the submit action and the read-only state that follows it — both of
+which need the column. **V18-42 adds it; V18-49 adds the rules for when submit is allowed.**
+
+↩️ **Moved off `aip_records` on 2026-09-05** (§2 decision 10). One base record per year holds every
+office, so the record cannot carry a state that belongs to one office.
+
+```
+ALTER TABLE aip_offices ADD workflow_status NVARCHAR(30) NOT NULL DEFAULT 'Draft'
+CREATE INDEX IX_aip_offices_workflow_status ON aip_offices(office_id, workflow_status)
+```
+
+**Distinct from `aip_records.status`**, which is `PlanningStatus` (`Draft` / `Final` / `Archived`)
+and is shared with LDIP and WFP. The workflow has five states that vocabulary cannot express, and
+overloading it would change LDIP's and WFP's meaning too.
+
+⚠️ **The two now mean different things at different levels, and that is deliberate.**
+`aip_records.status` is the *year*'s state — Admin opens it as Draft and archives it. 
+`aip_offices.workflow_status` is one office's progress through review. An office cannot be past
+Draft in an Archived year; the service owns that rule, not a constraint.
+
+⚠️ **Introduce all five states in one migration, implement only the first transition.** The states
+are settled (§12.6) — `Draft`, `DepartmentReview`, `SubmittedToPpdo`, `ReturnedByPpdo`,
+`Consolidated`. Adding them piecemeal means a second migration on the same column and an interval
+where the column's domain does not match the documented workflow. Phase 3 writes only
+`Draft → DepartmentReview`; Phase 4 uses the rest.
+
+Migration: `AddAipOfficeWorkflowStatus`. snake_case, per `NAMING_CONVENTIONS.md` — `aip_offices` is
+a v1.6 table and already snake_case.
+
+### 5.2 `aip_division_allocation_ledger` — new table (V18-45)
+
+Mirrors `wfp_division_allocation_ledger` in shape. Reservation rows are keyed **per activity** —
+which is what makes the deferred relief rule implementable later without a second migration (§2.1).
+
+⚠️ **`remaining` is computed, never stored clamped.** No `Math.Max(0, …)` in the table, the query,
+the DTO or the UI.
+
+Migration: `AddAipDivisionAllocationLedger`.
+
+### 5.3 Sub-office group — no new column expected
+
+The group is the `(Sector, Name)` pair on the existing `AipOffice`, which **already stores both**.
+Confirm this before adding anything — the LDIP side stores it the same way, and a new column here
+would be a second source of truth for a value that prints.
+
+### 5.4 ⚠️ `ProgramDivision` — the half-finished FK (P3-b)
+
+**PPDO-1 shipped the office side only.** The program side is still keyed on `ProgramRefCode`
+(a string), so a program ref-code change silently detaches its division assignment — and Phase 3
+makes that assignment load-bearing for what a PPDO user can see. The failure looks like missing
+data, not an error.
+
+**The reason it stayed a string lapses here.** PPDO-1's reasoning was that `aip_programs` rows have
+no identity surviving a re-upload, because `ReplaceImportAsync` deletes and recreates the subtree
+with fresh surrogate IDs. **FY2028+ has no upload** — V18-38 froze it. So for the fiscal years this
+phase serves, a durable program identity exists for the first time.
+
+That does not make it free: FY≤2027 stays re-uploadable, so any FK must tolerate the legacy path.
+
+↩️ **DECIDED 2026-09-07 — the FK is NOT added. This section's recommendation above is WRONG and is
+kept only as the record of a reversed argument.** Read §2 decision 16 instead.
+
+**What this section missed.** The re-upload argument is sound as far as it goes, but it is only half
+the reason the program half is a string. The other half is on `ProgramDivision` itself: the
+assignment is **permanent across fiscal years** — one row serves every FY whose program carries the
+same ref code — and `AllocationService.GetProgramAssignmentsAsync` implements exactly that, scoping
+by office FK with **no fiscal year** and matching on `ProgramRefCode`. With one AIP record per
+fiscal year (decision 12), an FK to `aip_programs.id` pins each assignment to a single year and the
+next year silently resolves to none. `ProgramDivision`'s class comment has said so since RAL-249:
+*"Do not 'finish the job' by adding one."*
+
+✅ **What happens instead: V18-42 re-links on renumber** — when it changes a program's `RefCode`, it
+updates the matching `ProgramDivision.ProgramRefCode` rows **in the same transaction**. No new
+column, no migration, cross-FY permanence intact.
+
+ℹ️ Note also that the defect has **no live trigger before V18-42**: `RefCode` is set at creation and
+no update path edits it. V18-42's renumbering is what makes this urgent, which is the other reason
+it belongs there rather than in a ticket ahead of it.
+
+### 5.5 Migration order
+
+Both are additive and independent; apply in ticket order. **CI does not run migrations** — §8.
+
+---
+
+## 6. UI states
+
+Two new surfaces, one existing one changed. Flat design, PPDO tokens, `slate-800` headings /
+`slate-600` body, **never `text-slate-700`**.
+
+### 6.1 AIP Entry (new page, V18-42)
+
+⚠️ **V18-83 splits the sidebar into "AIP Entry" and "AIP Review" as two siblings** under Budget
+Planning — not a third nesting level (`Sidebar.tsx` has one collapsible level and no nesting
+primitive; WFP already sets the flat-item-to-sub-page precedent). Build against that split.
+
+| State | Content |
+|---|---|
+| **Loading** | Skeleton matching the loaded tree — same header, same row heights. **Not** a centered spinner replaced by a full-height table (CLS) |
+| **Empty — no record** | "No FY2028 AIP for this office yet" + create action |
+| **Empty — no LDIP** | Names the LDIP as the prerequisite and links to it. A **different** empty state from the one above; do not collapse them |
+| **Empty — programs seeded, nothing built** | The Not Started case. Prompts adding the first project |
+| **Error** | Failed fetch shows a retry; a rejected save **keeps the user's input** — never clears the form |
+| **Success** | Toast via `useToast`; the tree updates in place |
+| **Read-only** | Record past Draft: controls **disabled with a reason naming the state and who holds it**, not hidden. The user has permission; the state forbids it (`Budget_Planning_Dashboard_Requirements.md` §6.1) |
+| **Validation** | Per-field, under the field. Amounts via `MoneyInput` |
+| **Conflict** | The 409 renders as an inline banner on the affected node with a reload action — not a toast that scrolls away |
+
+Reuse `MoneyInput`, `ConfirmDialog`, `RowActions`, `useToast`, `OfficeSelect`, `InfoTip`.
+
+### 6.2 Submit checklist (V18-49)
+
+Shown **before** submit via the readiness endpoint, so the office can fix things without guessing.
+Each failing item names the node and links to it. The ceiling row shows ceiling, encoded total and
+**the signed difference** — negative when over.
+
+⚠️ **This is a gate, not a summary.** There is no "submit anyway".
+
+### 6.3 Allocation page (V18-48 — picker already shipped)
+
+PPDO-17 shipped the office picker, the cross-office flag, and the role-based re-labelling
+(`budget-planning-labels.ts` is the single source for sidebar, breadcrumb, header and tab). What
+remains is the ceiling **management** experience.
+
+⚠️ **Show the negative remaining.** After a cut, a clamped zero hides the only signal the office
+has that it must revise.
+
+⚠️ PPDO-17's work was `tsc`/lint clean but **never browser-verified**. A manual pass as a PBO-only
+caller belongs in V18-48's test plan.
+
+### 6.4 ⚠️ Extract before building
+
+`aip/detail/page.tsx` is **2,057 lines — the largest file in the repo**, and
+`docs/v1.8/RETROSPECTIVE.md` says to extract before redesigning. **Extraction and new entry UI in
+one commit is not reviewable** — the same warning V18-35 carried, for the same reason. Either
+extract first in its own PR, or build Entry as a genuinely separate page and leave detail alone.
+
+---
+
+## 7. Non-goals
+
+- **Review, return and consolidation** — Phase 4. Phase 3 stops at the *first* submit; there are
+  **two** (encoder → department head → PPDO).
+- **The printable AIP form** — Phase 5. The +30% uplift renders there, not here.
+- **The AIP↔WFP netting mechanism** — deferred, safely, by V18-81 (§2.1).
+- **Offline entry** — Phase 6. ⚠️ Offline clients **cannot mint ref codes safely**; that is a hard
+  constraint V18-44 should record where the generator lives.
+- **Amendment after approval** — V18-73, and the terminal authority is the **SP resolution**, not
+  the LFC.
+- **Carry Forward Office** — ↩️ **removed**, not deferred (§2 decision 13). The PDC wants
+  offices building from scratch, and the feature bypassed the closed list and copied a prior
+  year's amounts.
+- **Retiring or changing `WfpCeilingService`** — decision 9. Zero diff.
+- **Re-importing FY2027 faithfully** — out of scope permanently; V18-38 froze the importer, so
+  FY2027's pre-RAL-238 import is now permanent.
+- **Indexed ref-code columns** — V18-76, blocked on B9-b.
+
+---
+
+## 8. Deployment notes
+
+- **Two migrations** (§5.1, §5.2), plus a third if P3-b is answered yes. ⚠️ **CI does not run EF
+  migrations** — each needs a manual `dotnet ef database update` against Azure SQL.
+- **These add to the release's pending count.** `docs/v1.8/Pre_Deployment_Checklist.md` §1 was 15
+  at the end of Phase 2 and **is the authority** — it is rechecked against `git diff` at release
+  time. Do not quote a count from a planning doc; that has already drifted twice.
+- **v1.8.0 deploys when most of the release is implemented, not per phase** (decided 2026-09-03).
+  `release/1.8.0` accumulates; production stays on v1.7.4 meanwhile.
+- Both migrations are **additive**. Neither rewrites existing values — unlike Phase 2's
+  `MigrateAipAmountsToPesos`, which remains the release's only destructive one.
+- No new dependency, environment variable, or CORS origin. No new Azure resource; if one is ever
+  added, **Southeast Asia** (RAL-237).
+
+---
+
+## 9. Ticket split
+
+Epic **PPDO-48**. Blocking relations are wired in Linear, not only described here.
+
+↩️ **Revised 2026-09-05** by the shape reversal (§2 decisions 4, 12, 13). Three tickets are added
+ahead of the entry UI, because V18-42 cannot be built until the record it fills exists in the
+right shape.
+
+↩️ **Revised again 2026-09-07** by decisions 15–17. **PPDO-64 lands ahead of V18-42** — the §6.4
+extraction, which both this spec and PPDO-52 demanded and neither had filed a ticket for. And
+**PPDO-54 grows M → L**: P3-a chose the full WFP treatment, so it carries the picker, presets and
+duplicate rule rather than a select and a number field.
+
+↩️ **PPDO-65 was raised for P3-b's FK and is CANCELLED** — the FK would have broken cross-fiscal-year
+permanence (decision 16). Its replacement is a rule inside V18-42, not a ticket: re-link
+`ProgramDivision` on renumber, same transaction.
+
+| Ticket | # | Size | Blocked by |
+|---|---|---|---|
+| **PPDO-61** 🆕 | Reverse the office-owned shape — drop `AipRecord.OfficeId`, its migration and `AipShape`'s partition | M | — |
+| **PPDO-62** 🆕 | Open a fiscal year — Admin creates the base record, programs populate from every office's LDIP; LDIP seeding becomes a re-sync | M | PPDO-61 |
+| **PPDO-63** 🆕 | Remove Carry Forward Office | S | PPDO-61 |
+| PPDO-49 | V18-81 — block FY2028+ WFP creation | S | — |
+| PPDO-50 | V18-44 — ref-code generation | M | — |
+| PPDO-51 | V18-41 — programs from a valid LDIP | S | — |
+| **PPDO-64** 🆕 | §6.4 — extract `aip/detail/page.tsx`; pure move, no behaviour change | M | — |
+| ~~PPDO-65~~ | ~~P3-b — close the `ProgramDivision` program-half FK~~ ↩️ **CANCELLED** — folded into PPDO-52 as re-link-on-renumber (decision 16) | — | — |
+| PPDO-52 | V18-42 — three-stage entry UI **+ the `workflow_status` migration** (decision 17) **+ ProgramDivision re-link on renumber** (decision 16) | **L** | PPDO-50, PPDO-62, **PPDO-64** |
+| PPDO-53 | V18-43 — multi-fund toggle | S | PPDO-52 |
+| PPDO-54 | V18-80 — procurement lines from the Price Index, **full WFP treatment** (decision 15) | **L** | PPDO-52 · ~~P3-a~~ ✅ |
+| PPDO-55 | V18-45 — reservation ledger | M | PPDO-49 |
+| PPDO-56 | V18-46 — ceiling service | M | PPDO-55 |
+| PPDO-57 | V18-47 — office-level ceiling checks | S | PPDO-56 |
+| PPDO-58 | V18-48 — PBO ceiling management UI | S | — |
+| PPDO-59 | V18-49 — completeness checklist + submit gate (**no longer carries the migration**) | M | PPDO-52, PPDO-56 |
+
+**Order (revised 2026-09-07).** `61`, `62`, `63`, `49`, `50`, `51` are ✅ merged. What remains:
+
+    64 -> 52 -> 53 -> 59            entry track (59 also needs 56)
+    55 -> 56 -> 57                  ledger/ceiling track, shares no files with the entry track
+    58 anytime, 54 last
+
+`64` is the only thing left ahead of `52`. `54` is last and is the natural slip candidate if
+v1.8.0 needs trimming — it is now **L**, and nothing depends on it.
+
+⚠️ **PPDO-51 (V18-41) is superseded in part.** Its closed-list rule stands and its server guard is
+kept; its *office-owned seeding* is exactly what PPDO-61 reverses, and the population it built moves
+into PPDO-62's year-opening action. PR #298 should be amended rather than merged — see the ticket.
+
+**Manual-implementation candidates** (per CLAUDE.md): **PPDO-49** and **PPDO-57** — small blast
+radius, `dotnet test` feedback with no app running, reversible, and each has a sibling to
+pattern-match (`AipShape.RefuseUpload` for 49; `AipReadScope`'s host-office branch for 57).
+**PPDO-56 is explicitly not** — a ceiling check with four named traps is exactly where a wrong
+choice compiles cleanly and produces a wrong number. Nor is **PPDO-52**, a 1,000+ line page
+component.
+
+---
+
+## 10. Acceptance checklist
+
+- [ ] A guest-office encoder opening AIP Entry sees only their own office, with no office picker
+- [ ] A guest-office encoder passing another office's `officeId` gets **their own** data back, not a 403
+- [ ] A guest-office encoder targeting another office's activity id gets **404**, worded identically to a nonexistent id
+- [ ] A PPDO encoder in division D sees only programs assigned to division D
+- [ ] That same PPDO encoder, opening a **guest** office's AIP, sees every program in it
+- [ ] The program picker lists exactly the office's LDIP programs, and there is no free-text program-name field on the page
+- [ ] An office with no LDIP sees an empty state naming the LDIP — not a blank picker
+- [ ] Typing a new sub-office group name starts a new group; program numbering continues across groups rather than restarting
+- [ ] ~~Removing a middle program renumbers without leaving a gap~~ ↩️ **WITHDRAWN 2026-09-07**
+      (decision 18) — the AIP does not renumber. Replaced by the two lines below
+- [ ] An AIP program's ref code is **byte-for-byte its LDIP program's**, and a gap in the LDIP's
+      numbering survives into the AIP unclosed
+- [ ] Deleting an AIP program leaves the surviving programs' ref codes **unchanged**, and every
+      division assignment still resolves
+- [ ] Two browsers editing the same activity: the second save shows "changed by someone else", and the first encoder's value survives
+- [ ] Deleting an activity's last expenditure line leaves `Total` **0**; an activity that never had lines still shows **no** total
+- [ ] Entering ₱2M over the GF ceiling is **allowed** while encoding, with no blocking dialog
+- [ ] Submitting over the GF ceiling is refused, and the message names the fund, ceiling, total and overage
+- [ ] An office at its ceiling on `mooe + co` with large PS **submits successfully**
+- [ ] Submitting with one uncosted activity is refused, and the message names that activity
+- [ ] After PBO cuts a ceiling below encoded work, the encoder sees a **negative** remaining, and nothing has been deleted or flagged
+- [ ] A guest office with no divisions passes the ceiling check at office level, and no division row was created for it
+- [ ] A successful submit moves the record to Department review and the encoder's controls become disabled **with a reason naming the state**
+- [ ] Creating a WFP for FY2028 is refused with a message naming the year; FY2027 WFP creation is unchanged
+- [ ] Opening an FY2027 AIP still renders the v1.6 shape with no entry flow
+- [ ] First load of AIP Entry shows a skeleton matching the tree, not a spinner replaced by a table
+- [ ] `dotnet test` passes; `tsc` and `eslint` clean
+
+---
+
+## 11. Test focus
+
+| Class | Cover |
+|---|---|
+| `AipEntryServiceTests` (new) | The three-stage create path; sibling-unique ref codes under concurrent creates for **projects and activities** (programs do not allocate — decision 18) |
+| `AipProgramGroupTests` (new) | Program ref codes inherited verbatim from the LDIP, asserted as literals; an LDIP numbering gap preserved; a second group name starting a second `AipOffice` row under one ref code; the closed list refusing a foreign LDIP program |
+| `AipCeilingServiceTests` (new) | **One test per trap, each named**: GF-only, PS exempt, rounded figures, base-not-uplifted. Plus blank-row-means-zero, and the office-level (division-less) shape |
+| `AipSubmitGateTests` (new) | Each failing condition **individually**, not just the happy path; never-costed vs costed-at-zero; the over-ceiling refusal's wording |
+| `AipReadScopeTests` (extend) | The new entry call sites — guest clamp, host-office division filter, and that the division filter does **not** reach guest offices |
+| `AipShapeTests` (extend) | V18-81's WFP refusal reads the one break-year constant; the scan still passes with no new `2028` literal |
+| `AipActivityTotalsServiceTests` (extend) | Recompute fires on expenditure add/edit/delete from the new entry endpoints |
+| `PermissionMatrixTests` | Unchanged — Phase 3 adds no flag. If it fails, a flag was added and needs a matrix row |
+
+⚠️ **Verify the guards by mutation, not by assertion count.** Phase 2 found a V18-37 test that
+passed with its guard deleted — it seeded a record that was refused earlier for an unrelated
+reason, so it asserted the right status code for the wrong cause. Disable each new guard and
+confirm exactly the intended tests go red.
+
+---
+
+*`docs/v1.8/AIP_Entry_Spec.md` — v1.8.0 Phase 3 — written 2026-09-03 — Ralph Armand Alcaide*

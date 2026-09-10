@@ -84,8 +84,13 @@ public sealed class PurchaseRequestServiceTests
     private static Mock<IOfficeRepository> OfficesRepo()
     {
         Mock<IOfficeRepository> repo = new();
-        repo.Setup(r => r.GetByCodeAsync("PPDO", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Office { Id = 100, OfficeCode = "PPDO", OfficeName = "Provincial Planning and Development Office", IsActive = true });
+        Office host = new()
+        {
+            Id = 100, OfficeCode = "PPDO", OfficeName = "Provincial Planning and Development Office",
+            IsActive = true, IsHostOffice = true,
+        };
+        repo.Setup(r => r.GetByCodeAsync("PPDO", It.IsAny<CancellationToken>())).ReturnsAsync(host);
+        repo.Setup(r => r.GetHostOfficeAsync(It.IsAny<CancellationToken>())).ReturnsAsync(host);
         return repo;
     }
 

@@ -1,3 +1,5 @@
+import type { LandingPageKey } from "./auth";
+
 /** Mirrors PPDO.Application/DTOs/User/ */
 
 // Observer retired in v1.2 (RAL-97).
@@ -24,6 +26,8 @@ export interface UserResponse {
   position: string | null;
   contactNo: string | null;
   isActive: boolean;
+  /** Landing-page enum name, or null for none (RAL-262). */
+  landingPage: LandingPageKey | null;
   createdAt: string;
   overrideCanAccessInventory: boolean | null;
   overrideCanAccessReports: boolean | null;
@@ -32,7 +36,20 @@ export interface UserResponse {
   overrideCanAccessBudgetPlanning: boolean | null;
   overrideCanUploadAip: boolean | null;
   overrideCanManageConfig: boolean | null;
-  overrideCanManageAllocation: boolean | null;
+  overrideCanManagePpdoAllocation: boolean | null;
+  overrideCanManagePboCeiling: boolean | null;
+  overrideCanReviewBudgetPlanning: boolean | null;
+  overrideCanReviewAllOffices: boolean | null;
+}
+
+/**
+ * Returned by POST /api/users and PUT /api/users/{id}/reset-password (RAL-254).
+ * `temporaryPassword` is delivered once and never again — the server does not
+ * store the plaintext, so it cannot be re-fetched.
+ */
+export interface UserCredentialResponse {
+  user: UserResponse;
+  temporaryPassword: string;
 }
 
 export interface CreateUserRequest {
@@ -46,6 +63,8 @@ export interface CreateUserRequest {
   officeId: number | null;
   position: string | null;
   contactNo: string | null;
+  /** Preferred landing page, or null for none. Rejected if unreachable for this user (RAL-262). */
+  landingPage: LandingPageKey | null;
 }
 
 export interface UpdateUserRequest extends CreateUserRequest {
@@ -57,7 +76,10 @@ export interface UpdateUserRequest extends CreateUserRequest {
   overrideCanAccessBudgetPlanning: boolean | null;
   overrideCanUploadAip: boolean | null;
   overrideCanManageConfig: boolean | null;
-  overrideCanManageAllocation: boolean | null;
+  overrideCanManagePpdoAllocation: boolean | null;
+  overrideCanManagePboCeiling: boolean | null;
+  overrideCanReviewBudgetPlanning: boolean | null;
+  overrideCanReviewAllOffices: boolean | null;
 }
 
 // OfficeResponse / DivisionResponse live in ./config.ts — re-exported via the @/types barrel.

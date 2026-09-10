@@ -39,7 +39,7 @@ import {
 } from "@/lib/config";
 import { computeWfpRollUpPreview, mergeWfpPeriodAndItemAmounts, wfpPeriodCount } from "@/lib/wfp";
 import type {
-  PriceIndexItemResponse,
+  PriceIndexPickerItem,
   ProcurementPresetResponse,
   SaveWfpProcurementItemRequest,
   WfpExpenditureFrequency,
@@ -61,8 +61,8 @@ function periodLabels(frequency: WfpExpenditureFrequency): string[] {
   }
 }
 
-const priceIndexItemLabel = (p: PriceIndexItemResponse) => `${p.name} (${p.unit}) — ₱${formatMoney(p.unitPrice)}`;
-const priceIndexItemSearchText = (p: PriceIndexItemResponse) => `${p.name} ${p.unit}`;
+const priceIndexItemLabel = (p: PriceIndexPickerItem) => `${p.name} (${p.unit}) — ₱${formatMoney(p.unitPrice)}`;
+const priceIndexItemSearchText = (p: PriceIndexPickerItem) => `${p.name} ${p.unit}`;
 
 // ---------------------------------------------------------------------------
 // Props
@@ -73,7 +73,13 @@ export interface WfpProcurementItemTableProps {
   accountId: number | null;
   procurementItems: SaveWfpProcurementItemRequest[];
   onProcurementItemsChange: (items: SaveWfpProcurementItemRequest[]) => void;
-  priceIndex: PriceIndexItemResponse[];
+  priceIndex: PriceIndexPickerItem[];
+  /**
+   * True while the ~6,400-row catalogue is still loading (RAL-231). It is fetched off the page's
+   * critical path, so the wizard can be opened before it lands — without this the picker would
+   * just look like a catalogue with nothing in it.
+   */
+  priceIndexLoading: boolean;
   annualQuarterChoice: number;
   onAnnualQuarterChoiceChange: (choice: number) => void;
   applyReserve: boolean;
@@ -91,6 +97,7 @@ export default function WfpProcurementItemTable({
   procurementItems,
   onProcurementItemsChange,
   priceIndex,
+  priceIndexLoading,
   annualQuarterChoice,
   onAnnualQuarterChoiceChange,
   applyReserve,
@@ -362,7 +369,11 @@ export default function WfpProcurementItemTable({
                   getLabel={priceIndexItemLabel}
                   getSearchText={priceIndexItemSearchText}
                   allOptionLabel="Free-typed item (no price index link)"
-                  placeholder="Search price index by item name…"
+                  placeholder={
+                    priceIndexLoading
+                      ? "Loading price index catalogue…"
+                      : "Search price index by item name…"
+                  }
                   className="flex-1 min-w-0"
                 />
                 <button

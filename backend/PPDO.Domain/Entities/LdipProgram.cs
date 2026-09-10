@@ -1,4 +1,4 @@
-namespace PPDO.Domain.Entities;
+﻿namespace PPDO.Domain.Entities;
 
 /// <summary>
 /// LDIP hierarchy level 2 (RAL-61) — one program row under an office/sub-office
@@ -31,9 +31,23 @@ public sealed class LdipProgram
     public string Name { get; set; } = string.Empty;
 
     /// <summary>
-    /// Combined budget for the document's full year range, in thousands (₱000) like AIP totals.
+    /// Combined budget for the document's full year range, in thousands (₱000).
     /// For uploaded programs this is Ps + Mooe + Co (the file's own Total column);
     /// for manually-added programs it is the single value the user entered.
+    ///
+    /// ⚠️ <b>Unit invariant — read before wiring this into anything (v1.8.0 DECISION E).</b>
+    /// This value is stored, entered and displayed in ₱000 throughout, because the province's own
+    /// LDIP form is denominated that way. It must <b>never</b> be compared to, or copied into, a
+    /// PESO amount. AIP totals were in thousands too until DECISION E moved them to pesos for every
+    /// fiscal year — this field did NOT move with them, deliberately, because no LDIP amount
+    /// currently crosses into peso-denominated code:
+    /// <c>AipService.SeedProgramsFromLdipAsync</c> copies RefCode/Name/FunctionBand and no amounts
+    /// (an LDIP budget is a multi-year total, not a valid single-FY figure), and the planning
+    /// dashboards carry LDIP counts and statuses only.
+    ///
+    /// That is the entire reason the mismatch is safe. If a future feature does need this value on
+    /// the peso side, convert at the call site and name the boundary there — do not quietly widen
+    /// the assumption. See docs/v1.8/Phase_Plan.md §4 (V18-35 detail).
     /// </summary>
     public decimal Budget { get; set; }
 

@@ -22,6 +22,12 @@ public sealed class BudgetPlanningDashboardFunctions
     private readonly IJwtMiddleware                  _jwt;
     private readonly IPermissionService              _permissions;
 
+    /// <summary>
+    /// The one 403 message the offices endpoint gives, whichever half of its gate failed
+    /// (PPDO-20). Must stay identical to the string <c>GetOfficesAsync</c> returns.
+    /// </summary>
+    private const string NoBudgetPlanningAccess = "You do not have access to Budget Planning.";
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -38,10 +44,16 @@ public sealed class BudgetPlanningDashboardFunctions
     }
 
     // ── GET /api/budget-planning/dashboard?fiscalYear={int?} ──────────────────
-    // divisionId (RAL-161): division-scoped callers (not CanManageAllocation) are ALWAYS
+    // divisionId (RAL-161): division-scoped callers (not CanManagePpdoAllocation) are ALWAYS
     // clamped to their own division — mirrors WfpReportFunctions.GetPreview's RAL-136 pattern.
     // There is no client-supplied divisionId param here at all; a division-scoped caller can
     // never see another division's data by any query string.
+    //
+    // PPDO-only (RAL-230): the payload IS PPDO's — GetDashboardAsync resolves the PPDO office
+    // internally and returns its ceilings, per-division allocations, and per-division WFP
+    // status. There is no office dimension to clamp, so a non-PPDO caller is refused outright
+    // rather than served someone else's data. Office users get the office readiness hub via
+    // GetOfficeDashboard, and their fiscal-year list via GetFiscalYears.
 
     [Function("GetBudgetPlanningDashboard")]
     public async Task<HttpResponseData> GetDashboard(
@@ -56,8 +68,12 @@ public sealed class BudgetPlanningDashboardFunctions
         if (!await _permissions.CanAccessBudgetPlanningAsync(caller, cancellationToken))
             return req.CreateResponse(HttpStatusCode.Forbidden);
 
+        // Generic 403 — don't confirm to an office user whether PPDO data exists.
+        if (!OfficeScope.Resolve(caller).SeeAll)
+            return req.CreateResponse(HttpStatusCode.Forbidden);
+
         int? fiscalYear = TryParseIntQuery(req, "fiscalYear");
-        int? divisionId = await _permissions.CanManageAllocationAsync(caller, cancellationToken)
+        int? divisionId = await _permissions.CanManagePpdoAllocationAsync(caller, cancellationToken)
             ? null
             : caller.DivisionId;
 
@@ -92,6 +108,10 @@ public sealed class BudgetPlanningDashboardFunctions
     }
 
     // ── GET /api/budget-planning/activity?officeId={int?} ────────────────────
+    // officeId (RAL-229): office-scoped callers are ALWAYS clamped to their own office — an
+    // officeId they put on the query string is ignored, and omitting it does NOT widen them to
+    // all offices. PPDO callers pass through unchanged (including null = every office).
+    // Same rule as GetOfficeDashboard below; mirrors GetDashboard's RAL-161 division clamp.
 
     [Function("GetBudgetPlanningActivity")]
     public async Task<HttpResponseData> GetActivity(
@@ -106,7 +126,7 @@ public sealed class BudgetPlanningDashboardFunctions
         if (!await _permissions.CanAccessBudgetPlanningAsync(caller, cancellationToken))
             return req.CreateResponse(HttpStatusCode.Forbidden);
 
-        int? officeId = TryParseIntQuery(req, "officeId");
+        int? officeId = ConfigHttp.ClampOfficeId(caller, TryParseIntQuery(req, "officeId"));
 
         IReadOnlyList<RecentActivityDto> result =
             await _service.GetRecentActivityAsync(officeId, cancellationToken);
@@ -115,6 +135,11 @@ public sealed class BudgetPlanningDashboardFunctions
     }
 
     // ── GET /api/budget-planning/dashboard/office?officeId=&fiscalYear= ──────
+    // officeId (RAL-229): office-scoped callers are ALWAYS clamped to their own office — the
+    // officeId on the query string is ignored for them. Before this, the caller was discarded
+    // entirely (`(_, denied)`) and any Budget Planning user could read any office's dashboard
+    // by changing one parameter. Clamp, don't reject: no error path to get wrong, and a client
+    // can't probe for valid office ids by watching which ones 403.
 
     [Function("GetBudgetPlanningOfficeDashboard")]
     public async Task<HttpResponseData> GetOfficeDashboard(
@@ -122,7 +147,7 @@ public sealed class BudgetPlanningDashboardFunctions
         HttpRequestData req,
         CancellationToken cancellationToken)
     {
-        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(
             req, _jwt, u => _permissions.CanAccessBudgetPlanningAsync(u), cancellationToken);
         if (denied is not null) return denied;
 
@@ -132,11 +157,59 @@ public sealed class BudgetPlanningDashboardFunctions
                 ApiResponse<OfficeDashboardDto>.Fail(
                     "officeId and fiscalYear query parameters are required."), cancellationToken);
 
+        // Clamp AFTER validation so a malformed officeId is still a clean 400 rather than
+        // silently falling back to the caller's own office.
+        officeId = ConfigHttp.ClampOfficeId(caller!, officeId) ?? officeId;
+
         OfficeDashboardDto result =
             await _service.GetOfficeDashboardAsync(officeId, fiscalYear, cancellationToken);
 
         return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK,
             ApiResponse<OfficeDashboardDto>.Ok(result), cancellationToken);
+    }
+
+    // ── GET /api/budget-planning/dashboard/offices?fiscalYear= ──────────────
+    // PPDO-20. One row per office in the caller's CROSS-OFFICE scope — the dashboard's office
+    // table. Read-only.
+    //
+    // The gate is two-part and both halves matter: CanAccessBudgetPlanning (the feature), then
+    // at least one cross-office grant (the scope). The scope half is resolved inside the service
+    // via OfficeScope.ResolveForReview / ResolveForCeiling — never OfficeScope.Resolve, which
+    // feeds the write paths.
+    //
+    // A caller with the feature but neither grant gets 403 with the SAME message as a caller
+    // without the feature. Distinguishing them would turn the error into an oracle for which
+    // grants an account holds.
+
+    [Function("GetBudgetPlanningDashboardOffices")]
+    public async Task<HttpResponseData> GetDashboardOffices(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "budget-planning/dashboard/offices")]
+        HttpRequestData req,
+        CancellationToken cancellationToken)
+    {
+        User? caller = await _jwt.ValidateAsync(GetAuthHeader(req), cancellationToken);
+        if (caller is null)
+            return req.CreateResponse(HttpStatusCode.Unauthorized);
+
+        // Written out rather than delegated to ConfigHttp.AuthorizeAsync so that BOTH halves of
+        // the gate answer with the identical enveloped 403. AuthorizeAsync returns a bodyless
+        // 403, and the service returns one carrying a message — a caller could tell "no feature"
+        // from "feature but no cross-office grant" by the response body alone, which is the
+        // enumeration the spec forbids.
+        if (!await _permissions.CanAccessBudgetPlanningAsync(caller, cancellationToken))
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.Forbidden,
+                ApiResponse<IReadOnlyList<OfficeSummaryDto>>.Fail(NoBudgetPlanningAccess),
+                cancellationToken);
+
+        if (!int.TryParse(req.Query["fiscalYear"], out int fiscalYear))
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<IReadOnlyList<OfficeSummaryDto>>.Fail("fiscalYear is required."),
+                cancellationToken);
+
+        ServiceResult<IReadOnlyList<OfficeSummaryDto>> result =
+            await _service.GetOfficesAsync(caller, fiscalYear, cancellationToken);
+
+        return await ConfigHttp.FromResultAsync(req, result, cancellationToken);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

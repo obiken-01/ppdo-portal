@@ -1,3 +1,5 @@
+import type { LandingPageKey } from "./auth";
+
 /**
  * Configuration module types (v1.1) — mirrors PPDO.Application/DTOs/Config/
  * and PPDO.Application/Common/ (ApiResponse, CsvImportResult).
@@ -81,6 +83,13 @@ export interface OfficeResponse {
   /** Last segment of the AIP office ref code (e.g. "013"). Used to match AIP → config office in WFP. */
   officeRefCode: string | null;
   isActive: boolean;
+  /** Landing-page enum name, or null for none (RAL-262). */
+  landingPage: LandingPageKey | null;
+  /**
+   * Whether this is the host office — its users hold cross-office authority
+   * (DECISION F, RAL-258). Exactly one office has this set.
+   */
+  isHostOffice: boolean;
 }
 
 /** Create/update body for an office. officeCode is the unique key. */
@@ -89,6 +98,8 @@ export interface UpsertOfficeRequest {
   officeName: string;
   officeRefCode?: string | null;
   isActive: boolean;
+  /** Landing-page enum name, or null for none (RAL-262). */
+  landingPage?: LandingPageKey | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -125,6 +136,30 @@ export interface UpsertFundingSourceRequest {
 // ---------------------------------------------------------------------------
 
 /** Read model for a price index item (config table `price_index_items`). */
+/**
+ * Slim price-index row for item pickers (RAL-232) — the five fields the WFP procurement item
+ * table and the procurement-preset editor actually read.
+ *
+ * The full {@link PriceIndexItemResponse} is ~1,569 KB over the real 6,397-row catalogue; this is
+ * ~686 KB. Use it anywhere the extra four fields are not genuinely needed. The price-index
+ * management grid still uses the full response — do not narrow that one.
+ */
+export interface PriceIndexPickerItem {
+  id: number;
+  name: string;
+  unit: string;
+  unitPrice: number;
+  daysEnabled: boolean;
+}
+
+/** A page of the price-index management grid plus the total match count (RAL-233). */
+export interface PriceIndexPage {
+  items: PriceIndexItemResponse[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
 export interface PriceIndexItemResponse {
   id: number;
   name: string;
@@ -224,6 +259,8 @@ export interface DivisionResponse {
   canAccessBudgetPlanning: boolean;
   canUploadAip: boolean;
   canManageConfig: boolean;
+  /** Landing-page enum name, or null for none (RAL-262). */
+  landingPage: LandingPageKey | null;
 }
 
 /** Create/update body for a configurable division. name is the upsert key within an office. */
@@ -239,6 +276,8 @@ export interface UpsertDivisionRequest {
   canUploadAip: boolean;
   canManageUsers: boolean;
   canManageResourceLinks: boolean;
+  /** Landing-page enum name, or null for none (RAL-262). */
+  landingPage?: LandingPageKey | null;
 }
 
 // ── Audit Log (SuperAdmin-only) ───────────────────────────────────────────────
@@ -263,4 +302,48 @@ export interface AuditLogPage {
   totalCount: number;
   page: number;
   pageSize: number;
+}
+
+/**
+ * A CCET (Climate Change Expenditure Tagging) typology code — RAL-247.
+ * `category` is "Adaptation" | "Mitigation" | "Unclassified"; it is stored rather than derived
+ * from the code's leading letter so a code that breaks the convention can still be filed by hand.
+ */
+export interface ClimateChangeTypologyResponse {
+  id: number;
+  code: string;
+  name: string;
+  category: string;
+  description: string | null;
+  isActive: boolean;
+}
+
+export interface UpsertClimateChangeTypologyRequest {
+  code: string;
+  name: string;
+  category: string;
+  description?: string | null;
+  isActive: boolean;
+}
+
+/**
+ * An eSRE classification code — RAL-248. A closed vocabulary of four: SS (Social Services),
+ * ES (Economic Services), ID (Institutional Development), EN (Environmental Services).
+ *
+ * `code` is stored upper-case; `name` is what the picker labels the option with.
+ */
+export interface EsreCodeResponse {
+  id: number;
+  code: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+}
+
+/** Create/update body. `code` is the unique key and is upper-cased server-side. */
+export interface UpsertEsreCodeRequest {
+  code: string;
+  name: string;
+  description?: string | null;
+  isActive: boolean;
 }

@@ -7,7 +7,7 @@
  * accepts a `.csv`, and hands the chosen File back via `onSelect`. The consuming
  * page owns the rest of the round-trip — a confirm/preview step (compose with
  * the shared Modal), the POST to the upsert endpoint, and the result summary
- * (compose with MessageDialog). This keeps the button reusable while letting
+ * (render CsvImportSummary). This keeps the button reusable while letting
  * each config page present its own preview. Flat design — no rounded corners.
  *
  * Usage:

@@ -22,7 +22,28 @@ public record AipActivityDto(
     decimal? CcMitigation,
     string?  CcTypologyCode,
     bool     IsCreation,
-    bool     IsSynthetic = false);
+    bool     IsSynthetic = false,
+    /// <summary>
+    /// The distinct funding-source codes this activity's expenditure lines draw on, in the order
+    /// they were first used — the form's Funding Source column (7), which prints them joined
+    /// (<c>5% CF/ NGA</c>). Added by PPDO-80.
+    ///
+    /// <para>
+    /// ⚠️ <b>This is not <see cref="FundingSourceSnapshot"/> and does not replace it.</b> On an
+    /// entered year the fund lives on the LINE — one per line, Phase 2 decision 4 — so an activity
+    /// drawing on two funds stores none itself and the snapshot is null. On an FY≤2027 uploaded
+    /// activity the reverse holds: there are no lines, so this is empty and the snapshot is the
+    /// only answer. A reader wanting "what funds is this on?" must consider both.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ Empty on every write path that does not load lines — an activity just created has none,
+    /// which is correct. The two paths where it would be <i>wrong</i> to leave it empty are the
+    /// details save and the expenditure write, because the entry page splices those responses
+    /// straight into its tree instead of reloading; both fill it.
+    /// </para>
+    /// </summary>
+    IReadOnlyList<string>? FundCodes = null);
 
 public record AipProjectDto(
     int    Id,
@@ -46,6 +67,18 @@ public record AipOfficeDto(
     string RefCode,
     string Name,
     string Sector,
+    /// <summary>
+    /// The config <c>offices</c> row that owns this group (V18-32), added by PPDO-52.
+    ///
+    /// ⚠️ <b>The entry page needs it and could not be written correctly without it.</b> A
+    /// host-office user legitimately receives every office in the record, so with no owner on the
+    /// DTO the page rendered all 25 offices' trees while its checklist covered only the caller's
+    /// own — an encoder saw someone else's programs above a panel saying "0 activities in this
+    /// office". Found by live-testing, not review.
+    ///
+    /// Null only for an unmatched legacy row, exactly as on <c>AipOffice.OfficeId</c>.
+    /// </summary>
+    int?   OfficeId,
     IReadOnlyList<AipProgramDto> Programs);
 
 public record AipRecordDto(
@@ -149,7 +182,32 @@ public record AipImportConfirmDto(
 // by the client (see AipService.NextRefCode / the AipSector prefix map).
 
 /// <summary>Body of POST /api/budget-planning/aip — creates a blank Manual-entry AipRecord.</summary>
-public record CreateAipRecordDto(int FiscalYear);
+/// <summary>
+/// Body of POST /api/budget-planning/aip — opens a fiscal year (PPDO-62). Admin/SuperAdmin only.
+///
+/// <para>
+/// ↩️ V18-40's <c>OfficeConfigId</c> was removed (PPDO-61): it chose a record shape, and there is
+/// only one. <b>One base record per fiscal year holds every office</b>, so the year is all this
+/// needs.
+/// </para>
+/// </summary>
+public record OpenAipFiscalYearDto(int FiscalYear);
+
+/// <summary>
+/// What opening a fiscal year did (PPDO-62).
+/// </summary>
+/// <param name="Record">The base record that now holds every office.</param>
+/// <param name="OfficesPopulated">How many <c>AipOffice</c> rows were created across all sectors.</param>
+/// <param name="OfficesWithoutLdip">
+/// ⚠️ <b>Names of active offices that got nothing, because they have no LDIP in any sector.</b>
+/// This is a real output, not a nicety: such an office cannot build its AIP and has no way to
+/// discover why — it opens the page and finds nothing. Surface this list; do not swallow it
+/// because the operation "succeeded".
+/// </param>
+public record OpenAipFiscalYearResultDto(
+    AipRecordDto Record,
+    int OfficesPopulated,
+    IReadOnlyList<string> OfficesWithoutLdip);
 
 /// <summary>
 /// Body of POST /api/budget-planning/aip/{aipId}/offices. <see cref="OfficeConfigId"/> is the
@@ -163,19 +221,112 @@ public record CreateAipRecordDto(int FiscalYear);
 public record CreateAipOfficeDto(int OfficeConfigId, string Sector, string? Name = null);
 
 /// <summary>
-/// RAL-180 — carry forward selected programs (with full project/activity subtrees) from
-/// <see cref="SourceOfficeId"/> into the target fiscal year. Target AipRecord/AipOffice are
-/// found-or-created by the service.
-/// </summary>
-public record CopyAipOfficeDto(int SourceOfficeId, int TargetFiscalYear, IReadOnlyList<int> ProgramIds);
-
-/// <summary>
 /// RAL-181 — seed an AIP office's programs (Name+RefCode only, no Project/Activity rows) from
 /// that office's existing LDIP for <see cref="Sector"/>. Target AipRecord/AipOffice are
-/// found-or-created by the service using the same rule as <see cref="CopyAipOfficeDto"/>.
+/// found-or-created by the service.
 /// </summary>
 public record SeedAipProgramsFromLdipDto(
     int TargetFiscalYear, int OfficeConfigId, string Sector, IReadOnlyList<int> LdipProgramIds);
+
+/// <summary>
+/// Body of <c>POST /api/budget-planning/aip/{aipId}/programs</c> (V18-42 / PPDO-52, spec §4).
+///
+/// <b>The sub-office group and the programs arrive together because they are one interaction</b>
+/// (§2 decision 2). The encoder picks a sector, names the group, ticks programs from the LDIP and
+/// presses Add — exactly what <c>LdipForm.tsx</c> already does, which PPDO-52 says to lift rather
+/// than redesign.
+///
+/// <para>
+/// ⚠️ <see cref="GroupName"/> is what this endpoint exists for. <c>SeedProgramsFromLdipAsync</c>
+/// finds its target <c>AipOffice</c> by <b>ref code alone</b> and takes the name from the LDIP, so
+/// it can only ever reach the FIRST group under a ref code — it cannot start a second. Real AIPs
+/// need several: the province's FY2027 SOCIAL sheet carries three <c>3000-000-1-01-001</c> office
+/// rows (<i>OFFICE OF THE GOVERNOR - WARDEN</i>, <i>- AKAP-HUB</i>, <i>- HOUSING</i>), each heading
+/// its own block with its own shaded subtotal.
+/// </para>
+///
+/// <para>
+/// ⚠️ The group is <b>not</b> the division. It is the <c>(Sector, Name)</c> pair on
+/// <c>AipOffice</c>, it <b>prints</b>, and it applies to every office. A division is
+/// <c>ProgramDivision</c>, host-office only, and never prints (spec §3.1).
+/// </para>
+///
+/// <para>
+/// ⚠️ <b>There is no group-name parameter, deliberately.</b> ↩️ It used to carry one, free text,
+/// with blank meaning "the LDIP group's own name". The sub-office grouping is already settled in
+/// the LDIP, so the group is <b>derived from <see cref="LdipProgramIds"/></b> — every LDIP program
+/// belongs to exactly one group, which makes the answer unambiguous and impossible to mistype.
+/// A typed name could name a block that matches no LDIP row, and the AIP is the document that
+/// prints. A selection spanning two groups is refused rather than split.
+/// </para>
+/// </summary>
+public record AddAipProgramsWithGroupDto(
+    int                 OfficeConfigId,
+    string              Sector,
+    IReadOnlyList<int>  LdipProgramIds);
+
+/// <summary>
+/// One LDIP program an office may add to its AIP (V18-42 / PPDO-52).
+///
+/// <see cref="LdipProgramId"/> is the id <c>AddAipProgramsWithGroupDto.LdipProgramIds</c> expects —
+/// deliberately named for what it is, because it is NOT the AIP program's id and confusing the two
+/// produces a "does not belong to this office's LDIP" refusal that looks like a permissions bug.
+/// </summary>
+public record AipAddableProgramDto(int LdipProgramId, string RefCode, string Name);
+
+/// <summary>
+/// What an office may add for one sector, resolved <b>server-side</b> (V18-42 / PPDO-52).
+///
+/// ⚠️ <b>This endpoint exists because the client must not resolve the LDIP itself.</b>
+/// <c>ResolveLdipGroupAsync</c> is two-tier — the office's own LDIP first, then a multi-office bulk
+/// LDIP matched on ref code — and its own remarks already noted the frontend mirrored it a third
+/// time. A fourth copy in the entry panel diverged in practice: the panel offered programs from one
+/// LDIP record while the server resolved a different one, and every add was refused with
+/// <i>"LDIP program id(s) … do not belong to this office's GENERAL LDIP"</i>. Found by live-testing.
+///
+/// Both halves were individually correct. Serving the list from the same resolver the write path
+/// uses makes them agree by construction rather than by two teams keeping two copies in step.
+/// </summary>
+/// <param name="LdipRefCode">
+/// The LDIP record these programs come from.
+///
+/// ⚠️ Returned so the encoder can answer "where did these come from?" without leaving the page.
+/// The resolver is two-tier and its second tier is a <b>multi-office</b> LDIP owned by no single
+/// office — which the LDIP list could not show anyone until this ticket. Naming the source here is
+/// what makes the closed list explicable rather than mysterious.
+/// </param>
+/// <param name="LdipTitle">That record's title, for humans.</param>
+/// <param name="IsSharedLdip">
+/// True when the source is a multi-office LDIP rather than this office's own. Worth surfacing:
+/// it explains why the record may not look like "your" LDIP.
+/// </param>
+/// <param name="Groups">
+/// Every sub-office group the LDIP holds for this sector, each with its own programs.
+///
+/// ⚠️ <b>A list, not one group.</b> The province's LDIP really does put four blocks under
+/// <c>3000-000-1-01-001</c> (WARDEN / AKAP-HUB / HOUSING / LOCAL SCHOOL BOARD), and a single-group
+/// shape here is what made three of them unofferable — the picker could not show what the resolver
+/// would not return. Empty means the sector has groups but no programs in them.
+/// </param>
+public record AipAddableProgramsDto(
+    string? LdipRefCode,
+    string? LdipTitle,
+    bool    IsSharedLdip,
+    IReadOnlyList<AipAddableGroupDto> Groups);
+
+/// <summary>
+/// One sub-office group inside <see cref="AipAddableProgramsDto"/>, and the programs under it.
+///
+/// <para>
+/// ⚠️ The <c>(RefCode, Name)</c> pair here <b>is</b> the group's identity — the same pair
+/// <c>AipOffice</c> uses. Several groups in one response legitimately share
+/// <see cref="GroupRefCode"/>; <see cref="GroupName"/> is what separates them.
+/// </para>
+/// </summary>
+public record AipAddableGroupDto(
+    string  GroupRefCode,
+    string  GroupName,
+    IReadOnlyList<AipAddableProgramDto> Programs);
 
 public record CreateAipProgramDto(string Name, string? FunctionBand = null);
 
@@ -287,3 +438,41 @@ public record AipRecordSummaryDto(
 public record UpdateAipProgramFunctionBandDto(string? FunctionBand);
 
 public record UpdateAipActivityIsCreationDto(bool IsCreation);
+
+/// <summary>
+/// An entered-year activity's <b>descriptive</b> fields — everything the AIP form prints about an
+/// activity except its money (V18-42 / PPDO-52).
+///
+/// <para>
+/// ⚠️ <b>There is deliberately no <c>Ps</c>, <c>Mooe</c>, <c>Co</c> or <c>FundingSourceId</c>
+/// here, and adding them would be a data-loss bug.</b> On an entered year those four are
+/// <i>derived</i>: <c>AipExpenditureService</c> recomputes the activity's PS/MOOE/CO from its
+/// expenditure lines on every line write, and the fund lives on the lines (one fund per line, so
+/// an activity has no single fund to store). <c>UpdateAipActivityDto</c> — the detail page's
+/// whole-row edit — assigns all four unconditionally from the request, so reusing it to save a
+/// description would silently zero a costing the encoder never touched.
+/// </para>
+///
+/// <para>
+/// ℹ️ <see cref="CcAdaptation"/> and <see cref="CcMitigation"/> ARE here despite being money.
+/// They are not derived from anything — expenditure lines carry only PS/MOOE/CO — so the activity
+/// row is the only place they can be entered.
+/// </para>
+///
+/// <para>
+/// ⚠️ <see cref="EsreCode"/> and <see cref="CcTypologyCode"/> are the two fields the submit gate
+/// blocks on (<c>missing-esre</c>, <c>missing-cc-typology</c>). Before this DTO existed the entry
+/// page created activities with both hardcoded to null and offered no editor, so an encoder
+/// working only from that page could never satisfy their own submit gate.
+/// </para>
+/// </summary>
+public record UpdateAipActivityDetailsDto(
+    string   Name,
+    string?  EsreCode,
+    string?  ImplementingOffice,
+    string?  StartDate,
+    string?  EndDate,
+    string?  ExpectedOutputs,
+    decimal? CcAdaptation,
+    decimal? CcMitigation,
+    string?  CcTypologyCode);

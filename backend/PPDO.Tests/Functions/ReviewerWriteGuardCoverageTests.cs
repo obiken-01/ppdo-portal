@@ -1,0 +1,535 @@
+﻿using System.Net;
+using System.Reflection;
+using Microsoft.Azure.Functions.Worker;
+using Microsoft.Azure.Functions.Worker.Http;
+using Moq;
+using PPDO.Domain.Entities;
+using PPDO.Domain.Enums;
+using PPDO.Domain.Interfaces;
+using PPDO.Functions.Functions;
+
+namespace PPDO.Tests.Functions;
+
+/// <summary>
+/// Every budget-planning WRITE endpoint must refuse a cross-office (comment-only) reviewer, and
+/// must NOT refuse a department-head reviewer (v1.8.0 — RAL-256).
+///
+/// <b>Why this is reflective rather than 40 hand-written tests.</b> RAL-256 asks for the endpoint
+/// list to be "covered by tests rather than by inspection". A fixed list of tests only covers the
+/// endpoints someone remembered to add to it — and the failure mode this guard exists to prevent
+/// is precisely *one endpoint getting missed*. Discovering the endpoints from the
+/// <c>[Function]</c>/<c>[HttpTrigger]</c> attributes means a write endpoint added next year is
+/// covered the day it is written, and an endpoint that quietly drops the guard fails the build.
+///
+/// Each case is a real invocation of the real handler: mocked JWT and permissions, then assert on
+/// the returned <see cref="HttpResponseData"/>. Handlers authorize before touching the body or the
+/// route arguments, so the arguments can be defaults and no request body is needed.
+///
+/// The dev-only <c>BudgetPlanningCleanupFunctions</c> is deliberately out of scope: it is gated by
+/// a <c>DevCleanupKey</c> header and never authenticates a caller, so there is no reviewer to deny.
+/// </summary>
+public sealed class ReviewerWriteGuardCoverageTests
+{
+    /// <summary>
+    /// The budget-planning Function classes that own content writes. Adding a new one here is the
+    /// single maintenance step when a feature area is added.
+    /// </summary>
+    private static readonly Type[] BudgetPlanningFunctionTypes =
+    [
+        typeof(AipFunctions),
+        typeof(LdipFunctions),
+        typeof(WfpFunctions),
+        typeof(AllocationFunctions),
+        typeof(WfpExpenditureFunctions),
+        typeof(WfpProcurementPresetFunctions),
+        typeof(AipExpenditureFunctions),
+        typeof(AipSubmitFunctions),
+        typeof(AipReviewCommentFunctions),
+        typeof(AipReviewFunctions),
+    ];
+
+    private static readonly string[] WriteVerbs = ["post", "put", "delete", "patch"];
+
+    public static TheoryData<string, string> WriteEndpoints()
+    {
+        TheoryData<string, string> data = new();
+        foreach ((Type type, MethodInfo method, _) in DiscoverWriteEndpoints())
+            data.Add(type.FullName!, method.Name);
+        return data;
+    }
+
+    /// <summary>
+    /// Endpoints whose <b>own authority is a reviewer flag</b>, so an ordinary budget-planning user
+    /// cannot reach them at all (v1.8.0 Phase 4).
+    ///
+    /// <para>
+    /// ⚠️ <b>This is not an exemption from the guard — it is an exemption from two theories whose
+    /// premise does not hold here.</b> Both
+    /// <see cref="WriteEndpoint_OrdinaryUserIsNotRefused_SoTheGuardIsWhatCausesThe403"/> and
+    /// <see cref="WriteEndpoint_TreatsADepartmentHeadReviewerLikeAnyOtherUser"/> compare a
+    /// department-head reviewer against an ordinary user, and both assume the ordinary user gets
+    /// <i>through</i> the permission gate. For an endpoint gated on
+    /// <c>CanReviewBudgetPlanning</c> that is false by design: the ordinary user is refused by the
+    /// endpoint's own gate, long before <c>ReviewerWriteGuard</c> is consulted.
+    /// </para>
+    ///
+    /// <para>
+    /// These endpoints stay in <see cref="WriteEndpoint_RefusesACrossOfficeReviewer"/>, which is
+    /// still true and still worth asserting, and each one gets a dedicated test naming the gate it
+    /// actually has — see <see cref="SubmitToPpdo_IsGatedOnTheDepartmentHeadFlag"/>. Adding a name
+    /// here without adding that test would be a hole in the net, not a correction to it.
+    /// </para>
+    /// </summary>
+    private static readonly HashSet<string> ReviewerGatedEndpoints =
+    [
+        // PPDO-69 — the second submit. The department head's alone; an encoder must be refused.
+        $"{nameof(AipSubmitFunctions)}.{nameof(AipSubmitFunctions.SubmitToPpdo)}",
+
+        // PPDO-72 — the return. Gated on CanReviewAllOffices, so an ordinary user never reaches
+        // it. ⚠️ It is in BOTH exemption sets, which no other endpoint is: the gate is a reviewer
+        // flag (this set) AND the action is not a content write (the set below). Its dedicated
+        // assertion is Return_IsGatedOnTheCrossOfficeReviewerFlag.
+        $"{nameof(AipReviewFunctions)}.{nameof(AipReviewFunctions.Return)}",
+
+        // PPDO-74 — the accept. Return's mirror in every respect, including this one: same gate,
+        // same both-sets membership, dedicated assertion in
+        // Accept_IsGatedOnTheCrossOfficeReviewerFlag.
+        $"{nameof(AipReviewFunctions)}.{nameof(AipReviewFunctions.Accept)}",
+    ];
+
+    /// <summary>
+    /// Endpoints that are POSTs but are <b>not content writes</b>, so the guard must NOT deny a
+    /// cross-office reviewer — it must let them through (v1.8.0 Phase 4).
+    ///
+    /// <para>
+    /// ⚠️ <b>This is the opposite exemption from <see cref="ReviewerGatedEndpoints"/>, and it is
+    /// the more dangerous list of the two</b>, because a genuine content write added here would
+    /// silently lose its guard. Every entry must be an action the PPDO consolidated reviewer is
+    /// supposed to perform — commenting and resolving are their whole job, and
+    /// <c>ReviewerWriteGuard</c>'s own remarks name them: "a comment-only reviewer who cannot
+    /// comment is not a reviewer."
+    /// </para>
+    ///
+    /// <para>
+    /// They are excluded only from the two theories that assert the reviewer is <i>refused</i>;
+    /// they keep the department-head-vs-ordinary theory, and they gain
+    /// <see cref="CommentEndpoints_LetACrossOfficeReviewerThrough"/>, which asserts the positive
+    /// directly. An entry added here without that assertion is a hole in the net.
+    /// </para>
+    /// </summary>
+    private static readonly HashSet<string> NotContentWriteEndpoints =
+    [
+        // PPDO-71 — inline review comments. The cross-office reviewer is the main author.
+        $"{nameof(AipReviewCommentFunctions)}.{nameof(AipReviewCommentFunctions.Create)}",
+        $"{nameof(AipReviewCommentFunctions)}.{nameof(AipReviewCommentFunctions.Resolve)}",
+
+        // PPDO-72 — returning an office to its encoders. The cross-office reviewer is the ONLY
+        // caller who may do it, so the guard must let them through. ⚠️ It moves a workflow column
+        // and touches no figures — that is what makes it not a content write. If a future ticket
+        // gives this route a body that changes anything about the office's plan, it stops
+        // qualifying and must come out of this list.
+        $"{nameof(AipReviewFunctions)}.{nameof(AipReviewFunctions.Return)}",
+
+        // PPDO-74 — accepting an office into the consolidated AIP. Same reasoning as the return
+        // directly above: the cross-office reviewer is the only caller who may do it, and it moves
+        // a workflow column and touches no figures.
+        $"{nameof(AipReviewFunctions)}.{nameof(AipReviewFunctions.Accept)}",
+    ];
+
+    /// <summary>Write endpoints that genuinely guard content — the set the two theories cover.</summary>
+    public static TheoryData<string, string> GuardedWriteEndpoints()
+    {
+        TheoryData<string, string> data = new();
+        foreach ((Type type, MethodInfo method, _) in DiscoverWriteEndpoints())
+        {
+            string key = $"{type.Name}.{method.Name}";
+            if (ReviewerGatedEndpoints.Contains(key) || NotContentWriteEndpoints.Contains(key)) continue;
+            data.Add(type.FullName!, method.Name);
+        }
+        return data;
+    }
+
+    /// <summary>
+    /// The positive assertion behind <see cref="NotContentWriteEndpoints"/>: a cross-office
+    /// reviewer reaches these rather than being refused.
+    ///
+    /// ⚠️ Stated as "not 403", not as a success status — these handlers run on past the guard into
+    /// mocked services that cannot produce a real <c>ServiceResult</c> and throw instead, which is
+    /// exactly how the other theories read "got through".
+    /// </summary>
+    [Theory]
+    [InlineData(nameof(AipReviewCommentFunctions.Create))]
+    [InlineData(nameof(AipReviewCommentFunctions.Resolve))]
+    public async Task CommentEndpoints_LetACrossOfficeReviewerThrough(string methodName)
+    {
+        string outcome = await OutcomeAsync(
+            typeof(AipReviewCommentFunctions).FullName!, methodName,
+            crossOfficeReviewer: true, departmentHeadReviewer: false);
+
+        Assert.NotEqual($"status:{HttpStatusCode.Forbidden}", outcome);
+    }
+
+    /// <summary>
+    /// The write endpoints an ordinary budget-planning user can reach.
+    ///
+    /// Wider than <see cref="GuardedWriteEndpoints"/>: it keeps the comment endpoints, because
+    /// "a department head behaves like any other user here" is true of those too — it is only the
+    /// assertions about the cross-office reviewer being <i>refused</i> that do not apply to them.
+    /// </summary>
+    public static TheoryData<string, string> OrdinaryReachableWriteEndpoints()
+    {
+        TheoryData<string, string> data = new();
+        foreach ((Type type, MethodInfo method, _) in DiscoverWriteEndpoints())
+        {
+            if (ReviewerGatedEndpoints.Contains($"{type.Name}.{method.Name}")) continue;
+            data.Add(type.FullName!, method.Name);
+        }
+        return data;
+    }
+
+    /// <summary>
+    /// The gate <see cref="AipSubmitFunctions.SubmitToPpdo"/> actually has, asserted directly
+    /// because the theories above deliberately skip it.
+    ///
+    /// ⚠️ The plan's "encoders cannot submit" applies to <b>this</b> hop only — the encoder's own
+    /// submit one route up is theirs by right. An implementation that gated this on
+    /// <c>CanAccessBudgetPlanning</c> like its neighbour would let any encoder push their own work
+    /// past their department head, which is the entire point of the second hop.
+    /// </summary>
+    [Fact]
+    public async Task SubmitToPpdo_IsGatedOnTheDepartmentHeadFlag()
+    {
+        string ordinary = await OutcomeAsync(
+            typeof(AipSubmitFunctions).FullName!, nameof(AipSubmitFunctions.SubmitToPpdo),
+            crossOfficeReviewer: false, departmentHeadReviewer: false);
+        string departmentHead = await OutcomeAsync(
+            typeof(AipSubmitFunctions).FullName!, nameof(AipSubmitFunctions.SubmitToPpdo),
+            crossOfficeReviewer: false, departmentHeadReviewer: true);
+
+        Assert.Equal($"status:{HttpStatusCode.Forbidden}", ordinary);
+        // Past the gate. It then reaches a mocked service and throws rather than returning a
+        // status — ServiceResult is sealed with a private constructor, so Moq cannot fabricate one
+        // — which is exactly how the other theories read "got through" too.
+        Assert.NotEqual($"status:{HttpStatusCode.Forbidden}", departmentHead);
+    }
+
+    /// <summary>
+    /// The gate <see cref="AipReviewFunctions.Return"/> actually has (PPDO-72), asserted directly
+    /// because it sits in both exemption sets and so is skipped by every theory.
+    ///
+    /// <para>
+    /// ⚠️ <b>Both directions matter and they pull opposite ways.</b> The cross-office reviewer must
+    /// get <i>through</i> — they are the only caller who may return an office, and routing this
+    /// route through <c>AuthorizeWriteAsync</c> would 403 exactly them, which is the mistake
+    /// <c>ReviewerWriteGuard</c>'s own remarks warn about. A department-head reviewer must be
+    /// <i>refused</i> — <c>CanReviewBudgetPlanning</c> is their own office only, and returning is a
+    /// PPDO action; conflating the two flags would let any department head return their own work.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Return_IsGatedOnTheCrossOfficeReviewerFlag()
+    {
+        string ordinary = await OutcomeAsync(
+            typeof(AipReviewFunctions).FullName!, nameof(AipReviewFunctions.Return),
+            crossOfficeReviewer: false, departmentHeadReviewer: false);
+        string departmentHead = await OutcomeAsync(
+            typeof(AipReviewFunctions).FullName!, nameof(AipReviewFunctions.Return),
+            crossOfficeReviewer: false, departmentHeadReviewer: true);
+        string crossOffice = await OutcomeAsync(
+            typeof(AipReviewFunctions).FullName!, nameof(AipReviewFunctions.Return),
+            crossOfficeReviewer: true, departmentHeadReviewer: false);
+
+        Assert.Equal($"status:{HttpStatusCode.Forbidden}", ordinary);
+        Assert.Equal($"status:{HttpStatusCode.Forbidden}", departmentHead);
+
+        // Past the gate. It then reaches a mocked service and throws rather than returning a
+        // status, which is how every other test here reads "got through".
+        Assert.NotEqual($"status:{HttpStatusCode.Forbidden}", crossOffice);
+    }
+
+    /// <summary>
+    /// The same three-way assertion for accept (PPDO-74), which sits in both exemption sets for the
+    /// same reasons the return does.
+    ///
+    /// <para>
+    /// ⚠️ <b>The department-head row is the one worth having.</b> Accept is what closes an office
+    /// into the consolidated AIP, and a department head who could press it would be accepting their
+    /// own office's work — signing off on themselves. The two reviewer flags are one word apart in
+    /// every sentence about them, which is exactly why this is asserted rather than assumed.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Accept_IsGatedOnTheCrossOfficeReviewerFlag()
+    {
+        string ordinary = await OutcomeAsync(
+            typeof(AipReviewFunctions).FullName!, nameof(AipReviewFunctions.Accept),
+            crossOfficeReviewer: false, departmentHeadReviewer: false);
+        string departmentHead = await OutcomeAsync(
+            typeof(AipReviewFunctions).FullName!, nameof(AipReviewFunctions.Accept),
+            crossOfficeReviewer: false, departmentHeadReviewer: true);
+        string crossOffice = await OutcomeAsync(
+            typeof(AipReviewFunctions).FullName!, nameof(AipReviewFunctions.Accept),
+            crossOfficeReviewer: true, departmentHeadReviewer: false);
+
+        Assert.Equal($"status:{HttpStatusCode.Forbidden}", ordinary);
+        Assert.Equal($"status:{HttpStatusCode.Forbidden}", departmentHead);
+        Assert.NotEqual($"status:{HttpStatusCode.Forbidden}", crossOffice);
+    }
+
+    /// <summary>
+    /// Guards the discovery itself. If a refactor changes the attribute shape and this returns
+    /// nothing, every theory below would vacuously pass — so assert the count is in the expected
+    /// range instead. The exact number is allowed to grow; it must never collapse.
+    /// </summary>
+    [Fact]
+    public void Discovery_FindsTheBudgetPlanningWriteEndpoints()
+    {
+        List<(Type, MethodInfo, string)> found = DiscoverWriteEndpoints();
+
+        // ↩️ 40 → 39 on 2026-09-05 (PPDO-63), lowered deliberately as this message instructs:
+        // POST /budget-planning/aip/copy-office was removed with carry-forward. One endpoint, and
+        // the floor moved by exactly one — if it ever needs to drop by more than the number of
+        // endpoints a ticket knowingly deletes, something else has gone wrong with discovery.
+        //
+        // ↩️ 44 → 45 on 2026-09-07 (PPDO-52): PUT /aip/activities/{id}/details.
+        // ↩️ 43 → 44 on 2026-09-07 (PPDO-52): AipSubmitFunctions POST /aip/{aipId}/submit.
+        // ↩️ 42 → 43 on 2026-09-07 (PPDO-52): POST /aip/{aipId}/programs.
+        // ↩️ 39 → 42 on 2026-09-07 (PPDO-52): AipExpenditureFunctions' POST, PUT and DELETE.
+        // ⚠️ Raising the floor was NOT enough on its own — the new class also had to be added to
+        // BudgetPlanningFunctionTypes above. Until it was, the count stayed at 39 and all three
+        // endpoints were silently uncovered while every test still passed. This file's safety net
+        // has one hand-maintained hole in it, and that list is it.
+        // ↩️ 46 → 48 on 2026-09-08 (PPDO-71): AipReviewCommentFunctions' POST comment and
+        //    POST resolve. ⚠️ Adding the class to BudgetPlanningFunctionTypes is the half that
+        //    actually matters — until it was added the count sat at 46 and both endpoints were
+        //    silently uncovered while every test still passed.
+        // ↩️ 45 → 46 on 2026-09-08 (PPDO-69): AipSubmitFunctions
+        //    POST /aip/{aipId}/offices/{officeId}/submit-to-ppdo — the second submit.
+        // ↩️ 48 → 49 on 2026-09-09 (PPDO-72): AipReviewFunctions
+        //    POST /aip/{aipId}/offices/{officeId}/return. ⚠️ As every note above says: adding the
+        //    class to BudgetPlanningFunctionTypes is the half that matters. Raising this floor
+        //    alone would have failed loudly, which is the net working.
+        // ↩️ 49 → 50 on 2026-09-09 (PPDO-74): AipReviewFunctions
+        //    POST /aip/{aipId}/offices/{officeId}/accept. The class was already in
+        //    BudgetPlanningFunctionTypes from PPDO-72, so this floor is the only half to move.
+        Assert.True(found.Count >= 50,
+            $"Expected at least 50 budget-planning write endpoints, found {found.Count}. " +
+            "If endpoints were legitimately removed, lower this floor deliberately — do not " +
+            "delete the assertion, or the coverage theories start passing vacuously.");
+    }
+
+    [Theory]
+    [MemberData(nameof(GuardedWriteEndpoints))]
+    public async Task WriteEndpoint_RefusesACrossOfficeReviewer(string typeName, string methodName)
+    {
+        HttpResponseData response = await InvokeAsync(
+            typeName, methodName, crossOfficeReviewer: true, departmentHeadReviewer: false);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    /// <summary>
+    /// The other half of the B11 split, and the assertion that catches the intuitive-but-wrong
+    /// implementation: a department-head reviewer edits values during review, so no write endpoint
+    /// may treat them differently from anyone else.
+    ///
+    /// Stated as "same outcome as an ordinary user" rather than "not 403", because some of these
+    /// handlers legitimately answer 403 for their own reasons — AipUnlock is Admin-only — and
+    /// others run on past the guard into mocked services that cannot produce a real
+    /// ServiceResult. Comparing the two runs is immune to both: after the guard the code paths
+    /// are identical, so the outcomes must be too. A guard that fired on the department head
+    /// would show up here as 403-vs-something-else.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(OrdinaryReachableWriteEndpoints))]
+    public async Task WriteEndpoint_TreatsADepartmentHeadReviewerLikeAnyOtherUser(
+        string typeName, string methodName)
+    {
+        string departmentHead = await OutcomeAsync(
+            typeName, methodName, crossOfficeReviewer: false, departmentHeadReviewer: true);
+        string ordinaryUser = await OutcomeAsync(
+            typeName, methodName, crossOfficeReviewer: false, departmentHeadReviewer: false);
+
+        Assert.Equal(ordinaryUser, departmentHead);
+    }
+
+    /// <summary>
+    /// Runs one endpoint and reduces it to a comparable outcome: the HTTP status, or the name of
+    /// whatever it threw. Handlers that reach a mocked service throw rather than returning a
+    /// status — ServiceResult is sealed with a private constructor, so Moq cannot fabricate one —
+    /// and that is fine here, because the comparison only needs both runs to end the same way.
+    /// </summary>
+    private static async Task<string> OutcomeAsync(
+        string typeName, string methodName, bool crossOfficeReviewer, bool departmentHeadReviewer)
+    {
+        try
+        {
+            HttpResponseData response = await InvokeAsync(
+                typeName, methodName, crossOfficeReviewer, departmentHeadReviewer);
+            return $"status:{response.StatusCode}";
+        }
+        catch (Exception ex)
+        {
+            return $"threw:{(ex is TargetInvocationException tie ? tie.InnerException! : ex).GetType().Name}";
+        }
+    }
+
+    /// <summary>
+    /// Proves the theories above are not passing vacuously. If every caller got 403 from these
+    /// endpoints for unrelated reasons, "the cross-office reviewer is refused" would be true
+    /// without the guard existing at all. Here the two callers differ only in that one flag, and
+    /// only one of them is refused — so the 403 is attributable to the guard and nothing else.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(GuardedWriteEndpoints))]
+    public async Task WriteEndpoint_OrdinaryUserIsNotRefused_SoTheGuardIsWhatCausesThe403(
+        string typeName, string methodName)
+    {
+        string ordinary = await OutcomeAsync(
+            typeName, methodName, crossOfficeReviewer: false, departmentHeadReviewer: false);
+        string reviewer = await OutcomeAsync(
+            typeName, methodName, crossOfficeReviewer: true, departmentHeadReviewer: false);
+
+        Assert.NotEqual($"status:{HttpStatusCode.Forbidden}", ordinary);
+        Assert.Equal($"status:{HttpStatusCode.Forbidden}", reviewer);
+    }
+
+    // ── Discovery + invocation ────────────────────────────────────────────────
+
+    private static List<(Type Type, MethodInfo Method, string FunctionName)> DiscoverWriteEndpoints()
+    {
+        List<(Type, MethodInfo, string)> found = [];
+
+        foreach (Type type in BudgetPlanningFunctionTypes)
+        {
+            foreach (MethodInfo method in type.GetMethods(BindingFlags.Public | BindingFlags.Instance))
+            {
+                FunctionAttribute? function = method.GetCustomAttribute<FunctionAttribute>();
+                if (function is null) continue;
+
+                HttpTriggerAttribute? trigger = method.GetParameters()
+                    .Select(p => p.GetCustomAttribute<HttpTriggerAttribute>())
+                    .FirstOrDefault(t => t is not null);
+                if (trigger is null) continue;
+
+                string[] verbs = trigger.Methods ?? [];
+                if (verbs.Any(m => WriteVerbs.Contains(m.ToLowerInvariant())))
+                    found.Add((type, method, function.Name));
+            }
+        }
+
+        return found;
+    }
+
+    /// <summary>
+    /// Builds the Function class with mocked dependencies and invokes one handler.
+    ///
+    /// Permissions are mocked permissive — every Can*Async returns true — so the additive
+    /// predicate always passes and a 403 can only have come from the reviewer guard. The one
+    /// exception is CanReviewAllOfficesAsync, which is the variable under test.
+    /// </summary>
+    private static async Task<HttpResponseData> InvokeAsync(
+        string typeName, string methodName, bool crossOfficeReviewer, bool departmentHeadReviewer)
+    {
+        Type type = BudgetPlanningFunctionTypes.Single(t => t.FullName == typeName);
+        MethodInfo method = type.GetMethods(BindingFlags.Public | BindingFlags.Instance)
+            .Single(m => m.Name == methodName);
+
+        // Admin, not Staff: a couple of these handlers carry their own role check (AipUnlock is
+        // Admin-only), and a caller who trips that would make the 403 assertion pass for the wrong
+        // reason. Admin is not auto-granted either reviewer flag, so the mocks below stay in
+        // control of the variable actually under test.
+        //
+        // Host office, for the same reason one dimension over (PPDO-18). Some of these handlers
+        // now carry an office guard as well — AllocationUpsertProgram is host-office-only — and a
+        // guest-office caller trips it, which shows up here as the control case being refused for
+        // a reason that has nothing to do with the reviewer flag. The fixture caller has to clear
+        // every gate except the one under test.
+        User caller = new()
+        {
+            Id       = Guid.NewGuid(),
+            Role     = UserRole.Admin,
+            OfficeId = 7,
+            Office   = new Office { Id = 7, OfficeCode = "PPDO", IsHostOffice = true },
+        };
+
+        Mock<IJwtMiddleware> jwt = new();
+        jwt.Setup(j => j.ValidateAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+           .ReturnsAsync(caller);
+
+        Mock<IPermissionService> permissions = new();
+        permissions.Setup(p => p.CanAccessBudgetPlanningAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
+                   .ReturnsAsync(true);
+        permissions.Setup(p => p.CanUploadAipAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
+                   .ReturnsAsync(true);
+        permissions.Setup(p => p.CanManagePpdoAllocationAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
+                   .ReturnsAsync(true);
+        permissions.Setup(p => p.CanManagePboCeilingAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
+                   .ReturnsAsync(true);
+        permissions.Setup(p => p.CanManageConfigAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
+                   .ReturnsAsync(true);
+        permissions.Setup(p => p.CanReviewBudgetPlanningAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
+                   .ReturnsAsync(departmentHeadReviewer);
+        permissions.Setup(p => p.CanReviewAllOfficesAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
+                   .ReturnsAsync(crossOfficeReviewer);
+
+        object instance = Construct(type, jwt.Object, permissions.Object);
+
+        object?[] args = BuildArguments(method);
+        object? result = method.Invoke(instance, args);
+
+        return await UnwrapAsync(result);
+    }
+
+    /// <summary>
+    /// Instantiates a Function class, supplying the JWT and permission mocks by type and a bare
+    /// Moq stub for every other interface dependency. Handlers short-circuit at authorization, so
+    /// the service mocks are never called on the 403 path — and on the not-forbidden path a
+    /// default-returning mock is enough, since only "is it 403?" is asserted.
+    /// </summary>
+    private static object Construct(Type type, IJwtMiddleware jwt, IPermissionService permissions)
+    {
+        ConstructorInfo ctor = type.GetConstructors().Single();
+
+        object?[] args = ctor.GetParameters().Select(p =>
+        {
+            if (p.ParameterType == typeof(IJwtMiddleware))     return jwt;
+            if (p.ParameterType == typeof(IPermissionService)) return permissions;
+            return StubOf(p.ParameterType);
+        }).ToArray();
+
+        return ctor.Invoke(args);
+    }
+
+    /// <summary>
+    /// A bare Moq stub for an arbitrary dependency type. Mock&lt;T&gt; has to be built
+    /// reflectively here because the type is only known at runtime - the non-generic Mock is
+    /// abstract, so Activator must close the generic first.
+    /// </summary>
+    private static object StubOf(Type dependencyType)
+    {
+        Type mockType = typeof(Mock<>).MakeGenericType(dependencyType);
+        Mock mock = (Mock)Activator.CreateInstance(mockType)!;
+        mock.DefaultValue = DefaultValue.Mock;
+        return mock.Object;
+    }
+
+    private static object?[] BuildArguments(MethodInfo method)
+        => method.GetParameters().Select(p =>
+        {
+            if (p.ParameterType == typeof(HttpRequestData))
+                return FunctionHttp.Get(query: string.Empty, path: "budget-planning/write-guard-probe");
+            if (p.ParameterType == typeof(CancellationToken))
+                return (object?)CancellationToken.None;
+            if (p.ParameterType == typeof(string))
+                return "0";
+            return p.ParameterType.IsValueType ? Activator.CreateInstance(p.ParameterType) : null;
+        }).ToArray();
+
+    /// <summary>Awaits the handler's Task&lt;HttpResponseData&gt; without knowing its exact type.</summary>
+    private static async Task<HttpResponseData> UnwrapAsync(object? result)
+    {
+        Task<HttpResponseData> task = Assert.IsAssignableFrom<Task<HttpResponseData>>(result);
+        return await task;
+    }
+}

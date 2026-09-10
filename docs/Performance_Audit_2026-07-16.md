@@ -118,7 +118,7 @@ the **public** site, and only the login page was actually fixed:
 - **High**: `(public)/page.tsx:57-63` — `Bagong_Pilipinas_logo.png`, raw PNG **88,466 bytes** vs.
   27,188 bytes `.webp`.
 - Low: `(public)/page.tsx:42-48` and `components/landing/Navbar.tsx:23-29` — same
-  `ppdo-logo-placeholder.png`, genuinely tiny (1.9 KB), low value in converting.
+  `ppdo-logo.png`, genuinely tiny (1.9 KB), low value in converting.
 
 Together the two large landing-page PNGs total **~189 KB** — essentially the identical "184 KB of
 raw PNG" figure the guidelines already cite as fixed (RAL-91) — but that fix only touched

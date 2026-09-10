@@ -112,7 +112,10 @@ interface RetryConfig extends InternalAxiosRequestConfig {
 // expired access token — so we must NOT run the silent-refresh flow (which would
 // call auth.logout() and hard-redirect to /login, reloading the page out from
 // under the invalid-credentials banner). Let the caller handle the error instead.
-const NO_REFRESH_PATHS = ["/auth/login", "/auth/refresh", "/auth/logout"];
+// /auth/verify-recovery included (RAL-269) — a wrong recovery answer is a 401 on a
+// page the user isn't even logged into yet; running the refresh flow there would
+// hard-redirect them away from the form they're filling in.
+const NO_REFRESH_PATHS = ["/auth/login", "/auth/refresh", "/auth/logout", "/auth/verify-recovery"];
 const isNoRefreshPath = (url?: string): boolean =>
   !!url && NO_REFRESH_PATHS.some((path) => url.includes(path));
 

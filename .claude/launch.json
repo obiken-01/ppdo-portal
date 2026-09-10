@@ -4,14 +4,20 @@
     {
       "name": "backend",
       "runtimeExecutable": "func",
-      "runtimeArgs": ["start"],
+      "runtimeArgs": [
+        "start"
+      ],
       "cwd": "backend/PPDO.Functions",
-      "port": 7071
+      "port": 7071,
+      "autoPort": false
     },
     {
       "name": "frontend",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "cwd": "frontend",
       "port": 3000
     }

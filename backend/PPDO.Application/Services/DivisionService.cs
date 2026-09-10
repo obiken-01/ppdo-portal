@@ -1,3 +1,4 @@
+﻿using PPDO.Domain.Enums;
 using Microsoft.Extensions.Logging;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.Config;
@@ -17,7 +18,11 @@ public sealed class DivisionService : IDivisionService
         "office_code", "code", "name", "is_active",
         "can_access_budget_planning", "can_access_inventory", "can_access_reports",
         "can_manage_config", "can_upload_aip", "can_manage_users", "can_manage_resource_links",
+        "landing_page",
     };
+
+    /// <summary>Column index of <c>landing_page</c> in <see cref="CsvHeaders"/> (RAL-259).</summary>
+    private const int LandingPageIndex = 11;
 
     private readonly IRepository<Division>   _divisions;
     private readonly IRepository<Office>     _offices;
@@ -80,6 +85,13 @@ public sealed class DivisionService : IDivisionService
         if (string.IsNullOrWhiteSpace(dto.Name))
             return ServiceResult<DivisionDto>.BadRequest("Division name is required.");
 
+        // Name-only validation: reachability is per-user, since an individual override can
+        // grant a page the division's own flags do not. The resolver skips a default the
+        // user cannot reach, so a mismatch falls through rather than breaking (RAL-262).
+        if (!LandingPageName.TryParse(dto.LandingPage, out LandingPage? landingPage))
+            return ServiceResult<DivisionDto>.BadRequest(
+                $"'{dto.LandingPage}' is not a valid landing page. Valid values: {LandingPageName.ValidValues}.");
+
         string name = dto.Name.Trim();
         IReadOnlyList<Division> all = await _divisions.GetAllAsync(cancellationToken);
 
@@ -111,6 +123,7 @@ public sealed class DivisionService : IDivisionService
             CanUploadAip            = dto.CanUploadAip,
             CanManageUsers          = dto.CanManageUsers,
             CanManageResourceLinks  = dto.CanManageResourceLinks,
+            LandingPage             = landingPage,
             CreatedAt               = now,
             UpdatedAt               = now,
         };
@@ -136,6 +149,13 @@ public sealed class DivisionService : IDivisionService
     {
         if (string.IsNullOrWhiteSpace(dto.Name))
             return ServiceResult<DivisionDto>.BadRequest("Division name is required.");
+
+        // Name-only validation: reachability is per-user, since an individual override can
+        // grant a page the division's own flags do not. The resolver skips a default the
+        // user cannot reach, so a mismatch falls through rather than breaking (RAL-262).
+        if (!LandingPageName.TryParse(dto.LandingPage, out LandingPage? landingPage))
+            return ServiceResult<DivisionDto>.BadRequest(
+                $"'{dto.LandingPage}' is not a valid landing page. Valid values: {LandingPageName.ValidValues}.");
 
         IReadOnlyList<Division> all = await _divisions.GetAllAsync(cancellationToken);
         Division? entity = all.FirstOrDefault(d => d.Id == id);
@@ -171,6 +191,7 @@ public sealed class DivisionService : IDivisionService
         entity.CanUploadAip            = dto.CanUploadAip;
         entity.CanManageUsers          = dto.CanManageUsers;
         entity.CanManageResourceLinks  = dto.CanManageResourceLinks;
+        entity.LandingPage             = landingPage;
         entity.UpdatedAt               = DateTime.UtcNow;
 
         await _divisions.UpdateAsync(entity, cancellationToken);
@@ -236,6 +257,8 @@ public sealed class DivisionService : IDivisionService
                 d.CanUploadAip             ? "TRUE" : "FALSE",
                 d.CanManageUsers           ? "TRUE" : "FALSE",
                 d.CanManageResourceLinks   ? "TRUE" : "FALSE",
+                // Enum name, matching the wire format the API already uses. Blank = no preference.
+                d.LandingPage?.ToString() ?? "",
             });
         return Csv.Write(CsvHeaders, rows);
     }
@@ -249,6 +272,13 @@ public sealed class DivisionService : IDivisionService
             return ServiceResult<CsvImportResult>.BadRequest("The CSV file is empty.");
 
         int start = parsed[0].Any(c => c.Trim().Equals("office_code", StringComparison.OrdinalIgnoreCase)) ? 1 : 0;
+
+        // A file exported before RAL-259 has no landing_page column at all, and an absent column
+        // is not the same as a blank one: blank clears the preference, absent must leave it alone.
+        // Otherwise re-uploading an old export would silently wipe every division's landing page.
+        bool hasLandingPageColumn = start == 1
+            ? parsed[0].Any(c => c.Trim().Equals("landing_page", StringComparison.OrdinalIgnoreCase))
+            : parsed.Any(r => r.Length > LandingPageIndex);
 
         Dictionary<string, int> officeCodeToId = offices.ToDictionary(
             o => o.OfficeCode.Trim(), o => o.Id, StringComparer.OrdinalIgnoreCase);
@@ -266,6 +296,9 @@ public sealed class DivisionService : IDivisionService
             d => (d.OfficeId, d.Name.Trim().ToLowerInvariant()));
 
         int created = 0, updated = 0, skipped = 0;
+        // Audit rows are emitted AFTER SaveChangesAsync, not inline: a newly created division
+        // has no Id until then, and an audit row keyed on 0 is worse than none. RAL-246.
+        List<(Division Entity, object? Old)> audited = new();
         List<string> errors = new();
         DateTime now = DateTime.UtcNow;
         // Names and codes are deduped separately: two rows may legitimately share neither,
@@ -345,11 +378,25 @@ public sealed class DivisionService : IDivisionService
                 continue;
             }
 
+            // Keep whatever is stored when the column is absent; parse it when it is present.
+            LandingPage? landingPage = existing?.LandingPage;
+            if (hasLandingPageColumn
+                && !LandingPageName.TryParse(Field(f, LandingPageIndex), out landingPage))
+            {
+                // A typo must not be read as "no preference" — that silently drops the setting.
+                skipped++;
+                errors.Add(
+                    $"Row {i + 1}: '{Field(f, LandingPageIndex)}' is not a valid landing page. " +
+                    $"Valid values: {LandingPageName.ValidValues}.");
+                continue;
+            }
+
             if (existing is not null)
             {
                 bool changed =
                     existing.Code                    != code        ||
                     !existing.Name.Equals(name, StringComparison.Ordinal) ||
+                    existing.LandingPage             != landingPage ||
                     existing.IsActive                != active      ||
                     existing.CanAccessBudgetPlanning != budget      ||
                     existing.CanAccessInventory      != inventory   ||
@@ -363,6 +410,8 @@ public sealed class DivisionService : IDivisionService
 
                 // Keep the lookups in step with the rename/recode, so a later row in the same
                 // file resolves against current state rather than the pre-import names.
+                object oldSnapshot = AuditSnapshot(existing);
+
                 byName.Remove((existing.OfficeId, existing.Name.Trim().ToLowerInvariant()));
                 if (!string.IsNullOrWhiteSpace(existing.Code))
                     byCode.Remove((existing.OfficeId, existing.Code.Trim().ToLowerInvariant()));
@@ -377,12 +426,14 @@ public sealed class DivisionService : IDivisionService
                 existing.CanUploadAip            = uploadAip;
                 existing.CanManageUsers          = manageUsers;
                 existing.CanManageResourceLinks  = resourceLinks;
+                existing.LandingPage             = landingPage;
                 existing.UpdatedAt               = now;
 
                 byName[nameKey] = existing;
                 if (codeKey is not null) byCode[codeKey.Value] = existing;
 
                 await _divisions.UpdateAsync(existing, cancellationToken);
+                audited.Add((existing, oldSnapshot));
                 updated++;
             }
             else
@@ -400,17 +451,33 @@ public sealed class DivisionService : IDivisionService
                     CanUploadAip            = uploadAip,
                     CanManageUsers          = manageUsers,
                     CanManageResourceLinks  = resourceLinks,
+                    LandingPage             = landingPage,
                     CreatedAt               = now,
                     UpdatedAt               = now,
                 };
                 await _divisions.AddAsync(entity, cancellationToken);
                 byName[nameKey] = entity;
                 if (codeKey is not null) byCode[codeKey.Value] = entity;
+                audited.Add((entity, null));
                 created++;
             }
         }
 
         await _divisions.SaveChangesAsync(cancellationToken);
+
+        // One audit row per division the import actually changed (RAL-246). A CSV re-upload can
+        // grant Budget Planning, Inventory or Config to every division at once — the single
+        // widest "who can do what" write in the system, and until now the only unaudited one.
+        // Skipped rows produce nothing: an import that changed nothing should not look like it did.
+        foreach ((Division entity, object? old) in audited)
+        {
+            await _audit.LogAsync("divisions", entity.Id,
+                old is null ? AuditAction.Create : AuditAction.Update,
+                oldValues: old,
+                newValues: AuditSnapshot(entity),
+                cancellationToken);
+        }
+
         _logger.LogInformation(
             "Divisions CSV imported. New: {New}, Updated: {Updated}, Skipped: {Skipped}", created, updated, skipped);
         return ServiceResult<CsvImportResult>.Ok(new CsvImportResult(created, updated, skipped, errors));
@@ -432,7 +499,8 @@ public sealed class DivisionService : IDivisionService
             d.CanManageResourceLinks,
             d.CanAccessBudgetPlanning,
             d.CanUploadAip,
-            d.CanManageConfig);
+            d.CanManageConfig,
+            d.LandingPage?.ToString());
 
     private static object AuditSnapshot(Division d) => new
     {

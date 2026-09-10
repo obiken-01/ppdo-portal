@@ -53,4 +53,22 @@ public interface IUserRepository : IRepository<User>
     /// </summary>
     Task<IReadOnlyDictionary<Guid, string>> GetNamesByIdsAsync(
         IReadOnlyList<Guid> ids, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// OfficeId → the name of one active user in that office who holds the budget-planning
+    /// reviewer grant (PPDO-20). An office with no such user is absent from the dictionary — that
+    /// is the "Cannot submit / None — assign" row on the cross-office dashboard table.
+    ///
+    /// <b>Matches the stored grant only</b> (<see cref="User.OverrideCanReviewBudgetPlanning"/>),
+    /// not the effective permission. <c>PermissionService.CanReviewBudgetPlanningAsync</c> also
+    /// answers true for every SuperAdmin, and that bypass is a support capability rather than an
+    /// office assignment — resolving it here would name the same administrator as the reviewer of
+    /// all fourteen offices, and the column is meant to answer "who in this office can submit".
+    /// If the flag ever gains a division- or role-level default, this must resolve it too.
+    ///
+    /// Where more than one user qualifies, the alphabetically first is returned. The column shows
+    /// one name; picking deterministically keeps it from flipping between page loads.
+    /// </summary>
+    Task<IReadOnlyDictionary<int, string>> GetReviewerNamesByOfficeAsync(
+        IReadOnlyList<int> officeIds, CancellationToken cancellationToken = default);
 }

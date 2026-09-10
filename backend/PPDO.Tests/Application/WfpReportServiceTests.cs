@@ -32,9 +32,13 @@ public sealed class WfpReportServiceTests
         UploadedById = Guid.NewGuid(), UploadedAt = DateTime.UtcNow,
     };
 
-    private static AipOffice MakeAipOffice(int id, int aipRecordId, string refCode) => new()
+    // officeId defaults to 1 — the single config office these tests scope against. Scoping matches
+    // on the FK since V18-32; the ref code is no longer what links an AipOffice to its owner.
+    private static AipOffice MakeAipOffice(
+        int id, int aipRecordId, string refCode, int? officeId = 1) => new()
     {
         Id = id, AipRecordId = aipRecordId, RefCode = refCode, Name = "Office", Sector = "General",
+        OfficeId = officeId,
     };
 
     private static AipProgram MakeProgram(int id, int officeId, string refCode, string? functionBand) => new()
@@ -208,9 +212,61 @@ public sealed class WfpReportServiceTests
         f.AipRepo.Setup(r => r.GetLatestByFiscalYearAsync(FiscalYear, It.IsAny<CancellationToken>()))
             .ReturnsAsync(MakeAip(100, FiscalYear, PlanningStatus.Draft));
         f.AipRepo.Setup(r => r.GetOfficesByAipIdAsync(100, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IReadOnlyList<AipOffice>)[MakeAipOffice(1, 100, "3000-000-1-01-099")]);
+            // Unowned since V18-32 — the AIP office belongs to no configured office, which is what
+            // "no match" now means. It used to be expressed as a ref code that failed to suffix-
+            // match; scoping reads the FK, so the FK is what has to say no.
+            .ReturnsAsync((IReadOnlyList<AipOffice>)[MakeAipOffice(1, 100, "3000-000-1-01-099", officeId: null)]);
 
         ServiceResult<WfpReportDto> result = await f.Sut.GetReportAsync(1, FiscalYear);
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    // ── Ownership is the FK, not the ref code (V18-32 / PPDO-33) ──────────────
+
+    [Fact]
+    public async Task GetReportAsync_RefCodeSuffixMatchesOfficeA_ButFkSaysOfficeB_ResolvesToB()
+    {
+        // ⚠️ The test the migration exists for. This AIP office's ref code ends with office 1's
+        // "013", so the retired suffix rule would have handed it to office 1. Its FK says office 2.
+        // If office 1 still gets this report, the FK is decorative and V18-32 achieved nothing.
+        Fixture f = Build();
+        f.Offices.Add(MakeOffice(1, "PPDO", "013"));
+        f.Offices.Add(MakeOffice(2, "GSO", "099"));
+        f.AipRepo.Setup(r => r.GetLatestByFiscalYearAsync(FiscalYear, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakeAip(100, FiscalYear, PlanningStatus.Draft));
+        f.AipRepo.Setup(r => r.GetOfficesByAipIdAsync(100, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipOffice>)
+                [MakeAipOffice(1, 100, "3000-000-1-01-013", officeId: 2)]);
+        f.AipRepo.Setup(r => r.GetProgramsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipProgram>)[]);
+        f.WfpRepo.Setup(r => r.GetFilteredAsync(100, It.IsAny<int>(), null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<WfpRecord>)[]);
+
+        ServiceResult<WfpReportDto> asOfficeA = await f.Sut.GetReportAsync(1, FiscalYear);
+        ServiceResult<WfpReportDto> asOfficeB = await f.Sut.GetReportAsync(2, FiscalYear);
+
+        Assert.False(asOfficeA.IsSuccess);                       // the suffix match no longer wins
+        Assert.Equal(ServiceErrorCode.NotFound, asOfficeA.Code);
+        Assert.True(asOfficeB.IsSuccess);                        // the FK does
+    }
+
+    [Fact]
+    public async Task GetReportAsync_UnmatchedAipOffice_IsVisibleToNobody()
+    {
+        // A legacy row the backfill could not match keeps its data and stays findable in SQL, but
+        // no office's scoped read returns it. That is why the backfill's unmatched count has to be
+        // recorded rather than assumed to be zero — nobody would otherwise notice.
+        Fixture f = Build();
+        f.Offices.Add(MakeOffice(1, "PPDO", "013"));
+        f.AipRepo.Setup(r => r.GetLatestByFiscalYearAsync(FiscalYear, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakeAip(100, FiscalYear, PlanningStatus.Draft));
+        f.AipRepo.Setup(r => r.GetOfficesByAipIdAsync(100, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipOffice>)
+                [MakeAipOffice(1, 100, "3000-000-1-01-013", officeId: null)]);
+
+        ServiceResult<WfpReportDto> result = await f.Sut.GetReportAsync(1, FiscalYear);
+
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
     }

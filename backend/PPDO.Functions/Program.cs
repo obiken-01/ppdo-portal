@@ -108,6 +108,8 @@ var host = new HostBuilder()
         services.AddScoped<ICalendarEventRepository, CalendarEventRepository>();
         services.AddScoped<IAuditRepository, AuditRepository>();
         services.AddScoped<IAipRepository, AipRepository>();
+        services.AddScoped<IAipExpenditureRepository, AipExpenditureRepository>();
+        services.AddScoped<IAipReviewCommentRepository, AipReviewCommentRepository>();
         services.AddScoped<ILdipRepository, LdipRepository>();
         services.AddScoped<IWfpRepository, WfpRepository>();
         services.AddScoped<IOfficeRepository, OfficeRepository>();
@@ -126,6 +128,7 @@ var host = new HostBuilder()
 
         // -- Application services --------------------------------------------
         services.AddScoped<IPermissionService, PermissionService>();
+        services.AddScoped<ILandingPageResolver, LandingPageResolver>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<IDashboardService, DashboardService>();
@@ -142,6 +145,8 @@ var host = new HostBuilder()
         services.AddScoped<IDivisionService, DivisionService>();
         services.AddScoped<IAccountService, AccountService>();
         services.AddScoped<IFundingSourceService, FundingSourceService>();
+        services.AddScoped<IClimateChangeTypologyService, ClimateChangeTypologyService>();
+        services.AddScoped<IEsreCodeService, EsreCodeService>();
         services.AddScoped<IPriceIndexService, PriceIndexService>();
         services.AddScoped<IAuditLogService, AuditLogService>();
         services.AddScoped<IProcurementPresetRepository, ProcurementPresetRepository>();
@@ -163,6 +168,7 @@ var host = new HostBuilder()
         services.AddScoped<ILdipXlsmParser, LdipXlsmParser>();
         services.AddScoped<ILdipService, LdipService>();
         services.AddScoped<IAipService, AipService>();
+        services.AddScoped<IAipActivityTotalsService, AipActivityTotalsService>();
         services.AddScoped<IWfpService, WfpService>();
 
         // -- v1.2 Allocation (RAL-99) -----------------------------------------
@@ -171,6 +177,8 @@ var host = new HostBuilder()
         services.AddScoped<IBudgetCeilingRepository, BudgetCeilingRepository>();
         services.AddScoped<IDivisionAllocationRepository, DivisionAllocationRepository>();
         services.AddScoped<IAllocationRepository, AllocationRepository>();
+        services.AddScoped<IClimateChangeTypologyRepository, ClimateChangeTypologyRepository>();
+        services.AddScoped<IEsreCodeRepository, EsreCodeRepository>();
         services.AddScoped<IAllocationService, AllocationService>();
 
         // -- v1.4 WFP expenditure schema + computation pipeline (RAL-120) -----
@@ -181,7 +189,17 @@ var host = new HostBuilder()
 
         // -- v1.4 WFP ceiling monitoring + division-allocation ledger (RAL-122) --
         services.AddScoped<IWfpAllocationLedgerRepository, WfpAllocationLedgerRepository>();
+        services.AddScoped<IAipAllocationLedgerRepository, AipAllocationLedgerRepository>();
         services.AddScoped<IWfpCeilingService, WfpCeilingService>();
+
+        // V18-46 / PPDO-56 — the AIP's own ceiling check. Alongside the WFP one, not replacing it:
+        // a WFP expenditure stays bound by the lesser of its AIP activity amount and the fund's
+        // remaining allocation.
+        services.AddScoped<IAipCeilingService, AipCeilingService>();
+        services.AddScoped<IAipExpenditureService, AipExpenditureService>();
+        services.AddScoped<IAipSubmitService, AipSubmitService>();
+        services.AddScoped<IAipReviewCommentService, AipReviewCommentService>();
+        services.AddScoped<IAipReviewService, AipReviewService>();
     })
     .ConfigureLogging((context, logging) =>
     {

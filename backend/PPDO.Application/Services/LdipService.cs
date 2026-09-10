@@ -17,7 +17,8 @@ namespace PPDO.Application.Services;
 /// Updates full-replace the hierarchy, so removals renumber the remaining
 /// programs with no gaps — correct ref codes are a hard project requirement.
 ///
-/// Program budgets are stored in thousands (₱000), like AIP totals.
+/// Program budgets are stored in thousands (₱000) — NOT like AIP totals, which are pesos since
+/// V18-35 (PPDO-34). See LdipProgram.Budget for why LDIP deliberately did not move.
 /// Edit guard: only Draft records may be updated. Finalize additionally validates
 /// completeness (office set, year order, ≥1 program) — the WFP finalize pattern.
 /// </summary>

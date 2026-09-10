@@ -59,7 +59,7 @@ public sealed class PpmpReportService : IPpmpReportService
             return ServiceResult<PpmpReportDto>.NotFound($"No AIP found for fiscal year {fiscalYear}.");
 
         List<AipOffice> aipOffices = (await _aipRepo.GetOfficesByAipIdAsync(aipRecord.Id, cancellationToken))
-            .Where(o => o.RefCode.EndsWith(office.OfficeRefCode, StringComparison.OrdinalIgnoreCase))
+            .Where(o => o.OfficeId == office.Id)
             .ToList();
         if (aipOffices.Count == 0)
             return ServiceResult<PpmpReportDto>.NotFound($"No AIP hierarchy found for {office.OfficeName} under FY {fiscalYear}.");

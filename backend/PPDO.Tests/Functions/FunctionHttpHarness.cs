@@ -2,6 +2,7 @@ using System.Collections.Specialized;
 using System.Net;
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Moq;
@@ -19,12 +20,41 @@ namespace PPDO.Tests.Functions;
 /// </summary>
 internal static class FunctionHttp
 {
-    /// <summary>Builds a GET request; <paramref name="query"/> is appended verbatim (no leading "?").</summary>
-    internal static FakeHttpRequestData Get(string query, string? authorizationHeader = "Bearer test-token")
+    /// <summary>
+    /// Builds a GET request; <paramref name="query"/> is appended verbatim (no leading "?").
+    /// The path only matters for readability — handlers route by attribute and read
+    /// <see cref="HttpRequestData.Query"/>, never the path itself.
+    /// </summary>
+    internal static FakeHttpRequestData Get(
+        string query,
+        string? authorizationHeader = "Bearer test-token",
+        string path = "budget-planning/ppmp/report/preview")
     {
-        Uri url = new($"https://localhost/api/budget-planning/ppmp/report/preview?{query}");
+        Uri url = new($"https://localhost/api/{path}?{query}");
         return new FakeHttpRequestData(new Mock<FunctionContext>().Object, url, authorizationHeader);
     }
+
+    /// <summary>
+    /// Builds a PUT request carrying <paramref name="body"/> serialized as camelCase JSON — the
+    /// shape <c>ConfigHttp.ReadBodyAsync</c> expects. Pass a raw string to exercise a malformed
+    /// body; anything else is serialized.
+    /// </summary>
+    internal static FakeHttpRequestData Put(
+        object body,
+        string? authorizationHeader = "Bearer test-token",
+        string path = "budget-planning/allocation/ceiling")
+    {
+        string json = body as string ?? JsonSerializer.Serialize(body, PutJson);
+        Uri url = new($"https://localhost/api/{path}");
+        return new FakeHttpRequestData(
+            new Mock<FunctionContext>().Object, url, authorizationHeader,
+            method: "PUT", body: Encoding.UTF8.GetBytes(json));
+    }
+
+    private static readonly JsonSerializerOptions PutJson = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    };
 
     /// <summary>Reads a response body back as text (rewinds first — handlers leave it at the end).</summary>
     internal static string BodyText(HttpResponseData response)
@@ -52,21 +82,28 @@ internal static class FunctionHttp
 
 internal sealed class FakeHttpRequestData : HttpRequestData
 {
-    public FakeHttpRequestData(FunctionContext functionContext, Uri url, string? authorizationHeader)
+    public FakeHttpRequestData(
+        FunctionContext functionContext,
+        Uri url,
+        string? authorizationHeader,
+        string method = "GET",
+        byte[]? body = null)
         : base(functionContext)
     {
         Url     = url;
+        Method  = method;
+        Body    = body is null ? new MemoryStream() : new MemoryStream(body, writable: false);
         Headers = new HttpHeadersCollection();
         if (!string.IsNullOrEmpty(authorizationHeader))
             Headers.Add("Authorization", authorizationHeader);
     }
 
-    public override Stream Body { get; } = new MemoryStream();
+    public override Stream Body { get; }
     public override HttpHeadersCollection Headers { get; }
     public override IReadOnlyCollection<IHttpCookie> Cookies { get; } = Array.Empty<IHttpCookie>();
     public override Uri Url { get; }
     public override IEnumerable<ClaimsIdentity> Identities { get; } = Array.Empty<ClaimsIdentity>();
-    public override string Method => "GET";
+    public override string Method { get; }
     public override NameValueCollection Query => System.Web.HttpUtility.ParseQueryString(Url.Query);
 
     public override HttpResponseData CreateResponse() => new FakeHttpResponseData(FunctionContext);

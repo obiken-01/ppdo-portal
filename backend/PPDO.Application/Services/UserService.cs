@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.Users;
 using PPDO.Domain.Entities;
@@ -20,27 +20,27 @@ namespace PPDO.Application.Services;
 /// </summary>
 public sealed class UserService : IUserService
 {
-    // Default password issued to every newly created user and on reset.
-    private const string DefaultPassword = "TamarawUser2026!";
-
     private readonly IUserRepository _users;
-    private readonly IRepository<Office> _offices;
+    private readonly IOfficeRepository _offices;
     private readonly IRepository<Division> _divisions;
     private readonly ILogger<UserService> _logger;
     private readonly IAuditService _audit;
+    private readonly ILandingPageResolver _landing;
 
     public UserService(
         IUserRepository users,
-        IRepository<Office> offices,
+        IOfficeRepository offices,
         IRepository<Division> divisions,
         ILogger<UserService> logger,
-        IAuditService audit)
+        IAuditService audit,
+        ILandingPageResolver landing)
     {
         _users     = users;
         _offices   = offices;
         _divisions = divisions;
         _logger    = logger;
         _audit     = audit;
+        _landing   = landing;
     }
 
     // ── Queries ────────────────────────────────────────────────────────────────
@@ -67,13 +67,13 @@ public sealed class UserService : IUserService
     // ── Mutations ──────────────────────────────────────────────────────────────
 
     /// <inheritdoc />
-    public async Task<ServiceResult<UserResponseDto>> CreateAsync(
+    public async Task<ServiceResult<UserCredentialResponseDto>> CreateAsync(
         User requester,
         CreateUserDto dto,
         CancellationToken cancellationToken = default)
     {
         if (!Enum.TryParse<UserRole>(dto.Role, ignoreCase: true, out UserRole newRole))
-            return ServiceResult<UserResponseDto>.BadRequest(
+            return ServiceResult<UserCredentialResponseDto>.BadRequest(
                 $"'{dto.Role}' is not a valid Role. Valid values: SuperAdmin, Admin, Staff.");
 
         if (!CanRequesterManageRole(requester, newRole))
@@ -81,20 +81,27 @@ public sealed class UserService : IUserService
             _logger.LogWarning(
                 "Permission denied — user {UserId} attempted to create a user with role {TargetRole}.",
                 requester.Id, newRole);
-            return ServiceResult<UserResponseDto>.Forbidden(
+            return ServiceResult<UserCredentialResponseDto>.Forbidden(
                 $"You do not have permission to create a user with role '{newRole}'.");
         }
 
-        bool isOfficeUser = dto.OfficeId is int oid && oid > 0;
+        // "No office selected" in the form means the host office, not the absence of one
+        // (DECISION F, RAL-258). Leaving it null would create a user scoped to nothing —
+        // before DECISION F the same null meant the opposite, full cross-office access.
+        Office? hostOffice = await _offices.GetHostOfficeAsync(cancellationToken);
+
+        // A GUEST-office user is the constrained case. Since every user now has an office,
+        // "has an office id" no longer separates anyone — being in a non-host office does.
+        bool isOfficeUser = dto.OfficeId is int oid && oid > 0 && oid != hostOffice?.Id;
 
         if (isOfficeUser && newRole is UserRole.SuperAdmin or UserRole.Admin)
-            return ServiceResult<UserResponseDto>.BadRequest(
+            return ServiceResult<UserCredentialResponseDto>.BadRequest(
                 "Office users must be Staff, not SuperAdmin/Admin.");
 
         if (isOfficeUser)
         {
-            ServiceResult<UserResponseDto>? officeError =
-                await ValidateOfficeAsync(dto.OfficeId!.Value, cancellationToken);
+            ServiceResult<UserCredentialResponseDto>? officeError =
+                await ValidateOfficeAsync<UserCredentialResponseDto>(dto.OfficeId!.Value, cancellationToken);
             if (officeError is not null) return officeError;
         }
 
@@ -106,10 +113,10 @@ public sealed class UserService : IUserService
         if (newRole is UserRole.Staff && !isOfficeUser)
         {
             if (dto.DivisionId is not int did || did <= 0)
-                return ServiceResult<UserResponseDto>.BadRequest("Division is required for Staff users.");
+                return ServiceResult<UserCredentialResponseDto>.BadRequest("Division is required for Staff users.");
 
-            ServiceResult<UserResponseDto>? divError =
-                await ValidateDivisionAsync(did, null, cancellationToken);
+            ServiceResult<UserCredentialResponseDto>? divError =
+                await ValidateDivisionAsync<UserCredentialResponseDto>(did, null, cancellationToken);
             if (divError is not null) return divError;
 
             newDivisionId = did;
@@ -117,44 +124,60 @@ public sealed class UserService : IUserService
         else if (newRole is UserRole.Staff && isOfficeUser && dto.DivisionId is int offDid && offDid > 0)
         {
             // Optional division for office users — validate it belongs to their office if supplied.
-            ServiceResult<UserResponseDto>? divError =
-                await ValidateDivisionAsync(offDid, dto.OfficeId, cancellationToken);
+            ServiceResult<UserCredentialResponseDto>? divError =
+                await ValidateDivisionAsync<UserCredentialResponseDto>(offDid, dto.OfficeId, cancellationToken);
             if (divError is not null) return divError;
             newDivisionId = offDid;
         }
 
         if (string.IsNullOrWhiteSpace(dto.FullName))
-            return ServiceResult<UserResponseDto>.BadRequest("FullName is required.");
+            return ServiceResult<UserCredentialResponseDto>.BadRequest("FullName is required.");
         if (string.IsNullOrWhiteSpace(dto.Username))
-            return ServiceResult<UserResponseDto>.BadRequest("Username is required.");
+            return ServiceResult<UserCredentialResponseDto>.BadRequest("Username is required.");
 
         User? existingByUsername = await _users.FindByUsernameAsync(dto.Username, cancellationToken);
         if (existingByUsername is not null)
-            return ServiceResult<UserResponseDto>.Conflict(
+            return ServiceResult<UserCredentialResponseDto>.Conflict(
                 $"Username '{dto.Username}' is already taken.");
 
         if (!string.IsNullOrWhiteSpace(dto.Email))
         {
             User? existingByEmail = await _users.FindByEmailAsync(dto.Email, cancellationToken);
             if (existingByEmail is not null)
-                return ServiceResult<UserResponseDto>.Conflict(
+                return ServiceResult<UserCredentialResponseDto>.Conflict(
                     $"Email '{dto.Email}' is already registered.");
         }
+
+        // Issued once, shown once — never stored or logged in plaintext (RAL-254).
+        string temporaryPassword = PasswordGenerator.Generate();
 
         User user = new()
         {
             Id           = Guid.NewGuid(),
             FullName     = dto.FullName.Trim(),
+            // Stored lower-case so every account matches the office's lowercase convention and
+            // relaying credentials never involves spelling out capitals (RAL-254). Matching is
+            // separately case-insensitive via the DB collation — see UserRepository.
             Username     = dto.Username.Trim().ToLowerInvariant(),
             Email        = string.IsNullOrWhiteSpace(dto.Email) ? null : dto.Email.Trim().ToLowerInvariant(),
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(DefaultPassword),
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(temporaryPassword),
             Role         = newRole,
             DivisionId   = newDivisionId,
-            OfficeId     = isOfficeUser ? dto.OfficeId : null,
+            OfficeId     = isOfficeUser ? dto.OfficeId : hostOffice?.Id,
+            Office       = isOfficeUser ? null : hostOffice,   // needed by the landing check below
             Position     = dto.Position?.Trim(),
             ContactNo    = dto.ContactNo?.Trim(),
             IsActive     = true,
+            // A fresh account starts on the same one-time temporary password an admin
+            // reset issues — force the change at next login (RAL-254/RAL-266).
+            MustChangePassword = true,
         };
+
+        // Validated against the user as it will exist, not as the requester currently is.
+        ServiceResult<UserCredentialResponseDto>? landingError =
+            await ValidateLandingPageAsync<UserCredentialResponseDto>(user, dto.LandingPage, cancellationToken);
+        if (landingError is not null) return landingError;
+        user.LandingPage = ParseLandingPage(dto.LandingPage);
 
         await _users.AddAsync(user, cancellationToken);
         await _users.SaveChangesAsync(cancellationToken);
@@ -168,7 +191,11 @@ public sealed class UserService : IUserService
             oldValues: null,
             newValues: AuditSnapshot(created),
             cancellationToken);
-        return ServiceResult<UserResponseDto>.Ok(MapToDto(created));
+        return ServiceResult<UserCredentialResponseDto>.Ok(new UserCredentialResponseDto
+        {
+            User              = MapToDto(created),
+            TemporaryPassword = temporaryPassword,
+        });
     }
 
     /// <inheritdoc />
@@ -240,7 +267,10 @@ public sealed class UserService : IUserService
         }
 
         // -- Office (full replacement; office users have a division within their office) ---
-        bool isOfficeUser = dto.OfficeId is int oid && oid > 0;
+        Office? hostOfficeForUpdate = await _offices.GetHostOfficeAsync(cancellationToken);
+
+        // See CreateAsync: only a non-host office makes someone a constrained "office user".
+        bool isOfficeUser = dto.OfficeId is int oid && oid > 0 && oid != hostOfficeForUpdate?.Id;
 
         if (isOfficeUser && effectiveRole is UserRole.SuperAdmin or UserRole.Admin)
             return ServiceResult<UserResponseDto>.BadRequest(
@@ -249,13 +279,15 @@ public sealed class UserService : IUserService
         if (isOfficeUser)
         {
             ServiceResult<UserResponseDto>? officeError =
-                await ValidateOfficeAsync(dto.OfficeId!.Value, cancellationToken);
+                await ValidateOfficeAsync<UserResponseDto>(dto.OfficeId!.Value, cancellationToken);
             if (officeError is not null) return officeError;
             target.OfficeId = dto.OfficeId;
         }
         else
         {
-            target.OfficeId = null;
+            // Same rule as CreateAsync: clearing the office means "host office", never "none".
+            target.OfficeId = hostOfficeForUpdate?.Id;
+            target.Office   = hostOfficeForUpdate;
         }
 
         // -- Division ------------------------------------------------------------
@@ -271,7 +303,7 @@ public sealed class UserService : IUserService
                 return ServiceResult<UserResponseDto>.BadRequest("Division is required for Staff users.");
 
             ServiceResult<UserResponseDto>? divError =
-                await ValidateDivisionAsync(did, null, cancellationToken);
+                await ValidateDivisionAsync<UserResponseDto>(did, null, cancellationToken);
             if (divError is not null) return divError;
 
             target.DivisionId = did;
@@ -284,7 +316,7 @@ public sealed class UserService : IUserService
             if (candidateDivisionId is int did && did > 0)
             {
                 ServiceResult<UserResponseDto>? divError =
-                    await ValidateDivisionAsync(did, target.OfficeId, cancellationToken);
+                    await ValidateDivisionAsync<UserResponseDto>(did, target.OfficeId, cancellationToken);
                 if (divError is not null) return divError;
                 target.DivisionId = did;
             }
@@ -302,7 +334,17 @@ public sealed class UserService : IUserService
         target.OverrideCanAccessBudgetPlanning = dto.OverrideCanAccessBudgetPlanning;
         target.OverrideCanUploadAip            = dto.OverrideCanUploadAip;
         target.OverrideCanManageConfig         = dto.OverrideCanManageConfig;
-        target.OverrideCanManageAllocation     = dto.OverrideCanManageAllocation;
+        target.OverrideCanManagePpdoAllocation     = dto.OverrideCanManagePpdoAllocation;
+        target.OverrideCanManagePboCeiling      = dto.OverrideCanManagePboCeiling;
+        target.OverrideCanReviewBudgetPlanning  = dto.OverrideCanReviewBudgetPlanning;
+        target.OverrideCanReviewAllOffices      = dto.OverrideCanReviewAllOffices;
+
+        // Runs after role/division/office and the override flags are applied, so
+        // reachability is judged on what the user is about to become.
+        ServiceResult<UserResponseDto>? landingError =
+            await ValidateLandingPageAsync<UserResponseDto>(target, dto.LandingPage, cancellationToken);
+        if (landingError is not null) return landingError;
+        target.LandingPage = ParseLandingPage(dto.LandingPage);
 
         await _users.UpdateAsync(target, cancellationToken);
         await _users.SaveChangesAsync(cancellationToken);
@@ -320,22 +362,31 @@ public sealed class UserService : IUserService
     }
 
     /// <inheritdoc />
-    public async Task<ServiceResult<UserResponseDto>> ResetPasswordAsync(
+    public async Task<ServiceResult<UserCredentialResponseDto>> ResetPasswordAsync(
         User requester,
         Guid targetId,
         CancellationToken cancellationToken = default)
     {
         User? target = await _users.GetByIdWithDivisionAsync(targetId, cancellationToken);
         if (target is null)
-            return ServiceResult<UserResponseDto>.NotFound($"User {targetId} not found.");
+            return ServiceResult<UserCredentialResponseDto>.NotFound($"User {targetId} not found.");
 
         if (!CanRequesterManageTarget(requester, target))
-            return ServiceResult<UserResponseDto>.Forbidden(
+            return ServiceResult<UserCredentialResponseDto>.Forbidden(
                 "You do not have permission to reset this user's password.");
 
-        target.PasswordHash       = BCrypt.Net.BCrypt.HashPassword(DefaultPassword);
-        target.RefreshToken       = null;
-        target.RefreshTokenExpiry = null;
+        // Issued once, shown once — never stored or logged in plaintext (RAL-254).
+        string temporaryPassword = PasswordGenerator.Generate();
+
+        target.PasswordHash               = BCrypt.Net.BCrypt.HashPassword(temporaryPassword);
+        target.RefreshToken               = null;
+        target.RefreshTokenExpiry         = null;
+        // Force a real change at next login (RAL-254's own scope — never wired up until now)
+        // and surface the "your password was reset" notice (RAL-267). A fresh reset always
+        // needs re-acknowledging, even if a previous one was already dismissed.
+        target.MustChangePassword         = true;
+        target.LastPasswordResetAt        = DateTime.UtcNow;
+        target.PasswordResetAcknowledgedAt = null;
 
         await _users.UpdateAsync(target, cancellationToken);
         await _users.SaveChangesAsync(cancellationToken);
@@ -344,13 +395,17 @@ public sealed class UserService : IUserService
             "Password reset. TargetUserId: {TargetUserId}, ResetBy: {ResetBy}",
             target.Id, requester.Id);
 
-        // Never snapshot PasswordHash — just record that a reset happened.
+        // Never snapshot PasswordHash or the issued password — just record that a reset happened.
         await _audit.LogAsync("users", target.Id, AuditAction.Update,
             oldValues: null,
             newValues: new { PasswordReset = true },
             cancellationToken);
 
-        return ServiceResult<UserResponseDto>.Ok(MapToDto(target));
+        return ServiceResult<UserCredentialResponseDto>.Ok(new UserCredentialResponseDto
+        {
+            User              = MapToDto(target),
+            TemporaryPassword = temporaryPassword,
+        });
     }
 
     /// <inheritdoc />
@@ -382,7 +437,10 @@ public sealed class UserService : IUserService
         target.OverrideCanAccessBudgetPlanning = dto.OverrideCanAccessBudgetPlanning;
         target.OverrideCanUploadAip            = dto.OverrideCanUploadAip;
         target.OverrideCanManageConfig         = dto.OverrideCanManageConfig;
-        target.OverrideCanManageAllocation     = dto.OverrideCanManageAllocation;
+        target.OverrideCanManagePpdoAllocation     = dto.OverrideCanManagePpdoAllocation;
+        target.OverrideCanManagePboCeiling      = dto.OverrideCanManagePboCeiling;
+        target.OverrideCanReviewBudgetPlanning  = dto.OverrideCanReviewBudgetPlanning;
+        target.OverrideCanReviewAllOffices      = dto.OverrideCanReviewAllOffices;
 
         await _users.UpdateAsync(target, cancellationToken);
         await _users.SaveChangesAsync(cancellationToken);
@@ -514,16 +572,33 @@ public sealed class UserService : IUserService
                     $"Email '{newEmail}' is already registered.");
         }
 
-        user.FullName  = dto.FullName.Trim();
-        user.Username  = newUsername;
-        user.Email     = newEmail;
-        user.Position  = dto.Position?.Trim();
-        user.ContactNo = dto.ContactNo?.Trim();
+        // Self-service: role/division/office are untouched here, so the user's own
+        // permissions decide what they may pick.
+        ServiceResult<UserResponseDto>? landingError =
+            await ValidateLandingPageAsync<UserResponseDto>(user, dto.LandingPage, cancellationToken);
+        if (landingError is not null) return landingError;
+
+        object oldSnapshot = AuditSnapshot(user);
+
+        user.FullName    = dto.FullName.Trim();
+        user.Username    = newUsername;
+        user.Email       = newEmail;
+        user.Position    = dto.Position?.Trim();
+        user.ContactNo   = dto.ContactNo?.Trim();
+        user.LandingPage = ParseLandingPage(dto.LandingPage);
 
         await _users.UpdateAsync(user, cancellationToken);
         await _users.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Profile updated. UserId: {UserId}", user.Id);
+
+        // Self-service, but still a write to `users` — and username and email are identity,
+        // not decoration (RAL-246). Role, division and office are untouched here, so this row
+        // records who someone became, not what they were allowed to do.
+        await _audit.LogAsync("users", user.Id, AuditAction.Update,
+            oldValues: oldSnapshot,
+            newValues: AuditSnapshot(user),
+            cancellationToken);
 
         User updated = (await _users.GetByIdWithDivisionAsync(user.Id, cancellationToken))!;
         return ServiceResult<UserResponseDto>.Ok(MapToDto(updated));
@@ -552,14 +627,149 @@ public sealed class UserService : IUserService
         if (!dto.NewPassword.Any(char.IsDigit))
             return ServiceResult<bool>.BadRequest("Password must contain at least one digit.");
 
-        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
+        user.PasswordHash       = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
+        // Whatever put this user on a temporary password (admin reset or self-service
+        // recovery) is satisfied the moment they successfully change it themselves.
+        user.MustChangePassword = false;
 
         await _users.UpdateAsync(user, cancellationToken);
         await _users.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Password changed. UserId: {UserId}", user.Id);
 
+        // Same shape as ResetPasswordAsync: record THAT it happened, never the hash or the
+        // password (RAL-246). Without this row a self-change is indistinguishable from no
+        // change at all, which is the gap the reset notice (RAL-267) is meant to close.
+        await _audit.LogAsync("users", user.Id, AuditAction.Update,
+            oldValues: null,
+            newValues: new { PasswordChanged = true },
+            cancellationToken);
+
         return ServiceResult<bool>.Ok(true);
+    }
+
+    // ── Recovery-answer setup (RAL-266) ─────────────────────────────────────────
+
+    /// <inheritdoc />
+    public async Task<ServiceResult<bool>> SetRecoveryAnswerAsync(
+        User caller,
+        SetRecoveryAnswerDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        User? user = await _users.GetByIdAsync(caller.Id, cancellationToken);
+        if (user is null)
+            return ServiceResult<bool>.NotFound($"User {caller.Id} not found.");
+
+        if (!RecoveryQuestionName.TryParse(dto.QuestionKey, out RecoveryQuestion question))
+            return ServiceResult<bool>.BadRequest(
+                $"'{dto.QuestionKey}' is not a valid recovery question. Valid values: {RecoveryQuestionName.ValidValues}.");
+
+        if (string.IsNullOrWhiteSpace(dto.Answer))
+            return ServiceResult<bool>.BadRequest("Answer is required.");
+
+        // Same normalize-then-hash path RAL-265 verifies against — a divergence here would
+        // silently lock the user out of their own answer.
+        string normalized = RecoveryAnswerNormalizer.Normalize(dto.Answer);
+        RecoveryQuestion? previousQuestion = user.RecoveryQuestionKey;
+        user.RecoveryQuestionKey  = question;
+        user.RecoveryAnswerHash   = BCrypt.Net.BCrypt.HashPassword(normalized);
+        // Re-running this (changing your answer later) starts the lockout window clean.
+        user.RecoveryAttemptCount = 0;
+        user.RecoveryFirstAttemptAt = null;
+
+        await _users.UpdateAsync(user, cancellationToken);
+        await _users.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Recovery answer set. UserId: {UserId}", user.Id);
+
+        // The recovery answer is a credential: it is what self-service reset (RAL-265) checks
+        // to hand out a new password. Changing it changes who can take the account over, so it
+        // is exactly the class of write RAL-246 exists for — and it was the only one leaving no
+        // trace at all. The QUESTION is recorded; the ANSWER HASH never is.
+        await _audit.LogAsync("users", user.Id, AuditAction.Update,
+            oldValues: new { RecoveryQuestionKey = previousQuestion?.ToString() },
+            newValues: new { RecoveryQuestionKey = question.ToString(), RecoveryAnswerChanged = true },
+            cancellationToken);
+
+        return ServiceResult<bool>.Ok(true);
+    }
+
+    /// <inheritdoc />
+    public async Task<ServiceResult<bool>> AcknowledgePasswordResetAsync(
+        User caller,
+        CancellationToken cancellationToken = default)
+    {
+        User? user = await _users.GetByIdAsync(caller.Id, cancellationToken);
+        if (user is null)
+            return ServiceResult<bool>.NotFound($"User {caller.Id} not found.");
+
+        user.PasswordResetAcknowledgedAt = DateTime.UtcNow;
+
+        await _users.UpdateAsync(user, cancellationToken);
+        await _users.SaveChangesAsync(cancellationToken);
+
+        return ServiceResult<bool>.Ok(true);
+    }
+
+    // ── Landing page (RAL-262) ────────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses the landing-page name and checks the user can actually reach it.
+    ///
+    /// Validating here matters: a landing page the user cannot open does not fail at
+    /// redirect time, it loops — the page ejects them and the redirect sends them back.
+    /// The resolver skips unreachable stored values at runtime as a backstop, but silently
+    /// ignoring what an admin just saved would be its own kind of wrong.
+    /// </summary>
+    /// <param name="user">
+    /// Must carry the role/office/division the user will have AFTER this operation, not before.
+    /// Division is loaded here when needed, since a division change makes a preloaded one stale.
+    /// </param>
+    private async Task<ServiceResult<TResult>?> ValidateLandingPageAsync<TResult>(
+        User user,
+        string? landingPageName,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(landingPageName))
+            return null;
+
+        if (!LandingPageName.TryParse(landingPageName, out LandingPage? parsed) || parsed is not LandingPage page)
+            return ServiceResult<TResult>.BadRequest(
+                $"'{landingPageName}' is not a valid landing page. Valid values: {LandingPageName.ValidValues}.");
+
+        await EnsureDivisionLoadedAsync(user, cancellationToken);
+
+        if (!await _landing.IsReachableAsync(user, page, cancellationToken))
+            return ServiceResult<TResult>.BadRequest(
+                $"This user cannot access '{page}', so it cannot be their landing page.");
+
+        return null;
+    }
+
+    /// <summary>Parses an already-validated landing-page name. Null/blank clears the preference.</summary>
+    private static LandingPage? ParseLandingPage(string? name)
+    {
+        LandingPageName.TryParse(name, out LandingPage? page);
+        return page;
+    }
+
+    /// <summary>
+    /// Attaches the Division matching <c>user.DivisionId</c> when it is missing or stale.
+    /// Permission resolution reads flags off it, so a wrong one silently changes the answer.
+    /// </summary>
+    private async Task EnsureDivisionLoadedAsync(User user, CancellationToken cancellationToken)
+    {
+        if (user.DivisionId is not int divisionId)
+        {
+            user.Division = null;
+            return;
+        }
+
+        if (user.Division?.Id == divisionId)
+            return;
+
+        IReadOnlyList<Division> divisions = await _divisions.GetAllAsync(cancellationToken);
+        user.Division = divisions.FirstOrDefault(d => d.Id == divisionId);
     }
 
     // ── Private helpers ────────────────────────────────────────────────────────
@@ -583,7 +793,7 @@ public sealed class UserService : IUserService
     /// Validates that the office exists and is active. Returns a populated error result
     /// to short-circuit on failure, or null when the office is valid.
     /// </summary>
-    private async Task<ServiceResult<UserResponseDto>?> ValidateOfficeAsync(
+    private async Task<ServiceResult<TResult>?> ValidateOfficeAsync<TResult>(
         int officeId,
         CancellationToken cancellationToken)
     {
@@ -591,9 +801,9 @@ public sealed class UserService : IUserService
         Office? office = offices.FirstOrDefault(o => o.Id == officeId);
 
         if (office is null)
-            return ServiceResult<UserResponseDto>.BadRequest($"Office {officeId} not found.");
+            return ServiceResult<TResult>.BadRequest($"Office {officeId} not found.");
         if (!office.IsActive)
-            return ServiceResult<UserResponseDto>.BadRequest($"Office '{office.OfficeName}' is inactive.");
+            return ServiceResult<TResult>.BadRequest($"Office '{office.OfficeName}' is inactive.");
 
         return null;
     }
@@ -602,7 +812,7 @@ public sealed class UserService : IUserService
     /// Validates that the division exists, is active, and (for office users) belongs to the
     /// given office. Returns a populated error result to short-circuit, or null when valid.
     /// </summary>
-    private async Task<ServiceResult<UserResponseDto>?> ValidateDivisionAsync(
+    private async Task<ServiceResult<TResult>?> ValidateDivisionAsync<TResult>(
         int divisionId,
         int? requireOfficeId,
         CancellationToken cancellationToken)
@@ -611,11 +821,11 @@ public sealed class UserService : IUserService
         Division? division = divisions.FirstOrDefault(d => d.Id == divisionId);
 
         if (division is null)
-            return ServiceResult<UserResponseDto>.BadRequest($"Division {divisionId} not found.");
+            return ServiceResult<TResult>.BadRequest($"Division {divisionId} not found.");
         if (!division.IsActive)
-            return ServiceResult<UserResponseDto>.BadRequest($"Division '{division.Name}' is inactive.");
+            return ServiceResult<TResult>.BadRequest($"Division '{division.Name}' is inactive.");
         if (requireOfficeId is int officeId && division.OfficeId != officeId)
-            return ServiceResult<UserResponseDto>.BadRequest(
+            return ServiceResult<TResult>.BadRequest(
                 $"Division '{division.Name}' does not belong to the selected office.");
 
         return null;
@@ -636,6 +846,7 @@ public sealed class UserService : IUserService
         Position                      = u.Position,
         ContactNo                     = u.ContactNo,
         IsActive                      = u.IsActive,
+        LandingPage                   = u.LandingPage?.ToString(),
         OverrideCanAccessInventory    = u.OverrideCanAccessInventory,
         OverrideCanAccessReports      = u.OverrideCanAccessReports,
         OverrideCanManageUsers        = u.OverrideCanManageUsers,
@@ -643,7 +854,10 @@ public sealed class UserService : IUserService
         OverrideCanAccessBudgetPlanning = u.OverrideCanAccessBudgetPlanning,
         OverrideCanUploadAip            = u.OverrideCanUploadAip,
         OverrideCanManageConfig         = u.OverrideCanManageConfig,
-        OverrideCanManageAllocation     = u.OverrideCanManageAllocation,
+        OverrideCanManagePpdoAllocation     = u.OverrideCanManagePpdoAllocation,
+        OverrideCanManagePboCeiling         = u.OverrideCanManagePboCeiling,
+        OverrideCanReviewBudgetPlanning     = u.OverrideCanReviewBudgetPlanning,
+        OverrideCanReviewAllOffices         = u.OverrideCanReviewAllOffices,
         CreatedAt                     = u.CreatedAt,
         UpdatedAt                     = u.UpdatedAt,
     };
@@ -659,6 +873,15 @@ public sealed class UserService : IUserService
         u.DivisionId, u.OfficeId, u.Position, u.ContactNo, u.IsActive,
         u.OverrideCanAccessInventory, u.OverrideCanAccessReports, u.OverrideCanManageUsers,
         u.OverrideCanManageResourceLinks, u.OverrideCanAccessBudgetPlanning,
-        u.OverrideCanUploadAip, u.OverrideCanManageConfig, u.OverrideCanManageAllocation,
+        u.OverrideCanUploadAip, u.OverrideCanManageConfig, u.OverrideCanManagePpdoAllocation,
+        u.OverrideCanManagePboCeiling, u.OverrideCanReviewBudgetPlanning,
+        u.OverrideCanReviewAllOffices,
+        // RAL-246: LandingPage decides where this user lands; RecoveryQuestionKey identifies
+        // WHICH secret can reset the account, and MustChangePassword whether they are on a
+        // temporary one. All three are security-relevant state that was being written
+        // unrecorded. The two HASHES are still excluded and must stay that way.
+        LandingPage = u.LandingPage?.ToString(),
+        RecoveryQuestionKey = u.RecoveryQuestionKey?.ToString(),
+        u.MustChangePassword,
     };
 }

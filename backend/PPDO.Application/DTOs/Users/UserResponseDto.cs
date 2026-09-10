@@ -1,4 +1,4 @@
-namespace PPDO.Application.DTOs.Users;
+﻿namespace PPDO.Application.DTOs.Users;
 
 /// <summary>
 /// User record returned by all <c>/api/users</c> endpoints.
@@ -34,7 +34,17 @@ public sealed class UserResponseDto
     public bool? OverrideCanAccessBudgetPlanning { get; init; }
     public bool? OverrideCanUploadAip { get; init; }
     public bool? OverrideCanManageConfig { get; init; }
-    public bool? OverrideCanManageAllocation { get; init; }
+    public bool? OverrideCanManagePpdoAllocation { get; init; }
+    public bool? OverrideCanManagePboCeiling { get; init; }
+    public bool? OverrideCanReviewBudgetPlanning { get; init; }
+    public bool? OverrideCanReviewAllOffices { get; init; }
+
+    /// <summary>
+    /// This user's own landing-page preference as an enum name, or null when unset.
+    /// Distinct from the resolved path on /auth/me: this is what is stored, not what
+    /// the chain resolves to (RAL-262).
+    /// </summary>
+    public string? LandingPage { get; init; }
 
     // -- Audit -----------------------------------------------------------------
     public DateTime CreatedAt { get; init; }

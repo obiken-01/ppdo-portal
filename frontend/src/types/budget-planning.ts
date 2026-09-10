@@ -84,8 +84,21 @@ export interface AipImportConfirmRequest {
 
 // ── AIP manual entry (RAL-62) — one node at a time ────────────────────────────
 
-export interface CreateAipRecordRequest {
+/** Opens a fiscal year (PPDO-62) — Admin/SuperAdmin only. */
+export interface OpenAipFiscalYearRequest {
   fiscalYear: number;
+}
+
+/** What opening a fiscal year did. */
+export interface OpenAipFiscalYearResult {
+  record: AipRecordResponse;
+  officesPopulated: number;
+  /**
+   * ⚠️ Active offices that got nothing, because they have no LDIP in any sector. Show this —
+   * such an office cannot build its AIP and has no way to find out why: it opens the page and
+   * there is simply nothing there.
+   */
+  officesWithoutLdip: string[];
 }
 
 export interface CreateAipOfficeRequest {
@@ -94,14 +107,6 @@ export interface CreateAipOfficeRequest {
   /** Defaults to the config office's name server-side when omitted/blank — override for
    * sub-office/program-cluster rows sharing the same office (e.g. "...- SPECIAL PROJECTS"). */
   name?: string | null;
-}
-
-/** RAL-180 — carry forward selected programs (with full subtrees) from a prior fiscal
- * year's office into the target fiscal year. Target record/office are found-or-created. */
-export interface CopyAipOfficeRequest {
-  sourceOfficeId: number;
-  targetFiscalYear: number;
-  programIds: number[];
 }
 
 /** RAL-181 — seed an office's AIP programs (Name+RefCode only, bare shells) from that
@@ -157,6 +162,30 @@ export interface UpdateAipActivityRequest {
   ccTypologyCode?: string | null;
 }
 
+/**
+ * An entered-year activity's **descriptive** fields — the AIP Entry page's editor (PPDO-52).
+ *
+ * ⚠️ **No `ps`, `mooe`, `co` or `fundingSourceId`, and adding them would be a data-loss bug.**
+ * On an entered year those are derived from the activity's expenditure lines — the server
+ * recomputes PS/MOOE/CO on every line write, and the fund lives on the lines (one per line). Use
+ * this for the entry page; `UpdateAipActivityRequest` is the detail page's whole-row edit and it
+ * *does* own those fields, so sending it from here would zero a costing nobody touched.
+ *
+ * ⚠️ `esreCode` and `ccTypologyCode` are the two the submit gate blocks on.
+ */
+export interface UpdateAipActivityDetailsRequest {
+  name: string;
+  esreCode?: string | null;
+  implementingOffice?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  expectedOutputs?: string | null;
+  /** Not derived from lines — expenditure lines carry only PS/MOOE/CO, so this is the only home. */
+  ccAdaptation?: number | null;
+  ccMitigation?: number | null;
+  ccTypologyCode?: string | null;
+}
+
 // ── AIP inline office/program/project edit (detail-page CRUD) ────────────────
 
 export interface UpdateAipOfficeRequest {
@@ -196,6 +225,20 @@ export interface AipActivityDetail {
   isCreation: boolean;
   /** RAL-108: true when this activity was materialized from a program/project-level line item. */
   isSynthetic: boolean;
+  /**
+   * The distinct funding-source codes this activity's expenditure lines draw on, in first-use
+   * order — the AIP form's Funding Source column (7), which prints them joined (PPDO-80).
+   *
+   * ⚠️ **Not a replacement for `fundingSourceSnapshot`, and neither one alone is the answer.** On
+   * an entered year the fund lives on the LINE, so an activity drawing on two funds stores none
+   * itself and the snapshot is null; on an FY≤2027 uploaded activity there are no lines, so this
+   * is empty and the snapshot is all there is. Render both through `activityFundLabel`.
+   *
+   * ⚠️ Empty from `addAipActivity` (a new activity has no lines — correct) but **filled** by
+   * `updateAipActivityDetails` and by every expenditure write, because the entry page splices
+   * those responses into its tree rather than reloading it.
+   */
+  fundCodes: string[];
 }
 
 export interface AipProjectDetail {
@@ -223,6 +266,14 @@ export interface AipOfficeDetail {
   refCode: string;
   name: string;
   sector: string;
+  /**
+   * The config office that owns this group (added by PPDO-52).
+   *
+   * ⚠️ The entry page needs this to show a host-office user only their OWN office. Without it the
+   * page rendered all 25 offices' trees above a checklist covering just the caller's — found by
+   * live-testing. Null only for an unmatched legacy row.
+   */
+  officeId: number | null;
   programs: AipProgramDetail[];
 }
 
@@ -308,16 +359,65 @@ export interface DivisionFundAmount {
   remaining: number;
 }
 
-/** One division's WFP status + activity coverage + allocation, PPDO-scoped (v1.4.5 — RAL-161). */
-export interface DivisionWfpStatus {
+/**
+ * The one status vocabulary the Budget Planning dashboard speaks (PPDO-20). Mirrors
+ * `PPDO.Application/Common/PlanningStage.cs` — the four values are the whole set the backend
+ * can emit for a stage.
+ *
+ * "Over ceiling" / "Behind" / "Cannot submit" are deliberately NOT members: they are exceptions
+ * that coexist with any stage, computed from their own booleans and rendered as separate risk
+ * pills. Folding them in here would lose the warning behind a status a reader skims past.
+ *
+ * "Review" exists so the vocabulary is complete at its one definition; nothing emits it until
+ * Phase 4 adds a submission entity.
+ */
+export type PlanningStage = "Todo" | "In progress" | "Review" | "Done";
+
+/**
+ * One division's AIP progress and money, host-office-scoped (PPDO-20 — replaces
+ * `DivisionWfpStatus`).
+ *
+ * ⚠️ Not the old type with a field added. Its predecessor's `wfpStatus` and
+ * `activitiesWithExpenditures` were WFP concepts; dashboard decisions 3 and 4 retire them from
+ * this page in favour of what the division has costed in the AIP.
+ *
+ * `divisionCode` is nullable — render `divisionName` when it is null, never an empty pill.
+ */
+export interface DivisionSummary {
   divisionId: number;
   divisionCode: string | null;
   divisionName: string;
-  wfpStatus: "Draft" | "Final" | "Not started";
-  activitiesWithExpenditures: number;
+  allocated: number;
+  costedInAip: number;
+  /** allocated − costedInAip. Equals `allocated` when the division has no AIP work yet. */
+  remaining: number;
+  costedActivityCount: number;
   totalActivities: number;
-  totalAllocated: number;
+  aipStatus: PlanningStage;
+  /** Constant "Todo" until Phase 4 adds a submission entity. */
+  submissionStatus: PlanningStage;
   allocationByFund: DivisionFundAmount[];
+}
+
+/**
+ * One office's row on the cross-office dashboard table (PPDO-20) — see
+ * `GET /budget-planning/dashboard/offices`. Read-only.
+ */
+export interface OfficeSummary {
+  officeId: number;
+  officeCode: string;
+  officeName: string;
+  isHostOffice: boolean;
+  /** Null means no ceiling has been published — distinct from a published zero. Do not coalesce. */
+  ceilingAmount: number | null;
+  costedInAip: number;
+  activityCount: number;
+  aipStatus: PlanningStage;
+  submissionStatus: PlanningStage;
+  /** Costed more than the published ceiling allows. Always false when none is published. */
+  isOverCeiling: boolean;
+  /** Null means nobody in that office can submit — the "Cannot submit / None — assign" state. */
+  reviewerName: string | null;
 }
 
 /** One division's share of a fund's office-wide ceiling. */
@@ -351,7 +451,7 @@ export interface FiscalYears {
 /**
  * The PPDO-scoped Budget Planning Dashboard (v1.4.5 — RAL-161). Replaces the old
  * multi-office PlanningDashboard — Budget Planning is permanently scoped to PPDO.
- * For a division-scoped Staff caller, the server clamps wfpByDivision and every
+ * For a division-scoped Staff caller, the server clamps byDivision and every
  * FundCeiling.byDivision entry to just that caller's own division.
  */
 export interface PpdoDashboard {
@@ -362,7 +462,7 @@ export interface PpdoDashboard {
   officeName: string;
   ldip: OfficeLdipSummary;
   aip: OfficeAipSummary;
-  wfpByDivision: DivisionWfpStatus[];
+  byDivision: DivisionSummary[];
   ceilingByFund: FundCeiling[];
 }
 
@@ -402,6 +502,13 @@ export interface OfficeAipSummary {
   programCount: number;
   projectCount: number;
   activityCount: number;
+  /**
+   * The office's OWN costed total (PPDO-20). **Not** the sum of `PpdoDashboard.byDivision`'s
+   * `costedInAip`: a PPA assigned to two divisions counts in full against both there, so that sum
+   * overstates the office by its shared programs. The dashboard tiles read this, which is what
+   * keeps the office total agreeing with the office table's row for the same office.
+   */
+  costedInAip: number;
 }
 
 export interface OfficeDashboard {
@@ -849,7 +956,8 @@ export interface LdipRecord {
 // ── LDIP hierarchy (RAL-61) — ref codes are server-computed, never client-sent ──
 
 /**
- * One program row. Budget is in thousands (₱000), like AIP totals.
+ * One program row. Budget is in thousands (₱000) — NOT like AIP totals, which are pesos since
+ * V18-35 (PPDO-34). LDIP deliberately did not move; see LdipProgram.Budget on the backend.
  * The detail fields below (RAL-113) are populated only for upload-derived
  * programs — null for programs added through the manual "+ Add Program" flow.
  */
@@ -986,4 +1094,362 @@ export interface LdipImportConfirmRequest {
    * The target must be a Draft, Upload-entry-mode record. Omit to create a new record.
    */
   targetRecordId?: number;
+}
+
+// ---------------------------------------------------------------------------
+// AIP entry — v1.8.0 Phase 3 (PPDO-52, 56, 59)
+// ---------------------------------------------------------------------------
+
+/**
+ * One expenditure line under an activity.
+ *
+ * ⚠️ Amounts are PESOS and BASE — on the wire and in the inputs alike. Only read-only cells
+ * convert to ₱000, via `lib/aip-units`; nothing multiplies on the way to the server. The +30%
+ * uplift belongs to the printed form only and never appears here.
+ */
+export interface AipExpenditure {
+  id: number;
+  activityId: number;
+  accountId: number | null;
+  accountNumber: string | null;
+  accountTitle: string | null;
+  fundingSourceId: number | null;
+  fundingSourceCode: string | null;
+  fundingSourceName: string | null;
+  ps: number;
+  mooe: number;
+  co: number;
+  total: number;
+  /**
+   * The items this line is itemised into (V18-80). Empty for a line whose amount was typed.
+   *
+   * ⚠️ When this is non-empty the line's ps/mooe/co are DERIVED, not typed: the server puts the
+   * items' total in the one column the account's expense class names. The entry table shows the
+   * amount read-only for such a line.
+   */
+  procurementItems: AipProcurementItem[];
+}
+
+/**
+ * One procurement item on an AIP expenditure line (V18-80 / PPDO-54).
+ *
+ * ⚠️ **No period, frequency, annual-quarter or reserve field, and none may be added** — those are
+ * WFP *schedule* concepts and an AIP activity carries one annual figure. `numberOfDays` is the
+ * deliberate exception: PPDO employees asked for it, so it is a requirement in its own right
+ * rather than a leftover of the period model.
+ *
+ * name/unit/unitPrice are what the Price Index said at save time, not what it says now.
+ */
+export interface AipProcurementItem {
+  id: number;
+  priceIndexItemId: number | null;
+  name: string;
+  unit: string;
+  unitPrice: number;
+  qty: number;
+  numberOfDays: number;
+  /** qty × unitPrice × numberOfDays, computed server-side. */
+  lineTotal: number;
+}
+
+/** ⚠️ No `lineTotal` — the server computes it and never accepts one. */
+export interface SaveAipProcurementItemRequest {
+  priceIndexItemId: number | null;
+  name: string;
+  unit: string;
+  unitPrice: number;
+  qty: number;
+  numberOfDays: number;
+}
+
+export interface SaveAipExpenditureRequest {
+  accountId: number | null;
+  /** ⚠️ Exactly one fund per line. Multi-fund is several lines, never one line naming two. */
+  fundingSourceId: number | null;
+  ps: number;
+  mooe: number;
+  co: number;
+  /**
+   * Replaces the line's items wholesale. An empty array removes them all and returns the line to a
+   * typed amount; omitting the field entirely leaves existing items untouched.
+   *
+   * ⚠️ When this is non-empty the server DERIVES ps/mooe/co from it and discards whatever was sent
+   * in those three fields — it does not add the two together the way WFP does.
+   */
+  procurementItems?: SaveAipProcurementItemRequest[];
+}
+
+/**
+ * What an expenditure write returns — the line plus its activity's recomputed totals, so the tree
+ * updates without a refetch.
+ *
+ * ⚠️ `activityTotal` is null when the activity was NEVER costed and 0 when its lines were all
+ * deleted. Same `lineCount`, opposite meanings; the submit checklist tells them apart.
+ */
+export interface AipExpenditureWriteResult {
+  line: AipExpenditure | null;
+  activityId: number;
+  activityPs: number | null;
+  activityMooe: number | null;
+  activityCo: number | null;
+  activityTotal: number | null;
+  lineCount: number;
+  /**
+   * The activity's funding-source codes after this write, in first-use order (PPDO-80).
+   *
+   * ⚠️ Present for the same reason the totals are: the entry page updates the row in place and
+   * never reloads the record, so without this the fund cell would keep naming a fund whose only
+   * line was just deleted.
+   */
+  activityFundCodes: string[];
+}
+
+/**
+ * ⚠️ **No `groupName`.** The sub-office group is derived server-side from `ldipProgramIds` —
+ * every LDIP program belongs to exactly one group, so the answer is unambiguous and cannot be
+ * mistyped. The field used to exist as free text; a typed name could name a block matching no
+ * LDIP row, and the AIP is the document that prints. Programs spanning two groups are refused.
+ */
+export interface AddAipProgramsWithGroupRequest {
+  officeConfigId: number;
+  sector: string;
+  ldipProgramIds: number[];
+}
+
+/**
+ * The office's ceiling position. General Fund only, PS exempt, base figures rounded up to the
+ * thousand per activity before summing.
+ *
+ * ⚠️ `remaining` MAY BE NEGATIVE and must render as such — it is the only signal an office gets
+ * that PBO cut its ceiling below what is already encoded. Never clamp it.
+ */
+export interface AipCeilingStatus {
+  generalFundId: number | null;
+  /** ⚠️ False is not "unlimited" — an unset ceiling is treated as ZERO. */
+  ceilingSet: boolean;
+  ceiling: number;
+  encodedBaseRounded: number;
+  remaining: number;
+  withinCeiling: boolean;
+}
+
+/** One reason submit is blocked. `kind` is the stable slug to switch on; `message` is for display. */
+export interface AipReadinessIssue {
+  kind: string;
+  activityId: number | null;
+  refCode: string | null;
+  message: string;
+}
+
+/** ⚠️ A gate, not a summary — there is no "submit anyway". */
+export interface AipReadiness {
+  aipRecordId: number;
+  officeId: number;
+  workflowStatus: string;
+  canSubmit: boolean;
+  activityCount: number;
+  issues: AipReadinessIssue[];
+  ceiling: AipCeilingStatus | null;
+}
+
+export interface AipSubmitResult {
+  aipRecordId: number;
+  officeId: number;
+  workflowStatus: string;
+  /** How many sub-office group rows moved. An office with three printed blocks moves all three. */
+  groupsMoved: number;
+}
+
+/**
+ * One AIP Review search result — a program, project or activity (V18-75 / PPDO-76).
+ *
+ * ⚠️ **A result is a node, not an office.** The search matches on program / project / activity
+ * names, so a row is one of those; `officeId` is what the row links on.
+ *
+ * ⚠️ `level` uses the same three names as `AipReviewComment.nodeType`, deliberately — one
+ * vocabulary for "which kind of AIP row is this", so the two features cannot drift apart.
+ */
+export interface AipReviewSearchRow {
+  level: AipCommentNodeType;
+  nodeId: number;
+  refCode: string;
+  name: string;
+  /** Null only for a legacy row with no matched owner — rendered, but not linkable. */
+  officeId: number | null;
+  officeName: string;
+  sector: string;
+  workflowStatus: string;
+}
+
+/**
+ * A page of search results plus the counts the filter chips render (PPDO-76).
+ *
+ * ⚠️ **`totalCount` is the whole match, not this page.** The pager needs it, and reading it as the
+ * page size makes every search look like it found exactly what fits on screen.
+ *
+ * ⚠️ **Each count set ignores its own filter.** With SOCIAL selected the sector chips still report
+ * GENERAL's count — that is what tells the reader there is something else to combine with.
+ */
+export interface AipReviewSearchResult {
+  /** The record the rows came from — the caller searched by fiscal year, not by id. */
+  aipRecordId: number;
+  fiscalYear: number;
+  items: AipReviewSearchRow[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  sectorCounts: Record<string, number>;
+  workflowStatusCounts: Record<string, number>;
+}
+
+/**
+ * What the search page sends.
+ *
+ * ⚠️ **`refCode` is a raw typed string**, not a parsed list: the server splits it on `OR` or a
+ * comma. ⚠️ **`title` is never split** — a project may legitimately be called "Aid or relief".
+ */
+export interface AipReviewSearchParams {
+  fiscalYear: number;
+  officeIds?: number[];
+  sectors?: string[];
+  workflowStatuses?: string[];
+  refCode?: string;
+  title?: string;
+  /** "Everything applicable to me" — resolved server-side from the caller's own permissions. */
+  mine?: boolean;
+  page?: number;
+  pageSize?: number;
+}
+
+/**
+ * One office's whole AIP as the PPDO consolidated reviewer reads it (V18-56 / PPDO-74).
+ *
+ * ⚠️ **The office, not the record.** The reviewer works one office at a time, and the record holds
+ * every office in the province — so this is what the review screen fetches instead of the record
+ * detail the entry page uses.
+ *
+ * ⚠️ **There is no `canReturn` / `canAccept` here, deliberately.** Both are a function of
+ * `workflowStatus` for the only role that can reach this endpoint, and a second carrier of the same
+ * fact is one that can disagree with it. The server refuses the transition regardless of what the
+ * page offered.
+ */
+export interface AipOfficeReview {
+  aipRecordId: number;
+  fiscalYear: number;
+  officeId: number;
+  /** The config office's name — what the confirm dialog says out loud before an irreversible move. */
+  officeName: string;
+  officeCode: string;
+  /** The shared state of every group row; they move together. */
+  workflowStatus: string;
+  activityCount: number;
+  /** One entry per sub-office group. Several is normal, and they are reviewed as one body of work. */
+  groups: AipOfficeDetail[];
+}
+
+/**
+ * One LDIP program the office may add. `ldipProgramId` is what
+ * `AddAipProgramsWithGroupRequest.ldipProgramIds` expects — named for what it is, because it is NOT
+ * the AIP program's id and mixing them up produces a "does not belong to this office's LDIP"
+ * refusal that reads like a permissions bug.
+ */
+export interface AipAddableProgram {
+  ldipProgramId: number;
+  refCode: string;
+  name: string;
+}
+
+/**
+ * ⚠️ Resolved SERVER-side, by the same two-tier rule the add path uses. The client must not pick
+ * the LDIP record itself — a client-side copy of that rule diverged and every add was refused.
+ */
+export interface AipAddablePrograms {
+  /**
+   * The LDIP record these programs come from.
+   *
+   * ⚠️ Surfaced because the resolver's second tier is a **multi-office** LDIP owned by no single
+   * office — so "which LDIP is this?" cannot be answered from the office alone, and until PPDO-52
+   * that record was invisible on the LDIP page to everyone.
+   */
+  ldipRefCode: string | null;
+  ldipTitle: string | null;
+  /** True when the source is a shared multi-office LDIP rather than this office's own. */
+  isSharedLdip: boolean;
+  /**
+   * ⚠️ **Every** sub-office group in the sector, not one. The province's LDIP puts four blocks
+   * under `3000-000-1-01-001` (WARDEN / AKAP-HUB / HOUSING / LOCAL SCHOOL BOARD); a single-group
+   * shape here is what made three of them unofferable and their programs unreachable.
+   */
+  groups: AipAddableGroup[];
+}
+
+/**
+ * One sub-office group and its programs.
+ *
+ * ⚠️ `groupRefCode` is **not** unique in a response — several groups legitimately share it, and
+ * `groupName` is what separates them. The pair is the group's identity, matching `AipOffice`.
+ */
+export interface AipAddableGroup {
+  groupRefCode: string;
+  groupName: string;
+  programs: AipAddableProgram[];
+}
+
+// ── AIP review comments (v1.8.0 Phase 4 — V18-53 / PPDO-71) ─────────────────
+
+/** Which kind of row a comment is anchored to. ⚠️ A row, never a field (spec decision 7). */
+export type AipCommentNodeType = "Program" | "Project" | "Activity";
+
+/**
+ * Which side wrote a comment.
+ *
+ * ⚠️ Exactly two — **the encoder never comments**. They read comments, act on them and re-submit.
+ * That is why the unresolved tally splits two ways and not three.
+ */
+export type AipCommentSide = "DepartmentHead" | "Ppdo";
+
+export interface AipReviewComment {
+  id: number;
+  aipOfficeId: number;
+  nodeType: AipCommentNodeType;
+  nodeId: number;
+  /** Null when the anchored row has since been deleted — see `isOrphaned`. */
+  nodeRefCode: string | null;
+  body: string;
+  authorId: string;
+  authorName: string;
+  authorSide: AipCommentSide;
+  createdAt: string;
+  resolvedAt: string | null;
+  resolvedByName: string | null;
+  /**
+   * ⚠️ Whether **this** reader may resolve it — false for the side it is addressed to, however
+   * senior. Hide the control on false; the server refuses it regardless, so this is convenience,
+   * never enforcement.
+   */
+  canResolve: boolean;
+  /** The anchored row is gone. Render as orphaned; never drop the comment. */
+  isOrphaned: boolean;
+}
+
+/** ⚠️ Two numbers, never merged — the reader can resolve neither set themselves. */
+export interface AipUnresolvedCounts {
+  fromDepartmentHead: number;
+  fromPpdo: number;
+  total: number;
+}
+
+export interface AipReviewComments {
+  aipRecordId: number;
+  officeId: number;
+  comments: AipReviewComment[];
+  unresolved: AipUnresolvedCounts;
+  /** False for an encoder — the composer is not offered. */
+  canComment: boolean;
+}
+
+export interface CreateAipReviewCommentRequest {
+  nodeType: AipCommentNodeType;
+  nodeId: number;
+  body: string;
 }

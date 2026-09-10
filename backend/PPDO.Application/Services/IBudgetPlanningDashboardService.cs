@@ -1,4 +1,6 @@
+using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
+using PPDO.Domain.Entities;
 
 namespace PPDO.Application.Services;
 
@@ -10,7 +12,7 @@ public interface IBudgetPlanningDashboardService
     /// <see cref="IWfpReportService.GetReportAsync"/>'s existing RAL-136 pattern: null means
     /// "every division" (finance/admin), a value means "this division only" (division-scoped
     /// Staff — the Function derives this from the caller's own DivisionId, never from a
-    /// client-supplied query param). <see cref="PpdoDashboardDto.WfpByDivision"/> and every
+    /// client-supplied query param). <see cref="PpdoDashboardDto.ByDivision"/> and every
     /// <see cref="FundCeilingDto.ByDivision"/> entry are filtered to match.
     /// </summary>
     Task<PpdoDashboardDto> GetDashboardAsync(
@@ -34,4 +36,26 @@ public interface IBudgetPlanningDashboardService
     /// </summary>
     Task<OfficeDashboardDto> GetOfficeDashboardAsync(
         int officeId, int fiscalYear, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// One row per office in <paramref name="caller"/>'s cross-office scope, for the dashboard's
+    /// office table (PPDO-20).
+    ///
+    /// <b>Scope resolution is the load-bearing part of this method</b>, which is why it takes the
+    /// caller rather than a pre-resolved office id like every other method here. The rule:
+    /// <code>
+    /// CanReviewAllOffices   → OfficeScope.ResolveForReview(caller, true)
+    /// CanManagePboCeiling   → OfficeScope.ResolveForCeiling(caller, true)
+    /// neither               → Forbidden
+    /// </code>
+    /// Never <c>OfficeScope.Resolve</c> — see that method's own remarks. A caller holding both
+    /// resolves through <c>ResolveForReview</c>; the endpoint is read-only either way, so the
+    /// distinction only decides what the UI renders.
+    ///
+    /// A caller with neither grant gets <see cref="ServiceResult{T}.Forbidden"/>, <b>not an empty
+    /// list</b>: an empty list reads as "no offices exist", and a caller who is legitimately
+    /// scoped to one office has a different endpoint to call.
+    /// </summary>
+    Task<ServiceResult<IReadOnlyList<OfficeSummaryDto>>> GetOfficesAsync(
+        User caller, int fiscalYear, CancellationToken cancellationToken = default);
 }

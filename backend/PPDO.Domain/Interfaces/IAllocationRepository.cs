@@ -23,4 +23,20 @@ public interface IAllocationRepository : IRepository<ProgramDivision>
     /// </summary>
     Task<IReadOnlyList<ProgramDivision>> GetProgramDivisionsByOfficeRefCodesAsync(
         IReadOnlyList<string> officeRefCodes, CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns every ProgramDivision row for one config office, matched on the
+    /// <c>office_id</c> FK (RAL-249). This is the read path — the ref-code overloads above
+    /// remain only for the re-link path, where an AIP ref code is all that is known.
+    /// </summary>
+    Task<IReadOnlyList<ProgramDivision>> GetProgramDivisionsByOfficeIdAsync(
+        int officeId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns the rows for one (config office, program ref code) pair — the write path's
+    /// current-state read. Program stays ref-code keyed on purpose; see
+    /// <see cref="ProgramDivision"/>'s remarks.
+    /// </summary>
+    Task<IReadOnlyList<ProgramDivision>> FindProgramDivisionsByOfficeIdAsync(
+        int officeId, string programRefCode, CancellationToken ct = default);
 }

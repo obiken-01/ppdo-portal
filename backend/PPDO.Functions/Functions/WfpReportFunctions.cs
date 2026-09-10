@@ -32,7 +32,7 @@ public sealed class WfpReportFunctions
     }
 
     private Task<bool> CanAccess(User u) => _permissions.CanAccessBudgetPlanningAsync(u);
-    private Task<bool> CanManageAllocation(User u) => _permissions.CanManageAllocationAsync(u);
+    private Task<bool> CanManagePpdoAllocation(User u) => _permissions.CanManagePpdoAllocationAsync(u);
 
     // ── GET /api/budget-planning/wfp/report/offices?fiscalYear= ──────────────
     // Office picker — only offices with at least a Draft WFP for the fiscal year.
@@ -55,7 +55,7 @@ public sealed class WfpReportFunctions
     }
 
     // ── GET /api/budget-planning/wfp/report/preview?officeId=&fiscalYear=&divisionId= ─────────
-    // divisionId (RAL-136): division-scoped callers (not CanManageAllocation) are ALWAYS forced
+    // divisionId (RAL-136): division-scoped callers (not CanManagePpdoAllocation) are ALWAYS forced
     // to their own division — any divisionId they pass is ignored — so they can never read
     // another division's report by manipulating the query string. Finance officers may pass an
     // optional divisionId to narrow the otherwise-consolidated report to one division.
@@ -74,7 +74,7 @@ public sealed class WfpReportFunctions
                 ApiResponse<WfpReportDto>.Fail("officeId and fiscalYear query parameters are required."), ct);
 
         int? divisionId;
-        if (await CanManageAllocation(caller))
+        if (await CanManagePpdoAllocation(caller))
             divisionId = int.TryParse(req.Query["divisionId"], out int did) ? did : null;
         else
             divisionId = caller.DivisionId;
@@ -100,7 +100,7 @@ public sealed class WfpReportFunctions
                 ApiResponse<WfpReportDto>.Fail("officeId and fiscalYear query parameters are required."), ct);
 
         int? divisionId;
-        if (await CanManageAllocation(caller))
+        if (await CanManagePpdoAllocation(caller))
             divisionId = int.TryParse(req.Query["divisionId"], out int did) ? did : null;
         else
             divisionId = caller.DivisionId;

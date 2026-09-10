@@ -20,4 +20,13 @@ public interface IBudgetCeilingRepository : IRepository<BudgetCeiling>
     /// <summary>Returns every ceiling row for one fiscal year+funding source, across all offices.</summary>
     Task<IReadOnlyList<BudgetCeiling>> GetByFiscalYearAndFundingSourceAsync(
         int fiscalYear, int fundingSourceId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Every ceiling row for one fiscal year, across all offices AND all funding sources
+    /// (PPDO-20). The cross-office dashboard table needs each office's total published ceiling,
+    /// which is a sum over funds — the fund-scoped overload above would mean one query per fund,
+    /// and <see cref="GetByOfficeAndFiscalYearAsync"/> one per office.
+    /// </summary>
+    Task<IReadOnlyList<BudgetCeiling>> GetByFiscalYearAsync(
+        int fiscalYear, CancellationToken ct = default);
 }

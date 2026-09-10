@@ -25,9 +25,21 @@ public interface IDivisionAllocationRepository : IRepository<DivisionAllocation>
     Task<IReadOnlyList<DivisionAllocation>> GetByDivisionIdsAsync(
         IReadOnlyList<int> divisionIds, int fiscalYear, CancellationToken ct = default);
 
-    /// <summary>True if a positive-amount allocation row exists for (divisionId, fiscalYear, fundingSourceId).</summary>
+    /// <summary>
+    /// True if a positive-amount allocation row exists for (divisionId, fiscalYear, fundingSourceId)
+    /// <b>and that division belongs to <paramref name="officeId"/></b>.
+    ///
+    /// The office half is not redundant (PPDO-30). The caller supplies officeId and divisionId
+    /// independently — they arrive as two query-string parameters on the WFP setup gate — and
+    /// nothing else ties them together. Without this check the answer is "does ANY division with
+    /// this id have a budget", which both leaks a boolean about another office's divisions and
+    /// lets the gate report allocation-complete on the strength of another office's numbers.
+    ///
+    /// <c>division_allocations</c> carries no office column; ownership lives on
+    /// <c>divisions.office_id</c>, so this joins rather than filtering a second column.
+    /// </summary>
     Task<bool> HasPositiveAllocationAsync(
-        int divisionId, int fiscalYear, int fundingSourceId, CancellationToken ct = default);
+        int officeId, int divisionId, int fiscalYear, int fundingSourceId, CancellationToken ct = default);
 
     /// <summary>Returns every allocation row for one fiscal year+funding source, across all divisions.</summary>
     Task<IReadOnlyList<DivisionAllocation>> GetByFiscalYearAndFundingSourceAsync(

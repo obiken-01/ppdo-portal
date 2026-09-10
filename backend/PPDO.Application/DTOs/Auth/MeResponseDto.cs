@@ -1,4 +1,4 @@
-namespace PPDO.Application.DTOs.Auth;
+﻿namespace PPDO.Application.DTOs.Auth;
 
 /// <summary>Response body for <c>GET /api/auth/me</c>.</summary>
 public sealed class MeResponseDto
@@ -26,9 +26,23 @@ public sealed class MeResponseDto
     /// <summary>Full office name. Null for PPDO-internal users.</summary>
     public string? OfficeName { get; init; }
 
+    /// <summary>
+    /// Whether this user belongs to the host office and so holds cross-office authority
+    /// (DECISION F, RAL-258). The client's single source for that question — it replaces
+    /// <c>officeId == null</c>, which used to mean the same thing by proxy and no longer does
+    /// now that every user has an office.
+    /// </summary>
+    public bool IsHostOffice { get; init; }
+
     public string? Position { get; init; }
 
     // -- Effective permission flags (resolved via PermissionService) ----------
+    /// <summary>Resolved landing route, e.g. "/dashboard". Always reachable for this user.</summary>
+    public string LandingPath { get; init; } = "/account";
+
+    /// <summary>Stored preference as an enum name, or null when unset.</summary>
+    public string? LandingPage { get; init; }
+
     public bool CanAccessInventory { get; init; }
     public bool CanAccessReports { get; init; }
     public bool CanManageUsers { get; init; }
@@ -37,5 +51,30 @@ public sealed class MeResponseDto
     public bool CanAccessBudgetPlanning { get; init; }
     public bool CanUploadAip { get; init; }
     public bool CanManageConfig { get; init; }
-    public bool CanManageAllocation { get; init; }
+    public bool CanManagePpdoAllocation { get; init; }
+    public bool CanManagePboCeiling { get; init; }
+    public bool CanReviewBudgetPlanning { get; init; }
+    public bool CanReviewAllOffices { get; init; }
+
+    // -- Password / recovery gates (RAL-266/RAL-267) ---------------------------
+
+    /// <summary>
+    /// True after an admin or self-service reset — the portal must block everything except
+    /// changing the password until this clears.
+    /// </summary>
+    public bool MustChangePassword { get; init; }
+
+    /// <summary>
+    /// True when this account has no recovery question set yet — the portal must block
+    /// everything except the one-time setup screen until this clears (RAL-266).
+    /// </summary>
+    public bool NeedsRecoverySetup { get; init; }
+
+    /// <summary>
+    /// UTC timestamp of the most recent reset, only when it hasn't been acknowledged yet.
+    /// Null means there is nothing to show — either no reset has happened, or the user
+    /// already dismissed the notice for it. Non-blocking: shown as a dismissible banner,
+    /// not a gate (RAL-267).
+    /// </summary>
+    public DateTime? UnacknowledgedPasswordResetAt { get; init; }
 }

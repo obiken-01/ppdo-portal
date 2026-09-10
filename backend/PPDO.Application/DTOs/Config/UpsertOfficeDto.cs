@@ -5,4 +5,6 @@ public sealed record UpsertOfficeDto(
     string  OfficeCode,
     string  OfficeName,
     bool    IsActive = true,
-    string? OfficeRefCode = null);
+    string? OfficeRefCode = null,
+    /// <summary>Default landing page for this office's users. Null = none (RAL-262).</summary>
+    string? LandingPage = null);

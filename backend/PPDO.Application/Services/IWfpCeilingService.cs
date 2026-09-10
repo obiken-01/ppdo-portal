@@ -6,7 +6,8 @@ namespace PPDO.Application.Services;
 /// Ceiling monitoring for WFP expenditure entry (v1.4 WFP Rework — §8, RAL-122). Two
 /// independent checks, both computed server-side:
 ///   1. AIP budget (per activity): Σ WFP expenditure totals for the activity, across ALL
-///      divisions of the office AND ALL funding sources, vs. the AIP activity's Total × 1000
+///      divisions of the office AND ALL funding sources, vs. the AIP activity's Total — both in
+///      PESOS since V18-35 (PPDO-34); there is no unit conversion left on this path
 ///      (v1.4.3 §2 D3 — stays aggregate; AIP data has no per-fund breakdown to split against).
 ///   2. Division allocation: read from <c>wfp_division_allocation_ledger</c> (never a live
 ///      SUM across wfp_expenditures) — Remaining = DivisionAllocation.Amount − Σ(used_amount

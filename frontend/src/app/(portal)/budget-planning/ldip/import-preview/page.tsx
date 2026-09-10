@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { confirmLdipImport, ldipErrorMessage } from "@/lib/ldip";
 import { useMe } from "@/lib/me-cache";
+import { canOpenLdip, budgetPlanningFallback } from "@/lib/budget-planning-access";
 import { useToast } from "@/components/ui/Toast";
 import type { LdipImportPreviewResponse, LdipSector } from "@/types";
 
@@ -60,10 +61,9 @@ function Chevron({ open }: { open: boolean }) {
 export default function LdipImportPreviewPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const me = useMe(
-    (m) => m.canUploadAip,
-    () => "/budget-planning/ldip"
-  );
+  // PPDO-81 — both grants, and the fallback moved off "/budget-planning/ldip" because that page
+  // now refuses a guest office too and the redirect would bounce twice.
+  const me = useMe((m) => m.canUploadAip && canOpenLdip(m), budgetPlanningFallback);
 
   const [preview, setPreview]           = useState<LdipImportPreviewResponse | null>(null);
   const [meta, setMeta]                 = useState<ImportMeta | null>(null);

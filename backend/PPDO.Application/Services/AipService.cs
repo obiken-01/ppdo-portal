@@ -30,6 +30,14 @@ public sealed class AipService : IAipService
     private readonly IRepository<AipProject>  _projectRepo;
     private readonly IRepository<AipActivity> _activityRepo;
     private readonly ILdipRepository _ldipRepo;
+    private readonly IAllocationRepository _allocationRepo;
+    /// <summary>
+    /// Read-only here, and only ever for <c>FundCodes</c> (PPDO-80). The AIP tree must print the
+    /// form's Funding Source column, and on an entered year that answer lives on the expenditure
+    /// lines rather than on the activity row. Writes to those lines stay in
+    /// <c>AipExpenditureService</c>.
+    /// </summary>
+    private readonly IAipExpenditureRepository _expRepo;
 
     public AipService(
         IAipRepository             aipRepo,
@@ -44,7 +52,9 @@ public sealed class AipService : IAipService
         IRepository<AipProgram>  programRepo,
         IRepository<AipProject>  projectRepo,
         IRepository<AipActivity> activityRepo,
-        ILdipRepository ldipRepo)
+        ILdipRepository ldipRepo,
+        IAllocationRepository allocationRepo,
+        IAipExpenditureRepository expRepo)
     {
         _aipRepo    = aipRepo;
         _fsRepo     = fsRepo;
@@ -59,12 +69,25 @@ public sealed class AipService : IAipService
         _projectRepo      = projectRepo;
         _activityRepo     = activityRepo;
         _ldipRepo         = ldipRepo;
+        _allocationRepo   = allocationRepo;
+        _expRepo          = expRepo;
     }
 
     // ── Read ──────────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// The host office's <see cref="ProgramDivision"/> rows, loaded ONLY when the division axis
+    /// will actually narrow something (V18-39). A guest-office caller can never be narrowed by
+    /// division, so issuing this query for them would be a round trip whose result is discarded.
+    /// </summary>
+    private async Task<IReadOnlyList<ProgramDivision>> LoadHostAssignmentsAsync(
+        AipReadScope scope, CancellationToken ct)
+        => scope.HostOfficeIdForAssignments is int hostOfficeId
+            ? await _allocationRepo.GetProgramDivisionsByOfficeIdAsync(hostOfficeId, ct)
+            : [];
+
     public async Task<IReadOnlyList<AipRecordDto>> GetAllAsync(
-        int? fiscalYear, string? status, CancellationToken ct = default)
+        int? fiscalYear, string? status, User caller, CancellationToken ct = default)
     {
         IEnumerable<AipRecord> q = await _aipRepo.GetAllAsync(ct);
         if (fiscalYear.HasValue) q = q.Where(r => r.FiscalYear == fiscalYear.Value);
@@ -75,7 +98,13 @@ public sealed class AipService : IAipService
 
         // Scope office count to only the AIP ids being returned (not the whole table).
         List<int> aipIds = records.Select(r => r.Id).ToList();
-        IReadOnlyList<AipOffice> offices = await _aipRepo.GetOfficesByAipIdsAsync(aipIds, ct);
+        IReadOnlyList<AipOffice> allOffices = await _aipRepo.GetOfficesByAipIdsAsync(aipIds, ct);
+
+        // ...and then to the offices this caller may see (V18-39). Without it a guest office is
+        // told the record contains 37 offices when it can open exactly one of them — a misleading
+        // count rather than a data leak, but it comes from the same unscoped read.
+        IReadOnlyList<AipOffice> offices = AipReadScope.Resolve(caller).FilterOffices(allOffices);
+
         Dictionary<int, int> officeCounts = offices
             .GroupBy(o => o.AipRecordId)
             .ToDictionary(g => g.Key, g => g.Count());
@@ -88,20 +117,45 @@ public sealed class AipService : IAipService
     }
 
     public async Task<ServiceResult<AipRecordDetailDto>> GetByIdAsync(
-        int id, CancellationToken ct = default)
+        int id, User caller, CancellationToken ct = default)
     {
         AipRecord? rec = await _aipRepo.GetByIntIdAsync(id, ct);
         if (rec is null)
             return ServiceResult<AipRecordDetailDto>.NotFound($"AIP record {id} not found.");
 
         // Load each hierarchy level scoped to the ids from the level above.
-        IReadOnlyList<AipOffice>   offices  = await _aipRepo.GetOfficesByAipIdAsync(id, ct);
+        IReadOnlyList<AipOffice> allOffices = await _aipRepo.GetOfficesByAipIdAsync(id, ct);
+
+        // ⚠️ V18-39 — until this ticket, this endpoint returned EVERY office's full AIP hierarchy
+        // to any caller with Budget Planning access. No production guest-office accounts existed
+        // yet, which is the only reason that was not a live leak.
+        AipReadScope scope = AipReadScope.Resolve(caller);
+        IReadOnlyList<AipOffice> offices = scope.FilterOffices(allOffices);
+
         List<int> officeIds  = offices.Select(o => o.Id).ToList();
-        IReadOnlyList<AipProgram>  programs = await _aipRepo.GetProgramsByOfficeIdsAsync(officeIds, ct);
+        IReadOnlyList<AipProgram> allPrograms = await _aipRepo.GetProgramsByOfficeIdsAsync(officeIds, ct);
+        IReadOnlyList<AipProgram> programs = scope.FilterPrograms(
+            allPrograms, offices, await LoadHostAssignmentsAsync(scope, ct));
         List<int> programIds = programs.Select(p => p.Id).ToList();
         IReadOnlyList<AipProject>  projects = await _aipRepo.GetProjectsByProgramIdsAsync(programIds, ct);
         List<int> projectIds = projects.Select(j => j.Id).ToList();
         IReadOnlyList<AipActivity> acts     = await _aipRepo.GetActivitiesByProjectIdsAsync(projectIds, ct);
+
+        // The form's Funding Source column (7), for every activity in the record, in one query
+        // (PPDO-80). Scoped by record rather than by the id list above: it costs the same, and a
+        // host-office caller's `acts` runs to thousands of ids.
+        //
+        // ⚠️ Sequential await, never Task.WhenAll with the reads above — they share one DbContext,
+        // which is not thread-safe (the GetStatsAsync production 500, CLAUDE.md).
+        IReadOnlyList<AipActivityFundCodeDto> fundRows =
+            await _expRepo.GetFundCodesByAipRecordAsync(id, ct);
+        // Grouped once, not searched per activity: the linear scan would be O(activities × lines).
+        // Absent id means "no funded line", which the lookup below turns into an empty list.
+        Dictionary<int, IReadOnlyList<string>> fundCodes = fundRows
+            .GroupBy(r => r.ActivityId)
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlyList<string>)g.Select(r => r.Code).ToList());
 
         // Build nested DTO hierarchy.
         IReadOnlyList<AipOfficeDto> officeDtos = offices.Select(o =>
@@ -113,13 +167,15 @@ public sealed class AipService : IAipService
                     IReadOnlyList<AipProjectDto> projDtos = projects
                         .Where(j => j.ProgramId == p.Id)
                         .Select(j => new AipProjectDto(j.Id, j.ProgramId, j.RefCode, j.Name,
-                            acts.Where(a => a.ProjectId == j.Id).Select(MapActivityToDto).ToList(),
+                            acts.Where(a => a.ProjectId == j.Id)
+                                .Select(a => MapActivityToDto(a, fundCodes.GetValueOrDefault(a.Id)))
+                                .ToList(),
                             j.IsSynthetic))
                         .ToList();
                     return new AipProgramDto(p.Id, p.OfficeId, p.RefCode, p.Name, projDtos, p.FunctionBand);
                 })
                 .ToList();
-            return new AipOfficeDto(o.Id, o.AipRecordId, o.RefCode, o.Name, o.Sector, progDtos);
+            return new AipOfficeDto(o.Id, o.AipRecordId, o.RefCode, o.Name, o.Sector, o.OfficeId, progDtos);
         }).ToList();
 
         // Drives the frontend's Re-upload button gating — see ReplaceImportAsync's guard below.
@@ -134,15 +190,23 @@ public sealed class AipService : IAipService
     }
 
     public async Task<ServiceResult<AipRecordSummaryDto>> GetSummaryByIdAsync(
-        int id, CancellationToken ct = default)
+        int id, User caller, CancellationToken ct = default)
     {
         AipRecord? rec = await _aipRepo.GetByIntIdAsync(id, ct);
         if (rec is null)
             return ServiceResult<AipRecordSummaryDto>.NotFound($"AIP record {id} not found.");
 
-        IReadOnlyList<AipOffice>   offices  = await _aipRepo.GetOfficesByAipIdAsync(id, ct);
+        // Same two-axis scope as GetByIdAsync — this is the grid the detail page actually renders,
+        // so leaving it unscoped would defeat scoping the heavier sibling (V18-39).
+        AipReadScope scope = AipReadScope.Resolve(caller);
+        IReadOnlyList<AipOffice> offices =
+            scope.FilterOffices(await _aipRepo.GetOfficesByAipIdAsync(id, ct));
+
         List<int> officeIds  = offices.Select(o => o.Id).ToList();
-        IReadOnlyList<AipProgram>  programs = await _aipRepo.GetProgramsByOfficeIdsAsync(officeIds, ct);
+        IReadOnlyList<AipProgram> programs = scope.FilterPrograms(
+            await _aipRepo.GetProgramsByOfficeIdsAsync(officeIds, ct),
+            offices,
+            await LoadHostAssignmentsAsync(scope, ct));
         List<int> programIds = programs.Select(p => p.Id).ToList();
         IReadOnlyList<AipProject>  projects = await _aipRepo.GetProjectsByProgramIdsAsync(programIds, ct);
         List<int> projectIds = projects.Select(j => j.Id).ToList();
@@ -181,6 +245,14 @@ public sealed class AipService : IAipService
         IReadOnlyList<FundingSource> knownFundingSources,
         CancellationToken ct = default)
     {
+        // ⚠️ V18-38 — the freeze's first gate, and the one the user actually meets. The confirm
+        // step below is guarded too and is the guard that counts; this one exists so the refusal
+        // arrives BEFORE a 20 MB workbook is parsed and a preview is built for a year that can
+        // never accept it. Walking someone through preview only to refuse at Confirm is a worse
+        // failure than the upload button being disabled in the first place.
+        if (AipFiscalYears.RefuseUpload(fiscalYear) is string frozen)
+            return ServiceResult<AipImportPreviewDto>.BadRequest(frozen);
+
         Dictionary<string, List<ParsedAipOffice>> parsed;
         try
         {
@@ -263,17 +335,34 @@ public sealed class AipService : IAipService
     public async Task<ServiceResult<AipRecordDto>> ConfirmImportAsync(
         AipImportConfirmDto dto, Guid uploadedById, CancellationToken ct = default)
     {
+        // ⚠️ V18-37/V18-38 — the workbook carries every office in one file, so an import is
+        // legacy-shaped by construction and there is no year from the break on that can accept
+        // one. V18-38 disables the button; this is the server-side half and has to stand on its
+        // own, because a disabled button is a courtesy and not a guard. Placed before the
+        // re-upload branch too: replacing a record's hierarchy from a workbook is just as
+        // shape-bound as creating one, and re-upload is the path that reaches a year the record
+        // did not start in.
+        //
+        // RefuseUpload rather than the general Mismatch: same partition, but Mismatch tells the
+        // caller to choose an office, and an importer cannot — the workbook decides its offices.
+        if (AipFiscalYears.RefuseUpload(dto.FiscalYear) is string frozen)
+            return ServiceResult<AipRecordDto>.BadRequest(frozen);
+
         // Load funding source lookup for snapshot population — needed by both paths below.
         IReadOnlyList<FundingSource> fsList = await _fsRepo.GetAllAsync(ct);
         Dictionary<string, FundingSource> fsDict =
             fsList.ToDictionary(f => f.Code, StringComparer.OrdinalIgnoreCase);
+
+        // Config offices, loaded once, to resolve each uploaded office's ownership FK (V18-32).
+        // Sequential with the read above, not Task.WhenAll — they share one DbContext.
+        IReadOnlyList<Office> configOffices = await _officeConfigRepo.GetAllAsync(ct);
 
         // Re-upload path (RAL-178) — replace an existing record's hierarchy in place.
         // Bypasses the one-active-AIP-per-fiscal-year guard below entirely: that guard exists
         // to stop a SECOND competing record for the year, not the record being replaced (which
         // GetLatestByFiscalYearAsync would otherwise find as a false "conflict" — itself).
         if (dto.TargetRecordId is int targetId)
-            return await ReplaceImportAsync(targetId, dto, fsDict, ct);
+            return await ReplaceImportAsync(targetId, dto, fsDict, configOffices, ct);
 
         // Guard: only one active (Draft or Final) AIP per fiscal year.
         AipRecord? conflict = await _aipRepo.GetLatestByFiscalYearAsync(dto.FiscalYear, ct);
@@ -303,7 +392,7 @@ public sealed class AipService : IAipService
             UploadedAt       = now,
             Status           = PlanningStatus.Draft,
             LdipId           = dto.LdipId,
-            Offices          = BuildOffices(dto.SectorOffices, fsDict),
+            Offices          = BuildOffices(dto.SectorOffices, fsDict, configOffices),
         };
 
         await _aipRepo.AddAsync(aipRecord, ct);
@@ -329,7 +418,8 @@ public sealed class AipService : IAipService
     /// Logged as an Update (not a Create).
     /// </summary>
     private async Task<ServiceResult<AipRecordDto>> ReplaceImportAsync(
-        int targetId, AipImportConfirmDto dto, Dictionary<string, FundingSource> fsDict, CancellationToken ct)
+        int targetId, AipImportConfirmDto dto, Dictionary<string, FundingSource> fsDict,
+        IReadOnlyList<Office> configOffices, CancellationToken ct)
     {
         AipRecord? rec = await _aipRepo.GetByIntIdAsync(targetId, ct);
         if (rec is null)
@@ -358,7 +448,7 @@ public sealed class AipService : IAipService
         rec.FiscalYear       = dto.FiscalYear;
         rec.OriginalFilename = dto.OriginalFilename;
         rec.UploadedAt       = DateTime.UtcNow;
-        rec.Offices          = BuildOffices(dto.SectorOffices, fsDict);
+        rec.Offices          = BuildOffices(dto.SectorOffices, fsDict, configOffices);
 
         await _aipRepo.UpdateAsync(rec, ct);
         await _aipRepo.SaveChangesAsync(ct);
@@ -371,8 +461,15 @@ public sealed class AipService : IAipService
         return ServiceResult<AipRecordDto>.Ok(MapToDto(rec));
     }
 
+    /// <summary>
+    /// ⚠️ <paramref name="offices"/> is what sets <see cref="AipOffice.OfficeId"/> (V18-32). Without
+    /// it every uploaded office row lands unowned, and an unowned row is invisible to every scoped
+    /// read — the office's own AIP would simply not appear, with no error anywhere.
+    /// </summary>
     private static List<AipOffice> BuildOffices(
-        Dictionary<string, List<ParsedAipOfficeDto>> sectorOffices, Dictionary<string, FundingSource> fsDict) =>
+        Dictionary<string, List<ParsedAipOfficeDto>> sectorOffices,
+        Dictionary<string, FundingSource> fsDict,
+        IReadOnlyList<Office> offices) =>
         sectorOffices
             .SelectMany(kvp => kvp.Value)
             .Select(officeDto => new AipOffice
@@ -380,24 +477,53 @@ public sealed class AipService : IAipService
                 RefCode  = officeDto.RefCode,
                 Name     = officeDto.Name,
                 Sector   = officeDto.Sector,
+                OfficeId = AipOfficeOwnership.ResolveOfficeId(officeDto.RefCode, offices),
                 Programs = BuildPrograms(officeDto.Programs, fsDict),
             }).ToList();
 
     // ── Manual entry (RAL-62) — one node at a time ────────────────────────────
 
-    public async Task<ServiceResult<AipRecordDto>> CreateManualRecordAsync(
-        CreateAipRecordDto dto, Guid createdById, CancellationToken ct = default)
+    /// <summary>
+    /// Opens a fiscal year (V18-41 / PPDO-62): creates the single base <see cref="AipRecord"/> that
+    /// holds every office, and populates each active office's programs from that office's own LDIP.
+    /// Offices then build their own subtree.
+    ///
+    /// <para>
+    /// ↩️ Was <c>CreateManualRecordAsync</c>, renamed because the semantics changed materially. It
+    /// used to create an empty record and nothing else; the population is the point now, and a
+    /// method called "create manual record" would understate what pressing the button does.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ <b>The skipped-office list is a real output, not a nicety.</b> An office silently absent
+    /// from the base record cannot build its AIP and has no way to discover why — it simply opens
+    /// the page and finds nothing. The caller must surface it.
+    /// </para>
+    ///
+    /// <para>
+    /// ℹ️ The Admin-only rule is enforced at the endpoint as a ROLE check, the same way
+    /// <c>AipUnlock</c>, <c>LdipUnlock</c> and <c>WfpUnlock</c> do it. It is deliberately not an
+    /// <c>IPermissionService</c> flag: flags carry per-user overrides and a
+    /// <c>Permission_Matrix.md</c> row, and this has neither.
+    /// </para>
+    /// </summary>
+    public async Task<ServiceResult<OpenAipFiscalYearResultDto>> OpenFiscalYearAsync(
+        OpenAipFiscalYearDto dto, Guid createdById, CancellationToken ct = default)
     {
-        // Same guard as ConfirmImportAsync's create path — one active AIP per fiscal year,
-        // regardless of whether it originated from an upload or manual entry.
+        // ⚠️ ONE base record per fiscal year (PPDO-61). V18-40 had to scope this question per
+        // office; with one record per year that scoping would be actively wrong, since a second
+        // record for a year that already has one is exactly what must be refused.
+        //
+        // ⚠️ Archived never counts. GetLatestByFiscalYearAsync filters it out, so a year whose only
+        // record was archived can be opened again — which is how a botched open is recovered.
         AipRecord? conflict = await _aipRepo.GetLatestByFiscalYearAsync(dto.FiscalYear, ct);
         if (conflict is not null)
         {
             string hint = conflict.Status == PlanningStatus.Draft
-                ? "Archive the existing record first before creating a new one."
+                ? "Archive the existing record first before opening the year again."
                 : "The existing record must be unlocked by an admin before a new one is allowed.";
-            return ServiceResult<AipRecordDto>.BadRequest(
-                $"An AIP for FY {dto.FiscalYear} already exists with status '{conflict.Status}'. {hint}");
+            return ServiceResult<OpenAipFiscalYearResultDto>.BadRequest(
+                $"FY {dto.FiscalYear} is already open, with status '{conflict.Status}'. {hint}");
         }
 
         AipRecord rec = new()
@@ -410,14 +536,76 @@ public sealed class AipService : IAipService
         };
         await _aipRepo.AddAsync(rec, ct);
         await _aipRepo.SaveChangesAsync(ct);
-        await _audit.LogAsync("aip_records", rec.Id, AuditAction.Create,
-            null, new { rec.FiscalYear, rec.EntrySource, rec.Status }, ct);
 
-        return ServiceResult<AipRecordDto>.Ok(MapToDto(rec));
+        // ── Populate every office from its own LDIP ──────────────────────────────
+        IReadOnlyList<Office> offices = await _officeConfigRepo.GetAllAsync(ct);
+        List<AipOffice> created = [];
+        List<string> withoutLdip = [];
+
+        foreach (Office office in offices.Where(o => o.IsActive).OrderBy(o => o.OfficeName))
+        {
+            bool anySector = false;
+
+            foreach ((string sector, string prefix) in AipSector.Prefixes)
+            {
+                // ⚠️ ALL groups for the sector, one AipOffice each — not the first one. The LDIP
+                // already carries the sub-office grouping (PGO's SOCIAL sector really does hold
+                // WARDEN, AKAP-HUB, HOUSING and LOCAL SCHOOL BOARD), and seeding one of them is
+                // what made the other three's programs unreachable from the entry page. Following
+                // the LDIP here is also what removes the need for an encoder to invent a group
+                // during entry at all.
+                IReadOnlyList<LdipOffice> groups =
+                    await ResolveLdipGroupsAsync(office, sector, prefix, ct);
+
+                foreach (LdipOffice group in groups)
+                {
+                    if (group.Programs.Count == 0) continue;
+
+                    anySector = true;
+                    created.Add(new AipOffice
+                    {
+                        AipRecordId = rec.Id,
+                        // ⚠️ The ownership FK. AipReadScope filters on it, so a null here means the
+                        // office opens its own AIP and sees nothing — no error, just absence. After
+                        // PPDO-61 this column is the ONLY carrier of office identity (PPDO-60).
+                        OfficeId    = office.Id,
+                        RefCode     = group.RefCode,
+                        Name        = group.Name,
+                        Sector      = sector.ToUpperInvariant(),
+                        // Bare shells: Name + RefCode only. No amounts — LdipProgram.Budget is a
+                        // MULTI-YEAR total across FiscalYearStart..End, not a single-FY figure, so
+                        // copying it would seed every activity with a number that means something else.
+                        Programs    = group.Programs.Select(lp => new AipProgram
+                        {
+                            RefCode      = lp.RefCode,
+                            Name         = lp.Name,
+                            FunctionBand = AipFunctionBand.Core,
+                        }).ToList(),
+                    });
+                }
+            }
+
+            if (!anySector) withoutLdip.Add(office.OfficeName);
+        }
+
+        foreach (AipOffice office in created)
+            await _officeRepo.AddAsync(office, ct);
+        if (created.Count > 0)
+            await _officeRepo.SaveChangesAsync(ct);
+
+        await _audit.LogAsync("aip_records", rec.Id, AuditAction.Create, null, new
+        {
+            rec.FiscalYear, rec.EntrySource, rec.Status,
+            OfficesPopulated  = created.Count,
+            OfficesWithoutLdip = withoutLdip,
+        }, ct);
+
+        return ServiceResult<OpenAipFiscalYearResultDto>.Ok(new OpenAipFiscalYearResultDto(
+            MapToDto(rec), created.Count, withoutLdip));
     }
 
     public async Task<ServiceResult<AipOfficeDto>> AddOfficeAsync(
-        int aipRecordId, CreateAipOfficeDto dto, CancellationToken ct = default)
+        int aipRecordId, CreateAipOfficeDto dto, User caller, CancellationToken ct = default)
     {
         AipRecord? rec = await _aipRepo.GetByIntIdAsync(aipRecordId, ct);
         if (rec is null)
@@ -433,6 +621,27 @@ public sealed class AipService : IAipService
         Office? office = await _officeConfigRepo.GetByIdAsync(dto.OfficeConfigId, ct);
         if (office is null || !office.IsActive)
             return ServiceResult<AipOfficeDto>.NotFound($"Office {dto.OfficeConfigId} not found or inactive.");
+
+        // Ownership is decided by the office the caller ASKED to add, not by a node's parent —
+        // this creates the node, so there is nothing to walk up from yet. Same NotFound as an
+        // office that does not exist, for the reason on CheckWritableAsync.
+        if (!OfficeScope.Resolve(caller).Permits(office.Id))
+            return ServiceResult<AipOfficeDto>.NotFound($"Office {dto.OfficeConfigId} not found or inactive.");
+
+        // ⚠️ V18-37 — the other door into a shape change, and the one no create-path gate can see.
+        // Nothing here "converts" a record, but add two different offices to an office-owned record
+        // and it spans several, which IS the legacy shape, reached a node at a time.
+        //
+        // The scope check above does not cover this: it stops a GUEST office reaching another
+        // office's record and says nothing about the host-office admin, who legitimately sees every
+        // office and would otherwise be free to do exactly this. BadRequest rather than the
+        // NotFound used just above — that one hides existence; this caller may see the record and
+        // is being told the operation is wrong for its shape.
+        // ⚠️ V18-37's foreign-office gate was removed here (PPDO-61). It refused adding a second
+        // office to an office-owned record, because two offices under one record WAS the legacy
+        // shape reached a node at a time. With one base record per year holding every office, that
+        // is now the normal and required case — the gate would block the model itself.
+
         if (string.IsNullOrWhiteSpace(office.OfficeRefCode))
             return ServiceResult<AipOfficeDto>.BadRequest(
                 $"Office '{office.OfficeName}' has no AIP reference code configured. Set it in Office Config first.");
@@ -465,208 +674,164 @@ public sealed class AipService : IAipService
 
         return ServiceResult<AipOfficeDto>.Ok(
             new AipOfficeDto(entity.Id, entity.AipRecordId, entity.RefCode, entity.Name, entity.Sector,
-                Array.Empty<AipProgramDto>()));
+                entity.OfficeId, Array.Empty<AipProgramDto>()));
     }
 
-    public async Task<ServiceResult<AipOfficeDto>> CopyOfficeFromPriorYearAsync(
-        CopyAipOfficeDto dto, Guid createdById, CancellationToken ct = default)
+    /// <summary>
+    /// <b>Every</b> <see cref="LdipOffice"/> group an office's AIP programs may come from for one
+    /// sector, resolved in two tiers, or empty when that office has no LDIP for the sector.
+    ///
+    /// <para>
+    /// ⚠️ <b>A sector holds SEVERAL groups, and returning one of them silently loses the rest.</b>
+    /// ↩️ This method used to return a single <c>LdipOffice?</c> via <c>FirstOrDefault</c>, and
+    /// <see cref="LdipOffice"/>'s own summary has always said the opposite: <i>"A sector may hold
+    /// MULTIPLE groups sharing that same ref code, distinguished by Name"</i>. Because every caller
+    /// below went through here, opening a fiscal year seeded only the first group per sector and
+    /// the picker could not offer the others either — so the dropped programs were unreachable
+    /// from every direction, with no error anywhere. On the province's real LDIP that lost 19
+    /// programs across 5 groups: <c>OFFICE OF THE GOVERNOR - AKAP-HUB</c>, <c>- HOUSING</c> and
+    /// <c>- LOCAL SCHOOL BOARD</c> (only <c>- WARDEN</c> survived), <c>- ABE</c> and <c>- PCDO</c>
+    /// (only <c>- TOURISM</c>), and <c>OPA - PESO</c> (only <c>- LEDIPO</c>). Reported from a live
+    /// PGO login as "the programs under AKAP are not displayed".
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ <b>Groups come from ONE source record, never merged across records.</b> Both tiers stop
+    /// at the first record that yields any match and return all of that record's matches. Unioning
+    /// across records would let an archived-then-superseded document contribute rows beside a
+    /// current one, and the caller could not tell which document it was looking at — which is the
+    /// question <c>AipAddableProgramsDto.LdipRefCode</c> exists to answer.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>Tier 1 — the office's own LDIP records</b> (<c>LdipRecord.OfficeId</c> = this office;
+    /// entry modes New/Amendment/Supplemental). Scan non-Archived records newest-first for sector
+    /// group matches. Sector text match is safe here because a record scoped to one office only
+    /// ever returns groups belonging to that office.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>Tier 2 — multi-office Upload records</b> (<c>LdipRecord.OfficeId</c> null — one document
+    /// spans every office, RAL-165). These never surface via Tier 1's office-scoped query, so an
+    /// office with no dedicated record of its own (its only LDIP archived, say) would otherwise
+    /// never find real historical data the bulk document does contain. ⚠️ Sector text alone cannot
+    /// disambiguate inside a multi-office document — many offices share "General" — so this tier
+    /// matches on the office's own computed AIP ref code, the same unambiguous identity every
+    /// <c>AipOffice</c>/<c>LdipOffice</c> RefCode already carries.
+    /// </para>
+    ///
+    /// <para>
+    /// ℹ️ Extracted from <c>SeedProgramsFromLdipAsync</c> by PPDO-62 so the year-opening path uses
+    /// the identical resolution rather than a second copy that drifts. The frontend's seed panel
+    /// mirrors it a third time, which is a known duplication, not a new one.
+    /// </para>
+    /// </summary>
+    private async Task<IReadOnlyList<LdipOffice>> ResolveLdipGroupsAsync(
+        Office office, string sector, string prefix, CancellationToken ct)
     {
-        if (dto.ProgramIds is null || dto.ProgramIds.Count == 0)
-            return ServiceResult<AipOfficeDto>.BadRequest("Select at least one program to copy.");
-
-        AipOffice? sourceOffice = await _aipRepo.GetOfficeByIdAsync(dto.SourceOfficeId, ct);
-        if (sourceOffice is null)
-            return ServiceResult<AipOfficeDto>.NotFound($"AIP office {dto.SourceOfficeId} not found.");
-
-        // Every requested program must actually belong to the source office.
-        IReadOnlyList<AipProgram> sourcePrograms =
-            await _aipRepo.GetProgramsByOfficeIdsAsync([dto.SourceOfficeId], ct);
-        Dictionary<int, AipProgram> sourceProgramsById = sourcePrograms.ToDictionary(p => p.Id);
-        List<int> unknownIds = dto.ProgramIds.Where(id => !sourceProgramsById.ContainsKey(id)).ToList();
-        if (unknownIds.Count > 0)
-            return ServiceResult<AipOfficeDto>.BadRequest(
-                $"Program id(s) {string.Join(", ", unknownIds)} do not belong to office {dto.SourceOfficeId}.");
-
-        List<AipProgram> programsToCopy = dto.ProgramIds.Select(id => sourceProgramsById[id]).ToList();
-
-        // Find-or-create the target AipRecord. Unlike CreateManualRecordAsync (which rejects
-        // outright if any active record exists), carry-forward specifically targets an existing
-        // Draft Manual record if one is already there — only creates fresh when none exists.
-        AipRecord? targetRecord = await _aipRepo.GetLatestByFiscalYearAsync(dto.TargetFiscalYear, ct);
-        bool creatingRecord = targetRecord is null;
-        if (targetRecord is not null
-            && (targetRecord.EntrySource != "Manual" || targetRecord.Status != PlanningStatus.Draft))
+        IReadOnlyList<LdipRecord> ownRecords = await _ldipRepo.GetListAsync(office.Id, null, ct);
+        foreach (LdipRecord ldipRecord in ownRecords.Where(r => r.Status != PlanningStatus.Archived))
         {
-            return ServiceResult<AipOfficeDto>.BadRequest(
-                $"An AIP for FY {dto.TargetFiscalYear} already exists (entry source " +
-                $"'{targetRecord.EntrySource}', status '{targetRecord.Status}'). Carry-forward " +
-                "requires a Draft Manual-entry record for the target year.");
-        }
-
-        if (creatingRecord)
-        {
-            targetRecord = new AipRecord
-            {
-                FiscalYear   = dto.TargetFiscalYear,
-                EntrySource  = "Manual",
-                UploadedById = createdById,
-                UploadedAt   = DateTime.UtcNow,
-                Status       = PlanningStatus.Draft,
-            };
-            await _aipRepo.AddAsync(targetRecord, ct);
-            await _aipRepo.SaveChangesAsync(ct);
-        }
-
-        // Find-or-create the target AipOffice — same RefCode as the source office. RefCode is
-        // year-independent (derived from sector prefix + the config Office's OfficeRefCode), so
-        // reusing it verbatim is correct, not a coincidence.
-        IReadOnlyList<AipOffice> targetOffices = await _aipRepo.GetOfficesByAipIdAsync(targetRecord!.Id, ct);
-        AipOffice? targetOffice = targetOffices.FirstOrDefault(o => o.RefCode == sourceOffice.RefCode);
-        bool creatingOffice = targetOffice is null;
-
-        // Collision guard — reject the whole request if any selected program's RefCode already
-        // exists under the target office (already carried forward once). Never silently skip.
-        if (!creatingOffice)
-        {
-            IReadOnlyList<AipProgram> existingTargetPrograms =
-                await _aipRepo.GetProgramsByOfficeIdsAsync([targetOffice!.Id], ct);
-            List<string> collisions = programsToCopy
-                .Select(p => p.RefCode)
-                .Intersect(existingTargetPrograms.Select(p => p.RefCode))
+            IReadOnlyList<LdipOffice> groups = await _ldipRepo.GetOfficeGroupsAsync(ldipRecord.Id, ct);
+            List<LdipOffice> matches = groups
+                .Where(g => g.Sector.Equals(sector, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(g => g.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
-            if (collisions.Count > 0)
-                return ServiceResult<AipOfficeDto>.BadRequest(
-                    "The following program ref codes are already copied into this office: " +
-                    string.Join(", ", collisions) + ".");
+            if (matches.Count > 0) return matches;
         }
 
-        // Load the full subtree under the selected programs.
-        List<int> programIdsToCopy = programsToCopy.Select(p => p.Id).ToList();
-        IReadOnlyList<AipProject> sourceProjects =
-            await _aipRepo.GetProjectsByProgramIdsAsync(programIdsToCopy, ct);
-        List<int> sourceProjectIds = sourceProjects.Select(j => j.Id).ToList();
-        IReadOnlyList<AipActivity> sourceActivities =
-            await _aipRepo.GetActivitiesByProjectIdsAsync(sourceProjectIds, ct);
+        if (string.IsNullOrWhiteSpace(office.OfficeRefCode)) return [];
 
-        // Clone Program -> Projects -> Activities with fresh identity throughout. IsCreation
-        // resets to false — it's captured during WFP data entry, not an AIP-import-time fact,
-        // so it must not silently carry over from last year's WFP decisions (RAL-180 acceptance
-        // criteria). IsSynthetic is copied as-is since it reflects structural shape from the
-        // original import, not a WFP decision.
-        List<AipProgram> clonedPrograms = programsToCopy.Select(p => new AipProgram
+        string expectedRefCode = $"{prefix}-000-1-{office.OfficeRefCode}";
+        IReadOnlyList<LdipRecord> allRecords = await _ldipRepo.GetListAsync(null, null, ct);
+        foreach (LdipRecord ldipRecord in allRecords.Where(r => r.OfficeId is null && r.Status != PlanningStatus.Archived))
         {
-            RefCode      = p.RefCode,
-            Name         = p.Name,
-            FunctionBand = p.FunctionBand,
-            Projects = sourceProjects.Where(j => j.ProgramId == p.Id).Select(j => new AipProject
-            {
-                RefCode     = j.RefCode,
-                Name        = j.Name,
-                IsSynthetic = j.IsSynthetic,
-                Activities = sourceActivities.Where(a => a.ProjectId == j.Id).Select(a => new AipActivity
-                {
-                    RefCode               = a.RefCode,
-                    Name                  = a.Name,
-                    EsreCode              = a.EsreCode,
-                    ImplementingOffice    = a.ImplementingOffice,
-                    StartDate             = a.StartDate,
-                    EndDate               = a.EndDate,
-                    ExpectedOutputs       = a.ExpectedOutputs,
-                    FundingSourceId       = a.FundingSourceId,
-                    FundingSourceSnapshot = a.FundingSourceSnapshot,
-                    Ps                    = a.Ps,
-                    Mooe                  = a.Mooe,
-                    Co                    = a.Co,
-                    Total                 = a.Total,
-                    CcAdaptation          = a.CcAdaptation,
-                    CcMitigation          = a.CcMitigation,
-                    CcTypologyCode        = a.CcTypologyCode,
-                    IsCreation            = false,
-                    IsSynthetic           = a.IsSynthetic,
-                }).ToList(),
-            }).ToList(),
-        }).ToList();
-
-        if (creatingOffice)
-        {
-            targetOffice = new AipOffice
-            {
-                AipRecordId = targetRecord.Id,
-                RefCode     = sourceOffice.RefCode,
-                Name        = sourceOffice.Name,
-                Sector      = sourceOffice.Sector,
-                Programs    = clonedPrograms,
-            };
-            await _officeRepo.AddAsync(targetOffice, ct);
-            await _officeRepo.SaveChangesAsync(ct);
-        }
-        else
-        {
-            // Office already exists — queue each cloned program (with its nested subtree) and
-            // flush them together in one SaveChangesAsync, so an N-program copy is one transaction.
-            foreach (AipProgram program in clonedPrograms)
-            {
-                program.OfficeId = targetOffice!.Id;
-                await _programRepo.AddAsync(program, ct);
-            }
-            await _programRepo.SaveChangesAsync(ct);
+            IReadOnlyList<LdipOffice> groups = await _ldipRepo.GetOfficeGroupsAsync(ldipRecord.Id, ct);
+            List<LdipOffice> matches = groups
+                .Where(g => g.RefCode.Equals(expectedRefCode, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(g => g.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (matches.Count > 0) return matches;
         }
 
-        await _audit.LogAsync("aip_offices", targetOffice!.Id, AuditAction.Create, null, new
-        {
-            targetOffice.AipRecordId,
-            targetOffice.RefCode,
-            targetOffice.Name,
-            SourceAipOfficeId = dto.SourceOfficeId,
-            SourceAipRecordId = sourceOffice.AipRecordId,
-            CopiedProgramIds  = dto.ProgramIds,
-        }, ct);
+        return [];
+    }
 
-        // Build the response from the target office's COMPLETE current program list — not just
-        // clonedPrograms. The frontend replaces the whole office node in its tree with this
-        // response; if the office already existed and the response only carried the newly-added
-        // slice, its pre-existing programs would silently vanish from the UI. A brand-new office
-        // has no pre-existing programs, so clonedPrograms (already fully populated in memory) is
-        // already the complete list there — no need to round-trip through the repository.
-        IReadOnlyList<AipProgramDto> programDtos;
-        if (creatingOffice)
-        {
-            programDtos = clonedPrograms.Select(p => new AipProgramDto(
-                p.Id, targetOffice.Id, p.RefCode, p.Name,
-                p.Projects.Select(j => new AipProjectDto(
-                    j.Id, p.Id, j.RefCode, j.Name,
-                    j.Activities.Select(MapActivityToDto).ToList(),
-                    j.IsSynthetic)).ToList(),
-                p.FunctionBand)).ToList();
-        }
-        else
-        {
-            IReadOnlyList<AipProgram> allTargetPrograms =
-                await _aipRepo.GetProgramsByOfficeIdsAsync([targetOffice.Id], ct);
-            List<int> allTargetProgramIds = allTargetPrograms.Select(p => p.Id).ToList();
-            IReadOnlyList<AipProject> allTargetProjects =
-                await _aipRepo.GetProjectsByProgramIdsAsync(allTargetProgramIds, ct);
-            List<int> allTargetProjectIds = allTargetProjects.Select(j => j.Id).ToList();
-            IReadOnlyList<AipActivity> allTargetActivities =
-                await _aipRepo.GetActivitiesByProjectIdsAsync(allTargetProjectIds, ct);
+    /// <summary>
+    /// The one group among <paramref name="groups"/> that owns every requested LDIP program id, or
+    /// a refusal naming what went wrong.
+    ///
+    /// <para>
+    /// ⚠️ <b>The group is derived from the programs, never named by the caller.</b> Sub-office
+    /// grouping is already settled in the LDIP, so asking an encoder to retype a group name during
+    /// AIP entry invites a block that does not match the document it came from. The programs
+    /// already carry the answer.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ A selection spanning two groups is <b>refused, not split</b>. Each group is a separate
+    /// printed office row with its own shaded subtotal, so silently fanning one request into two
+    /// rows would create structure the encoder did not ask for and cannot see.
+    /// </para>
+    /// </summary>
+    private static ServiceResult<LdipOffice> ResolveRequestedGroup(
+        IReadOnlyList<LdipOffice> groups, IReadOnlyList<int> ldipProgramIds, string sector)
+    {
+        Dictionary<int, LdipOffice> ownerByProgramId = groups
+            .SelectMany(g => g.Programs.Select(p => (p.Id, Group: g)))
+            .ToDictionary(x => x.Id, x => x.Group);
 
-            programDtos = allTargetPrograms.Select(p => new AipProgramDto(
-                p.Id, targetOffice.Id, p.RefCode, p.Name,
-                allTargetProjects.Where(j => j.ProgramId == p.Id).Select(j => new AipProjectDto(
-                    j.Id, p.Id, j.RefCode, j.Name,
-                    allTargetActivities.Where(a => a.ProjectId == j.Id).Select(MapActivityToDto).ToList(),
-                    j.IsSynthetic)).ToList(),
-                p.FunctionBand)).ToList();
-        }
+        List<int> unknownIds = ldipProgramIds.Where(id => !ownerByProgramId.ContainsKey(id)).ToList();
+        if (unknownIds.Count > 0)
+            return ServiceResult<LdipOffice>.BadRequest(
+                $"LDIP program id(s) {string.Join(", ", unknownIds)} do not belong to this office's "
+                + $"{sector} LDIP.");
 
-        return ServiceResult<AipOfficeDto>.Ok(
-            new AipOfficeDto(targetOffice.Id, targetOffice.AipRecordId, targetOffice.RefCode,
-                targetOffice.Name, targetOffice.Sector, programDtos));
+        List<LdipOffice> distinct = ldipProgramIds
+            .Select(id => ownerByProgramId[id]).Distinct().ToList();
+
+        if (distinct.Count > 1)
+            return ServiceResult<LdipOffice>.BadRequest(
+                "The selected programs come from different sub-office groups ("
+                + string.Join(", ", distinct.Select(g => g.Name).Order(StringComparer.OrdinalIgnoreCase))
+                + "). Each group is its own row on the AIP form, so add them one group at a time.");
+
+        return ServiceResult<LdipOffice>.Ok(distinct[0]);
     }
 
     public async Task<ServiceResult<AipOfficeDto>> SeedProgramsFromLdipAsync(
-        SeedAipProgramsFromLdipDto dto, Guid createdById, CancellationToken ct = default)
+        SeedAipProgramsFromLdipDto dto, Guid createdById, User caller, CancellationToken ct = default)
     {
+        // ⚠️ PPDO-61 (2026-09-05): the shape branch that used to sit here is gone. V18-37 refused
+        // the break year outright because this path builds an unowned record; V18-41 then made it
+        // build an office-owned one for FY≥2028. Both are moot — there is one shape, and an
+        // unowned record is now correct in every year.
+        //
+        // ℹ️ PPDO-62 turns this method into a RE-SYNC: it will require the year to already be open
+        // rather than find-or-creating the record below, and add only programs not already present.
+        // Until then it keeps the find-or-create it has always had.
+
+        // ⚠️ FIRST, before any LDIP work. Found by live-testing: with this check further down, a
+        // caller targeting an unopened year got "LDIP program id(s) 1 do not belong to this
+        // office's GENERAL LDIP" — true, but it sends them to fix program ids when the actual
+        // problem is that nobody has opened the year. Same ordering rule V18-37 applied when it put
+        // its shape check above the office lookup.
+        AipRecord? targetRecord = await _aipRepo.GetLatestByFiscalYearAsync(dto.TargetFiscalYear, ct);
+
+        if (targetRecord is null)
+            return ServiceResult<AipOfficeDto>.BadRequest(
+                $"FY {dto.TargetFiscalYear} has not been opened yet. An administrator opens the "
+                + "fiscal year, which creates the AIP and populates every office's programs from "
+                + "its LDIP.");
+
+        if (targetRecord.EntrySource != "Manual" || targetRecord.Status != PlanningStatus.Draft)
+        {
+            return ServiceResult<AipOfficeDto>.BadRequest(
+                $"The FY {dto.TargetFiscalYear} AIP is not open for editing (entry source " +
+                $"'{targetRecord.EntrySource}', status '{targetRecord.Status}'). Syncing from LDIP " +
+                "requires a Draft Manual-entry record for that year.");
+        }
+
         if (dto.LdipProgramIds is null || dto.LdipProgramIds.Count == 0)
             return ServiceResult<AipOfficeDto>.BadRequest("Select at least one program to seed.");
 
@@ -679,89 +844,46 @@ public sealed class AipService : IAipService
         if (office is null || !office.IsActive)
             return ServiceResult<AipOfficeDto>.NotFound($"Office {dto.OfficeConfigId} not found or inactive.");
 
-        // Resolve the matching LdipOffice in two tiers:
-        //
-        // Tier 1 — this office's own LDIP records (LdipRecord.OfficeId = this office; entry modes
-        // New/Amendment/Supplemental). Scan non-Archived records newest-first for the first sector
-        // group match. Sector text match is safe here because GetOfficeGroupsAsync for one of these
-        // records only ever returns groups that already belong to this one office.
-        //
-        // Tier 2 — multi-office Upload records (LdipRecord.OfficeId is null — one document spans
-        // every office, RAL-165/LdipService.ConfirmImportAsync). These never surface via Tier 1's
-        // office-scoped query at all, so an office with no Tier-1 record of its own (e.g. its only
-        // dedicated LDIP was archived) would otherwise never find real historical LDIP data even
-        // though the bulk-uploaded document contains it. Sector text alone isn't enough to pick the
-        // right group out of a multi-office document (many offices share "General"), so match by
-        // this office's own computed AIP ref code instead — the same unambiguous identity every
-        // AipOffice/LdipOffice RefCode already carries.
-        LdipOffice? sourceGroup = null;
-        IReadOnlyList<LdipRecord> ownRecords = await _ldipRepo.GetListAsync(dto.OfficeConfigId, null, ct);
-        foreach (LdipRecord ldipRecord in ownRecords.Where(r => r.Status != PlanningStatus.Archived))
-        {
-            IReadOnlyList<LdipOffice> groups = await _ldipRepo.GetOfficeGroupsAsync(ldipRecord.Id, ct);
-            sourceGroup = groups.FirstOrDefault(g => g.Sector.Equals(dto.Sector, StringComparison.OrdinalIgnoreCase));
-            if (sourceGroup is not null) break;
-        }
+        IReadOnlyList<LdipOffice> candidateGroups =
+            await ResolveLdipGroupsAsync(office, sector, prefix, ct);
 
-        if (sourceGroup is null && !string.IsNullOrWhiteSpace(office.OfficeRefCode))
-        {
-            string expectedRefCode = $"{prefix}-000-1-{office.OfficeRefCode}";
-            IReadOnlyList<LdipRecord> allRecords = await _ldipRepo.GetListAsync(null, null, ct);
-            IEnumerable<LdipRecord> multiOfficeRecords = allRecords
-                .Where(r => r.OfficeId is null && r.Status != PlanningStatus.Archived);
-            foreach (LdipRecord ldipRecord in multiOfficeRecords)
-            {
-                IReadOnlyList<LdipOffice> groups = await _ldipRepo.GetOfficeGroupsAsync(ldipRecord.Id, ct);
-                sourceGroup = groups.FirstOrDefault(
-                    g => g.RefCode.Equals(expectedRefCode, StringComparison.OrdinalIgnoreCase));
-                if (sourceGroup is not null) break;
-            }
-        }
-
-        if (sourceGroup is null)
+        if (candidateGroups.Count == 0)
             return ServiceResult<AipOfficeDto>.BadRequest(
                 $"'{office.OfficeName}' has no LDIP for the {sector} sector.");
 
-        // Every requested LDIP program must actually belong to the resolved group.
+        // Every requested LDIP program must actually belong to the resolved office, and all of them
+        // to one of its groups — the same rule AddProgramsWithGroupAsync applies, from the same
+        // helper. A sector holds several groups, so "the resolved group" is only meaningful once
+        // the programs have picked one.
+        ServiceResult<LdipOffice> groupResult =
+            ResolveRequestedGroup(candidateGroups, dto.LdipProgramIds, sector);
+        if (!groupResult.IsSuccess)
+            return ServiceResult<AipOfficeDto>.BadRequest(groupResult.Error!);
+
+        LdipOffice sourceGroup = groupResult.Value!;
         Dictionary<int, LdipProgram> sourceProgramsById = sourceGroup.Programs.ToDictionary(p => p.Id);
-        List<int> unknownIds = dto.LdipProgramIds.Where(id => !sourceProgramsById.ContainsKey(id)).ToList();
-        if (unknownIds.Count > 0)
-            return ServiceResult<AipOfficeDto>.BadRequest(
-                $"LDIP program id(s) {string.Join(", ", unknownIds)} do not belong to this office's " +
-                $"{sector} LDIP.");
 
         List<LdipProgram> programsToSeed = dto.LdipProgramIds.Select(id => sourceProgramsById[id]).ToList();
 
-        // Find-or-create the target AipRecord — identical rule to CopyOfficeFromPriorYearAsync.
-        AipRecord? targetRecord = await _aipRepo.GetLatestByFiscalYearAsync(dto.TargetFiscalYear, ct);
-        bool creatingRecord = targetRecord is null;
-        if (targetRecord is not null
-            && (targetRecord.EntrySource != "Manual" || targetRecord.Status != PlanningStatus.Draft))
-        {
-            return ServiceResult<AipOfficeDto>.BadRequest(
-                $"An AIP for FY {dto.TargetFiscalYear} already exists (entry source " +
-                $"'{targetRecord.EntrySource}', status '{targetRecord.Status}'). Seeding from LDIP " +
-                "requires a Draft Manual-entry record for the target year.");
-        }
+        // ↩️ PPDO-62: this is a RE-SYNC now, not a create path. The year must already be open —
+        // an Admin opens it, which populates every office from its LDIP in one action. What is left
+        // for this method is the case that action cannot cover: a program added to an office's LDIP
+        // AFTER the year was opened has no other way in.
+        //
+        // ⚠️ It deliberately no longer find-or-creates the record. Side-effect record creation is
+        // what made the missing year-opening model hard to see in the first place, and it is how
+        // a base record could appear without anyone intending to create one.
 
-        if (creatingRecord)
-        {
-            targetRecord = new AipRecord
-            {
-                FiscalYear   = dto.TargetFiscalYear,
-                EntrySource  = "Manual",
-                UploadedById = createdById,
-                UploadedAt   = DateTime.UtcNow,
-                Status       = PlanningStatus.Draft,
-            };
-            await _aipRepo.AddAsync(targetRecord, ct);
-            await _aipRepo.SaveChangesAsync(ct);
-        }
-
-        // Find-or-create the target AipOffice — same RefCode as the LdipOffice group (year-
-        // independent, derived the same way on both sides: sector prefix + office ref code).
+        // Find-or-create the target AipOffice, keyed on the group's (RefCode, Name) pair.
+        //
+        // ⚠️ RefCode ALONE is not the key, and matching on it alone is a real defect: four groups
+        // share 3000-000-1-01-001, so a re-sync of AKAP-HUB's programs would have found WARDEN's
+        // row and appended them to the wrong printed block. (RefCode, Name) is the identity
+        // LdipOffice and AipOffice both document, and what AddProgramsWithGroupAsync already used.
         IReadOnlyList<AipOffice> targetOffices = await _aipRepo.GetOfficesByAipIdAsync(targetRecord!.Id, ct);
-        AipOffice? targetOffice = targetOffices.FirstOrDefault(o => o.RefCode == sourceGroup.RefCode);
+        AipOffice? targetOffice = targetOffices.FirstOrDefault(o =>
+            o.RefCode == sourceGroup.RefCode
+            && string.Equals(o.Name, sourceGroup.Name, StringComparison.OrdinalIgnoreCase));
         bool creatingOffice = targetOffice is null;
 
         // Collision guard — reject the whole request if any selected program's RefCode already
@@ -796,6 +918,14 @@ public sealed class AipService : IAipService
             targetOffice = new AipOffice
             {
                 AipRecordId = targetRecord.Id,
+                // ⚠️ V18-41 — the ownership FK (V18-32), set here for the first time on this path.
+                // Without it AipReadScope filters this row out entirely
+                // (`offices.Where(o => o.OfficeId == scope.Office.OfficeId)`), so the office that
+                // just seeded its own programs would open the AIP and see nothing, with no error
+                // anywhere — precisely the failure V18-32's migration warns unmatched rows cause.
+                // Safe to set from the DTO for the same reason the record's owner is: the closed
+                // list means an office only ever seeds from its own LDIP.
+                OfficeId    = dto.OfficeConfigId,
                 RefCode     = sourceGroup.RefCode,
                 Name        = sourceGroup.Name,
                 Sector      = sector,
@@ -823,7 +953,7 @@ public sealed class AipService : IAipService
             SeededLdipProgramIds = dto.LdipProgramIds,
         }, ct);
 
-        // Same completeness-safe response construction as CopyOfficeFromPriorYearAsync — rebuild
+        // Completeness-safe response construction — rebuild
         // from the target office's complete current program list so pre-existing programs/
         // projects/activities are never dropped from the response.
         IReadOnlyList<AipProgramDto> programDtos;
@@ -847,25 +977,38 @@ public sealed class AipService : IAipService
                 p.Id, targetOffice.Id, p.RefCode, p.Name,
                 allTargetProjects.Where(j => j.ProgramId == p.Id).Select(j => new AipProjectDto(
                     j.Id, p.Id, j.RefCode, j.Name,
-                    allTargetActivities.Where(a => a.ProjectId == j.Id).Select(MapActivityToDto).ToList(),
+                    // A lambda, not the method group: PPDO-80's optional `fundCodes` parameter
+                    // makes the group match Select's (item, index) overload too. No codes are
+                    // passed because these activities were just seeded and have no lines yet.
+                    allTargetActivities.Where(a => a.ProjectId == j.Id)
+                        .Select(a => MapActivityToDto(a)).ToList(),
                     j.IsSynthetic)).ToList(),
                 p.FunctionBand)).ToList();
         }
 
         return ServiceResult<AipOfficeDto>.Ok(
             new AipOfficeDto(targetOffice.Id, targetOffice.AipRecordId, targetOffice.RefCode,
-                targetOffice.Name, targetOffice.Sector, programDtos));
+                targetOffice.Name, targetOffice.Sector, targetOffice.OfficeId, programDtos));
     }
 
     public async Task<ServiceResult<AipProgramDto>> AddProgramAsync(
-        int officeId, CreateAipProgramDto dto, CancellationToken ct = default)
+        int officeId, CreateAipProgramDto dto, User caller, CancellationToken ct = default)
     {
         AipOffice? office = await _aipRepo.GetOfficeByIdAsync(officeId, ct);
         if (office is null)
             return ServiceResult<AipProgramDto>.NotFound($"AIP office {officeId} not found.");
 
-        ServiceResult<AipProgramDto>? statusError = await CheckDraftAsync<AipProgramDto>(office.AipRecordId, ct);
+        ServiceResult<AipProgramDto>? statusError = await CheckWritableAsync<AipProgramDto>(office, caller, $"AIP office {officeId} not found.", ct);
         if (statusError is not null) return statusError;
+
+        // ⚠️ V18-41 — the closed list. From the break year on, programs come from the LDIP and
+        // this free-typed path is closed. Checked BEFORE the name-required validation on purpose:
+        // a caller in FY2028 with a blank name has one problem, not two, and "Program name is
+        // required" would send them to fill in a field that is not going to be accepted either way.
+        AipRecord? record = await _aipRepo.GetByIntIdAsync(office.AipRecordId, ct);
+        if (record is not null
+            && AipProgramSource.RefuseFreeTypedProgram(record.FiscalYear) is string closedList)
+            return ServiceResult<AipProgramDto>.BadRequest(closedList);
 
         if (string.IsNullOrWhiteSpace(dto.Name))
             return ServiceResult<AipProgramDto>.BadRequest("Program name is required.");
@@ -884,18 +1027,29 @@ public sealed class AipService : IAipService
             functionBand = canonical!;
         }
 
-        IReadOnlyList<AipProgram> siblings = await _aipRepo.GetProgramsByOfficeIdsAsync([officeId], ct);
-        string refCode = NextRefCode(office.RefCode, siblings.Select(p => p.RefCode));
+        // V18-44: the sibling read and the insert are one allocation, retried on a unique-index
+        // rejection. Previously these were two independent statements, so a second encoder adding
+        // under the same office computed the same code and got an unhandled 500.
+        AipProgram? entity = await RefCodeAllocator.AllocateAsync(
+            office.RefCode,
+            async token => (await _aipRepo.GetProgramsByOfficeIdsAsync([officeId], token)).Select(p => p.RefCode),
+            refCode => new AipProgram
+            {
+                OfficeId     = officeId,
+                RefCode      = refCode,
+                Name         = dto.Name.Trim(),
+                FunctionBand = functionBand,
+            },
+            async (e, token) =>
+            {
+                await _programRepo.AddAsync(e, token);
+                await _programRepo.SaveChangesAsync(token);
+            },
+            ct);
 
-        AipProgram entity = new()
-        {
-            OfficeId     = officeId,
-            RefCode      = refCode,
-            Name         = dto.Name.Trim(),
-            FunctionBand = functionBand,
-        };
-        await _programRepo.AddAsync(entity, ct);
-        await _programRepo.SaveChangesAsync(ct);
+        if (entity is null)
+            return ServiceResult<AipProgramDto>.Conflict(
+                "Another program was added to this office at the same moment. Please try again.");
         await _audit.LogAsync("aip_programs", entity.Id, AuditAction.Create,
             null, new { entity.OfficeId, entity.RefCode, entity.Name, entity.FunctionBand }, ct);
 
@@ -905,7 +1059,7 @@ public sealed class AipService : IAipService
     }
 
     public async Task<ServiceResult<AipProjectDto>> AddProjectAsync(
-        int programId, CreateAipProjectDto dto, CancellationToken ct = default)
+        int programId, CreateAipProjectDto dto, User caller, CancellationToken ct = default)
     {
         AipProgram? program = await _aipRepo.GetProgramByIdAsync(programId, ct);
         if (program is null)
@@ -915,18 +1069,27 @@ public sealed class AipService : IAipService
         if (office is null)
             return ServiceResult<AipProjectDto>.NotFound($"AIP office {program.OfficeId} not found.");
 
-        ServiceResult<AipProjectDto>? statusError = await CheckDraftAsync<AipProjectDto>(office.AipRecordId, ct);
+        ServiceResult<AipProjectDto>? statusError = await CheckWritableAsync<AipProjectDto>(office, caller, $"AIP program {programId} not found.", ct);
         if (statusError is not null) return statusError;
 
         if (string.IsNullOrWhiteSpace(dto.Name))
             return ServiceResult<AipProjectDto>.BadRequest("Project name is required.");
 
-        IReadOnlyList<AipProject> siblings = await _aipRepo.GetProjectsByProgramIdsAsync([programId], ct);
-        string refCode = NextRefCode(program.RefCode, siblings.Select(j => j.RefCode));
+        // V18-44 — see AddProgramAsync.
+        AipProject? entity = await RefCodeAllocator.AllocateAsync(
+            program.RefCode,
+            async token => (await _aipRepo.GetProjectsByProgramIdsAsync([programId], token)).Select(j => j.RefCode),
+            refCode => new AipProject { ProgramId = programId, RefCode = refCode, Name = dto.Name.Trim() },
+            async (e, token) =>
+            {
+                await _projectRepo.AddAsync(e, token);
+                await _projectRepo.SaveChangesAsync(token);
+            },
+            ct);
 
-        AipProject entity = new() { ProgramId = programId, RefCode = refCode, Name = dto.Name.Trim() };
-        await _projectRepo.AddAsync(entity, ct);
-        await _projectRepo.SaveChangesAsync(ct);
+        if (entity is null)
+            return ServiceResult<AipProjectDto>.Conflict(
+                "Another project was added to this program at the same moment. Please try again.");
         await _audit.LogAsync("aip_projects", entity.Id, AuditAction.Create,
             null, new { entity.ProgramId, entity.RefCode, entity.Name }, ct);
 
@@ -936,7 +1099,7 @@ public sealed class AipService : IAipService
     }
 
     public async Task<ServiceResult<AipActivityDto>> AddActivityAsync(
-        int projectId, CreateAipActivityDto dto, CancellationToken ct = default)
+        int projectId, CreateAipActivityDto dto, User caller, CancellationToken ct = default)
     {
         AipProject? project = await _aipRepo.GetProjectByIdAsync(projectId, ct);
         if (project is null)
@@ -950,7 +1113,7 @@ public sealed class AipService : IAipService
         if (office is null)
             return ServiceResult<AipActivityDto>.NotFound($"AIP office {program.OfficeId} not found.");
 
-        ServiceResult<AipActivityDto>? statusError = await CheckDraftAsync<AipActivityDto>(office.AipRecordId, ct);
+        ServiceResult<AipActivityDto>? statusError = await CheckWritableAsync<AipActivityDto>(office, caller, $"AIP project {projectId} not found.", ct);
         if (statusError is not null) return statusError;
 
         if (string.IsNullOrWhiteSpace(dto.Name))
@@ -964,14 +1127,16 @@ public sealed class AipService : IAipService
             ? null
             : fsList.FirstOrDefault(f => f.Code.Equals(dto.FundingSourceRaw, StringComparison.OrdinalIgnoreCase));
 
-        IReadOnlyList<AipActivity> siblings = await _aipRepo.GetActivitiesByProjectIdsAsync([projectId], ct);
-        string refCode = NextRefCode(project.RefCode, siblings.Select(a => a.RefCode));
-
         decimal? total = dto.Ps is null && dto.Mooe is null && dto.Co is null
             ? null
             : (dto.Ps ?? 0) + (dto.Mooe ?? 0) + (dto.Co ?? 0);
 
-        AipActivity entity = new()
+        // V18-44 — see AddProgramAsync. This is the level that races most: several encoders
+        // costing activities under one project is the ordinary way an office works.
+        AipActivity? entity = await RefCodeAllocator.AllocateAsync(
+            project.RefCode,
+            async token => (await _aipRepo.GetActivitiesByProjectIdsAsync([projectId], token)).Select(a => a.RefCode),
+            refCode => new AipActivity
         {
             ProjectId             = projectId,
             RefCode               = refCode,
@@ -990,9 +1155,17 @@ public sealed class AipService : IAipService
             CcAdaptation          = dto.CcAdaptation,
             CcMitigation          = dto.CcMitigation,
             CcTypologyCode        = dto.CcTypologyCode,
-        };
-        await _activityRepo.AddAsync(entity, ct);
-        await _activityRepo.SaveChangesAsync(ct);
+            },
+            async (e, token) =>
+            {
+                await _activityRepo.AddAsync(e, token);
+                await _activityRepo.SaveChangesAsync(token);
+            },
+            ct);
+
+        if (entity is null)
+            return ServiceResult<AipActivityDto>.Conflict(
+                "Another activity was added to this project at the same moment. Please try again.");
         await _audit.LogAsync("aip_activities", entity.Id, AuditAction.Create,
             null, new { entity.ProjectId, entity.RefCode, entity.Name, entity.Total }, ct);
 
@@ -1002,13 +1175,13 @@ public sealed class AipService : IAipService
     // ── Inline office/program/project edit (detail-page CRUD follow-up to RAL-179) ──
 
     public async Task<ServiceResult<AipOfficeDto>> UpdateOfficeAsync(
-        int officeId, UpdateAipOfficeDto dto, CancellationToken ct = default)
+        int officeId, UpdateAipOfficeDto dto, User caller, CancellationToken ct = default)
     {
         AipOffice? office = await _aipRepo.GetOfficeByIdAsync(officeId, ct);
         if (office is null)
             return ServiceResult<AipOfficeDto>.NotFound($"AIP office {officeId} not found.");
 
-        ServiceResult<AipOfficeDto>? statusError = await CheckDraftAsync<AipOfficeDto>(office.AipRecordId, ct, "edit");
+        ServiceResult<AipOfficeDto>? statusError = await CheckWritableAsync<AipOfficeDto>(office, caller, $"AIP office {officeId} not found.", ct, "edit");
         if (statusError is not null) return statusError;
 
         if (string.IsNullOrWhiteSpace(dto.Name))
@@ -1032,11 +1205,11 @@ public sealed class AipService : IAipService
 
         return ServiceResult<AipOfficeDto>.Ok(
             new AipOfficeDto(office.Id, office.AipRecordId, office.RefCode, office.Name, office.Sector,
-                Array.Empty<AipProgramDto>()));
+                office.OfficeId, Array.Empty<AipProgramDto>()));
     }
 
     public async Task<ServiceResult<AipProgramDto>> UpdateProgramAsync(
-        int programId, UpdateAipProgramDto dto, CancellationToken ct = default)
+        int programId, UpdateAipProgramDto dto, User caller, CancellationToken ct = default)
     {
         AipProgram? program = await _aipRepo.GetProgramByIdAsync(programId, ct);
         if (program is null)
@@ -1046,7 +1219,7 @@ public sealed class AipService : IAipService
         if (office is null)
             return ServiceResult<AipProgramDto>.NotFound($"AIP office {program.OfficeId} not found.");
 
-        ServiceResult<AipProgramDto>? statusError = await CheckDraftAsync<AipProgramDto>(office.AipRecordId, ct, "edit");
+        ServiceResult<AipProgramDto>? statusError = await CheckWritableAsync<AipProgramDto>(office, caller, $"AIP program {programId} not found.", ct, "edit");
         if (statusError is not null) return statusError;
 
         if (string.IsNullOrWhiteSpace(dto.Name))
@@ -1081,7 +1254,7 @@ public sealed class AipService : IAipService
     }
 
     public async Task<ServiceResult<AipProjectDto>> UpdateProjectAsync(
-        int projectId, UpdateAipProjectDto dto, CancellationToken ct = default)
+        int projectId, UpdateAipProjectDto dto, User caller, CancellationToken ct = default)
     {
         AipProject? project = await _aipRepo.GetProjectByIdAsync(projectId, ct);
         if (project is null)
@@ -1094,7 +1267,7 @@ public sealed class AipService : IAipService
         if (office is null)
             return ServiceResult<AipProjectDto>.NotFound($"AIP office {program.OfficeId} not found.");
 
-        ServiceResult<AipProjectDto>? statusError = await CheckDraftAsync<AipProjectDto>(office.AipRecordId, ct, "edit");
+        ServiceResult<AipProjectDto>? statusError = await CheckWritableAsync<AipProjectDto>(office, caller, $"AIP project {projectId} not found.", ct, "edit");
         if (statusError is not null) return statusError;
 
         if (string.IsNullOrWhiteSpace(dto.Name))
@@ -1114,7 +1287,7 @@ public sealed class AipService : IAipService
     // ── Inline activity edit (RAL-179) ────────────────────────────────────────
 
     public async Task<ServiceResult<AipActivityDto>> UpdateActivityAsync(
-        int aipRecordId, int activityId, UpdateAipActivityDto dto, CancellationToken ct = default)
+        int aipRecordId, int activityId, UpdateAipActivityDto dto, User caller, CancellationToken ct = default)
     {
         AipActivity? activity = await _aipRepo.GetActivityByIdAsync(activityId, ct);
         if (activity is null)
@@ -1133,7 +1306,7 @@ public sealed class AipService : IAipService
             return ServiceResult<AipActivityDto>.NotFound(
                 $"AIP activity {activityId} does not belong to AIP record {aipRecordId}.");
 
-        ServiceResult<AipActivityDto>? statusError = await CheckDraftAsync<AipActivityDto>(office.AipRecordId, ct, "edit");
+        ServiceResult<AipActivityDto>? statusError = await CheckWritableAsync<AipActivityDto>(office, caller, $"AIP activity {activityId} not found.", ct, "edit");
         if (statusError is not null) return statusError;
 
         if (string.IsNullOrWhiteSpace(dto.Name))
@@ -1192,15 +1365,79 @@ public sealed class AipService : IAipService
         return ServiceResult<AipActivityDto>.Ok(MapActivityToDto(activity));
     }
 
+    /// <inheritdoc />
+    public async Task<ServiceResult<AipActivityDto>> UpdateActivityDetailsAsync(
+        int activityId, UpdateAipActivityDetailsDto dto, User caller, CancellationToken ct = default)
+    {
+        AipActivity? activity = await _aipRepo.GetActivityByIdAsync(activityId, ct);
+        if (activity is null)
+            return ServiceResult<AipActivityDto>.NotFound($"AIP activity {activityId} not found.");
+
+        // The full walk up to the owning office — activity → project → program → AipOffice.
+        AipProject? project = await _aipRepo.GetProjectByIdAsync(activity.ProjectId, ct);
+        AipProgram? program = project is null ? null : await _aipRepo.GetProgramByIdAsync(project.ProgramId, ct);
+        AipOffice?  office  = program is null ? null : await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
+        if (office is null)
+            return ServiceResult<AipActivityDto>.NotFound($"AIP activity {activityId} not found.");
+
+        // ⚠️ The full guard, not just an office-scope check: it also refuses an archived record and
+        // an office already past Draft. An encoder whose office is sitting with the department head
+        // must not be able to edit the document under review.
+        ServiceResult<AipActivityDto>? refused = await CheckWritableAsync<AipActivityDto>(
+            office, caller, $"AIP activity {activityId} not found.", ct, "edit");
+        if (refused is not null) return refused;
+
+        if (string.IsNullOrWhiteSpace(dto.Name))
+            return ServiceResult<AipActivityDto>.BadRequest("Activity name is required.");
+        if (!string.IsNullOrWhiteSpace(dto.EsreCode)
+            && !AipEsreCode.AllowedValues.Contains(dto.EsreCode.Trim().ToUpperInvariant()))
+            return ServiceResult<AipActivityDto>.BadRequest(
+                $"eSRE code must be one of: {string.Join(", ", AipEsreCode.AllowedValues)}.");
+
+        object old = new
+        {
+            activity.Name, activity.EsreCode, activity.ImplementingOffice, activity.StartDate,
+            activity.EndDate, activity.ExpectedOutputs,
+            activity.CcAdaptation, activity.CcMitigation, activity.CcTypologyCode,
+        };
+
+        activity.Name               = dto.Name.Trim();
+        activity.EsreCode           = string.IsNullOrWhiteSpace(dto.EsreCode) ? null : dto.EsreCode.Trim().ToUpperInvariant();
+        activity.ImplementingOffice = dto.ImplementingOffice;
+        activity.StartDate          = dto.StartDate;
+        activity.EndDate            = dto.EndDate;
+        activity.ExpectedOutputs    = dto.ExpectedOutputs;
+        activity.CcAdaptation       = dto.CcAdaptation;
+        activity.CcMitigation       = dto.CcMitigation;
+        activity.CcTypologyCode     = dto.CcTypologyCode;
+
+        // ⚠️ Ps/Mooe/Co/Total/FundingSourceId are NOT assigned, and that is the whole point of this
+        // method rather than a reuse of UpdateActivityAsync. They belong to the expenditure lines.
+
+        await _aipRepo.SaveChangesAsync(ct);
+        await _audit.LogAsync("aip_activities", activity.Id, AuditAction.Update, old, new
+        {
+            activity.Name, activity.EsreCode, activity.ImplementingOffice, activity.StartDate,
+            activity.EndDate, activity.ExpectedOutputs,
+            activity.CcAdaptation, activity.CcMitigation, activity.CcTypologyCode,
+        }, ct);
+
+        // ⚠️ The codes are re-read rather than left empty. The entry page splices this response
+        // into its tree instead of reloading it (see that page's `patchActivity`), so an empty
+        // list here would blank the row's fund cell the moment an encoder saved a description.
+        IReadOnlyList<string> fundCodes = await _expRepo.GetFundCodesByActivityIdAsync(activity.Id, ct);
+        return ServiceResult<AipActivityDto>.Ok(MapActivityToDto(activity, fundCodes));
+    }
+
     // ── Delete (mistakes happen — mirrors the Add* guard chain) ───────────────
 
-    public async Task<ServiceResult<bool>> DeleteOfficeAsync(int officeId, CancellationToken ct = default)
+    public async Task<ServiceResult<bool>> DeleteOfficeAsync(int officeId, User caller, CancellationToken ct = default)
     {
         AipOffice? office = await _aipRepo.GetOfficeByIdAsync(officeId, ct);
         if (office is null)
             return ServiceResult<bool>.NotFound($"AIP office {officeId} not found.");
 
-        ServiceResult<bool>? statusError = await CheckDraftAsync<bool>(office.AipRecordId, ct, "delete from");
+        ServiceResult<bool>? statusError = await CheckWritableAsync<bool>(office, caller, $"AIP office {officeId} not found.", ct, "delete from");
         if (statusError is not null) return statusError;
 
         // DB cascade (AipOffice -> AipProgram -> AipProject -> AipActivity) removes the whole subtree.
@@ -1212,7 +1449,7 @@ public sealed class AipService : IAipService
         return ServiceResult<bool>.Ok(true);
     }
 
-    public async Task<ServiceResult<bool>> DeleteProgramAsync(int programId, CancellationToken ct = default)
+    public async Task<ServiceResult<bool>> DeleteProgramAsync(int programId, User caller, CancellationToken ct = default)
     {
         AipProgram? program = await _aipRepo.GetProgramByIdAsync(programId, ct);
         if (program is null)
@@ -1222,7 +1459,7 @@ public sealed class AipService : IAipService
         if (office is null)
             return ServiceResult<bool>.NotFound($"AIP office {program.OfficeId} not found.");
 
-        ServiceResult<bool>? statusError = await CheckDraftAsync<bool>(office.AipRecordId, ct, "delete from");
+        ServiceResult<bool>? statusError = await CheckWritableAsync<bool>(office, caller, $"AIP program {programId} not found.", ct, "delete from");
         if (statusError is not null) return statusError;
 
         // DB cascade (AipProgram -> AipProject -> AipActivity) removes the whole subtree.
@@ -1234,7 +1471,7 @@ public sealed class AipService : IAipService
         return ServiceResult<bool>.Ok(true);
     }
 
-    public async Task<ServiceResult<bool>> DeleteProjectAsync(int projectId, CancellationToken ct = default)
+    public async Task<ServiceResult<bool>> DeleteProjectAsync(int projectId, User caller, CancellationToken ct = default)
     {
         AipProject? project = await _aipRepo.GetProjectByIdAsync(projectId, ct);
         if (project is null)
@@ -1247,7 +1484,7 @@ public sealed class AipService : IAipService
         if (office is null)
             return ServiceResult<bool>.NotFound($"AIP office {program.OfficeId} not found.");
 
-        ServiceResult<bool>? statusError = await CheckDraftAsync<bool>(office.AipRecordId, ct, "delete from");
+        ServiceResult<bool>? statusError = await CheckWritableAsync<bool>(office, caller, $"AIP project {projectId} not found.", ct, "delete from");
         if (statusError is not null) return statusError;
 
         // DB cascade (AipProject -> AipActivity) removes the activities under it.
@@ -1259,7 +1496,7 @@ public sealed class AipService : IAipService
         return ServiceResult<bool>.Ok(true);
     }
 
-    public async Task<ServiceResult<bool>> DeleteActivityAsync(int activityId, CancellationToken ct = default)
+    public async Task<ServiceResult<bool>> DeleteActivityAsync(int activityId, User caller, CancellationToken ct = default)
     {
         AipActivity? activity = await _aipRepo.GetActivityByIdAsync(activityId, ct);
         if (activity is null)
@@ -1275,7 +1512,7 @@ public sealed class AipService : IAipService
         if (office is null)
             return ServiceResult<bool>.NotFound($"AIP office {program.OfficeId} not found.");
 
-        ServiceResult<bool>? statusError = await CheckDraftAsync<bool>(office.AipRecordId, ct, "delete from");
+        ServiceResult<bool>? statusError = await CheckWritableAsync<bool>(office, caller, $"AIP activity {activityId} not found.", ct, "delete from");
         if (statusError is not null) return statusError;
 
         await _activityRepo.DeleteAsync(activity, ct);
@@ -1288,30 +1525,238 @@ public sealed class AipService : IAipService
 
     /// <summary>Shared Draft-status guard for the manual-entry Add*/Update*/Delete* methods,
     /// keyed off the AipRecord reached by walking up from whichever node the caller is touching.</summary>
-    private async Task<ServiceResult<T>?> CheckDraftAsync<T>(int aipRecordId, CancellationToken ct, string action = "add to")
-    {
-        AipRecord? rec = await _aipRepo.GetByIntIdAsync(aipRecordId, ct);
-        if (rec is null)
-            return ServiceResult<T>.NotFound($"AIP record {aipRecordId} not found.");
-        if (rec.Status != PlanningStatus.Draft)
-            return ServiceResult<T>.BadRequest(
-                $"Cannot {action} a '{rec.Status}' record. Unlock it back to Draft first.");
-        return null;
-    }
+    /// <summary>
+    /// The single gate every AIP write passes through: <b>may this caller write this node, and is
+    /// its record still editable?</b> Returns null when the write may proceed.
+    ///
+    /// <para>
+    /// ⚠️ <b>The ownership check comes first, and it answers NotFound rather than Forbidden.</b>
+    /// <paramref name="notFoundMessage"/> is the caller's own "no such node" message, so a node the
+    /// caller may not touch and a node that does not exist are byte-for-byte indistinguishable. A
+    /// 403 would confirm that the node exists and belongs to another office — exactly the existence
+    /// check the read paths clamp to avoid (V18-39). Clamping, the read side's answer, is not
+    /// available here: a write names one node, and redirecting it to a different one would silently
+    /// write to the wrong row, which is worse than any refusal.
+    /// </para>
+    ///
+    /// <para>
+    /// The cost is a puzzling error for a PPDO admin who mistypes an id. That is a support question;
+    /// the alternative is a disclosure.
+    /// </para>
+    /// </summary>
+    /// <summary>
+    /// Delegates to <see cref="AipWriteGuard"/>, which owns the three checks. Kept as a thin
+    /// wrapper so the ~20 call sites below read unchanged; the rule itself moved out when the
+    /// expenditure endpoints became a second service needing it (PPDO-52). Two copies would drift
+    /// silently — the forgotten one would just stop refusing.
+    /// </summary>
+    private Task<ServiceResult<T>?> CheckWritableAsync<T>(
+        AipOffice office, User caller, string notFoundMessage,
+        CancellationToken ct, string action = "add to")
+        => AipWriteGuard.CheckAsync<T>(office, caller, _aipRepo, notFoundMessage, ct, action);
 
     /// <summary>Next zero-padded 3-digit segment appended to <paramref name="parentRefCode"/>,
     /// one past the highest existing sibling suffix (e.g. "...-001-001-002-001" then "...-002").</summary>
-    private static string NextRefCode(string parentRefCode, IEnumerable<string> siblingRefCodes)
-    {
-        int next = siblingRefCodes
-            .Select(rc => rc.Split('-')[^1])
-            .Select(s => int.TryParse(s, out int n) ? n : 0)
-            .DefaultIfEmpty(0)
-            .Max() + 1;
-        return $"{parentRefCode}-{next:D3}";
-    }
+    // NextRefCode moved to RefCodeAllocator (V18-44 / PPDO-50). It now lives beside the retry
+    // that makes allocation safe, because the two are one operation: computing a code without
+    // re-computing it when the insert loses a race is what produced the 500 this ticket removes.
+    // The old version also mapped an unparseable last segment to 0 rather than skipping it — see
+    // RefCodeAllocator.NextRefCode's remarks for why that mattered.
 
     // ── Status transitions ────────────────────────────────────────────────────
+
+    /// <inheritdoc />
+    public async Task<ServiceResult<AipAddableProgramsDto>> GetAddableProgramsAsync(
+        int officeConfigId, string sector, User caller, CancellationToken ct = default)
+    {
+        if (!AipSector.Prefixes.TryGetValue(sector?.Trim() ?? string.Empty, out string? prefix))
+            return ServiceResult<AipAddableProgramsDto>.BadRequest(
+                $"Sector must be one of: {string.Join(", ", AipSector.Prefixes.Keys)}.");
+        string normalised = sector!.Trim().ToUpperInvariant();
+
+        Office? office = await _officeConfigRepo.GetByIdAsync(officeConfigId, ct);
+        if (office is null || !office.IsActive)
+            return ServiceResult<AipAddableProgramsDto>.NotFound(
+                $"Office {officeConfigId} not found or inactive.");
+
+        if (!OfficeScope.Resolve(caller).Permits(office.Id))
+            return ServiceResult<AipAddableProgramsDto>.NotFound(
+                $"Office {officeConfigId} not found or inactive.");
+
+        // ⚠️ The SAME resolver the write path uses. That is the entire point of this method — a
+        // second copy of the two-tier rule is what produced the "does not belong to this office's
+        // LDIP" refusals the entry panel hit on every add.
+        IReadOnlyList<LdipOffice> groups =
+            await ResolveLdipGroupsAsync(office, normalised, prefix, ct);
+        if (groups.Count == 0)
+            return ServiceResult<AipAddableProgramsDto>.BadRequest(
+                $"'{office.OfficeName}' has no LDIP for the {normalised} sector. The LDIP is where "
+                + "programs come from, so it has to exist before the AIP can be built.");
+
+        // Name the source. The resolver's second tier is a multi-office LDIP owned by no single
+        // office, so "which LDIP is this?" is not answerable from the office alone.
+        //
+        // ℹ️ Every group comes from one record — the resolver stops at the first record that
+        // matches — so reading the id off the first group describes all of them.
+        LdipRecord? sourceRecord = (await _ldipRepo.GetListAsync(null, null, ct))
+            .FirstOrDefault(r => r.Id == groups[0].LdipRecordId);
+
+        return ServiceResult<AipAddableProgramsDto>.Ok(new AipAddableProgramsDto(
+            sourceRecord?.RefCode,
+            sourceRecord?.Title,
+            IsSharedLdip: sourceRecord?.OfficeId is null,
+            groups.Select(g => new AipAddableGroupDto(
+                g.RefCode,
+                g.Name,
+                g.Programs
+                    .OrderBy(p => p.RefCode, StringComparer.Ordinal)
+                    .Select(p => new AipAddableProgramDto(p.Id, p.RefCode, p.Name))
+                    .ToList()))
+                .ToList()));
+    }
+
+    // ── Sub-office group + programs, in one call (V18-42 / PPDO-52) ──────────
+
+    /// <inheritdoc />
+    public async Task<ServiceResult<AipOfficeDto>> AddProgramsWithGroupAsync(
+        int aipRecordId, AddAipProgramsWithGroupDto dto, User caller, CancellationToken ct = default)
+    {
+        AipRecord? record = await _aipRepo.GetByIntIdAsync(aipRecordId, ct);
+        if (record is null)
+            return ServiceResult<AipOfficeDto>.NotFound($"AIP record {aipRecordId} not found.");
+
+        if (record.Status != PlanningStatus.Draft)
+            return ServiceResult<AipOfficeDto>.BadRequest(
+                $"Cannot add to a '{record.Status}' record. Unlock it back to Draft first.");
+
+        if (dto.LdipProgramIds is null || dto.LdipProgramIds.Count == 0)
+            return ServiceResult<AipOfficeDto>.BadRequest("Select at least one program to add.");
+
+        if (!AipSector.Prefixes.TryGetValue(dto.Sector?.Trim() ?? string.Empty, out string? prefix))
+            return ServiceResult<AipOfficeDto>.BadRequest(
+                $"Sector must be one of: {string.Join(", ", AipSector.Prefixes.Keys)}.");
+        string sector = dto.Sector!.Trim().ToUpperInvariant();
+
+        Office? office = await _officeConfigRepo.GetByIdAsync(dto.OfficeConfigId, ct);
+        if (office is null || !office.IsActive)
+            return ServiceResult<AipOfficeDto>.NotFound(
+                $"Office {dto.OfficeConfigId} not found or inactive.");
+
+        // ⚠️ Ownership before anything else is revealed. NotFound rather than Forbidden, and the
+        // same sentence a genuinely missing office produces — a write names one node, so clamping
+        // is not available, and 403 would confirm the office exists (PPDO-46).
+        if (!OfficeScope.Resolve(caller).Permits(office.Id))
+            return ServiceResult<AipOfficeDto>.NotFound(
+                $"Office {dto.OfficeConfigId} not found or inactive.");
+
+        IReadOnlyList<LdipOffice> candidateGroups =
+            await ResolveLdipGroupsAsync(office, sector, prefix, ct);
+        if (candidateGroups.Count == 0)
+            return ServiceResult<AipOfficeDto>.BadRequest(
+                $"'{office.OfficeName}' has no LDIP for the {sector} sector. The LDIP is where "
+                + "programs come from, so it has to exist before the AIP can be built.");
+
+        // The closed list, enforced server-side: every requested id must belong to this office's
+        // own LDIP, and all of them to ONE of its groups. V18-41 shipped the rule; this path is a
+        // second door into it. The group falls out of the programs — see the DTO for why nobody
+        // gets to type it.
+        ServiceResult<LdipOffice> groupResult =
+            ResolveRequestedGroup(candidateGroups, dto.LdipProgramIds, sector);
+        if (!groupResult.IsSuccess)
+            return ServiceResult<AipOfficeDto>.BadRequest(groupResult.Error!);
+
+        LdipOffice sourceGroup = groupResult.Value!;
+        Dictionary<int, LdipProgram> sourceById = sourceGroup.Programs.ToDictionary(p => p.Id);
+        string groupName = sourceGroup.Name;
+
+        // ⚠️ THE DIFFERENCE FROM SeedProgramsFromLdipAsync, and the reason this method exists.
+        // That one matches on RefCode alone, so it can only ever reach the first group under a
+        // code. Keying on (RefCode, Name) is what lets a second, third and fourth block exist
+        // under one office — which real AIPs have.
+        IReadOnlyList<AipOffice> existing = await _aipRepo.GetOfficesByAipIdAsync(record.Id, ct);
+        AipOffice? target = existing.FirstOrDefault(o =>
+            o.RefCode == sourceGroup.RefCode
+            && string.Equals(o.Name, groupName, StringComparison.OrdinalIgnoreCase));
+
+        if (target is not null)
+        {
+            ServiceResult<AipOfficeDto>? refused = await CheckWritableAsync<AipOfficeDto>(
+                target, caller, $"AIP office {target.Id} not found.", ct);
+            if (refused is not null) return refused;
+        }
+
+        List<LdipProgram> toAdd = dto.LdipProgramIds.Select(id => sourceById[id]).ToList();
+
+        // ⚠️ Collision is checked against THIS GROUP only, not the whole ref code. The same LDIP
+        // program legitimately cannot appear twice in one printed block, but two blocks under one
+        // office are separate rows on the form and may each carry it.
+        if (target is not null)
+        {
+            IReadOnlyList<AipProgram> inGroup =
+                await _aipRepo.GetProgramsByOfficeIdsAsync([target.Id], ct);
+            List<string> collisions = toAdd.Select(p => p.RefCode)
+                .Intersect(inGroup.Select(p => p.RefCode))
+                .ToList();
+            if (collisions.Count > 0)
+                return ServiceResult<AipOfficeDto>.BadRequest(
+                    "These programs are already in this group: " + string.Join(", ", collisions) + ".");
+        }
+
+        // ℹ️ RefCode is inherited from the LDIP program, never allocated. See IAipService.
+        List<AipProgram> programs = toAdd.Select(p => new AipProgram
+        {
+            RefCode      = p.RefCode,
+            Name         = p.Name,
+            FunctionBand = AipFunctionBand.Core,
+        }).ToList();
+
+        bool creatingGroup = target is null;
+        if (target is null)
+        {
+            target = new AipOffice
+            {
+                AipRecordId = record.Id,
+                OfficeId    = dto.OfficeConfigId,
+                RefCode     = sourceGroup.RefCode,
+                Name        = groupName,
+                Sector      = sector,
+                Programs    = programs,
+            };
+            await _officeRepo.AddAsync(target, ct);
+            await _officeRepo.SaveChangesAsync(ct);
+        }
+        else
+        {
+            foreach (AipProgram program in programs)
+            {
+                program.OfficeId = target.Id;
+                await _programRepo.AddAsync(program, ct);
+            }
+            await _programRepo.SaveChangesAsync(ct);
+        }
+
+        await _audit.LogAsync("aip_offices", target.Id, AuditAction.Update, null, new
+        {
+            target.AipRecordId,
+            target.RefCode,
+            GroupName          = target.Name,
+            AddedLdipProgramIds = dto.LdipProgramIds,
+        }, ct);
+
+        // When the group was just created, the programs in hand ARE the group's whole contents —
+        // re-reading them is a round trip for an answer we already have. When it existed, the
+        // response must carry its pre-existing programs too, so the caller does not lose the rows
+        // it was already showing (the completeness rule SeedProgramsFromLdipAsync follows).
+        IReadOnlyList<AipProgram> allInGroup = creatingGroup
+            ? programs
+            : await _aipRepo.GetProgramsByOfficeIdsAsync([target.Id], ct);
+
+        return ServiceResult<AipOfficeDto>.Ok(new AipOfficeDto(
+            target.Id, target.AipRecordId, target.RefCode, target.Name, target.Sector, target.OfficeId,
+            allInGroup.Select(p => new AipProgramDto(
+                p.Id, target.Id, p.RefCode, p.Name, Array.Empty<AipProjectDto>(), p.FunctionBand))
+                .ToList()));
+    }
 
     public async Task<ServiceResult<AipRecordDto>> FinalizeAsync(
         int id, CancellationToken ct = default)
@@ -1371,10 +1816,14 @@ public sealed class AipService : IAipService
     // ── Field updates (v1.4 Q1/Q2 — captured during WFP data entry) ────────────
 
     public async Task<ServiceResult<AipProgramDto>> UpdateProgramFunctionBandAsync(
-        int programId, string? functionBand, CancellationToken ct = default)
+        int programId, string? functionBand, User caller, CancellationToken ct = default)
     {
         AipProgram? program = await _aipRepo.GetProgramByIdAsync(programId, ct);
         if (program is null)
+            return ServiceResult<AipProgramDto>.NotFound($"AIP program {programId} not found.");
+
+        AipOffice? bandOffice = await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
+        if (bandOffice is null || !OfficeScope.Resolve(caller).Permits(bandOffice.OfficeId))
             return ServiceResult<AipProgramDto>.NotFound($"AIP program {programId} not found.");
 
         if (!TryCanonicalizeFunctionBand(functionBand, out string? canonical, out string? error))
@@ -1394,10 +1843,19 @@ public sealed class AipService : IAipService
     }
 
     public async Task<ServiceResult<AipActivityDto>> UpdateActivityIsCreationAsync(
-        int activityId, bool isCreation, CancellationToken ct = default)
+        int activityId, bool isCreation, User caller, CancellationToken ct = default)
     {
         AipActivity? activity = await _aipRepo.GetActivityByIdAsync(activityId, ct);
         if (activity is null)
+            return ServiceResult<AipActivityDto>.NotFound($"AIP activity {activityId} not found.");
+
+        // The full walk up to the owning office — activity → project → program → AipOffice.
+        AipProject? creationProject = await _aipRepo.GetProjectByIdAsync(activity.ProjectId, ct);
+        AipProgram? creationProgram = creationProject is null
+            ? null : await _aipRepo.GetProgramByIdAsync(creationProject.ProgramId, ct);
+        AipOffice?  creationOffice  = creationProgram is null
+            ? null : await _aipRepo.GetOfficeByIdAsync(creationProgram.OfficeId, ct);
+        if (creationOffice is null || !OfficeScope.Resolve(caller).Permits(creationOffice.OfficeId))
             return ServiceResult<AipActivityDto>.NotFound($"AIP activity {activityId} not found.");
 
         bool oldValue = activity.IsCreation;
@@ -1510,11 +1968,23 @@ public sealed class AipService : IAipService
         OfficeCount: officeCounts.GetValueOrDefault(r.Id, 0),
         UploadedByName: userNames.GetValueOrDefault(r.UploadedById));
 
-    private static AipActivityDto MapActivityToDto(AipActivity a) => new(
-        a.Id, a.ProjectId, a.RefCode, a.Name, a.EsreCode, a.ImplementingOffice,
-        a.StartDate, a.EndDate, a.ExpectedOutputs, a.FundingSourceId, a.FundingSourceSnapshot,
-        a.Ps, a.Mooe, a.Co, a.Total, a.CcAdaptation, a.CcMitigation, a.CcTypologyCode,
-        a.IsCreation, a.IsSynthetic);
+    /// <param name="fundCodes">
+    /// The codes this activity's expenditure lines draw on, when the caller has loaded them.
+    ///
+    /// ⚠️ Defaulted to null rather than made required, because "no lines were read" and "the lines
+    /// name no fund" are the same empty list to a reader and only one of them is a bug. Every
+    /// caller that hands the result to a page which SPLICES it into an already-rendered tree —
+    /// the details save, the expenditure write — must pass it; a create legitimately has none.
+    /// </param>
+    /// <summary>
+    /// ⚠️ Delegates to <see cref="AipTreeMapper.MapActivity"/> — the mapping moved there in PPDO-74
+    /// so the review screen builds the same activity shape rather than a second one that compiles
+    /// just as well and drifts the day a column is added. Kept as a local name because this file
+    /// calls it from several places.
+    /// </summary>
+    private static AipActivityDto MapActivityToDto(
+        AipActivity a, IReadOnlyList<string>? fundCodes = null)
+        => AipTreeMapper.MapActivity(a, fundCodes);
 
     /// <summary>The only 3 values <c>function_band</c> may hold (case-insensitive on input, canonicalized on save).</summary>
     private static readonly string[] AllowedFunctionBands =

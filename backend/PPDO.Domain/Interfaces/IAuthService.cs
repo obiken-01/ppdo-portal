@@ -1,4 +1,4 @@
-using PPDO.Domain.Entities;
+﻿using PPDO.Domain.Entities;
 
 namespace PPDO.Domain.Interfaces;
 
@@ -50,6 +50,26 @@ public interface IAuthService
     /// <c>JwtMiddleware.ValidateAsync</c>).
     /// </summary>
     Task<MeResponse> GetMeAsync(User user, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns the recovery-question text to show for a username, for the "Forgot password?"
+    /// flow (RAL-265). Always returns a question — an unknown username or an account that
+    /// hasn't set one yet gets a question deterministically derived from the username itself
+    /// (same fake username always gets the same fake question, spread uniformly across the
+    /// catalog), so no single response value can be used to test whether a username exists.
+    /// </summary>
+    Task<string> GetRecoveryQuestionAsync(string username, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Verifies a recovery answer and, on success, issues a random one-time password
+    /// (RAL-265). Every failure path — unknown username, no recovery answer set, wrong
+    /// answer, locked out — returns the exact same <see cref="RecoveryVerifyOutcome.Failed"/>
+    /// outcome so the caller cannot distinguish them.
+    /// </summary>
+    Task<RecoveryVerifyResult> VerifyRecoveryAnswerAsync(
+        string username,
+        string answer,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>The outcome of a <see cref="IAuthService.LoginAsync"/> call.</summary>
@@ -167,7 +187,27 @@ public sealed class MeResponse
     /// <summary>Full office name. Null for PPDO-internal users.</summary>
     public string? OfficeName { get; init; }
 
+    /// <summary>
+    /// Whether this user belongs to the host office and so holds cross-office authority
+    /// (DECISION F, RAL-258). Replaces <c>OfficeId == null</c>, which meant the same thing by
+    /// proxy until every user gained an office.
+    /// </summary>
+    public bool IsHostOffice { get; init; }
+
     public string? Position { get; init; }
+
+    /// <summary>
+    /// Portal route this user should land on after signing in (RAL-251/RAL-261), resolved
+    /// server-side through user → division → office → first reachable → /account.
+    /// Always a route the user can actually reach, so it is safe to redirect to directly.
+    /// </summary>
+    public string LandingPath { get; init; } = "/account";
+
+    /// <summary>
+    /// The user's own stored preference as an enum name, or null when unset. The /account
+    /// selector shows this; <see cref="LandingPath"/> is where they will actually land.
+    /// </summary>
+    public string? LandingPage { get; init; }
 
     // -- Effective permission flags (resolved via PermissionService) --------
     public bool CanAccessInventory { get; init; }
@@ -178,5 +218,48 @@ public sealed class MeResponse
     public bool CanAccessBudgetPlanning { get; init; }
     public bool CanUploadAip { get; init; }
     public bool CanManageConfig { get; init; }
-    public bool CanManageAllocation { get; init; }
+    public bool CanManagePpdoAllocation { get; init; }
+    public bool CanManagePboCeiling { get; init; }
+    public bool CanReviewBudgetPlanning { get; init; }
+    public bool CanReviewAllOffices { get; init; }
+
+    // -- Password / recovery gates (RAL-266/RAL-267) ---------------------------
+
+    /// <summary>True after a reset — the portal blocks everything except changing the password.</summary>
+    public bool MustChangePassword { get; init; }
+
+    /// <summary>True when no recovery question is set yet — the portal blocks everything except setup.</summary>
+    public bool NeedsRecoverySetup { get; init; }
+
+    /// <summary>UTC timestamp of the most recent reset, only when not yet acknowledged. Non-blocking.</summary>
+    public DateTime? UnacknowledgedPasswordResetAt { get; init; }
+}
+
+/// <summary>The outcome of a <see cref="IAuthService.VerifyRecoveryAnswerAsync"/> call.</summary>
+public enum RecoveryVerifyOutcome
+{
+    /// <summary>Answer matched — a new temporary password was issued.</summary>
+    Success,
+
+    /// <summary>
+    /// Unknown username, no recovery answer set on the account, wrong answer, or the
+    /// account is locked out. Deliberately one outcome for all four — see RAL-265's
+    /// enumeration-guard note.
+    /// </summary>
+    Failed,
+}
+
+/// <summary>Result of <see cref="IAuthService.VerifyRecoveryAnswerAsync"/>.</summary>
+public readonly record struct RecoveryVerifyResult
+{
+    public RecoveryVerifyOutcome Outcome { get; init; }
+    public string? TemporaryPassword { get; init; }
+
+    public static RecoveryVerifyResult Success(string temporaryPassword) => new()
+    {
+        Outcome            = RecoveryVerifyOutcome.Success,
+        TemporaryPassword  = temporaryPassword,
+    };
+
+    public static RecoveryVerifyResult Failed() => new() { Outcome = RecoveryVerifyOutcome.Failed };
 }

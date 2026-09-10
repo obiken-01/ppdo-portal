@@ -3,7 +3,7 @@ namespace PPDO.Domain.Enums;
 /// <summary>
 /// Role assigned to a PPDO portal user. Controls which permission checks apply.
 /// SuperAdmin bypasses everything; Admin gets all feature flags by default EXCEPT special
-/// per-user grants (e.g. CanManageAllocation). Staff resolve permissions from their
+/// per-user grants (e.g. CanManagePpdoAllocation). Staff resolve permissions from their
 /// Division flags plus individual overrides.
 ///
 /// The Observer role was retired in v1.2 (RAL-97) — read-only access is deferred.
@@ -18,7 +18,7 @@ public enum UserRole
 
     /// <summary>
     /// Division head. Gets all feature permissions by default EXCEPT special per-user grants
-    /// (CanManageAllocation). Can manage Staff accounts only (not other Admins or SuperAdmins).
+    /// (CanManagePpdoAllocation). Can manage Staff accounts only (not other Admins or SuperAdmins).
     /// </summary>
     Admin = 1,
 

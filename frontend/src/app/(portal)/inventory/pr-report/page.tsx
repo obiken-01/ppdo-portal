@@ -197,7 +197,7 @@ export default function PRReportPage() {
 
   const me = useMe(
     (m) => m.canAccessInventory || m.canAccessReports,
-    (m) => (m.officeId != null ? "/budget-planning" : "/dashboard")
+    (m) => (!m.isHostOffice ? "/budget-planning" : "/dashboard")
   );
 
   // PR list + combobox

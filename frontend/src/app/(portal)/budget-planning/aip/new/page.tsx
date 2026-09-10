@@ -4,7 +4,9 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useMe } from "@/lib/me-cache";
-import { aipErrorMessage, getAipById, uploadAipFile, createManualAipRecord } from "@/lib/aip";
+import { canOpenAipRecords, budgetPlanningFallback } from "@/lib/budget-planning-access";
+import { aipErrorMessage, getAipById, uploadAipFile, openAipFiscalYear } from "@/lib/aip";
+import { aipUploadRefusal } from "@/lib/aip-fiscal-years";
 
 const CURRENT_YEAR = new Date().getFullYear();
 const FY_OPTIONS = [CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1, CURRENT_YEAR + 2];
@@ -34,6 +36,14 @@ function UploadTab({ replaceId }: { replaceId: number | null }) {
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // V18-38 — the .xlsm importer can only build the legacy multi-office shape, so from the break
+  // year onward there is no record it could produce. The control is DISABLED with the reason
+  // showing, not hidden: the user has CanUploadAip, it is the fiscal year that forbids this
+  // (Budget_Planning_Dashboard_Requirements.md §6.1 — hide for permission, disable for state).
+  // On the re-upload path the year is the target record's own, so an FY≥2028 record that predates
+  // the freeze lands here too rather than on a dead page.
+  const frozenReason = aipUploadRefusal(fiscalYear);
 
   // Re-upload (RAL-178): lock the fiscal year to the record's ORIGINAL year — a re-upload
   // corrects the file's contents, not the fiscal year. Pre-fill from the target record so the
@@ -74,6 +84,7 @@ function UploadTab({ replaceId }: { replaceId: number | null }) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleUpload() {
+    if (frozenReason) { setUploadError(frozenReason); return; }
     if (!file) { setFileError("Please select a file before uploading."); return; }
     setUploadError(null);
     setUploading(true);
@@ -122,6 +133,13 @@ function UploadTab({ replaceId }: { replaceId: number | null }) {
         )}
       </div>
 
+      {frozenReason && (
+        <div className="border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span className="font-semibold">Upload is not available for FY {fiscalYear}.</span>{" "}
+          {frozenReason}
+        </div>
+      )}
+
       {/* Link to LDIP */}
       <div>
         <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
@@ -141,7 +159,17 @@ function UploadTab({ replaceId }: { replaceId: number | null }) {
           AIP File
         </label>
 
-        {file ? (
+        {frozenReason ? (
+          <div
+            className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 bg-slate-50 px-6 py-8 cursor-not-allowed"
+            title={frozenReason}
+          >
+            <span className="text-3xl mb-2 opacity-40">📁</span>
+            <p className="text-sm text-slate-400">
+              File upload is disabled for FY {fiscalYear}
+            </p>
+          </div>
+        ) : file ? (
           <div className="border border-slate-200 bg-slate-50 px-4 py-3 flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-slate-600">{file.name}</p>
@@ -186,9 +214,12 @@ function UploadTab({ replaceId }: { replaceId: number | null }) {
       <div className="flex items-center gap-3">
         <button
           onClick={handleUpload}
-          disabled={uploading || !file}
+          disabled={uploading || !file || frozenReason !== null}
+          title={frozenReason ?? undefined}
           className={`px-5 py-2 text-sm font-medium text-white transition-colors ${
-            uploading || !file ? "bg-green-300 cursor-not-allowed" : "bg-green-700 hover:bg-green-800"
+            uploading || !file || frozenReason !== null
+              ? "bg-green-300 cursor-not-allowed"
+              : "bg-green-700 hover:bg-green-800"
           }`}
         >
           {uploading ? "Uploading…" : "Upload & Preview"}
@@ -210,21 +241,32 @@ function UploadTab({ replaceId }: { replaceId: number | null }) {
 // Activity, plus editing) happens on the detail page's own inline table controls, so adding
 // and editing an AIP share one UI instead of two.
 
-function ManualEntryTab() {
+function ManualEntryTab({ isAdmin }: { isAdmin: boolean }) {
   const router = useRouter();
 
   const [fiscalYear, setFiscalYear] = useState<number>(CURRENT_YEAR);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [skipped, setSkipped] = useState<string[] | null>(null);
 
   async function handleStart() {
     setCreating(true);
     setCreateError(null);
+    setSkipped(null);
     try {
-      const rec = await createManualAipRecord({ fiscalYear });
-      router.push(`/budget-planning/aip/detail?id=${rec.id}`);
+      const result = await openAipFiscalYear({ fiscalYear });
+
+      // ⚠️ Offices with no LDIP got nothing and cannot build their AIP. Hold the user here to
+      // show them rather than navigating away — nobody would otherwise learn which offices are
+      // missing until one of them opens an empty page and asks why.
+      if (result.officesWithoutLdip.length > 0) {
+        setSkipped(result.officesWithoutLdip);
+        setCreating(false);
+        return;
+      }
+      router.push(`/budget-planning/aip/detail?id=${result.record.id}`);
     } catch (err) {
-      setCreateError(aipErrorMessage(err, "Could not start a new AIP. Please try again."));
+      setCreateError(aipErrorMessage(err, "Could not open the fiscal year. Please try again."));
       setCreating(false);
     }
   }
@@ -243,20 +285,43 @@ function ManualEntryTab() {
           {FY_OPTIONS.map((y) => <option key={y} value={y}>{y}</option>)}
         </select>
       </div>
+      {!isAdmin && (
+        <div className="border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span className="font-semibold">Opening a fiscal year is an administrator action.</span>{" "}
+          It creates the AIP every office builds into, and fills in each office&apos;s programs from
+          its LDIP. Ask an administrator to open the year; you can then enter your office&apos;s part.
+        </div>
+      )}
       {createError && (
         <div className="border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">
           {createError}
         </div>
       )}
+      {skipped && (
+        <div className="border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 space-y-1">
+          <p className="font-semibold">
+            FY {fiscalYear} is open, but {skipped.length} office
+            {skipped.length === 1 ? " has" : "s have"} no LDIP and got no programs:
+          </p>
+          <ul className="list-disc list-inside">
+            {skipped.map((name) => <li key={name}>{name}</li>)}
+          </ul>
+          <p className="text-xs">
+            Create their LDIP, then use &ldquo;Seed from LDIP&rdquo; on the AIP to bring the
+            programs in. Until then those offices cannot build their AIP.
+          </p>
+        </div>
+      )}
       <div className="flex items-center gap-3">
         <button
           onClick={handleStart}
-          disabled={creating}
+          disabled={creating || !isAdmin}
+          title={isAdmin ? undefined : "Only an administrator can open a fiscal year."}
           className={`px-5 py-2 text-sm font-medium text-white transition-colors ${
-            creating ? "bg-green-300 cursor-not-allowed" : "bg-green-700 hover:bg-green-800"
+            creating || !isAdmin ? "bg-green-300 cursor-not-allowed" : "bg-green-700 hover:bg-green-800"
           }`}
         >
-          {creating ? "Starting…" : "Start New AIP"}
+          {creating ? "Opening…" : "Open Fiscal Year"}
         </button>
         <Link
           href="/budget-planning/aip"
@@ -279,7 +344,9 @@ function AipNewInner() {
   // RAL-62 — page gate relaxed from canUploadAip to canAccessBudgetPlanning so office users
   // (who can never upload an .xlsm) can still reach the Manual Entry tab. me.canUploadAip
   // (checked below) independently gates the Upload tab itself.
-  const me = useMe((m) => m.canAccessBudgetPlanning, "/budget-planning/aip");
+  // PPDO-81. ⚠️ The fallback can no longer be "/budget-planning/aip" — that page now refuses the
+  // same people this one does, so the redirect would bounce twice and land nowhere useful.
+  const me = useMe(canOpenAipRecords, budgetPlanningFallback);
   const canUpload = me?.canUploadAip === true;
 
   const [activeTab, setActiveTab] = useState<Tab>("upload");
@@ -335,7 +402,9 @@ function AipNewInner() {
           </div>
 
           {activeTab === "upload" && canUpload && <UploadTab replaceId={replaceId} />}
-          {activeTab === "manual" && <ManualEntryTab />}
+          {activeTab === "manual" && (
+            <ManualEntryTab isAdmin={me?.role === "Admin" || me?.role === "SuperAdmin"} />
+          )}
         </div>
 
         {/* ── Right column: help panel ── */}

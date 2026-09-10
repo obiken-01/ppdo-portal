@@ -38,7 +38,7 @@ import {
   updateAipActivityIsCreation,
   aipErrorMessage,
 } from "@/lib/aip";
-import { findGeneralFund, findPpdoOffice, listAccounts, listDivisions, listFundingSources, listOffices, listPriceIndex } from "@/lib/config";
+import { findGeneralFund, findHostOffice, listAccounts, listDivisions, listFundingSources, listOffices, listPriceIndexForPicker } from "@/lib/config";
 import { getAllocations, getCeilingStatus, getPrograms, getSetupStatus } from "@/lib/allocation";
 import {
   computeWfpRollUpPreview,
@@ -60,6 +60,7 @@ import MoneyInput from "@/components/ui/MoneyInput";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
 import { formatMoney } from "@/lib/money";
+import { wfpUnsupportedReason } from "@/lib/wfp-support";
 import type {
   AccountResponse,
   AipActivitySummary,
@@ -72,7 +73,7 @@ import type {
   DivisionResponse,
   FundingSourceResponse,
   OfficeResponse,
-  PriceIndexItemResponse,
+  PriceIndexPickerItem,
   ProgramAssignmentDto,
   SaveWfpExpenditurePeriodRequest,
   SaveWfpProcurementItemRequest,
@@ -302,7 +303,9 @@ interface ExpenditureWizardProps {
   aipAssignedFundingSourceId: number | null;
   accounts: AccountResponse[];
   fundingSources: FundingSourceResponse[];
-  priceIndex: PriceIndexItemResponse[];
+  priceIndex: PriceIndexPickerItem[];
+  /** True while the catalogue is still in flight (RAL-231) — the picker shows a hint, not an empty list. */
+  priceIndexLoading: boolean;
   reserveRate: number;
   editingExpenditure: WfpExpenditureDto | null;
   onSaved: (saved: WfpExpenditureDto) => void;
@@ -319,6 +322,7 @@ function ExpenditureWizard({
   accounts,
   fundingSources,
   priceIndex,
+  priceIndexLoading,
   reserveRate,
   editingExpenditure,
   onSaved,
@@ -749,6 +753,7 @@ function ExpenditureWizard({
                   procurementItems={procurementItems}
                   onProcurementItemsChange={setProcurementItems}
                   priceIndex={priceIndex}
+                  priceIndexLoading={priceIndexLoading}
                   annualQuarterChoice={annualQuarterChoice}
                   onAnnualQuarterChoiceChange={setAnnualQuarterChoice}
                   applyReserve={applyReserve}
@@ -822,6 +827,7 @@ function ExpenditureWizard({
               procurementItems={procurementItems}
               onProcurementItemsChange={setProcurementItems}
               priceIndex={priceIndex}
+              priceIndexLoading={priceIndexLoading}
               annualQuarterChoice={annualQuarterChoice}
               onAnnualQuarterChoiceChange={setAnnualQuarterChoice}
               applyReserve={applyReserve}
@@ -879,9 +885,23 @@ function WfpEntryPageInner() {
   // ── Loaded reference data ────────────────────────────────────────────────
 
   const [aipDetail, setAipDetail] = useState<AipRecordSummary | null>(null);
+
+  // V18-81 — the selected AIP decides the year. Checked here rather than only at the button
+  // because this wizard's create is an EFFECT, not a click: selecting an activity fires
+  // ensureWfpActivity on its own, so the refusal has to stop the call, not a control.
+  //
+  // ⚠️ Read from aipList, NOT aipDetail. Effect B only loads aipDetail once a division is
+  // selected, so keying off it would make the user pick a division before learning that no WFP
+  // can be built for the year at all. The mount-time list already carries fiscalYear.
+  const wfpUnsupported = (() => {
+    if (selectedAipId == null) return null;
+    const selected = aipList.find((a) => a.id === selectedAipId);
+    return selected ? wfpUnsupportedReason(selected.fiscalYear) : null;
+  })();
   const [accounts, setAccounts] = useState<AccountResponse[]>([]);
   const [fundingSources, setFundingSources] = useState<FundingSourceResponse[]>([]);
-  const [priceIndex, setPriceIndex] = useState<PriceIndexItemResponse[]>([]);
+  const [priceIndex, setPriceIndex] = useState<PriceIndexPickerItem[]>([]);
+  const [priceIndexLoading, setPriceIndexLoading] = useState(true);
   const [programAssignments, setProgramAssignments] = useState<ProgramAssignmentDto[]>([]);
   const [divisionAllocation, setDivisionAllocation] = useState<DivisionAllocationDto | null>(null);
   const [setupStatus, setSetupStatus] = useState<AllocationSetupStatusDto | null>(null);
@@ -915,21 +935,26 @@ function WfpEntryPageInner() {
 
   // ── Effect A: load selector lists on mount ───────────────────────────────
 
-  // Deliberately loaded together (not split apart to unblock the selectors sooner): once every
-  // resource this page could need is in memory — including the price-index catalogue used later
-  // by the Procurement/Combined item entry — the rest of the session never waits on a fetch for
-  // this data again. resourcesLoading gates the selector row with a skeleton + notice below so
-  // the wait is communicated instead of the dropdowns silently sitting empty.
+  // Only the three small, fast resources the selector row itself needs. Together they are ~7 KB
+  // and ~35 ms; resourcesLoading gates the selector row on them with a skeleton + notice below.
+  //
+  // The price-index catalogue is deliberately NOT in here (RAL-231). It is ~6,400 rows / ~1.58 MB
+  // — over 200× the combined payload of these three — and it is not needed until the user opens
+  // the Procurement/Combined expenditure wizard, several interactions later. Bundling it meant the
+  // AIP/Office/Division dropdowns could not paint until that 1.58 MB had crossed the wire.
+  //
+  // This does not undo f841184's fix, which pushed the catalogue's active/search filter down to
+  // SQL — that addressed query *latency* and still stands. The remaining cost is *payload*, which
+  // only decoupling the fetch can take off the critical path.
   useEffect(() => {
     const urlAipId = searchParams.get("aipId");
     const urlOfficeId = searchParams.get("officeId");
 
-    Promise.all([listAip(), listOffices({ active: "true" }), getReserveRate(), listPriceIndex({ active: "true" })])
-      .then(([aips, offices, rate, items]) => {
+    Promise.all([listAip(), listOffices({ active: "true" }), getReserveRate()])
+      .then(([aips, offices, rate]) => {
         setAipList(aips);
         setOfficeList(offices);
         setReserveRate(rate.rate);
-        setPriceIndex(items);
         if (urlAipId) {
           setSelectedAipId(Number(urlAipId));
         } else if (aips.length === 1) {
@@ -943,14 +968,28 @@ function WfpEntryPageInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── Effect A2: price-index catalogue, off the critical path (RAL-231) ────
+  //
+  // Fetched in parallel with the above but gating nothing, so a slow catalogue delays only the
+  // item picker inside the wizard. priceIndexLoading is threaded down to WfpProcurementItemTable
+  // so a user who reaches the picker first sees a loading hint rather than a silently empty
+  // search — the failure mode of firing this fetch and forgetting about it.
+  useEffect(() => {
+    listPriceIndexForPicker({ active: "true" })
+      .then(setPriceIndex)
+      .catch(() => toast.error("Load failed", "Could not load the price index catalogue."))
+      .finally(() => setPriceIndexLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (!me) return;
     if (!searchParams.get("officeId")) {
-      if (me.officeId != null) {
+      if (!me.isHostOffice) {
         setSelectedOfficeId(me.officeId);
       } else {
         // PPDO-internal users (me.officeId is null by design) default to PPDO itself.
-        const ppdo = findPpdoOffice(officeList);
+        const ppdo = findHostOffice(officeList);
         if (ppdo) setSelectedOfficeId(ppdo.id);
       }
     }
@@ -1177,7 +1216,10 @@ function WfpEntryPageInner() {
       selectedAipId == null ||
       selectedOfficeId == null ||
       selectedDivisionId == null ||
-      aipDetail == null
+      aipDetail == null ||
+      // V18-81 — do not find-or-create a WFP record for a year the server will refuse. Letting
+      // this fire would show the user a toast for something they did not ask for, by selecting.
+      wfpUnsupported !== null
     ) {
       setActivityRef(null);
       setExpenditures([]);
@@ -1299,9 +1341,9 @@ function WfpEntryPageInner() {
 
   // ── Derived flags ─────────────────────────────────────────────────────────
 
-  const isOfficeUser = me != null && me.officeId != null;
+  const isOfficeUser = me != null && !me.isHostOffice;
   const canBypassDivision =
-    me?.role === "SuperAdmin" || me?.role === "Admin" || me?.canManageAllocation === true;
+    me?.role === "SuperAdmin" || me?.role === "Admin" || me?.canManagePpdoAllocation === true;
 
   const setupComplete =
     setupStatus == null || (setupStatus.hasAllocation && setupStatus.hasProgramAssignment);
@@ -1409,7 +1451,19 @@ function WfpEntryPageInner() {
         </div>
       )}
 
-      {resourcesLoading ? null : selectedDivisionId == null ? (
+      {resourcesLoading ? null : wfpUnsupported ? (
+        // ⚠️ Ahead of BOTH the division prompt and the setup banner, deliberately. The fiscal
+        // year is known the moment an AIP is selected — a division is not needed to determine it.
+        // Asking someone to pick a division, or to go fix allocation setup, for a year in which no
+        // WFP can be built sends them to do work that cannot help.
+        <div className="px-4 py-3 bg-amber-50 border border-amber-300 text-amber-800 text-sm">
+          <span className="font-semibold block mb-1">
+            WFP entry is not available for FY{" "}
+            {aipList.find((a) => a.id === selectedAipId)?.fiscalYear}.
+          </span>
+          {wfpUnsupported}
+        </div>
+      ) : selectedDivisionId == null ? (
         <p className="text-slate-600 text-sm py-8">
           Select an AIP, office, and division to start entering WFP expenditures. This wizard is
           division-scoped — a specific division must be chosen even for admin/finance users.
@@ -1765,6 +1819,7 @@ function WfpEntryPageInner() {
           accounts={accounts}
           fundingSources={fundingSources}
           priceIndex={priceIndex}
+          priceIndexLoading={priceIndexLoading}
           reserveRate={reserveRate}
           editingExpenditure={editingExpenditure}
           onSaved={handleExpenditureSaved}

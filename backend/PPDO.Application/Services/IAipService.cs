@@ -1,4 +1,4 @@
-using PPDO.Application.Common;
+﻿using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
 using PPDO.Domain.Entities;
 
@@ -11,14 +11,14 @@ namespace PPDO.Application.Services;
 /// </summary>
 public interface IAipService
 {
-    Task<IReadOnlyList<AipRecordDto>> GetAllAsync(int? fiscalYear, string? status, CancellationToken ct = default);
-    Task<ServiceResult<AipRecordDetailDto>> GetByIdAsync(int id, CancellationToken ct = default);
+    Task<IReadOnlyList<AipRecordDto>> GetAllAsync(int? fiscalYear, string? status, User caller, CancellationToken ct = default);
+    Task<ServiceResult<AipRecordDetailDto>> GetByIdAsync(int id, User caller, CancellationToken ct = default);
 
     /// <summary>
     /// Returns a slim hierarchy (Id, RefCode, Name, amounts, funding source) for the WFP
     /// activity grid. Omits heavy free-text fields — ~10× smaller than GetByIdAsync.
     /// </summary>
-    Task<ServiceResult<AipRecordSummaryDto>> GetSummaryByIdAsync(int id, CancellationToken ct = default);
+    Task<ServiceResult<AipRecordSummaryDto>> GetSummaryByIdAsync(int id, User caller, CancellationToken ct = default);
 
     /// <summary>
     /// Parses an XLSM stream and returns a preview without persisting anything.
@@ -44,73 +44,75 @@ public interface IAipService
 
     /// <summary>Creates a blank Manual-entry AipRecord. Subject to the same one-active-AIP-per-
     /// fiscal-year guard as ConfirmImportAsync's create path.</summary>
-    Task<ServiceResult<AipRecordDto>> CreateManualRecordAsync(
-        CreateAipRecordDto dto, Guid createdById, CancellationToken ct = default);
+    Task<ServiceResult<OpenAipFiscalYearResultDto>> OpenFiscalYearAsync(
+        OpenAipFiscalYearDto dto, Guid createdById, CancellationToken ct = default);
 
     /// <summary>Adds an office (level 1) to a Draft AipRecord. RefCode is auto-derived from
     /// the sector prefix + the config Office's OfficeRefCode.</summary>
     Task<ServiceResult<AipOfficeDto>> AddOfficeAsync(
-        int aipRecordId, CreateAipOfficeDto dto, CancellationToken ct = default);
+        int aipRecordId, CreateAipOfficeDto dto, User caller, CancellationToken ct = default);
 
     /// <summary>Adds a program (level 2) under an office. RefCode auto-increments within the office.</summary>
     Task<ServiceResult<AipProgramDto>> AddProgramAsync(
-        int officeId, CreateAipProgramDto dto, CancellationToken ct = default);
+        int officeId, CreateAipProgramDto dto, User caller, CancellationToken ct = default);
 
     /// <summary>Adds a project (level 3) under a program. RefCode auto-increments within the program.</summary>
     Task<ServiceResult<AipProjectDto>> AddProjectAsync(
-        int programId, CreateAipProjectDto dto, CancellationToken ct = default);
+        int programId, CreateAipProjectDto dto, User caller, CancellationToken ct = default);
 
     /// <summary>Adds an activity (level 4, leaf) under a project. RefCode auto-increments within
     /// the project; Total is computed as Ps+Mooe+Co (null only when all three are blank).</summary>
     Task<ServiceResult<AipActivityDto>> AddActivityAsync(
-        int projectId, CreateAipActivityDto dto, CancellationToken ct = default);
+        int projectId, CreateAipActivityDto dto, User caller, CancellationToken ct = default);
 
     /// <summary>RAL-179 — updates an existing activity's editable fields in place. RefCode,
     /// ProjectId, and identity are immutable; FundingSourceId re-resolves FundingSourceSnapshot.
     /// Only allowed while the parent AipRecord is Draft. <paramref name="aipRecordId"/> is a
     /// defensive cross-check that the activity actually belongs to that record.</summary>
     Task<ServiceResult<AipActivityDto>> UpdateActivityAsync(
-        int aipRecordId, int activityId, UpdateAipActivityDto dto, CancellationToken ct = default);
+        int aipRecordId, int activityId, UpdateAipActivityDto dto, User caller, CancellationToken ct = default);
+
+    /// <summary>
+    /// PPDO-52 — updates an entered-year activity's <b>descriptive</b> fields, leaving its money
+    /// alone. This is the AIP Entry page's editor; <see cref="UpdateActivityAsync"/> is the detail
+    /// page's whole-row one.
+    ///
+    /// <para>
+    /// ⚠️ <b>The two are not interchangeable, and the difference is data loss.</b> That one
+    /// assigns <c>Ps</c>/<c>Mooe</c>/<c>Co</c>/<c>Total</c>/<c>FundingSourceId</c> unconditionally
+    /// from its DTO, which is right for a page whose form owns those fields. On an entered year
+    /// they are derived from the activity's expenditure lines, so a description edit routed
+    /// through it would zero a costing nobody touched. See <see cref="UpdateAipActivityDetailsDto"/>.
+    /// </para>
+    /// </summary>
+    Task<ServiceResult<AipActivityDto>> UpdateActivityDetailsAsync(
+        int activityId, UpdateAipActivityDetailsDto dto, User caller, CancellationToken ct = default);
 
     /// <summary>Renames an office (only Name is editable — RefCode/Sector are immutable).
     /// Draft-only.</summary>
     Task<ServiceResult<AipOfficeDto>> UpdateOfficeAsync(
-        int officeId, UpdateAipOfficeDto dto, CancellationToken ct = default);
+        int officeId, UpdateAipOfficeDto dto, User caller, CancellationToken ct = default);
 
     /// <summary>Updates a program's Name and FunctionBand together (detail-page full edit,
     /// distinct from the narrower UpdateProgramFunctionBandAsync used by WFP entry). Draft-only.</summary>
     Task<ServiceResult<AipProgramDto>> UpdateProgramAsync(
-        int programId, UpdateAipProgramDto dto, CancellationToken ct = default);
+        int programId, UpdateAipProgramDto dto, User caller, CancellationToken ct = default);
 
     /// <summary>Renames a project (only Name is editable). Draft-only.</summary>
     Task<ServiceResult<AipProjectDto>> UpdateProjectAsync(
-        int projectId, UpdateAipProjectDto dto, CancellationToken ct = default);
+        int projectId, UpdateAipProjectDto dto, User caller, CancellationToken ct = default);
 
     /// <summary>Deletes an office and its whole subtree (programs, projects, activities). Draft-only.</summary>
-    Task<ServiceResult<bool>> DeleteOfficeAsync(int officeId, CancellationToken ct = default);
+    Task<ServiceResult<bool>> DeleteOfficeAsync(int officeId, User caller, CancellationToken ct = default);
 
     /// <summary>Deletes a program and its whole subtree (projects, activities). Draft-only.</summary>
-    Task<ServiceResult<bool>> DeleteProgramAsync(int programId, CancellationToken ct = default);
+    Task<ServiceResult<bool>> DeleteProgramAsync(int programId, User caller, CancellationToken ct = default);
 
     /// <summary>Deletes a project and its activities. Draft-only.</summary>
-    Task<ServiceResult<bool>> DeleteProjectAsync(int projectId, CancellationToken ct = default);
+    Task<ServiceResult<bool>> DeleteProjectAsync(int projectId, User caller, CancellationToken ct = default);
 
     /// <summary>Deletes a single activity. Draft-only.</summary>
-    Task<ServiceResult<bool>> DeleteActivityAsync(int activityId, CancellationToken ct = default);
-
-    /// <summary>
-    /// RAL-180 — copies selected programs (with their full project/activity subtrees) from a
-    /// source office into a target fiscal year's office, carrying every field forward except
-    /// Id (fresh identity) and Activity.IsCreation (resets to false — a WFP-entry-time
-    /// classification, not something that should silently persist across fiscal years).
-    /// Find-or-creates the target AipRecord (Manual, Draft) and the target AipOffice (matched
-    /// by RefCode) as needed. Rejects if the target record exists but isn't a Draft
-    /// Manual-entry record, if any requested program doesn't belong to the source office, or
-    /// if any selected program's RefCode already exists under the target office (no silent
-    /// skip/overwrite). No lineage is recorded between the two years' rows.
-    /// </summary>
-    Task<ServiceResult<AipOfficeDto>> CopyOfficeFromPriorYearAsync(
-        CopyAipOfficeDto dto, Guid createdById, CancellationToken ct = default);
+    Task<ServiceResult<bool>> DeleteActivityAsync(int activityId, User caller, CancellationToken ct = default);
 
     /// <summary>
     /// RAL-181 — seeds bare-shell AipProgram rows (Name+RefCode only, FunctionBand=CORE) from
@@ -118,14 +120,48 @@ public interface IAipService
     /// scanning the config office's non-Archived LdipRecords (newest first) for the first one that
     /// has a sector group matching <see cref="SeedAipProgramsFromLdipDto.Sector"/> (case-insensitive
     /// — LDIP stores "General"/"Social"/…, AIP stores "GENERAL"/"SOCIAL"/…). Find-or-creates the
-    /// target AipRecord/AipOffice using the same rule as <see cref="CopyOfficeFromPriorYearAsync"/>.
+    /// target AipRecord/AipOffice.
     /// Rejects if no matching LdipOffice exists, if any selected LDIP program doesn't belong to it,
     /// or if any selected program's RefCode already exists under the target office. No Project/
     /// Activity rows are created and no LDIP budget/funding-source/schedule/CC/alignment fields are
     /// copied — see the ticket's "why LDIP amounts don't carry over" reasoning.
     /// </summary>
     Task<ServiceResult<AipOfficeDto>> SeedProgramsFromLdipAsync(
-        SeedAipProgramsFromLdipDto dto, Guid createdById, CancellationToken ct = default);
+        SeedAipProgramsFromLdipDto dto, Guid createdById, User caller, CancellationToken ct = default);
+
+    /// <summary>
+    /// Adds programs from the office's LDIP under a named <b>sub-office group</b>, creating that
+    /// group if it does not exist yet (V18-42 / PPDO-52, spec §4). The encoder's first stage.
+    ///
+    /// <para>
+    /// <b>⚠️ How this differs from <see cref="SeedProgramsFromLdipAsync"/>, which it otherwise
+    /// resembles closely.</b> That method finds its target <c>AipOffice</c> by <b>ref code
+    /// alone</b>, so it always lands on the first group under that code and cannot start a second.
+    /// This one keys on <b>(ref code, group name)</b>, which is what lets one office carry several
+    /// printed blocks — the province's FY2027 SOCIAL sheet has three under one code.
+    /// </para>
+    ///
+    /// <para>
+    /// ℹ️ <b>Program ref codes are not allocated here.</b> They are inherited verbatim from the
+    /// LDIP program, as seeding has always done. The LDIP is where program numbering lives: it
+    /// numbers continuously across groups sharing a ref code and renumbers on removal, because
+    /// LDIP saves full-replace the hierarchy. Allocating a fresh code here would break the
+    /// correspondence between an AIP program and the LDIP program it came from, which is what
+    /// makes the closed list meaningful.
+    /// </para>
+    /// </summary>
+    /// <summary>
+    /// The LDIP programs an office may add for one sector, resolved by the <b>same</b> two-tier
+    /// rule <see cref="AddProgramsWithGroupAsync"/> uses (V18-42 / PPDO-52).
+    ///
+    /// ⚠️ The entry panel must call this rather than resolving the LDIP itself. See
+    /// <see cref="AipAddableProgramsDto"/> for the divergence that made it necessary.
+    /// </summary>
+    Task<ServiceResult<AipAddableProgramsDto>> GetAddableProgramsAsync(
+        int officeConfigId, string sector, User caller, CancellationToken ct = default);
+
+    Task<ServiceResult<AipOfficeDto>> AddProgramsWithGroupAsync(
+        int aipRecordId, AddAipProgramsWithGroupDto dto, User caller, CancellationToken ct = default);
 
     Task<ServiceResult<AipRecordDto>> FinalizeAsync(int id, CancellationToken ct = default);
     Task<ServiceResult<AipRecordDto>> UnlockAsync(int id, CancellationToken ct = default);
@@ -138,13 +174,13 @@ public interface IAipService
     /// (AipService.ConfirmImportAsync) so the field is never left unset.
     /// </summary>
     Task<ServiceResult<AipProgramDto>> UpdateProgramFunctionBandAsync(
-        int programId, string? functionBand, CancellationToken ct = default);
+        int programId, string? functionBand, User caller, CancellationToken ct = default);
 
     /// <summary>
     /// Sets an activity's "…-CREATION" PS flag (v1.4 Q2). No validation beyond existence.
     /// </summary>
     Task<ServiceResult<AipActivityDto>> UpdateActivityIsCreationAsync(
-        int activityId, bool isCreation, CancellationToken ct = default);
+        int activityId, bool isCreation, User caller, CancellationToken ct = default);
 
     /// <summary>Wipes all AIP records (cascade removes hierarchy). Returns deleted AipRecord count.</summary>
     Task<int> PurgeAllAsync(CancellationToken ct = default);

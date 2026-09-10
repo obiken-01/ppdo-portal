@@ -21,7 +21,9 @@ import {
   listDivisions,
   listFundingSources,
   listOffices,
-  listPriceIndex,
+  countCcTypologies,
+  countEsreCodes,
+  countPriceIndex,
 } from "@/lib/config";
 
 // ---------------------------------------------------------------------------
@@ -48,6 +50,24 @@ const TILES: TileDef[] = [
     load: async () => (await listAccounts({ active: "true" })).length,
   },
   {
+    key: "cc-typologies",
+    icon: "🌱",
+    name: "Climate Change Typologies",
+    caption: "CCET codes for tagging an AIP activity's climate-change contribution.",
+    href: "/config/cc-typologies",
+    // Count endpoint, not the list (RAL-232). This list is short, so the payload saved is
+    // small — but this is the tile the next config page copies.
+    load: async () => countCcTypologies({ active: "true" }),
+  },
+  {
+    key: "esre-codes",
+    icon: "🏷️",
+    name: "eSRE Codes",
+    caption: "eSRE classification an encoder tags an AIP activity with.",
+    href: "/config/esre-codes",
+    load: async () => countEsreCodes({ active: "true" }),
+  },
+  {
     key: "offices",
     icon: "🏛️",
     name: "Offices",
@@ -69,7 +89,8 @@ const TILES: TileDef[] = [
     name: "Price Index",
     caption: "Procurement item catalogue searched from WFP line-item entry.",
     href: "/config/price-index",
-    load: async () => (await listPriceIndex({ active: "true" })).length,
+    // Count endpoint, not the list (RAL-232) — this tile used to pull ~1.57 MB to show a number.
+    load: async () => countPriceIndex({ active: "true" }),
   },
   {
     key: "divisions",
@@ -126,7 +147,7 @@ export default function ConfigDashboardPage() {
   useEffect(() => {
     fetchMe()
       .then((data) => {
-        if (!data.canManageConfig) router.replace(data.officeId != null ? "/budget-planning" : "/dashboard");
+        if (!data.canManageConfig) router.replace(!data.isHostOffice ? "/budget-planning" : "/dashboard");
         else setCanManageUsers(data.canManageUsers === true);
       })
       .catch(() => router.replace("/login"));

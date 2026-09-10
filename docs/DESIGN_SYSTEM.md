@@ -196,6 +196,7 @@ Everything in `frontend/src/components/ui/`. Check here before building anything
 | `OfficeSelect` | Office picker | — |
 | `MoneyInput` | Peso amounts. Handles formatting and precision. | — |
 | `CsvUploadButton` / `CsvDownloadButton` | CSV import/export triggers | — |
+| `CsvImportSummary` | The "Import complete" dialog after a CSV upsert — the three counts plus the skipped-row reasons. Pair with the two CSV buttons. | A confirmation before importing — that is a plain `Modal` |
 | `RowActions` | Any table's per-row action buttons. See §6a for the layout rule. | A single always-visible primary action with no alternatives — a plain button is enough |
 
 **Adoption today:** `Toast` 32 files, `DataTable` 10, `ConfigPageHeader` 7, `TableSkeleton` 6,
@@ -205,6 +206,12 @@ Everything in `frontend/src/components/ui/`. Check here before building anything
 per-row action button in the portal now uses this component. Two local helpers were deleted once
 nothing referenced them: the 6 config pages' `TextAction` (an underlined-text-link style,
 duplicated identically in each file) and `admin/users`' `ActionButton` (icon-only).
+
+`CsvImportSummary` was extracted the same way on **2026-09-02** (PPDO-19): the "Import complete"
+MessageDialog block and its private `Stat` helper were byte-for-byte identical in **seven**
+config pages — `accounts`, `offices`, `funding-sources`, `divisions`, `price-index`, and the two
+added that day, `cc-typologies` and `esre-codes`. Extracting it removed 288 lines. If you add a
+config page with a CSV import, render this component rather than copying the block again.
 
 `announcements` is the one page with 4 possible actions on a single row (`Draft` status: Edit,
 Publish, Archive, Delete) — still under the 5-action overflow-menu threshold, so it's a single

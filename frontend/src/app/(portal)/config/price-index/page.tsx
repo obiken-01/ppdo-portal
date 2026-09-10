@@ -42,14 +42,14 @@ import {
   deactivatePriceIndexItem,
   exportPriceIndexCsv,
   importPriceIndexCsv,
-  listPriceIndex,
+  getPriceIndexPage,
   updatePriceIndexItem,
 } from "@/lib/config";
 import { formatMoney } from "@/lib/money";
 import DataTable, { type Column } from "@/components/ui/DataTable";
 import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import Modal from "@/components/ui/Modal";
-import MessageDialog from "@/components/ui/MessageDialog";
+import CsvImportSummary from "@/components/ui/CsvImportSummary";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import CsvUploadButton from "@/components/ui/CsvUploadButton";
 import CsvDownloadButton from "@/components/ui/CsvDownloadButton";
@@ -139,15 +139,30 @@ export default function PriceIndexConfigPage() {
   // Auth / permission guard
   const [authChecked, setAuthChecked] = useState(false);
 
-  // Data
+  // Data — server-paginated + server-sorted (RAL-233): the grid is 6,397 rows, and every
+  // column is sortable, so client-side re-sort would silently sort only the visible page
+  // (see DataTable's own serverSort doc comment for why that's worse than no pagination).
   const [items, setItems] = useState<PriceIndexItemResponse[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 50;
+  const [sortKey, setSortKey] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
   // Filters
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("Active");
+
+  // A stale page number past the end of a newly-narrowed result set (filter OR sort change)
+  // would otherwise leave the grid showing an empty page instead of jumping back to page 1 —
+  // same reasoning as audit-log's identical reset-on-filter-change effect.
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, statusFilter, sortKey, sortDir]);
 
   // Add / Edit modal
   const [showForm, setShowForm] = useState(false);
@@ -168,7 +183,7 @@ export default function PriceIndexConfigPage() {
     fetchMe()
       .then((data) => {
         if (!data.canManageConfig) {
-          router.replace(data.officeId != null ? "/budget-planning" : "/dashboard");
+          router.replace(!data.isHostOffice ? "/budget-planning" : "/dashboard");
           return;
         }
         setAuthChecked(true);
@@ -189,17 +204,22 @@ export default function PriceIndexConfigPage() {
     setLoading(true);
     setFetchError(null);
     try {
-      const data = await listPriceIndex({
+      const result = await getPriceIndexPage({
         search: debouncedSearch,
         active: STATUS_TO_ACTIVE[statusFilter],
+        sortBy: sortKey ?? undefined,
+        sortDir,
+        page,
+        pageSize: PAGE_SIZE,
       });
-      setItems(data);
+      setItems(result.items);
+      setTotalCount(result.totalCount);
     } catch (err) {
       setFetchError(configErrorMessage(err, "Failed to load price index items. Please try again."));
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, statusFilter]);
+  }, [debouncedSearch, statusFilter, sortKey, sortDir, page]);
 
   useEffect(() => {
     if (authChecked) load();
@@ -513,9 +533,17 @@ export default function PriceIndexConfigPage() {
               ? "No price index items match your filters."
               : "No price index items yet. Upload a CSV from GSO to get started."
           }
-          pageSize={25}
           rowNoun={["item", "items"]}
           minWidth={1150}
+          serverPagination={{ page, pageSize: PAGE_SIZE, totalCount, onPageChange: setPage }}
+          serverSort={{
+            sortKey,
+            sortDir,
+            onSortChange: (key, dir) => {
+              setSortKey(key);
+              setSortDir(dir);
+            },
+          }}
         />
       </div>
 
@@ -664,34 +692,8 @@ export default function PriceIndexConfigPage() {
         </Modal>
       )}
 
-      {/* ── CSV import summary ─────────────────────────────────────────────────── */}
       {importResult && (
-        <MessageDialog
-          title="Import complete"
-          variant={importResult.errors.length > 0 ? "warning" : "success"}
-          size="md"
-          onClose={() => setImportResult(null)}
-        >
-          <div className="space-y-3">
-            <div className="flex gap-4">
-              <Stat label="Added" value={importResult.new} tone="green" />
-              <Stat label="Updated" value={importResult.updated} tone="blue" />
-              <Stat label="Skipped" value={importResult.skipped} tone="slate" />
-            </div>
-            {importResult.errors.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-amber-500 uppercase tracking-wide mb-1">
-                  {importResult.errors.length} row{importResult.errors.length === 1 ? "" : "s"} skipped
-                </p>
-                <ul className="max-h-40 overflow-y-auto text-xs text-slate-600 list-disc pl-4 space-y-0.5">
-                  {importResult.errors.map((e, i) => (
-                    <li key={i}>{e}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        </MessageDialog>
+        <CsvImportSummary result={importResult} onClose={() => setImportResult(null)} />
       )}
 
       {/* ── Deactivate confirm ─────────────────────────────────────────────────── */}
@@ -703,17 +705,3 @@ export default function PriceIndexConfigPage() {
 // ---------------------------------------------------------------------------
 // Small helpers
 // ---------------------------------------------------------------------------
-
-function Stat({ label, value, tone }: { label: string; value: number; tone: "green" | "blue" | "slate" }) {
-  const cls: Record<typeof tone, string> = {
-    green: "text-green-700",
-    blue: "text-info-500",
-    slate: "text-slate-600",
-  };
-  return (
-    <div className="flex-1 border border-slate-200 px-3 py-2 text-center">
-      <div className={`text-2xl font-bold ${cls[tone]}`}>{value}</div>
-      <div className="text-[11px] text-slate-600 uppercase tracking-wide">{label}</div>
-    </div>
-  );
-}
