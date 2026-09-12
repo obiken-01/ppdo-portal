@@ -1,0 +1,52 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1440, "h": 1000, "title": "Search results — filter collapsed" },
+    { "file": "ActivityModalReviewer.dc.html", "x": 1560, "y": 0, "w": 1088, "h": 1000, "title": "Activity modal — PPDO reviewer" },
+    { "file": "ActivityModalOfficeHead.dc.html", "x": 2728, "y": 0, "w": 1088, "h": 1080, "title": "Activity modal — department head (editable)" }
+  ],
+  "annotations": [
+    {
+      "id": "q-collapse",
+      "x": 0,
+      "y": 1060,
+      "w": 460,
+      "text": "ITEM 1 — collapsible filter\n\nProposed: the panel opens expanded, auto-collapses the moment results land, and the summary line carries one removable chip per applied filter plus the match count.\n\nOpen question: does clicking a chip's × re-run the search straight away, or only edit the draft until you press Search? The rest of the panel is draft-until-Search today."
+    },
+    {
+      "id": "q-filter-icon",
+      "x": 0,
+      "y": 1360,
+      "w": 460,
+      "text": "FILTER ICON\n\nThe funnel on the Filters label and the Edit filters button is an inline SVG, because there is no funnel emoji.\n\nThat makes it the portal's first drawn icon — DESIGN_SYSTEM.md section 5 says 'use emoji', and lucide-react sits in package.json with zero imports as an open decision. One hand-drawn SVG is not two icon systems, but it is the thin end of that decision. Worth settling here."
+    },
+    {
+      "id": "q-office-picker",
+      "x": 500,
+      "y": 1060,
+      "w": 460,
+      "text": "ITEM 2 — office picker\n\nThe expanded panel (flip the artboard's 'panel' chip to see it) now uses OfficeSelect — the searchable combobox — instead of the hand-rolled multi-select.\n\nThat makes it ONE office at a time. The API still takes a list, so this is a UI narrowing only. Say if you want multi-office back."
+    },
+    {
+      "id": "q-row-target",
+      "x": 980,
+      "y": 1060,
+      "w": 460,
+      "text": "ITEM 3 — what a row opens\n\nActivity names open the modal to the right.\n\nOpen question: what do Program and Project rows open? Proposed: they keep going to the whole-office review screen, since Accept and Return live there and a program has no figures of its own."
+    },
+    {
+      "id": "q-modal-scope",
+      "x": 1560,
+      "y": 1060,
+      "w": 520,
+      "text": "PPDO REVIEWER MODAL\n\nThe two-column split is a proposal: the row on the left, the conversation always visible on the right. Stacked instead would make the modal roughly 400px taller.\n\nThe path strip at the top exists because you arrive here from a flat search result with no idea which program the activity sits under.\n\nItem 4 lands here too: comments attach to activities only, so the gutters come off program and project rows elsewhere.\n\nOpen: do the expenditure lines belong in the modal, or is the amounts strip enough?"
+    },
+    {
+      "id": "q-edit-scope",
+      "x": 2728,
+      "y": 1260,
+      "w": 520,
+      "text": "DEPARTMENT HEAD MODAL\n\nSame shell, same order, everything editable — so a person who learns one knows the other. Amounts stay read-only in both: they are recomputed from the expenditure lines.\n\nOpen question: does the department head reach this modal from a search at all, or only from AIP Entry? They can only ever see their own office, so search adds little for them — but two ways into the same modal is one component either way."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}
