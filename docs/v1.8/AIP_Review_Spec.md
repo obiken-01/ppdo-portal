@@ -76,6 +76,14 @@ that have already moved are not moved back.
    than DECISION 10 recorded: **there is no whole-submission comment.** Field-level anchoring was
    rejected — the AIP grid is wide, and it would multiply anchor points for no reviewer benefit.
 
+   ↩️ **Narrowed to activities only** (PPDO-79, decided 2026-09-13). A program or project prints no
+   figures of its own on the form, so a remark about one is really about some activity under it —
+   and anchoring it higher hides which row has to change. The server refuses a Program or Project
+   comment at create with a **400**; the UI offers no composer on those rows. ⚠️ **The `node_type`
+   enum and column keep all three values**: a comment written before the rule stays readable and
+   resolvable, and still renders on its row — hiding it would leave it counted in decision 10's
+   warning with nowhere on screen to clear it.
+
 8. **Only the authoring side resolves a comment** (§12.5). An office may not resolve a PPDO
    reviewer's comment; an encoder may not resolve their department head's. ⚠️ **The single most
    load-bearing rule in the phase.** Without it the soft gate at decision 10 is self-marking: the
@@ -143,6 +151,14 @@ that have already moved are not moved back.
     documents it as "their shared state"). Every transition in this phase therefore operates on
     **the set of rows for one office**, never on a single row. A transition that moves one row leaves
     an office half-submitted, which no screen in this phase can render honestly.
+
+22. 🆕 **The AIP Review search is both reviewers' page** (PPDO-79, decided 2026-09-13). The
+    department head finds their own office's rows there and opens an activity in the activity
+    modal (§6.1a), rather than working only from the entry tree. The one-office review screen (§6.2)
+    stays cross-office only — Return and Accept live there. Opening the search widened what it is
+    reachable from, which exposed a scope rule that had only ever been theoretical; it is now stated
+    per caller in §3.4, and in one sentence: **cross-office reviewer → every office; department head
+    or guest-office user → their own office; host-office user with no reviewer flag → nothing.**
 
 ### Open follow-ups (not blocking)
 
@@ -239,6 +255,10 @@ sites that must use the existing resolvers.
 | Guest-office encoder targets another office's node | A node id they do not own | Write or comment | **`NotFound`**, not `Forbidden` (PPDO-46). A write names one node; clamping would write to the wrong row |
 | Department-head reviewer | `CanReviewBudgetPlanning`, own office | Any state their office is in | Read always; edit per §3.2; submit onward from `DepartmentReview` only |
 | Department-head reviewer of office A | — | Opens office B | **Clamped / NotFound** as above. The flag is office-scoped, not cross-office |
+| Department-head reviewer | `CanReviewBudgetPlanning`, own office | Uses the AIP Review search (PPDO-79) | **Their own office's rows**, clamped server-side — never a 403. Opens an activity in the modal (§6.1a); edits it only when the server's `canEdit` is true |
+| PPDO (host) department head | Host office, no `CanReviewAllOffices` | Searches, or opens another office's activity by id | **Clamped to PPDO / 404.** ⚠️ "Own office" is matched on `caller.OfficeId`, **never** `OfficeScope.Resolve` — which gives every host-office user the whole province. Pinned by `Search_HostDepartmentHead_IsClampedToTheirOwnOfficeNotTheProvince` and `GetActivityForReview_ByPpdosDepartmentHeadOnAnotherOffice_IsNotFound` |
+| PPDO (host) user, no reviewer flag | Host office | Calls the search, with or without `mine` | **Empty page; the repository is never queried** (PPDO-79). `Resolve` would give them the province, and the search cannot apply the division axis that narrows them everywhere else. They hold no review work |
+| Holder of **both** reviewer flags | Own office | Opens an own-office activity in the modal | Reads and comments **as department head** (own office wins, as for comment sides) — but **not editable**: `ReviewerWriteGuard` denies content writes to the cross-office grant, so `canEdit` is false |
 | PPDO consolidated reviewer | `CanReviewAllOffices` | Any office's record | Read via `OfficeScope.ResolveForReview` — ⚠️ **never** `OfficeScope.Resolve`. Comment and return/accept; content writes denied |
 | PPDO (host) encoder | Division D | Reads their office's AIP | Only programs assigned to **division D** via `ProgramDivision`. ⚠️ **Host office only** — must not apply to guest offices |
 | PPDO division user (no reviewer flag) | Host office | Opens the consolidated view | **Forbidden.** ⚠️ The gate is the reviewer flag, **not** `IsHostOffice` — the tempting wrong axis (tracker B4) |
@@ -261,9 +281,10 @@ Routes follow the shipped `budget-planning/aip/...` family (`AipSubmitFunctions`
 | `POST /api/budget-planning/aip/{aipId}/offices/{officeId}/return` | `CanReviewAllOffices` | → `ReturnedByPpdo`. Body optional; the comments are the mechanism, not a covering note |
 | `POST /api/budget-planning/aip/{aipId}/offices/{officeId}/accept` | `CanReviewAllOffices` | → `Consolidated` (decision 6). Only from `SubmittedToPpdo` |
 | `GET /api/budget-planning/aip/{aipId}/offices/{officeId}/comments` | `CanAccessBudgetPlanning` (scoped) or `CanReviewAllOffices` | All comments for one office, resolved included |
-| `POST /api/budget-planning/aip/comments` | Any role that may comment (§3.1) | ⚠️ Must **not** route through `ReviewerWriteGuard` |
+| `POST /api/budget-planning/aip/comments` | Any role that may comment (§3.1) | ⚠️ Must **not** route through `ReviewerWriteGuard`. **Activity nodes only** — Program / Project → 400 (decision 7, PPDO-79) |
 | `POST /api/budget-planning/aip/comments/{id}/resolve` | Authoring side only (decision 8) | 403 for the recipient |
-| `GET /api/budget-planning/aip/review/search` | `CanAccessBudgetPlanning`, scoped by `ResolveForReview` | Query-first (§4.1). **Slim DTO, paginated** |
+| `GET /api/budget-planning/aip/review/search` | `CanAccessBudgetPlanning`, **clamped per caller** (§3.4, decision 22) | Query-first (§4.1). **Slim DTO, paginated** |
+| `GET /api/budget-planning/aip/activities/{activityId}/review` | `CanReviewAllOffices` **or** `CanReviewBudgetPlanning` | 🆕 PPDO-79 — the activity modal (§6.1a). Path + activity + expenditure lines + a server-computed `canEdit`. A department head may open only their own office's activity; every refusal is a **404** worded like a missing activity (PPDO-46). ⚠️ Returns the lines itself rather than leaning on `activities/{id}/expenditures`, which scopes with `OfficeScope.Resolve` and 404s a cross-office reviewer who does not sit in PPDO |
 | `GET /api/budget-planning/aip/{aipId}/readiness-board` | `CanReviewAllOffices` | The kanban: one row per office with state, program count, activity count |
 | `GET /api/budget-planning/aip/{aipId}/consolidated` | `CanReviewAllOffices` | Partial by design (decision 14). Slim, server-aggregated |
 | `GET /api/budget-planning/aip/{aipId}/offices/{officeId}/history` | Same as the review read | Transitions + comments, newest first (§5.2) |
@@ -420,9 +441,29 @@ precisely so review could reuse the pieces rather than fork a 2,000-line page.
 | **Empty (initial)** | ⚠️ **The default, and deliberate.** Filter panel plus copy explaining how to search, and the kanban below it as the non-empty landing. Never a blank panel |
 | **Loading** | Skeleton rows matching the result table — same header, same row height. Never a centered spinner (CLS) |
 | **Empty (no matches)** | Distinct from the initial state: "No AIP rows match these filters", with a clear-filters action |
-| **Success** | Result rows linking into 6.2. Chips show per-value counts, as PR List does |
+| **Success** | Chips show per-value counts, as PR List does. ↩️ *PPDO-79:* an **activity** name opens the activity modal (§6.1a); a **program or project** name opens the reader's own whole-office surface — §6.2 for the PPDO reviewer, AIP Entry for a department head |
+| **Filter panel** (PPDO-79) | Opens expanded. **A Search press that returns rows collapses it** to one line: a funnel-marked label, one removable chip per applied filter, the match count, *Edit filters* and *Clear*. An error or an empty result leaves it open. *Edit filters* re-opens it showing what produced the rows. **A chip's × re-runs the search at once** — unlike the open panel, which stays draft-until-Search; removing the **last** chip returns to the initial state rather than searching everything (decision 15) |
+| **Office filter** (PPDO-79) | `OfficeSelect`, **one office at a time** — the API still takes a list. Hidden for a department head, replaced by a line naming their office: the server clamps them regardless, and a picker that silently does nothing reads as broken. "Only what's waiting on me" is hidden from them for the same reason |
 | **Error** | Inline error with retry; filters preserved |
-| **Forbidden** | The page is **hidden from the sidebar** for users without a reviewer flag, not disabled. ↩️ *Settled in PPDO-76:* the **page** is gated on `CanReviewAllOffices` and redirects anyone else, while the **endpoint** keeps §4's `CanAccessBudgetPlanning` gate and *clamps* a guest office to its own rows. §3.4's "guest-office encoder opens AIP Review" row described the endpoint's behaviour, not a UI that exists — every result links into §6.2's reviewer-only screen, so a non-reviewer searching would hit a dead end on every row. The endpoint stays permissive so a 403 cannot be used to discover which offices exist (PPDO-46), and so an office-facing surface can be added later without reopening the scope rule |
+| **Forbidden** | The page is **hidden from the sidebar** for users without a reviewer flag, not disabled. ↩️ *Settled in PPDO-76:* the **page** is gated on `CanReviewAllOffices` and redirects anyone else, while the **endpoint** keeps §4's `CanAccessBudgetPlanning` gate and *clamps* a guest office to its own rows. §3.4's "guest-office encoder opens AIP Review" row described the endpoint's behaviour, not a UI that exists — every result links into §6.2's reviewer-only screen, so a non-reviewer searching would hit a dead end on every row. The endpoint stays permissive so a 403 cannot be used to discover which offices exist (PPDO-46), and so an office-facing surface can be added later without reopening the scope rule ↩️ **Widened in PPDO-79 (decision 22):** the page now opens for **either** reviewer flag (`canOpenAipReview`), and the one-office screen keeps the cross-office gate on its own rule (`canOpenAipOfficeReview`). A department head's result rows link to the modal and to AIP Entry, so the dead end described above no longer applies to them |
+
+### 6.1a AIP Review — activity modal (PPDO-79, new)
+
+Layout agreed on the wireframe (`docs/v1.8/wireframes/aip-review/`, settled 2026-09-13) before it was
+built — the process gap the PPDO-79 review feedback exposed.
+
+| State | Content |
+|---|---|
+| **Opened from** | An activity name in §6.1's results. Program and project rows do not open it (decision 7) |
+| **Loading** | Skeleton shaped like the loaded modal — banner, three path rows, the two columns. Never a spinner |
+| **Success** | A banner naming who holds the work, **in the reader's own voice**; a path strip (office → program → project), because a search row is flat; then **two columns** — left: activity header, amounts, details, expenditure lines; right: the activity's comment thread, **always open** |
+| **Two readers** | **PPDO reviewer** — read and comment; footer links to §6.2. **Department head, own office** — the same modal, editable through the entry page's own `AipActivityFields` and `AipExpenditureTable` when `canEdit` is true; footer links to AIP Entry |
+| **`canEdit`** | ⚠️ **Server-computed and never re-derived**: own-office department head **and** a Draft record **and** `IsOfficeEditable` **and** not denied by `ReviewerWriteGuard`. The last is invisible from `/auth/me` — a holder of both flags is read and comment only |
+| **Height** | Expenditure lines stay in (decided). The body scrolls inside `Modal`, under a fixed header and footer |
+| **Narrow window** | The two columns stack below `lg` |
+| **Error** | Inline error with *Try again*. A refresh that fails after a save keeps the last good read on screen and says so |
+| **After a save** | The modal re-reads the activity in place — no skeleton, scroll kept. Closing it re-runs the search, so a renamed row shows its new name |
+| **Comments** | Composer offered only where the reader may comment (decision 8's sides); 2000-character counter; the empty rail says so, and a failed comment fetch is said out loud rather than shown as an empty thread |
 
 ### 6.2 AIP Review — one office (PPDO-74)
 
@@ -463,6 +504,9 @@ for users without the grant.
 
 ⚠️ Three items reading AIP / AIP Entry / AIP Review is one more than most readers will parse. Rename
 the existing list item to **`AIP Records`** as part of this ticket.
+
+↩️ **Widened in the PPDO-79 follow-up (decision 22):** `AIP Review` is shown for **either** reviewer
+flag, and points at the search. It stays hidden for everyone else, including a PPDO division encoder.
 
 ### 6.5 Notifications (PPDO-75)
 

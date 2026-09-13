@@ -1,0 +1,260 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #F1F3F5;
+      font-family: "Segoe UI", "Source Sans Pro", system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: #196638; }
+    a:hover { color: #13512D; }
+    .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, "Liberation Mono", monospace; }
+    .funnel {
+      width: 14px; height: 14px; flex-shrink: 0;
+      fill: none; stroke: currentColor; stroke-width: 1.5;
+      stroke-linecap: round; stroke-linejoin: round;
+    }
+    .lbl {
+      display: block; margin-bottom: 4px; font-size: 12px; line-height: 16px;
+      font-weight: 600; text-transform: uppercase; letter-spacing: 0.025em; color: #5A636B;
+    }
+    .help { margin: 4px 0 0; font-size: 12px; line-height: 16px; color: #5A636B; }
+    .field {
+      width: 100%; border: 1px solid #C7CFD6; background: #FFFFFF;
+      padding: 6px 10px; font-size: 14px; line-height: 20px; color: #343A40;
+    }
+    .ph { color: #7D858C; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px; border: 1px solid #C7CFD6;
+      background: #F8F9FA; color: #343A40; padding: 6px 12px;
+      font-size: 12px; line-height: 16px; font-weight: 500;
+    }
+    .chip-on { border-color: transparent; background: #196638; color: #FFFFFF; }
+    .badge {
+      border-radius: 9999px; padding: 0 5px; font-size: 12px; line-height: 16px;
+      background: rgba(233,236,239,0.6); color: #5A636B;
+    }
+    .badge-on { background: rgba(255,255,255,0.3); color: #FFFFFF; }
+    .applied {
+      display: inline-flex; align-items: center; gap: 8px; border-radius: 9999px;
+      background: #D4EDDE; color: #0F4526; padding: 3px 6px 3px 10px;
+      font-size: 12px; line-height: 16px; font-weight: 500;
+    }
+    .applied-x { color: #196638; font-size: 13px; }
+    .lvl {
+      display: inline-block; border-radius: 9999px; padding: 2px 6px;
+      font-size: 10px; line-height: 12px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.025em;
+    }
+    .rowgrid {
+      display: grid;
+      grid-template-columns: 92px 232px minmax(0, 1fr) 240px 236px;
+      align-items: center;
+    }
+    .cell { padding: 9px 12px; }
+  </style>
+</helmet>
+
+<div style="padding: 24px;">
+
+  <!-- Page header -->
+  <div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 16px;">
+    <div>
+      <h1 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; color: #343A40;">AIP Review</h1>
+      <p style="margin: 2px 0 0; font-size: 14px; line-height: 20px; color: #5A636B;">
+        Find the programs, projects and activities you need to review.
+      </p>
+    </div>
+    <div>
+      <span class="lbl">Fiscal year</span>
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 32px; border: 1px solid #C7CFD6; background: #FFFFFF; padding: 6px 12px; font-size: 14px; line-height: 20px; color: #343A40;">
+        <span>FY 2028</span><span style="color: #ADB5BD;">&#9662;</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Filter panel: COLLAPSED ─────────────────────────────────────── -->
+  <sc-if value="{{ collapsed }}" hint-placeholder-val="{{ true }}">
+  <div style="margin-bottom: 16px; border: 1px solid #E9ECEF; background: #FFFFFF;">
+    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 16px;">
+
+      <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.025em; color: #5A636B;"><svg class="funnel" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12l-4.5 5.25V13l-3-1.5V8.25z"></path></svg>Filters</span>
+
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex-grow: 1;">
+        <span class="applied">Office: OPA &mdash; Prov. Agriculturist <span class="applied-x">&#215;</span></span>
+        <span class="applied">Sector: ECONOMIC, GENERAL <span class="applied-x">&#215;</span></span>
+        <span class="applied">Status: With PPDO <span class="applied-x">&#215;</span></span>
+        <span class="applied" style="background: #FEF3CD; color: #78350F;">Only what&rsquo;s waiting on me <span class="applied-x" style="color: #B45309;">&#215;</span></span>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 16px;">
+        <span style="font-size: 14px; line-height: 20px; color: #5A636B;">
+          <strong style="color: #343A40; font-variant-numeric: tabular-nums;">68</strong> matches
+        </span>
+        <span style="display: inline-flex; align-items: center; gap: 6px; border: 1px solid #C7CFD6; background: #FFFFFF; padding: 6px 12px; font-size: 14px; line-height: 20px; font-weight: 500; color: #343A40;">
+          <svg class="funnel" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12l-4.5 5.25V13l-3-1.5V8.25z"></path></svg>Edit filters <span style="color: #ADB5BD;">&#9662;</span>
+        </span>
+        <span style="font-size: 14px; line-height: 20px; color: #5A636B; text-decoration: underline;">Clear</span>
+      </div>
+
+    </div>
+  </div>
+  </sc-if>
+
+  <!-- ── Filter panel: EXPANDED ──────────────────────────────────────── -->
+  <sc-if value="{{ expanded }}" hint-placeholder-val="{{ true }}">
+  <div style="margin-bottom: 16px; border: 1px solid #E9ECEF; background: #FFFFFF;">
+
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid #E9ECEF; padding: 10px 16px;">
+      <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.025em; color: #5A636B;"><svg class="funnel" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12l-4.5 5.25V13l-3-1.5V8.25z"></path></svg>Filters</span>
+      <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 14px; line-height: 20px; color: #5A636B;">
+        Hide <span style="color: #ADB5BD;">&#9652;</span>
+      </span>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 16px;">
+
+      <div>
+        <span class="lbl">Reference code</span>
+        <div class="field"><span class="ph">3000-&nbsp; or &nbsp;1000-000-1-01-010 OR 3000-000-1-01-010</span></div>
+        <p class="help">Matches from the start of the code. Combine several with <strong>OR</strong> or a comma. For one office across all its sectors, use the office filter instead.</p>
+      </div>
+
+      <div>
+        <span class="lbl">Title</span>
+        <div class="field"><span class="ph">Part of a program, project or activity name</span></div>
+        <p class="help">Matched as typed &mdash; a title containing the word &ldquo;or&rdquo; is searched literally.</p>
+      </div>
+
+      <div>
+        <span class="lbl">Office</span>
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid #C7CFD6; background: #FFFFFF; padding: 6px 10px; font-size: 14px; line-height: 20px; color: #343A40;">
+          <span>OPA &mdash; Office of the Provincial Agriculturist</span>
+          <span style="color: #ADB5BD;">&#9662;</span>
+        </div>
+        <p class="help">One office at a time. Leave the sector chips blank to see all of an office&rsquo;s sectors.</p>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <div>
+          <span class="lbl">Sector</span>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+            <span class="chip chip-on">GENERAL <span class="badge badge-on">14</span></span>
+            <span class="chip">SOCIAL <span class="badge">0</span></span>
+            <span class="chip chip-on">ECONOMIC <span class="badge badge-on">54</span></span>
+            <span class="chip">OTHERS <span class="badge">0</span></span>
+          </div>
+        </div>
+        <div>
+          <span class="lbl">Status</span>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+            <span class="chip">Draft <span class="badge">0</span></span>
+            <span class="chip">Office review <span class="badge">0</span></span>
+            <span class="chip chip-on">With PPDO <span class="badge badge-on">68</span></span>
+            <span class="chip">Returned <span class="badge">0</span></span>
+            <span class="chip">Done <span class="badge">0</span></span>
+          </div>
+        </div>
+        <p class="help" style="margin-top: 0;">Select multiple to combine.</p>
+      </div>
+
+    </div>
+
+    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; border-top: 1px solid #E9ECEF; padding: 12px 16px;">
+      <span style="background: #196638; color: #FFFFFF; padding: 6px 16px; font-size: 14px; line-height: 20px; font-weight: 500;">Search</span>
+      <span style="padding: 6px 12px; font-size: 14px; line-height: 20px; color: #5A636B; text-decoration: underline;">Clear</span>
+      <span style="margin-left: auto; display: inline-flex; align-items: center; gap: 8px; font-size: 14px; line-height: 20px; color: #343A40;">
+        <span style="display: inline-block; width: 16px; height: 16px; background: #196638; color: #FFFFFF; font-size: 12px; line-height: 16px; text-align: center;">&#10003;</span>
+        Only what&rsquo;s waiting on me
+      </span>
+    </div>
+
+  </div>
+  </sc-if>
+
+  <!-- ── Results ─────────────────────────────────────────────────────── -->
+  <div style="border: 1px solid #E9ECEF; background: #FFFFFF;">
+
+    <div class="rowgrid" style="border-bottom: 1px solid #E9ECEF; background: #F8F9FA; font-size: 12px; line-height: 16px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.025em; color: #5A636B;">
+      <span class="cell">Level</span>
+      <span class="cell">Reference code</span>
+      <span class="cell">Name</span>
+      <span class="cell">Office</span>
+      <span class="cell">Status</span>
+    </div>
+
+    <sc-for list="{{ rows }}" as="row" hint-placeholder-count="8">
+      <div class="rowgrid" style="border-top: 1px solid #E9ECEF; font-size: 14px; line-height: 20px;">
+        <span class="cell"><span class="lvl" style="{{ row.chipStyle }}">{{ row.level }}</span></span>
+        <span class="cell mono" style="font-size: 12px; line-height: 16px; color: #5A636B; white-space: nowrap;">{{ row.prefix }}<span style="font-weight: 600; color: #343A40;">{{ row.own }}</span></span>
+        <span class="cell" style="color: #343A40;"><span style="text-decoration: underline; text-decoration-color: #C7CFD6; text-underline-offset: 2px;">{{ row.name }}</span></span>
+        <span class="cell" style="color: #5A636B;">{{ row.office }} <span style="font-size: 12px;">&middot; {{ row.sector }}</span></span>
+        <span class="cell" style="font-size: 12px; line-height: 16px; color: #5A636B;">{{ row.holder }}</span>
+      </div>
+    </sc-for>
+
+  </div>
+
+  <div style="margin-top: 12px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px; line-height: 20px; color: #5A636B;">
+    <span>68 matches &middot; page 1 of 3</span>
+    <div style="display: flex; gap: 8px;">
+      <span style="border: 1px solid #C7CFD6; padding: 4px 12px; color: #ADB5BD;">Previous</span>
+      <span style="border: 1px solid #C7CFD6; padding: 4px 12px; color: #343A40; background: #FFFFFF;">Next</span>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"panel":{"editor":"enum","options":["collapsed","expanded"],"default":"collapsed","section":"State"},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const collapsed = (this.props.panel ?? 'collapsed') === 'collapsed';
+
+    const LEVEL = {
+      Program:  'background: #A8DABC; color: #0F4526;',
+      Project:  'background: #D4EDDE; color: #13512D;',
+      Activity: 'background: #F0FAF4; color: #13512D;',
+    };
+
+    const raw = [
+      ['Program',  '8000-000-1-01-010-002', 'Rice Productivity Enhancement Program'],
+      ['Project',  '8000-000-1-01-010-002-001', 'Hybrid Seed Distribution'],
+      ['Activity', '8000-000-1-01-010-002-001-001', 'Procurement and distribution of certified hybrid rice seeds'],
+      ['Activity', '8000-000-1-01-010-002-001-002', 'Farmer field school on hybrid rice management'],
+      ['Activity', '8000-000-1-01-010-002-002-001', 'Establishment of two communal irrigation service areas'],
+      ['Project',  '8000-000-1-01-010-003-001', 'Livestock Dispersal'],
+      ['Activity', '8000-000-1-01-010-003-001-001', 'Dispersal of upgraded native swine to 40 recipient households'],
+      ['Activity', '1000-000-1-01-010-001-001-002', 'Office supplies and utilities for the agricultural extension unit'],
+    ];
+
+    const rows = raw.map(function (r) {
+      const code = r[1];
+      const cut = code.lastIndexOf('-');
+      return {
+        level:     r[0],
+        chipStyle: LEVEL[r[0]],
+        prefix:    code.slice(0, cut + 1),
+        own:       code.slice(cut + 1),
+        name:      r[2],
+        office:    'OPA',
+        sector:    code.slice(0, 4) === '1000' ? 'GENERAL' : 'ECONOMIC',
+        holder:    'PPDO — awaiting your decision',
+      };
+    });
+
+    return { collapsed: collapsed, expanded: !collapsed, rows: rows };
+  }
+}
+</script>
+</body>
+</html>

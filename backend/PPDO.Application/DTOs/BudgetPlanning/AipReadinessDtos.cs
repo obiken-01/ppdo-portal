@@ -102,3 +102,54 @@ public sealed record AipOfficeReviewDto(
     string                      WorkflowStatus,
     int                         ActivityCount,
     IReadOnlyList<AipOfficeDto> Groups);
+
+/// <summary>
+/// One program or project on the way down to an activity — the review modal's path strip (PPDO-79).
+/// Deliberately three fields: the strip names where the activity sits, it does not render the level.
+/// </summary>
+public sealed record AipReviewPathNodeDto(int Id, string RefCode, string Name);
+
+/// <summary>
+/// One activity opened from the AIP Review search, for the activity modal (PPDO-79,
+/// <c>AIP_Review_Spec.md</c> §6.1a).
+///
+/// <para>
+/// ⚠️ <b>Why the path travels with it.</b> The search returns flat rows, so a reviewer opening one has
+/// no idea which program the activity belongs to. Office, program and project are carried here so
+/// the modal can say so without a second request per level.
+/// </para>
+///
+/// <para>
+/// ⚠️ <b><see cref="CanEdit"/> is computed by the server, and the modal reads it rather than
+/// re-deriving it.</b> Four conditions have to hold at once — the caller is this office's department
+/// head, the office is in an editable workflow state, the record is still Draft, and
+/// <c>ReviewerWriteGuard</c> does not deny them. The fourth is the one a client would miss: a person
+/// holding <i>both</i> reviewer flags is denied content writes even on their own office, and a
+/// client-side rule built from the two flags alone would offer them an Edit button that 403s.
+/// </para>
+///
+/// <para>
+/// There is no <c>CanComment</c> here. The comments read already answers that for the office, from
+/// the same side-resolution the create path uses, and a second carrier of it could disagree.
+/// </para>
+/// </summary>
+/// <param name="OfficeRefCode">The sub-office group's own code — the first line of the path strip.</param>
+/// <param name="Expenditures">
+/// The activity's lines with their items. ⚠️ Returned here rather than fetched from the entry page's
+/// list endpoint: that one resolves scope with <c>OfficeScope.Resolve</c>, which answers 404 to a
+/// cross-office reviewer who does not happen to sit in the host office.
+/// </param>
+public sealed record AipActivityReviewDto(
+    int                              AipRecordId,
+    int                              FiscalYear,
+    int                              OfficeId,
+    string                           OfficeName,
+    string                           OfficeCode,
+    string                           OfficeRefCode,
+    string                           Sector,
+    string                           WorkflowStatus,
+    AipReviewPathNodeDto             Program,
+    AipReviewPathNodeDto             Project,
+    AipActivityDto                   Activity,
+    IReadOnlyList<AipExpenditureDto> Expenditures,
+    bool                             CanEdit);

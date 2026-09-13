@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging.Abstractions;
+﻿using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
@@ -129,6 +129,54 @@ public sealed class AipReviewCommentServiceTests
         => new(nameof(AipCommentNodeType.Activity), ActivityId, body);
 
     // ── Creating ──────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// ⚠️ Activities only (PPDO-79, spec decision 7 as narrowed). Refused by the SERVER, not merely
+    /// hidden: a comment is what the re-submit warning counts, so one the screen no longer offers a
+    /// place for would still hold that count up. Asserted against the store as well as the status,
+    /// because a 400 that had already written the row would pass a status-only assertion.
+    /// </summary>
+    [Theory]
+    [InlineData(nameof(AipCommentNodeType.Program), ProgramId)]
+    [InlineData(nameof(AipCommentNodeType.Project), ProjectId)]
+    public async Task Create_OnAProgramOrProject_IsRejectedAndNothingIsStored(string nodeType, int nodeId)
+    {
+        AipReviewCommentService sut = Build();
+
+        ServiceResult<AipReviewCommentDto> result = await sut.CreateAsync(
+            RecordId, OfficeId, new CreateAipReviewCommentDto(nodeType, nodeId, "Revise this."),
+            PpdoReviewer());
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("activity", result.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(_store);
+    }
+
+    /// <summary>
+    /// ⚠️ The other half of the same rule: a program comment written BEFORE it must stay readable
+    /// and resolvable. That is why the enum and column were kept — narrowing create must not strand
+    /// an existing unresolved comment where nobody can clear it.
+    /// </summary>
+    [Fact]
+    public async Task ALegacyProgramComment_IsStillReadAndStillResolvable()
+    {
+        AipReviewCommentService sut = Build();
+        _store.Add(new AipReviewComment
+        {
+            Id = 50, AipOfficeId = GroupA, NodeType = AipCommentNodeType.Program, NodeId = ProgramId,
+            AuthorId = Guid.NewGuid(), AuthorSide = AipCommentSide.Ppdo,
+            Body = "Written before activities-only.", CreatedAt = DateTime.UtcNow,
+        });
+
+        ServiceResult<AipReviewCommentsDto> read =
+            await sut.GetForOfficeAsync(RecordId, OfficeId, PpdoReviewer());
+        AipReviewCommentDto legacy = Assert.Single(read.Value!.Comments);
+        Assert.False(legacy.IsOrphaned);
+        Assert.Equal(1, read.Value.Unresolved.FromPpdo);
+
+        ServiceResult<AipReviewCommentDto> resolved = await sut.ResolveAsync(50, PpdoReviewer());
+        Assert.True(resolved.IsSuccess);
+    }
 
     [Fact]
     public async Task Create_ByTheDepartmentHead_IsRecordedAsTheDepartmentHeadSide()

@@ -58,6 +58,46 @@ export function canOpenLdip(me: MeResponse): boolean {
 }
 
 /**
+ * The **AIP Review search** — `/budget-planning/aip/review/search`. Either reviewer.
+ *
+ * ↩️ **Widened in PPDO-79** from the cross-office grant alone. The search is *the* review page for
+ * both reviewers (decided 2026-09-13): a department head finds their own office's rows here and opens
+ * them in the activity modal, rather than scrolling the entry tree. The server clamps a department
+ * head to their own office, so widening the page widens nothing they can read.
+ *
+ * ⚠️ **Not `isHostOffice`, and not Admin.** Sitting in PPDO is the tempting wrong axis (tracker B4):
+ * a PPDO *division encoder* is in the host office and holds no review work — the search answers them
+ * with an empty page for the same reason.
+ *
+ * ⚠️ Courtesy, as this file's header says. The search and the activity read both enforce their own
+ * scope; hiding the nav item only spares somebody a redirect.
+ */
+export function canOpenAipReview(me: MeResponse): boolean {
+  return me.canAccessBudgetPlanning && (me.canReviewAllOffices || me.canReviewBudgetPlanning);
+}
+
+/**
+ * The **one-office review screen** — `/budget-planning/aip/review?officeId=…`. The PPDO consolidated
+ * reviewer's grant, and nothing weaker.
+ *
+ * ⚠️ **`canReviewAllOffices`, NOT `canReviewBudgetPlanning`** — and the two are one word apart in
+ * every sentence about them, which is why this is written down. This screen is where Return and
+ * Accept live, and both are the cross-office reviewer's alone. A department head's whole-office
+ * surface is AIP Entry, which carries the editability that belongs to them; the search links them
+ * there instead. (`AIP_Review_Spec.md` §3.1, §6.2.)
+ *
+ * ↩️ Until PPDO-79 this rule was `canOpenAipReview` and covered the search too. It split when the
+ * search opened to department heads — one rule for two pages would have either locked department
+ * heads out of search or let them reach a screen whose every action 403s.
+ *
+ * ⚠️ Courtesy, as this file's header says. `AipReviewFunctions` refuses the cross-office read,
+ * return and accept on its own account.
+ */
+export function canOpenAipOfficeReview(me: MeResponse): boolean {
+  return me.canAccessBudgetPlanning && me.canReviewAllOffices;
+}
+
+/**
  * Where to send somebody who reached one of the above without the grant.
  *
  * The Budget Planning hub, which anyone holding `canAccessBudgetPlanning` can open — it names the

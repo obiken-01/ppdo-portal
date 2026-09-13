@@ -179,6 +179,82 @@ public sealed class AipReviewService : IAipReviewService
                 AipTreeMapper.GroupFundCodes(fundRows))));
     }
 
+    // ── The activity modal's read (PPDO-79) ───────────────────────────────────
+
+    public async Task<ServiceResult<AipActivityReviewDto>> GetActivityForReviewAsync(
+        int activityId, User caller, CancellationToken ct = default)
+    {
+        // One sentence for "no such activity" and "not yours" alike (PPDO-46).
+        string notFound = $"AIP activity {activityId} not found.";
+
+        // ⚠️ Walks UP one row per level rather than loading the office's whole tree: the modal shows
+        // one activity, and PPDO's own office holds hundreds. Sequential awaits — these share one
+        // DbContext, which is not thread-safe (CLAUDE.md).
+        AipActivity? activity = await _aipRepo.GetActivityByIdAsync(activityId, ct);
+        if (activity is null) return ServiceResult<AipActivityReviewDto>.NotFound(notFound);
+
+        AipProject? project = await _aipRepo.GetProjectByIdAsync(activity.ProjectId, ct);
+        if (project is null) return ServiceResult<AipActivityReviewDto>.NotFound(notFound);
+
+        AipProgram? program = await _aipRepo.GetProgramByIdAsync(project.ProgramId, ct);
+        if (program is null) return ServiceResult<AipActivityReviewDto>.NotFound(notFound);
+
+        // ⚠️ A group with no owning office is a legacy row the V18-32 backfill could not match. The
+        // search renders those without a link, so nothing legitimate opens one here.
+        AipOffice? group = await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
+        if (group?.OfficeId is not int officeId)
+            return ServiceResult<AipActivityReviewDto>.NotFound(notFound);
+
+        // ⚠️ "Own office" is the caller's office id, never OfficeScope.Resolve — which would hand a
+        // PPDO department head every office in the province. See the interface remarks.
+        bool crossOffice = await _permissions.CanReviewAllOfficesAsync(caller, ct);
+        bool ownOffice   = caller.OfficeId == officeId;
+        bool deptHead    = ownOffice && await _permissions.CanReviewBudgetPlanningAsync(caller, ct);
+        if (!crossOffice && !deptHead)
+            return ServiceResult<AipActivityReviewDto>.NotFound(notFound);
+
+        AipRecord? record = await _aipRepo.GetByIntIdAsync(group.AipRecordId, ct);
+        if (record is null) return ServiceResult<AipActivityReviewDto>.NotFound(notFound);
+
+        IReadOnlyList<AipExpenditure> lines = await _expRepo.GetByActivityIdAsync(activityId, ct);
+
+        // ⚠️ One query for every line's items, never one per line — the same shape the entry
+        // endpoint uses, and skipped outright for an activity with no lines.
+        ILookup<int, AipProcurementItem> itemsByLine = lines.Count == 0
+            ? Array.Empty<AipProcurementItem>().ToLookup(i => i.ExpenditureId)
+            : (await _expRepo.GetProcurementItemsByExpenditureIdsAsync(
+                    lines.Select(l => l.Id).ToList(), ct))
+                .ToLookup(i => i.ExpenditureId);
+
+        IReadOnlyList<string> fundCodes = await _expRepo.GetFundCodesByActivityIdAsync(activityId, ct);
+        Office? office = await _officeConfigRepo.GetByIdAsync(officeId, ct);
+
+        // ⚠️ AipActivityReviewDto.CanEdit's four conditions, mirroring the write path: this office's
+        // department head, a Draft record, work still in the office's hands (AipWriteGuard), and not
+        // denied by ReviewerWriteGuard — the one that stops a holder of BOTH flags, who would
+        // otherwise be offered an Edit button that answers 403.
+        bool canEdit = deptHead
+            && record.Status == PlanningStatus.Draft
+            && AipWorkflowStatus.IsOfficeEditable(group.WorkflowStatus)
+            && !await ReviewerWriteGuard.DeniesWriteAsync(caller, _permissions, ct);
+
+        return ServiceResult<AipActivityReviewDto>.Ok(new AipActivityReviewDto(
+            record.Id,
+            record.FiscalYear,
+            officeId,
+            // Same fallback as the whole-office read: a slightly less official name beats a blank.
+            office?.OfficeName ?? group.Name,
+            office?.OfficeCode ?? string.Empty,
+            group.RefCode,
+            group.Sector,
+            group.WorkflowStatus,
+            new AipReviewPathNodeDto(program.Id, program.RefCode, program.Name),
+            new AipReviewPathNodeDto(project.Id, project.RefCode, project.Name),
+            AipTreeMapper.MapActivity(activity, fundCodes),
+            lines.Select(l => AipExpenditureService.Map(l, itemsByLine[l.Id])).ToList(),
+            canEdit));
+    }
+
     // ── The query-first search (V18-75 / PPDO-76) ─────────────────────────────
 
     /// <summary>Page size ceiling. A client asking for more gets this; the grid pages instead.</summary>
@@ -201,37 +277,29 @@ public sealed class AipReviewService : IAipReviewService
                 new Dictionary<string, int>(), new Dictionary<string, int>()));
 
         bool crossOffice = await _permissions.CanReviewAllOfficesAsync(caller, ct);
-        OfficeScope scope = OfficeScope.ResolveForReview(caller, crossOffice);
 
         // ⚠️ CLAMP, never refuse. A guest office that asks about another office gets its own rows
         // back — a 403 would confirm the other office exists, which is the enumeration PPDO-46
         // closed off. The clamp reaches the repository as an ordinary one-value office filter.
-        List<int> officeIds = (request.OfficeIds ?? []).Distinct().ToList();
-        if (!scope.SeeAll)
-            officeIds = scope.OfficeId is int only && only != OfficeScope.NoOffice ? [only] : [];
+        List<int> officeIds = crossOffice
+            ? (request.OfficeIds ?? []).Distinct().ToList()
+            : await OwnOfficeForSearchAsync(caller, ct);
 
         List<string> statuses = (request.WorkflowStatuses ?? []).ToList();
 
         // ⚠️ "Everything applicable to me", resolved HERE from the caller's own flags — never from
         // anything the client sent. For a cross-office reviewer the useful answer is their actual
         // queue: the offices sitting at PPDO waiting on a decision. For anybody else it is their
-        // own office, which is the only work they have.
-        if (request.Mine)
-        {
-            if (crossOffice)
-            {
-                if (statuses.Count == 0) statuses.Add(AipWorkflowStatus.SubmittedToPpdo);
-            }
-            else if (caller.OfficeId is int mine && officeIds.Count == 0)
-            {
-                officeIds.Add(mine);
-            }
-        }
+        // own office — which the clamp above has already applied, so "mine" adds nothing for them
+        // and must not: re-adding the caller's office here is how a host-office non-reviewer,
+        // clamped to nothing, would get PPDO's whole office back through a checkbox (PPDO-79).
+        if (request.Mine && crossOffice && statuses.Count == 0)
+            statuses.Add(AipWorkflowStatus.SubmittedToPpdo);
 
-        // ⚠️ A caller with no office resolves to "sees nothing" (DECISION F). Short-circuit rather
-        // than querying: an empty office filter means "no filter", so falling through would show
-        // them every office in the province.
-        if (!scope.SeeAll && officeIds.Count == 0)
+        // ⚠️ Short-circuit rather than querying: an empty office filter means "no filter" one layer
+        // down, so falling through would show a caller clamped to nothing every office in the
+        // province. Covers both a caller with no office (DECISION F) and a host non-reviewer.
+        if (!crossOffice && officeIds.Count == 0)
             return ServiceResult<AipReviewSearchResultDto>.Ok(new AipReviewSearchResultDto(
                 record.Id, record.FiscalYear, [], 0, page, pageSize,
                 new Dictionary<string, int>(), new Dictionary<string, int>()));
@@ -287,6 +355,33 @@ public sealed class AipReviewService : IAipReviewService
                  .ToList();
 
     // ── Internals ─────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The one office a caller who is NOT a cross-office reviewer searches — or none (PPDO-79).
+    ///
+    /// <para>
+    /// ⚠️ <b>Not <c>OfficeScope.Resolve</c>, and the difference is the whole method.</b> Resolve gives
+    /// every host-office user the entire province. That was unreachable in practice while the search
+    /// page was cross-office-only; PPDO-79 opened it to department heads, which put it one sidebar
+    /// click from PPDO's own department head. This query also cannot apply the division axis that
+    /// narrows a PPDO encoder everywhere else, so the host office is decided here explicitly:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item>Guest office — their own office. No division axis applies to them.</item>
+    ///   <item>Host office, department head — PPDO's own office. The flag is office-scoped and they
+    ///   review the whole of it, the same reason the review reads apply no division filter.</item>
+    ///   <item>Host office, no reviewer flag — nothing. They hold no review work.</item>
+    ///   <item>No office at all — nothing (DECISION F).</item>
+    /// </list>
+    /// </summary>
+    private async Task<List<int>> OwnOfficeForSearchAsync(User caller, CancellationToken ct)
+    {
+        if (caller.OfficeId is not int own || own == OfficeScope.NoOffice) return [];
+
+        if (!OfficeScope.Resolve(caller).SeeAll) return [own];
+
+        return await _permissions.CanReviewBudgetPlanningAsync(caller, ct) ? [own] : [];
+    }
 
     /// <summary>
     /// The refusal for an office that is not at PPDO, split by <b>who is responsible for that</b>.

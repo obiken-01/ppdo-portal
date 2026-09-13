@@ -21,18 +21,40 @@
  * code and office is segment 5, so "one office, all sectors" cannot be written as a prefix — it is
  * `office = X, sector = blank`. Eleven offices really do span more than one sector. The helper text
  * under each field says so, because the instinct is to type a code for everything.
+ *
+ * ── PPDO-79 (layout agreed on the wireframe, 2026-09-13) ──
+ *
+ * ⚠️ **Both reviewers land here.** The PPDO consolidated reviewer searches every office; a
+ * department head searches their own, which the server enforces by clamping — this page only drops
+ * the controls that would do nothing for them (the office picker and "waiting on me").
+ *
+ * ⚠️ **The panel collapses once results land**, to one line of removable chips, so the results — not
+ * the form that produced them — own the screen. Only a *Search press that returns rows* collapses it:
+ * an error or an empty result leaves the form open, since the reader's next move is to change it.
+ *
+ * ⚠️ **A chip's × re-runs the search at once**, unlike the open panel, which stays draft-until-Search.
+ * The chip names a filter already applied and already shaping the rows on screen; leaving the count
+ * beside it stale until another click would be the wrong way round.
+ *
+ * ⚠️ **An activity name opens the activity modal; a program or project name opens the whole-office
+ * surface** that belongs to the reader — the review screen for PPDO, AIP Entry for a department head.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useMe } from "@/lib/me-cache";
 import { searchAipReview } from "@/lib/aip-review";
 import { aipErrorMessage } from "@/lib/aip";
 import { listOffices } from "@/lib/config";
+import { canOpenAipReview, budgetPlanningFallback } from "@/lib/budget-planning-access";
 import { FIRST_ENTERED_FISCAL_YEAR } from "@/lib/aip-fiscal-years";
 import { AIP_SECTOR_OPTIONS } from "@/lib/aipConstants";
-import { AIP_WORKFLOW, describeAipHolderForReviewer } from "@/lib/aip-workflow";
+import {
+  AIP_WORKFLOW, describeAipHolderForReviewer, describeAipHolderForDepartmentHead,
+} from "@/lib/aip-workflow";
 import { AipLevelChip } from "@/components/aip/entry/AipHierarchy";
+import OfficeSelect from "@/components/ui/OfficeSelect";
+import AipActivityReviewModal from "@/components/aip/review/AipActivityReviewModal";
 import type {
   AipReviewSearchResult, AipReviewSearchRow, AipCommentNodeType, OfficeResponse,
 } from "@/types";
@@ -57,6 +79,10 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 interface Filters {
+  /**
+   * ⚠️ Still a list, although the picker now chooses one office (PPDO-79). The API takes a list and
+   * that did not change — only the UI narrowed, from a hand-rolled multi-select to `OfficeSelect`.
+   */
   officeIds: number[];
   sectors: string[];
   statuses: string[];
@@ -65,17 +91,35 @@ interface Filters {
   mine: boolean;
 }
 
+type FilterKey = keyof Filters;
+
 const EMPTY: Filters = {
   officeIds: [], sectors: [], statuses: [], refCode: "", title: "", mine: false,
 };
 
 const PAGE_SIZE = 25;
 
+/** Nothing asked for at all. */
+function isEmptyQuery(f: Filters): boolean {
+  return (
+    f.officeIds.length === 0 && f.sectors.length === 0 && f.statuses.length === 0 &&
+    f.refCode.trim() === "" && f.title.trim() === "" && !f.mine
+  );
+}
+
+/** `f` with one filter put back to blank. */
+function withoutFilter(f: Filters, key: FilterKey): Filters {
+  return { ...f, [key]: EMPTY[key] } as Filters;
+}
+
 export default function AipReviewSearchPage() {
-  // ⚠️ Same guard as the review screen this page links into. The endpoint is deliberately more
-  // permissive — it clamps a guest office rather than refusing it — but every result here opens a
-  // reviewer-only screen, so a page full of dead ends is worse than no page.
-  useMe((m) => m.canReviewAllOffices);
+  // ⚠️ Same guard as the sidebar — both read the SHARED rule, so they cannot disagree (PPDO-79). It
+  // admits EITHER reviewer; the endpoint behind the page decides how far each one sees.
+  //
+  // ⚠️ The fallback is the Budget Planning hub, not `/dashboard`: a guest-office user has no
+  // dashboard, and sending them there is a redirect to another redirect.
+  const me = useMe(canOpenAipReview, budgetPlanningFallback);
+  const crossOffice = me?.canReviewAllOffices === true;
 
   const [fiscalYear, setFiscalYear] = useState(FIRST_ENTERED_FISCAL_YEAR);
   const [draft, setDraft] = useState<Filters>(EMPTY);
@@ -91,15 +135,24 @@ export default function AipReviewSearchPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [collapsed, setCollapsed] = useState(false);
+  // Set by a Search press, consumed by the result it produces. A ref, because it must not re-run the
+  // search effect and is read inside the memoised `run`.
+  const collapseOnResult = useRef(false);
+
+  const [openActivityId, setOpenActivityId] = useState<number | null>(null);
+
+  // Only the cross-office reviewer picks an office, so only they need the list.
   useEffect(() => {
+    if (!crossOffice) return;
     void listOffices({ active: "true" }).then(setOffices).catch(() => setOffices([]));
-  }, []);
+  }, [crossOffice]);
 
   const run = useCallback(async (filters: Filters, year: number, pageNo: number) => {
     setLoading(true);
     setError(null);
     try {
-      setResult(await searchAipReview({
+      const found = await searchAipReview({
         fiscalYear: year,
         officeIds: filters.officeIds,
         sectors: filters.sectors,
@@ -109,11 +162,14 @@ export default function AipReviewSearchPage() {
         mine: filters.mine,
         page: pageNo,
         pageSize: PAGE_SIZE,
-      }));
+      });
+      setResult(found);
+      if (collapseOnResult.current && found.items.length > 0) setCollapsed(true);
     } catch (e) {
       setResult(null);
       setError(aipErrorMessage(e, "Could not run this search."));
     } finally {
+      collapseOnResult.current = false;
       setLoading(false);
     }
   }, []);
@@ -126,6 +182,7 @@ export default function AipReviewSearchPage() {
 
   function search() {
     setPage(1);
+    collapseOnResult.current = true;
     // A new object each time, so pressing Search again with identical filters still re-runs —
     // a reviewer pressing it twice is asking whether anything has changed since.
     setApplied({ ...draft });
@@ -136,6 +193,32 @@ export default function AipReviewSearchPage() {
     setApplied(null);
     setResult(null);
     setPage(1);
+    setCollapsed(false);
+  }
+
+  /** Re-opens the panel showing what produced the rows on screen, not a stale half-edited draft. */
+  function editFilters() {
+    if (applied) setDraft(applied);
+    setCollapsed(false);
+  }
+
+  /**
+   * A summary chip's ×.
+   *
+   * ⚠️ Removing the LAST filter returns to the initial state rather than searching for everything:
+   * with nothing left the reader is no longer asking anything, and decision 15 says the page then
+   * lists nothing. An explicit Search press on an empty panel still searches — that is a question.
+   */
+  function removeFilter(key: FilterKey) {
+    if (!applied) return;
+    const next = withoutFilter(applied, key);
+    setDraft((d) => withoutFilter(d, key));
+    if (isEmptyQuery(next)) {
+      clear();
+      return;
+    }
+    setPage(1);
+    setApplied(next);
   }
 
   function toggle<K extends "sectors" | "statuses">(key: K, value: string) {
@@ -148,6 +231,8 @@ export default function AipReviewSearchPage() {
   }
 
   const totalPages = result ? Math.max(1, Math.ceil(result.totalCount / result.pageSize)) : 1;
+  const summary = applied ? summarise(applied, offices, crossOffice) : [];
+  const showCollapsed = collapsed && applied !== null;
 
   return (
     <div className="p-4 sm:p-6">
@@ -175,109 +260,178 @@ export default function AipReviewSearchPage() {
 
       {/* ── The filter panel ─────────────────────────────────────────────── */}
       <div className="mb-4 border border-slate-200 bg-white">
-        <div className="grid gap-4 p-4 sm:grid-cols-2">
-          <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-              Reference code
-            </label>
-            <input
-              value={draft.refCode}
-              onChange={(e) => setDraft((p) => ({ ...p, refCode: e.target.value }))}
-              onKeyDown={(e) => { if (e.key === "Enter") search(); }}
-              placeholder="3000-  or  1000-000-1-01-010 OR 3000-000-1-01-010"
-              className="w-full border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-green-600"
-            />
-            {/* ⚠️ Says what the box is FOR, because the instinct is to type a code for everything —
-                and the one query it cannot express is the most common one. */}
-            <p className="mt-1 text-xs text-slate-600">
-              Matches from the start of the code. Combine several with <strong>OR</strong> or a comma.
-              For one office across all its sectors, use the office filter instead.
-            </p>
-          </div>
+        {showCollapsed ? (
+          <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+            <PanelLabel />
 
-          <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-              Title
-            </label>
-            <input
-              value={draft.title}
-              onChange={(e) => setDraft((p) => ({ ...p, title: e.target.value }))}
-              onKeyDown={(e) => { if (e.key === "Enter") search(); }}
-              placeholder="Part of a program, project or activity name"
-              className="w-full border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-green-600"
-            />
-            <p className="mt-1 text-xs text-slate-600">
-              Matched as typed — a title containing the word &ldquo;or&rdquo; is searched literally.
-            </p>
-          </div>
+            <div className="flex flex-1 flex-wrap items-center gap-2">
+              {summary.length === 0 ? (
+                <span className="text-sm text-slate-600">No filters &mdash; every row in FY {fiscalYear}.</span>
+              ) : (
+                summary.map((chip) => (
+                  <span key={chip.key}
+                    className={`inline-flex items-center gap-1 rounded-full py-0.5 pl-2.5 pr-1 text-xs font-medium ${
+                      chip.tone === "mine" ? "bg-amber-100 text-amber-900" : "bg-green-100 text-green-900"
+                    }`}>
+                    {chip.label}
+                    <button type="button" onClick={() => removeFilter(chip.key)}
+                      aria-label={`Remove filter: ${chip.label}`}
+                      className="flex h-5 w-5 items-center justify-center rounded-full text-sm leading-none hover:bg-white/60">
+                      &times;
+                    </button>
+                  </span>
+                ))
+              )}
+            </div>
 
-          <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-              Office
-            </label>
-            <select
-              multiple
-              value={draft.officeIds.map(String)}
-              onChange={(e) => setDraft((p) => ({
-                ...p,
-                officeIds: Array.from(e.target.selectedOptions, (o) => Number(o.value)),
-              }))}
-              className="h-28 w-full border border-slate-300 bg-white px-2 py-1 text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-green-600"
-            >
-              {offices.map((o) => (
-                <option key={o.id} value={o.id}>{o.officeCode} — {o.officeName}</option>
-              ))}
-            </select>
-            <p className="mt-1 text-xs text-slate-600">
-              Leave the sector chips blank to see all of an office&rsquo;s sectors.
-            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-sm text-slate-600" aria-live="polite">
+                {loading ? "Searching…" : result ? (
+                  <>
+                    <strong className="font-semibold tabular-nums text-slate-800">{result.totalCount}</strong>{" "}
+                    match{result.totalCount === 1 ? "" : "es"}
+                  </>
+                ) : null}
+              </span>
+              <button type="button" onClick={editFilters} aria-expanded={false}
+                className="inline-flex items-center gap-1.5 border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-50">
+                <FunnelIcon />
+                Edit filters
+              </button>
+              <button type="button" onClick={clear}
+                className="text-sm text-slate-600 underline hover:text-slate-800">
+                Clear
+              </button>
+            </div>
           </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-2.5">
+              <PanelLabel />
+              {/* Offered only when there are rows to give the screen back to. */}
+              {applied && result && result.items.length > 0 && (
+                <button type="button" onClick={() => setCollapsed(true)} aria-expanded
+                  className="text-sm text-slate-600 hover:text-slate-800">
+                  Hide
+                </button>
+              )}
+            </div>
 
-          <div className="space-y-3">
-            <div>
-              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-600">Sector</p>
-              <div className="flex flex-wrap gap-2">
-                {AIP_SECTOR_OPTIONS.map((s) => (
-                  <Chip key={s} label={s} active={draft.sectors.includes(s)}
-                    count={countOf(result?.sectorCounts, s, result != null)}
-                    onClick={() => toggle("sectors", s)} />
-                ))}
+            <div className="grid gap-4 p-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  Reference code
+                </label>
+                <input
+                  value={draft.refCode}
+                  onChange={(e) => setDraft((p) => ({ ...p, refCode: e.target.value }))}
+                  onKeyDown={(e) => { if (e.key === "Enter") search(); }}
+                  placeholder="3000-  or  1000-000-1-01-010 OR 3000-000-1-01-010"
+                  className="w-full border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-green-600"
+                />
+                {/* ⚠️ Says what the box is FOR, because the instinct is to type a code for everything —
+                    and the one query it cannot express is the most common one. */}
+                <p className="mt-1 text-xs text-slate-600">
+                  Matches from the start of the code. Combine several with <strong>OR</strong> or a comma.
+                  {crossOffice && " For one office across all its sectors, use the office filter instead."}
+                </p>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  Title
+                </label>
+                <input
+                  value={draft.title}
+                  onChange={(e) => setDraft((p) => ({ ...p, title: e.target.value }))}
+                  onKeyDown={(e) => { if (e.key === "Enter") search(); }}
+                  placeholder="Part of a program, project or activity name"
+                  className="w-full border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-green-600"
+                />
+                <p className="mt-1 text-xs text-slate-600">
+                  Matched as typed &mdash; a title containing the word &ldquo;or&rdquo; is searched literally.
+                </p>
+              </div>
+
+              <div>
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  Office
+                </span>
+                {crossOffice ? (
+                  <>
+                    {/* ↩️ Was a hand-rolled `<select multiple>` (PPDO-76) — the drift `OfficeSelect`
+                        exists to stop. One office at a time; the API still takes a list. */}
+                    <OfficeSelect
+                      offices={offices}
+                      value={draft.officeIds[0] ?? null}
+                      onChange={(id) => setDraft((p) => ({ ...p, officeIds: id == null ? [] : [id] }))}
+                      allOptionLabel="All offices"
+                    />
+                    <p className="mt-1 text-xs text-slate-600">
+                      One office at a time. Leave the sector chips blank to see all of an office&rsquo;s sectors.
+                    </p>
+                  </>
+                ) : (
+                  // ⚠️ No picker at all, rather than one that silently does nothing: the server clamps a
+                  // department head to their own office whatever they choose.
+                  <p className="border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-sm text-slate-600">
+                    {me?.officeName ?? "Your office"} &mdash; you review your own office&rsquo;s AIP.
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-600">Sector</p>
+                  <div className="flex flex-wrap gap-2">
+                    {AIP_SECTOR_OPTIONS.map((s) => (
+                      <Chip key={s} label={s} active={draft.sectors.includes(s)}
+                        count={countOf(result?.sectorCounts, s, result != null)}
+                        onClick={() => toggle("sectors", s)} />
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-600">Status</p>
+                  <div className="flex flex-wrap gap-2">
+                    {STATUSES.map((s) => (
+                      <Chip key={s} label={STATUS_LABEL[s]} active={draft.statuses.includes(s)}
+                        count={countOf(result?.workflowStatusCounts, s, result != null)}
+                        onClick={() => toggle("statuses", s)} />
+                    ))}
+                  </div>
+                </div>
+
+                <p className="text-xs text-slate-600">Select multiple to combine.</p>
               </div>
             </div>
 
-            <div>
-              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-600">Status</p>
-              <div className="flex flex-wrap gap-2">
-                {STATUSES.map((s) => (
-                  <Chip key={s} label={STATUS_LABEL[s]} active={draft.statuses.includes(s)}
-                    count={countOf(result?.workflowStatusCounts, s, result != null)}
-                    onClick={() => toggle("statuses", s)} />
-                ))}
-              </div>
+            <div className="flex flex-wrap items-center gap-3 border-t border-slate-200 px-4 py-3">
+              <button type="button" onClick={search} disabled={loading}
+                className="bg-green-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-green-800 disabled:bg-slate-300">
+                {loading ? "Searching…" : "Search"}
+              </button>
+              <button type="button" onClick={clear}
+                className="px-3 py-1.5 text-sm text-slate-600 underline hover:text-slate-800">
+                Clear
+              </button>
+              {/* ⚠️ Cross-office reviewers only. For a department head "waiting on me" is their own
+                  office, which is everything this page can show them — a checkbox that changes
+                  nothing reads as broken. */}
+              {crossOffice && (
+                <label className="ml-auto flex items-center gap-2 text-sm text-slate-800">
+                  <input type="checkbox" checked={draft.mine}
+                    onChange={(e) => setDraft((p) => ({ ...p, mine: e.target.checked }))}
+                    className="h-4 w-4 accent-green-700" />
+                  {/* Resolved server-side from the caller's own permissions — for a PPDO reviewer this
+                      is the offices actually waiting on them. */}
+                  Only what&rsquo;s waiting on me
+                </label>
+              )}
             </div>
-
-            <p className="text-xs text-slate-600">Select multiple to combine.</p>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3 border-t border-slate-200 px-4 py-3">
-          <button type="button" onClick={search} disabled={loading}
-            className="bg-green-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-green-800 disabled:bg-slate-300">
-            {loading ? "Searching…" : "Search"}
-          </button>
-          <button type="button" onClick={clear}
-            className="px-3 py-1.5 text-sm text-slate-600 underline hover:text-slate-800">
-            Clear
-          </button>
-          <label className="ml-auto flex items-center gap-2 text-sm text-slate-800">
-            <input type="checkbox" checked={draft.mine}
-              onChange={(e) => setDraft((p) => ({ ...p, mine: e.target.checked }))}
-              className="h-4 w-4 accent-green-700" />
-            {/* Resolved server-side from the caller's own permissions — for a PPDO reviewer this is
-                the offices actually waiting on them. */}
-            Only what&rsquo;s waiting on me
-          </label>
-        </div>
+          </>
+        )}
       </div>
 
       {/* ── Results ──────────────────────────────────────────────────────── */}
@@ -287,11 +441,16 @@ export default function AipReviewSearchPage() {
         // ⚠️ The default, and deliberate. Not a blank panel and not a spinner.
         <EmptyState
           title="Search to begin"
-          body="This page shows nothing until you ask it for something — there is no useful default across every office. Filter by office, sector, status or reference code, or tick “Only what’s waiting on me”."
+          body={
+            crossOffice
+              ? "This page shows nothing until you ask it for something — there is no useful default across every office. Filter by office, sector, status or reference code, or tick “Only what’s waiting on me”."
+              : "This page shows nothing until you ask it for something. Filter by sector, status, reference code or title — the results are your own office’s AIP."
+          }
         />
       ) : result && result.items.length > 0 ? (
         <>
-          <ResultTable rows={result.items} aipRecordId={result.aipRecordId} fiscalYear={fiscalYear} />
+          <ResultTable rows={result.items} aipRecordId={result.aipRecordId} fiscalYear={fiscalYear}
+            crossOffice={crossOffice} onOpenActivity={setOpenActivityId} />
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
             <span>
               {result.totalCount} match{result.totalCount === 1 ? "" : "es"} · page {result.page} of {totalPages}
@@ -321,11 +480,86 @@ export default function AipReviewSearchPage() {
           }
         />
       )}
+
+      {openActivityId != null && (
+        <AipActivityReviewModal
+          activityId={openActivityId}
+          crossOffice={crossOffice}
+          readerOfficeId={me?.officeId ?? null}
+          onClose={() => setOpenActivityId(null)}
+          // A save inside the modal can rename the row it was opened from; re-read the same page.
+          onChanged={() => { if (applied) void run(applied, fiscalYear, page); }}
+        />
+      )}
     </div>
   );
 }
 
 // ── Pieces ────────────────────────────────────────────────────────────────
+
+interface SummaryChip {
+  key: FilterKey;
+  label: string;
+  /** "mine" is a shortcut rather than a filter on the data, and is tinted apart from the rest. */
+  tone: "filter" | "mine";
+}
+
+/**
+ * The collapsed panel's chips — one per applied filter, in the panel's own field order.
+ *
+ * ⚠️ Built from `applied`, never `draft`: the chips describe the rows on screen.
+ */
+function summarise(f: Filters, offices: OfficeResponse[], crossOffice: boolean): SummaryChip[] {
+  const chips: SummaryChip[] = [];
+
+  if (f.refCode.trim()) chips.push({ key: "refCode", label: `Code: ${f.refCode.trim()}`, tone: "filter" });
+  if (f.title.trim()) chips.push({ key: "title", label: `Title: “${f.title.trim()}”`, tone: "filter" });
+
+  if (crossOffice && f.officeIds.length > 0) {
+    const names = f.officeIds.map((id) => {
+      const o = offices.find((x) => x.id === id);
+      return o ? `${o.officeCode} — ${o.officeName}` : `Office ${id}`;
+    });
+    chips.push({ key: "officeIds", label: `Office: ${names.join(", ")}`, tone: "filter" });
+  }
+
+  if (f.sectors.length > 0) {
+    chips.push({ key: "sectors", label: `Sector: ${f.sectors.join(", ")}`, tone: "filter" });
+  }
+  if (f.statuses.length > 0) {
+    const labels = f.statuses.map((s) => STATUS_LABEL[s] ?? s);
+    chips.push({ key: "statuses", label: `Status: ${labels.join(", ")}`, tone: "filter" });
+  }
+
+  if (crossOffice && f.mine) chips.push({ key: "mine", label: "Only what’s waiting on me", tone: "mine" });
+
+  return chips;
+}
+
+/** The panel's label, in both states. */
+function PanelLabel() {
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600">
+      <FunnelIcon />
+      Filters
+    </span>
+  );
+}
+
+/**
+ * ⚠️ **An inline SVG, not an emoji — and the only drawn icon in the portal.** There is no funnel
+ * emoji. `DESIGN_SYSTEM.md` §5 says "use emoji" and leaves `lucide-react` undecided; this one was
+ * agreed on the PPDO-79 wireframe, and the wider icon decision waits until after v1.8.0. Stroke-only
+ * on `currentColor`, so it takes the colour of the text beside it.
+ */
+function FunnelIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden className="h-3.5 w-3.5 shrink-0" fill="none"
+      stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 3h12l-4.5 5.25V13l-3-1.5V8.25z" />
+    </svg>
+  );
+}
 
 /**
  * A chip's count, or `undefined` when there is nothing to say yet.
@@ -373,8 +607,23 @@ function Chip({
 }
 
 function ResultTable({
-  rows, aipRecordId, fiscalYear,
-}: { rows: AipReviewSearchRow[]; aipRecordId: number; fiscalYear: number }) {
+  rows, aipRecordId, fiscalYear, crossOffice, onOpenActivity,
+}: {
+  rows: AipReviewSearchRow[];
+  aipRecordId: number;
+  fiscalYear: number;
+  crossOffice: boolean;
+  onOpenActivity: (activityId: number) => void;
+}) {
+  // ⚠️ The whole-office surface differs by reader, so a program or project row links to the one that
+  // is theirs: the review screen (where Return and Accept live) for PPDO, AIP Entry for a department
+  // head. Sending a department head to the review screen would be a redirect on every click.
+  const officeHref = (officeId: number) => crossOffice
+    ? `/budget-planning/aip/review?officeId=${officeId}&fiscalYear=${fiscalYear}`
+    : `/budget-planning/aip/entry?fiscalYear=${fiscalYear}`;
+
+  const linkCls = "underline decoration-slate-300 underline-offset-2 hover:decoration-green-700";
+
   return (
     <div className="overflow-x-auto border border-slate-200 bg-white">
       <table className="w-full text-sm">
@@ -396,20 +645,25 @@ function ResultTable({
                 {/* ⚠️ An unmatched legacy row has no owning office, so it has nothing to open.
                     Rendered as plain text rather than dropped — it exists, and hiding it would look
                     like missing data. */}
-                {r.officeId != null ? (
-                  <Link
-                    href={`/budget-planning/aip/review?officeId=${r.officeId}&fiscalYear=${fiscalYear}`}
-                    className="underline decoration-slate-300 underline-offset-2 hover:decoration-green-700"
-                  >
+                {r.officeId == null ? (
+                  r.name
+                ) : r.level === "Activity" ? (
+                  <button type="button" onClick={() => onOpenActivity(r.nodeId)}
+                    className={`text-left ${linkCls}`}>
                     {r.name}
-                  </Link>
-                ) : r.name}
+                  </button>
+                ) : (
+                  <Link href={officeHref(r.officeId)} className={linkCls}>{r.name}</Link>
+                )}
               </td>
               <td className="px-3 py-2 text-slate-600">
                 {r.officeName} <span className="text-xs">· {r.sector}</span>
               </td>
               <td className="px-3 py-2 text-xs text-slate-600">
-                {describeAipHolderForReviewer(r.workflowStatus)}
+                {/* Each reader in their own voice — see lib/aip-workflow. */}
+                {crossOffice
+                  ? describeAipHolderForReviewer(r.workflowStatus)
+                  : describeAipHolderForDepartmentHead(r.workflowStatus)}
               </td>
             </tr>
           ))}

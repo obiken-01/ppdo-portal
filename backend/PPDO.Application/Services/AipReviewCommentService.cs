@@ -81,8 +81,19 @@ public sealed class AipReviewCommentService : IAipReviewCommentService
         // unknown value is a client error rather than a silent fall-through to Program = 0.
         if (!Enum.TryParse(dto.NodeType, ignoreCase: true, out AipCommentNodeType nodeType))
             return ServiceResult<AipReviewCommentDto>.BadRequest(
-                $"'{dto.NodeType}' is not a commentable row type. "
-                + "Expected Program, Project or Activity.");
+                $"'{dto.NodeType}' is not a commentable row type. Expected Activity.");
+
+        // ⚠️ Activities only (PPDO-79 — spec decision 7, narrowed 2026-09-13). Programs and projects
+        // carry no figures of their own on the printed form, so a remark about one is really a
+        // remark about some activity under it — and anchoring it higher hides which row has to
+        // change. Refused here rather than merely hidden in the UI, because a comment is what the
+        // re-submit warning counts: one the screen cannot show would still hold that count up.
+        //
+        // ⚠️ The enum and column keep all three values ON PURPOSE. Rows written before this rule
+        // must stay readable and resolvable, so this is a create-time refusal, not a schema change.
+        if (nodeType != AipCommentNodeType.Activity)
+            return ServiceResult<AipReviewCommentDto>.BadRequest(
+                "Only an activity can be commented on. Leave the comment on the activity that needs to change.");
 
         // The node must belong to THIS office. Without this a reviewer could anchor a comment to
         // another office's activity by id and it would render on a document they may not even see.

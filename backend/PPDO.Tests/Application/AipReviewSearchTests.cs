@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging.Abstractions;
+﻿using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
@@ -68,7 +68,7 @@ public sealed class AipReviewSearchTests
             _permissions.Object, _audit.Object, NullLogger<AipReviewService>.Instance);
     }
 
-    private User MakeUser(int? officeId, bool hostOffice, bool ppdoReviewer)
+    private User MakeUser(int? officeId, bool hostOffice, bool ppdoReviewer, bool deptHead = false)
     {
         User u = new()
         {
@@ -85,6 +85,8 @@ public sealed class AipReviewSearchTests
         };
         _permissions.Setup(p => p.CanReviewAllOfficesAsync(u, It.IsAny<CancellationToken>()))
             .ReturnsAsync(ppdoReviewer);
+        _permissions.Setup(p => p.CanReviewBudgetPlanningAsync(u, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(deptHead);
         return u;
     }
 
@@ -93,6 +95,20 @@ public sealed class AipReviewSearchTests
 
     /// <summary>A guest-office encoder. No reviewer flag, one office.</summary>
     private User GuestEncoder() => MakeUser(GuestOffice, hostOffice: false, ppdoReviewer: false);
+
+    /// <summary>
+    /// A PPDO user with no reviewer flag — a division encoder. ⚠️ <c>OfficeScope.Resolve</c> gives
+    /// them the whole province, which is exactly why the search must not use it for them.
+    /// </summary>
+    private User HostNonReviewer() => MakeUser(HostOffice, hostOffice: true, ppdoReviewer: false);
+
+    /// <summary>PPDO's own department-head reviewer. Host office, office-scoped flag.</summary>
+    private User HostDeptHead()
+        => MakeUser(HostOffice, hostOffice: true, ppdoReviewer: false, deptHead: true);
+
+    /// <summary>A guest office's department-head reviewer.</summary>
+    private User GuestDeptHead()
+        => MakeUser(GuestOffice, hostOffice: false, ppdoReviewer: false, deptHead: true);
 
     private static AipReviewSearchRequestDto Request(
         IReadOnlyList<int>? officeIds = null,
@@ -201,6 +217,68 @@ public sealed class AipReviewSearchTests
         Assert.Empty(result.Value!.Items);
         Assert.Equal(0, result.Value.TotalCount);
         Assert.Null(_sent);   // the repository was never asked
+    }
+
+    /// <summary>
+    /// ⚠️ <b>The leak PPDO-79 would have opened.</b> A host-office user resolves to the whole
+    /// province on the office axis, and this query cannot apply the division axis that narrows
+    /// them everywhere else — so without a rule of its own a PPDO division encoder would read every
+    /// office's rows. They hold no review work, so they get nothing, and the repository is never
+    /// asked.
+    /// </summary>
+    [Fact]
+    public async Task Search_HostOfficeUserWithoutAReviewerFlag_ReturnsNothingAndNeverQueries()
+    {
+        AipReviewService sut = Build();
+
+        ServiceResult<AipReviewSearchResultDto> result =
+            await sut.SearchAsync(Request(officeIds: [OtherOffice]), HostNonReviewer());
+
+        Assert.True(result.IsSuccess);   // an empty page, not a 403 that says anything
+        Assert.Empty(result.Value!.Items);
+        Assert.Null(_sent);
+    }
+
+    /// <summary>
+    /// ⚠️ "Mine" used to add the caller's own office for anybody who was not a cross-office
+    /// reviewer. For a host-office non-reviewer that is PPDO's whole office across every division —
+    /// the same leak through a checkbox. It must not widen the clamp.
+    /// </summary>
+    [Fact]
+    public async Task Search_HostOfficeUserWithoutAReviewerFlag_CannotWidenItWithMine()
+    {
+        AipReviewService sut = Build();
+
+        await sut.SearchAsync(Request(mine: true), HostNonReviewer());
+
+        Assert.Null(_sent);
+    }
+
+    /// <summary>
+    /// ⚠️ PPDO's department head sits in the host office, so the office-axis resolver would hand
+    /// them the province. The department-head flag is office-scoped (spec §3.1): they get PPDO's own
+    /// rows, whatever office they asked for.
+    /// </summary>
+    [Fact]
+    public async Task Search_HostDepartmentHead_IsClampedToTheirOwnOfficeNotTheProvince()
+    {
+        AipReviewService sut = Build();
+
+        ServiceResult<AipReviewSearchResultDto> result =
+            await sut.SearchAsync(Request(officeIds: [OtherOffice]), HostDeptHead());
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal([HostOffice], _sent!.OfficeIds);
+    }
+
+    [Fact]
+    public async Task Search_GuestDepartmentHead_SeesTheirOwnOffice()
+    {
+        AipReviewService sut = Build();
+
+        await sut.SearchAsync(Request(), GuestDeptHead());
+
+        Assert.Equal([GuestOffice], _sent!.OfficeIds);
     }
 
     // ── "Mine", resolved from the caller's own flags ─────────────────────────

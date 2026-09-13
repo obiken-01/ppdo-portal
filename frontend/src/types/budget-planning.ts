@@ -1347,6 +1347,43 @@ export interface AipOfficeReview {
   groups: AipOfficeDetail[];
 }
 
+/** One program or project on the way down to an activity — the activity modal's path strip (PPDO-79). */
+export interface AipReviewPathNode {
+  id: number;
+  refCode: string;
+  name: string;
+}
+
+/**
+ * One activity opened from the AIP Review search, for the activity modal (PPDO-79).
+ *
+ * ⚠️ The path travels with it because a search row is flat — without it a reviewer opening the
+ * modal has no idea which program the activity sits under.
+ */
+export interface AipActivityReview {
+  aipRecordId: number;
+  fiscalYear: number;
+  officeId: number;
+  officeName: string;
+  officeCode: string;
+  /** The sub-office group's own code — the first line of the path strip. */
+  officeRefCode: string;
+  sector: string;
+  workflowStatus: string;
+  program: AipReviewPathNode;
+  project: AipReviewPathNode;
+  activity: AipActivityDetail;
+  expenditures: AipExpenditure[];
+  /**
+   * ⚠️ **Computed by the server — read it, never re-derive it.** It needs four things at once: this
+   * office's department head, an editable workflow state, a Draft record, and no `ReviewerWriteGuard`
+   * denial. The last one is invisible from `/auth/me`: a person holding BOTH reviewer flags is denied
+   * content writes even on their own office, so a client rule built from the flags would show them an
+   * Edit button that answers 403.
+   */
+  canEdit: boolean;
+}
+
 /**
  * One LDIP program the office may add. `ldipProgramId` is what
  * `AddAipProgramsWithGroupRequest.ldipProgramIds` expects — named for what it is, because it is NOT

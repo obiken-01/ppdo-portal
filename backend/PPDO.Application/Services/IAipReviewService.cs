@@ -132,6 +132,37 @@ public interface IAipReviewService
         int aipRecordId, int officeId, User caller, CancellationToken ct = default);
 
     /// <summary>
+    /// One activity with its path, its expenditure lines and whether this caller may edit it — the
+    /// AIP Review search's activity modal (PPDO-79, spec §6.1a).
+    ///
+    /// <para>
+    /// <b>⚠️ Open to BOTH reviewers, and the scope differs between them.</b> The cross-office
+    /// reviewer may open any office's activity; the department-head reviewer may open only their
+    /// own office's. Everyone else — including an encoder of that very office — is refused, because
+    /// this is the review surface and the office edits its own work on the entry page.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ <b>"Own office" is <c>caller.OfficeId</c>, NOT <c>OfficeScope.Resolve</c>.</b> Resolve gives
+    /// every host-office user the whole province, so a PPDO department head resolved that way would
+    /// open every office's activities. The department-head flag is office-scoped (spec §3.1) and is
+    /// matched against the office directly.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ No division filter, for the same reason the whole-office read has none: a review is of
+    /// the whole office, and a silently narrowed read looks like missing work.
+    /// </para>
+    ///
+    /// <para>
+    /// Every refusal is a <b>404</b> worded identically to an activity that does not exist
+    /// (PPDO-46), so the response cannot be used to enumerate another office's rows.
+    /// </para>
+    /// </summary>
+    Task<ServiceResult<AipActivityReviewDto>> GetActivityForReviewAsync(
+        int activityId, User caller, CancellationToken ct = default);
+
+    /// <summary>
     /// The query-first AIP Review search: one page of matching programs, projects and activities
     /// (V18-75 / PPDO-76, spec §4.1 and decisions 15–17).
     ///
@@ -144,11 +175,18 @@ public interface IAipReviewService
     ///
     /// <para>
     /// <b>⚠️ The gate here is <c>CanAccessBudgetPlanning</c>, not the reviewer flag</b> — §4
-    /// verbatim — and scope is applied by <b>clamping</b> through
-    /// <see cref="OfficeScope.ResolveForReview"/> rather than refusing: a guest office asking about
-    /// somebody else gets its own rows back, never a 403 that would confirm the other office
-    /// exists (spec §3.4). The <i>page</i> is gated more tightly than this endpoint, because every
-    /// result links into a reviewer-only screen; that is a UI decision and it does not belong here.
+    /// verbatim — and scope is applied by <b>clamping</b> rather than refusing: a guest office
+    /// asking about somebody else gets its own rows back, never a 403 that would confirm the other
+    /// office exists (spec §3.4).
+    /// </para>
+    ///
+    /// <para>
+    /// <b>⚠️ The clamp, per caller</b> (PPDO-79). A cross-office reviewer sees every office. A
+    /// department-head reviewer and a guest-office user see their own office. A <b>host-office user
+    /// with no reviewer flag sees nothing</b> — <c>OfficeScope.Resolve</c> would hand them the whole
+    /// province, and this query cannot apply the division axis that narrows them everywhere else.
+    /// Until PPDO-79 opened the page to department heads that path was reachable only out of band;
+    /// it is now one sidebar click from a PPDO department head, so the rule is stated here.
     /// </para>
     ///
     /// <para>

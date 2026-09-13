@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging.Abstractions;
+﻿using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
@@ -156,11 +156,55 @@ public sealed class AipReviewServiceTests
 
         _expRepo.Setup(r => r.GetFundCodesByAipRecordAsync(RecordId, It.IsAny<CancellationToken>()))
             .ReturnsAsync([new AipActivityFundCodeDto(ActivityId, "GF", 1)]);
+
+        // ── The single-activity walk-up the modal read makes (PPDO-79) ──
+        _aipRepo.Setup(r => r.GetActivityByIdAsync(ActivityId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AipActivity
+            {
+                Id = ActivityId, ProjectId = ProjectId,
+                RefCode = "1000-000-1-01-010-001-001-001", Name = "Seed distribution",
+                Ps = 0m, Mooe = 500m, Co = 0m, Total = 500m,
+            });
+        _aipRepo.Setup(r => r.GetProjectByIdAsync(ProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AipProject
+            {
+                Id = ProjectId, ProgramId = ProgramId,
+                RefCode = "1000-000-1-01-010-001-001", Name = "Rice Support",
+            });
+        _aipRepo.Setup(r => r.GetProgramByIdAsync(ProgramId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AipProgram
+            {
+                Id = ProgramId, OfficeId = GroupA, RefCode = "1000-000-1-01-010-001",
+                Name = "Agricultural Productivity", FunctionBand = AipFunctionBand.Core,
+            });
+        _aipRepo.Setup(r => r.GetOfficeByIdAsync(GroupA, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => _groups[0]);
+
+        _expRepo.Setup(r => r.GetByActivityIdAsync(ActivityId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipExpenditure>)[FundedLine()]);
+        _expRepo.Setup(r => r.GetProcurementItemsByExpenditureIdsAsync(
+                It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipProcurementItem>)[]);
+        _expRepo.Setup(r => r.GetFundCodesByActivityIdAsync(ActivityId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<string>)["GF"]);
+    }
+
+    /// <summary>One typed MOOE line. <c>Total</c> is computed, so it goes through Recalculate.</summary>
+    private static AipExpenditure FundedLine()
+    {
+        AipExpenditure line = new()
+        {
+            Id = 7001, ActivityId = ActivityId, Mooe = 500m,
+            FundingSourceId = 1, FundingSourceSnapshot = "GF",
+            AccountTitleSnapshot = "Agricultural Supplies",
+        };
+        line.Recalculate();
+        return line;
     }
 
     // ── Callers ───────────────────────────────────────────────────────────────
 
-    private User MakeUser(int? officeId, bool hostOffice, bool ppdoReviewer)
+    private User MakeUser(int? officeId, bool hostOffice, bool ppdoReviewer, bool deptHead = false)
     {
         User u = new()
         {
@@ -177,6 +221,8 @@ public sealed class AipReviewServiceTests
         };
         _permissions.Setup(p => p.CanReviewAllOfficesAsync(u, It.IsAny<CancellationToken>()))
             .ReturnsAsync(ppdoReviewer);
+        _permissions.Setup(p => p.CanReviewBudgetPlanningAsync(u, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(deptHead);
         return u;
     }
 
@@ -192,6 +238,23 @@ public sealed class AipReviewServiceTests
     /// </summary>
     private User HostOfficeNonReviewer()
         => MakeUser(99, hostOffice: true, ppdoReviewer: false);
+
+    /// <summary>The department-head reviewer of the office whose activity is opened.</summary>
+    private User DeptHead() => MakeUser(OfficeId, hostOffice: false, ppdoReviewer: false, deptHead: true);
+
+    /// <summary>A department head — of a DIFFERENT office.</summary>
+    private User DeptHeadOfAnotherOffice()
+        => MakeUser(OtherOffice, hostOffice: false, ppdoReviewer: false, deptHead: true);
+
+    /// <summary>
+    /// ⚠️ PPDO's own department head, opening another office's activity. The case that proves "own
+    /// office" is matched on the office id: OfficeScope.Resolve would give this caller every office.
+    /// </summary>
+    private User HostDeptHead() => MakeUser(99, hostOffice: true, ppdoReviewer: false, deptHead: true);
+
+    /// <summary>One person holding both reviewer flags, on their own office (spec §3.1 allows it).</summary>
+    private User BothFlagsOnOwnOffice()
+        => MakeUser(OfficeId, hostOffice: false, ppdoReviewer: true, deptHead: true);
 
     private void GivenEveryGroupIs(string status)
     {
@@ -624,5 +687,189 @@ public sealed class AipReviewServiceTests
 
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
         Assert.Equal($"AIP office {4242} not found in record {RecordId}.", result.Error);
+    }
+
+    // ── The activity modal's read (PPDO-79) ───────────────────────────────────
+
+    [Fact]
+    public async Task GetActivityForReview_CarriesThePathTheLinesAndTheFund()
+    {
+        AipReviewService sut = Build();
+
+        ServiceResult<AipActivityReviewDto> result =
+            await sut.GetActivityForReviewAsync(ActivityId, PpdoReviewer());
+
+        Assert.True(result.IsSuccess);
+        AipActivityReviewDto dto = result.Value!;
+
+        Assert.Equal(RecordId, dto.AipRecordId);
+        Assert.Equal(2028, dto.FiscalYear);
+        Assert.Equal(OfficeId, dto.OfficeId);
+        Assert.Equal(OfficeName, dto.OfficeName);
+        Assert.Equal("1000-000-1-01-010", dto.OfficeRefCode);
+        Assert.Equal("GENERAL", dto.Sector);
+
+        // The path — the reason this read exists: a search row names none of it.
+        Assert.Equal("Agricultural Productivity", dto.Program.Name);
+        Assert.Equal("Rice Support", dto.Project.Name);
+
+        Assert.Equal(ActivityId, dto.Activity.Id);
+        Assert.Equal(["GF"], dto.Activity.FundCodes);
+        Assert.Equal(500m, Assert.Single(dto.Expenditures).Total);
+    }
+
+    /// <summary>⚠️ Decision 2, permanently: the PPDO reviewer never edits, in any state.</summary>
+    [Theory]
+    [InlineData(AipWorkflowStatus.Draft)]
+    [InlineData(AipWorkflowStatus.DepartmentReview)]
+    [InlineData(AipWorkflowStatus.ReturnedByPpdo)]
+    [InlineData(AipWorkflowStatus.SubmittedToPpdo)]
+    public async Task GetActivityForReview_ByThePpdoReviewer_IsNeverEditable(string status)
+    {
+        GivenEveryGroupIs(status);
+        AipReviewService sut = Build();
+
+        ServiceResult<AipActivityReviewDto> result =
+            await sut.GetActivityForReviewAsync(ActivityId, PpdoReviewer());
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value!.CanEdit);
+    }
+
+    [Theory]
+    [InlineData(AipWorkflowStatus.Draft)]
+    [InlineData(AipWorkflowStatus.DepartmentReview)]
+    [InlineData(AipWorkflowStatus.ReturnedByPpdo)]
+    public async Task GetActivityForReview_ByTheDepartmentHead_IsEditableWhileTheWorkIsWithTheOffice(
+        string status)
+    {
+        GivenEveryGroupIs(status);
+        AipReviewService sut = Build();
+
+        ServiceResult<AipActivityReviewDto> result =
+            await sut.GetActivityForReviewAsync(ActivityId, DeptHead());
+
+        Assert.True(result.Value!.CanEdit);
+    }
+
+    /// <summary>
+    /// ⚠️ Still readable, only no longer editable — the department head reads their own work at
+    /// PPDO. Refusing the read here would hide the comments PPDO is leaving on it.
+    /// </summary>
+    [Theory]
+    [InlineData(AipWorkflowStatus.SubmittedToPpdo)]
+    [InlineData(AipWorkflowStatus.Consolidated)]
+    public async Task GetActivityForReview_ByTheDepartmentHead_IsReadOnlyOnceTheWorkHasLeftTheOffice(
+        string status)
+    {
+        GivenEveryGroupIs(status);
+        AipReviewService sut = Build();
+
+        ServiceResult<AipActivityReviewDto> result =
+            await sut.GetActivityForReviewAsync(ActivityId, DeptHead());
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value!.CanEdit);
+    }
+
+    [Fact]
+    public async Task GetActivityForReview_InANonDraftRecord_IsReadOnlyEvenForTheDepartmentHead()
+    {
+        _recordStatus = PlanningStatus.Archived;
+        GivenEveryGroupIs(AipWorkflowStatus.DepartmentReview);
+        AipReviewService sut = Build();
+
+        ServiceResult<AipActivityReviewDto> result =
+            await sut.GetActivityForReviewAsync(ActivityId, DeptHead());
+
+        Assert.False(result.Value!.CanEdit);
+    }
+
+    /// <summary>
+    /// ⚠️ The condition a client would miss. Holding both flags on their own office, this person is
+    /// a department head for commenting — but ReviewerWriteGuard denies content writes to anyone
+    /// holding the cross-office grant. A CanEdit built from the two flags alone would offer them an
+    /// Edit button whose save answers 403.
+    /// </summary>
+    [Fact]
+    public async Task GetActivityForReview_ByAHolderOfBothFlagsOnTheirOwnOffice_IsNotEditable()
+    {
+        GivenEveryGroupIs(AipWorkflowStatus.DepartmentReview);
+        AipReviewService sut = Build();
+
+        ServiceResult<AipActivityReviewDto> result =
+            await sut.GetActivityForReviewAsync(ActivityId, BothFlagsOnOwnOffice());
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value!.CanEdit);
+    }
+
+    /// <summary>
+    /// ⚠️ NotFound, with the sentence a missing activity produces (PPDO-46) — the department-head
+    /// flag is office-scoped, and the response must not confirm the activity exists.
+    /// </summary>
+    [Fact]
+    public async Task GetActivityForReview_ByADepartmentHeadOfAnotherOffice_IsIndistinguishableFromAMissingActivity()
+    {
+        AipReviewService sut = Build();
+
+        ServiceResult<AipActivityReviewDto> result =
+            await sut.GetActivityForReviewAsync(ActivityId, DeptHeadOfAnotherOffice());
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+        Assert.Equal($"AIP activity {ActivityId} not found.", result.Error);
+    }
+
+    /// <summary>
+    /// ⚠️ The leak this method is written against. PPDO's department head sits in the host office,
+    /// so OfficeScope.Resolve would permit every office — "own office" has to be the office id.
+    /// </summary>
+    [Fact]
+    public async Task GetActivityForReview_ByPpdosDepartmentHeadOnAnotherOffice_IsNotFound()
+    {
+        AipReviewService sut = Build();
+
+        ServiceResult<AipActivityReviewDto> result =
+            await sut.GetActivityForReviewAsync(ActivityId, HostDeptHead());
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    /// <summary>
+    /// ⚠️ Their own office, and still NotFound: this is the review surface. The encoder works on
+    /// the entry page, under the editability rules that belong to it.
+    /// </summary>
+    [Fact]
+    public async Task GetActivityForReview_ByAnEncoderOfThatVeryOffice_IsNotFound()
+    {
+        AipReviewService sut = Build();
+
+        ServiceResult<AipActivityReviewDto> result =
+            await sut.GetActivityForReviewAsync(ActivityId, Encoder());
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Fact]
+    public async Task GetActivityForReview_ByAHostOfficeUserWithoutAReviewerFlag_IsNotFound()
+    {
+        AipReviewService sut = Build();
+
+        ServiceResult<AipActivityReviewDto> result =
+            await sut.GetActivityForReviewAsync(ActivityId, HostOfficeNonReviewer());
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Fact]
+    public async Task GetActivityForReview_MissingActivity_IsNotFoundWithTheSameSentence()
+    {
+        AipReviewService sut = Build();
+
+        ServiceResult<AipActivityReviewDto> result =
+            await sut.GetActivityForReviewAsync(4242, PpdoReviewer());
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+        Assert.Equal($"AIP activity {4242} not found.", result.Error);
     }
 }
