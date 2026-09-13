@@ -446,7 +446,14 @@ public sealed class AipExpenditureService : IAipExpenditureService
     private static string NotFound(int activityId) => $"AIP activity {activityId} not found.";
     private static string NotFoundLine(int id)     => $"AIP expenditure {id} not found.";
 
-    private static AipExpenditureDto Map(
+    /// <summary>
+    /// One line and its items, as the entry table renders them.
+    ///
+    /// ⚠️ <c>internal</c> rather than private because <see cref="AipReviewService"/>'s activity
+    /// read returns the same lines (PPDO-79). Two mappers of one DTO drift the first time a
+    /// column is added to it, and the review modal renders these through the very same table.
+    /// </summary>
+    internal static AipExpenditureDto Map(
         AipExpenditure e, IEnumerable<AipProcurementItem>? items = null) => new(
         e.Id, e.ActivityId,
         e.AccountId, e.AccountNumberSnapshot, e.AccountTitleSnapshot,

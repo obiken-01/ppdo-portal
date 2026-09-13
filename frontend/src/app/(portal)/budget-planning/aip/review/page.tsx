@@ -26,7 +26,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMe } from "@/lib/me-cache";
-import { canOpenAipReview, budgetPlanningFallback } from "@/lib/budget-planning-access";
+import { canOpenAipOfficeReview, budgetPlanningFallback } from "@/lib/budget-planning-access";
 import { listAip, listAipExpenditures, aipErrorMessage } from "@/lib/aip";
 import { listAccounts, listFundingSources } from "@/lib/config";
 import {
@@ -67,7 +67,7 @@ export default function AipReviewPage() {
   // ⚠️ Reads the SHARED rule (PPDO-79) so the sidebar and this page cannot disagree, and falls back
   // to the Budget Planning hub rather than `/dashboard` — a guest-office user has no dashboard, so
   // that would be a redirect to another redirect.
-  useMe(canOpenAipReview, budgetPlanningFallback);
+  useMe(canOpenAipOfficeReview, budgetPlanningFallback);
 
   // ⚠️ **No office named means "help me find one", and that page now exists** — PPDO-76's search.
   // Until it shipped this rendered an interim empty state saying office selection would arrive with

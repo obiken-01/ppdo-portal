@@ -2,7 +2,8 @@
  * The PPDO consolidated reviewer's surface — reading one office's AIP and deciding on it
  * (v1.8.0 Phase 4 — V18-56 / PPDO-74).
  *
- * ⚠️ **Every call here needs `CanReviewAllOffices`.** These are the only routes in the system that
+ * ⚠️ **Every call here needs `CanReviewAllOffices`** — except the search and the activity read, which
+ * the department-head reviewer uses too (PPDO-79). These are the only routes in the system that
  * deliberately bypass `OfficeScope`, and a caller without the flag gets a 403 from the endpoint —
  * not a clamp to their own office. Do not "helpfully" fall back to the entry endpoints on a 403;
  * an office reads its own work on the entry page, under the editability rules that belong to it.
@@ -15,7 +16,7 @@
 import api from "./api";
 import type {
   ApiResponse, AipOfficeReview, AipSubmitResult,
-  AipReviewSearchParams, AipReviewSearchResult,
+  AipReviewSearchParams, AipReviewSearchResult, AipActivityReview,
 } from "@/types";
 
 function unwrap<T>(body: ApiResponse<T>): T {
@@ -96,6 +97,23 @@ export async function searchAipReview(
 
   const { data } = await api.get<ApiResponse<AipReviewSearchResult>>(
     "/budget-planning/aip/review/search", { params: query }
+  );
+  return unwrap(data);
+}
+
+/**
+ * One activity with its path, its expenditure lines and whether this reader may edit it — the
+ * activity modal on the AIP Review search (PPDO-79).
+ *
+ * ⚠️ **Open to both reviewers.** The server lets a cross-office reviewer open any office's activity
+ * and a department head only their own; anything else is a 404 worded like a missing activity.
+ *
+ * ⚠️ **Use this, not `listAipExpenditures`, for the lines.** That endpoint scopes with the entry
+ * page's resolver, which 404s a cross-office reviewer who does not sit in PPDO.
+ */
+export async function getAipActivityReview(activityId: number): Promise<AipActivityReview> {
+  const { data } = await api.get<ApiResponse<AipActivityReview>>(
+    `/budget-planning/aip/activities/${activityId}/review`
   );
   return unwrap(data);
 }

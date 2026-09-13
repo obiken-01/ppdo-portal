@@ -146,10 +146,10 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
   // Both rules live in lib/budget-planning-access so the nav and the route guard cannot drift.
   const showAipRecords     = me != null && canOpenAipRecords(me);
   const showLdip           = me != null && canOpenLdip(me);
-  // PPDO-79 — the cross-office review surface. ⚠️ `canReviewAllOffices`, never the department-head
-  // flag: the two reviewers differ on exactly one point, and the department head's surface is
-  // AIP Entry. Same file as the two above, for the same reason — the nav and the route guard read
-  // one rule.
+  // PPDO-79 — the review surface, for EITHER reviewer: the search is where both the PPDO reviewer
+  // and a department head find work (the server clamps a department head to their own office).
+  // ⚠️ Not `isHostOffice` — a PPDO division encoder holds no review work. Same file as the two above,
+  // for the same reason: the nav and the route guard read one rule.
   const showAipReview      = me != null && canOpenAipReview(me);
   const showResourceLinks  = !isOfficeUser;
   const showDashboard      = !isOfficeUser;

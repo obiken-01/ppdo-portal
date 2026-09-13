@@ -66,6 +66,17 @@ public sealed class AipReviewFunctions
     /// </summary>
     private Task<bool> CanAccessBudgetPlanning(User u) => _permissions.CanAccessBudgetPlanningAsync(u);
 
+    /// <summary>
+    /// Either reviewer — the gate on the activity modal's read (PPDO-79).
+    ///
+    /// ⚠️ A flag check, so a 403 here says only "you are not a reviewer", never anything about which
+    /// offices exist. Which office's activity a department head may open is the service's question,
+    /// and it answers with a 404 worded like a missing activity (PPDO-46).
+    /// </summary>
+    private async Task<bool> IsEitherReviewer(User u)
+        => await _permissions.CanReviewAllOfficesAsync(u)
+        || await _permissions.CanReviewBudgetPlanningAsync(u);
+
     // ── POST /api/budget-planning/aip/{aipId}/offices/{officeId}/return ───────
     //
     // No body. A covering note is deliberately not part of this action — the row-anchored comments
@@ -125,6 +136,30 @@ public sealed class AipReviewFunctions
             await _review.GetOfficeForReviewAsync(aipId, officeId, caller!, ct), ct);
     }
 
+    // ── GET /api/budget-planning/aip/activities/{activityId}/review ───────────
+    //
+    // PPDO-79. One activity, with its path, its expenditure lines and whether this caller may edit
+    // it — the modal an activity name opens on the AIP Review search.
+    //
+    // ⚠️ Open to BOTH reviewers, unlike the whole-office read above. The department head reviews
+    // their own office from the same search page (spec §6.1a), and this is how they open a row. The
+    // service narrows a department head to their own office; this gate only keeps non-reviewers out.
+    //
+    // ⚠️ AuthorizeAsync, not AuthorizeWriteAsync — it is a read.
+    [Function("AipReviewActivityRead")]
+    public async Task<HttpResponseData> GetActivityForReview(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get",
+            Route = "budget-planning/aip/activities/{activityId:int}/review")] HttpRequestData req,
+        int activityId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) =
+            await ConfigHttp.AuthorizeAsync(req, _jwt, IsEitherReviewer, ct);
+        if (denied is not null) return denied;
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _review.GetActivityForReviewAsync(activityId, caller!, ct), ct);
+    }
+
     // ── GET /api/budget-planning/aip/review/search ────────────────────────────
     //
     // V18-75 / PPDO-76, spec §4.1. The query-first review page.
@@ -134,8 +169,8 @@ public sealed class AipReviewFunctions
     // refused, because a 403 would confirm the other office exists (PPDO-46). The clamp lives in
     // the service, where the scope resolver is.
     //
-    // ⚠️ The PAGE is gated more tightly than this route — every result links into the
-    // reviewer-only screen above, so the client hides it from anyone without CanReviewAllOffices.
+    // ⚠️ The PAGE is gated more tightly than this route — it is the review surface, so the client
+    // hides it from anyone holding neither reviewer flag (PPDO-79 opened it to department heads).
     // That is a UI decision about dead ends, not a security boundary, and it does not belong here.
     //
     // ⚠️ Route ordering: "review" is not an int, so this cannot collide with

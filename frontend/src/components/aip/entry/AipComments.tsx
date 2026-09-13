@@ -39,6 +39,12 @@ const keyOf = (nodeType: AipCommentNodeType, nodeId: number) => `${nodeType}-${n
 interface CommentsState {
   byNode: Map<string, AipReviewComment[]>;
   data: AipReviewComments | null;
+  /**
+   * True once the first fetch has finished, whether it succeeded or not. ⚠️ Exists so a surface can
+   * tell "still loading" from "could not load" — both leave `data` null, and rendering either as an
+   * empty thread reads as "nothing outstanding".
+   */
+  loaded: boolean;
   /** The side currently being hunted for, or null. Auto-opens matching threads. */
   filter: AipCommentSide | null;
   setFilter: (side: AipCommentSide | null) => void;
@@ -66,6 +72,7 @@ export function AipCommentsProvider({
   children: React.ReactNode;
 }) {
   const [data, setData] = useState<AipReviewComments | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const [filter, setFilter] = useState<AipCommentSide | null>(null);
 
   const reload = useCallback(async () => {
@@ -75,6 +82,8 @@ export function AipCommentsProvider({
     } catch {
       // The tree is the page's job; comments failing must not take the work surface with them.
       setData(null);
+    } finally {
+      setLoaded(true);
     }
   }, [aipRecordId, officeId]);
 
@@ -109,8 +118,8 @@ export function AipCommentsProvider({
   );
 
   const value = useMemo<CommentsState>(
-    () => ({ byNode, data, filter, setFilter, reload, add, resolve }),
-    [byNode, data, filter, reload, add, resolve]
+    () => ({ byNode, data, loaded, filter, setFilter, reload, add, resolve }),
+    [byNode, data, loaded, filter, reload, add, resolve]
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
@@ -197,10 +206,22 @@ function FilterChip({ side, count }: { side: AipCommentSide; count: number }) {
 // ── The per-row gutter ──────────────────────────────────────────────────────
 
 /**
+ * Whether the reader may START a thread on this row.
+ *
+ * ⚠️ **Activities only** (PPDO-79 — spec decision 7, narrowed 2026-09-13; the server refuses the rest
+ * with a 400). A program or project row still SHOWS a comment written before the rule, and that
+ * comment can still be resolved: hiding it would leave an unresolved remark counted in the re-submit
+ * warning with nowhere on screen to find it or clear it.
+ */
+function canStartThread(ctx: CommentsState, nodeType: AipCommentNodeType): boolean {
+  return ctx.data?.canComment === true && nodeType === "Activity";
+}
+
+/**
  * One row's comment marker and thread.
  *
- * Renders nothing at all when there is nothing to show and the reader cannot comment — which is
- * every row for an encoder in Draft, i.e. the overwhelmingly common case.
+ * Renders nothing at all when there is nothing to show and the reader cannot start a thread here —
+ * which is every row for an encoder in Draft, and every program and project row for everybody.
  */
 export function AipCommentAnchor({
   nodeType,
@@ -211,9 +232,6 @@ export function AipCommentAnchor({
 }) {
   const ctx = useComments();
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const comments = ctx?.byNode.get(keyOf(nodeType, nodeId)) ?? [];
   const unresolved = comments.filter((c) => !c.resolvedAt);
@@ -225,33 +243,7 @@ export function AipCommentAnchor({
   const expanded = open || matchesFilter;
 
   if (!ctx?.data) return null;
-  if (comments.length === 0 && !ctx.data.canComment) return null;
-
-  async function submit() {
-    const body = draft.trim();
-    if (!body || !ctx) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await ctx.add(nodeType, nodeId, body);
-      setDraft("");
-      setOpen(true);
-    } catch (e) {
-      setError(aipErrorMessage(e, "Could not save this comment."));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function markResolved(id: number) {
-    if (!ctx) return;
-    setError(null);
-    try {
-      await ctx.resolve(id);
-    } catch (e) {
-      setError(aipErrorMessage(e, "Could not resolve this comment."));
-    }
-  }
+  if (comments.length === 0 && !canStartThread(ctx, nodeType)) return null;
 
   return (
     <div className="mt-1">
@@ -273,38 +265,147 @@ export function AipCommentAnchor({
       </button>
 
       {expanded && (
-        <div className="mt-2 space-y-2 border-l-2 border-slate-200 pl-3">
-          {comments.map((c) => (
-            <CommentRow key={c.id} comment={c} onResolve={() => markResolved(c.id)} />
-          ))}
-
-          {ctx.data.canComment && (
-            <div className="pt-1">
-              <textarea
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                maxLength={2000}
-                rows={2}
-                placeholder="Ask for a change on this row…"
-                className="w-full border border-slate-300 px-2 py-1 text-xs text-slate-800"
-              />
-              <div className="mt-1 flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => void submit()}
-                  disabled={busy || draft.trim().length === 0}
-                  className="bg-green-700 px-3 py-1 text-xs font-medium text-white hover:bg-green-800 disabled:cursor-not-allowed disabled:bg-slate-300"
-                >
-                  {busy ? "Saving…" : "Comment"}
-                </button>
-                <span className="text-[11px] text-slate-600">{draft.length}/2000</span>
-              </div>
-            </div>
-          )}
-
-          {error && <p className="text-[11px] text-red-600">{error}</p>}
+        <div className="mt-2 border-l-2 border-slate-200 pl-3">
+          <CommentThread nodeType={nodeType} nodeId={nodeId} />
         </div>
       )}
+    </div>
+  );
+}
+
+// ── The activity modal's rail ───────────────────────────────────────────────
+
+/**
+ * One activity's comments, always open — the right-hand rail of the activity modal (PPDO-79,
+ * spec §6.1a).
+ *
+ * ⚠️ **Open here, collapsed in the gutter, and that is the surface rather than a second rule.** The
+ * gutter sits in a dense tree where inlining every thread would bury the work (§6.2). The modal is
+ * about one row, and the conversation is half of why it was opened — which is also why it sits
+ * beside the figures instead of below them.
+ *
+ * ⚠️ Reads the same provider as the gutter, so the modal wraps it in an `AipCommentsProvider` for
+ * the activity's office: one fetch for the office, shared — never one per activity.
+ */
+export function AipCommentPanel({ activityId }: { activityId: number }) {
+  const ctx = useComments();
+  const unresolved = (ctx?.byNode.get(keyOf("Activity", activityId)) ?? [])
+    .filter((c) => !c.resolvedAt).length;
+
+  return (
+    <section className="border border-slate-200 bg-slate-50 px-4 py-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600">Comments</h3>
+        {unresolved > 0 && (
+          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-900">
+            {unresolved} unresolved
+          </span>
+        )}
+      </div>
+
+      {!ctx?.loaded ? (
+        <div className="space-y-2" aria-hidden>
+          <div className="h-3 w-3/4 animate-pulse bg-slate-200" />
+          <div className="h-3 w-1/2 animate-pulse bg-slate-200" />
+        </div>
+      ) : !ctx.data ? (
+        // ⚠️ Said out loud, never rendered as an empty thread: an empty rail reads as "nothing
+        // outstanding", which is the one conclusion a failed fetch must not produce.
+        <p className="text-xs text-slate-600">Comments could not be loaded. Close and reopen to try again.</p>
+      ) : (
+        <div className="border-l-2 border-slate-200 pl-3">
+          <CommentThread nodeType="Activity" nodeId={activityId} emptyText="No comments on this activity yet." />
+        </div>
+      )}
+    </section>
+  );
+}
+
+/**
+ * A row's comments and, where the reader may start one, the composer.
+ *
+ * ⚠️ Shared by the gutter and the modal's rail, so the two cannot drift in what they offer — the
+ * resolve control, the 2000-character counter, and the activities-only rule all live here once.
+ */
+function CommentThread({
+  nodeType,
+  nodeId,
+  emptyText,
+}: {
+  nodeType: AipCommentNodeType;
+  nodeId: number;
+  emptyText?: string;
+}) {
+  const ctx = useComments();
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!ctx?.data) return null;
+
+  const comments = ctx.byNode.get(keyOf(nodeType, nodeId)) ?? [];
+  const canAdd = canStartThread(ctx, nodeType);
+
+  async function submit() {
+    const body = draft.trim();
+    if (!body || !ctx) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await ctx.add(nodeType, nodeId, body);
+      setDraft("");
+    } catch (e) {
+      setError(aipErrorMessage(e, "Could not save this comment."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function markResolved(id: number) {
+    if (!ctx) return;
+    setError(null);
+    try {
+      await ctx.resolve(id);
+    } catch (e) {
+      setError(aipErrorMessage(e, "Could not resolve this comment."));
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      {comments.length === 0 && emptyText && (
+        <p className="text-xs text-slate-600">{emptyText}</p>
+      )}
+
+      {comments.map((c) => (
+        <CommentRow key={c.id} comment={c} onResolve={() => markResolved(c.id)} />
+      ))}
+
+      {canAdd && (
+        <div className="pt-1">
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            maxLength={2000}
+            rows={2}
+            placeholder="Ask for a change on this row…"
+            className="w-full border border-slate-300 px-2 py-1 text-xs text-slate-800"
+          />
+          <div className="mt-1 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void submit()}
+              disabled={busy || draft.trim().length === 0}
+              className="bg-green-700 px-3 py-1 text-xs font-medium text-white hover:bg-green-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              {busy ? "Saving…" : "Comment"}
+            </button>
+            <span className="text-[11px] text-slate-600">{draft.length}/2000</span>
+          </div>
+        </div>
+      )}
+
+      {error && <p className="text-[11px] text-red-600">{error}</p>}
     </div>
   );
 }

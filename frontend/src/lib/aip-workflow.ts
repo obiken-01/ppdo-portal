@@ -88,3 +88,29 @@ export function describeAipHolderForReviewer(status: string): string {
       return status;
   }
 }
+
+/**
+ * The same sentence from the **department-head reviewer's** chair (PPDO-79).
+ *
+ * ⚠️ **A third voice, not a flag on either of the two above** — for the reason given there. The
+ * office's voice names "your department head" as somebody else, which read by the department head
+ * points at the reader in the third person; the reviewer's voice speaks for PPDO ("awaiting your
+ * decision"). Since PPDO-79 the department head reaches the same rows from the AIP Review search, so
+ * they get a sentence of their own. Phrased to drop into "With …", like the other two.
+ */
+export function describeAipHolderForDepartmentHead(status: string): string {
+  switch (status) {
+    case AIP_WORKFLOW.draft:
+      return "the encoders, still drafting";
+    case AIP_WORKFLOW.departmentReview:
+      return "you, for department review";
+    case AIP_WORKFLOW.submittedToPpdo:
+      return "PPDO";
+    case AIP_WORKFLOW.returnedByPpdo:
+      return "the office — returned by PPDO";
+    case AIP_WORKFLOW.consolidated:
+      return "the consolidated AIP";
+    default:
+      return status;
+  }
+}
