@@ -17,6 +17,7 @@ public sealed class AipExpenditureService : IAipExpenditureService
     private readonly IRepository<Account>       _accountRepo;
     private readonly IRepository<FundingSource> _fsRepo;
     private readonly IAuditService              _audit;
+    private readonly IPermissionService         _permissions;
     private readonly ILogger<AipExpenditureService> _logger;
 
     public AipExpenditureService(
@@ -27,6 +28,7 @@ public sealed class AipExpenditureService : IAipExpenditureService
         IRepository<Account>       accountRepo,
         IRepository<FundingSource> fsRepo,
         IAuditService              audit,
+        IPermissionService         permissions,
         ILogger<AipExpenditureService> logger)
     {
         _aipRepo     = aipRepo;
@@ -36,6 +38,7 @@ public sealed class AipExpenditureService : IAipExpenditureService
         _accountRepo = accountRepo;
         _fsRepo      = fsRepo;
         _audit       = audit;
+        _permissions = permissions;
         _logger      = logger;
     }
 
@@ -50,7 +53,19 @@ public sealed class AipExpenditureService : IAipExpenditureService
 
         // Reads clamp elsewhere; a single-node read cannot clamp, so it refuses the same way a
         // write does — with the message a missing node produces (PPDO-46).
-        if (!OfficeScope.Resolve(caller).Permits(ctx.Office.OfficeId))
+        //
+        // ⚠️ ResolveForReview, not Resolve — on THIS READ ONLY. The PPDO reviewer's one-office review
+        // screen (PPDO-74) loads its lines through this endpoint, and Resolve narrows every caller
+        // outside the host office to their own office. A CanReviewAllOffices holder who sits in a
+        // GUEST office — a case OfficeScope.ResolveForReview's remarks name as supported — was
+        // therefore refused every office but their own. It only ever worked because the reviewers
+        // happened to sit in PPDO. Found while building PPDO-79.
+        //
+        // ⚠️ The write paths below keep Resolve, through AipWriteGuard, and must: the cross-office
+        // grant is READ scope. Letting it reach a write would turn a comment-only reviewer into an
+        // editor of every office. Pinned by AddAsync_ByACrossOfficeReviewer_StillCannotWriteAnotherOffice.
+        bool crossOffice = await _permissions.CanReviewAllOfficesAsync(caller, ct);
+        if (!OfficeScope.ResolveForReview(caller, crossOffice).Permits(ctx.Office.OfficeId))
             return ServiceResult<IReadOnlyList<AipExpenditureDto>>.NotFound(NotFound(activityId));
 
         IReadOnlyList<AipExpenditure> lines = await _expRepo.GetByActivityIdAsync(activityId, ct);
