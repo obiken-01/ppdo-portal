@@ -550,6 +550,28 @@ treat handing one back as a normal, cost-free outcome.
 
 ---
 
+## Documentation vault (Obsidian)
+
+`docs/` is an **Obsidian vault** (settings in `docs/.obsidian/`, adopted 2026-09-13). The documents
+are still plain markdown and are read as files — Obsidian is how Ralph browses them, not something a
+session needs to operate. Three rules keep the two ways of reading them compatible:
+
+- **Standard relative markdown links, never `[[wikilinks]]`.** GitHub does not render wikilinks, and
+  a relative path names exactly one file where a wikilink resolves by shortest match across a tree
+  full of per-version folders. The vault is configured for this (`app.json`: markdown links, relative
+  format, links updated on rename) — keep it that way, and write links the same way by hand.
+- ⚠️ **This repository is public — nothing personal goes in `docs/`.** Daily notes are switched off
+  for this vault and live in a separate vault outside the repo. A date-named note that lands in
+  `docs/` anyway is git-ignored as a safety net, not as the plan.
+- **Per-machine vault state is not committed** — `workspace.json`, `graph.json`, `appearance.json`,
+  and the plugin, theme and snippet folders. `app.json` and `core-plugins.json` are, so the setup
+  carries to a new machine.
+
+Optional, when a spec or standard is next touched anyway: a properties block at the top (`status`,
+`version`, `tickets`, `supersedes`), so which document is current is recorded on the document itself
+rather than only in this file. `.canvas` files are JSON and fine to keep beside the spec they
+illustrate.
+
 ## What NOT to Do
 
 - ❌ Do not use `var` for non-obvious types in C# — be explicit

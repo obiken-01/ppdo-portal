@@ -196,3 +196,21 @@ docs/**/*.backup*.xlsx
 *.dacpac
 *.mdf
 *.ldf
+
+# Obsidian. docs/ is the documentation vault (CLAUDE.md, "Documentation vault").
+# The shared settings ARE committed: app.json (standard relative links) and core-plugins.json
+# (daily notes off), so the vault behaves the same on every machine. Everything below is
+# per-machine view state that changes on every click.
+docs/.obsidian/workspace.json
+docs/.obsidian/workspace-mobile.json
+docs/.obsidian/graph.json
+docs/.obsidian/appearance.json
+docs/.obsidian/plugins/
+docs/.obsidian/themes/
+docs/.obsidian/snippets/
+docs/.trash/
+
+# Daily notes live in a separate personal vault OUTSIDE this public repository, and the
+# daily-notes plugin is off for this vault. A date-named note created here by accident is
+# ignored as a safety net, not as the plan: the same stance as the database patterns above.
+docs/**/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].md
