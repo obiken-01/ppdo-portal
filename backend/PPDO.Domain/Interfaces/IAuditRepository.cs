@@ -41,6 +41,21 @@ public interface IAuditRepository : IRepository<AuditLog>
         DateTime? to,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Every entry for the given int-keyed rows of one table whose action is in
+    /// <paramref name="actions"/>, newest first, with <see cref="AuditLog.ChangedBy"/> populated
+    /// (v1.8.0 — PPDO-77, the AIP submission history).
+    ///
+    /// ⚠️ Filters on the named action constants and never parses the JSON payloads — which is why
+    /// the AIP hand-offs are logged as their own actions rather than as a generic UPDATE.
+    /// An empty id or action list returns nothing rather than every row.
+    /// </summary>
+    Task<IReadOnlyList<AuditLog>> GetByRecordIdsAsync(
+        string tableName,
+        IReadOnlyList<int> recordIds,
+        IReadOnlyList<string> actions,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Distinct table_name values present in audit_log, alphabetical — drives the
     /// Audit Log page's table filter dropdown without a hardcoded list that could drift.</summary>
     Task<IReadOnlyList<string>> GetDistinctTableNamesAsync(CancellationToken cancellationToken = default);

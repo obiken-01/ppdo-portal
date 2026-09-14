@@ -297,7 +297,7 @@ Routes follow the shipped `budget-planning/aip/...` family (`AipSubmitFunctions`
 | `GET /api/budget-planning/aip/activities/{activityId}/review` | `CanReviewAllOffices` **or** `CanReviewBudgetPlanning` | 🆕 PPDO-79 — the activity modal (§6.1a). Path + activity + expenditure lines + a server-computed `canEdit`. A department head may open only their own office's activity; every refusal is a **404** worded like a missing activity (PPDO-46). ⚠️ Returns the lines itself rather than leaning on `activities/{id}/expenditures`, which scopes with `OfficeScope.Resolve` and 404s a cross-office reviewer who does not sit in PPDO |
 | `GET /api/budget-planning/dashboard/offices?fiscalYear=` | Unchanged — `CanAccessBudgetPlanning` **and** a cross-office grant (`Budget_Planning_Dashboard_Requirements.md` §4.2) | ↩️ **Replaces the planned `readiness-board` endpoint** (decision 18). PPDO-78 adds `ReadinessColumn`, `IsReturned` and `AssignedProgramCount` to `OfficeSummaryDto`, and derives `SubmissionStatus` from workflow state instead of the constant `Todo`. One office read feeds both views, so they cannot drift |
 | `GET /api/budget-planning/aip/{aipId}/consolidated` | `CanReviewAllOffices` | Partial by design (decision 14). Slim, server-aggregated |
-| `GET /api/budget-planning/aip/{aipId}/offices/{officeId}/history` | Same as the review read | Transitions + comments, newest first (§5.2) |
+| `GET /api/budget-planning/aip/{aipId}/offices/{officeId}/history` | `CanAccessBudgetPlanning` (scoped) or `CanReviewAllOffices` — ↩️ **the same gate and scope as the comments read** (PPDO-77) | Was "same as the review read", which would have hidden an office's own history from the office. Readable by its encoders and department head on AIP Entry and by any cross-office reviewer. Hand-offs newest first, each carrying the comments written while the office sat in the state it opened (§5.2). Every refusal is a **404** worded like a missing office (PPDO-46) |
 | `GET /api/budget-planning/aip/review/pending-count` | Any reviewer | One integer, resolved per person. ⚠️ `CountAsync` at the database |
 
 ### 4.1 The search contract
@@ -396,9 +396,22 @@ actions are named constants rather than `UPDATE` — the history read is then
 `WHERE table_name = 'aip_offices' AND record_id IN (…) AND action IN (…)`, which needs no JSON
 parsing and no new index beyond what `AuditLog` already has.
 
-⚠️ **Per decision 21 an office has several `AipOffice` rows**, so a single transition writes several
-audit rows. The history read must **group by transition** (same actor, same action, same second) or
-it will show one submit five times.
+↩️ **Corrected in PPDO-77 — there is nothing to group.** This paragraph said that, because an office
+has several `AipOffice` rows (decision 21), one transition writes several audit rows and the read
+must group them back. What PPDO-69 and PPDO-72 actually shipped writes **one** row per transition,
+keyed on the office's first group, with every group id in `new_values.GroupIds`. The read filters
+`record_id IN (every group id of the office)` — so it finds the row whichever group was first — and
+renders each row once. Grouping built to the old text would have grouped rows that do not exist.
+
+**How comments join the chain** (PPDO-77, agreed on the wireframe):
+
+- The chain is **hand-offs only**, newest first. A resolve shows on its comment, never as a line.
+- Each comment sits under the **most recent hand-off at or before its `created_at`** — the state the
+  office was in when it was written. Within a hand-off, comments read oldest first, as a conversation.
+- Comments written before any hand-off form a separate **before first submission** group.
+- `from` is read from `old_values.WorkflowStatus` **for display only** — the filter never touches
+  JSON. It is what makes a `SUBMIT_PPD` from `ReturnedByPpdo` read as a re-submit. An unreadable
+  payload leaves `from` empty rather than failing the read.
 
 ### 5.3 ⚠️ V18-76 is not needed — do not build it
 
@@ -485,6 +498,21 @@ built — the process gap the PPDO-79 review feedback exposed.
 | **Read-only / forbidden** | An office viewing its own work at `SubmittedToPpdo` sees inputs **replaced by text**, not disabled inputs, plus a banner naming the state. A PPDO reviewer sees the same, since they never edit |
 | **Actions** | Return and Accept for PPDO reviewers only; both confirm via `ConfirmDialog` naming the office. Submit-to-PPDO for the department head |
 | **Validation** | Comment body required, 2000 char cap shown as a counter |
+| **History** (PPDO-77) | A **History** button in the header between the state chip and Send back / Accept, shown at **every** status — an accepted or returned office is exactly the one a reviewer wants to trace. Opens §6.2a |
+
+### 6.2a History modal (PPDO-77, new)
+
+Layout agreed on the wireframe (`docs/v1.8/wireframes/submission-history/`, settled 2026-09-14).
+
+| State | Content |
+|---|---|
+| **Opened from** | The review screen header (§6.2), and **AIP Entry's submit panel header** for the office's own people — encoders and department head alike. It sits beside the submit button and stays when the panel reads "With PPDO" |
+| **Loading** | Skeleton shaped like the hand-off entries. Never a spinner |
+| **Success** | A timeline, newest first. Each hand-off names what happened ("Submitted for department review", "Sent to PPDO", "Re-submitted to PPDO", "Sent back by PPDO", "Accepted by PPDO"), who, when (Manila time) and from → to; the newest is marked as where the work is now. Beneath each, the comments written while the office held that state, **collapsed to a count** ("3 comments while with PPDO · 1 still unresolved") and opened on demand |
+| **Comments** | Author, side, time, the row's ref code (or that the row was removed), body, and who resolved it when. **Read-only** — resolving stays on the tree and the activity modal |
+| **Empty** | "No hand-offs yet", naming the draft state. Comments written before a first submit still render, under "Before first submission" |
+| **Error** | Inline error with *Try again* |
+| **Size** | `Modal` size `lg`; the body scrolls under a fixed header |
 
 ### 6.3 Readiness board (PPDO-78)
 
@@ -642,7 +670,7 @@ Already created under epic **PPDO-67**. This spec is PPDO-68 and blocks the rest
 | **PPDO-74** — PPDO review screen | §6.2 | PPDO-68, PPDO-71, PPDO-72 |
 | **PPDO-75** — notifications | §6.5 | PPDO-68, PPDO-69 |
 | **PPDO-76** — query-first page | §4.1, §5.3, §6.1 | PPDO-68 |
-| **PPDO-77** — history | §5.2 | PPDO-68, PPDO-72 |
+| **PPDO-77** — history | §4, §5.2, §6.2, §6.2a | PPDO-68, PPDO-72 |
 | **PPDO-78** — readiness board | §6.3, §4 | PPDO-68 |
 | **PPDO-79** — sidebar | §6.4 | PPDO-68, PPDO-76 |
 
@@ -696,6 +724,12 @@ accept `Draft`, `DepartmentReview` and `ReturnedByPpdo`, and its remarks must be
       of cards
 - [ ] Show History on a returned-and-re-submitted office lists submit, return and re-submit with
       names and timestamps, and shows one row per transition — not one per sub-office group
+- [ ] An encoder opens History from AIP Entry on their own office and sees the same chain; the API
+      answers 404 for another office's history
+- [ ] A comment written while the office was with PPDO sits under that "Sent to PPDO" entry, not
+      under the later return
+- [ ] History opens on an accepted office, and on a Draft office with the empty state — not only on
+      an office at PPDO
 - [ ] The consolidated view with 3 of 19 offices submitted shows the other 16 as not yet submitted,
       never as ₱0
 - [ ] A PPDO division user without a reviewer flag cannot open the consolidated view
@@ -713,7 +747,7 @@ always-TDD list.
 |---|---|
 | `AipSubmitGateTests` | The second hop from `DepartmentReview` **and** `ReturnedByPpdo`; refusal for an encoder; the gate re-running on the second hop; **every group moving together** |
 | `AipWorkflowGateTests` | The full (state × role) matrix of §3.2 — including the three cells decision 4 changes. ⚠️ Add the failing test for encoder-edits-in-`DepartmentReview` **first**; it should fail against current `main` |
-| `AipReviewCommentServiceTests` | Authoring-side resolve, both refusal directions (office→PPDO, encoder→department head); comments allowed while locked; unresolved counts split by side; orphaned comment survives node deletion |
+| `AipReviewCommentServiceTests` | Authoring-side resolve, both refusal directions (office→PPDO, encoder→department head); comments allowed while locked; unresolved counts split by side; orphaned comment survives node deletion. **History (PPDO-77):** one entry per audit row found across every group id; comments bucketed under the hand-off open when written; the before-first-submission bucket; a re-submit read from the old status; an encoder reads their own office and gets 404 for another |
 | `AipReviewServiceTests` | Return/accept state guards; the 409 on a concurrent second action; accept refused from `ReturnedByPpdo` |
 | `AipReviewSearchTests` | OR-within / AND-across; `officeIds` + blank `sectors` returning multiple sectors; ref-code OR-list; title **not** OR-split; scope clamping for a guest-office user |
 | `BudgetPlanningDashboardServiceTests` (`GetOfficesAsync`) | `ReadinessColumn` for every state — zero activities → NotStarted, one or more in `Draft` → InProgress, `DepartmentReview` → OfficeReview, `ReturnedByPpdo` → OfficeReview with `IsReturned`, `SubmittedToPpdo` → PpdoReview, `Consolidated` → Done; a submission state beating activity count; `AssignedProgramCount` summed across an office's groups; groups that disagree report the least advanced; an office with no group row reads Not Started / Todo; `SubmissionStatus` derived, never the constant |

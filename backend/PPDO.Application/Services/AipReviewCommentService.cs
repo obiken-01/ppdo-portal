@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
@@ -14,17 +15,20 @@ public sealed class AipReviewCommentService : IAipReviewCommentService
 
     private readonly IAipReviewCommentRepository       _comments;
     private readonly IAipRepository                    _aipRepo;
+    private readonly IAuditRepository                  _auditRepo;
     private readonly IPermissionService                _permissions;
     private readonly ILogger<AipReviewCommentService>  _logger;
 
     public AipReviewCommentService(
         IAipReviewCommentRepository      comments,
         IAipRepository                   aipRepo,
+        IAuditRepository                 auditRepo,
         IPermissionService               permissions,
         ILogger<AipReviewCommentService> logger)
     {
         _comments    = comments;
         _aipRepo     = aipRepo;
+        _auditRepo   = auditRepo;
         _permissions = permissions;
         _logger      = logger;
     }
@@ -51,6 +55,115 @@ public sealed class AipReviewCommentService : IAipReviewCommentService
 
         return ServiceResult<AipReviewCommentsDto>.Ok(new AipReviewCommentsDto(
             aipRecordId, officeId, dtos, Tally(rows), CanComment: callerSide is not null));
+    }
+
+    // ── History (V18-77 / PPDO-77) ────────────────────────────────────────────
+
+    /// <summary>The hand-offs the chain is made of — named constants, so the filter needs no JSON.</summary>
+    private static readonly string[] HandOffActions =
+    [
+        AuditAction.SubmitToDeptHead,
+        AuditAction.SubmitToPpdo,
+        AuditAction.ReturnByPpdo,
+        AuditAction.AcceptByPpdo,
+    ];
+
+    public async Task<ServiceResult<AipOfficeHistoryDto>> GetHistoryAsync(
+        int aipRecordId, int officeId, User caller, CancellationToken ct = default)
+    {
+        // ⚠️ The comments read's resolver, not AipReviewService's: the office's own people read this
+        // too (spec §4), and the review resolver refuses anyone without the cross-office flag.
+        CommentContext? ctx = await ResolveAsync(aipRecordId, officeId, caller, ct);
+        if (ctx is null)
+            return ServiceResult<AipOfficeHistoryDto>.NotFound(NotFoundMessage(aipRecordId, officeId));
+
+        // ⚠️ EVERY group id, never Groups[0]. A transition writes one audit row keyed on whichever
+        // group was first at the time (spec §5.2), and group order is not a promise. Sequential
+        // awaits — these share one DbContext, which is not thread-safe (CLAUDE.md).
+        IReadOnlyList<AuditLog> handOffs = await _auditRepo.GetByRecordIdsAsync(
+            "aip_offices", ctx.GroupIds, HandOffActions, ct);
+        IReadOnlyList<AipReviewComment> rows = await _comments.GetByOfficeIdsAsync(ctx.GroupIds, ct);
+        IReadOnlyDictionary<int, string> refCodes = await ResolveRefCodesAsync(ctx, rows, ct);
+
+        List<AuditLog> oldestFirst = handOffs.OrderBy(a => a.ChangedAt).ThenBy(a => a.Id).ToList();
+        Dictionary<long, List<AipReviewCommentDto>> byHandOff =
+            oldestFirst.ToDictionary(a => a.Id, _ => new List<AipReviewCommentDto>());
+        List<AipReviewCommentDto> beforeFirst = [];
+
+        foreach (AipReviewComment comment in rows.OrderBy(c => c.CreatedAt).ThenBy(c => c.Id))
+        {
+            // ⚠️ Null caller side: the history is read-only, so no comment offers a resolve control.
+            // Resolving belongs where the row is in front of the reader — the tree and the modal.
+            AipReviewCommentDto dto = Map(comment, callerSide: null, refCodes);
+
+            // The hand-off that was most recently in force when the comment was written, i.e. the
+            // state the office sat in. At-or-before, so a comment stamped in the same instant as a
+            // hand-off lands with the state it was written into.
+            AuditLog? openedBy = oldestFirst.LastOrDefault(a => a.ChangedAt <= comment.CreatedAt);
+            if (openedBy is null) beforeFirst.Add(dto);
+            else byHandOff[openedBy.Id].Add(dto);
+        }
+
+        List<AipHistoryEntryDto> entries = oldestFirst
+            .AsEnumerable()
+            .Reverse()
+            .Select(a => new AipHistoryEntryDto(
+                a.Id,
+                a.Action,
+                ReadWorkflowStatus(a.OldValues),
+                TargetOf(a.Action),
+                a.ChangedBy?.FullName ?? "Unknown",
+                ActorSideOf(a.Action),
+                a.ChangedAt,
+                byHandOff[a.Id]))
+            .ToList();
+
+        return ServiceResult<AipOfficeHistoryDto>.Ok(new AipOfficeHistoryDto(
+            aipRecordId, officeId, ctx.Groups[0].WorkflowStatus, entries, beforeFirst));
+    }
+
+    /// <summary>Where each hand-off takes the office. Fixed by the action, so nothing is read from JSON.</summary>
+    private static string TargetOf(string action) => action switch
+    {
+        AuditAction.SubmitToDeptHead => AipWorkflowStatus.DepartmentReview,
+        AuditAction.SubmitToPpdo     => AipWorkflowStatus.SubmittedToPpdo,
+        AuditAction.ReturnByPpdo     => AipWorkflowStatus.ReturnedByPpdo,
+        _                            => AipWorkflowStatus.Consolidated,
+    };
+
+    /// <summary>
+    /// Who performs each hand-off <b>by rule</b>. ⚠️ Not the actor's current flags: those can change
+    /// after the fact, and a history that relabelled last month's submit would be rewriting it.
+    /// </summary>
+    private static string ActorSideOf(string action) => action switch
+    {
+        AuditAction.SubmitToDeptHead => "Office",
+        AuditAction.SubmitToPpdo     => "DepartmentHead",
+        _                            => "Ppdo",
+    };
+
+    /// <summary>
+    /// The <c>WorkflowStatus</c> out of an audit payload, for display only — the query never parses
+    /// JSON. ⚠️ Null on anything unreadable rather than a guess, and never an exception: one odd row
+    /// must not take the whole history down with it.
+    /// </summary>
+    private static string? ReadWorkflowStatus(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            using JsonDocument doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) return null;
+            foreach (JsonProperty property in doc.RootElement.EnumerateObject())
+                if (string.Equals(property.Name, "WorkflowStatus", StringComparison.OrdinalIgnoreCase)
+                    && property.Value.ValueKind == JsonValueKind.String)
+                    return property.Value.GetString();
+            return null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     // ── Create ────────────────────────────────────────────────────────────────

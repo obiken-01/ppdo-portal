@@ -1,0 +1,38 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1440, "h": 560, "title": "AIP Review, one office — PPDO reviewer" },
+    { "file": "EntryScreen.dc.html", "x": 0, "y": 700, "w": 1440, "h": 640, "title": "AIP Entry — own office (department head, encoder)" },
+    { "file": "HistoryModal.dc.html", "x": 1560, "y": 0, "w": 760, "h": 1180, "title": "History modal — shared by both screens" }
+  ],
+  "annotations": [
+    {
+      "id": "q-review-placement",
+      "x": 0,
+      "y": 1400,
+      "w": 460,
+      "text": "WHERE — AIP Review, one office\n\nHistory sits in the header between the state chip and the decision buttons (dashed outline = new).\n\nIt is there at EVERY status, not only when the office is with PPDO. A reviewer opening an accepted or returned office is exactly the person who wants to know how it got there."
+    },
+    {
+      "id": "q-entry-placement",
+      "x": 500,
+      "y": 1400,
+      "w": 460,
+      "text": "WHERE — AIP Entry, own office\n\nDrawn inside the submit panel's header, next to Re-submit (flip the 'stage' chip for the locked 'With PPDO' case — the button stays).\n\nEveryone who can open their own office's AIP Entry sees it — encoders too, not only the department head. The server clamps it to their own office.\n\nRESOLVED 2026-09-14: keep it in the submit panel, as drawn."
+    },
+    {
+      "id": "q-grouping",
+      "x": 1560,
+      "y": 1240,
+      "w": 520,
+      "text": "RESOLVED 2026-09-14 — comments grouped under hand-offs, as drawn.\n\nDrawn: the chain is hand-offs only, and each hand-off holds the comments written while the office sat in that state — collapsed to a count ('3 comments while with PPDO · 1 still unresolved'), opened on demand. Two are drawn open, the oldest closed.\n\nA flat list interleaving every comment gets long fast on an office with 80 activities, and buries the submit/return chain Ralph asked to backtrack. Recommend grouped.\n\nFlip the 'state' chip for loading, empty and error."
+    },
+    {
+      "id": "q-details",
+      "x": 2120,
+      "y": 1240,
+      "w": 460,
+      "text": "SETTLED BY WHAT EXISTS — no decision needed unless you disagree\n\n• A resolve shows on the comment ('Resolved by … · date'), not as its own line in the chain.\n• A comment on a deleted row stays, marked 'Row deleted' (spec §5.1).\n• A return carries no reason field — the endpoint takes none; the comments are the reason.\n• One line per hand-off, never one per sub-office group.\n• Newest first, Manila time. No export or print.\n• Comments written before the first submit sit under a 'Before first submission' line at the bottom (not drawn)."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}
