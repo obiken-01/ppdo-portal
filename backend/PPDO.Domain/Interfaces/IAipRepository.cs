@@ -221,6 +221,12 @@ public sealed record AipReviewSearchPage(
 /// non-null, non-zero <see cref="AipActivity.Total"/> — money has actually been entered against
 /// it, which is what the dashboard reports on now that WFP expenditure coverage is gone from the
 /// page (Budget_Planning_Dashboard_Requirements.md §2, decisions 3 and 4).
+///
+/// ↩️ <b>PPDO-78 added the last two</b>, so the readiness board reads from this same rollup rather
+/// than a second office query beside it. <see cref="ProgramCount"/> counts the group's programs — the
+/// ones LDIP seeded, whether or not anyone has touched them. <see cref="WorkflowStatus"/> is the
+/// group's <c>aip_offices.workflow_status</c>; every group of one office moves together, so the
+/// office's column is read from them. Both default so older call sites keep compiling.
 /// </summary>
 public sealed record AipOfficeRollupDto(
     int     AipOfficeId,
@@ -230,7 +236,9 @@ public sealed record AipOfficeRollupDto(
     int?    OfficeId,
     int     ActivityCount,
     int     CostedActivityCount,
-    decimal CostedTotal);
+    decimal CostedTotal,
+    int     ProgramCount   = 0,
+    string  WorkflowStatus = "Draft");
 
 /// <summary>
 /// The same rollup one level down, per program ref code (PPDO-20). See

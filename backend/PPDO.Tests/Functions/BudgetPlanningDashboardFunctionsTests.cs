@@ -323,7 +323,8 @@ public sealed class BudgetPlanningDashboardFunctionsTests
         new(id, code, $"Office {id}", IsHostOffice: false,
             CeilingAmount: null, CostedInAip: 0m, ActivityCount: 0,
             AipStatus: "Todo", SubmissionStatus: "Todo",
-            IsOverCeiling: false, ReviewerName: null);
+            IsOverCeiling: false, ReviewerName: null,
+            ReadinessColumn: "NotStarted", IsReturned: false, AssignedProgramCount: 0);
 
     [Fact]
     public async Task GetDashboardOffices_WithInvalidToken_ReturnsUnauthorizedAndNeverCallsService()

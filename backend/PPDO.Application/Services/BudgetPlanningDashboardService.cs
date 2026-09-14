@@ -368,13 +368,15 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
             await _userRepo.GetReviewerNamesByOfficeAsync(officeIds, ct);
 
         AipRecord? aip = await _aipRepo.GetLatestByFiscalYearAsync(fiscalYear, ct);
-        Dictionary<int, (int ActivityCount, decimal Costed)> aipByOffice =
+        Dictionary<int, OfficeAipFigures> aipByOffice =
             await BuildAipRollupByOfficeAsync(aip, offices, ct);
 
         List<OfficeSummaryDto> rows = [];
         foreach (Office office in offices)
         {
-            (int ActivityCount, decimal Costed) figures = aipByOffice.GetValueOrDefault(office.Id);
+            // An office with no AIP group row gets the default: zero counts and a null status,
+            // which both helpers below read as Draft — Not Started, Todo.
+            OfficeAipFigures figures = aipByOffice.GetValueOrDefault(office.Id);
 
             // Null vs 0m matters: null is "PBO has not published a ceiling", 0m is a published
             // decision. The UI renders stage 1 differently for each, so do not coalesce.
@@ -389,31 +391,46 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
                 figures.Costed,
                 figures.ActivityCount,
                 PlanningStage.ForAip(aip?.Status, figures.ActivityCount),
-                PlanningStage.Todo,      // Phase 4 — spec §7.
+                // ↩️ Derived since PPDO-78 — the board beside this table reads the same state.
+                PlanningStage.ForSubmission(figures.WorkflowStatus),
                 ceiling is decimal limit && figures.Costed > limit,
-                reviewerByOffice.GetValueOrDefault(office.Id)));
+                reviewerByOffice.GetValueOrDefault(office.Id),
+                AipReadinessColumn.For(figures.WorkflowStatus, figures.ActivityCount),
+                figures.WorkflowStatus == AipWorkflowStatus.ReturnedByPpdo,
+                figures.ProgramCount));
         }
 
         return ServiceResult<IReadOnlyList<OfficeSummaryDto>>.Ok(rows);
     }
 
+    /// <summary>One office's AIP figures for the year, summed across its group rows.</summary>
+    private readonly record struct OfficeAipFigures(
+        int ActivityCount, decimal Costed, int ProgramCount, string? WorkflowStatus);
+
     /// <summary>
-    /// OfficeId → (activity count, costed total) for every office in <paramref name="offices"/>,
-    /// from one grouped query over the fiscal year's AIP (PPDO-20).
+    /// OfficeId → activity count, costed total, program count and workflow status for every office
+    /// in <paramref name="offices"/>, from one grouped query over the fiscal year's AIP (PPDO-20;
+    /// the last two added by PPDO-78).
+    ///
+    /// ⚠️ <b>The program count is not <c>AllocationService.GetProgramAssignmentsAsync</c> called per
+    /// office</b>, although it answers the same question: that method is five round trips for ONE
+    /// office, so nineteen offices would be ~95. The rollup matches groups to offices on the same
+    /// <see cref="AipOffice.OfficeId"/> FK that method uses, and counts the programs under them in
+    /// the one query this band already makes.
     ///
     /// An office is matched to its AIP rows by <see cref="Office.OfficeRefCode"/> suffix, the same
     /// rule <c>BuildOfficeAipSummaryAsync</c> has always used — AipOffice.RefCode is a full
     /// BOM-segment code whose tail is the office's own. An office with no ref code configured
     /// cannot be matched at all and is simply absent, which reads as Todo on its row.
     /// </summary>
-    private async Task<Dictionary<int, (int ActivityCount, decimal Costed)>> BuildAipRollupByOfficeAsync(
+    private async Task<Dictionary<int, OfficeAipFigures>> BuildAipRollupByOfficeAsync(
         AipRecord? aip, IReadOnlyList<Office> offices, CancellationToken ct)
     {
         if (aip is null) return [];
 
         IReadOnlyList<AipOfficeRollupDto> rollups = await _aipRepo.GetOfficeRollupsAsync(aip.Id, ct);
 
-        Dictionary<int, (int ActivityCount, decimal Costed)> byOffice = [];
+        Dictionary<int, OfficeAipFigures> byOffice = [];
         foreach (Office office in offices)
         {
             if (office.OfficeRefCode is null) continue;
@@ -423,8 +440,11 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
                 .ToList();
             if (matched.Count == 0) continue;
 
-            byOffice[office.Id] =
-                (matched.Sum(r => r.ActivityCount), matched.Sum(r => r.CostedTotal));
+            byOffice[office.Id] = new OfficeAipFigures(
+                matched.Sum(r => r.ActivityCount),
+                matched.Sum(r => r.CostedTotal),
+                matched.Sum(r => r.ProgramCount),
+                AipReadinessColumn.OfficeStatus(matched.Select(r => r.WorkflowStatus)));
         }
 
         return byOffice;

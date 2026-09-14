@@ -152,14 +152,18 @@ public sealed class AipRepository : Repository<AipRecord>, IAipRepository
                 from project in projects.DefaultIfEmpty()
                 join activity in _context.Set<AipActivity>() on project.Id equals activity.ProjectId into activities
                 from activity in activities.DefaultIfEmpty()
-                group activity by new { office.Id, office.RefCode, office.OfficeId } into g
+                group activity by new { office.Id, office.RefCode, office.OfficeId, office.WorkflowStatus } into g
                 select new AipOfficeRollupDto(
                     g.Key.Id,
                     g.Key.RefCode,
                     g.Key.OfficeId,
                     g.Count(a => a != null),
                     g.Count(a => a != null && a.Total != null && a.Total != 0m),
-                    g.Sum(a => a != null ? a.Total ?? 0m : 0m)))
+                    g.Sum(a => a != null ? a.Total ?? 0m : 0m),
+                    // ⚠️ A subquery, not a count over the group (PPDO-78): the group is joined
+                    // ACTIVITY rows, so a program with three activities would count three times.
+                    _context.Set<AipProgram>().Count(p => p.OfficeId == g.Key.Id),
+                    g.Key.WorkflowStatus))
             .ToListAsync(ct);
 
     /// <inheritdoc />

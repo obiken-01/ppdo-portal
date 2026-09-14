@@ -1327,15 +1327,113 @@ public sealed class BudgetPlanningDashboardServiceTests
         Assert.Null(result.Value!.Single(r => r.OfficeCode == "GSO").ReviewerName);
     }
 
-    [Fact]
-    public async Task GetOfficesAsync_SubmissionStatus_IsTodoUntilPhase4()
+    // ── GetOfficesAsync — readiness board (PPDO-78, spec §6.3) ────────────
+    // The board and the table's Submission column are both computed here, from one rollup, so the
+    // two views on one screen cannot disagree about an office.
+
+    private static List<Office> TwoOfficesWithRefCodes() =>
+    [
+        Off(1, "Provincial Planning and Development Office", code: "PPDO", refCode: "1-01-010"),
+        Off(2, "General Services Office", code: "GSO", refCode: "1-02-020", isHostOffice: false),
+    ];
+
+    private static AipOfficeRollupDto GsoGroup(
+        int id, string status, int activities, int programs = 1) =>
+        new(id, "1000-000-1-02-020", OfficeId: 2, ActivityCount: activities,
+            CostedActivityCount: 0, CostedTotal: 0m, ProgramCount: programs, WorkflowStatus: status);
+
+    private static async Task<OfficeSummaryDto> GsoRowAsync(params AipOfficeRollupDto[] groups)
     {
-        (BudgetPlanningDashboardService sut, User caller) =
-            BuildForOffices(TwoOffices(), canReviewAllOffices: true);
+        (BudgetPlanningDashboardService sut, User caller) = BuildForOffices(
+            TwoOfficesWithRefCodes(), canReviewAllOffices: true,
+            aips: [Aip(10, 2028, "Draft")],
+            aipRepoMock: AipMockWithOffices(10),
+            officeRollups: [.. groups]);
 
         ServiceResult<IReadOnlyList<OfficeSummaryDto>> result = await sut.GetOfficesAsync(caller, 2028);
+        return result.Value!.Single(r => r.OfficeCode == "GSO");
+    }
 
-        Assert.All(result.Value!, row => Assert.Equal(PlanningStage.Todo, row.SubmissionStatus));
+    [Theory]
+    // Draft splits on activity count — never on programs, which LDIP seeds without anyone starting.
+    [InlineData("Draft",            0, "NotStarted",   "Todo",        false)]
+    [InlineData("Draft",            3, "InProgress",   "Todo",        false)]
+    [InlineData("DepartmentReview", 3, "OfficeReview", "In progress", false)]
+    // Returned is Office Review with a badge, not a sixth column.
+    [InlineData("ReturnedByPpdo",   3, "OfficeReview", "In progress", true)]
+    [InlineData("SubmittedToPpdo",  3, "PpdoReview",   "Review",      false)]
+    [InlineData("Consolidated",     3, "Done",         "Done",        false)]
+    // A submission state beats the activity count.
+    [InlineData("SubmittedToPpdo",  0, "PpdoReview",   "Review",      false)]
+    public async Task GetOfficesAsync_ReadinessColumnAndSubmission_FollowTheWorkflowState(
+        string status, int activities, string column, string submission, bool returned)
+    {
+        OfficeSummaryDto gso = await GsoRowAsync(GsoGroup(50, status, activities));
+
+        Assert.Equal(column, gso.ReadinessColumn);
+        Assert.Equal(submission, gso.SubmissionStatus);
+        Assert.Equal(returned, gso.IsReturned);
+    }
+
+    [Fact]
+    public async Task GetOfficesAsync_OfficeWithNoAipGroup_IsNotStartedAndTodo()
+    {
+        // The record exists and GSO has moved on, but PPDO has no group row at all. Not the same
+        // thing as a Draft row — it must read the same.
+        (BudgetPlanningDashboardService sut, User caller) = BuildForOffices(
+            TwoOfficesWithRefCodes(), canReviewAllOffices: true,
+            aips: [Aip(10, 2028, "Draft")],
+            aipRepoMock: AipMockWithOffices(10),
+            officeRollups: [GsoGroup(50, "SubmittedToPpdo", 4)]);
+
+        ServiceResult<IReadOnlyList<OfficeSummaryDto>> result = await sut.GetOfficesAsync(caller, 2028);
+        OfficeSummaryDto ppdo = result.Value!.Single(r => r.OfficeCode == "PPDO");
+
+        Assert.Equal(AipReadinessColumn.NotStarted, ppdo.ReadinessColumn);
+        Assert.Equal(PlanningStage.Todo, ppdo.SubmissionStatus);
+        Assert.False(ppdo.IsReturned);
+        Assert.Equal(0, ppdo.AssignedProgramCount);
+    }
+
+    [Fact]
+    public async Task GetOfficesAsync_NoAipRecordForTheYear_EveryOfficeIsNotStarted()
+    {
+        (BudgetPlanningDashboardService sut, User caller) =
+            BuildForOffices(TwoOfficesWithRefCodes(), canReviewAllOffices: true);
+
+        ServiceResult<IReadOnlyList<OfficeSummaryDto>> result = await sut.GetOfficesAsync(caller, 2029);
+
+        Assert.All(result.Value!, row =>
+        {
+            Assert.Equal(AipReadinessColumn.NotStarted, row.ReadinessColumn);
+            Assert.Equal(PlanningStage.Todo, row.SubmissionStatus);
+        });
+    }
+
+    [Fact]
+    public async Task GetOfficesAsync_AssignedProgramCount_SumsEveryGroupOfTheOffice()
+    {
+        // An office can hold several group rows — one per sector (decision 21).
+        OfficeSummaryDto gso = await GsoRowAsync(
+            GsoGroup(50, "Draft", activities: 0, programs: 4),
+            GsoGroup(51, "Draft", activities: 0, programs: 2));
+
+        Assert.Equal(6, gso.AssignedProgramCount);
+        // Six programs and still Not Started — programs never move an office on.
+        Assert.Equal(AipReadinessColumn.NotStarted, gso.ReadinessColumn);
+    }
+
+    [Fact]
+    public async Task GetOfficesAsync_GroupsThatDisagree_ReportTheLeastAdvanced()
+    {
+        // Every transition moves an office's groups together, so this should never happen. If it
+        // does, the office is only as far along as the group still behind.
+        OfficeSummaryDto gso = await GsoRowAsync(
+            GsoGroup(50, "SubmittedToPpdo", activities: 2),
+            GsoGroup(51, "DepartmentReview", activities: 1));
+
+        Assert.Equal(AipReadinessColumn.OfficeReview, gso.ReadinessColumn);
+        Assert.Equal(PlanningStage.InProgress, gso.SubmissionStatus);
     }
 
     [Fact]

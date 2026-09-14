@@ -210,6 +210,12 @@ public record OfficeSummaryDto(
 );
 ```
 
+> ↩️ **Extended by PPDO-78** (`AIP_Review_Spec.md` decision 18, §4, §6.3 — settled 2026-09-13).
+> The readiness board lives in this band as a Board / Table switch, fed by this same read.
+> `OfficeSummaryDto` gains `ReadinessColumn`, `IsReturned` and `AssignedProgramCount`, and
+> `SubmissionStatus` is derived from the office's workflow state instead of the constant `Todo`.
+> The gate, the scope resolution and the table itself are unchanged.
+
 Slim by construction — no free-text AIP columns (a fat AIP DTO once produced a 1.2 MB response).
 Fourteen offices today; **paginate when the count can exceed one screen**, not before.
 

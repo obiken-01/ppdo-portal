@@ -137,6 +137,15 @@ that have already moved are not moved back.
 18. **The readiness board is an office kanban, five columns** (§12.5a, V18-82). Raised by Ralph
     2026-08-26 as a concrete shape for V18-57's readiness view and V18-58's queue. Details in §6.3.
 
+    ↩️ **Re-placed 2026-09-13 (PPDO-78).** It lives on the **Budget Planning dashboard's Offices band**
+    as a **Board / Table view switch** — not below the AIP Review search filters, as first written.
+    Two reasons. **One office read instead of two:** the dashboard's `dashboard/offices` read already
+    carries every figure a card shows except the workflow column and program count, so it is
+    extended rather than a separate `readiness-board` endpoint built beside it — and the dashboard
+    requirements already record two office reads drifting apart (140 vs 139 activities for one
+    office). **It is where reviewers land.** A switch rather than a replacement, because the table
+    is the budget officer's ceiling workspace; they keep the table alone.
+
 19. **No deadline gate anywhere** (tracker B7). The office-to-PPDO deadline is communicated outside
     the system. ⚠️ June 7 is a real statutory deadline but it applies to the **Sanggunian** step, two
     stages downstream of anything this system models — recorded so nobody finds that date later and
@@ -218,7 +227,7 @@ shortcut PPDO straight to `SubmittedToPpdo`.
 |---|---|---|---|
 | Happy path — second submit | Office in `DepartmentReview`, all activities complete, GF within ceiling | Department head submits to PPDO | Every `AipOffice` row for that office moves to `SubmittedToPpdo` **together** (decision 21). Content locks |
 | Happy path — return | Office at `SubmittedToPpdo` with comments | PPDO reviewer returns it | → `ReturnedByPpdo`; content unlocks for encoder and department head. Comments stay, unresolved |
-| Happy path — accept | Office at `SubmittedToPpdo` | PPDO reviewer accepts it | → `Consolidated`. Appears in the kanban's Done column and counts toward the consolidated totals |
+| Happy path — accept | Office at `SubmittedToPpdo` | PPDO reviewer accepts it | → `Consolidated`. Appears in the readiness board's Done column (§6.3) and counts toward the consolidated totals |
 | Happy path — re-submit | Office at `ReturnedByPpdo`, edits made | Department head re-submits | → `SubmittedToPpdo`. Same transition as the second submit, plus the unresolved warning |
 | ⚠️ Gate re-runs on the second hop | Department head edited values during review | Submit to PPDO | Completeness **and** ceiling re-run. The figures that passed the first gate are not necessarily the figures being sent on |
 | Encoder edits during department review | Office in `DepartmentReview` | Encoder edits an activity | ✅ **Allowed** (decision 4). ⚠️ This is the behaviour Phase 3 currently refuses |
@@ -240,7 +249,8 @@ shortcut PPDO straight to `SubmittedToPpdo`.
 | Consolidated view, most offices unsubmitted | 3 of 19 offices submitted | PPDO reviewer opens it | Renders the 3, and shows the other 16 as **not yet submitted** — ⚠️ **not as ₱0** (decision 14) |
 | Review page first open | Any reviewer | Opens AIP Review | **Empty by design** (decision 15), with copy explaining how to search — not a blank panel, not a spinner |
 | Query returns nothing | A ref code that matches no row | Search | Empty-results state distinct from the initial empty state — "no matches" reads differently from "start here" |
-| Office user opens the kanban | An office encoder | Navigates to the board | **Not available to them** (§6.3). Their own status is a chip on their own AIP page |
+| Office user and the readiness board | An office encoder | Opens the Budget Planning dashboard | **No Offices band, so no board** (§6.3). Their own status is a chip on their own AIP page |
+| Budget officer and the readiness board | `CanManagePboCeiling` only | Opens the Budget Planning dashboard | **The Offices table, with no Board / Table switch** (§6.3) |
 | FY2027 legacy record | An FY2027 record | Opened in review | No workflow, no comments, no submit. Phase 4 is FY2028+ only, exactly as Phase 3 |
 
 ### 3.4 Permission and scope
@@ -285,7 +295,7 @@ Routes follow the shipped `budget-planning/aip/...` family (`AipSubmitFunctions`
 | `POST /api/budget-planning/aip/comments/{id}/resolve` | Authoring side only (decision 8) | 403 for the recipient |
 | `GET /api/budget-planning/aip/review/search` | `CanAccessBudgetPlanning`, **clamped per caller** (§3.4, decision 22) | Query-first (§4.1). **Slim DTO, paginated** |
 | `GET /api/budget-planning/aip/activities/{activityId}/review` | `CanReviewAllOffices` **or** `CanReviewBudgetPlanning` | 🆕 PPDO-79 — the activity modal (§6.1a). Path + activity + expenditure lines + a server-computed `canEdit`. A department head may open only their own office's activity; every refusal is a **404** worded like a missing activity (PPDO-46). ⚠️ Returns the lines itself rather than leaning on `activities/{id}/expenditures`, which scopes with `OfficeScope.Resolve` and 404s a cross-office reviewer who does not sit in PPDO |
-| `GET /api/budget-planning/aip/{aipId}/readiness-board` | `CanReviewAllOffices` | The kanban: one row per office with state, program count, activity count |
+| `GET /api/budget-planning/dashboard/offices?fiscalYear=` | Unchanged — `CanAccessBudgetPlanning` **and** a cross-office grant (`Budget_Planning_Dashboard_Requirements.md` §4.2) | ↩️ **Replaces the planned `readiness-board` endpoint** (decision 18). PPDO-78 adds `ReadinessColumn`, `IsReturned` and `AssignedProgramCount` to `OfficeSummaryDto`, and derives `SubmissionStatus` from workflow state instead of the constant `Todo`. One office read feeds both views, so they cannot drift |
 | `GET /api/budget-planning/aip/{aipId}/consolidated` | `CanReviewAllOffices` | Partial by design (decision 14). Slim, server-aggregated |
 | `GET /api/budget-planning/aip/{aipId}/offices/{officeId}/history` | Same as the review read | Transitions + comments, newest first (§5.2) |
 | `GET /api/budget-planning/aip/review/pending-count` | Any reviewer | One integer, resolved per person. ⚠️ `CountAsync` at the database |
@@ -438,7 +448,7 @@ precisely so review could reuse the pieces rather than fork a 2,000-line page.
 
 | State | Content |
 |---|---|
-| **Empty (initial)** | ⚠️ **The default, and deliberate.** Filter panel plus copy explaining how to search, and the kanban below it as the non-empty landing. Never a blank panel |
+| **Empty (initial)** | ⚠️ **The default, and deliberate.** Filter panel plus copy explaining how to search. Never a blank panel. ↩️ *No readiness board below it* — the board moved to the dashboard (decision 18, §6.3) |
 | **Loading** | Skeleton rows matching the result table — same header, same row height. Never a centered spinner (CLS) |
 | **Empty (no matches)** | Distinct from the initial state: "No AIP rows match these filters", with a clear-filters action |
 | **Success** | Chips show per-value counts, as PR List does. ↩️ *PPDO-79:* an **activity** name opens the activity modal (§6.1a); a **program or project** name opens the reader's own whole-office surface — §6.2 for the PPDO reviewer, AIP Entry for a department head |
@@ -476,24 +486,88 @@ built — the process gap the PPDO-79 review feedback exposed.
 | **Actions** | Return and Accept for PPDO reviewers only; both confirm via `ConfirmDialog` naming the office. Submit-to-PPDO for the department head |
 | **Validation** | Comment body required, 2000 char cap shown as a counter |
 
-### 6.3 Readiness kanban (PPDO-78)
+### 6.3 Readiness board (PPDO-78)
 
-Five columns: **Not Started · In Progress · Office Review · PPDO Review · Done**.
+Wireframe: `docs/v1.8/wireframes/readiness-board/` — every question on it settled with Ralph on
+2026-09-13, before any of it is built.
+
+↩️ **Where it lives changed on 2026-09-13 (decision 18).** Not below the AIP Review search filters:
+the board is the **Offices band on the Budget Planning dashboard**, shown as a **Board / Table view
+switch**. The table is unchanged apart from the switch and its Submission column (below).
+
+**Who sees what**
+
+| Caller | Offices band |
+|---|---|
+| Cross-office reviewer (`CanReviewAllOffices`), or SuperAdmin | Board / Table switch. **Board by default**; the last choice is **remembered** on that device |
+| Budget officer (`CanManagePboCeiling`) only | **Table only, no switch.** The board adds where each office sits in review, which they do not act on — ceilings, costed and the risk pills are already in the table, and the table is where they publish ceilings |
+| Holds both grants | The switch, board by default |
+| Anyone else — office encoders, host-office users with no cross-office grant | No Offices band at all — unchanged; the endpoint answers 403 |
+
+⚠️ **The remembered view is per person, per device** — `localStorage`, keyed by user id, so two
+people sharing a PC keep their own choice. A stored `board` is ignored for a caller who cannot see
+the board, and a missing or unreadable value falls back to the caller's default. It is a
+convenience, never a gate.
+
+**Columns — five:** Not Started · In Progress · Office Review · PPDO Review · Done.
+
+| Column | Rule |
+|---|---|
+| **Not Started** | `Draft` (or no AIP office row yet) **and zero activities** |
+| **In Progress** | `Draft` and one or more activities |
+| **Office Review** | `DepartmentReview` — **or `ReturnedByPpdo`, carrying a *Returned* badge** |
+| **PPDO Review** | `SubmittedToPpdo` |
+| **Done** | `Consolidated` |
 
 - ⚠️ **"Returned by PPDO" is NOT a sixth column.** Returned work re-enters the department-review
-  condition, so it sits **in Office Review with a "Returned" badge** — keeping the reviewer's most
-  actionable signal ("I sent this back; has it come back?") without column sprawl.
-- ✅ **Not Started vs In Progress is decided by activity count**, not seeded programs: zero → Not
-  Started. Programs arrive from LDIP without anyone in the office touching the record, so counting
-  them would show an office that never opened the page as working. Submission states win over both.
-- Each card: office name, **assigned program count**, **created activity count**. The assigned
-  denominator reuses `AllocationService.GetProgramAssignmentsAsync`'s LDIP→AIP resolution —
-  **do not re-derive it**.
-- ⚠️ **No "% complete".** There is a denominator for programs but **none for activities** — "we don't
-  know how many activities will be created per-office". A percentage would be fiction. This is also
-  why it is a kanban and not a chart. Do not let it drift into a progress bar.
-- Clicking a card filters 6.1 to that office.
-- **PPDO reviewers only.** An office user would see one card, which is noise.
+  condition, so it sits in Office Review with a *Returned* badge — the reviewer's most actionable
+  signal ("I sent this back; has it come back?") without column sprawl.
+- ✅ **Not Started vs In Progress is decided by activity count**, not seeded programs. Programs
+  arrive from LDIP without anyone in the office touching the record, so counting them would show an
+  office that never opened the page as working. Submission states win over both.
+- ⚠️ **The column is computed by the server** (`ReadinessColumn`, §4). It is workflow logic, so it is
+  tested in C# — and the board and the table must never be able to disagree about it.
+
+**Not Started is a compact list, not cards.** Each row: office code, assigned program count, and a
+red dot when nobody in the office can submit, with a one-line legend under the list. Early in the
+season 17 of 19 offices sit here; as full cards they would turn the board into one tall column.
+
+**A card** — every other column — in this order:
+
+1. Office code, the **Host** badge, the **Returned** badge
+2. Office name, truncated
+3. `N programs · N activities`
+4. Costed against ceiling, **abbreviated** — `₱1.12M of ₱10M`. "No ceiling published" when there is
+   none; danger-coloured when over. The table keeps exact pesos
+5. Risk pills — *Over ceiling*, *Cannot submit* — only when they apply
+6. Reviewer name, or "No reviewer — assign"
+
+- ⚠️ **No "% complete" anywhere.** There is a denominator for programs but **none for activities** —
+  "we don't know how many activities will be created per-office". A percentage would be fiction,
+  which is also why this is a board and not a chart. Do not let it drift into a progress bar.
+- The assigned program count uses the same office resolution as
+  `AllocationService.GetProgramAssignmentsAsync` — group rows matched on `aip_offices.office_id` —
+  but is counted inside the band's existing `GetOfficeRollupsAsync` query. ↩️ *Calling that method
+  per office*, as this line first said, is five round trips an office: ~95 for nineteen offices on
+  every dashboard load (`PERFORMANCE_GUIDELINES.md`). ⚠️ Count programs with their own subquery, not
+  over the rollup's activity join, or a program with three activities counts three times.
+
+**Clicking an office — a card or a Not Started row — opens the AIP Review search (§6.1) filtered to
+that office.** Not Started offices are clickable too: their LDIP programs are already in the AIP, so
+the search has rows to show, and every office on the board opens the same way.
+
+↩️ **The table's Submission column becomes real.** `SubmissionStatus` was the constant `Todo`
+"until Phase 4". Left that way, the two views would contradict each other on one screen — PPDO would
+read *Returned* on the board and *Todo* in the table — so PPDO-78 derives it from the same workflow
+state: `Draft` → Todo · `DepartmentReview` and `ReturnedByPpdo` → In progress · `SubmittedToPpdo` →
+Review · `Consolidated` → Done.
+
+| State | Content |
+|---|---|
+| **Loading** | The band's skeleton, shaped like the active view — five column headers over grey cards for the board; the existing table skeleton for the table |
+| **Empty column** | "No offices" inside the column. The column stays, so the board keeps its shape |
+| **Empty band** | Unchanged — "No offices have a FY \<year\> ceiling yet." |
+| **Error** | Unchanged — per band, with Retry; one failing band never blanks the page |
 
 ### 6.4 Sidebar (PPDO-79)
 
@@ -569,7 +643,7 @@ Already created under epic **PPDO-67**. This spec is PPDO-68 and blocks the rest
 | **PPDO-75** — notifications | §6.5 | PPDO-68, PPDO-69 |
 | **PPDO-76** — query-first page | §4.1, §5.3, §6.1 | PPDO-68 |
 | **PPDO-77** — history | §5.2 | PPDO-68, PPDO-72 |
-| **PPDO-78** — kanban | §6.3 | PPDO-68, PPDO-76 |
+| **PPDO-78** — readiness board | §6.3, §4 | PPDO-68 |
 | **PPDO-79** — sidebar | §6.4 | PPDO-68, PPDO-76 |
 
 ⚠️ **PPDO-70 also carries the Phase 3 correction** required by decision 4 — `IsEncoderEditable` must
@@ -599,7 +673,7 @@ accept `Draft`, `DepartmentReview` and `ReturnedByPpdo`, and its remarks must be
       a warning naming both counts separately, and Proceed completes the re-submit
 - [ ] Re-submitting with everything resolved shows no warning
 - [ ] Returning an office unlocks editing for both the encoder and the department head
-- [ ] Accepting an office moves it to the kanban's Done column
+- [ ] Accepting an office moves it to the readiness board's Done column
 - [ ] Two browser windows: reviewer A returns the office, reviewer B then accepts and gets a 409
       naming the current state
 - [ ] AIP Review opens with no results and copy explaining how to search — not a blank panel
@@ -609,7 +683,17 @@ accept `Draft`, `DepartmentReview` and `ReturnedByPpdo`, and its remarks must be
 - [ ] An office with LDIP-seeded programs and zero activities sits in Not Started, not In Progress
 - [ ] A returned office appears in Office Review with a Returned badge, not in a sixth column
 - [ ] No card anywhere shows a percentage
-- [ ] An office encoder cannot reach the kanban, and AIP Review is absent from their sidebar
+- [ ] An office encoder sees no Offices band and no board on the dashboard, and AIP Review is absent
+      from their sidebar
+- [ ] A cross-office reviewer's Offices band opens on Board; switching to Table and reloading keeps
+      Table
+- [ ] A budget officer sees the Offices table with no Board / Table switch
+- [ ] Clicking a card, and clicking a Not Started row, each open AIP Review search filtered to that
+      office
+- [ ] For every office, the board's column and the table's Submission column agree — the table no
+      longer shows a constant Todo
+- [ ] With 17 offices at zero activities, Not Started renders as a compact list, not a tall column
+      of cards
 - [ ] Show History on a returned-and-re-submitted office lists submit, return and re-submit with
       names and timestamps, and shows one row per transition — not one per sub-office group
 - [ ] The consolidated view with 3 of 19 offices submitted shows the other 16 as not yet submitted,
@@ -632,7 +716,8 @@ always-TDD list.
 | `AipReviewCommentServiceTests` | Authoring-side resolve, both refusal directions (office→PPDO, encoder→department head); comments allowed while locked; unresolved counts split by side; orphaned comment survives node deletion |
 | `AipReviewServiceTests` | Return/accept state guards; the 409 on a concurrent second action; accept refused from `ReturnedByPpdo` |
 | `AipReviewSearchTests` | OR-within / AND-across; `officeIds` + blank `sectors` returning multiple sectors; ref-code OR-list; title **not** OR-split; scope clamping for a guest-office user |
-| `AipReadinessBoardTests` | Zero activities → Not Started; returned → Office Review + badge; program count reusing the allocation resolution |
+| `BudgetPlanningDashboardServiceTests` (`GetOfficesAsync`) | `ReadinessColumn` for every state — zero activities → NotStarted, one or more in `Draft` → InProgress, `DepartmentReview` → OfficeReview, `ReturnedByPpdo` → OfficeReview with `IsReturned`, `SubmittedToPpdo` → PpdoReview, `Consolidated` → Done; a submission state beating activity count; `AssignedProgramCount` summed across an office's groups; groups that disagree report the least advanced; an office with no group row reads Not Started / Todo; `SubmissionStatus` derived, never the constant |
+| `AipOfficeRollupRepositoryTests` (SQLite) | `ProgramCount` counted apart from the activity join; an untouched office still counts its seeded programs; each group's `WorkflowStatus` carried |
 | `ReviewerWriteGuardTests` | Unchanged behaviour — plus a new test that **commenting is not denied** by the guard |
 | `PermissionMatrixTests` | No new flag, so no new row — assert that, so a flag added here fails the build |
 

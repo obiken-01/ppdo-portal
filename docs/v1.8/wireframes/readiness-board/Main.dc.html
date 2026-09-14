@@ -1,0 +1,234 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #F1F3F5;
+      font-family: "Segoe UI", "Source Sans Pro", system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: #1F7A45; }
+    a:hover { color: #196638; }
+    .num { font-variant-numeric: tabular-nums; }
+    .pill {
+      display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 9999px;
+      font-size: 12px; line-height: 16px; font-weight: 500; white-space: nowrap;
+    }
+    .host {
+      display: inline-flex; padding: 2px 6px; border-radius: 9999px; background: #D4EDDE; color: #196638;
+      font-size: 10px; line-height: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.025em;
+    }
+  </style>
+</helmet>
+
+<div style="padding: 24px;">
+<section style="background: #FFFFFF; border: 1px solid #E9ECEF;">
+
+  <!-- Band header — Band.tsx: px-5 py-4, border-b slate-100 -->
+  <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 16px 20px; border-bottom: 1px solid #F1F3F5;">
+    <div style="min-width: 0;">
+      <h2 style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 600; color: #343A40;">Offices — FY 2028</h2>
+      <p style="margin: 2px 0 0; font-size: 12px; line-height: 16px; color: #5A636B;">Read-only across every office · click an office to open it in AIP Review</p>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <div style="display: inline-flex; border: 1px solid #E9ECEF;">
+        <span style="padding: 6px 12px; font-size: 12px; line-height: 16px; font-weight: 500; background: #196638; color: #FFFFFF;">Board</span>
+        <span style="padding: 6px 12px; font-size: 12px; line-height: 16px; font-weight: 500; background: #FFFFFF; color: #5A636B; border-left: 1px solid #E9ECEF;">Table</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- The board -->
+  <div style="padding: 16px 20px;">
+    <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; align-items: start;">
+      <sc-for list="{{ columns }}" as="col" hint-placeholder-count="5">
+        <div style="display: flex; flex-direction: column; gap: 8px; min-width: 0;">
+
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+            <span style="font-size: 12px; line-height: 16px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.025em; color: #5A636B;">{{ col.title }}</span>
+            <span class="num" style="border-radius: 9999px; background: #F1F3F5; color: #5A636B; padding: 0 8px; font-size: 12px; line-height: 18px; font-weight: 500;">{{ col.count }}</span>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 6px; background: #F8F9FA; border: 1px solid #F1F3F5; padding: 8px; min-height: 96px;">
+
+            <sc-if value="{{ col.empty }}" hint-placeholder-val="{{ false }}">
+              <p style="margin: auto 0; text-align: center; font-size: 12px; line-height: 16px; color: #7D858C;">No offices</p>
+            </sc-if>
+
+            <!-- Not started: compact rows, so a crowded column stays short -->
+            <sc-if value="{{ col.compact }}" hint-placeholder-val="{{ false }}">
+              <sc-for list="{{ col.items }}" as="o" hint-placeholder-count="4">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; background: #FFFFFF; border: 1px solid #E9ECEF; padding: 5px 8px;">
+                  <span style="font-size: 12px; line-height: 16px; font-weight: 500; color: #343A40;">{{ o.code }}</span>
+                  <span class="num" style="display: flex; align-items: center; gap: 6px; font-size: 11px; line-height: 16px; color: #5A636B; white-space: nowrap;">
+                    {{ o.programsShort }}
+                    <span style="{{ o.dotStyle }}"></span>
+                  </span>
+                </div>
+              </sc-for>
+              <p style="margin: 2px 0 0; display: flex; align-items: center; gap: 6px; font-size: 11px; line-height: 16px; color: #5A636B;">
+                <span style="display: inline-block; width: 6px; height: 6px; border-radius: 9999px; background: #E24B4A;"></span>
+                No reviewer — cannot submit
+              </p>
+            </sc-if>
+
+            <!-- Every other column: one card per office -->
+            <sc-if value="{{ col.cards }}" hint-placeholder-val="{{ true }}">
+              <sc-for list="{{ col.items }}" as="o" hint-placeholder-count="2">
+                <div style="display: flex; flex-direction: column; gap: 5px; background: #FFFFFF; border: 1px solid #E9ECEF; padding: 10px 12px; min-width: 0;">
+                  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;">
+                    <span style="font-size: 14px; line-height: 20px; font-weight: 500; color: #343A40;">{{ o.code }}</span>
+                    <sc-if value="{{ o.host }}" hint-placeholder-val="{{ false }}"><span class="host">Host</span></sc-if>
+                    <sc-if value="{{ o.returned }}" hint-placeholder-val="{{ false }}"><span class="pill" style="background: #FEF3CD; color: #EF9F27;">Returned</span></sc-if>
+                  </div>
+                  <span style="font-size: 12px; line-height: 16px; color: #7D858C; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ o.name }}</span>
+                  <span class="num" style="font-size: 12px; line-height: 16px; color: #5A636B;">{{ o.counts }}</span>
+                  <span class="num" style="{{ o.moneyStyle }}">{{ o.money }}</span>
+                  <sc-if value="{{ o.hasRisk }}" hint-placeholder-val="{{ false }}">
+                    <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                      <sc-if value="{{ o.overCeiling }}" hint-placeholder-val="{{ false }}"><span class="pill" style="background: #FDECEA; color: #E24B4A;">Over ceiling</span></sc-if>
+                      <sc-if value="{{ o.cannotSubmit }}" hint-placeholder-val="{{ false }}"><span class="pill" style="background: #FDECEA; color: #E24B4A;">Cannot submit</span></sc-if>
+                    </div>
+                  </sc-if>
+                  <span style="border-top: 1px solid #F1F3F5; padding-top: 5px; font-size: 12px; line-height: 16px; color: #7D858C; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ o.reviewerText }}</span>
+                </div>
+              </sc-for>
+            </sc-if>
+
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+</section>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"season":{"editor":"enum","options":["early","mid"],"default":"early","section":"Data"},"$preview":{"width":1200,"height":1040}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const season = this.props.season ?? "early";
+
+    const money = (n) => {
+      if (n >= 1e6) return "₱" + parseFloat((n / 1e6).toFixed(n >= 1e7 ? 1 : 2)) + "M";
+      if (n >= 1e3) return "₱" + parseFloat((n / 1e3).toFixed(1)) + "K";
+      return "₱" + n;
+    };
+    const plural = (n, word) => n + " " + word + (n === 1 ? "" : "s");
+
+    // [code, name, host, programs, activities, costed, ceiling|null, reviewer|null, returned]
+    const office = (r) => {
+      const [code, name, host, programs, activities, costed, ceiling, reviewer, returned] = r;
+      const overCeiling = ceiling != null && costed > ceiling;
+      const cannotSubmit = reviewer == null;
+      return {
+        code, name, host, returned: returned === true,
+        counts: plural(programs, "program") + " · " + plural(activities, "activity").replace("activitys", "activities"),
+        programsShort: programs + " prog.",
+        money: ceiling == null ? "No ceiling published" : money(costed) + " of " + money(ceiling),
+        moneyStyle: "font-size: 12px; line-height: 16px; " + (ceiling == null ? "color: #7D858C;" : overCeiling ? "color: #E24B4A; font-weight: 500;" : "color: #5A636B;"),
+        overCeiling, cannotSubmit, hasRisk: overCeiling || cannotSubmit,
+        reviewerText: reviewer ? "Reviewer: " + reviewer : "No reviewer — assign",
+        dotStyle: cannotSubmit
+          ? "display: inline-block; width: 6px; height: 6px; border-radius: 9999px; background: #E24B4A;"
+          : "display: inline-block; width: 6px; height: 6px;",
+      };
+    };
+
+    // ── Early season: the real FY2028 data in the local database today ──
+    const early = {
+      notStarted: [
+        ["PGO", "Office of the Provincial Governor", false, 48, 0, 0, null, null],
+        ["SPO", "Sangguniang Panlalawigan Office", false, 4, 0, 0, null, null],
+        ["PTO", "Provincial Treasurer's Office", false, 4, 0, 0, null, null],
+        ["PASSO", "Provincial Assessor's Office", false, 1, 0, 0, null, null],
+        ["PACCO", "Provincial Accountant's Office", false, 3, 0, 0, null, null],
+        ["PEO", "Provincial Engineer's Office", false, 2, 0, 0, null, null],
+        ["PBO", "Provincial Budget Office", false, 3, 0, 0, null, null],
+        ["PLO", "Provincial Legal Office", false, 8, 0, 0, null, null],
+        ["OPAd", "Office of the Provincial Administrator", false, 21, 0, 0, null, null],
+        ["PHO", "Provincial Health Office", false, 31, 0, 0, null, null],
+        ["PSWDO", "Provincial Social Welfare and Development Office", false, 15, 0, 0, null, null],
+        ["GSO", "General Services Office", false, 6, 0, 0, null, null],
+        ["OPV", "Office of the Provincial Veterinarian", false, 14, 0, 0, null, null],
+        ["PDRRMO", "Provincial Disaster Risk Reduction Management Office", false, 6, 0, 0, null, null],
+        ["ENRO", "Environment and Natural Resources Office", false, 4, 0, 0, null, null],
+        ["PEPO", "Provincial Equipment Pool Office", false, 3, 0, 0, null, null],
+        ["HRMO", "Human Resource Management Office", false, 3, 0, 0, null, null],
+      ],
+      inProgress: [
+        ["OPA", "Office of the Provincial Agriculturist", false, 4, 1, 550, 50000000, "Provincial Agriculturist"],
+      ],
+      officeReview: [
+        ["PPDO", "Provincial Planning and Development Office", true, 25, 2, 1116000, 10000000, "PDC", true],
+      ],
+      ppdoReview: [],
+      done: [],
+    };
+
+    // ── Mid season: SAMPLE figures, to show a board with work spread across it ──
+    const mid = {
+      notStarted: [
+        ["PASSO", "Provincial Assessor's Office", false, 1, 0, 0, null, null],
+        ["SPO", "Sangguniang Panlalawigan Office", false, 4, 0, 0, null, null],
+        ["PEPO", "Provincial Equipment Pool Office", false, 3, 0, 0, 1800000, "Pool Manager"],
+        ["HRMO", "Human Resource Management Office", false, 3, 0, 0, 2400000, "HR Head"],
+      ],
+      inProgress: [
+        ["PGO", "Office of the Provincial Governor", false, 48, 36, 21400000, 60000000, "Governor's Office Head"],
+        ["PHO", "Provincial Health Office", false, 31, 22, 18900000, 45000000, "Provincial Health Officer"],
+        ["OPAd", "Office of the Provincial Administrator", false, 21, 9, 6200000, 12000000, "Provincial Administrator"],
+        ["PSWDO", "Provincial Social Welfare and Development Office", false, 15, 11, 9800000, 9500000, "PSWD Officer"],
+        ["PLO", "Provincial Legal Office", false, 8, 3, 1200000, null, null],
+      ],
+      officeReview: [
+        ["PPDO", "Provincial Planning and Development Office", true, 25, 41, 9100000, 10000000, "PDC", true],
+        ["OPA", "Office of the Provincial Agriculturist", false, 4, 6, 38200000, 50000000, "Provincial Agriculturist"],
+        ["GSO", "General Services Office", false, 6, 8, 4100000, 7000000, "GSO Head"],
+        ["ENRO", "Environment and Natural Resources Office", false, 4, 5, 2900000, 3000000, "ENR Officer"],
+      ],
+      ppdoReview: [
+        ["PTO", "Provincial Treasurer's Office", false, 4, 7, 5300000, 6000000, "Provincial Treasurer"],
+        ["PACCO", "Provincial Accountant's Office", false, 3, 4, 2200000, 2500000, "Provincial Accountant"],
+        ["PBO", "Provincial Budget Office", false, 3, 5, 3000000, 3200000, "Budget Officer"],
+        ["OPV", "Office of the Provincial Veterinarian", false, 14, 19, 11700000, 14000000, "Provincial Veterinarian"],
+      ],
+      done: [
+        ["PEO", "Provincial Engineer's Office", false, 2, 4, 40500000, 42000000, "Provincial Engineer"],
+        ["PDRRMO", "Provincial Disaster Risk Reduction Management Office", false, 6, 9, 8800000, 9000000, "PDRRM Officer"],
+      ],
+    };
+
+    const d = season === "mid" ? mid : early;
+    const column = (title, rows, compact) => ({
+      title,
+      count: rows.length,
+      items: rows.map(office),
+      empty: rows.length === 0,
+      compact: compact && rows.length > 0,
+      cards: !compact && rows.length > 0,
+    });
+
+    return {
+      columns: [
+        column("Not started", d.notStarted, true),
+        column("In progress", d.inProgress, false),
+        column("Office review", d.officeReview, false),
+        column("PPDO review", d.ppdoReview, false),
+        column("Done", d.done, false),
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>
