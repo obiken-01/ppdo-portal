@@ -1,5 +1,13 @@
 # External AIP API — Contract (DRAFT for discussion)
 
+> ⚠️ **§5 (money) and §6.1 (AIP response) are superseded** by the JSON Schema and samples in
+> [external-api/](external-api/README.md) (draft 1.0.0, 2026-09-14). Since this v0.6 draft, amounts
+> have moved to pesos in storage, money is serialized as decimal strings, `sectors[]` has become
+> `groups[]`, program- and project-level amounts have become synthetic activities, and FY2028+
+> adds expenditure lines. §4.2 is also superseded: `officeCode` is now an **optional** filter, so the
+> same call returns a whole fiscal year when it is omitted — and that call needs a key authorised
+> for every office. Authentication, the health endpoint and the other status codes still stand.
+
 > **Status:** DRAFT v0.6 — proposed contract for review with GSO. Nothing is implemented yet.
 > **Audience:** GSO development team (consumer) + PPDO Portal team (provider).
 > **Purpose:** Let an authorized external system (GSO) **read finalized AIP records for an
