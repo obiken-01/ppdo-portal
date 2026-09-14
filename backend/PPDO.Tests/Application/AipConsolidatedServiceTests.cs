@@ -29,12 +29,16 @@ public sealed class AipConsolidatedServiceTests
     private const int DraftGroup    = 104; // office 10, GENERAL, drafting
     private const int PgoSocial     = 105; // office 7 again, SOCIAL, with PPDO
     private const int EconomicDraft = 106; // office 11, ECONOMIC, drafting
+    private const int PpdoSpecial   = 107; // office 8 again, GENERAL, with PPDO — but nothing to print
 
     private readonly Mock<IAipRepository>            _aipRepo     = new();
     private readonly Mock<IAipExpenditureRepository> _expRepo     = new();
     private readonly Mock<IPermissionService>        _permissions = new();
+    private readonly Mock<IAipFormExcelService>      _excel       = new();
 
     private IReadOnlyList<int>? _programsAskedFor;
+    private int _programLoads;
+    private AipFormWorkbookDto? _exported;
     private bool _recordExists = true;
 
     private readonly List<AipOffice> _groups =
@@ -45,6 +49,7 @@ public sealed class AipConsolidatedServiceTests
         Group(DraftGroup, 10, "1000-000-1-01-003", "SANGGUNIANG PANLALAWIGAN", AipSector.General, AipWorkflowStatus.Draft),
         Group(PgoSocial, 7, "3000-000-1-01-001", "OFFICE OF THE PROVINCIAL GOVERNOR - AKAP-HUB", AipSector.Social, AipWorkflowStatus.SubmittedToPpdo),
         Group(EconomicDraft, 11, "8000-000-1-01-020", "PROVINCIAL AGRICULTURE OFFICE", AipSector.Economic, AipWorkflowStatus.Draft),
+        Group(PpdoSpecial, 8, "1000-000-1-01-010", "PROVINCIAL PLANNING AND DEVELOPMENT OFFICE - SPECIAL PROJECTS", AipSector.General, AipWorkflowStatus.SubmittedToPpdo),
     ];
 
     private readonly List<AipProgram> _programs =
@@ -56,6 +61,9 @@ public sealed class AipConsolidatedServiceTests
         new() { Id = 204, OfficeId = PgoGroup, RefCode = "1000-000-1-01-001-009", Name = "EMPTY PROGRAM" },
         // Only a synthetic project, and nothing in it. Prints no row beneath, so must not print either.
         new() { Id = 205, OfficeId = PpdoGroup, RefCode = "1000-000-1-01-010-002", Name = "HOLLOW PROGRAM" },
+        // The only program of an office group with PPDO — and empty, so the group prints nothing at all.
+        new() { Id = 206, OfficeId = PpdoSpecial, RefCode = "1000-000-1-01-010-003", Name = "SPECIAL PROGRAM" },
+        new() { Id = 207, OfficeId = PgoSocial, RefCode = "3000-000-1-01-001-001", Name = "AKAP-HUB PROGRAM" },
     ];
 
     private readonly List<AipProject> _projects =
@@ -65,6 +73,7 @@ public sealed class AipConsolidatedServiceTests
         new() { Id = 302, ProgramId = 202, RefCode = "1000-000-1-01-010-001-001", Name = "(synthetic)", IsSynthetic = true },
         new() { Id = 303, ProgramId = 203, RefCode = "1000-000-1-01-002-001-001", Name = "Session support" },
         new() { Id = 305, ProgramId = 205, RefCode = "1000-000-1-01-010-002-001", Name = "(synthetic)", IsSynthetic = true },
+        new() { Id = 306, ProgramId = 207, RefCode = "3000-000-1-01-001-001-001", Name = "Assistance desk" },
     ];
 
     private readonly List<AipActivity> _activities =
@@ -76,6 +85,7 @@ public sealed class AipConsolidatedServiceTests
         // Printed: CO 2,000 (1,300 rounded up) · CC adaptation 2,000 · Total 2,000
         new() { Id = 403, ProjectId = 302, RefCode = "1000-000-1-01-010-001-001-001", Name = "GIS workstations", Co = 1_000m, CcAdaptation = 1_200m },
         new() { Id = 404, ProjectId = 303, RefCode = "1000-000-1-01-002-001-001-001", Name = "Must never print", Mooe = 5_000m },
+        new() { Id = 405, ProjectId = 306, RefCode = "3000-000-1-01-001-001-001-001", Name = "Walk-in assistance", Mooe = 10_000m },
     ];
 
     private static AipOffice Group(int id, int officeId, string refCode, string name, string sector, string status)
@@ -104,6 +114,7 @@ public sealed class AipConsolidatedServiceTests
             .ReturnsAsync((IReadOnlyList<int> ids, CancellationToken _) =>
             {
                 _programsAskedFor = ids;
+                _programLoads++;
                 return _programs.Where(p => ids.Contains(p.OfficeId)).ToList();
             });
         _aipRepo.Setup(r => r.GetProjectsByProgramIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
@@ -121,8 +132,12 @@ public sealed class AipConsolidatedServiceTests
                 new AipActivityFundCodeDto(403, "GF", 5),
             ]);
 
+        _excel.Setup(e => e.Export(It.IsAny<AipFormWorkbookDto>()))
+            .Callback((AipFormWorkbookDto w) => _exported = w)
+            .Returns([0x50, 0x4B, 0x03, 0x04]);
+
         return new AipConsolidatedService(
-            _aipRepo.Object, _expRepo.Object, _permissions.Object,
+            _aipRepo.Object, _expRepo.Object, _excel.Object, _permissions.Object,
             NullLogger<AipConsolidatedService>.Instance);
     }
 
@@ -162,7 +177,7 @@ public sealed class AipConsolidatedServiceTests
             ["OFFICE OF THE PROVINCIAL GOVERNOR", "PROVINCIAL PLANNING AND DEVELOPMENT OFFICE"],
             sheet.Rows.Where(r => r.Kind == AipFormRowBuilder.OfficeRow).Select(r => r.Name));
         Assert.DoesNotContain(sheet.Rows, r => r.Name == "Must never print");
-        Assert.Equal([PgoGroup, PpdoGroup], _programsAskedFor!.Order());
+        Assert.Equal([PgoGroup, PpdoGroup, PpdoSpecial], _programsAskedFor!.Order());
     }
 
     // ── Rows ──────────────────────────────────────────────────────────────────
@@ -199,6 +214,20 @@ public sealed class AipConsolidatedServiceTests
 
         Assert.DoesNotContain(sheet.Rows, r => r.Name is "EMPTY PROGRAM" or "HOLLOW PROGRAM");
         Assert.Equal(2, sheet.Rows.Count(r => r.Kind == AipFormRowBuilder.ProgramRow));
+    }
+
+    /// <summary>
+    /// An office group with PPDO whose programs all print nothing is left off the sheet too (Ralph,
+    /// 2026-09-14) — no heading with nothing under it — while its office still counts as submitted.
+    /// </summary>
+    [Fact]
+    public async Task GetSheetAsync_OfficeWithNothingToPrint_IsLeftOffButStillCounted()
+    {
+        AipConsolidatedSheetDto sheet = await General();
+
+        Assert.DoesNotContain(sheet.Rows, r => r.Name == "PROVINCIAL PLANNING AND DEVELOPMENT OFFICE - SPECIAL PROJECTS");
+        Assert.DoesNotContain(sheet.Rows, r => r.Name == "SPECIAL PROGRAM");
+        Assert.Equal(2, sheet.Sectors.Single(s => s.Sector == AipSector.General).SubmittedOffices);
     }
 
     /// <summary>Program and project rows carry no amounts — null, so nothing can print a zero there.</summary>
@@ -332,5 +361,135 @@ public sealed class AipConsolidatedServiceTests
         Assert.False(result.Value!.Opened);
         Assert.Empty(result.Value.Rows);
         Assert.Equal(4, result.Value.Sectors.Count);
+    }
+
+    // ── The Annex B workbook (V18-60 / PPDO-84) ───────────────────────────────
+
+    private async Task<AipFormWorkbookDto> Workbook()
+    {
+        ServiceResult<AipFormExportFileDto> result =
+            await Build().ExportWorkbookAsync(FiscalYear, Caller(crossOffice: true));
+        Assert.True(result.IsSuccess, result.Error);
+        return _exported!;
+    }
+
+    /// <summary>Decision 3: always four sheets, in the workbook's sector order — empty sectors included.</summary>
+    [Fact]
+    public async Task ExportWorkbookAsync_AlwaysWritesFourSheetsInSectorOrder()
+    {
+        AipFormWorkbookDto workbook = await Workbook();
+
+        Assert.Equal(AipSector.All, workbook.Sheets.Select(s => s.Sector));
+
+        AipFormWorkbookSheetDto others = workbook.Sheets.Single(s => s.Sector == AipSector.Others);
+        Assert.Empty(others.Rows);
+        Assert.Equal(AipPrintedFigures.Zero, others.Total);
+    }
+
+    /// <summary>
+    /// ⚠️ The file and the grid can never disagree: every sheet's rows and TOTAL equal what the grid
+    /// read returns for that sector.
+    /// </summary>
+    [Theory]
+    [InlineData(AipSector.General)]
+    [InlineData(AipSector.Social)]
+    [InlineData(AipSector.Economic)]
+    public async Task ExportWorkbookAsync_EachSheet_MatchesTheGridForThatSector(string sector)
+    {
+        AipFormWorkbookDto workbook = await Workbook();
+        ServiceResult<AipConsolidatedSheetDto> grid =
+            await Build().GetSheetAsync(FiscalYear, sector, Caller(crossOffice: true));
+
+        AipFormWorkbookSheetDto sheet = workbook.Sheets.Single(s => s.Sector == sector);
+        Assert.Equal(grid.Value!.Rows, sheet.Rows);
+        Assert.Equal(grid.Value.Total, sheet.Total);
+    }
+
+    /// <summary>§12: one tree load for all four sheets, and only offices with PPDO are expanded.</summary>
+    [Fact]
+    public async Task ExportWorkbookAsync_LoadsTheTreeOnce_ForOfficesWithPpdoOnly()
+    {
+        await Workbook();
+
+        Assert.Equal(1, _programLoads);
+        Assert.Equal([PgoGroup, PpdoGroup, PgoSocial, PpdoSpecial], _programsAskedFor!.Order());
+    }
+
+    /// <summary>The completeness line's counts — distinct offices, as the page header shows them.</summary>
+    [Fact]
+    public async Task ExportWorkbookAsync_CarriesTheSubmittedAndTotalOfficeCounts()
+    {
+        AipFormWorkbookDto workbook = await Workbook();
+
+        Assert.Equal(FiscalYear, workbook.FiscalYear);
+        Assert.Equal(2, workbook.SubmittedOffices);
+        Assert.Equal(5, workbook.TotalOffices);
+    }
+
+    /// <summary>Decision 9: <c>AIP_FY&lt;year&gt;_&lt;yyyy-MM-dd&gt;.xlsx</c>, Manila date.</summary>
+    [Fact]
+    public async Task ExportWorkbookAsync_NamesTheFileForTheYearAndTheManilaDate()
+    {
+        ServiceResult<AipFormExportFileDto> result =
+            await Build().ExportWorkbookAsync(FiscalYear, Caller(crossOffice: true));
+
+        DateOnly manilaToday = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(8));
+        Assert.Equal($"AIP_FY2028_{manilaToday:yyyy-MM-dd}.xlsx", result.Value!.FileName);
+        Assert.Equal(manilaToday, _exported!.AsOf);
+        Assert.Equal([0x50, 0x4B, 0x03, 0x04], result.Value.Content);
+    }
+
+    [Fact]
+    public async Task ExportWorkbookAsync_CallerWithoutCrossOfficeFlag_IsForbiddenAndBuildsNothing()
+    {
+        ServiceResult<AipFormExportFileDto> result =
+            await Build().ExportWorkbookAsync(FiscalYear, Caller(crossOffice: false));
+
+        Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
+        Assert.Equal("Only a cross-office reviewer can download the consolidated AIP.", result.Error);
+        Assert.Null(_programsAskedFor);
+        Assert.Null(_exported);
+    }
+
+    /// <summary>Decision 8: FY≤2027 keeps its old shape and is not rendered under these rules.</summary>
+    [Theory]
+    [InlineData(2027)]
+    [InlineData(2020)]
+    public async Task ExportWorkbookAsync_LegacyYear_IsBadRequest(int fiscalYear)
+    {
+        ServiceResult<AipFormExportFileDto> result =
+            await Build().ExportWorkbookAsync(fiscalYear, Caller(crossOffice: true));
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Equal("FY 2027 and earlier are not rendered as the Annex B export.", result.Error);
+        Assert.Null(_exported);
+    }
+
+    /// <summary>Unlike the grid read, an unopened year is a 404 — there is no document to download.</summary>
+    [Fact]
+    public async Task ExportWorkbookAsync_UnopenedYear_IsNotFound()
+    {
+        _recordExists = false;
+
+        ServiceResult<AipFormExportFileDto> result =
+            await Build().ExportWorkbookAsync(FiscalYear, Caller(crossOffice: true));
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+        Assert.Equal("FY 2028 has not been opened.", result.Error);
+        Assert.Null(_exported);
+    }
+
+    /// <summary>§11: an opened year with nobody at PPDO still answers with four empty sheets, and loads no tree.</summary>
+    [Fact]
+    public async Task ExportWorkbookAsync_NoOfficeWithPpdo_WritesFourEmptySheets()
+    {
+        _groups.RemoveAll(g => g.WorkflowStatus is AipWorkflowStatus.SubmittedToPpdo or AipWorkflowStatus.Consolidated);
+
+        AipFormWorkbookDto workbook = await Workbook();
+
+        Assert.Equal(4, workbook.Sheets.Count);
+        Assert.All(workbook.Sheets, s => Assert.Empty(s.Rows));
+        Assert.Equal(0, workbook.SubmittedOffices);
+        Assert.Equal(0, _programLoads);
     }
 }

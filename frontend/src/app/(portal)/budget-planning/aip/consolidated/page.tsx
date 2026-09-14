@@ -23,7 +23,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMe } from "@/lib/me-cache";
-import { getAipConsolidated } from "@/lib/aip-review";
+import { downloadAipConsolidatedExcel, getAipConsolidated } from "@/lib/aip-review";
 import { aipErrorMessage } from "@/lib/aip";
 import { canOpenAipOfficeReview, budgetPlanningFallback } from "@/lib/budget-planning-access";
 import { FIRST_ENTERED_FISCAL_YEAR } from "@/lib/aip-fiscal-years";
@@ -97,6 +97,30 @@ export default function AipConsolidatedPage() {
 
   const sectorCount = sheet?.sectors.find((s) => s.sector === sector) ?? null;
 
+  // PPDO-84 — the Annex B workbook, all four sectors whichever tab is open (Form Spec §14).
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  const exportBlockedReason = loading || !sheet
+    ? "Loading the consolidated AIP…"
+    : !sheet.opened
+      ? `FY ${fiscalYear} has not been opened.`
+      : sheet.submittedOffices === 0
+        ? "No office has reached PPDO yet."
+        : null;
+
+  async function handleExport() {
+    setExporting(true);
+    setExportError(null);
+    try {
+      await downloadAipConsolidatedExcel(fiscalYear);
+    } catch (e) {
+      setExportError(aipErrorMessage(e, "The Excel file could not be prepared."));
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <div className="p-4 sm:p-6">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
@@ -122,19 +146,52 @@ export default function AipConsolidatedPage() {
             )}
           </p>
         </div>
-        <div>
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Fiscal year
-          </label>
-          <select
-            value={fiscalYear}
-            onChange={(e) => setFiscalYear(Number(e.target.value))}
-            className="border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-green-600"
+        <div className="flex flex-wrap items-end gap-2">
+          <div>
+            <label htmlFor="consolidated-fiscal-year" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+              Fiscal year
+            </label>
+            <select
+              id="consolidated-fiscal-year"
+              value={fiscalYear}
+              onChange={(e) => setFiscalYear(Number(e.target.value))}
+              className="border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-green-600"
+            >
+              {YEARS.map((y) => <option key={y} value={y}>FY {y}</option>)}
+            </select>
+          </div>
+          {/* Rendered disabled while the sheet loads, so the header never shifts (Form Spec §14). */}
+          <button
+            type="button"
+            onClick={() => void handleExport()}
+            disabled={exporting || exportBlockedReason != null}
+            title={exportBlockedReason ?? "Downloads all four sector sheets — General, Social, Economic and Others — as the Annex B workbook."}
+            className="inline-flex items-center gap-2 border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 transition-colors hover:bg-slate-50 focus:outline-none focus:ring-1 focus:ring-green-600 disabled:cursor-not-allowed disabled:text-slate-400 disabled:hover:bg-white"
           >
-            {YEARS.map((y) => <option key={y} value={y}>FY {y}</option>)}
-          </select>
+            {exporting ? (
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-400 border-t-transparent" aria-hidden />
+            ) : (
+              <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4" aria-hidden>
+                <path d="M10 2.75a.75.75 0 0 1 .75.75v7.19l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.22 2.22V3.5a.75.75 0 0 1 .75-.75ZM3.5 13.25a.75.75 0 0 1 .75.75v1.5c0 .14.11.25.25.25h11a.25.25 0 0 0 .25-.25V14a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 15.5 17.25h-11A1.75 1.75 0 0 1 2.75 15.5V14a.75.75 0 0 1 .75-.75Z" />
+              </svg>
+            )}
+            {exporting ? "Preparing…" : "Download Excel"}
+          </button>
         </div>
       </div>
+
+      {exportError && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <span>{exportError}</span>
+          <button
+            type="button"
+            onClick={() => setExportError(null)}
+            className="border border-slate-300 bg-white px-3 py-1 text-sm font-medium text-slate-800 hover:bg-slate-50"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* The four sheets of the workbook. */}
       <div role="tablist" className="mb-4 flex flex-wrap gap-1 border-b border-slate-200">

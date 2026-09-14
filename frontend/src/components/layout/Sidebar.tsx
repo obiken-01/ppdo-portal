@@ -26,7 +26,7 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import api from "@/lib/api";
 import { allocationLabels } from "@/lib/budget-planning-labels";
-import { canOpenAipRecords, canOpenAipReview, canOpenLdip } from "@/lib/budget-planning-access";
+import { canOpenAipOfficeReview, canOpenAipRecords, canOpenAipReview, canOpenLdip } from "@/lib/budget-planning-access";
 import { auth } from "@/lib/auth";
 import { clearMeCache } from "@/lib/me-cache";
 import { pendingLink, useAipNotifications } from "@/lib/aip-notifications";
@@ -161,6 +161,10 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
   // ⚠️ Not `isHostOffice` — a PPDO division encoder holds no review work. Same file as the two above,
   // for the same reason: the nav and the route guard read one rule.
   const showAipReview      = me != null && canOpenAipReview(me);
+  // PPDO-84 — the consolidated AIP and its Excel download. ⚠️ The CROSS-OFFICE reviewer only
+  // (`canOpenAipOfficeReview`), narrower than AIP Review above: a department head reviews their own
+  // office and never sees the province-wide document.
+  const showConsolidatedAip = me != null && canOpenAipOfficeReview(me);
   const showResourceLinks  = !isOfficeUser;
   const showDashboard      = !isOfficeUser;
   const showAnnouncements  = !isOfficeUser && isAdmin;
@@ -447,6 +451,12 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
                       </Link>
                     )}
                   </div>
+                )}
+                {showConsolidatedAip && (
+                  <Link href="/budget-planning/aip/consolidated" className={childLinkCls(isActive("/budget-planning/aip/consolidated"))}>
+                    <span className="text-xs">•</span>
+                    <span className="truncate">Consolidated AIP</span>
+                  </Link>
                 )}
                 {showAllocation && (
                   <Link href="/budget-planning/allocation" className={childLinkCls(isActive("/budget-planning/allocation"))}>

@@ -25,6 +25,46 @@ function unwrap<T>(body: ApiResponse<T>): T {
 }
 
 /**
+ * Downloads the fiscal year as the province's Annex B workbook — all four sector sheets
+ * (V18-60 / PPDO-84, `AIP_Form_Spec.md` §12). Axios rather than a plain link, because the JWT goes in
+ * the Authorization header (as `downloadPpmpReportExcel`).
+ *
+ * ⚠️ **A refusal arrives as a Blob**, since the request asked for one. Its JSON envelope is parsed
+ * back onto the error so `aipErrorMessage` shows the server's sentence rather than the fallback.
+ */
+export async function downloadAipConsolidatedExcel(fiscalYear: number): Promise<void> {
+  let response;
+  try {
+    response = await api.get<Blob>("/budget-planning/aip/consolidated/export", {
+      params: { fiscalYear },
+      responseType: "blob",
+    });
+  } catch (err) {
+    const res = (err as { response?: { data?: unknown } })?.response;
+    if (res?.data instanceof Blob) {
+      try {
+        res.data = JSON.parse(await res.data.text()) as ApiResponse<unknown>;
+      } catch {
+        // Not an envelope — leave it; the caller's fallback message applies.
+      }
+    }
+    throw err;
+  }
+
+  // The server names the file, but Content-Disposition is not readable cross-origin, so the same
+  // name is built here: AIP_FY<year>_<Manila yyyy-MM-dd>.xlsx.
+  const manilaDate = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+  const url = URL.createObjectURL(response.data);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `AIP_FY${fiscalYear}_${manilaDate}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/**
  * One sector sheet of the consolidated AIP (PPDO-73) — the Annex B rows of every office with PPDO or
  * already accepted, with the figures the form prints. Cross-office reviewers only.
  */
