@@ -188,6 +188,37 @@ public sealed class AipRepository : Repository<AipRecord>, IAipRepository
             .ToListAsync(ct);
     }
 
+    // ── Notifications (V18-58 / PPDO-75) ──────────────────────────────────────
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<int, int>> CountOfficesAtStatusByFiscalYearAsync(
+        string workflowStatus, string recordStatus, int minFiscalYear, CancellationToken ct = default)
+        => await (
+                from office in _context.Set<AipOffice>()
+                join record in _context.Set<AipRecord>() on office.AipRecordId equals record.Id
+                where office.WorkflowStatus == workflowStatus
+                   && office.OfficeId != null
+                   && record.Status == recordStatus
+                   && record.FiscalYear >= minFiscalYear
+                // ⚠️ Distinct before grouping: an office's sector groups are several rows.
+                select new { record.FiscalYear, office.AipRecordId, office.OfficeId })
+            .Distinct()
+            .GroupBy(x => x.FiscalYear)
+            .Select(g => new { FiscalYear = g.Key, Offices = g.Count() })
+            .ToDictionaryAsync(x => x.FiscalYear, x => x.Offices, ct);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<AipOfficeStatusRow>> GetOfficeStatusesAsync(
+        int officeId, string recordStatus, int minFiscalYear, CancellationToken ct = default)
+        => await (
+                from office in _context.Set<AipOffice>()
+                join record in _context.Set<AipRecord>() on office.AipRecordId equals record.Id
+                where office.OfficeId == officeId
+                   && record.Status == recordStatus
+                   && record.FiscalYear >= minFiscalYear
+                select new AipOfficeStatusRow(record.Id, record.FiscalYear, office.Id, office.WorkflowStatus))
+            .ToListAsync(ct);
+
     // ── AIP Review search (V18-75 / PPDO-76) ──────────────────────────────────
 
     /// <inheritdoc />

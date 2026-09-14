@@ -407,6 +407,28 @@ export interface DivisionSummary {
 export type ReadinessColumn = "NotStarted" | "InProgress" | "OfficeReview" | "PpdoReview" | "Done";
 
 /**
+ * What is waiting on the signed-in user, and whether their office was handed back to them (PPDO-75 —
+ * `GET /budget-planning/aip/review/notifications`, spec §6.5). Counts are OFFICES, open FY2028+ only.
+ */
+export interface AipReviewNotifications {
+  /** Offices at SubmittedToPpdo. Always 0 without the cross-office reviewer flag. */
+  pendingForPpdo: number;
+  /** Earliest year with such an office — where the count links. Null at zero. */
+  ppdoFiscalYear: number | null;
+  /** Open years in which the user's own office is in department review. 0 unless a department head. */
+  pendingForDepartmentHead: number;
+  departmentHeadFiscalYear: number | null;
+  /** Years in which the user's own office is returned to them, earliest first. */
+  returned: AipReturnedNotice[];
+}
+
+/** "Ppdo": the office is ReturnedByPpdo. "DepartmentHead": Draft, last hand-off RETURN_DH (encoders only). */
+export interface AipReturnedNotice {
+  fiscalYear: number;
+  returnedBy: "Ppdo" | "DepartmentHead";
+}
+
+/**
  * One office's row on the cross-office dashboard table (PPDO-20) — see
  * `GET /budget-planning/dashboard/offices`. Read-only. Feeds the table and the readiness board alike.
  */

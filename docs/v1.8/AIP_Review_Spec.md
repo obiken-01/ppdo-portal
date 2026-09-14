@@ -257,6 +257,15 @@ shortcut PPDO straight to `SubmittedToPpdo`.
 | Office user and the readiness board | An office encoder | Opens the Budget Planning dashboard | **No Offices band, so no board** (§6.3). Their own status is a chip on their own AIP page |
 | Budget officer and the readiness board | `CanManagePboCeiling` only | Opens the Budget Planning dashboard | **The Offices table, with no Board / Table switch** (§6.3) |
 | FY2027 legacy record | An FY2027 record | Opened in review | No workflow, no comments, no submit. Phase 4 is FY2028+ only, exactly as Phase 3 |
+| 🆕 Pending count — PPDO reviewer (PPDO-75) | 3 offices at `SubmittedToPpdo` in FY2028, one of them with two sector groups | Any portal page loads | Sidebar shows **3** beside AIP Review — offices, not groups and not activities. Clicking it opens the search with "Only what's waiting on me" applied |
+| Pending count — department head | Own office at `DepartmentReview` | Any portal page loads | **1** beside AIP Review. Clicking it opens their own office in AIP Entry, on that year |
+| Pending count — nothing waiting | No office in a waiting state | Any portal page loads | **No badge at all** — never a "0" |
+| Pending count — holder of both flags | PPDO has 2 offices at PPDO; own office at `DepartmentReview` | Page loads | **3** — the two counts added. The count opens the search |
+| Pending count — after acting | Reviewer returns or accepts one of 3 | The action succeeds | The badge reads **2** without a reload. A hand-off by *someone else* appears on the next page load (no polling) |
+| Returned notice — PPDO sent it back | Office at `ReturnedByPpdo` | An encoder or the department head of that office loads any page | A **Returned** marker beside AIP Entry, and a banner on AIP Entry for that year naming PPDO. Clears itself when the office re-submits — nothing to dismiss |
+| Returned notice — department head sent it back | Office at `Draft`, latest hand-off `RETURN_DH` | An **encoder** loads any page | The same marker and banner, naming the department head. ⚠️ **Not shown to the department head** — they did it |
+| Draft that was never submitted | Office at `Draft`, no hand-off yet (or latest is anything but `RETURN_DH`) | Encoder loads a page | **No notice.** A Draft is only "returned" when the last thing that happened to it was a return |
+| Closed or old years | A record `Final` or `Archived`, or FY2027 | Any page | Counts and notices ignore it — only open (`Draft`) FY2028+ records |
 
 ### 3.4 Permission and scope
 
@@ -279,6 +288,9 @@ sites that must use the existing resolvers.
 | PPDO division user (no reviewer flag) | Host office | Opens the consolidated view | **Forbidden.** ⚠️ The gate is the reviewer flag, **not** `IsHostOffice` — the tempting wrong axis (tracker B4) |
 | Any user, `office_id` null | Unassigned | Any read | `OfficeScope.NoOffice` → sees nothing. Empty states, not an error (DECISION F) |
 | SuperAdmin | Resolves every flag true | Any write | **Exempt from the subtractive reviewer guard** — a naive guard locks SuperAdmin out of every budget-planning write. Pinned by `ReviewerWriteGuardTests` |
+| 🆕 Encoder or host non-reviewer (PPDO-75) | `CanAccessBudgetPlanning`, no reviewer flag | Notifications read | Pending count **0 and no count query runs**. Returned notices for their **own office only** — never another office's, however the request is shaped (there is no office parameter) |
+| No budget-planning access | — | Notifications read | **403** — the sidebar never asks (it gates on `canAccessBudgetPlanning`) |
+| Any user, `office_id` null | Unassigned | Notifications read | Department-head count 0, no notices; a cross-office reviewer still gets their PPDO count |
 
 ---
 
@@ -305,7 +317,7 @@ Routes follow the shipped `budget-planning/aip/...` family (`AipSubmitFunctions`
 | `GET /api/budget-planning/dashboard/offices?fiscalYear=` | Unchanged — `CanAccessBudgetPlanning` **and** a cross-office grant (`Budget_Planning_Dashboard_Requirements.md` §4.2) | ↩️ **Replaces the planned `readiness-board` endpoint** (decision 18). PPDO-78 adds `ReadinessColumn`, `IsReturned` and `AssignedProgramCount` to `OfficeSummaryDto`, and derives `SubmissionStatus` from workflow state instead of the constant `Todo`. One office read feeds both views, so they cannot drift |
 | `GET /api/budget-planning/aip/consolidated?fiscalYear=&sector=` | `CanReviewAllOffices` | Partial by design (decision 14). ↩️ *PPDO-73:* by fiscal year and **one sector per call** — a sheet at a time; GENERAL alone ran to ~800 rows in FY2027. Flat, slim rows carrying the **printed** figures, computed server-side (§6.6), plus per-sector submitted counts. An unopened year is an empty sheet, not a 404; an unknown sector is a 400 |
 | `GET /api/budget-planning/aip/{aipId}/offices/{officeId}/history` | `CanAccessBudgetPlanning` (scoped) or `CanReviewAllOffices` — ↩️ **the same gate and scope as the comments read** (PPDO-77) | Was "same as the review read", which would have hidden an office's own history from the office. Readable by its encoders and department head on AIP Entry and by any cross-office reviewer. Hand-offs newest first, each carrying the comments written while the office sat in the state it opened (§5.2). Every refusal is a **404** worded like a missing office (PPDO-46) |
-| `GET /api/budget-planning/aip/review/pending-count` | Any reviewer | One integer, resolved per person. ⚠️ `CountAsync` at the database |
+| `GET /api/budget-planning/aip/review/notifications` | `CanAccessBudgetPlanning` | ↩️ *Was `review/pending-count`, one integer, "any reviewer".* Widened by PPDO-75 so the encoder's returned notice rides the same request — one call per portal load, not two. Resolved per person from the caller's own flags and office; **no parameters**. `{ pendingForPpdo, ppdoFiscalYear, pendingForDepartmentHead, departmentHeadFiscalYear, returned: [{ fiscalYear, returnedBy: "Ppdo" \| "DepartmentHead" }] }`. ⚠️ The PPDO count is a `CountAsync` over distinct (record, office) pairs at the database — it runs on every portal page for every reviewer |
 
 ### 4.1 The search contract
 
@@ -645,9 +657,43 @@ flag, and points at the search. It stays hidden for everyone else, including a P
 
 ### 6.5 Notifications (PPDO-75)
 
-Sidebar pending count beside AIP Review, resolved per person. ⚠️ Read it from **shared context**
-mounted in the portal layout — not fetched per component (the WFP page once fired `/auth/me` four
-times a load). An encoder gets no queue, but does see when their own office has been returned.
+Settled with Ralph on 2026-09-14. In-app only (decision 20).
+
+**What is counted — offices waiting on this person.** A PPDO reviewer (`CanReviewAllOffices`): offices
+at `SubmittedToPpdo`. A department head (`CanReviewBudgetPlanning`): their own office at
+`DepartmentReview` — so 0 or 1 per open year. A holder of both: the sum. Offices, not groups (an office
+moves as one, decision 21) and not activities (review acts on a whole office, so a count of hundreds
+would never drop one at a time). Only open (`Draft`) FY2028+ records.
+
+**There is no separate queue page.** ↩️ *The ticket first asked for one.* The queue is the search with
+"Only what's waiting on me" applied — a third list beside the search and the readiness board would
+drift from both. The board answers "where is every office"; the count answers "what is waiting on me".
+
+| Surface | Content |
+|---|---|
+| **Sidebar, AIP Review** | A count pill when the count is above zero, **nothing** at zero. Clicking the pill: a PPDO reviewer (or a holder of both) → `aip/review/search?mine=true&fiscalYear=<ppdoFiscalYear>`; a department head only → `aip/entry?fiscalYear=<departmentHeadFiscalYear>`. The row's own link still goes to the search |
+| **Sidebar, AIP Entry** | A small **Returned** pill while any open year of the caller's office is returned to them. Links to AIP Entry on that year |
+| **AIP Entry banner** | For the year on screen, when that year is returned: "PPDO sent this back for changes — see the comments on the activities, then re-submit." or "Your department head returned this to the encoders — see their comments, then submit again." |
+| **Search, `?mine=true`** | Runs "waiting on me" on arrival, once, for a cross-office reviewer — the same one-shot rule as `?officeId=` (PPDO-78) |
+
+**Returned is a state, not a message.** An office is returned *to its encoders and department head*
+while it sits at `ReturnedByPpdo`, and *to its encoders only* while it sits at `Draft` with `RETURN_DH`
+as its latest hand-off. Nothing is marked read and nothing is dismissed: the notice clears itself when
+the office submits again, which is the only way to act on it. No table, no migration.
+
+**Freshness.** Fetched once per portal load and held in a module-level store keyed by user id (a
+different user signing in on the tab never reads the previous one's count). Refetched after the reader's
+own submit, submit-to-PPDO, return-to-encoder, return, accept or re-open. ⚠️ No polling — a hand-off by
+someone else appears on the next full load.
+
+⚠️ **Read from the shared store, never fetched per component** — the sidebar and AIP Entry both read it,
+and the WFP page once fired `/auth/me` four times a load.
+
+| State | Content |
+|---|---|
+| **Loading** | No pill. The count is decoration on a row that is already there, so nothing shifts |
+| **Error** | No pill, no retry control — the sidebar is not the place for a failure notice, and the search and AIP Entry still work |
+| **Count 0 / no notices** | Nothing rendered |
 
 ---
 
@@ -780,6 +826,17 @@ accept `Draft`, `DepartmentReview` and `ReturnedByPpdo`, and its remarks must be
       comment there but not edit
 - [ ] A PPDO division user without a reviewer flag cannot open the consolidated view
 - [ ] An FY2027 record shows no workflow controls, no comment gutters and no submit
+- [ ] With 3 offices at PPDO, a PPDO reviewer's sidebar shows 3 beside AIP Review; clicking it opens
+      the search with "Only what's waiting on me" applied and those 3 offices' rows
+- [ ] Accepting one of them drops the sidebar count to 2 without reloading the page
+- [ ] A department head whose office is in department review sees 1; clicking it opens AIP Entry on
+      that year
+- [ ] With nothing waiting, no count is shown — not a 0
+- [ ] An encoder whose office PPDO returned sees Returned beside AIP Entry and a banner naming PPDO;
+      after the department head re-submits, both are gone
+- [ ] An encoder whose department head returned the office sees the banner naming the department
+      head; the department head does not
+- [ ] An encoder of an office that has never been submitted sees no Returned marker
 ```
 
 ---
@@ -801,6 +858,8 @@ always-TDD list.
 | `BudgetPlanningDashboardServiceTests` (`GetOfficesAsync`) | `ReadinessColumn` for every state — zero activities → NotStarted, one or more in `Draft` → InProgress, `DepartmentReview` → OfficeReview, `ReturnedByPpdo` → OfficeReview with `IsReturned`, `SubmittedToPpdo` → PpdoReview, `Consolidated` → Done; a submission state beating activity count; `AssignedProgramCount` summed across an office's groups; groups that disagree report the least advanced; an office with no group row reads Not Started / Todo; `SubmissionStatus` derived, never the constant |
 | `AipOfficeRollupRepositoryTests` (SQLite) | `ProgramCount` counted apart from the activity join; an untouched office still counts its seeded programs; each group's `WorkflowStatus` carried |
 | `AipPrintedFiguresTests` + `AipConsolidatedServiceTests` (PPDO-73) | Round up per figure, then sum; the uplift on MOOE and CO only, applied before rounding (₱1,000,400 → ₱1,301,000); CC columns not uplifted; Total = printed PS + MOOE + CO; only `SubmittedToPpdo` / `Consolidated` groups, a sent-back office excluded; one sector per call; submitted counts per sector and overall; an unopened year empty; an unknown sector 400; a non-reviewer refused; fund codes joined |
+| `AipNotificationServiceTests` (PPDO-75) | PPDO count only for `CanReviewAllOffices`, and **no count query** for anyone else; department-head count from own office at `DepartmentReview`, 0 in any other state; both flags summed; the earliest open year returned for each link; `ReturnedByPpdo` → a Ppdo notice for encoder and department head; `Draft` with latest hand-off `RETURN_DH` → a DepartmentHead notice for an encoder, none for the department head; a Draft with no hand-off, or a later one, → none; groups that disagree read as the least advanced; no office → no own-office queries |
+| `AipNotificationRepositoryTests` (SQLite) | The count is distinct offices, not groups; `Final` and `Archived` records and FY2027 are excluded; a group with no office id is not counted |
 | `ReviewerWriteGuardTests` | Unchanged behaviour — plus a new test that **commenting is not denied** by the guard |
 | `PermissionMatrixTests` | No new flag, so no new row — assert that, so a flag added here fails the build |
 

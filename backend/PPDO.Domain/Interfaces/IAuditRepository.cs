@@ -56,6 +56,18 @@ public interface IAuditRepository : IRepository<AuditLog>
         IReadOnlyList<string> actions,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The action of the newest entry for the given rows whose action is in
+    /// <paramref name="actions"/>, or null when there is none (PPDO-75 — "was this office's last
+    /// hand-off a return?"). One column of one row: no <see cref="AuditLog.ChangedBy"/> join, no
+    /// payloads. An empty id or action list returns null.
+    /// </summary>
+    Task<string?> GetLatestActionAsync(
+        string tableName,
+        IReadOnlyList<int> recordIds,
+        IReadOnlyList<string> actions,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Distinct table_name values present in audit_log, alphabetical — drives the
     /// Audit Log page's table filter dropdown without a hardcoded list that could drift.</summary>
     Task<IReadOnlyList<string>> GetDistinctTableNamesAsync(CancellationToken cancellationToken = default);

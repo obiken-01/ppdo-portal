@@ -201,6 +201,7 @@ var host = new HostBuilder()
         services.AddScoped<IAipReviewCommentService, AipReviewCommentService>();
         services.AddScoped<IAipReviewService, AipReviewService>();
         services.AddScoped<IAipConsolidatedService, AipConsolidatedService>();
+        services.AddScoped<IAipNotificationService, AipNotificationService>();
     })
     .ConfigureLogging((context, logging) =>
     {

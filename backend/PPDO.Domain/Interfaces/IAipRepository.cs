@@ -124,6 +124,27 @@ public interface IAipRepository : IRepository<AipRecord>
         IReadOnlyList<int> aipOfficeIds, CancellationToken ct = default);
 
     /// <summary>
+    /// How many <b>offices</b> sit at <paramref name="workflowStatus"/>, per fiscal year, across
+    /// records at <paramref name="recordStatus"/> from <paramref name="minFiscalYear"/> on
+    /// (PPDO-75 — the PPDO reviewer's sidebar count).
+    ///
+    /// ⚠️ <b>Distinct (record, config office) pairs, never group rows.</b> An office holds a group
+    /// per sector (decision 21) and they move together, so counting rows would show PPDO as two
+    /// offices waiting. Groups with no config office are not counted. Grouped and counted in SQL —
+    /// this runs on every portal page for every cross-office reviewer.
+    /// </summary>
+    Task<IReadOnlyDictionary<int, int>> CountOfficesAtStatusByFiscalYearAsync(
+        string workflowStatus, string recordStatus, int minFiscalYear, CancellationToken ct = default);
+
+    /// <summary>
+    /// One config office's group rows — record, year, group id and workflow status only — across
+    /// records at <paramref name="recordStatus"/> from <paramref name="minFiscalYear"/> on (PPDO-75).
+    /// A handful of rows at most: one per sector group per open year.
+    /// </summary>
+    Task<IReadOnlyList<AipOfficeStatusRow>> GetOfficeStatusesAsync(
+        int officeId, string recordStatus, int minFiscalYear, CancellationToken ct = default);
+
+    /// <summary>
     /// One page of the AIP Review search (v1.8.0 Phase 4 — V18-75 / PPDO-76,
     /// <c>AIP_Review_Spec.md</c> §4.1), plus the chip counts the filter panel renders.
     ///
@@ -239,6 +260,13 @@ public sealed record AipOfficeRollupDto(
     decimal CostedTotal,
     int     ProgramCount   = 0,
     string  WorkflowStatus = "Draft");
+
+/// <summary>One group row's workflow position, for the notifications read (PPDO-75).</summary>
+public sealed record AipOfficeStatusRow(
+    int    AipRecordId,
+    int    FiscalYear,
+    int    GroupId,
+    string WorkflowStatus);
 
 /// <summary>
 /// The same rollup one level down, per program ref code (PPDO-20). See

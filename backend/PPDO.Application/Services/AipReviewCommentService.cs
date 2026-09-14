@@ -60,15 +60,7 @@ public sealed class AipReviewCommentService : IAipReviewCommentService
     // ── History (V18-77 / PPDO-77) ────────────────────────────────────────────
 
     /// <summary>The hand-offs the chain is made of — named constants, so the filter needs no JSON.</summary>
-    private static readonly string[] HandOffActions =
-    [
-        AuditAction.SubmitToDeptHead,
-        AuditAction.SubmitToPpdo,
-        AuditAction.ReturnByPpdo,
-        AuditAction.AcceptByPpdo,
-        AuditAction.ReopenByPpdo,
-        AuditAction.ReturnToEncoder,
-    ];
+    private static readonly IReadOnlyList<string> HandOffActions = AuditAction.AipHandOffs;
 
     public async Task<ServiceResult<AipOfficeHistoryDto>> GetHistoryAsync(
         int aipRecordId, int officeId, User caller, CancellationToken ct = default)
