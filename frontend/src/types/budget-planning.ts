@@ -400,8 +400,15 @@ export interface DivisionSummary {
 }
 
 /**
+ * The readiness board column an office sits in (PPDO-78, `AIP_Review_Spec.md` §6.3). Mirrors
+ * `AipReadinessColumn.cs`. ⚠️ Server-computed — read it, never derive it here from the workflow
+ * state, or the board and the table's Submission column can drift apart.
+ */
+export type ReadinessColumn = "NotStarted" | "InProgress" | "OfficeReview" | "PpdoReview" | "Done";
+
+/**
  * One office's row on the cross-office dashboard table (PPDO-20) — see
- * `GET /budget-planning/dashboard/offices`. Read-only.
+ * `GET /budget-planning/dashboard/offices`. Read-only. Feeds the table and the readiness board alike.
  */
 export interface OfficeSummary {
   officeId: number;
@@ -413,11 +420,17 @@ export interface OfficeSummary {
   costedInAip: number;
   activityCount: number;
   aipStatus: PlanningStage;
+  /** Derived from the office's AIP workflow state since PPDO-78 — no longer the constant "Todo". */
   submissionStatus: PlanningStage;
   /** Costed more than the published ceiling allows. Always false when none is published. */
   isOverCeiling: boolean;
   /** Null means nobody in that office can submit — the "Cannot submit / None — assign" state. */
   reviewerName: string | null;
+  readinessColumn: ReadinessColumn;
+  /** Returned by PPDO — sits in Office Review with a Returned badge, not a column of its own. */
+  isReturned: boolean;
+  /** Programs in the office's AIP for the year, touched or not — the ones LDIP seeded. */
+  assignedProgramCount: number;
 }
 
 /** One division's share of a fund's office-wide ceiling. */

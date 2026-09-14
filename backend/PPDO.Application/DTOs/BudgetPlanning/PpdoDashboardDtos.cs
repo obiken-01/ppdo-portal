@@ -117,11 +117,19 @@ public record PpdoDashboardDto(
 /// <param name="CostedInAip">Sum of the office's AIP activity totals. Zero when it has no AIP.</param>
 /// <param name="IsOverCeiling">The office has costed more in its AIP than its published ceiling
 /// allows. False whenever no ceiling is published — there is nothing to be over.</param>
-/// <param name="SubmissionStatus">Constant <c>"Todo"</c> until Phase 4 adds a submission entity
-/// (spec §7). Rendered from a constant on purpose, so the layout does not move when it becomes
-/// real.</param>
+/// <param name="SubmissionStatus">↩️ Derived from the office's AIP workflow state since PPDO-78
+/// (<see cref="PPDO.Application.Common.PlanningStage.ForSubmission"/>) — it was the constant
+/// <c>"Todo"</c> until then, and would have contradicted the readiness board on the same
+/// screen.</param>
 /// <param name="ReviewerName">The office's budget-planning reviewer. <b>Null means nobody in that
 /// office can submit</b> — the row's "Cannot submit / None — assign" state, not merely a blank.</param>
+/// <param name="ReadinessColumn">The readiness board column (PPDO-78) — one of
+/// <see cref="PPDO.Application.Common.AipReadinessColumn.All"/>. Server-computed so the board and
+/// the table cannot disagree.</param>
+/// <param name="IsReturned">The office is <c>ReturnedByPpdo</c> — in Office Review, with the
+/// Returned badge. Not a column of its own.</param>
+/// <param name="AssignedProgramCount">Programs in the office's AIP groups for the year, whether or
+/// not anyone has touched them — the ones LDIP seeded. Zero when the office has no group row.</param>
 public record OfficeSummaryDto(
     int      OfficeId,
     string   OfficeCode,
@@ -133,5 +141,8 @@ public record OfficeSummaryDto(
     string   AipStatus,
     string   SubmissionStatus,
     bool     IsOverCeiling,
-    string?  ReviewerName
+    string?  ReviewerName,
+    string   ReadinessColumn,
+    bool     IsReturned,
+    int      AssignedProgramCount
 );

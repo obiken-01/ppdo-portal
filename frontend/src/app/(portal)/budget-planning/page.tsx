@@ -24,9 +24,14 @@
  *      and PPA assignment are host-office-only. An earlier draft struck them through; that was
  *      reversed — a guest office does not need to be told about stages that never apply to it.
  *
- * Everything submission-shaped is drawn from a constant. There is no submission entity in the
- * schema until Phase 4; rendering the stage now means the layout does not move when it becomes
- * real (spec §7).
+ * The pipeline rail's submission stage is still drawn from a constant (spec §7). ↩️ The office
+ * table's Submission column is not, since PPDO-78: it is derived server-side from each office's AIP
+ * workflow state, because the readiness board beside it reads the same state.
+ *
+ * **The Offices band has two views** (PPDO-78, `AIP_Review_Spec.md` §6.3) — a readiness board and
+ * the table, behind a Board / Table switch, for a cross-office reviewer or SuperAdmin. The budget
+ * officer gets the table alone: it is where they publish ceilings, and where an office sits in
+ * review is not theirs to act on.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -56,7 +61,27 @@ import BulkCeilingModal from "./BulkCeilingModal";
 import ContextBar, { LockedField } from "./ContextBar";
 import DivisionTable from "./DivisionTable";
 import MoneyTiles, { MoneyTilesSkeleton, type MoneyTile } from "./MoneyTiles";
+import OfficeBoard, { OfficeBoardSkeleton } from "./OfficeBoard";
 import OfficeTable from "./OfficeTable";
+
+type OfficesView = "board" | "table";
+
+/**
+ * The Offices band's remembered view (PPDO-78). ⚠️ Per person, per device — keyed by user id so two
+ * people sharing a PC keep their own choice. A convenience, never a gate: anything missing or
+ * unreadable (private window, blocked storage) falls back to the caller's default.
+ */
+const officesViewKey = (userId: string) => `ppdo.budgetPlanning.officesView.${userId}`;
+
+function readOfficesView(userId: string | undefined): OfficesView | null {
+  if (!userId) return null;
+  try {
+    const stored = localStorage.getItem(officesViewKey(userId));
+    return stored === "board" || stored === "table" ? stored : null;
+  } catch {
+    return null;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Recent activity
@@ -68,6 +93,28 @@ function recordLabel(entry: RecentActivity): string {
   if (entry.recordId != null) return `#${entry.recordId}`;
   if (entry.recordGuid != null) return `#${entry.recordGuid.split("-")[0]}`;
   return "";
+}
+
+/** The Offices band's Board / Table switch — a two-segment control in the band header. */
+function ViewSwitch({ value, onChange }: { value: OfficesView; onChange: (view: OfficesView) => void }) {
+  const segment = (view: OfficesView, label: string) => (
+    <button
+      type="button"
+      onClick={() => onChange(view)}
+      aria-pressed={value === view}
+      className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+        value === view ? "bg-green-700 text-white" : "bg-white text-slate-600 hover:bg-slate-50"
+      }`}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div role="group" aria-label="Offices view" className="inline-flex divide-x divide-slate-200 border border-slate-200">
+      {segment("board", "Board")}
+      {segment("table", "Table")}
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -120,6 +167,28 @@ export default function BudgetPlanningPage() {
   // about to be 403'd for. SuperAdmin resolves true on both flags server-side; naming it here
   // keeps the client's gate honest rather than relying on that coincidence.
   const hasCrossOfficeScope = canReviewAllOffices || canManagePboCeiling || isSuperAdmin;
+
+  // ── Offices band view (PPDO-78) ─────────────────────────────────────────
+  // The board is for whoever reviews across offices; a budget officer who holds only the ceiling
+  // grant gets the table and no switch. Holding both grants gets the switch. A stored "board" is
+  // ignored for a caller who cannot see it.
+  const canSeeBoard = canReviewAllOffices || isSuperAdmin;
+  const [chosenView, setChosenView] = useState<OfficesView | null>(null);
+  // Read during render, not in an effect: the band is not drawn until /auth/me has landed, which
+  // only happens in the browser, so there is no server render for this to mismatch — and no flash
+  // of the board for someone who last chose the table.
+  const storedView = useMemo(() => readOfficesView(user?.userId), [user?.userId]);
+  const officesView: OfficesView = canSeeBoard ? chosenView ?? storedView ?? "board" : "table";
+
+  function chooseOfficesView(view: OfficesView) {
+    setChosenView(view);
+    if (!user) return;
+    try {
+      localStorage.setItem(officesViewKey(user.userId), view);
+    } catch {
+      // Storage blocked — the choice still holds for this visit.
+    }
+  }
 
   // ── Loaders ─────────────────────────────────────────────────────────────
 
@@ -596,25 +665,37 @@ export default function BudgetPlanningPage() {
           <Band
             title={`Offices — FY ${fiscalYear ?? "…"}`}
             description={
-              canManagePboCeiling
+              officesView === "board"
+                ? "Where every office stands · click an office to open it in AIP Review"
+                : canManagePboCeiling
                 ? "Ceilings you publish for every office"
                 : "Read-only across every office"
             }
             actions={
-              canManagePboCeiling && officesWithoutCeiling.length > 0 && priorFiscalYear != null ? (
-                <button
-                  type="button"
-                  onClick={() => setBulkOpen(true)}
-                  className="px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 text-sm font-medium transition-colors"
-                >
-                  Bulk set from FY {priorFiscalYear}
-                </button>
+              (canManagePboCeiling && officesWithoutCeiling.length > 0 && priorFiscalYear != null) ||
+              canSeeBoard ? (
+                <>
+                  {canManagePboCeiling && officesWithoutCeiling.length > 0 && priorFiscalYear != null && (
+                    <button
+                      type="button"
+                      onClick={() => setBulkOpen(true)}
+                      className="px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 text-sm font-medium transition-colors"
+                    >
+                      Bulk set from FY {priorFiscalYear}
+                    </button>
+                  )}
+                  {canSeeBoard && (
+                    <ViewSwitch value={officesView} onChange={chooseOfficesView} />
+                  )}
+                </>
               ) : undefined
             }
             loading={officesLoading}
             error={officesError}
             onRetry={loadOffices}
-            skeleton={<TableBandSkeleton columns={7} />}
+            skeleton={
+              officesView === "board" ? <OfficeBoardSkeleton /> : <TableBandSkeleton columns={7} />
+            }
           >
             {bulkNotice && <p className="px-5 pt-3 text-sm text-green-700">{bulkNotice}</p>}
             {offices == null || offices.length === 0 ? (
@@ -631,6 +712,8 @@ export default function BudgetPlanningPage() {
                   ) : undefined
                 }
               />
+            ) : officesView === "board" ? (
+              <OfficeBoard offices={offices} fiscalYear={fiscalYear} />
             ) : (
               <OfficeTable
                 offices={offices}

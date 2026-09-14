@@ -38,9 +38,17 @@
  *
  * ⚠️ **An activity name opens the activity modal; a program or project name opens the whole-office
  * surface** that belongs to the reader — the review screen for PPDO, AIP Entry for a department head.
+ *
+ * ── PPDO-78 ──
+ *
+ * ⚠️ **`?officeId=` runs that office's search on arrival** — it is how the dashboard's readiness board
+ * opens an office. It is a question the reader asked by clicking, so decision 15 still holds: the page
+ * lists nothing until asked. Honoured for the cross-office reviewer only; a department head is clamped
+ * to their own office by the server whatever the URL says, and never sees the board anyway.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useMe } from "@/lib/me-cache";
 import { searchAipReview } from "@/lib/aip-review";
@@ -121,7 +129,13 @@ export default function AipReviewSearchPage() {
   const me = useMe(canOpenAipReview, budgetPlanningFallback);
   const crossOffice = me?.canReviewAllOffices === true;
 
-  const [fiscalYear, setFiscalYear] = useState(FIRST_ENTERED_FISCAL_YEAR);
+  const searchParams = useSearchParams();
+  const requestedYear = Number(searchParams.get("fiscalYear"));
+  const requestedOfficeId = Number(searchParams.get("officeId"));
+
+  const [fiscalYear, setFiscalYear] = useState(
+    YEARS.includes(requestedYear) ? requestedYear : FIRST_ENTERED_FISCAL_YEAR
+  );
   const [draft, setDraft] = useState<Filters>(EMPTY);
 
   // ⚠️ Two states, not one. `draft` is what the panel shows; `applied` is what produced the results
@@ -179,6 +193,19 @@ export default function AipReviewSearchPage() {
     if (applied === null) return;
     void run(applied, fiscalYear, page);
   }, [applied, fiscalYear, page, run]);
+
+  // An office opened from the readiness board (PPDO-78). Once only — after that the panel is the
+  // reader's, and clearing it must not be undone by the URL it arrived with.
+  const openedFromUrl = useRef(false);
+  useEffect(() => {
+    if (openedFromUrl.current || !crossOffice) return;
+    if (!Number.isInteger(requestedOfficeId) || requestedOfficeId <= 0) return;
+    openedFromUrl.current = true;
+    const filters: Filters = { ...EMPTY, officeIds: [requestedOfficeId] };
+    setDraft(filters);
+    collapseOnResult.current = true;
+    setApplied(filters);
+  }, [crossOffice, requestedOfficeId]);
 
   function search() {
     setPage(1);
