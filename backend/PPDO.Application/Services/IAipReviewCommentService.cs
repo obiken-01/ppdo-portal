@@ -61,4 +61,17 @@ public interface IAipReviewCommentService
     /// </summary>
     Task<ServiceResult<AipReviewCommentDto>> ResolveAsync(
         int commentId, User caller, CancellationToken ct = default);
+
+    /// <summary>
+    /// The office's submission history — every hand-off newest first, each carrying the comments
+    /// written while the office held the state it opened (V18-77 / PPDO-77, spec §5.2).
+    ///
+    /// <para>
+    /// ⚠️ <b>Same readers as <see cref="GetForOfficeAsync"/>, on purpose.</b> The office's own
+    /// encoders and department head open it from AIP Entry, and any cross-office reviewer from the
+    /// review screen. The review screen's resolver would refuse the office itself.
+    /// </para>
+    /// </summary>
+    Task<ServiceResult<AipOfficeHistoryDto>> GetHistoryAsync(
+        int aipRecordId, int officeId, User caller, CancellationToken ct = default);
 }

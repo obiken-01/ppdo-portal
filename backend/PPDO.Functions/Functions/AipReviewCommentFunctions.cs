@@ -13,7 +13,7 @@ namespace PPDO.Functions.Functions;
 /// Inline review comments on AIP rows (V18-53 / PPDO-71, <c>AIP_Review_Spec.md</c> §4).
 ///
 /// <para>
-/// ⚠️ <b>All three use <c>AuthorizeAsync</c>, never <c>AuthorizeWriteAsync</c>, and that is
+/// ⚠️ <b>Every endpoint here uses <c>AuthorizeAsync</c>, never <c>AuthorizeWriteAsync</c>, and that is
 /// deliberate.</b> <c>ReviewerWriteGuard</c> denies content writes to cross-office reviewers — who
 /// are the main authors here — so routing a comment through it would deny the action to exactly
 /// the people the feature is for. The guard's own remarks call this out by name: "a comment-only
@@ -63,6 +63,24 @@ public sealed class AipReviewCommentFunctions
 
         return await ConfigHttp.FromResultAsync(req,
             await _comments.GetForOfficeAsync(aipId, officeId, caller!, ct), ct);
+    }
+
+    // ── GET /api/budget-planning/aip/{aipId}/offices/{officeId}/history ───────
+    // PPDO-77. Here rather than on AipReviewFunctions because its readers are the comments' readers:
+    // the office itself from AIP Entry, and cross-office reviewers. The review screen's gate would
+    // shut the office out of its own history.
+    [Function("AipOfficeHistory")]
+    public async Task<HttpResponseData> History(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get",
+            Route = "budget-planning/aip/{aipId:int}/offices/{officeId:int}/history")] HttpRequestData req,
+        int aipId, int officeId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) =
+            await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _comments.GetHistoryAsync(aipId, officeId, caller!, ct), ct);
     }
 
     // ── POST /api/budget-planning/aip/{aipId}/offices/{officeId}/comments ─────

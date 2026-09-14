@@ -14,6 +14,7 @@
 import api from "./api";
 import type {
   ApiResponse,
+  AipOfficeHistory,
   AipReviewComment,
   AipReviewComments,
   CreateAipReviewCommentRequest,
@@ -31,6 +32,21 @@ export async function getAipComments(
 ): Promise<AipReviewComments> {
   const { data } = await api.get<ApiResponse<AipReviewComments>>(
     `/budget-planning/aip/${aipId}/offices/${officeId}/comments`
+  );
+  return unwrap(data);
+}
+
+/**
+ * An office's submission history — hand-offs newest first, each carrying the comments written
+ * while the office held that state (PPDO-77). Same readers as the comments: the office itself and
+ * any cross-office reviewer.
+ */
+export async function getAipHistory(
+  aipId: number,
+  officeId: number
+): Promise<AipOfficeHistory> {
+  const { data } = await api.get<ApiResponse<AipOfficeHistory>>(
+    `/budget-planning/aip/${aipId}/offices/${officeId}/history`
   );
   return unwrap(data);
 }

@@ -17,6 +17,7 @@ import type { AipReadiness, AipReadinessIssue, AipUnresolvedCounts } from "@/typ
 import { fmtThousandsReadout } from "@/lib/aip-units";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useUnresolvedCounts } from "./AipComments";
+import AipHistoryButton from "@/components/aip/review/AipHistoryButton";
 
 /** Issue kinds grouped for display. The slug is switched on, never the message. */
 const KIND_LABELS: Record<string, string> = {
@@ -91,10 +92,17 @@ export default function AipSubmitChecklist({
   readiness,
   stage,
   submitting,
+  history,
 }: {
   readiness: AipReadiness;
   stage: AipSubmitStage;
   submitting: boolean;
+  /**
+   * The office whose History button to offer (PPDO-77). ⚠️ Shown beside the submit button at every
+   * stage, locked included — "who has it and how did it get there" matters most once the office
+   * can no longer act.
+   */
+  history?: { aipRecordId: number; officeId: number };
 }) {
   // ⚠️ Collapsed by default. The button already carries the count, so the summary an encoder
   // needs is visible without the list; expanded, an office with 80 uncosted activities pushed its
@@ -154,22 +162,27 @@ export default function AipSubmitChecklist({
           </p>
         </div>
 
-        {stage.kind === "encoder" || stage.kind === "toPpdo" ? (
-          <button
-            type="button"
-            onClick={onActionClick}
-            disabled={!canSubmit || submitting}
-            className="bg-green-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-green-800 disabled:cursor-not-allowed disabled:bg-slate-300"
-          >
-            {submitting ? copy.busy : copy.button}
-          </button>
-        ) : (
-          // ⚠️ Names who holds the work rather than just hiding the button. An encoder told only
-          // "read-only" has no idea who has their work or how to get it back.
-          <span className="border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">
-            With {stage.holder}
-          </span>
-        )}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {history && (
+            <AipHistoryButton aipRecordId={history.aipRecordId} officeId={history.officeId} tall />
+          )}
+          {stage.kind === "encoder" || stage.kind === "toPpdo" ? (
+            <button
+              type="button"
+              onClick={onActionClick}
+              disabled={!canSubmit || submitting}
+              className="bg-green-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-green-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              {submitting ? copy.busy : copy.button}
+            </button>
+          ) : (
+            // ⚠️ Names who holds the work rather than just hiding the button. An encoder told only
+            // "read-only" has no idea who has their work or how to get it back.
+            <span className="border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">
+              With {stage.holder}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* ── Ceiling strip ─────────────────────────────────────────────────── */}

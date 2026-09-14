@@ -35,6 +35,7 @@ import {
 import { FIRST_ENTERED_FISCAL_YEAR } from "@/lib/aip-fiscal-years";
 import { AIP_WORKFLOW, describeAipHolderForReviewer } from "@/lib/aip-workflow";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
+import AipHistoryButton from "@/components/aip/review/AipHistoryButton";
 import AipActivityFields from "@/components/aip/entry/AipActivityFields";
 import AipExpenditureTable from "@/components/aip/entry/AipExpenditureTable";
 import {
@@ -213,6 +214,9 @@ export default function AipReviewPage() {
             {/* ⚠️ Names the HOLDER, not a bare "read-only". A reviewer looking at an office that is
                 not at PPDO needs to know who has it, or the absent buttons read as a bug. */}
             <StateChip status={review.workflowStatus} />
+            {/* PPDO-77. At every status, not only at PPDO: an accepted or returned office is exactly
+                the one a reviewer wants to trace. */}
+            <AipHistoryButton aipRecordId={review.aipRecordId} officeId={review.officeId} />
             {atPpdo && (
               <>
                 <button type="button" onClick={confirmReturn} disabled={acting}

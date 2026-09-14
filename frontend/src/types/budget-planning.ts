@@ -1503,3 +1503,35 @@ export interface CreateAipReviewCommentRequest {
   nodeId: number;
   body: string;
 }
+
+// ── AIP submission history (v1.8.0 Phase 4 — V18-77 / PPDO-77) ───────────────
+
+/** The audit action behind a hand-off. The client words it; the server never sends a sentence. */
+export type AipHistoryAction = "SUBMIT_DH" | "SUBMIT_PPD" | "RETURN_PPD" | "ACCEPT_PPD";
+
+/** Who performs a hand-off by rule — not the actor's current flags. */
+export type AipHistoryActorSide = "Office" | "DepartmentHead" | "Ppdo";
+
+export interface AipHistoryEntry {
+  id: number;
+  action: AipHistoryAction;
+  /** ⚠️ Null when the audit payload could not be read — never guess a re-submit from it. */
+  fromStatus: string | null;
+  toStatus: string;
+  actorName: string;
+  actorSide: AipHistoryActorSide;
+  at: string;
+  /** Written while the office held `toStatus`, oldest first. Read-only — `canResolve` is always false. */
+  comments: AipReviewComment[];
+}
+
+export interface AipOfficeHistory {
+  aipRecordId: number;
+  officeId: number;
+  /** Where the work sits now. */
+  workflowStatus: string;
+  /** Newest first. */
+  entries: AipHistoryEntry[];
+  /** Comments older than every hand-off, oldest first. */
+  beforeFirstSubmission: AipReviewComment[];
+}

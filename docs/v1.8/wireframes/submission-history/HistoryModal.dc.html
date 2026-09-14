@@ -1,0 +1,246 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: rgba(15, 23, 42, 0.4);
+      font-family: "Segoe UI", "Source Sans Pro", system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: #196638; }
+    a:hover { color: #13512D; }
+    .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, "Liberation Mono", monospace; }
+    .side {
+      border-radius: 9999px; background: #E9ECEF; color: #5A636B; padding: 1px 6px;
+      font-size: 10px; line-height: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.025em;
+    }
+    .when { font-size: 12px; line-height: 16px; color: #5A636B; font-variant-numeric: tabular-nums; }
+    .move { margin: 2px 0 0; font-size: 12px; line-height: 16px; color: #5A636B; }
+    .event { font-size: 14px; line-height: 20px; font-weight: 600; color: #343A40; }
+    .toggle { display: inline-flex; align-items: center; gap: 4px; margin-top: 8px; font-size: 12px; line-height: 16px; font-weight: 500; color: #343A40; }
+    .skel { background: #E9ECEF; }
+  </style>
+</helmet>
+
+<div style="padding: 28px; display: flex; justify-content: center;">
+<div style="width: 672px; background: #FFFFFF; border: 1px solid #E9ECEF; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2), 0 8px 10px -6px rgba(0,0,0,0.15); display: flex; flex-direction: column;">
+
+  <div style="height: 4px; background: #1F7A45;"></div>
+
+  <!-- Header -->
+  <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 24px; border-bottom: 1px solid #E9ECEF;">
+    <h2 style="margin: 0; font-size: 16px; line-height: 24px; font-weight: 600; color: #343A40;">History</h2>
+    <span style="font-size: 20px; line-height: 20px; color: #5A636B;">&#215;</span>
+  </div>
+
+  <!-- Body -->
+  <div style="padding: 20px 24px;">
+
+    <!-- Whose history -->
+    <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 20px;">
+      <p style="margin: 0; font-size: 14px; line-height: 20px; color: #5A636B;">FY 2028 &middot; <strong style="color: #343A40;">OPA &mdash; Office of the Provincial Agriculturist</strong></p>
+      <span style="font-size: 12px; line-height: 16px; color: #5A636B;">Newest first &middot; Manila time</span>
+    </div>
+
+    <!-- ── SUCCESS ─────────────────────────────────────────────────────── -->
+    <sc-if value="{{ success }}" hint-placeholder-val="{{ true }}">
+    <div style="display: flex; flex-direction: column;">
+
+      <!-- 1. Re-submitted -->
+      <div style="display: grid; grid-template-columns: 24px minmax(0, 1fr); column-gap: 12px;">
+        <div style="display: flex; flex-direction: column; align-items: center;">
+          <span style="width: 12px; height: 12px; margin-top: 4px; border-radius: 9999px; background: #196638;"></span>
+          <span style="flex-grow: 1; width: 2px; background: #E9ECEF;"></span>
+        </div>
+        <div style="padding-bottom: 20px;">
+          <div style="display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px;">
+            <span class="event">Re-submitted to PPDO</span>
+            <span class="when">Sep 12, 2026 &middot; 3:42 PM</span>
+          </div>
+          <div style="margin-top: 2px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; line-height: 18px; color: #343A40;">
+            Maria Dela Cruz <span class="side">Department head</span>
+          </div>
+          <p class="move">Returned &rarr; With PPDO &middot; <span style="border-radius: 9999px; background: #FEF3CD; color: #78350F; padding: 1px 8px; font-weight: 500;">Where it is now</span></p>
+        </div>
+      </div>
+
+      <!-- 2. Sent back — comments while with the office, EXPANDED -->
+      <div style="display: grid; grid-template-columns: 24px minmax(0, 1fr); column-gap: 12px;">
+        <div style="display: flex; flex-direction: column; align-items: center;">
+          <span style="width: 12px; height: 12px; margin-top: 4px; border-radius: 9999px; background: #EF9F27;"></span>
+          <span style="flex-grow: 1; width: 2px; background: #E9ECEF;"></span>
+        </div>
+        <div style="padding-bottom: 20px;">
+          <div style="display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px;">
+            <span class="event">Sent back by PPDO</span>
+            <span class="when">Sep 10, 2026 &middot; 10:15 AM</span>
+          </div>
+          <div style="margin-top: 2px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; line-height: 18px; color: #343A40;">
+            Jose Santos <span class="side">PPDO</span>
+          </div>
+          <p class="move">With PPDO &rarr; Returned to the office</p>
+
+          <span class="toggle">1 comment while with the office <span style="color: #ADB5BD;">&#9662;</span></span>
+          <div style="margin-top: 8px; border-left: 2px solid #E9ECEF; padding-left: 12px; display: flex; flex-direction: column; gap: 12px;">
+            <div style="font-size: 12px; line-height: 16px;">
+              <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;">
+                <span style="font-weight: 500; color: #343A40;">Maria Dela Cruz</span>
+                <span class="side">Office</span>
+                <span class="when" style="margin-left: auto;">Sep 11 &middot; 2:08 PM</span>
+              </div>
+              <p style="margin: 2px 0 0; color: #5A636B;">on <span class="mono" style="font-size: 11px;">&hellip;-010-002-001-002</span> Farmer field school on hybrid rice management</p>
+              <p style="margin: 4px 0 0; color: #343A40;">Split the training into two batches &mdash; check the travel line now matches.</p>
+              <p style="margin: 4px 0 0; color: #5A636B;">Resolved by Maria Dela Cruz &middot; Sep 12</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. Sent to PPDO — comments while with PPDO, EXPANDED -->
+      <div style="display: grid; grid-template-columns: 24px minmax(0, 1fr); column-gap: 12px;">
+        <div style="display: flex; flex-direction: column; align-items: center;">
+          <span style="width: 12px; height: 12px; margin-top: 4px; border-radius: 9999px; background: #196638;"></span>
+          <span style="flex-grow: 1; width: 2px; background: #E9ECEF;"></span>
+        </div>
+        <div style="padding-bottom: 20px;">
+          <div style="display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px;">
+            <span class="event">Sent to PPDO</span>
+            <span class="when">Sep 8, 2026 &middot; 4:05 PM</span>
+          </div>
+          <div style="margin-top: 2px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; line-height: 18px; color: #343A40;">
+            Maria Dela Cruz <span class="side">Department head</span>
+          </div>
+          <p class="move">With the department head &rarr; With PPDO</p>
+
+          <span class="toggle">3 comments while with PPDO &middot; 1 still unresolved <span style="color: #ADB5BD;">&#9662;</span></span>
+          <div style="margin-top: 8px; border-left: 2px solid #E9ECEF; padding-left: 12px; display: flex; flex-direction: column; gap: 12px;">
+
+            <div style="font-size: 12px; line-height: 16px;">
+              <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;">
+                <span style="font-weight: 500; color: #343A40;">Jose Santos</span>
+                <span class="side">PPDO</span>
+                <span style="border-radius: 9999px; background: #FEF3CD; color: #78350F; padding: 1px 8px; font-size: 11px; line-height: 14px; font-weight: 500;">Unresolved</span>
+                <span class="when" style="margin-left: auto;">Sep 9 &middot; 11:30 AM</span>
+              </div>
+              <p style="margin: 2px 0 0; color: #5A636B;">on <span class="mono" style="font-size: 11px;">&hellip;-010-002-001-001</span> Procurement and distribution of certified hybrid rice seeds</p>
+              <p style="margin: 4px 0 0; color: #343A40;">MOOE here is 1,066 but the seed quantity in the outputs implies about 840. Please reconcile the two before we consolidate.</p>
+            </div>
+
+            <div style="font-size: 12px; line-height: 16px;">
+              <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;">
+                <span style="font-weight: 500; color: #343A40;">Jose Santos</span>
+                <span class="side">PPDO</span>
+                <span class="when" style="margin-left: auto;">Sep 9 &middot; 11:34 AM</span>
+              </div>
+              <p style="margin: 2px 0 0; color: #5A636B;">on <span class="mono" style="font-size: 11px;">&hellip;-010-002-001-002</span> Farmer field school on hybrid rice management</p>
+              <p style="margin: 4px 0 0; color: #343A40;">Two batches of 25 would fit the venue better than one of 50.</p>
+              <p style="margin: 4px 0 0; color: #5A636B;">Resolved by Jose Santos &middot; Sep 12</p>
+            </div>
+
+            <div style="font-size: 12px; line-height: 16px;">
+              <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;">
+                <span style="font-weight: 500; color: #343A40;">Jose Santos</span>
+                <span class="side">PPDO</span>
+                <span style="border-radius: 9999px; border: 1px solid #C7CFD6; color: #5A636B; padding: 0 8px; font-size: 11px; line-height: 14px; font-weight: 500;">Row deleted</span>
+                <span class="when" style="margin-left: auto;">Sep 9 &middot; 11:41 AM</span>
+              </div>
+              <p style="margin: 2px 0 0; color: #5A636B;">on an activity that has since been removed</p>
+              <p style="margin: 4px 0 0; color: #343A40;">Seedbed preparation duplicates the activity above &mdash; merge or drop one.</p>
+              <p style="margin: 4px 0 0; color: #5A636B;">Resolved by Jose Santos &middot; Sep 12</p>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. First submit — comments COLLAPSED -->
+      <div style="display: grid; grid-template-columns: 24px minmax(0, 1fr); column-gap: 12px;">
+        <div style="display: flex; flex-direction: column; align-items: center;">
+          <span style="width: 12px; height: 12px; margin-top: 4px; border-radius: 9999px; border: 2px solid #196638; background: #FFFFFF;"></span>
+        </div>
+        <div>
+          <div style="display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px;">
+            <span class="event">Submitted for department review</span>
+            <span class="when">Sep 3, 2026 &middot; 9:20 AM</span>
+          </div>
+          <div style="margin-top: 2px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; line-height: 18px; color: #343A40;">
+            Ana Ramos <span class="side">Encoder</span>
+          </div>
+          <p class="move">Draft &rarr; With the department head</p>
+          <span class="toggle">2 comments while with the department head <span style="color: #ADB5BD;">&#9656;</span></span>
+        </div>
+      </div>
+
+    </div>
+    </sc-if>
+
+    <!-- ── LOADING ─────────────────────────────────────────────────────── -->
+    <sc-if value="{{ loading }}" hint-placeholder-val="{{ false }}">
+    <div style="display: flex; flex-direction: column; gap: 24px;">
+      <sc-for list="{{ skeletons }}" as="s" hint-placeholder-count="4">
+        <div style="display: grid; grid-template-columns: 24px minmax(0, 1fr); column-gap: 12px;">
+          <span class="skel" style="width: 12px; height: 12px; margin: 4px auto 0; border-radius: 9999px;"></span>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span class="skel" style="width: 200px; height: 16px;"></span>
+              <span class="skel" style="width: 130px; height: 12px;"></span>
+            </div>
+            <span class="skel" style="width: 160px; height: 12px;"></span>
+            <span class="skel" style="width: 240px; height: 12px;"></span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+    </sc-if>
+
+    <!-- ── EMPTY ───────────────────────────────────────────────────────── -->
+    <sc-if value="{{ empty }}" hint-placeholder-val="{{ false }}">
+    <div style="border: 1px solid #E9ECEF; background: #F8F9FA; padding: 32px 24px; text-align: center;">
+      <p style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 600; color: #343A40;">No hand-offs yet</p>
+      <p style="margin: 8px auto 0; max-width: 440px; font-size: 14px; line-height: 20px; color: #5A636B;">OPA&rsquo;s FY 2028 AIP is still a draft. The history starts when an encoder submits it for department review.</p>
+    </div>
+    </sc-if>
+
+    <!-- ── ERROR ───────────────────────────────────────────────────────── -->
+    <sc-if value="{{ error }}" hint-placeholder-val="{{ false }}">
+    <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid #FECACA; background: #FEF2F2; padding: 12px 16px; font-size: 14px; line-height: 20px; color: #B91C1C;">
+      <span>The history could not be loaded.</span>
+      <span style="border: 1px solid #C7CFD6; background: #FFFFFF; color: #343A40; padding: 4px 12px; font-size: 14px; line-height: 20px; font-weight: 500;">Try again</span>
+    </div>
+    </sc-if>
+
+  </div>
+
+  <!-- Footer -->
+  <div style="display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 16px 24px; border-top: 1px solid #E9ECEF;">
+    <span style="border: 1px solid #E9ECEF; background: #FFFFFF; color: #5A636B; padding: 8px 16px; font-size: 14px; line-height: 20px; font-weight: 500;">Close</span>
+  </div>
+
+</div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"state":{"editor":"enum","options":["success","loading","empty","error"],"default":"success","section":"State"},"$preview":{"width":760,"height":1180}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const s = this.props.state ?? 'success';
+    return {
+      success: s === 'success',
+      loading: s === 'loading',
+      empty:   s === 'empty',
+      error:   s === 'error',
+      skeletons: [1, 2, 3, 4],
+    };
+  }
+}
+</script>
+</body>
+</html>

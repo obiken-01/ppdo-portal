@@ -40,6 +40,10 @@ public sealed class AipReviewCommentServiceTests
     private readonly Mock<IAipReviewCommentRepository> _repo = new();
     private readonly Mock<IAipRepository> _aipRepo = new();
     private readonly Mock<IPermissionService> _permissions = new();
+    private readonly Mock<IAuditRepository> _auditRepo = new();
+
+    /// <summary>The audit rows the mocked repository filters, the way the real query does.</summary>
+    private readonly List<AuditLog> _auditRows = [];
 
     /// <summary>The store the mocked repository reads and writes, so create/resolve round-trip.</summary>
     private readonly List<AipReviewComment> _store = [];
@@ -90,8 +94,20 @@ public sealed class AipReviewCommentServiceTests
             .Returns(Task.CompletedTask);
         _repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
+        // ⚠️ Filters on the ids it is GIVEN. A service that passed only Groups[0] would miss a row
+        // keyed on another group, and this mock would let the test see that.
+        _auditRepo.Setup(r => r.GetByRecordIdsAsync(
+                It.IsAny<string>(), It.IsAny<IReadOnlyList<int>>(), It.IsAny<IReadOnlyList<string>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string table, IReadOnlyList<int> ids, IReadOnlyList<string> actions, CancellationToken _) =>
+                _auditRows
+                    .Where(a => a.TableName == table && a.RecordId is int id && ids.Contains(id)
+                        && actions.Contains(a.Action))
+                    .OrderByDescending(a => a.ChangedAt)
+                    .ToList());
+
         return new AipReviewCommentService(
-            _repo.Object, _aipRepo.Object, _permissions.Object,
+            _repo.Object, _aipRepo.Object, _auditRepo.Object, _permissions.Object,
             NullLogger<AipReviewCommentService>.Instance);
     }
 
@@ -127,6 +143,207 @@ public sealed class AipReviewCommentServiceTests
 
     private static CreateAipReviewCommentDto OnActivity(string body = "Please revise this cost.")
         => new(nameof(AipCommentNodeType.Activity), ActivityId, body);
+
+    // ── History (V18-77 / PPDO-77) ────────────────────────────────────────────
+
+    private static readonly DateTime T0 = new(2026, 9, 3, 1, 20, 0, DateTimeKind.Utc);
+
+    private void HandOff(
+        long id, string action, string from, int hoursAfterT0,
+        int groupId = GroupA, string actor = "Maria Dela Cruz", string? oldValues = null)
+        => _auditRows.Add(new AuditLog
+        {
+            Id = id, TableName = "aip_offices", RecordId = groupId, Action = action,
+            ChangedById = Guid.NewGuid(), ChangedAt = T0.AddHours(hoursAfterT0),
+            OldValues = oldValues ?? $"{{\"WorkflowStatus\":\"{from}\"}}",
+            ChangedBy = new User
+            {
+                Id = Guid.NewGuid(), Username = "actor", PasswordHash = "h", FullName = actor,
+                Role = UserRole.Staff, IsActive = true, CreatedAt = T0, UpdatedAt = T0,
+            },
+        });
+
+    private AipReviewComment CommentAt(int hoursAfterT0, bool resolved = false)
+    {
+        AipReviewComment c = new()
+        {
+            Id = _nextId++, AipOfficeId = GroupA, NodeType = AipCommentNodeType.Activity,
+            NodeId = ActivityId, AuthorId = Guid.NewGuid(), AuthorSide = AipCommentSide.Ppdo,
+            Body = $"Written at +{hoursAfterT0}h", CreatedAt = T0.AddHours(hoursAfterT0),
+            ResolvedAt = resolved ? T0.AddHours(hoursAfterT0 + 1) : null,
+        };
+        _store.Add(c);
+        return c;
+    }
+
+    /// <summary>The acceptance line in spec §10: submit, return, re-submit — one entry each, newest first.</summary>
+    [Fact]
+    public async Task GetHistoryAsync_ReturnedAndResubmitted_ListsEachHandOffOnceNewestFirst()
+    {
+        HandOff(1, AuditAction.SubmitToDeptHead, AipWorkflowStatus.Draft, 0, actor: "Ana Ramos");
+        HandOff(2, AuditAction.SubmitToPpdo, AipWorkflowStatus.DepartmentReview, 24);
+        HandOff(3, AuditAction.ReturnByPpdo, AipWorkflowStatus.SubmittedToPpdo, 48, actor: "Jose Santos");
+        HandOff(4, AuditAction.SubmitToPpdo, AipWorkflowStatus.ReturnedByPpdo, 72);
+        AipReviewCommentService sut = Build();
+
+        ServiceResult<AipOfficeHistoryDto> result =
+            await sut.GetHistoryAsync(RecordId, OfficeId, PpdoReviewer());
+
+        Assert.True(result.IsSuccess);
+        IReadOnlyList<AipHistoryEntryDto> entries = result.Value!.Entries;
+        Assert.Equal([4L, 3L, 2L, 1L], entries.Select(e => e.Id));
+
+        // ⚠️ The from-status is what makes the newest one a RE-submit on screen.
+        Assert.Equal(AipWorkflowStatus.ReturnedByPpdo, entries[0].FromStatus);
+        Assert.Equal(AipWorkflowStatus.SubmittedToPpdo, entries[0].ToStatus);
+        Assert.Equal(AipWorkflowStatus.DepartmentReview, entries[2].FromStatus);
+
+        Assert.Equal("Jose Santos", entries[1].ActorName);
+        Assert.Equal("Ppdo", entries[1].ActorSide);
+        Assert.Equal(AipWorkflowStatus.ReturnedByPpdo, entries[1].ToStatus);
+        Assert.Equal("DepartmentHead", entries[0].ActorSide);
+        Assert.Equal("Office", entries[3].ActorSide);
+        Assert.Equal(AipWorkflowStatus.DepartmentReview, entries[3].ToStatus);
+    }
+
+    /// <summary>
+    /// ⚠️ One transition, one audit row — keyed on whichever group was first when it was written. The
+    /// read must look across EVERY group id, or an office whose group order shifted loses its history.
+    /// </summary>
+    [Fact]
+    public async Task GetHistoryAsync_RowKeyedOnASecondGroup_IsStillFoundAndShownOnce()
+    {
+        const int groupB = 951;
+        _groups.Add(new AipOffice
+        {
+            Id = groupB, AipRecordId = RecordId, OfficeId = OfficeId,
+            RefCode = "3000-000-1-01-010", Name = "PPDO", Sector = "ECONOMIC",
+            WorkflowStatus = AipWorkflowStatus.DepartmentReview,
+        });
+        HandOff(1, AuditAction.SubmitToDeptHead, AipWorkflowStatus.Draft, 0, groupId: groupB);
+        AipReviewCommentService sut = Build();
+
+        ServiceResult<AipOfficeHistoryDto> result =
+            await sut.GetHistoryAsync(RecordId, OfficeId, PpdoReviewer());
+
+        AipHistoryEntryDto only = Assert.Single(result.Value!.Entries);
+        Assert.Equal(AuditAction.SubmitToDeptHead, only.Action);
+    }
+
+    /// <summary>
+    /// A comment sits under the hand-off in force when it was written — the state the office was in —
+    /// never under the next one. Anything older than every hand-off is kept, in its own bucket.
+    /// </summary>
+    [Fact]
+    public async Task GetHistoryAsync_Comments_SitUnderTheHandOffInForceWhenWritten()
+    {
+        HandOff(1, AuditAction.SubmitToDeptHead, AipWorkflowStatus.Draft, 10);
+        HandOff(2, AuditAction.SubmitToPpdo, AipWorkflowStatus.DepartmentReview, 20);
+        HandOff(3, AuditAction.ReturnByPpdo, AipWorkflowStatus.SubmittedToPpdo, 30);
+        AipReviewComment beforeAny = CommentAt(5);
+        AipReviewComment whileAtPpdoA = CommentAt(21, resolved: true);
+        AipReviewComment whileAtPpdoB = CommentAt(25);
+        AipReviewComment atTheReturn = CommentAt(30);
+        AipReviewCommentService sut = Build();
+
+        ServiceResult<AipOfficeHistoryDto> result =
+            await sut.GetHistoryAsync(RecordId, OfficeId, PpdoReviewer());
+
+        AipOfficeHistoryDto history = result.Value!;
+        Assert.Equal([beforeAny.Id], history.BeforeFirstSubmission.Select(c => c.Id));
+
+        AipHistoryEntryDto sentToPpdo = history.Entries.Single(e => e.Id == 2);
+        Assert.Equal([whileAtPpdoA.Id, whileAtPpdoB.Id], sentToPpdo.Comments.Select(c => c.Id));
+
+        // Stamped in the same instant as the return: it belongs to the state it was written into.
+        AipHistoryEntryDto returned = history.Entries.Single(e => e.Id == 3);
+        Assert.Equal([atTheReturn.Id], returned.Comments.Select(c => c.Id));
+
+        Assert.Empty(history.Entries.Single(e => e.Id == 1).Comments);
+    }
+
+    /// <summary>
+    /// ⚠️ Read-only. Even the authoring side gets no resolve control in the history — resolving stays
+    /// where the row is in front of the reader.
+    /// </summary>
+    [Fact]
+    public async Task GetHistoryAsync_Comments_NeverOfferResolve()
+    {
+        HandOff(1, AuditAction.SubmitToPpdo, AipWorkflowStatus.DepartmentReview, 0);
+        CommentAt(1);
+        AipReviewCommentService sut = Build();
+
+        ServiceResult<AipOfficeHistoryDto> result =
+            await sut.GetHistoryAsync(RecordId, OfficeId, PpdoReviewer());
+
+        AipReviewCommentDto comment = Assert.Single(Assert.Single(result.Value!.Entries).Comments);
+        Assert.True(comment.ResolvedAt is null);
+        Assert.False(comment.CanResolve);
+    }
+
+    /// <summary>Spec §4 as corrected: the office's own encoder reads its history, same as the comments.</summary>
+    [Fact]
+    public async Task GetHistoryAsync_EncoderOfTheOwnOffice_ReadsIt()
+    {
+        HandOff(1, AuditAction.SubmitToDeptHead, AipWorkflowStatus.Draft, 0);
+        AipReviewCommentService sut = Build();
+
+        ServiceResult<AipOfficeHistoryDto> result =
+            await sut.GetHistoryAsync(RecordId, OfficeId, Encoder());
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Value!.Entries);
+    }
+
+    /// <summary>⚠️ Another office's history is a 404 worded like a missing office (PPDO-46), not a 403.</summary>
+    [Fact]
+    public async Task GetHistoryAsync_CallerFromAnotherOfficeWithoutReviewFlag_IsNotFound()
+    {
+        HandOff(1, AuditAction.SubmitToDeptHead, AipWorkflowStatus.Draft, 0);
+        AipReviewCommentService sut = Build();
+
+        ServiceResult<AipOfficeHistoryDto> result = await sut.GetHistoryAsync(
+            RecordId, OfficeId, MakeUser(OtherOffice, deptHead: false, ppdoReviewer: false));
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+        Assert.Null(result.Value);
+    }
+
+    /// <summary>
+    /// ⚠️ An unreadable payload leaves the from-status null — never a guess, because a guessed
+    /// ReturnedByPpdo is what relabels "Sent to PPDO" as a re-submit — and never fails the read.
+    /// </summary>
+    [Theory]
+    [InlineData("not json")]
+    [InlineData("[1,2]")]
+    [InlineData("{\"Other\":\"x\"}")]
+    public async Task GetHistoryAsync_UnreadableOldValues_LeavesFromStatusNull(string oldValues)
+    {
+        HandOff(1, AuditAction.SubmitToPpdo, "ignored", 0, oldValues: oldValues);
+        AipReviewCommentService sut = Build();
+
+        ServiceResult<AipOfficeHistoryDto> result =
+            await sut.GetHistoryAsync(RecordId, OfficeId, PpdoReviewer());
+
+        AipHistoryEntryDto entry = Assert.Single(result.Value!.Entries);
+        Assert.Null(entry.FromStatus);
+        Assert.Equal(AipWorkflowStatus.SubmittedToPpdo, entry.ToStatus);
+    }
+
+    /// <summary>An office never submitted: an empty chain and the current state, not an error.</summary>
+    [Fact]
+    public async Task GetHistoryAsync_NoHandOffs_ReturnsEmptyChainWithCurrentState()
+    {
+        AipReviewCommentService sut = Build();
+
+        ServiceResult<AipOfficeHistoryDto> result =
+            await sut.GetHistoryAsync(RecordId, OfficeId, PpdoReviewer());
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(result.Value!.Entries);
+        Assert.Empty(result.Value.BeforeFirstSubmission);
+        Assert.Equal(AipWorkflowStatus.Draft, result.Value.WorkflowStatus);
+    }
 
     // ── Creating ──────────────────────────────────────────────────────────────
 

@@ -272,6 +272,7 @@ export default function AipEntryPage() {
               readiness={readiness}
               stage={submitStage}
               submitting={submitting}
+              history={{ aipRecordId: record.id, officeId }}
             />
           )}
 
