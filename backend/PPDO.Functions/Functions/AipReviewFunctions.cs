@@ -115,6 +115,25 @@ public sealed class AipReviewFunctions
             await _review.AcceptOfficeAsync(aipId, officeId, caller!, ct), ct);
     }
 
+    // ── POST /api/budget-planning/aip/{aipId}/offices/{officeId}/reopen ───────
+    //
+    // Added 2026-09-14 with PPDO-73: Consolidated → ReturnedByPpdo. Same gate, same no-body shape and
+    // the same guard-free treatment as Return and Accept. A route of its own rather than Return
+    // widened, so a stale screen cannot re-open an office a colleague has just accepted.
+    [Function("AipReviewReopen")]
+    public async Task<HttpResponseData> Reopen(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post",
+            Route = "budget-planning/aip/{aipId:int}/offices/{officeId:int}/reopen")] HttpRequestData req,
+        int aipId, int officeId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) =
+            await ConfigHttp.AuthorizeAsync(req, _jwt, CanReviewAllOffices, ct);
+        if (denied is not null) return denied;
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _review.ReopenOfficeAsync(aipId, officeId, caller!, ct), ct);
+    }
+
     // ── GET /api/budget-planning/aip/{aipId}/offices/{officeId}/review ────────
     //
     // ⚠️ Gated on CanReviewAllOffices like the two actions, NOT on CanAccessBudgetPlanning. This is

@@ -52,4 +52,20 @@ public static class AuditAction
     /// back as history.
     /// </summary>
     public const string AcceptByPpdo = "ACCEPT_PPD";
+
+    /// <summary>
+    /// A PPDO consolidated reviewer re-opened an accepted office and sent it back
+    /// (Consolidated → ReturnedByPpdo). Added 2026-09-14 with PPDO-73.
+    ///
+    /// ⚠️ Ten characters exactly. <b>Its own action, not <see cref="ReturnByPpdo"/></b>: History has
+    /// to say that accepted work was re-opened, and the return path's 409 on <c>Consolidated</c> is
+    /// what stops a reviewer on a stale screen re-opening an office a colleague has just accepted.
+    /// </summary>
+    public const string ReopenByPpdo = "REOPEN_PPD";
+
+    /// <summary>
+    /// The department head handed the office's work back down to its encoders
+    /// (DepartmentReview → Draft). Added 2026-09-14 with PPDO-73. Nine characters.
+    /// </summary>
+    public const string ReturnToEncoder = "RETURN_DH";
 }

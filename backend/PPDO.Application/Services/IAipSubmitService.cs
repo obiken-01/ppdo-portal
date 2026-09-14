@@ -78,4 +78,19 @@ public interface IAipSubmitService
     /// </param>
     Task<ServiceResult<AipSubmitResultDto>> SubmitToPpdoAsync(
         int aipRecordId, int officeId, User caller, CancellationToken ct = default);
+
+    /// <summary>
+    /// The department head hands the office's work back down to its encoders:
+    /// <c>DepartmentReview</c> → <c>Draft</c>, across every group row (added 2026-09-14 with PPDO-73;
+    /// closes the spec's open follow-up on returning work down).
+    ///
+    /// <para>
+    /// ⚠️ <b>From department review only.</b> Everything else is a 400 naming the state — including
+    /// <c>ReturnedByPpdo</c>, where both parties can already edit and there is nothing to hand down.
+    /// Scoped to the caller's own office exactly as <see cref="SubmitToPpdoAsync"/> is; the
+    /// department-head flag is checked at the endpoint.
+    /// </para>
+    /// </summary>
+    Task<ServiceResult<AipSubmitResultDto>> ReturnToEncoderAsync(
+        int aipRecordId, int officeId, User caller, CancellationToken ct = default);
 }

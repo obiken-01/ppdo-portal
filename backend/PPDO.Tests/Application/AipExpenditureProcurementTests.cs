@@ -130,8 +130,45 @@ public sealed class AipExpenditureProcurementTests
     }
 
     private static SaveAipProcurementItemDto Item(
-        string name, decimal qty, decimal price, decimal days = 1m, int? priceIndexItemId = null)
-        => new(priceIndexItemId, name, "pc", price, qty, days);
+        string name, decimal qty, decimal price, decimal days = 1m, int? priceIndexItemId = null,
+        int periodNo = 1)
+        => new(priceIndexItemId, name, "pc", price, qty, days, periodNo);
+
+    // ── Quarters (added 2026-09-14) ───────────────────────────────────────────
+
+    /// <summary>
+    /// ⚠️ Quarters are input only: items in Q1 and Q3 still produce ONE annual figure in the line's
+    /// column. 10 × ₱1,500 in Q1 plus 5 × ₱1,000 in Q3 = ₱20,000 MOOE, and each item keeps its quarter.
+    /// </summary>
+    [Fact]
+    public async Task Add_ItemsInDifferentQuarters_SumIntoOneAnnualAmountAndKeepTheirQuarters()
+    {
+        ServiceResult<AipExpenditureWriteResultDto> result = await Build().AddAsync(ActivityId,
+            new CreateAipExpenditureDto(MooeAccountId, null, 0m, 0m, 0m,
+            [
+                Item("Bond paper", qty: 10m, price: 1_500m, periodNo: 1),
+                Item("Toner", qty: 5m, price: 1_000m, periodNo: 3),
+            ]), Encoder);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(20_000m, result.Value!.Line!.Mooe);
+        Assert.Equal(20_000m, result.Value.Line.Total);
+        Assert.Equal([1, 3], _saved.Select(i => i.PeriodNo));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(5)]
+    public async Task Add_ItemOutsideQuartersOneToFour_IsRejectedAndNothingIsSaved(int periodNo)
+    {
+        ServiceResult<AipExpenditureWriteResultDto> result = await Build().AddAsync(ActivityId,
+            new CreateAipExpenditureDto(MooeAccountId, null, 0m, 0m, 0m,
+                [Item("Bond paper", qty: 1m, price: 100m, periodNo: periodNo)]), Encoder);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("quarter", result.Error!);
+        Assert.Empty(_saved);
+    }
 
     // ── The roll-up ───────────────────────────────────────────────────────────
 

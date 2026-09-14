@@ -16,12 +16,27 @@
 import api from "./api";
 import type {
   ApiResponse, AipOfficeReview, AipSubmitResult,
-  AipReviewSearchParams, AipReviewSearchResult, AipActivityReview,
+  AipReviewSearchParams, AipReviewSearchResult, AipActivityReview, AipConsolidatedSheet,
 } from "@/types";
 
 function unwrap<T>(body: ApiResponse<T>): T {
   if (body.data == null) throw new Error(body.error ?? "Unexpected empty response.");
   return body.data;
+}
+
+/**
+ * One sector sheet of the consolidated AIP (PPDO-73) — the Annex B rows of every office with PPDO or
+ * already accepted, with the figures the form prints. Cross-office reviewers only.
+ */
+export async function getAipConsolidated(
+  fiscalYear: number,
+  sector: string
+): Promise<AipConsolidatedSheet> {
+  const { data } = await api.get<ApiResponse<AipConsolidatedSheet>>(
+    "/budget-planning/aip/consolidated",
+    { params: { fiscalYear, sector } }
+  );
+  return unwrap(data);
 }
 
 /** One office's tree, read-only, with the state the reviewer is deciding on. */
@@ -64,6 +79,20 @@ export async function acceptAipOffice(
 ): Promise<AipSubmitResult> {
   const { data } = await api.post<ApiResponse<AipSubmitResult>>(
     `/budget-planning/aip/${aipId}/offices/${officeId}/accept`, {}
+  );
+  return unwrap(data);
+}
+
+/**
+ * Re-opens an accepted office and sends it back — `Consolidated` → `ReturnedByPpdo` (added
+ * 2026-09-14). A 409 means the office is no longer accepted: someone moved it while it was open.
+ */
+export async function reopenAipOffice(
+  aipId: number,
+  officeId: number
+): Promise<AipSubmitResult> {
+  const { data } = await api.post<ApiResponse<AipSubmitResult>>(
+    `/budget-planning/aip/${aipId}/offices/${officeId}/reopen`, {}
   );
   return unwrap(data);
 }

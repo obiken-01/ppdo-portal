@@ -44,7 +44,8 @@ public sealed class AipExpenditureRepository : Repository<AipExpenditure>, IAipE
         if (expenditureIds.Count == 0) return [];
         return await _context.Set<AipProcurementItem>()
             .Where(i => expenditureIds.Contains(i.ExpenditureId))
-            .OrderBy(i => i.ExpenditureId).ThenBy(i => i.Id)
+            // Quarter before id, so a line's items come back grouped Q1 → Q4 (2026-09-14).
+            .OrderBy(i => i.ExpenditureId).ThenBy(i => i.PeriodNo).ThenBy(i => i.Id)
             .ToListAsync(ct);
     }
 

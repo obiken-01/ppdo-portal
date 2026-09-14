@@ -420,7 +420,9 @@ export default function WfpProcurementItemTable({
                   <MoneyInput
                     value={row.unitPrice}
                     onChange={(v) => updateRow(index, { unitPrice: v ?? 0 })}
-                    className="w-full"
+                    // Match the Qty / Days / Line Total boxes beside it — MoneyInput's own padding
+                    // is the compact grid size, a row shorter than these.
+                    className="w-full text-sm [&_input]:py-1.5"
                   />
                 </div>
                 <div className="w-20 shrink-0">

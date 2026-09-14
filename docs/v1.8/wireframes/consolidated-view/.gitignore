@@ -1,0 +1,3 @@
+# The seeded canvas — a ~2.5 MB build output that bundles the whole Claude Design editor.
+# It is regenerated from the .dc.html artboards and canvas.json in this folder; see README.md.
+consolidated-view.html

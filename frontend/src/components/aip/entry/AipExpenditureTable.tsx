@@ -20,7 +20,7 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import AipMoneyInput from "@/components/aip/AipMoneyInput";
-import AipProcurementItemTable from "@/components/aip/entry/AipProcurementItemTable";
+import AipProcurementItemTable, { type AipSiblingItem } from "@/components/aip/entry/AipProcurementItemTable";
 import Lookup from "@/components/ui/Lookup";
 import { fmtThousands, fmtPesos } from "@/lib/aip-units";
 import {
@@ -147,6 +147,7 @@ function ProcurementItemsReadOnly({ items, columns }: {
         <table className="w-full text-[11px]">
           <thead>
             <tr className="text-left text-slate-600">
+              <th className="py-0.5 font-medium">Qtr</th>
               <th className="py-0.5 font-medium">Item</th>
               <th className="py-0.5 font-medium">Unit</th>
               <th className="py-0.5 text-right font-medium">Unit price</th>
@@ -158,6 +159,7 @@ function ProcurementItemsReadOnly({ items, columns }: {
           <tbody>
             {items.map((i) => (
               <tr key={i.id} className="border-t border-slate-100">
+                <td className="py-0.5 text-slate-600">Q{i.periodNo}</td>
                 <td className="py-0.5 text-slate-800">{i.name}</td>
                 <td className="py-0.5 text-slate-600">{i.unit || "—"}</td>
                 <td className="py-0.5 text-right tabular-nums text-slate-600">{fmtPesos(i.unitPrice)}</td>
@@ -333,20 +335,23 @@ export default function AipExpenditureTable({
         unitPrice: i.unitPrice,
         qty: i.qty,
         numberOfDays: i.numberOfDays,
+        periodNo: i.periodNo,
       })),
     });
   }
 
   /**
-   * Price-index items used by the activity's OTHER lines — what makes the duplicate warning
-   * activity-scoped rather than line-scoped (the re-derivation of RAL-153; see
-   * `AipProcurementItemTable`).
+   * Price-index items used by the activity's OTHER lines, with their quarter — what makes the
+   * duplicate warning activity-scoped rather than line-scoped (the re-derivation of RAL-153; see
+   * `AipProcurementItemTable`). ↩️ Carries the quarter since 2026-09-14, so the same item in a
+   * different quarter is not reported.
    */
-  function siblingItemIds(currentLineId: number | null): number[] {
+  function siblingItemsOf(currentLineId: number | null): AipSiblingItem[] {
     return lines
       .filter((l) => l.id !== currentLineId)
-      .flatMap((l) => l.procurementItems.map((i) => i.priceIndexItemId))
-      .filter((id): id is number => id != null);
+      .flatMap((l) => l.procurementItems)
+      .filter((i) => i.priceIndexItemId != null)
+      .map((i) => ({ priceIndexItemId: i.priceIndexItemId!, periodNo: i.periodNo }));
   }
 
   const editing = adding || editingId !== null;
@@ -462,7 +467,7 @@ export default function AipExpenditureTable({
                   fundingSources={fundingSources} generalFundId={generalFundId}
                   showFund={multiFund} busy={busy}
                   priceIndex={priceIndex} priceIndexLoading={priceIndexLoading}
-                  siblingPriceIndexItemIds={siblingItemIds(line.id)}
+                  siblingItems={siblingItemsOf(line.id)}
                   onSave={() => save(line.id)} onCancel={() => setEditingId(null)} />
               ) : (
                 <Fragment key={line.id}>
@@ -516,7 +521,7 @@ export default function AipExpenditureTable({
                 fundingSources={fundingSources} generalFundId={generalFundId}
                 showFund={multiFund} busy={busy}
                 priceIndex={priceIndex} priceIndexLoading={priceIndexLoading}
-                siblingPriceIndexItemIds={siblingItemIds(null)}
+                siblingItems={siblingItemsOf(null)}
                 onSave={() => save(null)} onCancel={() => setAdding(false)} />
             )}
           </tbody>
@@ -528,7 +533,7 @@ export default function AipExpenditureTable({
 
 function EditRow({
   draft, setDraft, accounts, fundingSources, generalFundId, showFund, busy,
-  priceIndex, priceIndexLoading, siblingPriceIndexItemIds, onSave, onCancel,
+  priceIndex, priceIndexLoading, siblingItems, onSave, onCancel,
 }: {
   draft: Draft;
   setDraft: (d: Draft) => void;
@@ -540,7 +545,7 @@ function EditRow({
   busy: boolean;
   priceIndex: PriceIndexPickerItem[];
   priceIndexLoading: boolean;
-  siblingPriceIndexItemIds: number[];
+  siblingItems: AipSiblingItem[];
   onSave: () => void;
   onCancel: () => void;
 }) {
@@ -561,7 +566,7 @@ function EditRow({
       ? {
           ...draft,
           procurementItems: [
-            { priceIndexItemId: null, name: "", unit: "", unitPrice: 0, qty: 1, numberOfDays: 1 },
+            { periodNo: 1, priceIndexItemId: null, name: "", unit: "", unitPrice: 0, qty: 1, numberOfDays: 1 },
           ],
         }
       // ⚠️ Turning it off empties the items AND leaves the typed figures where they are, so the
@@ -673,7 +678,7 @@ function EditRow({
                 onItemsChange={(procurementItems) => setDraft({ ...draft, procurementItems })}
                 priceIndex={priceIndex}
                 priceIndexLoading={priceIndexLoading}
-                siblingPriceIndexItemIds={siblingPriceIndexItemIds}
+                siblingItems={siblingItems}
               />
             </div>
           )}

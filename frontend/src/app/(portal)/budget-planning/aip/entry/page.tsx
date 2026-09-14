@@ -25,7 +25,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMe } from "@/lib/me-cache";
 import {
-  listAip, getAipById, getAipReadiness, submitAip, submitAipToPpdo,
+  listAip, getAipById, getAipReadiness, submitAip, submitAipToPpdo, returnAipToEncoder,
   addAipProject, addAipActivity, aipErrorMessage,
 } from "@/lib/aip";
 import { listAccounts, listFundingSources, listPriceIndexForPicker } from "@/lib/config";
@@ -188,6 +188,21 @@ export default function AipEntryPage() {
     }
   }
 
+  /** The department head hands the work back down to the encoders (added 2026-09-14). */
+  async function doReturnToEncoder() {
+    if (!record || officeId == null) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await returnAipToEncoder(record.id, officeId);
+      await load();
+    } catch (e) {
+      setError(aipErrorMessage(e, "Could not return this AIP to the encoders."));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   /**
    * Which of the two submits this reader is standing at, if either.
    *
@@ -205,6 +220,9 @@ export default function AipEntryPage() {
               kind: "toPpdo",
               resubmit: workflowStatus === AIP_WORKFLOW.returnedByPpdo,
               onSubmit: doSubmitToPpdo,
+              // Department review only — the one state the server returns work down from.
+              onReturnToEncoder:
+                workflowStatus === AIP_WORKFLOW.departmentReview ? doReturnToEncoder : undefined,
             }
           // An encoder while their department head holds it: still editable, just not theirs to
           // send on.

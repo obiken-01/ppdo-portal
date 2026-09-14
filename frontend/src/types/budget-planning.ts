@@ -1163,6 +1163,8 @@ export interface AipProcurementItem {
   numberOfDays: number;
   /** qty × unitPrice × numberOfDays, computed server-side. */
   lineTotal: number;
+  /** The quarter, 1–4 (2026-09-14). Input only — the line's amount sums every quarter. */
+  periodNo: number;
 }
 
 /** ⚠️ No `lineTotal` — the server computes it and never accepts one. */
@@ -1173,6 +1175,8 @@ export interface SaveAipProcurementItemRequest {
   unitPrice: number;
   qty: number;
   numberOfDays: number;
+  /** The quarter, 1–4. */
+  periodNo: number;
 }
 
 export interface SaveAipExpenditureRequest {
@@ -1504,10 +1508,73 @@ export interface CreateAipReviewCommentRequest {
   body: string;
 }
 
+// ── Consolidated AIP (v1.8.0 Phase 4 — V18-55 / PPDO-73) ─────────────────────
+
+/**
+ * One row's amounts as the AIP form PRINTS them — pesos, already rounded up and uplifted.
+ *
+ * ⚠️ Not the exact amounts AIP Entry shows. Render through `fmtThousands` like any other AIP cell;
+ * never round or uplift them again on the client.
+ */
+export interface AipPrintedAmounts {
+  ps: number;
+  mooe: number;
+  co: number;
+  /** Column (11): printed PS + MOOE + CO. */
+  total: number;
+  ccAdaptation: number;
+  ccMitigation: number;
+}
+
+/** Which of the form's description columns B–E the row's name sits in. */
+export type AipConsolidatedRowKind = "Office" | "Program" | "Project" | "Activity";
+
+export interface AipConsolidatedRow {
+  kind: AipConsolidatedRowKind;
+  refCode: string;
+  name: string;
+  /** Activity rows only — opens the review modal. */
+  activityId: number | null;
+  /** Office rows only. Screen-only — the Excel does not print it. */
+  workflowStatus: string | null;
+  esreCode: string | null;
+  implementingOffice: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  expectedOutputs: string | null;
+  fundingSource: string | null;
+  ccTypologyCode: string | null;
+  /** Null on program and project rows, which carry no amounts on the form. */
+  amounts: AipPrintedAmounts | null;
+}
+
+export interface AipConsolidatedSectorCount {
+  sector: string;
+  submittedOffices: number;
+  totalOffices: number;
+}
+
+export interface AipConsolidatedSheet {
+  aipRecordId: number;
+  fiscalYear: number;
+  sector: string;
+  /** False when the fiscal year has no AIP record yet. */
+  opened: boolean;
+  submittedOffices: number;
+  totalOffices: number;
+  sectors: AipConsolidatedSectorCount[];
+  /** Offices with PPDO or accepted only — the rest are left out, never shown as ₱0. */
+  rows: AipConsolidatedRow[];
+  total: AipPrintedAmounts;
+}
+
 // ── AIP submission history (v1.8.0 Phase 4 — V18-77 / PPDO-77) ───────────────
 
 /** The audit action behind a hand-off. The client words it; the server never sends a sentence. */
-export type AipHistoryAction = "SUBMIT_DH" | "SUBMIT_PPD" | "RETURN_PPD" | "ACCEPT_PPD";
+export type AipHistoryAction =
+  | "SUBMIT_DH" | "SUBMIT_PPD" | "RETURN_PPD" | "ACCEPT_PPD"
+  // Added 2026-09-14: re-opening an accepted office, and the department head returning work down.
+  | "REOPEN_PPD" | "RETURN_DH";
 
 /** Who performs a hand-off by rule — not the actor's current flags. */
 export type AipHistoryActorSide = "Office" | "DepartmentHead" | "Ppdo";

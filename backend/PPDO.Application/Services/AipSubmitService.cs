@@ -179,6 +179,64 @@ public sealed class AipSubmitService : IAipSubmitService
             aipRecordId, ctx.OfficeId, AipWorkflowStatus.SubmittedToPpdo, ctx.Groups.Count));
     }
 
+    // ── Return to the encoders (added 2026-09-14 with PPDO-73) ────────────────
+
+    public async Task<ServiceResult<AipSubmitResultDto>> ReturnToEncoderAsync(
+        int aipRecordId, int officeId, User caller, CancellationToken ct = default)
+    {
+        ReadinessContext? ctx = await ResolveAsync(aipRecordId, caller, ct);
+        if (ctx is null)
+            return ServiceResult<AipSubmitResultDto>.NotFound($"AIP record {aipRecordId} not found.");
+
+        // Same rule and the same sentence as SubmitToPpdoAsync: an office the caller does not own is
+        // indistinguishable from one that does not exist (PPDO-46).
+        if (ctx.Groups.Count == 0 || ctx.OfficeId != officeId)
+            return ServiceResult<AipSubmitResultDto>.NotFound(
+                $"AIP office {officeId} not found in record {aipRecordId}.");
+
+        if (ctx.Record.Status != PlanningStatus.Draft)
+            return ServiceResult<AipSubmitResultDto>.BadRequest(
+                $"The FY {ctx.Record.FiscalYear} AIP is '{ctx.Record.Status}' and cannot be changed.");
+
+        // ⚠️ From department review ONLY (decided 2026-09-14). Returned-by-PPDO work is already
+        // editable by encoders and department head alike, so there is nothing to hand down; work at
+        // PPDO or accepted is not the department head's to move.
+        AipOffice? blocking = ctx.Groups.FirstOrDefault(
+            g => g.WorkflowStatus != AipWorkflowStatus.DepartmentReview);
+        if (blocking is not null)
+            return ServiceResult<AipSubmitResultDto>.BadRequest(
+                blocking.WorkflowStatus == AipWorkflowStatus.Draft
+                    ? "This office's AIP is already with its encoders."
+                    : $"This office's AIP is in {AipWriteGuard.Describe(blocking.WorkflowStatus)}. It can "
+                      + "only be returned to the encoders while it is in department review.");
+
+        // ⚠️ No completeness or ceiling re-run — those gate work moving forward. Sending it back
+        // down must not be blocked by the very gaps it is being sent back to fix.
+        foreach (AipOffice group in ctx.Groups)
+        {
+            group.WorkflowStatus = AipWorkflowStatus.Draft;
+            await _officeRepo.UpdateAsync(group, ct);
+        }
+        await _officeRepo.SaveChangesAsync(ct);
+
+        // One row for the transition, the same shape as every other hand-off (spec §5.2).
+        await _audit.LogAsync("aip_offices", ctx.Groups[0].Id, AuditAction.ReturnToEncoder,
+            new { WorkflowStatus = AipWorkflowStatus.DepartmentReview },
+            new
+            {
+                WorkflowStatus = AipWorkflowStatus.Draft,
+                GroupIds       = ctx.Groups.Select(g => g.Id).ToArray(),
+            }, ct);
+
+        _logger.LogInformation(
+            "AIP returned to the encoders by the department head. AipRecordId: {AipRecordId}, "
+            + "OfficeId: {OfficeId}, Groups: {GroupCount}, UserId: {UserId}",
+            aipRecordId, ctx.OfficeId, ctx.Groups.Count, caller.Id);
+
+        return ServiceResult<AipSubmitResultDto>.Ok(new AipSubmitResultDto(
+            aipRecordId, ctx.OfficeId, AipWorkflowStatus.Draft, ctx.Groups.Count));
+    }
+
     // ── The checklist ─────────────────────────────────────────────────────────
 
     /// <summary>

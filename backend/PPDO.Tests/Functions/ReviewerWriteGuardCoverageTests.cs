@@ -95,6 +95,14 @@ public sealed class ReviewerWriteGuardCoverageTests
         // same both-sets membership, dedicated assertion in
         // Accept_IsGatedOnTheCrossOfficeReviewerFlag.
         $"{nameof(AipReviewFunctions)}.{nameof(AipReviewFunctions.Accept)}",
+
+        // Added 2026-09-14 — re-opening an accepted office. Accept's sibling: same gate, same
+        // both-sets membership, dedicated assertion in Reopen_IsGatedOnTheCrossOfficeReviewerFlag.
+        $"{nameof(AipReviewFunctions)}.{nameof(AipReviewFunctions.Reopen)}",
+
+        // Added 2026-09-14 — returning work to the encoders. SubmitToPpdo's sibling: the department
+        // head's alone. Dedicated assertion in ReturnToEncoder_IsGatedOnTheDepartmentHeadFlag.
+        $"{nameof(AipSubmitFunctions)}.{nameof(AipSubmitFunctions.ReturnToEncoder)}",
     ];
 
     /// <summary>
@@ -134,6 +142,10 @@ public sealed class ReviewerWriteGuardCoverageTests
         // directly above: the cross-office reviewer is the only caller who may do it, and it moves
         // a workflow column and touches no figures.
         $"{nameof(AipReviewFunctions)}.{nameof(AipReviewFunctions.Accept)}",
+
+        // Added 2026-09-14 — re-opening an accepted office. The cross-office reviewer is the only
+        // caller who may do it, and like return and accept it moves a workflow column and no figures.
+        $"{nameof(AipReviewFunctions)}.{nameof(AipReviewFunctions.Reopen)}",
     ];
 
     /// <summary>Write endpoints that genuinely guard content — the set the two theories cover.</summary>
@@ -274,6 +286,48 @@ public sealed class ReviewerWriteGuardCoverageTests
         Assert.Equal($"status:{HttpStatusCode.Forbidden}", ordinary);
         Assert.Equal($"status:{HttpStatusCode.Forbidden}", departmentHead);
         Assert.NotEqual($"status:{HttpStatusCode.Forbidden}", crossOffice);
+    }
+
+    /// <summary>
+    /// The same three-way assertion for re-open (added 2026-09-14). ⚠️ The department-head row
+    /// matters for the reason it does on accept: re-opening pulls an office out of the consolidated
+    /// AIP, which is PPDO's decision, never the office's own.
+    /// </summary>
+    [Fact]
+    public async Task Reopen_IsGatedOnTheCrossOfficeReviewerFlag()
+    {
+        string ordinary = await OutcomeAsync(
+            typeof(AipReviewFunctions).FullName!, nameof(AipReviewFunctions.Reopen),
+            crossOfficeReviewer: false, departmentHeadReviewer: false);
+        string departmentHead = await OutcomeAsync(
+            typeof(AipReviewFunctions).FullName!, nameof(AipReviewFunctions.Reopen),
+            crossOfficeReviewer: false, departmentHeadReviewer: true);
+        string crossOffice = await OutcomeAsync(
+            typeof(AipReviewFunctions).FullName!, nameof(AipReviewFunctions.Reopen),
+            crossOfficeReviewer: true, departmentHeadReviewer: false);
+
+        Assert.Equal($"status:{HttpStatusCode.Forbidden}", ordinary);
+        Assert.Equal($"status:{HttpStatusCode.Forbidden}", departmentHead);
+        Assert.NotEqual($"status:{HttpStatusCode.Forbidden}", crossOffice);
+    }
+
+    /// <summary>
+    /// The gate <see cref="AipSubmitFunctions.ReturnToEncoder"/> has (added 2026-09-14), asserted
+    /// directly for the reason <see cref="SubmitToPpdo_IsGatedOnTheDepartmentHeadFlag"/> is: an
+    /// encoder must not be able to pull their own work back out of their department head's hands.
+    /// </summary>
+    [Fact]
+    public async Task ReturnToEncoder_IsGatedOnTheDepartmentHeadFlag()
+    {
+        string ordinary = await OutcomeAsync(
+            typeof(AipSubmitFunctions).FullName!, nameof(AipSubmitFunctions.ReturnToEncoder),
+            crossOfficeReviewer: false, departmentHeadReviewer: false);
+        string departmentHead = await OutcomeAsync(
+            typeof(AipSubmitFunctions).FullName!, nameof(AipSubmitFunctions.ReturnToEncoder),
+            crossOfficeReviewer: false, departmentHeadReviewer: true);
+
+        Assert.Equal($"status:{HttpStatusCode.Forbidden}", ordinary);
+        Assert.NotEqual($"status:{HttpStatusCode.Forbidden}", departmentHead);
     }
 
     /// <summary>

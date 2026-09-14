@@ -370,6 +370,9 @@ public sealed class AipExpenditureService : IAipExpenditureService
                 return ServiceResult<T>.BadRequest(
                     $"'{i.Name}' has a number of days of {i.NumberOfDays}. Use 1 for items that are "
                     + "not charged per day.");
+            if (i.PeriodNo is < 1 or > 4)
+                return ServiceResult<T>.BadRequest(
+                    $"'{i.Name}' is placed in quarter {i.PeriodNo}. Quarters run from 1 to 4.");
         }
 
         return null;
@@ -436,6 +439,7 @@ public sealed class AipExpenditureService : IAipExpenditureService
             AipProcurementItem item = new()
             {
                 PriceIndexItemId = i.PriceIndexItemId,
+                PeriodNo     = i.PeriodNo,
                 Name         = i.Name.Trim(),
                 Unit         = i.Unit.Trim(),
                 UnitPrice    = i.UnitPrice,
@@ -476,7 +480,7 @@ public sealed class AipExpenditureService : IAipExpenditureService
         e.Ps, e.Mooe, e.Co, e.Total,
         (items ?? []).Select(i => new AipProcurementItemDto(
             i.Id, i.PriceIndexItemId, i.Name, i.Unit,
-            i.UnitPrice, i.Qty, i.NumberOfDays, i.LineTotal)).ToList());
+            i.UnitPrice, i.Qty, i.NumberOfDays, i.LineTotal, i.PeriodNo)).ToList());
 
     private sealed record AipContext(AipActivity Activity, AipOffice Office);
 }

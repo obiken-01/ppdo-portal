@@ -345,6 +345,28 @@ public sealed class AipReviewCommentServiceTests
         Assert.Equal(AipWorkflowStatus.Draft, result.Value.WorkflowStatus);
     }
 
+    /// <summary>The two hand-offs added 2026-09-14 read back with their own destination and side.</summary>
+    [Fact]
+    public async Task GetHistoryAsync_ReturnToEncodersAndReopen_MapToTheirStatesAndSides()
+    {
+        HandOff(1, AuditAction.SubmitToDeptHead, AipWorkflowStatus.Draft, 0);
+        HandOff(2, AuditAction.ReturnToEncoder, AipWorkflowStatus.DepartmentReview, 10);
+        HandOff(3, AuditAction.ReopenByPpdo, AipWorkflowStatus.Consolidated, 20, actor: "Jose Santos");
+        AipReviewCommentService sut = Build();
+
+        ServiceResult<AipOfficeHistoryDto> result =
+            await sut.GetHistoryAsync(RecordId, OfficeId, PpdoReviewer());
+
+        AipHistoryEntryDto returned = result.Value!.Entries.Single(e => e.Id == 2);
+        Assert.Equal(AipWorkflowStatus.Draft, returned.ToStatus);
+        Assert.Equal("DepartmentHead", returned.ActorSide);
+
+        AipHistoryEntryDto reopened = result.Value.Entries.Single(e => e.Id == 3);
+        Assert.Equal(AipWorkflowStatus.Consolidated, reopened.FromStatus);
+        Assert.Equal(AipWorkflowStatus.ReturnedByPpdo, reopened.ToStatus);
+        Assert.Equal("Ppdo", reopened.ActorSide);
+    }
+
     // ── Creating ──────────────────────────────────────────────────────────────
 
     /// <summary>

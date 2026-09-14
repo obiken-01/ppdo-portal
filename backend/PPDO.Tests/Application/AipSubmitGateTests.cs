@@ -382,6 +382,69 @@ public sealed class AipSubmitGateTests
         foreach (AipOffice g in _groups) g.WorkflowStatus = status;
     }
 
+    // ── Return to the encoders (added 2026-09-14) ─────────────────────────────
+
+    [Fact]
+    public async Task ReturnToEncoder_FromDepartmentReview_MovesEveryGroupToDraftAndLogsOnce()
+    {
+        GivenGroupsAt(AipWorkflowStatus.DepartmentReview);
+        _groups.Add(new AipOffice
+        {
+            Id = GroupB, AipRecordId = RecordId, OfficeId = OfficeId,
+            RefCode = "3000-000-1-01-010", Name = "PPDO - ANNEX", Sector = "SOCIAL",
+            WorkflowStatus = AipWorkflowStatus.DepartmentReview,
+        });
+        AipSubmitService sut = Build();
+
+        ServiceResult<AipSubmitResultDto> result =
+            await sut.ReturnToEncoderAsync(RecordId, OfficeId, DeptHead());
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(AipWorkflowStatus.Draft, result.Value!.WorkflowStatus);
+        Assert.Equal(2, result.Value.GroupsMoved);
+        Assert.All(_groups, g => Assert.Equal(AipWorkflowStatus.Draft, g.WorkflowStatus));
+        _audit.Verify(a => a.LogAsync("aip_offices", GroupA, AuditAction.ReturnToEncoder,
+            It.IsAny<object?>(), It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>
+    /// ⚠️ Department review only. Returned-by-PPDO work is already editable by both parties, and work at
+    /// PPDO or accepted is not the department head's to move.
+    /// </summary>
+    [Theory]
+    [InlineData(AipWorkflowStatus.Draft, "already with its encoders")]
+    [InlineData(AipWorkflowStatus.ReturnedByPpdo, "department review")]
+    [InlineData(AipWorkflowStatus.SubmittedToPpdo, "department review")]
+    [InlineData(AipWorkflowStatus.Consolidated, "department review")]
+    public async Task ReturnToEncoder_OutsideDepartmentReview_IsRefusedAndMovesNothing(
+        string status, string expected)
+    {
+        GivenGroupsAt(status);
+        AipSubmitService sut = Build();
+
+        ServiceResult<AipSubmitResultDto> result =
+            await sut.ReturnToEncoderAsync(RecordId, OfficeId, DeptHead());
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains(expected, result.Error!);
+        Assert.All(_groups, g => Assert.Equal(status, g.WorkflowStatus));
+        _audit.Verify(a => a.LogAsync(It.IsAny<string>(), It.IsAny<int>(), AuditAction.ReturnToEncoder,
+            It.IsAny<object?>(), It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ReturnToEncoder_ForAnotherOffice_IsNotFound()
+    {
+        GivenGroupsAt(AipWorkflowStatus.DepartmentReview);
+        AipSubmitService sut = Build();
+
+        ServiceResult<AipSubmitResultDto> result =
+            await sut.ReturnToEncoderAsync(RecordId, officeId: OfficeId + 1, DeptHead());
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+        Assert.All(_groups, g => Assert.Equal(AipWorkflowStatus.DepartmentReview, g.WorkflowStatus));
+    }
+
     /// <summary>A second sub-office group, so "every group moves together" is actually exercised.</summary>
     private void GivenASecondGroup()
         => _groups.Add(new AipOffice
@@ -544,6 +607,8 @@ public sealed class AipSubmitGateTests
         [
             AuditAction.Create, AuditAction.Update, AuditAction.Delete,
             AuditAction.SubmitToDeptHead, AuditAction.SubmitToPpdo,
+            AuditAction.ReturnByPpdo, AuditAction.AcceptByPpdo,
+            AuditAction.ReopenByPpdo, AuditAction.ReturnToEncoder,
         ];
 
         Assert.All(all, a => Assert.InRange(a.Length, 1, 10));

@@ -1,0 +1,255 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #F1F3F5;
+      font-family: "Segoe UI", "Source Sans Pro", system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: #196638; }
+    a:hover { color: #13512D; }
+    .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, "Liberation Mono", monospace; }
+    .lbl {
+      display: block; margin-bottom: 4px; font-size: 12px; line-height: 16px;
+      font-weight: 600; text-transform: uppercase; letter-spacing: 0.025em; color: #5A636B;
+    }
+    /* Annex B columns A–R. Description (B–E) is one cell; the level shows as indent, as B/C/D/E do in the file. */
+    .g {
+      display: grid;
+      grid-template-columns: 150px 360px 64px 110px 78px 86px 200px 88px 84px 92px 84px 96px 84px 84px 72px;
+    }
+    .h {
+      display: flex; align-items: center; justify-content: center; text-align: center;
+      padding: 6px 4px; background: #F1F3F5; border-right: 1px solid #C7CFD6; border-bottom: 1px solid #C7CFD6;
+      font-size: 10px; line-height: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; color: #5A636B;
+    }
+    .n { display: block; font-weight: 600; color: #7D858C; }
+    .c {
+      padding: 5px 6px; border-right: 1px solid #E9ECEF; border-bottom: 1px solid #E9ECEF;
+      font-size: 12px; line-height: 16px; color: #343A40;
+    }
+    .r { text-align: right; font-variant-numeric: tabular-nums; }
+    .muted { color: #5A636B; }
+    .tab {
+      display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px;
+      font-size: 13px; line-height: 18px; font-weight: 500; color: #5A636B; border-bottom: 2px solid transparent;
+    }
+    .tab-on { color: #196638; border-bottom-color: #196638; font-weight: 600; }
+    .count { border-radius: 9999px; background: #E9ECEF; color: #5A636B; padding: 0 7px; font-size: 11px; line-height: 16px; }
+    .pill { border-radius: 9999px; padding: 1px 8px; font-size: 10px; line-height: 14px; font-weight: 600; text-transform: none; letter-spacing: 0; }
+  </style>
+</helmet>
+
+<div style="padding: 24px;">
+
+  <!-- Page header -->
+  <div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 16px;">
+    <div>
+      <h1 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; color: #343A40;">Consolidated AIP</h1>
+      <p style="margin: 2px 0 0; font-size: 14px; line-height: 20px; color: #5A636B;">
+        FY 2028 &middot; <strong style="color: #343A40;">5 of 19 offices</strong> submitted to PPDO &middot; totals cover submitted offices only
+      </p>
+    </div>
+    <div>
+      <span class="lbl">Fiscal year</span>
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 32px; border: 1px solid #C7CFD6; background: #FFFFFF; padding: 6px 12px; font-size: 14px; line-height: 20px; color: #343A40;">
+        <span>FY 2028</span><span style="color: #ADB5BD;">&#9662;</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sector tabs = the four sheets -->
+  <div style="display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid #E9ECEF; margin-bottom: 16px;">
+    <span class="tab tab-on">General <span class="count">2 of 11</span></span>
+    <span class="tab">Social <span class="count">1 of 6</span></span>
+    <span class="tab">Economic <span class="count">2 of 7</span></span>
+    <span class="tab">Others <span class="count">0 of 2</span></span>
+  </div>
+
+  <div style="border: 1px solid #E9ECEF; background: #FFFFFF;">
+
+    <!-- Preamble, rows 1–7 of the sheet -->
+    <div style="padding: 16px 16px 12px; text-align: center;">
+      <p style="margin: 0; font-size: 12px; line-height: 16px; color: #5A636B;">Annex B</p>
+      <p style="margin: 2px 0 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #343A40;">ANNUAL INVESTMENT PROGRAM (AIP) FY 2028</p>
+      <p style="margin: 0; font-size: 13px; line-height: 18px; font-weight: 600; color: #343A40;">By Program/Project/Activity by Sector</p>
+      <p style="margin: 0; font-size: 13px; line-height: 18px; font-weight: 600; color: #343A40;">As of SEPTEMBER 2026</p>
+      <div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-top: 12px; text-align: left;">
+        <span style="font-size: 12px; line-height: 16px; font-weight: 600; color: #343A40;">Province/City/Municipality/Barangay: OCCIDENTAL MINDORO</span>
+        <span style="font-size: 12px; line-height: 16px; color: #5A636B;">Sheet GENERAL_FY2028 &middot; 1000 General Public Services</span>
+      </div>
+    </div>
+
+    <!-- The grid scrolls sideways inside the panel; the page never does -->
+    <div style="overflow-x: auto; border-top: 1px solid #C7CFD6;">
+      <div style="width: 1732px;">
+
+        <!-- Two-tier header, rows 8–9 -->
+        <div class="g">
+          <div class="h" style="grid-column: 1; grid-row: 1 / span 2;"><span>AIP Reference Code<span class="n">(1)</span></span></div>
+          <div class="h" style="grid-column: 2; grid-row: 1 / span 2;"><span>Program/Project/Activity Description<span class="n">(2)</span></span></div>
+          <div class="h" style="grid-column: 3; grid-row: 1 / span 2;"><span>eSRE Code</span></div>
+          <div class="h" style="grid-column: 4; grid-row: 1 / span 2;"><span>Implementing Office/ Department<span class="n">(3)</span></span></div>
+          <div class="h" style="grid-column: 5 / span 2; grid-row: 1;">Schedule of Implementation</div>
+          <div class="h" style="grid-column: 5; grid-row: 2;"><span>Start Date<span class="n">(4)</span></span></div>
+          <div class="h" style="grid-column: 6; grid-row: 2;"><span>Completion Date<span class="n">(5)</span></span></div>
+          <div class="h" style="grid-column: 7; grid-row: 1 / span 2;"><span>Expected Outputs<span class="n">(6)</span></span></div>
+          <div class="h" style="grid-column: 8; grid-row: 1 / span 2;"><span>Funding Source<span class="n">(7)</span></span></div>
+          <div class="h" style="grid-column: 9 / span 4; grid-row: 1;">Amount (in thousand pesos)</div>
+          <div class="h" style="grid-column: 9; grid-row: 2;"><span>PS<span class="n">(8)</span></span></div>
+          <div class="h" style="grid-column: 10; grid-row: 2;"><span>MOOE<span class="n">(9)</span></span></div>
+          <div class="h" style="grid-column: 11; grid-row: 2;"><span>CO<span class="n">(10)</span></span></div>
+          <div class="h" style="grid-column: 12; grid-row: 2;"><span>Total<span class="n">(11) 8+9+10</span></span></div>
+          <div class="h" style="grid-column: 13 / span 3; grid-row: 1;">Climate Change Expenditure (in thousand pesos)</div>
+          <div class="h" style="grid-column: 13; grid-row: 2;"><span>CC Adaptation<span class="n">(12)</span></span></div>
+          <div class="h" style="grid-column: 14; grid-row: 2;"><span>CC Mitigation<span class="n">(13)</span></span></div>
+          <div class="h" style="grid-column: 15; grid-row: 2;"><span>CC Typology Code<span class="n">(14)</span></span></div>
+        </div>
+
+        <sc-for list="{{ rows }}" as="row" hint-placeholder-count="12">
+
+          <!-- Office — submitted -->
+          <sc-if value="{{ row.isOffice }}" hint-placeholder-val="{{ false }}">
+            <div class="g" style="background: #D4EDDE;">
+              <span class="c mono" style="font-size: 11px; font-weight: 600;">{{ row.code }}</span>
+              <span class="c" style="font-weight: 700; display: flex; flex-wrap: wrap; align-items: center; gap: 6px;">{{ row.name }} <span class="pill" style="{{ row.statusStyle }}">{{ row.status }}</span></span>
+              <span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span>
+              <span class="c r" style="font-weight: 700;">{{ row.ps }}</span>
+              <span class="c r" style="font-weight: 700;">{{ row.mooe }}</span>
+              <span class="c r" style="font-weight: 700;">{{ row.co }}</span>
+              <span class="c r" style="font-weight: 700;">{{ row.total }}</span>
+              <span class="c r" style="font-weight: 700;">{{ row.cca }}</span>
+              <span class="c r" style="font-weight: 700;">{{ row.ccm }}</span>
+              <span class="c"></span>
+            </div>
+          </sc-if>
+
+          <!-- Office — not yet submitted -->
+          <sc-if value="{{ row.isPending }}" hint-placeholder-val="{{ false }}">
+            <div class="g" style="background: #F8F9FA;">
+              <span class="c mono muted" style="font-size: 11px;">{{ row.code }}</span>
+              <span class="c muted" style="font-weight: 700; display: flex; flex-wrap: wrap; align-items: center; gap: 6px;">{{ row.name }} <span class="pill" style="{{ row.statusStyle }}">{{ row.status }}</span></span>
+              <span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span>
+              <span class="c muted" style="grid-column: 9 / span 4; text-align: center; font-style: italic;">Not yet submitted &mdash; not in the totals</span>
+              <span class="c"></span><span class="c"></span><span class="c"></span>
+            </div>
+          </sc-if>
+
+          <!-- Program -->
+          <sc-if value="{{ row.isProgram }}" hint-placeholder-val="{{ false }}">
+            <div class="g" style="background: #F0FAF4;">
+              <span class="c mono" style="font-size: 11px;">{{ row.code }}</span>
+              <span class="c" style="padding-left: 20px; font-weight: 700;">{{ row.name }}</span>
+              <span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span>
+              <span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span>
+            </div>
+          </sc-if>
+
+          <!-- Project -->
+          <sc-if value="{{ row.isProject }}" hint-placeholder-val="{{ false }}">
+            <div class="g" style="background: #F7FCF9;">
+              <span class="c mono" style="font-size: 11px;">{{ row.code }}</span>
+              <span class="c" style="padding-left: 34px; font-weight: 600;">{{ row.name }}</span>
+              <span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span>
+              <span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span>
+            </div>
+          </sc-if>
+
+          <!-- Activity — the name opens the modal -->
+          <sc-if value="{{ row.isActivity }}" hint-placeholder-val="{{ true }}">
+            <div class="g" style="background: #FFFFFF;">
+              <span class="c mono muted" style="font-size: 11px;">{{ row.code }}</span>
+              <span class="c" style="padding-left: 52px;"><span style="text-decoration: underline; text-decoration-color: #A8DABC; text-underline-offset: 2px; color: #196638;">{{ row.name }}</span></span>
+              <span class="c" style="text-align: center;">{{ row.esre }}</span>
+              <span class="c">{{ row.office }}</span>
+              <span class="c">{{ row.start }}</span>
+              <span class="c">{{ row.end }}</span>
+              <span class="c">{{ row.outputs }}</span>
+              <span class="c">{{ row.fund }}</span>
+              <span class="c r">{{ row.ps }}</span>
+              <span class="c r">{{ row.mooe }}</span>
+              <span class="c r">{{ row.co }}</span>
+              <span class="c r" style="font-weight: 600;">{{ row.total }}</span>
+              <span class="c r">{{ row.cca }}</span>
+              <span class="c r">{{ row.ccm }}</span>
+              <span class="c" style="text-align: center;">{{ row.cct }}</span>
+            </div>
+          </sc-if>
+
+          <!-- TOTAL — the sheet's last row -->
+          <sc-if value="{{ row.isTotal }}" hint-placeholder-val="{{ false }}">
+            <div class="g" style="background: #196638;">
+              <span class="c" style="grid-column: 1 / span 8; color: #FFFFFF; font-weight: 700; letter-spacing: 0.05em; border-right-color: #13512D; border-bottom-color: #13512D;">TOTAL &middot; <span style="font-weight: 500; letter-spacing: 0;">2 of 11 General offices submitted</span></span>
+              <span class="c r" style="color: #FFFFFF; font-weight: 700; border-color: #13512D;">{{ row.ps }}</span>
+              <span class="c r" style="color: #FFFFFF; font-weight: 700; border-color: #13512D;">{{ row.mooe }}</span>
+              <span class="c r" style="color: #FFFFFF; font-weight: 700; border-color: #13512D;">{{ row.co }}</span>
+              <span class="c r" style="color: #FFFFFF; font-weight: 700; border-color: #13512D;">{{ row.total }}</span>
+              <span class="c r" style="color: #FFFFFF; font-weight: 700; border-color: #13512D;">{{ row.cca }}</span>
+              <span class="c r" style="color: #FFFFFF; font-weight: 700; border-color: #13512D;">{{ row.ccm }}</span>
+              <span class="c" style="border-color: #13512D;"></span>
+            </div>
+          </sc-if>
+
+        </sc-for>
+
+      </div>
+    </div>
+
+    <!-- The note the printed form needs (AIP_Form_Spec §6.2) -->
+    <p style="margin: 0; padding: 10px 16px; border-top: 1px solid #E9ECEF; font-size: 12px; line-height: 16px; color: #5A636B;">
+      Amounts in thousand pesos. Each figure is rounded up to the thousand before it is added. MOOE and CO include the +30% required for FY 2028, so they can read above an office&rsquo;s ceiling. [WORDING TO AGREE WITH PPDC]
+    </p>
+  </div>
+
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1840,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const ACCEPTED = 'background: #1F7A45; color: #FFFFFF;';
+    const AT_PPDO  = 'background: #FEF3CD; color: #78350F;';
+    const OUT      = 'background: #FFFFFF; color: #5A636B; border: 1px solid #C7CFD6;';
+
+    function kind(k, r) {
+      r.isOffice = k === 'office'; r.isPending = k === 'pending'; r.isProgram = k === 'program';
+      r.isProject = k === 'project'; r.isActivity = k === 'activity'; r.isTotal = k === 'total';
+      ['ps','mooe','co','total','cca','ccm','cct','esre','office','start','end','outputs','fund','status','statusStyle'].forEach(function (f) {
+        if (r[f] == null) r[f] = '';
+      });
+      return r;
+    }
+
+    // RESOLVED 2026-09-14: offices not yet with PPDO are left out of the grid entirely; amounts carry .00.
+    const rows = [
+      kind('office',   { code: '1000-000-1-01-001', name: 'OFFICE OF THE PROVINCIAL GOVERNOR', status: 'Accepted', statusStyle: ACCEPTED, ps: '8,799.00', mooe: '112,116.00', total: '120,915.00' }),
+      kind('program',  { code: '1000-000-1-01-001-001', name: 'EXECUTIVE GOVERNANCE PROGRAM' }),
+      kind('project',  { code: '1000-000-1-01-001-001-001', name: 'Exercise general supervision and control over all programs and projects' }),
+      kind('activity', { code: '1000-000-1-01-001-001-001-001', name: 'Creation of plantilla positions', esre: 'ID', office: 'PGO, HR', start: 'January', end: 'December', outputs: 'Plantilla positions created', fund: 'GF', ps: '8,799.00', mooe: '1,099.00', total: '9,898.00' }),
+      kind('activity', { code: '1000-000-1-01-001-001-001-002', name: 'Maintain efficient administrative support and internal systems', esre: 'ID', office: 'PGO', start: 'January', end: 'December', outputs: '100% of logistical and administrative requirements met', fund: 'GF', mooe: '109,863.00', total: '109,863.00' }),
+      kind('project',  { code: '1000-000-1-01-001-001-002', name: 'SGLG Assessment' }),
+      kind('activity', { code: '1000-000-1-01-001-001-002-001', name: 'Conduct of annual SGLG assessment', esre: 'ID', office: 'PGO', start: 'January', end: 'December', outputs: 'Annual SGLG assessment conducted', fund: 'GF', mooe: '1,154.00', total: '1,154.00' }),
+      kind('office',   { code: '1000-000-1-01-010', name: 'PROVINCIAL PLANNING AND DEVELOPMENT OFFICE', status: 'With PPDO', statusStyle: AT_PPDO, mooe: '2,145.00', co: '3,900.00', total: '6,045.00', cca: '1,200.00' }),
+      kind('program',  { code: '1000-000-1-01-010-001', name: 'PLANNING AND DEVELOPMENT COORDINATION PROGRAM' }),
+      kind('project',  { code: '1000-000-1-01-010-001-001', name: 'Local development planning and monitoring' }),
+      kind('activity', { code: '1000-000-1-01-010-001-001-001', name: 'Formulation of the FY 2029 Annual Investment Program', esre: 'ID', office: 'PPDO', start: 'January', end: 'June', outputs: 'AIP endorsed by the PDC', fund: 'GF', mooe: '1,300.00', total: '1,300.00' }),
+      kind('activity', { code: '1000-000-1-01-010-001-001-002', name: 'Monitoring and evaluation of provincial PPAs', esre: 'ID', office: 'PPDO-RMED', start: 'January', end: 'December', outputs: 'Four quarterly M&E reports', fund: 'GF', mooe: '845.00', total: '845.00' }),
+      kind('activity', { code: '1000-000-1-01-010-001-001-003', name: 'Procurement of GIS workstations', esre: 'ID', office: 'PPDO-MIS', start: 'March', end: 'May', outputs: 'Three workstations delivered', fund: 'GF', co: '3,900.00', total: '3,900.00', cca: '1,200.00', cct: 'A-1' }),
+      kind('total',    { ps: '8,799.00', mooe: '114,261.00', co: '3,900.00', total: '126,960.00', cca: '1,200.00' }),
+    ];
+
+    return { rows: rows };
+  }
+}
+</script>
+</body>
+</html>

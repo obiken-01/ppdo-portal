@@ -8,8 +8,8 @@ namespace PPDO.Infrastructure.Data.Configurations;
 /// Mapping for <see cref="AipProcurementItem"/> (V18-80 / PPDO-54). snake_case table and columns —
 /// a new table, so the new-table rule applies (<c>docs/NAMING_CONVENTIONS.md</c>).
 ///
-/// Deliberately shaped on <c>WfpProcurementItemConfiguration</c> <b>minus <c>period_no</c></b>: an
-/// AIP activity carries one annual figure, so there is no period dimension to key on.
+/// Shaped on <c>WfpProcurementItemConfiguration</c>. ↩️ <c>period_no</c> was left off at first and
+/// added 2026-09-14 as input-only quarters — see <see cref="AipProcurementItem.PeriodNo"/>.
 /// </summary>
 public sealed class AipProcurementItemConfiguration : IEntityTypeConfiguration<AipProcurementItem>
 {
@@ -23,6 +23,12 @@ public sealed class AipProcurementItemConfiguration : IEntityTypeConfiguration<A
         builder.Property(e => e.ExpenditureId)
             .HasColumnName("expenditure_id")
             .IsRequired();
+
+        // Default 1 so the migration places every existing item in Q1 — no saved total moves.
+        builder.Property(e => e.PeriodNo)
+            .HasColumnName("period_no")
+            .IsRequired()
+            .HasDefaultValue(1);
 
         builder.Property(e => e.PriceIndexItemId)
             .HasColumnName("price_index_item_id");

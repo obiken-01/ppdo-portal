@@ -30,7 +30,7 @@ import { canOpenAipOfficeReview, budgetPlanningFallback } from "@/lib/budget-pla
 import { listAip, listAipExpenditures, aipErrorMessage } from "@/lib/aip";
 import { listAccounts, listFundingSources } from "@/lib/config";
 import {
-  getAipOfficeReview, returnAipToOffice, acceptAipOffice,
+  getAipOfficeReview, returnAipToOffice, acceptAipOffice, reopenAipOffice,
 } from "@/lib/aip-review";
 import { FIRST_ENTERED_FISCAL_YEAR } from "@/lib/aip-fiscal-years";
 import { AIP_WORKFLOW, describeAipHolderForReviewer } from "@/lib/aip-workflow";
@@ -129,6 +129,7 @@ export default function AipReviewPage() {
   }, []);
 
   const atPpdo = review?.workflowStatus === AIP_WORKFLOW.submittedToPpdo;
+  const accepted = review?.workflowStatus === AIP_WORKFLOW.consolidated;
 
   /**
    * Both decisions run through here.
@@ -179,16 +180,33 @@ export default function AipReviewPage() {
     if (!review) return;
     setDialog({
       title: "Accept into the consolidated AIP?",
-      // ⚠️ Says the one-way part out loud. There is no un-accept in shipped code — the return path
-      // refuses from Consolidated — so a reviewer must not learn that after pressing it.
+      // ↩️ Was "this cannot be undone from here" until 2026-09-14, when re-open was added. It still
+      // says what accepting does to the office's ability to edit, which is the part that matters.
       message:
         `${review.officeName} will be marked done and counted in the consolidated AIP. `
-        + "This cannot be undone from here, and the office can no longer change its figures.",
+        + "The office can no longer change its figures unless a reviewer re-opens it.",
       confirmLabel: "Accept",
       variant: "primary",
       onConfirm: () => void act(
         () => acceptAipOffice(review.aipRecordId, review.officeId),
         "Could not accept this office."),
+      onClose: () => setDialog(null),
+    });
+  }
+
+  /** Added 2026-09-14 — an accepted office back into the office's hands. */
+  function confirmReopen() {
+    if (!review) return;
+    setDialog({
+      title: "Re-open and send this AIP back?",
+      message:
+        `${review.officeName} leaves the consolidated AIP and can edit its AIP again. `
+        + "Its department head re-submits it when the changes are made.",
+      confirmLabel: "Re-open and send back",
+      variant: "warning",
+      onConfirm: () => void act(
+        () => reopenAipOffice(review.aipRecordId, review.officeId),
+        "Could not re-open this office."),
       onClose: () => setDialog(null),
     });
   }
@@ -229,6 +247,12 @@ export default function AipReviewPage() {
                 </button>
               </>
             )}
+            {accepted && (
+              <button type="button" onClick={confirmReopen} disabled={acting}
+                className="border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60">
+                Re-open and send back
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -266,7 +290,7 @@ export default function AipReviewPage() {
                 This office&rsquo;s AIP is with{" "}
                 <strong className="text-slate-800">{describeAipHolderForReviewer(review.workflowStatus)}</strong>.
                 {review.workflowStatus === AIP_WORKFLOW.consolidated
-                  ? " Its figures are final. You can still read it and comment on it."
+                  ? " Its figures are final. You can still read it and comment on it, or re-open it and send it back to the office."
                   : " You can read it and comment on it; sending it back or accepting it becomes available once the office submits to PPDO."}
               </p>
             )}

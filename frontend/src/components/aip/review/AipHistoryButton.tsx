@@ -354,6 +354,10 @@ function describeHandOff(entry: AipHistoryEntry): string {
       return "Sent back by PPDO";
     case "ACCEPT_PPD":
       return "Accepted by PPDO";
+    case "REOPEN_PPD":
+      return "Re-opened and sent back by PPDO";
+    case "RETURN_DH":
+      return "Returned to the encoders";
   }
 }
 
@@ -362,10 +366,13 @@ const DOT_CLASS: Record<AipHistoryEntry["action"], string> = {
   SUBMIT_PPD: "bg-green-700",
   RETURN_PPD: "bg-amber-500",
   ACCEPT_PPD: "bg-green-700",
+  REOPEN_PPD: "bg-amber-500",
+  RETURN_DH: "bg-amber-500",
 };
 
 /** Completes "N comments …" for the state a hand-off opened. */
 const PERIOD: Record<string, string> = {
+  [AIP_WORKFLOW.draft]: "while with the encoders",
   [AIP_WORKFLOW.departmentReview]: "while with the department head",
   [AIP_WORKFLOW.submittedToPpdo]: "while with PPDO",
   [AIP_WORKFLOW.returnedByPpdo]: "while with the office",

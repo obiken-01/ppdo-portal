@@ -66,6 +66,8 @@ public sealed class AipReviewCommentService : IAipReviewCommentService
         AuditAction.SubmitToPpdo,
         AuditAction.ReturnByPpdo,
         AuditAction.AcceptByPpdo,
+        AuditAction.ReopenByPpdo,
+        AuditAction.ReturnToEncoder,
     ];
 
     public async Task<ServiceResult<AipOfficeHistoryDto>> GetHistoryAsync(
@@ -128,6 +130,8 @@ public sealed class AipReviewCommentService : IAipReviewCommentService
         AuditAction.SubmitToDeptHead => AipWorkflowStatus.DepartmentReview,
         AuditAction.SubmitToPpdo     => AipWorkflowStatus.SubmittedToPpdo,
         AuditAction.ReturnByPpdo     => AipWorkflowStatus.ReturnedByPpdo,
+        AuditAction.ReopenByPpdo     => AipWorkflowStatus.ReturnedByPpdo,
+        AuditAction.ReturnToEncoder  => AipWorkflowStatus.Draft,
         _                            => AipWorkflowStatus.Consolidated,
     };
 
@@ -137,9 +141,9 @@ public sealed class AipReviewCommentService : IAipReviewCommentService
     /// </summary>
     private static string ActorSideOf(string action) => action switch
     {
-        AuditAction.SubmitToDeptHead => "Office",
-        AuditAction.SubmitToPpdo     => "DepartmentHead",
-        _                            => "Ppdo",
+        AuditAction.SubmitToDeptHead                             => "Office",
+        AuditAction.SubmitToPpdo or AuditAction.ReturnToEncoder  => "DepartmentHead",
+        _                                                        => "Ppdo",
     };
 
     /// <summary>

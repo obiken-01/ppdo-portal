@@ -445,6 +445,67 @@ public sealed class AipReviewServiceTests
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
     }
 
+    // ══ Re-open an accepted office (added 2026-09-14) ═════════════════════════
+
+    [Fact]
+    public async Task ReopenOffice_FromConsolidated_SendsEveryGroupBackUnderItsOwnAction()
+    {
+        GivenEveryGroupIs(AipWorkflowStatus.Consolidated);
+        AipReviewService sut = Build();
+
+        ServiceResult<AipSubmitResultDto> result =
+            await sut.ReopenOfficeAsync(RecordId, OfficeId, PpdoReviewer());
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(AipWorkflowStatus.ReturnedByPpdo, result.Value!.WorkflowStatus);
+        Assert.Equal(2, result.Value.GroupsMoved);
+        Assert.All(_groups, g => Assert.Equal(AipWorkflowStatus.ReturnedByPpdo, g.WorkflowStatus));
+        Assert.Equal(AipWorkflowStatus.SubmittedToPpdo, _alienGroup.WorkflowStatus);
+
+        // ⚠️ Its own action — History must be able to say accepted work was re-opened.
+        _audit.Verify(a => a.LogAsync(
+            "aip_offices", GroupA, AuditAction.ReopenByPpdo,
+            It.IsAny<object?>(), It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Once);
+        _audit.Verify(a => a.LogAsync(
+            It.IsAny<string>(), It.IsAny<int>(), AuditAction.ReturnByPpdo,
+            It.IsAny<object?>(), It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    /// <summary>
+    /// ⚠️ Every other state is a 409: the button is only shown on an accepted office, so anything else
+    /// means the office moved while the screen was open.
+    /// </summary>
+    [Theory]
+    [InlineData(AipWorkflowStatus.SubmittedToPpdo)]
+    [InlineData(AipWorkflowStatus.ReturnedByPpdo)]
+    [InlineData(AipWorkflowStatus.Draft)]
+    [InlineData(AipWorkflowStatus.DepartmentReview)]
+    public async Task ReopenOffice_WhenNotAccepted_IsConflictAndMovesNothing(string status)
+    {
+        GivenEveryGroupIs(status);
+        AipReviewService sut = Build();
+
+        ServiceResult<AipSubmitResultDto> result =
+            await sut.ReopenOfficeAsync(RecordId, OfficeId, PpdoReviewer());
+
+        Assert.Equal(ServiceErrorCode.Conflict, result.Code);
+        Assert.Contains("Reload", result.Error);
+        Assert.All(_groups, g => Assert.Equal(status, g.WorkflowStatus));
+    }
+
+    [Fact]
+    public async Task ReopenOffice_ByAnEncoder_IsNotFound()
+    {
+        GivenEveryGroupIs(AipWorkflowStatus.Consolidated);
+        AipReviewService sut = Build();
+
+        ServiceResult<AipSubmitResultDto> result =
+            await sut.ReopenOfficeAsync(RecordId, OfficeId, Encoder());
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+        Assert.All(_groups, g => Assert.Equal(AipWorkflowStatus.Consolidated, g.WorkflowStatus));
+    }
+
     // ══ Accept (V18-56 / PPDO-74) ═════════════════════════════════════════════
     //
     // ⚠️ Accept is return's mirror image, and its refusals are deliberately the SAME split rather
