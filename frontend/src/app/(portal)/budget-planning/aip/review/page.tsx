@@ -34,6 +34,7 @@ import {
 } from "@/lib/aip-review";
 import { FIRST_ENTERED_FISCAL_YEAR } from "@/lib/aip-fiscal-years";
 import { AIP_WORKFLOW, describeAipHolderForReviewer } from "@/lib/aip-workflow";
+import { refreshAipNotifications } from "@/lib/aip-notifications";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import AipHistoryButton from "@/components/aip/review/AipHistoryButton";
 import AipActivityFields from "@/components/aip/entry/AipActivityFields";
@@ -157,6 +158,9 @@ export default function AipReviewPage() {
     }
 
     await load();
+    // PPDO-75 — the sidebar count moves with the decision, success or 409 alike: either way the
+    // office's state may have changed since the count was read.
+    void refreshAipNotifications();
     if (failure !== null) setError(failure);
   }
 

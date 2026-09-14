@@ -132,6 +132,8 @@ export default function AipReviewSearchPage() {
   const searchParams = useSearchParams();
   const requestedYear = Number(searchParams.get("fiscalYear"));
   const requestedOfficeId = Number(searchParams.get("officeId"));
+  // PPDO-75 — the sidebar's pending count opens "waiting on me" directly.
+  const requestedMine = searchParams.get("mine") === "true";
 
   const [fiscalYear, setFiscalYear] = useState(
     YEARS.includes(requestedYear) ? requestedYear : FIRST_ENTERED_FISCAL_YEAR
@@ -194,18 +196,24 @@ export default function AipReviewSearchPage() {
     void run(applied, fiscalYear, page);
   }, [applied, fiscalYear, page, run]);
 
-  // An office opened from the readiness board (PPDO-78). Once only — after that the panel is the
-  // reader's, and clearing it must not be undone by the URL it arrived with.
+  // An office opened from the readiness board (PPDO-78), or "waiting on me" from the sidebar count
+  // (PPDO-75). Once only — after that the panel is the reader's, and clearing it must not be undone by
+  // the URL it arrived with.
   const openedFromUrl = useRef(false);
   useEffect(() => {
     if (openedFromUrl.current || !crossOffice) return;
-    if (!Number.isInteger(requestedOfficeId) || requestedOfficeId <= 0) return;
+    const officeOk = Number.isInteger(requestedOfficeId) && requestedOfficeId > 0;
+    if (!officeOk && !requestedMine) return;
     openedFromUrl.current = true;
-    const filters: Filters = { ...EMPTY, officeIds: [requestedOfficeId] };
+    const filters: Filters = {
+      ...EMPTY,
+      officeIds: officeOk ? [requestedOfficeId] : [],
+      mine: requestedMine,
+    };
     setDraft(filters);
     collapseOnResult.current = true;
     setApplied(filters);
-  }, [crossOffice, requestedOfficeId]);
+  }, [crossOffice, requestedOfficeId, requestedMine]);
 
   function search() {
     setPage(1);

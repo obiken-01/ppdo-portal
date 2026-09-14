@@ -68,4 +68,13 @@ public static class AuditAction
     /// (DepartmentReview → Draft). Added 2026-09-14 with PPDO-73. Nine characters.
     /// </summary>
     public const string ReturnToEncoder = "RETURN_DH";
+
+    /// <summary>
+    /// Every AIP workflow hand-off, in one place (PPDO-77 read them for History; PPDO-75 reads the
+    /// latest one for the returned notice). Add a new hand-off here, or both reads miss it.
+    /// </summary>
+    public static readonly IReadOnlyList<string> AipHandOffs =
+    [
+        SubmitToDeptHead, SubmitToPpdo, ReturnByPpdo, AcceptByPpdo, ReopenByPpdo, ReturnToEncoder,
+    ];
 }

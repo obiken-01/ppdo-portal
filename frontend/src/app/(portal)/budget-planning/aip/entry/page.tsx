@@ -35,6 +35,7 @@ import AipAddProgramsPanel from "@/components/aip/entry/AipAddProgramsPanel";
 import AipExpenditureTable from "@/components/aip/entry/AipExpenditureTable";
 import AipActivityFields from "@/components/aip/entry/AipActivityFields";
 import AipSubmitChecklist, { type AipSubmitStage } from "@/components/aip/entry/AipSubmitChecklist";
+import { refreshAipNotifications, useAipNotifications } from "@/lib/aip-notifications";
 import {
   AipCommentsProvider, AipCommentFilterBar, AipCommentAnchor,
 } from "@/components/aip/entry/AipComments";
@@ -58,6 +59,8 @@ export default function AipEntryPage() {
   // The department-head reviewer's grant. Office scoping is not in the flag — the server narrows
   // to the caller's own office — so this only decides whether the second submit is offered here.
   const canReview = me?.canReviewBudgetPlanning === true;
+  // PPDO-75 — the same shared store the sidebar reads; no second fetch.
+  const notifications = useAipNotifications(me);
 
   // ⚠️ The year is read from the URL so the Budget Planning hub can hand off the year it was
   // showing (PPDO-81) — the hub names a fiscal year in every sentence on it, and landing on a
@@ -160,6 +163,7 @@ export default function AipEntryPage() {
     try {
       await submitAip(record.id);
       await load();
+      void refreshAipNotifications();
     } catch (e) {
       setError(aipErrorMessage(e, "Could not submit this AIP."));
     } finally {
@@ -181,6 +185,7 @@ export default function AipEntryPage() {
     try {
       await submitAipToPpdo(record.id, officeId);
       await load();
+      void refreshAipNotifications();
     } catch (e) {
       setError(aipErrorMessage(e, "Could not send this AIP to PPDO."));
     } finally {
@@ -196,6 +201,7 @@ export default function AipEntryPage() {
     try {
       await returnAipToEncoder(record.id, officeId);
       await load();
+      void refreshAipNotifications();
     } catch (e) {
       setError(aipErrorMessage(e, "Could not return this AIP to the encoders."));
     } finally {
@@ -229,6 +235,21 @@ export default function AipEntryPage() {
           : { kind: "awaitingReviewer", holder: describeAipHolder(workflowStatus) }
         : { kind: "locked", holder: describeAipHolder(workflowStatus) };
 
+  /**
+   * PPDO-75 — the returned banner for the year on screen.
+   *
+   * ⚠️ Cross-checked against the state this page just loaded, not taken from the store alone: the store
+   * refreshes a moment after an action, and a banner saying "returned" over a panel that already reads
+   * "sent to PPDO" would contradict itself for that moment.
+   */
+  const returnedNotice = notifications?.returned.find((r) => r.fiscalYear === fiscalYear) ?? null;
+  const returnedBanner =
+    returnedNotice?.returnedBy === "Ppdo" && workflowStatus === AIP_WORKFLOW.returnedByPpdo
+      ? "PPDO sent this back for changes — see the comments on the activities, then re-submit."
+      : returnedNotice?.returnedBy === "DepartmentHead" && workflowStatus === AIP_WORKFLOW.draft
+        ? "Your department head returned this to the encoders — see their comments, then submit again."
+        : null;
+
   // ── Shell ───────────────────────────────────────────────────────────────
   // ⚠️ The header and the year picker render immediately, in every state. Gating the whole page on
   // a spinner and then swapping in a full-height tree is the CLS failure PERFORMANCE_GUIDELINES
@@ -255,6 +276,12 @@ export default function AipEntryPage() {
 
       {error && (
         <p className="mb-4 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+      )}
+
+      {!loading && returnedBanner && (
+        <p role="status" className="mb-4 border border-slate-200 bg-amber-100 px-4 py-3 text-sm text-amber-900">
+          <strong className="font-semibold">Returned.</strong> {returnedBanner}
+        </p>
       )}
 
       {/* ⚠️ Say that a filter is on. AipReadScope shows a HOST-office user only the programs

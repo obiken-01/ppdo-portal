@@ -29,9 +29,14 @@ import { allocationLabels } from "@/lib/budget-planning-labels";
 import { canOpenAipRecords, canOpenAipReview, canOpenLdip } from "@/lib/budget-planning-access";
 import { auth } from "@/lib/auth";
 import { clearMeCache } from "@/lib/me-cache";
+import { pendingLink, useAipNotifications } from "@/lib/aip-notifications";
 import { APP_VERSION } from "@/lib/version";
 import type { MeResponse } from "@/types";
 import { resolveLandingPath } from "@/lib/landing";
+
+/** A count or status pill on a nav row (PPDO-75) — sits over the row's right edge. */
+const SIDEBAR_PILL =
+  "absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold leading-4 text-green-800 hover:bg-green-100";
 
 interface SidebarProps {
   me: MeResponse | null;
@@ -56,6 +61,11 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
     () => pathname.startsWith("/budget-planning")
   );
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+
+  // PPDO-75 — the pending count and the returned notice, from the shared store (never a fetch here).
+  const notifications = useAipNotifications(me);
+  const pending = notifications ? pendingLink(notifications) : null;
+  const returnedNotice = notifications?.returned[0] ?? null;
 
   // Auto-expand inventory when navigating to an inventory route
   useEffect(() => {
@@ -389,21 +399,54 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
                     ⚠️ Ungated on purpose, unlike the two items around it: this is the ONE
                     budget-planning page every office has, and since PPDO-81 hid the record list it
                     is the only AIP surface most users see. */}
-                <Link href="/budget-planning/aip/entry" className={childLinkCls(isActive("/budget-planning/aip/entry"))}>
-                  <span className="text-xs">•</span>
-                  <span className="truncate">AIP Entry</span>
-                </Link>
+                {/* PPDO-75 — a Returned pill while the office is handed back to this reader. A
+                    sibling link, not nested: a link inside a link is invalid and clicks the outer. */}
+                <div className="relative">
+                  <Link
+                    href="/budget-planning/aip/entry"
+                    className={`${childLinkCls(isActive("/budget-planning/aip/entry"))}${returnedNotice ? " pr-24" : ""}`}
+                  >
+                    <span className="text-xs">•</span>
+                    <span className="truncate">AIP Entry</span>
+                  </Link>
+                  {returnedNotice && (
+                    <Link
+                      href={`/budget-planning/aip/entry?fiscalYear=${returnedNotice.fiscalYear}`}
+                      title={`FY ${returnedNotice.fiscalYear} was returned to you`}
+                      className={SIDEBAR_PILL}
+                    >
+                      Returned
+                    </Link>
+                  )}
+                </div>
                 {/* PPDO-79 — the PPDO consolidated reviewer's home.
                     ⚠️ Points at the SEARCH, not at `/aip/review`: the search is the landing, and the
                     one-office screen is reached from a result rather than typed.
                     ⚠️ Active on the whole `/aip/review` subtree, so the item stays lit when a
                     reviewer follows a result into an office — otherwise the nav appears to lose
-                    its place on the click it exists to enable. */}
+                    its place on the click it exists to enable.
+                    PPDO-75 — the pending count beside it: offices waiting on this reader. Nothing at
+                    zero, and its own link, since where it goes depends on who is reading. */}
                 {showAipReview && (
-                  <Link href="/budget-planning/aip/review/search" className={childLinkCls(isActive("/budget-planning/aip/review"))}>
-                    <span className="text-xs">•</span>
-                    <span className="truncate">AIP Review</span>
-                  </Link>
+                  <div className="relative">
+                    <Link
+                      href="/budget-planning/aip/review/search"
+                      className={`${childLinkCls(isActive("/budget-planning/aip/review"))}${pending ? " pr-14" : ""}`}
+                    >
+                      <span className="text-xs">•</span>
+                      <span className="truncate">AIP Review</span>
+                    </Link>
+                    {pending && (
+                      <Link
+                        href={pending.href}
+                        title={`${pending.count} ${pending.count === 1 ? "office is" : "offices are"} waiting on you`}
+                        aria-label={`${pending.count} waiting on you`}
+                        className={`${SIDEBAR_PILL} min-w-[1.5rem] text-center tabular-nums`}
+                      >
+                        {pending.count}
+                      </Link>
+                    )}
+                  </div>
                 )}
                 {showAllocation && (
                   <Link href="/budget-planning/allocation" className={childLinkCls(isActive("/budget-planning/allocation"))}>
