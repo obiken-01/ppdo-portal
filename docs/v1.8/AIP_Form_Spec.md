@@ -378,7 +378,8 @@ form. Draft wording (PPDC to agree), from one constant:
 ### 13.5 Page setup — every sheet
 
 Landscape · **fit to one page wide**, pages tall as needed · margins left/right 0.04″, top/bottom
-0.28″ · print titles `$8:$9` · print area `$A$1:$R$<note row>`. Paper size is left to the printer:
+0.28″ · print titles `$8:$9` · print area `$A$1:$R$<note row>` · **panes frozen below row 9** so the header
+stays on screen while scrolling (added 2026-09-14). Paper size is left to the printer:
 the province's file carries a custom size that is not portable.
 
 ## 14. UI states — Consolidated AIP page

@@ -373,4 +373,17 @@ public sealed class AipFormExcelServiceTests
             Assert.Equal(9, ws.PageSetup.LastRowToRepeatAtTop);
         });
     }
+
+    /// <summary>On screen: panes frozen below the header (row 9), no columns frozen.</summary>
+    [Fact]
+    public void Export_SheetView_FreezesTheHeaderRows()
+    {
+        using XLWorkbook wb = Open();
+
+        Assert.All(wb.Worksheets, ws =>
+        {
+            Assert.Equal(9, ws.SheetView.SplitRow);
+            Assert.Equal(0, ws.SheetView.SplitColumn);
+        });
+    }
 }

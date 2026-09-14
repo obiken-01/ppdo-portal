@@ -229,7 +229,9 @@ public sealed class AipFormExcelService : IAipFormExcelService
             .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center)
             .Alignment.SetVertical(XLAlignmentVerticalValues.Center);
         ws.Row(HeaderTop).Height = 28;
-        ws.Row(HeaderBottom).Height = 56;
+        // Tall enough for the longest label — "Maintenance and Other Operating Expenses (MOOE) (9)" in
+        // column M wraps to five lines and was clipped at 56.
+        ws.Row(HeaderBottom).Height = 80;
     }
 
     private static void HeaderSpan(IXLWorksheet ws, int fromCol, int toCol, int rows, string label)
@@ -358,6 +360,8 @@ public sealed class AipFormExcelService : IAipFormExcelService
         ws.PageSetup.FitToPages(1, 0);
         ws.PageSetup.Margins.SetLeft(0.04).SetRight(0.04).SetTop(0.28).SetBottom(0.28);
         ws.PageSetup.SetRowsToRepeatAtTop(HeaderTop, HeaderBottom);
+        // On screen as on paper: the header stays put while a reader scrolls hundreds of rows.
+        ws.SheetView.FreezeRows(HeaderBottom);
         ws.PageSetup.PrintAreas.Add(1, ColRef, lastRow, LastCol);
     }
 
