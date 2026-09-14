@@ -27,14 +27,15 @@ public sealed record AipExpenditureDto(
 /// <summary>
 /// One procurement item under an AIP expenditure line (V18-80 / PPDO-54).
 ///
-/// <b>No period, frequency, annual-quarter or reserve field appears here</b>, and none may be
-/// added: those are WFP <i>schedule</i> concepts and an AIP activity carries one annual figure.
-/// <see cref="NumberOfDays"/> is the deliberate exception — it was asked for in its own right, not
-/// carried across for parity.
+/// <b>No frequency, annual-quarter or reserve field appears here</b>: those are WFP <i>schedule</i>
+/// concepts and an AIP activity carries one annual figure. Two deliberate exceptions, each asked for
+/// in its own right: <see cref="NumberOfDays"/>, and — ↩️ since 2026-09-14 — <see cref="PeriodNo"/>,
+/// an input-only quarter. The line total still sums every quarter.
 ///
 /// Name / Unit / UnitPrice are the values snapshotted at save time, not the Price Index's current
 /// ones, so a saved plan still prints what it was costed at.
 /// </summary>
+/// <param name="PeriodNo">The quarter, 1–4.</param>
 public sealed record AipProcurementItemDto(
     int      Id,
     int?     PriceIndexItemId,
@@ -43,7 +44,8 @@ public sealed record AipProcurementItemDto(
     decimal  UnitPrice,
     decimal  Qty,
     decimal  NumberOfDays,
-    decimal  LineTotal);
+    decimal  LineTotal,
+    int      PeriodNo = 1);
 
 /// <summary>
 /// One procurement item as submitted with its parent expenditure line (V18-80 / PPDO-54).
@@ -52,13 +54,18 @@ public sealed record AipProcurementItemDto(
 /// is computed server-side from qty × unitPrice × numberOfDays and never accepted from a caller,
 /// the same rule as the line's own Total.
 /// </summary>
+/// <param name="PeriodNo">
+/// The quarter, 1–4. Defaults to Q1 so a caller that predates quarters still saves a valid item
+/// rather than being refused.
+/// </param>
 public sealed record SaveAipProcurementItemDto(
     int?     PriceIndexItemId,
     string   Name,
     string   Unit,
     decimal  UnitPrice,
     decimal  Qty,
-    decimal  NumberOfDays);
+    decimal  NumberOfDays,
+    int      PeriodNo = 1);
 
 /// <summary>
 /// Body of <c>POST /api/budget-planning/aip/activities/{activityId}/expenditures</c>.

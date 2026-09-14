@@ -177,11 +177,15 @@ that have already moved are not moved back.
   a state beyond `Consolidated`, a resolution reference, a return-for-revision path.
 - **Supplemental amendments** (tracker B15, V18-73). Reportedly route through the SP first, which
   makes amendment readiness a workflow question before it is a schema one.
-- **Whether a department head may return work *down* to the encoder.** §12.6 defines only the
-  PPDO→office return. Decision 4 makes this much less pressing — both parties can edit during
-  department review, so there is nothing to unlock. **Default: not built.** Revisit if offices ask.
-- **Whether an accepted (`Consolidated`) office can be re-opened.** Not specified. **Default:** only
-  by a PPDO reviewer, through the existing return path. If that proves wrong it becomes a ticket.
+- ↩️ ~~**Whether a department head may return work *down* to the encoder.**~~ **Built 2026-09-14**
+  (Ralph, found in full-cycle testing): *Return to encoders* on AIP Entry's submit panel moves the
+  office `DepartmentReview → Draft`. **Department review only** — every other state is a 400 naming
+  it. Audit `RETURN_DH`.
+- ↩️ ~~**Whether an accepted (`Consolidated`) office can be re-opened.**~~ **Built 2026-09-14**, as its
+  **own** action rather than through the return path: *Re-open and send back* on the review screen
+  moves `Consolidated → ReturnedByPpdo`. Return keeps refusing `Consolidated` with a 409, so a stale
+  screen still cannot re-open an office a colleague has just accepted. Any other state is a 409.
+  Audit `REOPEN_PPD`.
 
 ---
 
@@ -199,8 +203,9 @@ Phase 1 and **resolve independently** (`PermissionService`), so one person may h
 | **Edit values** | ✅ **Yes** — "to update any minor details they found during review" (B11) | ❌ **Never** — "they won't be able to apply any update, just comment" (B11) |
 | **Comment** | ✅ | ✅ |
 | **Submit onward** | ✅ — the **sole** authority for `DepartmentReview → SubmittedToPpdo` | — |
-| **Return an office** | — | ✅ |
+| **Return an office** | ✅ ↩️ *down to its encoders*, from department review only (2026-09-14) | ✅ |
 | **Accept an office** | — | ✅ (decision 6) |
+| **Re-open an accepted office** | — | ✅ ↩️ (2026-09-14) |
 | **Enforced by** | `ReviewerWriteGuard` **permits** this role | `ReviewerWriteGuard` **denies** content writes |
 | **Convention** | one per office, enforced as a validation error not a DB constraint (V18-79, tracker B13) | several is fine |
 
@@ -216,10 +221,10 @@ shortcut PPDO straight to `SubmittedToPpdo`.
 | State | Who may edit content | Who may see it | Moves on by |
 |---|---|---|---|
 | `Draft` | Encoder(s) — two or more per office (tracker D5) | The office | Encoder submits for department review **(shipped, Phase 3)** |
-| `DepartmentReview` | **Encoder and department head both** (decision 4) | The office | Department head submits to PPDO |
+| `DepartmentReview` | **Encoder and department head both** (decision 4) | The office | Department head submits to PPDO — ↩️ or **returns it to the encoders** (→ `Draft`, 2026-09-14) |
 | `SubmittedToPpdo` | **Nobody** (decision 5) | The office (read-only) + PPDO reviewers | PPDO reviewer **returns** or **accepts** |
 | `ReturnedByPpdo` | Encoder and department head again | The office | Department head **re-submits** |
-| `Consolidated` | Nobody | **PPDO reviewers only** — PPDO's *division* users cannot see the consolidated document (tracker B4) | — (see open follow-up) |
+| `Consolidated` | Nobody | **PPDO reviewers only** — PPDO's *division* users cannot see the consolidated document (tracker B4) | ↩️ PPDO reviewer **re-opens** it (→ `ReturnedByPpdo`, 2026-09-14) |
 
 ### 3.3 Core
 
@@ -290,13 +295,15 @@ Routes follow the shipped `budget-planning/aip/...` family (`AipSubmitFunctions`
 | `POST /api/budget-planning/aip/{aipId}/offices/{officeId}/submit-to-ppdo` | `CanReviewBudgetPlanning` + office match | `DepartmentReview` \| `ReturnedByPpdo` → `SubmittedToPpdo`. Re-runs completeness + ceiling. Moves **every** `AipOffice` row for the office (decision 21) |
 | `POST /api/budget-planning/aip/{aipId}/offices/{officeId}/return` | `CanReviewAllOffices` | → `ReturnedByPpdo`. Body optional; the comments are the mechanism, not a covering note |
 | `POST /api/budget-planning/aip/{aipId}/offices/{officeId}/accept` | `CanReviewAllOffices` | → `Consolidated` (decision 6). Only from `SubmittedToPpdo` |
+| `POST /api/budget-planning/aip/{aipId}/offices/{officeId}/reopen` | `CanReviewAllOffices` | ↩️ Added 2026-09-14. `Consolidated` → `ReturnedByPpdo`; any other state **409**. No body. Audit `REOPEN_PPD` |
+| `POST /api/budget-planning/aip/{aipId}/offices/{officeId}/return-to-encoder` | `CanReviewBudgetPlanning` + office match | ↩️ Added 2026-09-14. `DepartmentReview` → `Draft`; every other state **400** naming it. No completeness re-run. Audit `RETURN_DH` |
 | `GET /api/budget-planning/aip/{aipId}/offices/{officeId}/comments` | `CanAccessBudgetPlanning` (scoped) or `CanReviewAllOffices` | All comments for one office, resolved included |
 | `POST /api/budget-planning/aip/comments` | Any role that may comment (§3.1) | ⚠️ Must **not** route through `ReviewerWriteGuard`. **Activity nodes only** — Program / Project → 400 (decision 7, PPDO-79) |
 | `POST /api/budget-planning/aip/comments/{id}/resolve` | Authoring side only (decision 8) | 403 for the recipient |
 | `GET /api/budget-planning/aip/review/search` | `CanAccessBudgetPlanning`, **clamped per caller** (§3.4, decision 22) | Query-first (§4.1). **Slim DTO, paginated** |
 | `GET /api/budget-planning/aip/activities/{activityId}/review` | `CanReviewAllOffices` **or** `CanReviewBudgetPlanning` | 🆕 PPDO-79 — the activity modal (§6.1a). Path + activity + expenditure lines + a server-computed `canEdit`. A department head may open only their own office's activity; every refusal is a **404** worded like a missing activity (PPDO-46). ⚠️ Returns the lines itself rather than leaning on `activities/{id}/expenditures`, which scopes with `OfficeScope.Resolve` and 404s a cross-office reviewer who does not sit in PPDO |
 | `GET /api/budget-planning/dashboard/offices?fiscalYear=` | Unchanged — `CanAccessBudgetPlanning` **and** a cross-office grant (`Budget_Planning_Dashboard_Requirements.md` §4.2) | ↩️ **Replaces the planned `readiness-board` endpoint** (decision 18). PPDO-78 adds `ReadinessColumn`, `IsReturned` and `AssignedProgramCount` to `OfficeSummaryDto`, and derives `SubmissionStatus` from workflow state instead of the constant `Todo`. One office read feeds both views, so they cannot drift |
-| `GET /api/budget-planning/aip/{aipId}/consolidated` | `CanReviewAllOffices` | Partial by design (decision 14). Slim, server-aggregated |
+| `GET /api/budget-planning/aip/consolidated?fiscalYear=&sector=` | `CanReviewAllOffices` | Partial by design (decision 14). ↩️ *PPDO-73:* by fiscal year and **one sector per call** — a sheet at a time; GENERAL alone ran to ~800 rows in FY2027. Flat, slim rows carrying the **printed** figures, computed server-side (§6.6), plus per-sector submitted counts. An unopened year is an empty sheet, not a 404; an unknown sector is a 400 |
 | `GET /api/budget-planning/aip/{aipId}/offices/{officeId}/history` | `CanAccessBudgetPlanning` (scoped) or `CanReviewAllOffices` — ↩️ **the same gate and scope as the comments read** (PPDO-77) | Was "same as the review read", which would have hidden an office's own history from the office. Readable by its encoders and department head on AIP Entry and by any cross-office reviewer. Hand-offs newest first, each carrying the comments written while the office sat in the state it opened (§5.2). Every refusal is a **404** worded like a missing office (PPDO-46) |
 | `GET /api/budget-planning/aip/review/pending-count` | Any reviewer | One integer, resolved per person. ⚠️ `CountAsync` at the database |
 
@@ -378,6 +385,7 @@ work changed. The read joins and tolerates a missing node.
 
 ```
 SUBMIT_DH · SUBMIT_PPD · RETURN_PPD · ACCEPT_PPD
+REOPEN_PPD · RETURN_DH      ← added 2026-09-14: re-open an accepted office; return to the encoders
 ```
 
 with `table_name = "aip_offices"`, `record_id` = the `AipOffice` row, and old/new values carrying
@@ -496,7 +504,7 @@ built — the process gap the PPDO-79 review feedback exposed.
 | **Comments collapsed** | ⚠️ **Default.** Rows carrying comments get a marker and a show-comments control; bodies open deliberately, so the grid stays readable (§12.5) |
 | **Unresolved filters** | Two buttons with counts — "N from PPDO", "N from department head" — filtering the tree to commented rows (decision 11) |
 | **Read-only / forbidden** | An office viewing its own work at `SubmittedToPpdo` sees inputs **replaced by text**, not disabled inputs, plus a banner naming the state. A PPDO reviewer sees the same, since they never edit |
-| **Actions** | Return and Accept for PPDO reviewers only; both confirm via `ConfirmDialog` naming the office. Submit-to-PPDO for the department head |
+| **Actions** | Return and Accept for PPDO reviewers only; both confirm via `ConfirmDialog` naming the office. Submit-to-PPDO for the department head. ↩️ *2026-09-14:* **Re-open and send back** on an accepted office (confirmed the same way), and **Return to encoders** beside Send to PPDO on AIP Entry while in department review |
 | **Validation** | Comment body required, 2000 char cap shown as a counter |
 | **History** (PPDO-77) | A **History** button in the header between the state chip and Send back / Accept, shown at **every** status — an accepted or returned office is exactly the one a reviewer wants to trace. Opens §6.2a |
 
@@ -597,6 +605,31 @@ Review · `Consolidated` → Done.
 | **Empty band** | Unchanged — "No offices have a FY \<year\> ceiling yet." |
 | **Error** | Unchanged — per band, with Retry; one failing band never blanks the page |
 
+### 6.3a Consolidated AIP (PPDO-73, new)
+
+Layout agreed on the wireframe (`docs/v1.8/wireframes/consolidated-view/`, settled 2026-09-14).
+
+⚠️ **The grid is the Annex B form (`AIP_Form_Spec.md`), and it doubles as the preview of Phase 5's
+Excel export (V18-60).** Same columns, same rows, same figures. The rows and their printed figures
+are therefore built **once, on the server**, in a builder the export will reuse — not recomputed in
+the page and then again in the export.
+
+| State | Content |
+|---|---|
+| **Opened from** | "Consolidated AIP" on the AIP Review header, shown to cross-office reviewers only. Page and endpoint both gate on `CanReviewAllOffices`; a PPDO division user without it is redirected (decision 13, tracker B4) |
+| **Header** | FY picker; "N of M offices submitted to PPDO · totals cover submitted offices only" |
+| **Sector tabs** | General / Social / Economic / Others — the four sheets — each with "n of m" |
+| **Grid** | The preamble (Annex B, the AIP title for the year, "By Program/Project/Activity by Sector", "As of \<MONTH YEAR\>", the province); columns A–R with the two-tier header and DBM numbers, eSRE unnumbered; level shown as indent; office rows carry subtotals; program and project rows carry no amounts; ↩️ **a program with no PPAs under it — no project and no activity — is left off** (2026-09-14; offices are seeded with every LDIP program, so it would otherwise print empty headings); TOTAL last, the sum of the office rows. Scrolls sideways inside its panel, never the page |
+| **Which offices** | ↩️ **Only offices at `SubmittedToPpdo` or `Consolidated`** (decided 2026-09-14). An office not yet with PPDO — a sent-back one included — is **left out of the grid entirely**, never rendered as ₱0. The header and tab counts keep its absence legible |
+| **Figures** | **Printed figures** (decided 2026-09-14). Each activity's PS, MOOE, CO, CC adaptation and CC mitigation is rounded **up** to the thousand, then summed across and down (DECISION 9). MOOE and CO carry the +30% uplift (DECISION G), applied **before** rounding (tracker G5, still provisional). The CC columns are not uplifted — the uplift is on MOOE and CO only. Rendered in thousands **with two decimals** (`1,066.00`), blank for zero. ⚠️ They will not match AIP Entry or the review screen, which show exact amounts; a note under the grid says so, wording to agree with PPDC (`AIP_Form_Spec.md` §6.2) |
+| **Funding source (K)** | The fund codes of the activity's expenditure lines, joined; the activity's own snapshot when it has no funded line |
+| **Activity click** | Opens §6.1a's modal unchanged — read-only for the activity, comment rail kept (decided 2026-09-14) |
+| **Screen-only** | The office status pill, the activity links and "n of m submitted" on the TOTAL row. The Excel carries none of them |
+| **Loading** | Skeleton shaped like the grid |
+| **Empty sector** | "No \<Sector\> office has submitted to PPDO yet" |
+| **Not opened** | "FY \<year\> has not been opened yet" |
+| **Error** | Inline error with *Try again* |
+
 ### 6.4 Sidebar (PPDO-79)
 
 Budget Planning already has `AIP` and `AIP Entry` as two flat children. Add **`AIP Review`** as a
@@ -666,7 +699,7 @@ Already created under epic **PPDO-67**. This spec is PPDO-68 and blocks the rest
 | **PPDO-70** — locking | §3.2, decision 4/5 | PPDO-68, PPDO-69 |
 | **PPDO-71** — comments | §5.1, §6.2 | PPDO-68 |
 | **PPDO-72** — return + re-submit | §3.3, §4.2 | PPDO-68, PPDO-70, PPDO-71 |
-| **PPDO-73** — consolidated view | §3.3, decision 13/14 | PPDO-68 |
+| **PPDO-73** — consolidated view | §3.3, §4, §6.6, decision 13/14 | PPDO-68 |
 | **PPDO-74** — PPDO review screen | §6.2 | PPDO-68, PPDO-71, PPDO-72 |
 | **PPDO-75** — notifications | §6.5 | PPDO-68, PPDO-69 |
 | **PPDO-76** — query-first page | §4.1, §5.3, §6.1 | PPDO-68 |
@@ -730,8 +763,21 @@ accept `Draft`, `DepartmentReview` and `ReturnedByPpdo`, and its remarks must be
       under the later return
 - [ ] History opens on an accepted office, and on a Draft office with the empty state — not only on
       an office at PPDO
-- [ ] The consolidated view with 3 of 19 offices submitted shows the other 16 as not yet submitted,
-      never as ₱0
+- [ ] The consolidated view with 3 of 19 offices submitted says "3 of 19 offices submitted", leaves
+      the other 16 out of the grid, and never renders any office as ₱0
+- [ ] A sent-back office does not appear in the consolidated grid until it is re-submitted
+- [ ] Re-opening an accepted office moves it to Returned, the office can edit again, it leaves the
+      consolidated grid, and History shows "Re-opened and sent back by PPDO"
+- [ ] A department head in department review returns the office to the encoders; it reads Draft, the
+      encoders can submit again, and History shows "Returned to the encoders"
+- [ ] An itemised line with items in Q1 and Q3 saves one annual amount equal to the sum of both
+      quarters, and reopening the line shows each item back in its quarter
+- [ ] An activity with ₱1,000,400 MOOE prints `1,301.00` in the consolidated grid while AIP Entry
+      shows it exactly
+- [ ] In the consolidated grid, each office row equals the sum of its activities' printed figures,
+      and TOTAL equals the sum of the office rows
+- [ ] Clicking an activity in the consolidated grid opens the review modal; a PPDO reviewer can
+      comment there but not edit
 - [ ] A PPDO division user without a reviewer flag cannot open the consolidated view
 - [ ] An FY2027 record shows no workflow controls, no comment gutters and no submit
 ```
@@ -748,10 +794,13 @@ always-TDD list.
 | `AipSubmitGateTests` | The second hop from `DepartmentReview` **and** `ReturnedByPpdo`; refusal for an encoder; the gate re-running on the second hop; **every group moving together** |
 | `AipWorkflowGateTests` | The full (state × role) matrix of §3.2 — including the three cells decision 4 changes. ⚠️ Add the failing test for encoder-edits-in-`DepartmentReview` **first**; it should fail against current `main` |
 | `AipReviewCommentServiceTests` | Authoring-side resolve, both refusal directions (office→PPDO, encoder→department head); comments allowed while locked; unresolved counts split by side; orphaned comment survives node deletion. **History (PPDO-77):** one entry per audit row found across every group id; comments bucketed under the hand-off open when written; the before-first-submission bucket; a re-submit read from the old status; an encoder reads their own office and gets 404 for another |
-| `AipReviewServiceTests` | Return/accept state guards; the 409 on a concurrent second action; accept refused from `ReturnedByPpdo` |
+| `AipReviewServiceTests` | Return/accept state guards; the 409 on a concurrent second action; accept refused from `ReturnedByPpdo`. ↩️ *2026-09-14:* re-open from `Consolidated` moves every group under `REOPEN_PPD`; every other state 409; a non-reviewer 404 |
+| `AipSubmitGateTests` (return to encoders, 2026-09-14) | `DepartmentReview → Draft` for every group under one `RETURN_DH` row; every other state 400 and nothing moves; another office 404; every audit action ≤ 10 characters |
+| `AipExpenditureProcurementTests` (quarters, 2026-09-14) | Items in different quarters sum into one annual amount and keep their quarters; a quarter outside 1–4 is refused and nothing is saved |
 | `AipReviewSearchTests` | OR-within / AND-across; `officeIds` + blank `sectors` returning multiple sectors; ref-code OR-list; title **not** OR-split; scope clamping for a guest-office user |
 | `BudgetPlanningDashboardServiceTests` (`GetOfficesAsync`) | `ReadinessColumn` for every state — zero activities → NotStarted, one or more in `Draft` → InProgress, `DepartmentReview` → OfficeReview, `ReturnedByPpdo` → OfficeReview with `IsReturned`, `SubmittedToPpdo` → PpdoReview, `Consolidated` → Done; a submission state beating activity count; `AssignedProgramCount` summed across an office's groups; groups that disagree report the least advanced; an office with no group row reads Not Started / Todo; `SubmissionStatus` derived, never the constant |
 | `AipOfficeRollupRepositoryTests` (SQLite) | `ProgramCount` counted apart from the activity join; an untouched office still counts its seeded programs; each group's `WorkflowStatus` carried |
+| `AipPrintedFiguresTests` + `AipConsolidatedServiceTests` (PPDO-73) | Round up per figure, then sum; the uplift on MOOE and CO only, applied before rounding (₱1,000,400 → ₱1,301,000); CC columns not uplifted; Total = printed PS + MOOE + CO; only `SubmittedToPpdo` / `Consolidated` groups, a sent-back office excluded; one sector per call; submitted counts per sector and overall; an unopened year empty; an unknown sector 400; a non-reviewer refused; fund codes joined |
 | `ReviewerWriteGuardTests` | Unchanged behaviour — plus a new test that **commenting is not denied** by the guard |
 | `PermissionMatrixTests` | No new flag, so no new row — assert that, so a flag added here fails the build |
 

@@ -47,7 +47,16 @@ const KIND_LABELS: Record<string, string> = {
  */
 export type AipSubmitStage =
   | { kind: "encoder"; onSubmit: () => void }
-  | { kind: "toPpdo"; resubmit: boolean; onSubmit: () => void }
+  | {
+      kind: "toPpdo";
+      resubmit: boolean;
+      onSubmit: () => void;
+      /**
+       * Hands the work back down to the encoders (added 2026-09-14). Supplied only in department
+       * review — the one state the server accepts it from — so its absence hides the button.
+       */
+      onReturnToEncoder?: () => void;
+    }
   /**
    * The office still holds the work and can edit it, but **this** reader cannot send it on —
    * they are an encoder and the second hop is the department head's (PPDO-69).
@@ -140,6 +149,7 @@ export default function AipSubmitChecklist({
   // which they can resolve themselves, so warning them about their own notes helps nobody.
   const unresolved: AipUnresolvedCounts | null = useUnresolvedCounts();
   const [confirming, setConfirming] = useState(false);
+  const [confirmingReturn, setConfirmingReturn] = useState(false);
 
   const needsUnresolvedWarning =
     stage.kind === "toPpdo" && stage.resubmit && (unresolved?.total ?? 0) > 0;
@@ -165,6 +175,16 @@ export default function AipSubmitChecklist({
         <div className="flex flex-wrap items-center justify-end gap-2">
           {history && (
             <AipHistoryButton aipRecordId={history.aipRecordId} officeId={history.officeId} tall />
+          )}
+          {stage.kind === "toPpdo" && stage.onReturnToEncoder && (
+            <button
+              type="button"
+              onClick={() => setConfirmingReturn(true)}
+              disabled={submitting}
+              className="border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Return to encoders
+            </button>
           )}
           {stage.kind === "encoder" || stage.kind === "toPpdo" ? (
             <button
@@ -278,6 +298,18 @@ export default function AipSubmitChecklist({
           variant="warning"
           onConfirm={stage.onSubmit}
           onClose={() => setConfirming(false)}
+        />
+      )}
+
+      {confirmingReturn && stage.kind === "toPpdo" && stage.onReturnToEncoder && (
+        <ConfirmDialog
+          title="Return this AIP to the encoders?"
+          message="It moves back to Draft. The encoders can keep editing and submit it to you again. Your comments stay on it."
+          confirmLabel="Return to encoders"
+          cancelLabel="Go back"
+          variant="warning"
+          onConfirm={stage.onReturnToEncoder}
+          onClose={() => setConfirmingReturn(false)}
         />
       )}
     </div>

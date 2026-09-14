@@ -4,12 +4,15 @@ namespace PPDO.Domain.Entities;
 /// One procurement line item under an <see cref="AipExpenditure"/>, sourced from the Price Index
 /// (v1.8.0 Phase 3 — V18-80 / PPDO-54).
 ///
-/// <b>Why this is not <see cref="WfpProcurementItem"/> with a nullable period.</b> The WFP item
-/// carries <c>PeriodNo</c> because a WFP expenditure is a <i>schedule</i> — the same item recurs
-/// across months or quarters. An AIP activity carries <b>one annual figure</b>, so there is no
-/// period, no frequency, no annual-quarter choice and no reserve. Those are the fields V18-80
-/// explicitly refuses to copy: importing them would bring a scheduling model the AIP does not have,
-/// and it would reach the printed form.
+/// <b>Why this is not <see cref="WfpProcurementItem"/>.</b> A WFP expenditure is a full
+/// <i>schedule</i> — monthly or quarterly frequency, an annual-quarter choice, a reserve. An AIP
+/// activity still carries <b>one annual figure</b>, and none of those come across.
+///
+/// ↩️ <b><see cref="PeriodNo"/> did come across, on 2026-09-14</b> (Ralph, after a full-cycle test).
+/// V18-80 originally refused every period field. Items are now placed in a quarter, Q1–Q4, the way
+/// WFP's quarterly items are — but <b>as input only</b>. The line's amount is still Σ of all its items
+/// across the four quarters, so the printed form, the ceiling and the consolidated grid see the same
+/// single annual figure they always did. Do not let a quarter reach any of them.
 ///
 /// <b><see cref="NumberOfDays"/> is the one exception to that rule, and it is deliberate.</b> It
 /// looks exactly like the scheduling fields being stripped, and it stays: PPDO employees asked for
@@ -33,6 +36,13 @@ public sealed class AipProcurementItem
 
     /// <summary>FK to the parent expenditure. Cascade delete — an item cannot outlive its line.</summary>
     public int ExpenditureId { get; set; }
+
+    /// <summary>
+    /// The quarter this item is planned in, 1–4 (added 2026-09-14). ⚠️ Input only — the line's amount
+    /// sums every quarter, and nothing downstream of the line reads this. Items saved before the
+    /// column existed were placed in Q1, which leaves every saved total unchanged.
+    /// </summary>
+    public int PeriodNo { get; set; } = 1;
 
     /// <summary>
     /// FK to the Price Index config row this item was picked from. Null for a free-typed item.

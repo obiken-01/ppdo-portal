@@ -111,6 +111,25 @@ public sealed class AipSubmitFunctions
             await _submit.SubmitToPpdoAsync(aipId, officeId, caller!, ct), ct);
     }
 
+    // ── POST /api/budget-planning/aip/{aipId}/offices/{officeId}/return-to-encoder ──
+    //
+    // Added 2026-09-14 with PPDO-73: DepartmentReview → Draft. The department head's action, gated
+    // exactly like submit-to-ppdo beside it and for the same reasons — including AuthorizeAsync
+    // rather than AuthorizeWriteAsync, since moving your own office's workflow is not content.
+    [Function("AipReturnToEncoder")]
+    public async Task<HttpResponseData> ReturnToEncoder(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post",
+            Route = "budget-planning/aip/{aipId:int}/offices/{officeId:int}/return-to-encoder")] HttpRequestData req,
+        int aipId, int officeId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) =
+            await ConfigHttp.AuthorizeAsync(req, _jwt, CanReview, ct);
+        if (denied is not null) return denied;
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _submit.ReturnToEncoderAsync(aipId, officeId, caller!, ct), ct);
+    }
+
     // ── GET /api/budget-planning/aip/{aipId}/ceiling ─────────────────────────
     // ⚠️ Remaining may be NEGATIVE and must render as such — it is the only signal an office gets
     // that PBO cut its ceiling below what is already encoded (A5-b).

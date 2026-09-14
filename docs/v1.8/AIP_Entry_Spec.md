@@ -163,6 +163,14 @@ have already flipped are not flipped back.
     the line arithmetic, presets (RAL-119 — “load” copies an editable *snapshot*, not a live
     link) and the duplicate-item warning (RAL-153).
 
+    ↩️ **Partly reversed 2026-09-14** (Ralph, after a full-cycle test): itemised lines now take their
+    items **by quarter, Q1–Q4**, with WFP's tabs, *Apply items to all quarters*, *Copy previous
+    quarter* and the Q1–Q4 strip (`aip_procurement_items.period_no`, migration
+    `AddAipProcurementItemPeriod`, existing items placed in Q1). **Input only** — the line's amount is
+    still the sum across all four quarters, so the printed form, ceiling and consolidated grid are
+    unchanged. `frequency`, `annualQuarterChoice` and the reserve still do not come across, and the
+    duplicate warning is now scoped to the active quarter. The paragraph below is the original rule.
+
     ⚠️ **Do NOT copy the period dimension — this is the whole difficulty of the ticket.**
     `periodNo`, `frequency`, `annualQuarterChoice`, the reserve fields, `computeWfpRollUpPreview`
     and `mergeWfpPeriodAndItemAmounts` are *schedule* concepts. An AIP activity carries **one

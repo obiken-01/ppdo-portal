@@ -72,6 +72,20 @@ export default function Lookup<T>({
   const [isSearching, setIsSearching] = useState(false);
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  // Set when focus selected the pre-filled text, so the mouseup that follows a click-to-focus does
+  // not collapse that selection back to a caret (browsers place the caret on mouseup).
+  const keepSelectionOnMouseUp = useRef(false);
+
+  /**
+   * Selects the box's pre-filled text — the current value's label — so typing replaces it outright
+   * instead of appending to it (2026-09-14). Only while it is still the display value: once the user
+   * has typed, their own text is left alone.
+   */
+  function selectDisplayText(input: HTMLInputElement) {
+    if (isSearching) return;
+    input.select();
+    keepSelectionOnMouseUp.current = true;
+  }
 
   // Keep the display text in sync with the selected id — including on first
   // render/list load and whenever `value` changes externally (e.g. a ?id= URL
@@ -114,7 +128,24 @@ export default function Lookup<T>({
         type="text"
         value={query}
         disabled={disabled}
-        onFocus={() => setOpen(true)}
+        onFocus={(e) => {
+          setOpen(true);
+          selectDisplayText(e.currentTarget);
+        }}
+        onMouseUp={(e) => {
+          if (keepSelectionOnMouseUp.current) {
+            e.preventDefault();
+            keepSelectionOnMouseUp.current = false;
+          }
+        }}
+        // Clicking back into a box that is still focused but closed fires no focus event — reopen
+        // and reselect here, or the second click lands on a caret.
+        onClick={(e) => {
+          if (!open) {
+            setOpen(true);
+            selectDisplayText(e.currentTarget);
+          }
+        }}
         onChange={(e) => {
           setQuery(e.target.value);
           setIsSearching(true);

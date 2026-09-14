@@ -269,6 +269,16 @@ export default function AipReviewSearchPage() {
           <p className="mt-0.5 text-sm text-slate-600">
             Find the programs, projects and activities you need to review.
           </p>
+          {/* PPDO-73. Cross-office reviewers only — the same rule the consolidated page and its
+              endpoint enforce; a department head would be redirected straight back. */}
+          {crossOffice && (
+            <Link
+              href={`/budget-planning/aip/consolidated?fiscalYear=${fiscalYear}`}
+              className="mt-1 inline-block text-sm font-medium text-green-800 underline underline-offset-2 hover:text-green-900"
+            >
+              Consolidated AIP →
+            </Link>
+          )}
         </div>
         <div>
           <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">

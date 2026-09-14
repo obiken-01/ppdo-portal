@@ -41,9 +41,10 @@ public sealed class AipReviewService : IAipReviewService
         int aipRecordId, int officeId, User caller, CancellationToken ct = default)
         => MoveAsync(
             aipRecordId, officeId, caller,
+            from:        AipWorkflowStatus.SubmittedToPpdo,
             target:      AipWorkflowStatus.ReturnedByPpdo,
             auditAction: AuditAction.ReturnByPpdo,
-            actionWord:  "return",
+            refuse:      status => Refuse(status, "return"),
             logMessage:  "AIP returned to the office by PPDO.",
             ct);
 
@@ -53,17 +54,36 @@ public sealed class AipReviewService : IAipReviewService
         int aipRecordId, int officeId, User caller, CancellationToken ct = default)
         => MoveAsync(
             aipRecordId, officeId, caller,
+            from:        AipWorkflowStatus.SubmittedToPpdo,
             target:      AipWorkflowStatus.Consolidated,
             auditAction: AuditAction.AcceptByPpdo,
-            actionWord:  "accept",
+            refuse:      status => Refuse(status, "accept"),
             logMessage:  "AIP office accepted into the consolidated AIP by PPDO.",
             ct);
 
-    // ── The one transition both actions are ───────────────────────────────────
+    // ── Re-open an accepted office (added 2026-09-14, PPDO-73) ────────────────
+
+    public Task<ServiceResult<AipSubmitResultDto>> ReopenOfficeAsync(
+        int aipRecordId, int officeId, User caller, CancellationToken ct = default)
+        => MoveAsync(
+            aipRecordId, officeId, caller,
+            from:        AipWorkflowStatus.Consolidated,
+            target:      AipWorkflowStatus.ReturnedByPpdo,
+            auditAction: AuditAction.ReopenByPpdo,
+            refuse:      RefuseReopen,
+            logMessage:  "Accepted AIP office re-opened and sent back by PPDO.",
+            ct);
+
+    // ── The one transition every action is ────────────────────────────────────
 
     /// <summary>
-    /// Moves every group row of one office from <c>SubmittedToPpdo</c> to
+    /// Moves every group row of one office from <paramref name="from"/> to
     /// <paramref name="target"/>.
+    ///
+    /// <para>
+    /// ↩️ Re-open joined return and accept here on 2026-09-14. It differs only in where it starts
+    /// and how it refuses, which is why both are parameters rather than a third copy of the move.
+    /// </para>
     ///
     /// <para>
     /// <b>⚠️ Return and accept are the same transition with a different destination</b>, and they
@@ -77,7 +97,8 @@ public sealed class AipReviewService : IAipReviewService
     /// </summary>
     private async Task<ServiceResult<AipSubmitResultDto>> MoveAsync(
         int aipRecordId, int officeId, User caller,
-        string target, string auditAction, string actionWord, string logMessage,
+        string from, string target, string auditAction,
+        Func<string, ServiceResult<AipSubmitResultDto>> refuse, string logMessage,
         CancellationToken ct)
     {
         ReviewContext? ctx = await ResolveAsync(aipRecordId, officeId, caller, ct);
@@ -91,11 +112,10 @@ public sealed class AipReviewService : IAipReviewService
         // ⚠️ Branch on the first row that is NOT at PPDO, not on Groups[0]. The rows move together
         // so they should agree — but if they ever disagree, the refusal must describe the row that
         // actually blocks the transition rather than whichever happened to be loaded first.
-        AipOffice? blocking = ctx.Groups.FirstOrDefault(
-            g => g.WorkflowStatus != AipWorkflowStatus.SubmittedToPpdo);
+        AipOffice? blocking = ctx.Groups.FirstOrDefault(g => g.WorkflowStatus != from);
 
         if (blocking is not null)
-            return Refuse(blocking.WorkflowStatus, actionWord);
+            return refuse(blocking.WorkflowStatus);
 
         foreach (AipOffice group in ctx.Groups)
         {
@@ -110,7 +130,7 @@ public sealed class AipReviewService : IAipReviewService
         // three times unless it grouped them back; matching the sibling means one read strategy
         // covers the whole chain.
         await _audit.LogAsync("aip_offices", ctx.Groups[0].Id, auditAction,
-            new { WorkflowStatus = AipWorkflowStatus.SubmittedToPpdo },
+            new { WorkflowStatus = from },
             new
             {
                 WorkflowStatus = target,
@@ -414,6 +434,18 @@ public sealed class AipReviewService : IAipReviewService
             $"This office's AIP is in {AipWriteGuard.Describe(status)} and has not been sent to "
             + $"PPDO, so there is nothing to {actionWord}."),
     };
+
+    /// <summary>
+    /// The refusal for re-opening an office that is not accepted.
+    ///
+    /// ⚠️ <b>Always a 409.</b> The button is only offered on an accepted office, so any other state
+    /// means the office moved while this screen was open — a colleague already sent it back, or it
+    /// was re-opened and has moved on since. None of those is the reader's mistake.
+    /// </summary>
+    private static ServiceResult<AipSubmitResultDto> RefuseReopen(string status)
+        => ServiceResult<AipSubmitResultDto>.Conflict(
+            $"This office is no longer accepted — it is in {AipWriteGuard.Describe(status)}. "
+            + "Reload to see the current state.");
 
     /// <summary>
     /// The record and every group row of the office being acted on — or null when this caller may

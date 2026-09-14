@@ -5,28 +5,28 @@
  *
  * Lifted from `components/wfp/WfpProcurementItemTable.tsx` — the ticket's instruction is parity,
  * because encoders already know that table and two procurement UIs behaving differently is its own
- * cost. What came across: the price-index picker (RAL-231), the line arithmetic, presets (RAL-119)
- * and the duplicate-item warning (RAL-153).
+ * cost. What came across: the price-index picker (RAL-231), the line arithmetic, presets (RAL-119),
+ * the duplicate-item warning (RAL-153) and — ↩️ since 2026-09-14 — the **quarter tabs** with their
+ * carry-forward actions and Q1–Q4 strip.
  *
- * ⚠️ **What deliberately did NOT come across, and must not be added back.** `periodNo`, `frequency`,
- * `annualQuarterChoice`, the reserve fields, the period tabs, the carry-forward actions
- * ("Apply items to all periods" / "Copy previous period") and the Q1–Q4 roll-up strip are *schedule*
- * concepts. An AIP activity carries **one annual figure**. Copying them would import a scheduling
- * model the AIP does not have, and it would reach the printed form.
+ * ↩️ **Quarters were deliberately left out at first and added 2026-09-14** (Ralph, after a full-cycle
+ * test). They are **input only**: the server still sums every item across all four quarters into the
+ * line's one column, so the printed form, the ceiling and the consolidated grid see the same single
+ * annual figure. Nothing downstream of the line may read a quarter.
  *
- * ⚠️ **`numberOfDays` is the one exception, and it is not an oversight.** While everything else
- * schedule-shaped was stripped, days stayed: PPDO employees asked for it, so it is a requirement in
- * its own right rather than a copied artefact (settled 2026-09-07).
+ * ⚠️ **What still did NOT come across, and must not be added back.** `frequency`,
+ * `annualQuarterChoice` and the reserve fields are the rest of WFP's *schedule* model. An AIP line is
+ * always four quarters — never monthly, never a single annual period — and carries no reserve.
  *
- * ⚠️ **The duplicate rule is re-derived, not transliterated.** RAL-153 scopes the WFP warning to the
- * *active period*, precisely because the same item recurring across periods is normal — a monthly
- * office-supplies purchase. With no periods that scoping is meaningless, so the AIP's scope is **the
- * activity's own expenditure lines**: `siblingPriceIndexItemIds` carries what the activity's *other*
- * lines already use, and repeats within this line are counted too.
+ * ⚠️ **`numberOfDays` stays**, as before: PPDO employees asked for it (settled 2026-09-07).
+ *
+ * ⚠️ **The duplicate rule is scoped to the ACTIVE QUARTER** — this line's rows in it, plus the
+ * activity's other lines in the same quarter. The same item recurring in another quarter is normal
+ * (a quarterly supplies purchase), which is exactly why RAL-153 scopes WFP's warning to the period.
  *
  * ⚠️ **The amount is derived once a line has items.** The server puts Σ line-total in the one column
- * the account's expense class names and discards whatever was typed — it does not add the two the
- * way WFP's `mergeWfpPeriodAndItemAmounts` does. The parent table shows the amount read-only.
+ * the account's expense class names and discards whatever was typed. The parent table shows the amount
+ * read-only.
  */
 
 import { useState } from "react";
@@ -46,13 +46,25 @@ import type {
   SaveAipProcurementItemRequest,
 } from "@/types";
 
+const QUARTERS = [1, 2, 3, 4] as const;
+const quarterLabel = (q: number) => `Q${q}`;
+
 const priceIndexItemLabel = (p: PriceIndexPickerItem) =>
   `${p.name} (${p.unit}) — ₱${formatMoney(p.unitPrice)}`;
 const priceIndexItemSearchText = (p: PriceIndexPickerItem) => `${p.name} ${p.unit}`;
 
+const lineTotalOf = (r: SaveAipProcurementItemRequest) => r.qty * r.unitPrice * r.numberOfDays;
+
+/** A price-index item already on one of the activity's OTHER lines, and the quarter it sits in. */
+export interface AipSiblingItem {
+  priceIndexItemId: number;
+  periodNo: number;
+}
+
 export interface AipProcurementItemTableProps {
   /** Drives presets (account-scoped) and, server-side, which column the total lands in. */
   accountId: number | null;
+  /** Every quarter's items — this table shows one quarter at a time. */
   items: SaveAipProcurementItemRequest[];
   onItemsChange: (items: SaveAipProcurementItemRequest[]) => void;
   priceIndex: PriceIndexPickerItem[];
@@ -62,11 +74,8 @@ export interface AipProcurementItemTableProps {
    * look like a catalogue with nothing in it.
    */
   priceIndexLoading: boolean;
-  /**
-   * Price-index item ids already used by the activity's OTHER expenditure lines. This is what makes
-   * the duplicate warning activity-scoped rather than line-scoped — see this file's header.
-   */
-  siblingPriceIndexItemIds: number[];
+  /** What the activity's other lines already use, by quarter — see the duplicate rule in the header. */
+  siblingItems: AipSiblingItem[];
 }
 
 export default function AipProcurementItemTable({
@@ -75,9 +84,14 @@ export default function AipProcurementItemTable({
   onItemsChange,
   priceIndex,
   priceIndexLoading,
-  siblingPriceIndexItemIds,
+  siblingItems,
 }: AipProcurementItemTableProps) {
   const { toast } = useToast();
+
+  // Opens on the first quarter that has items, so editing a Q3-only line does not land on an empty Q1.
+  const [activeQuarter, setActiveQuarter] = useState<number>(() =>
+    items.length > 0 ? Math.min(...items.map((i) => i.periodNo)) : 1
+  );
 
   // Presets (account-scoped, loaded lazily — RAL-119's for-entry endpoint)
   const [presets, setPresets] = useState<ProcurementPresetResponse[]>([]);
@@ -87,19 +101,29 @@ export default function AipProcurementItemTable({
   const [presetName, setPresetName] = useState("");
   const [savingPreset, setSavingPreset] = useState(false);
 
+  const rowsIn = (q: number) => items.filter((i) => i.periodNo === q);
+  const activeRows = rowsIn(activeQuarter);
+
+  /** Swaps the active quarter's rows, leaving the other quarters exactly as they were. */
+  function replaceActiveRows(rows: SaveAipProcurementItemRequest[]) {
+    const others = items.filter((i) => i.periodNo !== activeQuarter);
+    // Kept in quarter order so a saved line's items read Q1 → Q4, as the server returns them.
+    onItemsChange([...others, ...rows].sort((a, b) => a.periodNo - b.periodNo));
+  }
+
   function addRow() {
-    onItemsChange([
-      ...items,
-      { priceIndexItemId: null, name: "", unit: "", unitPrice: 0, qty: 1, numberOfDays: 1 },
+    replaceActiveRows([
+      ...activeRows,
+      { periodNo: activeQuarter, priceIndexItemId: null, name: "", unit: "", unitPrice: 0, qty: 1, numberOfDays: 1 },
     ]);
   }
 
   function removeRow(index: number) {
-    onItemsChange(items.filter((_, i) => i !== index));
+    replaceActiveRows(activeRows.filter((_, i) => i !== index));
   }
 
   function updateRow(index: number, patch: Partial<SaveAipProcurementItemRequest>) {
-    onItemsChange(items.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+    replaceActiveRows(activeRows.map((r, i) => (i === index ? { ...r, ...patch } : r)));
   }
 
   function pickPriceIndexItem(index: number, priceIndexItemId: number | null) {
@@ -110,12 +134,12 @@ export default function AipProcurementItemTable({
     const source = priceIndex.find((p) => p.id === priceIndexItemId);
     updateRow(index, {
       priceIndexItemId,
-      name: source?.name ?? items[index]?.name ?? "",
-      unit: source?.unit ?? items[index]?.unit ?? "",
-      unitPrice: source?.unitPrice ?? items[index]?.unitPrice ?? 0,
+      name: source?.name ?? activeRows[index]?.name ?? "",
+      unit: source?.unit ?? activeRows[index]?.unit ?? "",
+      unitPrice: source?.unitPrice ?? activeRows[index]?.unitPrice ?? 0,
       // Reset to 1 when the newly-picked item doesn't use the Days multiplier, clearing a leftover
       // value from a previously-picked days-enabled item in the same row (RAL-138).
-      numberOfDays: source?.daysEnabled ? items[index]?.numberOfDays ?? 1 : 1,
+      numberOfDays: source?.daysEnabled ? activeRows[index]?.numberOfDays ?? 1 : 1,
     });
   }
 
@@ -125,6 +149,21 @@ export default function AipProcurementItemTable({
   function daysEnabledFor(row: SaveAipProcurementItemRequest): boolean {
     if (row.priceIndexItemId == null) return true;
     return priceIndex.find((p) => p.id === row.priceIndexItemId)?.daysEnabled ?? false;
+  }
+
+  // ── Carry-forward — always an explicit action, never a silent fill (WFP §5.2) ─
+
+  /** Copies the active quarter's rows into every quarter, replacing what the others held. */
+  function applyToAllQuarters() {
+    onItemsChange(QUARTERS.flatMap((q) => activeRows.map((r) => ({ ...r, periodNo: q }))));
+    toast.success("Items applied", `${quarterLabel(activeQuarter)}'s items now fill all four quarters.`);
+  }
+
+  function copyPreviousQuarter() {
+    if (activeQuarter <= 1) return;
+    const previous = rowsIn(activeQuarter - 1);
+    if (previous.length === 0) return;
+    replaceActiveRows(previous.map((r) => ({ ...r, periodNo: activeQuarter })));
   }
 
   // ── Presets ─────────────────────────────────────────────────────────────────
@@ -144,11 +183,11 @@ export default function AipProcurementItemTable({
   }
 
   function loadPreset(preset: ProcurementPresetResponse) {
-    // "Load" copies an editable SNAPSHOT, not a live link — later preset edits never reach a saved
-    // plan. Presets carry no day count (RAL-119 templates are name/unit/price/qty), and days are
-    // event-specific, so a loaded row starts at 1.
-    onItemsChange(
+    // "Load" copies an editable SNAPSHOT into the active quarter, not a live link — later preset
+    // edits never reach a saved plan. Presets carry no day count, so a loaded row starts at 1.
+    replaceActiveRows(
       preset.items.map((i) => ({
+        periodNo: activeQuarter,
         priceIndexItemId: i.priceIndexItemId,
         name: i.name,
         unit: i.unit,
@@ -158,11 +197,11 @@ export default function AipProcurementItemTable({
       })),
     );
     setLoadPresetOpen(false);
-    toast.success("Preset loaded", `${preset.name} copied into this line.`);
+    toast.success("Preset loaded", `${preset.name} copied into ${quarterLabel(activeQuarter)}.`);
   }
 
   async function saveAsPreset() {
-    if (accountId == null || items.length === 0) return;
+    if (accountId == null || activeRows.length === 0) return;
     const name = presetName.trim();
     if (!name) return;
 
@@ -172,7 +211,7 @@ export default function AipProcurementItemTable({
         accountId,
         name,
         isActive: true,
-        items: items.map((r) => ({
+        items: activeRows.map((r) => ({
           priceIndexItemId: r.priceIndexItemId,
           name: r.priceIndexItemId == null ? r.name : null,
           unit: r.priceIndexItemId == null ? r.unit : null,
@@ -191,31 +230,75 @@ export default function AipProcurementItemTable({
     }
   }
 
-  // ── Duplicates, scoped to the ACTIVITY (see the header) ─────────────────────
+  // ── Duplicates, scoped to the ACTIVE QUARTER (see the header) ───────────────
   //
   // A free-typed row has no priceIndexItemId and is never reported: two rows both typed by hand are
   // not known to be the same item, and guessing by name would flag "Bond paper" against "bond paper,
   // long" as a duplicate.
-  const usageCounts = items.reduce<Record<number, number>>((counts, r) => {
+  const usageCounts = activeRows.reduce<Record<number, number>>((counts, r) => {
     if (r.priceIndexItemId != null) counts[r.priceIndexItemId] = (counts[r.priceIndexItemId] ?? 0) + 1;
     return counts;
   }, {});
-  const siblingIds = new Set(siblingPriceIndexItemIds);
+  const siblingIdsThisQuarter = new Set(
+    siblingItems.filter((s) => s.periodNo === activeQuarter).map((s) => s.priceIndexItemId)
+  );
 
   function duplicateNote(row: SaveAipProcurementItemRequest): string | null {
     if (row.priceIndexItemId == null) return null;
-    if ((usageCounts[row.priceIndexItemId] ?? 0) > 1) return "This item is already on this line.";
-    if (siblingIds.has(row.priceIndexItemId))
-      return "This item is already on another expenditure line of this activity.";
+    if ((usageCounts[row.priceIndexItemId] ?? 0) > 1)
+      return `This item is already on this line in ${quarterLabel(activeQuarter)}.`;
+    if (siblingIdsThisQuarter.has(row.priceIndexItemId))
+      return `This item is already on another expenditure line of this activity in ${quarterLabel(activeQuarter)}.`;
     return null;
   }
 
-  const total = items.reduce((sum, r) => sum + r.qty * r.unitPrice * r.numberOfDays, 0);
+  // ── Totals ──────────────────────────────────────────────────────────────────
+  const quarterTotal = (q: number) => rowsIn(q).reduce((sum, r) => sum + lineTotalOf(r), 0);
+  const annualTotal = items.reduce((sum, r) => sum + lineTotalOf(r), 0);
 
   return (
     <div className="space-y-3">
-      {/* Toolbar — presets only. No carry-forward: there are no periods to carry between. */}
+      {/* Quarter tabs — a dot marks a quarter that holds items. */}
+      <div className="inline-flex border border-slate-200" role="tablist" aria-label="Quarter">
+        {QUARTERS.map((q) => {
+          const active = q === activeQuarter;
+          return (
+            <button
+              key={q}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => setActiveQuarter(q)}
+              className={`flex items-center gap-1 px-3 py-1.5 text-sm font-medium transition-colors ${
+                active ? "bg-green-700 text-white" : "bg-white text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              {quarterLabel(q)}
+              {rowsIn(q).length > 0 && (
+                <span className={`h-1.5 w-1.5 rounded-full ${active ? "bg-white" : "bg-green-700"}`} />
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Toolbar: carry-forward + presets */}
       <div className="flex flex-wrap items-center gap-3 text-xs">
+        {activeRows.length > 0 && (
+          <button
+            type="button"
+            onClick={applyToAllQuarters}
+            title="Replaces the items in the other three quarters"
+            className="font-medium text-green-700 hover:underline"
+          >
+            Apply items to all quarters
+          </button>
+        )}
+        {activeQuarter > 1 && rowsIn(activeQuarter - 1).length > 0 && (
+          <button type="button" onClick={copyPreviousQuarter} className="font-medium text-green-700 hover:underline">
+            Copy previous quarter
+          </button>
+        )}
         <span className="flex-1" />
         <button
           type="button"
@@ -229,7 +312,7 @@ export default function AipProcurementItemTable({
         <button
           type="button"
           onClick={() => setSavePresetOpen(true)}
-          disabled={accountId == null || items.length === 0}
+          disabled={accountId == null || activeRows.length === 0}
           className="font-medium text-slate-600 hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
           title={accountId == null ? "Pick an account first" : undefined}
         >
@@ -238,15 +321,16 @@ export default function AipProcurementItemTable({
       </div>
 
       <div className="space-y-2">
-        {items.length === 0 && (
+        {activeRows.length === 0 && (
           <p className="text-xs text-slate-600 border border-dashed border-slate-300 px-3 py-4 text-center">
-            No procurement items on this line yet. Add one to cost it from the Price Index, or leave
-            it empty and type the amount instead.
+            {items.length === 0
+              ? `No procurement items on this line yet. Add one to cost ${quarterLabel(activeQuarter)} from the Price Index, or leave the line empty and type the amount instead.`
+              : `No items in ${quarterLabel(activeQuarter)} yet.`}
           </p>
         )}
 
-        {items.map((row, index) => {
-          const lineTotal = row.qty * row.unitPrice * row.numberOfDays;
+        {activeRows.map((row, index) => {
+          const lineTotal = lineTotalOf(row);
           const daysEnabled = daysEnabledFor(row);
           const duplicate = duplicateNote(row);
 
@@ -306,7 +390,9 @@ export default function AipProcurementItemTable({
                   <MoneyInput
                     value={row.unitPrice}
                     onChange={(v) => updateRow(index, { unitPrice: v ?? 0 })}
-                    className="w-full"
+                    // Match the Qty / Days / Line Total boxes beside it — MoneyInput's own padding
+                    // is the compact grid size, a row shorter than these.
+                    className="w-full text-sm [&_input]:py-1.5"
                   />
                 </div>
                 <div className="w-20 shrink-0">
@@ -344,16 +430,40 @@ export default function AipProcurementItemTable({
           );
         })}
 
-        <button type="button" onClick={addRow} className="text-xs font-medium text-green-600 hover:underline">
+        <button type="button" onClick={addRow} className="text-xs font-medium text-green-700 hover:underline">
           + Add item
         </button>
       </div>
 
       {items.length > 0 && (
-        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200 text-sm">
-          <span className="text-slate-600">Items total</span>
-          <span className="font-mono tabular-nums font-medium text-slate-800">₱{formatMoney(total)}</span>
-        </div>
+        <>
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200 text-sm">
+            <span className="text-slate-600">{quarterLabel(activeQuarter)} total</span>
+            <span className="font-mono tabular-nums font-medium text-slate-800">
+              ₱{formatMoney(quarterTotal(activeQuarter))}
+            </span>
+          </div>
+
+          {/* Every quarter at a glance, and the one figure the line actually carries. */}
+          <div className="grid grid-cols-4 gap-2 pt-2 border-t border-slate-200 text-center">
+            {QUARTERS.map((q) => (
+              <div key={q}>
+                <p className="text-[11px] text-slate-600">{quarterLabel(q)}</p>
+                <p className="font-mono text-sm tabular-nums text-slate-800">₱{formatMoney(quarterTotal(q))}</p>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+            {/* ⚠️ Says out loud that the quarters are not what prints — see the header. */}
+            <span className="text-[11px] text-slate-600">
+              Quarters are for planning. The line&apos;s amount is the total of all four.
+            </span>
+            <span>
+              <span className="text-slate-600">Items total </span>
+              <span className="font-mono tabular-nums font-semibold text-slate-800">₱{formatMoney(annualTotal)}</span>
+            </span>
+          </div>
+        </>
       )}
 
       {/* ── Load preset modal ───────────────────────────────────────────────── */}
@@ -412,7 +522,8 @@ export default function AipProcurementItemTable({
               className="w-full px-3 py-1.5 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
             />
             <p className="text-[11px] text-slate-600">
-              Saves the {items.length} item{items.length === 1 ? "" : "s"} currently on this line.
+              Saves the {activeRows.length} item{activeRows.length === 1 ? "" : "s"} currently in{" "}
+              {quarterLabel(activeQuarter)}.
             </p>
           </div>
         </Modal>

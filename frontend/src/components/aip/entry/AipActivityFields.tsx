@@ -123,7 +123,11 @@ export default function AipActivityFields({
               because that is where column (6) is; it spans the row only because it is free text. */}
           <dl className="grid flex-1 grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3">
             <Field label="eSRE code" value={activity.esreCode} required />
-            <Field label="Implementing office" value={activity.implementingOffice} />
+            {/* Spans two columns so Start and End always share the next row — schedule (4) and (5)
+                read as one pair, and splitting them across rows looked like two unrelated fields. */}
+            <div className="sm:col-span-2">
+              <Field label="Implementing office" value={activity.implementingOffice} />
+            </div>
             <Field label="Start" value={activity.startDate} />
             <Field label="End" value={activity.endDate} />
             <div className="col-span-2 sm:col-span-3">
@@ -165,7 +169,8 @@ export default function AipActivityFields({
           </select>
         </div>
 
-        <div>
+        {/* Spans two columns so Start and End share the row below — see the read view. */}
+        <div className="sm:col-span-2">
           {/* ⚠️ Free text, and it must stay free text even though it is prefilled from the
               reader's own office. The form prints joint implementations as `OPV/LFC/HRMO`, so a
               select over the office list could not express a real row. */}

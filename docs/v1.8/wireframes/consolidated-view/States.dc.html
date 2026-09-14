@@ -1,0 +1,70 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #F1F3F5;
+      font-family: "Segoe UI", "Source Sans Pro", system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: #196638; }
+    a:hover { color: #13512D; }
+    .cap { margin: 0 0 8px; font-size: 12px; line-height: 16px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.025em; color: #5A636B; }
+    .sk { background: #E9ECEF; }
+  </style>
+</helmet>
+
+<div style="padding: 24px; display: flex; flex-direction: column; gap: 24px;">
+
+  <div>
+    <p class="cap">Loading &mdash; shaped like the grid</p>
+    <div style="border: 1px solid #E9ECEF; background: #FFFFFF;">
+      <div style="height: 44px; background: #F1F3F5; border-bottom: 1px solid #C7CFD6;"></div>
+      <sc-for list="{{ skeleton }}" as="s" hint-placeholder-count="6">
+        <div style="display: grid; grid-template-columns: 120px minmax(0, 1fr) 90px 90px 90px; gap: 16px; align-items: center; padding: 8px 12px; border-bottom: 1px solid #E9ECEF;">
+          <span class="sk" style="height: 10px;"></span>
+          <span class="sk" style="height: 10px; width: 70%;"></span>
+          <span class="sk" style="height: 10px;"></span>
+          <span class="sk" style="height: 10px;"></span>
+          <span class="sk" style="height: 10px;"></span>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div>
+    <p class="cap">Nothing submitted in this sector yet</p>
+    <div style="border: 1px solid #E9ECEF; background: #FFFFFF; padding: 32px 24px; text-align: center;">
+      <p style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 600; color: #343A40;">No Others office has submitted to PPDO yet</p>
+      <p style="margin: 8px auto 0; max-width: 520px; font-size: 14px; line-height: 20px; color: #5A636B;">Both offices in this sector are still with their own people. Their rows appear here as each one is sent to PPDO.</p>
+    </div>
+  </div>
+
+  <div>
+    <p class="cap">Fiscal year not opened</p>
+    <div style="border: 1px solid #E9ECEF; background: #FFFFFF; padding: 32px 24px; text-align: center;">
+      <p style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 600; color: #343A40;">FY 2029 has not been opened yet</p>
+      <p style="margin: 8px auto 0; max-width: 520px; font-size: 14px; line-height: 20px; color: #5A636B;">An administrator opens the fiscal year. There is nothing to consolidate until offices start submitting.</p>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":900,"height":760}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { skeleton: [1, 2, 3, 4, 5, 6] };
+  }
+}
+</script>
+</body>
+</html>

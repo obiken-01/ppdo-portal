@@ -390,6 +390,20 @@ export async function submitAipToPpdo(
   return unwrap(data);
 }
 
+/**
+ * The department head hands the office's work back down to its encoders — department review →
+ * Draft (added 2026-09-14). From department review only; the server refuses every other state.
+ */
+export async function returnAipToEncoder(
+  aipId: number,
+  officeId: number
+): Promise<AipSubmitResult> {
+  const { data } = await api.post<ApiResponse<AipSubmitResult>>(
+    `/budget-planning/aip/${aipId}/offices/${officeId}/return-to-encoder`, {}
+  );
+  return unwrap(data);
+}
+
 /** ⚠️ `remaining` may be negative. Render the sign; never clamp it. */
 export async function getAipCeiling(aipId: number): Promise<AipCeilingStatus> {
   const { data } = await api.get<ApiResponse<AipCeilingStatus>>(

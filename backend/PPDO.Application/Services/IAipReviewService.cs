@@ -98,13 +98,33 @@ public interface IAipReviewService
     /// </para>
     ///
     /// <para>
-    /// ⚠️ <b>There is no un-accept.</b> <c>Consolidated</c> is terminal in shipped code and the
-    /// return path refuses from it with a 409, so an accepted office cannot currently be re-opened
-    /// — spec §7 leaves that open ("only by a PPDO reviewer, through the existing return path"),
-    /// and building it is a ticket, not a quiet addition here.
+    /// ↩️ <b>An accepted office can be re-opened since 2026-09-14</b> — by
+    /// <see cref="ReopenOfficeAsync"/>, asked for by name. The return path still refuses
+    /// <c>Consolidated</c> with a 409, and must keep doing so.
     /// </para>
     /// </summary>
     Task<ServiceResult<AipSubmitResultDto>> AcceptOfficeAsync(
+        int aipRecordId, int officeId, User caller, CancellationToken ct = default);
+
+    /// <summary>
+    /// Re-opens an accepted office and sends it back: <c>Consolidated</c> → <c>ReturnedByPpdo</c>,
+    /// across every group row at once (added 2026-09-14 with PPDO-73; closes the spec's open
+    /// follow-up on re-opening an accepted office).
+    ///
+    /// <para>
+    /// <b>⚠️ A separate action from <see cref="ReturnToOfficeAsync"/>, on purpose.</b> Return refuses
+    /// <c>Consolidated</c> with a 409 so a reviewer on a stale screen cannot silently re-open an
+    /// office a colleague has just accepted. Re-opening must be asked for by name, and History records
+    /// it under its own action.
+    /// </para>
+    ///
+    /// <para>
+    /// Any state other than <c>Consolidated</c> is a <b>409</b> — the office moved since the screen
+    /// was read. A caller who may not act on the office gets the same <b>404</b> as the other actions
+    /// (PPDO-46). No completeness or ceiling re-run, for the reason return has none.
+    /// </para>
+    /// </summary>
+    Task<ServiceResult<AipSubmitResultDto>> ReopenOfficeAsync(
         int aipRecordId, int officeId, User caller, CancellationToken ct = default);
 
     /// <summary>
