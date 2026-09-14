@@ -65,4 +65,43 @@ public sealed class AipConsolidatedFunctions
         return await ConfigHttp.FromResultAsync(req,
             await _consolidated.GetSheetAsync(fiscalYear, q["sector"], caller!, ct), ct);
     }
+
+    // ── GET /api/budget-planning/aip/consolidated/export?fiscalYear= ──────────
+    //
+    // The whole fiscal year as the province's Annex B workbook — all four sector sheets (V18-60 /
+    // PPDO-84, AIP_Form_Spec.md §12). FY≤2027 (400) and an unopened year (404) are the service's.
+    //
+    // ⚠️ Route ordering: "consolidated/export" is two literal segments; every sibling under
+    // budget-planning/aip/ with a parameter constrains it to :int, so nothing else can match.
+    [Function("AipConsolidatedExport")]
+    public async Task<HttpResponseData> Export(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get",
+            Route = "budget-planning/aip/consolidated/export")] HttpRequestData req,
+        CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) =
+            await ConfigHttp.AuthorizeAsync(req, _jwt, CanReviewAllOffices, ct);
+        if (denied is not null) return denied;
+
+        NameValueCollection q = HttpUtility.ParseQueryString(req.Url.Query);
+
+        if (!int.TryParse(q["fiscalYear"], out int fiscalYear) || fiscalYear <= 0)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<AipFormExportFileDto>.Fail("fiscalYear is required."), ct);
+
+        ServiceResult<AipFormExportFileDto> result =
+            await _consolidated.ExportWorkbookAsync(fiscalYear, caller!, ct);
+
+        // A refusal is an envelope the page can read, never a file.
+        if (!result.IsSuccess)
+            return await ConfigHttp.FromResultAsync(req, result, ct);
+
+        HttpResponseData response = req.CreateResponse(HttpStatusCode.OK);
+        response.Headers.Add("Content-Type",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.Headers.Add("Content-Disposition",
+            $"attachment; filename=\"{result.Value!.FileName}\"");
+        await response.WriteBytesAsync(result.Value.Content, ct);
+        return response;
+    }
 }

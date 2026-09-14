@@ -29,4 +29,12 @@ public interface IAipConsolidatedService
     /// </summary>
     Task<ServiceResult<AipConsolidatedSheetDto>> GetSheetAsync(
         int fiscalYear, string? sector, User caller, CancellationToken ct = default);
+
+    /// <summary>
+    /// The whole fiscal year as the province's Annex B workbook (V18-60 / PPDO-84): all four sector
+    /// sheets, the same offices and figures as the grid, the tree loaded once. FY≤2027 is a bad
+    /// request, an unopened year not found.
+    /// </summary>
+    Task<ServiceResult<AipFormExportFileDto>> ExportWorkbookAsync(
+        int fiscalYear, User caller, CancellationToken ct = default);
 }

@@ -107,6 +107,11 @@ public static class AipFormRowBuilder
                 body.AddRange(underProgram);
             }
 
+            // ⚠️ An office with nothing printed beneath it — every program empty, or none at all — is
+            // left off too (Ralph, 2026-09-14), for the same reason as an empty program: a heading that
+            // carries nothing. It is still counted as submitted; it just has no line to print.
+            if (body.Count == 0) continue;
+
             AipPrintedAmountsDto subtotal = AipPrintedFigures.Sum(lines);
             officeTotals.Add(subtotal);
 

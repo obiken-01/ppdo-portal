@@ -70,3 +70,31 @@ public sealed record AipConsolidatedSheetDto(
     IReadOnlyList<AipConsolidatedSectorCountDto> Sectors,
     IReadOnlyList<AipConsolidatedRowDto>         Rows,
     AipPrintedAmountsDto                         Total);
+
+/// <summary>One sector sheet of the Annex B workbook (PPDO-84) — the same rows the grid shows.</summary>
+public sealed record AipFormWorkbookSheetDto(
+    string                               Sector,
+    IReadOnlyList<AipConsolidatedRowDto> Rows,
+    AipPrintedAmountsDto                 Total);
+
+/// <summary>
+/// Everything the Annex B workbook prints (V18-60 / PPDO-84, <c>AIP_Form_Spec.md</c> Part II).
+///
+/// ⚠️ <b>Always four sheets, in <c>AipSector.All</c> order</b> — a sector with no office yet is an
+/// empty sheet, so the workbook's shape never depends on the season (decision 3).
+/// </summary>
+/// <param name="AsOf">The download date in Manila — the "As of" month and the file name.</param>
+/// <param name="SubmittedOffices">Distinct offices with PPDO or accepted, across every sector.</param>
+/// <param name="TotalOffices">Distinct offices in the record. Fewer submitted than this prints the completeness line.</param>
+public sealed record AipFormWorkbookDto(
+    int                                     FiscalYear,
+    DateOnly                                AsOf,
+    int                                     SubmittedOffices,
+    int                                     TotalOffices,
+    IReadOnlyList<AipFormWorkbookSheetDto>  Sheets)
+{
+    public string FileName => $"AIP_FY{FiscalYear}_{AsOf:yyyy-MM-dd}.xlsx";
+}
+
+/// <summary>A built workbook, ready to send.</summary>
+public sealed record AipFormExportFileDto(string FileName, byte[] Content);
