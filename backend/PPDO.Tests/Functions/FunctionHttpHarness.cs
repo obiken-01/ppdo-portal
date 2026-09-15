@@ -56,6 +56,27 @@ internal static class FunctionHttp
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
+    /// <summary>
+    /// Builds a POST request, optionally carrying <paramref name="body"/> as camelCase JSON (null
+    /// for a body-less action route like <c>.../revoke</c>). Pass a raw string to exercise a
+    /// malformed body.
+    /// </summary>
+    internal static FakeHttpRequestData Post(
+        string path,
+        object? body = null,
+        string? authorizationHeader = "Bearer test-token")
+    {
+        Uri url = new($"https://localhost/api/{path}");
+        byte[]? bytes = body switch
+        {
+            null => null,
+            string s => Encoding.UTF8.GetBytes(s),
+            _ => Encoding.UTF8.GetBytes(JsonSerializer.Serialize(body, PutJson)),
+        };
+        return new FakeHttpRequestData(
+            new Mock<FunctionContext>().Object, url, authorizationHeader, method: "POST", body: bytes);
+    }
+
     /// <summary>Reads a response body back as text (rewinds first — handlers leave it at the end).</summary>
     internal static string BodyText(HttpResponseData response)
     {

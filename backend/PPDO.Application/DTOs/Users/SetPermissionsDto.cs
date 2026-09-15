@@ -31,4 +31,7 @@ public sealed class SetPermissionsDto
 
     /// <summary>Per-user grant to review EVERY office's budget-planning work (v1.8.0 — RAL-257).</summary>
     public bool? OverrideCanReviewAllOffices { get; init; }
+
+    /// <summary>Per-user grant for Configuration → API Access (v1.8.0 — PPDO-86).</summary>
+    public bool? OverrideCanManageApiKeys { get; init; }
 }

@@ -15,9 +15,13 @@ namespace PPDO.Application.Services;
 public sealed class PartnerApiKeyService : IPartnerApiKeyService
 {
     private readonly IPartnerApiKeyRepository _keys;
+    private readonly IPartnerApiRequestRepository _requests;
     private readonly IOfficeRepository _offices;
     private readonly IAuditService _audit;
     private readonly ILogger<PartnerApiKeyService> _logger;
+
+    // build spec §4.2/§6.1: "50 per page" for the Usage modal.
+    private const int RequestsPageSize = 50;
 
     // Manila is UTC+8 — matches the LoadManilaZone() pattern in DeliveryService/PurchaseRequestService.
     private static readonly TimeZoneInfo ManilaZone = LoadManilaZone();
@@ -30,14 +34,16 @@ public sealed class PartnerApiKeyService : IPartnerApiKeyService
 
     public PartnerApiKeyService(
         IPartnerApiKeyRepository keys,
+        IPartnerApiRequestRepository requests,
         IOfficeRepository offices,
         IAuditService audit,
         ILogger<PartnerApiKeyService> logger)
     {
-        _keys    = keys;
-        _offices = offices;
-        _audit   = audit;
-        _logger  = logger;
+        _keys     = keys;
+        _requests = requests;
+        _offices  = offices;
+        _audit    = audit;
+        _logger   = logger;
     }
 
     /// <inheritdoc />
@@ -164,6 +170,23 @@ public sealed class PartnerApiKeyService : IPartnerApiKeyService
             cancellationToken);
 
         return ServiceResult<ApiKeyListItemDto>.Ok(MapToDto(updated));
+    }
+
+    /// <inheritdoc />
+    public async Task<ServiceResult<ApiKeyRequestLogPageDto>> GetRequestsAsync(
+        int keyId, int page, CancellationToken cancellationToken = default)
+    {
+        PartnerApiKey? key = await _keys.GetByIdAsync(keyId, cancellationToken);
+        if (key is null)
+            return ServiceResult<ApiKeyRequestLogPageDto>.NotFound("API key not found.");
+
+        (IReadOnlyList<PartnerApiRequest> items, int total) = await _requests.GetPageForKeyAsync(
+            keyId, page < 1 ? 1 : page, RequestsPageSize, cancellationToken);
+
+        return ServiceResult<ApiKeyRequestLogPageDto>.Ok(new ApiKeyRequestLogPageDto(
+            items.Select(r => new ApiKeyRequestLogItemDto(
+                r.RequestedAt, r.Route, r.OfficeCode, r.FiscalYear, r.StatusCode)).ToList(),
+            total));
     }
 
     // ── Mapping ────────────────────────────────────────────────────────────────

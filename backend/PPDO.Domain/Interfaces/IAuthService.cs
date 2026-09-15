@@ -223,6 +223,9 @@ public sealed class MeResponse
     public bool CanReviewBudgetPlanning { get; init; }
     public bool CanReviewAllOffices { get; init; }
 
+    /// <summary>Per-user grant for Configuration → API Access (v1.8.0 — PPDO-86).</summary>
+    public bool CanManageApiKeys { get; init; }
+
     // -- Password / recovery gates (RAL-266/RAL-267) ---------------------------
 
     /// <summary>True after a reset — the portal blocks everything except changing the password.</summary>

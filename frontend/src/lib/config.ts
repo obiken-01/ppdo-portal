@@ -13,9 +13,13 @@ import api from "./api";
 import type {
   AccountResponse,
   AccountType,
+  ApiKeyListItem,
+  ApiKeyRequestPage,
   ApiResponse,
   ActiveFilter,
   AuditLogPage,
+  CreateApiKeyRequest,
+  CreateApiKeyResult,
   CsvImportResult,
   DivisionResponse,
   ClimateChangeTypologyResponse,
@@ -726,5 +730,35 @@ export async function importEsreCodesCsv(csvText: string): Promise<CsvImportResu
     csvText,
     { headers: { "Content-Type": "text/csv" } },
   );
+  return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// Partner API keys — Configuration → API Access (v1.8.0 — PPDO-86)
+// ---------------------------------------------------------------------------
+
+/** GET /api/config/api-keys — every route here requires CanManageApiKeys, list included. */
+export async function listApiKeys(): Promise<ApiKeyListItem[]> {
+  const { data } = await api.get<ApiResponse<ApiKeyListItem[]>>("/config/api-keys");
+  return unwrap(data);
+}
+
+/** POST /api/config/api-keys — the plaintext key is returned exactly once. */
+export async function createApiKey(body: CreateApiKeyRequest): Promise<CreateApiKeyResult> {
+  const { data } = await api.post<ApiResponse<CreateApiKeyResult>>("/config/api-keys", body);
+  return unwrap(data);
+}
+
+/** POST /api/config/api-keys/{id}/revoke — terminal; a revoked key cannot be reactivated. */
+export async function revokeApiKey(id: number): Promise<ApiKeyListItem> {
+  const { data } = await api.post<ApiResponse<ApiKeyListItem>>(`/config/api-keys/${id}/revoke`);
+  return unwrap(data);
+}
+
+/** GET /api/config/api-keys/{id}/requests?page= — the "Usage" modal, 50 per page, newest first. */
+export async function listApiKeyRequests(id: number, page = 1): Promise<ApiKeyRequestPage> {
+  const { data } = await api.get<ApiResponse<ApiKeyRequestPage>>(`/config/api-keys/${id}/requests`, {
+    params: { page },
+  });
   return unwrap(data);
 }

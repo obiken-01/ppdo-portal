@@ -338,6 +338,7 @@ public sealed class UserService : IUserService
         target.OverrideCanManagePboCeiling      = dto.OverrideCanManagePboCeiling;
         target.OverrideCanReviewBudgetPlanning  = dto.OverrideCanReviewBudgetPlanning;
         target.OverrideCanReviewAllOffices      = dto.OverrideCanReviewAllOffices;
+        target.OverrideCanManageApiKeys         = dto.OverrideCanManageApiKeys;
 
         // Runs after role/division/office and the override flags are applied, so
         // reachability is judged on what the user is about to become.
@@ -441,6 +442,7 @@ public sealed class UserService : IUserService
         target.OverrideCanManagePboCeiling      = dto.OverrideCanManagePboCeiling;
         target.OverrideCanReviewBudgetPlanning  = dto.OverrideCanReviewBudgetPlanning;
         target.OverrideCanReviewAllOffices      = dto.OverrideCanReviewAllOffices;
+        target.OverrideCanManageApiKeys         = dto.OverrideCanManageApiKeys;
 
         await _users.UpdateAsync(target, cancellationToken);
         await _users.SaveChangesAsync(cancellationToken);
@@ -858,6 +860,7 @@ public sealed class UserService : IUserService
         OverrideCanManagePboCeiling         = u.OverrideCanManagePboCeiling,
         OverrideCanReviewBudgetPlanning     = u.OverrideCanReviewBudgetPlanning,
         OverrideCanReviewAllOffices         = u.OverrideCanReviewAllOffices,
+        OverrideCanManageApiKeys            = u.OverrideCanManageApiKeys,
         CreatedAt                     = u.CreatedAt,
         UpdatedAt                     = u.UpdatedAt,
     };
@@ -875,7 +878,7 @@ public sealed class UserService : IUserService
         u.OverrideCanManageResourceLinks, u.OverrideCanAccessBudgetPlanning,
         u.OverrideCanUploadAip, u.OverrideCanManageConfig, u.OverrideCanManagePpdoAllocation,
         u.OverrideCanManagePboCeiling, u.OverrideCanReviewBudgetPlanning,
-        u.OverrideCanReviewAllOffices,
+        u.OverrideCanReviewAllOffices, u.OverrideCanManageApiKeys,
         // RAL-246: LandingPage decides where this user lands; RecoveryQuestionKey identifies
         // WHICH secret can reset the account, and MustChangePassword whether they are on a
         // temporary one. All three are security-relevant state that was being written
