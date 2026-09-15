@@ -1,17 +1,23 @@
 ---
-status: draft
+status: built
 version: 1.0.0
-supersedes: External_AIP_API_Contract.md §5 and §6.1 (v0.6)
+built: release/1.8.0 — PPDO-15, PPDO-13, PPDO-14, PPDO-12 (PRs #328–#331)
+spec: ../v1.8/External_AIP_API_Spec.md
+supersedes: External_AIP_API_Contract.md §3, §4.2, §5 and §6.1 (v0.6)
 ---
 
-# External AIP API — response schema & samples (DRAFT 1.0.0)
+# External AIP API — response schema & samples (1.0.0)
 
-> Prepared 2026-09-14 for the GSO + MIS meeting. **§5 also lists the hosting-migration and SSO
-> questions for MIS.** **Nothing here is implemented.** This is the payload
-> returned for a **whole fiscal year** (`GET /api/external/v1/aip?fiscalYear=…`) or for **one office**
-> (`…&officeCode=…`). **Both calls return the same shape** (§1). Auth and the base URL are still
-> defined by [External_AIP_API_Contract.md](../External_AIP_API_Contract.md); its §4.2 (office-only
-> endpoint), §5 (money) and §6.1 (AIP response) are replaced by this folder.
+> ✅ **Built in v1.8.0** — merged to `release/1.8.0` (PRs #328–#331). ⚠️ **Not live yet:** it reaches
+> production when v1.8.0 merges to `main`, and no partner key can be issued until the API Access page
+> (PPDO-86) is merged. See §0.
+>
+> This is the payload returned for a **whole fiscal year** (`GET /api/external/v1/aip?fiscalYear=…`)
+> or for **one office** (`…&officeCode=…`). **Both calls return the same shape** (§1). Keys, scope,
+> rate limit and logging are defined by the build spec,
+> [External_AIP_API_Spec.md](../v1.8/External_AIP_API_Spec.md); this folder is authoritative for the
+> response shape. Prepared 2026-09-14 for the GSO + MIS meeting — **§5 also lists the
+> hosting-migration and SSO questions for MIS.**
 >
 > ⚠️ **All sample data is fictional.** Office names and reference codes follow the real layout, but
 > every amount, activity, and item is invented. This repository is public.
@@ -25,14 +31,32 @@ supersedes: External_AIP_API_Contract.md §5 and §6.1 (v0.6)
 
 ---
 
+## 0. Build status
+
+| Piece | Ticket | State |
+|---|---|---|
+| Key storage, issuing and revoking service, `CanManageApiKeys` grant — ⚠️ migration `AddPartnerApiKeys` | PPDO-15 | ✅ Merged (#328) |
+| `X-Api-Key` check, office scope, 60 requests/minute per key, request log | PPDO-13 | ✅ Merged (#329) |
+| Read service producing this schema | PPDO-14 | ✅ Merged (#330) |
+| Endpoints + schema contract test (`ExternalAipSchemaContractTests`) | PPDO-12 | ✅ Merged (#331) |
+| Configuration → API Access page, to issue and revoke keys | PPDO-86 | ⏳ Not merged — until it is, no partner key can be issued |
+| Production | — | ⏳ Ships with v1.8.0 → `main`; run the migration by hand (CI does not) |
+
+---
+
 ## 1. Calls and shape
 
-**One endpoint, one optional filter, one response shape:**
+**One endpoint, one optional filter, one response shape** — all under `/api/external/v1`:
 
-| Call | Returns |
-|---|---|
-| `GET /api/external/v1/aip?fiscalYear=2028` | Every released office for FY2028, plus the offices still pending |
-| `GET /api/external/v1/aip?fiscalYear=2028&officeCode=PPDO` | The same shape, holding just that office — `offices` has 0 or 1 entry |
+| Call | Returns | Key |
+|---|---|---|
+| `GET /aip?fiscalYear=2028` | Every released office for FY2028, plus the offices still pending | All-offices key, otherwise `403` |
+| `GET /aip?fiscalYear=2028&officeCode=PPDO` | The same shape, holding just that office — `offices` has 0 or 1 entry | A key covering that office |
+| `GET /aip/fiscal-years?officeCode=PPDO` | `{ "data": [2028, 2027] }` — years with a released AIP, newest first; same scope rule | As above |
+| `GET /health` | Bare `{ "status": "ok", "timestamp": … }` — wakes the host, no database call | None |
+
+Every data call sends `X-Api-Key: ppdo_<prefix>_<secret>`. Status codes and exact error messages are
+in the build spec §3.1.
 
 An office's entry is **identical** in both responses (the sample check asserts it), so a consumer
 writes one parser and can switch between the two calls freely.
@@ -111,6 +135,9 @@ Summary + detail and flat rows are only worth their cost if the meeting answers 
 
 ## 4. Open questions for the meeting
 
+> **The build uses each proposed default below** (spec §2 decision 1). None is answered by GSO yet,
+> and each is a one-place change if the meeting decides otherwise.
+
 | # | Question | Proposed default |
 |---|---|---|
 | 1 | **When is an AIP released to the API?** `Consolidated` means PPDO accepted it. It does **not** mean the PDC endorsed it or the Sangguniang Panlalawigan approved it (on or before June 7), and this system records neither step | Release at `Consolidated`, and state plainly that this is pre-approval. If GSO needs the approved version, add a manual "SP-approved" flag later |
@@ -119,7 +146,7 @@ Summary + detail and flat rows are only worth their cost if the meeting answers 
 | 4 | Are procurement items and `stockCardNo` useful to GSO (supply side)? | Include — they are the closest link to PPMP/PR |
 | 5 | Can their stack read **string** money? (PGOM Connect / WFP system language?) | Yes, with a documented decimal parse |
 | 6 | Nested tree (this draft) or flat activity list? *(carried from v0.6)* | Nested — it matches the AIP document |
-| 7 | Auth header, per-key office scope, staging environment *(carried from v0.6 §9)* | Keep the header choice **open** — if MIS's SSO supports machine-to-machine credentials, it may replace the static API key (§5.2 Q4) |
+| 7 | Auth header, per-key office scope, staging environment *(carried from v0.6 §9)* | **Built:** `X-Api-Key`, scoped to a list of offices or all offices, behind a swappable credential check — if MIS's SSO offers machine-to-machine credentials (§5.2 Q4) it can replace the key without touching the endpoints. Staging environment still open |
 | 8 | **If MIS hosts the system:** does the base URL and cold-start note in the contract still apply? | Revisit after the migration decision (§5.1); the payload shape does not change |
 | 9 | **What will GSO actually do with the whole-year call** — load everything into their own database, or build one office's WFP at a time? | Decides whether the alternatives in §1a are needed. Default: the single shape as drafted |
 | 10 | Should `pendingOffices` say *where* each office is in review (with the office, returned, at PPDO)? | Code and name only. Review progress is internal |
@@ -197,26 +224,30 @@ the external API into static API keys.
 
 ---
 
-## 6. To verify before implementation
+## 6. Settled during the build, and still to check
 
+**Settled in PPDO-14:**
+
+- **`releasedAt`** is the latest `ACCEPT_PPD` acceptance in `audit_log` for the office's groups, read
+  in one batched query, so it survives a return-and-resubmit.
+- **Legacy AIP office rows with no office link** (`AipOffice.OfficeId` null) are **excluded** — they
+  have no office code to address them by.
+- **FY2028+ activity amounts** are summed from the expenditure lines; `printedAmounts` come from
+  `AipPrintedFigures`, the same source as the Excel export, never re-derived.
+- **Queries** are set-based (one per tree level, across all released offices), never a loop per
+  office.
+
+**Still to check before production:**
+
+- **Whole-year response size and compression.** FY2027 alone has ~2,900 AIP rows; FY2028 adds
+  expenditure lines and procurement items. Measure the response against real data, and confirm the
+  Functions host gzips it when the caller sends `Accept-Encoding: gzip`
+  ([PERFORMANCE_GUIDELINES.md](../PERFORMANCE_GUIDELINES.md)). Page by office only if it is too large.
 - **Legacy FY2027 rows with blank or `"None"` ref codes** (4 rows carrying ₱29.35M in the province's
   file). Confirm what ref code the RAL-238 importer gives them — the schema's `refCode` pattern
   rejects a blank.
-- **`AipActivity.FundingSourceId` on FY2028+ activities.** This draft assumes it is unused
-  (funds live on lines). Confirm before mapping.
 - **CC typology codes** are still a free-text column on the activity. The schema's array assumes
   the comma-split planned in the join-table backfill.
-- **`releasedAt` source.** The acceptance time should come from the AIP submission history
-  (PPDO-77). Confirm it is recorded per office and survives a return-and-resubmit (use the latest
-  acceptance).
-- **Legacy AIP office rows with no office link** (`AipOffice.OfficeId` null) have no office code, so
-  neither call can address them. Decide: exclude, or report them. The schema currently has no place
-  for an office without a code.
-- **Whole-year response size.** FY2027 alone has ~2,900 AIP rows; FY2028 adds expenditure lines and
-  procurement items. Measure it against the real data, serve it gzip-compressed, and build it with a
-  handful of set-based queries (one per level), never a loop per office
-  ([PERFORMANCE_GUIDELINES.md](../PERFORMANCE_GUIDELINES.md)). Page by office only if it is still too
-  large.
 
 ---
 
@@ -227,5 +258,7 @@ python -m pip install jsonschema
 python -c "import json,jsonschema;s=json.load(open('docs/external-api/aip-response.schema.json'));[jsonschema.Draft202012Validator(s,format_checker=jsonschema.FormatChecker()).validate(json.load(open(f'docs/external-api/aip-response.sample.{n}.json'))) for n in ('fy2028','fy2028.all-offices','fy2027-legacy')];print('ok')"
 ```
 
-When the endpoint is built, the same schema should be asserted in an integration test against a
-real response, so the contract and the code cannot drift apart.
+The build asserts the same schema against real output: `ExternalAipSchemaContractTests` (PPDO-12)
+validates a response from the read service — Fy2028, Legacy and `data: null` — exactly as the
+endpoint serializes it. ⚠️ If this schema changes, run the backend tests: the contract test is what
+catches the code and this file drifting apart.

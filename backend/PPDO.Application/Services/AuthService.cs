@@ -216,6 +216,7 @@ public sealed class AuthService : IAuthService
             CanManagePboCeiling     = await _permissions.CanManagePboCeilingAsync(user, cancellationToken),
             CanReviewBudgetPlanning = await _permissions.CanReviewBudgetPlanningAsync(user, cancellationToken),
             CanReviewAllOffices     = await _permissions.CanReviewAllOfficesAsync(user, cancellationToken),
+            CanManageApiKeys        = await _permissions.CanManageApiKeysAsync(user, cancellationToken),
             MustChangePassword      = user.MustChangePassword,
             NeedsRecoverySetup      = user.RecoveryQuestionKey is null,
             UnacknowledgedPasswordResetAt = UnacknowledgedResetAt(user),

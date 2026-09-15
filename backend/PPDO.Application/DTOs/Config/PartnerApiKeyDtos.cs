@@ -39,3 +39,16 @@ public sealed record CreateApiKeyDto(
 public sealed record CreateApiKeyResultDto(
     ApiKeyListItemDto Key,
     string PlaintextKey);
+
+/// <summary>One row of the "Usage" modal on Configuration → API Access (build spec §4.2).</summary>
+public sealed record ApiKeyRequestLogItemDto(
+    DateTime RequestedAt,
+    string Route,
+    string? OfficeCode,
+    int? FiscalYear,
+    int StatusCode);
+
+/// <summary>A page of a key's call history, newest first, plus the total row count.</summary>
+public sealed record ApiKeyRequestLogPageDto(
+    IReadOnlyList<ApiKeyRequestLogItemDto> Items,
+    int Total);

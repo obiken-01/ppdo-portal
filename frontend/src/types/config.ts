@@ -347,3 +347,59 @@ export interface UpsertEsreCodeRequest {
   description?: string | null;
   isActive: boolean;
 }
+
+/**
+ * Configuration → API Access — partner API keys for the external AIP API (v1.8.0 — PPDO-86).
+ * `Active` | `Expired` | `Revoked`, computed server-side from expiresAt/revokedAt.
+ */
+export type ApiKeyStatus = "Active" | "Expired" | "Revoked";
+
+export interface ApiKeyOffice {
+  code: string;
+  name: string;
+}
+
+/** One row of the Configuration → API Access list. Never carries the key hash or secret. */
+export interface ApiKeyListItem {
+  id: number;
+  partnerName: string;
+  keyPrefix: string;
+  allOffices: boolean;
+  offices: ApiKeyOffice[];
+  status: ApiKeyStatus;
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+  createdAt: string;
+  createdByName: string;
+  revokedAt: string | null;
+  revokedByName: string | null;
+}
+
+/** POST /api/config/api-keys body. `officeIds` is ignored when `allOffices` is true. */
+export interface CreateApiKeyRequest {
+  partnerName: string;
+  allOffices: boolean;
+  officeIds: number[];
+  /** Plain calendar date, "yyyy-MM-dd" (Manila). Omit for no expiry. */
+  expiresAt?: string | null;
+}
+
+/** Response to a successful issue — `plaintextKey` is shown exactly once. */
+export interface CreateApiKeyResult {
+  key: ApiKeyListItem;
+  plaintextKey: string;
+}
+
+/** One row of the "Usage" modal — a logged call against the external API. */
+export interface ApiKeyRequestLogItem {
+  requestedAt: string;
+  route: string;
+  officeCode: string | null;
+  fiscalYear: number | null;
+  statusCode: number;
+}
+
+export interface ApiKeyRequestPage {
+  items: ApiKeyRequestLogItem[];
+  total: number;
+}

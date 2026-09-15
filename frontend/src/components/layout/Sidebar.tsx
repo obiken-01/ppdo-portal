@@ -134,6 +134,9 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
   const isAdmin            = me?.role === "Admin" || me?.role === "SuperAdmin";
   const showManageUsers    = !isOfficeUser && me?.canManageUsers === true;
   const showAuditLog       = !isOfficeUser && me?.role === "SuperAdmin";
+  // PPDO-86 — unlike showConfig, not gated on !isOfficeUser: a guest-office Staff holding
+  // CanManageApiKeys must still see the page (build spec §6.1 "office and division not read").
+  const showApiAccess      = me?.canManageApiKeys === true;
   const showBudgetPlanning = me?.canAccessBudgetPlanning === true;
   // WFP — and the Report page, which renders a WFP — are PPDO-internal (PPDO-20).
   // A guest office plans against its ceiling in the AIP and submits that; it has no
@@ -482,7 +485,7 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
         )}
 
         {/* Configuration — collapsible group; PPDO users with CanManageConfig or CanManageUsers */}
-        {(showConfig || showManageUsers || showAuditLog) && (
+        {(showConfig || showManageUsers || showAuditLog || showApiAccess) && (
           <div>
             <button
               onClick={() => setConfigOpen((o) => !o)}
@@ -551,6 +554,12 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
                   <Link href="/config/audit-log" className={childLinkCls(isActive("/config/audit-log"))}>
                     <span className="text-xs">•</span>
                     <span className="truncate">Audit Log</span>
+                  </Link>
+                )}
+                {showApiAccess && (
+                  <Link href="/config/api-access" className={childLinkCls(isActive("/config/api-access"))}>
+                    <span className="text-xs">•</span>
+                    <span className="truncate">API Access</span>
                   </Link>
                 )}
               </div>

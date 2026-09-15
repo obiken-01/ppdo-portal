@@ -111,6 +111,8 @@ export interface MeResponse {
   /** This user reviews EVERY office's budget-planning work (RAL-257) — the one flag that
    *  widens data scope past the caller's own office. Read scope only. */
   canReviewAllOffices: boolean;
+  /** Per-user grant for Configuration → API Access (v1.8.0 — PPDO-86). */
+  canManageApiKeys: boolean;
 
   /** True after a reset — the portal blocks everything except changing the password (RAL-266). */
   mustChangePassword: boolean;

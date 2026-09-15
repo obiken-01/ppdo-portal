@@ -49,12 +49,14 @@ public sealed class PartnerApiKeyServiceTests
         PartnerApiKeyService sut,
         Mock<IPartnerApiKeyRepository> keys,
         Mock<IOfficeRepository> offices,
-        Mock<IAuditService> audit) Build(
+        Mock<IAuditService> audit,
+        Mock<IPartnerApiRequestRepository> requests) Build(
             List<Office>? officeSeed = null, PartnerApiKey? refetchResult = null)
     {
         Mock<IPartnerApiKeyRepository> keys = new();
         Mock<IOfficeRepository> offices = new();
         Mock<IAuditService> audit = new();
+        Mock<IPartnerApiRequestRepository> requests = new();
 
         offices.Setup(o => o.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(officeSeed ?? []);
@@ -73,8 +75,8 @@ public sealed class PartnerApiKeyServiceTests
                 .ReturnsAsync(refetchResult);
 
         PartnerApiKeyService sut = new(
-            keys.Object, offices.Object, audit.Object, NullLogger<PartnerApiKeyService>.Instance);
-        return (sut, keys, offices, audit);
+            keys.Object, requests.Object, offices.Object, audit.Object, NullLogger<PartnerApiKeyService>.Instance);
+        return (sut, keys, offices, audit, requests);
     }
 
     private static CreateApiKeyDto Dto(
@@ -89,7 +91,7 @@ public sealed class PartnerApiKeyServiceTests
     public async Task IssueAsync_Valid_ReturnsPlaintextKeyOnce_AndStoresOnlyTheHash()
     {
         PartnerApiKey refetched = MakeKey();
-        (PartnerApiKeyService sut, Mock<IPartnerApiKeyRepository> keys, _, _) = Build(refetchResult: refetched);
+        (PartnerApiKeyService sut, Mock<IPartnerApiKeyRepository> keys, _, _, _) = Build(refetchResult: refetched);
 
         PartnerApiKey? captured = null;
         keys.Setup(k => k.AddAsync(It.IsAny<PartnerApiKey>(), It.IsAny<CancellationToken>()))
@@ -111,7 +113,7 @@ public sealed class PartnerApiKeyServiceTests
     public async Task IssueAsync_PrefixCollision_RetriesUntilUnique()
     {
         PartnerApiKey refetched = MakeKey();
-        (PartnerApiKeyService sut, Mock<IPartnerApiKeyRepository> keys, _, _) = Build(refetchResult: refetched);
+        (PartnerApiKeyService sut, Mock<IPartnerApiKeyRepository> keys, _, _, _) = Build(refetchResult: refetched);
 
         // First prefix is "taken"; the second attempt must succeed.
         keys.SetupSequence(k => k.GetByPrefixAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -128,7 +130,7 @@ public sealed class PartnerApiKeyServiceTests
     public async Task IssueAsync_AllOffices_ScopesNoOfficeRows()
     {
         PartnerApiKey refetched = MakeKey();
-        (PartnerApiKeyService sut, Mock<IPartnerApiKeyRepository> keys, _, _) = Build(refetchResult: refetched);
+        (PartnerApiKeyService sut, Mock<IPartnerApiKeyRepository> keys, _, _, _) = Build(refetchResult: refetched);
 
         PartnerApiKey? captured = null;
         keys.Setup(k => k.AddAsync(It.IsAny<PartnerApiKey>(), It.IsAny<CancellationToken>()))
@@ -146,7 +148,7 @@ public sealed class PartnerApiKeyServiceTests
     {
         List<Office> offices = [MakeOffice(1, "PPDO"), MakeOffice(2, "PEO")];
         PartnerApiKey refetched = MakeKey();
-        (PartnerApiKeyService sut, Mock<IPartnerApiKeyRepository> keys, _, _) =
+        (PartnerApiKeyService sut, Mock<IPartnerApiKeyRepository> keys, _, _, _) =
             Build(officeSeed: offices, refetchResult: refetched);
 
         PartnerApiKey? captured = null;
@@ -167,7 +169,7 @@ public sealed class PartnerApiKeyServiceTests
     [Fact]
     public async Task IssueAsync_NoOfficeAndNotAllOffices_ReturnsBadRequest()
     {
-        (PartnerApiKeyService sut, _, _, _) = Build();
+        (PartnerApiKeyService sut, _, _, _, _) = Build();
 
         ServiceResult<CreateApiKeyResultDto> result =
             await sut.IssueAsync(Admin, Dto(allOffices: false, officeIds: []));
@@ -179,7 +181,7 @@ public sealed class PartnerApiKeyServiceTests
     [Fact]
     public async Task IssueAsync_NullOfficeIdsAndNotAllOffices_ReturnsBadRequest()
     {
-        (PartnerApiKeyService sut, _, _, _) = Build();
+        (PartnerApiKeyService sut, _, _, _, _) = Build();
 
         ServiceResult<CreateApiKeyResultDto> result =
             await sut.IssueAsync(Admin, Dto(allOffices: false, officeIds: null));
@@ -190,7 +192,7 @@ public sealed class PartnerApiKeyServiceTests
     [Fact]
     public async Task IssueAsync_PastExpiry_ReturnsBadRequest()
     {
-        (PartnerApiKeyService sut, _, _, _) = Build();
+        (PartnerApiKeyService sut, _, _, _, _) = Build();
 
         ServiceResult<CreateApiKeyResultDto> result =
             await sut.IssueAsync(Admin, Dto(expiresAt: new DateOnly(2020, 1, 1)));
@@ -204,7 +206,7 @@ public sealed class PartnerApiKeyServiceTests
     [InlineData("   ")]
     public async Task IssueAsync_BlankPartnerName_ReturnsBadRequest(string name)
     {
-        (PartnerApiKeyService sut, _, _, _) = Build();
+        (PartnerApiKeyService sut, _, _, _, _) = Build();
 
         ServiceResult<CreateApiKeyResultDto> result = await sut.IssueAsync(Admin, Dto(partnerName: name));
 
@@ -215,7 +217,7 @@ public sealed class PartnerApiKeyServiceTests
     [Fact]
     public async Task IssueAsync_PartnerNameOver100Characters_ReturnsBadRequest()
     {
-        (PartnerApiKeyService sut, _, _, _) = Build();
+        (PartnerApiKeyService sut, _, _, _, _) = Build();
 
         ServiceResult<CreateApiKeyResultDto> result =
             await sut.IssueAsync(Admin, Dto(partnerName: new string('x', 101)));
@@ -226,7 +228,7 @@ public sealed class PartnerApiKeyServiceTests
     [Fact]
     public async Task IssueAsync_UnknownOfficeId_ReturnsBadRequest()
     {
-        (PartnerApiKeyService sut, _, _, _) = Build(officeSeed: [MakeOffice(1)]);
+        (PartnerApiKeyService sut, _, _, _, _) = Build(officeSeed: [MakeOffice(1)]);
 
         ServiceResult<CreateApiKeyResultDto> result =
             await sut.IssueAsync(Admin, Dto(allOffices: false, officeIds: [999]));
@@ -238,7 +240,7 @@ public sealed class PartnerApiKeyServiceTests
     [Fact]
     public async Task IssueAsync_InactiveOffice_ReturnsBadRequest()
     {
-        (PartnerApiKeyService sut, _, _, _) = Build(officeSeed: [MakeOffice(1, active: false)]);
+        (PartnerApiKeyService sut, _, _, _, _) = Build(officeSeed: [MakeOffice(1, active: false)]);
 
         ServiceResult<CreateApiKeyResultDto> result =
             await sut.IssueAsync(Admin, Dto(allOffices: false, officeIds: [1]));
@@ -251,7 +253,7 @@ public sealed class PartnerApiKeyServiceTests
     public async Task IssueAsync_Valid_LogsAuditCreate_WithoutKeyHash()
     {
         PartnerApiKey refetched = MakeKey(id: 7);
-        (PartnerApiKeyService sut, _, _, Mock<IAuditService> audit) = Build(refetchResult: refetched);
+        (PartnerApiKeyService sut, _, _, Mock<IAuditService> audit, _) = Build(refetchResult: refetched);
 
         await sut.IssueAsync(Admin, Dto());
 
@@ -270,7 +272,7 @@ public sealed class PartnerApiKeyServiceTests
     public async Task RevokeAsync_ActiveKey_SetsRevokedAtAndRevokedBy()
     {
         PartnerApiKey active = MakeKey();
-        (PartnerApiKeyService sut, Mock<IPartnerApiKeyRepository> keys, _, _) = Build();
+        (PartnerApiKeyService sut, Mock<IPartnerApiKeyRepository> keys, _, _, _) = Build();
         keys.Setup(k => k.GetByIdAsync(active.Id, It.IsAny<CancellationToken>())).ReturnsAsync(active);
 
         ServiceResult<ApiKeyListItemDto> result = await sut.RevokeAsync(Admin, active.Id);
@@ -286,7 +288,7 @@ public sealed class PartnerApiKeyServiceTests
     public async Task RevokeAsync_AlreadyRevoked_ReturnsConflict()
     {
         PartnerApiKey revoked = MakeKey(revokedAt: DateTime.UtcNow.AddDays(-1));
-        (PartnerApiKeyService sut, Mock<IPartnerApiKeyRepository> keys, _, _) = Build();
+        (PartnerApiKeyService sut, Mock<IPartnerApiKeyRepository> keys, _, _, _) = Build();
         keys.Setup(k => k.GetByIdAsync(revoked.Id, It.IsAny<CancellationToken>())).ReturnsAsync(revoked);
 
         ServiceResult<ApiKeyListItemDto> result = await sut.RevokeAsync(Admin, revoked.Id);
@@ -299,7 +301,7 @@ public sealed class PartnerApiKeyServiceTests
     [Fact]
     public async Task RevokeAsync_UnknownId_ReturnsNotFound()
     {
-        (PartnerApiKeyService sut, Mock<IPartnerApiKeyRepository> keys, _, _) = Build();
+        (PartnerApiKeyService sut, Mock<IPartnerApiKeyRepository> keys, _, _, _) = Build();
         keys.Setup(k => k.GetByIdAsync(404, It.IsAny<CancellationToken>())).ReturnsAsync((PartnerApiKey?)null);
 
         ServiceResult<ApiKeyListItemDto> result = await sut.RevokeAsync(Admin, 404);
@@ -311,7 +313,7 @@ public sealed class PartnerApiKeyServiceTests
     public async Task RevokeAsync_Success_LogsAuditUpdate()
     {
         PartnerApiKey active = MakeKey(id: 3);
-        (PartnerApiKeyService sut, Mock<IPartnerApiKeyRepository> keys, _, Mock<IAuditService> audit) = Build();
+        (PartnerApiKeyService sut, Mock<IPartnerApiKeyRepository> keys, _, Mock<IAuditService> audit, _) = Build();
         keys.Setup(k => k.GetByIdAsync(3, It.IsAny<CancellationToken>())).ReturnsAsync(active);
 
         await sut.RevokeAsync(Admin, 3);
@@ -332,7 +334,7 @@ public sealed class PartnerApiKeyServiceTests
             MakeKey(id: 2, expiresAt: DateTime.UtcNow.AddDays(-1)),
             MakeKey(id: 3, revokedAt: DateTime.UtcNow.AddMinutes(-5)),
         ];
-        (PartnerApiKeyService sut, Mock<IPartnerApiKeyRepository> keys, _, _) = Build();
+        (PartnerApiKeyService sut, Mock<IPartnerApiKeyRepository> keys, _, _, _) = Build();
         keys.Setup(k => k.GetAllWithOfficesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(seed);
 
         IReadOnlyList<ApiKeyListItemDto> result = await sut.GetAllAsync();
@@ -345,12 +347,61 @@ public sealed class PartnerApiKeyServiceTests
     [Fact]
     public async Task GetAllAsync_NeverExposesKeyHash()
     {
-        (PartnerApiKeyService sut, Mock<IPartnerApiKeyRepository> keys, _, _) = Build();
+        (PartnerApiKeyService sut, Mock<IPartnerApiKeyRepository> keys, _, _, _) = Build();
         keys.Setup(k => k.GetAllWithOfficesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([MakeKey()]);
 
         IReadOnlyList<ApiKeyListItemDto> result = await sut.GetAllAsync();
 
         Assert.DoesNotContain("KeyHash", typeof(ApiKeyListItemDto).GetProperties().Select(p => p.Name));
         Assert.Single(result);
+    }
+
+    // ── GetRequestsAsync ──────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetRequestsAsync_UnknownId_ReturnsNotFound()
+    {
+        (PartnerApiKeyService sut, Mock<IPartnerApiKeyRepository> keys, _, _, _) = Build();
+        keys.Setup(k => k.GetByIdAsync(404, It.IsAny<CancellationToken>())).ReturnsAsync((PartnerApiKey?)null);
+
+        ServiceResult<ApiKeyRequestLogPageDto> result = await sut.GetRequestsAsync(404, 1);
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Fact]
+    public async Task GetRequestsAsync_KnownKey_ReturnsPageFromRepository()
+    {
+        PartnerApiKey key = MakeKey(id: 5);
+        (PartnerApiKeyService sut, Mock<IPartnerApiKeyRepository> keys, _, _, Mock<IPartnerApiRequestRepository> requests) = Build();
+        keys.Setup(k => k.GetByIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(key);
+
+        List<PartnerApiRequest> rows =
+        [
+            new() { Id = 2, KeyId = 5, RequestedAt = DateTime.UtcNow, Route = "aip", OfficeCode = "PPDO", FiscalYear = 2028, StatusCode = 200 },
+        ];
+        requests.Setup(r => r.GetPageForKeyAsync(5, 1, 50, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((rows, 1));
+
+        ServiceResult<ApiKeyRequestLogPageDto> result = await sut.GetRequestsAsync(5, 1);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, result.Value!.Total);
+        Assert.Equal("aip", result.Value.Items.Single().Route);
+        Assert.Equal(200, result.Value.Items.Single().StatusCode);
+    }
+
+    [Fact]
+    public async Task GetRequestsAsync_PageBelowOne_ClampsToPageOne()
+    {
+        PartnerApiKey key = MakeKey(id: 6);
+        (PartnerApiKeyService sut, Mock<IPartnerApiKeyRepository> keys, _, _, Mock<IPartnerApiRequestRepository> requests) = Build();
+        keys.Setup(k => k.GetByIdAsync(6, It.IsAny<CancellationToken>())).ReturnsAsync(key);
+        requests.Setup(r => r.GetPageForKeyAsync(6, 1, 50, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((new List<PartnerApiRequest>(), 0));
+
+        await sut.GetRequestsAsync(6, 0);
+
+        requests.Verify(r => r.GetPageForKeyAsync(6, 1, 50, It.IsAny<CancellationToken>()), Times.Once);
     }
 }

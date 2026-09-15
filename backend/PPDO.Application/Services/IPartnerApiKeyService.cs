@@ -40,4 +40,12 @@ public interface IPartnerApiKeyService
     /// as the actor on the <c>audit_log</c> UPDATE row.</param>
     Task<ServiceResult<ApiKeyListItemDto>> RevokeAsync(
         Guid revokedById, int keyId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// One page of <paramref name="keyId"/>'s call history, newest first, for the "Usage" modal
+    /// (build spec §4.2/§6.1, 50 per page). <see cref="ServiceErrorCode.NotFound"/> when the key
+    /// doesn't exist.
+    /// </summary>
+    Task<ServiceResult<ApiKeyRequestLogPageDto>> GetRequestsAsync(
+        int keyId, int page, CancellationToken cancellationToken = default);
 }
