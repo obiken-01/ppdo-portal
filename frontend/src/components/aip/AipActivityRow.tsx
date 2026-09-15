@@ -5,10 +5,12 @@
  */
 
 import AipMoneyInput from "@/components/aip/AipMoneyInput";
+import AipActivityNameCounter from "@/components/aip/AipActivityNameCounter";
 import { useState } from "react";
 import { aipErrorMessage, deleteAipActivity, updateAipActivity } from "@/lib/aip";
 import { fmtPesos } from "@/lib/aip-units";
 import { AIP_ESRE_OPTIONS, AIP_MONTHS } from "@/lib/aipConstants";
+import { useAutoGrowTextarea } from "@/lib/useAutoGrowTextarea";
 import { AmtTD, inputCls, selectCls } from "@/components/aip/AipTreeCells";
 import type { ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import type { AipActivityDetail, FundingSourceResponse } from "@/types";
@@ -49,6 +51,8 @@ export default function ActivityRow({
   const [ccAdaptation, setCcAdaptation] = useState<number | null>(act.ccAdaptation);
   const [ccMitigation, setCcMitigation] = useState<number | null>(act.ccMitigation);
   const [ccTypologyCode, setCcTypologyCode] = useState(act.ccTypologyCode ?? "");
+
+  const nameRef = useAutoGrowTextarea(name);
 
   function startEdit() {
     setName(act.name);
@@ -117,7 +121,7 @@ export default function ActivityRow({
         <td className="px-2 py-1.5 pl-12 font-mono text-[11px] text-slate-600 align-top border-l-4 border-transparent">
           {act.refCode}
         </td>
-        <td className="px-2 py-1.5 pl-12 text-xs text-slate-900 align-top leading-snug">
+        <td className="px-2 py-1.5 pl-12 text-xs text-slate-900 align-top leading-snug whitespace-pre-line">
           {act.name}
           {act.isSynthetic && (
             <span
@@ -157,7 +161,9 @@ export default function ActivityRow({
     <tr className="bg-amber-50 border-t border-amber-200 align-top">
       <td className="px-2 py-1.5 pl-12 font-mono text-[11px] text-slate-600">{act.refCode}</td>
       <td className="px-2 py-1.5">
-        <textarea value={name} onChange={(e) => setName(e.target.value)} rows={2} className={`${inputCls} resize-vertical`} />
+        <textarea ref={nameRef} value={name} onChange={(e) => setName(e.target.value)} rows={2}
+          className={`${inputCls} overflow-y-auto`} />
+        <AipActivityNameCounter name={name} />
       </td>
       <td className="px-2 py-1.5">
         <select value={esreCode} onChange={(e) => setEsreCode(e.target.value)} className={selectCls}>

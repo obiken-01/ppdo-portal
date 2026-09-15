@@ -580,7 +580,7 @@ function ActivityBlock({
           <AipLevelChip level="activity" />
           <AipRefCode code={activity.refCode} />
           {/* Normal weight — the leaf. Every level above it is heavier, so depth reads downward. */}
-          <span className="text-sm text-slate-800">{activity.name}</span>
+          <span className="whitespace-pre-line text-sm text-slate-800">{activity.name}</span>
           {/* The form's Funding Source column (7), beside the description rather than in the
               numeric strip: it is not a figure, and putting a word among six right-aligned
               numbers breaks their alignment on every row that has one (PPDO-80). */}

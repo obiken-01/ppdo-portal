@@ -220,7 +220,7 @@ export default function AipActivityReviewModal({
                   <AipRefCode code={review.activity.refCode} />
                   <AipFundPill label={activityFundLabel(review.activity)} />
                 </div>
-                <p className="text-base text-slate-800">{review.activity.name}</p>
+                <p className="whitespace-pre-line text-base text-slate-800">{review.activity.name}</p>
               </div>
 
               <section>

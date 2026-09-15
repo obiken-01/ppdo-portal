@@ -416,7 +416,7 @@ function FormRow({
       return (
         <tr className="bg-white">
           <td className={`${CELL} font-mono text-[11px] text-slate-600`}>{row.refCode}</td>
-          <td className={`${CELL} pl-12`}>
+          <td className={`${CELL} pl-12 whitespace-pre-line`}>
             {row.activityId != null ? (
               <button
                 type="button"

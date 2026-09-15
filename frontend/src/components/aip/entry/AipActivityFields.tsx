@@ -34,9 +34,11 @@
 
 import { useState } from "react";
 import AipMoneyInput from "@/components/aip/AipMoneyInput";
+import AipActivityNameCounter from "@/components/aip/AipActivityNameCounter";
 import { updateAipActivityDetails, aipErrorMessage } from "@/lib/aip";
 import { fmtThousands } from "@/lib/aip-units";
 import { AIP_ESRE_OPTIONS, AIP_MONTHS } from "@/lib/aipConstants";
+import { useAutoGrowTextarea } from "@/lib/useAutoGrowTextarea";
 import { inputCls, selectCls } from "@/components/aip/AipTreeCells";
 import type { AipActivityDetail } from "@/types";
 
@@ -73,6 +75,8 @@ export default function AipActivityFields({
   // read-only cells divide (see lib/aip-units).
   const [ccAdaptation, setCcAdaptation] = useState<number | null>(activity.ccAdaptation);
   const [ccMitigation, setCcMitigation] = useState<number | null>(activity.ccMitigation);
+
+  const nameRef = useAutoGrowTextarea(name);
 
   function beginEdit() {
     setName(activity.name);
@@ -156,8 +160,9 @@ export default function AipActivityFields({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="sm:col-span-3">
           <Label>Activity description</Label>
-          <textarea value={name} onChange={(e) => setName(e.target.value)} rows={2}
-            className={`${inputCls} resize-vertical`} />
+          <textarea ref={nameRef} value={name} onChange={(e) => setName(e.target.value)} rows={2}
+            className={`${inputCls} overflow-y-auto`} />
+          <AipActivityNameCounter name={name} />
         </div>
 
         <div>
