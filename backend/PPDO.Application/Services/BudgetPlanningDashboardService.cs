@@ -334,12 +334,12 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         // it either grant would promote a cross-office READER into a cross-office EDITOR at every
         // write path that shares Resolve, with no diff at any write site to notice it.
         bool canReviewAllOffices = await _permissions.CanReviewAllOfficesAsync(caller, ct);
-        bool canManagePboCeiling = await _permissions.CanManagePboCeilingAsync(caller, ct);
+        bool canManageOfficeCeilings = await _permissions.CanManageOfficeCeilingsAsync(caller, ct);
 
         OfficeScope scope;
         if (canReviewAllOffices)
             scope = OfficeScope.ResolveForReview(caller, true);
-        else if (canManagePboCeiling)
+        else if (canManageOfficeCeilings)
             scope = OfficeScope.ResolveForCeiling(caller, true);
         else
             // Forbidden, not an empty list — an empty list reads as "no offices exist", and a

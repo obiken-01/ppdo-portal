@@ -304,7 +304,7 @@ public sealed class BudgetPlanningDashboardServiceTests
         {
             permissions.Setup(p => p.CanReviewAllOfficesAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(false);
-            permissions.Setup(p => p.CanManagePboCeilingAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
+            permissions.Setup(p => p.CanManageOfficeCeilingsAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(false);
         }
 
@@ -1148,7 +1148,7 @@ public sealed class BudgetPlanningDashboardServiceTests
     private static (BudgetPlanningDashboardService Svc, User Caller) BuildForOffices(
         List<Office> offices,
         bool canReviewAllOffices = false,
-        bool canManagePboCeiling = false,
+        bool canManageOfficeCeilings = false,
         List<AipRecord>? aips = null,
         List<AipOfficeRollupDto>? officeRollups = null,
         Mock<IBudgetCeilingRepository>? ceilingRepoMock = null,
@@ -1164,8 +1164,8 @@ public sealed class BudgetPlanningDashboardServiceTests
         Mock<IPermissionService> permissions = new();
         permissions.Setup(p => p.CanReviewAllOfficesAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(canReviewAllOffices);
-        permissions.Setup(p => p.CanManagePboCeilingAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(canManagePboCeiling);
+        permissions.Setup(p => p.CanManageOfficeCeilingsAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(canManageOfficeCeilings);
 
         (BudgetPlanningDashboardService svc, _) = Build(
             [], aips ?? [], [], offices, [],
@@ -1199,10 +1199,10 @@ public sealed class BudgetPlanningDashboardServiceTests
     }
 
     [Fact]
-    public async Task GetOfficesAsync_CanManagePboCeiling_ReturnsEveryOffice()
+    public async Task GetOfficesAsync_CanManageOfficeCeilings_ReturnsEveryOffice()
     {
         (BudgetPlanningDashboardService sut, User caller) =
-            BuildForOffices(TwoOffices(), canManagePboCeiling: true);
+            BuildForOffices(TwoOffices(), canManageOfficeCeilings: true);
 
         ServiceResult<IReadOnlyList<OfficeSummaryDto>> result = await sut.GetOfficesAsync(caller, 2028);
 
@@ -1247,7 +1247,7 @@ public sealed class BudgetPlanningDashboardServiceTests
         // Null = PBO has not published. 0 = a published decision. Stage 1 renders differently
         // for each, so the two must not be coalesced.
         (BudgetPlanningDashboardService sut, User caller) =
-            BuildForOffices(TwoOffices(), canManagePboCeiling: true);
+            BuildForOffices(TwoOffices(), canManageOfficeCeilings: true);
 
         ServiceResult<IReadOnlyList<OfficeSummaryDto>> result = await sut.GetOfficesAsync(caller, 2028);
 
@@ -1266,7 +1266,7 @@ public sealed class BudgetPlanningDashboardServiceTests
             ]);
 
         (BudgetPlanningDashboardService sut, User caller) = BuildForOffices(
-            TwoOffices(), canManagePboCeiling: true, ceilingRepoMock: ceilingRepo);
+            TwoOffices(), canManageOfficeCeilings: true, ceilingRepoMock: ceilingRepo);
 
         ServiceResult<IReadOnlyList<OfficeSummaryDto>> result = await sut.GetOfficesAsync(caller, 2028);
 

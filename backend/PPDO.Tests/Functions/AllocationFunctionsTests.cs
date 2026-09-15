@@ -63,8 +63,8 @@ public sealed class AllocationFunctionsTests
         /// <summary>A guest-office user with no cross-office grant. Must be clamped.</summary>
         PlainOfficeUser,
 
-        /// <summary>A guest-office user holding CanManagePboCeiling. Must NOT be clamped.</summary>
-        PboCeilingHolder,
+        /// <summary>A guest-office user holding CanManageOfficeCeilings. Must NOT be clamped.</summary>
+        OfficeCeilingsHolder,
     }
 
     private static User MakeUser(Caller kind)
@@ -105,8 +105,8 @@ public sealed class AllocationFunctionsTests
             .ReturnsAsync(caller);
         _permissions.Setup(p => p.CanAccessBudgetPlanningAsync(caller, It.IsAny<CancellationToken>()))
             .ReturnsAsync(canAccessBudgetPlanning);
-        _permissions.Setup(p => p.CanManagePboCeilingAsync(caller, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(kind is Caller.PboCeilingHolder);
+        _permissions.Setup(p => p.CanManageOfficeCeilingsAsync(caller, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(kind is Caller.OfficeCeilingsHolder);
         _permissions.Setup(p => p.CanManagePpdoAllocationAsync(caller, It.IsAny<CancellationToken>()))
             .ReturnsAsync(canManagePpdoAllocation);
 
@@ -217,27 +217,27 @@ public sealed class AllocationFunctionsTests
     [Theory]
     [InlineData("ceiling",             Caller.PlainOfficeUser)]
     [InlineData("ceiling",             Caller.HostOffice)]
-    [InlineData("ceiling",             Caller.PboCeilingHolder)]
+    [InlineData("ceiling",             Caller.OfficeCeilingsHolder)]
     [InlineData("ceilings",            Caller.PlainOfficeUser)]
     [InlineData("ceilings",            Caller.HostOffice)]
-    [InlineData("ceilings",            Caller.PboCeilingHolder)]
+    [InlineData("ceilings",            Caller.OfficeCeilingsHolder)]
     // V18-48 / PPDO-58. This one reports what another office has ENCODED, so an unclamped read
     // would leak a foreign office's spending plan, not just its configured ceiling.
     [InlineData("ceiling-usage",       Caller.PlainOfficeUser)]
     [InlineData("ceiling-usage",       Caller.HostOffice)]
-    [InlineData("ceiling-usage",       Caller.PboCeilingHolder)]
+    [InlineData("ceiling-usage",       Caller.OfficeCeilingsHolder)]
     [InlineData("divisions",           Caller.PlainOfficeUser)]
     [InlineData("divisions",           Caller.HostOffice)]
-    [InlineData("divisions",           Caller.PboCeilingHolder)]
+    [InlineData("divisions",           Caller.OfficeCeilingsHolder)]
     [InlineData("divisions/all-funds", Caller.PlainOfficeUser)]
     [InlineData("divisions/all-funds", Caller.HostOffice)]
-    [InlineData("divisions/all-funds", Caller.PboCeilingHolder)]
+    [InlineData("divisions/all-funds", Caller.OfficeCeilingsHolder)]
     [InlineData("programs",            Caller.PlainOfficeUser)]
     [InlineData("programs",            Caller.HostOffice)]
-    [InlineData("programs",            Caller.PboCeilingHolder)]
+    [InlineData("programs",            Caller.OfficeCeilingsHolder)]
     [InlineData("status",              Caller.PlainOfficeUser)]
     [InlineData("status",              Caller.HostOffice)]
-    [InlineData("status",              Caller.PboCeilingHolder)]
+    [InlineData("status",              Caller.OfficeCeilingsHolder)]
     public async Task Get_WithAForeignOfficeIdQuery_ReachesTheServiceWithTheClampedOffice(
         string endpoint, Caller kind)
     {
@@ -326,14 +326,14 @@ public sealed class AllocationFunctionsTests
     }
 
     // ── Writes — the ceiling PUT keeps its cross-office reach ─────────────────
-    // CanManagePboCeiling IS authority over any office's ceiling (RAL-243), so this endpoint is
+    // CanManageOfficeCeilings IS authority over any office's ceiling (RAL-243), so this endpoint is
     // deliberately not office-scoped. The gate is the grant. These two tests are what would fail
     // if someone "consistently" clamped every write in the file.
 
     [Fact]
     public async Task UpsertCeiling_AsPboHolderInAGuestOffice_WritesTheRequestedForeignOffice()
     {
-        User caller = Authenticate(Caller.PboCeilingHolder);
+        User caller = Authenticate(Caller.OfficeCeilingsHolder);
         _permissions.Setup(p => p.CanReviewAllOfficesAsync(caller, It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
         int captured = -1;
@@ -350,6 +350,47 @@ public sealed class AllocationFunctionsTests
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal(ForeignOffice, captured);
+    }
+
+    // PPDO-87 — ceiling authority moved to PPDO finance users, who are ALSO the cross-office
+    // reviewer. The ceiling PUT is the one write exempt from ReviewerWriteGuard; before the
+    // exemption this exact caller got 403.
+    [Fact]
+    public async Task UpsertCeiling_AsPpdoFinanceHoldingBothTheCeilingGrantAndCrossOfficeReview_Succeeds()
+    {
+        User caller = Authenticate(Caller.HostOffice);
+        _permissions.Setup(p => p.CanManageOfficeCeilingsAsync(caller, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        _permissions.Setup(p => p.CanReviewAllOfficesAsync(caller, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        _allocation.Setup(s => s.UpsertCeilingAsync(
+                ForeignOffice, FiscalYear, FundingSource, 1_000m, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ServiceResult<BudgetCeilingDto>.Ok(Ceiling(ForeignOffice)));
+
+        HttpResponseData response = await Sut.UpsertCeiling(
+            FunctionHttp.Put(new UpsertCeilingDto(ForeignOffice, FiscalYear, FundingSource, 1_000m)),
+            CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    // The exemption must not turn the reviewer flag into ceiling authority: without the ceiling
+    // grant a cross-office reviewer is still refused, by the grant itself.
+    [Fact]
+    public async Task UpsertCeiling_AsCrossOfficeReviewerWithoutTheCeilingGrant_ReturnsForbidden()
+    {
+        User caller = Authenticate(Caller.HostOffice);
+        _permissions.Setup(p => p.CanManageOfficeCeilingsAsync(caller, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        _permissions.Setup(p => p.CanReviewAllOfficesAsync(caller, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        HttpResponseData response = await Sut.UpsertCeiling(
+            FunctionHttp.Put(new UpsertCeilingDto(ForeignOffice, FiscalYear, FundingSource, 1_000m)),
+            CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        _allocation.VerifyNoOtherCalls();
     }
 
     [Fact]
@@ -402,7 +443,7 @@ public sealed class AllocationFunctionsTests
 
     [Theory]
     [InlineData(Caller.PlainOfficeUser)]
-    [InlineData(Caller.PboCeilingHolder)]
+    [InlineData(Caller.OfficeCeilingsHolder)]
     public async Task UpsertDivisions_AsAnyGuestOfficeCaller_TargetingAForeignOffice_ReturnsForbidden(
         Caller kind)
     {
@@ -470,7 +511,7 @@ public sealed class AllocationFunctionsTests
 
     [Theory]
     [InlineData(Caller.PlainOfficeUser)]
-    [InlineData(Caller.PboCeilingHolder)]
+    [InlineData(Caller.OfficeCeilingsHolder)]
     public async Task UpsertProgram_AsAnyGuestOfficeCaller_ReturnsForbiddenAndNeverCallsService(Caller kind)
     {
         User caller = Authenticate(kind, canManagePpdoAllocation: true);

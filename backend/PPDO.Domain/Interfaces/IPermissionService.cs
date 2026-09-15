@@ -14,7 +14,7 @@ namespace PPDO.Domain.Interfaces;
 /// Special cases:
 ///   CanManagePpdoAllocation — per-user grant only: SuperAdmin → true, else Override ?? false
 ///                         (Admin is NOT auto-granted this).
-///   CanManagePboCeiling — per-user grant only, same shape (RAL-243). Separate authority:
+///   CanManageOfficeCeilings — per-user grant only, same shape (RAL-243). Separate authority:
 ///                         ceiling writes for any office, not PPDO's division split.
 ///   CanAccessProfile    — always true for all roles.
 ///
@@ -79,14 +79,14 @@ public interface IPermissionService
 
     /// <summary>
     /// True when the user may set an office's budget ceiling (v1.8.0 — RAL-243).
-    /// Per-user grant only: SuperAdmin → true; everyone else → OverrideCanManagePboCeiling ?? false.
-    /// Admin is NOT auto-granted this — only the designated PBO finance officer holds it.
+    /// Per-user grant only: SuperAdmin → true; everyone else → OverrideCanManageOfficeCeilings ?? false.
+    /// Admin is NOT auto-granted this — only designated PPDO finance users hold it (PBO until PPDO-87).
     ///
     /// Distinct from <see cref="CanManagePpdoAllocationAsync"/>: this grants ceiling writes for
     /// ANY office, whereas the allocation grant splits PPDO's own ceiling across its divisions.
     /// Neither implies the other.
     /// </summary>
-    Task<bool> CanManagePboCeilingAsync(User user, CancellationToken cancellationToken = default);
+    Task<bool> CanManageOfficeCeilingsAsync(User user, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// True when the user is a budget-planning REVIEWER for their office (v1.8.0 - RAL-244):

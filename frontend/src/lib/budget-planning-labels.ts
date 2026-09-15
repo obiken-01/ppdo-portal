@@ -4,7 +4,7 @@
  * A **PPDO finance officer** (`canManagePpdoAllocation`) sets the ceiling *and* splits it
  * across PPDO's divisions. For them the page is "Allocation", and it says so throughout.
  *
- * A **PBO finance officer** (`canManagePboCeiling` alone) sets ceilings for any office and
+ * A **PBO finance officer** (`canManageOfficeCeilings` alone) sets ceilings for any office and
  * need not be a PPDO employee at all. The division split is PPDO's own internal mechanic —
  * division is a scoping axis only for the host office, settled in `BudgetPlanningScope`
  * (RAL-250) — so for that reader the page is "Budget Ceilings" and the word "division"

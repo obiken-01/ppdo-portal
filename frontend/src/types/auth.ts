@@ -104,7 +104,7 @@ export interface MeResponse {
   canManagePpdoAllocation: boolean;
   /** PBO finance officer: may set ANY office's budget ceiling (RAL-243). Separate
    *  authority from canManagePpdoAllocation — neither implies the other. */
-  canManagePboCeiling: boolean;
+  canManageOfficeCeilings: boolean;
   /** This user is their office's budget-planning reviewer (RAL-244). A grant only —
    *  what a reviewer may write is decided by RAL-256's guard, not by this flag. */
   canReviewBudgetPlanning: boolean;

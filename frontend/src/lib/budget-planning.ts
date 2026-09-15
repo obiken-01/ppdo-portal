@@ -57,7 +57,7 @@ export async function getOfficeDashboard(
  * 403s a caller who holds Budget Planning but no cross-office grant. That is the correct answer,
  * not an error to surface: the page decides whether to render this band from the same flags, so a
  * 403 here means the band should not have been requested. Callers gate on
- * `canReviewAllOffices || canManagePboCeiling || role === "SuperAdmin"` before calling.
+ * `canReviewAllOffices || canManageOfficeCeilings || role === "SuperAdmin"` before calling.
  */
 export async function getDashboardOffices(fiscalYear: number): Promise<OfficeSummary[]> {
   const { data } = await api.get<ApiResponse<OfficeSummary[]>>(

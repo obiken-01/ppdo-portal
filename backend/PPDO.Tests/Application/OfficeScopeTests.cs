@@ -296,7 +296,7 @@ public sealed class OfficeScopeTests
 
     /// <summary>
     /// THE case this entry point exists for: a PBO finance officer sitting in a guest office.
-    /// CanManagePboCeiling is authority over EVERY office's ceiling, so a naive clamp on the
+    /// CanManageOfficeCeilings is authority over EVERY office's ceiling, so a naive clamp on the
     /// allocation endpoints would make the grant unreachable -- the holder could only ever load
     /// their own office's setup.
     /// </summary>
@@ -304,7 +304,7 @@ public sealed class OfficeScopeTests
     public void ResolveForCeiling_PboHolderInAGuestOffice_SeesEveryOffice()
     {
         OfficeScope scope = OfficeScope.ResolveForCeiling(
-            MakeUser(UserRole.Staff, GuestOffice), canManagePboCeiling: true);
+            MakeUser(UserRole.Staff, GuestOffice), canManageOfficeCeilings: true);
 
         Assert.True(scope.SeeAll);
         Assert.Null(scope.OfficeId);
@@ -318,7 +318,7 @@ public sealed class OfficeScopeTests
     {
         User user = MakeUser(UserRole.Staff, GuestOffice);
 
-        OfficeScope ceiling = OfficeScope.ResolveForCeiling(user, canManagePboCeiling: false);
+        OfficeScope ceiling = OfficeScope.ResolveForCeiling(user, canManageOfficeCeilings: false);
         OfficeScope plain   = OfficeScope.Resolve(user);
 
         Assert.Equal(plain.SeeAll,   ceiling.SeeAll);
@@ -331,10 +331,10 @@ public sealed class OfficeScopeTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public void ResolveForCeiling_HostOfficeUser_SeesEveryOfficeEitherWay(bool canManagePboCeiling)
+    public void ResolveForCeiling_HostOfficeUser_SeesEveryOfficeEitherWay(bool canManageOfficeCeilings)
     {
         OfficeScope scope = OfficeScope.ResolveForCeiling(
-            MakeUser(UserRole.Staff, HostOffice), canManagePboCeiling);
+            MakeUser(UserRole.Staff, HostOffice), canManageOfficeCeilings);
 
         Assert.True(scope.SeeAll);
     }
@@ -348,7 +348,7 @@ public sealed class OfficeScopeTests
     public void ResolveForCeiling_HolderWithNoOffice_StillSeesEveryOffice()
     {
         OfficeScope scope = OfficeScope.ResolveForCeiling(
-            MakeUser(UserRole.Staff, office: null), canManagePboCeiling: true);
+            MakeUser(UserRole.Staff, office: null), canManageOfficeCeilings: true);
 
         Assert.True(scope.SeeAll);
     }
@@ -360,10 +360,10 @@ public sealed class OfficeScopeTests
     /// If this fails, the entry points have been "simplified" back together.
     /// </summary>
     [Fact]
-    public void Resolve_IgnoresThePboCeilingGrant_SoAllocationWritesStayScoped()
+    public void Resolve_IgnoresTheOfficeCeilingsGrant_SoAllocationWritesStayScoped()
     {
         User pbo = MakeUser(UserRole.Staff, GuestOffice);
-        pbo.OverrideCanManagePboCeiling = true;
+        pbo.OverrideCanManageOfficeCeilings = true;
 
         OfficeScope writeScope = OfficeScope.Resolve(pbo);
 
@@ -383,9 +383,9 @@ public sealed class OfficeScopeTests
     {
         User user = MakeUser(UserRole.Staff, GuestOffice);
 
-        Assert.False(OfficeScope.ResolveForCeiling(user, canManagePboCeiling: false).SeeAll);
+        Assert.False(OfficeScope.ResolveForCeiling(user, canManageOfficeCeilings: false).SeeAll);
         Assert.False(OfficeScope.ResolveForReview(user, canReviewAllOffices: false).SeeAll);
-        Assert.True(OfficeScope.ResolveForCeiling(user, canManagePboCeiling: true).SeeAll);
+        Assert.True(OfficeScope.ResolveForCeiling(user, canManageOfficeCeilings: true).SeeAll);
         Assert.True(OfficeScope.ResolveForReview(user, canReviewAllOffices: true).SeeAll);
     }
 }

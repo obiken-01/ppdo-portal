@@ -119,9 +119,9 @@ public sealed class User
     /// a different authority from <see cref="OverrideCanManagePpdoAllocation"/>, which only
     /// splits PPDO's own ceiling across its divisions. Like that flag this is NOT a division
     /// flag. Resolution: SuperAdmin → true; everyone else →
-    /// <c>OverrideCanManagePboCeiling ?? false</c> (Admin is NOT auto-granted this).
+    /// <c>OverrideCanManageOfficeCeilings ?? false</c> (Admin is NOT auto-granted this).
     /// </summary>
-    public bool? OverrideCanManagePboCeiling { get; set; }
+    public bool? OverrideCanManageOfficeCeilings { get; set; }
 
     /// <summary>
     /// Per-user grant marking this user as their office's budget-planning REVIEWER

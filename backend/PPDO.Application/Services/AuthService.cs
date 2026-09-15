@@ -213,7 +213,7 @@ public sealed class AuthService : IAuthService
             CanUploadAip            = await _permissions.CanUploadAipAsync(user, cancellationToken),
             CanManageConfig         = await _permissions.CanManageConfigAsync(user, cancellationToken),
             CanManagePpdoAllocation     = await _permissions.CanManagePpdoAllocationAsync(user, cancellationToken),
-            CanManagePboCeiling     = await _permissions.CanManagePboCeilingAsync(user, cancellationToken),
+            CanManageOfficeCeilings     = await _permissions.CanManageOfficeCeilingsAsync(user, cancellationToken),
             CanReviewBudgetPlanning = await _permissions.CanReviewBudgetPlanningAsync(user, cancellationToken),
             CanReviewAllOffices     = await _permissions.CanReviewAllOfficesAsync(user, cancellationToken),
             CanManageApiKeys        = await _permissions.CanManageApiKeysAsync(user, cancellationToken),

@@ -45,7 +45,7 @@ public interface IBudgetPlanningDashboardService
     /// caller rather than a pre-resolved office id like every other method here. The rule:
     /// <code>
     /// CanReviewAllOffices   → OfficeScope.ResolveForReview(caller, true)
-    /// CanManagePboCeiling   → OfficeScope.ResolveForCeiling(caller, true)
+    /// CanManageOfficeCeilings   → OfficeScope.ResolveForCeiling(caller, true)
     /// neither               → Forbidden
     /// </code>
     /// Never <c>OfficeScope.Resolve</c> — see that method's own remarks. A caller holding both

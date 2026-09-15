@@ -148,9 +148,9 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
   // `CanManagePpdoAllocation` is host-office-exclusive (`docs/v1.8/Permission_Matrix.md`
   // §4) — both its endpoints refuse a guest-office caller outright — so pairing it with
   // isOfficeUser here stops the nav offering a page whose writes will 403. A guest office
-  // reaches it only through `CanManagePboCeiling`, which is deliberately cross-office.
+  // reaches it only through `CanManageOfficeCeilings`, which is deliberately cross-office.
   const showAllocation     = (me?.canManagePpdoAllocation === true && !isOfficeUser)
-                          || me?.canManagePboCeiling === true;
+                          || me?.canManageOfficeCeilings === true;
   const showConfig         = !isOfficeUser && me?.canManageConfig === true;
   // PPDO-81 — the AIP record list is where the base record is created, finalized and archived, and
   // all three are Admin actions. An encoder's surface is AIP Entry below. LDIP is hidden from a
