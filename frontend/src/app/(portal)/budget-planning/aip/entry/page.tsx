@@ -40,6 +40,7 @@ import {
   AipCommentsProvider, AipCommentFilterBar, AipCommentAnchor,
 } from "@/components/aip/entry/AipComments";
 import { AipLevelChip, AipRefCode, aipHeaderRow } from "@/components/aip/entry/AipHierarchy";
+import AipDeleteNodeButton, { applyAipDeleteToTree } from "@/components/aip/entry/AipDeleteNodeButton";
 import {
   AipFigureStrip, AipFundPill, AipUnitCaption, activityFundLabel, sumActivityAmounts,
   type AipRowAmounts,
@@ -47,7 +48,7 @@ import {
 import { listAipExpenditures } from "@/lib/aip";
 import type {
   AipRecordDetail, AipOfficeDetail, AipProjectDetail, AipActivityDetail, AipExpenditure,
-  AipExpenditureWriteResult,
+  AipExpenditureWriteResult, AipDeleteResult,
   AccountResponse, FundingSourceResponse, AipReadiness, PriceIndexPickerItem,
 } from "@/types";
 
@@ -384,6 +385,11 @@ export default function AipEntryPage() {
                     setRecord((prev) => prev && patchActivity(prev, updated.id, updated));
                     void refreshReadiness();
                   }}
+                  // PPDO-88 — spliced like an add: the node goes and renumbered codes are patched in.
+                  onDeleted={(result) => {
+                    setRecord((prev) => prev && applyAipDeleteToTree(prev, result));
+                    void refreshReadiness();
+                  }}
                 />
               ))}
 
@@ -413,7 +419,7 @@ export default function AipEntryPage() {
 function GroupBlock({
   group, canEdit, accounts, funds, generalFundId, divisionFiltered,
   priceIndex, priceIndexLoading, defaultImplementingOffice,
-  onProjectAdded, onActivityAdded, onActivityTotals, onActivityDetails,
+  onProjectAdded, onActivityAdded, onActivityTotals, onActivityDetails, onDeleted,
 }: {
   group: AipOfficeDetail;
   canEdit: boolean;
@@ -430,6 +436,7 @@ function GroupBlock({
   onActivityAdded: (activity: AipActivityDetail) => void;
   onActivityTotals: (result: AipExpenditureWriteResult) => void;
   onActivityDetails: (updated: AipActivityDetail) => void;
+  onDeleted: (result: AipDeleteResult) => void;
 }) {
   // The office subtotal the form prints across columns (8)–(13) — PPDO-80. Summed from the tree
   // rather than fetched: every activity in this group is already in memory, so an endpoint would
@@ -499,6 +506,11 @@ function GroupBlock({
                     <AipLevelChip level="project" />
                     <AipRefCode code={project.refCode} />
                     <span className="text-sm font-medium text-slate-800">{project.name}</span>
+                    {canEdit && (
+                      <span className="ml-auto">
+                        <AipDeleteNodeButton target={{ kind: "Project", project }} onDeleted={onDeleted} />
+                      </span>
+                    )}
                   </div>
                   {/* Outside the header strip: it is a flex row, and an anchor inside it would sit
                       on the same line as the title and wrap badly once a thread opens. */}
@@ -511,7 +523,7 @@ function GroupBlock({
                         accounts={accounts} funds={funds} generalFundId={generalFundId}
                         priceIndex={priceIndex} priceIndexLoading={priceIndexLoading}
                         defaultImplementingOffice={defaultImplementingOffice}
-                        onTotals={onActivityTotals} onDetails={onActivityDetails} />
+                        onTotals={onActivityTotals} onDetails={onActivityDetails} onDeleted={onDeleted} />
                     ))}
                     {canEdit && (
                       <InlineAdd label="+ Add activity" placeholder="Activity description"
@@ -548,7 +560,7 @@ function GroupBlock({
 
 function ActivityBlock({
   activity, canEdit, accounts, funds, generalFundId, priceIndex, priceIndexLoading,
-  defaultImplementingOffice, onTotals, onDetails,
+  defaultImplementingOffice, onTotals, onDetails, onDeleted,
 }: {
   activity: AipActivityDetail;
   canEdit: boolean;
@@ -560,6 +572,7 @@ function ActivityBlock({
   defaultImplementingOffice: string | null;
   onTotals: (result: AipExpenditureWriteResult) => void;
   onDetails: (updated: AipActivityDetail) => void;
+  onDeleted: (result: AipDeleteResult) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [lines, setLines] = useState<AipExpenditure[] | null>(null);
@@ -594,8 +607,15 @@ function ActivityBlock({
 
       {/* ⚠️ Outside the disclosure <button>, not inside it: nesting a button in a button is
           invalid HTML, and the click would toggle the activity open instead of the thread. */}
-      <div className="px-3 pb-1">
-        <AipCommentAnchor nodeType="Activity" nodeId={activity.id} />
+      <div className="flex items-start gap-3 px-3 pb-1">
+        <div className="min-w-0 flex-1">
+          <AipCommentAnchor nodeType="Activity" nodeId={activity.id} />
+        </div>
+        {canEdit && (
+          <div className="pt-1">
+            <AipDeleteNodeButton target={{ kind: "Activity", activity }} onDeleted={onDeleted} />
+          </div>
+        )}
       </div>
 
       {open && (
