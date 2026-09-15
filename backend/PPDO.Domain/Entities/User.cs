@@ -163,6 +163,19 @@ public sealed class User
     /// </summary>
     public bool? OverrideCanReviewAllOffices { get; set; }
 
+    /// <summary>
+    /// Per-user grant for issuing and revoking partner API keys under Configuration → API Access
+    /// (v1.8.0 — PPDO-15). Like the other per-user grants above, this is NOT a division flag.
+    /// Resolution: SuperAdmin -> true; everyone else -> <c>OverrideCanManageApiKeys ?? false</c>
+    /// (Admin is NOT auto-granted this — a key reads AIP data across offices from outside the
+    /// portal, so it is deliberately a named person's job rather than a role default).
+    ///
+    /// Implies nothing else, and nothing implies it — not <see cref="OverrideCanManageConfig"/>,
+    /// not <see cref="OverrideCanManageUsers"/>, not <see cref="OverrideCanReviewAllOffices"/>.
+    /// Pinned by <c>PermissionMatrixTests</c> in both directions.
+    /// </summary>
+    public bool? OverrideCanManageApiKeys { get; set; }
+
     // ── Password reset (RAL-253) ────────────────────────────────────────────────
 
     /// <summary>

@@ -45,6 +45,7 @@ public sealed class PermissionServiceTests
         bool? overridePboCeiling       = null,
         bool? overrideReviewer         = null,
         bool? overrideAllOffices       = null,
+        bool? overrideManageApiKeys    = null,
         bool  divBudgetPlanning        = false,
         bool  divUploadAip             = false,
         bool  divManageConfig          = false,
@@ -95,6 +96,7 @@ public sealed class PermissionServiceTests
             OverrideCanManagePboCeiling         = overridePboCeiling,
             OverrideCanReviewBudgetPlanning     = overrideReviewer,
             OverrideCanReviewAllOffices         = overrideAllOffices,
+            OverrideCanManageApiKeys            = overrideManageApiKeys,
         };
     }
 
@@ -401,4 +403,55 @@ public sealed class PermissionServiceTests
     [Fact]
     public async Task CanViewAuditLog_Staff_ReturnsFalse()
         => Assert.False(await _sut.CanViewAuditLogAsync(MakeUser(UserRole.Staff)));
+
+    // ── CanManageApiKeys — per-user grant for partner API keys (v1.8.0 — PPDO-15) ─────
+
+    [Fact]
+    public async Task CanManageApiKeys_SuperAdmin_ReturnsTrue()
+        => Assert.True(await _sut.CanManageApiKeysAsync(MakeUser(UserRole.SuperAdmin)));
+
+    [Fact]
+    public async Task CanManageApiKeys_Admin_NotAutoGranted()
+        => Assert.False(await _sut.CanManageApiKeysAsync(MakeUser(UserRole.Admin)));
+
+    [Fact]
+    public async Task CanManageApiKeys_Admin_WithOverride_ReturnsTrue()
+        => Assert.True(await _sut.CanManageApiKeysAsync(MakeUser(UserRole.Admin, overrideManageApiKeys: true)));
+
+    [Fact]
+    public async Task CanManageApiKeys_Staff_WithOverride_ReturnsTrue()
+        => Assert.True(await _sut.CanManageApiKeysAsync(MakeUser(UserRole.Staff, overrideManageApiKeys: true)));
+
+    [Fact]
+    public async Task CanManageApiKeys_Staff_NoOverride_ReturnsFalse()
+        => Assert.False(await _sut.CanManageApiKeysAsync(MakeUser(UserRole.Staff)));
+
+    [Fact]
+    public async Task CanManageApiKeys_Staff_OverrideFalse_ReturnsFalse()
+        => Assert.False(await _sut.CanManageApiKeysAsync(MakeUser(UserRole.Staff, overrideManageApiKeys: false)));
+
+    [Fact]
+    public async Task CanManageApiKeys_HolderInAGuestOffice_StillResolvesTrue()
+        => Assert.True(await _sut.CanManageApiKeysAsync(
+            MakeUser(UserRole.Staff, overrideManageApiKeys: true, officeId: 7)));
+
+    // Independent of CanManageConfig, CanManageUsers and CanReviewAllOffices in both directions —
+    // none of them implies this, and this implies none of them (build spec §2 decision 7).
+
+    [Fact]
+    public async Task CanManageApiKeys_IsIndependentOfOtherManagementGrants()
+    {
+        Assert.False(await _sut.CanManageApiKeysAsync(
+            MakeUser(UserRole.Staff, overrideManageConfig: true, divManageConfig: true)));
+        Assert.False(await _sut.CanManageApiKeysAsync(
+            MakeUser(UserRole.Staff, overrideManageUsers: true, divManageUsers: true)));
+        Assert.False(await _sut.CanManageApiKeysAsync(
+            MakeUser(UserRole.Staff, overrideAllOffices: true)));
+        Assert.False(await _sut.CanManageConfigAsync(
+            MakeUser(UserRole.Staff, overrideManageApiKeys: true)));
+        Assert.False(await _sut.CanManageUsersAsync(
+            MakeUser(UserRole.Staff, overrideManageApiKeys: true)));
+        Assert.False(await _sut.CanReviewAllOfficesAsync(
+            MakeUser(UserRole.Staff, overrideManageApiKeys: true)));
+    }
 }

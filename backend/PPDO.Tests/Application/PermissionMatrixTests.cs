@@ -47,6 +47,7 @@ public sealed class PermissionMatrixTests
         ["CanReviewBudgetPlanning"] = (s, u) => s.CanReviewBudgetPlanningAsync(u),
         ["CanReviewAllOffices"]     = (s, u) => s.CanReviewAllOfficesAsync(u),
         ["CanViewAuditLog"]         = (s, u) => s.CanViewAuditLogAsync(u),
+        ["CanManageApiKeys"]        = (s, u) => s.CanManageApiKeysAsync(u),
     };
 
     /// <summary>The five flags that follow the plain role-bypass / override / division chain.</summary>
@@ -56,11 +57,12 @@ public sealed class PermissionMatrixTests
         "CanManageResourceLinks", "CanManageConfig",
     ];
 
-    /// <summary>The four per-user grants: SuperAdmin only, Admin NOT auto-granted.</summary>
+    /// <summary>The five per-user grants: SuperAdmin only, Admin NOT auto-granted.</summary>
     private static readonly string[] PerUserGrants =
     [
         "CanManagePpdoAllocation", "CanManagePboCeiling",
         "CanReviewBudgetPlanning", "CanReviewAllOffices",
+        "CanManageApiKeys",
     ];
 
     public static TheoryData<string, UserRole, bool?, bool, bool, bool> Rows()
@@ -233,6 +235,8 @@ public sealed class PermissionMatrixTests
                 user.OverrideCanReviewBudgetPlanning = overrideValue; break;
             case "CanReviewAllOffices":
                 user.OverrideCanReviewAllOffices = overrideValue; break;
+            case "CanManageApiKeys":
+                user.OverrideCanManageApiKeys = overrideValue; break;
             case "CanAccessProfile":
             case "CanViewAuditLog":
                 break;  // neither reads an override or a division flag

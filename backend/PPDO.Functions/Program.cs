@@ -182,6 +182,11 @@ var host = new HostBuilder()
         services.AddScoped<IEsreCodeRepository, EsreCodeRepository>();
         services.AddScoped<IAllocationService, AllocationService>();
 
+        // -- v1.8.0 Phase 5 — Partner API keys (PPDO-15) -----------------------
+        services.AddScoped<IPartnerApiKeyRepository, PartnerApiKeyRepository>();
+        services.AddScoped<IPartnerApiRequestRepository, PartnerApiRequestRepository>();
+        services.AddScoped<IPartnerApiKeyService, PartnerApiKeyService>();
+
         // -- v1.4 WFP expenditure schema + computation pipeline (RAL-120) -----
         services.AddScoped<IRepository<WfpExpenditurePeriod>, Repository<WfpExpenditurePeriod>>();
         services.AddScoped<IRepository<WfpProcurementItem>, Repository<WfpProcurementItem>>();

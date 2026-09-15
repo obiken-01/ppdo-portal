@@ -6,7 +6,7 @@
 > The two are a pair: change a rule and the corresponding row fails until both are updated. A flag
 > added to `IPermissionService` without a row fails the build (`Matrix_CoversEveryFlagOnThePermissionService`).
 >
-> **Read this instead of `PermissionService`.** The model now carries 13 flags across three
+> **Read this instead of `PermissionService`.** The model now carries 14 flags across three
 > mechanisms plus three scope dimensions and one subtractive guard — past the point where "read the
 > code" is a reasonable answer.
 
@@ -19,15 +19,16 @@ Permissions resolve through exactly one of two chains, never a mix:
 | Chain | Flags | Rule |
 |---|---|---|
 | **Standard** | 7 feature flags | `SuperAdmin/Admin → true`, else `Override ?? Division.<flag> ?? false` |
-| **Per-user grant** | 4 budget-planning authorities | `SuperAdmin → true`, else `Override ?? false` — **Admin is NOT auto-granted** |
+| **Per-user grant** | 5 budget-planning + API-access authorities | `SuperAdmin → true`, else `Override ?? false` — **Admin is NOT auto-granted** |
 
 Plus two flags that follow neither: `CanAccessProfile` (always true) and `CanViewAuditLog`
 (feature-flag gated, SuperAdmin-only).
 
-**Why per-user grants exclude Admin.** These four name a *specific person's job* — the PPDO finance
-officer, the PBO finance officer, an office's reviewer, the consolidated reviewer. Auto-granting
-them to every Admin would make the designation meaningless. SuperAdmin still resolves true so
-support access always works, and that exemption is load-bearing — see §5.
+**Why per-user grants exclude Admin.** These five name a *specific person's job* — the PPDO finance
+officer, the PBO finance officer, an office's reviewer, the consolidated reviewer, the person who
+issues partner API keys. Auto-granting them to every Admin would make the designation meaningless.
+SuperAdmin still resolves true so support access always works, and that exemption is load-bearing
+— see §5.
 
 **Division flags exist for the standard chain only.** `Division` carries seven `Can*` booleans and
 deliberately carries none of the per-user grants.
@@ -90,7 +91,8 @@ The uploaded file contains *every* office's records, so upload is host-office-on
 
 ### 2.4 Per-user grants
 
-`CanManagePpdoAllocation` · `CanManagePboCeiling` · `CanReviewBudgetPlanning` · `CanReviewAllOffices`
+`CanManagePpdoAllocation` · `CanManagePboCeiling` · `CanReviewBudgetPlanning` · `CanReviewAllOffices` ·
+`CanManageApiKeys`
 
 | Role | Override | Result |
 |---|---|---|
@@ -103,7 +105,7 @@ The uploaded file contains *every* office's records, so upload is host-office-on
 
 Neither office nor division is read. A guest-office user holding the override resolves ✅.
 
-**None of the four implies any other.** Mutual independence is pinned by test in both directions
+**None of the five implies any other.** Mutual independence is pinned by test in both directions
 for each pair that could plausibly be conflated:
 
 | Flag | Who holds it | Added |
@@ -112,9 +114,15 @@ for each pair that could plausibly be conflated:
 | `CanManagePboCeiling` | PBO finance officer — sets the ceiling **for any office** | PPDO-2 |
 | `CanReviewBudgetPlanning` | An office's reviewer — the department head who checks its work | PPDO-3 |
 | `CanReviewAllOffices` | Designated PPDO users who review **every** office's submissions | PPDO-5 |
+| `CanManageApiKeys` | Named person who issues/revokes partner API keys under Configuration → API Access | PPDO-15 |
 
 > ⚠️ `CanManagePboCeilingAsync` deliberately does **not** fall back to `CanManagePpdoAllocationAsync`.
 > OR-ing them would hand every PPDO finance officer authority over other offices' ceilings.
+>
+> ⚠️ `CanManageApiKeysAsync` is independent of `CanManageConfigAsync`, `CanManageUsersAsync` and
+> `CanReviewAllOfficesAsync` in both directions — none of them implies it, and it implies none of
+> them. A key reads AIP data across every office it is scoped to, from outside the portal entirely,
+> so it stays scoped to a named person rather than inheriting any existing role default.
 
 ### 2.5 The two that follow neither chain
 

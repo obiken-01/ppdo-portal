@@ -128,4 +128,17 @@ public interface IPermissionService
     /// per-user/division override yet (add one here if that's ever needed).
     /// </summary>
     Task<bool> CanViewAuditLogAsync(User user, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// True when the user may issue and revoke partner API keys on Configuration → API Access
+    /// (v1.8.0 — PPDO-15). Per-user grant only: SuperAdmin -> true; everyone else ->
+    /// <see cref="User.OverrideCanManageApiKeys"/> ?? false. Admin is NOT auto-granted this.
+    ///
+    /// Independent of <see cref="CanManageConfigAsync"/>, <see cref="CanManageUsersAsync"/> and
+    /// <see cref="CanReviewAllOfficesAsync"/> in both directions — none of them implies this, and
+    /// this implies none of them. A key reads AIP data across every office it is scoped to, from
+    /// outside the portal entirely, so it is deliberately scoped to a named person rather than a
+    /// role default.
+    /// </summary>
+    Task<bool> CanManageApiKeysAsync(User user, CancellationToken cancellationToken = default);
 }

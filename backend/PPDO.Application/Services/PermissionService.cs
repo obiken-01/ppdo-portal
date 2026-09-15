@@ -25,6 +25,8 @@ namespace PPDO.Application.Services;
 /// CanReviewAllOffices (RAL-257) is the same shape once more, and the only flag here that
 /// WIDENS data scope past the caller's own office. It is a READ bypass, consumed through
 /// OfficeScope.ResolveForReview — never through OfficeScope.Resolve, which the writes use.
+/// CanManageApiKeys (v1.8.0 — PPDO-15) is the same per-user-grant shape again, gating partner
+/// API key issuance — independent of every other flag here in both directions.
 /// CanAccessProfile is always true.
 ///
 /// No database access — the <see cref="User"/> must be loaded with <see cref="User.Division"/>
@@ -149,6 +151,17 @@ public sealed class PermissionService : IPermissionService
     {
         if (!FeatureFlags.AuditLogPageEnabled) return Task.FromResult(false);
         return Task.FromResult(user.Role is UserRole.SuperAdmin);
+    }
+
+    /// <inheritdoc />
+    public Task<bool> CanManageApiKeysAsync(User user, CancellationToken cancellationToken = default)
+    {
+        // Per-user grant only — Admin is NOT auto-granted. SuperAdmin bypasses for support.
+        // Resolved independently of CanManageConfig/CanManageUsers/CanReviewAllOffices in both
+        // directions — a key reads AIP data across offices from outside the portal entirely, so
+        // it is deliberately scoped to a named person rather than any existing role default.
+        if (user.Role is UserRole.SuperAdmin) return Task.FromResult(true);
+        return Task.FromResult(user.OverrideCanManageApiKeys ?? false);
     }
 
     /// <summary>SuperAdmin and Admin get all standard feature flags by default.</summary>
