@@ -168,7 +168,10 @@ public sealed class AipRefCodeConcurrencyTests
             activityRepo.Object, new Mock<ILdipRepository>().Object, allocationRepo.Object,
             // PPDO-80. Never reached: these tests exercise ref-code allocation on create, and a
             // created activity has no expenditure lines to draw a fund code from.
-            new Mock<IAipExpenditureRepository>().Object);
+            new Mock<IAipExpenditureRepository>().Object,
+            new Mock<IAipAllocationLedgerRepository>().Object,
+            new Mock<IAipReviewCommentRepository>().Object,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<AipService>.Instance);
 
         return (sut, activities, activityRepo);
     }

@@ -78,8 +78,8 @@ public static class RefCodeAllocator
     /// </item>
     /// <item>
     /// Deleting the <i>last</i> sibling makes its code available again, so the next create reuses
-    /// it. Whether that is right is a numbering question owned by <b>V18-42</b> (program numbering
-    /// renumbers without gaps); it is not decided here.
+    /// it. On an entered year a middle delete no longer leaves a gap either — see
+    /// <see cref="Renumber"/> (PPDO-88).
     /// </item>
     /// </list>
     /// </summary>
@@ -97,6 +97,37 @@ public static class RefCodeAllocator
         }
 
         return $"{parentRefCode}-{highest + 1:D3}";
+    }
+
+    /// <summary>
+    /// The codes the remaining siblings take once a delete closes the gap (PPDO-88): in their
+    /// current sequence order they become <c>-001</c>, <c>-002</c>, … under
+    /// <paramref name="parentRefCode"/>. Returns only the siblings whose code changes, old → new.
+    ///
+    /// <para>
+    /// Unparseable last segments are left out and keep their code, for the same reason
+    /// <see cref="NextRefCode"/> skips them.
+    /// </para>
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> Renumber(
+        string parentRefCode, IEnumerable<string> siblingRefCodes)
+    {
+        List<(string Code, int Sequence)> numbered = [];
+        foreach (string code in siblingRefCodes)
+        {
+            if (string.IsNullOrWhiteSpace(code)) continue;
+            if (int.TryParse(code.Split('-')[^1], out int sequence)) numbered.Add((code, sequence));
+        }
+
+        Dictionary<string, string> moves = [];
+        int next = 1;
+        foreach ((string code, _) in numbered.OrderBy(s => s.Sequence))
+        {
+            string renumbered = $"{parentRefCode}-{next++:D3}";
+            if (renumbered != code) moves[code] = renumbered;
+        }
+
+        return moves;
     }
 
     /// <summary>

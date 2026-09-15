@@ -130,6 +130,14 @@ function useComments(): CommentsState | null {
 }
 
 /**
+ * Refetches the office's comments after a write elsewhere removed some — a project or activity
+ * delete takes its comments with it (PPDO-88). Null outside the provider.
+ */
+export function useReloadAipComments(): (() => Promise<void>) | null {
+  return useComments()?.reload ?? null;
+}
+
+/**
  * The unresolved tally for the office this provider is loaded for, or null when there is no
  * provider or the fetch failed (PPDO-72).
  *

@@ -53,8 +53,11 @@ public sealed class AipAllocationLedgerRepository : Repository<AipDivisionAlloca
             .ToListAsync(ct);
 
     /// <inheritdoc />
-    public async Task<int> DeleteByActivityAsync(int aipActivityId, CancellationToken ct = default)
-        => await _context.Set<AipDivisionAllocationLedger>()
-            .Where(l => l.AipActivityId == aipActivityId)
+    public async Task<int> DeleteByActivityIdsAsync(IReadOnlyList<int> aipActivityIds, CancellationToken ct = default)
+    {
+        if (aipActivityIds.Count == 0) return 0;
+        return await _context.Set<AipDivisionAllocationLedger>()
+            .Where(l => aipActivityIds.Contains(l.AipActivityId))
             .ExecuteDeleteAsync(ct);
+    }
 }

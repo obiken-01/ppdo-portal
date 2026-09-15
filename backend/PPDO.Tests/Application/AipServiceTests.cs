@@ -100,7 +100,10 @@ public sealed partial class AipServiceTests
             IReadOnlyCollection<int>? aipIdsWithWfp = null,
             List<Office>? officeConfigSeed = null,
             List<LdipRecord>? ldipRecordSeed = null,
-            List<LdipOffice>? ldipOfficeSeed = null)
+            List<LdipOffice>? ldipOfficeSeed = null,
+            List<AipExpenditure>? expSeed = null,
+            List<AipReviewComment>? commentSeed = null,
+            Mock<IAipAllocationLedgerRepository>? ledgerRepo = null)
     {
         Mock<IAipRepository>            aipRepo  = new();
         Mock<IRepository<FundingSource>> fsRepo   = new();
@@ -278,11 +281,38 @@ public sealed partial class AipServiceTests
         expRepo.Setup(r => r.GetFundCodesByActivityIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<string>)[]);
 
+        // ── PPDO-88: delete — snapshot lines, transaction, ledger and comments ───────
+        List<AipExpenditure> expList = expSeed ?? [];
+        expRepo.Setup(r => r.GetByActivityIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<int> ids, CancellationToken _) =>
+                (IReadOnlyList<AipExpenditure>)expList.Where(e => ids.Contains(e.ActivityId)).ToList());
+
+        activityRepo.Setup(r => r.ExecuteInTransactionAsync(It.IsAny<Func<Task>>(), It.IsAny<CancellationToken>()))
+            .Returns((Func<Task> operation, CancellationToken _) => operation());
+
+        ledgerRepo ??= new Mock<IAipAllocationLedgerRepository>();
+        ledgerRepo.Setup(r => r.DeleteByActivityIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<int> ids, CancellationToken _) => ids.Count);
+
+        List<AipReviewComment> commentList = commentSeed ?? [];
+        Mock<IAipReviewCommentRepository> commentRepo = new();
+        commentRepo.Setup(r => r.GetByNodesAsync(
+                It.IsAny<IReadOnlyList<int>>(), It.IsAny<IReadOnlyList<int>>(), It.IsAny<IReadOnlyList<int>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<int> programIds, IReadOnlyList<int> projectIds, IReadOnlyList<int> activityIds, CancellationToken _) =>
+                (IReadOnlyList<AipReviewComment>)commentList.Where(c =>
+                    (c.NodeType == AipCommentNodeType.Program  && programIds.Contains(c.NodeId)) ||
+                    (c.NodeType == AipCommentNodeType.Project  && projectIds.Contains(c.NodeId)) ||
+                    (c.NodeType == AipCommentNodeType.Activity && activityIds.Contains(c.NodeId))).ToList());
+        commentRepo.Setup(r => r.DeleteByIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<int> ids, CancellationToken _) => commentList.RemoveAll(c => ids.Contains(c.Id)));
+
         AipService sut = new(
             aipRepo.Object, fsRepo.Object, userRepo.Object,
             parser.Object, audit.Object, ctx, officeRepo.Object, wfpRepo.Object,
             officeConfigRepo.Object, programRepo.Object, projectRepo.Object, activityRepo.Object,
-            ldipRepo.Object, allocationRepo.Object, expRepo.Object);
+            ldipRepo.Object, allocationRepo.Object, expRepo.Object, ledgerRepo.Object, commentRepo.Object,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<AipService>.Instance);
 
         return (sut, aipRepo, fsRepo, userRepo, parser, audit, officeRepo, wfpRepo,
             officeConfigRepo, programRepo, projectRepo, activityRepo, ldipRepo);
@@ -2713,10 +2743,10 @@ public sealed partial class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, programRepo, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
-        ServiceResult<bool> result = await sut.DeleteProgramAsync(30, HostCaller());
+        ServiceResult<AipDeleteResultDto> result = await sut.DeleteProgramAsync(30, HostCaller());
 
         Assert.True(result.IsSuccess);
-        Assert.True(result.Value);
+        Assert.Equal(("Program", 30), (result.Value!.DeletedNodeType, result.Value.DeletedId));
         programRepo.Verify(r => r.DeleteAsync(
             It.Is<AipProgram>(p => p.Id == 30), It.IsAny<CancellationToken>()), Times.Once);
         Assert.DoesNotContain(programs, p => p.Id == 30);
@@ -2727,7 +2757,7 @@ public sealed partial class AipServiceTests
     {
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
-        ServiceResult<bool> result = await sut.DeleteProgramAsync(999, HostCaller());
+        ServiceResult<AipDeleteResultDto> result = await sut.DeleteProgramAsync(999, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
@@ -2740,7 +2770,7 @@ public sealed partial class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, programRepo, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
-        ServiceResult<bool> result = await sut.DeleteProgramAsync(30, HostCaller());
+        ServiceResult<AipDeleteResultDto> result = await sut.DeleteProgramAsync(30, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2754,7 +2784,7 @@ public sealed partial class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, projectRepo, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
-        ServiceResult<bool> result = await sut.DeleteProjectAsync(40, HostCaller());
+        ServiceResult<AipDeleteResultDto> result = await sut.DeleteProjectAsync(40, HostCaller());
 
         Assert.True(result.IsSuccess);
         projectRepo.Verify(r => r.DeleteAsync(
@@ -2767,7 +2797,7 @@ public sealed partial class AipServiceTests
     {
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
-        ServiceResult<bool> result = await sut.DeleteProjectAsync(999, HostCaller());
+        ServiceResult<AipDeleteResultDto> result = await sut.DeleteProjectAsync(999, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
@@ -2780,7 +2810,7 @@ public sealed partial class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, projectRepo, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
-        ServiceResult<bool> result = await sut.DeleteProjectAsync(40, HostCaller());
+        ServiceResult<AipDeleteResultDto> result = await sut.DeleteProjectAsync(40, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2794,7 +2824,7 @@ public sealed partial class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, activityRepo, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
-        ServiceResult<bool> result = await sut.DeleteActivityAsync(50, HostCaller());
+        ServiceResult<AipDeleteResultDto> result = await sut.DeleteActivityAsync(50, HostCaller());
 
         Assert.True(result.IsSuccess);
         activityRepo.Verify(r => r.DeleteAsync(
@@ -2807,7 +2837,7 @@ public sealed partial class AipServiceTests
     {
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
-        ServiceResult<bool> result = await sut.DeleteActivityAsync(999, HostCaller());
+        ServiceResult<AipDeleteResultDto> result = await sut.DeleteActivityAsync(999, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
@@ -2820,7 +2850,7 @@ public sealed partial class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, activityRepo, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
-        ServiceResult<bool> result = await sut.DeleteActivityAsync(50, HostCaller());
+        ServiceResult<AipDeleteResultDto> result = await sut.DeleteActivityAsync(50, HostCaller());
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);

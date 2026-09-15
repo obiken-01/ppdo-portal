@@ -53,6 +53,20 @@ public record AipProjectDto(
     IReadOnlyList<AipActivityDto> Activities,
     bool   IsSynthetic = false);
 
+/// <summary>A node whose ref code changed because a sibling was deleted (PPDO-88).</summary>
+public record AipRenumberedNodeDto(string NodeType, int Id, string RefCode);
+
+/// <summary>
+/// What a program, project or activity delete removed and renumbered (PPDO-88). The entry page
+/// patches codes from <see cref="Renumbered"/> instead of reloading the tree.
+/// </summary>
+public record AipDeleteResultDto(
+    string DeletedNodeType,
+    int    DeletedId,
+    int    RemovedActivityCount,
+    int    RemovedCommentCount,
+    IReadOnlyList<AipRenumberedNodeDto> Renumbered);
+
 public record AipProgramDto(
     int     Id,
     int     OfficeId,

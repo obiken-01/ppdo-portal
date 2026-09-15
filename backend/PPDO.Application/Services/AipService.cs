@@ -1,6 +1,9 @@
+using Microsoft.Extensions.Logging;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
+using PPDO.Domain.Common;
 using PPDO.Domain.Entities;
+using PPDO.Domain.Enums;
 using PPDO.Domain.Interfaces;
 
 namespace PPDO.Application.Services;
@@ -39,6 +42,11 @@ public sealed class AipService : IAipService
     /// </summary>
     private readonly IAipExpenditureRepository _expRepo;
 
+    // PPDO-88 — a delete clears the subtree's ledger reservations and comments.
+    private readonly IAipAllocationLedgerRepository _ledgerRepo;
+    private readonly IAipReviewCommentRepository    _commentRepo;
+    private readonly ILogger<AipService>            _logger;
+
     public AipService(
         IAipRepository             aipRepo,
         IRepository<FundingSource>  fsRepo,
@@ -54,8 +62,14 @@ public sealed class AipService : IAipService
         IRepository<AipActivity> activityRepo,
         ILdipRepository ldipRepo,
         IAllocationRepository allocationRepo,
-        IAipExpenditureRepository expRepo)
+        IAipExpenditureRepository expRepo,
+        IAipAllocationLedgerRepository ledgerRepo,
+        IAipReviewCommentRepository commentRepo,
+        ILogger<AipService> logger)
     {
+        _ledgerRepo  = ledgerRepo;
+        _commentRepo = commentRepo;
+        _logger      = logger;
         _aipRepo    = aipRepo;
         _fsRepo     = fsRepo;
         _userRepo   = userRepo;
@@ -1440,88 +1454,258 @@ public sealed class AipService : IAipService
         ServiceResult<bool>? statusError = await CheckWritableAsync<bool>(office, caller, $"AIP office {officeId} not found.", ct, "delete from");
         if (statusError is not null) return statusError;
 
-        // DB cascade (AipOffice -> AipProgram -> AipProject -> AipActivity) removes the whole subtree.
-        await _officeRepo.DeleteAsync(office, ct);
-        await _officeRepo.SaveChangesAsync(ct);
-        await _audit.LogAsync("aip_offices", office.Id, AuditAction.Delete,
-            new { office.AipRecordId, office.RefCode, office.Name, office.Sector }, null, ct);
+        IReadOnlyList<AipProgram> officePrograms = await _aipRepo.GetProgramsByOfficeIdsAsync([office.Id], ct);
+        IReadOnlyList<AipProject> officeProjects =
+            await _aipRepo.GetProjectsByProgramIdsAsync(officePrograms.Select(p => p.Id).ToList(), ct);
+        IReadOnlyList<AipActivity> officeActivities =
+            await _aipRepo.GetActivitiesByProjectIdsAsync(officeProjects.Select(j => j.Id).ToList(), ct);
+        List<int> officeActivityIds = officeActivities.Select(a => a.Id).ToList();
+
+        await _activityRepo.ExecuteInTransactionAsync(async () =>
+        {
+            // Ledger rows first (PPDO-88): their activity FK is NoAction, so the cascade stops at them.
+            await _ledgerRepo.DeleteByActivityIdsAsync(officeActivityIds, ct);
+            // DB cascade (AipOffice -> AipProgram -> AipProject -> AipActivity) removes the whole subtree.
+            await _officeRepo.DeleteAsync(office, ct);
+            await _officeRepo.SaveChangesAsync(ct);
+            await _audit.LogAsync("aip_offices", office.Id, AuditAction.Delete,
+                new { office.AipRecordId, office.RefCode, office.Name, office.Sector }, null, ct);
+        }, ct);
 
         return ServiceResult<bool>.Ok(true);
     }
 
-    public async Task<ServiceResult<bool>> DeleteProgramAsync(int programId, User caller, CancellationToken ct = default)
+    public async Task<ServiceResult<AipDeleteResultDto>> DeleteProgramAsync(int programId, User caller, CancellationToken ct = default)
     {
         AipProgram? program = await _aipRepo.GetProgramByIdAsync(programId, ct);
         if (program is null)
-            return ServiceResult<bool>.NotFound($"AIP program {programId} not found.");
+            return ServiceResult<AipDeleteResultDto>.NotFound($"AIP program {programId} not found.");
 
         AipOffice? office = await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
         if (office is null)
-            return ServiceResult<bool>.NotFound($"AIP office {program.OfficeId} not found.");
+            return ServiceResult<AipDeleteResultDto>.NotFound($"AIP office {program.OfficeId} not found.");
 
-        ServiceResult<bool>? statusError = await CheckWritableAsync<bool>(office, caller, $"AIP program {programId} not found.", ct, "delete from");
+        ServiceResult<AipDeleteResultDto>? statusError = await CheckWritableAsync<AipDeleteResultDto>(office, caller, $"AIP program {programId} not found.", ct, "delete from");
         if (statusError is not null) return statusError;
 
-        // DB cascade (AipProgram -> AipProject -> AipActivity) removes the whole subtree.
-        await _programRepo.DeleteAsync(program, ct);
-        await _programRepo.SaveChangesAsync(ct);
-        await _audit.LogAsync("aip_programs", program.Id, AuditAction.Delete,
-            new { program.OfficeId, program.RefCode, program.Name }, null, ct);
+        IReadOnlyList<AipProject> projects = await _aipRepo.GetProjectsByProgramIdsAsync([program.Id], ct);
+        IReadOnlyList<AipActivity> activities =
+            await _aipRepo.GetActivitiesByProjectIdsAsync(projects.Select(j => j.Id).ToList(), ct);
 
-        return ServiceResult<bool>.Ok(true);
+        // Programs never renumber — their codes are the LDIP's.
+        return await DeleteNodeAsync(
+            office, AipCommentNodeType.Program, "aip_programs", program.Id, program.RefCode, program.Name,
+            [program.Id], projects, activities,
+            async () => { await _programRepo.DeleteAsync(program, ct); await _programRepo.SaveChangesAsync(ct); },
+            renumber: null, ct);
     }
 
-    public async Task<ServiceResult<bool>> DeleteProjectAsync(int projectId, User caller, CancellationToken ct = default)
+    public async Task<ServiceResult<AipDeleteResultDto>> DeleteProjectAsync(int projectId, User caller, CancellationToken ct = default)
     {
         AipProject? project = await _aipRepo.GetProjectByIdAsync(projectId, ct);
         if (project is null)
-            return ServiceResult<bool>.NotFound($"AIP project {projectId} not found.");
+            return ServiceResult<AipDeleteResultDto>.NotFound($"AIP project {projectId} not found.");
 
         AipProgram? program = await _aipRepo.GetProgramByIdAsync(project.ProgramId, ct);
         if (program is null)
-            return ServiceResult<bool>.NotFound($"AIP program {project.ProgramId} not found.");
+            return ServiceResult<AipDeleteResultDto>.NotFound($"AIP program {project.ProgramId} not found.");
         AipOffice? office = await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
         if (office is null)
-            return ServiceResult<bool>.NotFound($"AIP office {program.OfficeId} not found.");
+            return ServiceResult<AipDeleteResultDto>.NotFound($"AIP office {program.OfficeId} not found.");
 
-        ServiceResult<bool>? statusError = await CheckWritableAsync<bool>(office, caller, $"AIP project {projectId} not found.", ct, "delete from");
+        ServiceResult<AipDeleteResultDto>? statusError = await CheckWritableAsync<AipDeleteResultDto>(office, caller, $"AIP project {projectId} not found.", ct, "delete from");
         if (statusError is not null) return statusError;
 
-        // DB cascade (AipProject -> AipActivity) removes the activities under it.
-        await _projectRepo.DeleteAsync(project, ct);
-        await _projectRepo.SaveChangesAsync(ct);
-        await _audit.LogAsync("aip_projects", project.Id, AuditAction.Delete,
-            new { project.ProgramId, project.RefCode, project.Name }, null, ct);
+        IReadOnlyList<AipActivity> activities = await _aipRepo.GetActivitiesByProjectIdsAsync([project.Id], ct);
+        bool renumber = await RenumbersOnDeleteAsync(office, ct);
 
-        return ServiceResult<bool>.Ok(true);
+        return await DeleteNodeAsync(
+            office, AipCommentNodeType.Project, "aip_projects", project.Id, project.RefCode, project.Name,
+            [], [project], activities,
+            async () => { await _projectRepo.DeleteAsync(project, ct); await _projectRepo.SaveChangesAsync(ct); },
+            renumber ? () => RenumberProjectsAsync(program, ct) : null, ct);
     }
 
-    public async Task<ServiceResult<bool>> DeleteActivityAsync(int activityId, User caller, CancellationToken ct = default)
+    public async Task<ServiceResult<AipDeleteResultDto>> DeleteActivityAsync(int activityId, User caller, CancellationToken ct = default)
     {
         AipActivity? activity = await _aipRepo.GetActivityByIdAsync(activityId, ct);
         if (activity is null)
-            return ServiceResult<bool>.NotFound($"AIP activity {activityId} not found.");
+            return ServiceResult<AipDeleteResultDto>.NotFound($"AIP activity {activityId} not found.");
 
         AipProject? project = await _aipRepo.GetProjectByIdAsync(activity.ProjectId, ct);
         if (project is null)
-            return ServiceResult<bool>.NotFound($"AIP project {activity.ProjectId} not found.");
+            return ServiceResult<AipDeleteResultDto>.NotFound($"AIP project {activity.ProjectId} not found.");
         AipProgram? program = await _aipRepo.GetProgramByIdAsync(project.ProgramId, ct);
         if (program is null)
-            return ServiceResult<bool>.NotFound($"AIP program {project.ProgramId} not found.");
+            return ServiceResult<AipDeleteResultDto>.NotFound($"AIP program {project.ProgramId} not found.");
         AipOffice? office = await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
         if (office is null)
-            return ServiceResult<bool>.NotFound($"AIP office {program.OfficeId} not found.");
+            return ServiceResult<AipDeleteResultDto>.NotFound($"AIP office {program.OfficeId} not found.");
 
-        ServiceResult<bool>? statusError = await CheckWritableAsync<bool>(office, caller, $"AIP activity {activityId} not found.", ct, "delete from");
+        ServiceResult<AipDeleteResultDto>? statusError = await CheckWritableAsync<AipDeleteResultDto>(office, caller, $"AIP activity {activityId} not found.", ct, "delete from");
         if (statusError is not null) return statusError;
 
-        await _activityRepo.DeleteAsync(activity, ct);
-        await _activityRepo.SaveChangesAsync(ct);
-        await _audit.LogAsync("aip_activities", activity.Id, AuditAction.Delete,
-            new { activity.ProjectId, activity.RefCode, activity.Name }, null, ct);
+        bool renumber = await RenumbersOnDeleteAsync(office, ct);
 
-        return ServiceResult<bool>.Ok(true);
+        return await DeleteNodeAsync(
+            office, AipCommentNodeType.Activity, "aip_activities", activity.Id, activity.RefCode, activity.Name,
+            [], [], [activity],
+            async () => { await _activityRepo.DeleteAsync(activity, ct); await _activityRepo.SaveChangesAsync(ct); },
+            renumber ? () => RenumberActivitiesAsync(project, ct) : null, ct);
     }
+
+    /// <summary>
+    /// The shared body of the program, project and activity deletes (PPDO-88): ledger rows, comments,
+    /// the node itself and any renumbering commit together, with a full snapshot in the audit row.
+    /// </summary>
+    private async Task<ServiceResult<AipDeleteResultDto>> DeleteNodeAsync(
+        AipOffice office,
+        AipCommentNodeType nodeType, string tableName, int nodeId, string refCode, string name,
+        IReadOnlyList<int> programIds, IReadOnlyList<AipProject> projects, IReadOnlyList<AipActivity> activities,
+        Func<Task> deleteNode,
+        Func<Task<IReadOnlyList<AipRenumberedNodeDto>>>? renumber,
+        CancellationToken ct)
+    {
+        List<int> activityIds = activities.Select(a => a.Id).ToList();
+        IReadOnlyList<AipExpenditure> lines = await _expRepo.GetByActivityIdsAsync(activityIds, ct);
+        IReadOnlyList<AipReviewComment> comments = await _commentRepo.GetByNodesAsync(
+            programIds, projects.Select(j => j.Id).ToList(), activityIds, ct);
+
+        // Materialised now: the node and its children are gone by the time the audit row serialises.
+        object snapshot = new
+        {
+            NodeType = nodeType.ToString(), RefCode = refCode, Name = name,
+            office.AipRecordId, AipOfficeId = office.Id,
+            Projects = projects.Select(j => new { j.Id, j.RefCode, j.Name }).ToList(),
+            Activities = activities.Select(a => new
+            {
+                a.Id, a.ProjectId, a.RefCode, a.Name, a.Ps, a.Mooe, a.Co, a.Total,
+                a.CcAdaptation, a.CcMitigation, a.FundingSourceSnapshot,
+            }).ToList(),
+            ExpenditureLines = lines.Select(l => new
+            {
+                l.Id, l.ActivityId, l.AccountNumberSnapshot, l.AccountTitleSnapshot,
+                l.FundingSourceSnapshot, l.Ps, l.Mooe, l.Co, l.Total,
+            }).ToList(),
+            Comments = comments.Select(c => new
+            {
+                c.Id, NodeType = c.NodeType.ToString(), c.NodeId, c.AuthorId,
+                AuthorSide = c.AuthorSide.ToString(), c.Body, c.CreatedAt, c.ResolvedAt,
+            }).ToList(),
+        };
+
+        IReadOnlyList<AipRenumberedNodeDto> renumbered = [];
+        try
+        {
+            await _activityRepo.ExecuteInTransactionAsync(async () =>
+            {
+                // Ledger rows first: their activity FK is NoAction, so the cascade stops at them.
+                await _ledgerRepo.DeleteByActivityIdsAsync(activityIds, ct);
+                await _commentRepo.DeleteByIdsAsync(comments.Select(c => c.Id).ToList(), ct);
+                await deleteNode();
+                renumbered = renumber is null ? [] : await renumber();
+                await _audit.LogAsync(tableName, nodeId, AuditAction.Delete, snapshot, null, ct);
+            }, ct);
+        }
+        catch (UniqueConstraintViolationException)
+        {
+            return ServiceResult<AipDeleteResultDto>.Conflict(
+                "This list changed while you were saving — reload and try again.");
+        }
+
+        _logger.LogInformation(
+            "AIP node deleted. NodeType: {NodeType}, Id: {Id}, RefCode: {RefCode}, " +
+            "RemovedActivities: {RemovedActivities}, RemovedComments: {RemovedComments}, " +
+            "Renumbered: {Renumbered}, UserId: {UserId}",
+            nodeType, nodeId, refCode, activities.Count, comments.Count, renumbered.Count, _caller.UserId);
+
+        return ServiceResult<AipDeleteResultDto>.Ok(new AipDeleteResultDto(
+            nodeType.ToString(), nodeId, activities.Count, comments.Count, renumbered));
+    }
+
+    /// <summary>FY≤2027 codes are the province file's, so only an entered year renumbers on delete.</summary>
+    private async Task<bool> RenumbersOnDeleteAsync(AipOffice office, CancellationToken ct)
+    {
+        AipRecord? record = await _aipRepo.GetByIntIdAsync(office.AipRecordId, ct);
+        return record is not null && AipFiscalYears.IsEntered(record.FiscalYear);
+    }
+
+    private async Task<IReadOnlyList<AipRenumberedNodeDto>> RenumberActivitiesAsync(AipProject project, CancellationToken ct)
+    {
+        IReadOnlyList<AipActivity> siblings = await _aipRepo.GetActivitiesByProjectIdsAsync([project.Id], ct);
+        IReadOnlyDictionary<string, string> moves =
+            RefCodeAllocator.Renumber(project.RefCode, siblings.Select(a => a.RefCode));
+        List<(AipActivity Node, string NewCode)> moving = siblings
+            .Where(a => moves.ContainsKey(a.RefCode))
+            .Select(a => (a, moves[a.RefCode]))
+            .ToList();
+        if (moving.Count == 0) return [];
+
+        // Two phases: parking every moving row on a code unique by id first keeps the
+        // (project_id, ref_code) index from seeing two rows share a code mid-shift.
+        foreach ((AipActivity node, _) in moving)
+        {
+            node.RefCode = ParkedRefCode(node.Id);
+            await _activityRepo.UpdateAsync(node, ct);
+        }
+        await _activityRepo.SaveChangesAsync(ct);
+
+        foreach ((AipActivity node, string newCode) in moving)
+        {
+            node.RefCode = newCode;
+            await _activityRepo.UpdateAsync(node, ct);
+        }
+        await _activityRepo.SaveChangesAsync(ct);
+
+        return moving
+            .Select(m => new AipRenumberedNodeDto(nameof(AipCommentNodeType.Activity), m.Node.Id, m.NewCode))
+            .ToList();
+    }
+
+    private async Task<IReadOnlyList<AipRenumberedNodeDto>> RenumberProjectsAsync(AipProgram program, CancellationToken ct)
+    {
+        IReadOnlyList<AipProject> siblings = await _aipRepo.GetProjectsByProgramIdsAsync([program.Id], ct);
+        IReadOnlyDictionary<string, string> moves =
+            RefCodeAllocator.Renumber(program.RefCode, siblings.Select(j => j.RefCode));
+        List<(AipProject Node, string OldCode, string NewCode)> moving = siblings
+            .Where(j => moves.ContainsKey(j.RefCode))
+            .Select(j => (j, j.RefCode, moves[j.RefCode]))
+            .ToList();
+        if (moving.Count == 0) return [];
+
+        IReadOnlyList<AipActivity> children =
+            await _aipRepo.GetActivitiesByProjectIdsAsync(moving.Select(m => m.Node.Id).ToList(), ct);
+
+        foreach ((AipProject node, _, _) in moving)
+        {
+            node.RefCode = ParkedRefCode(node.Id);
+            await _projectRepo.UpdateAsync(node, ct);
+        }
+        await _projectRepo.SaveChangesAsync(ct);
+
+        List<AipRenumberedNodeDto> renumbered = [];
+        foreach ((AipProject node, string oldCode, string newCode) in moving)
+        {
+            node.RefCode = newCode;
+            await _projectRepo.UpdateAsync(node, ct);
+            renumbered.Add(new AipRenumberedNodeDto(nameof(AipCommentNodeType.Project), node.Id, newCode));
+
+            // An activity's code embeds its project's, so it follows. Its siblings all move together,
+            // so no two of them can collide on the activity index.
+            foreach (AipActivity child in children.Where(a => a.ProjectId == node.Id))
+            {
+                if (!child.RefCode.StartsWith(oldCode + "-", StringComparison.Ordinal)) continue;
+                child.RefCode = newCode + child.RefCode[oldCode.Length..];
+                await _activityRepo.UpdateAsync(child, ct);
+                renumbered.Add(new AipRenumberedNodeDto(nameof(AipCommentNodeType.Activity), child.Id, child.RefCode));
+            }
+        }
+        await _projectRepo.SaveChangesAsync(ct);
+
+        return renumbered;
+    }
+
+    private static string ParkedRefCode(int id) => $"~renumber-{id}";
 
     /// <summary>Shared Draft-status guard for the manual-entry Add*/Update*/Delete* methods,
     /// keyed off the AipRecord reached by walking up from whichever node the caller is touching.</summary>
