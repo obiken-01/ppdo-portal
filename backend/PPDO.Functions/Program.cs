@@ -192,6 +192,10 @@ var host = new HostBuilder()
         services.AddScoped<IPartnerApiRateLimiter, PartnerApiRateLimiter>();
         services.AddScoped<IPartnerApiRequestLogger, PartnerApiRequestLogger>();
 
+        // -- v1.8.0 Phase 5 — External AIP read service (PPDO-14) --------------
+        services.AddScoped<IRepository<FundingSource>, Repository<FundingSource>>();
+        services.AddScoped<IExternalAipReadService, ExternalAipReadService>();
+
         // -- v1.4 WFP expenditure schema + computation pipeline (RAL-120) -----
         services.AddScoped<IRepository<WfpExpenditurePeriod>, Repository<WfpExpenditurePeriod>>();
         services.AddScoped<IRepository<WfpProcurementItem>, Repository<WfpProcurementItem>>();
