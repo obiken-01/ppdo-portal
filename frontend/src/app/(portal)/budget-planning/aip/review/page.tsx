@@ -443,7 +443,7 @@ function ActivityBlock({
           <span aria-hidden className="text-slate-300">{open ? "▾" : "▸"}</span>
           <AipLevelChip level="activity" />
           <AipRefCode code={activity.refCode} />
-          <span className="text-sm text-slate-800">{activity.name}</span>
+          <span className="whitespace-pre-line text-sm text-slate-800">{activity.name}</span>
           <AipFundPill label={activityFundLabel(activity)} />
         </span>
         <AipFigureStrip amounts={activity} />

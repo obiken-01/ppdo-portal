@@ -5,10 +5,12 @@
  */
 
 import AipMoneyInput from "@/components/aip/AipMoneyInput";
+import AipActivityNameCounter from "@/components/aip/AipActivityNameCounter";
 import { useState } from "react";
 import { addAipActivity, aipErrorMessage } from "@/lib/aip";
 import { fmtPesos } from "@/lib/aip-units";
 import { AIP_ESRE_OPTIONS, AIP_MONTHS } from "@/lib/aipConstants";
+import { useAutoGrowTextarea } from "@/lib/useAutoGrowTextarea";
 import { inputCls, selectCls } from "@/components/aip/AipTreeCells";
 import type { AipActivityDetail, FundingSourceResponse } from "@/types";
 
@@ -38,6 +40,8 @@ export default function AddActivityRow({
   const [ccAdaptation, setCcAdaptation] = useState<number | null>(null);
   const [ccMitigation, setCcMitigation] = useState<number | null>(null);
   const [ccTypologyCode, setCcTypologyCode] = useState("");
+
+  const nameRef = useAutoGrowTextarea(name);
 
   function reset() {
     setName(""); setEsreCode(""); setImplementingOffice(""); setStartDate(""); setEndDate("");
@@ -91,8 +95,9 @@ export default function AddActivityRow({
     <tr className="bg-green-50 border-t border-green-200 align-top">
       <td className="px-2 py-1.5 pl-12 font-mono text-[11px] text-slate-400">auto</td>
       <td className="px-2 py-1.5">
-        <textarea value={name} onChange={(e) => setName(e.target.value)} rows={2}
-          placeholder="Activity description" className={`${inputCls} resize-vertical`} />
+        <textarea ref={nameRef} value={name} onChange={(e) => setName(e.target.value)} rows={2}
+          placeholder="Activity description" className={`${inputCls} overflow-y-auto`} />
+        <AipActivityNameCounter name={name} />
       </td>
       <td className="px-2 py-1.5">
         <select value={esreCode} onChange={(e) => setEsreCode(e.target.value)} className={selectCls}>
