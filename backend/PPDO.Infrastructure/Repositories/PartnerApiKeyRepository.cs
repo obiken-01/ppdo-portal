@@ -15,6 +15,8 @@ public sealed class PartnerApiKeyRepository : Repository<PartnerApiKey>, IPartne
         => await _context.Set<PartnerApiKey>()
             .Include(k => k.Offices)                // depth 1
                 .ThenInclude(o => o.Office)          // depth 2
+            .Include(k => k.CreatedBy)               // depth 1 — sibling
+            .Include(k => k.RevokedBy)               // depth 1 — sibling
             .FirstOrDefaultAsync(k => k.Id == id, ct);
 
     /// <inheritdoc />

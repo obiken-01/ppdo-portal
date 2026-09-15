@@ -9,7 +9,11 @@ namespace PPDO.Domain.Interfaces;
 /// </summary>
 public interface IPartnerApiKeyRepository : IRepository<PartnerApiKey>
 {
-    /// <summary>Returns the key whose integer PK equals <paramref name="id"/>, with its offices loaded, or null.</summary>
+    /// <summary>
+    /// Returns the key whose integer PK equals <paramref name="id"/>, with its offices and the
+    /// issuing/revoking users loaded, or null — a single management read, so the extra joins
+    /// (skipped by <see cref="GetByPrefixAsync"/>, the hot auth path) cost nothing worth avoiding.
+    /// </summary>
     Task<PartnerApiKey?> GetByIdAsync(int id, CancellationToken ct = default);
 
     /// <summary>
