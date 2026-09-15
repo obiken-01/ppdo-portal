@@ -105,14 +105,23 @@ public interface IAipService
     /// <summary>Deletes an office and its whole subtree (programs, projects, activities). Draft-only.</summary>
     Task<ServiceResult<bool>> DeleteOfficeAsync(int officeId, User caller, CancellationToken ct = default);
 
-    /// <summary>Deletes a program and its whole subtree (projects, activities). Draft-only.</summary>
-    Task<ServiceResult<bool>> DeleteProgramAsync(int programId, User caller, CancellationToken ct = default);
+    /// <summary>
+    /// Deletes a program and its whole subtree, with the subtree's allocation ledger rows and
+    /// comments (PPDO-88). Programs never renumber — their codes are the LDIP's.
+    /// </summary>
+    Task<ServiceResult<AipDeleteResultDto>> DeleteProgramAsync(int programId, User caller, CancellationToken ct = default);
 
-    /// <summary>Deletes a project and its activities. Draft-only.</summary>
-    Task<ServiceResult<bool>> DeleteProjectAsync(int projectId, User caller, CancellationToken ct = default);
+    /// <summary>
+    /// Deletes a project, its activities, their ledger rows and comments; on an entered year later
+    /// projects renumber and their activities follow (PPDO-88). Conflict when the renumber loses a race.
+    /// </summary>
+    Task<ServiceResult<AipDeleteResultDto>> DeleteProjectAsync(int projectId, User caller, CancellationToken ct = default);
 
-    /// <summary>Deletes a single activity. Draft-only.</summary>
-    Task<ServiceResult<bool>> DeleteActivityAsync(int activityId, User caller, CancellationToken ct = default);
+    /// <summary>
+    /// Deletes an activity with its ledger rows and comments; on an entered year later activities
+    /// renumber (PPDO-88). Conflict when the renumber loses a race.
+    /// </summary>
+    Task<ServiceResult<AipDeleteResultDto>> DeleteActivityAsync(int activityId, User caller, CancellationToken ct = default);
 
     /// <summary>
     /// RAL-181 — seeds bare-shell AipProgram rows (Name+RefCode only, FunctionBand=CORE) from

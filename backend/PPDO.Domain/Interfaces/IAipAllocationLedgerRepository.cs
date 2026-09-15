@@ -54,15 +54,14 @@ public interface IAipAllocationLedgerRepository : IRepository<AipDivisionAllocat
         IReadOnlyList<int> divisionIds, int fiscalYear, CancellationToken ct = default);
 
     /// <summary>
-    /// Deletes every ledger row belonging to one activity, for use in the same transaction that
-    /// deletes the activity.
+    /// Deletes every ledger row belonging to the given activities, for use in the same transaction
+    /// that deletes them (or the project, program or office above them).
     ///
     /// ⚠️ This exists because the activity FK is <c>NoAction</c>, not <c>Cascade</c> — SQL Server
     /// refuses a second cascade path into this table alongside the divisions and funding_sources
-    /// FKs. A reservation whose activity is gone would otherwise overstate consumed allocation and
-    /// block a submit for work that no longer exists.
+    /// FKs. Skipping it makes the delete fail on the FK (PPDO-88 — it had no caller until then).
     /// </summary>
-    Task<int> DeleteByActivityAsync(int aipActivityId, CancellationToken ct = default);
+    Task<int> DeleteByActivityIdsAsync(IReadOnlyList<int> aipActivityIds, CancellationToken ct = default);
 }
 
 /// <summary>One division+fund's total reserved amount for a fiscal year (V18-45).</summary>

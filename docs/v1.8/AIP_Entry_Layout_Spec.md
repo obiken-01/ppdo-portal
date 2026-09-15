@@ -149,17 +149,24 @@ bulk stock-balance import does), in this order:
 
 1. Existing guards (`AipWriteGuard`).
 2. Collect the activity ids being removed (the one, or all under the project/program).
-3. `DeleteByActivityAsync` for each → ledger rows gone.
+3. `DeleteByActivityIdsAsync` for the collected ids → ledger rows gone.
 4. Delete `aip_review_comments` where `(NodeType, NodeId)` is any removed activity, the removed
    project(s), or the removed program. Count unresolved for the snapshot.
-5. Write the enriched audit snapshot (decision 8) — before the delete, so the data still exists to read.
+5. The enriched audit snapshot (decision 8) is **read before** the transaction, while the data still
+   exists, and the audit row is **written inside** it, after the renumber — so a rolled-back delete
+   leaves no audit row. ↩️ Built that way in PPDO-88 (this step originally said "write before the delete").
 6. Delete the node (DB cascade removes descendants, expenditures, procurement items).
 7. **FY2028+ only:** renumber later siblings (decision 11) via a pure helper
    `RefCodeAllocator.Renumber(parentRefCode, siblings)` → new code per sibling. Apply **two-phase** —
    first set every moving row to a temporary code unique by id, save, then the final codes, save — so
    the `(parent_id, ref_code)` unique index never sees two rows with one code mid-shift. A renumbered
    project rewrites each activity's prefix in the same two phases.
-8. Commit. A `DbUpdateException` on the unique index maps to the 409.
+8. Commit. A unique-index rejection (`UniqueConstraintViolationException`, which the repository
+   raises for it) maps to the 409.
+
+↩️ **Office delete gets the ledger fix too (PPDO-88).** `DeleteOfficeAsync` hit the same `NoAction` FK,
+so it now clears its activities' ledger rows in the same transaction. It keeps its `bool` result and
+does not snapshot or renumber.
 
 Log `LogInformation` "AIP node deleted. NodeType: {NodeType}, Id: {Id}, RefCode: {RefCode},
 RemovedActivities: {RemovedActivities}, RemovedComments: {RemovedComments}, Renumbered: {Renumbered},

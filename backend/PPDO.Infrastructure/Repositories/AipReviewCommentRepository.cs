@@ -53,4 +53,30 @@ public sealed class AipReviewCommentRepository
         // zero, which is also what makes the two-row shape optional rather than assumed.
         return rows.ToDictionary(r => r.Key, r => r.Value);
     }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<AipReviewComment>> GetByNodesAsync(
+        IReadOnlyList<int> programIds, IReadOnlyList<int> projectIds, IReadOnlyList<int> activityIds,
+        CancellationToken ct = default)
+    {
+        if (programIds.Count == 0 && projectIds.Count == 0 && activityIds.Count == 0) return [];
+
+        return await _context.Set<AipReviewComment>()
+            .AsNoTracking()
+            .Where(c =>
+                (c.NodeType == AipCommentNodeType.Program  && programIds.Contains(c.NodeId)) ||
+                (c.NodeType == AipCommentNodeType.Project  && projectIds.Contains(c.NodeId)) ||
+                (c.NodeType == AipCommentNodeType.Activity && activityIds.Contains(c.NodeId)))
+            .OrderBy(c => c.Id)
+            .ToListAsync(ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<int> DeleteByIdsAsync(IReadOnlyList<int> ids, CancellationToken ct = default)
+    {
+        if (ids.Count == 0) return 0;
+        return await _context.Set<AipReviewComment>()
+            .Where(c => ids.Contains(c.Id))
+            .ExecuteDeleteAsync(ct);
+    }
 }

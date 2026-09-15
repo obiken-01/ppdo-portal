@@ -251,6 +251,22 @@ export interface AipProjectDetail {
   isSynthetic: boolean;
 }
 
+/** PPDO-88 — a node whose ref code changed because a sibling was deleted. */
+export interface AipRenumberedNode {
+  nodeType: "Project" | "Activity";
+  id: number;
+  refCode: string;
+}
+
+/** PPDO-88 — what a program, project or activity delete removed and renumbered. */
+export interface AipDeleteResult {
+  deletedNodeType: "Program" | "Project" | "Activity";
+  deletedId: number;
+  removedActivityCount: number;
+  removedCommentCount: number;
+  renumbered: AipRenumberedNode[];
+}
+
 export interface AipProgramDetail {
   id: number;
   officeId: number;

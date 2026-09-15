@@ -37,6 +37,7 @@ import type {
   AipCeilingStatus,
   AipReadiness,
   AipSubmitResult,
+  AipDeleteResult,
 } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -160,19 +161,19 @@ export async function deleteAipOffice(officeId: number): Promise<void> {
   unwrap(data);
 }
 
-export async function deleteAipProgram(programId: number): Promise<void> {
-  const { data } = await api.delete<ApiResponse<boolean>>(`/budget-planning/aip/programs/${programId}`);
-  unwrap(data);
+export async function deleteAipProgram(programId: number): Promise<AipDeleteResult> {
+  const { data } = await api.delete<ApiResponse<AipDeleteResult>>(`/budget-planning/aip/programs/${programId}`);
+  return unwrap(data);
 }
 
-export async function deleteAipProject(projectId: number): Promise<void> {
-  const { data } = await api.delete<ApiResponse<boolean>>(`/budget-planning/aip/projects/${projectId}`);
-  unwrap(data);
+export async function deleteAipProject(projectId: number): Promise<AipDeleteResult> {
+  const { data } = await api.delete<ApiResponse<AipDeleteResult>>(`/budget-planning/aip/projects/${projectId}`);
+  return unwrap(data);
 }
 
-export async function deleteAipActivity(activityId: number): Promise<void> {
-  const { data } = await api.delete<ApiResponse<boolean>>(`/budget-planning/aip/activities/${activityId}`);
-  unwrap(data);
+export async function deleteAipActivity(activityId: number): Promise<AipDeleteResult> {
+  const { data } = await api.delete<ApiResponse<AipDeleteResult>>(`/budget-planning/aip/activities/${activityId}`);
+  return unwrap(data);
 }
 
 // ---------------------------------------------------------------------------

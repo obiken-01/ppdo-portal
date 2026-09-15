@@ -40,4 +40,19 @@ public interface IAipReviewCommentRepository : IRepository<AipReviewComment>
     /// </summary>
     Task<IReadOnlyDictionary<AipCommentSide, int>> CountUnresolvedBySideAsync(
         IReadOnlyList<int> aipOfficeIds, CancellationToken ct = default);
+
+    /// <summary>
+    /// Every comment anchored to any of the given nodes, resolved ones included (PPDO-88 — read for
+    /// the delete snapshot before the nodes and their comments go).
+    /// </summary>
+    Task<IReadOnlyList<AipReviewComment>> GetByNodesAsync(
+        IReadOnlyList<int> programIds, IReadOnlyList<int> projectIds, IReadOnlyList<int> activityIds,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Deletes the given comments (PPDO-88). ↩️ Comments are otherwise marked resolved, never
+    /// deleted; the one exception is a comment whose node is deleted, and the delete's audit
+    /// snapshot keeps its text.
+    /// </summary>
+    Task<int> DeleteByIdsAsync(IReadOnlyList<int> ids, CancellationToken ct = default);
 }
