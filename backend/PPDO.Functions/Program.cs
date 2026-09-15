@@ -187,6 +187,11 @@ var host = new HostBuilder()
         services.AddScoped<IPartnerApiRequestRepository, PartnerApiRequestRepository>();
         services.AddScoped<IPartnerApiKeyService, PartnerApiKeyService>();
 
+        // -- v1.8.0 Phase 5 — External API auth/scope/rate-limit/log (PPDO-13) --
+        services.AddScoped<IPartnerCredentialValidator, ApiKeyCredentialValidator>();
+        services.AddScoped<IPartnerApiRateLimiter, PartnerApiRateLimiter>();
+        services.AddScoped<IPartnerApiRequestLogger, PartnerApiRequestLogger>();
+
         // -- v1.4 WFP expenditure schema + computation pipeline (RAL-120) -----
         services.AddScoped<IRepository<WfpExpenditurePeriod>, Repository<WfpExpenditurePeriod>>();
         services.AddScoped<IRepository<WfpProcurementItem>, Repository<WfpProcurementItem>>();
