@@ -91,7 +91,7 @@ The uploaded file contains *every* office's records, so upload is host-office-on
 
 ### 2.4 Per-user grants
 
-`CanManagePpdoAllocation` · `CanManagePboCeiling` · `CanReviewBudgetPlanning` · `CanReviewAllOffices` ·
+`CanManagePpdoAllocation` · `CanManageOfficeCeilings` · `CanReviewBudgetPlanning` · `CanReviewAllOffices` ·
 `CanManageApiKeys`
 
 | Role | Override | Result |
@@ -111,12 +111,12 @@ for each pair that could plausibly be conflated:
 | Flag | Who holds it | Added |
 |---|---|---|
 | `CanManagePpdoAllocation` | PPDO finance officer — splits PPDO's own ceiling across its divisions | RAL-97, renamed PPDO-9 |
-| `CanManagePboCeiling` | PBO finance officer — sets the ceiling **for any office** | PPDO-2 |
+| `CanManageOfficeCeilings` | PPDO finance user — sets the ceiling **for any office** (PBO until 2026-09-15; renamed from `CanManagePboCeiling`, PPDO-87 — column still `OverrideCanManagePboCeiling`) | PPDO-2 |
 | `CanReviewBudgetPlanning` | An office's reviewer — the department head who checks its work | PPDO-3 |
 | `CanReviewAllOffices` | Designated PPDO users who review **every** office's submissions | PPDO-5 |
 | `CanManageApiKeys` | Named person who issues/revokes partner API keys under Configuration → API Access | PPDO-15 |
 
-> ⚠️ `CanManagePboCeilingAsync` deliberately does **not** fall back to `CanManagePpdoAllocationAsync`.
+> ⚠️ `CanManageOfficeCeilingsAsync` deliberately does **not** fall back to `CanManagePpdoAllocationAsync`.
 > OR-ing them would hand every PPDO finance officer authority over other offices' ceilings.
 >
 > ⚠️ `CanManageApiKeysAsync` is independent of `CanManageConfigAsync`, `CanManageUsersAsync` and
@@ -178,13 +178,13 @@ Two flags widen data scope past the caller's own office. Every other flag narrow
 | Flag | Widens what | Entry point | Added |
 |---|---|---|---|
 | `CanReviewAllOffices` | every office's submissions, **read only** | `OfficeScope.ResolveForReview` | PPDO-5 |
-| `CanManagePboCeiling` | every office's allocation setup — the six allocation reads **and** the ceiling write | `OfficeScope.ResolveForCeiling` | PPDO-2, scoped by PPDO-18 |
+| `CanManageOfficeCeilings` | every office's allocation setup — the six allocation reads **and** the ceiling write | `OfficeScope.ResolveForCeiling` | PPDO-2, scoped by PPDO-18 |
 
 Each is consumed through its **own entry point**, and that separation is the safety property:
 
 ```
 OfficeScope.ResolveForReview(user, canReviewAllOffices)    review READ paths only
-OfficeScope.ResolveForCeiling(user, canManagePboCeiling)   allocation reads + the ceiling PUT
+OfficeScope.ResolveForCeiling(user, canManageOfficeCeilings)   allocation reads + the ceiling PUT
 OfficeScope.Resolve(user)                                  everything else, including every other write
 ```
 
@@ -192,7 +192,7 @@ OfficeScope.Resolve(user)                                  everything else, incl
 cross-office *reviewer* into a cross-office **editor** of every office's data, or a PBO ceiling
 officer into an editor of every office's internal division split — with no diff at any write site to
 notice it. Pinned by `Resolve_IgnoresTheCrossOfficeGrant_SoWritePathsStayScoped` and
-`Resolve_IgnoresThePboCeilingGrant_SoAllocationWritesStayScoped`.
+`Resolve_IgnoresTheOfficeCeilingsGrant_SoAllocationWritesStayScoped`.
 
 **The two do not substitute for each other.** Reusing `ResolveForReview` for the ceiling grant would
 hand a comment-only reviewer a write; reusing `ResolveForCeiling` for review would hand a ceiling
@@ -254,6 +254,17 @@ impose a restriction. Pinned by `DeniesWriteAsync_SuperAdmin_IsNeverDenied`.
 
 **Submit, return, and comment are the reviewer's own actions.** When Phase 4 adds them they must not
 be routed through this guard — a comment-only reviewer who cannot comment is not a reviewer.
+
+**The office ceiling save (`PUT /allocation/ceiling`) is exempt too** (PPDO-87, 2026-09-15). Ceiling
+authority moved from PBO to PPDO finance users, and those same users are the cross-office reviewer, so
+the guard would refuse the very people the grant is for. It is the one exempt write that changes a
+figure — it qualifies because a ceiling is PPDO's own top-down number, not an office's plan content,
+which is all the guard protects. It stays gated on `CanManageOfficeCeilings`; the reviewer flag alone
+never reaches it. Pinned by `ReviewerWriteGuardCoverageTests.UpsertCeiling_LetsACrossOfficeReviewerThrough`
+and `AllocationFunctionsTests.UpsertCeiling_AsCrossOfficeReviewerWithoutTheCeilingGrant_ReturnsForbidden`.
+
+> Finance users who also encode for their own division use a **separate encoder account** — the guard
+> is not narrowed to "own office" (recommended 2026-09-15, to confirm with finance).
 
 ---
 

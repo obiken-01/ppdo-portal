@@ -7,9 +7,9 @@
  * active funding source, RAL-154/155), distributing it among divisions, and
  * assigning AIP programs to divisions.
  *
- * Access: canManagePpdoAllocation OR canManagePboCeiling (RAL-243). Hidden in the sidebar
+ * Access: canManagePpdoAllocation OR canManageOfficeCeilings (RAL-243). Hidden in the sidebar
  * for everyone else. The two grants are separate authorities and each gates its own half:
- * canManagePboCeiling edits the ceiling (any office), canManagePpdoAllocation edits the
+ * canManageOfficeCeilings edits the ceiling (any office), canManagePpdoAllocation edits the
  * division split and the PPA tab. A holder of one sees the other half read-only.
  * Route:  /budget-planning/allocation
  *
@@ -543,7 +543,7 @@ function FundSection({
 
 function AllocationPageInner() {
   const { toast } = useToast();
-  const me = useMe((m) => m.canManagePpdoAllocation || m.canManagePboCeiling);
+  const me = useMe((m) => m.canManagePpdoAllocation || m.canManageOfficeCeilings);
 
   // ── Selectors ─────────────────────────────────────────────────────────────
 
@@ -608,7 +608,7 @@ function AllocationPageInner() {
   // any office; the PPDO finance officer splits PPDO's ceiling across divisions and
   // assigns PPAs. Holding one does not grant the other, so each half gates separately.
   // The backend enforces both (AllocationFunctions) — this only keeps the UI honest.
-  const canSetCeiling     = me?.canManagePboCeiling === true;
+  const canSetCeiling     = me?.canManageOfficeCeilings === true;
   // The host-office half mirrors the endpoints, which refuse a guest-office caller holding
   // this grant outright — for their own office as well as a foreign one (PPDO-18,
   // `docs/v1.8/Permission_Matrix.md` §4). It is not redundant with the grant: a live PTO
@@ -619,7 +619,7 @@ function AllocationPageInner() {
 
   // PPDO-17 — the office axis, and the ONE place it is decided. The question is not "is this
   // caller the host office?" but "is this caller cross-office?", which host-office membership
-  // and canManagePboCeiling answer independently: PPDO-2 grants authority over EVERY office's
+  // and canManageOfficeCeilings answer independently: PPDO-2 grants authority over EVERY office's
   // ceiling, and its holder is realistically a Provincial Budget Office employee, not a PPDO
   // one. Gating the picker on the host office alone left that grant real but unreachable —
   // the holder could only ever open the one office whose ceiling they have no reason to set.

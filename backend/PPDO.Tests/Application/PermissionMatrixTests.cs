@@ -43,7 +43,7 @@ public sealed class PermissionMatrixTests
         ["CanUploadAip"]            = (s, u) => s.CanUploadAipAsync(u),
         ["CanAccessProfile"]        = (s, u) => s.CanAccessProfileAsync(u),
         ["CanManagePpdoAllocation"] = (s, u) => s.CanManagePpdoAllocationAsync(u),
-        ["CanManagePboCeiling"]     = (s, u) => s.CanManagePboCeilingAsync(u),
+        ["CanManageOfficeCeilings"]     = (s, u) => s.CanManageOfficeCeilingsAsync(u),
         ["CanReviewBudgetPlanning"] = (s, u) => s.CanReviewBudgetPlanningAsync(u),
         ["CanReviewAllOffices"]     = (s, u) => s.CanReviewAllOfficesAsync(u),
         ["CanViewAuditLog"]         = (s, u) => s.CanViewAuditLogAsync(u),
@@ -60,7 +60,7 @@ public sealed class PermissionMatrixTests
     /// <summary>The five per-user grants: SuperAdmin only, Admin NOT auto-granted.</summary>
     private static readonly string[] PerUserGrants =
     [
-        "CanManagePpdoAllocation", "CanManagePboCeiling",
+        "CanManagePpdoAllocation", "CanManageOfficeCeilings",
         "CanReviewBudgetPlanning", "CanReviewAllOffices",
         "CanManageApiKeys",
     ];
@@ -229,8 +229,8 @@ public sealed class PermissionMatrixTests
                 user.OverrideCanUploadAip = overrideValue; break;
             case "CanManagePpdoAllocation":
                 user.OverrideCanManagePpdoAllocation = overrideValue; break;
-            case "CanManagePboCeiling":
-                user.OverrideCanManagePboCeiling = overrideValue; break;
+            case "CanManageOfficeCeilings":
+                user.OverrideCanManageOfficeCeilings = overrideValue; break;
             case "CanReviewBudgetPlanning":
                 user.OverrideCanReviewBudgetPlanning = overrideValue; break;
             case "CanReviewAllOffices":

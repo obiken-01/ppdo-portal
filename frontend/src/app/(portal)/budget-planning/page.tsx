@@ -159,14 +159,14 @@ export default function BudgetPlanningPage() {
   const isHost = user?.isHostOffice === true;
   const isSuperAdmin = user?.role === "SuperAdmin";
   const canManageAllocation = user?.canManagePpdoAllocation === true;
-  const canManagePboCeiling = user?.canManagePboCeiling === true;
+  const canManageOfficeCeilings = user?.canManageOfficeCeilings === true;
   const canReviewAllOffices = user?.canReviewAllOffices === true;
   const canReview = user?.canReviewBudgetPlanning === true;
 
   // The office table's own gate — it must match the endpoint's, or the page requests a band it is
   // about to be 403'd for. SuperAdmin resolves true on both flags server-side; naming it here
   // keeps the client's gate honest rather than relying on that coincidence.
-  const hasCrossOfficeScope = canReviewAllOffices || canManagePboCeiling || isSuperAdmin;
+  const hasCrossOfficeScope = canReviewAllOffices || canManageOfficeCeilings || isSuperAdmin;
 
   // ── Offices band view (PPDO-78) ─────────────────────────────────────────
   // The board is for whoever reviews across offices; a budget officer who holds only the ceiling
@@ -348,7 +348,7 @@ export default function BudgetPlanningPage() {
       owner: "Provincial Budget Office",
       stage: hasCeiling ? "Done" : "Todo",
       detail: hasCeiling ? `₱${formatMoney(officeCeiling!)} published` : "Not published yet",
-      href: canManagePboCeiling || canManageAllocation ? allocationHref : undefined,
+      href: canManageOfficeCeilings || canManageAllocation ? allocationHref : undefined,
     };
 
     const aipStage: PipelineStage = {
@@ -407,7 +407,7 @@ export default function BudgetPlanningPage() {
     ];
   }, [
     isHost, hasCeiling, officeCeiling, hasAip, activityTotal, officeDashboard, allocatedToDivisions,
-    canManageAllocation, canManagePboCeiling, canReview, aipEntryHref, allocationHref,
+    canManageAllocation, canManageOfficeCeilings, canReview, aipEntryHref, allocationHref,
   ]);
 
   // ── Money tiles ─────────────────────────────────────────────────────────
@@ -415,7 +415,7 @@ export default function BudgetPlanningPage() {
   const tiles = useMemo<MoneyTile[]>(() => {
     /**
      * The ceiling tile is the same in every view, and its read-only-ness keys on
-     * `CanManagePboCeiling` — **not** on `CanManagePpdoAllocation**, which governs the division
+     * `CanManageOfficeCeilings` — **not** on `CanManagePpdoAllocation**, which governs the division
      * split one level down. Two live findings drove that:
      *
      *   - A PPDO finance officer (allocation grant, no ceiling grant) saw the ceiling rendered as
@@ -432,8 +432,8 @@ export default function BudgetPlanningPage() {
       key: "ceiling",
       label: "Office ceiling",
       value: officeCeiling,
-      muted: !canManagePboCeiling,
-      hint: canManagePboCeiling ? "You publish this" : "Set by PBO — read only",
+      muted: !canManageOfficeCeilings,
+      hint: canManageOfficeCeilings ? "You publish this" : "Set by PBO — read only",
     };
 
     if (isHost) {
@@ -478,7 +478,7 @@ export default function BudgetPlanningPage() {
       },
     ];
   }, [
-    isHost, officeCeiling, canManageAllocation, canManagePboCeiling,
+    isHost, officeCeiling, canManageAllocation, canManageOfficeCeilings,
     allocatedToDivisions, costedInAip, remaining, officeDashboard,
   ]);
 
@@ -487,7 +487,7 @@ export default function BudgetPlanningPage() {
 
   const actionCard = useMemo(() => {
     if (!hasCeiling) {
-      if (canManagePboCeiling) {
+      if (canManageOfficeCeilings) {
         return (
           <ActionCard
             tone="blocked"
@@ -541,7 +541,7 @@ export default function BudgetPlanningPage() {
         href={aipEntryHref}
       />
     );
-  }, [hasCeiling, hasAip, canManagePboCeiling, canReview, fiscalYear, officeLabel, allocationHref, aipEntryHref]);
+  }, [hasCeiling, hasAip, canManageOfficeCeilings, canReview, fiscalYear, officeLabel, allocationHref, aipEntryHref]);
 
   // ── Fund bars ───────────────────────────────────────────────────────────
   // Funds with neither a ceiling nor an allocation are hidden — an all-zero bar is noise.
@@ -667,15 +667,15 @@ export default function BudgetPlanningPage() {
             description={
               officesView === "board"
                 ? "Where every office stands · click an office to open it in AIP Review"
-                : canManagePboCeiling
+                : canManageOfficeCeilings
                 ? "Ceilings you publish for every office"
                 : "Read-only across every office"
             }
             actions={
-              (canManagePboCeiling && officesWithoutCeiling.length > 0 && priorFiscalYear != null) ||
+              (canManageOfficeCeilings && officesWithoutCeiling.length > 0 && priorFiscalYear != null) ||
               canSeeBoard ? (
                 <>
-                  {canManagePboCeiling && officesWithoutCeiling.length > 0 && priorFiscalYear != null && (
+                  {canManageOfficeCeilings && officesWithoutCeiling.length > 0 && priorFiscalYear != null && (
                     <button
                       type="button"
                       onClick={() => setBulkOpen(true)}
@@ -702,7 +702,7 @@ export default function BudgetPlanningPage() {
               <BandEmpty
                 message={`No offices have a FY ${fiscalYear ?? "—"} ceiling yet.`}
                 action={
-                  canManagePboCeiling ? (
+                  canManageOfficeCeilings ? (
                     <Link
                       href={allocationHref}
                       className="px-3 py-2 bg-green-600 hover:bg-green-500 text-white text-sm font-medium transition-colors"
@@ -718,7 +718,7 @@ export default function BudgetPlanningPage() {
               <OfficeTable
                 offices={offices}
                 fiscalYear={fiscalYear}
-                canSetCeiling={canManagePboCeiling}
+                canSetCeiling={canManageOfficeCeilings}
               />
             )}
           </Band>

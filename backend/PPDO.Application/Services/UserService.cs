@@ -335,7 +335,7 @@ public sealed class UserService : IUserService
         target.OverrideCanUploadAip            = dto.OverrideCanUploadAip;
         target.OverrideCanManageConfig         = dto.OverrideCanManageConfig;
         target.OverrideCanManagePpdoAllocation     = dto.OverrideCanManagePpdoAllocation;
-        target.OverrideCanManagePboCeiling      = dto.OverrideCanManagePboCeiling;
+        target.OverrideCanManageOfficeCeilings      = dto.OverrideCanManageOfficeCeilings;
         target.OverrideCanReviewBudgetPlanning  = dto.OverrideCanReviewBudgetPlanning;
         target.OverrideCanReviewAllOffices      = dto.OverrideCanReviewAllOffices;
         target.OverrideCanManageApiKeys         = dto.OverrideCanManageApiKeys;
@@ -439,7 +439,7 @@ public sealed class UserService : IUserService
         target.OverrideCanUploadAip            = dto.OverrideCanUploadAip;
         target.OverrideCanManageConfig         = dto.OverrideCanManageConfig;
         target.OverrideCanManagePpdoAllocation     = dto.OverrideCanManagePpdoAllocation;
-        target.OverrideCanManagePboCeiling      = dto.OverrideCanManagePboCeiling;
+        target.OverrideCanManageOfficeCeilings      = dto.OverrideCanManageOfficeCeilings;
         target.OverrideCanReviewBudgetPlanning  = dto.OverrideCanReviewBudgetPlanning;
         target.OverrideCanReviewAllOffices      = dto.OverrideCanReviewAllOffices;
         target.OverrideCanManageApiKeys         = dto.OverrideCanManageApiKeys;
@@ -857,7 +857,7 @@ public sealed class UserService : IUserService
         OverrideCanUploadAip            = u.OverrideCanUploadAip,
         OverrideCanManageConfig         = u.OverrideCanManageConfig,
         OverrideCanManagePpdoAllocation     = u.OverrideCanManagePpdoAllocation,
-        OverrideCanManagePboCeiling         = u.OverrideCanManagePboCeiling,
+        OverrideCanManageOfficeCeilings         = u.OverrideCanManageOfficeCeilings,
         OverrideCanReviewBudgetPlanning     = u.OverrideCanReviewBudgetPlanning,
         OverrideCanReviewAllOffices         = u.OverrideCanReviewAllOffices,
         OverrideCanManageApiKeys            = u.OverrideCanManageApiKeys,
@@ -877,7 +877,7 @@ public sealed class UserService : IUserService
         u.OverrideCanAccessInventory, u.OverrideCanAccessReports, u.OverrideCanManageUsers,
         u.OverrideCanManageResourceLinks, u.OverrideCanAccessBudgetPlanning,
         u.OverrideCanUploadAip, u.OverrideCanManageConfig, u.OverrideCanManagePpdoAllocation,
-        u.OverrideCanManagePboCeiling, u.OverrideCanReviewBudgetPlanning,
+        u.OverrideCanManageOfficeCeilings, u.OverrideCanReviewBudgetPlanning,
         u.OverrideCanReviewAllOffices, u.OverrideCanManageApiKeys,
         // RAL-246: LandingPage decides where this user lands; RecoveryQuestionKey identifies
         // WHICH secret can reset the account, and MustChangePassword whether they are on a

@@ -2705,8 +2705,9 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.Property<bool?>("OverrideCanManageConfig")
                         .HasColumnType("bit");
 
-                    b.Property<bool?>("OverrideCanManagePboCeiling")
-                        .HasColumnType("bit");
+                    b.Property<bool?>("OverrideCanManageOfficeCeilings")
+                        .HasColumnType("bit")
+                        .HasColumnName("OverrideCanManagePboCeiling");
 
                     b.Property<bool?>("OverrideCanManagePpdoAllocation")
                         .HasColumnType("bit")

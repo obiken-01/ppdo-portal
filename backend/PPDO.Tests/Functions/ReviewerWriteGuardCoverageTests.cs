@@ -146,7 +146,29 @@ public sealed class ReviewerWriteGuardCoverageTests
         // Added 2026-09-14 — re-opening an accepted office. The cross-office reviewer is the only
         // caller who may do it, and like return and accept it moves a workflow column and no figures.
         $"{nameof(AipReviewFunctions)}.{nameof(AipReviewFunctions.Reopen)}",
+
+        // PPDO-87 — the office ceiling. The PPDO finance users who set ceilings are also the
+        // cross-office reviewer, so the guard must let them through. ⚠️ Unlike every entry above,
+        // this one DOES change figures — it qualifies because a ceiling is PPDO's own top-down
+        // number, not an office's plan content, which is all the guard protects. Its gate is
+        // CanManageOfficeCeilings, so the reviewer flag alone never reaches it.
+        $"{nameof(AllocationFunctions)}.{nameof(AllocationFunctions.UpsertCeiling)}",
     ];
+
+    /// <summary>
+    /// The positive assertion for the ceiling entry above (PPDO-87): a cross-office reviewer who
+    /// also holds the ceiling grant saves a ceiling rather than being refused. The fixture grants
+    /// every additive flag, so a 403 here could only come from the reviewer guard.
+    /// </summary>
+    [Fact]
+    public async Task UpsertCeiling_LetsACrossOfficeReviewerThrough()
+    {
+        string crossOffice = await OutcomeAsync(
+            typeof(AllocationFunctions).FullName!, nameof(AllocationFunctions.UpsertCeiling),
+            crossOfficeReviewer: true, departmentHeadReviewer: false);
+
+        Assert.NotEqual($"status:{HttpStatusCode.Forbidden}", crossOffice);
+    }
 
     /// <summary>Write endpoints that genuinely guard content — the set the two theories cover.</summary>
     public static TheoryData<string, string> GuardedWriteEndpoints()
@@ -518,7 +540,7 @@ public sealed class ReviewerWriteGuardCoverageTests
                    .ReturnsAsync(true);
         permissions.Setup(p => p.CanManagePpdoAllocationAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
                    .ReturnsAsync(true);
-        permissions.Setup(p => p.CanManagePboCeilingAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
+        permissions.Setup(p => p.CanManageOfficeCeilingsAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
                    .ReturnsAsync(true);
         permissions.Setup(p => p.CanManageConfigAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
                    .ReturnsAsync(true);

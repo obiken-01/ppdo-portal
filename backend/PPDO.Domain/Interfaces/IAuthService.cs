@@ -219,7 +219,7 @@ public sealed class MeResponse
     public bool CanUploadAip { get; init; }
     public bool CanManageConfig { get; init; }
     public bool CanManagePpdoAllocation { get; init; }
-    public bool CanManagePboCeiling { get; init; }
+    public bool CanManageOfficeCeilings { get; init; }
     public bool CanReviewBudgetPlanning { get; init; }
     public bool CanReviewAllOffices { get; init; }
 

@@ -35,7 +35,7 @@ public sealed class UserResponseDto
     public bool? OverrideCanUploadAip { get; init; }
     public bool? OverrideCanManageConfig { get; init; }
     public bool? OverrideCanManagePpdoAllocation { get; init; }
-    public bool? OverrideCanManagePboCeiling { get; init; }
+    public bool? OverrideCanManageOfficeCeilings { get; init; }
     public bool? OverrideCanReviewBudgetPlanning { get; init; }
     public bool? OverrideCanReviewAllOffices { get; init; }
     public bool? OverrideCanManageApiKeys { get; init; }

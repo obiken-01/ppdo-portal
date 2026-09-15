@@ -96,11 +96,11 @@ public readonly struct OfficeScope
     /// <summary>
     /// Resolves the scope for a caller on the <b>allocation-setup surface</b> — ceilings and the
     /// office's allocation setup around them (v1.8.0 — PPDO-18).
-    /// Identical to <see cref="Resolve"/>, except that a holder of <c>CanManagePboCeiling</c> is
+    /// Identical to <see cref="Resolve"/>, except that a holder of <c>CanManageOfficeCeilings</c> is
     /// scoped to every office even when they belong to one themselves.
     ///
-    /// <paramref name="canManagePboCeiling"/> must come from
-    /// <c>IPermissionService.CanManagePboCeilingAsync</c> — passed in rather than read off the
+    /// <paramref name="canManageOfficeCeilings"/> must come from
+    /// <c>IPermissionService.CanManageOfficeCeilingsAsync</c> — passed in rather than read off the
     /// user here because effective permission resolution belongs in <c>PermissionService</c> and
     /// this type is deliberately pure. Same contract as <see cref="ResolveForReview"/>.
     ///
@@ -122,11 +122,11 @@ public readonly struct OfficeScope
     /// direction — it would hand a comment-only cross-office reviewer the ceiling write. The three
     /// resolvers answer three different questions; do not "simplify" them together.
     ///
-    /// Pinned by <c>OfficeScopeTests.Resolve_IgnoresThePboCeilingGrant_SoAllocationWritesStayScoped</c>
+    /// Pinned by <c>OfficeScopeTests.Resolve_IgnoresTheOfficeCeilingsGrant_SoAllocationWritesStayScoped</c>
     /// and <c>TheTwoBypasses_DoNotLeakIntoEachOther</c>.
     /// </summary>
-    public static OfficeScope ResolveForCeiling(User user, bool canManagePboCeiling)
-        => canManagePboCeiling ? All : Resolve(user);
+    public static OfficeScope ResolveForCeiling(User user, bool canManageOfficeCeilings)
+        => canManageOfficeCeilings ? All : Resolve(user);
 
     /// <summary>
     /// Whether <paramref name="user"/> belongs to the host office, and so holds cross-office

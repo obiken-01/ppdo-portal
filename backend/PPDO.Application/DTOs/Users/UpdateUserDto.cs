@@ -35,7 +35,7 @@ public sealed record UpdateUserDto(
     bool?    OverrideCanUploadAip            = null,
     bool?    OverrideCanManageConfig         = null,
     bool?    OverrideCanManagePpdoAllocation     = null,
-    bool?    OverrideCanManagePboCeiling      = null,
+    bool?    OverrideCanManageOfficeCeilings      = null,
     bool?    OverrideCanReviewBudgetPlanning  = null,
     bool?    OverrideCanReviewAllOffices     = null,
     bool?    OverrideCanManageApiKeys       = null,

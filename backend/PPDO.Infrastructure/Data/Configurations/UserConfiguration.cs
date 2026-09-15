@@ -84,10 +84,14 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(u => u.OverrideCanManagePpdoAllocation)
             .HasColumnName("OverrideCanManageAllocation");
 
-        // OverrideCanManagePboCeiling (RAL-243), OverrideCanReviewBudgetPlanning (RAL-244) and
-        // OverrideCanReviewAllOffices (RAL-257) — new nullable bit columns on the legacy
-        // PascalCase Users table, so the property name IS the column name. No HasColumnName
-        // needed; unlike the line above, none of them was ever renamed.
+        // Renamed from OverrideCanManagePboCeiling (PPDO-87) when ceiling authority moved from PBO to
+        // PPDO finance. The column keeps its original name, so the rename needs no migration.
+        builder.Property(u => u.OverrideCanManageOfficeCeilings)
+            .HasColumnName("OverrideCanManagePboCeiling");
+
+        // OverrideCanReviewBudgetPlanning (RAL-244) and OverrideCanReviewAllOffices (RAL-257) — new
+        // nullable bit columns on the legacy PascalCase Users table, so the property name IS the
+        // column name. No HasColumnName needed.
 
         builder.Property(u => u.RecoveryAttemptCount)
             .IsRequired()

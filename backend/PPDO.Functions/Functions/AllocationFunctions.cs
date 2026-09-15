@@ -13,10 +13,10 @@ namespace PPDO.Functions.Functions;
 /// Allocation endpoints under <c>/api/budget-planning/allocation</c> (RAL-99).
 ///
 /// Mutations split across two per-user grants (RAL-243): the ceiling upsert is gated on
-/// CanManagePboCeiling (PBO finance officer — any office), while the division-allocation and
+/// CanManageOfficeCeilings (PPDO finance — any office; PBO until PPDO-87), while the division-allocation and
 /// PPA-assignment upserts stay on CanManagePpdoAllocation (PPDO finance officer — splits PPDO's
 /// own ceiling). Holding one does not grant the other; a user who set ceilings before v1.8.0
-/// needs OverrideCanManagePboCeiling granted. All GET reads are gated on the broader CanAccessBudgetPlanning
+/// needs OverrideCanManageOfficeCeilings granted. All GET reads are gated on the broader CanAccessBudgetPlanning
 /// so that regular WFP users — not just finance officers — can load the context the WFP
 /// entry wizard needs (ceiling exists?, own division's allocation, assigned programs, setup
 /// gate). GetDivisions additionally scopes non-finance callers to their own division's row —
@@ -28,12 +28,12 @@ namespace PPDO.Functions.Functions;
 /// until this ticket, used it unchecked — so any Budget Planning user could read any other
 /// office's ceilings, division split, PPA assignments and setup status by editing the query
 /// string. Same class as the RAL-229 dashboard IDOR. All six are now clamped through
-/// <see cref="ConfigHttp.ClampOfficeIdForCeiling"/>: a host-office caller and a CanManagePboCeiling
+/// <see cref="ConfigHttp.ClampOfficeIdForCeiling"/>: a host-office caller and a CanManageOfficeCeilings
 /// holder keep cross-office reads, everyone else is forced to their own office. The permission
 /// gates below are deliberately unchanged — the fix is the office axis, not the grant.
 ///
 /// The writes are scoped per grant, and the two grants are not the same:
-///   ceiling PUT                       — cross-office by design; CanManagePboCeiling IS that authority.
+///   ceiling PUT                       — cross-office by design; CanManageOfficeCeilings IS that authority.
 ///   division-allocation + PPA assign  — host-office only; CanManagePpdoAllocation is exclusive to
 ///                                       PPDO users, so a guest-office holder is a mis-grant and is
 ///                                       refused outright rather than allowed to write its own office.
@@ -62,7 +62,7 @@ public sealed class AllocationFunctions
     }
 
     private Task<bool> CanManagePpdoAllocation(User u) => _permissions.CanManagePpdoAllocationAsync(u);
-    private Task<bool> CanManagePboCeiling(User u)     => _permissions.CanManagePboCeilingAsync(u);
+    private Task<bool> CanManageOfficeCeilings(User u)     => _permissions.CanManageOfficeCeilingsAsync(u);
     private Task<bool> CanAccessBudgetPlanning(User u) => _permissions.CanAccessBudgetPlanningAsync(u);
 
     /// <summary>
@@ -72,7 +72,7 @@ public sealed class AllocationFunctions
     /// </summary>
     private async Task<int> ClampOfficeAsync(User caller, int requestedOfficeId, CancellationToken ct)
         => ConfigHttp.ClampOfficeIdForCeiling(
-               caller, await _permissions.CanManagePboCeilingAsync(caller, ct), requestedOfficeId)
+               caller, await _permissions.CanManageOfficeCeilingsAsync(caller, ct), requestedOfficeId)
            ?? requestedOfficeId;
 
     // ── GET /api/budget-planning/allocation/ceiling?officeId=&fiscalYear=&fundingSourceId= ─────
@@ -139,7 +139,7 @@ public sealed class AllocationFunctions
     // Setting a figure with no view of what it lands on is the gap this closes.
     //
     // Same read gate and the SAME office clamp as every other GET here (PPDO-18): a host-office
-    // caller and a CanManagePboCeiling holder keep the cross-office read, everyone else is forced
+    // caller and a CanManageOfficeCeilings holder keep the cross-office read, everyone else is forced
     // to their own office. The clamp is what makes this safe to expose on the broader
     // CanAccessBudgetPlanning gate rather than the PBO grant.
     [Function("AllocationGetCeilingUsage")]
@@ -170,12 +170,19 @@ public sealed class AllocationFunctions
     }
 
     // ── PUT /api/budget-planning/allocation/ceiling ───────────────────────────
-    // Gated on CanManagePboCeiling, NOT CanManagePpdoAllocation (RAL-243). Setting a
-    // ceiling is the Provincial Budget Office's authority and applies to any office;
+    // Gated on CanManageOfficeCeilings, NOT CanManagePpdoAllocation (RAL-243). Setting a
+    // ceiling applies to any office (PBO's authority until PPDO-87 moved it to PPDO finance);
     // the allocation grant only splits PPDO's own ceiling across its divisions. The two
-    // are deliberately not OR-ed — see IPermissionService.CanManagePboCeilingAsync.
+    // are deliberately not OR-ed — see IPermissionService.CanManageOfficeCeilingsAsync.
     //
-    // Deliberately NOT office-clamped (PPDO-18). The gate IS the grant here: CanManagePboCeiling
+    // ⚠️ AuthorizeAsync, NOT AuthorizeWriteAsync — the one budget-planning write exempt from
+    // ReviewerWriteGuard (PPDO-87). The PPDO finance users who set ceilings are also the
+    // cross-office reviewer, and the guard refuses every CanReviewAllOffices holder. The guard
+    // protects an office's plan content from a comment-only reviewer; a ceiling is PPDO's own
+    // top-down figure, not office content. Pinned by
+    // ReviewerWriteGuardCoverageTests.UpsertCeiling_LetsACrossOfficeReviewerThrough.
+    //
+    // Deliberately NOT office-clamped (PPDO-18). The gate IS the grant here: CanManageOfficeCeilings
     // means "may set a ceiling for any office", so clamping body.OfficeId to the caller's own
     // office would make RAL-243 unreachable and break the office picker in PPDO-17. Pinned by
     // AllocationFunctionsTests.UpsertCeiling_AsPboHolderInAGuestOffice_WritesTheRequestedForeignOffice
@@ -186,7 +193,7 @@ public sealed class AllocationFunctions
             Route = "budget-planning/allocation/ceiling")] HttpRequestData req,
         CancellationToken ct)
     {
-        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanManagePboCeiling, ct);
+        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanManageOfficeCeilings, ct);
         if (denied is not null) return denied;
 
         UpsertCeilingDto? body = await ConfigHttp.ReadBodyAsync<UpsertCeilingDto>(req, ct);

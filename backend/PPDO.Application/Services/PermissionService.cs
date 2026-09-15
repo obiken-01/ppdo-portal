@@ -10,7 +10,7 @@ namespace PPDO.Application.Services;
 ///
 ///   SuperAdmin → true for everything (full bypass)
 ///   Admin      → true for every flag EXCEPT special per-user grants
-///                (CanManagePpdoAllocation, CanManagePboCeiling, CanReviewBudgetPlanning,
+///                (CanManagePpdoAllocation, CanManageOfficeCeilings, CanReviewBudgetPlanning,
 ///                 CanReviewAllOffices)
 ///   Staff      → Override ?? user.Division.&lt;flag&gt; ?? false
 ///
@@ -18,7 +18,7 @@ namespace PPDO.Application.Services;
 /// CanAccessBudgetPlanning defaults ON for guest-office users — it's their only feature and they
 /// have no division to inherit from; an override can still turn it off.
 /// CanManagePpdoAllocation is a per-user grant: SuperAdmin → true, else Override ?? false.
-/// CanManagePboCeiling is the same shape (RAL-243) but a separate authority — ceiling writes
+/// CanManageOfficeCeilings is the same shape (RAL-243) but a separate authority — ceiling writes
 /// for any office. Holding one never implies the other.
 /// CanReviewBudgetPlanning is the same shape again (RAL-244) — the office's reviewer. It is a
 /// GRANT: it never denies a write. RAL-256's denial guard is separate and deliberately so.
@@ -116,14 +116,14 @@ public sealed class PermissionService : IPermissionService
     }
 
     /// <inheritdoc />
-    public Task<bool> CanManagePboCeilingAsync(User user, CancellationToken cancellationToken = default)
+    public Task<bool> CanManageOfficeCeilingsAsync(User user, CancellationToken cancellationToken = default)
     {
         // Per-user grant only — Admin is NOT auto-granted. SuperAdmin bypasses for support.
         // Deliberately does NOT fall back to CanManagePpdoAllocation: the two are different
         // authorities (see IPermissionService), and OR-ing them here would quietly hand every
         // PPDO finance officer the power to set other offices' ceilings.
         if (user.Role is UserRole.SuperAdmin) return Task.FromResult(true);
-        return Task.FromResult(user.OverrideCanManagePboCeiling ?? false);
+        return Task.FromResult(user.OverrideCanManageOfficeCeilings ?? false);
     }
 
     /// <inheritdoc />

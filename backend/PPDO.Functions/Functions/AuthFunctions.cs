@@ -223,7 +223,7 @@ public sealed class AuthFunctions
             CanUploadAip            = me.CanUploadAip,
             CanManageConfig         = me.CanManageConfig,
             CanManagePpdoAllocation     = me.CanManagePpdoAllocation,
-            CanManagePboCeiling     = me.CanManagePboCeiling,
+            CanManageOfficeCeilings     = me.CanManageOfficeCeilings,
             CanReviewBudgetPlanning = me.CanReviewBudgetPlanning,
             CanReviewAllOffices     = me.CanReviewAllOffices,
             CanManageApiKeys        = me.CanManageApiKeys,

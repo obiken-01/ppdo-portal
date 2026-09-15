@@ -8,11 +8,11 @@ namespace PPDO.Tests.Application;
 /// Unit tests for <see cref="PermissionService"/> (v1.2 — RAL-97 model).
 ///
 ///   SuperAdmin → true for everything (incl. allocation).
-///   Admin      → true for every flag EXCEPT CanManagePpdoAllocation and CanManagePboCeiling.
+///   Admin      → true for every flag EXCEPT CanManagePpdoAllocation and CanManageOfficeCeilings.
 ///   Staff      → Override ?? user.Division.&lt;flag&gt; ?? false.
 ///   CanUploadAip is host-office-only (guest offices never).
 ///   CanManagePpdoAllocation is a per-user grant (SuperAdmin bypass; Admin not auto).
-///   CanManagePboCeiling is the same shape but a SEPARATE authority (RAL-243) --
+///   CanManageOfficeCeilings is the same shape but a SEPARATE authority (RAL-243) --
 ///   holding one must never resolve the other true.
 ///   CanReviewBudgetPlanning is the same shape again (RAL-244) and is purely ADDITIVE --
 ///   the reviewer write-denial belongs to RAL-256's guard, not to this service.
@@ -42,7 +42,7 @@ public sealed class PermissionServiceTests
         bool? overrideUploadAip        = null,
         bool? overrideManageConfig     = null,
         bool? overrideAllocation       = null,
-        bool? overridePboCeiling       = null,
+        bool? overrideOfficeCeilings       = null,
         bool? overrideReviewer         = null,
         bool? overrideAllOffices       = null,
         bool? overrideManageApiKeys    = null,
@@ -93,7 +93,7 @@ public sealed class PermissionServiceTests
             OverrideCanUploadAip            = overrideUploadAip,
             OverrideCanManageConfig         = overrideManageConfig,
             OverrideCanManagePpdoAllocation     = overrideAllocation,
-            OverrideCanManagePboCeiling         = overridePboCeiling,
+            OverrideCanManageOfficeCeilings         = overrideOfficeCeilings,
             OverrideCanReviewBudgetPlanning     = overrideReviewer,
             OverrideCanReviewAllOffices         = overrideAllOffices,
             OverrideCanManageApiKeys            = overrideManageApiKeys,
@@ -226,49 +226,49 @@ public sealed class PermissionServiceTests
     public async Task CanManagePpdoAllocation_Staff_NoOverride_ReturnsFalse()
         => Assert.False(await _sut.CanManagePpdoAllocationAsync(MakeUser(UserRole.Staff)));
 
-    // -- CanManagePboCeiling -- per-user grant (RAL-243) ---------------------------
+    // -- CanManageOfficeCeilings -- per-user grant (RAL-243) ---------------------------
 
     [Fact]
-    public async Task CanManagePboCeiling_SuperAdmin_ReturnsTrue()
-        => Assert.True(await _sut.CanManagePboCeilingAsync(MakeUser(UserRole.SuperAdmin)));
+    public async Task CanManageOfficeCeilings_SuperAdmin_ReturnsTrue()
+        => Assert.True(await _sut.CanManageOfficeCeilingsAsync(MakeUser(UserRole.SuperAdmin)));
 
     [Fact]
-    public async Task CanManagePboCeiling_Admin_NotAutoGranted()
-        => Assert.False(await _sut.CanManagePboCeilingAsync(MakeUser(UserRole.Admin)));
+    public async Task CanManageOfficeCeilings_Admin_NotAutoGranted()
+        => Assert.False(await _sut.CanManageOfficeCeilingsAsync(MakeUser(UserRole.Admin)));
 
     [Fact]
-    public async Task CanManagePboCeiling_Admin_WithOverride_ReturnsTrue()
-        => Assert.True(await _sut.CanManagePboCeilingAsync(MakeUser(UserRole.Admin, overridePboCeiling: true)));
+    public async Task CanManageOfficeCeilings_Admin_WithOverride_ReturnsTrue()
+        => Assert.True(await _sut.CanManageOfficeCeilingsAsync(MakeUser(UserRole.Admin, overrideOfficeCeilings: true)));
 
     [Fact]
-    public async Task CanManagePboCeiling_Staff_WithOverride_ReturnsTrue()
-        => Assert.True(await _sut.CanManagePboCeilingAsync(MakeUser(UserRole.Staff, overridePboCeiling: true)));
+    public async Task CanManageOfficeCeilings_Staff_WithOverride_ReturnsTrue()
+        => Assert.True(await _sut.CanManageOfficeCeilingsAsync(MakeUser(UserRole.Staff, overrideOfficeCeilings: true)));
 
     [Fact]
-    public async Task CanManagePboCeiling_Staff_NoOverride_ReturnsFalse()
-        => Assert.False(await _sut.CanManagePboCeilingAsync(MakeUser(UserRole.Staff)));
+    public async Task CanManageOfficeCeilings_Staff_NoOverride_ReturnsFalse()
+        => Assert.False(await _sut.CanManageOfficeCeilingsAsync(MakeUser(UserRole.Staff)));
 
     [Fact]
-    public async Task CanManagePboCeiling_Staff_OverrideFalse_ReturnsFalse()
-        => Assert.False(await _sut.CanManagePboCeilingAsync(MakeUser(UserRole.Staff, overridePboCeiling: false)));
+    public async Task CanManageOfficeCeilings_Staff_OverrideFalse_ReturnsFalse()
+        => Assert.False(await _sut.CanManageOfficeCeilingsAsync(MakeUser(UserRole.Staff, overrideOfficeCeilings: false)));
 
     [Fact]
-    public async Task CanManagePboCeiling_OfficeUser_WithOverride_ReturnsTrue()
-        => Assert.True(await _sut.CanManagePboCeilingAsync(
-            MakeUser(UserRole.Staff, overridePboCeiling: true, officeId: 7)));
+    public async Task CanManageOfficeCeilings_OfficeUser_WithOverride_ReturnsTrue()
+        => Assert.True(await _sut.CanManageOfficeCeilingsAsync(
+            MakeUser(UserRole.Staff, overrideOfficeCeilings: true, officeId: 7)));
 
     // The two allocation grants are separate authorities: neither implies the other.
     // If either of these fails, someone has OR-ed them together in PermissionService.
 
     [Fact]
-    public async Task CanManagePboCeiling_PpdoAllocationHolder_DoesNotImplyCeiling()
-        => Assert.False(await _sut.CanManagePboCeilingAsync(
+    public async Task CanManageOfficeCeilings_PpdoAllocationHolder_DoesNotImplyCeiling()
+        => Assert.False(await _sut.CanManageOfficeCeilingsAsync(
             MakeUser(UserRole.Staff, overrideAllocation: true)));
 
     [Fact]
-    public async Task CanManagePpdoAllocation_PboCeilingHolder_DoesNotImplyAllocation()
+    public async Task CanManagePpdoAllocation_OfficeCeilingsHolder_DoesNotImplyAllocation()
         => Assert.False(await _sut.CanManagePpdoAllocationAsync(
-            MakeUser(UserRole.Staff, overridePboCeiling: true)));
+            MakeUser(UserRole.Staff, overrideOfficeCeilings: true)));
 
     // -- CanReviewBudgetPlanning -- per-user grant (RAL-244) -----------------------
 
@@ -326,10 +326,10 @@ public sealed class PermissionServiceTests
         Assert.False(await _sut.CanReviewBudgetPlanningAsync(
             MakeUser(UserRole.Staff, overrideAllocation: true)));
         Assert.False(await _sut.CanReviewBudgetPlanningAsync(
-            MakeUser(UserRole.Staff, overridePboCeiling: true)));
+            MakeUser(UserRole.Staff, overrideOfficeCeilings: true)));
         Assert.False(await _sut.CanManagePpdoAllocationAsync(
             MakeUser(UserRole.Staff, overrideReviewer: true)));
-        Assert.False(await _sut.CanManagePboCeilingAsync(
+        Assert.False(await _sut.CanManageOfficeCeilingsAsync(
             MakeUser(UserRole.Staff, overrideReviewer: true)));
     }
 
