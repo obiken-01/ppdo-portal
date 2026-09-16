@@ -24,7 +24,7 @@ import {
 } from "./AipEntryPanelParts";
 
 export default function AipProjectPanel({
-  project, canEdit, lockedReason, isLastSibling, defaultImplementingOffice, unresolvedCount,
+  project, canEdit, lockedReason, isLastSibling, proponentOfficeCode, unresolvedCount,
   onSelectActivity, onActivityAdded, onDeleted, onUpdated,
 }: {
   project: AipProjectDetail;
@@ -32,8 +32,8 @@ export default function AipProjectPanel({
   lockedReason: string;
   /** Whether this is the last project in its program — omits the renumber sentence (spec §6). */
   isLastSibling: boolean;
-  /** The encoder's own office code, written onto a new activity at create (PPDO-80). */
-  defaultImplementingOffice: string | null;
+  /** This office’s own code, written onto a new activity so it is saved even if nobody opens it. */
+  proponentOfficeCode: string | null;
   unresolvedCount: (nodeType: AipCommentNodeType, nodeId: number) => number;
   onSelectActivity: (activityId: number) => void;
   onActivityAdded: (activity: AipActivityDetail) => void;
@@ -88,12 +88,17 @@ export default function AipProjectPanel({
             disabled={!canEdit}
             disabledReason={`With ${lockedReason} — activities cannot be added here.`}
             onAdd={async (name) => {
-              // ⚠️ The created node is USED, not discarded, and the implementing office is written
-              // at CREATE rather than only prefilled in the edit form — an activity nobody opens
-              // afterwards still has to print one, and it is the encoder's own office in all but
-              // the joint case (PPDO-80).
+              // ⚠️ The created node is USED, not discarded — the tree absorbs it rather than reloading.
+              //
+              // ⚠️ The office is stamped at CREATE, not only prefilled in the edit form — an
+              // activity nobody opens afterwards still has to print one (PPDO-80's reason, which
+              // still holds).
+              //
+              // ↩️ What changed in PPDO-100 is what it means. It is the PROPONENT office, which is
+              // always part of the saved value and always prints first; the edit form strips it from
+              // the chips and puts it back on save. It is no longer a guess at who implements.
               onActivityAdded(await addAipActivity(project.id, {
-                name, esreCode: null, implementingOffice: defaultImplementingOffice,
+                name, esreCode: null, implementingOffice: proponentOfficeCode,
                 startDate: null, endDate: null, expectedOutputs: null,
                 fundingSourceRaw: null, ps: null, mooe: null, co: null,
                 ccAdaptation: null, ccMitigation: null, ccTypologyCode: null,

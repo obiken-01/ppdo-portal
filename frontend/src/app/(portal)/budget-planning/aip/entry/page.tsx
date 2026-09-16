@@ -38,7 +38,7 @@ import {
   listAip, getAipById, getAipReadiness, submitAip, submitAipToPpdo, returnAipToEncoder,
   aipErrorMessage,
 } from "@/lib/aip";
-import { listAccounts, listFundingSources, listPriceIndexForPicker } from "@/lib/config";
+import { listAccounts, listFundingSources, listOffices, listPriceIndexForPicker } from "@/lib/config";
 import { FIRST_ENTERED_FISCAL_YEAR } from "@/lib/aip-fiscal-years";
 import { AIP_WORKFLOW, isOfficeEditable, describeAipHolder } from "@/lib/aip-workflow";
 import AipAddProgramsPanel from "@/components/aip/entry/AipAddProgramsPanel";
@@ -60,7 +60,7 @@ import {
 import type {
   AipRecordDetail, AipOfficeDetail, AipProjectDetail, AipActivityDetail,
   AipDeleteResult, AipCommentNodeType,
-  AccountResponse, FundingSourceResponse, AipReadiness, PriceIndexPickerItem,
+  AccountResponse, FundingSourceResponse, OfficeResponse, AipReadiness, PriceIndexPickerItem,
 } from "@/types";
 
 /** FY2028 onward. The entry process does not exist below the break year. */
@@ -131,6 +131,9 @@ export default function AipEntryPage() {
   const [record, setRecord]   = useState<AipRecordDetail | null>(null);
   const [readiness, setReadiness] = useState<AipReadiness | null>(null);
   const [accounts, setAccounts]   = useState<AccountResponse[]>([]);
+  // PPDO-100 — the implementing-office picker’s list. Active only: a deactivated office is not
+  // something a new activity should be assigned to, and an existing value is kept as a plain chip.
+  const [offices, setOffices]     = useState<OfficeResponse[]>([]);
   const [funds, setFunds]         = useState<FundingSourceResponse[]>([]);
   // ⚠️ ~6,400 rows, so it is fetched off the critical path with its own loading flag (RAL-231).
   // Without the flag the item picker is indistinguishable from an empty catalogue while it lands.
@@ -229,6 +232,7 @@ export default function AipEntryPage() {
   // Reference data, fetched once and off the critical path — the page renders without it.
   useEffect(() => {
     void listAccounts().then(setAccounts).catch(() => setAccounts([]));
+    void listOffices({ active: "true" }).then(setOffices).catch(() => setOffices([]));
     void listFundingSources({ active: "true" }).then(setFunds).catch(() => setFunds([]));
     void listPriceIndexForPicker({ active: "true" })
       .then(setPriceIndex)
@@ -578,7 +582,8 @@ export default function AipEntryPage() {
                   // ⚠️ The CODE, not the office name. The form's Implementing Office column (3)
                   // prints codes — "OPV", and "OPV/LFC/HRMO" where an activity is run jointly — so
                   // a default of the full name would be retyped by every encoder (PPDO-80).
-                  defaultImplementingOffice={me?.officeCode ?? null}
+                  offices={offices}
+                  proponentOfficeCode={me?.officeCode ?? null}
                   onSelect={select}
                   onChangeActivity={changeActivity}
                   onProjectAdded={onProjectAdded}

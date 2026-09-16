@@ -40,24 +40,31 @@ import { fmtThousands } from "@/lib/aip-units";
 import { AIP_ESRE_OPTIONS, AIP_MONTHS } from "@/lib/aipConstants";
 import { useAutoGrowTextarea } from "@/lib/useAutoGrowTextarea";
 import { inputCls, selectCls } from "@/components/aip/AipTreeCells";
-import type { AipActivityDetail } from "@/types";
+import MultiLookup, {
+  joinCodes, withProponent, withoutProponent,
+} from "@/components/ui/MultiLookup";
+import type { AipActivityDetail, OfficeResponse } from "@/types";
 
 export default function AipActivityFields({
-  activity, canEdit, onSaved, defaultImplementingOffice = null,
+  activity, canEdit, onSaved, offices, proponentOfficeCode,
 }: {
   activity: AipActivityDetail;
   canEdit: boolean;
   onSaved: (updated: AipActivityDetail) => void;
   /**
-   * The reader's own office CODE, used when this activity carries no implementing office yet
-   * (PPDO-80). Codes, not names — the form's column (3) prints `OPV`, and `OPV/LFC/HRMO` where an
-   * activity is run jointly, which is why the field stays freely editable text.
-   *
-   * ⚠️ A prefill, never a lock: it fills an EMPTY field and never overwrites a value already
-   * there. An encoder who typed a joint office and then reopened the form would otherwise find
-   * their own office silently back in the box.
+   * The configured offices the implementing-office picker chooses from (PPDO-100). Passed in
+   * already fetched, like every other list on this page.
    */
-  defaultImplementingOffice?: string | null;
+  offices: OfficeResponse[];
+  /**
+   * The office whose AIP this is — its own code is ALWAYS part of the saved value and prints first
+   * (Ralph, 2026-09-16), but is never shown as a chip.
+   *
+   * ⚠️ The office being EDITED, not the signed-in user's: the review modal edits one named office,
+   * and reading `me.officeCode` there would stamp the reviewer's own office onto someone else's row.
+   * Null leaves the value exactly as picked.
+   */
+  proponentOfficeCode: string | null;
 }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving]   = useState(false);
@@ -65,8 +72,14 @@ export default function AipActivityFields({
 
   const [name, setName]                             = useState(activity.name);
   const [esreCode, setEsreCode]                     = useState(activity.esreCode ?? "");
-  const [implementingOffice, setImplementingOffice] =
-    useState(activity.implementingOffice ?? defaultImplementingOffice ?? "");
+  // ⚠️ A LIST now, not a string (PPDO-100). The column still stores one `/`-joined value — that is
+  // what the form prints — so `splitCodes`/`joinCodes` are the only place the two shapes meet.
+  //
+  // ⚠️ The proponent office is stripped on the way IN and prepended on the way OUT. It is always
+  // saved and always prints first, and is deliberately not a chip: it is not a choice, so offering
+  // an × next to it would invite removing something the next save puts straight back.
+  const [implementingOffices, setImplementingOffices] =
+    useState<string[]>(withoutProponent(activity.implementingOffice, proponentOfficeCode));
   const [startDate, setStartDate]                   = useState(activity.startDate ?? "");
   const [endDate, setEndDate]                       = useState(activity.endDate ?? "");
   const [expectedOutputs, setExpectedOutputs]       = useState(activity.expectedOutputs ?? "");
@@ -81,7 +94,7 @@ export default function AipActivityFields({
   function beginEdit() {
     setName(activity.name);
     setEsreCode(activity.esreCode ?? "");
-    setImplementingOffice(activity.implementingOffice ?? defaultImplementingOffice ?? "");
+    setImplementingOffices(withoutProponent(activity.implementingOffice, proponentOfficeCode));
     setStartDate(activity.startDate ?? "");
     setEndDate(activity.endDate ?? "");
     setExpectedOutputs(activity.expectedOutputs ?? "");
@@ -100,7 +113,7 @@ export default function AipActivityFields({
       const updated = await updateAipActivityDetails(activity.id, {
         name: name.trim(),
         esreCode: esreCode || null,
-        implementingOffice: implementingOffice.trim() || null,
+        implementingOffice: joinCodes(withProponent(implementingOffices, proponentOfficeCode)),
         startDate: startDate || null,
         endDate: endDate || null,
         expectedOutputs: expectedOutputs.trim() || null,
@@ -176,12 +189,33 @@ export default function AipActivityFields({
 
         {/* Spans two columns so Start and End share the row below — see the read view. */}
         <div className="sm:col-span-2">
-          {/* ⚠️ Free text, and it must stay free text even though it is prefilled from the
-              reader's own office. The form prints joint implementations as `OPV/LFC/HRMO`, so a
-              select over the office list could not express a real row. */}
+          {/* ↩️ **Was free text until PPDO-100.** The old note argued a select could not express a
+              joint row like `OPV/LFC/HRMO` — true of a SINGLE select, which is why this is a
+              multi-select that joins with the same `/` the form prints. Strict: only configured
+              offices (Ralph, 2026-09-16). `MultiLookup` can take a typed value, and this call
+              deliberately does not turn that on.
+
+              ⚠️ The encoder's own office is NOT prefilled any more. It is the PROPONENT; this
+              column names who IMPLEMENTS, and the two are different often enough that a default
+              was quietly wrong (PPDO-80's prefill, reversed). */}
           <Label>Implementing office</Label>
-          <input value={implementingOffice} onChange={(e) => setImplementingOffice(e.target.value)}
-            className={inputCls} />
+          <MultiLookup
+            // ⚠️ The proponent office is filtered OUT of the options, not just deduped on save — it
+            // is already implied, so offering it invites picking something that then does not appear
+            // as a chip, which reads as the picker ignoring the click.
+            items={offices.filter((o) =>
+              o.officeCode.toLowerCase() !== (proponentOfficeCode ?? "").trim().toLowerCase())}
+            value={implementingOffices}
+            onChange={setImplementingOffices}
+            getValue={(o) => o.officeCode}
+            getLabel={(o) => `${o.officeCode} — ${o.officeName}`}
+            getSearchText={(o) => `${o.officeCode} ${o.officeName}`}
+            placeholder="Search offices…"
+            // ⚠️ Always shows the value that will actually be SAVED, proponent included. It is the
+            // only place the encoder can see that their own office is in there, since it is not a
+            // chip — without it, "PTO is missing" is the obvious and wrong conclusion.
+            hint={`Prints as ${joinCodes(withProponent(implementingOffices, proponentOfficeCode)) ?? "—"}`}
+          />
         </div>
 
         <div>

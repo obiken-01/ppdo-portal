@@ -32,13 +32,13 @@ import {
 } from "@/components/aip/entry/AipRowFigures";
 import { getAipActivityReview } from "@/lib/aip-review";
 import { aipErrorMessage } from "@/lib/aip";
-import { listAccounts, listFundingSources, listPriceIndexForPicker } from "@/lib/config";
+import { listAccounts, listFundingSources, listOffices, listPriceIndexForPicker } from "@/lib/config";
 import {
   describeAipHolderForDepartmentHead, describeAipHolderForReviewer,
 } from "@/lib/aip-workflow";
 import type {
   AipActivityReview, AipActivityDetail, AccountResponse, FundingSourceResponse,
-  PriceIndexPickerItem,
+  OfficeResponse, PriceIndexPickerItem,
 } from "@/types";
 
 export interface AipActivityReviewModalProps {
@@ -63,6 +63,8 @@ export default function AipActivityReviewModal({
   const [changed, setChanged] = useState(false);
 
   const [accounts, setAccounts] = useState<AccountResponse[]>([]);
+  // PPDO-100 — the same picker the entry page uses; a dept head reviewing their own office can edit.
+  const [offices, setOffices] = useState<OfficeResponse[]>([]);
   const [funds, setFunds] = useState<FundingSourceResponse[]>([]);
   const [priceIndex, setPriceIndex] = useState<PriceIndexPickerItem[]>([]);
   const [priceIndexLoading, setPriceIndexLoading] = useState(true);
@@ -86,6 +88,7 @@ export default function AipActivityReviewModal({
   // Account and fund names for the lines. Off the critical path — the modal renders without them.
   useEffect(() => {
     void listAccounts().then(setAccounts).catch(() => setAccounts([]));
+    void listOffices({ active: "true" }).then(setOffices).catch(() => setOffices([]));
     void listFundingSources({ active: "true" }).then(setFunds).catch(() => setFunds([]));
   }, []);
 
@@ -248,7 +251,9 @@ export default function AipActivityReviewModal({
                     activity={review.activity}
                     canEdit={review.canEdit}
                     onSaved={onDetailsSaved}
-                    defaultImplementingOffice={review.officeCode || null}
+                    offices={offices}
+                    // The office being reviewed, never the reviewer’s own.
+                    proponentOfficeCode={review.officeCode || null}
                   />
                 </div>
               </section>

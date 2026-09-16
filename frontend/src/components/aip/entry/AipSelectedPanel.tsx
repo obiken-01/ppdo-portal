@@ -15,7 +15,7 @@
 
 import type {
   AccountResponse, AipActivityDetail, AipDeleteResult, AipExpenditureWriteResult,
-  AipProjectDetail, FundingSourceResponse, PriceIndexPickerItem,
+  AipProjectDetail, FundingSourceResponse, OfficeResponse, PriceIndexPickerItem,
 } from "@/types";
 import AipProgramPanel from "./AipProgramPanel";
 import AipProjectPanel from "./AipProjectPanel";
@@ -33,7 +33,7 @@ import {
  */
 export default function AipSelectedPanel({
   selection, canEdit, holder, accounts, funds, generalFundId, priceIndex, priceIndexLoading,
-  defaultImplementingOffice, onSelect, onChangeActivity, onProjectAdded, onActivityAdded,
+  offices, proponentOfficeCode, onSelect, onChangeActivity, onProjectAdded, onActivityAdded,
   onDeleted, onProjectUpdated, onActivityTotals, onActivityDetails,
 }: {
   selection: AipResolvedSelection | null;
@@ -44,7 +44,10 @@ export default function AipSelectedPanel({
   generalFundId: number | null;
   priceIndex: PriceIndexPickerItem[];
   priceIndexLoading: boolean;
-  defaultImplementingOffice: string | null;
+  /** Configured offices for the implementing-office picker (PPDO-100). */
+  offices: OfficeResponse[];
+  /** This office’s own code — always saved, always printed first, never a chip. */
+  proponentOfficeCode: string | null;
   onSelect: (ids: AipSelectionIds) => void;
   onChangeActivity: () => void;
   onProjectAdded: (project: AipProjectDetail) => void;
@@ -85,7 +88,8 @@ export default function AipSelectedPanel({
         generalFundId={generalFundId}
         priceIndex={priceIndex}
         priceIndexLoading={priceIndexLoading}
-        defaultImplementingOffice={defaultImplementingOffice}
+        offices={offices}
+        proponentOfficeCode={proponentOfficeCode}
         onTotals={onActivityTotals}
         onDetails={onActivityDetails}
         onDeleted={onDeleted}
@@ -108,7 +112,7 @@ export default function AipSelectedPanel({
         canEdit={canEdit}
         lockedReason={holder}
         isLastSibling={isLastProject}
-        defaultImplementingOffice={defaultImplementingOffice}
+        proponentOfficeCode={proponentOfficeCode}
         unresolvedCount={unresolvedCount}
         onSelectActivity={(activityId) =>
           onSelect({ programId: program!.id, projectId: project.id, activityId })
