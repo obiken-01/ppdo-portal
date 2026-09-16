@@ -67,20 +67,21 @@ public static class AipFormRowBuilder
             {
                 // Everything under this program, built first so an empty program can be dropped.
                 List<AipConsolidatedRowDto> underProgram = [];
+                List<AipPrintedAmountsDto>  programLines = [];
 
                 foreach (AipProject project in projectsByProgram[program.Id].OrderBy(j => j.RefCode, StringComparer.Ordinal))
                 {
-                    // ⚠️ A synthetic project exists only to hold a line the source file recorded
-                    // directly on its program row (RAL-108). It has no row of its own in the
-                    // province's file, so printing one would add a line that was never there.
-                    if (!project.IsSynthetic)
-                        underProgram.Add(Heading(ProjectRow, project.RefCode, project.Name));
+                    // The project's own rows, built before its heading so the heading can carry
+                    // their subtotal (PPDO-98).
+                    List<AipConsolidatedRowDto> underProject = [];
+                    List<AipPrintedAmountsDto>  projectLines = [];
 
                     foreach (AipActivity activity in activitiesByProject[project.Id].OrderBy(a => a.RefCode, StringComparer.Ordinal))
                     {
                         AipPrintedAmountsDto amounts = AipPrintedFigures.ForActivity(activity, fiscalYear);
                         lines.Add(amounts);
-                        underProgram.Add(new AipConsolidatedRowDto(
+                        projectLines.Add(amounts);
+                        underProject.Add(new AipConsolidatedRowDto(
                             ActivityRow,
                             activity.RefCode,
                             activity.Name,
@@ -95,6 +96,17 @@ public static class AipFormRowBuilder
                             activity.CcTypologyCode,
                             amounts));
                     }
+
+                    // ⚠️ A synthetic project exists only to hold a line the source file recorded
+                    // directly on its program row (RAL-108). It has no row of its own in the
+                    // province's file, so printing one would add a line that was never there.
+                    // ⚠️ Its activities still count toward the program's subtotal — otherwise a
+                    // program would total less than the rows printed under it.
+                    if (!project.IsSynthetic)
+                        underProgram.Add(Heading(ProjectRow, project.RefCode, project.Name, Subtotal(projectLines)));
+
+                    underProgram.AddRange(underProject);
+                    programLines.AddRange(projectLines);
                 }
 
                 // ⚠️ A program with no PPAs under it — no project row and no activity — is left off
@@ -103,7 +115,7 @@ public static class AipFormRowBuilder
                 // project is synthetic and empty counts as empty too: it would print no row beneath.
                 if (underProgram.Count == 0) continue;
 
-                body.Add(Heading(ProgramRow, program.RefCode, program.Name));
+                body.Add(Heading(ProgramRow, program.RefCode, program.Name, Subtotal(programLines)));
                 body.AddRange(underProgram);
             }
 
@@ -124,8 +136,23 @@ public static class AipFormRowBuilder
         return new AipFormSheet(rows, AipPrintedFigures.Sum(officeTotals));
     }
 
-    private static AipConsolidatedRowDto Heading(string kind, string refCode, string name)
-        => new(kind, refCode, name, null, null, null, null, null, null, null, null, null, Amounts: null);
+    private static AipConsolidatedRowDto Heading(
+        string kind, string refCode, string name, AipPrintedAmountsDto? amounts)
+        => new(kind, refCode, name, null, null, null, null, null, null, null, null, null, amounts);
+
+    /// <summary>
+    /// A heading row's subtotal — the sum of the activity figures beneath it (PPDO-98), or
+    /// <c>null</c> when there are none.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ <b>Null, not zero, for a heading with nothing under it.</b> A project row with no activity
+    /// carries no figure on the province's form, and a printed ₱0 is a claim that the project was
+    /// costed at nothing rather than not costed at all. This is the same distinction
+    /// <see cref="AipConsolidatedRowDto.Amounts"/> was originally null for; PPDO-98 fills it in where
+    /// there is something to add up, and leaves it blank where there is not.
+    /// </remarks>
+    private static AipPrintedAmountsDto? Subtotal(IReadOnlyList<AipPrintedAmountsDto> lines)
+        => lines.Count == 0 ? null : AipPrintedFigures.Sum(lines);
 
     /// <summary>
     /// Column (7). The fund codes of the activity's lines joined in entry order — the same

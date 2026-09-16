@@ -109,23 +109,79 @@ public sealed class AipFormExcelService : IAipFormExcelService
         List<int> officeRows = [];
         int officeRow = 0;
 
+        // ⚠️ **Each level SUMs the level directly below it, never its whole block** (PPDO-98). The
+        // office row used to sum every row beneath it, which was exact only while program and project
+        // headings were blank. Now that a heading carries its own subtotal, a block-wide sum would
+        // count each activity three times, so the writer tracks each open heading's direct children.
+        List<int> programRows        = [];  // the current office's program headings
+        List<int> programChildRows   = [];  // the current program's project headings, plus any activity
+                                           // printed straight under it (a synthetic project, RAL-108)
+        List<int> projectActivityRows = []; // the current project's activities
+        int programRow = 0;
+        int projectRow = 0;
+
+        void CloseProject()
+        {
+            if (projectRow == 0) return;
+            // ⚠️ A project with nothing costed under it prints BLANK, so it must also drop out of its
+            // program's sum — summing a blank cell would put a ₱0 on the program while the project
+            // itself stayed empty, and the grid (which reads the builder's null) would disagree.
+            if (projectActivityRows.Count == 0) programChildRows.Remove(projectRow);
+            else SumCells(ws, projectRow, projectActivityRows);
+            projectRow = 0;
+            projectActivityRows.Clear();
+        }
+
+        void CloseProgram()
+        {
+            CloseProject();
+            if (programRow == 0) return;
+            if (programChildRows.Count == 0) programRows.Remove(programRow);
+            else SumCells(ws, programRow, programChildRows);
+            programRow = 0;
+            programChildRows.Clear();
+        }
+
+        void CloseOffice()
+        {
+            CloseProgram();
+            if (officeRow == 0) return;
+            // ⚠️ An office row is a figure even with nothing printed beneath it: it is a submission, and
+            // reads as ₱0. A heading in the same position was simply never costed, which is why it stays
+            // blank. (The builder drops such an office before it reaches here; the writer still answers.)
+            if (programRows.Count == 0)
+                foreach (int col in AmountCols) ws.Cell(officeRow, col).Value = 0;
+            else
+                SumCells(ws, officeRow, programRows);
+            programRows.Clear();
+        }
+
         foreach (AipConsolidatedRowDto line in sheet.Rows)
         {
             switch (line.Kind)
             {
                 case AipFormRowBuilder.OfficeRow:
-                    CloseOfficeBlock(ws, officeRow, row - 1);
+                    CloseOffice();
                     officeRow = row;
                     officeRows.Add(row);
                     WriteOffice(ws, row, line);
                     break;
                 case AipFormRowBuilder.ProgramRow:
+                    CloseProgram();
+                    programRow = row;
+                    programRows.Add(row);
                     WriteHeading(ws, row, line, ColProgram, s => s.Font.SetBold(true));
                     break;
                 case AipFormRowBuilder.ProjectRow:
+                    CloseProject();
+                    projectRow = row;
+                    programChildRows.Add(row);
                     WriteHeading(ws, row, line, ColProject, s => s.Font.SetBold(true).Font.SetItalic(true));
                     break;
                 case AipFormRowBuilder.ActivityRow:
+                    // An activity with no project heading open belongs to a synthetic project, so it
+                    // is the program's own child.
+                    (projectRow == 0 ? programChildRows : projectActivityRows).Add(row);
                     WriteActivity(ws, row, line);
                     break;
             }
@@ -136,7 +192,7 @@ public sealed class AipFormExcelService : IAipFormExcelService
                 .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
             row++;
         }
-        CloseOfficeBlock(ws, officeRow, row - 1);
+        CloseOffice();
 
         int totalRow = row;
         WriteTotal(ws, totalRow, officeRows);
@@ -254,23 +310,18 @@ public sealed class AipFormExcelService : IAipFormExcelService
     }
 
     /// <summary>
-    /// Writes an office row's subtotals once its block is known: <c>SUM</c> over the rows beneath it up
-    /// to <paramref name="lastRow"/>. ⚠️ Blocks never overlap, and the headings inside a block are blank
-    /// rather than zero, so the sum counts only the office's own activities.
+    /// Writes a subtotal row's amount cells as a <c>SUM</c> over the named rows — the level directly
+    /// below it (PPDO-98), never a whole block.
     /// </summary>
-    private static void CloseOfficeBlock(IXLWorksheet ws, int officeRow, int lastRow)
+    /// <param name="childRows">
+    /// The rows this one totals. ⚠️ Named individually rather than as a range: a program's children are
+    /// its project headings and they are not contiguous, and a range would also swallow the activity
+    /// rows those headings already count.
+    /// </param>
+    private static void SumCells(IXLWorksheet ws, int row, IReadOnlyList<int> childRows)
     {
-        if (officeRow == 0) return;
-
         foreach (int col in AmountCols)
-        {
-            // An office with nothing printed beneath it: SUM(L11:L10) would normalise to include the
-            // office row itself — a circular reference. Write the zero instead.
-            if (lastRow <= officeRow)
-                ws.Cell(officeRow, col).Value = 0;
-            else
-                ws.Cell(officeRow, col).FormulaA1 = $"SUM({Ref(col, officeRow + 1)}:{Ref(col, lastRow)})";
-        }
+            ws.Cell(row, col).FormulaA1 = $"SUM({string.Join(",", childRows.Select(r => Ref(col, r)))})";
     }
 
     private static void WriteHeading(
@@ -280,7 +331,10 @@ public sealed class AipFormExcelService : IAipFormExcelService
         ws.Range(row, nameCol, row, ColActivity).Merge();
         ws.Cell(row, nameCol).Value = line.Name;
         ws.Cell(row, nameCol).Style.Alignment.SetWrapText(true);
-        style(ws.Range(row, ColRef, row, ColActivity).Style);
+        // ⚠️ Styled and formatted out to the last column since PPDO-98: the row carries a subtotal
+        // now, and a bold heading with plain unformatted figures beside it reads as two rows.
+        style(ws.Range(row, ColRef, row, LastCol).Style);
+        SetAmountFormat(ws, row);
     }
 
     private static void WriteActivity(IXLWorksheet ws, int row, AipConsolidatedRowDto line)
