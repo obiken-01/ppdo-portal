@@ -67,6 +67,11 @@ export default function AipSelectedPanel({
     const { program, activity } = selection;
     return (
       <AipActivityPanel
+        // ⚠️ Keyed, so each activity gets its OWN instance. ↩️ The tree this replaced keyed every
+        // row (`<ActivityBlock key={activity.id}>`) and the drill-down dropped it, which is not a
+        // cosmetic difference: one shared instance carries the previous activity's in-flight
+        // expenditure refetch, a failed delete's error text and a half-typed add across the switch.
+        key={activity.id}
         activity={activity}
         canEdit={canEdit}
         accounts={accounts}
@@ -91,6 +96,7 @@ export default function AipSelectedPanel({
     const { program, project } = selection;
     return (
       <AipProjectPanel
+        key={project.id}
         project={project}
         canEdit={canEdit}
         lockedReason={holder}
@@ -107,6 +113,7 @@ export default function AipSelectedPanel({
 
   return (
     <AipProgramPanel
+      key={selection.program.id}
       program={selection.program}
       canEdit={canEdit}
       lockedReason={holder}

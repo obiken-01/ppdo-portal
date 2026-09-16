@@ -13,7 +13,7 @@
  * once, and the panel remounts on selection so there is no stale-lines window.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   AccountResponse, AipActivityDetail, AipDeleteResult, AipExpenditure,
   AipExpenditureWriteResult, FundingSourceResponse, PriceIndexPickerItem,
@@ -49,6 +49,12 @@ export default function AipActivityPanel({
 }) {
   const [lines, setLines] = useState<AipExpenditure[] | null>(null);
   const [linesError, setLinesError] = useState<string | null>(null);
+
+  // ⚠️ Which activity the panel is currently showing, for the refetch below — belt and braces
+  // beside the caller's `key`. A component that silently renders another row's money if someone
+  // forgets to key it is not a safe thing to leave lying around.
+  const showing = useRef(activity.id);
+  useEffect(() => { showing.current = activity.id; }, [activity.id]);
 
   useEffect(() => {
     let live = true;
@@ -109,7 +115,15 @@ export default function AipActivityPanel({
           onChanged={(result) => {
             // Refetch just this activity's lines and hand the recomputed totals upward — the
             // record is never reloaded, so the panel stays where it is.
-            void listAipExpenditures(activity.id).then(setLines).catch(() => undefined);
+            //
+            // ⚠️ `lines` is NOT cleared first: the table stays on screen while this lands, which is
+            // the whole reason it is a separate fetch rather than a re-run of the effect above.
+            // The id is re-checked on arrival instead, so a response that outlives the selection
+            // cannot paint one activity's expenditures under another's name.
+            const forActivity = activity.id;
+            void listAipExpenditures(forActivity)
+              .then((l) => { if (showing.current === forActivity) setLines(l); })
+              .catch(() => undefined);
             onTotals(result);
           }} />
       )}
