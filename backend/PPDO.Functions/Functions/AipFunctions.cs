@@ -173,7 +173,7 @@ public sealed class AipFunctions
             await _aip.AddOfficeAsync(aipId, body, caller!, ct), ct, HttpStatusCode.Created);
     }
 
-    // ── GET /api/budget-planning/aip/addable-programs?officeConfigId=&sector= ─
+    // ── GET /api/budget-planning/aip/addable-programs?aipRecordId=&officeConfigId=&sector= ─
     // V18-42 / PPDO-52. The entry panel's program picker.
     //
     // ⚠️ Read-only, and it exists so the client does NOT resolve the LDIP itself. The two-tier
@@ -195,8 +195,15 @@ public sealed class AipFunctions
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
                 ApiResponse<AipAddableProgramsDto>.Fail("officeConfigId is required."), ct);
 
+        // ⚠️ Required, not defaulted. The response flags which programs this AIP already carries, and
+        // a missing id could only be answered by returning the unflagged list — which is the exact
+        // list that offered an encoder a program the add endpoint then refused.
+        if (!int.TryParse(q["aipRecordId"], out int aipRecordId))
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<AipAddableProgramsDto>.Fail("aipRecordId is required."), ct);
+
         return await ConfigHttp.FromResultAsync(req,
-            await _aip.GetAddableProgramsAsync(officeConfigId, q["sector"] ?? "", caller!, ct), ct);
+            await _aip.GetAddableProgramsAsync(aipRecordId, officeConfigId, q["sector"] ?? "", caller!, ct), ct);
     }
 
     // ── POST /api/budget-planning/aip/{aipId}/programs ────────────────────────

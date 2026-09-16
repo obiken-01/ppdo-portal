@@ -77,7 +77,7 @@ export default function AipAddProgramsPanel({
       setAddable(null);
       setChecked(new Set());
       try {
-        const result = await getAipAddablePrograms(officeConfigId, sector);
+        const result = await getAipAddablePrograms(aipRecordId, officeConfigId, sector);
         if (!cancelled) setAddable(result);
       } catch (e) {
         // "no LDIP for this sector" comes back as a 400 with a sentence naming the LDIP — show it
@@ -92,7 +92,7 @@ export default function AipAddProgramsPanel({
     }
     if (open) void load();
     return () => { cancelled = true; };
-  }, [open, sector, officeConfigId]);
+  }, [open, sector, officeConfigId, aipRecordId]);
 
   // ⚠️ Memoised, not `addable?.groups ?? []` inline: the fallback allocates a fresh array on
   // every render, which would make the selection memo below recompute every time.
@@ -215,10 +215,19 @@ export default function AipAddProgramsPanel({
                     <ul className="mt-1 space-y-1">
                       {group.programs.map((p) => (
                         <li key={p.ldipProgramId}>
-                          <label className="flex cursor-pointer items-start gap-2 py-1 text-sm text-slate-800">
+                          {/* ⚠️ An already-added program is shown, unselectable, and SAID to be
+                              already added — not hidden. Hiding it makes a program disappear from
+                              its own LDIP group, which reads as missing data and sends the encoder
+                              to check the LDIP. The server refuses it either way; this is about
+                              not offering a choice that cannot succeed. */}
+                          <label className={`flex items-start gap-2 py-1 text-sm text-slate-800 ${
+                            p.alreadyAdded ? "cursor-not-allowed" : "cursor-pointer"
+                          }`}>
                             {/* ⚠️ ldipProgramId, not any AIP id — this is what the add endpoint
                                 expects, and it is also what tells the server which group. */}
-                            <input type="checkbox" checked={checked.has(p.ldipProgramId)} className="mt-1"
+                            <input type="checkbox" className="mt-1"
+                              checked={checked.has(p.ldipProgramId)}
+                              disabled={p.alreadyAdded}
                               onChange={(e) => {
                                 const next = new Set(checked);
                                 if (e.target.checked) next.add(p.ldipProgramId);
@@ -228,6 +237,14 @@ export default function AipAddProgramsPanel({
                             <span>
                               <span className="mr-2 font-mono text-xs text-slate-600">{p.refCode}</span>
                               {p.name}
+                              {/* ⚠️ slate-600, not a disabled tone. The control is disabled; this
+                                  sentence is content the reader needs, and slate-400 is reserved
+                                  for the control itself (RAL-133, DESIGN_SYSTEM.md §1). */}
+                              {p.alreadyAdded && (
+                                <span className="ml-2 whitespace-nowrap text-xs text-slate-600">
+                                  &middot; already in this group
+                                </span>
+                              )}
                             </span>
                           </label>
                         </li>

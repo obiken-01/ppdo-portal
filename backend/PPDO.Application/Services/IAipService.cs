@@ -165,9 +165,16 @@ public interface IAipService
     ///
     /// ⚠️ The entry panel must call this rather than resolving the LDIP itself. See
     /// <see cref="AipAddableProgramsDto"/> for the divergence that made it necessary.
+    ///
+    /// <para>
+    /// ⚠️ <b><paramref name="aipRecordId"/> is required</b> because each program is flagged with
+    /// whether that group of the AIP already carries it (<c>AipAddableProgramDto.AlreadyAdded</c>) —
+    /// <see cref="AddProgramsWithGroupAsync"/> refuses those, and the picker offered them anyway
+    /// until this was added, so an encoder could only find out by pressing Add.
+    /// </para>
     /// </summary>
     Task<ServiceResult<AipAddableProgramsDto>> GetAddableProgramsAsync(
-        int officeConfigId, string sector, User caller, CancellationToken ct = default);
+        int aipRecordId, int officeConfigId, string sector, User caller, CancellationToken ct = default);
 
     Task<ServiceResult<AipOfficeDto>> AddProgramsWithGroupAsync(
         int aipRecordId, AddAipProgramsWithGroupDto dto, User caller, CancellationToken ct = default);

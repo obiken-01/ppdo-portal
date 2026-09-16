@@ -1751,12 +1751,19 @@ public sealed class AipService : IAipService
 
     /// <inheritdoc />
     public async Task<ServiceResult<AipAddableProgramsDto>> GetAddableProgramsAsync(
-        int officeConfigId, string sector, User caller, CancellationToken ct = default)
+        int aipRecordId, int officeConfigId, string sector, User caller, CancellationToken ct = default)
     {
         if (!AipSector.Prefixes.TryGetValue(sector?.Trim() ?? string.Empty, out string? prefix))
             return ServiceResult<AipAddableProgramsDto>.BadRequest(
                 $"Sector must be one of: {string.Join(", ", AipSector.Prefixes.Keys)}.");
         string normalised = sector!.Trim().ToUpperInvariant();
+
+        // ⚠️ The record is REQUIRED, not optional. "Which of these are already in the AIP?" has no
+        // answer without knowing which AIP, and a version of this that silently skipped the check
+        // when the id was missing would serve the misleading list the check exists to prevent.
+        AipRecord? record = await _aipRepo.GetByIntIdAsync(aipRecordId, ct);
+        if (record is null)
+            return ServiceResult<AipAddableProgramsDto>.NotFound($"AIP record {aipRecordId} not found.");
 
         Office? office = await _officeConfigRepo.GetByIdAsync(officeConfigId, ct);
         if (office is null || !office.IsActive)
@@ -1785,18 +1792,57 @@ public sealed class AipService : IAipService
         LdipRecord? sourceRecord = (await _ldipRepo.GetListAsync(null, null, ct))
             .FirstOrDefault(r => r.Id == groups[0].LdipRecordId);
 
+        // ── Which of these are already in the AIP ────────────────────────────
+        //
+        // ⚠️ **The same rule AddProgramsWithGroupAsync refuses on, resolved the same way.** That
+        // method finds the target AipOffice by the `(RefCode, Name)` pair and intersects ref codes
+        // within THAT GROUP ONLY — never across the office — because two sub-office blocks under one
+        // office are separate rows on the AIP form and may each legitimately carry the same LDIP
+        // program. Reading it any other way reopens the divergence this whole method exists to close:
+        // stricter here and the picker hides a program the write path would have taken; looser and it
+        // offers one the write path refuses, which is the bug being fixed.
+        IReadOnlyList<AipOffice> existingGroups = await _aipRepo.GetOfficesByAipIdAsync(record.Id, ct);
+
+        AipOffice? TargetFor(LdipOffice g) => existingGroups.FirstOrDefault(o =>
+            o.RefCode == g.RefCode && string.Equals(o.Name, g.Name, StringComparison.OrdinalIgnoreCase));
+
+        // One query for every matched group, not one per group — an office with four sub-office
+        // blocks would otherwise make four round trips to answer one question
+        // (`docs/PERFORMANCE_GUIDELINES.md`).
+        List<int> targetIds = groups
+            .Select(TargetFor)
+            .Where(o => o is not null)
+            .Select(o => o!.Id)
+            .Distinct()
+            .ToList();
+        ILookup<int, string> takenByGroup =
+            (await _aipRepo.GetProgramsByOfficeIdsAsync(targetIds, ct))
+                .ToLookup(p => p.OfficeId, p => p.RefCode);
+
         return ServiceResult<AipAddableProgramsDto>.Ok(new AipAddableProgramsDto(
             sourceRecord?.RefCode,
             sourceRecord?.Title,
             IsSharedLdip: sourceRecord?.OfficeId is null,
-            groups.Select(g => new AipAddableGroupDto(
-                g.RefCode,
-                g.Name,
-                g.Programs
-                    .OrderBy(p => p.RefCode, StringComparer.Ordinal)
-                    .Select(p => new AipAddableProgramDto(p.Id, p.RefCode, p.Name))
-                    .ToList()))
-                .ToList()));
+            groups.Select(g =>
+            {
+                AipOffice? target = TargetFor(g);
+                HashSet<string> taken = target is null
+                    ? []
+                    : takenByGroup[target.Id].ToHashSet(StringComparer.Ordinal);
+
+                return new AipAddableGroupDto(
+                    g.RefCode,
+                    g.Name,
+                    g.Programs
+                        .OrderBy(p => p.RefCode, StringComparer.Ordinal)
+                        // ⚠️ FLAGGED, not removed. A program that vanished from its own LDIP group
+                        // reads as missing data, and the encoder goes and checks the LDIP — the exact
+                        // failure the division-filter notice on the entry page exists to prevent. The
+                        // closed list stays whole; the ones already in are shown as such.
+                        .Select(p => new AipAddableProgramDto(
+                            p.Id, p.RefCode, p.Name, AlreadyAdded: taken.Contains(p.RefCode)))
+                        .ToList());
+            }).ToList()));
     }
 
     // ── Sub-office group + programs, in one call (V18-42 / PPDO-52) ──────────
