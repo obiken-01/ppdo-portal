@@ -5,9 +5,8 @@
  *
  * Header, a reserved **Project details** section, then the project's activities and + Add activity.
  *
- * ⚠️ The delete control is the one PPDO-88 shipped, moved here from the tree it was an interim
- * home for. PPDO-91 owns its final copy and the renumber notice; carrying it across rather than
- * dropping it keeps a capability the office already has.
+ * ⚠️ The delete control shipped as an interim in PPDO-88, moved here by PPDO-89, and got its final
+ * copy — the counts, the conditional renumber sentence, disabled-with-reason — in PPDO-91.
  */
 
 import { useMemo } from "react";
@@ -24,12 +23,14 @@ import {
 } from "./AipEntryPanelParts";
 
 export default function AipProjectPanel({
-  project, canEdit, lockedReason, defaultImplementingOffice, unresolvedCount,
+  project, canEdit, lockedReason, isLastSibling, defaultImplementingOffice, unresolvedCount,
   onSelectActivity, onActivityAdded, onDeleted,
 }: {
   project: AipProjectDetail;
   canEdit: boolean;
   lockedReason: string;
+  /** Whether this is the last project in its program — omits the renumber sentence (spec §6). */
+  isLastSibling: boolean;
   /** The encoder's own office code, written onto a new activity at create (PPDO-80). */
   defaultImplementingOffice: string | null;
   unresolvedCount: (nodeType: AipCommentNodeType, nodeId: number) => number;
@@ -52,9 +53,12 @@ export default function AipProjectPanel({
           </div>
           <div className="flex flex-wrap items-center justify-end gap-x-6 gap-y-2">
             <AipFigureStrip amounts={amounts} />
-            {canEdit && (
-              <AipDeleteNodeButton target={{ kind: "Project", project }} onDeleted={onDeleted} />
-            )}
+            <AipDeleteNodeButton
+              target={{ kind: "Project", project, isLastSibling }}
+              canEdit={canEdit}
+              lockedReason={lockedReason}
+              onDeleted={onDeleted}
+            />
           </div>
         </div>
         <AipCommentAnchor nodeType="Project" nodeId={project.id} />

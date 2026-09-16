@@ -28,12 +28,16 @@ import { AipFigureStrip, AipFundPill, activityFundLabel } from "./AipRowFigures"
 import { AipPanel, AipPanelError } from "./AipEntryPanelParts";
 
 export default function AipActivityPanel({
-  activity, canEdit, accounts, funds, generalFundId, priceIndex, priceIndexLoading,
+  activity, canEdit, lockedReason, isLastSibling, accounts, funds, generalFundId, priceIndex, priceIndexLoading,
   defaultImplementingOffice, onTotals, onDetails, onDeleted,
   onChangeActivity, onChangeProject, onDone,
 }: {
   activity: AipActivityDetail;
   canEdit: boolean;
+  /** Who holds the work, when this office cannot edit — shown as the delete control's reason. */
+  lockedReason: string;
+  /** Whether this is the last activity in its project — omits the renumber sentence (spec §6). */
+  isLastSibling: boolean;
   accounts: AccountResponse[];
   funds: FundingSourceResponse[];
   generalFundId: number | null;
@@ -87,9 +91,12 @@ export default function AipActivityPanel({
           </div>
           <div className="flex flex-wrap items-center justify-end gap-x-6 gap-y-2">
             <AipFigureStrip amounts={activity} />
-            {canEdit && (
-              <AipDeleteNodeButton target={{ kind: "Activity", activity }} onDeleted={onDeleted} />
-            )}
+            <AipDeleteNodeButton
+              target={{ kind: "Activity", activity, isLastSibling }}
+              canEdit={canEdit}
+              lockedReason={lockedReason}
+              onDeleted={onDeleted}
+            />
           </div>
         </div>
         <AipCommentAnchor nodeType="Activity" nodeId={activity.id} />
