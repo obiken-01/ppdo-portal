@@ -39,6 +39,30 @@ export function patchActivity(
 }
 
 /**
+ * Replaces one project in the tree, immutably, merging `patch` over it (PPDO-99).
+ *
+ * ⚠️ `patch` never carries `activities`. The update endpoint returns the project without them by
+ * convention, so spreading the response wholesale would empty the project the encoder is standing
+ * in — the caller passes only the fields it edited.
+ */
+export function patchProject(
+  record: AipRecordDetail, projectId: number, patch: Partial<Omit<AipProjectDetail, "activities">>
+): AipRecordDetail {
+  return {
+    ...record,
+    offices: record.offices.map((office) => ({
+      ...office,
+      programs: office.programs.map((program) => ({
+        ...program,
+        projects: program.projects.map((project) =>
+          project.id === projectId ? { ...project, ...patch } : project
+        ),
+      })),
+    })),
+  };
+}
+
+/**
  * Appends a newly created project to its program, immutably.
  *
  * ⚠️ `addAipProject` returns the created node carrying its own `programId`, so the tree can absorb

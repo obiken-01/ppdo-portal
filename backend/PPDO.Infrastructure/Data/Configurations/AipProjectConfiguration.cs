@@ -26,6 +26,15 @@ public sealed class AipProjectConfiguration : IEntityTypeConfiguration<AipProjec
             .HasColumnName("name")
             .IsRequired();  // nvarchar(max) — AIP names are unbounded free-text
 
+        // ⚠️ nvarchar(max) and nullable, matching Name's reasoning (PPDO-99): these are free text an
+        // encoder writes for a separate report, and a length cap here would truncate at save with
+        // nothing on screen having said so.
+        builder.Property(p => p.Description)
+            .HasColumnName("description");
+
+        builder.Property(p => p.Objective)
+            .HasColumnName("objective");
+
         builder.Property(p => p.IsSynthetic)
             .HasColumnName("is_synthetic")
             .IsRequired()

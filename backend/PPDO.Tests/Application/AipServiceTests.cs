@@ -3028,6 +3028,45 @@ public sealed partial class AipServiceTests
         Assert.Equal("New Project Name", result.Value!.Name);
     }
 
+    /// <summary>PPDO-99 — description and objective save, and blank collapses to null.</summary>
+    [Fact]
+    public async Task UpdateProject_WithDetails_SavesThemAndCollapsesBlankToNull()
+    {
+        var (rec, offices, programs, projects, activities) = SeedDeleteTree();
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
+
+        ServiceResult<AipProjectDto> result = await sut.UpdateProjectAsync(
+            40, new UpdateAipProjectDto("Name", "  Farm-to-market roads  ", "   "), HostCaller());
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Farm-to-market roads", result.Value!.Description);
+        // ⚠️ Whitespace-only is null, not "   " — "cleared" and "never filled in" have to be one
+        // state, or they read identically on screen and differently in a query.
+        Assert.Null(result.Value.Objective);
+    }
+
+    /// <summary>
+    /// ⚠️ PPDO-99 — the endpoint is a FULL REPLACE. A caller that omits the two detail fields clears
+    /// them. Pinned because it is the trap in this DTO: both fields are optional parameters, so
+    /// forgetting them compiles and silently wipes an encoder's text.
+    /// </summary>
+    [Fact]
+    public async Task UpdateProject_OmittingDetails_ClearsThem()
+    {
+        var (rec, offices, programs, projects, activities) = SeedDeleteTree();
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
+
+        await sut.UpdateProjectAsync(40, new UpdateAipProjectDto("Name", "Set", "Also set"), HostCaller());
+        ServiceResult<AipProjectDto> result =
+            await sut.UpdateProjectAsync(40, new UpdateAipProjectDto("Name"), HostCaller());
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Value!.Description);
+        Assert.Null(result.Value.Objective);
+    }
+
     [Fact]
     public async Task UpdateProject_EmptyName_ReturnsBadRequest()
     {

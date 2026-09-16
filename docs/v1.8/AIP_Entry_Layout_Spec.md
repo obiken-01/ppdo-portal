@@ -30,8 +30,9 @@ the **delete Project / delete Activity** capability decided at the same meeting.
      a compact list of its projects (ref segment · name · total · unresolved-comment count), each row
      selecting that project, plus **+ Add project**.
    - Project selected → **Project panel**: header (name, figure strip, comment anchor, **Delete
-     project**), a reserved **Project details** section (empty until the new Project fields are
-     specified — see §7), and a compact list of its activities with **+ Add activity**.
+     project**), a **Project details** section (↩️ reserved and empty until PPDO-99 filled it with
+     title, description and objective — see §7), and a compact list of its activities with
+     **+ Add activity**.
    - Activity selected → **Activity panel**: header (name, fund pill, figure strip, comment anchor,
      **Delete activity**), then the existing `AipActivityFields` and `AipExpenditureTable`
      **unchanged**, and a footer — **Change activity · Change project · Done** — as on WFP.
@@ -93,8 +94,10 @@ the **delete Project / delete Activity** capability decided at the same meeting.
   whole-office decisions and a reviewer has to be able to satisfy themselves they have seen all of
   it. Specified in [AIP_Review_Layout_Spec.md](AIP_Review_Layout_Spec.md); nothing in *this* spec
   changes, and the review screen was untouched by PPDO-89.
-- **The new Project fields** — field list and the report that uses them are pending. Decision 3
-  reserves the section; it is a separate spec.
+- ~~**The new Project fields**~~ ✅ **Answered 2026-09-16 — PPDO-99.** The list is **title (exists),
+  description, objective**. All optional, and **not printed on Annex B**: they feed a separate report
+  the PDC has not named yet, and the form's columns are the province's. The reserved section is now
+  the form. ⚠️ `PUT …/aip/projects/{id}` is a **full replace** — an omitted `description` clears it.
 
 ## 3. Behaviour
 
@@ -260,7 +263,9 @@ sentence, and a project delete taking its activities' costing in one confirm.
 ## 7. Non-goals
 
 - **AIP Review one-office screen** — unchanged pending Ralph's question (§2 follow-ups).
-- **The new Project fields** — the Project panel reserves a section; no columns, no form.
+- ~~**The new Project fields**~~ ↩️ **Built — PPDO-99.** Two nullable columns on `aip_projects`
+  (`description`, `objective`) and the form in the reserved section. Still a non-goal: **putting
+  either on Annex B**, and the unnamed report that consumes them.
 - **Program delete in the UI** — programs are the LDIP's closed list; the endpoint's ledger/comment fix
   ships, but nothing on this page offers it. Deleting a program still leaves a numbering gap, by design.
 - **Soft delete / undo / restore** — decision 8.
@@ -270,7 +275,10 @@ sentence, and a project delete taking its activities' costing in one confirm.
 
 ## 8. Deployment notes
 
-- Migrations: **none.**
+- Migrations: ↩️ **one, added by PPDO-99** — `AddAipProjectDetails`, two nullable `nvarchar(max)`
+  columns on `aip_projects`. Additive only: no data is rewritten and the `Down` drops both.
+  ⚠️ **CI does not run migrations** — `dotnet ef database update` against Azure SQL is a manual
+  release step. The drill-down and delete work in this spec still need none.
 - Dependencies / config: none.
 - The delete fix is independently valuable (today's deletes can 500). If the layout slips, ship E1 alone.
 

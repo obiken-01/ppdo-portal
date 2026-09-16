@@ -82,6 +82,8 @@ public sealed class AipExpenditureRepositoryTests : IDisposable
                 program_id INTEGER NOT NULL,
                 ref_code TEXT NOT NULL DEFAULT '',
                 name TEXT NOT NULL DEFAULT '',
+                description TEXT NULL,
+                objective TEXT NULL,
                 is_synthetic INTEGER NOT NULL DEFAULT 0
             );
             CREATE TABLE aip_activities (

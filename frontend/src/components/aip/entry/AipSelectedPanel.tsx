@@ -34,7 +34,7 @@ import {
 export default function AipSelectedPanel({
   selection, canEdit, holder, accounts, funds, generalFundId, priceIndex, priceIndexLoading,
   defaultImplementingOffice, onSelect, onChangeActivity, onProjectAdded, onActivityAdded,
-  onDeleted, onActivityTotals, onActivityDetails,
+  onDeleted, onProjectUpdated, onActivityTotals, onActivityDetails,
 }: {
   selection: AipResolvedSelection | null;
   canEdit: boolean;
@@ -50,6 +50,9 @@ export default function AipSelectedPanel({
   onProjectAdded: (project: AipProjectDetail) => void;
   onActivityAdded: (activity: AipActivityDetail) => void;
   onDeleted: (result: AipDeleteResult) => void;
+  onProjectUpdated: (
+    patch: Pick<AipProjectDetail, "id" | "name" | "description" | "objective">
+  ) => void;
   onActivityTotals: (result: AipExpenditureWriteResult) => void;
   onActivityDetails: (updated: AipActivityDetail) => void;
 }) {
@@ -112,6 +115,7 @@ export default function AipSelectedPanel({
         }
         onActivityAdded={onActivityAdded}
         onDeleted={onDeleted}
+        onUpdated={onProjectUpdated}
       />
     );
   }
