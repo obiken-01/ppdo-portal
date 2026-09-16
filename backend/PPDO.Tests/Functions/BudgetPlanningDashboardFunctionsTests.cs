@@ -391,7 +391,7 @@ public sealed class BudgetPlanningDashboardFunctionsTests
         _service.Reset();
         Authenticate(MakeUser(OwnOffice));
         ExpectOffices(ServiceResult<IReadOnlyList<OfficeSummaryDto>>.Forbidden(
-            "You do not have access to Budget Planning."));
+            "You do not have access to Investment Planning."));
         HttpResponseData noScope = await Sut.GetDashboardOffices(
             OfficesRequest($"fiscalYear={FiscalYear}"), CancellationToken.None);
 

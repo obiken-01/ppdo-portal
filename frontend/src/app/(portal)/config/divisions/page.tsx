@@ -65,7 +65,7 @@ import LandingPageSelect from "@/components/ui/LandingPageSelect";
 // ---------------------------------------------------------------------------
 
 const FLAG_FIELDS: { key: keyof UpsertDivisionRequest & `can${string}`; label: string }[] = [
-  { key: "canAccessBudgetPlanning", label: "Budget Planning" },
+  { key: "canAccessBudgetPlanning", label: "Investment Planning" },
   { key: "canAccessInventory",      label: "Inventory" },
   { key: "canAccessReports",        label: "Reports" },
   { key: "canManageConfig",         label: "Manage Config" },

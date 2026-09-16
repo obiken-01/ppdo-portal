@@ -460,7 +460,7 @@ export default function AccountConfigPage() {
         {/* Header */}
         <ConfigPageHeader
           title="Chart of Accounts"
-          description="Expense accounts (PS / MOOE / CO) used across AIP and WFP budget planning."
+          description="Expense accounts (PS / MOOE / CO) used across AIP and WFP investment planning."
           actions={
             <>
               <CsvDownloadButton

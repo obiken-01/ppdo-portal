@@ -36,7 +36,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: SITE_NAME,
     short_name: "PPDO Portal",
     description:
-      "Portal of the Provincial Planning and Development Office, Occidental Mindoro — budget planning, inventory monitoring, and office resources.",
+      "Portal of the Provincial Planning and Development Office, Occidental Mindoro — investment planning, inventory monitoring, and office resources.",
     start_url: "/home",
     scope: "/",
     display: "standalone",

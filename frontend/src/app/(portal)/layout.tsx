@@ -43,7 +43,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/home":          "Opening…",   // transient — /home redirects on mount (RAL-264)
   "/dashboard":     "Main Dashboard",
   "/inventory":     "Inventory",
-  "/budget-planning":       "Budget Planning",
+  "/budget-planning":       "Investment Planning",
   "/config":                "Configuration",
   "/resource-links":        "Resource Links",
   "/profile":               "My Account",  // transient — /profile redirects to /account (RAL-252)

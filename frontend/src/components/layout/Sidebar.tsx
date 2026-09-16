@@ -374,7 +374,7 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
               }`}
             >
               <span className="text-base leading-none w-5 text-center">💰</span>
-              <span className="flex-1 text-left truncate">Budget Planning</span>
+              <span className="flex-1 text-left truncate">Investment Planning</span>
               <span className={`text-base leading-none transition-transform duration-200 ${budgetPlanningOpen ? "rotate-90" : ""}`}>
                 ›
               </span>

@@ -26,7 +26,7 @@ public sealed class BudgetPlanningDashboardFunctions
     /// The one 403 message the offices endpoint gives, whichever half of its gate failed
     /// (PPDO-20). Must stay identical to the string <c>GetOfficesAsync</c> returns.
     /// </summary>
-    private const string NoBudgetPlanningAccess = "You do not have access to Budget Planning.";
+    private const string NoBudgetPlanningAccess = "You do not have access to Investment Planning.";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {

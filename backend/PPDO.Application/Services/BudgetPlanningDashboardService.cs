@@ -345,7 +345,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
             // Forbidden, not an empty list — an empty list reads as "no offices exist", and a
             // caller scoped to a single office has GetOfficeDashboardAsync to call instead.
             return ServiceResult<IReadOnlyList<OfficeSummaryDto>>.Forbidden(
-                "You do not have access to Budget Planning.");
+                "You do not have access to Investment Planning.");
 
         List<Office> offices = (await _officeRepo.GetAllAsync(ct))
             .Where(o => o.IsActive && scope.Permits(o.Id))

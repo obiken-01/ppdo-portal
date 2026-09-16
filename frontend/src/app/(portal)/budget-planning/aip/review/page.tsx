@@ -508,7 +508,7 @@ function EmptyState({ title, body }: { title: string; body: string }) {
       <h2 className="text-sm font-semibold text-slate-800">{title}</h2>
       <p className="mx-auto mt-2 max-w-xl text-sm text-slate-600">{body}</p>
       <p className="mt-4 text-xs text-slate-600">
-        <Link href="/budget-planning" className="underline">Back to Budget Planning</Link>
+        <Link href="/budget-planning" className="underline">Back to Investment Planning</Link>
       </p>
     </div>
   );

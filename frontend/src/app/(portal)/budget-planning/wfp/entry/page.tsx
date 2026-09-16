@@ -1470,7 +1470,7 @@ function WfpEntryPageInner() {
         </p>
       ) : !setupComplete ? (
         <div className="px-4 py-3 bg-amber-50 border border-amber-300 text-amber-800 text-sm">
-          Allocation setup is incomplete for this division. Go to Budget Planning → Allocation
+          Allocation setup is incomplete for this division. Go to Investment Planning → Allocation
           first.
         </div>
       ) : loading ? (

@@ -74,7 +74,7 @@ const SECTIONS: Section[] = [
   },
   {
     root: "/budget-planning",
-    rootLabel: "Budget Planning",
+    rootLabel: "Investment Planning",
     crumbs: [
       // Longer prefixes must come before shorter ones so matchesPrefix picks the right crumb.
       { prefix: "/budget-planning/aip/import-preview", label: "Import Preview", parent: { label: "AIP", href: "/budget-planning/aip" } },
