@@ -98,6 +98,44 @@ export function canOpenAipOfficeReview(me: MeResponse): boolean {
 }
 
 /**
+ * The **AIP (Annex B) report type** on `/budget-planning/report` — either reviewer (PPDO-92).
+ *
+ * ↩️ **This replaces `canOpenAipOfficeReview` on the old Consolidated AIP page**, which was the
+ * cross-office grant alone. The report widened with its endpoint (PPDO-90): a department head reads
+ * their OWN office's Annex B here, in any workflow state, because the point is seeing the document as
+ * it will print before sending it on. The server pins them to their own office, so offering the type
+ * offers nothing they could not already read.
+ *
+ * ⚠️ **Same rule as `canOpenAipReview`, and that is not a copy-paste slip** — the search and this
+ * report are the two surfaces both reviewers share. The one-office *review screen* stays narrower
+ * (`canOpenAipOfficeReview`), because Return and Accept live there.
+ */
+export function canOpenAipReport(me: MeResponse): boolean {
+  return me.canAccessBudgetPlanning && (me.canReviewAllOffices || me.canReviewBudgetPlanning);
+}
+
+/**
+ * The **WFP and PPMP report types** — host office (PPDO) only.
+ *
+ * ⚠️ Both read the WFP, which is permanently PPDO-scoped (PPDO-20): a guest office has no WFP to
+ * report on, so offering them the type would produce an empty office picker and a dead end.
+ */
+export function canOpenWfpReport(me: MeResponse): boolean {
+  return me.canAccessBudgetPlanning && me.isHostOffice;
+}
+
+/**
+ * The **Report page** itself — anyone with at least one report type.
+ *
+ * ⚠️ Derived from the two rules above rather than stated again, so the page and the sidebar cannot
+ * come to disagree about who has something to read there. A reader with no allowed type would land
+ * on a page whose every selector was empty.
+ */
+export function canOpenBudgetPlanningReport(me: MeResponse): boolean {
+  return canOpenWfpReport(me) || canOpenAipReport(me);
+}
+
+/**
  * Where to send somebody who reached one of the above without the grant.
  *
  * The Budget Planning hub, which anyone holding `canAccessBudgetPlanning` can open — it names the

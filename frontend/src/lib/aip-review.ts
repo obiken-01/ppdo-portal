@@ -32,11 +32,16 @@ function unwrap<T>(body: ApiResponse<T>): T {
  * ⚠️ **A refusal arrives as a Blob**, since the request asked for one. Its JSON envelope is parsed
  * back onto the error so `aipErrorMessage` shows the server's sentence rather than the fallback.
  */
-export async function downloadAipConsolidatedExcel(fiscalYear: number): Promise<void> {
+export async function downloadAipConsolidatedExcel(
+  fiscalYear: number,
+  // ⚠️ Omitted, never sent as null (PPDO-90): the server reads "absent" as the consolidated scope,
+  // and a department head's value is ignored in favour of their own office either way.
+  officeId?: number | null
+): Promise<void> {
   let response;
   try {
     response = await api.get<Blob>("/budget-planning/aip/consolidated/export", {
-      params: { fiscalYear },
+      params: officeId == null ? { fiscalYear } : { fiscalYear, officeId },
       responseType: "blob",
     });
   } catch (err) {
@@ -70,11 +75,13 @@ export async function downloadAipConsolidatedExcel(fiscalYear: number): Promise<
  */
 export async function getAipConsolidated(
   fiscalYear: number,
-  sector: string
+  sector: string,
+  /** One office instead of every submitted one (PPDO-90). Omitted, not null — see the export. */
+  officeId?: number | null
 ): Promise<AipConsolidatedSheet> {
   const { data } = await api.get<ApiResponse<AipConsolidatedSheet>>(
     "/budget-planning/aip/consolidated",
-    { params: { fiscalYear, sector } }
+    { params: officeId == null ? { fiscalYear, sector } : { fiscalYear, sector, officeId } }
   );
   return unwrap(data);
 }
