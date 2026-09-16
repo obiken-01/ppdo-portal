@@ -55,6 +55,16 @@ have already flipped are not flipped back.
 4. **One funding source per expenditure line**, with multi-fund expressed as several lines
    (Phase 2 decision 4). The UI defaults to single (whiteboard W8) — the toggle exists so the
    multi-fund case is *possible*, not so every encoder meets it.
+   ↩️ **An activity with no lines yet is asked instead of defaulted** (PPDO-97, from the 2026-09-15
+   demo): a Yes/No pair with no preselection, and **+ Add Account is withheld until it is answered**,
+   because the answer decides whether the fund is set once for the activity or per line. W8 still
+   holds for what the answer usually *is* — not for making it silently. An activity that already has
+   lines is never asked; its lines are the answer.
+   ↩️ **The account's expense class now closes the other two money columns** (same ticket). It was
+   deliberately advisory on a typed line; an account is PS, MOOE or CO, so the freedom to type into
+   all three was only ever exercised by mistake. A blank or unrecognised class still leaves all three
+   open, and a line stored before this rule keeps its out-of-class figure — visible and disabled —
+   until its account is changed.
 
 5. **The ceiling is validated at submit, never during entry** (DECISION C). Over-ceiling encoding
    is allowed and expected. V18-49's checklist *is* the ceiling gate; built as a dismissible

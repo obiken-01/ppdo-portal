@@ -12,6 +12,8 @@
  *
  * ⚠️ **Default single** (whiteboard W8). The toggle exists so the multi-fund case is *possible*,
  * not so every encoder meets it. Most activities draw on one fund and should stay one field.
+ * ↩️ **Since PPDO-97 a new activity has no default at all** — it is asked, and + Add Account waits
+ * for the answer. W8's point stands for what the answer usually *is*, not for making it silently.
  *
  * ⚠️ **Amounts are typed in PESOS and shown in ₱000.** The inputs post exactly what was typed;
  * only the saved cells divide. Each input carries a live `= x ₱000` echo, because an input and
@@ -69,11 +71,13 @@ const accountSearch = (a: AccountResponse) => `${a.accountNumber} ${a.accountTit
 /**
  * Where this account's money goes, said out loud (PPDO-58 follow-up).
  *
- * ⚠️ **The wording differs by whether the line is itemised, because the account's authority does.**
- * On an itemised line the class is *determinative* — the server routes Σ line-total into that one
- * column and zeroes the other two. On a typed line the encoder still fills all three columns by
- * hand, so the class is only *advisory*. Saying "goes to MOOE" on a typed line would be a claim the
- * form does not enforce, and an encoder who believed it would stop checking which box they were in.
+ * ⚠️ **The wording differs by whether the line is itemised**, because what happens to the figure
+ * does. On an itemised line the server routes Σ line-total into the class's column and zeroes the
+ * other two; on a typed line the encoder puts the figure there themselves.
+ *
+ * ↩️ **The class is no longer merely advisory on a typed line** (PPDO-97). It used to be — the form
+ * let all three columns be filled by hand, and this note refused to claim otherwise. `allowedColumns`
+ * now closes the two columns the class excludes, so naming the open one is a claim the form keeps.
  */
 function ExpenseClassNote({ expenseClass, itemised }: { expenseClass?: string; itemised: boolean }) {
   const known = expenseClass?.trim().toUpperCase();
@@ -89,7 +93,7 @@ function ExpenseClassNote({ expenseClass, itemised }: { expenseClass?: string; i
       <span className="rounded-full bg-green-100 px-1.5 py-0.5 font-semibold text-green-800">
         {known}
       </span>
-      {itemised ? "← items total goes here" : "account class"}
+      {itemised ? "← items total goes here" : "← the only open column"}
     </span>
   );
 }
@@ -126,6 +130,47 @@ function routedPreview(
 
 const itemsTotal = (items: SaveAipProcurementItemRequest[]) =>
   items.reduce((sum, i) => sum + i.qty * i.unitPrice * i.numberOfDays, 0);
+
+/**
+ * Which of the three money columns the account's class lets the encoder type into (PPDO-97).
+ *
+ * ⚠️ **This narrows `ExpenseClassNote`'s "advisory on a typed line".** On an itemised line the class
+ * has always been determinative — `routedPreview` puts the items' total in one column and zeroes the
+ * other two. The 2026-09-15 demo asked for the typed line to follow the same rule, and it should:
+ * an account *is* PS, MOOE or CO, so a PS account carrying a MOOE figure was never a case anyone
+ * needed, only one the form allowed by accident.
+ *
+ * An unrecognised or blank class leaves all three open — the same fallback `routedPreview` takes,
+ * and the only honest answer when the config does not say which column is right.
+ */
+function allowedColumns(expenseClass: string | undefined): { ps: boolean; mooe: boolean; co: boolean } {
+  switch (expenseClass?.trim().toUpperCase()) {
+    case "PS":   return { ps: true,  mooe: false, co: false };
+    case "MOOE": return { ps: false, mooe: true,  co: false };
+    case "CO":   return { ps: false, mooe: false, co: true  };
+    default:     return { ps: true,  mooe: true,  co: true  };
+  }
+}
+
+/**
+ * Put an account on the draft, clearing any amount its class does not allow (PPDO-97).
+ *
+ * ⚠️ **Cleared on an explicit account change, never on load.** Changing the account is the encoder
+ * saying "this line is PS now", so the other two columns emptying in front of them is honest and the
+ * total updates before they save. Rewriting a stored amount just because a row was opened for
+ * editing would change money nobody touched — a line whose figures sit outside its class keeps them,
+ * disabled and visible, until the account itself is changed.
+ */
+function withAccount(draft: Draft, accountId: number | null, accounts: AccountResponse[]): Draft {
+  const allowed = allowedColumns(accounts.find((a) => a.id === accountId)?.expenseClass);
+  return {
+    ...draft,
+    accountId: accountId == null ? "" : String(accountId),
+    ps:   allowed.ps   ? draft.ps   : null,
+    mooe: allowed.mooe ? draft.mooe : null,
+    co:   allowed.co   ? draft.co   : null,
+  };
+}
 
 /**
  * A saved line's procurement items, read-only (V18-80).
@@ -208,7 +253,16 @@ export default function AipExpenditureTable({
   // ⚠️ The mode is DERIVED from the data on first render, not defaulted blindly to single. An
   // activity whose lines already span two funds cannot be shown as single-fund: the one field
   // would have to pick a winner and would misrepresent every other line.
-  const [multiFund, setMultiFund] = useState(() => funds.length > 1);
+  //
+  // ⚠️ **`null` means the question has not been answered yet** (PPDO-97). On an activity with no
+  // lines the 2026-09-15 demo asked for the single/multi question to be *put* to the encoder, with
+  // **+ Add Account withheld until it is answered** — a silent default is a decision the form made
+  // and nobody read. An activity that already has lines is never asked: its lines are the answer.
+  const [multiFund, setMultiFund] = useState<boolean | null>(
+    () => (lines.length === 0 ? null : funds.length > 1),
+  );
+  /** The answered-yes case, for everything that renders a per-line Fund column. */
+  const multi = multiFund === true;
 
   // Single-fund mode's one field. Empty when the lines disagree or there are none yet.
   const [activityFund, setActivityFund] = useState<string>(
@@ -362,10 +416,13 @@ export default function AipExpenditureTable({
         <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-800">
           Expenditures <span className="font-normal text-slate-600">(in thousand pesos)</span>
         </h4>
-        {canEdit && !editing && (
+        {/* ⚠️ Withheld until the fund question is answered (PPDO-97) — what the encoder answers
+            decides whether the fund belongs to the activity or to each account line, so offering
+            the link first invites a line that has to be revisited. */}
+        {canEdit && !editing && multiFund !== null && (
           <button type="button" onClick={() => { setAdding(true); setDraft(EMPTY); }}
             className="text-xs font-medium text-green-700 hover:underline">
-            + Add line
+            + Add Account
           </button>
         )}
       </div>
@@ -373,21 +430,32 @@ export default function AipExpenditureTable({
       {/* ── Fund mode ────────────────────────────────────────────────────── */}
       {canEdit && (
         <div className="mt-2 flex flex-wrap items-center gap-3">
-          <label className="flex items-center gap-2 text-xs text-slate-600">
-            <input type="checkbox" checked={multiFund} disabled={lockedToMulti || busy}
-              onChange={(e) => setMultiFund(e.target.checked)} />
-            This activity draws on several funds
-          </label>
+          {/* ⚠️ Radios, not the old checkbox: an unticked checkbox cannot say "not answered", which
+              is exactly the state a new activity is in. */}
+          <fieldset className="flex flex-wrap items-center gap-3">
+            <legend className="sr-only">Funding mode</legend>
+            <span className="text-xs text-slate-800">Does this activity draw on more than one fund?</span>
+            <label className="flex items-center gap-1.5 text-xs text-slate-600">
+              <input type="radio" name={`aip-fund-mode-${activityId}`} checked={multiFund === false}
+                disabled={lockedToMulti || busy} onChange={() => setMultiFund(false)} />
+              No — one fund
+            </label>
+            <label className="flex items-center gap-1.5 text-xs text-slate-600">
+              <input type="radio" name={`aip-fund-mode-${activityId}`} checked={multi}
+                disabled={busy} onChange={() => setMultiFund(true)} />
+              Yes — several funds
+            </label>
+          </fieldset>
 
           {lockedToMulti && (
             // ⚠️ Explains rather than silently disabling. Switching back would have to rewrite
-            // every line's fund, and the encoder cannot tell that from a greyed checkbox.
+            // every line's fund, and the encoder cannot tell that from a greyed control.
             <span className="text-xs text-slate-600">
               — its lines already use {funds.length} funds, so single-fund entry is not available
             </span>
           )}
 
-          {!multiFund && (
+          {multiFund === false && (
             <label className="flex items-center gap-2 text-xs text-slate-600">
               Funding source
               <Lookup
@@ -405,6 +473,21 @@ export default function AipExpenditureTable({
             </label>
           )}
         </div>
+      )}
+
+      {/* The reason the Add Account link is not there yet, said where the link would be. */}
+      {canEdit && multiFund === null && (
+        <p className="mt-1 text-xs text-slate-600">
+          Answer this to start adding accounts — it decides whether the fund is set once for the
+          activity or chosen on every line.
+        </p>
+      )}
+
+      {/* Under the field it is about, not on the line the encoder is trying to save. */}
+      {canEdit && multiFund === false && !activityFund && (
+        <p className="mt-1 text-xs text-red-700">
+          Pick the activity&apos;s funding source before adding an account.
+        </p>
       )}
 
       {error && (
@@ -440,7 +523,7 @@ export default function AipExpenditureTable({
           */}
           <colgroup>
             <col />
-            {multiFund && <col className="w-[10%]" />}
+            {multi && <col className="w-[10%]" />}
             <col className="w-[15%]" />
             <col className="w-[15%]" />
             <col className="w-[15%]" />
@@ -452,7 +535,7 @@ export default function AipExpenditureTable({
               <th className="py-1 font-medium">Account</th>
               {/* The fund column exists only in multi-fund mode — in single mode it would repeat
                   the same value down every row. */}
-              {multiFund && <th className="py-1 font-medium">Fund</th>}
+              {multi && <th className="py-1 font-medium">Fund</th>}
               <th className="py-1 text-right font-medium">PS</th>
               <th className="py-1 text-right font-medium">MOOE</th>
               <th className="py-1 text-right font-medium">CO</th>
@@ -465,7 +548,7 @@ export default function AipExpenditureTable({
               editingId === line.id ? (
                 <EditRow key={line.id} draft={draft} setDraft={setDraft} accounts={accounts}
                   fundingSources={fundingSources} generalFundId={generalFundId}
-                  showFund={multiFund} busy={busy}
+                  showFund={multi} activityFundMissing={multiFund === false && !activityFund} busy={busy}
                   priceIndex={priceIndex} priceIndexLoading={priceIndexLoading}
                   siblingItems={siblingItemsOf(line.id)}
                   onSave={() => save(line.id)} onCancel={() => setEditingId(null)} />
@@ -492,7 +575,7 @@ export default function AipExpenditureTable({
                       </button>
                     )}
                   </td>
-                  {multiFund && <td className="py-1.5 text-slate-600">{line.fundingSourceCode ?? "—"}</td>}
+                  {multi && <td className="py-1.5 text-slate-600">{line.fundingSourceCode ?? "—"}</td>}
                   <td className="py-1.5 text-right tabular-nums text-slate-800">{fmtThousands(line.ps)}</td>
                   <td className="py-1.5 text-right tabular-nums text-slate-800">{fmtThousands(line.mooe)}</td>
                   <td className="py-1.5 text-right tabular-nums text-slate-800">{fmtThousands(line.co)}</td>
@@ -511,7 +594,7 @@ export default function AipExpenditureTable({
                 {expanded.has(line.id) && line.procurementItems.length > 0 && (
                   <ProcurementItemsReadOnly
                     items={line.procurementItems}
-                    columns={multiFund ? 7 : 6} />
+                    columns={multi ? 7 : 6} />
                 )}
                 </Fragment>
               )
@@ -519,7 +602,7 @@ export default function AipExpenditureTable({
             {adding && (
               <EditRow draft={draft} setDraft={setDraft} accounts={accounts}
                 fundingSources={fundingSources} generalFundId={generalFundId}
-                showFund={multiFund} busy={busy}
+                showFund={multi} activityFundMissing={multiFund === false && !activityFund} busy={busy}
                 priceIndex={priceIndex} priceIndexLoading={priceIndexLoading}
                 siblingItems={siblingItemsOf(null)}
                 onSave={() => save(null)} onCancel={() => setAdding(false)} />
@@ -532,7 +615,7 @@ export default function AipExpenditureTable({
 }
 
 function EditRow({
-  draft, setDraft, accounts, fundingSources, generalFundId, showFund, busy,
+  draft, setDraft, accounts, fundingSources, generalFundId, showFund, activityFundMissing, busy,
   priceIndex, priceIndexLoading, siblingItems, onSave, onCancel,
 }: {
   draft: Draft;
@@ -542,6 +625,8 @@ function EditRow({
   generalFundId: number | null;
   /** False in single-fund mode — the activity's own field supplies the fund. */
   showFund: boolean;
+  /** Single-fund mode with no fund chosen yet: blocks Save, but reports itself above the table. */
+  activityFundMissing: boolean;
   busy: boolean;
   priceIndex: PriceIndexPickerItem[];
   priceIndexLoading: boolean;
@@ -552,6 +637,26 @@ function EditRow({
   const itemised = draft.procurementItems.length > 0;
   const accountId = draft.accountId ? Number(draft.accountId) : null;
   const expenseClass = accounts.find((a) => a.id === accountId)?.expenseClass;
+  const allowed = allowedColumns(expenseClass);
+
+  /**
+   * What is still missing on this line (PPDO-97), each message under the field it is about.
+   *
+   * ⚠️ **Checked here, not only on the server.** The save already refuses an incomplete line, but it
+   * does so after a round trip and in one banner above the table — the encoder reads "could not save"
+   * and has to work out which of six fields it meant. Nothing here loosens the server's checks.
+   *
+   * An itemised line's amount comes from its items, so "enter an amount" is the wrong ask — the items
+   * having no cost is the real one.
+   */
+  const missingAccount = accountId === null ? "Pick an account." : null;
+  const missingFund = showFund && !draft.fundingSourceId ? "Pick a funding source." : null;
+  const missingAmount = itemised
+    ? (itemsTotal(draft.procurementItems) <= 0 ? "Cost at least one item." : null)
+    : ((draft.ps ?? 0) + (draft.mooe ?? 0) + (draft.co ?? 0) <= 0 ? "Enter an amount." : null);
+  // The activity's own fund lives above the table and reports itself there; here it only blocks.
+  const blockedReason = missingAccount ?? missingFund ?? missingAmount
+    ?? (activityFundMissing ? "Pick the activity's funding source first." : null);
 
   // ⚠️ Only consulted while itemised. An un-itemised line keeps the typed values untouched — the
   // whole pre-PPDO-54 path is unchanged.
@@ -583,7 +688,7 @@ function EditRow({
           <Lookup
             items={accounts}
             value={accountId}
-            onChange={(id) => setDraft({ ...draft, accountId: id == null ? "" : String(id) })}
+            onChange={(id) => setDraft(withAccount(draft, id, accounts))}
             getId={(a) => a.id}
             getLabel={accountLabel}
             getSearchText={accountSearch}
@@ -598,6 +703,7 @@ function EditRow({
               <ExpenseClassNote expenseClass={expenseClass} itemised={itemised} />
             </div>
           )}
+          {missingAccount && <p className="mt-1 text-[11px] text-red-700">{missingAccount}</p>}
         </td>
         {showFund && (
           <td className="py-1.5 pr-2 align-top">
@@ -613,6 +719,7 @@ function EditRow({
               placeholder="Search funds…"
               disabled={busy}
             />
+            {missingFund && <p className="mt-1 text-[11px] text-red-700">{missingFund}</p>}
           </td>
         )}
 
@@ -629,9 +736,12 @@ function EditRow({
             {/* ⚠️ `align-top`, matching the account cell. The account picker carries an expense-class
                 note under it, so a vertically-centred input would float half a line below the two
                 beside it whenever that note appeared. */}
-            <td className="py-1.5 pr-1 align-top"><AipMoneyInput value={draft.ps}   onChange={(v) => setDraft({ ...draft, ps: v })} /></td>
-            <td className="py-1.5 pr-1 align-top"><AipMoneyInput value={draft.mooe} onChange={(v) => setDraft({ ...draft, mooe: v })} /></td>
-            <td className="py-1.5 pr-1 align-top"><AipMoneyInput value={draft.co}   onChange={(v) => setDraft({ ...draft, co: v })} /></td>
+            {/* ⚠️ Disabled by the account's class, not hidden (PPDO-97). A line loaded from before
+                this rule can hold a figure in a column its class excludes; hiding the input would
+                hide that money, and the figure is still in the row's Total. */}
+            <td className="py-1.5 pr-1 align-top"><AipMoneyInput value={draft.ps}   disabled={!allowed.ps}   onChange={(v) => setDraft({ ...draft, ps: v })} /></td>
+            <td className="py-1.5 pr-1 align-top"><AipMoneyInput value={draft.mooe} disabled={!allowed.mooe} onChange={(v) => setDraft({ ...draft, mooe: v })} /></td>
+            <td className="py-1.5 pr-1 align-top"><AipMoneyInput value={draft.co}   disabled={!allowed.co}   onChange={(v) => setDraft({ ...draft, co: v })} /></td>
           </>
         )}
 
@@ -640,9 +750,13 @@ function EditRow({
               left, so it has to agree with them; the row reverts to thousands once saved. */}
           {fmtPesos(shown.ps + shown.mooe + shown.co)}
           <span className="mt-0.5 block text-[10px] leading-3 text-slate-600">pesos</span>
+          {missingAmount && <p className="mt-1 text-[11px] text-red-700">{missingAmount}</p>}
         </td>
         <td className="py-1.5 text-right align-top whitespace-nowrap">
-          <button type="button" onClick={onSave} disabled={busy}
+          {/* ⚠️ `title` carries the reason — a Save that is greyed out with the explanation three
+              cells away is a dead end, and the single-fund case's reason is not on this row at all. */}
+          <button type="button" onClick={onSave} disabled={busy || blockedReason !== null}
+            title={blockedReason ?? undefined}
             className="font-medium text-green-700 hover:underline disabled:opacity-50">Save</button>
           <button type="button" onClick={onCancel} disabled={busy}
             className="ml-2 text-slate-600 hover:underline disabled:opacity-50">Cancel</button>
