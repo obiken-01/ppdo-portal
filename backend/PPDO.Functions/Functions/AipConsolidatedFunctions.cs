@@ -36,7 +36,19 @@ public sealed class AipConsolidatedFunctions
         _permissions  = permissions;
     }
 
-    private Task<bool> CanReviewAllOffices(User u) => _permissions.CanReviewAllOfficesAsync(u);
+    /// <summary>
+    /// ↩️ **Either reviewer flag admits** since PPDO-90 — a department head reads their OWN office's
+    /// Annex B here. The handler no longer decides *which* offices: the service resolves the scope,
+    /// because getting it wrong (a host-office department head resolving to every office) is a data
+    /// leak, and that logic belongs where it can be unit-tested rather than in an HTTP handler.
+    /// </summary>
+    private async Task<bool> CanOpenReport(User u)
+        => await _permissions.CanReviewAllOfficesAsync(u)
+        || await _permissions.CanReviewBudgetPlanningAsync(u);
+
+    /// <summary>`officeId` is optional and, for a department head, ignored in favour of their own.</summary>
+    private static int? OfficeIdOf(NameValueCollection q)
+        => int.TryParse(q["officeId"], out int id) && id > 0 ? id : null;
 
     // ── GET /api/budget-planning/aip/consolidated?fiscalYear=&sector= ─────────
     //
@@ -52,7 +64,7 @@ public sealed class AipConsolidatedFunctions
         CancellationToken ct)
     {
         (User? caller, HttpResponseData? denied) =
-            await ConfigHttp.AuthorizeAsync(req, _jwt, CanReviewAllOffices, ct);
+            await ConfigHttp.AuthorizeAsync(req, _jwt, CanOpenReport, ct);
         if (denied is not null) return denied;
 
         NameValueCollection q = HttpUtility.ParseQueryString(req.Url.Query);
@@ -63,7 +75,7 @@ public sealed class AipConsolidatedFunctions
 
         // The sector is validated in the service, so the refusal names the four it accepts.
         return await ConfigHttp.FromResultAsync(req,
-            await _consolidated.GetSheetAsync(fiscalYear, q["sector"], caller!, ct), ct);
+            await _consolidated.GetSheetAsync(fiscalYear, q["sector"], OfficeIdOf(q), caller!, ct), ct);
     }
 
     // ── GET /api/budget-planning/aip/consolidated/export?fiscalYear= ──────────
@@ -80,7 +92,7 @@ public sealed class AipConsolidatedFunctions
         CancellationToken ct)
     {
         (User? caller, HttpResponseData? denied) =
-            await ConfigHttp.AuthorizeAsync(req, _jwt, CanReviewAllOffices, ct);
+            await ConfigHttp.AuthorizeAsync(req, _jwt, CanOpenReport, ct);
         if (denied is not null) return denied;
 
         NameValueCollection q = HttpUtility.ParseQueryString(req.Url.Query);
@@ -90,7 +102,7 @@ public sealed class AipConsolidatedFunctions
                 ApiResponse<AipFormExportFileDto>.Fail("fiscalYear is required."), ct);
 
         ServiceResult<AipFormExportFileDto> result =
-            await _consolidated.ExportWorkbookAsync(fiscalYear, caller!, ct);
+            await _consolidated.ExportWorkbookAsync(fiscalYear, OfficeIdOf(q), caller!, ct);
 
         // A refusal is an envelope the page can read, never a file.
         if (!result.IsSuccess)

@@ -35,6 +35,7 @@ public sealed class AipConsolidatedServiceTests
     private readonly Mock<IAipExpenditureRepository> _expRepo     = new();
     private readonly Mock<IPermissionService>        _permissions = new();
     private readonly Mock<IAipFormExcelService>      _excel       = new();
+    private readonly Mock<IOfficeRepository>         _officeRepo  = new();
 
     private IReadOnlyList<int>? _programsAskedFor;
     private int _programLoads;
@@ -136,28 +137,41 @@ public sealed class AipConsolidatedServiceTests
             .Callback((AipFormWorkbookDto w) => _exported = w)
             .Returns([0x50, 0x4B, 0x03, 0x04]);
 
+        // PPDO-90 — the office block on a scoped report. Every id resolves; a test that needs a miss
+        // overrides this.
+        _officeRepo.Setup(r => r.GetByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int id, CancellationToken _) => new Office
+            {
+                Id = id, OfficeCode = $"OFF{id}", OfficeName = $"Office {id}", IsActive = true,
+            });
+
         return new AipConsolidatedService(
-            _aipRepo.Object, _expRepo.Object, _excel.Object, _permissions.Object,
+            _aipRepo.Object, _expRepo.Object, _officeRepo.Object, _excel.Object, _permissions.Object,
             NullLogger<AipConsolidatedService>.Instance);
     }
 
-    private User Caller(bool crossOffice)
+    private User Caller(bool crossOffice, int? officeId = 8, bool deptHead = false)
     {
         User u = new()
         {
             Id = Guid.NewGuid(), Username = "u", PasswordHash = "h", FullName = "Test User",
-            Role = UserRole.Staff, OfficeId = 8, IsActive = true,
+            Role = UserRole.Staff, OfficeId = officeId, IsActive = true,
             CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
         };
         _permissions.Setup(p => p.CanReviewAllOfficesAsync(u, It.IsAny<CancellationToken>()))
             .ReturnsAsync(crossOffice);
+        _permissions.Setup(p => p.CanReviewBudgetPlanningAsync(u, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(deptHead);
         return u;
     }
+
+    /// <summary>A department head of <paramref name="officeId"/> — no cross-office grant (PPDO-90).</summary>
+    private User DeptHead(int? officeId) => Caller(crossOffice: false, officeId, deptHead: true);
 
     private async Task<AipConsolidatedSheetDto> General()
     {
         ServiceResult<AipConsolidatedSheetDto> result =
-            await Build().GetSheetAsync(FiscalYear, AipSector.General, Caller(crossOffice: true));
+            await Build().GetSheetAsync(FiscalYear, AipSector.General, null, Caller(crossOffice: true));
         Assert.True(result.IsSuccess, result.Error);
         return result.Value!;
     }
@@ -322,7 +336,7 @@ public sealed class AipConsolidatedServiceTests
     public async Task GetSheetAsync_CallerWithoutCrossOfficeFlag_IsForbidden()
     {
         ServiceResult<AipConsolidatedSheetDto> result =
-            await Build().GetSheetAsync(FiscalYear, AipSector.General, Caller(crossOffice: false));
+            await Build().GetSheetAsync(FiscalYear, AipSector.General, null, Caller(crossOffice: false));
 
         Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
         Assert.Null(_programsAskedFor);
@@ -335,7 +349,7 @@ public sealed class AipConsolidatedServiceTests
     public async Task GetSheetAsync_UnknownSector_IsBadRequest(string? sector)
     {
         ServiceResult<AipConsolidatedSheetDto> result =
-            await Build().GetSheetAsync(FiscalYear, sector, Caller(crossOffice: true));
+            await Build().GetSheetAsync(FiscalYear, sector, null, Caller(crossOffice: true));
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
     }
@@ -344,7 +358,7 @@ public sealed class AipConsolidatedServiceTests
     public async Task GetSheetAsync_SectorIsCaseInsensitive()
     {
         ServiceResult<AipConsolidatedSheetDto> result =
-            await Build().GetSheetAsync(FiscalYear, "social", Caller(crossOffice: true));
+            await Build().GetSheetAsync(FiscalYear, "social", null, Caller(crossOffice: true));
 
         Assert.True(result.IsSuccess);
         Assert.Equal(AipSector.Social, result.Value!.Sector);
@@ -357,7 +371,7 @@ public sealed class AipConsolidatedServiceTests
     public async Task GetSheetAsync_SectorWithNothingSubmitted_IsEmptyAndLoadsNoTree()
     {
         ServiceResult<AipConsolidatedSheetDto> result =
-            await Build().GetSheetAsync(FiscalYear, AipSector.Economic, Caller(crossOffice: true));
+            await Build().GetSheetAsync(FiscalYear, AipSector.Economic, null, Caller(crossOffice: true));
 
         Assert.True(result.IsSuccess);
         Assert.Empty(result.Value!.Rows);
@@ -372,7 +386,7 @@ public sealed class AipConsolidatedServiceTests
         _recordExists = false;
 
         ServiceResult<AipConsolidatedSheetDto> result =
-            await Build().GetSheetAsync(FiscalYear, AipSector.General, Caller(crossOffice: true));
+            await Build().GetSheetAsync(FiscalYear, AipSector.General, null, Caller(crossOffice: true));
 
         Assert.True(result.IsSuccess);
         Assert.False(result.Value!.Opened);
@@ -385,7 +399,7 @@ public sealed class AipConsolidatedServiceTests
     private async Task<AipFormWorkbookDto> Workbook()
     {
         ServiceResult<AipFormExportFileDto> result =
-            await Build().ExportWorkbookAsync(FiscalYear, Caller(crossOffice: true));
+            await Build().ExportWorkbookAsync(FiscalYear, null, Caller(crossOffice: true));
         Assert.True(result.IsSuccess, result.Error);
         return _exported!;
     }
@@ -415,7 +429,7 @@ public sealed class AipConsolidatedServiceTests
     {
         AipFormWorkbookDto workbook = await Workbook();
         ServiceResult<AipConsolidatedSheetDto> grid =
-            await Build().GetSheetAsync(FiscalYear, sector, Caller(crossOffice: true));
+            await Build().GetSheetAsync(FiscalYear, sector, null, Caller(crossOffice: true));
 
         AipFormWorkbookSheetDto sheet = workbook.Sheets.Single(s => s.Sector == sector);
         Assert.Equal(grid.Value!.Rows, sheet.Rows);
@@ -448,7 +462,7 @@ public sealed class AipConsolidatedServiceTests
     public async Task ExportWorkbookAsync_NamesTheFileForTheYearAndTheManilaDate()
     {
         ServiceResult<AipFormExportFileDto> result =
-            await Build().ExportWorkbookAsync(FiscalYear, Caller(crossOffice: true));
+            await Build().ExportWorkbookAsync(FiscalYear, null, Caller(crossOffice: true));
 
         DateOnly manilaToday = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(8));
         Assert.Equal($"AIP_FY2028_{manilaToday:yyyy-MM-dd}.xlsx", result.Value!.FileName);
@@ -456,14 +470,15 @@ public sealed class AipConsolidatedServiceTests
         Assert.Equal([0x50, 0x4B, 0x03, 0x04], result.Value.Content);
     }
 
+    /// <summary>↩️ PPDO-90 widened the gate: NEITHER reviewer flag is now what refuses, not the one.</summary>
     [Fact]
-    public async Task ExportWorkbookAsync_CallerWithoutCrossOfficeFlag_IsForbiddenAndBuildsNothing()
+    public async Task ExportWorkbookAsync_CallerWithNeitherReviewerFlag_IsForbiddenAndBuildsNothing()
     {
         ServiceResult<AipFormExportFileDto> result =
-            await Build().ExportWorkbookAsync(FiscalYear, Caller(crossOffice: false));
+            await Build().ExportWorkbookAsync(FiscalYear, null, Caller(crossOffice: false));
 
         Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
-        Assert.Equal("Only a cross-office reviewer can download the consolidated AIP.", result.Error);
+        Assert.Equal("Only an AIP reviewer can open this report.", result.Error);
         Assert.Null(_programsAskedFor);
         Assert.Null(_exported);
     }
@@ -475,7 +490,7 @@ public sealed class AipConsolidatedServiceTests
     public async Task ExportWorkbookAsync_LegacyYear_IsBadRequest(int fiscalYear)
     {
         ServiceResult<AipFormExportFileDto> result =
-            await Build().ExportWorkbookAsync(fiscalYear, Caller(crossOffice: true));
+            await Build().ExportWorkbookAsync(fiscalYear, null, Caller(crossOffice: true));
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
         Assert.Equal("FY 2027 and earlier are not rendered as the Annex B export.", result.Error);
@@ -489,7 +504,7 @@ public sealed class AipConsolidatedServiceTests
         _recordExists = false;
 
         ServiceResult<AipFormExportFileDto> result =
-            await Build().ExportWorkbookAsync(FiscalYear, Caller(crossOffice: true));
+            await Build().ExportWorkbookAsync(FiscalYear, null, Caller(crossOffice: true));
 
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
         Assert.Equal("FY 2028 has not been opened.", result.Error);
@@ -509,4 +524,140 @@ public sealed class AipConsolidatedServiceTests
         Assert.Equal(0, workbook.SubmittedOffices);
         Assert.Equal(0, _programLoads);
     }
+
+    // ── Scope (PPDO-90) ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// A department head reads their own office at ANY workflow state — the point is seeing the work
+    /// as it will print before sending it on (spec §2 decision 3, confirmed by Ralph 2026-09-16).
+    /// Office 9 is <c>ReturnedByPpdo</c>, which the consolidated read excludes outright.
+    /// </summary>
+    [Fact]
+    public async Task GetSheetAsync_DeptHead_SeesOwnOfficeEvenWhenNotWithPpdo()
+    {
+        ServiceResult<AipConsolidatedSheetDto> result =
+            await Build().GetSheetAsync(FiscalYear, AipSector.General, null, DeptHead(9));
+
+        Assert.True(result.IsSuccess, result.Error);
+        AipConsolidatedSheetDto sheet = result.Value!;
+
+        Assert.Equal(AipReportScope.Office, sheet.Scope);
+        Assert.Equal(9, sheet.Office!.OfficeId);
+        Assert.Equal(AipWorkflowStatus.ReturnedByPpdo, sheet.Office.WorkflowStatus);
+        // The row the consolidated sheet calls "Must never print" — it is this office's own work.
+        Assert.Contains(sheet.Rows, r => r.Name == "Must never print");
+        // Counts describe the one office, so the page header cannot contradict the grid.
+        Assert.Equal(1, sheet.SubmittedOffices);
+        Assert.Equal(1, sheet.TotalOffices);
+    }
+
+    /// <summary>A department head's `officeId` is clamped to their own, never refused (decision 5).</summary>
+    [Fact]
+    public async Task GetSheetAsync_DeptHeadAskingForAnotherOffice_IsClampedToTheirOwn()
+    {
+        ServiceResult<AipConsolidatedSheetDto> result =
+            await Build().GetSheetAsync(FiscalYear, AipSector.General, officeId: 7, DeptHead(9));
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(9, result.Value!.Office!.OfficeId);
+        Assert.DoesNotContain(result.Value.Rows, r => r.Name == "Plantilla positions");
+    }
+
+    /// <summary>
+    /// ⚠️ **The trap this ticket exists to avoid.** A department head who sits in the HOST office
+    /// resolves to <c>SeeAll</c> through <c>OfficeScope</c>, which would hand them the whole province
+    /// through a read that is their own office only. The pin is to <c>users.office_id</c>.
+    /// </summary>
+    [Fact]
+    public async Task GetSheetAsync_HostOfficeDeptHead_IsPinnedToTheirOwnOfficeNotEveryOffice()
+    {
+        // Office 8 is PPDO — the host office in this fixture.
+        ServiceResult<AipConsolidatedSheetDto> result =
+            await Build().GetSheetAsync(FiscalYear, AipSector.General, null, DeptHead(8));
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(AipReportScope.Office, result.Value!.Scope);
+        Assert.Equal(8, result.Value.Office!.OfficeId);
+        Assert.Equal(1, result.Value.TotalOffices);
+        // PGO's work is another office's and must not appear.
+        Assert.DoesNotContain(result.Value.Rows, r => r.Name == "Plantilla positions");
+    }
+
+    /// <summary>
+    /// An office heading several groups takes its FURTHEST-ALONG status: office 8 holds an accepted
+    /// group and one still with PPDO, and reporting "SubmittedToPpdo" would read as work going
+    /// backwards.
+    /// </summary>
+    [Fact]
+    public async Task GetSheetAsync_OfficeWithSeveralGroups_ReportsTheFurthestAlongStatus()
+    {
+        ServiceResult<AipConsolidatedSheetDto> result =
+            await Build().GetSheetAsync(FiscalYear, AipSector.General, null, DeptHead(8));
+
+        Assert.Equal(AipWorkflowStatus.Consolidated, result.Value!.Office!.WorkflowStatus);
+    }
+
+    /// <summary>A cross-office reviewer naming one office still gets the with-PPDO filter.</summary>
+    [Fact]
+    public async Task GetSheetAsync_CrossOfficeNamingOneOffice_FiltersToItAndKeepsTheStateRule()
+    {
+        AipConsolidatedService sut = Build();
+
+        ServiceResult<AipConsolidatedSheetDto> submitted =
+            await sut.GetSheetAsync(FiscalYear, AipSector.General, officeId: 7, Caller(crossOffice: true));
+        Assert.Equal(AipReportScope.Office, submitted.Value!.Scope);
+        Assert.Contains(submitted.Value.Rows, r => r.Name == "Plantilla positions");
+        Assert.Equal(1, submitted.Value.SubmittedOffices);
+
+        // Office 9 is sent back: a cross-office reviewer sees the office named, and nothing of its work.
+        ServiceResult<AipConsolidatedSheetDto> returned =
+            await sut.GetSheetAsync(FiscalYear, AipSector.General, officeId: 9, Caller(crossOffice: true));
+        Assert.Empty(returned.Value!.Rows);
+        Assert.Equal(0, returned.Value.SubmittedOffices);
+        Assert.Equal(1, returned.Value.TotalOffices);
+    }
+
+    /// <summary>Both flags is cross-office — a PPDO reviewer who also heads a division keeps the consolidated view.</summary>
+    [Fact]
+    public async Task GetSheetAsync_BothFlags_GetsCrossOfficeBehaviour()
+    {
+        User caller = Caller(crossOffice: true, officeId: 9, deptHead: true);
+
+        ServiceResult<AipConsolidatedSheetDto> result =
+            await Build().GetSheetAsync(FiscalYear, AipSector.General, null, caller);
+
+        Assert.Equal(AipReportScope.Consolidated, result.Value!.Scope);
+        Assert.Null(result.Value.Office);
+        Assert.DoesNotContain(result.Value.Rows, r => r.Name == "Must never print");
+    }
+
+    /// <summary>Neither flag refuses, and nothing is loaded.</summary>
+    [Fact]
+    public async Task GetSheetAsync_NeitherReviewerFlag_IsForbidden()
+    {
+        ServiceResult<AipConsolidatedSheetDto> result =
+            await Build().GetSheetAsync(FiscalYear, AipSector.General, null, Caller(crossOffice: false));
+
+        Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
+        Assert.Equal("Only an AIP reviewer can open this report.", result.Error);
+        Assert.Null(_programsAskedFor);
+    }
+
+    /// <summary>A one-office workbook carries only that office, and its code is in the file name.</summary>
+    [Fact]
+    public async Task ExportWorkbookAsync_ScopedToOneOffice_ContainsOnlyItAndNamesTheFile()
+    {
+        ServiceResult<AipFormExportFileDto> result =
+            await Build().ExportWorkbookAsync(FiscalYear, null, DeptHead(9));
+
+        Assert.True(result.IsSuccess, result.Error);
+        DateOnly manilaToday = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(8));
+        Assert.Equal($"AIP2028_OFF9_{manilaToday:yyyyMMdd}.xlsx", result.Value!.FileName);
+
+        Assert.Equal(9, _exported!.Office!.OfficeId);
+        Assert.All(_exported.Sheets.SelectMany(s => s.Rows),
+            r => Assert.DoesNotContain("PROVINCIAL GOVERNOR", r.Name));
+        Assert.Contains(_exported.Sheets.SelectMany(s => s.Rows), r => r.Name == "Must never print");
+    }
+
 }

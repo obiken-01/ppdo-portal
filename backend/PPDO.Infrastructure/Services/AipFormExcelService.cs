@@ -220,8 +220,18 @@ public sealed class AipFormExcelService : IAipFormExcelService
         MergedTitle(ws, 3, "By Program/Project/Activity by Sector", XLAlignmentHorizontalValues.Center);
         MergedTitle(ws, 4, $"As of {asOf}", XLAlignmentHorizontalValues.Center);
 
+        // ⚠️ A one-office workbook names the office on the same line (PPDO-90). "Includes 1 of 1
+        // offices" would be true and useless; which office this is, is the thing a reader needs.
+        if (workbook.Office is not null)
+        {
+            ws.Range(5, ColRef, 5, LastCol).Merge();
+            ws.Cell(5, ColRef).Value = workbook.Office.OfficeName;
+            ws.Cell(5, ColRef).Style
+                .Font.SetBold(true)
+                .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
+        }
         // ⚠️ Decision 1: while any office is missing the totals are partial, and the form says so.
-        if (workbook.SubmittedOffices < workbook.TotalOffices)
+        else if (workbook.SubmittedOffices < workbook.TotalOffices)
         {
             ws.Range(5, ColRef, 5, LastCol).Merge();
             ws.Cell(5, ColRef).Value =

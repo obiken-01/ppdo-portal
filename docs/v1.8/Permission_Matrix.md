@@ -188,6 +188,29 @@ OfficeScope.ResolveForCeiling(user, canManageOfficeCeilings)   allocation reads 
 OfficeScope.Resolve(user)                                  everything else, including every other write
 ```
 
+### 4a. The Annex B report read — scoped without `OfficeScope` at all (PPDO-90)
+
+`GET …/aip/consolidated` and `…/consolidated/export` admit **either** reviewer flag, and the service
+resolves the scope:
+
+| Caller | Offices | Workflow states | `officeId` param |
+|---|---|---|---|
+| `CanReviewAllOffices` | every office (consolidated), or the one named | with PPDO only (`SubmittedToPpdo`, `Consolidated`) | honoured |
+| `CanReviewBudgetPlanning` only (department head) | **their own, pinned to `users.office_id`** | **any state, including Draft** | **ignored** (clamped, not refused) |
+| neither | — | — | 403 |
+
+⚠️ **The department head is pinned to `users.office_id` and NOT resolved through
+`OfficeScope.Resolve`.** A department head who sits in the **host office (PPDO)** resolves to
+`SeeAll` there, which would hand them every office in the province through a read that is meant to be
+their own office only. This is the same trap as tracker B4, and it is why this row exists in the
+matrix rather than the scoping being left implicit. Pinned by
+`GetSheetAsync_HostOfficeDeptHead_IsPinnedToTheirOwnOfficeNotEveryOffice`.
+
+Holding **both** flags gives cross-office behaviour, so a PPDO reviewer who also heads a division
+keeps the consolidated view rather than being narrowed to one office.
+
+No new flag, and no migration — this widens an existing read.
+
 `Resolve` feeds the write paths through `Clamp`. Teaching it either flag would silently promote a
 cross-office *reviewer* into a cross-office **editor** of every office's data, or a PBO ceiling
 officer into an editor of every office's internal division split — with no diff at any write site to
