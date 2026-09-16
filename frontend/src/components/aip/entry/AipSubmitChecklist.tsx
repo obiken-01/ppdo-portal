@@ -102,6 +102,7 @@ export default function AipSubmitChecklist({
   stage,
   submitting,
   history,
+  onSelectActivity,
 }: {
   readiness: AipReadiness;
   stage: AipSubmitStage;
@@ -112,6 +113,15 @@ export default function AipSubmitChecklist({
    * can no longer act.
    */
   history?: { aipRecordId: number; officeId: number };
+  /**
+   * Takes the reader to the activity an issue is about (PPDO-89).
+   *
+   * ⚠️ Optional, because the checklist is the same component on a page that shows the whole tree.
+   * Where it is supplied the issue line becomes a link: the drill-down shows one activity at a
+   * time, so "AIP-001-002-003 is not costed" names a row that is not on screen and that no amount
+   * of scrolling will reach.
+   */
+  onSelectActivity?: (activityId: number) => void;
 }) {
   // ⚠️ Collapsed by default. The button already carries the count, so the summary an encoder
   // needs is visible without the list; expanded, an office with 80 uncosted activities pushed its
@@ -270,10 +280,27 @@ export default function AipSubmitChecklist({
                   <ul className="mt-1 space-y-1">
                     {group.slice(0, 8).map((issue, i) => (
                       <li key={`${issue.activityId ?? "office"}-${i}`} className="text-xs text-slate-600">
-                        {issue.refCode && (
-                          <span className="mr-2 font-mono text-slate-800">{issue.refCode}</span>
+                        {/* An office-level issue ("nothing to submit", "over ceiling") carries no
+                            activity, so it stays plain text — there is no row to go to. */}
+                        {onSelectActivity && issue.activityId != null ? (
+                          <button
+                            type="button"
+                            onClick={() => onSelectActivity(issue.activityId!)}
+                            className="text-left hover:bg-green-50"
+                          >
+                            {issue.refCode && (
+                              <span className="mr-2 font-mono text-slate-800 underline">{issue.refCode}</span>
+                            )}
+                            <span className="underline">{issue.message}</span>
+                          </button>
+                        ) : (
+                          <>
+                            {issue.refCode && (
+                              <span className="mr-2 font-mono text-slate-800">{issue.refCode}</span>
+                            )}
+                            {issue.message}
+                          </>
                         )}
-                        {issue.message}
                       </li>
                     ))}
                     {group.length > 8 && (
