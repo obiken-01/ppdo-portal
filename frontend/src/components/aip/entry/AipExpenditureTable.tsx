@@ -431,10 +431,22 @@ export default function AipExpenditureTable({
       {canEdit && (
         <div className="mt-2 flex flex-wrap items-center gap-3">
           {/* ⚠️ Radios, not the old checkbox: an unticked checkbox cannot say "not answered", which
-              is exactly the state a new activity is in. */}
-          <fieldset className="flex flex-wrap items-center gap-3">
-            <legend className="sr-only">Funding mode</legend>
-            <span className="text-xs text-slate-800">Does this activity draw on more than one fund?</span>
+              is exactly the state a new activity is in.
+
+              ⚠️ **`role="radiogroup"` and NOT `<fieldset>`/`<legend className="sr-only">`.** That is
+              what PPDO-97 shipped, and it put a **second scrollbar on the whole portal in Edge**:
+              `sr-only` is `position:absolute`, the app shell is not `relative`, so the legend's
+              containing block was the PAGE — which means the shell's `overflow-hidden` never clipped
+              it and the document grew by ~350px. Chromium and Edge lay an absolutely positioned
+              `<legend>` out differently, so Chrome looked clean and only Edge showed it.
+
+              The visible question labels the group through `aria-labelledby`, so screen readers get
+              the same grouping with nothing positioned. Do not reintroduce an `sr-only` legend. */}
+          <div role="radiogroup" aria-labelledby={`aip-fund-mode-label-${activityId}`}
+            className="flex flex-wrap items-center gap-3">
+            <span id={`aip-fund-mode-label-${activityId}`} className="text-xs text-slate-800">
+              Does this activity draw on more than one fund?
+            </span>
             <label className="flex items-center gap-1.5 text-xs text-slate-600">
               <input type="radio" name={`aip-fund-mode-${activityId}`} checked={multiFund === false}
                 disabled={lockedToMulti || busy} onChange={() => setMultiFund(false)} />
@@ -445,7 +457,7 @@ export default function AipExpenditureTable({
                 disabled={busy} onChange={() => setMultiFund(true)} />
               Yes — several funds
             </label>
-          </fieldset>
+          </div>
 
           {lockedToMulti && (
             // ⚠️ Explains rather than silently disabling. Switching back would have to rewrite
