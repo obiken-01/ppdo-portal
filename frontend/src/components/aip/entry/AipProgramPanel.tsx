@@ -31,9 +31,12 @@ export default function AipProgramPanel({
   onSelectProject: (projectId: number) => void;
   onProjectAdded: (project: AipProjectDetail) => void;
 }) {
-  // ℹ️ A program prints BLANK in the form's money columns, and `AipRowFigures` says so — the
-  // figures here are navigation, not a form row: they tell an encoder whether the program they
-  // just picked is the one carrying the money they are looking for, before they open a project.
+  // ℹ️ The figures here are navigation: they tell an encoder whether the program they just picked is
+  // the one carrying the money they are looking for, before they open a project.
+  //
+  // ↩️ This said "a program prints BLANK in the form's money columns" — true until PPDO-98 put
+  // subtotals on the program and project rows. The strip is still not the printed figure, though:
+  // this sums amounts **as encoded**, and the sheet rounds up and uplifts MOOE and CO.
   const amounts = useMemo(
     () => sumActivityAmounts(program.projects.flatMap((p) => p.activities)),
     [program]
