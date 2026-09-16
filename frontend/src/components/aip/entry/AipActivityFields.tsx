@@ -40,11 +40,13 @@ import { fmtThousands } from "@/lib/aip-units";
 import { AIP_ESRE_OPTIONS, AIP_MONTHS } from "@/lib/aipConstants";
 import { useAutoGrowTextarea } from "@/lib/useAutoGrowTextarea";
 import { inputCls, selectCls } from "@/components/aip/AipTreeCells";
-import MultiLookup, { joinCodes, splitCodes } from "@/components/ui/MultiLookup";
+import MultiLookup, {
+  joinCodes, withProponent, withoutProponent,
+} from "@/components/ui/MultiLookup";
 import type { AipActivityDetail, OfficeResponse } from "@/types";
 
 export default function AipActivityFields({
-  activity, canEdit, onSaved, offices,
+  activity, canEdit, onSaved, offices, proponentOfficeCode,
 }: {
   activity: AipActivityDetail;
   canEdit: boolean;
@@ -54,6 +56,15 @@ export default function AipActivityFields({
    * already fetched, like every other list on this page.
    */
   offices: OfficeResponse[];
+  /**
+   * The office whose AIP this is — its own code is ALWAYS part of the saved value and prints first
+   * (Ralph, 2026-09-16), but is never shown as a chip.
+   *
+   * ⚠️ The office being EDITED, not the signed-in user's: the review modal edits one named office,
+   * and reading `me.officeCode` there would stamp the reviewer's own office onto someone else's row.
+   * Null leaves the value exactly as picked.
+   */
+  proponentOfficeCode: string | null;
 }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving]   = useState(false);
@@ -63,8 +74,12 @@ export default function AipActivityFields({
   const [esreCode, setEsreCode]                     = useState(activity.esreCode ?? "");
   // ⚠️ A LIST now, not a string (PPDO-100). The column still stores one `/`-joined value — that is
   // what the form prints — so `splitCodes`/`joinCodes` are the only place the two shapes meet.
+  //
+  // ⚠️ The proponent office is stripped on the way IN and prepended on the way OUT. It is always
+  // saved and always prints first, and is deliberately not a chip: it is not a choice, so offering
+  // an × next to it would invite removing something the next save puts straight back.
   const [implementingOffices, setImplementingOffices] =
-    useState<string[]>(splitCodes(activity.implementingOffice));
+    useState<string[]>(withoutProponent(activity.implementingOffice, proponentOfficeCode));
   const [startDate, setStartDate]                   = useState(activity.startDate ?? "");
   const [endDate, setEndDate]                       = useState(activity.endDate ?? "");
   const [expectedOutputs, setExpectedOutputs]       = useState(activity.expectedOutputs ?? "");
@@ -79,7 +94,7 @@ export default function AipActivityFields({
   function beginEdit() {
     setName(activity.name);
     setEsreCode(activity.esreCode ?? "");
-    setImplementingOffices(splitCodes(activity.implementingOffice));
+    setImplementingOffices(withoutProponent(activity.implementingOffice, proponentOfficeCode));
     setStartDate(activity.startDate ?? "");
     setEndDate(activity.endDate ?? "");
     setExpectedOutputs(activity.expectedOutputs ?? "");
@@ -98,7 +113,7 @@ export default function AipActivityFields({
       const updated = await updateAipActivityDetails(activity.id, {
         name: name.trim(),
         esreCode: esreCode || null,
-        implementingOffice: joinCodes(implementingOffices),
+        implementingOffice: joinCodes(withProponent(implementingOffices, proponentOfficeCode)),
         startDate: startDate || null,
         endDate: endDate || null,
         expectedOutputs: expectedOutputs.trim() || null,
@@ -185,16 +200,21 @@ export default function AipActivityFields({
               was quietly wrong (PPDO-80's prefill, reversed). */}
           <Label>Implementing office</Label>
           <MultiLookup
-            items={offices}
+            // ⚠️ The proponent office is filtered OUT of the options, not just deduped on save — it
+            // is already implied, so offering it invites picking something that then does not appear
+            // as a chip, which reads as the picker ignoring the click.
+            items={offices.filter((o) =>
+              o.officeCode.toLowerCase() !== (proponentOfficeCode ?? "").trim().toLowerCase())}
             value={implementingOffices}
             onChange={setImplementingOffices}
             getValue={(o) => o.officeCode}
             getLabel={(o) => `${o.officeCode} — ${o.officeName}`}
             getSearchText={(o) => `${o.officeCode} ${o.officeName}`}
             placeholder="Search offices…"
-            hint={implementingOffices.length > 1
-              ? `Prints as ${implementingOffices.join("/")}`
-              : "Add every office that implements this activity."}
+            // ⚠️ Always shows the value that will actually be SAVED, proponent included. It is the
+            // only place the encoder can see that their own office is in there, since it is not a
+            // chip — without it, "PTO is missing" is the obvious and wrong conclusion.
+            hint={`Prints as ${joinCodes(withProponent(implementingOffices, proponentOfficeCode)) ?? "—"}`}
           />
         </div>
 

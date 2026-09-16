@@ -33,7 +33,7 @@ import {
  */
 export default function AipSelectedPanel({
   selection, canEdit, holder, accounts, funds, generalFundId, priceIndex, priceIndexLoading,
-  offices, onSelect, onChangeActivity, onProjectAdded, onActivityAdded,
+  offices, proponentOfficeCode, onSelect, onChangeActivity, onProjectAdded, onActivityAdded,
   onDeleted, onProjectUpdated, onActivityTotals, onActivityDetails,
 }: {
   selection: AipResolvedSelection | null;
@@ -46,6 +46,8 @@ export default function AipSelectedPanel({
   priceIndexLoading: boolean;
   /** Configured offices for the implementing-office picker (PPDO-100). */
   offices: OfficeResponse[];
+  /** This office’s own code — always saved, always printed first, never a chip. */
+  proponentOfficeCode: string | null;
   onSelect: (ids: AipSelectionIds) => void;
   onChangeActivity: () => void;
   onProjectAdded: (project: AipProjectDetail) => void;
@@ -87,6 +89,7 @@ export default function AipSelectedPanel({
         priceIndex={priceIndex}
         priceIndexLoading={priceIndexLoading}
         offices={offices}
+        proponentOfficeCode={proponentOfficeCode}
         onTotals={onActivityTotals}
         onDetails={onActivityDetails}
         onDeleted={onDeleted}
@@ -109,6 +112,7 @@ export default function AipSelectedPanel({
         canEdit={canEdit}
         lockedReason={holder}
         isLastSibling={isLastProject}
+        proponentOfficeCode={proponentOfficeCode}
         unresolvedCount={unresolvedCount}
         onSelectActivity={(activityId) =>
           onSelect({ programId: program!.id, projectId: project.id, activityId })

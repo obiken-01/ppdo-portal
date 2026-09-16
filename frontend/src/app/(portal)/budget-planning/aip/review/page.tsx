@@ -464,7 +464,7 @@ function ActivityBlock({
               view, and this call site is permanently read-only, so the read view prints the stored
               `PEO/PGSO` string as it stands. The prop stays REQUIRED rather than defaulting to []
               so an editable call site cannot forget it and get a silently empty picker. */}
-          <AipActivityFields activity={activity} canEdit={false} onSaved={() => undefined} offices={[]} />
+          <AipActivityFields activity={activity} canEdit={false} onSaved={() => undefined} offices={[]} proponentOfficeCode={null} />
 
           {lines === null ? (
             <div className="space-y-2 px-4 py-3">

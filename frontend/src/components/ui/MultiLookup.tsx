@@ -197,3 +197,26 @@ export function joinCodes(codes: string[]): string | null {
   const joined = codes.map((c) => c.trim()).filter(Boolean).join("/");
   return joined.length > 0 ? joined : null;
 }
+
+/**
+ * The stored codes minus the proponent office, for editing (Ralph, 2026-09-16).
+ *
+ * ⚠️ The proponent's own office is always part of the saved value and always prints first, but is
+ * never a chip — it is not a choice. Stripping it on load is what stops it appearing twice after a
+ * save, and what stops an encoder being offered an × for something the next save restores.
+ *
+ * Case-insensitive, because the stored value on an imported row is whatever its file said.
+ */
+export function withoutProponent(stored: string | null | undefined, proponent: string | null): string[] {
+  const codes = splitCodes(stored);
+  if (!proponent) return codes;
+  const own = proponent.trim().toLowerCase();
+  return codes.filter((c) => c.toLowerCase() !== own);
+}
+
+/** The picked codes with the proponent office back at the FRONT, ready to store. */
+export function withProponent(codes: string[], proponent: string | null): string[] {
+  const own = proponent?.trim();
+  if (!own) return codes;
+  return [own, ...codes.filter((c) => c.toLowerCase() !== own.toLowerCase())];
+}

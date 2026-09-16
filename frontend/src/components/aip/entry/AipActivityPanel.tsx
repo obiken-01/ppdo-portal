@@ -29,7 +29,7 @@ import { AipPanel, AipPanelError } from "./AipEntryPanelParts";
 
 export default function AipActivityPanel({
   activity, canEdit, lockedReason, isLastSibling, accounts, funds, generalFundId, priceIndex, priceIndexLoading,
-  offices, onTotals, onDetails, onDeleted,
+  offices, proponentOfficeCode, onTotals, onDetails, onDeleted,
   onChangeActivity, onChangeProject, onDone,
 }: {
   activity: AipActivityDetail;
@@ -45,6 +45,8 @@ export default function AipActivityPanel({
   priceIndexLoading: boolean;
   /** Configured offices for the implementing-office picker (PPDO-100). */
   offices: OfficeResponse[];
+  /** This office’s own code — always saved, always printed first, never a chip. */
+  proponentOfficeCode: string | null;
   onTotals: (result: AipExpenditureWriteResult) => void;
   onDetails: (updated: AipActivityDetail) => void;
   onDeleted: (result: AipDeleteResult) => void;
@@ -107,7 +109,7 @@ export default function AipActivityPanel({
           and an encoder who opens an activity to cost it should see what else it still needs in
           the same glance. */}
       <AipActivityFields activity={activity} canEdit={canEdit} onSaved={onDetails}
-        offices={offices} />
+        offices={offices} proponentOfficeCode={proponentOfficeCode} />
 
       {linesError ? (
         <AipPanelError message={linesError} />

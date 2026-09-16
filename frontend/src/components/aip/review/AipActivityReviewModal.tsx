@@ -252,6 +252,8 @@ export default function AipActivityReviewModal({
                     canEdit={review.canEdit}
                     onSaved={onDetailsSaved}
                     offices={offices}
+                    // The office being reviewed, never the reviewer’s own.
+                    proponentOfficeCode={review.officeCode || null}
                   />
                 </div>
               </section>

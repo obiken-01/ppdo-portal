@@ -583,6 +583,7 @@ export default function AipEntryPage() {
                   // prints codes — "OPV", and "OPV/LFC/HRMO" where an activity is run jointly — so
                   // a default of the full name would be retyped by every encoder (PPDO-80).
                   offices={offices}
+                  proponentOfficeCode={me?.officeCode ?? null}
                   onSelect={select}
                   onChangeActivity={changeActivity}
                   onProjectAdded={onProjectAdded}
