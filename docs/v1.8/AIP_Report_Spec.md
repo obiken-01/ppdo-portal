@@ -31,8 +31,8 @@ work as it will print. The standalone page and its sidebar item are removed.
    - Cross-office reviewer, consolidated or one office: **with PPDO only** (`SubmittedToPpdo`,
      `Consolidated`) — unchanged; PPDO does not read an office's work before it is sent.
    - Department head, own office: **any state.** — *The point is seeing their own work as it will print
-     before sending it on.* (Assumed from the meeting note "so they can see their own office's work" —
-     confirm with Ralph; flipping it to "with PPDO only" is a one-line filter.)
+     before sending it on.* ✅ **Confirmed by Ralph 2026-09-16** (was assumed from the meeting note "so
+     they can see their own office's work").
 4. **A department head is pinned to `users.office_id`, never resolved through `OfficeScope.Resolve`.** A
    department head **in the host office (PPDO)** resolves to `SeeAll` there, which would hand them the
    whole province. The pin is explicit and tested for a PPDO department head. — *Same trap as tracker B4.*
@@ -98,7 +98,11 @@ work as it will print. The standalone page and its sidebar item are removed.
 ### `GET /api/budget-planning/aip/consolidated/export?fiscalYear=&officeId=` — same gate and scope rules
 
 - 200: the `.xlsx`. One-office workbook: same four sheets filtered to that office; preamble shows the
-  office name in place of "N of M offices"; filename `AIP{FY}_{OfficeCode}_{yyyyMMddHHmmss}.xlsx`.
+  office name in place of "N of M offices"; filename `AIP{FY}_{OfficeCode}_{yyyyMMdd}.xlsx`.
+  ↩️ **As built the stamp is the DATE, not `yyyyMMddHHmmss`** (PPDO-90). The workbook carries `AsOf`, a
+  `DateOnly` — the "As of MONTH YEAR" line the form itself prints — and threading a second, finer clock
+  through it only to make two same-day downloads differ buys nothing: every browser already suffixes a
+  repeated file name. The date is what the document is dated by.
 - 400 FY≤2027 / 404 unopened (existing). 403 as above.
 
 Log the existing export `LogInformation` with an added `Scope` and `OfficeId`.

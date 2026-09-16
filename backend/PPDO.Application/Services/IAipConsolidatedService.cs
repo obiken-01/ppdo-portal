@@ -28,7 +28,7 @@ public interface IAipConsolidatedService
     /// An unopened year is an empty sheet; an unknown sector is a bad request.
     /// </summary>
     Task<ServiceResult<AipConsolidatedSheetDto>> GetSheetAsync(
-        int fiscalYear, string? sector, User caller, CancellationToken ct = default);
+        int fiscalYear, string? sector, int? officeId, User caller, CancellationToken ct = default);
 
     /// <summary>
     /// The whole fiscal year as the province's Annex B workbook (V18-60 / PPDO-84): all four sector
@@ -36,5 +36,5 @@ public interface IAipConsolidatedService
     /// request, an unopened year not found.
     /// </summary>
     Task<ServiceResult<AipFormExportFileDto>> ExportWorkbookAsync(
-        int fiscalYear, User caller, CancellationToken ct = default);
+        int fiscalYear, int? officeId, User caller, CancellationToken ct = default);
 }

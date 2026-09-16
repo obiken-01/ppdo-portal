@@ -28,7 +28,7 @@ public sealed class AipConsolidatedFunctionsTests
 
     private AipConsolidatedFunctions Sut => new(_consolidated.Object, _jwt.Object, _permissions.Object);
 
-    private User Authenticate(bool crossOffice = true)
+    private User Authenticate(bool crossOffice = true, bool deptHead = false)
     {
         User caller = new()
         {
@@ -37,12 +37,14 @@ public sealed class AipConsolidatedFunctionsTests
         };
         _jwt.Setup(j => j.ValidateAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>())).ReturnsAsync(caller);
         _permissions.Setup(p => p.CanReviewAllOfficesAsync(caller, It.IsAny<CancellationToken>())).ReturnsAsync(crossOffice);
+        // ↩️ PPDO-90 — either reviewer flag admits; the SERVICE decides which offices.
+        _permissions.Setup(p => p.CanReviewBudgetPlanningAsync(caller, It.IsAny<CancellationToken>())).ReturnsAsync(deptHead);
         return caller;
     }
 
     private void VerifyNeverExported()
         => _consolidated.Verify(c => c.ExportWorkbookAsync(
-            It.IsAny<int>(), It.IsAny<User>(), It.IsAny<CancellationToken>()), Times.Never);
+            It.IsAny<int>(), It.IsAny<int?>(), It.IsAny<User>(), It.IsAny<CancellationToken>()), Times.Never);
 
     [Fact]
     public async Task Export_WithInvalidToken_ReturnsUnauthorized()
@@ -88,7 +90,7 @@ public sealed class AipConsolidatedFunctionsTests
     {
         User caller = Authenticate();
         byte[] workbook = [0x50, 0x4B, 0x03, 0x04];
-        _consolidated.Setup(c => c.ExportWorkbookAsync(FiscalYear, caller, It.IsAny<CancellationToken>()))
+        _consolidated.Setup(c => c.ExportWorkbookAsync(FiscalYear, null, caller, It.IsAny<CancellationToken>()))
             .ReturnsAsync(ServiceResult<AipFormExportFileDto>.Ok(new AipFormExportFileDto("AIP_FY2028_2026-09-14.xlsx", workbook)));
 
         HttpResponseData response = await Sut.Export(FunctionHttp.Get($"fiscalYear={FiscalYear}"), CancellationToken.None);
@@ -109,7 +111,7 @@ public sealed class AipConsolidatedFunctionsTests
         int fiscalYear, HttpStatusCode status, string message)
     {
         User caller = Authenticate();
-        _consolidated.Setup(c => c.ExportWorkbookAsync(fiscalYear, caller, It.IsAny<CancellationToken>()))
+        _consolidated.Setup(c => c.ExportWorkbookAsync(fiscalYear, null, caller, It.IsAny<CancellationToken>()))
             .ReturnsAsync(status == HttpStatusCode.NotFound
                 ? ServiceResult<AipFormExportFileDto>.NotFound(message)
                 : ServiceResult<AipFormExportFileDto>.BadRequest(message));
@@ -120,4 +122,59 @@ public sealed class AipConsolidatedFunctionsTests
         using JsonDocument body = JsonDocument.Parse(FunctionHttp.BodyText(response));
         Assert.Equal(message, body.RootElement.GetProperty("error").GetString());
     }
+
+    // ── Gate and scope (PPDO-90) ─────────────────────────────────────────────
+
+    /// <summary>
+    /// ↩️ The gate widened: a department head — no cross-office grant — now gets in, because this is
+    /// where they read their OWN office's Annex B. Which offices they see is the service's decision.
+    /// </summary>
+    [Fact]
+    public async Task GetSheet_WithOnlyTheDepartmentHeadFlag_IsAdmitted()
+    {
+        User caller = Authenticate(crossOffice: false, deptHead: true);
+        _consolidated.Setup(c => c.GetSheetAsync(FiscalYear, "GENERAL", null, caller, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ServiceResult<AipConsolidatedSheetDto>.Ok(Sheet()));
+
+        HttpResponseData response =
+            await Sut.GetSheet(FunctionHttp.Get($"fiscalYear={FiscalYear}&sector=GENERAL"), CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    /// <summary>Neither flag is what refuses now — not the absence of the cross-office one alone.</summary>
+    [Fact]
+    public async Task GetSheet_WithNeitherReviewerFlag_ReturnsForbidden()
+    {
+        Authenticate(crossOffice: false, deptHead: false);
+
+        HttpResponseData response =
+            await Sut.GetSheet(FunctionHttp.Get($"fiscalYear={FiscalYear}&sector=GENERAL"), CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    /// <summary>`officeId` is parsed and handed on; a junk or non-positive value is simply absent.</summary>
+    [Theory]
+    [InlineData("&officeId=7", 7)]
+    [InlineData("&officeId=abc", null)]
+    [InlineData("&officeId=0", null)]
+    [InlineData("", null)]
+    public async Task GetSheet_ParsesOfficeIdAndPassesItOn(string query, int? expected)
+    {
+        User caller = Authenticate();
+        _consolidated.Setup(c => c.GetSheetAsync(FiscalYear, "GENERAL", expected, caller, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ServiceResult<AipConsolidatedSheetDto>.Ok(Sheet()));
+
+        HttpResponseData response = await Sut.GetSheet(
+            FunctionHttp.Get($"fiscalYear={FiscalYear}&sector=GENERAL{query}"), CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        _consolidated.Verify(
+            c => c.GetSheetAsync(FiscalYear, "GENERAL", expected, caller, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    private static AipConsolidatedSheetDto Sheet()
+        => new(1, FiscalYear, "GENERAL", Opened: true, 0, 0, [], [], AipPrintedFigures.Zero);
+
 }

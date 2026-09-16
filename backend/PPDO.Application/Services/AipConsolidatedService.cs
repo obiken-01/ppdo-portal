@@ -12,6 +12,7 @@ public sealed class AipConsolidatedService : IAipConsolidatedService
 {
     private readonly IAipRepository                  _aipRepo;
     private readonly IAipExpenditureRepository       _expRepo;
+    private readonly IOfficeRepository               _officeRepo;
     private readonly IAipFormExcelService            _excel;
     private readonly IPermissionService              _permissions;
     private readonly ILogger<AipConsolidatedService> _logger;
@@ -19,31 +20,34 @@ public sealed class AipConsolidatedService : IAipConsolidatedService
     public AipConsolidatedService(
         IAipRepository                  aipRepo,
         IAipExpenditureRepository       expRepo,
+        IOfficeRepository               officeRepo,
         IAipFormExcelService            excel,
         IPermissionService              permissions,
         ILogger<AipConsolidatedService> logger)
     {
         _aipRepo     = aipRepo;
         _expRepo     = expRepo;
+        _officeRepo  = officeRepo;
         _excel       = excel;
         _permissions = permissions;
         _logger      = logger;
     }
 
     public async Task<ServiceResult<AipConsolidatedSheetDto>> GetSheetAsync(
-        int fiscalYear, string? sector, User caller, CancellationToken ct = default)
+        int fiscalYear, string? sector, int? officeId, User caller, CancellationToken ct = default)
     {
         string key = (sector ?? string.Empty).Trim().ToUpperInvariant();
         if (!AipSector.All.Contains(key))
             return ServiceResult<AipConsolidatedSheetDto>.BadRequest(
                 $"'{sector}' is not an AIP sector. Expected one of: {string.Join(", ", AipSector.All)}.");
 
-        if (!await _permissions.CanReviewAllOfficesAsync(caller, ct))
+        ReportScope? resolved = await ResolveScopeAsync(officeId, caller, ct);
+        if (resolved is not ReportScope scope)
         {
             _logger.LogWarning(
                 "Permission denied. UserId: {UserId}, Feature: {Feature}", caller.Id, "AipConsolidatedView");
             return ServiceResult<AipConsolidatedSheetDto>.Forbidden(
-                "Only a cross-office reviewer can open the consolidated AIP.");
+                "Only an AIP reviewer can open this report.");
         }
 
         AipRecord? record = await _aipRepo.GetLatestByFiscalYearAsync(fiscalYear, ct);
@@ -54,13 +58,17 @@ public sealed class AipConsolidatedService : IAipConsolidatedService
             return ServiceResult<AipConsolidatedSheetDto>.Ok(new AipConsolidatedSheetDto(
                 0, fiscalYear, key, Opened: false, 0, 0,
                 AipSector.All.Select(s => new AipConsolidatedSectorCountDto(s, 0, 0)).ToList(),
-                [], AipPrintedFigures.Zero));
+                [], AipPrintedFigures.Zero, scope.Name));
 
         IReadOnlyList<AipOffice> groups = await _aipRepo.GetOfficesByAipIdAsync(record.Id, ct);
 
-        List<AipOffice> onSheet = groups
-            .Where(g => IsWithPpdo(g) && InSector(g, key))
-            .ToList();
+        // ⚠️ Every count below reads through the SAME two predicates the rows do, so a scoped report's
+        // header cannot disagree with its own grid. For one office that yields 1/1 or 0/1 naturally,
+        // rather than a second rule written out by hand (spec §4).
+        List<AipOffice> mine = groups.Where(g => InScopeOffice(g, scope)).ToList();
+        List<AipOffice> printed = mine.Where(g => StateCounts(g, scope)).ToList();
+
+        List<AipOffice> onSheet = printed.Where(g => InSector(g, key)).ToList();
 
         AipTree tree = await LoadTreeAsync(record.Id, onSheet, ct);
         AipFormSheet sheet = BuildSheet(onSheet, tree, record.FiscalYear);
@@ -70,29 +78,30 @@ public sealed class AipConsolidatedService : IAipConsolidatedService
             record.FiscalYear,
             key,
             Opened: true,
-            CountOffices(groups.Where(IsWithPpdo)),
-            CountOffices(groups),
+            CountOffices(printed),
+            CountOffices(mine),
             AipSector.All
-                .Select(s =>
-                {
-                    List<AipOffice> inSector = groups.Where(g => InSector(g, s)).ToList();
-                    return new AipConsolidatedSectorCountDto(
-                        s, CountOffices(inSector.Where(IsWithPpdo)), CountOffices(inSector));
-                })
+                .Select(s => new AipConsolidatedSectorCountDto(
+                    s,
+                    CountOffices(printed.Where(g => InSector(g, s))),
+                    CountOffices(mine.Where(g => InSector(g, s)))))
                 .ToList(),
             sheet.Rows,
-            sheet.Total));
+            sheet.Total,
+            scope.Name,
+            await DescribeOfficeAsync(scope, groups, ct)));
     }
 
     public async Task<ServiceResult<AipFormExportFileDto>> ExportWorkbookAsync(
-        int fiscalYear, User caller, CancellationToken ct = default)
+        int fiscalYear, int? officeId, User caller, CancellationToken ct = default)
     {
-        if (!await _permissions.CanReviewAllOfficesAsync(caller, ct))
+        ReportScope? resolved = await ResolveScopeAsync(officeId, caller, ct);
+        if (resolved is not ReportScope scope)
         {
             _logger.LogWarning(
                 "Permission denied. UserId: {UserId}, Feature: {Feature}", caller.Id, "AipConsolidatedExport");
             return ServiceResult<AipFormExportFileDto>.Forbidden(
-                "Only a cross-office reviewer can download the consolidated AIP.");
+                "Only an AIP reviewer can open this report.");
         }
 
         // ⚠️ FY≤2027 keeps its old shape and is not re-rendered under the FY2028+ rules
@@ -110,7 +119,11 @@ public sealed class AipConsolidatedService : IAipConsolidatedService
             return ServiceResult<AipFormExportFileDto>.NotFound($"FY {fiscalYear} has not been opened.");
 
         IReadOnlyList<AipOffice> groups = await _aipRepo.GetOfficesByAipIdAsync(record.Id, ct);
-        List<AipOffice> withPpdo = groups.Where(IsWithPpdo).ToList();
+
+        // The same two predicates the grid uses — a one-office workbook is the consolidated one with
+        // a narrower set of groups, not a second way of building a sheet.
+        List<AipOffice> mine = groups.Where(g => InScopeOffice(g, scope)).ToList();
+        List<AipOffice> withPpdo = mine.Where(g => StateCounts(g, scope)).ToList();
 
         // ⚠️ One tree load for all four sheets (§12), then the builder once per sector — never four
         // round trips. The builder groups by office id, so the whole tree can be handed to each call.
@@ -128,15 +141,17 @@ public sealed class AipConsolidatedService : IAipConsolidatedService
             record.FiscalYear,
             ManilaToday(),
             CountOffices(withPpdo),
-            CountOffices(groups),
-            sheets);
+            CountOffices(mine),
+            sheets,
+            await DescribeOfficeAsync(scope, groups, ct));
 
         byte[] content = _excel.Export(workbook);
 
         _logger.LogInformation(
-            "Consolidated AIP workbook built. FiscalYear: {FiscalYear}, SubmittedOffices: {SubmittedOffices}, " +
-            "TotalOffices: {TotalOffices}, Rows: {Rows}, Bytes: {Bytes}, ElapsedMs: {ElapsedMs}, UserId: {UserId}",
-            workbook.FiscalYear, workbook.SubmittedOffices, workbook.TotalOffices,
+            "Consolidated AIP workbook built. FiscalYear: {FiscalYear}, Scope: {Scope}, OfficeId: {OfficeId}, " +
+            "SubmittedOffices: {SubmittedOffices}, TotalOffices: {TotalOffices}, Rows: {Rows}, Bytes: {Bytes}, " +
+            "ElapsedMs: {ElapsedMs}, UserId: {UserId}",
+            workbook.FiscalYear, scope.Name, scope.OfficeId, workbook.SubmittedOffices, workbook.TotalOffices,
             sheets.Sum(s => s.Rows.Count), content.Length, watch.ElapsedMilliseconds, caller.Id);
 
         return ServiceResult<AipFormExportFileDto>.Ok(new AipFormExportFileDto(workbook.FileName, content));
@@ -206,4 +221,93 @@ public sealed class AipConsolidatedService : IAipConsolidatedService
         catch { manila = TimeZoneInfo.FindSystemTimeZoneById("Singapore Standard Time"); }
         return DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, manila));
     }
+
+    // ── Scope (PPDO-90) ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Which offices a caller's report covers, and which workflow states count.
+    /// </summary>
+    /// <param name="OfficeId">Null only for the consolidated scope.</param>
+    /// <param name="AnyState">
+    /// True for a department head reading their OWN office: the point of the report is seeing their
+    /// work as it will print before sending it on, so a draft is exactly what they need
+    /// (<c>AIP_Report_Spec.md</c> §2 decision 3, confirmed by Ralph 2026-09-16).
+    /// </param>
+    private sealed record ReportScope(int? OfficeId, bool AnyState)
+    {
+        public bool IsConsolidated => OfficeId is null;
+        public string Name => IsConsolidated ? AipReportScope.Consolidated : AipReportScope.Office;
+    }
+
+    /// <summary>
+    /// Resolves the caller's scope, or null when neither reviewer flag is held (403).
+    ///
+    /// <para>
+    /// ⚠️ <b>A department head is pinned to <c>users.office_id</c>, never resolved through
+    /// <c>OfficeScope.Resolve</c>.</b> A department head who sits in the HOST office (PPDO) resolves to
+    /// <c>SeeAll</c> there — which would quietly hand them every office in the province through a
+    /// read that is supposed to be their own office only. The pin is the whole guard, and it is
+    /// tested by name.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ Cross-office wins when both flags are held, so a PPDO reviewer who also heads a division
+    /// keeps the consolidated view rather than being narrowed to one office.
+    /// </para>
+    /// </summary>
+    private async Task<ReportScope?> ResolveScopeAsync(int? requestedOfficeId, User caller, CancellationToken ct)
+    {
+        if (await _permissions.CanReviewAllOfficesAsync(caller, ct))
+            return new ReportScope(requestedOfficeId, AnyState: false);
+
+        if (await _permissions.CanReviewBudgetPlanningAsync(caller, ct))
+            // ⚠️ The requested id is IGNORED, not refused — clamping matches every other AIP read and
+            // avoids turning the parameter into an existence oracle for other offices.
+            return new ReportScope(caller.OfficeId, AnyState: true);
+
+        return null;
+    }
+
+    /// <summary>The groups a scope covers, before the sector filter — office match only.</summary>
+    private static bool InScopeOffice(AipOffice group, ReportScope scope)
+        => scope.IsConsolidated || group.OfficeId == scope.OfficeId;
+
+    /// <summary>Whether a group's workflow state is printed under this scope.</summary>
+    private static bool StateCounts(AipOffice group, ReportScope scope)
+        => scope.AnyState || IsWithPpdo(group);
+
+    /// <summary>
+    /// The <c>office</c> block a scoped report carries. Null when consolidated, and also when the
+    /// scope names an office with no group on this record — there is nothing to describe.
+    /// </summary>
+    private async Task<AipReportOfficeDto?> DescribeOfficeAsync(
+        ReportScope scope, IReadOnlyList<AipOffice> groups, CancellationToken ct)
+    {
+        if (scope.OfficeId is not int officeId) return null;
+
+        Office? office = await _officeRepo.GetByIdAsync(officeId, ct);
+        if (office is null) return null;
+
+        // ⚠️ An office can head SEVERAL groups, even across sectors (decision 21). The furthest-along
+        // status is the office's position: a head who has sent one group on has not finished until the
+        // last one follows, and showing "Draft" beside work already with PPDO would read as a loss.
+        List<AipOffice> mine = groups.Where(g => g.OfficeId == officeId).ToList();
+        string status = mine.Count == 0
+            ? AipWorkflowStatus.Draft
+            : mine.Select(g => g.WorkflowStatus).OrderBy(RankOf).Last();
+
+        return new AipReportOfficeDto(officeId, office.OfficeCode, office.OfficeName, status);
+    }
+
+    /// <summary>How far along a status is, for picking an office's furthest-along group.</summary>
+    private static int RankOf(string status) => status switch
+    {
+        AipWorkflowStatus.Draft            => 0,
+        AipWorkflowStatus.ReturnedByPpdo   => 1,
+        AipWorkflowStatus.DepartmentReview => 2,
+        AipWorkflowStatus.SubmittedToPpdo  => 3,
+        AipWorkflowStatus.Consolidated     => 4,
+        _                                  => 0,
+    };
+
 }

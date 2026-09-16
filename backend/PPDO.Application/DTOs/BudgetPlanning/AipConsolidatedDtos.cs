@@ -47,6 +47,29 @@ public sealed record AipConsolidatedRowDto(
     string?               CcTypologyCode,
     AipPrintedAmountsDto? Amounts);
 
+/// <summary>Which scope a report answers for (PPDO-90).</summary>
+public static class AipReportScope
+{
+    /// <summary>Every office already with PPDO. The cross-office reviewer's default.</summary>
+    public const string Consolidated = "Consolidated";
+
+    /// <summary>One office. A department head only ever gets this, pinned to their own.</summary>
+    public const string Office = "Office";
+}
+
+/// <summary>
+/// The one office a scoped report describes (PPDO-90) — null on a consolidated report.
+/// </summary>
+/// <param name="WorkflowStatus">
+/// ⚠️ Screen-only, like the office row's. The Excel does not print a status; a department head
+/// reading their own draft needs to know it is a draft, and the page shows it as a pill.
+/// </param>
+public sealed record AipReportOfficeDto(
+    int    OfficeId,
+    string OfficeCode,
+    string OfficeName,
+    string WorkflowStatus);
+
 /// <summary>How many offices of one sector have reached PPDO — the tab counts.</summary>
 public sealed record AipConsolidatedSectorCountDto(
     string Sector,
@@ -73,7 +96,17 @@ public sealed record AipConsolidatedSheetDto(
     int                                          TotalOffices,
     IReadOnlyList<AipConsolidatedSectorCountDto> Sectors,
     IReadOnlyList<AipConsolidatedRowDto>         Rows,
-    AipPrintedAmountsDto                         Total);
+    AipPrintedAmountsDto                         Total,
+    /// <summary>
+    /// PPDO-90 — <see cref="AipReportScope"/>. Appended with defaults so every existing positional
+    /// construction still compiles.
+    /// </summary>
+    string                                       Scope  = AipReportScope.Consolidated,
+    /// <summary>
+    /// The office this report is scoped to, or null when consolidated. When set, the counts above and
+    /// the sector counts describe that office alone (1/1 or 0/1), so the page's header copy holds.
+    /// </summary>
+    AipReportOfficeDto?                          Office = null);
 
 /// <summary>One sector sheet of the Annex B workbook (PPDO-84) — the same rows the grid shows.</summary>
 public sealed record AipFormWorkbookSheetDto(
@@ -95,9 +128,22 @@ public sealed record AipFormWorkbookDto(
     DateOnly                                AsOf,
     int                                     SubmittedOffices,
     int                                     TotalOffices,
-    IReadOnlyList<AipFormWorkbookSheetDto>  Sheets)
+    IReadOnlyList<AipFormWorkbookSheetDto>  Sheets,
+    /// <summary>PPDO-90 — set on a one-office export, null on the consolidated workbook.</summary>
+    AipReportOfficeDto?                     Office = null)
 {
-    public string FileName => $"AIP_FY{FiscalYear}_{AsOf:yyyy-MM-dd}.xlsx";
+    /// <summary>
+    /// ⚠️ A one-office file carries the office code, so a department head downloading their own AIP
+    /// beside the consolidated one can tell the two apart in a Downloads folder.
+    ///
+    /// ↩️ The spec asked for a `yyyyMMddHHmmss` stamp on the office file. <see cref="AsOf"/> is a
+    /// DateOnly — the "As of MONTH YEAR" line the form prints — and threading a second, finer clock
+    /// through the workbook to make two same-day downloads differ buys nothing: every browser already
+    /// suffixes a repeated name. The date is what the document itself is dated by.
+    /// </summary>
+    public string FileName => Office is null
+        ? $"AIP_FY{FiscalYear}_{AsOf:yyyy-MM-dd}.xlsx"
+        : $"AIP{FiscalYear}_{Office.OfficeCode}_{AsOf:yyyyMMdd}.xlsx";
 }
 
 /// <summary>A built workbook, ready to send.</summary>
