@@ -12,6 +12,16 @@
  * form, and filling them in here would invent a reconciliation step the province does not do. The
  * levels in between are structure, not money.
  *
+ * ↩️ **That premise is gone as of PPDO-98** — the 2026-09-15 demo asked for subtotals on the program
+ * and project rows, so those levels now print their own figures. The strips the Program and Project
+ * panels render therefore sit at levels the form also totals.
+ *
+ * ⚠️ **They are still not the same numbers, and must not be read as such.** This component sums the
+ * amounts **as encoded**; the printed sheet uses `AipFormRowBuilder` over `AipPrintedFigures` —
+ * rounded up per figure, MOOE and CO uplifted 30%. That divergence is the one the consolidated grid
+ * already carries a note about, and it is now visible one level deeper. `AipFormRowBuilder` stays the
+ * single authority for anything printed.
+ *
  * ⚠️ **Every figure is ₱000**, like every other read-only amount on an AIP surface — `fmtThousands`
  * from `lib/aip-units`, never a bare `toLocaleString`. The strip carries its own unit caption for
  * that reason: the office row sits above a tree of figures in the same unit, and a strip that did
