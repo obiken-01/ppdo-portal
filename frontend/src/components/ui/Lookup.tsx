@@ -41,6 +41,11 @@ export interface LookupProps<T> {
   disabled?: boolean;
   className?: string;
   maxResults?: number;
+  /**
+   * The text input itself, so a caller can focus it (PPDO-89 — AIP Entry's "Change activity"
+   * clears the activity lookup and puts the cursor straight back in it).
+   */
+  inputRef?: React.Ref<HTMLInputElement>;
 }
 
 export default function Lookup<T>({
@@ -56,6 +61,7 @@ export default function Lookup<T>({
   disabled,
   className,
   maxResults = 30,
+  inputRef,
 }: LookupProps<T>) {
   const searchText = getSearchText ?? getLabel;
 
@@ -125,6 +131,7 @@ export default function Lookup<T>({
   return (
     <div ref={containerRef} className={`relative ${className ?? ""}`}>
       <input
+        ref={inputRef}
         type="text"
         value={query}
         disabled={disabled}

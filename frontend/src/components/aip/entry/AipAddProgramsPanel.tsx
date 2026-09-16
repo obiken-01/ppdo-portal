@@ -29,13 +29,28 @@ import type { AipOfficeDetail, AipAddablePrograms } from "@/types";
 const SECTORS = ["GENERAL", "SOCIAL", "ECONOMIC", "OTHERS"] as const;
 
 export default function AipAddProgramsPanel({
-  aipRecordId, officeConfigId, onAdded,
+  aipRecordId, officeConfigId, onAdded, open: openProp, onOpenChange,
 }: {
   aipRecordId: number;
   officeConfigId: number;
   onAdded: (office: AipOfficeDetail) => void;
+  /**
+   * Controlled mode (PPDO-89): the caller owns the trigger and this renders **nothing** while
+   * closed. ⚠️ Added because the drill-down moved the trigger into the sticky office header, and
+   * the panel itself must not live there — open, it is a sector picker over a scrolling checkbox
+   * list, and pinning that to the top of the viewport would cover the work it was opened from.
+   *
+   * Omit both props for the self-contained button-then-panel behaviour the empty state still uses.
+   */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen]       = useState(false);
+  const [openState, setOpenState] = useState(false);
+  const controlled = openProp !== undefined;
+  const open = controlled ? openProp : openState;
+  // ⚠️ One setter for both modes, so the Cancel button and the close-on-success below keep working
+  // unchanged — they are the reason this is a drop-in rather than a second component.
+  const setOpen = controlled ? (v: boolean) => onOpenChange?.(v) : setOpenState;
   const [sector, setSector]   = useState<string>(SECTORS[0]);
   const [checked, setChecked] = useState<Set<number>>(new Set());
 
@@ -119,6 +134,8 @@ export default function AipAddProgramsPanel({
   }
 
   if (!open) {
+    // Controlled: the caller drew the trigger, so there is nothing to draw here.
+    if (controlled) return null;
     return (
       <button type="button" onClick={() => setOpen(true)}
         className="border border-green-700 px-4 py-2 text-sm font-medium text-green-700 transition-colors hover:bg-green-50">

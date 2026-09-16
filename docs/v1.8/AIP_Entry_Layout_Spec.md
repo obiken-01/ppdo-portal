@@ -41,6 +41,12 @@ the **delete Project / delete Activity** capability decided at the same meeting.
    bar, and a sticky header (FY · office · office figure strip, per group when several) that replaces
    each `GroupBlock`'s header. — *Submit is office-level; hiding it inside a drill-down would hide the
    gate.*
+   ↩️ **The per-group strips are behind a disclosure; the always-visible figure is the office total**
+   (PPDO-89, live-testing). The Office of the Provincial Governor has **eight** sub-office groups, and
+   eight strips pinned to the top left barely a panel's worth of viewport under them — a context header
+   that eats the work area is not a context header. The office total is the figure that belongs on the
+   permanent line anyway: the ceiling the checklist gates on is office-wide. A "N sub-office groups ▸"
+   toggle opens the per-group split, which the form still needs.
 5. **Selection lives in the URL** — `?fiscalYear=&programId=&projectId=&activityId=`. — *Reload keeps
    the place, the returned-work banner and the review search can deep-link to a node, and "Change
    activity" is just a param change. A stale id (deleted, or not the user's) falls back to the deepest
@@ -81,8 +87,12 @@ the **delete Project / delete Activity** capability decided at the same meeting.
 
 ### Open follow-ups (not blocking)
 
-- **Does AIP Review's one-office screen change to the same layout?** Ralph is asking the PDC. That
-  screen shows the whole structure on purpose (review needs the overview). Nothing here touches it.
+- ~~**Does AIP Review's one-office screen change to the same layout?**~~ **Answered — yes, with the
+  overview kept** (Ralph, 2026-09-16). It gets the same picker and panels as the default view, and
+  today's whole tree stays behind a **Full office** switch, because Accept and Send back are
+  whole-office decisions and a reviewer has to be able to satisfy themselves they have seen all of
+  it. Specified in [AIP_Review_Layout_Spec.md](AIP_Review_Layout_Spec.md); nothing in *this* spec
+  changes, and the review screen was untouched by PPDO-89.
 - **The new Project fields** — field list and the report that uses them are pending. Decision 3
   reserves the section; it is a separate spec.
 
@@ -202,6 +212,39 @@ existing `AuditLog` payload.)
 `components/aip/entry/`: `AipEntryPicker.tsx`, `AipProgramPanel.tsx`, `AipProjectPanel.tsx`,
 `AipActivityPanel.tsx`. ⚠️ The page is 784 lines today — the new layout must **shrink** it by moving the
 panels out, not grow it (`RETROSPECTIVE.md`).
+
+↩️ **As built (PPDO-89), four more files came out of the page** so it could actually shrink — it is
+**610 lines**: `AipEntrySelection.ts` (the pure URL-id → node resolution and its ancestor fallback,
+per §11), `AipSelectedPanel.tsx` (which level renders), `AipEntryPanelParts.tsx` (the office header,
+child list, inline add, panel frame) and `AipEntryTree.ts` (the immutable splices, moved as-is).
+Three existing components gained one optional prop each rather than being forked: `Lookup`'s
+`inputRef` (focus the activity box on "Change activity"), `AipCommentFilterBar`'s `onSelectNode` and
+`AipSubmitChecklist`'s `onSelectActivity` (decision 6 — the review page passes neither, so it is
+unchanged).
+
+↩️ **"+ Add programs" is OFF on a populated AIP** (Ralph, 2026-09-16) — `SHOW_ADD_PROGRAMS_WHEN_POPULATED`
+in `aip/entry/page.tsx`, one constant to flip it back. The old page rendered `AipAddProgramsPanel`
+twice — in the empty state, and again below the tree whenever the office could edit — and the second
+placement was carried over unchanged at first, then moved into the office header band beside the
+sub-office-group disclosure (the panel opening **below** the sticky header in normal flow, since open
+it is a sector picker over a scrolling checkbox list). It is now hidden there entirely:
+
+- Year-open already populates every office from its LDIP, so on a populated AIP this is only the
+  recovery path for a program the LDIP gained afterwards.
+- ⚠️ **The picker lists the office's whole LDIP group, including programs already in the AIP** —
+  `AipService.GetAddableProgramsAsync` does not subtract what has been added. `AddProgramsWithGroupAsync`
+  *does* refuse them ("These programs are already in this group: …"), so no duplicate row can be
+  created, but the encoder is offered a choice that cannot succeed. **Filtering the read path is the
+  prerequisite for turning this back on** — see the techdebt ticket.
+
+The **empty state keeps it**: an office with no programs has nothing to re-add and no other way to
+begin. `AipAddProgramsPanel` gained an optional controlled mode (`open` / `onOpenChange`) for the
+split trigger; omitting both props is the old self-contained behaviour the empty state uses.
+
+↩️ **PPDO-88's delete controls were carried across, not dropped.** They shipped into the old tree as an
+interim and moving the tree out would have removed a capability the office already has, so
+`AipDeleteNodeButton` now sits in the Project and Activity panel headers. **E3 still owns** the final
+copy (the unresolved-comment count in the dialog, the renumber sentence) and the 409 banner.
 
 ## 7. Non-goals
 

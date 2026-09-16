@@ -4,10 +4,20 @@
  * AIP Entry — the encoder's own tab (V18-42 / PPDO-52).
  * Route: /budget-planning/aip/entry
  *
- * Three stages, in this order, because each needs the one before it:
- *   1. Sub-office group + programs (from the LDIP)  — AipAddProgramsPanel
- *   2. Project, then activity
- *   3. Expenditure lines against the activity        — AipExpenditureTable
+ * ⚠️ **One node at a time (PPDO-89).** ↩️ This page used to render the office's whole tree — every
+ * program, project and activity — with an activity's fields opening inline in the middle of it. At
+ * the 2026-09-15 PDC demo that read as overwhelming: while entering one activity the encoder is
+ * looking at every other PPA in the office. It now picks **Program → Project → Activity** first and
+ * shows only the selected level, which is the shape the PDC asked for by name and the one the
+ * encoders already know from the WFP entry page.
+ *
+ * What stays at the top, always visible (spec decision 4): the office figure header, the submit
+ * checklist and the comment filter bar. Submit is an office-level action — hiding the gate inside
+ * a drill-down would hide it.
+ *
+ * ⚠️ **Everything that names a node selects it** (decision 6). A checklist issue, an unresolved
+ * comment and a child-list row all set the selection, because there is no longer a tree to scroll
+ * to. Without that, a returned office cannot find the rows PPDO flagged.
  *
  * ⚠️ **The encoder never creates the record or the office row.** An Admin opens the fiscal year,
  * which creates the one base record and populates every office's programs from its LDIP (PPDO-62).
@@ -20,40 +30,60 @@
  * sidebar into AIP Entry and AIP Review as separately gated siblings.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMe } from "@/lib/me-cache";
 import {
   listAip, getAipById, getAipReadiness, submitAip, submitAipToPpdo, returnAipToEncoder,
-  addAipProject, addAipActivity, aipErrorMessage,
+  aipErrorMessage,
 } from "@/lib/aip";
 import { listAccounts, listFundingSources, listPriceIndexForPicker } from "@/lib/config";
 import { FIRST_ENTERED_FISCAL_YEAR } from "@/lib/aip-fiscal-years";
 import { AIP_WORKFLOW, isOfficeEditable, describeAipHolder } from "@/lib/aip-workflow";
 import AipAddProgramsPanel from "@/components/aip/entry/AipAddProgramsPanel";
-import AipExpenditureTable from "@/components/aip/entry/AipExpenditureTable";
-import AipActivityFields from "@/components/aip/entry/AipActivityFields";
 import AipSubmitChecklist, { type AipSubmitStage } from "@/components/aip/entry/AipSubmitChecklist";
 import { refreshAipNotifications, useAipNotifications } from "@/lib/aip-notifications";
+import { AipCommentsProvider, AipCommentFilterBar } from "@/components/aip/entry/AipComments";
+import { applyAipDeleteToTree } from "@/components/aip/entry/AipDeleteNodeButton";
+import { sumActivityAmounts } from "@/components/aip/entry/AipRowFigures";
+import AipEntryPicker from "@/components/aip/entry/AipEntryPicker";
+import { AipOfficeHeader } from "@/components/aip/entry/AipEntryPanelParts";
+import AipSelectedPanel from "@/components/aip/entry/AipSelectedPanel";
 import {
-  AipCommentsProvider, AipCommentFilterBar, AipCommentAnchor,
-} from "@/components/aip/entry/AipComments";
-import { AipLevelChip, AipRefCode, aipHeaderRow } from "@/components/aip/entry/AipHierarchy";
-import AipDeleteNodeButton, { applyAipDeleteToTree } from "@/components/aip/entry/AipDeleteNodeButton";
+  addActivityToTree, addProjectToTree, applyActivityTotals, patchActivity,
+} from "@/components/aip/entry/AipEntryTree";
 import {
-  AipFigureStrip, AipFundPill, AipUnitCaption, activityFundLabel, sumActivityAmounts,
-  type AipRowAmounts,
-} from "@/components/aip/entry/AipRowFigures";
-import { listAipExpenditures } from "@/lib/aip";
+  EMPTY_SELECTION_IDS, idsForAipNode, listAipProgramOptions, resolveAipSelection,
+  type AipSelectionIds,
+} from "@/components/aip/entry/AipEntrySelection";
 import type {
-  AipRecordDetail, AipOfficeDetail, AipProjectDetail, AipActivityDetail, AipExpenditure,
-  AipExpenditureWriteResult, AipDeleteResult,
+  AipRecordDetail, AipOfficeDetail, AipProjectDetail, AipActivityDetail,
+  AipDeleteResult, AipCommentNodeType,
   AccountResponse, FundingSourceResponse, AipReadiness, PriceIndexPickerItem,
 } from "@/types";
 
 /** FY2028 onward. The entry process does not exist below the break year. */
 const YEARS = [0, 1, 2].map((n) => FIRST_ENTERED_FISCAL_YEAR + n);
+
+/**
+ * Whether an office that already HAS programs is offered "+ Add programs" (Ralph, 2026-09-16).
+ *
+ * ⚠️ **Off, deliberately — flip this one constant to bring it back.** Year-open already populates
+ * every office from its LDIP, so on a populated AIP this is only the recovery path for a program
+ * the LDIP gained afterwards. Two reasons it is not worth a permanent control:
+ *
+ *  1. The picker lists the office's WHOLE LDIP group, including the programs already in the AIP —
+ *     `AipService.GetAddableProgramsAsync` does not subtract what has been added. Ticking one is
+ *     refused ("These programs are already in this group: …"), so no duplicate row can be created,
+ *     but the encoder is offered a choice that cannot succeed.
+ *  2. On the drill-down it sat under a picker whose whole job is narrowing down, reading as a
+ *     fourth step for something almost nobody needs.
+ *
+ * The **empty state** still renders the panel — an office with no programs has nothing to re-add
+ * and no other way to begin.
+ */
+const SHOW_ADD_PROGRAMS_WHEN_POPULATED = false;
 
 export default function AipEntryPage() {
   const me = useMe((m) => m.canAccessBudgetPlanning);
@@ -71,11 +101,34 @@ export default function AipEntryPage() {
   // put the picker in a state it cannot offer, and every query below would run against a year with
   // no entry process at all. An unusable value falls back to the default rather than erroring —
   // there is nothing the reader could do about it.
+  const router = useRouter();
   const searchParams = useSearchParams();
   const requestedYear = Number(searchParams.get("fiscalYear"));
   const [fiscalYear, setFiscalYear] = useState(
     YEARS.includes(requestedYear) ? requestedYear : FIRST_ENTERED_FISCAL_YEAR
   );
+
+  // ⚠️ **The selection lives in the URL** (spec decision 5) — a reload keeps the encoder's place,
+  // the returned-work banner and the review search can deep-link to a node, and "Change activity"
+  // is just a param change. Read ONCE here, then mirrored back by the effect below; the URL is not
+  // re-read on every render, or a `router.replace` would race the reader's own next click.
+  const [ids, setIds] = useState<AipSelectionIds>(() => ({
+    programId: numberParam(searchParams.get("programId")),
+    projectId: numberParam(searchParams.get("projectId")),
+    activityId: numberParam(searchParams.get("activityId")),
+  }));
+  /** Set when an id in the URL no longer resolves, or a named node is out of view. */
+  const [selectionNotice, setSelectionNotice] = useState<string | null>(null);
+  /**
+   * The LDIP add-programs panel, opened from the office header (PPDO-89).
+   *
+   * ⚠️ Held HERE rather than inside the panel, because its trigger and its body are now in two
+   * places: the trigger sits in the sticky header where office-level actions belong, and the body
+   * must render below it in normal flow — a scrolling checkbox list pinned to the top of the
+   * viewport would cover the work it was opened from.
+   */
+  const [addProgramsOpen, setAddProgramsOpen] = useState(false);
+
   const [record, setRecord]   = useState<AipRecordDetail | null>(null);
   const [readiness, setReadiness] = useState<AipReadiness | null>(null);
   const [accounts, setAccounts]   = useState<AccountResponse[]>([]);
@@ -100,18 +153,50 @@ export default function AipEntryPage() {
   // that covers only their own office is incoherent: found by live-testing, where an encoder saw
   // another office's programs above a panel reading "0 activities in this office".
   //
-  // The readiness endpoint narrows the same way (AipSubmitService.ResolveAsync), so the tree and
+  // The readiness endpoint narrows the same way (AipSubmitService.ResolveAsync), so the picker and
   // the checklist now describe the same set of work.
   const myGroups: AipOfficeDetail[] = useMemo(
     () => (record?.offices ?? []).filter((o) => officeId != null && o.officeId === officeId),
     [record, officeId]
   );
 
+  const programOptions = useMemo(() => listAipProgramOptions(myGroups), [myGroups]);
+
+  /**
+   * The selected nodes, resolved against the loaded tree.
+   *
+   * ⚠️ Null while the record is still loading, and that is not the same as "nothing selected": a
+   * URL naming a program would otherwise resolve against an empty tree, decide the program is gone
+   * and clear the reader's deep link a beat before the data it points at arrives.
+   */
+  const selection = useMemo(
+    () => (record ? resolveAipSelection(myGroups, ids) : null),
+    [record, myGroups, ids]
+  );
+
+  // A stale id falls back to the deepest ancestor that still resolves, and says which level went.
+  useEffect(() => {
+    if (!selection?.notice) return;
+    setSelectionNotice(selection.notice);
+    setIds(selection.ids);
+  }, [selection]);
+
+  // The selection mirrored back into the URL. `scroll: false` — a replace that jumped the page to
+  // the top on every pick would undo the reason the panel is on screen.
+  useEffect(() => {
+    const q = new URLSearchParams({ fiscalYear: String(fiscalYear) });
+    if (ids.programId != null) q.set("programId", String(ids.programId));
+    if (ids.projectId != null) q.set("projectId", String(ids.projectId));
+    if (ids.activityId != null) q.set("activityId", String(ids.activityId));
+    router.replace(`/budget-planning/aip/entry?${q.toString()}`, { scroll: false });
+  }, [router, fiscalYear, ids]);
+
   const workflowStatus = readiness?.workflowStatus ?? AIP_WORKFLOW.draft;
   // ↩️ Was `=== "Draft"` until PPDO-70. The office keeps editing through department review and
   // after a PPDO return; the lock falls when the work reaches PPDO. Mirrors the server's
   // AipWorkflowStatus.IsOfficeEditable — change both together.
   const canEdit = isOfficeEditable(workflowStatus);
+  const holder = describeAipHolder(workflowStatus);
 
   // The division filter applies to the HOST office only, and only when the user has a division —
   // the same condition AipReadScope uses. A guest office is never division-filtered, so telling
@@ -156,6 +241,54 @@ export default function AipEntryPage() {
     if (!record) return;
     try { setReadiness(await getAipReadiness(record.id)); } catch { /* checklist stays stale, page works */ }
   }
+
+  // ── Selection ───────────────────────────────────────────────────────────
+  //
+  // ⚠️ One setter for every way of choosing a node — the picker, a child row, a checklist issue, a
+  // comment, and a freshly created row all go through here. Three of those were added after the
+  // picker, and each would otherwise have had to remember to clear the stale-id notice.
+  const select = useCallback((next: AipSelectionIds) => {
+    setSelectionNotice(null);
+    setIds(next);
+  }, []);
+
+  /** Selects the node a checklist issue or a comment names, wherever it sits in the tree. */
+  const selectNode = useCallback(
+    (nodeType: AipCommentNodeType, nodeId: number) => {
+      const found = idsForAipNode(myGroups, nodeType, nodeId);
+      if (!found) {
+        // Possible for a host-office user whose division filter excludes the row, and for a row
+        // deleted in another tab. Said, rather than a click that appears to do nothing.
+        setSelectionNotice("That row is not in the part of this AIP you can see.");
+        return;
+      }
+      select(found);
+    },
+    [myGroups, select]
+  );
+
+  // "Change activity" clears the box and puts the cursor back in it — the encoder's next move is
+  // always to pick another one, and a cleared field they then have to click is a wasted step.
+  //
+  // ⚠️ Focused from an EFFECT, not from the click handler. ↩️ A `requestAnimationFrame` here left
+  // focus on `<body>`: the click unmounts the activity panel the button lives in, and the browser
+  // moves focus off a removed element — landing after the frame callback and undoing it. An effect
+  // runs after that commit's DOM mutations, so it is the last word. Found by live-testing.
+  const activityInputRef = useRef<HTMLInputElement>(null);
+  const [focusActivityLookup, setFocusActivityLookup] = useState(false);
+
+  useEffect(() => {
+    if (!focusActivityLookup) return;
+    setFocusActivityLookup(false);
+    activityInputRef.current?.focus();
+  }, [focusActivityLookup]);
+
+  function changeActivity() {
+    select({ programId: ids.programId, projectId: ids.projectId, activityId: null });
+    setFocusActivityLookup(true);
+  }
+
+  // ── Submit hops ─────────────────────────────────────────────────────────
 
   async function doSubmit() {
     if (!record) return;
@@ -233,8 +366,8 @@ export default function AipEntryPage() {
             }
           // An encoder while their department head holds it: still editable, just not theirs to
           // send on.
-          : { kind: "awaitingReviewer", holder: describeAipHolder(workflowStatus) }
-        : { kind: "locked", holder: describeAipHolder(workflowStatus) };
+          : { kind: "awaitingReviewer", holder }
+        : { kind: "locked", holder };
 
   /**
    * PPDO-75 — the returned banner for the year on screen.
@@ -251,9 +384,41 @@ export default function AipEntryPage() {
         ? "Your department head returned this to the encoders — see their comments, then submit again."
         : null;
 
+  // ── Tree edits ──────────────────────────────────────────────────────────
+  //
+  // ⚠️ Every one of these SPLICES the change into `record` rather than reloading it. `load()` here
+  // was reported as "the page reloads when a user creates a new activity or project": it clears
+  // `record`, so the skeleton flashes and the panel the encoder was working in is torn down and
+  // rebuilt — right after an action taken inside it.
+
+  function onProjectAdded(project: AipProjectDetail) {
+    setRecord((prev) => prev && addProjectToTree(prev, project));
+    // Decision 7 — the new node becomes the selection. Creating a project and then having to find
+    // it in the lookup you just created it from is a step that exists only because of the code.
+    select({ programId: project.programId, projectId: project.id, activityId: null });
+    void refreshReadiness();
+  }
+
+  function onActivityAdded(activity: AipActivityDetail) {
+    setRecord((prev) => prev && addActivityToTree(prev, activity));
+    select({ programId: ids.programId, projectId: activity.projectId, activityId: activity.id });
+    void refreshReadiness();
+  }
+
+  /** PPDO-88 — the node goes, renumbered codes are patched in, the selection moves to the parent. */
+  function onDeleted(result: AipDeleteResult) {
+    setRecord((prev) => prev && applyAipDeleteToTree(prev, result));
+    if (result.deletedNodeType === "Activity" && result.deletedId === ids.activityId) {
+      select({ programId: ids.programId, projectId: ids.projectId, activityId: null });
+    } else if (result.deletedNodeType === "Project" && result.deletedId === ids.projectId) {
+      select({ programId: ids.programId, projectId: null, activityId: null });
+    }
+    void refreshReadiness();
+  }
+
   // ── Shell ───────────────────────────────────────────────────────────────
   // ⚠️ The header and the year picker render immediately, in every state. Gating the whole page on
-  // a spinner and then swapping in a full-height tree is the CLS failure PERFORMANCE_GUIDELINES
+  // a spinner and then swapping in a full-height panel is the CLS failure PERFORMANCE_GUIDELINES
   // calls out by name.
   return (
     <div className="p-4 sm:p-6">
@@ -268,7 +433,15 @@ export default function AipEntryPage() {
           <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
             Fiscal year
           </label>
-          <select value={fiscalYear} onChange={(e) => setFiscalYear(Number(e.target.value))}
+          <select
+            value={fiscalYear}
+            onChange={(e) => {
+              setFiscalYear(Number(e.target.value));
+              // ⚠️ The selection is cleared with the year. Ids are per-record, so carrying them
+              // across would name rows of the year just left and resolve to a stale-id notice on
+              // arrival — a message about nothing the reader did.
+              select(EMPTY_SELECTION_IDS);
+            }}
             className="border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-green-600">
             {YEARS.map((y) => <option key={y} value={y}>FY {y}</option>)}
           </select>
@@ -309,98 +482,128 @@ export default function AipEntryPage() {
           body="An administrator opens the fiscal year, which creates the AIP and populates every office's programs from its LDIP. Once that is done, your office's programs will appear here."
         />
       ) : record && officeId != null ? (
-        // One fetch of the office's comments for the whole tree — a gutter control per row
-        // fetching its own would be an N+1 that only shows up on a big office.
+        // One fetch of the office's comments for every panel — a control per row fetching its own
+        // would be an N+1 that only shows up on a big office.
         <AipCommentsProvider aipRecordId={record.id} officeId={officeId}>
-        <div className="space-y-4">
-          {readiness && (
-            <AipSubmitChecklist
-              readiness={readiness}
-              stage={submitStage}
-              submitting={submitting}
-              history={{ aipRecordId: record.id, officeId }}
-            />
-          )}
-
-          {/* Renders nothing when there is nothing outstanding — a permanent "0 unresolved" strip
-              would be noise on the page encoders use most. */}
-          <AipCommentFilterBar />
-
-          {myGroups.length === 0 ? (
-            <EmptyState
-              title="Nothing here yet"
-              body="Your office has no programs in this AIP. Add them from your LDIP to begin — the AIP cannot contain a program the LDIP does not."
+          <div className="space-y-4">
+            <AipOfficeHeader
+              fiscalYear={fiscalYear}
+              officeName={me?.officeName ?? "Your office"}
+              groups={myGroups.map((g) => ({
+                id: g.id,
+                name: g.name,
+                amounts: sumActivityAmounts(
+                  g.programs.flatMap((p) => p.projects.flatMap((j) => j.activities))
+                ),
+              }))}
+              // ⚠️ Offered only once the office HAS programs — the empty state below renders the
+              // panel itself, where adding them is the whole point rather than a recovery path.
               action={
-                canEdit ? (
-                  <AipAddProgramsPanel
-                    aipRecordId={record.id} officeConfigId={officeId}
-                    onAdded={() => void load()} />
+                SHOW_ADD_PROGRAMS_WHEN_POPULATED &&
+                canEdit && myGroups.length > 0 && !addProgramsOpen ? (
+                  <button
+                    type="button"
+                    onClick={() => setAddProgramsOpen(true)}
+                    className="text-xs font-medium text-green-700 hover:underline"
+                  >
+                    + Add programs
+                  </button>
                 ) : undefined
               }
             />
-          ) : (
-            <>
-              {myGroups.map((group) => (
-                <GroupBlock
-                  key={group.id} group={group} canEdit={canEdit}
-                  accounts={accounts} funds={funds}
-                  // ⚠️ The CODE, not the office name. The form's Implementing Office column (3)
-                  // prints codes — "OPV", and "OPV/LFC/HRMO" where an activity is run jointly —
-                  // so a default of the full name would be retyped by every encoder (PPDO-80).
-                  defaultImplementingOffice={me?.officeCode ?? null}
-                  priceIndex={priceIndex} priceIndexLoading={priceIndexLoading}
-                  // Which fund the ceiling actually checks (V18-46 is General Fund only), so the
-                  // picker can mark it. An encoder otherwise has no way to tell why GF behaves
-                  // differently from every other fund at submit.
+
+            {/* ⚠️ Below the sticky header, not inside it. Programs are the LDIP's closed list and
+                the year-open already populates every office from it — this is the recovery path for
+                a program the LDIP gained afterwards, so it stays out of the encoding flow until
+                someone asks for it (Ralph, 2026-09-16). */}
+            {SHOW_ADD_PROGRAMS_WHEN_POPULATED && canEdit && myGroups.length > 0 && (
+              <AipAddProgramsPanel
+                aipRecordId={record.id} officeConfigId={officeId}
+                open={addProgramsOpen} onOpenChange={setAddProgramsOpen}
+                onAdded={() => void load()} />
+            )}
+
+            {readiness && (
+              <AipSubmitChecklist
+                readiness={readiness}
+                stage={submitStage}
+                submitting={submitting}
+                history={{ aipRecordId: record.id, officeId }}
+                onSelectActivity={(activityId) => selectNode("Activity", activityId)}
+              />
+            )}
+
+            {/* Renders nothing when there is nothing outstanding — a permanent "0 unresolved" strip
+                would be noise on the page encoders use most. */}
+            <AipCommentFilterBar onSelectNode={selectNode} />
+
+            {myGroups.length === 0 ? (
+              <EmptyState
+                title="Nothing here yet"
+                body="Your office has no programs in this AIP. Add them from your LDIP to begin — the AIP cannot contain a program the LDIP does not."
+                action={
+                  canEdit ? (
+                    <AipAddProgramsPanel
+                      aipRecordId={record.id} officeConfigId={officeId}
+                      onAdded={() => void load()} />
+                  ) : undefined
+                }
+              />
+            ) : (
+              <>
+                {selectionNotice && (
+                  <p role="status" className="border border-slate-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    {selectionNotice}
+                  </p>
+                )}
+
+                <AipEntryPicker
+                  programOptions={programOptions}
+                  severalGroups={myGroups.length > 1}
+                  ids={ids}
+                  projects={selection?.program?.projects ?? []}
+                  activities={selection?.project?.activities ?? []}
+                  onChange={select}
+                  activityInputRef={activityInputRef}
+                />
+
+                <AipSelectedPanel
+                  selection={selection}
+                  canEdit={canEdit}
+                  holder={holder}
+                  accounts={accounts}
+                  funds={funds}
                   generalFundId={readiness?.ceiling?.generalFundId ?? null}
-                  divisionFiltered={divisionFiltered}
-                  // ⚠️ A new project or activity is SPLICED in, not reloaded. `load()` here was
-                  // reported as "the page reloads when a user creates a new activity or project":
-                  // it clears `record`, so the skeleton flashes, the scroll jumps to the top and
-                  // every expanded activity closes — right after an action taken deep in the tree.
-                  //
-                  // Readiness is refreshed for both. A new activity adds a "not costed" issue, and
-                  // a new project can clear the office-level "empty" one.
-                  onProjectAdded={(project) => {
-                    setRecord((prev) => prev && addProjectToTree(prev, project));
-                    void refreshReadiness();
-                  }}
-                  onActivityAdded={(activity) => {
-                    setRecord((prev) => prev && addActivityToTree(prev, activity));
-                    void refreshReadiness();
-                  }}
-                  // ⚠️ An expenditure change must NOT reload the record. Doing so remounts the
-                  // whole tree and the activity the encoder is working inside snaps shut — found
-                  // by live-testing. The write endpoint returns the recomputed activity precisely
-                  // so the row can update in place, which is also one fewer round trip per line.
+                  priceIndex={priceIndex}
+                  priceIndexLoading={priceIndexLoading}
+                  // ⚠️ The CODE, not the office name. The form's Implementing Office column (3)
+                  // prints codes — "OPV", and "OPV/LFC/HRMO" where an activity is run jointly — so
+                  // a default of the full name would be retyped by every encoder (PPDO-80).
+                  defaultImplementingOffice={me?.officeCode ?? null}
+                  onSelect={select}
+                  onChangeActivity={changeActivity}
+                  onProjectAdded={onProjectAdded}
+                  onActivityAdded={onActivityAdded}
+                  onDeleted={onDeleted}
+                  // ⚠️ An expenditure change must NOT reload the record: the panel would remount
+                  // under the encoder mid-edit. The write endpoint returns the recomputed activity
+                  // precisely so the figures can update in place.
                   onActivityTotals={(r) => {
                     setRecord((prev) => prev && applyActivityTotals(prev, r));
                     void refreshReadiness();
                   }}
-                  // ⚠️ Readiness is refreshed too, not just the tree: eSRE and CC typology are
-                  // two of the checks the submit gate blocks on, so saving them has to move the
-                  // checklist at the top of the page or the encoder fixes something and sees no
-                  // change.
+                  // ⚠️ Readiness is refreshed too, not just the tree: eSRE is one of the checks the
+                  // submit gate blocks on, so saving it has to move the checklist at the top of the
+                  // page or the encoder fixes something and sees no change.
                   onActivityDetails={(updated) => {
                     setRecord((prev) => prev && patchActivity(prev, updated.id, updated));
                     void refreshReadiness();
                   }}
-                  // PPDO-88 — spliced like an add: the node goes and renumbered codes are patched in.
-                  onDeleted={(result) => {
-                    setRecord((prev) => prev && applyAipDeleteToTree(prev, result));
-                    void refreshReadiness();
-                  }}
                 />
-              ))}
 
-              {canEdit && (
-                <AipAddProgramsPanel
-                  aipRecordId={record.id} officeConfigId={officeId}
-                  onAdded={() => void load()} />
-              )}
-            </>
-          )}
-        </div>
+              </>
+            )}
+          </div>
         </AipCommentsProvider>
       ) : (
         // A user with no office resolves to "sees nothing" rather than "sees everything" —
@@ -414,356 +617,13 @@ export default function AipEntryPage() {
   );
 }
 
-// ── One sub-office group ──────────────────────────────────────────────────
-
-function GroupBlock({
-  group, canEdit, accounts, funds, generalFundId, divisionFiltered,
-  priceIndex, priceIndexLoading, defaultImplementingOffice,
-  onProjectAdded, onActivityAdded, onActivityTotals, onActivityDetails, onDeleted,
-}: {
-  group: AipOfficeDetail;
-  canEdit: boolean;
-  accounts: AccountResponse[];
-  funds: FundingSourceResponse[];
-  generalFundId: number | null;
-  priceIndex: PriceIndexPickerItem[];
-  priceIndexLoading: boolean;
-  /** The reader's own office code, prefilled into Implementing Office. Null when unassigned. */
-  defaultImplementingOffice: string | null;
-  /** True when this user only sees their own division's programs — changes what "0" means. */
-  divisionFiltered: boolean;
-  onProjectAdded: (project: AipProjectDetail) => void;
-  onActivityAdded: (activity: AipActivityDetail) => void;
-  onActivityTotals: (result: AipExpenditureWriteResult) => void;
-  onActivityDetails: (updated: AipActivityDetail) => void;
-  onDeleted: (result: AipDeleteResult) => void;
-}) {
-  // The office subtotal the form prints across columns (8)–(13) — PPDO-80. Summed from the tree
-  // rather than fetched: every activity in this group is already in memory, so an endpoint would
-  // be a round trip for arithmetic already done. Memoised because the reduce walks the whole group
-  // and this component re-renders on every expand, edit and line write below it.
-  const amounts: AipRowAmounts = useMemo(
-    () => sumActivityAmounts(
-      group.programs.flatMap((p) => p.projects.flatMap((j) => j.activities))
-    ),
-    [group]
-  );
-
-  return (
-    <div className="border border-slate-200 bg-white">
-      <div className={`border-b border-b-slate-200 px-4 py-3 ${aipHeaderRow("office")}`}>
-        <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
-          <div>
-            <div className="flex items-center gap-2">
-              <AipLevelChip level="office" />
-              <AipRefCode code={group.refCode} />
-            </div>
-            <h2 className="mt-1 text-sm font-semibold uppercase tracking-wide text-slate-800">{group.name}</h2>
-            <p className="mt-0.5 text-xs text-slate-600">
-              {group.sector} · {group.programs.length} program{group.programs.length === 1 ? "" : "s"}
-            </p>
-          </div>
-          {/* ⚠️ The unit is named HERE and not on the activity rows below. Both are ₱000, and
-              saying so once per block is what keeps the office subtotal and the leaf figures
-              legible as the same unit without repeating the caption on every row. */}
-          <div className="flex flex-col items-end gap-1">
-            <AipFigureStrip amounts={amounts} emphasis="strong" />
-            <AipUnitCaption />
-          </div>
-        </div>
-        {/* ⚠️ "0 programs" on its own is indistinguishable from an empty group. When the division
-            filter is on, an empty block far more often means "assigned elsewhere" than "nothing
-            here" — so say which. */}
-        {group.programs.length === 0 && divisionFiltered && (
-          <p className="mt-1 text-xs text-slate-600">
-            None of this group&rsquo;s programs are assigned to your division. They exist — they are
-            just someone else&rsquo;s to encode.
-          </p>
-        )}
-      </div>
-
-      <div className="divide-y divide-slate-200">
-        {group.programs.map((program) => (
-          <div key={program.id} className="ml-3">
-            {/* ⚠️ The tint is on the HEADER strip, not the block. Tinting the whole block would
-                make each nested level sit on its parent's colour, and the ladder would read as
-                one wash instead of four steps. */}
-            <div className={`px-4 py-2 ${aipHeaderRow("program")}`}>
-              <div className="flex items-center gap-2">
-                <AipLevelChip level="program" />
-                <AipRefCode code={program.refCode} />
-              </div>
-              {/* Semibold, a step below the office's uppercase heading and a step above the
-                  project's medium — the type carries the level even without the chip. */}
-              <p className="mt-0.5 text-sm font-semibold text-slate-800">{program.name}</p>
-              <AipCommentAnchor nodeType="Program" nodeId={program.id} />
-            </div>
-
-            <div className="mt-2 space-y-3 px-4 pb-3 pl-4">
-              {program.projects.map((project) => (
-                <div key={project.id}>
-                  <div className={`flex flex-wrap items-center gap-2 px-3 py-1.5 ${aipHeaderRow("project")}`}>
-                    <AipLevelChip level="project" />
-                    <AipRefCode code={project.refCode} />
-                    <span className="text-sm font-medium text-slate-800">{project.name}</span>
-                    {canEdit && (
-                      <span className="ml-auto">
-                        <AipDeleteNodeButton target={{ kind: "Project", project }} onDeleted={onDeleted} />
-                      </span>
-                    )}
-                  </div>
-                  {/* Outside the header strip: it is a flex row, and an anchor inside it would sit
-                      on the same line as the title and wrap badly once a thread opens. */}
-                  <div className="px-3">
-                    <AipCommentAnchor nodeType="Project" nodeId={project.id} />
-                  </div>
-                  <div className="mt-2 space-y-2 pl-4">
-                    {project.activities.map((activity) => (
-                      <ActivityBlock key={activity.id} activity={activity} canEdit={canEdit}
-                        accounts={accounts} funds={funds} generalFundId={generalFundId}
-                        priceIndex={priceIndex} priceIndexLoading={priceIndexLoading}
-                        defaultImplementingOffice={defaultImplementingOffice}
-                        onTotals={onActivityTotals} onDetails={onActivityDetails} onDeleted={onDeleted} />
-                    ))}
-                    {canEdit && (
-                      <InlineAdd label="+ Add activity" placeholder="Activity description"
-                        onAdd={async (name) => {
-                          // ⚠️ The created node is USED, not discarded. Discarding it is what
-                          // forced the reload that made the page appear to refresh.
-                          onActivityAdded(await addAipActivity(project.id, {
-                            // ⚠️ Written at CREATE, not only prefilled in the edit form. An
-                            // activity nobody opens afterwards still has to print an implementing
-                            // office, and it is the encoder's own office in all but the joint case.
-                            name, esreCode: null, implementingOffice: defaultImplementingOffice,
-                            startDate: null, endDate: null, expectedOutputs: null,
-                            fundingSourceRaw: null, ps: null, mooe: null, co: null,
-                            ccAdaptation: null, ccMitigation: null, ccTypologyCode: null,
-                          }));
-                        }} />
-                    )}
-                  </div>
-                </div>
-              ))}
-              {canEdit && (
-                <InlineAdd label="+ Add project" placeholder="Project name"
-                  onAdd={async (name) => onProjectAdded(await addAipProject(program.id, { name }))} />
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ── One activity, with its expenditure lines ──────────────────────────────
-
-function ActivityBlock({
-  activity, canEdit, accounts, funds, generalFundId, priceIndex, priceIndexLoading,
-  defaultImplementingOffice, onTotals, onDetails, onDeleted,
-}: {
-  activity: AipActivityDetail;
-  canEdit: boolean;
-  accounts: AccountResponse[];
-  funds: FundingSourceResponse[];
-  generalFundId: number | null;
-  priceIndex: PriceIndexPickerItem[];
-  priceIndexLoading: boolean;
-  defaultImplementingOffice: string | null;
-  onTotals: (result: AipExpenditureWriteResult) => void;
-  onDetails: (updated: AipActivityDetail) => void;
-  onDeleted: (result: AipDeleteResult) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [lines, setLines] = useState<AipExpenditure[] | null>(null);
-
-  useEffect(() => {
-    if (!open || lines !== null) return;
-    void listAipExpenditures(activity.id).then(setLines).catch(() => setLines([]));
-  }, [open, lines, activity.id]);
-
-  return (
-    <div className="border border-slate-200 bg-white">
-      <button type="button" onClick={() => setOpen((v) => !v)}
-        className={`flex w-full flex-wrap items-start justify-between gap-x-4 gap-y-2 px-3 py-2 text-left hover:bg-green-25 ${aipHeaderRow("activity")}`}>
-        <span className="flex flex-1 flex-wrap items-center gap-2">
-          {/* A disclosure caret, because this is the one level that opens. Decorative, so
-              slate-300 is the right token; the chip beside it carries the meaning. */}
-          <span aria-hidden className="text-slate-300">{open ? "▾" : "▸"}</span>
-          <AipLevelChip level="activity" />
-          <AipRefCode code={activity.refCode} />
-          {/* Normal weight — the leaf. Every level above it is heavier, so depth reads downward. */}
-          <span className="whitespace-pre-line text-sm text-slate-800">{activity.name}</span>
-          {/* The form's Funding Source column (7), beside the description rather than in the
-              numeric strip: it is not a figure, and putting a word among six right-aligned
-              numbers breaks their alignment on every row that has one (PPDO-80). */}
-          <AipFundPill label={activityFundLabel(activity)} />
-        </span>
-        {/* ⚠️ Replaces a lone Total. The form prints (8)(9)(10) separately and an encoder
-            reconciles them column by column — a single Total can only be checked against a figure
-            the sheet never prints. */}
-        <AipFigureStrip amounts={activity} />
-      </button>
-
-      {/* ⚠️ Outside the disclosure <button>, not inside it: nesting a button in a button is
-          invalid HTML, and the click would toggle the activity open instead of the thread. */}
-      <div className="flex items-start gap-3 px-3 pb-1">
-        <div className="min-w-0 flex-1">
-          <AipCommentAnchor nodeType="Activity" nodeId={activity.id} />
-        </div>
-        {canEdit && (
-          <div className="pt-1">
-            <AipDeleteNodeButton target={{ kind: "Activity", activity }} onDeleted={onDeleted} />
-          </div>
-        )}
-      </div>
-
-      {open && (
-        <>
-          {/* ⚠️ Above the lines, not below. eSRE and CC typology block submit just as hard as a
-              missing costing does, and an encoder who opens an activity to cost it should see
-              what else it still needs in the same glance. */}
-          <AipActivityFields activity={activity} canEdit={canEdit} onSaved={onDetails}
-            defaultImplementingOffice={defaultImplementingOffice} />
-
-          {lines === null ? (
-            <div className="space-y-2 px-4 py-3">
-              {[0, 1].map((i) => <div key={i} className="h-4 w-full animate-pulse bg-slate-100" />)}
-            </div>
-          ) : (
-          <AipExpenditureTable
-            activityId={activity.id} lines={lines} accounts={accounts} fundingSources={funds}
-            canEdit={canEdit} generalFundId={generalFundId}
-            priceIndex={priceIndex} priceIndexLoading={priceIndexLoading}
-            onChanged={(result) => {
-              // Refetch just this activity's lines, and hand the recomputed totals upward. The
-              // record is NOT reloaded, so this row stays open and stays where it is.
-              void listAipExpenditures(activity.id).then(setLines).catch(() => undefined);
-              onTotals(result);
-            }} />
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-/**
- * Replaces one activity in the tree, immutably, merging `patch` over it.
- *
- * ⚠️ Exists so a save does not have to reload the record. Reloading remounts every ActivityBlock,
- * and each keeps its own open/closed state — so the row the encoder is working in closes under
- * them. Found by live-testing.
- */
-function patchActivity(
-  record: AipRecordDetail, activityId: number, patch: Partial<AipActivityDetail>
-): AipRecordDetail {
-  return {
-    ...record,
-    offices: record.offices.map((office) => ({
-      ...office,
-      programs: office.programs.map((program) => ({
-        ...program,
-        projects: program.projects.map((project) => ({
-          ...project,
-          activities: project.activities.map((activity) =>
-            activity.id === activityId ? { ...activity, ...patch } : activity
-          ),
-        })),
-      })),
-    })),
-  };
-}
-
-/**
- * Appends a newly created project to its program, immutably.
- *
- * ⚠️ Exists for the same reason `patchActivity` does. `addAipProject` returns the created node
- * carrying its own `programId`, so the tree can absorb it directly — calling `load()` instead
- * tears the whole tree down and rebuilds it, which flashes the skeleton, scrolls to the top and
- * closes every expanded activity. It reads as the page reloading, and that is what it was
- * reported as.
- */
-function addProjectToTree(record: AipRecordDetail, project: AipProjectDetail): AipRecordDetail {
-  return {
-    ...record,
-    offices: record.offices.map((office) => ({
-      ...office,
-      programs: office.programs.map((program) =>
-        program.id === project.programId
-          ? { ...program, projects: [...program.projects, project] }
-          : program
-      ),
-    })),
-  };
-}
-
-/**
- * Appends a newly created activity to its project, immutably.
- *
- * ℹ️ Appended, not inserted by ref code. A new node always takes the next code in its parent's
- * sequence (`RefCodeAllocator`), so the end of the list is its sorted position — the same order a
- * reload would produce.
- */
-function addActivityToTree(record: AipRecordDetail, activity: AipActivityDetail): AipRecordDetail {
-  return {
-    ...record,
-    offices: record.offices.map((office) => ({
-      ...office,
-      programs: office.programs.map((program) => ({
-        ...program,
-        projects: program.projects.map((project) =>
-          project.id === activity.projectId
-            ? { ...project, activities: [...project.activities, activity] }
-            : project
-        ),
-      })),
-    })),
-  };
-}
-
-/** The totals half of the above — what an expenditure write hands back. */
-function applyActivityTotals(
-  record: AipRecordDetail, r: AipExpenditureWriteResult
-): AipRecordDetail {
-  return patchActivity(record, r.activityId, {
-    ps: r.activityPs, mooe: r.activityMooe, co: r.activityCo, total: r.activityTotal,
-    // ⚠️ Patched with the totals, not separately. Adding a line can introduce a fund and deleting
-    // one can remove the last line naming a fund — neither is visible from the amounts, and the
-    // tree is never reloaded, so leaving this out strands the row's fund cell on a stale value.
-    fundCodes: r.activityFundCodes,
-  });
-}
-
 // ── Small pieces ──────────────────────────────────────────────────────────
 
-function InlineAdd({
-  label, placeholder, onAdd,
-}: { label: string; placeholder: string; onAdd: (name: string) => Promise<void> }) {
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  if (!open) {
-    return (
-      <button type="button" onClick={() => setOpen(true)}
-        className="text-xs font-medium text-green-700 hover:underline">{label}</button>
-    );
-  }
-  return (
-    <div className="flex gap-2">
-      <input value={name} onChange={(e) => setName(e.target.value)} placeholder={placeholder}
-        className="flex-1 border border-slate-300 bg-white px-2 py-1 text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-green-600" />
-      <button type="button" disabled={busy || !name.trim()}
-        onClick={async () => {
-          setBusy(true);
-          try { await onAdd(name.trim()); setName(""); setOpen(false); } finally { setBusy(false); }
-        }}
-        className="bg-green-700 px-3 py-1 text-sm text-white disabled:bg-slate-300">Add</button>
-      <button type="button" onClick={() => setOpen(false)}
-        className="px-2 py-1 text-sm text-slate-600 hover:underline">Cancel</button>
-    </div>
-  );
+/** A URL param that must be a positive integer id, or nothing. */
+function numberParam(raw: string | null): number | null {
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : null;
 }
 
 function EmptyState({ title, body, action }: { title: string; body: string; action?: React.ReactNode }) {
@@ -780,25 +640,30 @@ function EmptyState({ title, body, action }: { title: string; body: string; acti
 }
 
 /**
- * ⚠️ A skeleton shaped like the loaded page, not a spinner. Same header, same block heights — a
- * tiny centred spinner replaced by a full-height tree is the layout shift
- * `docs/PERFORMANCE_GUIDELINES.md` names.
+ * ⚠️ A skeleton shaped like the loaded page, not a spinner — the office header, the checklist box,
+ * three lookup-shaped bars and one panel, at the heights they load at. A tiny centred spinner
+ * replaced by a full-height panel is the layout shift `docs/PERFORMANCE_GUIDELINES.md` names.
  */
 function EntrySkeleton() {
   return (
     <div className="space-y-4">
+      <div className="h-16 w-full animate-pulse border border-slate-200 bg-white" />
       <div className="h-28 w-full animate-pulse border border-slate-200 bg-white" />
-      {[0, 1].map((i) => (
-        <div key={i} className="border border-slate-200 bg-white">
-          <div className="h-16 border-b border-slate-200 bg-slate-50" />
-          <div className="space-y-2 px-4 py-3">
-            <div className="h-4 w-1/3 animate-pulse bg-slate-100" />
-            <div className="h-4 w-2/3 animate-pulse bg-slate-100" />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {[0, 1, 2].map((i) => (
+          <div key={i}>
+            <div className="mb-1 h-3 w-1/3 bg-slate-100" />
+            <div className="h-8 w-full animate-pulse bg-slate-100" />
           </div>
+        ))}
+      </div>
+      <div className="border border-slate-200 bg-white p-4">
+        <div className="h-10 bg-slate-50" />
+        <div className="mt-3 space-y-2">
+          <div className="h-4 w-1/3 animate-pulse bg-slate-100" />
+          <div className="h-4 w-2/3 animate-pulse bg-slate-100" />
         </div>
-      ))}
+      </div>
     </div>
   );
 }
-
-

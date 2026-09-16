@@ -154,6 +154,26 @@ export function useUnresolvedCounts(): AipUnresolvedCounts | null {
   return useComments()?.data?.unresolved ?? null;
 }
 
+/**
+ * How many unresolved comments sit on one node (PPDO-89).
+ *
+ * ⚠️ **A count per node, not a fetch per node.** The drill-down badges every lookup option and
+ * every child row, so this reads the map the provider already built — a hook that fetched would be
+ * the N+1 this file's provider exists to prevent, at one request per visible row.
+ *
+ * ⚠️ Returns 0 outside a provider and 0 when the fetch failed. A badge is an affordance, not a
+ * statement about the record: rendering "0" where the truth is "unknown" costs nothing, whereas
+ * the alternative is a badge that says "?" on every row of a page whose comments happen to be down.
+ */
+export function useAipUnresolvedCount(): (nodeType: AipCommentNodeType, nodeId: number) => number {
+  const ctx = useComments();
+  return useCallback(
+    (nodeType: AipCommentNodeType, nodeId: number) =>
+      (ctx?.byNode.get(keyOf(nodeType, nodeId)) ?? []).filter((c) => !c.resolvedAt).length,
+    [ctx]
+  );
+}
+
 // ── The tally, as filter buttons ────────────────────────────────────────────
 
 /**
@@ -163,31 +183,94 @@ export function useUnresolvedCounts(): AipUnresolvedCounts | null {
  * reviewer and no comments, and a permanent "0 unresolved" strip is noise on the page they use
  * most.
  */
-export function AipCommentFilterBar() {
+export function AipCommentFilterBar({
+  onSelectNode,
+}: {
+  /**
+   * Takes the reader to the row a comment is on (PPDO-89). Supplied by the drill-down entry page,
+   * where the commented row is not on screen and cannot be scrolled to — the only way to reach it
+   * is to select it. Omitted by the review page, which still renders the whole tree, so its
+   * behaviour is unchanged: the chips filter, and the threads open where they sit.
+   */
+  onSelectNode?: (nodeType: AipCommentNodeType, nodeId: number) => void;
+} = {}) {
   const ctx = useComments();
   if (!ctx?.data) return null;
 
   const { fromDepartmentHead, fromPpdo } = ctx.data.unresolved;
   if (fromDepartmentHead + fromPpdo === 0) return null;
 
+  const unresolved = ctx.data.comments.filter(
+    (c) => !c.resolvedAt && (ctx.filter == null || c.authorSide === ctx.filter)
+  );
+
   return (
-    <div className="flex flex-wrap items-center gap-2 border border-slate-200 bg-white px-4 py-3">
-      <span className="text-xs font-semibold uppercase tracking-wide text-slate-800">
-        Unresolved comments
-      </span>
-      <FilterChip side="Ppdo" count={fromPpdo} />
-      <FilterChip side="DepartmentHead" count={fromDepartmentHead} />
-      {ctx.filter && (
-        <button
-          type="button"
-          onClick={() => ctx.setFilter(null)}
-          className="text-xs text-slate-600 underline hover:text-slate-800"
-        >
-          Clear
-        </button>
+    <div className="border border-slate-200 bg-white px-4 py-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-slate-800">
+          Unresolved comments
+        </span>
+        <FilterChip side="Ppdo" count={fromPpdo} />
+        <FilterChip side="DepartmentHead" count={fromDepartmentHead} />
+        {ctx.filter && (
+          <button
+            type="button"
+            onClick={() => ctx.setFilter(null)}
+            className="text-xs text-slate-600 underline hover:text-slate-800"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+
+      {/* ⚠️ The list is the drill-down's replacement for the tree. With one node on screen at a
+          time, a chip that only dimmed rows elsewhere would point at nothing — so each outstanding
+          remark is a way to GET to its row (decision 6). */}
+      {onSelectNode && unresolved.length > 0 && (
+        <ul className="mt-2 divide-y divide-slate-100 border-t border-slate-100">
+          {unresolved.slice(0, 12).map((c) => (
+            <li key={c.id}>
+              {/* An orphaned comment has no row left to select, so it is listed and not offered —
+                  dropping it would hide an outstanding ask, and linking it would go nowhere. */}
+              {c.isOrphaned ? (
+                <p className="px-1 py-1.5 text-xs text-slate-600">
+                  <span className="italic">Removed row</span> · {firstLine(c.body)}
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onSelectNode(c.nodeType, c.nodeId)}
+                  // ⚠️ focus-VISIBLE, not focus. These rows are clicked, and a plain `focus:` ring
+                  // stays painted on the row after the click while the reader is already looking at
+                  // the node it opened — which is what the browser's default outline was doing here.
+                  // Keyboard users still get a ring; `RowActions` makes the same call.
+                  className="block w-full px-1 py-1.5 text-left text-xs text-slate-600 hover:bg-green-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-600"
+                >
+                  {c.nodeRefCode && (
+                    <span className="mr-2 font-mono text-slate-800">{c.nodeRefCode}</span>
+                  )}
+                  <span className="mr-2 text-slate-800">{SIDE_LABEL[c.authorSide]}</span>
+                  {firstLine(c.body)}
+                </button>
+              )}
+            </li>
+          ))}
+          {unresolved.length > 12 && (
+            <li className="px-1 py-1.5 text-xs text-slate-600">
+              &hellip;and {unresolved.length - 12} more.
+            </li>
+          )}
+        </ul>
       )}
     </div>
   );
+}
+
+/** One line of a comment body, so a 2,000-character remark cannot push the list off the screen. */
+function firstLine(body: string): string {
+  const break1 = body.indexOf("\n");
+  const line = (break1 === -1 ? body : body.slice(0, break1)).trim();
+  return line.length > 120 ? `${line.slice(0, 120)}…` : line;
 }
 
 function FilterChip({ side, count }: { side: AipCommentSide; count: number }) {
