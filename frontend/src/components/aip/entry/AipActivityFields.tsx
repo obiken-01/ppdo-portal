@@ -40,24 +40,20 @@ import { fmtThousands } from "@/lib/aip-units";
 import { AIP_ESRE_OPTIONS, AIP_MONTHS } from "@/lib/aipConstants";
 import { useAutoGrowTextarea } from "@/lib/useAutoGrowTextarea";
 import { inputCls, selectCls } from "@/components/aip/AipTreeCells";
-import type { AipActivityDetail } from "@/types";
+import MultiLookup, { joinCodes, splitCodes } from "@/components/ui/MultiLookup";
+import type { AipActivityDetail, OfficeResponse } from "@/types";
 
 export default function AipActivityFields({
-  activity, canEdit, onSaved, defaultImplementingOffice = null,
+  activity, canEdit, onSaved, offices,
 }: {
   activity: AipActivityDetail;
   canEdit: boolean;
   onSaved: (updated: AipActivityDetail) => void;
   /**
-   * The reader's own office CODE, used when this activity carries no implementing office yet
-   * (PPDO-80). Codes, not names — the form's column (3) prints `OPV`, and `OPV/LFC/HRMO` where an
-   * activity is run jointly, which is why the field stays freely editable text.
-   *
-   * ⚠️ A prefill, never a lock: it fills an EMPTY field and never overwrites a value already
-   * there. An encoder who typed a joint office and then reopened the form would otherwise find
-   * their own office silently back in the box.
+   * The configured offices the implementing-office picker chooses from (PPDO-100). Passed in
+   * already fetched, like every other list on this page.
    */
-  defaultImplementingOffice?: string | null;
+  offices: OfficeResponse[];
 }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving]   = useState(false);
@@ -65,8 +61,10 @@ export default function AipActivityFields({
 
   const [name, setName]                             = useState(activity.name);
   const [esreCode, setEsreCode]                     = useState(activity.esreCode ?? "");
-  const [implementingOffice, setImplementingOffice] =
-    useState(activity.implementingOffice ?? defaultImplementingOffice ?? "");
+  // ⚠️ A LIST now, not a string (PPDO-100). The column still stores one `/`-joined value — that is
+  // what the form prints — so `splitCodes`/`joinCodes` are the only place the two shapes meet.
+  const [implementingOffices, setImplementingOffices] =
+    useState<string[]>(splitCodes(activity.implementingOffice));
   const [startDate, setStartDate]                   = useState(activity.startDate ?? "");
   const [endDate, setEndDate]                       = useState(activity.endDate ?? "");
   const [expectedOutputs, setExpectedOutputs]       = useState(activity.expectedOutputs ?? "");
@@ -81,7 +79,7 @@ export default function AipActivityFields({
   function beginEdit() {
     setName(activity.name);
     setEsreCode(activity.esreCode ?? "");
-    setImplementingOffice(activity.implementingOffice ?? defaultImplementingOffice ?? "");
+    setImplementingOffices(splitCodes(activity.implementingOffice));
     setStartDate(activity.startDate ?? "");
     setEndDate(activity.endDate ?? "");
     setExpectedOutputs(activity.expectedOutputs ?? "");
@@ -100,7 +98,7 @@ export default function AipActivityFields({
       const updated = await updateAipActivityDetails(activity.id, {
         name: name.trim(),
         esreCode: esreCode || null,
-        implementingOffice: implementingOffice.trim() || null,
+        implementingOffice: joinCodes(implementingOffices),
         startDate: startDate || null,
         endDate: endDate || null,
         expectedOutputs: expectedOutputs.trim() || null,
@@ -176,12 +174,28 @@ export default function AipActivityFields({
 
         {/* Spans two columns so Start and End share the row below — see the read view. */}
         <div className="sm:col-span-2">
-          {/* ⚠️ Free text, and it must stay free text even though it is prefilled from the
-              reader's own office. The form prints joint implementations as `OPV/LFC/HRMO`, so a
-              select over the office list could not express a real row. */}
+          {/* ↩️ **Was free text until PPDO-100.** The old note argued a select could not express a
+              joint row like `OPV/LFC/HRMO` — true of a SINGLE select, which is why this is a
+              multi-select that joins with the same `/` the form prints. Strict: only configured
+              offices (Ralph, 2026-09-16). `MultiLookup` can take a typed value, and this call
+              deliberately does not turn that on.
+
+              ⚠️ The encoder's own office is NOT prefilled any more. It is the PROPONENT; this
+              column names who IMPLEMENTS, and the two are different often enough that a default
+              was quietly wrong (PPDO-80's prefill, reversed). */}
           <Label>Implementing office</Label>
-          <input value={implementingOffice} onChange={(e) => setImplementingOffice(e.target.value)}
-            className={inputCls} />
+          <MultiLookup
+            items={offices}
+            value={implementingOffices}
+            onChange={setImplementingOffices}
+            getValue={(o) => o.officeCode}
+            getLabel={(o) => `${o.officeCode} — ${o.officeName}`}
+            getSearchText={(o) => `${o.officeCode} ${o.officeName}`}
+            placeholder="Search offices…"
+            hint={implementingOffices.length > 1
+              ? `Prints as ${implementingOffices.join("/")}`
+              : "Add every office that implements this activity."}
+          />
         </div>
 
         <div>

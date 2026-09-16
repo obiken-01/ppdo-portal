@@ -24,7 +24,7 @@ import {
 } from "./AipEntryPanelParts";
 
 export default function AipProjectPanel({
-  project, canEdit, lockedReason, isLastSibling, defaultImplementingOffice, unresolvedCount,
+  project, canEdit, lockedReason, isLastSibling, unresolvedCount,
   onSelectActivity, onActivityAdded, onDeleted, onUpdated,
 }: {
   project: AipProjectDetail;
@@ -32,8 +32,6 @@ export default function AipProjectPanel({
   lockedReason: string;
   /** Whether this is the last project in its program — omits the renumber sentence (spec §6). */
   isLastSibling: boolean;
-  /** The encoder's own office code, written onto a new activity at create (PPDO-80). */
-  defaultImplementingOffice: string | null;
   unresolvedCount: (nodeType: AipCommentNodeType, nodeId: number) => number;
   onSelectActivity: (activityId: number) => void;
   onActivityAdded: (activity: AipActivityDetail) => void;
@@ -88,12 +86,14 @@ export default function AipProjectPanel({
             disabled={!canEdit}
             disabledReason={`With ${lockedReason} — activities cannot be added here.`}
             onAdd={async (name) => {
-              // ⚠️ The created node is USED, not discarded, and the implementing office is written
-              // at CREATE rather than only prefilled in the edit form — an activity nobody opens
-              // afterwards still has to print one, and it is the encoder's own office in all but
-              // the joint case (PPDO-80).
+              // ⚠️ The created node is USED, not discarded — the tree absorbs it rather than reloading.
+              //
+              // ↩️ **No implementing office is stamped on at create any more** (PPDO-100). PPDO-80
+              // wrote the encoder's own office here so an activity nobody opened still printed one.
+              // That conflated the PROPONENT office with the IMPLEMENTING one, which are different
+              // often enough that the default was quietly wrong; it is now picked explicitly.
               onActivityAdded(await addAipActivity(project.id, {
-                name, esreCode: null, implementingOffice: defaultImplementingOffice,
+                name, esreCode: null, implementingOffice: null,
                 startDate: null, endDate: null, expectedOutputs: null,
                 fundingSourceRaw: null, ps: null, mooe: null, co: null,
                 ccAdaptation: null, ccMitigation: null, ccTypologyCode: null,

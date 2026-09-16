@@ -16,7 +16,7 @@
 import { useEffect, useRef, useState } from "react";
 import type {
   AccountResponse, AipActivityDetail, AipDeleteResult, AipExpenditure,
-  AipExpenditureWriteResult, FundingSourceResponse, PriceIndexPickerItem,
+  AipExpenditureWriteResult, FundingSourceResponse, OfficeResponse, PriceIndexPickerItem,
 } from "@/types";
 import { aipErrorMessage, listAipExpenditures } from "@/lib/aip";
 import AipActivityFields from "./AipActivityFields";
@@ -29,7 +29,7 @@ import { AipPanel, AipPanelError } from "./AipEntryPanelParts";
 
 export default function AipActivityPanel({
   activity, canEdit, lockedReason, isLastSibling, accounts, funds, generalFundId, priceIndex, priceIndexLoading,
-  defaultImplementingOffice, onTotals, onDetails, onDeleted,
+  offices, onTotals, onDetails, onDeleted,
   onChangeActivity, onChangeProject, onDone,
 }: {
   activity: AipActivityDetail;
@@ -43,7 +43,8 @@ export default function AipActivityPanel({
   generalFundId: number | null;
   priceIndex: PriceIndexPickerItem[];
   priceIndexLoading: boolean;
-  defaultImplementingOffice: string | null;
+  /** Configured offices for the implementing-office picker (PPDO-100). */
+  offices: OfficeResponse[];
   onTotals: (result: AipExpenditureWriteResult) => void;
   onDetails: (updated: AipActivityDetail) => void;
   onDeleted: (result: AipDeleteResult) => void;
@@ -106,7 +107,7 @@ export default function AipActivityPanel({
           and an encoder who opens an activity to cost it should see what else it still needs in
           the same glance. */}
       <AipActivityFields activity={activity} canEdit={canEdit} onSaved={onDetails}
-        defaultImplementingOffice={defaultImplementingOffice} />
+        offices={offices} />
 
       {linesError ? (
         <AipPanelError message={linesError} />

@@ -460,7 +460,11 @@ function ActivityBlock({
           {/* ⚠️ canEdit={false} on both. The PPDO reviewer never edits — decision 2, permanently.
               The components already render a read view in that mode, and the server refuses the
               write anyway; this is what keeps the control off the screen in the first place. */}
-          <AipActivityFields activity={activity} canEdit={false} onSaved={() => undefined} />
+          {/* ⚠️ `offices={[]}` and that is correct, not a stub: the picker only renders in the edit
+              view, and this call site is permanently read-only, so the read view prints the stored
+              `PEO/PGSO` string as it stands. The prop stays REQUIRED rather than defaulting to []
+              so an editable call site cannot forget it and get a silently empty picker. */}
+          <AipActivityFields activity={activity} canEdit={false} onSaved={() => undefined} offices={[]} />
 
           {lines === null ? (
             <div className="space-y-2 px-4 py-3">
