@@ -411,6 +411,9 @@ export default function AipEntryPage() {
       select({ programId: ids.programId, projectId: ids.projectId, activityId: null });
     } else if (result.deletedNodeType === "Project" && result.deletedId === ids.projectId) {
       select({ programId: ids.programId, projectId: null, activityId: null });
+    } else if (result.deletedNodeType === "Program" && result.deletedId === ids.programId) {
+      // Nothing left to select at any level — the office view is the only honest place to land.
+      select({ programId: null, projectId: null, activityId: null });
     }
     void refreshReadiness();
   }

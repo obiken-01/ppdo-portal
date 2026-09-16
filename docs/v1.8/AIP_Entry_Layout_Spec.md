@@ -129,7 +129,7 @@ No new endpoints. The three DELETE routes change their **success shape** and gai
 
 ### `DELETE /api/budget-planning/aip/projects/{projectId:int}` — JWT + `CanAccessBudgetPlanning` + `ReviewerWriteGuard`
 ### `DELETE /api/budget-planning/aip/activities/{activityId:int}` — same gate
-### `DELETE /api/budget-planning/aip/programs/{programId:int}` — same gate (ledger/comment fix only; no renumber, no UI here)
+### `DELETE /api/budget-planning/aip/programs/{programId:int}` — same gate (no renumber; ↩️ **UI since PPDO-101**)
 
 - Request: none.
 - 200: `ApiResponse<AipDeleteResultDto>`
@@ -261,8 +261,12 @@ sentence, and a project delete taking its activities' costing in one confirm.
 
 - **AIP Review one-office screen** — unchanged pending Ralph's question (§2 follow-ups).
 - **The new Project fields** — the Project panel reserves a section; no columns, no form.
-- **Program delete in the UI** — programs are the LDIP's closed list; the endpoint's ledger/comment fix
-  ships, but nothing on this page offers it. Deleting a program still leaves a numbering gap, by design.
+- ~~**Program delete in the UI**~~ ↩️ **Reversed — PPDO-101** (Ralph, 2026-09-15 demo: "add delete
+  button to the program and activity"). The Program panel now carries the same control. Programs being
+  the LDIP's closed list is what makes it *safe* rather than what rules it out: the code is never
+  renumbered, so deleting one leaves its gap by design, and `GetAddableProgramsAsync` derives
+  `AlreadyAdded` from the group's live programs, so the deleted program becomes addable again. The
+  confirm dialog says both — no renumber promise, and the re-add path.
 - **Soft delete / undo / restore** — decision 8.
 - **Renumbering FY≤2027 codes** — decision 12.
 - **Changing `aip/detail`** beyond consuming the new delete result.

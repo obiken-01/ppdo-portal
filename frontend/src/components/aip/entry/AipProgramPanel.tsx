@@ -12,7 +12,9 @@ import { useMemo } from "react";
 import type {
   AipCommentNodeType, AipProgramDetail, AipProjectDetail,
 } from "@/types";
+import type { AipDeleteResult } from "@/types";
 import { addAipProject } from "@/lib/aip";
+import AipDeleteNodeButton from "./AipDeleteNodeButton";
 import { AipCommentAnchor } from "./AipComments";
 import { AipLevelChip, AipRefCode, aipHeaderRow } from "./AipHierarchy";
 import { AipFigureStrip, sumActivityAmounts } from "./AipRowFigures";
@@ -21,7 +23,7 @@ import {
 } from "./AipEntryPanelParts";
 
 export default function AipProgramPanel({
-  program, canEdit, lockedReason, unresolvedCount, onSelectProject, onProjectAdded,
+  program, canEdit, lockedReason, unresolvedCount, onSelectProject, onProjectAdded, onDeleted,
 }: {
   program: AipProgramDetail;
   canEdit: boolean;
@@ -30,6 +32,7 @@ export default function AipProgramPanel({
   unresolvedCount: (nodeType: AipCommentNodeType, nodeId: number) => number;
   onSelectProject: (projectId: number) => void;
   onProjectAdded: (project: AipProjectDetail) => void;
+  onDeleted: (result: AipDeleteResult) => void;
 }) {
   // ℹ️ A program prints BLANK in the form's money columns, and `AipRowFigures` says so — the
   // figures here are navigation, not a form row: they tell an encoder whether the program they
@@ -52,7 +55,15 @@ export default function AipProgramPanel({
             </div>
             <p className="mt-0.5 text-sm font-semibold text-slate-800">{program.name}</p>
           </div>
-          <AipFigureStrip amounts={amounts} />
+          <div className="flex flex-wrap items-center justify-end gap-x-6 gap-y-2">
+            <AipFigureStrip amounts={amounts} />
+            <AipDeleteNodeButton
+              target={{ kind: "Program", program }}
+              canEdit={canEdit}
+              lockedReason={lockedReason}
+              onDeleted={onDeleted}
+            />
+          </div>
         </div>
         <AipCommentAnchor nodeType="Program" nodeId={program.id} />
       </div>

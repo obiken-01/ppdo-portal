@@ -127,6 +127,7 @@ export default function AipSelectedPanel({
         onSelect({ programId: selection.program!.id, projectId, activityId: null })
       }
       onProjectAdded={onProjectAdded}
+      onDeleted={onDeleted}
     />
   );
 }

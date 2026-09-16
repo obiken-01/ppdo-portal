@@ -1,20 +1,30 @@
 "use client";
 
 /**
- * Delete for a project or activity on AIP Entry (PPDO-88 backend, PPDO-91 controls).
+ * Delete for a program, project or activity on AIP Entry (PPDO-88 backend, PPDO-91 project and
+ * activity controls, PPDO-101 program).
  *
- * Hard delete: the server also removes the node's activities, their ledger rows and comments, and
+ * Hard delete: the server also removes the node's descendants, their ledger rows and comments, and
  * renumbers the later siblings on an entered year (`aip/entry` is FY2028+ only, so that is always).
+ *
+ * ⚠️ **Except programs.** A program's ref code is the LDIP's (`aip-program-refcodes-match-ldip`, spec
+ * §2 decision 11), so deleting one leaves a gap on purpose and nothing is renumbered. The program
+ * also becomes addable again — `GetAddableProgramsAsync` derives `AlreadyAdded` from the group's live
+ * programs — which is the one thing that makes a program delete recoverable without the audit log.
  */
 
 import { useState } from "react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
-import { aipErrorMessage, deleteAipActivity, deleteAipProject } from "@/lib/aip";
+import { aipErrorMessage, deleteAipActivity, deleteAipProgram, deleteAipProject } from "@/lib/aip";
 import { useAipUnresolvedCount, useReloadAipComments } from "@/components/aip/entry/AipComments";
-import type { AipActivityDetail, AipDeleteResult, AipProjectDetail, AipRecordDetail } from "@/types";
+import type {
+  AipActivityDetail, AipDeleteResult, AipProgramDetail, AipProjectDetail, AipRecordDetail,
+} from "@/types";
 
 type DeleteTarget =
+  // ⚠️ No `isLastSibling` on a program: there is no renumbering to promise or withhold.
+  | { kind: "Program"; program: AipProgramDetail }
   | { kind: "Project"; project: AipProjectDetail; isLastSibling: boolean }
   | { kind: "Activity"; activity: AipActivityDetail; isLastSibling: boolean };
 
@@ -44,24 +54,33 @@ export default function AipDeleteNodeButton({
   const [error, setError] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
 
-  const isProject = target.kind === "Project";
-  const node = isProject ? target.project : target.activity;
-  const noun = isProject ? "project" : "activity";
-  const activityCount = isProject ? target.project.activities.length : null;
+  const node = target.kind === "Program" ? target.program
+    : target.kind === "Project" ? target.project
+    : target.activity;
+  const noun = target.kind.toLowerCase();
 
-  // Decision 10 — everything the delete takes with it: the node's own comments plus, for a
-  // project, every activity's. Unresolved only — a resolved thread is not what the dialog warns
-  // about clearing.
-  const unresolved = isProject
-    ? unresolvedCount("Project", target.project.id)
-      + target.project.activities.reduce((sum, a) => sum + unresolvedCount("Activity", a.id), 0)
-    : unresolvedCount("Activity", target.activity.id);
+  // The projects and activities this delete takes with it — the whole subtree, which is also what
+  // the comment counts have to walk.
+  const projects = target.kind === "Program" ? target.program.projects
+    : target.kind === "Project" ? [target.project]
+    : [];
+  const activities = target.kind === "Activity" ? [target.activity] : projects.flatMap((p) => p.activities);
+
+  // Decision 10 — everything the delete takes with it, the node's own comments included. Unresolved
+  // only: a resolved thread is not what the dialog warns about clearing.
+  const unresolved =
+    (target.kind === "Program" ? unresolvedCount("Program", target.program.id) : 0)
+    + (target.kind === "Activity" ? 0 : projects.reduce((sum, p) => sum + unresolvedCount("Project", p.id), 0))
+    + activities.reduce((sum, a) => sum + unresolvedCount("Activity", a.id), 0);
 
   const scopeParts: string[] = [];
-  if (isProject && activityCount! > 0) {
-    scopeParts.push(`its ${activityCount} ${activityCount === 1 ? "activity" : "activities"} and their costing`);
-  } else if (!isProject) {
+  if (target.kind === "Program" && projects.length > 0) {
+    scopeParts.push(`its ${projects.length} ${projects.length === 1 ? "project" : "projects"}`);
+  }
+  if (target.kind === "Activity") {
     scopeParts.push("its own costing");
+  } else if (activities.length > 0) {
+    scopeParts.push(`${activities.length} ${activities.length === 1 ? "activity" : "activities"} and their costing`);
   }
   if (unresolved > 0) {
     scopeParts.push(`${unresolved} unresolved ${unresolved === 1 ? "comment" : "comments"}`);
@@ -69,20 +88,30 @@ export default function AipDeleteNodeButton({
   const scopeText = scopeParts.length > 0 ? `, ${joinEnglish(scopeParts)}` : "";
 
   // ⚠️ Omitted, not just falsy-rendered, when nothing follows the deleted node (spec §6 "Delete
-  // confirm") — the last sibling leaves a gap today (allocator behaviour), not a renumber.
-  const renumberSentence = target.isLastSibling
+  // confirm") — the last sibling leaves a gap today (allocator behaviour), not a renumber. A program
+  // never renumbers at all: its code is the LDIP's.
+  const renumberSentence = target.kind === "Program" || target.isLastSibling
     ? ""
-    : ` Later ${isProject ? "projects in this program" : "activities in this project"} will be renumbered.`;
+    : ` Later ${target.kind === "Project" ? "projects in this program" : "activities in this project"} will be renumbered.`;
 
-  const message = `This removes the ${noun}${scopeText}.${renumberSentence} This cannot be undone.`;
+  // ⚠️ Said out loud for a program, because it is the difference between "gone" and "gone until you
+  // pick it again" — and nothing else on the page tells the encoder which one this is.
+  const readdSentence = target.kind === "Program"
+    ? " Its code stays free, and the program can be added again from Add programs."
+    : "";
+
+  const message =
+    `This removes the ${noun}${scopeText}.${renumberSentence} This cannot be undone.${readdSentence}`;
 
   async function run() {
     setBusy(true);
     setError(null);
     setConflict(false);
     try {
-      const result = isProject ? await deleteAipProject(node.id) : await deleteAipActivity(node.id);
-      toast.success(isProject ? "Project deleted" : "Activity deleted");
+      const result = target.kind === "Program" ? await deleteAipProgram(node.id)
+        : target.kind === "Project" ? await deleteAipProject(node.id)
+        : await deleteAipActivity(node.id);
+      toast.success(`${target.kind} deleted`);
       // The row unmounts once the tree drops it, so busy is not reset on success.
       onDeleted(result);
       void reloadComments?.();
@@ -143,6 +172,9 @@ export default function AipDeleteNodeButton({
 /**
  * Splices a delete result into the tree without a reload: drops the deleted node and applies the
  * server's renumbered codes (a renumbered project's activities arrive in the same list).
+ *
+ * ⚠️ A deleted **program** is dropped here too (PPDO-101). It was not, before there was a control to
+ * delete one — the node stayed in the tree and the panel kept rendering it until the next reload.
  */
 export function applyAipDeleteToTree(record: AipRecordDetail, result: AipDeleteResult): AipRecordDetail {
   const codes = new Map(result.renumbered.map((r) => [`${r.nodeType}:${r.id}`, r.refCode]));
@@ -153,21 +185,23 @@ export function applyAipDeleteToTree(record: AipRecordDetail, result: AipDeleteR
     ...record,
     offices: record.offices.map((office) => ({
       ...office,
-      programs: office.programs.map((program) => ({
-        ...program,
-        projects: program.projects
-          .filter((project) => !isDeleted("Project", project.id))
-          .map((project) => ({
-            ...project,
-            refCode: codes.get(`Project:${project.id}`) ?? project.refCode,
-            activities: project.activities
-              .filter((activity) => !isDeleted("Activity", activity.id))
-              .map((activity) => ({
-                ...activity,
-                refCode: codes.get(`Activity:${activity.id}`) ?? activity.refCode,
-              })),
-          })),
-      })),
+      programs: office.programs
+        .filter((program) => !isDeleted("Program", program.id))
+        .map((program) => ({
+          ...program,
+          projects: program.projects
+            .filter((project) => !isDeleted("Project", project.id))
+            .map((project) => ({
+              ...project,
+              refCode: codes.get(`Project:${project.id}`) ?? project.refCode,
+              activities: project.activities
+                .filter((activity) => !isDeleted("Activity", activity.id))
+                .map((activity) => ({
+                  ...activity,
+                  refCode: codes.get(`Activity:${activity.id}`) ?? activity.refCode,
+                })),
+            })),
+        })),
     })),
   };
 }
