@@ -87,8 +87,12 @@ the **delete Project / delete Activity** capability decided at the same meeting.
 
 ### Open follow-ups (not blocking)
 
-- **Does AIP Review's one-office screen change to the same layout?** Ralph is asking the PDC. That
-  screen shows the whole structure on purpose (review needs the overview). Nothing here touches it.
+- ~~**Does AIP Review's one-office screen change to the same layout?**~~ **Answered — yes, with the
+  overview kept** (Ralph, 2026-09-16). It gets the same picker and panels as the default view, and
+  today's whole tree stays behind a **Full office** switch, because Accept and Send back are
+  whole-office decisions and a reviewer has to be able to satisfy themselves they have seen all of
+  it. Specified in [AIP_Review_Layout_Spec.md](AIP_Review_Layout_Spec.md); nothing in *this* spec
+  changes, and the review screen was untouched by PPDO-89.
 - **The new Project fields** — field list and the report that uses them are pending. Decision 3
   reserves the section; it is a separate spec.
 
