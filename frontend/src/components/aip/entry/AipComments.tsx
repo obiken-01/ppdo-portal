@@ -240,7 +240,11 @@ export function AipCommentFilterBar({
                 <button
                   type="button"
                   onClick={() => onSelectNode(c.nodeType, c.nodeId)}
-                  className="block w-full px-1 py-1.5 text-left text-xs text-slate-600 hover:bg-green-50"
+                  // ⚠️ focus-VISIBLE, not focus. These rows are clicked, and a plain `focus:` ring
+                  // stays painted on the row after the click while the reader is already looking at
+                  // the node it opened — which is what the browser's default outline was doing here.
+                  // Keyboard users still get a ring; `RowActions` makes the same call.
+                  className="block w-full px-1 py-1.5 text-left text-xs text-slate-600 hover:bg-green-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-600"
                 >
                   {c.nodeRefCode && (
                     <span className="mr-2 font-mono text-slate-800">{c.nodeRefCode}</span>
