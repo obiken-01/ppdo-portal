@@ -227,7 +227,7 @@ public sealed partial class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = BuildForGroups();
 
         ServiceResult<AipAddableProgramsDto> result =
-            await sut.GetAddableProgramsAsync(7, "GENERAL", HostCaller());
+            await sut.GetAddableProgramsAsync(300, 7, "GENERAL", HostCaller());
 
         Assert.True(result.IsSuccess);
         Assert.Equal(
@@ -246,6 +246,125 @@ public sealed partial class AipServiceTests
             [90],
             result.Value.Groups.Single(g => g.GroupName == "PPDO - AKAP-HUB")
                 .Programs.Select(p => p.LdipProgramId).ToArray());
+    }
+
+    // ── Already in the AIP ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// A group block in the AIP, and one program inside it. Ids are arbitrary; the
+    /// <c>(RefCode, Name)</c> pair and the program's ref code are what the rule reads.
+    /// </summary>
+    private static (List<AipOffice>, List<AipProgram>) AlreadyInAip(
+        string groupName, string programRefCode)
+    {
+        var block = new AipOffice
+        {
+            Id = 900, AipRecordId = 300, OfficeId = 7,
+            RefCode = "1000-000-1-01-010", Name = groupName, Sector = "GENERAL",
+        };
+        var program = new AipProgram
+        {
+            Id = 950, OfficeId = block.Id, RefCode = programRefCode, Name = "Already added",
+        };
+        return ([block], [program]);
+    }
+
+    private static bool FlagOf(AipAddableProgramsDto dto, string groupName, int ldipProgramId) =>
+        dto.Groups.Single(g => g.GroupName == groupName)
+            .Programs.Single(p => p.LdipProgramId == ldipProgramId).AlreadyAdded;
+
+    /// <summary>
+    /// ⚠️ The reason this flag exists. <c>AddProgramsWithGroupAsync</c> refuses a program the group
+    /// already carries, but the picker listed it as a tickable choice — so an encoder could only
+    /// discover it was impossible by pressing Add and reading a 400.
+    /// </summary>
+    [Fact]
+    public async Task GetAddablePrograms_FlagsAProgramThisGroupAlreadyCarries()
+    {
+        (List<AipOffice> offices, List<AipProgram> programs) =
+            AlreadyInAip("PPDO", "1000-000-1-01-010-003");
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = BuildForGroups(offices, programs);
+
+        ServiceResult<AipAddableProgramsDto> result =
+            await sut.GetAddableProgramsAsync(300, 7, "GENERAL", HostCaller());
+
+        Assert.True(result.IsSuccess);
+        // 80 is the LDIP program whose code the block already carries.
+        Assert.True(FlagOf(result.Value!, "PPDO", 80));
+        // Its sibling is untouched.
+        Assert.False(FlagOf(result.Value!, "PPDO", 81));
+    }
+
+    /// <summary>
+    /// ⚠️ <b>The program is still RETURNED, not dropped.</b> A program that vanished from its own
+    /// LDIP group reads as missing data — the encoder goes and checks the LDIP, which is the exact
+    /// failure the entry page's division-filter notice exists to prevent. Asserted separately from
+    /// the flag so a future "just filter them out" cannot pass the test above.
+    /// </summary>
+    [Fact]
+    public async Task GetAddablePrograms_KeepsAnAlreadyAddedProgramInTheList()
+    {
+        (List<AipOffice> offices, List<AipProgram> programs) =
+            AlreadyInAip("PPDO", "1000-000-1-01-010-003");
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = BuildForGroups(offices, programs);
+
+        ServiceResult<AipAddableProgramsDto> result =
+            await sut.GetAddableProgramsAsync(300, 7, "GENERAL", HostCaller());
+
+        Assert.Equal(
+            [80, 81],
+            result.Value!.Groups.Single(g => g.GroupName == "PPDO")
+                .Programs.Select(p => p.LdipProgramId).OrderBy(i => i).ToArray());
+    }
+
+    /// <summary>
+    /// ⚠️ <b>Scoped to the ONE group, never the office</b> — the same rule the write path's collision
+    /// check uses. Two blocks under one office are separate rows on the AIP form and may each carry
+    /// the same LDIP program.
+    ///
+    /// <para>
+    /// The fixture puts group <c>PPDO</c>'s program code inside the <c>AKAP-HUB</c> block, which is
+    /// exactly the province's real shape: one ref code, several blocks, the same program legitimately
+    /// appearing in more than one of them. An office-wide check would flag program 80 here and hide a
+    /// choice the write path would have accepted.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task GetAddablePrograms_DoesNotFlagAProgramAnotherGroupCarries()
+    {
+        (List<AipOffice> offices, List<AipProgram> programs) =
+            AlreadyInAip("PPDO - AKAP-HUB", "1000-000-1-01-010-003");
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = BuildForGroups(offices, programs);
+
+        ServiceResult<AipAddableProgramsDto> result =
+            await sut.GetAddableProgramsAsync(300, 7, "GENERAL", HostCaller());
+
+        Assert.False(FlagOf(result.Value!, "PPDO", 80));
+    }
+
+    /// <summary>A year just opened, before this office has any block in it: nothing is added yet.</summary>
+    [Fact]
+    public async Task GetAddablePrograms_FlagsNothingWhenTheAipHasNoBlockForTheGroup()
+    {
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = BuildForGroups();
+
+        ServiceResult<AipAddableProgramsDto> result =
+            await sut.GetAddableProgramsAsync(300, 7, "GENERAL", HostCaller());
+
+        Assert.True(result.IsSuccess);
+        Assert.All(result.Value!.Groups, g => Assert.All(g.Programs, p => Assert.False(p.AlreadyAdded)));
+    }
+
+    [Fact]
+    public async Task GetAddablePrograms_WithAnUnknownRecordReturnsNotFound()
+    {
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = BuildForGroups();
+
+        ServiceResult<AipAddableProgramsDto> result =
+            await sut.GetAddableProgramsAsync(999, 7, "GENERAL", HostCaller());
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
     }
 
     // ── Fixture ───────────────────────────────────────────────────────────────
@@ -273,7 +392,7 @@ public sealed partial class AipServiceTests
                     Mock<IRepository<AipOffice>>, Mock<IWfpRepository>, Mock<IOfficeRepository>,
                     Mock<IRepository<AipProgram>>, Mock<IRepository<AipProject>>,
                     Mock<IRepository<AipActivity>>, Mock<ILdipRepository>)
-        BuildForGroups(List<AipOffice>? officeSeed = null)
+        BuildForGroups(List<AipOffice>? officeSeed = null, List<AipProgram>? programSeed = null)
     {
         LdipRecord ldipRec = LdipRec(5, 7);
 
@@ -287,6 +406,7 @@ public sealed partial class AipServiceTests
         return Build(
             OpenEnteredYear(), [],
             officeSeed: officeSeed ?? [],
+            programSeed: programSeed ?? [],
             officeConfigSeed: [MakeOffice(7, "PPDO", "01-010")],
             ldipRecordSeed: [ldipRec],
             ldipOfficeSeed: [group, subOffice]);

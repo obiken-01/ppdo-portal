@@ -286,7 +286,23 @@ public record AddAipProgramsWithGroupDto(
 /// deliberately named for what it is, because it is NOT the AIP program's id and confusing the two
 /// produces a "does not belong to this office's LDIP" refusal that looks like a permissions bug.
 /// </summary>
-public record AipAddableProgramDto(int LdipProgramId, string RefCode, string Name);
+/// <param name="AlreadyAdded">
+/// True when this group in the AIP already carries a program with this ref code, so
+/// <c>AddProgramsWithGroupAsync</c> would refuse it ("These programs are already in this group: …").
+///
+/// <para>
+/// ⚠️ <b>Scoped to the ONE group, never the office.</b> Two sub-office blocks under one office are
+/// separate rows on the AIP form and may each legitimately carry the same LDIP program, so the same
+/// program can be <c>true</c> in one group of this response and <c>false</c> in another.
+/// </para>
+///
+/// <para>
+/// ⚠️ <b>The program is still returned.</b> Dropping it would make it vanish from its own LDIP
+/// group, which reads as missing data rather than as "already done" — the picker renders it
+/// unselectable and says why.
+/// </para>
+/// </param>
+public record AipAddableProgramDto(int LdipProgramId, string RefCode, string Name, bool AlreadyAdded);
 
 /// <summary>
 /// What an office may add for one sector, resolved <b>server-side</b> (V18-42 / PPDO-52).

@@ -1449,6 +1449,18 @@ export interface AipAddableProgram {
   ldipProgramId: number;
   refCode: string;
   name: string;
+  /**
+   * This group of the AIP already carries a program with this ref code, so the add endpoint would
+   * refuse it.
+   *
+   * ⚠️ **Per GROUP, not per office.** Two sub-office blocks under one office are separate rows on
+   * the AIP form and may each legitimately carry the same LDIP program, so the same program can be
+   * true in one group of the response and false in another.
+   *
+   * ⚠️ Such a program is still in the list — render it unselectable and say why. Dropping it makes
+   * it vanish from its own LDIP group, which reads as missing data.
+   */
+  alreadyAdded: boolean;
 }
 
 /**

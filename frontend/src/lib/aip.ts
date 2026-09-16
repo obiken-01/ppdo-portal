@@ -421,11 +421,13 @@ export async function getAipCeiling(aipId: number): Promise<AipCeilingStatus> {
  * diverged from the server's, so the picker offered programs the add path then refused.
  */
 export async function getAipAddablePrograms(
-  officeConfigId: number, sector: string
+  // ⚠️ The record id is required by the server: the response flags which programs that AIP already
+  // carries, and there is no answer to that without knowing which AIP.
+  aipRecordId: number, officeConfigId: number, sector: string
 ): Promise<AipAddablePrograms> {
   const { data } = await api.get<ApiResponse<AipAddablePrograms>>(
     "/budget-planning/aip/addable-programs",
-    { params: { officeConfigId, sector } }
+    { params: { aipRecordId, officeConfigId, sector } }
   );
   return unwrap(data);
 }
