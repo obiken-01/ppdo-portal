@@ -71,14 +71,13 @@ const YEARS = [0, 1, 2].map((n) => FIRST_ENTERED_FISCAL_YEAR + n);
  *
  * ⚠️ **Off, deliberately — flip this one constant to bring it back.** Year-open already populates
  * every office from its LDIP, so on a populated AIP this is only the recovery path for a program
- * the LDIP gained afterwards. Two reasons it is not worth a permanent control:
+ * the LDIP gained afterwards, and under a picker whose whole job is narrowing down it read as a
+ * fourth step for something almost nobody needs.
  *
- *  1. The picker lists the office's WHOLE LDIP group, including the programs already in the AIP —
- *     `AipService.GetAddableProgramsAsync` does not subtract what has been added. Ticking one is
- *     refused ("These programs are already in this group: …"), so no duplicate row can be created,
- *     but the encoder is offered a choice that cannot succeed.
- *  2. On the drill-down it sat under a picker whose whole job is narrowing down, reading as a
- *     fourth step for something almost nobody needs.
+ * ↩️ **That is now the only reason left.** The other one — that the picker listed programs already
+ * in the AIP, which the add endpoint then refused — was real when this was switched off and is
+ * fixed: `GetAddableProgramsAsync` flags them and the panel renders them unselectable (PPDO-95).
+ * So re-enabling this is a UI judgement call, not a wait on a defect.
  *
  * The **empty state** still renders the panel — an office with no programs has nothing to re-add
  * and no other way to begin.
