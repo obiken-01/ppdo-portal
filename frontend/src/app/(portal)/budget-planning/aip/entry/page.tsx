@@ -51,7 +51,7 @@ import AipEntryPicker from "@/components/aip/entry/AipEntryPicker";
 import { AipOfficeHeader } from "@/components/aip/entry/AipEntryPanelParts";
 import AipSelectedPanel from "@/components/aip/entry/AipSelectedPanel";
 import {
-  addActivityToTree, addProjectToTree, applyActivityTotals, patchActivity,
+  addActivityToTree, addProjectToTree, applyActivityTotals, patchActivity, patchProject,
 } from "@/components/aip/entry/AipEntryTree";
 import {
   EMPTY_SELECTION_IDS, idsForAipNode, listAipProgramOptions, resolveAipSelection,
@@ -584,6 +584,15 @@ export default function AipEntryPage() {
                   onProjectAdded={onProjectAdded}
                   onActivityAdded={onActivityAdded}
                   onDeleted={onDeleted}
+                  // ⚠️ Patched in place, and `activities` deliberately not in the patch — the
+                  // update endpoint returns the project without them, so spreading the whole
+                  // response would empty the project the encoder is standing in.
+                  // ⚠️ No readiness refresh, unlike the activity handlers: the submit checklist
+                  // gates on activities and their costing, and none of the project fields appear
+                  // in it — description and objective are optional and do not print on Annex B.
+                  onProjectUpdated={(patch) =>
+                    setRecord((prev) => prev && patchProject(prev, patch.id, patch))
+                  }
                   // ⚠️ An expenditure change must NOT reload the record: the panel would remount
                   // under the encoder mid-edit. The write endpoint returns the recomputed activity
                   // precisely so the figures can update in place.

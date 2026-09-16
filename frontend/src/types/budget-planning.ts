@@ -197,8 +197,15 @@ export interface UpdateAipProgramRequest {
   functionBand?: string | null;
 }
 
+/**
+ * ⚠️ **A full replace, not a patch** (PPDO-99). Omitting `description` or `objective` CLEARS the
+ * stored value — both fields are optional here only so the shape stays honest about nullability,
+ * not so a caller may leave them out. Every call site sends all three.
+ */
 export interface UpdateAipProjectRequest {
   name: string;
+  description?: string | null;
+  objective?: string | null;
 }
 
 // ── AIP detail (stored hierarchy) ────────────────────────────────────────────
@@ -249,6 +256,12 @@ export interface AipProjectDetail {
   activities: AipActivityDetail[];
   /** RAL-108: true when this project was materialized to hold its parent program's line item. */
   isSynthetic: boolean;
+  /**
+   * PPDO-99 — project-level free text from the 2026-09-15 PDC demo. Optional, and **not printed on
+   * Annex B**: the form's columns are the province's, and these feed a separate report.
+   */
+  description: string | null;
+  objective: string | null;
 }
 
 /** PPDO-88 — a node whose ref code changed because a sibling was deleted. */

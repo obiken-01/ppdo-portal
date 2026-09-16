@@ -51,7 +51,12 @@ public record AipProjectDto(
     string RefCode,
     string Name,
     IReadOnlyList<AipActivityDto> Activities,
-    bool   IsSynthetic = false);
+    bool   IsSynthetic = false,
+    // ⚠️ PPDO-99. Appended AFTER IsSynthetic rather than sitting beside Name, so every existing
+    // positional construction still compiles. Not printed on Annex B — the form's columns are the
+    // province's, and these feed a separate report that is not specified yet.
+    string? Description = null,
+    string? Objective = null);
 
 /// <summary>A node whose ref code changed because a sibling was deleted (PPDO-88).</summary>
 public record AipRenumberedNodeDto(string NodeType, int Id, string RefCode);
@@ -415,8 +420,17 @@ public record UpdateAipOfficeDto(string Name);
 /// unchanged) — this one is the detail page's full name+band edit.</summary>
 public record UpdateAipProgramDto(string Name, string? FunctionBand);
 
-/// <summary>Body of PUT /api/budget-planning/aip/projects/{projectId}. Only Name is editable.</summary>
-public record UpdateAipProjectDto(string Name);
+/// <summary>
+/// Body of PUT /api/budget-planning/aip/projects/{projectId}.
+///
+/// <para>
+/// ⚠️ <b>A full replace, not a patch</b> (PPDO-99). An omitted <c>description</c> or
+/// <c>objective</c> deserializes to null and CLEARS the stored value, so every caller sends all
+/// three — and both callers that exist do. Making it a patch would mean telling "absent" apart from
+/// "null" in the JSON, which System.Text.Json does not give for free, to serve a caller nobody has.
+/// </para>
+/// </summary>
+public record UpdateAipProjectDto(string Name, string? Description = null, string? Objective = null);
 
 // ── Slim WFP-grid DTOs (RAL-89) ───────────────────────────────────────────────
 

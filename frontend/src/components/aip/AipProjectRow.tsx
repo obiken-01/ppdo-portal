@@ -34,7 +34,14 @@ export default function ProjectRow({
     setSaving(true);
     setError(null);
     try {
-      const updated = await updateAipProject(proj.id, { name: name.trim() });
+      // ⚠️ The description and objective are sent back unchanged, not omitted (PPDO-99). The
+      // endpoint is a full replace, so leaving them out of a rename would silently clear text this
+      // row does not even show — these fields are edited on the AIP Entry project panel.
+      const updated = await updateAipProject(proj.id, {
+        name: name.trim(),
+        description: proj.description,
+        objective: proj.objective,
+      });
       // Server response omits Activities by convention — merge onto the existing node.
       actions.onProjectUpdated({ ...proj, name: updated.name });
       setEditing(false);

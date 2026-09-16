@@ -70,7 +70,7 @@ public static class AipTreeMapper
                                     a,
                                     fundCodes is null ? null : fundCodes.GetValueOrDefault(a.Id)))
                                 .ToList(),
-                            j.IsSynthetic))
+                            j.IsSynthetic, j.Description, j.Objective))
                         .ToList(),
                     p.FunctionBand))
                 .ToList()))

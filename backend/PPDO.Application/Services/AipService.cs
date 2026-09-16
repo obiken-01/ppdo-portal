@@ -184,7 +184,7 @@ public sealed class AipService : IAipService
                             acts.Where(a => a.ProjectId == j.Id)
                                 .Select(a => MapActivityToDto(a, fundCodes.GetValueOrDefault(a.Id)))
                                 .ToList(),
-                            j.IsSynthetic))
+                            j.IsSynthetic, j.Description, j.Objective))
                         .ToList();
                     return new AipProgramDto(p.Id, p.OfficeId, p.RefCode, p.Name, projDtos, p.FunctionBand);
                 })
@@ -996,7 +996,7 @@ public sealed class AipService : IAipService
                     // passed because these activities were just seeded and have no lines yet.
                     allTargetActivities.Where(a => a.ProjectId == j.Id)
                         .Select(a => MapActivityToDto(a)).ToList(),
-                    j.IsSynthetic)).ToList(),
+                    j.IsSynthetic, j.Description, j.Objective)).ToList(),
                 p.FunctionBand)).ToList();
         }
 
@@ -1287,15 +1287,21 @@ public sealed class AipService : IAipService
         if (string.IsNullOrWhiteSpace(dto.Name))
             return ServiceResult<AipProjectDto>.BadRequest("Project name is required.");
 
-        string oldName = project.Name;
+        var before = new { project.Name, project.Description, project.Objective };
+
         project.Name = dto.Name.Trim();
+        // ⚠️ Blank collapses to null, so "cleared" and "never filled in" are one state rather than
+        // two that read identically on screen and differently in a query (PPDO-99).
+        project.Description = string.IsNullOrWhiteSpace(dto.Description) ? null : dto.Description.Trim();
+        project.Objective   = string.IsNullOrWhiteSpace(dto.Objective)   ? null : dto.Objective.Trim();
+
         await _aipRepo.SaveChangesAsync(ct);
         await _audit.LogAsync("aip_projects", project.Id, AuditAction.Update,
-            new { Name = oldName }, new { project.Name }, ct);
+            before, new { project.Name, project.Description, project.Objective }, ct);
 
         return ServiceResult<AipProjectDto>.Ok(
             new AipProjectDto(project.Id, project.ProgramId, project.RefCode, project.Name,
-                Array.Empty<AipActivityDto>(), project.IsSynthetic));
+                Array.Empty<AipActivityDto>(), project.IsSynthetic, project.Description, project.Objective));
     }
 
     // ── Inline activity edit (RAL-179) ────────────────────────────────────────
