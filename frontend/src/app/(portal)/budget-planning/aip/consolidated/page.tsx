@@ -394,12 +394,17 @@ function FormRow({
         </tr>
       );
 
+    // ↩️ Program and project rows carried no figures until PPDO-98 — the province's form leaves those
+    // cells blank. The 2026-09-15 demo asked for the subtotals WFP's report already shows. A heading
+    // with nothing costed under it still comes through null, and `MoneyCells` renders that blank.
     case "Program":
       return (
         <tr className={aipHeaderRow("program")}>
           <td className={`${CELL} font-mono text-[11px]`}>{row.refCode}</td>
           <td className={`${CELL} pl-5 font-bold`}>{row.name}</td>
-          <EmptyCells count={13} />
+          <EmptyCells count={6} />
+          <MoneyCells amounts={row.amounts} tone="subtotal" />
+          <td className={EMPTY} />
         </tr>
       );
 
@@ -408,7 +413,9 @@ function FormRow({
         <tr className={aipHeaderRow("project")}>
           <td className={`${CELL} font-mono text-[11px]`}>{row.refCode}</td>
           <td className={`${CELL} pl-9 font-semibold`}>{row.name}</td>
-          <EmptyCells count={13} />
+          <EmptyCells count={6} />
+          <MoneyCells amounts={row.amounts} tone="subtotal" />
+          <td className={EMPTY} />
         </tr>
       );
 

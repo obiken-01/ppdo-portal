@@ -25,8 +25,12 @@ public sealed record AipPrintedAmountsDto(
 /// <param name="WorkflowStatus">Office rows only. Screen-only — the Excel does not print it.</param>
 /// <param name="FundingSource">Column (7): the activity's expenditure-line fund codes, joined.</param>
 /// <param name="Amounts">
-/// Office and activity rows. ⚠️ <b>Null on program and project rows</b>, which carry no amounts on
-/// the form — null rather than zero so a renderer cannot print a zero the province's file leaves blank.
+/// Every row that has something to add up. ↩️ <b>Program and project rows carried null until
+/// PPDO-98</b>, because the province's file leaves those cells blank; the 2026-09-15 PDC demo asked
+/// for the subtotals WFP's report already shows, so a heading now carries the sum of the activities
+/// beneath it. Still <b>null rather than zero for a heading with no activity under it</b> — the
+/// original reason holds there: a printed ₱0 claims the project was costed at nothing rather than not
+/// costed at all.
 /// </param>
 public sealed record AipConsolidatedRowDto(
     string                Kind,

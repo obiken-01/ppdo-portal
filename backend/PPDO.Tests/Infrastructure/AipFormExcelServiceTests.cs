@@ -247,17 +247,62 @@ public sealed class AipFormExcelServiceTests
         Assert.Equal(2d, Number(ws, "P17"));
     }
 
-    /// <summary>Program and project rows carry no amounts — blank, never zero.</summary>
+    /// <summary>
+    /// ↩️ Program and project rows carried blank amounts until PPDO-98; they now carry the subtotal of
+    /// the activities beneath them, and it calculates to the same figure the office row does when the
+    /// office has only the one program.
+    /// </summary>
     [Fact]
-    public void Export_HeadingRows_HaveBlankAmounts()
+    public void Export_HeadingRows_CarryTheirSubtotal()
     {
         using XLWorkbook wb = Open();
         IXLWorksheet ws = wb.Worksheet("GENERAL_FY2028");
 
+        // Office A's program (11) and project (12) both hold its two activities and nothing else.
+        foreach (string row in new[] { "11", "12" })
+        {
+            Assert.Equal((double)(OfficeA.Ps    / 1000m), Number(ws, $"L{row}"));
+            Assert.Equal((double)(OfficeA.Mooe  / 1000m), Number(ws, $"M{row}"));
+            Assert.Equal((double)(OfficeA.Total / 1000m), Number(ws, $"O{row}"));
+        }
+
+        // ⚠️ Office B's activity hangs off a SYNTHETIC project, which prints no row — its figures
+        // still have to reach the program heading, or the heading would total less than the row under it.
+        Assert.Equal((double)(OfficeB.Co           / 1000m), Number(ws, "N16"));
+        Assert.Equal((double)(OfficeB.CcAdaptation / 1000m), Number(ws, "P16"));
+    }
+
+    /// <summary>
+    /// A heading with nothing costed under it stays blank, not ₱0 — the distinction the null
+    /// <c>Amounts</c> was always for. The office row above it is still a figure: an office row is a
+    /// submission, and reads as zero.
+    /// </summary>
+    [Fact]
+    public void Export_AHeadingWithNoActivity_LeavesItsAmountsBlank()
+    {
+        AipFormWorkbookDto workbook = new(
+            2028, new DateOnly(2026, 9, 14), 1, 5,
+            [
+                new AipFormWorkbookSheetDto(AipSector.General,
+                    [
+                        Office("1000-000-1-01-001", "OFFICE OF THE PROVINCIAL GOVERNOR", AipPrintedFigures.Zero),
+                        Heading(AipFormRowBuilder.ProgramRow, "1000-000-1-01-001-001", "EXECUTIVE GOVERNANCE PROGRAM"),
+                        Heading(AipFormRowBuilder.ProjectRow, "1000-000-1-01-001-001-001", "Not costed yet"),
+                    ],
+                    AipPrintedFigures.Zero),
+                new AipFormWorkbookSheetDto(AipSector.Social,   [], AipPrintedFigures.Zero),
+                new AipFormWorkbookSheetDto(AipSector.Economic, [], AipPrintedFigures.Zero),
+                new AipFormWorkbookSheetDto(AipSector.Others,   [], AipPrintedFigures.Zero),
+            ]);
+
+        using XLWorkbook wb = Open(workbook);
+        IXLWorksheet ws = wb.Worksheet("GENERAL_FY2028");
+
         foreach (string col in new[] { "L", "M", "N", "O", "P", "Q" })
         {
-            Assert.True(ws.Cell($"{col}11").IsEmpty());
-            Assert.True(ws.Cell($"{col}12").IsEmpty());
+            Assert.True(ws.Cell($"{col}12").IsEmpty(), $"{col}12 (project, nothing under it) should be blank");
+            Assert.True(ws.Cell($"{col}11").IsEmpty(), $"{col}11 (program, nothing costed) should be blank");
+            Assert.Equal(0d, Number(ws, $"{col}10"));
         }
     }
 
@@ -289,17 +334,25 @@ public sealed class AipFormExcelServiceTests
         }
     }
 
-    /// <summary>§13.3: office blocks never overlap — each office sums only its own rows; TOTAL sums the office rows.</summary>
+    /// <summary>
+    /// §13.3, as amended by PPDO-98: <b>each level sums the level directly below it</b>, never its whole
+    /// block. ↩️ The office row was <c>SUM(M11:M14)</c> while the headings between were blank; with
+    /// subtotals on them a block-wide range counts every activity three times.
+    /// </summary>
     [Fact]
-    public void Export_SumRanges_CoverEachOfficesOwnBlock()
+    public void Export_EachSubtotal_SumsOnlyTheLevelBelowIt()
     {
         using XLWorkbook wb = Open();
         IXLWorksheet ws = wb.Worksheet("GENERAL_FY2028");
 
-        Assert.Equal("SUM(M11:M14)", ws.Cell("M10").FormulaA1);
-        Assert.Equal("SUM(M16:M17)", ws.Cell("M15").FormulaA1);
-        Assert.Equal("SUM(M10,M15)", ws.Cell("M18").FormulaA1);
-        Assert.Equal("SUM(L13:N13)", ws.Cell("O13").FormulaA1);
+        Assert.Equal("SUM(M13,M14)", ws.Cell("M12").FormulaA1);  // project ← its activities
+        Assert.Equal("SUM(M12)",     ws.Cell("M11").FormulaA1);  // program ← its projects
+        Assert.Equal("SUM(M11)",     ws.Cell("M10").FormulaA1);  // office  ← its programs
+        // Office B: a synthetic project prints no heading, so its activity is the program's own child.
+        Assert.Equal("SUM(M17)",     ws.Cell("M16").FormulaA1);
+        Assert.Equal("SUM(M16)",     ws.Cell("M15").FormulaA1);
+        Assert.Equal("SUM(M10,M15)", ws.Cell("M18").FormulaA1);  // TOTAL ← the office rows
+        Assert.Equal("SUM(L13:N13)", ws.Cell("O13").FormulaA1);  // an activity's own Total column
     }
 
     /// <summary>§11 "Edited in Excel": change one MOOE cell and the Total, subtotal and TOTAL follow.</summary>

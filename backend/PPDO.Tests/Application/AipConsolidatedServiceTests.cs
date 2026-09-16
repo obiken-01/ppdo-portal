@@ -230,15 +230,32 @@ public sealed class AipConsolidatedServiceTests
         Assert.Equal(2, sheet.Sectors.Single(s => s.Sector == AipSector.General).SubmittedOffices);
     }
 
-    /// <summary>Program and project rows carry no amounts — null, so nothing can print a zero there.</summary>
+    /// <summary>
+    /// ↩️ Program and project rows carried null amounts until PPDO-98, so nothing could print a zero
+    /// where the province's form leaves the cell blank. The 2026-09-15 PDC demo asked for the subtotals
+    /// WFP's report already shows, so a heading now carries the sum of the activities beneath it. A
+    /// heading with no activity is still null — that is the case the original rule was protecting.
+    /// </summary>
     [Fact]
-    public async Task GetSheetAsync_ProgramAndProjectRows_HaveNoAmounts()
+    public async Task GetSheetAsync_ProgramAndProjectRows_CarryTheirSubtotal()
     {
         AipConsolidatedSheetDto sheet = await General();
 
-        Assert.All(
-            sheet.Rows.Where(r => r.Kind is AipFormRowBuilder.ProgramRow or AipFormRowBuilder.ProjectRow),
-            r => Assert.Null(r.Amounts));
+        AipPrintedAmountsDto project = sheet.Rows.Single(r => r.RefCode == "1000-000-1-01-001-001-001").Amounts!;
+        Assert.Equal(2_000m, project.Ps);
+        Assert.Equal(1_303_000m, project.Mooe);
+        Assert.Equal(1_305_000m, project.Total);
+
+        // The program's only project is that one, so it totals the same — and both agree with the office.
+        AipPrintedAmountsDto program = sheet.Rows.Single(r => r.RefCode == "1000-000-1-01-001-001").Amounts!;
+        Assert.Equal(project, program);
+        Assert.Equal(sheet.Rows.Single(r => r.RefCode == "1000-000-1-01-001").Amounts, program);
+
+        // ⚠️ PPDO's activity hangs off a SYNTHETIC project, which prints no row of its own. Its figures
+        // must still reach the program heading, or the heading would total less than the row under it.
+        AipPrintedAmountsDto synthetic = sheet.Rows.Single(r => r.RefCode == "1000-000-1-01-010-001").Amounts!;
+        Assert.Equal(2_000m, synthetic.Co);
+        Assert.Equal(2_000m, synthetic.CcAdaptation);
     }
 
     /// <summary>The office row is the sum of its activities' printed figures; TOTAL the sum of the office rows.</summary>
