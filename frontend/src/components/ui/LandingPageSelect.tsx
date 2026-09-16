@@ -17,7 +17,7 @@ import type { LandingPageKey, MeResponse } from "@/types";
 const ALL: { key: LandingPageKey; label: string }[] = [
   { key: "MainDashboard",           label: "Main Dashboard" },
   { key: "InventoryDashboard",      label: "Inventory Dashboard" },
-  { key: "BudgetPlanningDashboard", label: "Budget Planning Dashboard" },
+  { key: "BudgetPlanningDashboard", label: "Investment Planning Dashboard" },
   { key: "Profile",                 label: "My Account" },
 ];
 

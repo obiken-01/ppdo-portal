@@ -1234,7 +1234,7 @@ function WfpPageInner() {
               {setupStatus != null && !setupStatus.hasAllocation && <li>No division allocation set for this division.</li>}
               {setupStatus != null && !setupStatus.hasProgramAssignment && <li>No programs have been assigned to this division.</li>}
             </ul>
-            <span className="text-xs text-amber-700">Go to Budget Planning → Allocation to complete setup.</span>
+            <span className="text-xs text-amber-700">Go to Investment Planning → Allocation to complete setup.</span>
           </div>
         )}
 
