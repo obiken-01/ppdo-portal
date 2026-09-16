@@ -1,7 +1,7 @@
 ---
-status: draft
+status: shipped
 version: v1.8.0
-tickets: E1 = PPDO-88 (delete backend), E2 = PPDO-89 (drill-down layout), E3 = PPDO-91 (delete controls; blocked by 88 + 89)
+tickets: E1 = PPDO-88 (delete backend, done), E2 = PPDO-89 (drill-down layout, done), E3 = PPDO-91 (delete controls, done)
 supersedes: AIP_Entry_Spec.md §6.1 layout (tree) — behaviour, gates and API in that spec are unchanged unless named here
 ---
 
@@ -206,6 +206,13 @@ existing `AuditLog` payload.)
 | **Validation** | Unchanged — per field under the field in `AipActivityFields` / `AipExpenditureTable`; add input requires a non-blank name |
 | **Delete confirm** | `ConfirmDialog`, danger variant. Title "Delete project \<ref\>?" Body lists what goes: "N activities, M expenditure lines, K unresolved comments. Later projects in this program will be renumbered. This cannot be undone." Omit zero counts; omit the renumber sentence when nothing follows it |
 
+↩️ **As built (PPDO-91), the dialog drops the M expenditure-line count.** The loaded tree carries
+activity totals, not line counts — `AipActivityDetail` has no such field, and fetching lines per
+activity just to count them, on every button that opens a confirm dialog, is a round trip nobody
+reads before deciding. The unresolved-comment count is a `useAipUnresolvedCount()` read against data
+the office is already looking at (PPDO-89's provider); the activity count is already in the tree.
+Both are free. The acceptance checklist (§10) only ever asked for these two.
+
 **Components.** Reused: `Lookup`, `ConfirmDialog`, `RowActions`, `useToast`, `AipSubmitChecklist`,
 `AipCommentsProvider` / `AipCommentFilterBar` / `AipCommentAnchor`, `AipActivityFields`,
 `AipExpenditureTable`, `AipFigureStrip`, `AipFundPill`, `AipLevelChip`, `AipRefCode`. New, under
@@ -243,8 +250,12 @@ split trigger; omitting both props is the old self-contained behaviour the empty
 
 ↩️ **PPDO-88's delete controls were carried across, not dropped.** They shipped into the old tree as an
 interim and moving the tree out would have removed a capability the office already has, so
-`AipDeleteNodeButton` now sits in the Project and Activity panel headers. **E3 still owns** the final
-copy (the unresolved-comment count in the dialog, the renumber sentence) and the 409 banner.
+`AipDeleteNodeButton` now sits in the Project and Activity panel headers. **PPDO-91 shipped the final
+copy**: the unresolved-comment count in the dialog, the conditional renumber sentence, the success
+toast, the 409 banner with Reload, and disabled-with-reason in place of the button being absent.
+⚠️ **Not yet exercised against a running app** — `tsc`/lint are clean, but the three cases worth a
+human pass are a middle-sibling delete renumbering live, a last-sibling delete omitting the renumber
+sentence, and a project delete taking its activities' costing in one confirm.
 
 ## 7. Non-goals
 

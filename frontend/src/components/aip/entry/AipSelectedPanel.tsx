@@ -64,7 +64,8 @@ export default function AipSelectedPanel({
   }
 
   if (selection.activity && selection.project && selection.program) {
-    const { program, activity } = selection;
+    const { program, project, activity } = selection;
+    const isLastActivity = project.activities[project.activities.length - 1]?.id === activity.id;
     return (
       <AipActivityPanel
         // ⚠️ Keyed, so each activity gets its OWN instance. ↩️ The tree this replaced keyed every
@@ -74,6 +75,8 @@ export default function AipSelectedPanel({
         key={activity.id}
         activity={activity}
         canEdit={canEdit}
+        lockedReason={holder}
+        isLastSibling={isLastActivity}
         accounts={accounts}
         funds={funds}
         generalFundId={generalFundId}
@@ -94,12 +97,14 @@ export default function AipSelectedPanel({
 
   if (selection.project) {
     const { program, project } = selection;
+    const isLastProject = program.projects[program.projects.length - 1]?.id === project.id;
     return (
       <AipProjectPanel
         key={project.id}
         project={project}
         canEdit={canEdit}
         lockedReason={holder}
+        isLastSibling={isLastProject}
         defaultImplementingOffice={defaultImplementingOffice}
         unresolvedCount={unresolvedCount}
         onSelectActivity={(activityId) =>
