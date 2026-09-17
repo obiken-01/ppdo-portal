@@ -666,18 +666,17 @@ function ResultTable({
   // is theirs: the review screen (where Return and Accept live) for PPDO, AIP Entry for a department
   // head. Sending a department head to the review screen would be a redirect on every click.
   //
-  // ⚠️ PPDO-94 decision 9 — the row's own id rides along as `programId=` or `projectId=` **for the
-  // review screen only**, so a PPDO reviewer lands on that node instead of the office's picker with
-  // nothing chosen (the review page resolves a leaf-only id against the loaded tree). AIP Entry is
-  // untouched beyond the `lockedReason` type change (spec §7 non-goals) and has no such fallback, so
-  // a department head still lands on their office's picker rather than a link that would silently
-  // fail to select anything.
+  // ⚠️ PPDO-94 decision 9 — the row's own id rides along as `programId=` or `projectId=` on either
+  // destination, so the reader lands directly on that node instead of the office's picker with
+  // nothing chosen. Both `aip/review` and `aip/entry` resolve a leaf-only id (a project without its
+  // program) against the loaded tree via `idsForAipNode` — confirmed live 2026-09-17.
   const officeHref = (officeId: number, row: AipReviewSearchRow) => {
-    if (!crossOffice) return `/budget-planning/aip/entry?fiscalYear=${fiscalYear}`;
     const idParam = row.level === "Program" ? `&programId=${row.nodeId}`
       : row.level === "Project" ? `&projectId=${row.nodeId}`
         : "";
-    return `/budget-planning/aip/review?officeId=${officeId}&fiscalYear=${fiscalYear}${idParam}`;
+    return crossOffice
+      ? `/budget-planning/aip/review?officeId=${officeId}&fiscalYear=${fiscalYear}${idParam}`
+      : `/budget-planning/aip/entry?fiscalYear=${fiscalYear}${idParam}`;
   };
 
   const linkCls = "underline decoration-slate-300 underline-offset-2 hover:decoration-green-700";

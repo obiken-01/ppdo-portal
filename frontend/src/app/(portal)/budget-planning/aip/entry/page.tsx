@@ -183,6 +183,26 @@ export default function AipEntryPage() {
     setIds(selection.ids);
   }, [selection]);
 
+  /**
+   * PPDO-94 — the AIP Review search links a project row here by its OWN id alone (it has no reason
+   * to know that project's program). `resolveAipSelection` needs `programId` to do anything, so a
+   * leaf-only deep link is resolved against the loaded tree the same way a checklist issue or a
+   * comment is (`idsForAipNode`) — once, the first time the tree is available.
+   */
+  const resolvedDeepLink = useRef(false);
+  useEffect(() => {
+    if (resolvedDeepLink.current || !record) return;
+    resolvedDeepLink.current = true;
+    if (ids.programId != null) return;
+    const leaf: { type: "Activity" | "Project"; id: number } | null =
+      ids.activityId != null ? { type: "Activity", id: ids.activityId }
+        : ids.projectId != null ? { type: "Project", id: ids.projectId }
+          : null;
+    if (!leaf) return;
+    const found = idsForAipNode(myGroups, leaf.type, leaf.id);
+    if (found) setIds(found);
+  }, [record, myGroups, ids]);
+
   // The selection mirrored back into the URL. `scroll: false` — a replace that jumped the page to
   // the top on every pick would undo the reason the panel is on screen.
   useEffect(() => {
