@@ -36,6 +36,7 @@ import { FIRST_ENTERED_FISCAL_YEAR } from "@/lib/aip-fiscal-years";
 import { fmtThousands } from "@/lib/aip-units";
 import { aipHeaderRow } from "@/components/aip/entry/AipHierarchy";
 import AipActivityReviewModal from "@/components/aip/review/AipActivityReviewModal";
+import RecordCodeLink from "@/components/ui/RecordCodeLink";
 import type { AipConsolidatedRow, AipConsolidatedSheet, AipPrintedAmounts } from "@/types";
 
 const SECTOR_LABEL: Record<string, string> = {
@@ -375,20 +376,23 @@ function FormRow({
     case "Activity":
       return (
         <tr className="bg-white">
-          <td className={`${CELL} font-mono text-[11px] text-slate-600`}>{row.refCode}</td>
-          <td className={`${CELL} pl-12 whitespace-pre-line`}>
-            {row.activityId != null ? (
-              <button
-                type="button"
-                onClick={() => onOpenActivity(row.activityId!)}
-                className="text-left text-green-800 underline decoration-green-200 underline-offset-2 hover:decoration-green-700"
-              >
-                {row.name}
-              </button>
-            ) : (
-              row.name
-            )}
+          {/* ↩️ **The code opens the activity, not its name** (PPDO-105, Ralph 2026-09-17) — the same
+              rule as every other list table. An activity name here can run to a dozen lines (the
+              plantilla rows do), and a whole paragraph underlined as one link is a poor target.
+
+              ⚠️ **But this is a print preview, so two things differ from a list table:** the name is
+              shown IN FULL — never clamped — because every line of it prints, and the code WRAPS like
+              the office, program and project codes above it in column A. */}
+          <td className={CELL}>
+            <RecordCodeLink
+              code={row.refCode}
+              description={row.name}
+              onClick={row.activityId != null ? () => onOpenActivity(row.activityId!) : undefined}
+              wrap
+              compact
+            />
           </td>
+          <td className={`${CELL} pl-12 whitespace-pre-line`}>{row.name}</td>
           <td className={`${CELL} text-center`}>{row.esreCode}</td>
           <td className={CELL}>{row.implementingOffice}</td>
           <td className={CELL}>{row.startDate}</td>
