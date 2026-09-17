@@ -380,13 +380,15 @@ function FormRow({
               rule as every other list table. An activity name here can run to a dozen lines (the
               plantilla rows do), and a whole paragraph underlined as one link is a poor target.
 
-              ⚠️ **But this is a print preview, so the name is shown IN FULL** — never clamped —
-              because every line of it prints. The code follows the list-table rule as it stands. */}
+              ⚠️ **But this is a print preview, so two things differ from a list table:** the name is
+              shown IN FULL — never clamped — because every line of it prints, and the code WRAPS like
+              the office, program and project codes above it in column A. */}
           <td className={CELL}>
             <RecordCodeLink
               code={row.refCode}
               description={row.name}
               onClick={row.activityId != null ? () => onOpenActivity(row.activityId!) : undefined}
+              wrap
               compact
             />
           </td>
