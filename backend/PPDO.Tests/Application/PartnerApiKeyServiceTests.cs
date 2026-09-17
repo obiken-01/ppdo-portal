@@ -356,6 +356,26 @@ public sealed class PartnerApiKeyServiceTests
         Assert.Single(result);
     }
 
+    [Fact]
+    public async Task GetAllAsync_TimestampsFromTheDatabase_AreReturnedAsUtc()
+    {
+        // SQL Server returns datetime2 with an unspecified kind; without the UTC tag the JSON has no
+        // "Z" and the browser shows the time 8 hours early in Manila.
+        DateTime stored = DateTime.SpecifyKind(new DateTime(2026, 9, 17, 15, 59, 59), DateTimeKind.Unspecified);
+        PartnerApiKey key = MakeKey(expiresAt: stored);
+        key.CreatedAt = stored;
+        key.LastUsedAt = stored;
+        (PartnerApiKeyService sut, Mock<IPartnerApiKeyRepository> keys, _, _, _) = Build();
+        keys.Setup(k => k.GetAllWithOfficesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([key]);
+
+        ApiKeyListItemDto row = (await sut.GetAllAsync()).Single();
+
+        Assert.Equal(DateTimeKind.Utc, row.ExpiresAt!.Value.Kind);
+        Assert.Equal(DateTimeKind.Utc, row.CreatedAt.Kind);
+        Assert.Equal(DateTimeKind.Utc, row.LastUsedAt!.Value.Kind);
+        Assert.Equal(stored.Ticks, row.ExpiresAt.Value.Ticks);
+    }
+
     // ── GetRequestsAsync ──────────────────────────────────────────────────────
 
     [Fact]
@@ -378,7 +398,7 @@ public sealed class PartnerApiKeyServiceTests
 
         List<PartnerApiRequest> rows =
         [
-            new() { Id = 2, KeyId = 5, RequestedAt = DateTime.UtcNow, Route = "aip", OfficeCode = "PPDO", FiscalYear = 2028, StatusCode = 200 },
+            new() { Id = 2, KeyId = 5, RequestedAt = new DateTime(2026, 9, 17, 6, 26, 0, DateTimeKind.Unspecified), Route = "aip", OfficeCode = "PPDO", FiscalYear = 2028, StatusCode = 200 },
         ];
         requests.Setup(r => r.GetPageForKeyAsync(5, 1, 50, It.IsAny<CancellationToken>()))
             .ReturnsAsync((rows, 1));
@@ -389,6 +409,7 @@ public sealed class PartnerApiKeyServiceTests
         Assert.Equal(1, result.Value!.Total);
         Assert.Equal("aip", result.Value.Items.Single().Route);
         Assert.Equal(200, result.Value.Items.Single().StatusCode);
+        Assert.Equal(DateTimeKind.Utc, result.Value.Items.Single().RequestedAt.Kind);
     }
 
     [Fact]
