@@ -185,7 +185,7 @@ public sealed class PartnerApiKeyService : IPartnerApiKeyService
 
         return ServiceResult<ApiKeyRequestLogPageDto>.Ok(new ApiKeyRequestLogPageDto(
             items.Select(r => new ApiKeyRequestLogItemDto(
-                r.RequestedAt, r.Route, r.OfficeCode, r.FiscalYear, r.StatusCode)).ToList(),
+                AsUtc(r.RequestedAt), r.Route, r.OfficeCode, r.FiscalYear, r.StatusCode)).ToList(),
             total));
     }
 
@@ -203,12 +203,21 @@ public sealed class PartnerApiKeyService : IPartnerApiKeyService
             .OrderBy(o => o.Code)
             .ToList(),
         Status: key.GetStatus(DateTime.UtcNow).ToString(),
-        ExpiresAt: key.ExpiresAt,
-        LastUsedAt: key.LastUsedAt,
-        CreatedAt: key.CreatedAt,
+        ExpiresAt: AsUtc(key.ExpiresAt),
+        LastUsedAt: AsUtc(key.LastUsedAt),
+        CreatedAt: AsUtc(key.CreatedAt),
         CreatedByName: key.CreatedBy?.FullName ?? "—",
-        RevokedAt: key.RevokedAt,
+        RevokedAt: AsUtc(key.RevokedAt),
         RevokedByName: key.RevokedBy?.FullName);
+
+    /// <summary>
+    /// Marks a stored timestamp as UTC. SQL Server hands every <c>datetime2</c> back with an
+    /// unspecified kind, which serializes without a <c>Z</c> — and the browser then reads it as local
+    /// time, showing every key time 8 hours early in Manila.
+    /// </summary>
+    private static DateTime AsUtc(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Utc);
+
+    private static DateTime? AsUtc(DateTime? value) => value is DateTime v ? AsUtc(v) : null;
 
     /// <summary>
     /// Audit snapshot of the business-relevant fields on a key. Deliberately excludes KeyHash —
