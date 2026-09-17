@@ -38,7 +38,9 @@ export default function AipSelectedPanel({
 }: {
   selection: AipResolvedSelection | null;
   canEdit: boolean;
-  holder: string;
+  /** Passed straight through as each panel's `lockedReason`. Null on AIP Review (PPDO-94) — there is
+   * no holder to name, so the add/delete controls are omitted rather than disabled with a reason. */
+  holder: string | null;
   accounts: AccountResponse[];
   funds: FundingSourceResponse[];
   generalFundId: number | null;

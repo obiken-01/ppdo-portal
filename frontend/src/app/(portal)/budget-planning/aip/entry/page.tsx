@@ -183,6 +183,26 @@ export default function AipEntryPage() {
     setIds(selection.ids);
   }, [selection]);
 
+  /**
+   * PPDO-94 — the AIP Review search links a project row here by its OWN id alone (it has no reason
+   * to know that project's program). `resolveAipSelection` needs `programId` to do anything, so a
+   * leaf-only deep link is resolved against the loaded tree the same way a checklist issue or a
+   * comment is (`idsForAipNode`) — once, the first time the tree is available.
+   */
+  const resolvedDeepLink = useRef(false);
+  useEffect(() => {
+    if (resolvedDeepLink.current || !record) return;
+    resolvedDeepLink.current = true;
+    if (ids.programId != null) return;
+    const leaf: { type: "Activity" | "Project"; id: number } | null =
+      ids.activityId != null ? { type: "Activity", id: ids.activityId }
+        : ids.projectId != null ? { type: "Project", id: ids.projectId }
+          : null;
+    if (!leaf) return;
+    const found = idsForAipNode(myGroups, leaf.type, leaf.id);
+    if (found) setIds(found);
+  }, [record, myGroups, ids]);
+
   // The selection mirrored back into the URL. `scroll: false` — a replace that jumped the page to
   // the top on every pick would undo the reason the panel is on screen.
   useEffect(() => {
@@ -431,6 +451,18 @@ export default function AipEntryPage() {
           <p className="mt-0.5 text-sm text-slate-600">
             Build your office&rsquo;s part of the Annual Investment Program.
           </p>
+          {/* PPDO-94 — a way back for a reader who arrived via a search deep-link
+              (`&programId=`/`&projectId=`) rather than the sidebar. Only offered to a reader who
+              can actually reach `aip/review/search` (`canOpenAipReview`) — an encoder with no
+              review grant would follow this straight into a redirect back to the hub. */}
+          {(canReview || me?.canReviewAllOffices === true) && (
+            <Link
+              href={`/budget-planning/aip/review/search?fiscalYear=${fiscalYear}`}
+              className="mt-1 inline-block text-sm font-medium text-green-800 underline underline-offset-2 hover:text-green-900"
+            >
+              ← Back to search
+            </Link>
+          )}
         </div>
         <div>
           <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">

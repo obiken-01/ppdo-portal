@@ -25,8 +25,12 @@ export default function AipProgramPanel({
 }: {
   program: AipProgramDetail;
   canEdit: boolean;
-  /** Who holds the work, when this office cannot edit. Shown in place of the add control. */
-  lockedReason: string;
+  /**
+   * Who holds the work, when this office cannot edit — shown in place of the add control. Null
+   * (PPDO-94) omits the control entirely rather than disabling it with a reason: on AIP Review there
+   * is no holder to name, because the reviewer was never going to add one (spec decision 5).
+   */
+  lockedReason: string | null;
   unresolvedCount: (nodeType: AipCommentNodeType, nodeId: number) => number;
   onSelectProject: (projectId: number) => void;
   onProjectAdded: (project: AipProjectDetail) => void;
@@ -65,13 +69,17 @@ export default function AipProgramPanel({
         count={program.projects.length}
         emptyText="No projects yet."
         footer={
-          <AipInlineAdd
-            label="+ Add project"
-            placeholder="Project name"
-            disabled={!canEdit}
-            disabledReason={`With ${lockedReason} — projects cannot be added here.`}
-            onAdd={async (name) => onProjectAdded(await addAipProject(program.id, { name }))}
-          />
+          canEdit || lockedReason != null ? (
+            <AipInlineAdd
+              label="+ Add project"
+              placeholder="Project name"
+              disabled={!canEdit}
+              disabledReason={
+                lockedReason != null ? `With ${lockedReason} — projects cannot be added here.` : undefined
+              }
+              onAdd={async (name) => onProjectAdded(await addAipProject(program.id, { name }))}
+            />
+          ) : undefined
         }
       >
         {program.projects.map((project) => (

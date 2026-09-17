@@ -30,8 +30,12 @@ export default function AipDeleteNodeButton({
 }: {
   target: DeleteTarget;
   canEdit: boolean;
-  /** Who holds the work, when this office cannot edit — shown as the disabled reason (spec §6). */
-  lockedReason: string;
+  /**
+   * Who holds the work, when this office cannot edit — shown as the disabled reason (spec §6). Null
+   * on AIP Review (PPDO-94 spec decision 5): the control is omitted entirely rather than disabled
+   * with a reason, because there is no holder to name — the reviewer was never going to delete.
+   */
+  lockedReason: string | null;
   onDeleted: (result: AipDeleteResult) => void;
 }) {
   const reloadComments = useReloadAipComments();
@@ -99,6 +103,9 @@ export default function AipDeleteNodeButton({
   }
 
   if (!canEdit) {
+    // PPDO-94 — no holder to name on the review screen, so the control is omitted rather than
+    // disabled with a reason (spec decision 5).
+    if (lockedReason == null) return null;
     return (
       <span className="text-xs text-slate-600" title={`With ${lockedReason} — this cannot be deleted here.`}>
         With {lockedReason} — cannot delete

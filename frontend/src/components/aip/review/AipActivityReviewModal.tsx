@@ -132,7 +132,10 @@ export default function AipActivityReviewModal({
             <Link
               href={
                 ppdoView
+                  // PPDO-94 decision 9 — lands on this exact activity, not the office's empty
+                  // picker: the "payoff" of the drill-down is not having to find the row again.
                   ? `/budget-planning/aip/review?officeId=${review.officeId}&fiscalYear=${review.fiscalYear}`
+                    + `&programId=${review.program.id}&projectId=${review.project.id}&activityId=${review.activity.id}`
                   : `/budget-planning/aip/entry?fiscalYear=${review.fiscalYear}`
               }
               className="mr-auto text-sm text-green-700 underline underline-offset-2 hover:text-green-800"

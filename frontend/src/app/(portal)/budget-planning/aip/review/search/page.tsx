@@ -665,9 +665,19 @@ function ResultTable({
   // ⚠️ The whole-office surface differs by reader, so a program or project row links to the one that
   // is theirs: the review screen (where Return and Accept live) for PPDO, AIP Entry for a department
   // head. Sending a department head to the review screen would be a redirect on every click.
-  const officeHref = (officeId: number) => crossOffice
-    ? `/budget-planning/aip/review?officeId=${officeId}&fiscalYear=${fiscalYear}`
-    : `/budget-planning/aip/entry?fiscalYear=${fiscalYear}`;
+  //
+  // ⚠️ PPDO-94 decision 9 — the row's own id rides along as `programId=` or `projectId=` on either
+  // destination, so the reader lands directly on that node instead of the office's picker with
+  // nothing chosen. Both `aip/review` and `aip/entry` resolve a leaf-only id (a project without its
+  // program) against the loaded tree via `idsForAipNode` — confirmed live 2026-09-17.
+  const officeHref = (officeId: number, row: AipReviewSearchRow) => {
+    const idParam = row.level === "Program" ? `&programId=${row.nodeId}`
+      : row.level === "Project" ? `&projectId=${row.nodeId}`
+        : "";
+    return crossOffice
+      ? `/budget-planning/aip/review?officeId=${officeId}&fiscalYear=${fiscalYear}${idParam}`
+      : `/budget-planning/aip/entry?fiscalYear=${fiscalYear}${idParam}`;
+  };
 
   const linkCls = "underline decoration-slate-300 underline-offset-2 hover:decoration-green-700";
 
@@ -700,7 +710,7 @@ function ResultTable({
                     {r.name}
                   </button>
                 ) : (
-                  <Link href={officeHref(r.officeId)} className={linkCls}>{r.name}</Link>
+                  <Link href={officeHref(r.officeId, r)} className={linkCls}>{r.name}</Link>
                 )}
               </td>
               <td className="px-3 py-2 text-slate-600">

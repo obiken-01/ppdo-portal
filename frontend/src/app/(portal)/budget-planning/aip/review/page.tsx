@@ -1,33 +1,39 @@
 "use client";
 
 /**
- * AIP Review — one office (V18-56 / PPDO-74, `docs/v1.8/AIP_Review_Spec.md` §6.2).
- * Route: /budget-planning/aip/review?officeId=<id>&fiscalYear=<yyyy>
+ * AIP Review — one office (V18-56 / PPDO-74, PPDO-94, `docs/v1.8/AIP_Review_Layout_Spec.md`).
+ * Route: /budget-planning/aip/review?officeId=<id>&fiscalYear=<yyyy>&view=&programId=&projectId=&activityId=
  *
  * The PPDO consolidated reviewer's actual workplace: one office's whole AIP, read-only, with a
  * comment gutter on every row and the two decisions they hold — send it back, or take it into the
  * consolidated AIP.
  *
+ * ⚠️ **Two views, one screen (PPDO-94).** A reviewer usually arrives targeting a node — a search
+ * result, a kanban card, an unresolved comment — so **Drill-down** (AIP Entry's Program → Project →
+ * Activity picker, reused unchanged) is the default. But Accept and Send back are decisions about
+ * the whole office, so today's tree survives as **Full office**, one click away via the segmented
+ * control in the sticky header. Neither view replaces the other (spec §2).
+ *
  * ⚠️ **This is the reviewer who may NOT edit.** There are two reviewers in this phase and they
  * differ on exactly that point: the *department-head* reviewer edits their own office's values
- * during review; the *PPDO* reviewer never edits anyone's. Two roles, one word — and this is the
- * half that is easy to get backwards. Every component below is passed `canEdit={false}`, and
- * `ReviewerWriteGuard` refuses the write server-side even if one of them ever forgets.
+ * during review; the *PPDO* reviewer never edits anyone's. Every panel gets `canEdit={false}` and
+ * `lockedReason={null}` — null, not a holder name, because there is no holder to name here (spec
+ * decision 5). `ReviewerWriteGuard` refuses the write server-side even if this page ever forgot.
  *
  * ⚠️ **Not built on `aip/detail/page.tsx`.** PPDO-64 extracted that page into components precisely
  * so this screen could reuse the pieces rather than fork two thousand lines of them.
  *
- * ⚠️ **How a reviewer gets here is not this page's job.** PPDO-76's query-first search and
- * PPDO-78's kanban are what will link in; until they land the office is named in the URL, and this
- * page says so plainly rather than growing a search panel that PPDO-76 would then replace.
+ * ⚠️ **Selection lives in the URL**, same shape as AIP Entry (`resolveAipSelection`,
+ * `AipEntrySelection`) — a reload, a shared link, and a search or kanban deep-link all land on the
+ * same node (spec decision 7, 9).
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMe } from "@/lib/me-cache";
 import { canOpenAipOfficeReview, budgetPlanningFallback } from "@/lib/budget-planning-access";
-import { listAip, listAipExpenditures, aipErrorMessage } from "@/lib/aip";
+import { listAip, aipErrorMessage } from "@/lib/aip";
 import { listAccounts, listFundingSources } from "@/lib/config";
 import {
   getAipOfficeReview, returnAipToOffice, acceptAipOffice, reopenAipOffice,
@@ -37,19 +43,19 @@ import { AIP_WORKFLOW, describeAipHolderForReviewer } from "@/lib/aip-workflow";
 import { refreshAipNotifications } from "@/lib/aip-notifications";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import AipHistoryButton from "@/components/aip/review/AipHistoryButton";
-import AipActivityFields from "@/components/aip/entry/AipActivityFields";
-import AipExpenditureTable from "@/components/aip/entry/AipExpenditureTable";
+import AipReviewFullTree from "@/components/aip/review/AipReviewFullTree";
+import AipReviewViewSwitch, { type AipReviewView } from "@/components/aip/review/AipReviewViewSwitch";
+import AipEntryPicker from "@/components/aip/entry/AipEntryPicker";
+import AipSelectedPanel from "@/components/aip/entry/AipSelectedPanel";
+import { AipOfficeHeader } from "@/components/aip/entry/AipEntryPanelParts";
+import { AipCommentsProvider, AipCommentFilterBar } from "@/components/aip/entry/AipComments";
+import { sumActivityAmounts } from "@/components/aip/entry/AipRowFigures";
 import {
-  AipCommentsProvider, AipCommentFilterBar, AipCommentAnchor,
-} from "@/components/aip/entry/AipComments";
-import { AipLevelChip, AipRefCode, aipHeaderRow } from "@/components/aip/entry/AipHierarchy";
-import {
-  AipFigureStrip, AipFundPill, AipUnitCaption, activityFundLabel, sumActivityAmounts,
-  type AipRowAmounts,
-} from "@/components/aip/entry/AipRowFigures";
+  idsForAipNode, listAipProgramOptions, resolveAipSelection,
+  type AipSelectionIds,
+} from "@/components/aip/entry/AipEntrySelection";
 import type {
-  AipOfficeReview, AipOfficeDetail, AipActivityDetail, AipExpenditure,
-  AccountResponse, FundingSourceResponse,
+  AipOfficeReview, AccountResponse, FundingSourceResponse, AipCommentNodeType,
 } from "@/types";
 
 /** FY2028 onward. There is no workflow, and so nothing to review, below the break year. */
@@ -85,6 +91,19 @@ export default function AipReviewPage() {
 
   const requestedYear = Number(searchParams.get("fiscalYear"));
   const fiscalYear = YEARS.includes(requestedYear) ? requestedYear : FIRST_ENTERED_FISCAL_YEAR;
+
+  // ⚠️ **View and selection are read ONCE here, then mirrored back by the effect below** — same
+  // pattern as AIP Entry (PPDO-89). This page is not remounted by a query-only navigation within
+  // itself, so a second deep-link while already on the screen will not re-seed these; every real
+  // arrival (from search, the kanban, a reload, a pasted link) is a fresh mount and reads correctly.
+  const [view, setView] = useState<AipReviewView>(searchParams.get("view") === "full" ? "full" : "drilldown");
+  const [ids, setIds] = useState<AipSelectionIds>(() => ({
+    programId: numberParam(searchParams.get("programId")),
+    projectId: numberParam(searchParams.get("projectId")),
+    activityId: numberParam(searchParams.get("activityId")),
+  }));
+  /** Set when an id in the URL no longer resolves, or a named node is out of view. */
+  const [selectionNotice, setSelectionNotice] = useState<string | null>(null);
 
   const [review, setReview] = useState<AipOfficeReview | null>(null);
   const [accounts, setAccounts] = useState<AccountResponse[]>([]);
@@ -129,8 +148,79 @@ export default function AipReviewPage() {
     void listFundingSources({ active: "true" }).then(setFunds).catch(() => setFunds([]));
   }, []);
 
+  // Already scoped to this one office by the endpoint — no further division/office filter needed
+  // (unlike AIP Entry's `myGroups`, which narrows a HOST-office user's whole-record fetch).
+  const myGroups = useMemo(() => review?.groups ?? [], [review]);
+  const programOptions = useMemo(() => listAipProgramOptions(myGroups), [myGroups]);
+
+  /** Null while still loading — see AIP Entry's identical guard for why that matters. */
+  const selection = useMemo(
+    () => (review ? resolveAipSelection(myGroups, ids) : null),
+    [review, myGroups, ids]
+  );
+
+  // A stale id falls back to the deepest ancestor that still resolves, and says which level went.
+  useEffect(() => {
+    if (!selection?.notice) return;
+    setSelectionNotice(selection.notice);
+    setIds(selection.ids);
+  }, [selection]);
+
+  /**
+   * PPDO-94 decision 9 — a search result names a project or activity by its OWN id alone; it has
+   * no reason to know that row's ancestors. `resolveAipSelection` needs `programId` to do anything,
+   * so a leaf-only deep link is resolved against the loaded tree the same way a comment or checklist
+   * issue is (`idsForAipNode`) — once, the first time the tree is available.
+   */
+  const resolvedDeepLink = useRef(false);
+  useEffect(() => {
+    if (resolvedDeepLink.current || !review) return;
+    resolvedDeepLink.current = true;
+    if (ids.programId != null) return;
+    const leaf: { type: "Activity" | "Project"; id: number } | null =
+      ids.activityId != null ? { type: "Activity", id: ids.activityId }
+        : ids.projectId != null ? { type: "Project", id: ids.projectId }
+          : null;
+    if (!leaf) return;
+    const found = idsForAipNode(myGroups, leaf.type, leaf.id);
+    if (found) setIds(found);
+  }, [review, myGroups, ids]);
+
+  // The view and the selection mirrored back into the URL (spec decision 7). `scroll: false` — a
+  // replace that jumped the page on every pick would undo the reason the panel is on screen.
+  useEffect(() => {
+    if (officeId == null) return;
+    const q = new URLSearchParams({ officeId: String(officeId), fiscalYear: String(fiscalYear) });
+    if (view === "full") q.set("view", "full");
+    if (ids.programId != null) q.set("programId", String(ids.programId));
+    if (ids.projectId != null) q.set("projectId", String(ids.projectId));
+    if (ids.activityId != null) q.set("activityId", String(ids.activityId));
+    router.replace(`/budget-planning/aip/review?${q.toString()}`, { scroll: false });
+  }, [router, officeId, fiscalYear, view, ids]);
+
+  // ⚠️ One setter for every way of choosing a node — the picker, a child row, and a comment all go
+  // through here, same as AIP Entry.
+  const select = useCallback((next: AipSelectionIds) => {
+    setSelectionNotice(null);
+    setIds(next);
+  }, []);
+
+  /** Selects the node an unresolved comment names, wherever it sits in the tree (spec decision 8). */
+  const selectNode = useCallback(
+    (nodeType: AipCommentNodeType, nodeId: number) => {
+      const found = idsForAipNode(myGroups, nodeType, nodeId);
+      if (!found) {
+        setSelectionNotice("That row is not in the part of this AIP you can see.");
+        return;
+      }
+      select(found);
+    },
+    [myGroups, select]
+  );
+
   const atPpdo = review?.workflowStatus === AIP_WORKFLOW.submittedToPpdo;
   const accepted = review?.workflowStatus === AIP_WORKFLOW.consolidated;
+  const hasGroups = myGroups.length > 0;
 
   /**
    * Both decisions run through here.
@@ -220,45 +310,24 @@ export default function AipReviewPage() {
   // then swapping in a full-height tree is the layout shift PERFORMANCE_GUIDELINES names.
   return (
     <div className="p-4 sm:p-6">
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-800">AIP Review</h1>
-          <p className="mt-0.5 text-sm text-slate-600">
-            {review
-              ? <>FY {review.fiscalYear} · <strong className="text-slate-800">{review.officeName}</strong>
-                  {review.officeCode ? ` (${review.officeCode})` : ""}</>
-              : `FY ${fiscalYear} · read an office's submitted AIP, comment on it, and decide.`}
-          </p>
-        </div>
-
-        {review && (
-          <div className="flex flex-wrap items-center gap-2">
-            {/* ⚠️ Names the HOLDER, not a bare "read-only". A reviewer looking at an office that is
-                not at PPDO needs to know who has it, or the absent buttons read as a bug. */}
-            <StateChip status={review.workflowStatus} />
-            {/* PPDO-77. At every status, not only at PPDO: an accepted or returned office is exactly
-                the one a reviewer wants to trace. */}
-            <AipHistoryButton aipRecordId={review.aipRecordId} officeId={review.officeId} />
-            {atPpdo && (
-              <>
-                <button type="button" onClick={confirmReturn} disabled={acting}
-                  className="border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60">
-                  Send back
-                </button>
-                <button type="button" onClick={confirmAccept} disabled={acting}
-                  className="bg-green-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-800 disabled:cursor-not-allowed disabled:bg-slate-300">
-                  Accept
-                </button>
-              </>
-            )}
-            {accepted && (
-              <button type="button" onClick={confirmReopen} disabled={acting}
-                className="border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60">
-                Re-open and send back
-              </button>
-            )}
-          </div>
-        )}
+      <div className="mb-4">
+        <h1 className="text-xl font-semibold text-slate-800">AIP Review</h1>
+        <p className="mt-0.5 text-sm text-slate-600">
+          {review
+            ? <>FY {review.fiscalYear} · <strong className="text-slate-800">{review.officeName}</strong>
+                {review.officeCode ? ` (${review.officeCode})` : ""}</>
+            : `FY ${fiscalYear} · read an office's submitted AIP, comment on it, and decide.`}
+        </p>
+        {/* PPDO-94 — a way back for a reader who arrived via a search deep-link rather than the
+            search page itself. No grant check needed: this page is already `canOpenAipOfficeReview`
+            (cross-office) only, which always implies the search page too. Carries the office along
+            so the reader returns to that office's results, not a blank filter panel. */}
+        <Link
+          href={`/budget-planning/aip/review/search?fiscalYear=${fiscalYear}${officeId != null ? `&officeId=${officeId}` : ""}`}
+          className="mt-1 inline-block text-sm font-medium text-green-800 underline underline-offset-2 hover:text-green-900"
+        >
+          ← Back to search
+        </Link>
       </div>
 
       {error && (
@@ -281,6 +350,47 @@ export default function AipReviewPage() {
         // an N+1 that only shows up on a big office.
         <AipCommentsProvider aipRecordId={review.aipRecordId} officeId={review.officeId}>
           <div className="space-y-4">
+            <AipOfficeHeader
+              fiscalYear={review.fiscalYear}
+              officeName={`${review.officeName}${review.officeCode ? ` (${review.officeCode})` : ""}`}
+              groups={myGroups.map((g) => ({
+                id: g.id,
+                name: g.name,
+                amounts: sumActivityAmounts(
+                  g.programs.flatMap((p) => p.projects.flatMap((j) => j.activities))
+                ),
+              }))}
+              action={
+                <div className="flex flex-wrap items-center gap-2">
+                  <StateChip status={review.workflowStatus} />
+                  {/* PPDO-77. At every status, not only at PPDO: an accepted or returned office is
+                      exactly the one a reviewer wants to trace. */}
+                  <AipHistoryButton aipRecordId={review.aipRecordId} officeId={review.officeId} />
+                  {atPpdo && (
+                    <>
+                      <button type="button" onClick={confirmReturn} disabled={acting}
+                        className="border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60">
+                        Send back
+                      </button>
+                      <button type="button" onClick={confirmAccept} disabled={acting}
+                        className="bg-green-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-800 disabled:cursor-not-allowed disabled:bg-slate-300">
+                        Accept
+                      </button>
+                    </>
+                  )}
+                  {accepted && (
+                    <button type="button" onClick={confirmReopen} disabled={acting}
+                      className="border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60">
+                      Re-open and send back
+                    </button>
+                  )}
+                  {/* Hidden alongside the picker on an unencoded office (spec: "Empty — office not
+                      encoded" — the switch is hidden, not rendered empty). */}
+                  {hasGroups && <AipReviewViewSwitch view={view} onChange={setView} />}
+                </div>
+              }
+            />
+
             {!atPpdo && (
               // ⚠️ Says why the buttons are absent. A reviewer who opens an office mid-drafting and
               // sees no controls has no way to tell that from the feature being broken.
@@ -299,17 +409,63 @@ export default function AipReviewPage() {
               </p>
             )}
 
-            <AipCommentFilterBar />
+            {/* ⚠️ The unresolved-comment filter SELECTS the node in Drill-down (spec decision 8),
+                same as AIP Entry. In Full office the chips keep today's behaviour — the anchors open
+                in place, because the whole tree is on screen. */}
+            <AipCommentFilterBar onSelectNode={view === "drilldown" ? selectNode : undefined} />
 
-            {review.groups.length === 0 ? (
+            {!hasGroups ? (
               <EmptyState
                 title="Nothing encoded yet"
                 body="This office has no programs in this AIP. There is nothing to review until it adds them from its LDIP."
               />
+            ) : view === "full" ? (
+              <AipReviewFullTree groups={myGroups} accounts={accounts} funds={funds} />
             ) : (
-              review.groups.map((group) => (
-                <GroupBlock key={group.id} group={group} accounts={accounts} funds={funds} />
-              ))
+              <>
+                {selectionNotice && (
+                  <p role="status" className="border border-slate-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    {selectionNotice}
+                  </p>
+                )}
+
+                <AipEntryPicker
+                  programOptions={programOptions}
+                  severalGroups={myGroups.length > 1}
+                  ids={ids}
+                  projects={selection?.program?.projects ?? []}
+                  activities={selection?.project?.activities ?? []}
+                  onChange={select}
+                />
+
+                <AipSelectedPanel
+                  selection={selection}
+                  canEdit={false}
+                  // ⚠️ Null, not a holder name (spec decision 5) — the PPDO reviewer was never going
+                  // to add or delete anything here, so there is nothing to explain.
+                  holder={null}
+                  accounts={accounts}
+                  funds={funds}
+                  generalFundId={null}
+                  priceIndex={[]}
+                  priceIndexLoading={false}
+                  // The implementing-office picker only renders in the edit view, which never opens
+                  // on a permanently read-only screen.
+                  offices={[]}
+                  proponentOfficeCode={null}
+                  onSelect={select}
+                  onChangeActivity={() => select({ programId: ids.programId, projectId: ids.projectId, activityId: null })}
+                  // canEdit is always false here, so none of the four writes below can fire — the
+                  // props are required by AipSelectedPanel's shape (spec: reused unchanged) and stay
+                  // as no-ops rather than forking the component to make them optional.
+                  onProjectAdded={() => undefined}
+                  onActivityAdded={() => undefined}
+                  onDeleted={() => undefined}
+                  onProjectUpdated={() => undefined}
+                  onActivityTotals={() => undefined}
+                  onActivityDetails={() => undefined}
+                />
+              </>
             )}
           </div>
         </AipCommentsProvider>
@@ -327,164 +483,14 @@ export default function AipReviewPage() {
   );
 }
 
-// ── One sub-office group, read-only ───────────────────────────────────────
-
-/**
- * The entry page's group block with every control removed.
- *
- * ⚠️ Kept structurally identical to it on purpose — same levels, same tints, same figure strip. A
- * reviewer and an encoder discussing "the second project" must be looking at the same thing, and
- * the comment anchors are attached to the same rows in both.
- */
-function GroupBlock({
-  group, accounts, funds,
-}: {
-  group: AipOfficeDetail;
-  accounts: AccountResponse[];
-  funds: FundingSourceResponse[];
-}) {
-  const amounts: AipRowAmounts = useMemo(
-    () => sumActivityAmounts(
-      group.programs.flatMap((p) => p.projects.flatMap((j) => j.activities))
-    ),
-    [group]
-  );
-
-  return (
-    <div className="border border-slate-200 bg-white">
-      <div className={`border-b border-b-slate-200 px-4 py-3 ${aipHeaderRow("office")}`}>
-        <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
-          <div>
-            <div className="flex items-center gap-2">
-              <AipLevelChip level="office" />
-              <AipRefCode code={group.refCode} />
-            </div>
-            <h2 className="mt-1 text-sm font-semibold uppercase tracking-wide text-slate-800">{group.name}</h2>
-            <p className="mt-0.5 text-xs text-slate-600">
-              {group.sector} · {group.programs.length} program{group.programs.length === 1 ? "" : "s"}
-            </p>
-          </div>
-          <div className="flex flex-col items-end gap-1">
-            <AipFigureStrip amounts={amounts} emphasis="strong" />
-            <AipUnitCaption />
-          </div>
-        </div>
-      </div>
-
-      <div className="divide-y divide-slate-200">
-        {group.programs.map((program) => (
-          <div key={program.id} className="ml-3">
-            <div className={`px-4 py-2 ${aipHeaderRow("program")}`}>
-              <div className="flex items-center gap-2">
-                <AipLevelChip level="program" />
-                <AipRefCode code={program.refCode} />
-              </div>
-              <p className="mt-0.5 text-sm font-semibold text-slate-800">{program.name}</p>
-              <AipCommentAnchor nodeType="Program" nodeId={program.id} />
-            </div>
-
-            <div className="mt-2 space-y-3 px-4 pb-3 pl-4">
-              {program.projects.map((project) => (
-                <div key={project.id}>
-                  <div className={`flex flex-wrap items-center gap-2 px-3 py-1.5 ${aipHeaderRow("project")}`}>
-                    <AipLevelChip level="project" />
-                    <AipRefCode code={project.refCode} />
-                    <span className="text-sm font-medium text-slate-800">{project.name}</span>
-                  </div>
-                  <div className="px-3">
-                    <AipCommentAnchor nodeType="Project" nodeId={project.id} />
-                  </div>
-                  <div className="mt-2 space-y-2 pl-4">
-                    {project.activities.map((activity) => (
-                      <ActivityBlock key={activity.id} activity={activity}
-                        accounts={accounts} funds={funds} />
-                    ))}
-                    {project.activities.length === 0 && (
-                      <p className="text-xs text-slate-600">No activities under this project.</p>
-                    )}
-                  </div>
-                </div>
-              ))}
-              {program.projects.length === 0 && (
-                <p className="text-xs text-slate-600">No projects under this program.</p>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ── One activity, with its expenditure lines ──────────────────────────────
-
-function ActivityBlock({
-  activity, accounts, funds,
-}: {
-  activity: AipActivityDetail;
-  accounts: AccountResponse[];
-  funds: FundingSourceResponse[];
-}) {
-  const [open, setOpen] = useState(false);
-  const [lines, setLines] = useState<AipExpenditure[] | null>(null);
-
-  // Lazily, and once: a reviewer opens a handful of activities out of an office's hundreds, and
-  // fetching every activity's lines up front would be the N+1 in a different costume.
-  useEffect(() => {
-    if (!open || lines !== null) return;
-    void listAipExpenditures(activity.id).then(setLines).catch(() => setLines([]));
-  }, [open, lines, activity.id]);
-
-  return (
-    <div className="border border-slate-200 bg-white">
-      <button type="button" onClick={() => setOpen((v) => !v)}
-        className={`flex w-full flex-wrap items-start justify-between gap-x-4 gap-y-2 px-3 py-2 text-left hover:bg-green-25 ${aipHeaderRow("activity")}`}>
-        <span className="flex flex-1 flex-wrap items-center gap-2">
-          <span aria-hidden className="text-slate-300">{open ? "▾" : "▸"}</span>
-          <AipLevelChip level="activity" />
-          <AipRefCode code={activity.refCode} />
-          <span className="whitespace-pre-line text-sm text-slate-800">{activity.name}</span>
-          <AipFundPill label={activityFundLabel(activity)} />
-        </span>
-        <AipFigureStrip amounts={activity} />
-      </button>
-
-      {/* ⚠️ Outside the disclosure <button>: nesting a button in a button is invalid HTML, and the
-          click would toggle the activity instead of the comment thread. */}
-      <div className="px-3 pb-1">
-        <AipCommentAnchor nodeType="Activity" nodeId={activity.id} />
-      </div>
-
-      {open && (
-        <>
-          {/* ⚠️ canEdit={false} on both. The PPDO reviewer never edits — decision 2, permanently.
-              The components already render a read view in that mode, and the server refuses the
-              write anyway; this is what keeps the control off the screen in the first place. */}
-          {/* ⚠️ `offices={[]}` and that is correct, not a stub: the picker only renders in the edit
-              view, and this call site is permanently read-only, so the read view prints the stored
-              `PEO/PGSO` string as it stands. The prop stays REQUIRED rather than defaulting to []
-              so an editable call site cannot forget it and get a silently empty picker. */}
-          <AipActivityFields activity={activity} canEdit={false} onSaved={() => undefined} offices={[]} proponentOfficeCode={null} />
-
-          {lines === null ? (
-            <div className="space-y-2 px-4 py-3">
-              {[0, 1].map((i) => <div key={i} className="h-4 w-full animate-pulse bg-slate-100" />)}
-            </div>
-          ) : (
-            <AipExpenditureTable
-              activityId={activity.id} lines={lines} accounts={accounts} fundingSources={funds}
-              canEdit={false} generalFundId={null}
-              // The picker only exists inside the editors, which cannot open here.
-              priceIndex={[]} priceIndexLoading={false}
-              onChanged={() => undefined} />
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
 // ── Small pieces ──────────────────────────────────────────────────────────
+
+/** A URL param that must be a positive integer id, or nothing. */
+function numberParam(raw: string | null): number | null {
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
 
 /**
  * Where the work sits, in the reviewer's language.

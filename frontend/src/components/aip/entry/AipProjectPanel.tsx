@@ -29,7 +29,8 @@ export default function AipProjectPanel({
 }: {
   project: AipProjectDetail;
   canEdit: boolean;
-  lockedReason: string;
+  /** Null (PPDO-94) omits the add/delete/edit controls entirely — no holder to name on review. */
+  lockedReason: string | null;
   /** Whether this is the last project in its program — omits the renumber sentence (spec §6). */
   isLastSibling: boolean;
   /** This office’s own code, written onto a new activity so it is saved even if nobody opens it. */
@@ -82,29 +83,33 @@ export default function AipProjectPanel({
         count={project.activities.length}
         emptyText="No activities yet."
         footer={
-          <AipInlineAdd
-            label="+ Add activity"
-            placeholder="Activity description"
-            disabled={!canEdit}
-            disabledReason={`With ${lockedReason} — activities cannot be added here.`}
-            onAdd={async (name) => {
-              // ⚠️ The created node is USED, not discarded — the tree absorbs it rather than reloading.
-              //
-              // ⚠️ The office is stamped at CREATE, not only prefilled in the edit form — an
-              // activity nobody opens afterwards still has to print one (PPDO-80's reason, which
-              // still holds).
-              //
-              // ↩️ What changed in PPDO-100 is what it means. It is the PROPONENT office, which is
-              // always part of the saved value and always prints first; the edit form strips it from
-              // the chips and puts it back on save. It is no longer a guess at who implements.
-              onActivityAdded(await addAipActivity(project.id, {
-                name, esreCode: null, implementingOffice: proponentOfficeCode,
-                startDate: null, endDate: null, expectedOutputs: null,
-                fundingSourceRaw: null, ps: null, mooe: null, co: null,
-                ccAdaptation: null, ccMitigation: null, ccTypologyCode: null,
-              }));
-            }}
-          />
+          canEdit || lockedReason != null ? (
+            <AipInlineAdd
+              label="+ Add activity"
+              placeholder="Activity description"
+              disabled={!canEdit}
+              disabledReason={
+                lockedReason != null ? `With ${lockedReason} — activities cannot be added here.` : undefined
+              }
+              onAdd={async (name) => {
+                // ⚠️ The created node is USED, not discarded — the tree absorbs it rather than reloading.
+                //
+                // ⚠️ The office is stamped at CREATE, not only prefilled in the edit form — an
+                // activity nobody opens afterwards still has to print one (PPDO-80's reason, which
+                // still holds).
+                //
+                // ↩️ What changed in PPDO-100 is what it means. It is the PROPONENT office, which is
+                // always part of the saved value and always prints first; the edit form strips it from
+                // the chips and puts it back on save. It is no longer a guess at who implements.
+                onActivityAdded(await addAipActivity(project.id, {
+                  name, esreCode: null, implementingOffice: proponentOfficeCode,
+                  startDate: null, endDate: null, expectedOutputs: null,
+                  fundingSourceRaw: null, ps: null, mooe: null, co: null,
+                  ccAdaptation: null, ccMitigation: null, ccTypologyCode: null,
+                }));
+              }}
+            />
+          ) : undefined
         }
       >
         {project.activities.map((activity) => (
@@ -140,7 +145,7 @@ function AipProjectDetails({
 }: {
   project: AipProjectDetail;
   canEdit: boolean;
-  lockedReason: string;
+  lockedReason: string | null;
   onSaved: (patch: Pick<AipProjectDetail, "id" | "name" | "description" | "objective">) => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -197,14 +202,14 @@ function AipProjectDetails({
               className="whitespace-nowrap text-xs font-medium text-green-700 hover:underline">
               Edit details
             </button>
-          ) : (
+          ) : lockedReason != null ? (
             // ↩️ `AipActivityFields` renders nothing here. Kept, because every other disabled control
             // on this panel names its holder (`AipInlineAdd`'s `disabledReason`, the delete button),
             // and a control that simply vanishes reads as a feature that broke.
             <span className="whitespace-nowrap text-xs text-slate-600">
               With {lockedReason} — cannot edit
             </span>
-          )}
+          ) : null /* PPDO-94 — no holder to name on review; omitted, not disabled (spec decision 5). */}
         </div>
       </div>
     );
