@@ -231,16 +231,12 @@ Decided 2026-09-17 (Ralph), from the AIP Review search, where activity names can
    `description` so the link's accessible name says what it opens.
 2. **Long free text is clamped at 2 lines** with `ClampedText`. Not a one-line `truncate`: one line
    cuts too much of an AIP activity name to be useful.
-3. **Identifiers are never truncated, and in a list table never wrapped.** `1000-000-1-01-…` is a
-   different code to the reader. Let the column grow or the table scroll.
+3. **Identifiers are never truncated or wrapped.** `1000-000-1-01-…` is a different code to the
+   reader. Let the column grow or the table scroll.
 
-⚠️ **Exception — print previews** (the Annex B grid on the Report page). The code is **still the
-link**, but two things change, both because the grid mirrors the printed form:
-- **The name is never clamped.** Every line of it prints; clamping would hide the row heights
-  PPDO-85 warns about.
-- **The code wraps at its hyphens** (`RecordCodeLink wrap`), as column A does on the province's
-  form. Every character still shows, which is what "never truncated" protects; widening the column
-  instead would stop the preview looking like the page it previews.
+⚠️ **Exception — print previews never clamp** (the Annex B grid on the Report page). The code is
+still the link, but the name is shown **in full**: every line of it prints, and clamping would hide
+the row heights PPDO-85 warns about.
 
 **Adoption is incremental.** The AIP Review search, the WFP page and the Report page's Annex B grid
 (both the consolidated and one-office views) use these today. PR List, Items

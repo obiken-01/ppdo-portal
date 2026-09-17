@@ -8,13 +8,9 @@
  * several lines — a long wrapped name is a poor click target, while a reference code is short, the
  * same width on every row, and what people read against the printed form anyway.
  *
- * ⚠️ **Never truncated.** An identifier cut to `1000-000-1-01-…` is a different code to the reader.
- * In a list table it does not wrap either — the column grows or the table scrolls.
- *
- * ⚠️ **Print previews are the exception to "no wrap", and only that** (`wrap`). The Annex B grid
- * mirrors the province's form, where column A is narrow and a long code breaks at its hyphens. Every
- * character is still shown, which is what "never truncated" protects; widening the column instead
- * would stop the preview looking like the page it previews.
+ * ⚠️ **Never truncated or wrapped.** An identifier cut to `1000-000-1-01-…` is a different code to the
+ * reader. The column grows or the table scrolls; the code stays whole — the Annex B grid included
+ * (Ralph, 2026-09-17).
  *
  * ⚠️ **One link per row, so the text beside it is plain.** Two links to one destination are noise to a
  * keyboard or screen-reader user. Pass `description` so this link's accessible name says what it
@@ -37,7 +33,6 @@ export default function RecordCodeLink({
   description,
   emphasizeLastSegment = true,
   separator = "-",
-  wrap = false,
   compact = false,
   className = "",
 }: {
@@ -57,8 +52,6 @@ export default function RecordCodeLink({
    */
   emphasizeLastSegment?: boolean;
   separator?: string;
-  /** Let the code break at its separators — print previews only (see the header). */
-  wrap?: boolean;
   /** 11px instead of 12px, to match a dense grid whose other codes are already that size. */
   compact?: boolean;
   className?: string;
@@ -77,7 +70,7 @@ export default function RecordCodeLink({
   const label = description ? `${code}, ${description}` : undefined;
   // ⚠️ `compact` swaps the size rather than stacking a second one: two text-size classes on one
   // element resolve by stylesheet order, not by the order written, so the override would be a coin toss.
-  const base = `${wrap ? "whitespace-normal" : "whitespace-nowrap"} font-mono ${compact ? "text-[11px]" : "text-xs"} ${className}`;
+  const base = `whitespace-nowrap font-mono ${compact ? "text-[11px]" : "text-xs"} ${className}`;
 
   if (href) {
     return <Link href={href} aria-label={label} className={`${base} ${LINK_CLS}`}>{body}</Link>;
