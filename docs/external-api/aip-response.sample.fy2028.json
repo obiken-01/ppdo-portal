@@ -1,6 +1,6 @@
 {
   "data": {
-    "schemaVersion": "1.0.0",
+    "schemaVersion": "1.1.0",
     "generatedAt": "2027-06-15T09:30:00+08:00",
     "fiscalYear": 2028,
     "aipFormat": "Fy2028",
@@ -115,11 +115,35 @@
                 "refCode": "8000-000-1-01-010-001",
                 "name": "DEVELOPMENT PLANNING AND INVESTMENT PROGRAMMING",
                 "functionBand": "CORE",
+                "totals": {
+                  "ps": "0.00",
+                  "mooe": "167410.00",
+                  "co": "95750.00",
+                  "total": "263160.00"
+                },
+                "printedTotals": {
+                  "ps": "0.00",
+                  "mooe": "218000.00",
+                  "co": "125000.00",
+                  "total": "343000.00"
+                },
                 "projects": [
                   {
                     "refCode": "8000-000-1-01-010-001-001",
                     "name": "Updating of the Provincial Development and Physical Framework Plan",
                     "isSynthetic": false,
+                    "totals": {
+                      "ps": "0.00",
+                      "mooe": "167410.00",
+                      "co": "95750.00",
+                      "total": "263160.00"
+                    },
+                    "printedTotals": {
+                      "ps": "0.00",
+                      "mooe": "218000.00",
+                      "co": "125000.00",
+                      "total": "343000.00"
+                    },
                     "activities": [
                       {
                         "refCode": "8000-000-1-01-010-001-001-001",
@@ -289,11 +313,35 @@
                 "refCode": "8000-000-1-01-010-002",
                 "name": "PROJECT MONITORING AND EVALUATION PROGRAM",
                 "functionBand": "STRATEGIC",
+                "totals": {
+                  "ps": "480000.00",
+                  "mooe": "62300.00",
+                  "co": "0.00",
+                  "total": "542300.00"
+                },
+                "printedTotals": {
+                  "ps": "480000.00",
+                  "mooe": "81000.00",
+                  "co": "0.00",
+                  "total": "561000.00"
+                },
                 "projects": [
                   {
                     "refCode": "8000-000-1-01-010-002-001",
                     "name": "Monitoring of provincial development projects",
                     "isSynthetic": false,
+                    "totals": {
+                      "ps": "480000.00",
+                      "mooe": "62300.00",
+                      "co": "0.00",
+                      "total": "542300.00"
+                    },
+                    "printedTotals": {
+                      "ps": "480000.00",
+                      "mooe": "81000.00",
+                      "co": "0.00",
+                      "total": "561000.00"
+                    },
                     "activities": [
                       {
                         "refCode": "8000-000-1-01-010-002-001-001",

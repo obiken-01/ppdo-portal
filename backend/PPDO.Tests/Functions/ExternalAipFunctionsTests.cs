@@ -132,7 +132,7 @@ public sealed class ExternalAipFunctionsTests
     {
         AllowKeyAndRate();
         ExternalAipDto dto = new(
-            "1.0.0", "2026-09-15T00:00:00+08:00", 2028, "Fy2028", "PHP", null,
+            "1.1.0", "2026-09-15T00:00:00+08:00", 2028, "Fy2028", "PHP", null,
             new ExternalMoneyAmountsDto("0.00", "0.00", "0.00", "0.00"), null, [], [], []);
         _reads.Setup(r => r.GetAsync(2028, null, It.IsAny<CancellationToken>())).ReturnsAsync(dto);
 
@@ -166,7 +166,7 @@ public sealed class ExternalAipFunctionsTests
         Office office = new() { Id = 5, OfficeCode = "PPDO", OfficeName = "PPDO Office" };
         _offices.Setup(o => o.GetByCodeAsync("PPDO", It.IsAny<CancellationToken>())).ReturnsAsync(office);
         ExternalAipDto dto = new(
-            "1.0.0", "2026-09-15T00:00:00+08:00", 2028, "Fy2028", "PHP", "PPDO",
+            "1.1.0", "2026-09-15T00:00:00+08:00", 2028, "Fy2028", "PHP", "PPDO",
             new ExternalMoneyAmountsDto("0.00", "0.00", "0.00", "0.00"), null, [], [], []);
         _reads.Setup(r => r.GetAsync(2028, office, It.IsAny<CancellationToken>())).ReturnsAsync(dto);
 

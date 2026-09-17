@@ -252,11 +252,23 @@ public sealed class ExternalAipReadServiceTests
 
         ExternalAipDto? result = await f.Build().GetAsync(Fy2027, null);
 
-        ExternalActivityDto mapped = result!.Offices[0].Groups[0].Programs[0].Projects[0].Activities[0];
-        Assert.Equal("500.00", mapped.Amounts.Ps);
-        Assert.Equal("250.50", mapped.Amounts.Mooe);
-        Assert.Equal("0.00", mapped.Amounts.Co);
-        Assert.Equal("750.50", mapped.Amounts.Total);
+        ExternalActivityDto mappedActivity = result!.Offices[0].Groups[0].Programs[0].Projects[0].Activities[0];
+        Assert.Equal("500.00", mappedActivity.Amounts.Ps);
+        Assert.Equal("250.50", mappedActivity.Amounts.Mooe);
+        Assert.Equal("0.00", mappedActivity.Amounts.Co);
+        Assert.Equal("750.50", mappedActivity.Amounts.Total);
+
+        ExternalProjectDto mappedProject = result!.Offices[0].Groups[0].Programs[0].Projects[0];
+        Assert.Equal("500.00", mappedProject.Totals.Ps);
+        Assert.Equal("250.50", mappedProject.Totals.Mooe);
+        Assert.Equal("0.00", mappedProject.Totals.Co);
+        Assert.Equal("750.50", mappedProject.Totals.Total);
+
+        ExternalProgramDto mappedProgram = result!.Offices[0].Groups[0].Programs[0];
+        Assert.Equal("500.00", mappedProgram.Totals.Ps);
+        Assert.Equal("250.50", mappedProgram.Totals.Mooe);
+        Assert.Equal("0.00", mappedProgram.Totals.Co);
+        Assert.Equal("750.50", mappedProgram.Totals.Total);
     }
 
     [Fact]
