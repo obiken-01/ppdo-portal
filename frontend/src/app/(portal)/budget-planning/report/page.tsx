@@ -93,9 +93,9 @@ import type {
 // ---------------------------------------------------------------------------
 
 const REPORT_TYPES = [
+  { value: "AIP", label: "Annual Investment Program (AIP) — Annex B" },
   { value: "WFP", label: "Work and Financial Plan (WFP)" },
   { value: "PPMP", label: "Project Procurement Management Plan (PPMP)" },
-  { value: "AIP", label: "Annual Investment Program (AIP) — Annex B" },
 ] as const;
 
 /** FY2028 onward — the AIP report renders the entered-year form, not the uploaded FY≤2027 shape. */
