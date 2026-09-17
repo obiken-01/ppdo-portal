@@ -34,8 +34,11 @@ export default function AipActivityPanel({
 }: {
   activity: AipActivityDetail;
   canEdit: boolean;
-  /** Who holds the work, when this office cannot edit — shown as the delete control's reason. */
-  lockedReason: string;
+  /**
+   * Who holds the work, when this office cannot edit — shown as the delete control's reason. Null
+   * (PPDO-94) omits the delete control entirely: AIP Review has no holder to name.
+   */
+  lockedReason: string | null;
   /** Whether this is the last activity in its project — omits the renumber sentence (spec §6). */
   isLastSibling: boolean;
   accounts: AccountResponse[];
