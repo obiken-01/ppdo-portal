@@ -35,6 +35,7 @@ import PasswordResetNotice from "@/components/layout/PasswordResetNotice";
 import { ToastProvider } from "@/components/ui/Toast";
 import type { MeResponse, RefreshErrorReason } from "@/types";
 import { resolveLandingPath } from "@/lib/landing";
+import { canOpenBudgetPlanningReport } from "@/lib/budget-planning-access";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api";
 
@@ -231,12 +232,19 @@ export default function PortalLayout({
   // always reach) instead.
   useEffect(() => {
     if (!me || me.isHostOffice) return;
-    // WFP and the WFP-shaped Report page are PPDO-internal (PPDO-20) — hidden from the
-    // guest-office sidebar, so the route is closed here too rather than left reachable
-    // by a typed URL or a stale bookmark.
+    // WFP is PPDO-internal (PPDO-20) — hidden from the guest-office sidebar, so the route is
+    // closed here too rather than left reachable by a typed URL or a stale bookmark.
+    //
+    // ↩️ **The Report page is no longer PPDO-only** (PPDO-92). It carries the AIP (Annex B) type,
+    // which a guest-office DEPARTMENT HEAD reads for their own office. This line used to close
+    // `/budget-planning/report` outright, and it was the third place stating who may open that page:
+    // the sidebar and the page both moved to `canOpenBudgetPlanningReport`, this did not, and a
+    // department head got a Report link that bounced them straight back to the dashboard.
+    //
+    // ⚠️ So it READS the rule rather than restating it. Anything else here is how this drifts again.
     const ppdoOnlyBudgetPlanning =
       pathname.startsWith("/budget-planning/wfp") ||
-      pathname.startsWith("/budget-planning/report");
+      (pathname.startsWith("/budget-planning/report") && !canOpenBudgetPlanningReport(me));
     const allowed =
       (pathname.startsWith("/budget-planning") && !ppdoOnlyBudgetPlanning) ||
       // /profile only redirects to /account (RAL-252); allowing it lets that redirect land

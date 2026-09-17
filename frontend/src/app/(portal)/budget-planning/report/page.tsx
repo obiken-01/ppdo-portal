@@ -544,6 +544,10 @@ function WfpReportPageInner() {
     setOfficeId(null);
     setReport(null);
     setPpmpReport(null);
+    // ⚠️ WFP-shaped, and a guest-office reader has no WFP (PPDO-20). Since PPDO-92 opened this page to
+    // guest-office department heads, fetching this for them would 403 and raise a "Load failed" toast
+    // on every visit to a page they are allowed on.
+    if (!me || !canOpenWfpReport(me)) return;
     setOfficesLoading(true);
     getWfpReportOffices(fiscalYear)
       .then((offices) => {
@@ -611,7 +615,9 @@ function WfpReportPageInner() {
 
   useEffect(() => {
     setDivisionsLoaded(false);
-    if (officeId == null) {
+    // The AIP report has no division axis (PPDO-92) — the office select is shared state, so without
+    // this a reviewer picking an office on the AIP type would fetch divisions nobody reads.
+    if (officeId == null || isAip) {
       setDivisionList([]);
       setDivisionId(null);
       setDivisionsLoaded(true);
@@ -639,7 +645,7 @@ function WfpReportPageInner() {
       .catch(() => toast.error("Load failed", "Could not load divisions for this office."))
       .finally(() => setDivisionsLoaded(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [officeId, me]);
+  }, [officeId, me, isAip]);
 
   return (
     <div className="p-6 max-w-screen-2xl mx-auto w-full print:p-0 print:max-w-none">
