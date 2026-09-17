@@ -451,6 +451,18 @@ export default function AipEntryPage() {
           <p className="mt-0.5 text-sm text-slate-600">
             Build your office&rsquo;s part of the Annual Investment Program.
           </p>
+          {/* PPDO-94 — a way back for a reader who arrived via a search deep-link
+              (`&programId=`/`&projectId=`) rather than the sidebar. Only offered to a reader who
+              can actually reach `aip/review/search` (`canOpenAipReview`) — an encoder with no
+              review grant would follow this straight into a redirect back to the hub. */}
+          {(canReview || me?.canReviewAllOffices === true) && (
+            <Link
+              href={`/budget-planning/aip/review/search?fiscalYear=${fiscalYear}`}
+              className="mt-1 inline-block text-sm font-medium text-green-800 underline underline-offset-2 hover:text-green-900"
+            >
+              ← Back to search
+            </Link>
+          )}
         </div>
         <div>
           <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">

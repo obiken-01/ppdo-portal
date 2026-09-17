@@ -318,6 +318,16 @@ export default function AipReviewPage() {
                 {review.officeCode ? ` (${review.officeCode})` : ""}</>
             : `FY ${fiscalYear} · read an office's submitted AIP, comment on it, and decide.`}
         </p>
+        {/* PPDO-94 — a way back for a reader who arrived via a search deep-link rather than the
+            search page itself. No grant check needed: this page is already `canOpenAipOfficeReview`
+            (cross-office) only, which always implies the search page too. Carries the office along
+            so the reader returns to that office's results, not a blank filter panel. */}
+        <Link
+          href={`/budget-planning/aip/review/search?fiscalYear=${fiscalYear}${officeId != null ? `&officeId=${officeId}` : ""}`}
+          className="mt-1 inline-block text-sm font-medium text-green-800 underline underline-offset-2 hover:text-green-900"
+        >
+          ← Back to search
+        </Link>
       </div>
 
       {error && (
