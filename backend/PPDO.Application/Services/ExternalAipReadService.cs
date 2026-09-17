@@ -123,9 +123,15 @@ public sealed class ExternalAipReadService : IExternalAipReadService
                 foreach (AipProgram program in programsByGroupId[group.Id].OrderBy(p => p.RefCode, StringComparer.Ordinal))
                 {
                     List<ExternalProjectDto> projectDtos = [];
+                    List<AipPrintedAmountsDto> programPrintedParts = [];
+                    decimal programPs = 0m, programMooe = 0m, programCo = 0m;
+
                     foreach (AipProject project in projectsByProgramId[program.Id].OrderBy(p => p.RefCode, StringComparer.Ordinal))
                     {
                         List<ExternalActivityDto> projectActivities = [];
+                        List<AipPrintedAmountsDto> projectPrintedParts = [];
+                        decimal projectPs = 0m, projectMooe = 0m, projectCo = 0m;
+
                         foreach (AipActivity activity in activitiesByProjectId[project.Id].OrderBy(a => a.RefCode, StringComparer.Ordinal))
                         {
                             IReadOnlyList<AipExpenditure> ownLines = isFy2028
@@ -146,17 +152,38 @@ public sealed class ExternalAipReadService : IExternalAipReadService
                             (decimal activityPs, decimal activityMooe, decimal activityCo) = isFy2028
                                 ? (ownLines.Sum(e => e.Ps), ownLines.Sum(e => e.Mooe), ownLines.Sum(e => e.Co))
                                 : (activity.Ps ?? 0m, activity.Mooe ?? 0m, activity.Co ?? 0m);
-                            groupPs += activityPs; groupMooe += activityMooe; groupCo += activityCo;
+                            projectPs += activityPs; projectMooe += activityMooe; projectCo += activityCo;
 
                             if (isFy2028)
-                                groupPrintedParts.Add(AipPrintedFigures.ForActivity(activity, fiscalYear));
+                                projectPrintedParts.Add(AipPrintedFigures.ForActivity(activity, fiscalYear));
                         }
 
+                        AipPrintedAmountsDto projectPrintedTotal = AipPrintedFigures.Sum(projectPrintedParts);
+
                         projectDtos.Add(new ExternalProjectDto(
-                            project.RefCode, project.Name, project.IsSynthetic, projectActivities));
+                            project.RefCode,
+                            project.Name,
+                            project.IsSynthetic,
+                            ExternalAipMapper.Amounts(projectPs, projectMooe, projectCo),
+                            isFy2028 ? ExternalAipMapper.PrintedAmounts(projectPrintedTotal) : null,
+                            projectActivities));
+
+                        programPrintedParts.AddRange(projectPrintedParts);
+                        programPs += projectPs; programMooe += projectMooe; programCo += projectCo;
                     }
 
-                    programDtos.Add(new ExternalProgramDto(program.RefCode, program.Name, program.FunctionBand, projectDtos));
+                    AipPrintedAmountsDto programPrintedTotal = AipPrintedFigures.Sum(programPrintedParts);
+
+                    programDtos.Add(new ExternalProgramDto(
+                        program.RefCode,
+                        program.Name,
+                        program.FunctionBand,
+                        ExternalAipMapper.Amounts(programPs, programMooe, programCo),
+                        isFy2028 ? ExternalAipMapper.PrintedAmounts(programPrintedTotal) : null,
+                        projectDtos));
+
+                    groupPrintedParts.AddRange(programPrintedParts);
+                    groupPs += programPs; groupMooe += programMooe; groupCo += programCo;
                 }
 
                 AipPrintedAmountsDto groupPrintedTotal = AipPrintedFigures.Sum(groupPrintedParts);

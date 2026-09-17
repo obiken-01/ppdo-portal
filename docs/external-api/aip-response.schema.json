@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ppdo-portal.local/schemas/external/v1/aip-response.schema.json",
   "title": "PPDO Portal - External AIP API response (GET /api/external/v1/aip)",
-  "description": "DRAFT 1.0.0 for discussion with GSO and MIS. The released Annual Investment Program for one fiscal year - for every office (?fiscalYear=) or for one office (?fiscalYear=&officeCode=). Both calls return this same shape. Money is Philippine pesos, serialized as decimal strings with exactly two decimals. See README.md beside this file for the design decisions and open questions.",
+  "description": "1.1.0 for discussion with GSO and MIS. The released Annual Investment Program for one fiscal year - for every office (?fiscalYear=) or for one office (?fiscalYear=&officeCode=). Both calls return this same shape. Money is Philippine pesos, serialized as decimal strings with exactly two decimals. See README.md beside this file for the design decisions and open questions.",
   "type": "object",
   "required": ["data", "error", "message"],
   "additionalProperties": false,
@@ -236,7 +236,7 @@
 
     "project": {
       "type": "object",
-      "required": ["refCode", "name", "isSynthetic", "activities"],
+      "required": ["refCode", "name", "isSynthetic", "totals", "printedTotals", "activities"],
       "additionalProperties": false,
       "properties": {
         "refCode": { "$ref": "#/$defs/refCode" },
@@ -245,13 +245,15 @@
           "description": "Legacy (uploaded) AIPs only - always false from FY2028. True when the uploaded workbook put money directly on a program row: the importer created this stand-in project (and a synthetic activity inside it) with the program's own refCode and name. It is not printed on the AIP form.",
           "type": "boolean"
         },
+        "totals": { "$ref": "#/$defs/amounts", "description": "Sum of this project's activity amounts. Added in 1.1.0." },
+        "printedTotals": { "$ref": "#/$defs/printedAmounts", "description": "Sum of this project's activity printedAmounts - never a rounding of 'totals'. Null for legacy. Added in 1.1.0." },
         "activities": { "type": "array", "items": { "$ref": "#/$defs/activity" } }
       }
     },
 
     "program": {
       "type": "object",
-      "required": ["refCode", "name", "functionBand", "projects"],
+      "required": ["refCode", "name", "functionBand", "totals", "printedTotals", "projects"],
       "additionalProperties": false,
       "properties": {
         "refCode": { "$ref": "#/$defs/refCode" },
@@ -261,6 +263,8 @@
           "type": ["string", "null"],
           "enum": ["CORE", "STRATEGIC", "SUPPORT", null]
         },
+        "totals": { "$ref": "#/$defs/amounts", "description": "Sum of this program's activity amounts. Added in 1.1.0." },
+        "printedTotals": { "$ref": "#/$defs/printedAmounts", "description": "Sum of this program's activity printedAmounts - never a rounding of 'totals'. Null for legacy. Added in 1.1.0." },
         "projects": { "type": "array", "items": { "$ref": "#/$defs/project" } }
       }
     },
@@ -320,7 +324,7 @@
           "description": "Semantic version of this payload shape. Minor bumps only add fields; consumers must ignore fields they do not recognise.",
           "type": "string",
           "pattern": "^\\d+\\.\\d+\\.\\d+$",
-          "const": "1.0.0"
+          "const": "1.1.0"
         },
         "generatedAt": {
           "description": "When this response was produced. ISO 8601 with the Manila offset (+08:00).",

@@ -1,12 +1,12 @@
 ---
 status: built
-version: 1.0.0
-built: release/1.8.0 — PPDO-15, PPDO-13, PPDO-14, PPDO-12 (PRs #328–#331)
+version: 1.1.0
+built: release/1.8.0 — PPDO-15, PPDO-13, PPDO-14, PPDO-12 (PRs #328–#331); 1.1.0 — PPDO-102
 spec: ../v1.8/External_AIP_API_Spec.md
 supersedes: External_AIP_API_Contract.md §3, §4.2, §5 and §6.1 (v0.6)
 ---
 
-# External AIP API — response schema & samples (1.0.0)
+# External AIP API — response schema & samples (1.1.0)
 
 > ✅ **Built in v1.8.0** — merged to `release/1.8.0` (PRs #328–#331). ⚠️ **Not live yet:** it reaches
 > production when v1.8.0 merges to `main`, and no partner key can be issued until the API Access page
@@ -39,8 +39,18 @@ supersedes: External_AIP_API_Contract.md §3, §4.2, §5 and §6.1 (v0.6)
 | `X-Api-Key` check, office scope, 60 requests/minute per key, request log | PPDO-13 | ✅ Merged (#329) |
 | Read service producing this schema | PPDO-14 | ✅ Merged (#330) |
 | Endpoints + schema contract test (`ExternalAipSchemaContractTests`) | PPDO-12 | ✅ Merged (#331) |
+| **1.1.0** — `totals` and `printedTotals` on every program and project | PPDO-102 | 🚧 In progress |
 | Configuration → API Access page, to issue and revoke keys | PPDO-86 | ⏳ Not merged — until it is, no partner key can be issued |
 | Production | — | ⏳ Ships with v1.8.0 → `main`; run the migration by hand (CI does not) |
+
+---
+
+### Schema changelog
+
+| Version | Change |
+|---|---|
+| **1.1.0** | Adds `totals` and `printedTotals` to every `program` and `project`, the same shape the `group` already carries. A consumer no longer has to add up activities to show a program or project figure. `printedTotals` is the sum of the activities' printed figures — **never a rounding of `totals`**, because the form rounds each line up. Null for legacy AIPs. Additive only. |
+| 1.0.0 | First built shape (PPDO-12, PPDO-14). |
 
 ---
 

@@ -1,6 +1,6 @@
 {
   "data": {
-    "schemaVersion": "1.0.0",
+    "schemaVersion": "1.1.0",
     "generatedAt": "2026-09-14T10:00:00+08:00",
     "fiscalYear": 2027,
     "aipFormat": "Legacy",
@@ -100,11 +100,25 @@
                 "refCode": "8000-000-1-01-010-001",
                 "name": "DEVELOPMENT PLANNING AND INVESTMENT PROGRAMMING",
                 "functionBand": "CORE",
+                "totals": {
+                  "ps": "0.00",
+                  "mooe": "1250000.00",
+                  "co": "350000.00",
+                  "total": "1600000.00"
+                },
+                "printedTotals": null,
                 "projects": [
                   {
                     "refCode": "8000-000-1-01-010-001-001",
                     "name": "Updating of the Provincial Development and Physical Framework Plan",
                     "isSynthetic": false,
+                    "totals": {
+                      "ps": "0.00",
+                      "mooe": "1250000.00",
+                      "co": "350000.00",
+                      "total": "1600000.00"
+                    },
+                    "printedTotals": null,
                     "activities": [
                       {
                         "refCode": "8000-000-1-01-010-001-001-001",
@@ -172,11 +186,25 @@
                 "refCode": "8000-000-1-01-010-002",
                 "name": "PROJECT MONITORING AND EVALUATION PROGRAM",
                 "functionBand": "STRATEGIC",
+                "totals": {
+                  "ps": "0.00",
+                  "mooe": "150000.00",
+                  "co": "0.00",
+                  "total": "150000.00"
+                },
+                "printedTotals": null,
                 "projects": [
                   {
                     "refCode": "8000-000-1-01-010-002",
                     "name": "PROJECT MONITORING AND EVALUATION PROGRAM",
                     "isSynthetic": true,
+                    "totals": {
+                      "ps": "0.00",
+                      "mooe": "150000.00",
+                      "co": "0.00",
+                      "total": "150000.00"
+                    },
+                    "printedTotals": null,
                     "activities": [
                       {
                         "refCode": "8000-000-1-01-010-002",

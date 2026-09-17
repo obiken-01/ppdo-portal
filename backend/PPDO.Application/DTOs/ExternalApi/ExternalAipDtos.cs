@@ -62,10 +62,20 @@ public sealed record ExternalActivityDto(
     IReadOnlyList<ExternalExpenditureDto> Expenditures);
 
 public sealed record ExternalProjectDto(
-    string RefCode, string Name, bool IsSynthetic, IReadOnlyList<ExternalActivityDto> Activities);
+    string RefCode,
+    string Name,
+    bool IsSynthetic,
+    ExternalMoneyAmountsDto Totals,
+    ExternalMoneyAmountsDto? PrintedTotals,
+    IReadOnlyList<ExternalActivityDto> Activities);
 
 public sealed record ExternalProgramDto(
-    string RefCode, string Name, string? FunctionBand, IReadOnlyList<ExternalProjectDto> Projects);
+    string RefCode,
+    string Name,
+    string? FunctionBand,
+    ExternalMoneyAmountsDto Totals,
+    ExternalMoneyAmountsDto? PrintedTotals,
+    IReadOnlyList<ExternalProjectDto> Projects);
 
 /// <summary>One office-level row of the AIP (Annex B column B) — identified by (sector, name), not refCode alone.</summary>
 public sealed record ExternalGroupDto(
@@ -103,7 +113,7 @@ public sealed record ExternalAipDto(
 /// <summary>Fixed values the schema pins — kept in one place so nothing hand-types them twice.</summary>
 public static class ExternalAipConstants
 {
-    public const string SchemaVersion = "1.0.0";
+    public const string SchemaVersion = "1.1.0";
     public const string Currency = "PHP";
 
     public const string FormatLegacy = "Legacy";

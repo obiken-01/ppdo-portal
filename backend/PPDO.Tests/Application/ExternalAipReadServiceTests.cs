@@ -252,11 +252,27 @@ public sealed class ExternalAipReadServiceTests
 
         ExternalAipDto? result = await f.Build().GetAsync(Fy2027, null);
 
-        ExternalActivityDto mapped = result!.Offices[0].Groups[0].Programs[0].Projects[0].Activities[0];
-        Assert.Equal("500.00", mapped.Amounts.Ps);
-        Assert.Equal("250.50", mapped.Amounts.Mooe);
-        Assert.Equal("0.00", mapped.Amounts.Co);
-        Assert.Equal("750.50", mapped.Amounts.Total);
+        ExternalActivityDto mappedActivity = result!.Offices[0].Groups[0].Programs[0].Projects[0].Activities[0];
+        Assert.Equal("500.00", mappedActivity.Amounts.Ps);
+        Assert.Equal("250.50", mappedActivity.Amounts.Mooe);
+        Assert.Equal("0.00", mappedActivity.Amounts.Co);
+        Assert.Equal("750.50", mappedActivity.Amounts.Total);
+
+        ExternalProjectDto mappedProject = result!.Offices[0].Groups[0].Programs[0].Projects[0];
+        Assert.Equal("500.00", mappedProject.Totals.Ps);
+        Assert.Equal("250.50", mappedProject.Totals.Mooe);
+        Assert.Equal("0.00", mappedProject.Totals.Co);
+        Assert.Equal("750.50", mappedProject.Totals.Total);
+
+        ExternalProgramDto mappedProgram = result!.Offices[0].Groups[0].Programs[0];
+        Assert.Equal("500.00", mappedProgram.Totals.Ps);
+        Assert.Equal("250.50", mappedProgram.Totals.Mooe);
+        Assert.Equal("0.00", mappedProgram.Totals.Co);
+        Assert.Equal("750.50", mappedProgram.Totals.Total);
+
+        // Legacy prints exact amounts, so there are no printed totals at any level.
+        Assert.Null(mappedProject.PrintedTotals);
+        Assert.Null(mappedProgram.PrintedTotals);
     }
 
     [Fact]
@@ -295,6 +311,69 @@ public sealed class ExternalAipReadServiceTests
         Assert.Equal("1000400.00", mapped.Amounts.Mooe);
         Assert.NotNull(mapped.PrintedAmounts);
         Assert.Equal("1301000.00", mapped.PrintedAmounts!.Mooe);
+    }
+
+    [Fact]
+    public async Task GetAsync_Fy2028_ProgramAndProjectTotals_SumChildren_PrintedTotalsSumPrintedLines()
+    {
+        // PPDO-102. Every activity carries ₱100 MOOE, which prints as 1,000 (100 × 1.3 = 130, rounded
+        // up to the thousand). Project A has two of them: its printed MOOE is 1,000 + 1,000 = 2,000,
+        // where rounding its exact 200 would give 1,000 — so this catches a total re-rounded instead of summed.
+        Fixture f = new();
+        f.Aip.Setup(a => a.GetLatestByFiscalYearAsync(Fy2028, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Record(2, Fy2028, PlanningStatus.Draft));
+        AipOffice group = Group(20, 2, PpdoOfficeId, "1000-000-1-01-010", "PPDO");
+        f.Aip.Setup(a => a.GetOfficesByAipIdAsync(2, It.IsAny<CancellationToken>())).ReturnsAsync([group]);
+        AipProgram program = Program(100, 20, "1000-000-1-01-010-001", "Program A");
+        f.Aip.Setup(a => a.GetProgramsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([program]);
+        AipProject projectA = Project(200, 100, "1000-000-1-01-010-001-001", "Project A");
+        AipProject projectB = Project(201, 100, "1000-000-1-01-010-001-002", "Project B");
+        f.Aip.Setup(a => a.GetProjectsByProgramIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([projectA, projectB]);
+        AipActivity a1 = Activity(300, 200, "1000-000-1-01-010-001-001-001", "A1", ps: 0m, mooe: 100m, co: 0m);
+        AipActivity a2 = Activity(301, 200, "1000-000-1-01-010-001-001-002", "A2", ps: 0m, mooe: 100m, co: 0m);
+        AipActivity b1 = Activity(302, 201, "1000-000-1-01-010-001-002-001", "B1", ps: 1000.50m, mooe: 100m, co: 0m);
+        f.Aip.Setup(a => a.GetActivitiesByProjectIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([a1, a2, b1]);
+        f.Expenditures.Setup(e => e.GetByActivityIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Line(400, 300, 0m, 100m), Line(401, 301, 0m, 100m), Line(402, 302, 1000.50m, 100m)]);
+        f.Offices.Setup(o => o.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([ConfigOffice(PpdoOfficeId, "PPDO", "PPDO Office")]);
+
+        ExternalAipDto? result = await f.Build().GetAsync(Fy2028, null);
+
+        ExternalGroupDto mappedGroup = result!.Offices[0].Groups[0];
+        ExternalProgramDto mappedProgram = mappedGroup.Programs[0];
+        ExternalProjectDto mappedA = mappedProgram.Projects[0];
+        ExternalProjectDto mappedB = mappedProgram.Projects[1];
+
+        Assert.Equal("200.00", mappedA.Totals.Mooe);
+        Assert.Equal("200.00", mappedA.Totals.Total);
+        Assert.Equal("2000.00", mappedA.PrintedTotals!.Mooe);
+        Assert.Equal("2000.00", mappedA.PrintedTotals.Total);
+
+        Assert.Equal("1000.50", mappedB.Totals.Ps);
+        Assert.Equal("1100.50", mappedB.Totals.Total);
+        Assert.Equal("2000.00", mappedB.PrintedTotals!.Ps);
+        Assert.Equal("3000.00", mappedB.PrintedTotals.Total);
+
+        Assert.Equal("1000.50", mappedProgram.Totals.Ps);
+        Assert.Equal("300.00", mappedProgram.Totals.Mooe);
+        Assert.Equal("1300.50", mappedProgram.Totals.Total);
+        Assert.Equal("2000.00", mappedProgram.PrintedTotals!.Ps);
+        Assert.Equal("3000.00", mappedProgram.PrintedTotals.Mooe);
+        Assert.Equal("5000.00", mappedProgram.PrintedTotals.Total);
+
+        // One program, so the group's figures are the program's — the roll-up did not change them.
+        Assert.Equal(mappedProgram.Totals, mappedGroup.Totals);
+        Assert.Equal(mappedProgram.PrintedTotals, mappedGroup.PrintedTotals);
+
+        static AipExpenditure Line(int id, int activityId, decimal ps, decimal mooe) => new()
+        {
+            Id = id, ActivityId = activityId, Ps = ps, Mooe = mooe, Co = 0m,
+            FundingSourceSnapshot = "GF", FundingSourceNameSnapshot = "General Fund",
+        };
     }
 
     // ── isSynthetic ────────────────────────────────────────────────────────────
