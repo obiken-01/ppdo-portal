@@ -26,7 +26,9 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import api from "@/lib/api";
 import { allocationLabels } from "@/lib/budget-planning-labels";
-import { canOpenAipOfficeReview, canOpenAipRecords, canOpenAipReview, canOpenLdip } from "@/lib/budget-planning-access";
+import {
+  canOpenAipRecords, canOpenAipReview, canOpenBudgetPlanningReport, canOpenLdip,
+} from "@/lib/budget-planning-access";
 import { auth } from "@/lib/auth";
 import { clearMeCache } from "@/lib/me-cache";
 import { pendingLink, useAipNotifications } from "@/lib/aip-notifications";
@@ -164,10 +166,13 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
   // ⚠️ Not `isHostOffice` — a PPDO division encoder holds no review work. Same file as the two above,
   // for the same reason: the nav and the route guard read one rule.
   const showAipReview      = me != null && canOpenAipReview(me);
-  // PPDO-84 — the consolidated AIP and its Excel download. ⚠️ The CROSS-OFFICE reviewer only
-  // (`canOpenAipOfficeReview`), narrower than AIP Review above: a department head reviews their own
-  // office and never sees the province-wide document.
-  const showConsolidatedAip = me != null && canOpenAipOfficeReview(me);
+  // ↩️ **The Consolidated AIP item is gone** (PPDO-92) — it is a type on the Report page now.
+  //
+  // ⚠️ Report is no longer inside the WFP block. It carries three types with different audiences:
+  // WFP and PPMP are host-office only, AIP is either reviewer, so a guest-office department head has
+  // something to read there while having no WFP at all. `canOpenBudgetPlanningReport` is the union,
+  // derived from the two rules rather than restated, so the nav and the page cannot disagree.
+  const showReport         = me != null && canOpenBudgetPlanningReport(me);
   const showResourceLinks  = !isOfficeUser;
   const showDashboard      = !isOfficeUser;
   const showAnnouncements  = !isOfficeUser && isAdmin;
@@ -455,12 +460,6 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
                     )}
                   </div>
                 )}
-                {showConsolidatedAip && (
-                  <Link href="/budget-planning/aip/consolidated" className={childLinkCls(isActive("/budget-planning/aip/consolidated"))}>
-                    <span className="text-xs">•</span>
-                    <span className="truncate">Consolidated AIP</span>
-                  </Link>
-                )}
                 {showAllocation && (
                   <Link href="/budget-planning/allocation" className={childLinkCls(isActive("/budget-planning/allocation"))}>
                     <span className="text-xs">•</span>
@@ -468,16 +467,16 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
                   </Link>
                 )}
                 {showWfp && (
-                  <>
-                    <Link href="/budget-planning/wfp/entry" className={childLinkCls(isActive("/budget-planning/wfp"))}>
-                      <span className="text-xs">•</span>
-                      <span className="truncate">WFP</span>
-                    </Link>
-                    <Link href="/budget-planning/report" className={childLinkCls(isActive("/budget-planning/report"))}>
-                      <span className="text-xs">•</span>
-                      <span className="truncate">Report</span>
-                    </Link>
-                  </>
+                  <Link href="/budget-planning/wfp/entry" className={childLinkCls(isActive("/budget-planning/wfp"))}>
+                    <span className="text-xs">•</span>
+                    <span className="truncate">WFP</span>
+                  </Link>
+                )}
+                {showReport && (
+                  <Link href="/budget-planning/report" className={childLinkCls(isActive("/budget-planning/report"))}>
+                    <span className="text-xs">•</span>
+                    <span className="truncate">Report</span>
+                  </Link>
                 )}
               </div>
             )}

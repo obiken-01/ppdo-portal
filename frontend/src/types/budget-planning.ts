@@ -1629,6 +1629,21 @@ export interface AipConsolidatedSheet {
   /** Offices with PPDO or accepted only — the rest are left out, never shown as ₱0. */
   rows: AipConsolidatedRow[];
   total: AipPrintedAmounts;
+  /** PPDO-90 — "Consolidated" or "Office". A department head only ever gets "Office". */
+  scope: string;
+  /**
+   * The one office this sheet describes, or null when consolidated. When set, the counts above
+   * describe that office alone, so the header copy stays true.
+   */
+  office: AipReportOffice | null;
+}
+
+/** The office a scoped Annex B report covers (PPDO-90). */
+export interface AipReportOffice {
+  officeId: number;
+  officeCode: string;
+  officeName: string;
+  workflowStatus: string;
 }
 
 // ── AIP submission history (v1.8.0 Phase 4 — V18-77 / PPDO-77) ───────────────

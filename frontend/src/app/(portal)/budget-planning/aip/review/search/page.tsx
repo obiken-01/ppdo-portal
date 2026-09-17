@@ -277,16 +277,18 @@ export default function AipReviewSearchPage() {
           <p className="mt-0.5 text-sm text-slate-600">
             Find the programs, projects and activities you need to review.
           </p>
-          {/* PPDO-73. Cross-office reviewers only — the same rule the consolidated page and its
-              endpoint enforce; a department head would be redirected straight back. */}
-          {crossOffice && (
-            <Link
-              href={`/budget-planning/aip/consolidated?fiscalYear=${fiscalYear}`}
-              className="mt-1 inline-block text-sm font-medium text-green-800 underline underline-offset-2 hover:text-green-900"
-            >
-              Consolidated AIP →
-            </Link>
-          )}
+          {/* ↩️ **Points at the Report page now** (PPDO-92) — the consolidated AIP is a report type,
+              not a page of its own.
+
+              ⚠️ **No longer cross-office only.** A department head reads their own office's Annex B
+              there (PPDO-90), pinned server-side, so the link is offered to both reviewers exactly as
+              this page itself is. */}
+          <Link
+            href={`/budget-planning/report?type=AIP&fiscalYear=${fiscalYear}`}
+            className="mt-1 inline-block text-sm font-medium text-green-800 underline underline-offset-2 hover:text-green-900"
+          >
+            {crossOffice ? "Consolidated AIP →" : "My office’s AIP report →"}
+          </Link>
         </div>
         <div>
           <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
