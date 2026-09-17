@@ -198,6 +198,8 @@ Everything in `frontend/src/components/ui/`. Check here before building anything
 | `CsvUploadButton` / `CsvDownloadButton` | CSV import/export triggers | — |
 | `CsvImportSummary` | The "Import complete" dialog after a CSV upsert — the three counts plus the skipped-row reasons. Pair with the two CSV buttons. | A confirmation before importing — that is a plain `Modal` |
 | `RowActions` | Any table's per-row action buttons. See §6a for the layout rule. | A single always-visible primary action with no alternatives — a plain button is enough |
+| `RecordCodeLink` | A list-table row's identifier as its **one** click target — AIP reference code, PR No., Stock No. `href` or `onClick`; plain text when there is nothing to open. See "List tables" below. | Making a long name the link |
+| `ClampedText` | Long free text in a list-table cell — clamped at 2 lines with "more / less", full text on hover, author line breaks kept. | The **Annex B grid**, or any other print preview — every line prints there |
 
 **Adoption today:** `Toast` 32 files, `DataTable` 10, `ConfigPageHeader` 7, `TableSkeleton` 6,
 `RowActions` 13 (`ldip`, `aip`, `items-master`, `pr-register`, `resource-links`, `admin/users`,
@@ -217,6 +219,26 @@ config page with a CSV import, render this component rather than copying the blo
 Publish, Archive, Delete) — still under the 5-action overflow-menu threshold, so it's a single
 row like everything else, just wider (4 × 80px + gaps ≈ 332px). The table's horizontal scroll
 absorbs it, same reasoning as every other wide row.
+
+### List tables: the identifier is the link, long text is clamped (PPDO-105)
+
+Decided 2026-09-17 (Ralph), from the AIP Review search, where activity names can run to several lines.
+
+1. **The record's identifier is the row's link, and nothing else in the row is.** Use
+   `RecordCodeLink`. A reference code is short, the same width on every row, and what a reader
+   checks against the printed form; a long wrapped name is a poor target. One link per row also
+   keeps keyboard and screen-reader users from tabbing through the same destination twice — pass
+   `description` so the link's accessible name says what it opens.
+2. **Long free text is clamped at 2 lines** with `ClampedText`. Not a one-line `truncate`: one line
+   cuts too much of an AIP activity name to be useful.
+3. **Identifiers are never truncated or wrapped.** `1000-000-1-01-…` is a different code to the
+   reader. Let the column grow or the table scroll.
+
+⚠️ **Exception — print previews never clamp.** The Annex B grid mirrors the printed form, where
+every line of a name prints; clamping it would hide the row heights PPDO-85 warns about.
+
+**Adoption is incremental.** The AIP Review search and the WFP page use these today. PR List, Items
+Master and the LDIP list move over when each is next touched — not in a sweep.
 
 ### Loading states
 

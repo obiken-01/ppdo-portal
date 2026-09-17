@@ -21,9 +21,10 @@
  *   POST /api/budget-planning/wfp/{id}/unlock
  */
 
-import { Fragment, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMe } from "@/lib/me-cache";
+import ClampedText from "@/components/ui/ClampedText";
 import { getAipSummary, listAip } from "@/lib/aip";
 import {
   downloadWfpReport,
@@ -134,39 +135,8 @@ const CF_FIELDS: [keyof SaveWfpLine, string][] = [
   ["meansOfVerification", "Means of Verification"],
 ];
 
-// Name cell with 2-line clamp + "more/less" toggle (only shown when actually clamped)
-function ClampedName({ name }: { name: string }) {
-  const [expanded, setExpanded] = useState(false);
-  const [isClamped, setIsClamped] = useState(false);
-  const spanRef = useRef<HTMLSpanElement>(null);
-
-  useLayoutEffect(() => {
-    if (expanded) return;
-    const el = spanRef.current;
-    if (el) setIsClamped(el.scrollHeight > el.clientHeight);
-  }, [name, expanded]);
-
-  return (
-    <>
-      <span
-        ref={spanRef}
-        className={expanded ? undefined : "line-clamp-2"}
-        title={!expanded && isClamped ? name : undefined}
-      >
-        {name}
-      </span>
-      {(isClamped || expanded) && (
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); setExpanded((p) => !p); }}
-          className="ml-1 text-xs text-green-700 hover:underline whitespace-nowrap"
-        >
-          {expanded ? "less" : "more"}
-        </button>
-      )}
-    </>
-  );
-}
+// ↩️ The local `ClampedName` that lived here became the shared `ClampedText` (PPDO-105) — the same
+// clamp + more/less, now the portal-wide rule for long text in a list table.
 
 // Account search combobox — replaces the plain <select> for object of expenditure
 function AccountCombobox({
@@ -1365,7 +1335,7 @@ function WfpPageInner() {
                                       >
                                         {collapsed.has(pKey) ? "▶" : "▼"}
                                       </button>
-                                      <ClampedName name={program.name} />
+                                      <ClampedText text={program.name} />
                                     </div>
                                   </td>
                                   <td className="px-3 py-2" />
@@ -1391,7 +1361,7 @@ function WfpPageInner() {
                                             >
                                               {collapsed.has(prKey) ? "▶" : "▼"}
                                             </button>
-                                            <ClampedName name={project.name} />
+                                            <ClampedText text={project.name} />
                                           </div>
                                         </td>
                                         <td className="px-3 py-2" />
@@ -1414,7 +1384,7 @@ function WfpPageInner() {
                                               {activity.refCode}
                                             </td>
                                             <td className="px-3 py-2 pl-14 text-slate-600">
-                                              <ClampedName name={activity.name} />
+                                              <ClampedText text={activity.name} />
                                             </td>
                                             <td className="px-3 py-2 text-xs text-slate-600 whitespace-nowrap">
                                               {activity.fundingSourceSnapshot ?? "—"}

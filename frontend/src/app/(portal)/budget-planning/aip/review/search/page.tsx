@@ -62,6 +62,8 @@ import {
 } from "@/lib/aip-workflow";
 import { AipLevelChip } from "@/components/aip/entry/AipHierarchy";
 import OfficeSelect from "@/components/ui/OfficeSelect";
+import RecordCodeLink from "@/components/ui/RecordCodeLink";
+import ClampedText from "@/components/ui/ClampedText";
 import AipActivityReviewModal from "@/components/aip/review/AipActivityReviewModal";
 import type {
   AipReviewSearchResult, AipReviewSearchRow, AipCommentNodeType, OfficeResponse,
@@ -679,8 +681,6 @@ function ResultTable({
       : `/budget-planning/aip/entry?fiscalYear=${fiscalYear}${idParam}`;
   };
 
-  const linkCls = "underline decoration-slate-300 underline-offset-2 hover:decoration-green-700";
-
   return (
     <div className="overflow-x-auto border border-slate-200 bg-white">
       <table className="w-full text-sm">
@@ -697,21 +697,25 @@ function ResultTable({
           {rows.map((r) => (
             <tr key={`${r.level}-${r.nodeId}`} className="hover:bg-green-25">
               <td className="px-3 py-2"><AipLevelChip level={levelOf(r.level)} /></td>
-              <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-slate-600">{r.refCode}</td>
+              <td className="px-3 py-2">
+                {/* ↩️ **The reference code is the link, not the name** (PPDO-105, Ralph 2026-09-17).
+                    An activity name can run to several lines, and a long wrapped link is a poor
+                    target; the code is short, the same width on every row, and what a reviewer reads
+                    against the printed form. `DESIGN_SYSTEM.md` §5 now makes this the rule.
+
+                    ⚠️ An unmatched legacy row has no owning office, so it has nothing to open — the
+                    component renders its code as plain text rather than dropping the row, which would
+                    look like missing data. */}
+                <RecordCodeLink
+                  code={r.refCode}
+                  description={r.name}
+                  href={r.officeId != null && r.level !== "Activity" ? officeHref(r.officeId, r) : undefined}
+                  onClick={r.officeId != null && r.level === "Activity" ? () => onOpenActivity(r.nodeId) : undefined}
+                />
+              </td>
               <td className="px-3 py-2 text-slate-800">
-                {/* ⚠️ An unmatched legacy row has no owning office, so it has nothing to open.
-                    Rendered as plain text rather than dropped — it exists, and hiding it would look
-                    like missing data. */}
-                {r.officeId == null ? (
-                  r.name
-                ) : r.level === "Activity" ? (
-                  <button type="button" onClick={() => onOpenActivity(r.nodeId)}
-                    className={`text-left ${linkCls}`}>
-                    {r.name}
-                  </button>
-                ) : (
-                  <Link href={officeHref(r.officeId, r)} className={linkCls}>{r.name}</Link>
-                )}
+                {/* Plain text now — one link per row. Clamped at two lines with "more". */}
+                <ClampedText text={r.name} />
               </td>
               <td className="px-3 py-2 text-slate-600">
                 {r.officeName} <span className="text-xs">· {r.sector}</span>
