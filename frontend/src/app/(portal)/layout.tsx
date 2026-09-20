@@ -253,6 +253,11 @@ export default function PortalLayout({
       (pathname.startsWith("/budget-planning") && !ppdoOnlyBudgetPlanning) ||
       // /profile only redirects to /account (RAL-252); allowing it lets that redirect land
       // instead of the gate racing it to landingPath.
+      // PPDO-108 — the ONE Configuration page a guest office can reach: their own office's
+      // divisions, and only while they hold the grant. Listed here because this gate closes
+      // everything outside /budget-planning to a guest office, so the page's own rule would
+      // never get a chance to run.
+      (pathname.startsWith("/config/divisions") && me.canManageOfficeSetup) ||
       pathname.startsWith("/profile") ||
       pathname.startsWith("/account") ||
       // /home resolves the destination itself; letting the gate fire here too would

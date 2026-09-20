@@ -17,7 +17,13 @@
  *   can_manage_config, can_upload_aip, can_manage_users, can_manage_resource_links,
  *   landing_page (RAL-259 — enum name or blank)
  *
- * Access guard: only users with canManageConfig may view this page.
+ * Access guard: canManageConfig, or canManageOfficeSetup for a department head — who sees ONLY
+ * their own office's divisions and none of the feature flags (PPDO-108).
+ *
+ * ⚠️ **Hiding the flags here is courtesy, not the rule.** `ConfigDivisionFunctions` drops the seven
+ * `can*` fields from an office-scoped caller's payload and refuses a division belonging to another
+ * office outright; this page only spares them controls they cannot use. "We own the site, we can't
+ * let them set permissions of our features" (Ralph, 2026-09-16).
  *
  * Endpoints (ConfigDivisionFunctions.cs, { data, error, message } envelope):
  *   GET    /api/config/divisions?active=&officeId=
@@ -166,6 +172,14 @@ export default function DivisionConfigPage() {
   const { toast } = useToast();
 
   const [authChecked] = useState(true);
+  /**
+   * PPDO-108 — the caller manages their OWN office only: no office column, no office picker, no
+   * feature flags, no CSV (a bulk upsert carries an office per row, so the server keeps those
+   * routes for config managers).
+   */
+  const [ownOfficeOnly, setOwnOfficeOnly] = useState(false);
+  const [ownOfficeName, setOwnOfficeName] = useState<string | null>(null);
+  const [ownOfficeId, setOwnOfficeId] = useState<number | null>(null);
   const [divisions, setDivisions] = useState<DivisionResponse[]>([]);
   const [offices, setOffices] = useState<OfficeResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -191,7 +205,17 @@ export default function DivisionConfigPage() {
   useEffect(() => {
     fetchMe()
       .then((data) => {
-        if (!data.canManageConfig) router.replace(!data.isHostOffice ? "/budget-planning" : "/dashboard");
+        if (!data.canManageConfig && !data.canManageOfficeSetup) {
+          router.replace(!data.isHostOffice ? "/budget-planning" : "/dashboard");
+          return;
+        }
+        // A config manager who also holds the setup grant keeps the full page — the narrower
+        // view is for callers who hold ONLY the setup grant, matching the server's own test.
+        if (!data.canManageConfig) {
+          setOwnOfficeOnly(true);
+          setOwnOfficeId(data.officeId ?? null);
+          setOwnOfficeName(data.officeName ?? data.officeCode ?? null);
+        }
       })
       .catch(() => router.replace("/login"));
   }, [router]);
@@ -244,7 +268,11 @@ export default function DivisionConfigPage() {
 
   function openAdd() {
     setEditTarget(null);
-    setForm(blankForm());
+    // The office picker is hidden for an own-office caller, so the id is filled in here. The
+    // server stamps it again from the caller's own office — this only keeps the form valid.
+    setForm(ownOfficeOnly && ownOfficeId != null
+      ? { ...blankForm(), officeId: ownOfficeId }
+      : blankForm());
     setFormError(null);
     setShowForm(true);
   }
@@ -397,11 +425,13 @@ export default function DivisionConfigPage() {
       sortable: true,
       render: (d) => <span className="font-medium text-slate-800">{d.name}</span>,
     },
-    {
+    // Dropped entirely when every row is the caller's own office — a column with one repeated
+    // value is noise, and it is the only place the word "office" appears in the grid.
+    ...(ownOfficeOnly ? [] : [{
       key: "officeName",
       header: "Office",
       sortable: true,
-      render: (d) => (
+      render: (d: DivisionResponse) => (
         <span className="text-slate-600 text-sm">
           {d.officeCode ? (
             <>
@@ -413,7 +443,7 @@ export default function DivisionConfigPage() {
           )}
         </span>
       ),
-    },
+    } satisfies Column<DivisionResponse>]),
     {
       key: "flags",
       header: "Flags",
@@ -453,15 +483,25 @@ export default function DivisionConfigPage() {
         {/* Header */}
         <ConfigPageHeader
           title="Divisions"
-          description="Configurable per-office divisions that carry data scope and feature-permission flags."
+          description={
+            ownOfficeOnly
+              ? `The divisions of ${ownOfficeName ?? "your office"}. They carry data scope; feature permissions are set by PPDO.`
+              : "Configurable per-office divisions that carry data scope and feature-permission flags."
+          }
           actions={
             <>
-              <CsvDownloadButton
-                filename="divisions.csv"
-                fetchCsv={exportDivisionsCsv}
-                onError={(msg) => toast.error("Export failed", msg)}
-              />
-              <CsvUploadButton onSelect={(file) => setPendingCsv(file)} />
+              {/* CSV is a multi-office bulk upsert, and the server keeps both routes for config
+                  managers — so it is not offered to an own-office caller at all. */}
+              {!ownOfficeOnly && (
+                <>
+                  <CsvDownloadButton
+                    filename="divisions.csv"
+                    fetchCsv={exportDivisionsCsv}
+                    onError={(msg) => toast.error("Export failed", msg)}
+                  />
+                  <CsvUploadButton onSelect={(file) => setPendingCsv(file)} />
+                </>
+              )}
               <button
                 onClick={openAdd}
                 className="flex items-center gap-1.5 bg-green-600 text-white font-semibold text-sm px-4 py-2.5 hover:bg-green-500 transition-colors shrink-0"
@@ -478,7 +518,7 @@ export default function DivisionConfigPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name, code, or office…"
+            placeholder={ownOfficeOnly ? "Search by name or code…" : "Search by name, code, or office…"}
             className="flex-1 min-w-[220px] px-3 py-2 text-sm border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-green-600"
           />
           <div className="flex items-center border border-slate-200 overflow-hidden">
@@ -543,7 +583,9 @@ export default function DivisionConfigPage() {
           }
         >
           <div className="space-y-4">
-            {/* Office */}
+            {/* Office — hidden for an own-office caller: there is only one answer, and the
+                server stamps it from the caller regardless of what the body says. */}
+            {!ownOfficeOnly && (
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Office *</label>
               <select
@@ -561,6 +603,7 @@ export default function DivisionConfigPage() {
                 <p className="mt-1 text-[11px] text-slate-600">Office cannot be changed.</p>
               )}
             </div>
+            )}
 
             {/* Name */}
             <div>
@@ -600,7 +643,9 @@ export default function DivisionConfigPage() {
               </p>
             </div>
 
-            {/* Feature flags */}
+            {/* Feature flags — PPDO's to set, never the office's (D8). The server drops these
+                fields from an own-office caller's payload; hiding them is the courtesy half. */}
+            {!ownOfficeOnly && (
             <div>
               <p className="text-xs font-medium text-slate-600 mb-2">Feature Flags</p>
               <div className="grid grid-cols-2 gap-2">
@@ -620,6 +665,12 @@ export default function DivisionConfigPage() {
                 Staff users inherit these flags from their division (per-user overrides take precedence).
               </p>
             </div>
+            )}
+            {ownOfficeOnly && (
+              <p className="text-[11px] text-slate-600">
+                Feature permissions for a division are set by PPDO, not here.
+              </p>
+            )}
 
             <LandingPageSelect
               label="Default landing page"

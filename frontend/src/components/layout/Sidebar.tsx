@@ -164,6 +164,10 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
   // cross-office, so this is NOT paired with isOfficeUser the way showAllocation is above.
   const showOfficeCeilings = me != null && canOpenOfficeCeilings(me);
   const showConfig         = !isOfficeUser && me?.canManageConfig === true;
+  // PPDO-108 — a department head gets Configuration with ONE item in it, their own office's
+  // divisions. Like showApiAccess above and unlike showConfig, it is not gated on !isOfficeUser:
+  // a guest office is exactly who holds this grant.
+  const showOwnDivisions   = !showConfig && me?.canManageOfficeSetup === true;
   // PPDO-81 — the AIP record list is where the base record is created, finalized and archived, and
   // all three are Admin actions. An encoder's surface is AIP Entry below. LDIP is hidden from a
   // GUEST office rather than from non-admins: PPDO planning staff work in it, but a guest office
@@ -500,7 +504,7 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
         )}
 
         {/* Configuration — collapsible group; PPDO users with CanManageConfig or CanManageUsers */}
-        {(showConfig || showManageUsers || showAuditLog || showApiAccess) && (
+        {(showConfig || showOwnDivisions || showManageUsers || showAuditLog || showApiAccess) && (
           <div>
             <button
               onClick={() => setConfigOpen((o) => !o)}
@@ -558,6 +562,12 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
                       <span className="truncate">Procurement Presets</span>
                     </Link>
                   </>
+                )}
+                {showOwnDivisions && (
+                  <Link href="/config/divisions" className={childLinkCls(isActive("/config/divisions"))}>
+                    <span className="text-xs">•</span>
+                    <span className="truncate">Divisions</span>
+                  </Link>
                 )}
                 {showManageUsers && (
                   <Link href="/admin/users" className={childLinkCls(isActive("/admin/users"))}>
