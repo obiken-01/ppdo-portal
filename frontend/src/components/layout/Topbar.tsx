@@ -62,6 +62,7 @@ const SECTIONS: Section[] = [
       { prefix: "/config/divisions",           label: "Divisions" },
       { prefix: "/config/procurement-presets", label: "Procurement Presets" },
       { prefix: "/config/audit-log",           label: "Audit Log" },
+      { prefix: "/config/api-access",           label: "API Access" },
     ],
   },
   {
@@ -77,6 +78,12 @@ const SECTIONS: Section[] = [
     rootLabel: "Investment Planning",
     crumbs: [
       // Longer prefixes must come before shorter ones so matchesPrefix picks the right crumb.
+      // ↩️ These five were missing and fell back to the bare "Investment Planning" root — the same
+      // way the six Configuration pages did (see that section's note). `aip/entry` and `aip/review`
+      // are listed above `aip` because the shorter prefix would otherwise swallow them and label
+      // both "AIP", which is the page they are deliberately NOT.
+      { prefix: "/budget-planning/aip/review",  label: "AIP Review" },
+      { prefix: "/budget-planning/aip/entry",   label: "AIP Entry"  },
       { prefix: "/budget-planning/aip/import-preview", label: "Import Preview", parent: { label: "AIP", href: "/budget-planning/aip" } },
       { prefix: "/budget-planning/aip/new",            label: "New AIP",        parent: { label: "AIP", href: "/budget-planning/aip" } },
       { prefix: "/budget-planning/aip/detail", label: "Detail", parent: { label: "AIP", href: "/budget-planning/aip" } },
@@ -84,6 +91,8 @@ const SECTIONS: Section[] = [
       { prefix: "/budget-planning/ldip",       label: "LDIP"       },
       { prefix: "/budget-planning/allocation", label: "Allocation", labelFor: (me) => allocationLabels(me).nav },
       { prefix: "/budget-planning/wfp",        label: "WFP"        },
+      { prefix: "/budget-planning/office-ceilings", label: "Office Ceilings" },
+      { prefix: "/budget-planning/report",     label: "Report"     },
     ],
   },
 ];

@@ -31,6 +31,7 @@ import Link from "next/link";
 import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import DataTable, { type Column } from "@/components/ui/DataTable";
 import MoneyInput from "@/components/ui/MoneyInput";
+import { useToast } from "@/components/ui/Toast";
 import BulkCeilingModal from "../BulkCeilingModal";
 import { allocationErrorMessage, getCeilingUsage, getCeilings, upsertCeiling } from "@/lib/allocation";
 import { getDashboardOffices, getFiscalYears } from "@/lib/budget-planning";
@@ -60,6 +61,7 @@ interface Row {
 
 export default function OfficeCeilingsPage() {
   const me = useMe(canOpenOfficeCeilings, budgetPlanningFallback);
+  const { toast } = useToast();
 
   const [fiscalYear, setFiscalYear] = useState<number | null>(null);
   const [availableFiscalYears, setAvailableFiscalYears] = useState<number[]>([]);
@@ -150,13 +152,17 @@ export default function OfficeCeilingsPage() {
         saving: false,
         saved: true,
       });
+      // The office is named: this table saves one row at a time and the row that moved is not
+      // necessarily the one the reader is looking at by the time the toast lands.
+      toast.success("Saved", `${row.officeCode} ceiling set to ₱${formatMoney(saved.amount)}.`);
     } catch (err) {
       // Named per office: a failure on one row must not read as "nothing saved" when the rows
       // above it did save.
-      patch(row.officeId, {
-        saving: false,
-        error: allocationErrorMessage(err, `Could not save ${row.officeCode}'s ceiling.`),
-      });
+      const message = allocationErrorMessage(err, `Could not save ${row.officeCode}'s ceiling.`);
+      // Both: the toast carries it to a reader whose eyes are elsewhere, the row keeps it visible
+      // after the toast goes.
+      patch(row.officeId, { saving: false, error: message });
+      toast.error("Save failed", message);
     }
   };
 
