@@ -28,7 +28,8 @@
  *   NOT fund-scoped — unchanged by RAL-155.
  *
  * Endpoints (AllocationFunctions.cs, { data, error, message } envelope):
- *   GET/PUT /api/budget-planning/allocation/ceiling?officeId=&fiscalYear=&fundingSourceId=
+ *   GET     /api/budget-planning/allocation/ceiling?officeId=&fiscalYear=&fundingSourceId=
+ *           ↩️ the PUT moved to the Office Ceilings page (PPDO-106); the ceiling is read-only here
  *   GET     /api/budget-planning/allocation/ceilings?officeId=&fiscalYear= (all funds, RAL-154)
  *   GET/PUT /api/budget-planning/allocation/divisions?officeId=&fiscalYear=&fundingSourceId=
  *   GET/PUT /api/budget-planning/allocation/programs?officeId=&fiscalYear=
@@ -43,6 +44,7 @@
  */
 
 import { Fragment, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useMe } from "@/lib/me-cache";
 import { allocationLabels } from "@/lib/budget-planning-labels";
 import InfoTip from "@/components/ui/InfoTip";
@@ -54,7 +56,6 @@ import {
   getCeilingUsage,
   getPrograms,
   upsertAllocations,
-  upsertCeiling,
   upsertProgram,
 } from "@/lib/allocation";
 import MoneyInput from "@/components/ui/MoneyInput";
@@ -233,9 +234,6 @@ function FundSection({
   selectedFiscalYear,
   ceiling,
   ceilingInput,
-  onCeilingInputChange,
-  onSaveCeiling,
-  savingCeiling,
   divisions,
   allocationInputs,
   onAllocationInputChange,
@@ -254,10 +252,8 @@ function FundSection({
   selectedOffice: OfficeResponse | null;
   selectedFiscalYear: number;
   ceiling: BudgetCeilingDto | null;
+  /** The SAVED ceiling, mirrored into state — the division split below is measured against it. */
   ceilingInput: number | null;
-  onCeilingInputChange: (v: number | null) => void;
-  onSaveCeiling: () => void;
-  savingCeiling: boolean;
   divisions: DivisionResponse[];
   allocationInputs: Record<number, number | null>;
   onAllocationInputChange: (divisionId: number, v: number | null) => void;
@@ -296,45 +292,33 @@ function FundSection({
 
   const body = (
     <>
-      {/* Ceiling — editable only for the PBO ceiling officer (RAL-243). Everyone else
-          sees the saved figure, because the division split below is measured against it. */}
-      {canSetCeiling ? (
-        <div className="flex items-center gap-3 mb-1">
-          <MoneyInput value={ceilingInput} onChange={onCeilingInputChange} className="w-52" />
-          <button
-            onClick={onSaveCeiling}
-            disabled={savingCeiling || !ceilingInput || ceilingInput <= 0}
-            className="px-4 py-2 bg-green-700 text-white text-sm font-medium hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+      {/* ↩️ **Read-only here since PPDO-106.** Ceilings are set on Investment Planning → Office
+          Ceilings, which shows every office at once — this page is about what the office does with
+          the ceiling, not about setting it. The saved figure stays because the division split below
+          is measured against it. */}
+      <div className="mb-1 flex items-center gap-1.5 text-sm text-slate-800 tabular-nums">
+        <span>
+          Ceiling:{" "}
+          {ceiling ? (
+            <span className="font-semibold">₱{formatMoney(ceiling.amount)}</span>
+          ) : (
+            <span className="text-slate-600">not set yet</span>
+          )}
+        </span>
+        {canSetCeiling ? (
+          <Link
+            href={`/budget-planning/office-ceilings?fiscalYear=${selectedFiscalYear}`}
+            className="text-xs text-green-800 underline decoration-green-200 underline-offset-2 hover:decoration-green-700"
           >
-            {savingCeiling && (
-              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            )}
-            Set Ceiling
-          </button>
-        </div>
-      ) : (
-        <div className="mb-1 flex items-center gap-1.5 text-sm text-slate-800 tabular-nums">
-          <span>
-            Ceiling:{" "}
-            {ceiling ? (
-              <span className="font-semibold">₱{formatMoney(ceiling.amount)}</span>
-            ) : (
-              <span className="text-slate-600">not set by the Provincial Budget Office yet</span>
-            )}
-          </span>
-          {/* Only reachable by a caller holding the PPDO allocation grant but not the PBO one
-              (the page requires one of the two), so naming the division split here is safe —
-              unlike the General Fund tip, which a PBO reader also sees. */}
+            Set on Office Ceilings
+          </Link>
+        ) : (
           <InfoTip label="Who sets the ceiling?">
-            Ceilings are set by the Provincial Budget Office &mdash; the General Fund and every
-            other fund source alike. The saved figure is shown here because your division split
-            is measured against it.
+            Ceilings are set by PPDO finance &mdash; the General Fund and every other fund source
+            alike. The saved figure is shown here because your division split is measured against it.
           </InfoTip>
-        </div>
-      )}
-      {canSetCeiling && ceiling && (
-        <p className="mb-1 text-xs text-slate-600">Saved ceiling: ₱{formatMoney(ceiling.amount)}</p>
-      )}
+        )}
+      </div>
       {(!canSetCeiling || !ceiling) && <div className="mb-2" />}
 
       {/* ⚠️ Directly under the ceiling it refers to, and above the division split — the split is
@@ -578,7 +562,6 @@ function AllocationPageInner() {
   const [ceilingInputs, setCeilingInputs] = useState<Record<number, number | null>>({});
   const [allocationInputsByFund, setAllocationInputsByFund] =
     useState<Record<number, Record<number, number | null>>>({});
-  const [savingCeilingFundId, setSavingCeilingFundId] = useState<number | null>(null);
   const [savingAllocationsFundId, setSavingAllocationsFundId] = useState<number | null>(null);
   const [expandedFundIds, setExpandedFundIds] = useState<Set<number>>(new Set());
 
@@ -803,41 +786,6 @@ function AllocationPageInner() {
   }, [selectedOfficeId, selectedFiscalYear, fundList]);
 
   // ── Tab 1: Ceiling & Allocation — per fund source ─────────────────────────
-
-  async function handleSaveCeiling(fundId: number) {
-    if (!canSetCeiling) return;
-    const amount = ceilingInputs[fundId];
-    if (selectedOfficeId == null || amount == null || amount <= 0) return;
-    setSavingCeilingFundId(fundId);
-    try {
-      const result = await upsertCeiling({
-        officeId: selectedOfficeId,
-        fiscalYear: selectedFiscalYear,
-        fundingSourceId: fundId,
-        amount,
-      });
-      setCeilings((prev) => ({ ...prev, [fundId]: result }));
-      toast.success("Saved", "Budget ceiling updated.");
-
-      // ⚠️ Refetch the usage strip, and ONLY for the General Fund — it is the only fund the
-      // AIP ceiling check reads. Without this the strip keeps showing the remaining computed
-      // against the PREVIOUS ceiling: PBO cuts ₱10,000,000 to ₱50,000 over ₱66,000 of encoded
-      // work and the page still reports ₱9,934,000 left, which is the exact opposite of the
-      // signal this ticket exists to give them. `remaining` is server-computed from the SAVED
-      // ceiling, so it cannot be derived client-side from the input.
-      //
-      // Found by browser-testing, not by tsc — the types are identical either way.
-      if (generalFund != null && fundId === generalFund.id) {
-        void getCeilingUsage(selectedOfficeId, selectedFiscalYear)
-          .then(setCeilingUsage)
-          .catch(() => { /* the ceiling saved; a stale strip must not surface as a save error */ });
-      }
-    } catch (err) {
-      toast.error("Save failed", allocationErrorMessage(err, "Could not save ceiling."));
-    } finally {
-      setSavingCeilingFundId(null);
-    }
-  }
 
   async function handleSaveAllocations(fundId: number) {
     if (!canSetAllocations) return;
@@ -1097,11 +1045,6 @@ function AllocationPageInner() {
                       selectedFiscalYear={selectedFiscalYear}
                       ceiling={ceilings[fund.id] ?? null}
                       ceilingInput={ceilingInputs[fund.id] ?? null}
-                      onCeilingInputChange={(v) =>
-                        setCeilingInputs((prev) => ({ ...prev, [fund.id]: v }))
-                      }
-                      onSaveCeiling={() => handleSaveCeiling(fund.id)}
-                      savingCeiling={savingCeilingFundId === fund.id}
                       divisions={divisions}
                       allocationInputs={allocationInputsByFund[fund.id] ?? {}}
                       onAllocationInputChange={(divId, v) =>

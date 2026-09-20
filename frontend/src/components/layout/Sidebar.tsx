@@ -28,6 +28,7 @@ import api from "@/lib/api";
 import { allocationLabels } from "@/lib/budget-planning-labels";
 import {
   canOpenAipRecords, canOpenAipReview, canOpenBudgetPlanningReport, canOpenLdip,
+  canOpenOfficeCeilings,
 } from "@/lib/budget-planning-access";
 import { auth } from "@/lib/auth";
 import { clearMeCache } from "@/lib/me-cache";
@@ -153,6 +154,9 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
   // reaches it only through `CanManageOfficeCeilings`, which is deliberately cross-office.
   const showAllocation     = (me?.canManagePpdoAllocation === true && !isOfficeUser)
                           || me?.canManageOfficeCeilings === true;
+  // PPDO-106 — the ceilings page is the ceiling grant's own surface, and that grant is deliberately
+  // cross-office, so this is NOT paired with isOfficeUser the way showAllocation is above.
+  const showOfficeCeilings = me != null && canOpenOfficeCeilings(me);
   const showConfig         = !isOfficeUser && me?.canManageConfig === true;
   // PPDO-81 — the AIP record list is where the base record is created, finalized and archived, and
   // all three are Admin actions. An encoder's surface is AIP Entry below. LDIP is hidden from a
@@ -459,6 +463,12 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
                       </Link>
                     )}
                   </div>
+                )}
+                {showOfficeCeilings && (
+                  <Link href="/budget-planning/office-ceilings" className={childLinkCls(isActive("/budget-planning/office-ceilings"))}>
+                    <span className="text-xs">•</span>
+                    <span className="truncate">Office Ceilings</span>
+                  </Link>
                 )}
                 {showAllocation && (
                   <Link href="/budget-planning/allocation" className={childLinkCls(isActive("/budget-planning/allocation"))}>

@@ -115,6 +115,22 @@ export function canOpenAipReport(me: MeResponse): boolean {
 }
 
 /**
+ * The **Office Ceilings page** — `/budget-planning/office-ceilings`. PPDO finance (PPDO-106).
+ *
+ * ⚠️ **`canManageOfficeCeilings` alone, not `canManagePpdoAllocation`.** The two are independent by
+ * design (`Permission_Matrix.md` §4): this one is authority over *any* office's ceiling, the other
+ * is host-office-exclusive authority over PPDO's own division split. The page writes only ceilings,
+ * so the ceiling grant is both necessary and sufficient — pairing them would lock out a finance user
+ * who holds exactly the grant this page exists for.
+ *
+ * ↩️ The same grant used to reach the ceiling through the Allocation page, which now shows it
+ * read-only. The nav offers whichever of the two a caller can actually act on.
+ */
+export function canOpenOfficeCeilings(me: MeResponse): boolean {
+  return me.canAccessBudgetPlanning && me.canManageOfficeCeilings;
+}
+
+/**
  * The **WFP and PPMP report types** — host office (PPDO) only.
  *
  * ⚠️ Both read the WFP, which is permanently PPDO-scoped (PPDO-20): a guest office has no WFP to
