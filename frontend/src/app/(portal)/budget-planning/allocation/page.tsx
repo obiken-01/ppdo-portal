@@ -7,7 +7,8 @@
  * active funding source, RAL-154/155), distributing it among divisions, and
  * assigning AIP programs to divisions.
  *
- * Access: canManagePpdoAllocation OR canManageOfficeCeilings (RAL-243). Hidden in the sidebar
+ * Access: canManagePpdoAllocation OR canManageOfficeCeilings (RAL-243) OR canManageOfficeSetup
+ * (PPDO-107 — a department head, for their OWN office only). Hidden in the sidebar
  * for everyone else. The two grants are separate authorities and each gates its own half:
  * canManageOfficeCeilings edits the ceiling (any office), canManagePpdoAllocation edits the
  * division split and the PPA tab. A holder of one sees the other half read-only.
@@ -527,7 +528,8 @@ function FundSection({
 
 function AllocationPageInner() {
   const { toast } = useToast();
-  const me = useMe((m) => m.canManagePpdoAllocation || m.canManageOfficeCeilings);
+  const me = useMe(
+    (m) => m.canManagePpdoAllocation || m.canManageOfficeCeilings || m.canManageOfficeSetup);
 
   // ── Selectors ─────────────────────────────────────────────────────────────
 
@@ -600,6 +602,12 @@ function AllocationPageInner() {
   // trusting the grant to be administered correctly is the point of the rule.
   const canSetAllocations = me?.canManagePpdoAllocation === true && me?.isHostOffice === true;
 
+  // PPDO-107 — the second door, and it opens onto ONE office: the holder's own. It is not a
+  // narrowing of the grant above (that one stays host-office-exclusive); it is a separate grant a
+  // department head holds, mirrored by `ResolveSetupScopeAsync` on the endpoints, which compares
+  // this caller's office id against the office each request targets and 403s otherwise.
+  const canSetOwnOfficeSetup = me?.canManageOfficeSetup === true;
+
   // PPDO-17 — the office axis, and the ONE place it is decided. The question is not "is this
   // caller the host office?" but "is this caller cross-office?", which host-office membership
   // and canManageOfficeCeilings answer independently: PPDO-2 grants authority over EVERY office's
@@ -617,7 +625,16 @@ function AllocationPageInner() {
   // Division is a scoping axis for the host office (PPDO) only — BudgetPlanningScope,
   // RAL-250. A guest office has no split to set, whoever is looking, so both the split
   // and the PPA → Division tab turn on the selected OFFICE as well as on the grant.
-  const showDivisionSplit = canSetAllocations && selectedOffice?.isHostOffice === true;
+  // ⚠️ Two different callers, two different offices. PPDO splits its OWN ceiling (RAL-250: division
+  // is a scoping axis for the host office), and since PPDO-107 a department head splits theirs —
+  // their office's divisions are already first-class (`divisions.office_id`), and the service has
+  // always validated that every division in the payload belongs to the office being written.
+  const isOwnOfficeSelected = selectedOfficeId != null && selectedOfficeId === me?.officeId;
+  const canEditSelectedOfficeSetup =
+    canSetAllocations || (canSetOwnOfficeSetup && isOwnOfficeSelected);
+  const showDivisionSplit =
+    (canSetAllocations && selectedOffice?.isHostOffice === true)
+    || (canSetOwnOfficeSetup && isOwnOfficeSelected);
 
   // A PBO-only caller reads a ceilings page, not an allocation page — see the helper.
   const labels = allocationLabels(me);
@@ -788,7 +805,8 @@ function AllocationPageInner() {
   // ── Tab 1: Ceiling & Allocation — per fund source ─────────────────────────
 
   async function handleSaveAllocations(fundId: number) {
-    if (!canSetAllocations) return;
+    // PPDO-107 — either door: PPDO writing any office, or a department head writing their own.
+    if (!canEditSelectedOfficeSetup) return;
     const inputs = allocationInputsByFund[fundId] ?? {};
     const total = divisions.reduce((sum, d) => sum + (inputs[d.id] ?? 0), 0);
     const ceilingAmount = ceilingInputs[fundId] ?? 0;
@@ -859,7 +877,7 @@ function AllocationPageInner() {
   }
 
   async function handleSavePpa() {
-    if (!canSetAllocations) return;
+    if (!canEditSelectedOfficeSetup) return;
     if (savingPpa || programs.length === 0) return;
     setSavingPpa(true);
     let failed = 0;
@@ -1056,7 +1074,7 @@ function AllocationPageInner() {
                       onSaveAllocations={() => handleSaveAllocations(fund.id)}
                       savingAllocations={savingAllocationsFundId === fund.id}
                       canSetCeiling={canSetCeiling}
-                      canSetAllocations={canSetAllocations}
+                      canSetAllocations={canEditSelectedOfficeSetup}
                       showDivisionSplit={showDivisionSplit}
                     />
                   ))

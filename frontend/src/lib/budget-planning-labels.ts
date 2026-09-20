@@ -11,6 +11,11 @@
  * does not appear on it anywhere. Hiding the controls but keeping the vocabulary would
  * still leave them asking what a division split is and whether they were meant to do one.
  *
+ * A **department head** (`canManageOfficeSetup`, PPDO-107) reads a third page again: their own
+ * office's division split and programme assignment, under a ceiling somebody else set. For them
+ * the page is "Division Allocation" — calling it "Budget Ceilings" would name the one thing on it
+ * they cannot do, and since PPDO-106 the ceiling is read-only here for every reader anyway.
+ *
  * The sidebar link, the breadcrumb, the page header and the tab strip all read their text
  * from here, so those four cannot drift apart the way three copies of `APP_VERSION` did.
  */
@@ -26,6 +31,8 @@ export interface AllocationLabelSubject {
    * would describe work its own endpoints will refuse.
    */
   isHostOffice?: boolean;
+  /** PPDO-107 — a department head configuring their OWN office. */
+  canManageOfficeSetup?: boolean;
 }
 
 export interface AllocationLabels {
@@ -64,6 +71,20 @@ export function allocationLabels(me: AllocationLabelSubject | null): AllocationL
       ceilingTab:  "Ceiling & Division Allocation",
       ceilingIntro:
         "One ceiling and division split per active fund source. General Fund is required; others are optional.",
+      emptyOffice: "Select an office to configure allocation.",
+    };
+  }
+
+  // PPDO-107 — the department head. Checked after the PPDO branch so a host-office finance
+  // officer who also holds this grant keeps the fuller page.
+  if (me?.canManageOfficeSetup) {
+    return {
+      nav:         "Division Allocation",
+      title:       "Division Allocation",
+      description: "Split your office's ceiling across your divisions, and assign programmes to them.",
+      ceilingTab:  "Ceiling & Division Allocation",
+      ceilingIntro:
+        "Your office's ceiling per fund source, set by PPDO finance, and your split beneath it.",
       emptyOffice: "Select an office to configure allocation.",
     };
   }

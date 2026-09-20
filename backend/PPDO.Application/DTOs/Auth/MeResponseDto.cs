@@ -59,6 +59,13 @@ public sealed class MeResponseDto
     /// <summary>Per-user grant for Configuration → API Access (v1.8.0 — PPDO-86).</summary>
     public bool CanManageApiKeys { get; init; }
 
+    /// <summary>
+    /// Per-user grant for setting up the holder's OWN office (v1.8.0 — PPDO-107): division split,
+    /// programme assignment, divisions and fund sources. ⚠️ The office is always
+    /// <see cref="OfficeId"/> — the flag carries no office of its own.
+    /// </summary>
+    public bool CanManageOfficeSetup { get; init; }
+
     // -- Password / recovery gates (RAL-266/RAL-267) ---------------------------
 
     /// <summary>

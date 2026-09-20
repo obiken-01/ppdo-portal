@@ -34,4 +34,7 @@ public sealed class SetPermissionsDto
 
     /// <summary>Per-user grant for Configuration → API Access (v1.8.0 — PPDO-86).</summary>
     public bool? OverrideCanManageApiKeys { get; init; }
+
+    /// <summary>PPDO-107 — own-office setup (division split, programmes, divisions, fund sources).</summary>
+    public bool? OverrideCanManageOfficeSetup { get; init; }
 }

@@ -66,6 +66,52 @@ public sealed class AllocationFunctions
     private Task<bool> CanAccessBudgetPlanning(User u) => _permissions.CanAccessBudgetPlanningAsync(u);
 
     /// <summary>
+    /// The gate on the two office-setup writes (PPDO-107): EITHER grant gets past authorization,
+    /// and which office the caller may then target is decided by <see cref="ResolveSetupScopeAsync"/>.
+    ///
+    /// ⚠️ Two steps on purpose. Folding the office comparison in here would mean answering
+    /// "may you write?" before the body — and therefore the target office — has been read.
+    /// </summary>
+    private async Task<bool> CanManageAllocationOrOfficeSetup(User u)
+        => await _permissions.CanManagePpdoAllocationAsync(u)
+        || await _permissions.CanManageOfficeSetupAsync(u);
+
+    /// <summary>How far a caller who got past <see cref="CanManageAllocationOrOfficeSetup"/> may reach.</summary>
+    private enum SetupScope
+    {
+        /// <summary>Neither path applies to the requested office — 403.</summary>
+        None,
+        /// <summary>Host-office PPDO caller with <c>CanManagePpdoAllocation</c> — any office, no state gate.</summary>
+        AnyOffice,
+        /// <summary>Department head with <c>CanManageOfficeSetup</c> — their own office, state-gated (D10).</summary>
+        OwnOffice,
+    }
+
+    /// <summary>
+    /// Resolves which path admits this caller for <paramref name="targetOfficeId"/>.
+    ///
+    /// ⚠️ **The PPDO path still demands host office** (`OfficeScope.Resolve(caller).SeeAll`).
+    /// `CanManagePpdoAllocation` is host-office-exclusive — `Permission_Matrix.md` §4a — and this
+    /// ticket must not become the back door that reopens what that rule closed: a guest-office
+    /// holder of it is refused here exactly as before, for their own office as well as a foreign one.
+    /// </summary>
+    private async Task<SetupScope> ResolveSetupScopeAsync(
+        User caller, Func<CancellationToken, Task<int?>> targetOfficeId, CancellationToken ct)
+    {
+        if (await _permissions.CanManagePpdoAllocationAsync(caller, ct)
+            && OfficeScope.Resolve(caller).SeeAll)
+            return SetupScope.AnyOffice;
+
+        // ⚠️ The target office is resolved LAST and lazily. A PPDO caller never needs it, and on
+        // the programme write resolving it costs a service call — which is also why a caller who
+        // holds neither grant must be refused before we reach it.
+        if (!await _permissions.CanManageOfficeSetupAsync(caller, ct)) return SetupScope.None;
+
+        int? target = await targetOfficeId(ct);
+        return target is int office && caller.OfficeId == office ? SetupScope.OwnOffice : SetupScope.None;
+    }
+
+    /// <summary>
     /// Clamps a caller-supplied officeId for the allocation-setup reads (PPDO-18). Call this
     /// AFTER the endpoint's int.TryParse validation so a malformed officeId is still a 400 rather
     /// than a silent fallback to the caller's own office.
@@ -289,17 +335,30 @@ public sealed class AllocationFunctions
         CancellationToken ct)
     {
         (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(
-            req, _jwt, _permissions, CanManagePpdoAllocation, ct);
+            req, _jwt, _permissions, CanManageAllocationOrOfficeSetup, ct);
         if (denied is not null || caller is null) return denied!;
-
-        if (!OfficeScope.Resolve(caller).SeeAll)
-            return req.CreateResponse(HttpStatusCode.Forbidden);
 
         UpsertAllocationsDto? body = await ConfigHttp.ReadBodyAsync<UpsertAllocationsDto>(req, ct);
         if (body is null)
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
                 ApiResponse<IReadOnlyList<DivisionAllocationDto>>.Fail(
                     "Request body is missing or malformed."), ct);
+
+        // ⚠️ Refused, never clamped to the caller's own office: silently rewriting which office a
+        // peso amount lands on is a worse failure than a 403 (this class's header).
+        SetupScope scope = await ResolveSetupScopeAsync(
+            caller, _ => Task.FromResult<int?>(body.OfficeId), ct);
+        if (scope is SetupScope.None)
+            return req.CreateResponse(HttpStatusCode.Forbidden);
+
+        // D10 — an office may set itself up while its own AIP is still in its hands. PPDO is not
+        // gated this way: it sets offices up across the whole cycle, acceptance included.
+        if (scope is SetupScope.OwnOffice
+            && !await _allocation.IsOfficeSetupEditableAsync(body.OfficeId, body.FiscalYear, ct))
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.Conflict,
+                ApiResponse<IReadOnlyList<DivisionAllocationDto>>.Fail(
+                    "This office's AIP is no longer in the office's hands for that fiscal year, "
+                    + "so its division allocation cannot be changed."), ct);
 
         ServiceResult<IReadOnlyList<DivisionAllocationDto>> result = await _allocation.UpsertAllocationsAsync(
             body.OfficeId, body.FiscalYear, body.FundingSourceId, body.Allocations, ct);
@@ -347,17 +406,27 @@ public sealed class AllocationFunctions
         CancellationToken ct)
     {
         (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(
-            req, _jwt, _permissions, CanManagePpdoAllocation, ct);
+            req, _jwt, _permissions, CanManageAllocationOrOfficeSetup, ct);
         if (denied is not null || caller is null) return denied!;
-
-        if (!OfficeScope.Resolve(caller).SeeAll)
-            return req.CreateResponse(HttpStatusCode.Forbidden);
 
         UpsertProgramAssignmentDto? body =
             await ConfigHttp.ReadBodyAsync<UpsertProgramAssignmentDto>(req, ct);
         if (body is null)
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
                 ApiResponse<ProgramAssignmentDto>.Fail("Request body is missing or malformed."), ct);
+
+        // ⚠️ The payload carries an AIP office REF CODE, not an office id, so the owning office is
+        // resolved before it can be compared — a department head must not assign another office's
+        // programme by sending its ref code. An unresolvable code is refused here rather than left
+        // for the service, which would answer NotFound and leak that the code matched no office.
+        SetupScope scope = await ResolveSetupScopeAsync(
+            caller, c => _allocation.ResolveOfficeIdForAipRefCodeAsync(body.OfficeRefCode, c), ct);
+        if (scope is SetupScope.None)
+            return req.CreateResponse(HttpStatusCode.Forbidden);
+
+        // ⚠️ No D10 state gate here, unlike the division split: a programme → division assignment
+        // carries no fiscal year (it is deliberately permanent across years — `ProgramDivision`),
+        // so there is no year whose workflow state could gate it.
 
         ServiceResult<ProgramAssignmentDto> result =
             await _allocation.UpsertProgramAssignmentAsync(body, ct);

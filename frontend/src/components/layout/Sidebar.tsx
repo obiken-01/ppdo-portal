@@ -152,8 +152,14 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
   // §4) — both its endpoints refuse a guest-office caller outright — so pairing it with
   // isOfficeUser here stops the nav offering a page whose writes will 403. A guest office
   // reaches it only through `CanManageOfficeCeilings`, which is deliberately cross-office.
+  // PPDO-107 replaces the ceiling holder here with the department head. Unlike the PPDO grant it
+  // is NOT paired with !isOfficeUser — a guest office is exactly who holds it.
+  //
+  // ↩️ **The ceiling grant no longer opens this page** (PPDO-106): ceilings are set on Office
+  // Ceilings now, and a ceiling-only holder who is not in the host office has no division split to
+  // see, so this link would have led them to a page that is read-only from top to bottom.
   const showAllocation     = (me?.canManagePpdoAllocation === true && !isOfficeUser)
-                          || me?.canManageOfficeCeilings === true;
+                          || me?.canManageOfficeSetup === true;
   // PPDO-106 — the ceilings page is the ceiling grant's own surface, and that grant is deliberately
   // cross-office, so this is NOT paired with isOfficeUser the way showAllocation is above.
   const showOfficeCeilings = me != null && canOpenOfficeCeilings(me);

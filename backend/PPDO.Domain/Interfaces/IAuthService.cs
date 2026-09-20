@@ -226,6 +226,12 @@ public sealed class MeResponse
     /// <summary>Per-user grant for Configuration → API Access (v1.8.0 — PPDO-86).</summary>
     public bool CanManageApiKeys { get; init; }
 
+    /// <summary>
+    /// Per-user grant for setting up the holder's OWN office (v1.8.0 — PPDO-107). The office is
+    /// always the holder's own — the flag carries no office of its own.
+    /// </summary>
+    public bool CanManageOfficeSetup { get; init; }
+
     // -- Password / recovery gates (RAL-266/RAL-267) ---------------------------
 
     /// <summary>True after a reset — the portal blocks everything except changing the password.</summary>

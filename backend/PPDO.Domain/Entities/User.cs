@@ -176,6 +176,25 @@ public sealed class User
     /// </summary>
     public bool? OverrideCanManageApiKeys { get; set; }
 
+    /// <summary>
+    /// Per-user grant for setting up the holder's OWN office (v1.8.0 — PPDO-107): its division
+    /// split, its programme → division assignment, its divisions and its fund sources. Held by a
+    /// department head. Like the other per-user grants this is NOT a division flag. Resolution:
+    /// SuperAdmin → true; everyone else → <c>OverrideCanManageOfficeSetup ?? false</c> (Admin is
+    /// NOT auto-granted).
+    ///
+    /// ⚠️ **Own office only, and that is the whole point.** It exists because
+    /// <see cref="OverrideCanManagePpdoAllocation"/> is host-office-exclusive and must stay so —
+    /// widening that flag instead would re-open the leak `Permission_Matrix.md` §4a closed, where a
+    /// guest-office account held it and was offered PPDO's division-allocation surface.
+    ///
+    /// Implies nothing and nothing implies it — in particular NOT
+    /// <see cref="OverrideCanReviewBudgetPlanning"/>: reviewing an office's work and configuring
+    /// that office are different jobs, and the same person holding both is a grant, not an
+    /// inference. Pinned by <c>PermissionMatrixTests</c> in both directions.
+    /// </summary>
+    public bool? OverrideCanManageOfficeSetup { get; set; }
+
     // ── Password reset (RAL-253) ────────────────────────────────────────────────
 
     /// <summary>
