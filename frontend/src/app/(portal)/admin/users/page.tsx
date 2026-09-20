@@ -75,6 +75,7 @@ const OVERRIDE_KEYS: {
   { key: "overrideCanReviewBudgetPlanning",     label: "Review Investment Planning (reviewer)", adminOnly: true },
   { key: "overrideCanReviewAllOffices",         label: "Review All Offices (cross-office)", adminOnly: true },
   { key: "overrideCanManageApiKeys",            label: "Manage API Keys", adminOnly: true },
+  { key: "overrideCanManageOfficeSetup",        label: "Set Up Own Office (department head)", adminOnly: true },
 ];
 
 /** Tabs in the Add/Edit User modal (RAL-268). */
@@ -769,6 +770,7 @@ export default function UsersPage() {
       overrideCanReviewBudgetPlanning:     user.overrideCanReviewBudgetPlanning,
       overrideCanReviewAllOffices:         user.overrideCanReviewAllOffices,
       overrideCanManageApiKeys:            user.overrideCanManageApiKeys,
+      overrideCanManageOfficeSetup:        user.overrideCanManageOfficeSetup,
     });
     setFormError(null);
   }

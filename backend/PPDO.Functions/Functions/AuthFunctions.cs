@@ -227,6 +227,7 @@ public sealed class AuthFunctions
             CanReviewBudgetPlanning = me.CanReviewBudgetPlanning,
             CanReviewAllOffices     = me.CanReviewAllOffices,
             CanManageApiKeys        = me.CanManageApiKeys,
+            CanManageOfficeSetup    = me.CanManageOfficeSetup,
             MustChangePassword      = me.MustChangePassword,
             NeedsRecoverySetup      = me.NeedsRecoverySetup,
             UnacknowledgedPasswordResetAt = me.UnacknowledgedPasswordResetAt,

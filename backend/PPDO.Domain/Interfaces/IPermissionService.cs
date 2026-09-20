@@ -141,4 +141,18 @@ public interface IPermissionService
     /// role default.
     /// </summary>
     Task<bool> CanManageApiKeysAsync(User user, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Whether the user may set up their OWN office (v1.8.0 — PPDO-107): the division split, the
+    /// programme → division assignment, division config and fund-source config, for the office in
+    /// <see cref="User.OfficeId"/> and no other.
+    ///
+    /// ⚠️ **This answers "may they configure an office at all", never "which office".** The office
+    /// comparison lives at the call site, because the target office comes from the request body —
+    /// see <c>AllocationFunctions</c>, where the caller's own office id is compared to it.
+    ///
+    /// Independent of <see cref="CanManagePpdoAllocationAsync"/> (host-office-exclusive, and it
+    /// stays that way) and of both reviewer grants, in both directions.
+    /// </summary>
+    Task<bool> CanManageOfficeSetupAsync(User user, CancellationToken cancellationToken = default);
 }

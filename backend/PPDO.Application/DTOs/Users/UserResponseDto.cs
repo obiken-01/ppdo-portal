@@ -40,6 +40,9 @@ public sealed class UserResponseDto
     public bool? OverrideCanReviewAllOffices { get; init; }
     public bool? OverrideCanManageApiKeys { get; init; }
 
+    /// <summary>PPDO-107 — own-office setup. Null = not granted (there is no division default).</summary>
+    public bool? OverrideCanManageOfficeSetup { get; init; }
+
     /// <summary>
     /// This user's own landing-page preference as an enum name, or null when unset.
     /// Distinct from the resolved path on /auth/me: this is what is stored, not what

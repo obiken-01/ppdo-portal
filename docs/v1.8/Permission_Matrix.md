@@ -105,7 +105,7 @@ The uploaded file contains *every* office's records, so upload is host-office-on
 
 Neither office nor division is read. A guest-office user holding the override resolves ✅.
 
-**None of the five implies any other.** Mutual independence is pinned by test in both directions
+**None of the six implies any other.** Mutual independence is pinned by test in both directions
 for each pair that could plausibly be conflated:
 
 | Flag | Who holds it | Added |
@@ -115,9 +115,16 @@ for each pair that could plausibly be conflated:
 | `CanReviewBudgetPlanning` | An office's reviewer — the department head who checks its work | PPDO-3 |
 | `CanReviewAllOffices` | Designated PPDO users who review **every** office's submissions | PPDO-5 |
 | `CanManageApiKeys` | Named person who issues/revokes partner API keys under Configuration → API Access | PPDO-15 |
+| `CanManageOfficeSetup` | A department head who sets up **their own office**: its division split, programme → division assignment, divisions and fund sources | PPDO-107 |
 
 > ⚠️ `CanManageOfficeCeilingsAsync` deliberately does **not** fall back to `CanManagePpdoAllocationAsync`.
 > OR-ing them would hand every PPDO finance officer authority over other offices' ceilings.
+>
+> ⚠️ `CanManageOfficeSetupAsync` is **not** a narrowed `CanManagePpdoAllocation`, and must never be
+> implemented as one. That flag is host-office-exclusive (§4a below) precisely because a guest-office
+> account once held it; this one exists so an office can configure **itself** without that rule being
+> relaxed. It also does not follow from either reviewer flag — reviewing an office's work and
+> configuring that office are different jobs, and one person holding both is a grant, not an inference.
 >
 > ⚠️ `CanManageApiKeysAsync` is independent of `CanManageConfigAsync`, `CanManageUsersAsync` and
 > `CanReviewAllOfficesAsync` in both directions — none of them implies it, and it implies none of
@@ -173,7 +180,9 @@ query that forgets `.Include(...)` degrades to **more** restrictive, never to fu
 
 ## 4. The cross-office exceptions (PPDO-5, PPDO-2)
 
-Two flags widen data scope past the caller's own office. Every other flag narrows to it.
+Two flags widen data scope past the caller's own office. Every other flag narrows to it —
+`CanManageOfficeSetup` (PPDO-107) narrows hardest of all: it grants **only** the caller's own
+office, compared at the endpoint against the office the request targets.
 
 | Flag | Widens what | Entry point | Added |
 |---|---|---|---|
@@ -229,6 +238,20 @@ not GSO's rows plus everyone else's.
 > `PUT /allocation/programs` (PPA assignment) stay on `Resolve` and are **host-office only** — see
 > the note below. `PUT /allocation/ceiling` is the one write the grant covers, and it carries no
 > office guard at all: the gate *is* the grant.
+>
+> ↩️ **Since PPDO-107 those two writes admit a second caller**, and only that one: a holder of
+> `CanManageOfficeSetup` whose own office id equals the office the request targets. The PPDO path
+> is unchanged and still demands host office, so the note below stands exactly as written — the
+> department head arrives through a different door, not through a widened one.
+>
+> The programme write carries an AIP office **ref code** rather than an office id, so the endpoint
+> resolves the code to its owning office before comparing (`ResolveOfficeIdForAipRefCodeAsync`);
+> an unresolvable code is a 403, not a NotFound, so the denial never confirms which codes exist.
+>
+> ⚠️ **One state gate, on the division split only** (`Office_Setup_Spec.md` D10): a department head
+> may write while their office holds at least one AIP group in an office-editable state, else
+> **409**. PPDO is never state-gated — it sets offices up across the whole cycle. The programme
+> write has no fiscal year at all (assignments are permanent across years), so no state can gate it.
 
 ### `CanManagePpdoAllocation` is exclusive to host-office users
 

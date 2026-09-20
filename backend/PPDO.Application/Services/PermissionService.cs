@@ -164,6 +164,18 @@ public sealed class PermissionService : IPermissionService
         return Task.FromResult(user.OverrideCanManageApiKeys ?? false);
     }
 
+    /// <inheritdoc />
+    public Task<bool> CanManageOfficeSetupAsync(User user, CancellationToken cancellationToken = default)
+    {
+        // Per-user grant only — Admin is NOT auto-granted. SuperAdmin bypasses for support.
+        // ⚠️ Deliberately NOT falling back to CanManagePpdoAllocation or either reviewer grant: the
+        // first is host-office-exclusive (§4a) and folding it in here would give a PPDO finance
+        // officer an own-office setup path they already have by another route, while folding in a
+        // reviewer grant would make every department head a configurator by inference.
+        if (user.Role is UserRole.SuperAdmin) return Task.FromResult(true);
+        return Task.FromResult(user.OverrideCanManageOfficeSetup ?? false);
+    }
+
     /// <summary>SuperAdmin and Admin get all standard feature flags by default.</summary>
     private static bool IsAdminOrAbove(User user)
         => user.Role is UserRole.SuperAdmin or UserRole.Admin;

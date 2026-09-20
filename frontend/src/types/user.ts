@@ -41,6 +41,7 @@ export interface UserResponse {
   overrideCanReviewBudgetPlanning: boolean | null;
   overrideCanReviewAllOffices: boolean | null;
   overrideCanManageApiKeys: boolean | null;
+  overrideCanManageOfficeSetup: boolean | null;
 }
 
 /**
@@ -82,6 +83,7 @@ export interface UpdateUserRequest extends CreateUserRequest {
   overrideCanReviewBudgetPlanning: boolean | null;
   overrideCanReviewAllOffices: boolean | null;
   overrideCanManageApiKeys: boolean | null;
+  overrideCanManageOfficeSetup: boolean | null;
 }
 
 // OfficeResponse / DivisionResponse live in ./config.ts — re-exported via the @/types barrel.

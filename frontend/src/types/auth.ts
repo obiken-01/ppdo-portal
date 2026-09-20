@@ -113,6 +113,10 @@ export interface MeResponse {
   canReviewAllOffices: boolean;
   /** Per-user grant for Configuration → API Access (v1.8.0 — PPDO-86). */
   canManageApiKeys: boolean;
+  /** Per-user grant to set up the holder's OWN office — division split, programmes, divisions and
+   *  fund sources (v1.8.0 — PPDO-107). ⚠️ The office is always {@link officeId}; the flag carries
+   *  no office of its own, and the endpoints compare it against the office each request targets. */
+  canManageOfficeSetup: boolean;
 
   /** True after a reset — the portal blocks everything except changing the password (RAL-266). */
   mustChangePassword: boolean;

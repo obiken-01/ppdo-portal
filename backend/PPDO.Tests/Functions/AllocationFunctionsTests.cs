@@ -484,6 +484,210 @@ public sealed class AllocationFunctionsTests
         _allocation.VerifyNoOtherCalls();
     }
 
+    // -- PPDO-107: the own-office setup grant ----------------------------------
+    //
+    // WARNING: the point of these is the pair. A department head reaches their OWN office and
+    // nothing else, while CanManagePpdoAllocation stays host-office-exclusive above. If widening
+    // one ever became a way into the other, the "TargetingOwnOffice_IsAlsoForbidden" test above
+    // is what fails.
+
+    private static ProgramAssignmentDto ProgramAssignment()
+        => new("GSO", "1000", "Programme", "GENERAL", new[] { DivisionId });
+
+    /// <summary>Grants (or denies) the PPDO-107 own-office setup flag for a caller.</summary>
+    private void WithOfficeSetup(User caller, bool granted = true)
+        => _permissions.Setup(p => p.CanManageOfficeSetupAsync(caller, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(granted);
+
+    [Fact]
+    public async Task UpsertDivisions_AsDepartmentHead_TargetingOwnOffice_IsAllowed()
+    {
+        User caller = Authenticate(Caller.PlainOfficeUser);
+        AllowWrite(caller);
+        WithOfficeSetup(caller);
+        _allocation.Setup(s => s.IsOfficeSetupEditableAsync(OwnOffice, FiscalYear, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        int captured = -1;
+        _allocation.Setup(s => s.UpsertAllocationsAsync(
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(),
+                It.IsAny<IReadOnlyList<UpsertDivisionAllocationDto>>(), It.IsAny<CancellationToken>()))
+            .Callback((int o, int _, int _, IReadOnlyList<UpsertDivisionAllocationDto> _, CancellationToken _)
+                => captured = o)
+            .ReturnsAsync(ServiceResult<IReadOnlyList<DivisionAllocationDto>>.Ok(new[] { Allocation() }));
+
+        HttpResponseData response = await Sut.UpsertDivisions(
+            FunctionHttp.Put(
+                new UpsertAllocationsDto(OwnOffice, FiscalYear, FundingSource,
+                    new[] { new UpsertDivisionAllocationDto(DivisionId, 500m) }),
+                path: "budget-planning/allocation/divisions"),
+            CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(OwnOffice, captured);
+    }
+
+    [Fact]
+    public async Task UpsertDivisions_AsDepartmentHead_TargetingAnotherOffice_ReturnsForbidden()
+    {
+        User caller = Authenticate(Caller.PlainOfficeUser);
+        AllowWrite(caller);
+        WithOfficeSetup(caller);
+
+        HttpResponseData response = await Sut.UpsertDivisions(
+            FunctionHttp.Put(
+                new UpsertAllocationsDto(ForeignOffice, FiscalYear, FundingSource,
+                    new[] { new UpsertDivisionAllocationDto(DivisionId, 500m) }),
+                path: "budget-planning/allocation/divisions"),
+            CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        // Refused, never quietly rewritten to their own office - the peso amounts would land
+        // somewhere the caller did not ask for.
+        _allocation.VerifyNoOtherCalls();
+    }
+
+    /// <summary>
+    /// D10 - once the office's AIP has left its hands for that year, its own split is frozen.
+    /// 409, not 403: the grant is intact, the moment has passed.
+    /// </summary>
+    [Fact]
+    public async Task UpsertDivisions_AsDepartmentHead_WhenTheOfficesAipIsNoLongerEditable_ReturnsConflict()
+    {
+        User caller = Authenticate(Caller.PlainOfficeUser);
+        AllowWrite(caller);
+        WithOfficeSetup(caller);
+        _allocation.Setup(s => s.IsOfficeSetupEditableAsync(OwnOffice, FiscalYear, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        HttpResponseData response = await Sut.UpsertDivisions(
+            FunctionHttp.Put(
+                new UpsertAllocationsDto(OwnOffice, FiscalYear, FundingSource,
+                    new[] { new UpsertDivisionAllocationDto(DivisionId, 500m) }),
+                path: "budget-planning/allocation/divisions"),
+            CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    }
+
+    /// <summary>
+    /// PPDO is NOT state-gated: it sets offices up across the whole cycle, acceptance included.
+    /// A host-office caller must therefore never even be asked whether the office is still editable.
+    /// </summary>
+    [Fact]
+    public async Task UpsertDivisions_AsHostOfficeCaller_IsNotStateGated()
+    {
+        User caller = Authenticate(Caller.HostOffice, canManagePpdoAllocation: true);
+        AllowWrite(caller);
+        _allocation.Setup(s => s.UpsertAllocationsAsync(
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(),
+                It.IsAny<IReadOnlyList<UpsertDivisionAllocationDto>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ServiceResult<IReadOnlyList<DivisionAllocationDto>>.Ok(new[] { Allocation() }));
+
+        HttpResponseData response = await Sut.UpsertDivisions(
+            FunctionHttp.Put(
+                new UpsertAllocationsDto(ForeignOffice, FiscalYear, FundingSource,
+                    new[] { new UpsertDivisionAllocationDto(DivisionId, 500m) }),
+                path: "budget-planning/allocation/divisions"),
+            CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        _allocation.Verify(s => s.IsOfficeSetupEditableAsync(
+            It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpsertProgram_AsDepartmentHead_TargetingOwnOfficesRefCode_IsAllowed()
+    {
+        User caller = Authenticate(Caller.PlainOfficeUser);
+        AllowWrite(caller);
+        WithOfficeSetup(caller);
+        _allocation.Setup(s => s.ResolveOfficeIdForAipRefCodeAsync("GSO", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OwnOffice);
+        _allocation.Setup(s => s.UpsertProgramAssignmentAsync(
+                It.IsAny<UpsertProgramAssignmentDto>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ServiceResult<ProgramAssignmentDto>.Ok(ProgramAssignment()));
+
+        HttpResponseData response = await Sut.UpsertProgram(
+            FunctionHttp.Put(
+                new UpsertProgramAssignmentDto("GSO", "1000", new[] { DivisionId }),
+                path: "budget-planning/allocation/programs"),
+            CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    /// <summary>
+    /// The ref code is another office's. Resolving it first is the whole reason this endpoint
+    /// needs the lookup - the payload carries no office id to compare.
+    /// </summary>
+    [Fact]
+    public async Task UpsertProgram_AsDepartmentHead_TargetingAnotherOfficesRefCode_ReturnsForbidden()
+    {
+        User caller = Authenticate(Caller.PlainOfficeUser);
+        AllowWrite(caller);
+        WithOfficeSetup(caller);
+        _allocation.Setup(s => s.ResolveOfficeIdForAipRefCodeAsync("PTO", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ForeignOffice);
+
+        HttpResponseData response = await Sut.UpsertProgram(
+            FunctionHttp.Put(
+                new UpsertProgramAssignmentDto("PTO", "1000", new[] { DivisionId }),
+                path: "budget-planning/allocation/programs"),
+            CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        _allocation.Verify(s => s.UpsertProgramAssignmentAsync(
+            It.IsAny<UpsertProgramAssignmentDto>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    /// <summary>An unresolvable ref code is refused rather than passed to the service.</summary>
+    [Fact]
+    public async Task UpsertProgram_AsDepartmentHead_WithAnUnresolvableRefCode_ReturnsForbidden()
+    {
+        User caller = Authenticate(Caller.PlainOfficeUser);
+        AllowWrite(caller);
+        WithOfficeSetup(caller);
+        _allocation.Setup(s => s.ResolveOfficeIdForAipRefCodeAsync("NOPE", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int?)null);
+
+        HttpResponseData response = await Sut.UpsertProgram(
+            FunctionHttp.Put(
+                new UpsertProgramAssignmentDto("NOPE", "1000", new[] { DivisionId }),
+                path: "budget-planning/allocation/programs"),
+            CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    /// <summary>
+    /// A user holding BOTH grants is a real case (PPDO finance who also heads a division). The
+    /// PPDO path is resolved first, so they keep cross-office reach and are not state-gated.
+    /// </summary>
+    [Fact]
+    public async Task UpsertDivisions_AsHostOfficeCallerHoldingBothGrants_KeepsCrossOfficeReach()
+    {
+        User caller = Authenticate(Caller.HostOffice, canManagePpdoAllocation: true);
+        AllowWrite(caller);
+        WithOfficeSetup(caller);
+        int captured = -1;
+        _allocation.Setup(s => s.UpsertAllocationsAsync(
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(),
+                It.IsAny<IReadOnlyList<UpsertDivisionAllocationDto>>(), It.IsAny<CancellationToken>()))
+            .Callback((int o, int _, int _, IReadOnlyList<UpsertDivisionAllocationDto> _, CancellationToken _)
+                => captured = o)
+            .ReturnsAsync(ServiceResult<IReadOnlyList<DivisionAllocationDto>>.Ok(new[] { Allocation() }));
+
+        HttpResponseData response = await Sut.UpsertDivisions(
+            FunctionHttp.Put(
+                new UpsertAllocationsDto(ForeignOffice, FiscalYear, FundingSource,
+                    new[] { new UpsertDivisionAllocationDto(DivisionId, 500m) }),
+                path: "budget-planning/allocation/divisions"),
+            CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(ForeignOffice, captured);
+    }
+
     /// <summary>
     /// The PPA assignment payload carries no office id at all — the office is resolved from
     /// <c>OfficeRefCode</c> inside the service — so there is nothing to clamp or compare here.

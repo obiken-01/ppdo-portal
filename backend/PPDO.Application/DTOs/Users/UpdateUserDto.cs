@@ -39,6 +39,7 @@ public sealed record UpdateUserDto(
     bool?    OverrideCanReviewBudgetPlanning  = null,
     bool?    OverrideCanReviewAllOffices     = null,
     bool?    OverrideCanManageApiKeys       = null,
+    bool?    OverrideCanManageOfficeSetup   = null,
     /// <summary>
     /// Preferred landing page: "MainDashboard" | "InventoryDashboard" |
     /// "BudgetPlanningDashboard" | "Profile". Null = no preference (RAL-262).

@@ -332,6 +332,11 @@ public sealed class AllocationService : IAllocationService
         string aipOfficeRefCode, CancellationToken ct)
         => AipOfficeOwnership.ResolveOfficeId(aipOfficeRefCode, await GetAllOfficesAsync(ct));
 
+    /// <inheritdoc />
+    public Task<int?> ResolveOfficeIdForAipRefCodeAsync(
+        string aipOfficeRefCode, CancellationToken ct = default)
+        => ResolveConfigOfficeIdAsync(aipOfficeRefCode, ct);
+
     public async Task<ServiceResult<ProgramAssignmentDto>> UpsertProgramAssignmentAsync(
         UpsertProgramAssignmentDto dto, CancellationToken ct = default)
     {
@@ -535,6 +540,23 @@ public sealed class AllocationService : IAllocationService
         }
 
         return result;
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> IsOfficeSetupEditableAsync(
+        int officeId, int fiscalYear, CancellationToken ct = default)
+    {
+        IReadOnlyList<AipRecord> allAip = await GetAllAipRecordsAsync(ct);
+        AipRecord? aipRecord = allAip.FirstOrDefault(
+            r => r.FiscalYear == fiscalYear && r.Status != PlanningStatus.Archived);
+        // No AIP record for the year yet — setup is exactly what happens first, so it is open.
+        if (aipRecord is null) return true;
+
+        IReadOnlyList<AipOffice> groups = await _aipRepo.GetOfficesByAipIdAsync(aipRecord.Id, ct);
+        List<AipOffice> own = groups.Where(g => g.OfficeId == officeId).ToList();
+        if (own.Count == 0) return true;
+
+        return own.Any(g => AipWorkflowStatus.IsOfficeEditable(g.WorkflowStatus));
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
