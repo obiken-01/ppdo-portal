@@ -76,7 +76,7 @@ stays exclusive to host-office users (`Permission_Matrix.md` §4a), which is wha
 | A department head with the grant | Opens Configuration → Divisions | Only their own office's divisions are listed; no office column or picker |
 | The same | Creates a division | It is created in **their** office with all seven switches off (D9) |
 | The same | Sends a request setting a switch | The switch is **ignored**, and the response carries the stored value |
-| The same | Deactivates a division that has users or allocations | Blocked, with a message naming what still uses it |
+| The same | Deactivates a division | ↩️ **Deviation, PPDO-108:** it deactivates, as it always has for an admin. The spec first said "blocked when users or allocations use it" — but delete here is already a reversible soft delete (`IsActive = false`), nothing cascades, and adding an in-use block would change how admins have always worked. Revisit as its own ticket if an office deactivates a division out from under live allocations. |
 | An admin | Opens the same page | Unchanged: every office, switches visible |
 
 ### 3.4 Fund sources (department head)
