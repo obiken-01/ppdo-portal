@@ -580,6 +580,13 @@ function AllocationPageInner() {
   // ── Tab 2: PPA → Division ─────────────────────────────────────────────────
 
   const [localAssignments, setLocalAssignments] = useState<Record<string, number[]>>({});
+  /**
+   * What the server last told us, so the tab can tell a CHANGED assignment from an untouched one
+   * (PPDO-108 follow-up). ↩️ There were two always-enabled Save buttons before this, top and
+   * bottom, and each re-sent every programme on the page — one PUT per row whether or not anything
+   * about it had moved.
+   */
+  const [savedAssignments, setSavedAssignments] = useState<Record<string, number[]>>({});
   const [multiDivision, setMultiDivision] = useState<Record<string, boolean>>({});
   const [showUnassignedOnly, setShowUnassignedOnly] = useState(false);
   const [savingPpa, setSavingPpa] = useState(false);
@@ -717,6 +724,7 @@ function AllocationPageInner() {
       setAllocationInputsByFund({});
       setPrograms([]);
       setLocalAssignments({});
+      setSavedAssignments({});
       setMultiDivision({});
       setCheckedPrograms(new Set());
       return;
@@ -785,6 +793,7 @@ function AllocationPageInner() {
           multi[key] = p.divisionIds.length > 1;
         }
         setLocalAssignments(assignments);
+        setSavedAssignments(assignments);
         setMultiDivision(multi);
         setCheckedPrograms(new Set());
         setBulkDivisionId(null);
@@ -876,24 +885,54 @@ function AllocationPageInner() {
     setBulkDivisionId(null);
   }
 
+  /**
+   * The programmes whose division set differs from what the server returned.
+   *
+   * ⚠️ Compared as SETS: the radio and the multi-select build the array in click order, so
+   * [2,1] and [1,2] are the same assignment and must not read as a change.
+   */
+  const dirtyPpaKeys = useMemo(() => {
+    const changed: string[] = [];
+    for (const p of programs) {
+      const key = `${p.officeRefCode}:${p.programRefCode}`;
+      const now = [...(localAssignments[key] ?? [])].sort((a, b) => a - b);
+      const before = [...(savedAssignments[key] ?? [])].sort((a, b) => a - b);
+      if (now.length !== before.length || now.some((id, i) => id !== before[i])) changed.push(key);
+    }
+    return changed;
+  }, [programs, localAssignments, savedAssignments]);
+
+  function discardPpaChanges() {
+    setLocalAssignments(savedAssignments);
+    setCheckedPrograms(new Set());
+    setBulkDivisionId(null);
+  }
+
   async function handleSavePpa() {
     if (!canEditSelectedOfficeSetup) return;
-    if (savingPpa || programs.length === 0) return;
+    if (savingPpa || dirtyPpaKeys.length === 0) return;
     setSavingPpa(true);
     let failed = 0;
+    // Only what changed — the whole page used to go up on every click, which on a large office
+    // was dozens of writes to record one radio button.
+    const saved: Record<string, number[]> = { ...savedAssignments };
     try {
-      for (const p of programs) {
-        const key = `${p.officeRefCode}:${p.programRefCode}`;
+      for (const key of dirtyPpaKeys) {
+        const [officeRefCode, programRefCode] = key.split(":");
         try {
           await upsertProgram({
-            officeRefCode: p.officeRefCode,
-            programRefCode: p.programRefCode,
+            officeRefCode,
+            programRefCode,
             divisionIds: localAssignments[key] ?? [],
           });
+          saved[key] = [...(localAssignments[key] ?? [])];
         } catch {
           failed++;
         }
       }
+      // ⚠️ The baseline advances only for the rows that actually landed, so a partial failure
+      // leaves exactly the failed ones still marked unsaved rather than pretending all is well.
+      setSavedAssignments(saved);
       if (failed > 0) {
         toast.error("Partial failure", `${failed} program(s) could not be saved.`);
       } else {
@@ -1157,17 +1196,9 @@ function AllocationPageInner() {
                         </div>
                       )}
 
-                      {/* Save button — top-right */}
-                      <button
-                        onClick={handleSavePpa}
-                        disabled={savingPpa || programs.length === 0}
-                        className="px-4 py-1.5 bg-green-700 text-white text-sm font-medium hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                      >
-                        {savingPpa && (
-                          <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        )}
-                        Save
-                      </button>
+                      {/* ↩️ The Save that used to sit here is gone, along with its twin below the
+                          grid: with four programmes both were on screen at once, and neither said
+                          whether there was anything to save. One bar now appears only when there is. */}
                       </div>
                     </div>
 
@@ -1352,19 +1383,36 @@ function AllocationPageInner() {
                       </p>
                     )}
 
-                    {/* Save button — bottom-right */}
-                    {programs.length > 0 && (
-                      <div className="flex justify-end mt-3">
-                        <button
-                          onClick={handleSavePpa}
-                          disabled={savingPpa}
-                          className="px-4 py-2 bg-green-700 text-white text-sm font-medium hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                        >
-                          {savingPpa && (
-                            <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          )}
-                          Save
-                        </button>
+                    {/* Unsaved changes bar — the tab's only save control.
+                        ⚠️ Sticky to the bottom of the scroll area, so a long office's list can be
+                        edited from anywhere without scrolling back for a button. It renders only
+                        when something differs from what the server returned, which is also what
+                        makes the count trustworthy. */}
+                    {dirtyPpaKeys.length > 0 && (
+                      <div className="sticky bottom-0 z-10 mt-3 flex items-center justify-between gap-3 border border-green-200 bg-green-50 px-4 py-3">
+                        <p className="text-sm text-slate-800">
+                          <span className="font-semibold tabular-nums">{dirtyPpaKeys.length}</span>{" "}
+                          {dirtyPpaKeys.length === 1 ? "program" : "programs"} changed
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={discardPpaChanges}
+                            disabled={savingPpa}
+                            className="px-3 py-2 text-sm text-slate-600 hover:text-slate-800 disabled:opacity-50 transition-colors"
+                          >
+                            Discard
+                          </button>
+                          <button
+                            onClick={handleSavePpa}
+                            disabled={savingPpa}
+                            className="px-4 py-2 bg-green-700 text-white text-sm font-medium hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                          >
+                            {savingPpa && (
+                              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            )}
+                            Save
+                          </button>
+                        </div>
                       </div>
                     )}
                   </>
