@@ -161,6 +161,18 @@ public interface IAipExpenditureRepository : IRepository<AipExpenditure>
     // AipExpenditure.Total has a private setter and can only be set through Recalculate(). That is
     // enforced by the type rather than by convention, which is the stronger guarantee and the
     // reason no AddLineAsync appears here.
+
+    /// <summary>
+    /// How many AIP rows name <paramref name="fundingSourceId"/> — the "is this fund still in use?"
+    /// count behind the delete guard on an office's own fund (v1.8.0 — PPDO-109). Counted in SQL.
+    ///
+    /// ⚠️ <b>Spans two tables:</b> <c>aip_expenditures</c> (a costed line) and <c>aip_activities</c>
+    /// (the activity-level fund an import or a manual entry sets). Both carry a
+    /// <c>FundingSourceId</c> and either one makes the fund in use, so a count of only the first
+    /// would report "0 rows" for a fund an office had picked on every activity. The sum comes back
+    /// as one number because the caller only needs to say how many rows would be left dangling.
+    /// </summary>
+    Task<int> CountByFundingSourceAsync(int fundingSourceId, CancellationToken ct = default);
 }
 
 /// <summary>

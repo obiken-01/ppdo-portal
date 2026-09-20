@@ -30,8 +30,8 @@ public sealed class AllocationServiceTests
         new() { Id = id, OfficeId = officeId, Name = $"Division {id}",
                 IsActive = true, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
 
-    private static FundingSource MakeFundingSource(int id, string code, string name) =>
-        new() { Id = id, Code = code, Name = name, IsActive = true,
+    private static FundingSource MakeFundingSource(int id, string code, string name, int? officeId = null) =>
+        new() { Id = id, Code = code, Name = name, IsActive = true, OfficeId = officeId,
                 CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
 
     private static BudgetCeiling MakeCeiling(int officeId, int fy, decimal amount, int fundingSourceId = GfFundId) =>
@@ -1149,6 +1149,40 @@ public sealed class AllocationServiceTests
             It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
         allocRepo.Verify(r => r.GetByFiscalYearAndFundingSourceAsync(
             It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // ── PPDO-109 D7 — the canonical General Fund is a SHARED row ─────────────
+
+    [Fact]
+    public async Task GetGeneralFundIdAsync_IgnoresAnOfficeFundCodedGf()
+    {
+        // ⚠️ The unique index on code should make this row impossible, so this test is about what
+        // happens when it exists anyway — forced in by hand, by a restore, or by someone later
+        // scoping that index per office. The ceiling arithmetic, the division-allocation ledger and
+        // every province-wide total are built on there being ONE General Fund, and it is PPDO's.
+        // Resolving an office's copy instead would silently move a whole office off the shared
+        // ceiling with nothing failing to show it.
+        (AllocationService sut, _, _, _, _, _, _, _) = Build(fundingSources:
+        [
+            MakeFundingSource(99, "GF", "GSO General Fund", officeId: 7),
+            MakeFundingSource(GfFundId, "GF", "General Fund"),
+        ]);
+
+        int? resolved = await sut.GetGeneralFundIdAsync();
+
+        Assert.Equal(GfFundId, resolved);
+    }
+
+    [Fact]
+    public async Task GetGeneralFundIdAsync_WithOnlyAnOfficeFundCodedGf_ResolvesNull()
+    {
+        // Null, not the office's row. Callers already handle null by skipping the ceiling queries
+        // (see GetSetupOverview_NoGeneralFundConfigured_SkipsAllocationQuery above), so "no shared
+        // General Fund configured" degrades to doing nothing rather than to using the wrong fund.
+        (AllocationService sut, _, _, _, _, _, _, _) =
+            Build(fundingSources: [MakeFundingSource(99, "GF", "GSO General Fund", officeId: 7)]);
+
+        Assert.Null(await sut.GetGeneralFundIdAsync());
     }
 
     // ── Request-scoped reference-data caching (RAL-166 follow-up, round 3) ───

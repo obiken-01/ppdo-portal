@@ -184,4 +184,16 @@ public sealed class AipExpenditureRepository : Repository<AipExpenditure>, IAipE
                 g.Sum(e => (decimal?)e.Mooe) ?? 0m,
                 g.Sum(e => (decimal?)e.Co) ?? 0m))
             .ToListAsync(ct);
+
+    /// <inheritdoc />
+    public async Task<int> CountByFundingSourceAsync(int fundingSourceId, CancellationToken ct = default)
+    {
+        // Two sequential counts, not Task.WhenAll — they share one DbContext, which is not
+        // thread-safe (CLAUDE.md, and the prod 500 in GetStatsAsync that taught it).
+        int lines = await _context.Set<AipExpenditure>()
+            .CountAsync(e => e.FundingSourceId == fundingSourceId, ct);
+        int activities = await _context.Set<AipActivity>()
+            .CountAsync(a => a.FundingSourceId == fundingSourceId, ct);
+        return lines + activities;
+    }
 }

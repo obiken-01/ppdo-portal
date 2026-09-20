@@ -363,7 +363,15 @@ public sealed class AipService : IAipService
             return ServiceResult<AipRecordDto>.BadRequest(frozen);
 
         // Load funding source lookup for snapshot population — needed by both paths below.
-        IReadOnlyList<FundingSource> fsList = await _fsRepo.GetAllAsync(ct);
+        //
+        // ⚠️ SHARED funds only — office_id null (v1.8.0 PPDO-109). An upload is a PPDO bulk path
+        // that can carry several offices in one workbook, and the cell it matches is free text. Codes
+        // are globally unique (D6), so an unfiltered lookup would let one office's workbook silently
+        // resolve to ANOTHER office's private fund on a code collision. Unmatched is the safe answer:
+        // FundingSourceId stays null and the raw label is kept in FundingSourceSnapshot.
+        IReadOnlyList<FundingSource> fsList = (await _fsRepo.GetAllAsync(ct))
+            .Where(f => f.OfficeId is null)
+            .ToList();
         Dictionary<string, FundingSource> fsDict =
             fsList.ToDictionary(f => f.Code, StringComparer.OrdinalIgnoreCase);
 
