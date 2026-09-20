@@ -44,8 +44,14 @@ export default function BulkCeilingModal({
   onClose,
   onApplied,
 }: {
-  /** Only offices WITHOUT a ceiling this year are worth carrying forward. */
-  offices: OfficeSummary[];
+  /**
+   * Only offices WITHOUT a ceiling this year are worth carrying forward.
+   *
+   * ⚠️ Structural, not `OfficeSummary` (PPDO-106): the Office Ceilings page holds rows of its own
+   * shape and needs this modal too. Naming the three fields it actually reads lets both callers
+   * pass what they have instead of faking a dashboard row.
+   */
+  offices: Pick<OfficeSummary, "officeId" | "officeCode" | "officeName">[];
   fiscalYear: number;
   priorFiscalYear: number;
   onClose: () => void;

@@ -35,7 +35,7 @@ import PasswordResetNotice from "@/components/layout/PasswordResetNotice";
 import { ToastProvider } from "@/components/ui/Toast";
 import type { MeResponse, RefreshErrorReason } from "@/types";
 import { resolveLandingPath } from "@/lib/landing";
-import { canOpenBudgetPlanningReport } from "@/lib/budget-planning-access";
+import { canOpenBudgetPlanningReport, canOpenOfficeCeilings } from "@/lib/budget-planning-access";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api";
 
@@ -244,7 +244,11 @@ export default function PortalLayout({
     // ⚠️ So it READS the rule rather than restating it. Anything else here is how this drifts again.
     const ppdoOnlyBudgetPlanning =
       pathname.startsWith("/budget-planning/wfp") ||
-      (pathname.startsWith("/budget-planning/report") && !canOpenBudgetPlanningReport(me));
+      (pathname.startsWith("/budget-planning/report") && !canOpenBudgetPlanningReport(me)) ||
+      // PPDO-106 — same shape as the line above: it reads the page's own rule instead of
+      // restating "PPDO only". The ceiling grant is cross-office by design, so a guest-office
+      // finance user who holds it keeps the page; everyone else in a guest office is sent back.
+      (pathname.startsWith("/budget-planning/office-ceilings") && !canOpenOfficeCeilings(me));
     const allowed =
       (pathname.startsWith("/budget-planning") && !ppdoOnlyBudgetPlanning) ||
       // /profile only redirects to /account (RAL-252); allowing it lets that redirect land
