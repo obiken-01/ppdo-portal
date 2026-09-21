@@ -65,8 +65,10 @@ so teardown is a single delete.
         no longer has.
   - [ ] .NET 9 **isolated** · Consumption plan
   - [ ] Application settings — §2 below
-  - [ ] **CORS** → add the UAT Static Web App URL once you have it (step below).
-        ⚠️ Portal only. `host.json` CORS does **not** work for the isolated worker.
+  - [ ] **CORS** → add the UAT Static Web App URL once you have it (step below), **and tick
+        "Enable Access-Control-Allow-Credentials"**. ⚠️ Two settings in two places are needed, and
+        each is silently useless without the other — see §2. `host.json` CORS does **not** work for
+        the isolated worker.
   - [ ] ⚠️ **Configuration → General settings → SCM Basic Auth Publishing Credentials = On**, then
         Apply. Azure defaults new Function Apps to **off**; `deploy-uat.yml` (like `deploy.yml`)
         POSTs the zip to the SCM endpoint using MSDeploy credentials taken from the publish profile,
@@ -115,15 +117,49 @@ to `http://localhost:3000,http://localhost:4280`** — the Static Web App then g
 all and every browser request is blocked, which presents as a working API that the site cannot talk
 to.
 
-The app also emits `Access-Control-Allow-Credentials: true` itself, so the portal CORS blade's
-"Enable Access-Control-Allow-Credentials" checkbox is **not** what makes the refresh-token cookie
-work. Adding the origin in the portal blade as well is harmless and matches what production does; if
-a browser ever reports a *duplicate* `Access-Control-Allow-Origin` header, remove it there and let
-this setting stand alone.
+### ⚠️ The app setting alone is not enough — the portal blade overrides it
 
-> ⚠️ `CLAUDE.md` still says to add new origins in **Azure Portal → Function App → CORS**. That
-> predates RAL-58 and is stale on its own — doing only that leaves the allowlist on its localhost
-> fallback.
+**Both layers are live, and the platform one wins.** Once *any* origin is listed in
+**Function App → API → CORS**, Azure's platform CORS answers the `OPTIONS` preflight at the front
+end and the request never reaches the worker — so `Program.cs` never runs and never adds
+`Access-Control-Allow-Credentials: true`. Login then fails in the browser with:
+
+```
+Response to preflight request doesn't pass access control check: The value of the
+'Access-Control-Allow-Credentials' header in the response is '' which must be 'true'
+when the request's credentials mode is 'include'.
+```
+
+The app *does* emit that header itself, which is why this looks like it should work — but only for
+requests that get as far as the app. So, on the CORS blade:
+
+- [ ] Add the UAT Static Web App origin (no trailing slash)
+- [ ] ⚠️ **Tick "Enable Access-Control-Allow-Credentials"** — required, not optional. The
+      refresh-token cookie is sent with `withCredentials: true`, and without this the preflight
+      fails before any credential is ever checked.
+
+⚠️ **Do not try to fix this by emptying the blade instead.** With origins configured the platform
+layer is *subtractive*: an unlisted origin gets `400 The origin '…' is not allowed` from Azure, not
+a fall-through to the app's own allowlist.
+
+**Diagnosing it.** `x-ms-middleware-request-id` in the response identifies the platform layer as the
+one answering, and Azure's 400 wording gives it away too:
+
+```bash
+curl -s -o /dev/null -D - -X OPTIONS \
+  "https://<function-app>.azurewebsites.net/api/auth/login" \
+  -H "Origin: https://<swa-host>" \
+  -H "Access-Control-Request-Method: POST" \
+  -H "Access-Control-Request-Headers: content-type"
+```
+
+Healthy output carries **both** `Access-Control-Allow-Origin` and
+`Access-Control-Allow-Credentials: true`. Repeat against a real endpoint (a wrong-password `POST` to
+`/api/auth/login` is ideal — a `401` with both headers present proves the request reached the app).
+
+> ⚠️ `CLAUDE.md` says to add new origins in **Azure Portal → Function App → CORS**. That is correct
+> but incomplete: it predates RAL-58, and doing only that leaves `Cors__AllowedOrigins` on its
+> localhost fallback. Both places need the origin, and the blade needs the credentials checkbox.
 
 ---
 
