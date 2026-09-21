@@ -11,23 +11,30 @@
 
 ## 1. Database — the one irreversible part
 
-v1.8.0 carries migrations that production has never seen — **15 as of the end of Phase 2**, and the
-count grows as later phases land. **Recheck it at release time rather than trusting this number**;
-it has already drifted once (it read 13 between 2026-09-03 morning and the end of the phase, having
-been written before V18-32's and V18-40's migrations landed):
+v1.8.0 carries migrations that production has never seen — **23 as of 2026-09-21, the full
+release**. The count has drifted twice now (13 → 15 → 23), so **recheck it rather than trusting any
+number written here**:
 
 ```bash
-git diff --name-only main release/1.8.0 -- backend/PPDO.Infrastructure/Data/Migrations | grep -v Designer
+git diff --name-only main release/1.8.0 -- backend/PPDO.Infrastructure/Data/Migrations \
+  | grep -v Designer | grep -v ModelSnapshot
 ```
 
-All of them so far are additive (new tables, columns, permission flags) except one:
+All of them are additive (new tables, columns, permission flags) except one:
 
 | Order | Migration | Kind |
 |---|---|---|
 | 1–12 | `20260824030231_AddLandingPage` … `20260902131412_AddAipExpenditures` | Schema, additive |
 | **13** | **`20260903004121_MigrateAipAmountsToPesos`** | ⚠️ **Rewrites existing values in place** |
 | 14 | `20260903023255_AddAipOfficeOwnershipFk` (V18-32 / PPDO-33) | Schema, additive — **plus a backfill** |
-| 15 | `20260903045149_AddAipRecordOwningOffice` (V18-40 / PPDO-39) | Schema, additive |
+| 15–23 | `20260907020223_AddAipDivisionAllocationLedger` … `20260920234022_AddFundingSourceOfficeId` | Schema, additive |
+
+↩️ **`20260903045149_AddAipRecordOwningOffice` was listed here as #15 and no longer exists.** PPDO-61
+reversed the office-owned record shape and **dropped** the migration rather than reversing it,
+because it had never run against production. Nothing to do at release — noted because a reader
+comparing this table against a database will otherwise go looking for it. (A local dev database that
+predates PPDO-61 *does* carry the row and an orphaned `aip_records.office_id` column; production
+does not, and that asymmetry is correct.)
 
 ⚠️ **#14 writes data, and that is still additive.** It adds `aip_offices.office_id` and fills it
 from the ref-code suffix, so every row it touches is a column it created in the same migration.
@@ -42,8 +49,17 @@ data rather than add to it.
 > manual test cases, how to read a failure, and when `Down` is and is not a valid rollback. The
 > summary below is the checklist; the runbook is what you actually work from on the day.
 
-- [ ] **Rehearse against a copy of production first** (runbook §1a). A local restore of a prod
+- [x] **Rehearse against a copy of production first** (runbook §1a). A local restore of a prod
       `.bacpac` costs nothing and exercises the real rows through the real UI.
+
+      ✅ **Done 2026-09-21.** Ralph restored production into a local `ppdo-portal-db-prod` and ran
+      all 23 migrations against it successfully. That database is now the **post-migration** state of
+      real production data, which makes the ratio check below a straight comparison rather than a
+      leap of faith — see the recorded numbers under each step.
+
+      ⚠️ The older `PPDOPortalDev` is NOT the rehearsal database. It predates PPDO-61 and carries
+      the dropped `AddAipRecordOwningOffice` row plus an orphaned `aip_records.office_id`. Read the
+      numbers from `ppdo-portal-db-prod`.
 
 - [ ] **Capture the baseline sums first.** Non-negotiable — run this against production and keep
       the output. Applied without a baseline, the question "is this number right?" has no answer
@@ -60,6 +76,16 @@ data rather than add to it.
       ORDER  BY r.fiscal_year;
       ```
 
+      **Rehearsal reference, measured 2026-09-21** against `ppdo-portal-db-prod` *after* the
+      migrations ran. Production, still unmigrated, must therefore read **1/1000 of this** when the
+      baseline is captured — if it does not, stop and work out why before applying anything:
+
+      | FY | activities | `SUM(total)` AFTER | so prod BEFORE must read |
+      |---|---|---|---|
+      | 2027 | 2,304 | `32,562,217,860.00` | `32,562,217.86` |
+
+      One fiscal year only — FY2028 has no production rows yet.
+
 - [ ] **Confirm a restore path exists before running it.** Azure SQL Basic keeps automatic
       point-in-time restore (7 days by default — confirm the retention in the portal rather than
       assuming it). If PITR is not confirmed, take an export/copy first. Do not rely on the
@@ -69,14 +95,26 @@ data rather than add to it.
       `SqlConnectionString` pointing at `ppdo-portal-db`. One command applies all 15, in timestamp
       order.
 
-      ⚠️ **The units migration is #13 of 15, not last** — an earlier draft of this checklist said
-      it ran last, and it does not. Two schema migrations sort after it. That is **safe, and worth
-      understanding rather than working around**: neither of them touches `aip_activities` money
-      columns at all (#14 adds and fills `aip_offices.office_id`, #15 adds `aip_records.office_id`),
-      so the ratio check below is still valid run at the end. **Do not reorder them by hand** —
-      renaming migrations to force the units one last would break the applied-migrations history for
-      no gain. What does matter is the order already guaranteed: `AddAipExpenditures` (#12) creates
-      its table before #13 runs.
+      ⚠️ **The units migration is #13 of 23, not last** — an earlier draft of this checklist said
+      it ran last, and it does not. **Ten** schema migrations sort after it (the draft said two).
+      That is **safe, and worth understanding rather than working around**: none of the ten touches
+      `aip_activities` at all. Verified 2026-09-21 by grepping every one of them for
+      `table: "aip_activities"` (zero hits) and for raw `Sql()` calls — there is exactly one, in #14,
+      and it writes `aip_offices.office_id`, a column that same migration creates. So the ratio check
+      below is still valid run at the end.
+
+      **Do not reorder them by hand** — renaming migrations to force the units one last would break
+      the applied-migrations history for no gain. What does matter is the order already guaranteed:
+      `AddAipExpenditures` (#12) creates its table before #13 runs.
+
+      ↩️ **Re-verify this if more migrations land before release.** The claim is "nothing after #13
+      writes `aip_activities`", and it is only as current as the last time someone checked:
+
+      ```bash
+      cd backend/PPDO.Infrastructure/Data/Migrations
+      grep -l 'table: "aip_activities"' 2026090[4-9]* 202609[1-9]* 2026[1-9]*  # expect: no output
+      grep -c 'Sql(' 2026090[4-9]* 202609[1-9]* 2026[1-9]*                    # expect: all zero
+      ```
 
 - [ ] **Re-run the baseline query and check the ratio.** Every fiscal year's `SUM(total)` must be
       **exactly** its before-value × 1000. Not approximately — exactly. A year that is off by any
@@ -85,6 +123,12 @@ data rather than add to it.
 - [ ] **Spot-check that NULLs survived.** `SUM(CASE WHEN total IS NULL THEN 1 ELSE 0 END)` per
       year must be unchanged. An uncosted activity has no amount; it must not have become 0, which
       would read as "costed at nothing" in the dashboard's costed counts.
+
+      **Rehearsal reference (post-migration, 2026-09-21):** FY2027 — 2,304 activities, **21 NULL**
+      totals, **4 genuine zeros**. Capture the same two counts from production *before* applying;
+      21 and 4 must come back unchanged afterwards. The zeros matter as much as the NULLs here:
+      they are what a NULL would have turned into, so a run that produced 25 zeros and 0 NULLs would
+      still pass a naive "is anything NULL" check.
 
 - [ ] **Record the AIP ownership backfill's unmatched count** (V18-32 / PPDO-33). That migration is
       additive — it adds `aip_offices.office_id` and fills it from the ref-code suffix — so it
@@ -106,6 +150,27 @@ data rather than add to it.
       carries `01-004`). Production will differ; a non-zero count is expected and fine, but it must
       be *seen*.
 
+      ✅ **Measured against the production copy, 2026-09-21: 37 `aip_offices` rows, 36 matched,
+      1 unmatched — the same `3000-000-1-01-004`.** So this is production's row, not a local
+      artefact. Detail:
+
+      | | |
+      |---|---|
+      | ref code | `3000-000-1-01-004` (SOCIAL sector, blank name) |
+      | holds | 1 program, 1 project, **0 activities, ₱0** |
+      | why unmatched | no configured office carries the suffix `01-004` — the `offices` table jumps `01-003` (SPO) → `01-005` (PTO); `01-002` is absent too |
+
+      **Impact today is nil and it is still worth resolving.** The row carries no money and no
+      activities, so nothing is hidden from anyone right now — but it is permanently invisible to
+      every scoped read, so if someone later encodes into it, that work silently disappears.
+      Two clean options, Ralph's call:
+
+      1. **Create/assign** the office that `01-004` is meant to be, and set `office_id` on the row.
+      2. **Delete the empty shell** — it has one program and one project, both empty, and no
+         activities. Cheapest, and reversible from the same backup the units migration needs anyway.
+
+      ⚠️ Do this *after* the migrations and *before* announcing the release, per the step above.
+
 > ⚠️ **`Down` is not a general rollback.** It divides by 1000, which exactly reverses the multiply
 > — but only while nothing has been written since. The moment a user saves an AIP activity through
 > the migrated UI, that row holds a genuine peso amount, and rolling back divides *that* by 1000
@@ -116,14 +181,31 @@ data rather than add to it.
 
 ## 2. Application
 
-- [ ] `APP_VERSION` reads `v1.8.0` in all three places — `components/layout/Sidebar.tsx`,
-      `components/landing/Footer.tsx`, `app/(public)/login/page.tsx`. They have drifted apart
-      before.
-- [ ] CLAUDE.md's **Implementation Status** section and its footer date stamp updated for v1.8.0.
-- [ ] `dotnet test` green on the release branch — the suite is the safety net that makes a change
-      this size tractable (`docs/v1.8/RETROSPECTIVE.md`).
+- [x] ✅ **`APP_VERSION` reads `v1.8.0`.** ↩️ **There is no longer anything to keep in sync**: the
+      constant moved to a single `frontend/src/lib/version.ts`, which `Sidebar.tsx`, `Footer.tsx`
+      and `login/page.tsx` all import. Verified 2026-09-21 — one definition, three importers, no
+      hardcoded version strings left outside comments. The old "check all three places" instruction
+      is kept here only so a reader knows the drift it guarded against was fixed, not forgotten.
+
+- [ ] **CLAUDE.md's Implementation Status section and its footer date stamp updated for v1.8.0.**
+      ⚠️ **Outstanding as of 2026-09-21** — both still read v1.7.4 / 2026-08-27 (lines ~601 and
+      ~831). Needs: a v1.8.0 row in the release-history table, the Linear-milestones table marked
+      done, and the "Next: v1.8.0 — AIP Redesign (in planning)" section replaced with what actually
+      shipped.
+
+- [x] ✅ **`dotnet test` green on the release branch** — **2,381 passed, 0 failed**, run 2026-09-21
+      on `release/1.8.0` at `279bd64` (the PPDO-109 merge). The suite is the safety net that makes a
+      change this size tractable (`docs/v1.8/RETROSPECTIVE.md`); it has grown from the 1,061 tests
+      that retrospective was written against.
+
 - [ ] Azure Functions **CORS** on `ppdo-portal-api-sea` still lists the SWA origin. Configured in
-      the portal, not `host.json`.
+      the portal, not `host.json`. (Portal-only — cannot be checked from the repo.)
+
+- [ ] **Confirm the release's own migration applies cleanly to Azure SQL**, specifically
+      `20260920234022_AddFundingSourceOfficeId` (PPDO-109, the last one in). It is additive with no
+      backfill, so it changes no behaviour on its own — but the new code reads
+      `funding_sources.office_id` unconditionally, so **every funding-source read fails if the code
+      deploys before the migration runs**. Migration first, then merge to `main`.
 
 ---
 
