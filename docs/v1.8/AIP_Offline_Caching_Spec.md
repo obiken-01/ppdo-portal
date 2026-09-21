@@ -1,7 +1,8 @@
 ---
-status: ready — open questions resolved 2026-09-21, not yet ticketed in Linear
+status: ready — open questions resolved and ticketed 2026-09-21
 version: v1.8.1 (deferred out of v1.8.0)
-tickets: V18-64, V18-65, V18-66, V18-67 — no PPDO-* identifiers yet
+tickets: PPDO-112 (V18-64) · PPDO-111 (V18-65) · PPDO-113 (V18-66) · PPDO-114 (V18-67)
+milestone: v1.8.1 — AIP Offline Caching Groundwork
 supersedes: nothing — narrows `Phase_Plan.md` §8, which lists V18-64…69
 ---
 
@@ -256,10 +257,10 @@ a shared component prematurely (only one consumer exists in this pass).
 
 | Ticket | Scope | Blocked by |
 |---|---|---|
-| V18-64 | IndexedDB draft mirror for AIP Entry's activity descriptive fields (name, eSRE, implementing office, dates, expected outputs), restore-prompt UX ported from the WFP pattern | — |
-| V18-65 | Shared reference-data cache module (`idb`-backed), wired into AIP Entry for accounts, funding sources, price index, offices, divisions, CC typologies. ⚠️ Funding sources keys per office (decision 8) | — |
-| V18-66 | Ceiling/allocation cache with explicit staleness labeling, wired into the readiness panel | V18-65 (shares the cache module) |
-| V18-67 | eSRE codes sourced from `GET /config/esre-codes` via the same cache instead of the hardcoded `AIP_ESRE_OPTIONS` array | V18-65 |
+| **V18-64** — PPDO-112 | IndexedDB draft mirror for AIP Entry's activity descriptive fields (name, eSRE, implementing office, dates, expected outputs), restore-prompt UX ported from the WFP pattern | — |
+| **V18-65** — PPDO-111 | Shared reference-data cache module (`idb`-backed), wired into AIP Entry for accounts, funding sources, price index, offices, divisions, CC typologies. ⚠️ Funding sources keys per office (decision 8) | — |
+| **V18-66** — PPDO-113 | Ceiling/allocation cache with explicit staleness labeling, wired into the readiness panel | PPDO-111 (shares the cache module) |
+| **V18-67** — PPDO-114 | eSRE codes sourced from `GET /config/esre-codes` via the same cache instead of the hardcoded `AIP_ESRE_OPTIONS` array | PPDO-111 |
 
 V18-65 is the natural first ticket (the shared module), with 66 and 67 building on it. V18-64 (the
 draft mirror) is independent and can land in either order.
