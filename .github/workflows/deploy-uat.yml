@@ -1,0 +1,180 @@
+# UAT deployment (PPDO-21).
+#
+# A deliberate near-copy of deploy.yml. UAT exists to rehearse the production
+# deploy, so the mechanics are kept identical on purpose — same publish, same ZIP
+# deploy to the SCM endpoint, same smoke test, same migration flag. Only the
+# target resources and three build-time env vars differ. Keep the two files in
+# step: a change to deploy.yml that is not mirrored here turns the rehearsal into
+# a rehearsal of something else.
+#
+# Targets everything in ppdo-portal-uat-rg (Southeast Asia, colocated with the
+# database per RAL-237). Nothing here can reach production — different secrets,
+# different hostnames, different resource group.
+name: Deploy UAT
+
+on:
+  push:
+    branches:
+      - uat
+  # Re-run a deploy without an empty commit — useful while the environment is
+  # still being stood up.
+  workflow_dispatch:
+
+jobs:
+  deploy-api:
+    name: Deploy Functions to Azure (UAT)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The migration-flag step below diffs this push's commit range, which a
+          # shallow clone cannot see.
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Publish Functions
+        run: |
+          dotnet publish backend/PPDO.Functions/PPDO.Functions.csproj \
+            --configuration Release \
+            --output ${{ github.workspace }}/publish/api
+
+      - name: Zip published output
+        run: |
+          cd ${{ github.workspace }}/publish/api
+          zip -r ${{ github.workspace }}/publish/function.zip .
+
+      # ⚠️ Requires SCM Basic Auth Publishing Credentials = On for this app.
+      # Azure defaults new Function Apps to OFF, which leaves the publish profile
+      # carrying no usable credentials and makes this POST return 401.
+      - name: Deploy to Azure Functions via ZIP deploy
+        env:
+          PUBLISH_PROFILE: ${{ secrets.AZURE_FUNCTIONS_PUBLISH_PROFILE_UAT }}
+        run: |
+          # Extract MSDeploy credentials from publish profile XML
+          USER=$(echo "$PUBLISH_PROFILE" | python3 -c "
+          import sys, xml.etree.ElementTree as ET
+          root = ET.parse(sys.stdin).getroot()
+          p = root.find('.//publishProfile[@publishMethod=\"MSDeploy\"]')
+          print(p.get('userName'))
+          ")
+          PASS=$(echo "$PUBLISH_PROFILE" | python3 -c "
+          import sys, xml.etree.ElementTree as ET
+          root = ET.parse(sys.stdin).getroot()
+          p = root.find('.//publishProfile[@publishMethod=\"MSDeploy\"]')
+          print(p.get('userPWD'))
+          ")
+
+          curl -X POST \
+            "https://ppdo-portal-api-uat-ayfhgjbwatb5dxhc.scm.southeastasia-01.azurewebsites.net/api/zipdeploy" \
+            -u "${USER}:${PASS}" \
+            --data-binary @${{ github.workspace }}/publish/function.zip \
+            --fail \
+            --silent \
+            --show-error
+
+      # /api/health needs no auth and returns 503 when the database is
+      # unreachable, so it checks both tiers. Consumption scales to zero after
+      # ~10 min and a freshly-deployed app is cold by definition, so this polls
+      # rather than asking once.
+      - name: Smoke test — wait for /api/health
+        run: |
+          HEALTH="https://ppdo-portal-api-uat-ayfhgjbwatb5dxhc.southeastasia-01.azurewebsites.net/api/health"
+          ATTEMPTS=20      # 20 x 15s = 5 minutes, well past a worst-case cold start
+          SLEEP=15
+
+          for i in $(seq 1 $ATTEMPTS); do
+            CODE=$(curl -s -o /tmp/health.json -w '%{http_code}' --max-time 30 "$HEALTH" || echo "000")
+
+            if [ "$CODE" = "200" ]; then
+              echo "✅ Healthy after ${i} attempt(s)."
+              cat /tmp/health.json
+              exit 0
+            fi
+
+            # 503 means the API is up but the database is not reachable. That is a
+            # real failure, not a cold start — but give it a couple of tries first,
+            # since the DB connection can lag the worker coming up.
+            if [ "$CODE" = "503" ] && [ "$i" -ge 4 ]; then
+              echo "::error::/api/health returned 503 — API is up but the database is unreachable."
+              cat /tmp/health.json
+              exit 1
+            fi
+
+            echo "  attempt ${i}/${ATTEMPTS}: HTTP ${CODE} — waiting ${SLEEP}s"
+            sleep $SLEEP
+          done
+
+          echo "::error::/api/health never returned 200 after $((ATTEMPTS * SLEEP))s. The deploy is not serving."
+          cat /tmp/health.json 2>/dev/null || true
+          exit 1
+
+      # CI does not run EF migrations. On UAT that is the point rather than a
+      # footnote: merging release/1.8.0 into this branch brings 23 of them, one of
+      # which rewrites existing AIP amounts, and rehearsing that by hand is the
+      # whole reason uat is cut from main.
+      - name: Flag migrations needing a manual apply
+        if: always()
+        run: |
+          BEFORE="${{ github.event.before }}"
+          RANGE="${BEFORE}..${{ github.sha }}"
+
+          # First push to a branch, a force-push, or a workflow_dispatch run gives
+          # an all-zero or empty SHA.
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            RANGE="${{ github.sha }}~1..${{ github.sha }}"
+          fi
+
+          MIGRATIONS=$(git diff --name-only --diff-filter=A "$RANGE" -- \
+            'backend/PPDO.Infrastructure/Data/Migrations/*.cs' 2>/dev/null \
+            | grep -v '\.Designer\.cs$' | grep -v 'ModelSnapshot' || true)
+
+          if [ -n "$MIGRATIONS" ]; then
+            {
+              echo "### ⚠️ MIGRATION REQUIRED (UAT)"
+              echo ""
+              echo "This deploy adds EF Core migrations. **CI does not apply them** — run this"
+              echo "against \`ppdo-portal-db-uat\` or the new code will run against an old schema:"
+              echo ""
+              echo '```bash'
+              echo "dotnet ef database update --project backend/PPDO.Infrastructure --startup-project backend/PPDO.Functions"
+              echo '```'
+              echo ""
+              echo "New migrations in this push:"
+              echo "$MIGRATIONS" | sed 's|.*/|- |'
+            } >> "$GITHUB_STEP_SUMMARY"
+
+            echo "::warning title=Migration required::This deploy adds migrations. Run 'dotnet ef database update' against ppdo-portal-db-uat — CI does not."
+            echo "$MIGRATIONS"
+          else
+            echo "No new migrations in this push."
+          fi
+
+  deploy-frontend:
+    name: Deploy Frontend to Azure Static Web Apps (UAT)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Azure Static Web Apps
+        uses: azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_UAT }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: upload
+          app_location: frontend
+          output_location: out
+        env:
+          # Baked into the Next.js build at compile time. Points directly at the
+          # UAT Functions app — SWA Free tier does not support API linking.
+          NEXT_PUBLIC_API_BASE_URL: https://ppdo-portal-api-uat-ayfhgjbwatb5dxhc.southeastasia-01.azurewebsites.net/api
+          # ⚠️ These two are a PAIR — both are required.
+          # NOINDEX alone is not enough: SITE_URL falls back to the PRODUCTION
+          # host, so a noindexed UAT build would still emit canonical tags, a
+          # sitemap and an Open Graph origin pointing at the real government site.
+          NEXT_PUBLIC_SITE_URL: https://ambitious-tree-039b1fa00.2.azurestaticapps.net
+          NEXT_PUBLIC_NOINDEX: "true"
