@@ -117,6 +117,19 @@ export interface FundingSourceResponse {
   isActive: boolean;
   /** Pipe-delimited alternate names, matched against AIP fund-source labels. Null = none. */
   aliases: string | null;
+  /**
+   * Owning office, or null for a province-wide fund (PPDO-109). A fund with an office belongs to
+   * that office alone and is invisible to every other one.
+   */
+  officeId: number | null;
+  /**
+   * True when the fund is province-wide and PPDO's — the same fact as `officeId === null`, sent so
+   * the UI has one thing to read when deciding what to render read-only.
+   */
+  isShared: boolean;
+  /** Owning office's code / name. Null on a shared fund. */
+  officeCode: string | null;
+  officeName: string | null;
 }
 
 /** Create/update body for a funding source. code is the unique key. */
@@ -129,6 +142,15 @@ export interface UpsertFundingSourceRequest {
   isActive: boolean;
   /** Pipe-delimited alternate names, matched against AIP fund-source labels. Null = none. */
   aliases: string | null;
+  /**
+   * Owning office for a new fund, or null for province-wide (PPDO-109).
+   *
+   * ⚠️ Honoured on CREATE only, and only for a config manager. A department head's value is
+   * overwritten server-side with their own office, and an UPDATE ignores the field entirely —
+   * ownership is set once, at creation. Omit it unless you are PPDO creating a fund on an office's
+   * behalf.
+   */
+  officeId?: number | null;
 }
 
 // ---------------------------------------------------------------------------

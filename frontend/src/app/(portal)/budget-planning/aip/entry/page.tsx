@@ -250,15 +250,19 @@ export default function AipEntryPage() {
   useEffect(() => { void load(); }, [load]);
 
   // Reference data, fetched once and off the critical path — the page renders without it.
+  //
+  // PPDO-109 — the fund picker asks for THIS office's funds, so it shows the province-wide list plus
+  // whatever this office added. `officeId` here is the office whose groups this page edits, which is
+  // the encoder's own; the server clamps it anyway, so it can only ever narrow.
   useEffect(() => {
     void listAccounts().then(setAccounts).catch(() => setAccounts([]));
     void listOffices({ active: "true" }).then(setOffices).catch(() => setOffices([]));
-    void listFundingSources({ active: "true" }).then(setFunds).catch(() => setFunds([]));
+    void listFundingSources({ active: "true", officeId }).then(setFunds).catch(() => setFunds([]));
     void listPriceIndexForPicker({ active: "true" })
       .then(setPriceIndex)
       .catch(() => setPriceIndex([]))
       .finally(() => setPriceIndexLoading(false));
-  }, []);
+  }, [officeId]);
 
   async function refreshReadiness() {
     if (!record) return;

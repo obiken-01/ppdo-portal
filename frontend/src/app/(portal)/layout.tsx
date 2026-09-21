@@ -258,6 +258,11 @@ export default function PortalLayout({
       // everything outside /budget-planning to a guest office, so the page's own rule would
       // never get a chance to run.
       (pathname.startsWith("/config/divisions") && me.canManageOfficeSetup) ||
+      // PPDO-109 — the second Configuration page a guest office can reach: their own office's fund
+      // sources, beside PPDO's province-wide list, and only while they hold the grant. Listed for
+      // the same reason as divisions above: this gate closes everything outside /budget-planning to
+      // a guest office, so the page's own rule would never get a chance to run.
+      (pathname.startsWith("/config/funding-sources") && me.canManageOfficeSetup) ||
       pathname.startsWith("/profile") ||
       pathname.startsWith("/account") ||
       // /home resolves the destination itself; letting the gate fire here too would

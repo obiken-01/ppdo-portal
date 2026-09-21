@@ -1026,7 +1026,9 @@ function WfpEntryPageInner() {
         const [detail, accts, funds] = await Promise.all([
           getAipSummary(aipId),
           listAccounts({ active: "true" }),
-          listFundingSources({ active: "true" }),
+          // PPDO-109 — the funds of the office this WFP belongs to: the province-wide list plus that
+          // office's own. Resolved from the selected office, not from the signed-in user.
+          listFundingSources({ active: "true", officeId }),
         ]);
         if (cancelled) return;
         setAipDetail(detail);

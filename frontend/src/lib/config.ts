@@ -359,15 +359,27 @@ export async function importOfficesCsv(csvText: string): Promise<CsvImportResult
 export interface FundingSourceListParams {
   search?: string;
   active?: ActiveFilter;
+  /**
+   * Whose funds to return alongside the shared ones (PPDO-109). **Pass the office of the RECORD
+   * being edited, not the signed-in user's** — a PPDO reviewer opening another office's AIP needs
+   * that office's funds in the picker, and resolving it from `me.officeCode` would hand them their
+   * own instead.
+   *
+   * The server clamps it: an office user asking for someone else's office still gets their own, so
+   * this can never widen what a caller sees. Omitting it gives a PPDO caller every office's funds
+   * (the Configuration page's view) and any other caller their own.
+   */
+  officeId?: number | null;
 }
 
-/** GET /api/config/funding-sources — list with optional search / status filters. */
+/** GET /api/config/funding-sources — list with optional search / status / office filters. */
 export async function listFundingSources(
   params: FundingSourceListParams = {},
 ): Promise<FundingSourceResponse[]> {
   const query: Record<string, string> = {};
   if (params.search?.trim()) query.search = params.search.trim();
   if (params.active) query.active = params.active;
+  if (params.officeId != null) query.officeId = String(params.officeId);
 
   const { data } = await api.get<ApiResponse<FundingSourceResponse[]>>("/config/funding-sources", {
     params: query,
@@ -378,11 +390,18 @@ export async function listFundingSources(
 /** Code identifying the General Fund row — matches AllocationService's GeneralFundCode (v1.4.3). */
 export const GENERAL_FUND_CODE = "GF";
 
-/** Resolves the General Fund entry from a funding-source list, for callers not yet fund-aware. */
+/**
+ * Resolves the General Fund entry from a funding-source list, for callers not yet fund-aware.
+ *
+ * ⚠️ Matches a **shared** row only, mirroring `AllocationService.GetGeneralFundIdAsync` (PPDO-109,
+ * D7). There is one canonical General Fund and the ceiling arithmetic is built on it; an office row
+ * coded `GF` should be impossible (codes are globally unique) but if one ever exists, resolving it
+ * here would point a ceiling screen at the wrong fund with nothing failing to show it.
+ */
 export function findGeneralFund(
   fundingSources: FundingSourceResponse[],
 ): FundingSourceResponse | null {
-  return fundingSources.find((f) => f.code === GENERAL_FUND_CODE) ?? null;
+  return fundingSources.find((f) => f.code === GENERAL_FUND_CODE && f.isShared) ?? null;
 }
 
 /** POST /api/config/funding-sources — create a new funding source. */
