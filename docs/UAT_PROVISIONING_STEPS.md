@@ -67,7 +67,13 @@ so teardown is a single delete.
   - [ ] Application settings — §2 below
   - [ ] **CORS** → add the UAT Static Web App URL once you have it (step below).
         ⚠️ Portal only. `host.json` CORS does **not** work for the isolated worker.
-  - [ ] Download the **publish profile** → GitHub secret (§3)
+  - [ ] ⚠️ **Configuration → General settings → SCM Basic Auth Publishing Credentials = On**, then
+        Apply. Azure defaults new Function Apps to **off**; `deploy-uat.yml` (like `deploy.yml`)
+        POSTs the zip to the SCM endpoint using MSDeploy credentials taken from the publish profile,
+        so with basic auth off the profile carries no usable password and the deploy returns **401**.
+        Production predates that default, which is why this is not a problem there.
+  - [ ] Download the **publish profile** → GitHub secret (§3) — *after* the step above; the
+        credentials are absent from a profile downloaded while basic auth is off
 
 - [ ] **Static Web App** — `ppdo-portal-uat`
       **Free** plan · deployment source **"Other"** (the workflow deploys it, not SWA's own pipeline)
@@ -90,6 +96,7 @@ Mirror production, with **two deliberate differences**:
 | `FUNCTIONS_WORKER_RUNTIME` | `dotnet-isolated` |
 | `AzureWebJobsStorage` | connection string for `ppdoportaluatstorage` |
 | `SqlConnectionString` | connection string for `ppdo-portal-db-uat` |
+| `Cors__AllowedOrigins` | ⚠️ The **UAT** Static Web App URL — see below |
 | `Jwt__SecretKey` | ⚠️ **A NEW value, 32+ chars — must differ from production** |
 | `Jwt__Issuer` | ⚠️ The **UAT** Static Web App URL |
 | `Jwt__Audience` | `ppdo-portal` |
@@ -99,6 +106,24 @@ Mirror production, with **two deliberate differences**:
 
 ⚠️ **`Jwt__SecretKey` must be unique to UAT.** Share production's signing key and a token minted by
 UAT validates against production. That is the single most damaging thing you could copy across.
+
+⚠️ **`Cors__AllowedOrigins` is what actually governs CORS — not the portal's CORS blade.** RAL-58
+replaced the old origin echo-back with an allowlist read from this app setting
+(`Program.cs`, a comma-separated list; double underscore, no trailing slash, compared with
+`OrdinalIgnoreCase` string equality against the `Origin` header). **Leave it unset and it falls back
+to `http://localhost:3000,http://localhost:4280`** — the Static Web App then gets no CORS headers at
+all and every browser request is blocked, which presents as a working API that the site cannot talk
+to.
+
+The app also emits `Access-Control-Allow-Credentials: true` itself, so the portal CORS blade's
+"Enable Access-Control-Allow-Credentials" checkbox is **not** what makes the refresh-token cookie
+work. Adding the origin in the portal blade as well is harmless and matches what production does; if
+a browser ever reports a *duplicate* `Access-Control-Allow-Origin` header, remove it there and let
+this setting stand alone.
+
+> ⚠️ `CLAUDE.md` still says to add new origins in **Azure Portal → Function App → CORS**. That
+> predates RAL-58 and is stale on its own — doing only that leaves the allowlist on its localhost
+> fallback.
 
 ---
 
