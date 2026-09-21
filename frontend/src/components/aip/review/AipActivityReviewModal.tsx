@@ -86,11 +86,19 @@ export default function AipActivityReviewModal({
   }, [refresh]);
 
   // Account and fund names for the lines. Off the critical path — the modal renders without them.
+  //
+  // PPDO-109 — the funds asked for are the ACTIVITY's office (`review.officeId`), never the reader's
+  // (`readerOfficeId`). Those differ exactly when a PPDO reviewer is looking at someone else's work,
+  // which is the case this modal exists for. Runs again once `review` arrives; a null office id
+  // means "not loaded yet" and the server falls back to the reader's own scope.
+  const reviewedOfficeId = review?.officeId ?? null;
   useEffect(() => {
     void listAccounts().then(setAccounts).catch(() => setAccounts([]));
     void listOffices({ active: "true" }).then(setOffices).catch(() => setOffices([]));
-    void listFundingSources({ active: "true" }).then(setFunds).catch(() => setFunds([]));
-  }, []);
+    void listFundingSources({ active: "true", officeId: reviewedOfficeId })
+      .then(setFunds)
+      .catch(() => setFunds([]));
+  }, [reviewedOfficeId]);
 
   // ⚠️ ~6,400 rows feeding only the line editor's item PICKER, so it is fetched only for a reader
   // who can open that editor — never for the PPDO reviewer (RAL-231).

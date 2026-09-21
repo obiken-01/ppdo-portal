@@ -11,17 +11,31 @@ namespace PPDO.Tests.Application;
 /// <summary>
 /// Unit tests for <see cref="FundingSourceService"/> (RAL-70 + RAL-77): CSV upsert by code,
 /// key uniqueness, soft delete, and audit log calls.
+///
+/// v1.8.0 (PPDO-109) adds the per-office half: the shared-plus-own-office read filter, the office
+/// stamp on create, the usage guard on an office fund's delete, and the CSV round trip that must not
+/// move a fund between offices.
 /// </summary>
 public sealed class FundingSourceServiceTests
 {
-    private static FundingSource Fs(int id, string code, string name, bool active = true) => new()
+    private static FundingSource Fs(int id, string code, string name, bool active = true, int? officeId = null) => new()
     {
-        Id = id, Code = code, Name = name, IsActive = active,
+        Id = id, Code = code, Name = name, IsActive = active, OfficeId = officeId,
         CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
     };
 
+    private const int GsoOfficeId  = 7;
+    private const int PhoOfficeId  = 9;
+
+    private static List<Office> DefaultOffices() =>
+    [
+        new() { Id = GsoOfficeId, OfficeCode = "GSO", OfficeName = "General Services Office", IsActive = true },
+        new() { Id = PhoOfficeId, OfficeCode = "PHO", OfficeName = "Provincial Health Office", IsActive = true },
+    ];
+
     private static (FundingSourceService sut, Mock<IRepository<FundingSource>> repo) Build(
-        List<FundingSource> seed, IAuditService? audit = null)
+        List<FundingSource> seed, IAuditService? audit = null,
+        int wfpUsage = 0, int aipUsage = 0, List<Office>? offices = null)
     {
         Mock<IRepository<FundingSource>> repo = new();
         repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(seed);
@@ -30,8 +44,21 @@ public sealed class FundingSourceServiceTests
             .Returns(Task.CompletedTask);
         repo.Setup(r => r.UpdateAsync(It.IsAny<FundingSource>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
-        return (new FundingSourceService(repo.Object, NullLogger<FundingSourceService>.Instance,
-            audit ?? Mock.Of<IAuditService>()), repo);
+
+        Mock<IRepository<Office>> officeRepo = new();
+        officeRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(offices ?? DefaultOffices());
+
+        Mock<IWfpExpenditureRepository> wfpExp = new();
+        wfpExp.Setup(r => r.CountByFundingSourceAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(wfpUsage);
+        Mock<IAipExpenditureRepository> aipExp = new();
+        aipExp.Setup(r => r.CountByFundingSourceAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(aipUsage);
+
+        return (new FundingSourceService(
+            repo.Object, officeRepo.Object, wfpExp.Object, aipExp.Object,
+            NullLogger<FundingSourceService>.Instance, audit ?? Mock.Of<IAuditService>()), repo);
     }
 
     private static (FundingSourceService sut, Mock<IRepository<FundingSource>> repo, Mock<IAuditService> audit)
@@ -284,5 +311,305 @@ public sealed class FundingSourceServiceTests
 
         Assert.Equal(1, result.Value!.Updated);
         Assert.Equal("GAD|GAD FUND|5% GAD", seed.Single().Aliases);
+    }
+
+    // ── PPDO-109 — per-office funds ───────────────────────────────────────────
+
+    [Fact]
+    public async Task GetAllAsync_ForAnOffice_ReturnsSharedPlusOwnOnly()
+    {
+        List<FundingSource> seed =
+        [
+            Fs(1, "GF",   "General Fund"),
+            Fs(2, "GAD",  "5% GAD Fund"),
+            Fs(3, "GSOX", "GSO Motorpool Fund", officeId: GsoOfficeId),
+            Fs(4, "PHOX", "PHO Trust Receipts", officeId: PhoOfficeId),
+        ];
+        (FundingSourceService sut, _) = Build(seed);
+
+        IReadOnlyList<FundingSourceDto> rows =
+            await sut.GetAllAsync(search: null, ActiveFilter.All, visibleToOfficeId: GsoOfficeId);
+
+        Assert.Equal(["GAD", "GF", "GSOX"], rows.Select(r => r.Code).OrderBy(c => c));
+        Assert.DoesNotContain("PHOX", rows.Select(r => r.Code));
+    }
+
+    [Fact]
+    public async Task GetAllAsync_ForAnOffice_KeepsTheSharedFunds_NotJustItsOwn()
+    {
+        // The rule is shared PLUS own, never own INSTEAD OF shared — an encoder needs the General
+        // Fund far more than their office's additions (D5). Stated separately from the test above
+        // because getting this half wrong empties every picker in the app for a guest office.
+        List<FundingSource> seed = [Fs(1, "GF", "General Fund"), Fs(3, "GSOX", "GSO Fund", officeId: GsoOfficeId)];
+        (FundingSourceService sut, _) = Build(seed);
+
+        IReadOnlyList<FundingSourceDto> rows =
+            await sut.GetAllAsync(null, ActiveFilter.All, visibleToOfficeId: GsoOfficeId);
+
+        Assert.Contains("GF", rows.Select(r => r.Code));
+        Assert.Equal(2, rows.Count);
+    }
+
+    [Fact]
+    public async Task GetAllAsync_WithNoOfficeId_ReturnsEveryOfficesFunds()
+    {
+        // The config manager's cross-office view — the only caller who gets it.
+        List<FundingSource> seed =
+        [
+            Fs(1, "GF",   "General Fund"),
+            Fs(3, "GSOX", "GSO Fund", officeId: GsoOfficeId),
+            Fs(4, "PHOX", "PHO Fund", officeId: PhoOfficeId),
+        ];
+        (FundingSourceService sut, _) = Build(seed);
+
+        IReadOnlyList<FundingSourceDto> rows = await sut.GetAllAsync(null, ActiveFilter.All);
+
+        Assert.Equal(3, rows.Count);
+    }
+
+    [Fact]
+    public async Task GetAllAsync_ForAnOfficeThatOwnsNothing_ReturnsTheSharedFundsOnly()
+    {
+        // OfficeScope.NoOffice (0) lands here for a caller with no office: nothing owns office 0, so
+        // they see the shared list and no more. The safe degradation, not full access (DECISION F).
+        List<FundingSource> seed = [Fs(1, "GF", "General Fund"), Fs(3, "GSOX", "GSO Fund", officeId: GsoOfficeId)];
+        (FundingSourceService sut, _) = Build(seed);
+
+        IReadOnlyList<FundingSourceDto> rows = await sut.GetAllAsync(null, ActiveFilter.All, visibleToOfficeId: 0);
+
+        Assert.Equal(["GF"], rows.Select(r => r.Code));
+    }
+
+    [Fact]
+    public async Task GetAllAsync_SharedFundsSortFirst()
+    {
+        List<FundingSource> seed =
+        [
+            Fs(3, "AAA_OFFICE", "Office fund", officeId: GsoOfficeId),
+            Fs(1, "ZZZ_SHARED", "Shared fund"),
+        ];
+        (FundingSourceService sut, _) = Build(seed);
+
+        IReadOnlyList<FundingSourceDto> rows = await sut.GetAllAsync(null, ActiveFilter.All, GsoOfficeId);
+
+        Assert.Equal("ZZZ_SHARED", rows[0].Code);   // shared first, despite sorting last by code
+        Assert.Equal("AAA_OFFICE", rows[1].Code);
+    }
+
+    [Fact]
+    public async Task GetAllAsync_LabelsTheOwningOffice_AndMarksSharedRows()
+    {
+        (FundingSourceService sut, _) = Build(
+            [Fs(1, "GF", "General Fund"), Fs(3, "GSOX", "GSO Fund", officeId: GsoOfficeId)]);
+
+        IReadOnlyList<FundingSourceDto> rows = await sut.GetAllAsync(null, ActiveFilter.All);
+
+        FundingSourceDto shared = rows.Single(r => r.Code == "GF");
+        Assert.True(shared.IsShared);
+        Assert.Null(shared.OfficeCode);
+
+        FundingSourceDto own = rows.Single(r => r.Code == "GSOX");
+        Assert.False(own.IsShared);
+        Assert.Equal("GSO", own.OfficeCode);
+        Assert.Equal("General Services Office", own.OfficeName);
+    }
+
+    [Fact]
+    public async Task GetAllAsync_CombinesTheOfficeFilterWithSearchAndStatus()
+    {
+        // The three filters compose — an office filter that quietly replaced the others would show a
+        // department head inactive funds on an Active-only page.
+        List<FundingSource> seed =
+        [
+            Fs(1, "GF",   "General Fund"),
+            Fs(3, "GSOX", "GSO Motorpool", officeId: GsoOfficeId),
+            Fs(5, "GSOY", "GSO Retired",   active: false, officeId: GsoOfficeId),
+            Fs(4, "PHOX", "PHO Motorpool", officeId: PhoOfficeId),
+        ];
+        (FundingSourceService sut, _) = Build(seed);
+
+        IReadOnlyList<FundingSourceDto> rows =
+            await sut.GetAllAsync("motorpool", ActiveFilter.Active, visibleToOfficeId: GsoOfficeId);
+
+        Assert.Equal(["GSOX"], rows.Select(r => r.Code));
+    }
+
+    [Fact]
+    public async Task CreateAsync_WithAnOfficeId_StampsTheFundToThatOffice()
+    {
+        List<FundingSource> seed = [Fs(1, "GF", "General Fund")];
+        (FundingSourceService sut, _) = Build(seed);
+
+        ServiceResult<FundingSourceDto> result = await sut.CreateAsync(
+            new UpsertFundingSourceDto("GSOX", "GSO Motorpool Fund", null, OfficeId: GsoOfficeId));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(GsoOfficeId, result.Value!.OfficeId);
+        Assert.False(result.Value.IsShared);
+        Assert.Equal("GSO", result.Value.OfficeCode);
+        Assert.Equal(GsoOfficeId, seed.Single(f => f.Code == "GSOX").OfficeId);
+    }
+
+    [Fact]
+    public async Task CreateAsync_WithNoOfficeId_CreatesASharedFund()
+    {
+        List<FundingSource> seed = [];
+        (FundingSourceService sut, _) = Build(seed);
+
+        ServiceResult<FundingSourceDto> result =
+            await sut.CreateAsync(new UpsertFundingSourceDto("SEF", "Special Education Fund", null));
+
+        Assert.True(result.Value!.IsShared);
+        Assert.Null(seed.Single().OfficeId);
+    }
+
+    [Fact]
+    public async Task CreateAsync_WithAnUnknownOfficeId_ReturnsBadRequest()
+    {
+        (FundingSourceService sut, _) = Build([]);
+
+        ServiceResult<FundingSourceDto> result = await sut.CreateAsync(
+            new UpsertFundingSourceDto("GSOX", "GSO Fund", null, OfficeId: 4242));
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task CreateAsync_OfficeFundReusingASharedCode_ReturnsConflict()
+    {
+        // D6 — codes are globally unique, so an office cannot shadow GF with a fund of its own.
+        // This is spec §3.4's "Adds a fund with the code GF → Rejected: the code is taken".
+        (FundingSourceService sut, _) = Build([Fs(1, "GF", "General Fund")]);
+
+        ServiceResult<FundingSourceDto> result = await sut.CreateAsync(
+            new UpsertFundingSourceDto("gf", "GSO General Fund", null, OfficeId: GsoOfficeId));
+
+        Assert.Equal(ServiceErrorCode.Conflict, result.Code);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_IgnoresAnOfficeIdInTheBody_OwnershipIsSetOnceAtCreation()
+    {
+        // ⚠️ Moving a fund between offices would change who can see every record already pointing at
+        // it. The service does not read OfficeId off an update body at all.
+        List<FundingSource> seed = [Fs(3, "GSOX", "GSO Fund", officeId: GsoOfficeId)];
+        (FundingSourceService sut, _) = Build(seed);
+
+        ServiceResult<FundingSourceDto> result = await sut.UpdateAsync(3,
+            new UpsertFundingSourceDto("GSOX", "Renamed", null, OfficeId: PhoOfficeId));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(GsoOfficeId, seed.Single().OfficeId);
+        Assert.Equal("Renamed", seed.Single().Name);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_CannotTurnAnOfficeFundIntoASharedOne()
+    {
+        // The same rule from the other direction: a null in the body is "not supplied", never
+        // "make this province-wide".
+        List<FundingSource> seed = [Fs(3, "GSOX", "GSO Fund", officeId: GsoOfficeId)];
+        (FundingSourceService sut, _) = Build(seed);
+
+        await sut.UpdateAsync(3, new UpsertFundingSourceDto("GSOX", "GSO Fund", null, OfficeId: null));
+
+        Assert.Equal(GsoOfficeId, seed.Single().OfficeId);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WithTheGuardOn_AndTheFundInUse_ReturnsConflictNamingTheCount()
+    {
+        (FundingSourceService sut, _) = Build(
+            [Fs(3, "GSOX", "GSO Motorpool Fund", officeId: GsoOfficeId)], wfpUsage: 2, aipUsage: 3);
+
+        ServiceResult<FundingSourceDto> result = await sut.DeleteAsync(3, blockWhenInUse: true);
+
+        Assert.Equal(ServiceErrorCode.Conflict, result.Code);
+        Assert.Contains("5 AIP/WFP lines", result.Error);   // 2 WFP + 3 AIP, reported as one count
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WithTheGuardOn_AndOneRowInUse_SaysLineNotLines()
+    {
+        (FundingSourceService sut, _) = Build(
+            [Fs(3, "GSOX", "GSO Fund", officeId: GsoOfficeId)], wfpUsage: 1);
+
+        ServiceResult<FundingSourceDto> result = await sut.DeleteAsync(3, blockWhenInUse: true);
+
+        Assert.Contains("1 AIP/WFP line ", result.Error);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WithTheGuardOn_AndTheFundUnused_SoftDeletes()
+    {
+        List<FundingSource> seed = [Fs(3, "GSOX", "GSO Fund", officeId: GsoOfficeId)];
+        (FundingSourceService sut, _) = Build(seed);
+
+        ServiceResult<FundingSourceDto> result = await sut.DeleteAsync(3, blockWhenInUse: true);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(seed.Single().IsActive);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WithTheGuardOff_StillSoftDeletesAFundInUse()
+    {
+        // ⚠️ A config manager keeps the unconditional soft delete. That is the whole point of soft
+        // delete: retire a fund from the pickers while its history keeps resolving. Making the guard
+        // unconditional would leave PPDO unable to retire any fund that was ever used — all of them.
+        List<FundingSource> seed = [Fs(1, "GF", "General Fund")];
+        (FundingSourceService sut, _) = Build(seed, wfpUsage: 400, aipUsage: 900);
+
+        ServiceResult<FundingSourceDto> result = await sut.DeleteAsync(1);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(seed.Single().IsActive);
+    }
+
+    [Fact]
+    public async Task ExportCsvAsync_NamesTheOwningOffice()
+    {
+        (FundingSourceService sut, _) = Build(
+            [Fs(1, "GF", "General Fund"), Fs(3, "GSOX", "GSO Fund", officeId: GsoOfficeId)]);
+
+        string csv = await sut.ExportCsvAsync();
+
+        Assert.Contains("office_code", csv);
+        Assert.Contains("GSO", csv);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_DoesNotMoveAnExistingFundBetweenOffices()
+    {
+        // ⚠️ office_code is exported for a human to read and never imported. An export taken before a
+        // department head added their fund, re-uploaded later, must not quietly make that fund
+        // PPDO's — so an existing row KEEPS the office it has.
+        List<FundingSource> seed = [Fs(3, "GSOX", "GSO Fund", officeId: GsoOfficeId)];
+        (FundingSourceService sut, _) = Build(seed);
+
+        string csv = string.Join("\r\n",
+            "code,name,description,color,is_active,aliases,office_code",
+            "GSOX,Renamed By CSV,,,true,,PHO");
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv);
+
+        Assert.Equal(1, result.Value!.Updated);
+        Assert.Equal(GsoOfficeId, seed.Single().OfficeId);   // not PHO, and not null
+        Assert.Equal("Renamed By CSV", seed.Single().Name);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_CreatesNewRowsAsShared()
+    {
+        List<FundingSource> seed = [];
+        (FundingSourceService sut, _) = Build(seed);
+
+        string csv = string.Join("\r\n",
+            "code,name,description,color,is_active,aliases,office_code",
+            "SEF,Special Education Fund,,,true,,GSO");
+
+        await sut.ImportCsvAsync(csv);
+
+        Assert.Null(seed.Single().OfficeId);
     }
 }

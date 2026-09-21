@@ -103,8 +103,11 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         // enough. This replaced an N+1 that fired ~60 sequential DbCommands for a 5-division,
         // 3-fund office (RAL-166 follow-up — v1.4.5 Live Metrics showed the dashboard
         // dominated by repeated GetAllocationsAsync queries).
+        // ⚠️ SHARED funds only — office_id null (v1.8.0 PPDO-109, D11). Both panels below are
+        // per-fund CEILING and allocation views, and office funds have no ceiling. Unfiltered, this
+        // dashboard would grow a column for every fund every office ever added.
         IReadOnlyList<FundingSource> activeFunds = (await _fundingSourceRepo.GetAllAsync(ct))
-            .Where(f => f.IsActive)
+            .Where(f => f.IsActive && f.OfficeId is null)
             .ToList();
         Dictionary<int, IReadOnlyList<DivisionAllocationDto>> allocationsByFund =
             await GetAllocationsByFundAsync(host.Id, resolvedFY, activeFunds, ct);

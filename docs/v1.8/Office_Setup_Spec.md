@@ -86,9 +86,40 @@ stays exclusive to host-office users (`Permission_Matrix.md` §4a), which is wha
 | A department head with the grant | Opens Configuration → Fund Sources | The shared funds are listed **read-only**, their own office's funds are editable |
 | The same | Adds a fund with the code `GF` | Rejected: the code is taken (D6) |
 | The same | Adds a fund with a free code | Created against their office, visible only to their office |
-| The same | Deletes a fund used by a WFP or AIP line | Blocked, with the count of rows using it |
+| The same | Deletes a fund used by a WFP or AIP line | Blocked, with the count of rows using it. ↩️ **Clarified, PPDO-109:** the block applies to the **department head only**. A config manager keeps the unconditional soft delete, because that is what soft delete is FOR — retiring a fund from the pickers while decades of records keep resolving through it. Applying the guard to PPDO would make every fund that was ever used undeletable, which is all of them. |
 | An encoder in that office | Opens a WFP or AIP expenditure line | The fund picker shows shared funds **plus** their office's own |
 | An encoder in another office | The same picker | The first office's funds are absent |
+
+↩️ **Closed in the PPDO-109 follow-up — the expenditure WRITE is scoped too.** The fund LIST every
+surface reads was office-scoped in PPDO-109, so no office could pick another's fund through the UI;
+the AIP/WFP save paths still resolved any `fundingSourceId` they were handed, so a hand-crafted
+request could name another office's fund and have it snapshotted. That was deferred at the time (a
+wrong label on the caller's own line, not a read of anyone else's data) and has since been fixed through
+`Application/Common/FundingSourceScope.cs`: an activity or expenditure may name a province-wide fund
+or one of its own office's, and nothing else.
+
+The audit found **five** caller-fed write sites, not the four first listed — `WfpService.SaveAsync`
+(the WFP grid save) writes line snapshots the same way and was missed. The other fund writes are
+safe for reasons worth recording, so nobody re-checks them: the `AipCeilingService` and
+`WfpCeilingService` ledger rows use a fund id DERIVED from the record's own expenditures rather than
+one the caller sent, and `LdipService` resolves through a lookup PPDO-109 already restricted to
+shared funds. `AllocationService`'s ceiling and division-allocation writes do take a caller-supplied
+fund id, but they sit behind host-office-only grants and D11 gives office funds no ceiling at all —
+left alone deliberately.
+
+Three things about that fix are worth knowing before changing it:
+
+- **The refusal is worded as "not found"**, identically to an id that does not exist. Naming the real
+  reason would turn a rejected save into a way to enumerate other offices' funds one id at a time.
+- **A record with no resolvable office gets the shared funds only** — it stays saveable, and a
+  forgotten office id degrades to less access rather than to all of it.
+- **`FundingSourceRaw` on `AddActivityAsync` is the one exception**: it is free text, so an
+  unrecognised code keeps the text and leaves the FK null, exactly as it always has for a typo.
+  Another office's code simply joins that set instead of resolving.
+
+It also closed a latent bug on the same lines: `FundingSourceId` used to be copied from the request
+before the row was looked up, so an id matching nothing at all was stored anyway with both snapshots
+null — a dangling FK that rendered as a line with no fund and was reported nowhere.
 
 ## 4. API contract
 
@@ -178,7 +209,7 @@ No change. `divisions.office_id` already exists.
 | **C1** — PPDO-106 | Office Ceilings page for finance; Allocation's ceiling becomes read-only; funding-source tabs built, General Fund only shown (D4) | — |
 | **C2** — PPDO-107 | `CanManageOfficeSetup`: permission service, `/auth/me`, admin toggle, `Permission_Matrix.md` rows, and the two allocation writes accepting an own-office department head | — |
 | **C3** — PPDO-108 | Division config scoped to a department head's own office; switches hidden and server-side dropped | PPDO-107 |
-| **C4** — PPDO-109 | ⚠️ MIGRATION. `funding_sources.office_id`, filtered reads, office-stamped writes, shared rows read-only, the WFP/AIP pickers | PPDO-107 |
+| **C4** — PPDO-109 ✅ | ⚠️ MIGRATION. `funding_sources.office_id`, filtered reads, office-stamped writes, shared rows read-only, the WFP/AIP pickers | PPDO-107 |
 
 C1 is independent and is the one finance needs first for UAT.
 
@@ -206,3 +237,7 @@ C1 is independent and is the one finance needs first for UAT.
 - The division switches are dropped, not honoured, for a department head.
 - `GetGeneralFundIdAsync` ignores an office fund coded `GF` if one is ever forced in (D7).
 - The fund picker query returns shared + own office only.
+- Every fund WRITE refuses another office's fund, at all five caller-fed sites, and refuses it with
+  the same wording as a fund that does not exist. `FundingSourceScopeTests` pins the rule itself;
+  each service suite pins its own door into it. ⚠️ Each of those guard tests was confirmed to FAIL
+  with its guard removed — a guard test that passes either way proves nothing.

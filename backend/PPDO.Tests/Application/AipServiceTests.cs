@@ -61,9 +61,10 @@ public sealed partial class AipServiceTests
         UploadedById = UserId, UploadedAt = DateTime.UtcNow, Status = status,
     };
 
-    private static FundingSource Fs(int id, string code) => new()
+    /// <summary><paramref name="officeId"/> null = a province-wide fund; a value = that office's own.</summary>
+    private static FundingSource Fs(int id, string code, int? officeId = null) => new()
     {
-        Id = id, Code = code, Name = $"Fund {code}", IsActive = true,
+        Id = id, Code = code, Name = $"Fund {code}", IsActive = true, OfficeId = officeId,
         CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
     };
 
@@ -2506,6 +2507,125 @@ public sealed partial class AipServiceTests
         Assert.True(result.IsSuccess);
         Assert.Null(result.Value!.FundingSourceId);
         Assert.Null(result.Value.FundingSourceSnapshot);
+    }
+
+    // ── Fund scope on the activity writes (v1.8.0, follow-up to PPDO-109) ─────
+    //
+    // An activity may name a province-wide fund or one belonging to ITS OWN office, and nothing
+    // else. PPDO-109 scoped the pickers these values come from; these pin the server side, which is
+    // the half a hand-crafted request skips. The seed below gives the AipOffice a config office so
+    // there is a real owner to scope against — the other fixtures in this file leave it null, which
+    // resolves to "shared funds only" and is why they keep passing unchanged.
+
+    private const int ActivityOwnerOffice = 7;
+    private const int ForeignOffice       = 9;
+
+    private static List<AipOffice> OwnedOffices() =>
+        [new() { Id = 20, AipRecordId = 1, OfficeId = ActivityOwnerOffice,
+                 RefCode = "1000-000-1-01-010", Name = "GSO", Sector = "GENERAL" }];
+
+    private static List<FundingSource> ScopedFunds() =>
+        [Fs(1, "GF"), Fs(3, "GSOX", ActivityOwnerOffice), Fs(4, "PHOX", ForeignOffice)];
+
+    [Fact]
+    public async Task UpdateActivity_WithAnotherOfficesFund_ReturnsBadRequest()
+    {
+        var (rec, _, programs, projects, activities) = SeedActivityTree();
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build(
+            [rec], ScopedFunds(), officeSeed: OwnedOffices(), programSeed: programs,
+            projectSeed: projects, actSeed: activities);
+
+        UpdateAipActivityDto dto = new(
+            "Name", null, null, null, null, null, 4, 100m, null, null, null, null, null);
+
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto, HostCaller());
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        // ⚠️ Worded exactly like a fund that does not exist — see FundingSourceScope.NotFoundMessage.
+        // Saying "belongs to another office" would confirm the row and let a caller enumerate.
+        // NotNull first: DoesNotContain on a null string passes vacuously.
+        Assert.NotNull(result.Error);
+        Assert.DoesNotContain("office", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task UpdateActivity_WithItsOwnOfficesFund_Succeeds()
+    {
+        var (rec, _, programs, projects, activities) = SeedActivityTree();
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build(
+            [rec], ScopedFunds(), officeSeed: OwnedOffices(), programSeed: programs,
+            projectSeed: projects, actSeed: activities);
+
+        UpdateAipActivityDto dto = new(
+            "Name", null, null, null, null, null, 3, 100m, null, null, null, null, null);
+
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto, HostCaller());
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("GSOX", result.Value!.FundingSourceSnapshot);
+    }
+
+    [Fact]
+    public async Task UpdateActivity_WithASharedFund_Succeeds()
+    {
+        var (rec, _, programs, projects, activities) = SeedActivityTree();
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build(
+            [rec], ScopedFunds(), officeSeed: OwnedOffices(), programSeed: programs,
+            projectSeed: projects, actSeed: activities);
+
+        UpdateAipActivityDto dto = new(
+            "Name", null, null, null, null, null, 1, 100m, null, null, null, null, null);
+
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto, HostCaller());
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("GF", result.Value!.FundingSourceSnapshot);
+    }
+
+    /// <summary>
+    /// ⚠️ The free-text path behaves differently ON PURPOSE, and this is the test that says so.
+    /// <c>FundingSourceRaw</c> tolerates anything — a typo, a fund PPDO never configured — by keeping
+    /// the text and leaving the FK null. Another office's code now joins that set rather than
+    /// resolving to their fund. Refusing the whole activity instead would be a new failure mode on a
+    /// field that has never had one.
+    /// </summary>
+    [Fact]
+    public async Task AddActivity_WithAnotherOfficesFundCode_KeepsTheTextAndLeavesTheFkNull()
+    {
+        AipRecord rec = Rec(1, PlanningStatus.Draft);
+        List<AipProgram> programs = [new() { Id = 30, OfficeId = 20, RefCode = "1000-000-1-01-010-001", Name = "Program" }];
+        List<AipProject> projects = [new() { Id = 40, ProgramId = 30, RefCode = "1000-000-1-01-010-001-001", Name = "Project" }];
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build(
+            [rec], ScopedFunds(), officeSeed: OwnedOffices(), programSeed: programs, projectSeed: projects);
+
+        CreateAipActivityDto dto = new(
+            "Activity One", "SS", "GSO", "January", "December", "Outputs", "PHOX",
+            1000m, null, null, null, null, null);
+
+        ServiceResult<AipActivityDto> result = await sut.AddActivityAsync(40, dto, HostCaller());
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Value!.FundingSourceId);              // did NOT resolve to office 9's fund
+        Assert.Equal("PHOX", result.Value.FundingSourceSnapshot); // the raw text is kept, as always
+    }
+
+    [Fact]
+    public async Task AddActivity_WithItsOwnOfficesFundCode_Resolves()
+    {
+        AipRecord rec = Rec(1, PlanningStatus.Draft);
+        List<AipProgram> programs = [new() { Id = 30, OfficeId = 20, RefCode = "1000-000-1-01-010-001", Name = "Program" }];
+        List<AipProject> projects = [new() { Id = 40, ProgramId = 30, RefCode = "1000-000-1-01-010-001-001", Name = "Project" }];
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build(
+            [rec], ScopedFunds(), officeSeed: OwnedOffices(), programSeed: programs, projectSeed: projects);
+
+        CreateAipActivityDto dto = new(
+            "Activity One", "SS", "GSO", "January", "December", "Outputs", "GSOX",
+            1000m, null, null, null, null, null);
+
+        ServiceResult<AipActivityDto> result = await sut.AddActivityAsync(40, dto, HostCaller());
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(3, result.Value!.FundingSourceId);
     }
 
     [Fact]

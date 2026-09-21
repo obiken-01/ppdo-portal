@@ -121,6 +121,11 @@ export default function AipDetailPage() {
       .finally(() => setLoading(false));
   }, [me, id]);
 
+  // PPDO-109 — deliberately NO officeId here, unlike the AIP Entry / Review pickers. One AIP record
+  // spans every office that submitted into it, so there is no single record office to resolve from;
+  // this list has to label a line from any of them. The server clamps anyway, so a guest office
+  // still gets only the shared funds plus their own — the unscoped read widens nothing, it just lets
+  // a PPDO reader see every office's fund names on a page that shows every office's rows.
   useEffect(() => {
     if (!me) return;
     listFundingSources({ active: "true" }).then(setFundingSources).catch(() => {});

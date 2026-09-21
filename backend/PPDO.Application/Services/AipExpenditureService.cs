@@ -108,7 +108,9 @@ public sealed class AipExpenditureService : IAipExpenditureService
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         };
-        await ApplySnapshotsAsync(line, dto.AccountId, dto.FundingSourceId, ct);
+        if (await ApplySnapshotsAsync(
+                line, dto.AccountId, dto.FundingSourceId, ctx.Office.OfficeId, ct) is string badFund)
+            return ServiceResult<AipExpenditureWriteResultDto>.BadRequest(badFund);
 
         // ⚠️ Routing runs BEFORE Recalculate, and overwrites the typed amounts rather than adding
         // to them — an itemised line's cost is its items' cost, full stop.
@@ -169,7 +171,14 @@ public sealed class AipExpenditureService : IAipExpenditureService
         line.Mooe = dto.Mooe;
         line.Co   = dto.Co;
         line.UpdatedAt = DateTime.UtcNow;
-        await ApplySnapshotsAsync(line, dto.AccountId, dto.FundingSourceId, ct);
+        // ⚠️ The refusal below lands AFTER these assignments, so `line` — a tracked entity — is left
+        // dirty. That is safe only because this method returns without calling SaveChangesAsync and
+        // the DbContext is scoped to the request, and it is pinned by
+        // AipExpenditureFundScopeTests.Update_SwitchingToAnotherOfficesFund_IsRefused, which asserts
+        // no save happens. Anyone adding a save between here and the return has to move this check up.
+        if (await ApplySnapshotsAsync(
+                line, dto.AccountId, dto.FundingSourceId, ctx.Office.OfficeId, ct) is string badFund)
+            return ServiceResult<AipExpenditureWriteResultDto>.BadRequest(badFund);
 
         // ⚠️ null and empty differ here (see UpdateAipExpenditureDto): null leaves the existing
         // items alone, so a caller that never learned about procurement cannot silently strip them;
@@ -302,13 +311,27 @@ public sealed class AipExpenditureService : IAipExpenditureService
 
     /// <summary>
     /// Copies the account and funding-source ids <b>and</b> what those config rows say right now.
+    /// Returns a validation message when the fund may not be used by this line's office, or null on
+    /// success — the caller turns that into a <c>BadRequest</c>, matching <see cref="Validate"/>.
     ///
     /// ⚠️ Both halves, always. The FK answers "which config row is this?"; the snapshot answers
     /// "what did it say when this was entered?" — and the second is the one an auditor asks after
     /// somebody renames an account.
+    ///
+    /// ↩️ <b>The fund is now resolved against what <paramref name="owningOfficeId"/> may use</b>
+    /// (follow-up to PPDO-109, via <see cref="FundingSourceScope"/>): the province-wide funds plus
+    /// that office's own. Before this, any id the caller sent was accepted, so office A could
+    /// snapshot office B's private fund onto its own line.
+    ///
+    /// ⚠️ <b>It refuses rather than clearing the field</b>, and that also fixes a second bug on
+    /// the same two lines: the old code assigned <c>FundingSourceId</c> from the request BEFORE
+    /// looking the row up, so an id that matched nothing at all was stored anyway, with both
+    /// snapshots left null. That is a dangling FK presented as a line with no fund — worse than the
+    /// refusal, because nothing downstream ever reports it.
     /// </summary>
-    private async Task ApplySnapshotsAsync(
-        AipExpenditure line, int? accountId, int? fundingSourceId, CancellationToken ct)
+    private async Task<string?> ApplySnapshotsAsync(
+        AipExpenditure line, int? accountId, int? fundingSourceId, int? owningOfficeId,
+        CancellationToken ct)
     {
         line.AccountId = accountId;
         if (accountId is int aid)
@@ -323,18 +346,24 @@ public sealed class AipExpenditureService : IAipExpenditureService
             line.AccountTitleSnapshot  = null;
         }
 
-        line.FundingSourceId = fundingSourceId;
         if (fundingSourceId is int fid)
         {
-            FundingSource? fund = (await _fsRepo.GetAllAsync(ct)).FirstOrDefault(f => f.Id == fid);
-            line.FundingSourceSnapshot     = fund?.Code;
-            line.FundingSourceNameSnapshot = fund?.Name;
+            FundingSource? fund = FundingSourceScope.FindVisibleById(
+                await _fsRepo.GetAllAsync(ct), fid, owningOfficeId);
+            if (fund is null) return FundingSourceScope.NotFoundMessage(fid);
+
+            line.FundingSourceId           = fid;
+            line.FundingSourceSnapshot     = fund.Code;
+            line.FundingSourceNameSnapshot = fund.Name;
         }
         else
         {
+            line.FundingSourceId           = null;
             line.FundingSourceSnapshot     = null;
             line.FundingSourceNameSnapshot = null;
         }
+
+        return null;
     }
 
     /// <summary>

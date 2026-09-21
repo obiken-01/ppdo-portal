@@ -59,9 +59,10 @@ public sealed class WfpServiceTests
         CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
     };
 
-    private static FundingSource Fs(int id, string code) => new()
+    /// <summary><paramref name="officeId"/> null = a province-wide fund; a value = that office's own.</summary>
+    private static FundingSource Fs(int id, string code, int? officeId = null) => new()
     {
-        Id = id, Code = code, Name = $"Fund {code}", IsActive = true,
+        Id = id, Code = code, Name = $"Fund {code}", IsActive = true, OfficeId = officeId,
         CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
     };
 
@@ -1092,5 +1093,68 @@ public sealed class WfpServiceTests
 
         Assert.NotEqual(div1.Value!.WfpRecordId, div2.Value!.WfpRecordId);
         wfpRepo.Verify(r => r.AddAsync(It.IsAny<WfpRecord>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+    }
+
+    // ── Fund scope on the bulk save (v1.8.0, follow-up to PPDO-109) ────────
+    //
+    // The grid save writes expenditure LINES with a fund snapshot, so it is a write path with the
+    // same exposure as the per-line editors: a request could name another office's private fund and
+    // have its code snapshotted here. The record's office is dto.OfficeId.
+
+    private const int WfpOwnerOffice = 3;   // matches SimpleDto's officeId argument below
+    private const int WfpOtherOffice = 9;
+
+    [Fact]
+    public async Task Save_WithAnotherOfficesFund_ReturnsBadRequestAndWritesNothing()
+    {
+        var (sut, wfpRepo, _, lineRepo, _, _) = Build(
+            [], [], [], [Fs(7, "GF"), Fs(8, "PHOX", WfpOtherOffice)]);
+
+        ServiceResult<WfpRecordDto> result = await sut.SaveAsync(
+            SimpleDto(2, WfpOwnerOffice, 10, fsId: 8), UserId, CancellationToken.None);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        // ⚠️ Nothing written at all. This method is find-or-create, so a check placed after the
+        // record lookup would already have created the row — the refusal has to be in Pass 1.
+        wfpRepo.Verify(r => r.AddAsync(It.IsAny<WfpRecord>(), It.IsAny<CancellationToken>()), Times.Never);
+        lineRepo.Verify(r => r.AddAsync(It.IsAny<WfpExpenditureLine>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.NotNull(result.Error);
+        Assert.DoesNotContain("office", result.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("PHOX", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Save_WithTheOfficesOwnFund_Succeeds()
+    {
+        WfpExpenditureLine? captured = null;
+        var (sut, _, _, lineRepo, _, _) = Build(
+            [], [], [], [Fs(7, "GF"), Fs(8, "GSOX", WfpOwnerOffice)]);
+        lineRepo.Setup(r => r.AddAsync(It.IsAny<WfpExpenditureLine>(), It.IsAny<CancellationToken>()))
+            .Callback<WfpExpenditureLine, CancellationToken>((e, _) => captured = e)
+            .Returns(Task.CompletedTask);
+
+        ServiceResult<WfpRecordDto> result = await sut.SaveAsync(
+            SimpleDto(2, WfpOwnerOffice, 10, fsId: 8), UserId, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("GSOX", captured!.FundingSourceSnapshot);
+    }
+
+    [Fact]
+    public async Task Save_WithAnotherOfficesFundOnALineWithNoAmount_IsStillRefused()
+    {
+        // ⚠️ The amount-less line is the one the old Pass 1 skipped with `continue`, and its fund
+        // id is persisted just the same — so the check has to run before that skip.
+        var (sut, _, _, _, _, _) = Build([], [], [], [Fs(8, "PHOX", WfpOtherOffice)]);
+
+        SaveWfpDto dto = new(2, WfpOwnerOffice, 2027, null,
+            [new SaveWfpActivityDto(10, [
+                new SaveWfpExpenditureLineDto("PS", null, null, null, null,
+                    null, null, false, null, null, null, null, 8, 0),
+            ])]);
+
+        ServiceResult<WfpRecordDto> result = await sut.SaveAsync(dto, UserId, CancellationToken.None);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
     }
 }

@@ -10,27 +10,55 @@ namespace PPDO.Application.Services;
 /// Funding source config CRUD + CSV upsert/export (RAL-70).
 /// Soft delete only (IsActive = false). Code is the unique key.
 /// The funding_sources table is tiny (~6 rows) — filtering/upsert happens in-memory.
+///
+/// <b>v1.8.0 (PPDO-109):</b> a row with no office is province-wide, one with an office belongs to
+/// that office alone (D5). Reads take an office to be visible to; see
+/// <see cref="IFundingSourceService.GetAllAsync"/> for the rule. The usage counts behind the delete
+/// guard DO go to SQL — <c>wfp_expenditures</c> and <c>aip_expenditures</c> are leaf tables that
+/// grow per line per activity per office per year, and are never loaded in memory.
 /// </summary>
 public sealed class FundingSourceService : IFundingSourceService
 {
-    private static readonly string[] CsvHeaders = { "code", "name", "description", "color", "is_active", "aliases" };
+    // office_code is EXPORT-ONLY and last on purpose (PPDO-109). It tells an operator whose fund a
+    // row is, and the import below deliberately does not read it back — see ImportCsvAsync.
+    private static readonly string[] CsvHeaders =
+        { "code", "name", "description", "color", "is_active", "aliases", "office_code" };
 
-    private readonly IRepository<FundingSource> _repo;
-    private readonly ILogger<FundingSourceService> _logger;
-    private readonly IAuditService _audit;
+    private readonly IRepository<FundingSource>     _repo;
+    private readonly IRepository<Office>             _officeRepo;
+    private readonly IWfpExpenditureRepository       _wfpExpRepo;
+    private readonly IAipExpenditureRepository       _aipExpRepo;
+    private readonly ILogger<FundingSourceService>   _logger;
+    private readonly IAuditService                   _audit;
 
-    public FundingSourceService(IRepository<FundingSource> repo, ILogger<FundingSourceService> logger, IAuditService audit)
+    public FundingSourceService(
+        IRepository<FundingSource>   repo,
+        IRepository<Office>          officeRepo,
+        IWfpExpenditureRepository    wfpExpRepo,
+        IAipExpenditureRepository    aipExpRepo,
+        ILogger<FundingSourceService> logger,
+        IAuditService                audit)
     {
-        _repo   = repo;
-        _logger = logger;
-        _audit  = audit;
+        _repo       = repo;
+        _officeRepo = officeRepo;
+        _wfpExpRepo = wfpExpRepo;
+        _aipExpRepo = aipExpRepo;
+        _logger     = logger;
+        _audit      = audit;
     }
 
     /// <inheritdoc />
     public async Task<IReadOnlyList<FundingSourceDto>> GetAllAsync(
-        string? search, ActiveFilter active, CancellationToken cancellationToken = default)
+        string? search, ActiveFilter active, int? visibleToOfficeId = null,
+        CancellationToken cancellationToken = default)
     {
         IEnumerable<FundingSource> q = await _repo.GetAllAsync(cancellationToken);
+
+        // PPDO-109 — shared rows PLUS the one office's own. Null asks for no filter at all, which
+        // is the config manager's cross-office view; every other caller arrives here already
+        // clamped to an office they may read.
+        if (visibleToOfficeId is int officeId)
+            q = q.Where(f => f.OfficeId is null || f.OfficeId == officeId);
 
         q = active switch
         {
@@ -47,10 +75,35 @@ public sealed class FundingSourceService : IFundingSourceService
                 f.Name.Contains(s, StringComparison.OrdinalIgnoreCase));
         }
 
-        return q.OrderBy(f => f.Code, StringComparer.OrdinalIgnoreCase)
-                .Select(MapToDto)
-                .ToList();
+        // Shared funds first, then the office's own — the order the config page renders, so the
+        // read-only rows a department head cannot touch are not interleaved with theirs.
+        List<FundingSource> rows = q
+            .OrderBy(f => f.OfficeId is null ? 0 : 1)
+            .ThenBy(f => f.Code, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        IReadOnlyDictionary<int, Office> offices = await OfficesByIdAsync(rows, cancellationToken);
+        return rows.Select(f => MapToDto(f, offices)).ToList();
     }
+
+    /// <summary>
+    /// The offices named by <paramref name="rows"/>, for labelling whose fund each one is. Skips
+    /// the query entirely when every row is shared, which is the state of the table today.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<int, Office>> OfficesByIdAsync(
+        IReadOnlyCollection<FundingSource> rows, CancellationToken cancellationToken)
+    {
+        if (!rows.Any(f => f.OfficeId is not null))
+            return new Dictionary<int, Office>();
+
+        return (await _officeRepo.GetAllAsync(cancellationToken))
+            .GroupBy(o => o.Id)
+            .ToDictionary(g => g.Key, g => g.First());
+    }
+
+    /// <summary>One fund's office label, resolved on its own — the single-row form of the map above.</summary>
+    private async Task<FundingSourceDto> MapWithOfficeAsync(FundingSource f, CancellationToken cancellationToken)
+        => MapToDto(f, await OfficesByIdAsync(new[] { f }, cancellationToken));
 
     /// <inheritdoc />
     public async Task<ServiceResult<FundingSourceDto>> GetByIdAsync(int id, CancellationToken cancellationToken = default)
@@ -58,7 +111,7 @@ public sealed class FundingSourceService : IFundingSourceService
         FundingSource? f = (await _repo.GetAllAsync(cancellationToken)).FirstOrDefault(x => x.Id == id);
         return f is null
             ? ServiceResult<FundingSourceDto>.NotFound($"Funding source {id} not found.")
-            : ServiceResult<FundingSourceDto>.Ok(MapToDto(f));
+            : ServiceResult<FundingSourceDto>.Ok(await MapWithOfficeAsync(f, cancellationToken));
     }
 
     /// <inheritdoc />
@@ -71,8 +124,14 @@ public sealed class FundingSourceService : IFundingSourceService
 
         string code = dto.Code.Trim();
         IReadOnlyList<FundingSource> all = await _repo.GetAllAsync(cancellationToken);
+        // ⚠️ Uniqueness is checked across EVERY row, not within the office (PPDO-109, D6) — so an
+        // office adding "GF" is told the code is taken, which is the behaviour §3.4 asks for.
         if (all.Any(f => f.Code.Equals(code, StringComparison.OrdinalIgnoreCase)))
             return ServiceResult<FundingSourceDto>.Conflict($"Funding source code '{code}' already exists.");
+
+        if (dto.OfficeId is int newOfficeId
+            && (await _officeRepo.GetAllAsync(cancellationToken)).All(o => o.Id != newOfficeId))
+            return ServiceResult<FundingSourceDto>.BadRequest($"Office {newOfficeId} not found.");
 
         DateTime now = DateTime.UtcNow;
         FundingSource entity = new()
@@ -82,6 +141,7 @@ public sealed class FundingSourceService : IFundingSourceService
             Description = Blank(dto.Description),
             Color       = Blank(dto.Color),
             Aliases     = Blank(dto.Aliases),
+            OfficeId    = dto.OfficeId,   // null = province-wide (PPDO-109, D5)
             IsActive    = dto.IsActive,
             CreatedAt   = now,
             UpdatedAt   = now,
@@ -90,12 +150,13 @@ public sealed class FundingSourceService : IFundingSourceService
         await _repo.AddAsync(entity, cancellationToken);
         await _repo.SaveChangesAsync(cancellationToken);
 
-        _logger.LogInformation("Funding source created. Code: {Code}", entity.Code);
+        _logger.LogInformation(
+            "Funding source created. Code: {Code}, OfficeId: {OfficeId}", entity.Code, entity.OfficeId);
         await _audit.LogAsync("funding_sources", entity.Id, AuditAction.Create,
             oldValues: null,
-            newValues: new { entity.Code, entity.Name, entity.IsActive },
+            newValues: new { entity.Code, entity.Name, entity.OfficeId, entity.IsActive },
             cancellationToken);
-        return ServiceResult<FundingSourceDto>.Ok(MapToDto(entity));
+        return ServiceResult<FundingSourceDto>.Ok(await MapWithOfficeAsync(entity, cancellationToken));
     }
 
     /// <inheritdoc />
@@ -115,8 +176,12 @@ public sealed class FundingSourceService : IFundingSourceService
         if (all.Any(f => f.Id != id && f.Code.Equals(code, StringComparison.OrdinalIgnoreCase)))
             return ServiceResult<FundingSourceDto>.Conflict($"Funding source code '{code}' already exists.");
 
-        var oldSnapshot = new { entity.Code, entity.Name, entity.IsActive };
+        var oldSnapshot = new { entity.Code, entity.Name, entity.OfficeId, entity.IsActive };
 
+        // ⚠️ OfficeId is NOT assigned from the body. Ownership is set once, at creation: moving a
+        // fund between offices would silently change who can see every record already pointing at
+        // it, and nothing in PPDO-109 asks for it. A config manager who needs a fund under a
+        // different office creates one there.
         entity.Code        = code;
         entity.Name        = dto.Name.Trim();
         entity.Description = Blank(dto.Description);
@@ -129,17 +194,37 @@ public sealed class FundingSourceService : IFundingSourceService
         await _repo.SaveChangesAsync(cancellationToken);
         await _audit.LogAsync("funding_sources", entity.Id, AuditAction.Update,
             oldValues: oldSnapshot,
-            newValues: new { entity.Code, entity.Name, entity.IsActive },
+            newValues: new { entity.Code, entity.Name, entity.OfficeId, entity.IsActive },
             cancellationToken);
-        return ServiceResult<FundingSourceDto>.Ok(MapToDto(entity));
+        return ServiceResult<FundingSourceDto>.Ok(await MapWithOfficeAsync(entity, cancellationToken));
     }
 
     /// <inheritdoc />
-    public async Task<ServiceResult<FundingSourceDto>> DeleteAsync(int id, CancellationToken cancellationToken = default)
+    public async Task<ServiceResult<FundingSourceDto>> DeleteAsync(
+        int id, bool blockWhenInUse = false, CancellationToken cancellationToken = default)
     {
         FundingSource? entity = (await _repo.GetAllAsync(cancellationToken)).FirstOrDefault(f => f.Id == id);
         if (entity is null)
             return ServiceResult<FundingSourceDto>.NotFound($"Funding source {id} not found.");
+
+        if (blockWhenInUse)
+        {
+            // Sequential, not Task.WhenAll — one DbContext, which is not thread-safe (CLAUDE.md).
+            int wfpRows = await _wfpExpRepo.CountByFundingSourceAsync(id, cancellationToken);
+            int aipRows = await _aipExpRepo.CountByFundingSourceAsync(id, cancellationToken);
+            int inUse   = wfpRows + aipRows;
+
+            if (inUse > 0)
+            {
+                _logger.LogWarning(
+                    "Funding source deactivation blocked — still in use. Code: {Code}, Rows: {Rows}",
+                    entity.Code, inUse);
+                return ServiceResult<FundingSourceDto>.Conflict(
+                    $"{entity.Name} ({entity.Code}) is used by {inUse} AIP/WFP " +
+                    $"{(inUse == 1 ? "line" : "lines")} and cannot be removed. " +
+                    "Clear those lines first, or ask PPDO to retire the fund.");
+            }
+        }
 
         entity.IsActive  = false;
         entity.UpdatedAt = DateTime.UtcNow;
@@ -152,20 +237,34 @@ public sealed class FundingSourceService : IFundingSourceService
             oldValues: new { IsActive = true },
             newValues: null,
             cancellationToken);
-        return ServiceResult<FundingSourceDto>.Ok(MapToDto(entity));
+        return ServiceResult<FundingSourceDto>.Ok(await MapWithOfficeAsync(entity, cancellationToken));
     }
 
     /// <inheritdoc />
     public async Task<string> ExportCsvAsync(CancellationToken cancellationToken = default)
     {
         IReadOnlyList<FundingSource> all = await _repo.GetAllAsync(cancellationToken);
+        IReadOnlyDictionary<int, Office> offices = await OfficesByIdAsync(all, cancellationToken);
         IEnumerable<string?[]> rows = all
             .OrderBy(f => f.Code, StringComparer.OrdinalIgnoreCase)
-            .Select(f => new string?[] { f.Code, f.Name, f.Description, f.Color, f.IsActive ? "true" : "false", f.Aliases });
+            .Select(f => new string?[]
+            {
+                f.Code, f.Name, f.Description, f.Color, f.IsActive ? "true" : "false", f.Aliases,
+                f.OfficeId is int oid && offices.TryGetValue(oid, out Office? o) ? o.OfficeCode : null,
+            });
         return Csv.Write(CsvHeaders, rows);
     }
 
     /// <inheritdoc />
+    ///
+    /// <remarks>
+    /// ⚠️ <b><c>office_code</c> is exported but never imported (PPDO-109).</b> Ownership is not
+    /// something a spreadsheet round-trip should be able to change: an existing row KEEPS the office
+    /// it has, and a new row is created province-wide. Reading the column back would mean a
+    /// department head's fund silently became PPDO's — or another office's — the next time anyone
+    /// re-uploaded an export taken before it existed. This route is config-manager-only for the same
+    /// family of reasons (see <c>ConfigFundingSourceFunctions</c>).
+    /// </remarks>
     public async Task<ServiceResult<CsvImportResult>> ImportCsvAsync(string csvText, CancellationToken cancellationToken = default)
     {
         List<string[]> parsed = Csv.Parse(csvText);
@@ -244,7 +343,12 @@ public sealed class FundingSourceService : IFundingSourceService
         return ServiceResult<CsvImportResult>.Ok(new CsvImportResult(created, updated, skipped, errors));
     }
 
-    private static FundingSourceDto MapToDto(FundingSource f) => new(f.Id, f.Code, f.Name, f.Description, f.Color, f.IsActive, f.Aliases);
+    private static FundingSourceDto MapToDto(FundingSource f, IReadOnlyDictionary<int, Office> offices)
+    {
+        Office? office = f.OfficeId is int oid && offices.TryGetValue(oid, out Office? o) ? o : null;
+        return new(f.Id, f.Code, f.Name, f.Description, f.Color, f.IsActive, f.Aliases,
+                   f.OfficeId, office?.OfficeCode, office?.OfficeName);
+    }
 
     private static string? Blank(string? value)
     {

@@ -143,10 +143,14 @@ export default function AipReviewPage() {
   // ⚠️ No price index. It is ~6,400 rows and feeds only the item PICKER, which exists solely inside
   // the editors this page never opens — fetching it here would be a large request for a control
   // that cannot appear.
+  //
+  // PPDO-109 — the funds asked for are the REVIEWED office's, not the reader's. A PPDO reviewer
+  // opening GSO's AIP needs GSO's own funds to render a line that names one; resolving from the
+  // reader's account would leave those lines labelled with a bare id.
   useEffect(() => {
     void listAccounts().then(setAccounts).catch(() => setAccounts([]));
-    void listFundingSources({ active: "true" }).then(setFunds).catch(() => setFunds([]));
-  }, []);
+    void listFundingSources({ active: "true", officeId }).then(setFunds).catch(() => setFunds([]));
+  }, [officeId]);
 
   // Already scoped to this one office by the endpoint — no further division/office filter needed
   // (unlike AIP Entry's `myGroups`, which narrows a HOST-office user's whole-record fetch).

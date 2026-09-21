@@ -565,7 +565,15 @@ public sealed class AllocationService : IAllocationService
     public async Task<int?> GetGeneralFundIdAsync(CancellationToken ct = default)
     {
         IReadOnlyList<FundingSource> all = await GetAllFundingSourcesAsync(ct);
-        return all.FirstOrDefault(f => f.Code.Equals(GeneralFundCode, StringComparison.OrdinalIgnoreCase))?.Id;
+
+        // ⚠️ SHARED rows only — OfficeId null (v1.8.0 PPDO-109, D7). There is one canonical General
+        // Fund and the ceiling arithmetic, the division-allocation ledger and every province-wide
+        // total are built on that. The unique index on code should make an office row coded "GF"
+        // impossible, but this filter is what makes the invariant hold if one is ever forced in by
+        // hand, a restore, or a future scoping of that index. Pinned by test.
+        return all.FirstOrDefault(f =>
+                   f.OfficeId is null
+                   && f.Code.Equals(GeneralFundCode, StringComparison.OrdinalIgnoreCase))?.Id;
     }
 
     private static BudgetCeilingDto MapCeiling(BudgetCeiling c, IReadOnlyDictionary<int, FundingSource> fundsById)

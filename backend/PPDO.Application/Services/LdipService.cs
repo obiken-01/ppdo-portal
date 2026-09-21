@@ -452,10 +452,20 @@ public sealed class LdipService : ILdipService
         return result;
     }
 
+    /// <summary>
+    /// Code → fund lookup for resolving an LDIP workbook's free-text fund-source cells.
+    ///
+    /// ⚠️ <b>SHARED funds only</b> — office_id null (v1.8.0 PPDO-109). The LDIP upload is PPDO's
+    /// multi-office bulk path, so it has no single office whose private funds would be in scope;
+    /// codes are globally unique (D6), so an unfiltered lookup could resolve one office's cell to
+    /// another office's fund. Same reasoning as the AIP upload in <c>AipService</c>.
+    /// </summary>
     private async Task<Dictionary<string, FundingSource>> LoadFundingSourceLookupAsync(CancellationToken ct)
     {
         IReadOnlyList<FundingSource> all = await _fsRepo.GetAllAsync(ct);
-        return all.ToDictionary(f => f.Code, StringComparer.OrdinalIgnoreCase);
+        return all
+            .Where(f => f.OfficeId is null)
+            .ToDictionary(f => f.Code, StringComparer.OrdinalIgnoreCase);
     }
 
     private static string Normalize(string sector) =>

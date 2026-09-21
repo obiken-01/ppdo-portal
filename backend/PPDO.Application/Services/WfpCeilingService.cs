@@ -66,8 +66,13 @@ public sealed class WfpCeilingService : IWfpCeilingService
 
         int? gfId = await _allocation.GetGeneralFundIdAsync(ct);
 
+        // ⚠️ SHARED funds only — office_id null (v1.8.0 PPDO-109, D11). This builds one
+        // allocation/remaining row per fund, and an office's own funds carry NO ceiling: the ceiling
+        // is a province-wide bound PPDO sets, which is not a thing an office can set for itself.
+        // Including them would render a tab per office fund whose allocation is always 0 and whose
+        // remaining is always negative the moment anything is encoded against it.
         IReadOnlyList<FundingSource> activeFunds = (await _fundingSourceRepo.GetAllAsync(ct))
-            .Where(f => f.IsActive)
+            .Where(f => f.IsActive && f.OfficeId is null)
             .ToList();
 
         List<WfpFundCeilingDto> funds = [];

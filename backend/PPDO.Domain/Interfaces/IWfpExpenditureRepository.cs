@@ -95,6 +95,18 @@ public interface IWfpExpenditureRepository : IRepository<WfpExpenditure>
         int wfpRecordId, CancellationToken ct = default);
 
     /// <summary>
+    /// How many WFP expenditure lines name <paramref name="fundingSourceId"/> explicitly — the
+    /// "is this fund still in use?" count behind the delete guard on an office's own fund
+    /// (v1.8.0 — PPDO-109). Counted in SQL.
+    ///
+    /// ⚠️ Matches <c>FundingSourceId == id</c> only, and deliberately does NOT coalesce a null fund
+    /// to General Fund the way <see cref="SumTotalByWfpRecordAsync"/> does. A null here means the
+    /// encoder picked nothing, which is not a reason to protect some particular fund from deletion —
+    /// and the guard only ever runs against an office-owned fund, which no null could have meant.
+    /// </summary>
+    Task<int> CountByFundingSourceAsync(int fundingSourceId, CancellationToken ct = default);
+
+    /// <summary>
     /// WFP-activity coverage for the Dashboard's "activities with WFP expenditures" stat
     /// (v1.4.5 — RAL-161): the total WfpActivity count and how many of those have at least
     /// one WfpExpenditure, both scoped to (officeId, fiscalYear) and optionally one division.

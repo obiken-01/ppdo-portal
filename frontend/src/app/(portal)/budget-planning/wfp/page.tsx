@@ -629,7 +629,11 @@ function WfpPageInner() {
   const [confirm, setConfirm] = useState<ConfirmDialogProps | null>(null);
 
   const restoreConfirmed = useRef(false);
-  const fundingSourcesLoaded = useRef(false);
+  // PPDO-109 — keyed by office, not a bare boolean. Funds are now per-office (province-wide plus
+  // that office's own), so a PPDO user switching offices must re-fetch; a boolean would have kept
+  // the FIRST office's list for the rest of the session and quietly dropped the second office's own
+  // funds out of the picker. null = never fetched.
+  const fundingSourcesLoadedFor = useRef<number | null>(null);
   const accountsLoaded = useRef(false);
 
   // ── Effect A: Load selector lists on mount (accounts/funding deferred) ───
@@ -705,9 +709,12 @@ function WfpPageInner() {
       setHasUnsaved(false);
 
       try {
-        const fetchFunds: Promise<FundingSourceResponse[] | null> = !fundingSourcesLoaded.current
-          ? listFundingSources({ active: "true" })
-          : Promise.resolve(null);
+        // PPDO-109 — scoped to the selected office, so the picker shows the province-wide funds plus
+        // that office's own and never another office's.
+        const fetchFunds: Promise<FundingSourceResponse[] | null> =
+          fundingSourcesLoadedFor.current !== officeId
+            ? listFundingSources({ active: "true", officeId })
+            : Promise.resolve(null);
         const fetchAccts: Promise<AccountResponse[] | null> = !accountsLoaded.current
           ? listAccounts({ active: "true" })
           : Promise.resolve(null);
@@ -725,7 +732,7 @@ function WfpPageInner() {
         if (cancelled) return;
 
         setAipDetail(detail);
-        if (newFunds) { setFundingSources(newFunds); fundingSourcesLoaded.current = true; }
+        if (newFunds) { setFundingSources(newFunds); fundingSourcesLoadedFor.current = officeId; }
         if (newAccts) { setAccounts(newAccts); accountsLoaded.current = true; }
 
         // v1.4.3 (RAL-154): ceiling/allocation are now per fund source. This page is the
