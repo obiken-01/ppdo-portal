@@ -14,6 +14,13 @@ public static class AipSector
     public const string Economic = "ECONOMIC";
     public const string Others   = "OTHERS";
 
+    /// <summary>
+    /// The four sectors in the order the province's AIP workbook lays out its sheets (PPDO-73,
+    /// <c>AIP_Form_Spec.md</c> §1). A list rather than <see cref="Prefixes"/>' keys, because a
+    /// dictionary promises no order and this one is printed.
+    /// </summary>
+    public static readonly IReadOnlyList<string> All = [General, Social, Economic, Others];
+
     public static readonly IReadOnlyDictionary<string, string> Prefixes =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {

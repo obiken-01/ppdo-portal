@@ -49,6 +49,11 @@ public sealed class WfpExpenditureRepository : Repository<WfpExpenditure>, IWfpE
     }
 
     /// <inheritdoc />
+    public async Task<int> CountByFundingSourceAsync(int fundingSourceId, CancellationToken ct = default)
+        => await _context.Set<WfpExpenditure>()
+            .CountAsync(e => e.FundingSourceId == fundingSourceId, ct);
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<WfpExpenditure>> GetByWfpActivityIdsAsync(
         IReadOnlyList<int> wfpActivityIds, CancellationToken ct = default)
     {

@@ -80,8 +80,9 @@ public record WfpReserveRateDto(decimal Rate);
 
 /// <summary>
 /// Ceiling status for one (AIP activity, division, fiscal year) — §8/RAL-122. Amounts are in
-/// PESOS: AipBudget is the AIP activity's Total × 1000, converted here (the one place this
-/// conversion happens) so the frontend never has to. AipBudget/AipUsed stay aggregate across
+/// PESOS: AipBudget is the AIP activity's Total as stored. It carried a ×1000 here until V18-35
+/// (PPDO-34) moved AIP storage to pesos; the figure this DTO reports is unchanged by that, which
+/// is what AipWfpBoundaryTests exists to prove. AipBudget/AipUsed stay aggregate across
 /// ALL funding sources (v1.4.3 §2 D3 — the AIP total has no per-fund breakdown to split
 /// against). DivisionAllocation/DivisionRemaining are General Fund's specifically (v1.4.3 —
 /// RAL-154), kept at the top level so existing callers built before the fund-source dimension

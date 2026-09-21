@@ -11,9 +11,11 @@ namespace PPDO.Application.Services;
 /// <c>IRepository&lt;Division&gt;</c>/<c>GetAllAsync</c>-then-filter pattern AllocationService
 /// itself already uses for the same small config table.
 ///
-/// The AIP-thousands-to-pesos ×1000 conversion happens ONLY in this class, at the point an
-/// AipActivity.Total is compared against WFP peso amounts — never in AllocationService (whose
-/// own doc comment explicitly forbids it) and never anywhere else in this service.
+/// AipActivity amounts are PESOS, the same unit as everything compared against them here. They
+/// were stored in thousands until V18-35 (PPDO-34) migrated every fiscal year, and this class
+/// carried the ×1000 at three sites below. There is no conversion left: an AIP budget is read
+/// and compared as-is. AipWfpBoundaryTests pins the resulting peso figure at all three so the
+/// factor cannot come back unnoticed — a wrong one is permissive and silent.
 ///
 /// The AIP-budget check (step 1 everywhere below) stays aggregate across ALL funding sources
 /// (§2 D3 — AIP data carries no per-fund breakdown). The division-allocation check (step 2) is
@@ -57,15 +59,20 @@ public sealed class WfpCeilingService : IWfpCeilingService
         int officeId = division?.OfficeId ?? 0;
 
         AipActivity? activity = await _aipRepo.GetActivityByIdAsync(aipActivityId, ct);
-        decimal aipBudget = (activity?.Total ?? 0m) * 1000m; // the ONE conversion point
+        decimal aipBudget = activity?.Total ?? 0m; // pesos as stored (V18-35)
 
         decimal aipUsed = await _wfpExpRepo.SumTotalByAipActivityAsync(
             aipActivityId, officeId, fiscalYear, excludeExpenditureId: null, ct);
 
         int? gfId = await _allocation.GetGeneralFundIdAsync(ct);
 
+        // ⚠️ SHARED funds only — office_id null (v1.8.0 PPDO-109, D11). This builds one
+        // allocation/remaining row per fund, and an office's own funds carry NO ceiling: the ceiling
+        // is a province-wide bound PPDO sets, which is not a thing an office can set for itself.
+        // Including them would render a tab per office fund whose allocation is always 0 and whose
+        // remaining is always negative the moment anything is encoded against it.
         IReadOnlyList<FundingSource> activeFunds = (await _fundingSourceRepo.GetAllAsync(ct))
-            .Where(f => f.IsActive)
+            .Where(f => f.IsActive && f.OfficeId is null)
             .ToList();
 
         List<WfpFundCeilingDto> funds = [];
@@ -103,7 +110,7 @@ public sealed class WfpCeilingService : IWfpCeilingService
         AipActivity? activity = await _aipRepo.GetActivityByIdAsync(context.AipActivityId, ct);
         if (activity is not null)
         {
-            decimal aipBudget = (activity.Total ?? 0m) * 1000m;
+            decimal aipBudget = activity.Total ?? 0m;
             decimal othersTotal = await _wfpExpRepo.SumTotalByAipActivityAsync(
                 context.AipActivityId, context.OfficeId, context.FiscalYear, excludeExpenditureId, ct);
             decimal wouldBeUsed = othersTotal + newExpenditureTotal;
@@ -217,7 +224,7 @@ public sealed class WfpCeilingService : IWfpCeilingService
             AipActivity? activity = await _aipRepo.GetActivityByIdAsync(aipActivityId, ct);
             if (activity is null) continue;
 
-            decimal aipBudget = (activity.Total ?? 0m) * 1000m;
+            decimal aipBudget = activity.Total ?? 0m;
             decimal used = await _wfpExpRepo.SumTotalByAipActivityAsync(
                 aipActivityId, record.OfficeId, record.FiscalYear, excludeExpenditureId: null, ct);
 

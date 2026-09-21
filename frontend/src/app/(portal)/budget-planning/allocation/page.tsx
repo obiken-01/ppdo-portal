@@ -7,7 +7,11 @@
  * active funding source, RAL-154/155), distributing it among divisions, and
  * assigning AIP programs to divisions.
  *
- * Access: canManageAllocation. Hidden in sidebar for everyone else.
+ * Access: canManagePpdoAllocation OR canManageOfficeCeilings (RAL-243) OR canManageOfficeSetup
+ * (PPDO-107 — a department head, for their OWN office only). Hidden in the sidebar
+ * for everyone else. The two grants are separate authorities and each gates its own half:
+ * canManageOfficeCeilings edits the ceiling (any office), canManagePpdoAllocation edits the
+ * division split and the PPA tab. A holder of one sees the other half read-only.
  * Route:  /budget-planning/allocation
  *
  * Amounts are in PESOS — no ×1000 conversion (that lives in WFP only).
@@ -25,23 +29,34 @@
  *   NOT fund-scoped — unchanged by RAL-155.
  *
  * Endpoints (AllocationFunctions.cs, { data, error, message } envelope):
- *   GET/PUT /api/budget-planning/allocation/ceiling?officeId=&fiscalYear=&fundingSourceId=
+ *   GET     /api/budget-planning/allocation/ceiling?officeId=&fiscalYear=&fundingSourceId=
+ *           ↩️ the PUT moved to the Office Ceilings page (PPDO-106); the ceiling is read-only here
  *   GET     /api/budget-planning/allocation/ceilings?officeId=&fiscalYear= (all funds, RAL-154)
  *   GET/PUT /api/budget-planning/allocation/divisions?officeId=&fiscalYear=&fundingSourceId=
  *   GET/PUT /api/budget-planning/allocation/programs?officeId=&fiscalYear=
  *   GET     /api/budget-planning/allocation/status?officeId=&fiscalYear=&divisionId=
+ *   GET     /api/budget-planning/allocation/ceiling-usage?officeId=&fiscalYear= (V18-48/PPDO-58)
+ *
+ * ⚠️ **A ceiling cut is non-destructive** (A5-b): encoded work stands and fails at the office's own
+ * submit gate. There is deliberately no confirmation dialog beyond the ordinary one and no cascade.
+ * What there IS, as of PPDO-58, is the `ceiling-usage` strip on the General Fund card — so the
+ * person making the cut can see the negative remaining it creates. Before that, only the office
+ * being cut could see it, on a page PBO cannot reach.
  */
 
 import { Fragment, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useMe } from "@/lib/me-cache";
-import { findGeneralFund, findPpdoOffice, listOffices, listDivisions, listFundingSources } from "@/lib/config";
+import { allocationLabels } from "@/lib/budget-planning-labels";
+import InfoTip from "@/components/ui/InfoTip";
+import { findGeneralFund, findHostOffice, listOffices, listDivisions, listFundingSources } from "@/lib/config";
 import {
   allocationErrorMessage,
   getAllocationsAllFunds,
   getCeilings,
+  getCeilingUsage,
   getPrograms,
   upsertAllocations,
-  upsertCeiling,
   upsertProgram,
 } from "@/lib/allocation";
 import MoneyInput from "@/components/ui/MoneyInput";
@@ -50,6 +65,7 @@ import { useToast } from "@/components/ui/Toast";
 import { formatMoney } from "@/lib/money";
 import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import type {
+  AipCeilingStatus,
   BudgetCeilingDto,
   DivisionResponse,
   FundingSourceResponse,
@@ -149,51 +165,127 @@ function AllocationBar({
 }
 
 // ---------------------------------------------------------------------------
+// CeilingUsage — what the office has actually encoded (V18-48 / PPDO-58)
+// ---------------------------------------------------------------------------
+
+/**
+ * The consequence of the ceiling above it.
+ *
+ * ⚠️ **This is the whole point of PPDO-58.** A ceiling cut is non-destructive (A5-b): nothing is
+ * deleted, nothing cascades, and no dialog appears. So before this strip existed, PBO could cut a
+ * ceiling below what an office had already encoded and see *nothing at all* — the negative
+ * remaining showed up only on that office's own submit checklist, which PBO cannot reach.
+ *
+ * ⚠️ **`remaining` is rendered exactly as the server sends it, negative included.** No
+ * `Math.max(0, …)` here or anywhere between the ledger and this line. That negative is the only
+ * signal either side gets that the cut created work the office must now revise.
+ *
+ * ⚠️ **General Fund only, MOOE + CO only.** Ceilings are GF-only (DECISION H, withdrawn and
+ * re-settled 2026-08-26) and PS is exempt as an expense class, so this strip is rendered on the
+ * General Fund card alone. Repeating it on other funds' cards with a blank figure would read as
+ * "nothing encoded yet" rather than "not checked against this fund".
+ */
+function CeilingUsage({ usage }: { usage: AipCeilingStatus | null }) {
+  // Absence, not zero. `null` means there is no AIP for this year to compare against — PBO
+  // routinely sets ceilings before anyone encodes — and "Encoded ₱0" would be a claim about the
+  // office's work rather than an admission that there is nothing to report.
+  if (usage === null) return null;
+
+  const over = usage.remaining < 0;
+
+  return (
+    <div className="mb-4 border border-slate-200 bg-slate-50 px-3 py-2">
+      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm tabular-nums">
+        <span className="text-slate-600">
+          Encoded (MOOE + CO){" "}
+          <span className="font-medium text-slate-800">₱{formatMoney(usage.encodedBaseRounded)}</span>
+        </span>
+        <span className={over ? "text-red-600" : "text-slate-600"}>
+          Remaining{" "}
+          <span className={`font-semibold ${over ? "text-red-600" : "text-slate-800"}`}>
+            ₱{formatMoney(usage.remaining)}
+          </span>
+        </span>
+        {over && (
+          <span className="text-xs font-medium text-red-600">
+            Over ceiling — this office cannot submit until it revises or the ceiling is raised
+          </span>
+        )}
+      </div>
+      <p className="mt-1 text-[11px] text-slate-600">
+        What this office has encoded in its AIP against the General Fund ceiling. MOOE and Capital
+        Outlay only — Personal Services is exempt. Figures are rounded up to the thousand per
+        activity, the way the printed form builds them.
+      </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // FundSection — one ceiling + division-allocation block per funding source (RAL-155)
 // ---------------------------------------------------------------------------
 
 function FundSection({
   fund,
   isGeneralFund,
+  ceilingUsage,
   expanded,
   onToggleExpand,
   selectedOffice,
   selectedFiscalYear,
   ceiling,
   ceilingInput,
-  onCeilingInputChange,
-  onSaveCeiling,
-  savingCeiling,
   divisions,
   allocationInputs,
   onAllocationInputChange,
   onSaveAllocations,
   savingAllocations,
+  canSetCeiling,
+  canSetAllocations,
+  showDivisionSplit,
 }: {
   fund: FundingSourceResponse;
   isGeneralFund: boolean;
+  /** GF card only — see CeilingUsage. Null on every other fund, and when there is no AIP yet. */
+  ceilingUsage: AipCeilingStatus | null;
   expanded: boolean;
   onToggleExpand: () => void;
   selectedOffice: OfficeResponse | null;
   selectedFiscalYear: number;
   ceiling: BudgetCeilingDto | null;
+  /** The SAVED ceiling, mirrored into state — the division split below is measured against it. */
   ceilingInput: number | null;
-  onCeilingInputChange: (v: number | null) => void;
-  onSaveCeiling: () => void;
-  savingCeiling: boolean;
   divisions: DivisionResponse[];
   allocationInputs: Record<number, number | null>;
   onAllocationInputChange: (divisionId: number, v: number | null) => void;
   onSaveAllocations: () => void;
   savingAllocations: boolean;
+  /** RAL-243: the PBO grant. Without it the ceiling is shown but not editable here. */
+  canSetCeiling: boolean;
+  /** The PPDO allocation grant. Without it the division split is not this caller's to set. */
+  canSetAllocations: boolean;
+  /**
+   * Whether a division split applies here at all: the grant AND a host-office (PPDO)
+   * selection. Division is a scoping axis only for PPDO — `BudgetPlanningScope`, RAL-250 —
+   * so for any other office there is nothing to split and nothing to say about it.
+   */
+  showDivisionSplit: boolean;
 }) {
   const allocationTotal = divisions.reduce((sum, d) => sum + (allocationInputs[d.id] ?? 0), 0);
   const isOverCeiling = (ceilingInput ?? 0) > 0 && allocationTotal > (ceilingInput ?? 0) + 0.001;
   const remaining = (ceilingInput ?? 0) - allocationTotal;
 
-  const statusLabel = !ceiling ? "Not set" : allocationTotal > 0 ? "Set up" : "Ceiling only";
+  // Without a division split there is no half-done state to report: the ceiling is either
+  // set or it is not. "Ceiling only" would name a second step this office never has.
+  const statusLabel = !ceiling
+    ? "Not set"
+    : !showDivisionSplit
+    ? "Set"
+    : allocationTotal > 0
+    ? "Set up"
+    : "Ceiling only";
   const statusClasses =
-    statusLabel === "Set up"
+    statusLabel === "Set up" || statusLabel === "Set"
       ? "text-green-700 bg-green-100"
       : statusLabel === "Ceiling only"
       ? "text-amber-700 bg-amber-100"
@@ -201,26 +293,45 @@ function FundSection({
 
   const body = (
     <>
-      {/* Ceiling */}
-      <div className="flex items-center gap-3 mb-1">
-        <MoneyInput value={ceilingInput} onChange={onCeilingInputChange} className="w-52" />
-        <button
-          onClick={onSaveCeiling}
-          disabled={savingCeiling || !ceilingInput || ceilingInput <= 0}
-          className="px-4 py-2 bg-green-700 text-white text-sm font-medium hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-        >
-          {savingCeiling && (
-            <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+      {/* ↩️ **Read-only here since PPDO-106.** Ceilings are set on Investment Planning → Office
+          Ceilings, which shows every office at once — this page is about what the office does with
+          the ceiling, not about setting it. The saved figure stays because the division split below
+          is measured against it. */}
+      <div className="mb-1 flex items-center gap-1.5 text-sm text-slate-800 tabular-nums">
+        <span>
+          Ceiling:{" "}
+          {ceiling ? (
+            <span className="font-semibold">₱{formatMoney(ceiling.amount)}</span>
+          ) : (
+            <span className="text-slate-600">not set yet</span>
           )}
-          Set Ceiling
-        </button>
+        </span>
+        {canSetCeiling ? (
+          <Link
+            href={`/budget-planning/office-ceilings?fiscalYear=${selectedFiscalYear}`}
+            className="text-xs text-green-800 underline decoration-green-200 underline-offset-2 hover:decoration-green-700"
+          >
+            Set on Office Ceilings
+          </Link>
+        ) : (
+          <InfoTip label="Who sets the ceiling?">
+            Ceilings are set by PPDO finance &mdash; the General Fund and every other fund source
+            alike. The saved figure is shown here because your division split is measured against it.
+          </InfoTip>
+        )}
       </div>
-      {ceiling && (
-        <p className="mb-4 text-xs text-slate-600">Saved ceiling: ₱{formatMoney(ceiling.amount)}</p>
-      )}
-      {!ceiling && <div className="mb-4" />}
+      {(!canSetCeiling || !ceiling) && <div className="mb-2" />}
 
-      {divisions.length === 0 ? (
+      {/* ⚠️ Directly under the ceiling it refers to, and above the division split — the split is
+          PPDO's internal mechanic, while this is what EVERY office does with the ceiling. A PBO
+          reader has no division block at all, so placing it below would put it last on a page
+          whose only other content is the input they just changed. */}
+      {isGeneralFund && <CeilingUsage usage={ceilingUsage} />}
+
+      {/* The division split belongs to the PPDO finance officer. Without that grant the
+          whole block is hidden rather than shown disabled — for a PBO officer setting a
+          ceiling on another office it is that office's internal breakdown. */}
+      {!showDivisionSplit ? null : divisions.length === 0 ? (
         <p className="text-sm text-slate-600">
           No divisions configured for this office. Add divisions in Config → Divisions.
         </p>
@@ -292,6 +403,7 @@ function FundSection({
                           value={amount}
                           onChange={(v) => onAllocationInputChange(div.id, v)}
                           className="w-48 text-sm"
+                          disabled={!canSetAllocations}
                         />
                       </div>
                     </td>
@@ -356,6 +468,15 @@ function FundSection({
           <span className="text-[10px] font-medium text-green-700 bg-green-100 px-1.5 py-0.5">
             Required
           </span>
+          {/* Deliberately says nothing about divisions: a PBO reader never meets that
+              concept, and the rule holds either way. ↩️ The "has not shipped" caveat that stood
+              here is gone: V18-46/PPDO-56 shipped the AIP-side General-Fund-only check, and
+              PPDO-58 puts its result on this very card. */}
+          <InfoTip label="Why is only the General Fund ceiling required?">
+            General Fund is the only required ceiling. Ceilings on other fund sources are
+            optional &mdash; set one for any fund this office will encode against, since each
+            expenditure is checked against its own fund source.
+          </InfoTip>
           {selectedOffice && (
             <span className="font-normal text-slate-600">
               — {selectedOffice.officeName} · FY{selectedFiscalYear}
@@ -387,11 +508,13 @@ function FundSection({
           </span>
         </span>
         <span className="text-xs text-slate-600">
-          {ceiling
+          {!ceiling
+            ? "No ceiling set"
+            : showDivisionSplit
             ? `Ceiling ₱${formatMoney(ceiling.amount)} · Allocated ₱${formatMoney(
                 allocationTotal
               )} · Remaining ₱${formatMoney(remaining)}`
-            : "No ceiling set"}
+            : `Ceiling ₱${formatMoney(ceiling.amount)}`}
         </span>
       </button>
       {expanded && <div className="px-4 pb-4">{body}</div>}
@@ -405,12 +528,21 @@ function FundSection({
 
 function AllocationPageInner() {
   const { toast } = useToast();
-  const me = useMe((m) => m.canManageAllocation);
+  const me = useMe(
+    (m) => m.canManagePpdoAllocation || m.canManageOfficeCeilings || m.canManageOfficeSetup);
 
   // ── Selectors ─────────────────────────────────────────────────────────────
 
   const [officeList, setOfficeList] = useState<OfficeResponse[]>([]);
   const [selectedOfficeId, setSelectedOfficeId] = useState<number | null>(null);
+  /**
+   * What the selected office has encoded against its General Fund ceiling (V18-48 / PPDO-58).
+   *
+   * ⚠️ `null` means "nothing to compare against" — no AIP for that year, or the office holds no
+   * rows in it — and is rendered as ABSENCE, never as ₱0 encoded. PBO routinely sets ceilings
+   * before any office encodes, so ₱0 would be a false reassurance rather than a missing value.
+   */
+  const [ceilingUsage, setCeilingUsage] = useState<AipCeilingStatus | null>(null);
   const [selectedFiscalYear, setSelectedFiscalYear] = useState<number>(
     new Date().getFullYear() + 1
   );
@@ -432,7 +564,6 @@ function AllocationPageInner() {
   const [ceilingInputs, setCeilingInputs] = useState<Record<number, number | null>>({});
   const [allocationInputsByFund, setAllocationInputsByFund] =
     useState<Record<number, Record<number, number | null>>>({});
-  const [savingCeilingFundId, setSavingCeilingFundId] = useState<number | null>(null);
   const [savingAllocationsFundId, setSavingAllocationsFundId] = useState<number | null>(null);
   const [expandedFundIds, setExpandedFundIds] = useState<Set<number>>(new Set());
 
@@ -449,6 +580,13 @@ function AllocationPageInner() {
   // ── Tab 2: PPA → Division ─────────────────────────────────────────────────
 
   const [localAssignments, setLocalAssignments] = useState<Record<string, number[]>>({});
+  /**
+   * What the server last told us, so the tab can tell a CHANGED assignment from an untouched one
+   * (PPDO-108 follow-up). ↩️ There were two always-enabled Save buttons before this, top and
+   * bottom, and each re-sent every programme on the page — one PUT per row whether or not anything
+   * about it had moved.
+   */
+  const [savedAssignments, setSavedAssignments] = useState<Record<string, number[]>>({});
   const [multiDivision, setMultiDivision] = useState<Record<string, boolean>>({});
   const [showUnassignedOnly, setShowUnassignedOnly] = useState(false);
   const [savingPpa, setSavingPpa] = useState(false);
@@ -458,8 +596,59 @@ function AllocationPageInner() {
 
   // ── Derived ───────────────────────────────────────────────────────────────
 
-  const isOfficeUser = me != null && me.officeId != null;
+  // RAL-243 — two independent grants share this page. The PBO officer sets ceilings for
+  // any office; the PPDO finance officer splits PPDO's ceiling across divisions and
+  // assigns PPAs. Holding one does not grant the other, so each half gates separately.
+  // The backend enforces both (AllocationFunctions) — this only keeps the UI honest.
+  const canSetCeiling     = me?.canManageOfficeCeilings === true;
+  // The host-office half mirrors the endpoints, which refuse a guest-office caller holding
+  // this grant outright — for their own office as well as a foreign one (PPDO-18,
+  // `docs/v1.8/Permission_Matrix.md` §4). It is not redundant with the grant: a live PTO
+  // account held it by mistake, and keying on the grant alone showed that account the
+  // division split for work its own endpoints refuse. Enforcing "PPDO only" rather than
+  // trusting the grant to be administered correctly is the point of the rule.
+  const canSetAllocations = me?.canManagePpdoAllocation === true && me?.isHostOffice === true;
+
+  // PPDO-107 — the second door, and it opens onto ONE office: the holder's own. It is not a
+  // narrowing of the grant above (that one stays host-office-exclusive); it is a separate grant a
+  // department head holds, mirrored by `ResolveSetupScopeAsync` on the endpoints, which compares
+  // this caller's office id against the office each request targets and 403s otherwise.
+  const canSetOwnOfficeSetup = me?.canManageOfficeSetup === true;
+
+  // PPDO-17 — the office axis, and the ONE place it is decided. The question is not "is this
+  // caller the host office?" but "is this caller cross-office?", which host-office membership
+  // and canManageOfficeCeilings answer independently: PPDO-2 grants authority over EVERY office's
+  // ceiling, and its holder is realistically a Provincial Budget Office employee, not a PPDO
+  // one. Gating the picker on the host office alone left that grant real but unreachable —
+  // the holder could only ever open the one office whose ceiling they have no reason to set.
+  //
+  // Mirrors OfficeScope.ResolveForCeiling on the backend, which widens the same two callers
+  // and is what actually enforces this (PPDO-18). Keep it a single named flag: a second
+  // inlined OR at one of the use sites is how the WFP division clamp ended up one dimension
+  // short.
+  const canChooseOffice = me != null && (me.isHostOffice === true || canSetCeiling);
   const selectedOffice = officeList.find((o) => o.id === selectedOfficeId) ?? null;
+
+  // Division is a scoping axis for the host office (PPDO) only — BudgetPlanningScope,
+  // RAL-250. A guest office has no split to set, whoever is looking, so both the split
+  // and the PPA → Division tab turn on the selected OFFICE as well as on the grant.
+  // ⚠️ Two different callers, two different offices. PPDO splits its OWN ceiling (RAL-250: division
+  // is a scoping axis for the host office), and since PPDO-107 a department head splits theirs —
+  // their office's divisions are already first-class (`divisions.office_id`), and the service has
+  // always validated that every division in the payload belongs to the office being written.
+  const isOwnOfficeSelected = selectedOfficeId != null && selectedOfficeId === me?.officeId;
+  const canEditSelectedOfficeSetup =
+    canSetAllocations || (canSetOwnOfficeSetup && isOwnOfficeSelected);
+  const showDivisionSplit =
+    (canSetAllocations && selectedOffice?.isHostOffice === true)
+    || (canSetOwnOfficeSetup && isOwnOfficeSelected);
+
+  // A PBO-only caller reads a ceilings page, not an allocation page — see the helper.
+  const labels = allocationLabels(me);
+
+  // Switching from PPDO to a guest office while on the PPA tab must not leave the user
+  // on a tab that no longer renders — fall back rather than blanking the page.
+  const effectiveTab = showDivisionSplit ? activeTab : "ceiling";
 
   const unassignedCount = useMemo(
     () =>
@@ -505,13 +694,22 @@ function AllocationPageInner() {
 
   useEffect(() => {
     if (!me) return;
-    if (me.officeId != null) {
+    if (!canChooseOffice) {
       setSelectedOfficeId(me.officeId);
-    } else {
-      const ppdo = findPpdoOffice(officeList);
-      if (ppdo) setSelectedOfficeId(ppdo.id);
+      return;
     }
-  }, [me, officeList]);
+    if (me.isHostOffice) {
+      const ppdo = findHostOffice(officeList);
+      if (ppdo) setSelectedOfficeId(ppdo.id);
+      return;
+    }
+    // A cross-office ceiling holder who is NOT the host office starts with NO office
+    // selected (PPDO-17 step 3). Their own office is the one office whose ceiling they have
+    // no reason to set, so pre-filling it is actively misleading; defaulting to PPDO instead
+    // would be just as arbitrary, since PPDO has no more claim on their attention than any
+    // other office and the page writes a real budget figure. The existing empty state already
+    // covers this, so the cost of asking is one dropdown.
+  }, [me, canChooseOffice, officeList]);
 
   // ── Load allocation data when office, FY, or the fund list changes ───────
   // Division allocations now have a bulk-across-funds endpoint too (RAL-166 follow-up),
@@ -521,10 +719,12 @@ function AllocationPageInner() {
     if (selectedOfficeId == null) {
       setDivisions([]);
       setCeilings({});
+      setCeilingUsage(null);
       setCeilingInputs({});
       setAllocationInputsByFund({});
       setPrograms([]);
       setLocalAssignments({});
+      setSavedAssignments({});
       setMultiDivision({});
       setCheckedPrograms(new Set());
       return;
@@ -570,6 +770,13 @@ function AllocationPageInner() {
         }
         setAllocationInputsByFund(allocInputsByFund);
 
+        // ⚠️ Deliberately NOT in the Promise.all above and deliberately swallowed. This figure
+        // is context for the ceiling, not a prerequisite for editing it — an AIP-side failure
+        // must not stop PBO setting a ceiling, which is the page's actual job.
+        void getCeilingUsage(selectedOfficeId!, selectedFiscalYear)
+          .then((usage) => { if (!cancelled) setCeilingUsage(usage); })
+          .catch(() => { if (!cancelled) setCeilingUsage(null); });
+
         setPrograms(progs);
         const assignments: Record<string, number[]> = {};
         // Multi/Single is a derived UI-only concept — nothing is persisted server-side beyond
@@ -586,6 +793,7 @@ function AllocationPageInner() {
           multi[key] = p.divisionIds.length > 1;
         }
         setLocalAssignments(assignments);
+        setSavedAssignments(assignments);
         setMultiDivision(multi);
         setCheckedPrograms(new Set());
         setBulkDivisionId(null);
@@ -605,27 +813,9 @@ function AllocationPageInner() {
 
   // ── Tab 1: Ceiling & Allocation — per fund source ─────────────────────────
 
-  async function handleSaveCeiling(fundId: number) {
-    const amount = ceilingInputs[fundId];
-    if (selectedOfficeId == null || amount == null || amount <= 0) return;
-    setSavingCeilingFundId(fundId);
-    try {
-      const result = await upsertCeiling({
-        officeId: selectedOfficeId,
-        fiscalYear: selectedFiscalYear,
-        fundingSourceId: fundId,
-        amount,
-      });
-      setCeilings((prev) => ({ ...prev, [fundId]: result }));
-      toast.success("Saved", "Budget ceiling updated.");
-    } catch (err) {
-      toast.error("Save failed", allocationErrorMessage(err, "Could not save ceiling."));
-    } finally {
-      setSavingCeilingFundId(null);
-    }
-  }
-
   async function handleSaveAllocations(fundId: number) {
+    // PPDO-107 — either door: PPDO writing any office, or a department head writing their own.
+    if (!canEditSelectedOfficeSetup) return;
     const inputs = allocationInputsByFund[fundId] ?? {};
     const total = divisions.reduce((sum, d) => sum + (inputs[d.id] ?? 0), 0);
     const ceilingAmount = ceilingInputs[fundId] ?? 0;
@@ -695,23 +885,54 @@ function AllocationPageInner() {
     setBulkDivisionId(null);
   }
 
+  /**
+   * The programmes whose division set differs from what the server returned.
+   *
+   * ⚠️ Compared as SETS: the radio and the multi-select build the array in click order, so
+   * [2,1] and [1,2] are the same assignment and must not read as a change.
+   */
+  const dirtyPpaKeys = useMemo(() => {
+    const changed: string[] = [];
+    for (const p of programs) {
+      const key = `${p.officeRefCode}:${p.programRefCode}`;
+      const now = [...(localAssignments[key] ?? [])].sort((a, b) => a - b);
+      const before = [...(savedAssignments[key] ?? [])].sort((a, b) => a - b);
+      if (now.length !== before.length || now.some((id, i) => id !== before[i])) changed.push(key);
+    }
+    return changed;
+  }, [programs, localAssignments, savedAssignments]);
+
+  function discardPpaChanges() {
+    setLocalAssignments(savedAssignments);
+    setCheckedPrograms(new Set());
+    setBulkDivisionId(null);
+  }
+
   async function handleSavePpa() {
-    if (savingPpa || programs.length === 0) return;
+    if (!canEditSelectedOfficeSetup) return;
+    if (savingPpa || dirtyPpaKeys.length === 0) return;
     setSavingPpa(true);
     let failed = 0;
+    // Only what changed — the whole page used to go up on every click, which on a large office
+    // was dozens of writes to record one radio button.
+    const saved: Record<string, number[]> = { ...savedAssignments };
     try {
-      for (const p of programs) {
-        const key = `${p.officeRefCode}:${p.programRefCode}`;
+      for (const key of dirtyPpaKeys) {
+        const [officeRefCode, programRefCode] = key.split(":");
         try {
           await upsertProgram({
-            officeRefCode: p.officeRefCode,
-            programRefCode: p.programRefCode,
+            officeRefCode,
+            programRefCode,
             divisionIds: localAssignments[key] ?? [],
           });
+          saved[key] = [...(localAssignments[key] ?? [])];
         } catch {
           failed++;
         }
       }
+      // ⚠️ The baseline advances only for the rows that actually landed, so a partial failure
+      // leaves exactly the failed ones still marked unsaved rather than pretending all is well.
+      setSavedAssignments(saved);
       if (failed > 0) {
         toast.error("Partial failure", `${failed} program(s) could not be saved.`);
       } else {
@@ -766,10 +987,7 @@ function AllocationPageInner() {
       <div className="px-3 py-4 sm:px-6 sm:py-6 max-w-6xl mx-auto w-full flex-1">
 
         <div className="mb-5">
-          <ConfigPageHeader
-            title="Allocation"
-            description="Set office budget ceilings and per-division allocation splits by fund source."
-          />
+          <ConfigPageHeader title={labels.title} description={labels.description} />
         </div>
 
         {/* Selectors */}
@@ -794,11 +1012,7 @@ function AllocationPageInner() {
             <label className="text-sm text-slate-600 font-medium whitespace-nowrap">
               Office
             </label>
-            {isOfficeUser ? (
-              <span className="text-sm text-slate-600 font-medium">
-                {me?.officeName ?? `Office #${me?.officeId}`}
-              </span>
-            ) : (
+            {canChooseOffice ? (
               <OfficeSelect
                 className="w-64"
                 offices={officeList}
@@ -806,6 +1020,10 @@ function AllocationPageInner() {
                 onChange={setSelectedOfficeId}
                 placeholder="— select office —"
               />
+            ) : (
+              <span className="text-sm text-slate-600 font-medium">
+                {me?.officeName ?? `Office #${me?.officeId}`}
+              </span>
             )}
           </div>
         </div>
@@ -832,7 +1050,7 @@ function AllocationPageInner() {
         {/* Empty state */}
         {!loading && selectedOfficeId == null && (
           <p className="text-slate-600 text-sm py-6">
-            Select an office to configure allocation.
+            {labels.emptyOffice}
           </p>
         )}
 
@@ -841,28 +1059,28 @@ function AllocationPageInner() {
           <>
             {/* Tabs */}
             <div className="flex border-b border-slate-200 mb-6">
-              {(["ceiling", "ppa"] as const).map((tab) => (
+              {(showDivisionSplit
+                ? (["ceiling", "ppa"] as const)
+                : (["ceiling"] as const)
+              ).map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
                   className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                    activeTab === tab
+                    effectiveTab === tab
                       ? "border-green-600 text-green-700"
                       : "border-transparent text-slate-600 hover:text-slate-800"
                   }`}
                 >
-                  {tab === "ceiling" ? "Ceiling & Division Allocation" : "PPA → Division"}
+                  {tab === "ceiling" ? labels.ceilingTab : "PPA → Division"}
                 </button>
               ))}
             </div>
 
             {/* ── TAB 1: Ceiling & Division Allocation ───────────────── */}
-            {activeTab === "ceiling" && (
+            {effectiveTab === "ceiling" && (
               <div className="max-w-2xl space-y-3">
-                <p className="text-xs text-slate-600">
-                  One ceiling and division split per active fund source. General Fund is
-                  required; others are optional.
-                </p>
+                <p className="text-xs text-slate-600">{labels.ceilingIntro}</p>
 
                 {fundList.length === 0 ? (
                   <p className="text-sm text-slate-600 py-4">
@@ -874,6 +1092,7 @@ function AllocationPageInner() {
                       key={fund.id}
                       fund={fund}
                       isGeneralFund={generalFund != null && fund.id === generalFund.id}
+                      ceilingUsage={ceilingUsage}
                       expanded={
                         (generalFund != null && fund.id === generalFund.id) ||
                         expandedFundIds.has(fund.id)
@@ -883,11 +1102,6 @@ function AllocationPageInner() {
                       selectedFiscalYear={selectedFiscalYear}
                       ceiling={ceilings[fund.id] ?? null}
                       ceilingInput={ceilingInputs[fund.id] ?? null}
-                      onCeilingInputChange={(v) =>
-                        setCeilingInputs((prev) => ({ ...prev, [fund.id]: v }))
-                      }
-                      onSaveCeiling={() => handleSaveCeiling(fund.id)}
-                      savingCeiling={savingCeilingFundId === fund.id}
                       divisions={divisions}
                       allocationInputs={allocationInputsByFund[fund.id] ?? {}}
                       onAllocationInputChange={(divId, v) =>
@@ -898,6 +1112,9 @@ function AllocationPageInner() {
                       }
                       onSaveAllocations={() => handleSaveAllocations(fund.id)}
                       savingAllocations={savingAllocationsFundId === fund.id}
+                      canSetCeiling={canSetCeiling}
+                      canSetAllocations={canEditSelectedOfficeSetup}
+                      showDivisionSplit={showDivisionSplit}
                     />
                   ))
                 )}
@@ -905,7 +1122,7 @@ function AllocationPageInner() {
             )}
 
             {/* ── TAB 2: PPA → Division ────────────────────────────────────── */}
-            {activeTab === "ppa" && (
+            {effectiveTab === "ppa" && (
               <div>
                 {divisions.length === 0 ? (
                   <p className="text-sm text-slate-600 py-4">
@@ -979,17 +1196,9 @@ function AllocationPageInner() {
                         </div>
                       )}
 
-                      {/* Save button — top-right */}
-                      <button
-                        onClick={handleSavePpa}
-                        disabled={savingPpa || programs.length === 0}
-                        className="px-4 py-1.5 bg-green-700 text-white text-sm font-medium hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                      >
-                        {savingPpa && (
-                          <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        )}
-                        Save
-                      </button>
+                      {/* ↩️ The Save that used to sit here is gone, along with its twin below the
+                          grid: with four programmes both were on screen at once, and neither said
+                          whether there was anything to save. One bar now appears only when there is. */}
                       </div>
                     </div>
 
@@ -1174,19 +1383,36 @@ function AllocationPageInner() {
                       </p>
                     )}
 
-                    {/* Save button — bottom-right */}
-                    {programs.length > 0 && (
-                      <div className="flex justify-end mt-3">
-                        <button
-                          onClick={handleSavePpa}
-                          disabled={savingPpa}
-                          className="px-4 py-2 bg-green-700 text-white text-sm font-medium hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                        >
-                          {savingPpa && (
-                            <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          )}
-                          Save
-                        </button>
+                    {/* Unsaved changes bar — the tab's only save control.
+                        ⚠️ Sticky to the bottom of the scroll area, so a long office's list can be
+                        edited from anywhere without scrolling back for a button. It renders only
+                        when something differs from what the server returned, which is also what
+                        makes the count trustworthy. */}
+                    {dirtyPpaKeys.length > 0 && (
+                      <div className="sticky bottom-0 z-10 mt-3 flex items-center justify-between gap-3 border border-green-200 bg-green-50 px-4 py-3">
+                        <p className="text-sm text-slate-800">
+                          <span className="font-semibold tabular-nums">{dirtyPpaKeys.length}</span>{" "}
+                          {dirtyPpaKeys.length === 1 ? "program" : "programs"} changed
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={discardPpaChanges}
+                            disabled={savingPpa}
+                            className="px-3 py-2 text-sm text-slate-600 hover:text-slate-800 disabled:opacity-50 transition-colors"
+                          >
+                            Discard
+                          </button>
+                          <button
+                            onClick={handleSavePpa}
+                            disabled={savingPpa}
+                            className="px-4 py-2 bg-green-700 text-white text-sm font-medium hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                          >
+                            {savingPpa && (
+                              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            )}
+                            Save
+                          </button>
+                        </div>
                       </div>
                     )}
                   </>

@@ -1,0 +1,135 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #F1F3F5;
+      font-family: "Segoe UI", "Source Sans Pro", system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: #1F7A45; }
+    a:hover { color: #196638; }
+    .num { font-variant-numeric: tabular-nums; }
+    .row {
+      display: grid;
+      grid-template-columns: 260px 130px 190px 150px 140px 100px minmax(0, 1fr);
+      align-items: center;
+    }
+    .th {
+      padding: 10px 16px; font-size: 12px; line-height: 16px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.025em; color: #5A636B; white-space: nowrap;
+    }
+    .td { padding: 10px 16px; font-size: 14px; line-height: 20px; }
+    .pill {
+      display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 9999px;
+      font-size: 12px; line-height: 16px; font-weight: 500; white-space: nowrap;
+    }
+    .host {
+      margin-left: 8px; display: inline-flex; padding: 2px 6px; border-radius: 9999px; background: #D4EDDE;
+      color: #196638; font-size: 10px; line-height: 12px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.025em; vertical-align: 1px;
+    }
+  </style>
+</helmet>
+
+<div style="padding: 24px;">
+<section style="background: #FFFFFF; border: 1px solid #E9ECEF;">
+
+  <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 16px 20px; border-bottom: 1px solid #F1F3F5;">
+    <div style="min-width: 0;">
+      <h2 style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 600; color: #343A40;">Offices — FY 2028</h2>
+      <p style="margin: 2px 0 0; font-size: 12px; line-height: 16px; color: #5A636B;">Read-only across every office</p>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <div style="display: inline-flex; border: 1px solid #E9ECEF;">
+        <span style="padding: 6px 12px; font-size: 12px; line-height: 16px; font-weight: 500; background: #FFFFFF; color: #5A636B;">Board</span>
+        <span style="padding: 6px 12px; font-size: 12px; line-height: 16px; font-weight: 500; background: #196638; color: #FFFFFF; border-left: 1px solid #E9ECEF;">Table</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- OfficeTable.tsx, unchanged -->
+  <div class="row" style="background: #F8F9FA;">
+    <span class="th">Office</span>
+    <span class="th">AIP</span>
+    <span class="th">Submission</span>
+    <span class="th" style="text-align: right;">Ceiling</span>
+    <span class="th" style="text-align: right;">Costed in AIP</span>
+    <span class="th" style="text-align: right;">Activities</span>
+    <span class="th">Reviewer</span>
+  </div>
+
+  <sc-for list="{{ rows }}" as="r" hint-placeholder-count="19">
+    <div class="row" style="border-top: 1px solid #F1F3F5;">
+      <div class="td" style="min-width: 0;">
+        <span style="font-weight: 500; color: #343A40;">{{ r.code }}</span><sc-if value="{{ r.host }}" hint-placeholder-val="{{ false }}"><span class="host">Host</span></sc-if>
+        <span style="display: block; font-size: 12px; line-height: 16px; color: #7D858C; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px;">{{ r.name }}</span>
+      </div>
+      <div class="td" style="display: flex; flex-wrap: wrap; gap: 4px;">
+        <span class="pill" style="{{ r.aipStyle }}">{{ r.aip }}</span>
+      </div>
+      <div class="td" style="display: flex; flex-wrap: wrap; gap: 4px;">
+        <span class="pill" style="background: #F1F3F5; color: #5A636B;">Todo</span>
+        <sc-if value="{{ r.cannotSubmit }}" hint-placeholder-val="{{ true }}"><span class="pill" style="background: #FDECEA; color: #E24B4A;">Cannot submit</span></sc-if>
+      </div>
+      <span class="td num" style="{{ r.ceilingStyle }}">{{ r.ceiling }}</span>
+      <span class="td num" style="text-align: right; color: #5A636B;">{{ r.costed }}</span>
+      <span class="td num" style="text-align: right; color: #5A636B;">{{ r.activities }}</span>
+      <span class="td" style="{{ r.reviewerStyle }}">{{ r.reviewer }}</span>
+    </div>
+  </sc-for>
+
+</section>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1200,"height":1280}}'>
+class Component extends DCLogic {
+  renderVals() {
+    // Host first, then by code — the order the live table renders in today (FY2028, local data).
+    const data = [
+      ["PPDO", "Provincial Planning and Development Office", true, "In progress", "₱10,000,000.00", "₱1,116,000.00", 2, "PDC"],
+      ["ENRO", "Environment and Natural Resources Office", false, "Todo", null, "₱0.00", 0, null],
+      ["GSO", "General Services Office", false, "Todo", null, "₱0.00", 0, null],
+      ["HRMO", "Human Resource Management Office", false, "Todo", null, "₱0.00", 0, null],
+      ["OPA", "Office of the Provincial Agriculturist", false, "In progress", "₱50,000,000.00", "₱550.00", 1, "Provincial Agriculturist"],
+      ["OPAd", "Office of the Provincial Administrator", false, "Todo", null, "₱0.00", 0, null],
+      ["OPV", "Office of the Provincial Veterinarian", false, "Todo", null, "₱0.00", 0, null],
+      ["PACCO", "Provincial Accountant's Office", false, "Todo", null, "₱0.00", 0, null],
+      ["PASSO", "Provincial Assessor's Office", false, "Todo", null, "₱0.00", 0, null],
+      ["PBO", "Provincial Budget Office", false, "Todo", null, "₱0.00", 0, null],
+      ["PDRRMO", "Provincial Disaster Risk Reduction Management Office", false, "Todo", null, "₱0.00", 0, null],
+      ["PEO", "Provincial Engineer's Office", false, "Todo", null, "₱0.00", 0, null],
+      ["PEPO", "Provincial Equipment Pool Office", false, "Todo", null, "₱0.00", 0, null],
+      ["PGO", "Office of the Provincial Governor", false, "Todo", null, "₱0.00", 0, null],
+      ["PHO", "Provincial Health Office", false, "Todo", null, "₱0.00", 0, null],
+      ["PLO", "Provincial Legal Office", false, "Todo", null, "₱0.00", 0, null],
+      ["PSWDO", "Provincial Social Welfare and Development Office", false, "Todo", null, "₱0.00", 0, null],
+      ["PTO", "Provincial Treasurer's Office", false, "Todo", null, "₱0.00", 0, null],
+      ["SPO", "Sangguniang Panlalawigan Office", false, "Todo", null, "₱0.00", 0, null],
+    ];
+
+    return {
+      rows: data.map(([code, name, host, aip, ceiling, costed, activities, reviewer]) => ({
+        code, name, host, aip, costed, activities,
+        aipStyle: aip === "In progress" ? "background: #E3F2FD; color: #378ADD;" : "background: #F1F3F5; color: #5A636B;",
+        ceiling: ceiling ?? "Not published",
+        ceilingStyle: "text-align: right; " + (ceiling ? "color: #5A636B;" : "color: #7D858C;"),
+        cannotSubmit: reviewer == null,
+        reviewer: reviewer ?? "None — assign",
+        reviewerStyle: reviewer ? "color: #5A636B;" : "color: #7D858C;",
+      })),
+    };
+  }
+}
+</script>
+</body>
+</html>

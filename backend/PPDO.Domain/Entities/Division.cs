@@ -1,3 +1,5 @@
+using PPDO.Domain.Enums;
+
 namespace PPDO.Domain.Entities;
 
 /// <summary>
@@ -35,7 +37,7 @@ public sealed class Division
     // ── Feature permission flags (the "grouping") ─────────────────────────────
     // Defaults for Staff members of this division. Per-user Override* flags on User
     // take precedence when non-null. SuperAdmin/Admin ignore these (they bypass).
-    // CanManageAllocation is deliberately NOT here — it is a per-user grant.
+    // CanManagePpdoAllocation is deliberately NOT here — it is a per-user grant.
 
     public bool CanAccessInventory { get; set; }
     public bool CanAccessReports { get; set; }
@@ -44,6 +46,20 @@ public sealed class Division
     public bool CanAccessBudgetPlanning { get; set; }
     public bool CanUploadAip { get; set; }
     public bool CanManageConfig { get; set; }
+
+    // ── Landing ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Default landing page for every user in this division (RAL-251). Null = no preference; the
+    /// resolver falls through to the next level of the chain
+    /// (user → division → office → first permitted → Profile).
+    /// </summary>
+    /// <remarks>
+    /// Not permission-checked on write, unlike the per-user preference: one division default is
+    /// shared by users whose overrides differ, so a value that is unreachable for some of them is
+    /// legitimate. <c>LandingPageResolver</c> skips it per-user at read time (RAL-259).
+    /// </remarks>
+    public LandingPage? LandingPage { get; set; }
 
     // ── Audit ─────────────────────────────────────────────────────────────────
 

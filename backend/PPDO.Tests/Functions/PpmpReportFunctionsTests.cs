@@ -60,14 +60,14 @@ public sealed class PpmpReportFunctionsTests
             });
 
     /// <summary>Authenticates the caller and sets the two permission answers the handlers ask for.</summary>
-    private void Authenticate(User caller, bool canAccessBudgetPlanning = true, bool canManageAllocation = false)
+    private void Authenticate(User caller, bool canAccessBudgetPlanning = true, bool canManagePpdoAllocation = false)
     {
         _jwt.Setup(j => j.ValidateAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(caller);
         _permissions.Setup(p => p.CanAccessBudgetPlanningAsync(caller, It.IsAny<CancellationToken>()))
             .ReturnsAsync(canAccessBudgetPlanning);
-        _permissions.Setup(p => p.CanManageAllocationAsync(caller, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(canManageAllocation);
+        _permissions.Setup(p => p.CanManagePpdoAllocationAsync(caller, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(canManagePpdoAllocation);
     }
 
     /// <summary>Captures the divisionId the handler resolves and hands to the service.</summary>
@@ -115,7 +115,7 @@ public sealed class PpmpReportFunctionsTests
     public async Task GetPreview_AsDivisionScopedUser_IgnoresDivisionIdQueryAndForcesOwnDivision()
     {
         User caller = MakeUser(OwnDivision);
-        Authenticate(caller, canManageAllocation: false);
+        Authenticate(caller, canManagePpdoAllocation: false);
         int? requested = -1;
         ExpectReport(ServiceResult<PpmpReportDto>.Ok(MakeReport()), d => requested = d);
 
@@ -130,7 +130,7 @@ public sealed class PpmpReportFunctionsTests
     public async Task GetPreview_AsDivisionScopedUser_WithNoDivisionIdQuery_StillForcesOwnDivision()
     {
         User caller = MakeUser(OwnDivision);
-        Authenticate(caller, canManageAllocation: false);
+        Authenticate(caller, canManagePpdoAllocation: false);
         int? requested = -1;
         ExpectReport(ServiceResult<PpmpReportDto>.Ok(MakeReport()), d => requested = d);
 
@@ -143,7 +143,7 @@ public sealed class PpmpReportFunctionsTests
     public async Task GetPreview_AsAllocationOfficer_HonoursDivisionIdQuery()
     {
         User caller = MakeUser(OwnDivision);
-        Authenticate(caller, canManageAllocation: true);
+        Authenticate(caller, canManagePpdoAllocation: true);
         int? requested = -1;
         ExpectReport(ServiceResult<PpmpReportDto>.Ok(MakeReport()), d => requested = d);
 
@@ -156,7 +156,7 @@ public sealed class PpmpReportFunctionsTests
     public async Task GetPreview_AsAllocationOfficer_WithNoDivisionIdQuery_RequestsConsolidatedReport()
     {
         User caller = MakeUser(OwnDivision);
-        Authenticate(caller, canManageAllocation: true);
+        Authenticate(caller, canManagePpdoAllocation: true);
         int? requested = -1;
         ExpectReport(ServiceResult<PpmpReportDto>.Ok(MakeReport()), d => requested = d);
 
@@ -169,7 +169,7 @@ public sealed class PpmpReportFunctionsTests
     public async Task GetPreview_AsAllocationOfficer_WithNonNumericDivisionId_RequestsConsolidatedReport()
     {
         User caller = MakeUser(OwnDivision);
-        Authenticate(caller, canManageAllocation: true);
+        Authenticate(caller, canManagePpdoAllocation: true);
         int? requested = -1;
         ExpectReport(ServiceResult<PpmpReportDto>.Ok(MakeReport()), d => requested = d);
 
@@ -189,7 +189,7 @@ public sealed class PpmpReportFunctionsTests
     public async Task GetPreview_AsDivisionScopedUserWithNoDivision_CurrentlyRequestsConsolidatedReport()
     {
         User caller = MakeUser(divisionId: null);
-        Authenticate(caller, canManageAllocation: false);
+        Authenticate(caller, canManagePpdoAllocation: false);
         int? requested = -1;
         ExpectReport(ServiceResult<PpmpReportDto>.Ok(MakeReport()), d => requested = d);
 
@@ -280,7 +280,7 @@ public sealed class PpmpReportFunctionsTests
     public async Task Export_AsDivisionScopedUser_IgnoresDivisionIdQueryAndForcesOwnDivision()
     {
         User caller = MakeUser(OwnDivision);
-        Authenticate(caller, canManageAllocation: false);
+        Authenticate(caller, canManagePpdoAllocation: false);
         int? requested = -1;
         ExpectReport(ServiceResult<PpmpReportDto>.Ok(MakeReport()), d => requested = d);
         _excel.Setup(e => e.Export(It.IsAny<PpmpReportDto>())).Returns([1, 2, 3]);
@@ -295,7 +295,7 @@ public sealed class PpmpReportFunctionsTests
     public async Task Export_AsAllocationOfficer_HonoursDivisionIdQuery()
     {
         User caller = MakeUser(OwnDivision);
-        Authenticate(caller, canManageAllocation: true);
+        Authenticate(caller, canManagePpdoAllocation: true);
         int? requested = -1;
         ExpectReport(ServiceResult<PpmpReportDto>.Ok(MakeReport()), d => requested = d);
         _excel.Setup(e => e.Export(It.IsAny<PpmpReportDto>())).Returns([1, 2, 3]);
@@ -359,7 +359,7 @@ public sealed class PpmpReportFunctionsTests
     public async Task Export_AsDivisionScopedUser_BuildsWorkbookFromTheClampedReport()
     {
         User caller = MakeUser(OwnDivision);
-        Authenticate(caller, canManageAllocation: false);
+        Authenticate(caller, canManagePpdoAllocation: false);
         PpmpReportDto report = MakeReport();
         ExpectReport(ServiceResult<PpmpReportDto>.Ok(report), _ => { });
         PpmpReportDto? exported = null;

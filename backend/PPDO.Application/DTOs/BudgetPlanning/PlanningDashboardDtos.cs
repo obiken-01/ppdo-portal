@@ -53,13 +53,26 @@ public record OfficeLdipSummaryDto(
     IReadOnlyList<StatusBreakdownDto> Breakdown
 );
 
-/// <summary>Office-scoped AIP presence + PPA/activity counts, matched via office_ref_code.</summary>
+/// <summary>
+/// Office-scoped AIP presence + PPA/activity counts + money, matched via office_ref_code.
+///
+/// <see cref="CostedInAip"/> was added by PPDO-20 and is the office's OWN total — the sum of every
+/// activity under its AIP rows. It is deliberately not derivable from the per-division figures on
+/// <see cref="PpdoDashboardDto.ByDivision"/>: a PPA assigned to two divisions counts in full
+/// against both there, so summing that list overstates the office by the shared programs. The
+/// dashboard's tiles read this field rather than that sum, which is what keeps the office total on
+/// the page agreeing with the office table's row for the same office.
+///
+/// It is also the only costed figure a guest office can obtain: the cross-office endpoint that
+/// computes the same number for every office correctly 403s a plain office user.
+/// </summary>
 public record OfficeAipSummaryDto(
     bool Exists,
     string? Status,
     int ProgramCount,
     int ProjectCount,
-    int ActivityCount
+    int ActivityCount,
+    decimal CostedInAip
 );
 
 public record OfficeDashboardDto(

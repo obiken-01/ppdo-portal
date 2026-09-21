@@ -40,7 +40,7 @@
  *
  * Access: canAccessBudgetPlanning, same as the rest of Budget Planning.
  *
- * Division scoping (RAL-136): a division-scoped caller (not CanManageAllocation) is always
+ * Division scoping (RAL-136): a division-scoped caller (not CanManagePpdoAllocation) is always
  * forced server-side to their own division regardless of the divisionId query param — the
  * Division select below is locked to it, matching the Office select. Finance officers get an
  * optional Division filter (blank = consolidated across every division of the office, the
@@ -54,7 +54,14 @@
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMe } from "@/lib/me-cache";
-import { PPDO_OFFICE_CODE, listDivisions } from "@/lib/config";
+import { listDivisions, listOffices } from "@/lib/config";
+import {
+  budgetPlanningFallback, canOpenAipReport, canOpenBudgetPlanningReport, canOpenWfpReport,
+} from "@/lib/budget-planning-access";
+import { downloadAipConsolidatedExcel } from "@/lib/aip-review";
+import { aipErrorMessage } from "@/lib/aip";
+import { FIRST_ENTERED_FISCAL_YEAR } from "@/lib/aip-fiscal-years";
+import AipAnnexBReport from "@/components/aip/report/AipAnnexBReport";
 import { getFiscalYears } from "@/lib/budget-planning";
 import { downloadWfpReportExcel, getWfpReportOffices, getWfpReportPreview, wfpErrorMessage } from "@/lib/wfp";
 import { downloadPpmpReportExcel, getPpmpReportPreview } from "@/lib/ppmp";
@@ -63,7 +70,9 @@ import { useToast } from "@/components/ui/Toast";
 import { formatMoney } from "@/lib/money";
 import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import type {
+  AipConsolidatedSheet,
   DivisionResponse,
+  OfficeResponse,
   PpmpReportDto,
   WfpReportAmountsDto,
   WfpReportBreakdownDto,
@@ -74,13 +83,23 @@ import type {
 } from "@/types";
 
 // ---------------------------------------------------------------------------
-// Report-type dropdown — only "WFP" is wired up; the shape allows more later.
+// Report types.
+//
+// ↩️ **AIP joined them in PPDO-92**, replacing the standalone Consolidated AIP page. The three do not
+// share an audience: WFP and PPMP read the WFP, which is permanently PPDO-scoped, while the AIP
+// report is either reviewer's — so a guest-office department head has exactly one type here and no
+// WFP at all. `allowedFor` is what keeps the dropdown honest rather than offering a type whose
+// selectors would come up empty.
 // ---------------------------------------------------------------------------
 
 const REPORT_TYPES = [
+  { value: "AIP", label: "Annual Investment Program (AIP) — Annex B" },
   { value: "WFP", label: "Work and Financial Plan (WFP)" },
   { value: "PPMP", label: "Project Procurement Management Plan (PPMP)" },
 ] as const;
+
+/** FY2028 onward — the AIP report renders the entered-year form, not the uploaded FY≤2027 shape. */
+const AIP_YEARS = [0, 1, 2].map((n) => FIRST_ENTERED_FISCAL_YEAR + n);
 
 // ---------------------------------------------------------------------------
 // Flatten one fund source's nested sections into one row per Excel line (WFP
@@ -395,20 +414,39 @@ function FundSourceBlock({
 
 function WfpReportPageInner() {
   const searchParams = useSearchParams();
-  const me = useMe((m) => m.canAccessBudgetPlanning);
+  // ↩️ Gated on having at least ONE report type since PPDO-92 — `canAccessBudgetPlanning` alone would
+  // land a reader with no types on a page of empty selectors.
+  const me = useMe(canOpenBudgetPlanningReport, budgetPlanningFallback);
   const { toast } = useToast();
 
   // Division-scoped users (not finance/admin) must always be locked to their own division —
   // both here and on the Office select, since a division only exists under its own office and
   // showing a different office's division picker to a locked user would be meaningless (RAL-136).
   const canBypassDivision =
-    me?.role === "SuperAdmin" || me?.role === "Admin" || me?.canManageAllocation === true;
+    me?.role === "SuperAdmin" || me?.role === "Admin" || me?.canManagePpdoAllocation === true;
 
   const urlOfficeId = searchParams.get("officeId");
   const urlDivisionId = searchParams.get("divisionId");
   const urlFiscalYear = searchParams.get("fiscalYear");
 
+  // Which types this reader has, and which one they land on. ⚠️ A hand-typed `?type=` they are not
+  // allowed falls back to their first allowed type rather than erroring — the URL is a convenience,
+  // not a grant, and the server refuses the read either way.
+  const allowedTypes = REPORT_TYPES.filter((t) =>
+    me == null ? false : t.value === "AIP" ? canOpenAipReport(me) : canOpenWfpReport(me));
+  const urlType = (searchParams.get("type") ?? "").toUpperCase();
+
   const [reportType, setReportType] = useState<string>("WFP");
+  const typeResolved = useRef(false);
+
+  // Resolved once `me` arrives, and once only — re-running it would drag the reader back to the
+  // default every time they changed the select.
+  useEffect(() => {
+    if (me == null || typeResolved.current || allowedTypes.length === 0) return;
+    typeResolved.current = true;
+    const wanted = allowedTypes.find((t) => t.value === urlType);
+    setReportType(wanted?.value ?? allowedTypes[0].value);
+  }, [me, allowedTypes, urlType]);
   const [fiscalYear, setFiscalYear] = useState<number | null>(null);
   const [availableFiscalYears, setAvailableFiscalYears] = useState<number[]>([]);
   const [officeId, setOfficeId] = useState<number | null>(null);
@@ -418,12 +456,71 @@ function WfpReportPageInner() {
   const [divisionList, setDivisionList] = useState<DivisionResponse[]>([]);
   const [divisionsLoaded, setDivisionsLoaded] = useState(false);
 
+  // ── AIP (PPDO-92) ────────────────────────────────────────────────────────
+  const [aipOffices, setAipOffices] = useState<OfficeResponse[]>([]);
+  /** Set by Generate Preview — the component fetches, so this is what it fetches FOR. */
+  const [aipRequest, setAipRequest] = useState<{ fiscalYear: number; officeId: number | null } | null>(null);
+  /** Reported back by the component, so Export knows whether there is anything to export. */
+  const [aipSheet, setAipSheet] = useState<AipConsolidatedSheet | null>(null);
+  const [aipExportError, setAipExportError] = useState<string | null>(null);
+
   const [report, setReport] = useState<WfpReportDto | null>(null);
   const [ppmpReport, setPpmpReport] = useState<PpmpReportDto | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
   const [excelExporting, setExcelExporting] = useState(false);
 
   const autoGeneratedRef = useRef(false);
+
+  // ── AIP derived state (PPDO-92) ──────────────────────────────────────────
+  const isAip = reportType === "AIP";
+  const crossOffice = me?.canReviewAllOffices === true;
+  /**
+   * ⚠️ A department head's office is forced here, and ignored by the server too. Two guards for one
+   * rule is deliberate: the select shows them what they will get, and the endpoint decides what they
+   * actually get (PPDO-90).
+   */
+  const aipOfficeId = crossOffice ? officeId : (me?.officeId ?? null);
+  const aipFiscalYear = fiscalYear ?? FIRST_ENTERED_FISCAL_YEAR;
+
+  // The office list for the AIP picker — every configured office, not "offices with a WFP". An office
+  // with no AIP yet is a real choice that lands on the not-submitted state, which says so.
+  useEffect(() => {
+    if (!isAip || !crossOffice || aipOffices.length > 0) return;
+    void listOffices({ active: "true" }).then(setAipOffices).catch(() => setAipOffices([]));
+  }, [isAip, crossOffice, aipOffices.length]);
+
+  /**
+   * ⚠️ Arriving with `?type=AIP` generates straight away, without a click.
+   *
+   * The old Consolidated AIP page loaded its grid on open, and this is where its URL now lands
+   * (PPDO-92). Making a reader who followed that link press Generate to see what they just asked for
+   * would read as the redirect having lost their request. Once only — `aipRequest` being set is the
+   * latch, and a later change of year or office goes through the button like any other.
+   */
+  useEffect(() => {
+    if (!isAip || urlType !== "AIP" || aipRequest != null || fiscalYear == null) return;
+    setAipRequest({ fiscalYear, officeId: aipOfficeId });
+  }, [isAip, urlType, aipRequest, fiscalYear, aipOfficeId]);
+
+  const aipExportBlockedReason = aipSheet == null
+    ? "Generate the preview first."
+    : !aipSheet.opened
+      ? `FY ${aipFiscalYear} has not been opened.`
+      : aipSheet.submittedOffices === 0
+        ? "Nothing has reached PPDO yet."
+        : null;
+
+  async function handleAipExport() {
+    setExcelExporting(true);
+    setAipExportError(null);
+    try {
+      await downloadAipConsolidatedExcel(aipFiscalYear, aipOfficeId);
+    } catch (e) {
+      setAipExportError(aipErrorMessage(e, "The Excel file could not be prepared."));
+    } finally {
+      setExcelExporting(false);
+    }
+  }
 
   // ── Fiscal years — lightweight endpoint (RAL-166 follow-up): this page never needs the
   // LDIP/AIP/WFP-by-division/ceiling-by-fund payload that getDashboard() builds, just the
@@ -447,15 +544,19 @@ function WfpReportPageInner() {
     setOfficeId(null);
     setReport(null);
     setPpmpReport(null);
+    // ⚠️ WFP-shaped, and a guest-office reader has no WFP (PPDO-20). Since PPDO-92 opened this page to
+    // guest-office department heads, fetching this for them would 403 and raise a "Load failed" toast
+    // on every visit to a page they are allowed on.
+    if (!me || !canOpenWfpReport(me)) return;
     setOfficesLoading(true);
     getWfpReportOffices(fiscalYear)
       .then((offices) => {
         setOffices(offices);
         // ?officeId= from the WFP entry wizard's Preview link takes priority; otherwise
-        // default to the caller's own office, falling back to PPDO for PPDO-internal users.
-        const preferredId = urlOfficeId
-          ? Number(urlOfficeId)
-          : me?.officeId ?? offices.find((o) => o.officeCode === PPDO_OFFICE_CODE)?.officeId ?? null;
+        // default to the caller's own office. Since RAL-258 every user has one — for a
+        // host-office user that IS the PPDO office id, which is what the old
+        // fall-back-to-PPDO branch used to compute the long way round.
+        const preferredId = urlOfficeId ? Number(urlOfficeId) : me?.officeId ?? null;
         if (preferredId != null && offices.some((o) => o.officeId === preferredId)) {
           setOfficeId(preferredId);
         }
@@ -514,7 +615,9 @@ function WfpReportPageInner() {
 
   useEffect(() => {
     setDivisionsLoaded(false);
-    if (officeId == null) {
+    // The AIP report has no division axis (PPDO-92) — the office select is shared state, so without
+    // this a reviewer picking an office on the AIP type would fetch divisions nobody reads.
+    if (officeId == null || isAip) {
       setDivisionList([]);
       setDivisionId(null);
       setDivisionsLoaded(true);
@@ -542,7 +645,7 @@ function WfpReportPageInner() {
       .catch(() => toast.error("Load failed", "Could not load divisions for this office."))
       .finally(() => setDivisionsLoaded(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [officeId, me]);
+  }, [officeId, me, isAip]);
 
   return (
     <div className="p-6 max-w-screen-2xl mx-auto w-full print:p-0 print:max-w-none">
@@ -583,10 +686,13 @@ function WfpReportPageInner() {
               // Clear any generated preview so switching type never shows the other report's data.
               setReport(null);
               setPpmpReport(null);
+              setAipRequest(null);
+              setAipSheet(null);
+              setAipExportError(null);
             }}
             className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600"
           >
-            {REPORT_TYPES.map((t) => (
+            {allowedTypes.map((t) => (
               <option key={t.value} value={t.value}>{t.label}</option>
             ))}
           </select>
@@ -601,12 +707,20 @@ function WfpReportPageInner() {
             onChange={(e) => setFiscalYear(e.target.value ? Number(e.target.value) : null)}
             className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600"
           >
-            {availableFiscalYears.length === 0 && fiscalYear != null && (
-              <option value={fiscalYear}>FY {fiscalYear}</option>
+            {/* ⚠️ The AIP report is FY2028+ by definition — the entered-year form. The WFP list is
+                built from records that exist, which is a different question and a different answer. */}
+            {isAip ? (
+              AIP_YEARS.map((fy) => <option key={fy} value={fy}>FY {fy}</option>)
+            ) : (
+              <>
+                {availableFiscalYears.length === 0 && fiscalYear != null && (
+                  <option value={fiscalYear}>FY {fiscalYear}</option>
+                )}
+                {availableFiscalYears.map((fy) => (
+                  <option key={fy} value={fy}>FY {fy}</option>
+                ))}
+              </>
             )}
-            {availableFiscalYears.map((fy) => (
-              <option key={fy} value={fy}>FY {fy}</option>
-            ))}
           </select>
         </div>
 
@@ -614,24 +728,48 @@ function WfpReportPageInner() {
           <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide mb-1">
             Office
           </label>
-          <select
-            value={officeId ?? ""}
-            onChange={(e) => setOfficeId(e.target.value ? Number(e.target.value) : null)}
-            disabled={officesLoading || offices.length === 0 || !canBypassDivision}
-            className="w-64 border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600 disabled:opacity-50"
-          >
-            <option value="">
-              {officesLoading ? "Loading offices…" : offices.length === 0 ? "No offices with a WFP yet" : "— select office —"}
-            </option>
-            {offices.map((o) => (
-              <option key={o.officeId} value={o.officeId}>
-                {o.officeCode} — {o.officeName} ({o.wfpStatus})
+          {isAip ? (
+            /* ⚠️ Locked for a department head, and it shows their own office rather than going blank:
+               a disabled empty select reads as a list that failed to load. */
+            <select
+              value={crossOffice ? (officeId ?? "") : (me?.officeId ?? "")}
+              onChange={(e) => setOfficeId(e.target.value ? Number(e.target.value) : null)}
+              disabled={!crossOffice}
+              className="w-64 border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600 disabled:opacity-50"
+            >
+              {crossOffice ? (
+                <>
+                  <option value="">— all submitted offices (consolidated) —</option>
+                  {aipOffices.map((o) => (
+                    <option key={o.id} value={o.id}>{o.officeCode} — {o.officeName}</option>
+                  ))}
+                </>
+              ) : (
+                <option value={me?.officeId ?? ""}>{me?.officeName ?? "Your office"}</option>
+              )}
+            </select>
+          ) : (
+            <select
+              value={officeId ?? ""}
+              onChange={(e) => setOfficeId(e.target.value ? Number(e.target.value) : null)}
+              disabled={officesLoading || offices.length === 0 || !canBypassDivision}
+              className="w-64 border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600 disabled:opacity-50"
+            >
+              <option value="">
+                {officesLoading ? "Loading offices…" : offices.length === 0 ? "No offices with a WFP yet" : "— select office —"}
               </option>
-            ))}
-          </select>
+              {offices.map((o) => (
+                <option key={o.officeId} value={o.officeId}>
+                  {o.officeCode} — {o.officeName} ({o.wfpStatus})
+                </option>
+              ))}
+            </select>
+          )}
         </div>
 
-        <div>
+        {/* ⚠️ No Division select for the AIP: the Annex B form has no division axis at all — the
+            division is an internal allocation concern and never prints (spec §6). */}
+        <div className={isAip ? "hidden" : ""}>
           <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide mb-1">
             Division
           </label>
@@ -649,12 +787,30 @@ function WfpReportPageInner() {
         </div>
 
         <button
-          onClick={handleGeneratePreview}
-          disabled={officeId == null || reportLoading}
+          /* ⚠️ For the AIP a null office is a real choice — the consolidated scope — so the office is
+             not required here the way it is for a WFP. */
+          onClick={isAip
+            ? () => setAipRequest({ fiscalYear: aipFiscalYear, officeId: aipOfficeId })
+            : handleGeneratePreview}
+          disabled={isAip ? false : officeId == null || reportLoading}
           className="px-4 py-1.5 text-sm font-medium bg-green-600 text-white hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {reportLoading ? "Generating…" : "Generate Preview"}
         </button>
+
+        {isAip && aipRequest && (
+          <button
+            onClick={() => void handleAipExport()}
+            disabled={excelExporting || aipExportBlockedReason != null}
+            title={aipExportBlockedReason ?? "Downloads all four sector sheets as the Annex B workbook."}
+            className="px-4 py-1.5 text-sm font-medium border border-slate-300 text-slate-800 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+          >
+            {excelExporting && (
+              <span className="w-3.5 h-3.5 border-2 border-slate-300 border-t-green-600 rounded-full animate-spin" />
+            )}
+            {excelExporting ? "Exporting…" : "Export to Excel"}
+          </button>
+        )}
 
         {((reportType === "WFP" && report) || (reportType === "PPMP" && ppmpReport)) && !reportLoading && (
           <button
@@ -670,10 +826,37 @@ function WfpReportPageInner() {
         )}
       </div>
 
+      {aipExportError && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <span>{aipExportError}</span>
+          <button
+            type="button"
+            onClick={() => setAipExportError(null)}
+            className="border border-slate-300 bg-white px-3 py-1 text-sm font-medium text-slate-800 hover:bg-slate-50"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* The Annex B grid — PPDO-92. Keyed on what was asked for, so changing the year or the office
+          and pressing Generate again remounts rather than showing the previous sheet mid-fetch. */}
+      {isAip && aipRequest && (
+        <AipAnnexBReport
+          key={`${aipRequest.fiscalYear}-${aipRequest.officeId ?? "all"}`}
+          fiscalYear={aipRequest.fiscalYear}
+          officeId={aipRequest.officeId}
+          initialSector={searchParams.get("sector")}
+          onSheetChange={setAipSheet}
+        />
+      )}
+
       {/* Empty / loading state */}
-      {!report && !ppmpReport && !reportLoading && (
+      {!report && !ppmpReport && !reportLoading && !(isAip && aipRequest) && (
         <p className="text-slate-600 text-sm py-10 text-center print:hidden">
-          Select an office and click &quot;Generate Preview&quot; to view the report.
+          {isAip
+            ? "Select a fiscal year and office, then click “Generate Preview” to view the report."
+            : "Select an office and click “Generate Preview” to view the report."}
         </p>
       )}
       {reportLoading && (

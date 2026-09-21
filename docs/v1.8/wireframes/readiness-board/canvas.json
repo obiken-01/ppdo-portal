@@ -1,0 +1,82 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1200,
+      "h": 1040,
+      "title": "Board view — cross-office reviewer"
+    },
+    {
+      "file": "TableView.dc.html",
+      "x": 1320,
+      "y": 0,
+      "w": 1200,
+      "h": 1320,
+      "title": "Table view — unchanged, with the switch"
+    },
+    {
+      "file": "CardStates.dc.html",
+      "x": 0,
+      "y": 1180,
+      "w": 1080,
+      "h": 560,
+      "title": "Card states"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "q-season",
+      "x": 1320,
+      "y": 1420,
+      "w": 380,
+      "text": "SEASON chip (above the board)\n\nearly = the real FY2028 data today: 17 of 19 offices not started, OPA in progress, PPDO returned.\n\nmid = SAMPLE figures, to show a board with work spread across every column. Flip it to compare."
+    },
+    {
+      "id": "q-switch",
+      "x": 1740,
+      "y": 1420,
+      "w": 380,
+      "text": "VIEW SWITCH — RESOLVED 2026-09-13\n\nBoard / Table sits in the Offices section header. Board is the default for cross-office reviewers and SuperAdmin; the table itself is unchanged.\n\nDecided: remember each person's last choice on this device."
+    },
+    {
+      "id": "q-pbo",
+      "x": 2160,
+      "y": 1420,
+      "w": 360,
+      "text": "BUDGET OFFICER — RESOLVED 2026-09-13\n\nTable only, no switch. The board adds where each office sits in review, which they do not act on; ceilings, costed and the Over ceiling / Cannot submit pills are already in the table.\n\nSomeone holding both grants gets the switch."
+    },
+    {
+      "id": "q-notstarted",
+      "x": 1320,
+      "y": 1720,
+      "w": 380,
+      "text": "NOT STARTED — compact rows\n\nCode, program count, and a red dot when nobody in the office can submit — so 17 offices do not become one tall column of cards.\n\nOpen: compact rows like this, or collapse the column to a count until clicked?"
+    },
+    {
+      "id": "q-money",
+      "x": 1740,
+      "y": 1720,
+      "w": 380,
+      "text": "MONEY ON CARDS — RESOLVED 2026-09-13\n\nKept, abbreviated (₱1.12M of ₱10M); the table keeps exact pesos. Over ceiling means little without the two figures beside it."
+    },
+    {
+      "id": "q-click",
+      "x": 2160,
+      "y": 1720,
+      "w": 360,
+      "text": "CLICKING AN OFFICE\n\nA card opens AIP Review search filtered to that office (spec §6.3).\n\nOpen: should Not started rows be clickable too? There is nothing to review in them yet."
+    },
+    {
+      "id": "q-fields",
+      "x": 1120,
+      "y": 1180,
+      "w": 160,
+      "text": "CARD FIELDS\n\nStrike any that do not earn their place:\n• code + Host + Returned\n• office name\n• programs · activities\n• costed of ceiling\n• risk pills\n• reviewer"
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}

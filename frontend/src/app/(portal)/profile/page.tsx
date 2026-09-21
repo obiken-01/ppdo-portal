@@ -1,14 +1,19 @@
-"use client";
+import { redirect } from "next/navigation";
 
-// TODO RAL-xx: My Profile page — view and edit own profile, change password
+/**
+ * /profile — permanent redirect to /account (RAL-252).
+ *
+ * This route used to be a "coming soon" stub written before the real page existed. The account
+ * page (RAL-88, shipped v1.1.1) has carried profile editing and password changes since, so the
+ * stub was a second, emptier door to the same room.
+ *
+ * The route is kept as a redirect rather than deleted: /profile has been linked and bookmarked
+ * for several releases, and the portal's office-user gate still lists it as an allowed path.
+ * Deleting it outright would turn those into 404s.
+ *
+ * Redirecting on the server means the stub never renders — there is no flash of an empty shell
+ * before the client decides where to go.
+ */
 export default function ProfilePage() {
-  return (
-    <div className="p-6">
-      <div className="max-w-4xl mx-auto bg-white border border-slate-200 shadow-sm flex flex-col items-center justify-center py-20 gap-3 text-slate-600">
-        <span className="text-4xl">👤</span>
-        <p className="text-sm font-medium">My Profile</p>
-        <p className="text-xs">This page is coming soon.</p>
-      </div>
-    </div>
-  );
+  redirect("/account");
 }

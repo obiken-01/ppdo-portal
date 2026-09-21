@@ -18,6 +18,9 @@ public sealed class ProgramDivisionConfiguration : IEntityTypeConfiguration<Prog
             .IsRequired()
             .HasMaxLength(50);
 
+        builder.Property(pd => pd.OfficeId)
+            .HasColumnName("office_id");
+
         builder.Property(pd => pd.ProgramRefCode)
             .HasColumnName("program_ref_code")
             .IsRequired()
@@ -32,11 +35,26 @@ public sealed class ProgramDivisionConfiguration : IEntityTypeConfiguration<Prog
             .IsUnique()
             .HasDatabaseName("IX_program_divisions_ref_div");
 
-        // FK to divisions only — deliberately NO FK to aip_programs.
-        // Assignments survive supplemental AIP re-uploads because they key on ref codes (D6).
+        // Read path since RAL-249: (office_id, program_ref_code). Not unique — a program may be
+        // assigned to several divisions; the uniqueness rule lives on the index above.
+        builder.HasIndex(pd => new { pd.OfficeId, pd.ProgramRefCode })
+            .HasDatabaseName("IX_program_divisions_office_program");
+
         builder.HasOne(pd => pd.Division)
             .WithMany()
             .HasForeignKey(pd => pd.DivisionId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        // RAL-249 — the office side is a real FK: a config offices row is stable across fiscal
+        // years and re-uploads. Restrict, not Cascade: deleting an office must not silently take
+        // its division assignments with it.
+        builder.HasOne(pd => pd.Office)
+            .WithMany()
+            .HasForeignKey(pd => pd.OfficeId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // ⚠️ Still deliberately NO FK to aip_programs — those rows are recreated with new
+        // surrogate IDs by every re-upload and do not survive a fiscal year. See ProgramDivision's
+        // remarks before adding one.
     }
 }

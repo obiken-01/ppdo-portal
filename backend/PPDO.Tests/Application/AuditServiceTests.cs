@@ -1,3 +1,4 @@
+using System.Reflection;
 using Moq;
 using PPDO.Application.Common;
 using PPDO.Application.Services;
@@ -108,5 +109,31 @@ public sealed class AuditServiceTests
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => svc.LogAsync("accounts", 1, AuditAction.Create,
                 oldValues: null, newValues: new { AccountTitle = "Test" }));
+    }
+
+    // ── The column's width ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// ⚠️ <c>audit_log.action</c> is <c>nvarchar(10)</c> (<c>AuditLogConfiguration</c>), and
+    /// <b>nothing else in the build enforces it</b>: the in-memory provider these tests run against
+    /// ignores column widths, so an over-long constant compiles, passes every test, and then throws
+    /// on the first real write to SQL Server — in production, during the transition it was added
+    /// for. The spec's first Phase 4 draft proposed three 12-character names and would have done
+    /// exactly that (`AIP_Review_Spec.md` §5.2).
+    ///
+    /// Reflection rather than a hand-kept list, so a constant added later is covered without anyone
+    /// remembering to add it here.
+    /// </summary>
+    [Fact]
+    public void EveryAuditAction_FitsTheTenCharacterColumn()
+    {
+        List<string> tooLong = typeof(AuditAction)
+            .GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)
+            .Where(f => f is { IsLiteral: true, IsInitOnly: false } && f.FieldType == typeof(string))
+            .Select(f => (string)f.GetRawConstantValue()!)
+            .Where(v => v.Length > 10)
+            .ToList();
+
+        Assert.Empty(tooLong);
     }
 }

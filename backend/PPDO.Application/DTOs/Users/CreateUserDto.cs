@@ -20,4 +20,10 @@ public sealed record CreateUserDto(
     string? Position,
     string? ContactNo,
     /// <summary>Provincial office id (offices.id) — set for a non-PPDO office user.</summary>
-    int? OfficeId = null);
+    int? OfficeId = null,
+    /// <summary>
+    /// Preferred landing page: "MainDashboard" | "InventoryDashboard" |
+    /// "BudgetPlanningDashboard" | "Profile". Null = no preference (RAL-262).
+    /// Rejected if the page would not be reachable for this user.
+    /// </summary>
+    string? LandingPage = null);

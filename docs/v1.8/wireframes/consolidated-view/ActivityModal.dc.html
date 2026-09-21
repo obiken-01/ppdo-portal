@@ -1,0 +1,249 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: rgba(15, 23, 42, 0.4);
+      font-family: "Segoe UI", "Source Sans Pro", system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: #196638; }
+    a:hover { color: #13512D; }
+    .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, "Liberation Mono", monospace; }
+    .lvl {
+      display: inline-block; border-radius: 9999px; padding: 2px 6px;
+      font-size: 10px; line-height: 12px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.025em;
+    }
+    .sect {
+      margin: 0 0 8px; font-size: 12px; line-height: 16px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.025em; color: #5A636B;
+    }
+    .dt { font-size: 12px; line-height: 16px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.025em; color: #5A636B; }
+    .dd { margin: 0; font-size: 14px; line-height: 20px; color: #343A40; }
+    .num { font-variant-numeric: tabular-nums; }
+    .lrow { display: grid; grid-template-columns: minmax(0,1fr) 84px 58px 64px 70px 64px 78px; align-items: center; }
+    .lcell { padding: 6px 8px; font-size: 12px; line-height: 16px; }
+    .r { text-align: right; }
+  </style>
+</helmet>
+
+<div style="padding: 28px; display: flex; justify-content: center;">
+<div style="width: 1024px; background: #FFFFFF; border: 1px solid #E9ECEF; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2), 0 8px 10px -6px rgba(0,0,0,0.15); display: flex; flex-direction: column;">
+
+  <!-- Top accent bar -->
+  <div style="height: 4px; background: #1F7A45;"></div>
+
+  <!-- Header -->
+  <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 24px; border-bottom: 1px solid #E9ECEF;">
+    <h2 style="margin: 0; font-size: 16px; line-height: 24px; font-weight: 600; color: #343A40;">Activity</h2>
+    <span style="font-size: 20px; line-height: 20px; color: #5A636B;">&#215;</span>
+  </div>
+
+  <!-- Body -->
+  <div style="padding: 20px 24px;">
+
+    <!-- Mode banner -->
+    <div style="display: flex; align-items: center; gap: 10px; border: 1px solid #E9ECEF; background: #E3F2FD; padding: 10px 14px; font-size: 13px; line-height: 18px; color: #343A40; margin-bottom: 16px;">
+      <span style="border-radius: 9999px; background: #378ADD; color: #FFFFFF; padding: 2px 8px; font-size: 10px; line-height: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.025em;">PPDO review</span>
+      <span>You are reading OPA&rsquo;s AIP. Ask for changes here &mdash; only the office can edit the row. Accept and Return stay on the office screen.</span>
+    </div>
+
+    <!-- Where this activity sits -->
+    <div style="margin-bottom: 16px;">
+      <div style="display: flex; align-items: center; gap: 10px; background: #D4EDDE; border-left: 2px solid #1F7A45; padding: 6px 12px;">
+        <span class="lvl" style="background: #1F7A45; color: #FFFFFF;">Office</span>
+        <span style="font-size: 13px; line-height: 18px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.025em; color: #343A40;">OPA &mdash; Office of the Provincial Agriculturist</span>
+        <span class="mono" style="font-size: 11px; line-height: 16px; color: #5A636B;">8000-000-1-01-010</span>
+        <span style="margin-left: auto; border-radius: 9999px; background: #FEF3CD; color: #78350F; padding: 2px 10px; font-size: 11px; line-height: 16px; font-weight: 500;">With PPDO &middot; awaiting your decision</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; background: #F0FAF4; border-left: 2px solid #3BAD6A; padding: 6px 12px 6px 28px;">
+        <span class="lvl" style="background: #A8DABC; color: #0F4526;">Program</span>
+        <span style="font-size: 13px; line-height: 18px; font-weight: 600; color: #343A40;">Rice Productivity Enhancement Program</span>
+        <span class="mono" style="font-size: 11px; line-height: 16px; color: #5A636B;">8000-000-1-01-010-<span style="font-weight: 600; color: #343A40;">002</span></span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; background: #F7FCF9; border-left: 2px solid #A8DABC; padding: 6px 12px 6px 44px;">
+        <span class="lvl" style="background: #D4EDDE; color: #13512D;">Project</span>
+        <span style="font-size: 13px; line-height: 18px; font-weight: 500; color: #343A40;">Hybrid Seed Distribution</span>
+        <span class="mono" style="font-size: 11px; line-height: 16px; color: #5A636B;">8000-000-1-01-010-002-<span style="font-weight: 600; color: #343A40;">001</span></span>
+      </div>
+    </div>
+
+    <!-- Two columns: the row on the left, the conversation on the right -->
+    <div style="display: grid; grid-template-columns: minmax(0, 1fr) 332px; gap: 24px; align-items: start;">
+
+      <!-- ── Left: the activity itself ───────────────────────────────── -->
+      <div style="display: flex; flex-direction: column; gap: 16px;">
+
+        <div style="border: 1px solid #E9ECEF; padding: 12px 14px;">
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 6px;">
+            <span class="lvl" style="background: #F0FAF4; color: #13512D;">Activity</span>
+            <span class="mono" style="font-size: 12px; line-height: 16px; color: #5A636B;">8000-000-1-01-010-002-001-<span style="font-weight: 600; color: #343A40;">001</span></span>
+            <span style="border-radius: 9999px; background: #F1F3F5; color: #5A636B; padding: 2px 8px; font-size: 11px; line-height: 16px; font-weight: 500;">5% CF/ NGA</span>
+          </div>
+          <p style="margin: 0; font-size: 15px; line-height: 22px; color: #343A40;">
+            Procurement and distribution of certified hybrid rice seeds
+          </p>
+        </div>
+
+        <div>
+          <p class="sect">Amounts</p>
+          <div style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 24px; border: 1px solid #E9ECEF; padding: 10px 14px;">
+            <span style="display: flex; flex-direction: column; align-items: flex-end;">
+              <span style="font-size: 10px; line-height: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.025em; color: #5A636B;">PS</span>
+              <span class="num" style="font-size: 14px; line-height: 20px; color: #343A40;">&mdash;</span>
+            </span>
+            <span style="display: flex; flex-direction: column; align-items: flex-end;">
+              <span style="font-size: 10px; line-height: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.025em; color: #5A636B;">MOOE</span>
+              <span class="num" style="font-size: 14px; line-height: 20px; color: #343A40;">1,066.00</span>
+            </span>
+            <span style="display: flex; flex-direction: column; align-items: flex-end;">
+              <span style="font-size: 10px; line-height: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.025em; color: #5A636B;">CO</span>
+              <span class="num" style="font-size: 14px; line-height: 20px; color: #343A40;">&mdash;</span>
+            </span>
+            <span style="display: flex; flex-direction: column; align-items: flex-end;">
+              <span style="font-size: 10px; line-height: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.025em; color: #5A636B;">Total</span>
+              <span class="num" style="font-size: 14px; line-height: 20px; font-weight: 600; color: #343A40;">1,066.00</span>
+            </span>
+            <span style="align-self: stretch; border-left: 1px solid #E9ECEF;"></span>
+            <span style="display: flex; flex-direction: column; align-items: flex-end;">
+              <span style="font-size: 10px; line-height: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.025em; color: #5A636B;">CC adapt.</span>
+              <span class="num" style="font-size: 14px; line-height: 20px; color: #343A40;">150.00</span>
+            </span>
+            <span style="display: flex; flex-direction: column; align-items: flex-end;">
+              <span style="font-size: 10px; line-height: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.025em; color: #5A636B;">CC mitig.</span>
+              <span class="num" style="font-size: 14px; line-height: 20px; color: #343A40;">&mdash;</span>
+            </span>
+            <span style="flex-grow: 1;"></span>
+            <span style="font-size: 12px; line-height: 16px; color: #5A636B;">Amounts in thousand pesos</span>
+          </div>
+        </div>
+
+        <div>
+          <p class="sect">Details</p>
+          <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 24px; border: 1px solid #E9ECEF; padding: 12px 14px;">
+            <div><span class="dt">eSRE code</span><p class="dd">ES &mdash; Economic Services</p></div>
+            <div><span class="dt">Implementing office</span><p class="dd">OPA</p></div>
+            <div><span class="dt">Start</span><p class="dd">January</p></div>
+            <div><span class="dt">End</span><p class="dd">December</p></div>
+            <div><span class="dt">CC adaptation (in thousand pesos)</span><p class="dd num">150.00</p></div>
+            <div><span class="dt">CC typology</span><p class="dd">A-1</p></div>
+            <div style="grid-column: span 3;">
+              <span class="dt">Expected outputs</span>
+              <p class="dd">1,200 bags of certified hybrid seed distributed to 400 registered farmers across 8 municipalities</p>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <p class="sect">Expenditure lines</p>
+          <div style="border: 1px solid #E9ECEF;">
+            <div class="lrow" style="background: #F8F9FA; border-bottom: 1px solid #E9ECEF; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.025em; color: #5A636B;">
+              <span class="lcell">Account</span>
+              <span class="lcell">Nature</span>
+              <span class="lcell">Fund</span>
+              <span class="lcell r">PS</span>
+              <span class="lcell r">MOOE</span>
+              <span class="lcell r">CO</span>
+              <span class="lcell r">Total</span>
+            </div>
+            <sc-for list="{{ lines }}" as="line" hint-placeholder-count="3">
+              <div class="lrow" style="border-bottom: 1px solid #E9ECEF;">
+                <span class="lcell" style="color: #343A40;">{{ line.account }}</span>
+                <span class="lcell" style="color: #5A636B;">{{ line.nature }}</span>
+                <span class="lcell" style="color: #5A636B;">{{ line.fund }}</span>
+                <span class="lcell r num" style="color: #5A636B;">{{ line.ps }}</span>
+                <span class="lcell r num" style="color: #343A40;">{{ line.mooe }}</span>
+                <span class="lcell r num" style="color: #5A636B;">{{ line.co }}</span>
+                <span class="lcell r num" style="color: #343A40;">{{ line.total }}</span>
+              </div>
+            </sc-for>
+            <div class="lrow" style="background: #F8F9FA;">
+              <span class="lcell" style="font-weight: 600; color: #343A40;">Total</span>
+              <span class="lcell"></span>
+              <span class="lcell"></span>
+              <span class="lcell r num" style="color: #5A636B;">&mdash;</span>
+              <span class="lcell r num" style="font-weight: 600; color: #343A40;">1,066.00</span>
+              <span class="lcell r num" style="color: #5A636B;">&mdash;</span>
+              <span class="lcell r num" style="font-weight: 600; color: #343A40;">1,066.00</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ── Right: the conversation ─────────────────────────────────── -->
+      <div style="border: 1px solid #E9ECEF; background: #F8F9FA; padding: 12px 14px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px;">
+          <p class="sect" style="margin: 0;">Comments</p>
+          <span style="border-radius: 9999px; background: #FEF3CD; color: #78350F; padding: 2px 10px; font-size: 11px; line-height: 16px; font-weight: 500;">1 unresolved</span>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 12px; border-left: 2px solid #E9ECEF; padding-left: 12px;">
+
+          <div style="font-size: 12px; line-height: 16px;">
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;">
+              <span style="font-weight: 500; color: #343A40;">Jose Santos</span>
+              <span style="border-radius: 9999px; background: #E9ECEF; color: #5A636B; padding: 1px 6px; font-size: 10px; line-height: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.025em;">PPDO</span>
+            </div>
+            <p style="margin: 2px 0 0; color: #5A636B;">MOOE here is 1,066 but the seed quantity in the outputs implies about 840. Please reconcile the two before we consolidate.</p>
+          </div>
+
+          <div style="font-size: 12px; line-height: 16px; opacity: 0.6;">
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;">
+              <span style="font-weight: 500; color: #343A40;">Ana Ramos</span>
+              <span style="border-radius: 9999px; background: #E9ECEF; color: #5A636B; padding: 1px 6px; font-size: 10px; line-height: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.025em;">Office</span>
+              <span style="font-size: 10px; line-height: 14px; color: #5A636B;">resolved by Jose Santos</span>
+            </div>
+            <p style="margin: 2px 0 0; color: #5A636B;">eSRE code added &mdash; it was blank on submission.</p>
+          </div>
+
+          <div style="padding-top: 4px;">
+            <div style="border: 1px solid #C7CFD6; background: #FFFFFF; padding: 6px 8px; min-height: 52px; font-size: 12px; line-height: 16px; color: #7D858C;">
+              Ask for a change on this row&hellip;
+            </div>
+            <div style="margin-top: 6px; display: flex; align-items: center; gap: 8px;">
+              <span style="background: #196638; color: #FFFFFF; padding: 4px 12px; font-size: 12px; line-height: 16px; font-weight: 500;">Comment</span>
+              <span style="font-size: 11px; line-height: 16px; color: #5A636B;">0/2000</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 24px; border-top: 1px solid #E9ECEF;">
+    <span style="font-size: 14px; line-height: 20px; color: #196638; text-decoration: underline;">Open OPA&rsquo;s full AIP &rarr;</span>
+    <span style="border: 1px solid #E9ECEF; background: #FFFFFF; color: #5A636B; padding: 8px 16px; font-size: 14px; line-height: 20px; font-weight: 500;">Close</span>
+  </div>
+
+</div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1088,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      lines: [
+        { account: 'Agricultural Supplies', nature: 'Procurement', fund: 'NGA',   ps: '—', mooe: '840.00', co: '—', total: '840.00' },
+        { account: 'Travelling Expenses',              nature: 'Non-procurement', fund: '5% CF', ps: '—', mooe: '126.00', co: '—', total: '126.00' },
+        { account: 'Training Expenses',                nature: 'Non-procurement', fund: '5% CF', ps: '—', mooe: '100.00', co: '—', total: '100.00' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -99,6 +99,13 @@ public sealed class WfpService : IWfpService
     public async Task<ServiceResult<WfpRecordDto>> SaveAsync(
         SaveWfpDto dto, Guid createdById, CancellationToken ct = default)
     {
+        // ⚠️ V18-81 — first statement, before the lookup and before any write. This path is
+        // find-or-create, so a refusal placed lower would already have added the row: the original
+        // bug with an error message attached. Above the existing-record branch too, deliberately —
+        // editing an FY2028 record draws on the allocation exactly as creating one does.
+        if (WfpSupportedYears.RefuseCreate(dto.FiscalYear) is string unsupported)
+            return ServiceResult<WfpRecordDto>.BadRequest(unsupported);
+
         // Find existing WFP for (aipRecordId, officeId, divisionId) — single SQL lookup.
         WfpRecord? existing = await _wfpRepo.FindByAipOfficeAndDivisionAsync(
             dto.AipRecordId, dto.OfficeId, dto.DivisionId, ct);
@@ -152,6 +159,19 @@ public sealed class WfpService : IWfpService
         }
 
         // ── Pass 1: validate all lines before any DB write ────────────────────
+        //
+        // ↩️ The funds this office may name are resolved ONCE, here, and Pass 3 below reads only
+        // this dictionary (follow-up to PPDO-109). A fund belonging to another office is not in it,
+        // so it cannot be snapshotted onto this office's line — and, unlike the old code, it is
+        // refused here rather than stored as an id with a null snapshot.
+        //
+        // ⚠️ The refusal lives in Pass 1 on purpose: this method is find-or-create, so a check
+        // placed lower would already have written the record. Same reasoning as the V18-81 guard at
+        // the top of the method.
+        Dictionary<int, FundingSource> fsDict = (await _fsRepo.GetAllAsync(ct))
+            .Where(f => FundingSourceScope.IsVisibleTo(f, dto.OfficeId))
+            .ToDictionary(f => f.Id);
+
         List<string> errors = [];
         for (int ai = 0; ai < dto.Activities.Count; ai++)
         {
@@ -159,6 +179,14 @@ public sealed class WfpService : IWfpService
             for (int li = 0; li < actDto.Lines.Count; li++)
             {
                 SaveWfpExpenditureLineDto lineDto = actDto.Lines[li];
+
+                // ⚠️ Checked for EVERY line, including one with no amount — the fund id is still
+                // persisted on such a line, so skipping it with the `continue` below would leave the
+                // hole open on exactly the lines nobody looks at.
+                if (lineDto.FundingSourceId is int lineFundId && !fsDict.ContainsKey(lineFundId))
+                    errors.Add($"Activity {ai + 1} line {li + 1}: " +
+                               FundingSourceScope.NotFoundMessage(lineFundId));
+
                 if (!lineDto.TotalAppropriation.HasValue) continue;
 
                 decimal reserveAmt = lineDto.ApplyReserve
@@ -177,10 +205,9 @@ public sealed class WfpService : IWfpService
             return ServiceResult<WfpRecordDto>.BadRequest(string.Join(" | ", errors));
 
         // ── Pass 2: load config snapshots ─────────────────────────────────────
+        // (fsDict was built and validated in Pass 1 — it holds only the funds this office may use.)
         Dictionary<int, Account> accountDict =
             (await _accountRepo.GetAllAsync(ct)).ToDictionary(a => a.Id);
-        Dictionary<int, FundingSource> fsDict =
-            (await _fsRepo.GetAllAsync(ct)).ToDictionary(f => f.Id);
 
         // ── Pass 3: persist ───────────────────────────────────────────────────
         DateTime now = DateTime.UtcNow;
@@ -331,6 +358,12 @@ public sealed class WfpService : IWfpService
         int aipRecordId, int officeId, int? divisionId, int fiscalYear, int aipActivityId,
         Guid createdById, CancellationToken ct = default)
     {
+        // ⚠️ V18-81 — see SaveAsync. This is the path most easily missed: it does not read as a
+        // create endpoint from outside, it is the v1.4 entry wizard's find-or-create, and that is
+        // exactly the shape of the two leaks V18-37 found.
+        if (WfpSupportedYears.RefuseCreate(fiscalYear) is string unsupported)
+            return ServiceResult<WfpActivityRefDto>.BadRequest(unsupported);
+
         WfpRecord? record = await _wfpRepo.FindByAipOfficeAndDivisionAsync(aipRecordId, officeId, divisionId, ct);
 
         if (record is not null && record.Status != PlanningStatus.Draft)
@@ -370,7 +403,7 @@ public sealed class WfpService : IWfpService
     // ── Export (RAL-79) ───────────────────────────────────────────────────────
 
     public async Task<ServiceResult<byte[]>> ExportReportAsync(
-        int id, CancellationToken ct = default)
+        int id, User caller, CancellationToken ct = default)
     {
         ServiceResult<WfpRecordDetailDto> wfpResult = await GetByIdAsync(id, ct);
         if (!wfpResult.IsSuccess)
@@ -378,7 +411,7 @@ public sealed class WfpService : IWfpService
 
         WfpRecordDetailDto wfp = wfpResult.Value!;
 
-        ServiceResult<AipRecordDetailDto> aipResult = await _aip.GetByIdAsync(wfp.AipRecordId, ct);
+        ServiceResult<AipRecordDetailDto> aipResult = await _aip.GetByIdAsync(wfp.AipRecordId, caller, ct);
         if (!aipResult.IsSuccess)
             return ServiceResult<byte[]>.NotFound("Parent AIP record not found.");
 

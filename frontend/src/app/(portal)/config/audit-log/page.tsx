@@ -120,7 +120,7 @@ export default function AuditLogPage() {
     fetchMe()
       .then((data) => {
         if (data.role !== "SuperAdmin") {
-          router.replace(data.officeId != null ? "/budget-planning" : "/dashboard");
+          router.replace(!data.isHostOffice ? "/budget-planning" : "/dashboard");
           return;
         }
         setAuthChecked(true);
@@ -322,7 +322,7 @@ export default function AuditLogPage() {
         {/* Header */}
         <ConfigPageHeader
           title="Audit Log"
-          description="Every recorded create, update, and deactivation across Configuration, Budget Planning, and User Management."
+          description="Every recorded create, update, and deactivation across Configuration, Investment Planning, and User Management."
         />
 
         {/* Filter bar */}

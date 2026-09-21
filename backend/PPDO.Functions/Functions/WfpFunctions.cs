@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using PPDO.Application.Common;
@@ -15,7 +15,7 @@ namespace PPDO.Functions.Functions;
 /// All require CanAccessBudgetPlanning. Unlock additionally requires Admin/SuperAdmin.
 /// SaveAsync is a POST that both creates and updates (upsert by aipRecordId + officeId + divisionId).
 ///
-/// Division-filter bypass (RAL-102): Admin/SuperAdmin/CanManageAllocation callers may pass an
+/// Division-filter bypass (RAL-102): Admin/SuperAdmin/CanManagePpdoAllocation callers may pass an
 /// optional ?divisionId= to list a specific division's WFPs; others are automatically scoped to
 /// their own division.
 /// </summary>
@@ -49,7 +49,7 @@ public sealed class WfpFunctions
         int? aipId    = int.TryParse(req.Query["aipRecordId"], out int a) ? a : null;
         int? officeId = int.TryParse(req.Query["officeId"],    out int o) ? o : null;
 
-        // Division filter: bypass for Admin/SuperAdmin/CanManageAllocation; auto-scope others.
+        // Division filter: bypass for Admin/SuperAdmin/CanManagePpdoAllocation; auto-scope others.
         int? divisionId = await ResolveDivisionFilterAsync(caller!, req, ct);
 
         IReadOnlyList<WfpRecordDto> data = await _wfp.GetAllAsync(aipId, officeId, divisionId, ct);
@@ -99,7 +99,7 @@ public sealed class WfpFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/wfp")] HttpRequestData req,
         CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         SaveWfpDto? body = await ConfigHttp.ReadBodyAsync<SaveWfpDto>(req, ct);
@@ -122,7 +122,7 @@ public sealed class WfpFunctions
             Route = "budget-planning/wfp/activities/ensure")] HttpRequestData req,
         CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         EnsureWfpActivityDto? body = await ConfigHttp.ReadBodyAsync<EnsureWfpActivityDto>(req, ct);
@@ -142,7 +142,7 @@ public sealed class WfpFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/wfp/{id:int}/finalize")] HttpRequestData req,
         int id, CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         return await ConfigHttp.FromResultAsync(req, await _wfp.FinalizeAsync(id, ct), ct);
@@ -154,7 +154,7 @@ public sealed class WfpFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/wfp/{id:int}/unlock")] HttpRequestData req,
         int id, CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         if (caller!.Role is not (UserRole.SuperAdmin or UserRole.Admin))
@@ -171,10 +171,10 @@ public sealed class WfpFunctions
             Route = "budget-planning/wfp/{id:int}/report")] HttpRequestData req,
         int id, CancellationToken ct)
     {
-        (User? _, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
         if (denied is not null) return denied;
 
-        ServiceResult<byte[]> result = await _wfp.ExportReportAsync(id, ct);
+        ServiceResult<byte[]> result = await _wfp.ExportReportAsync(id, caller!, ct);
         if (!result.IsSuccess)
             return await ConfigHttp.FromResultAsync(req, result, ct);
 
@@ -191,14 +191,14 @@ public sealed class WfpFunctions
 
     /// <summary>
     /// Resolves the effective division filter for list queries.
-    /// Admin/SuperAdmin/CanManageAllocation may pass an optional ?divisionId= (or see all when omitted).
+    /// Admin/SuperAdmin/CanManagePpdoAllocation may pass an optional ?divisionId= (or see all when omitted).
     /// All other callers are automatically scoped to their own division_id.
     /// </summary>
     private async Task<int?> ResolveDivisionFilterAsync(
         User caller, HttpRequestData req, CancellationToken ct)
     {
         bool canBypass = caller.Role is UserRole.SuperAdmin or UserRole.Admin
-            || await _permissions.CanManageAllocationAsync(caller);
+            || await _permissions.CanManagePpdoAllocationAsync(caller);
 
         if (canBypass)
         {

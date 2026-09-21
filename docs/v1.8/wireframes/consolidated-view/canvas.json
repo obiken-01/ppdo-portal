@@ -1,0 +1,45 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1840, "h": 1000, "title": "Consolidated AIP — Annex B grid (General sector)" },
+    { "file": "ActivityModal.dc.html", "x": 1960, "y": 0, "w": 1088, "h": 1000, "title": "Clicking an activity — the existing review modal, unchanged" },
+    { "file": "States.dc.html", "x": 0, "y": 1120, "w": 900, "h": 760, "title": "Loading and empty states" }
+  ],
+  "annotations": [
+    {
+      "id": "q-figures",
+      "x": 980,
+      "y": 1120,
+      "w": 440,
+      "text": "RESOLVED 2026-09-14 — printed figures\n\nEvery amount rounded up to the thousand first, then added; MOOE and CO carry the +30% (DECISION G); Total = PS + MOOE + CO. This page previews the future Excel, so its figures are the Excel's — not the exact amounts AIP Entry shows. The note under the grid says why.\n\n⚠️ G5 is still provisional — built as uplift, then round."
+    },
+    {
+      "id": "q-pending",
+      "x": 1460,
+      "y": 1120,
+      "w": 440,
+      "text": "RESOLVED 2026-09-14 — offices not yet with PPDO are left out of the grid\n\nOnly With PPDO and Accepted offices appear. A sent-back office drops out until it is re-submitted. The page header and the sector tabs still say how many of the total have submitted."
+    },
+    {
+      "id": "q-modal",
+      "x": 1960,
+      "y": 1060,
+      "w": 520,
+      "text": "RESOLVED 2026-09-14 — keep comments\n\nThe same modal the review search opens, comment rail included. Read-only for the activity itself."
+    },
+    {
+      "id": "q-pills",
+      "x": 980,
+      "y": 1500,
+      "w": 440,
+      "text": "RESOLVED 2026-09-14 — amounts carry .00, like the FY2027 file\n\nStatus pills, underlined activity names and the 'X of 11 submitted' line stay screen-only; the Excel will not carry them."
+    },
+    {
+      "id": "settled",
+      "x": 1460,
+      "y": 1500,
+      "w": 440,
+      "text": "FOLLOWS THE FORM SPEC\n\n• Four sector tabs = the four sheets.\n• Columns A–R with the DBM numbers; eSRE has none.\n• Level shows as indent (B/C/D/E in the file); program and project rows carry no amounts.\n• Office row = subtotal of its lines; TOTAL = sum of office rows.\n• Units stated on the AMOUNT header.\n• Only cross-office reviewers can open it.\n• No Export button yet — the Excel is Phase 5 (V18-60)."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}

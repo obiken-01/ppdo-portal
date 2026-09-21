@@ -1,5 +1,6 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using PPDO.Domain.Common;
 using PPDO.Domain.Interfaces;
 using PPDO.Infrastructure.Data;
 
@@ -57,8 +58,28 @@ public class Repository<T> : IRepository<T> where T : class
         => _context.Set<T>().AsQueryable();
 
     /// <inheritdoc />
-    public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
-        => _context.SaveChangesAsync(cancellationToken);
+    public async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (SqlErrors.IsUniqueViolation(ex))
+        {
+            // V18-44 / PPDO-50. Application references only Domain — it cannot see
+            // DbUpdateException or SqlException, so it has no way to tell a unique-index
+            // rejection from any other write failure. Infrastructure knows what SQL 2601/2627
+            // means; this is where that knowledge is turned into something Application can act on.
+            //
+            // ⚠️ This TRANSLATES, it does not handle. A caller that does not catch
+            // UniqueConstraintViolationException still fails exactly as it did before — unhandled,
+            // and a 500. Only RefCodeAllocator catches it today. Deliberately so: a unique-index
+            // violation nobody expected is a bug, and a bug returning a polite message is a bug
+            // nobody fixes.
+            throw new UniqueConstraintViolationException(
+                "A unique constraint rejected this write.", SqlErrors.IndexNameOf(ex), ex);
+        }
+    }
 
     /// <inheritdoc />
     public async Task ExecuteInTransactionAsync(Func<Task> operation, CancellationToken cancellationToken = default)

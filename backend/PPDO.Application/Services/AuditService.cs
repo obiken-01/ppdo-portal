@@ -38,7 +38,7 @@ public sealed class AuditService : IAuditService
         object? oldValues,
         object? newValues,
         CancellationToken cancellationToken = default)
-        => PersistAsync(tableName, recordId, null, action, oldValues, newValues, cancellationToken);
+        => PersistAsync(tableName, recordId, null, action, null, oldValues, newValues, cancellationToken);
 
     /// <inheritdoc />
     public Task LogAsync(
@@ -48,18 +48,30 @@ public sealed class AuditService : IAuditService
         object? oldValues,
         object? newValues,
         CancellationToken cancellationToken = default)
-        => PersistAsync(tableName, null, recordId, action, oldValues, newValues, cancellationToken);
+        => PersistAsync(tableName, null, recordId, action, null, oldValues, newValues, cancellationToken);
+
+    /// <inheritdoc />
+    public Task LogAsync(
+        string tableName,
+        Guid recordId,
+        string action,
+        Guid actorId,
+        object? oldValues,
+        object? newValues,
+        CancellationToken cancellationToken = default)
+        => PersistAsync(tableName, null, recordId, action, actorId, oldValues, newValues, cancellationToken);
 
     private async Task PersistAsync(
         string tableName,
         int? recordId,
         Guid? recordGuid,
         string action,
+        Guid? explicitActorId,
         object? oldValues,
         object? newValues,
         CancellationToken cancellationToken)
     {
-        Guid userId = _caller.UserId
+        Guid userId = explicitActorId ?? _caller.UserId
             ?? throw new InvalidOperationException("Audit requires an authenticated user.");
 
         AuditLog entry = new()

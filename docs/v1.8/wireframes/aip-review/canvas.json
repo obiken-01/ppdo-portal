@@ -1,0 +1,52 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1440, "h": 1000, "title": "Search results — filter collapsed" },
+    { "file": "ActivityModalReviewer.dc.html", "x": 1560, "y": 0, "w": 1088, "h": 1000, "title": "Activity modal — PPDO reviewer" },
+    { "file": "ActivityModalOfficeHead.dc.html", "x": 2728, "y": 0, "w": 1088, "h": 1080, "title": "Activity modal — department head (editable)" }
+  ],
+  "annotations": [
+    {
+      "id": "q-collapse",
+      "x": 0,
+      "y": 1060,
+      "w": 460,
+      "text": "ITEM 1 — collapsible filter — RESOLVED 2026-09-13\n\nThe panel opens expanded, auto-collapses the moment results land, and the summary line carries one removable chip per applied filter plus the match count.\n\nDecided: a chip's × re-runs the search immediately — it removes something already applied and already shown, unlike the expanded panel, which stays draft-until-Search while you compose several changes at once."
+    },
+    {
+      "id": "q-filter-icon",
+      "x": 0,
+      "y": 1360,
+      "w": 460,
+      "text": "FILTER ICON — RESOLVED 2026-09-13\n\nThe funnel on the Filters label and the Edit filters button stays as the inline SVG drawn here — there is no funnel emoji.\n\nDecided: ship it as-is for v1.8.0; may extend the same funnel to other filter field groups later, but the broader emoji-vs-lucide-react decision (DESIGN_SYSTEM.md §5/§7) waits until after v1.8.0 ships."
+    },
+    {
+      "id": "q-office-picker",
+      "x": 500,
+      "y": 1060,
+      "w": 460,
+      "text": "ITEM 2 — office picker\n\nThe expanded panel (flip the artboard's 'panel' chip to see it) now uses OfficeSelect — the searchable combobox — instead of the hand-rolled multi-select.\n\nThat makes it ONE office at a time. The API still takes a list, so this is a UI narrowing only. Say if you want multi-office back."
+    },
+    {
+      "id": "q-row-target",
+      "x": 980,
+      "y": 1060,
+      "w": 460,
+      "text": "ITEM 3 — what a row opens — RESOLVED 2026-09-13\n\nActivity names open the modal to the right.\n\nDecided: Program and Project rows keep going to the whole-office review screen, unchanged — Accept and Return live there, and a program has no figures of its own."
+    },
+    {
+      "id": "q-modal-scope",
+      "x": 1560,
+      "y": 1060,
+      "w": 520,
+      "text": "PPDO REVIEWER MODAL\n\nRESOLVED 2026-09-13 — expenditure lines stay IN the modal (drawn below). The modal body scrolls once its content exceeds the frame — same behaviour the shared Modal component already gives every other modal in the portal (header and footer stay put, only the middle scrolls).\n\nThe path strip at the top exists because you arrive here from a flat search result with no idea which program the activity sits under.\n\nItem 4 (comments on activities only) lands here too: the gutters come off program and project rows elsewhere.\n\nRESOLVED 2026-09-13 — two columns vs. stacked: keeping two columns, as drawn. The activity content (now longer, with expenditure lines) sits in a wide left column and the comment thread sits in a narrower column beside it, visible the whole time — a persistent side rail beats losing the comments off the bottom of a longer scroll."
+    },
+    {
+      "id": "q-edit-scope",
+      "x": 2728,
+      "y": 1260,
+      "w": 520,
+      "text": "DEPARTMENT HEAD MODAL — RESOLVED 2026-09-13\n\nSame shell, same order, everything editable — so a person who learns one knows the other. Amounts stay read-only in both: they are recomputed from the expenditure lines.\n\nDecided: the AIP Review search page is the entry point for review generally — office-level and consolidated alike. The department head reaches this modal from search too, not only from AIP Entry."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}
