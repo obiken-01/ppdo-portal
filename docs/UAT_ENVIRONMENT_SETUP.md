@@ -123,6 +123,10 @@ production **as it is now**, not as it was before the relocation.
 
 ## 4. Azure resource checklist
 
+> ➡️ **Working through this for real? Use [`UAT_PROVISIONING_STEPS.md`](UAT_PROVISIONING_STEPS.md)
+> instead.** Same information as an ordered do-list with the decisions already made, plus the seed
+> data v1.8.0 testing actually needs and the deploy rehearsal. This section stays as the reference.
+
 Create in this order — later resources need values from earlier ones.
 
 - [ ] **Resource group** `ppdo-portal-uat-rg`
@@ -484,6 +488,18 @@ invoice is the one covering December, which arrives in January.
   to see something, and it sits still until you do.
 
   Cost of the change: one `git merge` per promotion. Worth it.
+
+  ↩️ **And `uat` is cut from `main`, not from `release/1.8.0`** — Ralph, 2026-09-21. This is
+  the better shape and it changes what UAT is worth: starting on the code production runs *today*
+  makes the whole exercise a **dress rehearsal of the production deploy**, not a preview of the
+  destination. The migrations and the v1.8.0 merge happen in the same order they will on release
+  day, which exercises the one window that has no safe answer — migration applied, code not yet
+  deployed, AIP amounts reading 1000× high — on a database nobody minds breaking.
+
+  ⚠️ **One deliberate exception to "uat = main": the `NEXT_PUBLIC_NOINDEX` change is applied on
+  top.** Without it, the first UAT deploy puts a crawlable duplicate of a government site on the
+  public internet, and that cannot wait for the v1.8.0 merge. It touches four frontend files and
+  nothing the migration rehearsal depends on.
 - ~~Does the guide writer need an Azure login?~~ ✅ **No** — in-app account only.
 - Custom domain for UAT? Not assumed; the default `*.azurestaticapps.net`
   hostname is fine for internal use.
