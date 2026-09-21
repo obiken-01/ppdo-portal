@@ -187,11 +187,11 @@ data rather than add to it.
       hardcoded version strings left outside comments. The old "check all three places" instruction
       is kept here only so a reader knows the drift it guarded against was fixed, not forgotten.
 
-- [ ] **CLAUDE.md's Implementation Status section and its footer date stamp updated for v1.8.0.**
-      ⚠️ **Outstanding as of 2026-09-21** — both still read v1.7.4 / 2026-08-27 (lines ~601 and
-      ~831). Needs: a v1.8.0 row in the release-history table, the Linear-milestones table marked
-      done, and the "Next: v1.8.0 — AIP Redesign (in planning)" section replaced with what actually
-      shipped.
+- [x] ✅ **CLAUDE.md's Implementation Status section and its footer date stamp updated for v1.8.0**
+      (2026-09-21). Moved off v1.7.4 / 2026-08-27: a v1.8.0 row in the release-history table, the
+      milestone marked complete-awaiting-merge, and the "Next: v1.8.0 — AIP Redesign (in planning)"
+      section replaced with what actually shipped — including a section on what was deliberately
+      **not** built, so Phases 6 and 7 are not mistaken for oversights.
 
 - [x] ✅ **`dotnet test` green on the release branch** — **2,381 passed, 0 failed**, run 2026-09-21
       on `release/1.8.0` at `279bd64` (the PPDO-109 merge). The suite is the safety net that makes a
