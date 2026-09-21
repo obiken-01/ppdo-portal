@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { SITE_URL } from "@/lib/seo";
+import { NOINDEX, SITE_URL } from "@/lib/seo";
 
 // Static export quirk: without this, `next dev` treats sitemap.ts as a dynamic
 // route and 500s asking for generateStaticParams(), even though `next build`
@@ -14,6 +14,11 @@ export const dynamic = "force-static";
  * portal routes are excluded entirely (see robots.ts).
  */
 export default function sitemap(): MetadataRoute.Sitemap {
+  // A non-production deployment publishes no sitemap (PPDO-21 — UAT). ⚠️ A sitemap is the one
+  // SEO surface that actively INVITES indexing: robots.txt and a noindex tag both say "don't", while
+  // a sitemap hands over the full URL list. Leaving it populated would undo the other two.
+  if (NOINDEX) return [];
+
   const lastModified = new Date();
 
   return [

@@ -169,6 +169,11 @@ deploy over prod.
 
 Save as `.github/workflows/deploy-uat.yml` **when building this**, not before.
 
+⚠️ **"Not before" is load-bearing, not tidiness.** This workflow triggers on `release/**`, and
+`release/1.8.0` is an active branch. Committing it with the `<<<...>>>` placeholders still in place
+means a failed deploy on **every push to the release branch** until the Azure resources exist. Add
+it only once you have the real hostnames.
+
 Structural notes:
 
 - Triggers on `release/**` rather than a pinned `release/1.7.1`, so it survives
@@ -263,6 +268,31 @@ jobs:
 
 ## 8. Required code change — keep UAT out of search results
 
+✅ **DONE 2026-09-21 (PPDO-21).** `NEXT_PUBLIC_NOINDEX` is implemented and verified. What follows
+is the original sketch, kept because the reasoning still explains *why*; the shipped version differs
+in one way worth knowing.
+
+⚠️ **It gates FOUR surfaces, not the two sketched below.** The sketch named `robots.ts` and a
+meta tag. Two more leak:
+
+| Surface | Why it matters |
+|---|---|
+| `robots.ts` | Emits `Disallow: /` **and drops the `Sitemap:` line** — advertising a sitemap while disallowing the site hands a crawler the URLs anyway |
+| `sitemap.ts` | Returns `[]`. A sitemap is the one surface that actively **invites** indexing; leaving it populated undoes the other three |
+| Root layout `robots` metadata | `<meta name="robots" content="noindex, nofollow">` — **the half with teeth**; robots.txt is a request, this is an instruction Google documents as honoured |
+| `metadataBase` / `og:url` | Follows `SITE_URL`, so setting `NEXT_PUBLIC_NOINDEX` **without** `NEXT_PUBLIC_SITE_URL` still emits production-pointing canonicals. The two env vars are a pair |
+
+**Verified by building both ways and reading the output**, not by inspection:
+
+- `NEXT_PUBLIC_NOINDEX=true` → `robots.txt` is `Disallow: /` with no sitemap line; `sitemap.xml` is an
+  empty urlset; every page carries the noindex meta; **zero occurrences of the production hostname
+  anywhere in `out/`**.
+- Flag unset → output byte-for-byte what RAL-202 ships today.
+
+---
+
+### Original sketch (reasoning preserved)
+
 **This is a prerequisite, not an optional extra.** RAL-202 made the public site
 deliberately indexable, and that behaviour is currently unconditional:
 
@@ -313,6 +343,13 @@ SqlConnectionString="<<<UAT-CONNECTION-STRING>>>" dotnet ef database update --pr
 **Do not restore or copy the production database.** That reintroduces the exact
 data-exposure problem UAT exists to avoid (§1).
 
+⚠️ **Revisit this list for v1.8.0 testing.** It was written for a user guide, where a token
+record was enough to photograph. Exercising the AIP redesign needs real structure: offices,
+divisions, an office ceiling, an FY2028 AIP record with programs seeded from an LDIP, and **at least
+two office accounts** — otherwise the cross-office scope rules, which are the largest and riskiest
+part of v1.8.0, cannot be tested at all. The rule above still stands regardless: fabricated, not a
+production restore.
+
 Seed instead with fabricated data covering what the guide needs to show:
 
 - [ ] Divisions — realistic names are fine; these aren't sensitive
@@ -344,12 +381,12 @@ Also remember to:
 
 ## 11. Open questions
 
-- Which branch should UAT track? `release/**` is assumed above, so the guide
-  writer sees changes ahead of production. Pinning to `main` instead would mean
-  UAT matches what users actually run — arguably better for a *user guide*.
-  **Decide before building.**
-- Does the guide writer need an Azure login, or only an in-app account? Only
-  in-app, on the assumption above.
+- ~~Which branch should UAT track?~~ ✅ **`release/**`, settled 2026-09-21.** The purpose changed:
+  this environment now exists so people can **test v1.8.0 before it reaches production**, not to
+  screenshot a user guide. `main` is still v1.7.4 and would show testers nothing new. (For a user
+  guide specifically, `main` would still have been the better answer — the reasoning below was not
+  wrong, the requirement moved.)
+- ~~Does the guide writer need an Azure login?~~ ✅ **No** — in-app account only.
 - Custom domain for UAT? Not assumed; the default `*.azurestaticapps.net`
   hostname is fine for internal use.
 
