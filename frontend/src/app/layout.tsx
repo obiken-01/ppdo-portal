@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import { SITE_URL } from "@/lib/seo";
+import { NOINDEX, SITE_URL } from "@/lib/seo";
 import ServiceWorkerRegistrar from "@/components/pwa/ServiceWorkerRegistrar";
 
 export const metadata: Metadata = {
@@ -31,6 +31,11 @@ export const metadata: Metadata = {
   other: {
     "mobile-web-app-capable": "yes",
   },
+  // ⚠️ The half of the noindex story with actual teeth (PPDO-21 — UAT). `robots.txt` is a
+  // request a crawler may ignore; this meta tag is an instruction Google documents as honoured, and
+  // it is what keeps a UAT copy of a government site out of search results. Spread so production —
+  // where NOINDEX is false — emits no `robots` key at all and RAL-202's behaviour is untouched.
+  ...(NOINDEX ? { robots: { index: false, follow: false } } : {}),
 };
 
 // themeColor lives on the viewport export in Next 14, not on metadata.
