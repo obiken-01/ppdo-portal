@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { SITE_URL } from "@/lib/seo";
+import { NOINDEX, SITE_URL } from "@/lib/seo";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -9,6 +9,10 @@ export const metadata: Metadata = {
     template: "%s | PPDO Portal",
   },
   description: "Provincial Planning and Development Office — Occidental Mindoro",
+  // ⚠️ The half of the noindex story with actual teeth (PPDO-21 — UAT). `robots.txt` is a
+  // request a crawler may ignore; this meta tag is an instruction Google documents as honoured.
+  // Spread so production — where NOINDEX is false — emits no `robots` key at all.
+  ...(NOINDEX ? { robots: { index: false, follow: false } } : {}),
 };
 
 // Derive the API origin at build time so we can emit a preconnect hint.
