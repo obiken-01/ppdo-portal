@@ -1144,10 +1144,18 @@ public sealed class AipService : IAipService
             return ServiceResult<AipActivityDto>.BadRequest(
                 $"eSRE code must be one of: {string.Join(", ", AipEsreCode.AllowedValues)}.");
 
-        IReadOnlyList<FundingSource> fsList = await _fsRepo.GetAllAsync(ct);
-        FundingSource? fs = string.IsNullOrWhiteSpace(dto.FundingSourceRaw)
-            ? null
-            : fsList.FirstOrDefault(f => f.Code.Equals(dto.FundingSourceRaw, StringComparison.OrdinalIgnoreCase));
+        // ↩️ Scoped to what THIS office may use — the province-wide funds plus its own (follow-up
+        // to PPDO-109). Codes are globally unique, so an unscoped lookup would resolve another
+        // office's private code here.
+        //
+        // ⚠️ Unlike the other three save paths, an unmatched code is NOT an error here, and that
+        // is unchanged. FundingSourceRaw is free text: it is kept verbatim in the snapshot and the
+        // FK is simply left null, exactly as it already was for a typo or a fund PPDO has not
+        // configured. So another office's code now behaves like any other string this office does
+        // not recognise — which is the honest answer, and refusing the whole activity over it would
+        // be a new failure mode on a field that has always tolerated anything.
+        FundingSource? fs = FundingSourceScope.FindVisibleByCode(
+            await _fsRepo.GetAllAsync(ct), dto.FundingSourceRaw, office.OfficeId);
 
         decimal? total = dto.Ps is null && dto.Mooe is null && dto.Co is null
             ? null
@@ -1346,10 +1354,14 @@ public sealed class AipService : IAipService
         FundingSource? fs = null;
         if (dto.FundingSourceId is int fsId)
         {
-            IReadOnlyList<FundingSource> fsList = await _fsRepo.GetAllAsync(ct);
-            fs = fsList.FirstOrDefault(f => f.Id == fsId);
+            // ↩️ Scoped to what this activity's office may use (follow-up to PPDO-109). The refusal
+            // below already existed for an id that matches nothing; another office's fund now takes
+            // the same path and, deliberately, the same "not found" wording — see
+            // FundingSourceScope.NotFoundMessage for why naming the real reason would be worse.
+            fs = FundingSourceScope.FindVisibleById(
+                await _fsRepo.GetAllAsync(ct), fsId, office.OfficeId);
             if (fs is null)
-                return ServiceResult<AipActivityDto>.BadRequest($"Funding source {fsId} not found.");
+                return ServiceResult<AipActivityDto>.BadRequest(FundingSourceScope.NotFoundMessage(fsId));
         }
 
         decimal? total = dto.Ps is null && dto.Mooe is null && dto.Co is null

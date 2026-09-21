@@ -159,6 +159,19 @@ public sealed class WfpService : IWfpService
         }
 
         // ── Pass 1: validate all lines before any DB write ────────────────────
+        //
+        // ↩️ The funds this office may name are resolved ONCE, here, and Pass 3 below reads only
+        // this dictionary (follow-up to PPDO-109). A fund belonging to another office is not in it,
+        // so it cannot be snapshotted onto this office's line — and, unlike the old code, it is
+        // refused here rather than stored as an id with a null snapshot.
+        //
+        // ⚠️ The refusal lives in Pass 1 on purpose: this method is find-or-create, so a check
+        // placed lower would already have written the record. Same reasoning as the V18-81 guard at
+        // the top of the method.
+        Dictionary<int, FundingSource> fsDict = (await _fsRepo.GetAllAsync(ct))
+            .Where(f => FundingSourceScope.IsVisibleTo(f, dto.OfficeId))
+            .ToDictionary(f => f.Id);
+
         List<string> errors = [];
         for (int ai = 0; ai < dto.Activities.Count; ai++)
         {
@@ -166,6 +179,14 @@ public sealed class WfpService : IWfpService
             for (int li = 0; li < actDto.Lines.Count; li++)
             {
                 SaveWfpExpenditureLineDto lineDto = actDto.Lines[li];
+
+                // ⚠️ Checked for EVERY line, including one with no amount — the fund id is still
+                // persisted on such a line, so skipping it with the `continue` below would leave the
+                // hole open on exactly the lines nobody looks at.
+                if (lineDto.FundingSourceId is int lineFundId && !fsDict.ContainsKey(lineFundId))
+                    errors.Add($"Activity {ai + 1} line {li + 1}: " +
+                               FundingSourceScope.NotFoundMessage(lineFundId));
+
                 if (!lineDto.TotalAppropriation.HasValue) continue;
 
                 decimal reserveAmt = lineDto.ApplyReserve
@@ -184,10 +205,9 @@ public sealed class WfpService : IWfpService
             return ServiceResult<WfpRecordDto>.BadRequest(string.Join(" | ", errors));
 
         // ── Pass 2: load config snapshots ─────────────────────────────────────
+        // (fsDict was built and validated in Pass 1 — it holds only the funds this office may use.)
         Dictionary<int, Account> accountDict =
             (await _accountRepo.GetAllAsync(ct)).ToDictionary(a => a.Id);
-        Dictionary<int, FundingSource> fsDict =
-            (await _fsRepo.GetAllAsync(ct)).ToDictionary(f => f.Id);
 
         // ── Pass 3: persist ───────────────────────────────────────────────────
         DateTime now = DateTime.UtcNow;

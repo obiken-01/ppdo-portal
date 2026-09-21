@@ -632,7 +632,11 @@ public sealed class WfpExpenditureServiceTests
         ceilingMock.Setup(c => c.UpsertLedgerForActivityAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
-        var (sut, _, _, _, _, _, _) = Build([], [], ceilingMock);
+        // ↩️ Fund 7 is seeded (as a SHARED fund) where this fixture used to pass an id matching
+        // nothing. The service now refuses a fund it cannot resolve for the line's office instead of
+        // storing the id anyway with null snapshots, so an unseeded id would fail here for a reason
+        // that has nothing to do with what this test is about.
+        var (sut, _, _, _, _, _, _) = Build([], [Fs(7, "GF")], ceilingMock);
 
         ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
             QuarterlyDto(wfpActivityId: 42, fsId: 7), CancellationToken.None);
@@ -883,5 +887,135 @@ public sealed class WfpExpenditureServiceTests
         await sut.DeleteExpenditureAsync(created.Value!.Id, CancellationToken.None);
 
         ceilingMock.Verify(c => c.UpsertLedgerForActivityAsync(22, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // ── Fund scope (v1.8.0, follow-up to PPDO-109) ────────────────────────────
+    //
+    // A WFP line may name a province-wide fund or one belonging to the WFP's OWN office, and nothing
+    // else. PPDO-109 scoped the picker these ids come from; these pin the server side.
+    //
+    // ⚠️ The office comes from WfpExpenditureContext, which the fixture leaves null by default —
+    // and null resolves to "shared funds only", which is why every other test in this file still
+    // passes with its shared seed. SetUpOffice gives the activity a real owner to scope against.
+
+    private const int WfpOwnerOffice = 7;
+    private const int WfpOtherOffice = 9;
+
+    private static FundingSource FsOwned(int id, string code, int? officeId) => new()
+    {
+        Id = id, Code = code, Name = $"Fund {code}", IsActive = true, OfficeId = officeId,
+        CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+    };
+
+    private static List<FundingSource> ScopedFunds() =>
+    [
+        Fs(1, "GF"),
+        FsOwned(3, "GSOX", WfpOwnerOffice),
+        FsOwned(4, "PHOX", WfpOtherOffice),
+    ];
+
+    /// <summary>Gives activity <paramref name="wfpActivityId"/> an owning office, on a Draft WFP.</summary>
+    private static void SetUpOffice(
+        Mock<IWfpExpenditureRepository> repo, Mock<IWfpRepository> wfpRepo, int wfpActivityId, int officeId)
+    {
+        repo.Setup(r => r.GetActivityContextAsync(wfpActivityId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WfpExpenditureContext(
+                WfpRecordId: 77, DivisionId: 1, OfficeId: officeId, FiscalYear: 2027, AipActivityId: 900));
+        wfpRepo.Setup(r => r.GetByIntIdAsync(77, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WfpRecord { Id = 77, Status = PlanningStatus.Draft, OfficeId = officeId, FiscalYear = 2027 });
+    }
+
+    [Fact]
+    public async Task Save_WithAnotherOfficesFund_ReturnsBadRequestAndWritesNothing()
+    {
+        var (sut, repo, _, _, _, _, wfpRepo) = Build([], ScopedFunds());
+        SetUpOffice(repo, wfpRepo, wfpActivityId: 10, officeId: WfpOwnerOffice);
+
+        ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
+            QuarterlyDto(fsId: 4), CancellationToken.None);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        repo.Verify(r => r.AddAsync(It.IsAny<WfpExpenditure>(), It.IsAny<CancellationToken>()), Times.Never);
+        // ⚠️ The message must not confirm the fund exists or name its owner. NotNull first:
+        // DoesNotContain on a null string passes vacuously, which would make this green without the
+        // guard.
+        Assert.NotNull(result.Error);
+        Assert.DoesNotContain("office", result.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("PHOX", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Save_WithTheOfficesOwnFund_Succeeds()
+    {
+        var (sut, repo, _, _, _, _, wfpRepo) = Build([], ScopedFunds());
+        SetUpOffice(repo, wfpRepo, wfpActivityId: 10, officeId: WfpOwnerOffice);
+
+        ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
+            QuarterlyDto(fsId: 3), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("GSOX", result.Value!.FundingSourceSnapshot);
+    }
+
+    [Fact]
+    public async Task Save_WithASharedFund_Succeeds()
+    {
+        var (sut, repo, _, _, _, _, wfpRepo) = Build([], ScopedFunds());
+        SetUpOffice(repo, wfpRepo, wfpActivityId: 10, officeId: WfpOwnerOffice);
+
+        ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
+            QuarterlyDto(fsId: 1), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("GF", result.Value!.FundingSourceSnapshot);
+    }
+
+    /// <summary>
+    /// ↩️ The second bug the guard closes. This used to SUCCEED: FundingSourceId was copied from
+    /// the request whether or not the row resolved, so an id matching nothing was stored with both
+    /// snapshots null — a dangling FK that renders as a line with no fund and is never reported.
+    /// </summary>
+    [Fact]
+    public async Task Save_WithAFundThatDoesNotExistAtAll_IsRefusedRatherThanStoredDangling()
+    {
+        var (sut, repo, _, _, _, _, wfpRepo) = Build([], ScopedFunds());
+        SetUpOffice(repo, wfpRepo, wfpActivityId: 10, officeId: WfpOwnerOffice);
+
+        ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
+            QuarterlyDto(fsId: 4242), CancellationToken.None);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        repo.Verify(r => r.AddAsync(It.IsAny<WfpExpenditure>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Save_WithNoFund_IsStillAllowed()
+    {
+        // A fundless line stays legal — the scope check must not make an optional field required.
+        var (sut, repo, _, _, _, _, wfpRepo) = Build([], ScopedFunds());
+        SetUpOffice(repo, wfpRepo, wfpActivityId: 10, officeId: WfpOwnerOffice);
+
+        ServiceResult<WfpExpenditureDto> result = await sut.SaveExpenditureAsync(
+            QuarterlyDto(fsId: null), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Value!.FundingSourceId);
+    }
+
+    [Fact]
+    public async Task Save_WhenTheActivityHasNoResolvableOffice_AllowsSharedButNotAnOfficeFund()
+    {
+        // ⚠️ The fail-closed case. An unknown activity leaves the context null (the FK rejects the
+        // write a moment later); until then the caller gets the province-wide funds and no office's
+        // private ones. A forgotten office id degrades to LESS access, never to all of it.
+        var (sutShared, _, _, _, _, _, _) = Build([], ScopedFunds());
+        ServiceResult<WfpExpenditureDto> shared =
+            await sutShared.SaveExpenditureAsync(QuarterlyDto(fsId: 1), CancellationToken.None);
+        Assert.True(shared.IsSuccess);
+
+        var (sutOwned, _, _, _, _, _, _) = Build([], ScopedFunds());
+        ServiceResult<WfpExpenditureDto> owned =
+            await sutOwned.SaveExpenditureAsync(QuarterlyDto(fsId: 3), CancellationToken.None);
+        Assert.Equal(ServiceErrorCode.BadRequest, owned.Code);
     }
 }
