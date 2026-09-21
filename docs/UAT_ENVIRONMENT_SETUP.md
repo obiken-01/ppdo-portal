@@ -195,8 +195,12 @@ it only once you have the real hostnames.
 
 Structural notes:
 
-- Triggers on `release/**` rather than a pinned `release/1.7.1`, so it survives
-  version bumps. `workflow_dispatch` allows manual runs.
+- ↩️ **Trigger on the `uat` branch, not `release/**`** (decision revised 2026-09-21 — see
+  §11). The draft below still says `release/**`; change it to `uat` when you save the file. Keep
+  `workflow_dispatch` for manual runs.
+
+  ⚠️ The `release/**` trigger is also why this file must not be committed before the Azure
+  resources exist — see the warning above.
 - Uses the same `curl` ZIP-deploy as production. `Azure/functions-action@v1` is
   **blocked by this repo's Actions policy** — do not "simplify" it back.
 - Replace both `<<<...>>>` placeholders with the real UAT hostnames.
@@ -384,27 +388,102 @@ repository, and UAT will be internet-facing.
 
 ---
 
-## 10. Teardown
+## 10. Teardown — and the cheaper middle option
 
-Delete the resource group `ppdo-portal-uat-rg`. That removes every resource in
-one action, and Basic-tier SQL is billed per day, so a partial month is prorated.
+⚠️ **"Down" means DELETE, not pause.** Azure SQL **Basic cannot be paused** — it is DTU-based
+and always-provisioned. Only *Serverless* auto-pauses, and production deliberately moved **off**
+serverless in August 2026 (see CLAUDE.md). There is no stop button to reach for here.
 
-Also remember to:
+Stopping the **Function App** is not worth doing either: Consumption bills per execution against a
+1M/month free grant, so an idle Function App already costs nothing.
+
+### What actually costs money
+
+**SQL is the entire bill.** Everything else sits inside a free grant at this load.
+
+| Resource | Cost while UAT sits idle |
+|---|---|
+| **SQL Database (Basic)** | **$0.161/day ≈ $4.90/month** — verified against Azure's retail prices API for `southeastasia`, 2026-09-21 |
+| Static Web App (Free) | $0 |
+| Functions (Consumption) | $0 idle — 1M executions/month free |
+| Application Insights | $0 — 5 GB/month free |
+| Storage | Cents |
+
+A three-month run is roughly **91 days × $0.161 ≈ $14.65**, total.
+
+Billing is **per day**, so there is no reason to wait for a month boundary to tear down — you are
+charged to the day you delete. The same fact cuts the other way: ⚠️ **a UAT database left up
+"just in case" quietly costs ~$4.90/month forever.** Put a calendar note at teardown rather than
+trusting memory.
+
+### Three levels of down
+
+| | What you delete | Cost while down | What you lose | Back up in |
+|---|---|---|---|---|
+| **1. Full teardown** | The whole resource group | $0 | Everything — URLs, config, secrets, data | Full §4 checklist, ~1–2 hrs |
+| **2. Drop the database** | `ppdo-portal-db-uat` only | ~$0 (cents) | The data. URLs, Function App settings, CORS and GitHub secrets all survive | Create DB, migrate, re-seed — ~20 min |
+| **3. Export, then drop** ⭐ | Same, after a `.bacpac` export to the storage account | ~$0 + a fraction of a cent for the blob | **Nothing** | Create DB, import bacpac — ~15 min |
+
+**Prefer level 3 whenever UAT might come back** (a later release, a second round of testing). The
+saving from a full teardown is effectively zero, and the seeded fixture — offices, divisions,
+ceilings, an FY2028 AIP, two office accounts — is the slow part to rebuild.
+
+### ⚠️ What does NOT survive a full teardown
+
+The resource **group** name is freely reusable with no cooldown, and an empty resource group costs
+nothing — so you never have to delete the group itself, only what is in it. That is not the part
+that bites. These are:
+
+| Resource | On recreation |
+|---|---|
+| **Static Web App** | ⚠️ **A brand-new random hostname.** The generated name (production's is `jolly-sky-0e3a2e310…`) is assigned at creation and **does not come back**. You will not get the old UAT URL |
+| Function App | Globally unique on `*.azurewebsites.net`. Released on delete, but reuse is not instantaneous and the name is not reserved for you |
+| SQL Server | Same, on `*.database.windows.net` |
+| Storage account | Same, globally unique |
+| Resource group | ✅ Reusable immediately |
+
+**The Static Web App hostname is the expensive one**, because that URL is wired into four places
+that all have to be re-done by hand:
+
+1. `Jwt__Issuer` on the Function App (§5)
+2. The Function App's **CORS** allow-list (§4)
+3. `NEXT_PUBLIC_SITE_URL` in `deploy-uat.yml` (§7)
+4. Whatever bookmark the testers saved
+
+Plus **both GitHub secrets change** — a recreated Function App issues a new publish profile, and a
+recreated Static Web App issues a new deployment token (§6).
+
+So a rebuild is the §4 checklist **plus** those six items, not the checklist alone. That is the real
+argument for level 2 or 3 over level 1.
+
+### If you do tear down completely
 
 - [ ] Delete the two GitHub secrets (§6)
-- [ ] Delete `.github/workflows/deploy-uat.yml`
-- [ ] Remove the UAT origin from the **production** Function App's CORS list if
-      it was ever added there
+- [ ] Delete `.github/workflows/deploy-uat.yml` — ⚠️ it triggers on `release/**`, so leaving it
+      behind means a failed deploy on every push to the release branch
+- [ ] Remove the UAT origin from the **production** Function App's CORS list if it was ever added
+      there
+
+### A note on the bill after teardown
+
+Azure bills **in arrears**. Delete at the end of November and you will still see a charge land in
+early December — **that is November's usage, not a teardown that failed.** The first genuinely empty
+invoice is the one covering December, which arrives in January.
 
 ---
 
 ## 11. Open questions
 
-- ~~Which branch should UAT track?~~ ✅ **`release/**`, settled 2026-09-21.** The purpose changed:
-  this environment now exists so people can **test v1.8.0 before it reaches production**, not to
-  screenshot a user guide. `main` is still v1.7.4 and would show testers nothing new. (For a user
-  guide specifically, `main` would still have been the better answer — the reasoning below was not
-  wrong, the requirement moved.)
+- ~~Which branch should UAT track?~~ ✅ **A dedicated `uat` branch — Ralph, 2026-09-21.**
+
+  ↩️ **This supersedes an earlier answer of `release/**` made the same day.** That was right
+  about rejecting `main` (still v1.7.4 — testers would see nothing new) but wrong about the
+  alternative. Tracking `release/**` means **UAT redeploys under the testers every time a branch is
+  pushed**, so a tester mid-session can have the ground move, and a bug report cannot be pinned to a
+  known build. A dedicated branch makes promotion deliberate: merge into `uat` when you want testers
+  to see something, and it sits still until you do.
+
+  Cost of the change: one `git merge` per promotion. Worth it.
 - ~~Does the guide writer need an Azure login?~~ ✅ **No** — in-app account only.
 - Custom domain for UAT? Not assumed; the default `*.azurestaticapps.net`
   hostname is fine for internal use.
