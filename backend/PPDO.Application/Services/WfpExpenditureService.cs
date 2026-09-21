@@ -143,7 +143,12 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
         if (validationError is not null)
             return ServiceResult<WfpExpenditureDto>.BadRequest(validationError);
 
-        string? lockError = await GetFinalLockErrorAsync(dto.WfpActivityId, ct);
+        // Resolved once and used twice below: the finalized-WFP lock, and the office whose funds
+        // this line may name. Null means the activity is unknown — see GetFinalLockErrorAsync for
+        // why that is left to the FK rather than refused here.
+        WfpExpenditureContext? context = await _repo.GetActivityContextAsync(dto.WfpActivityId, ct);
+
+        string? lockError = await GetFinalLockErrorAsync(context, ct);
         if (lockError is not null)
             return ServiceResult<WfpExpenditureDto>.Forbidden(lockError);
 
@@ -159,9 +164,24 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
         Account? account = dto.AccountId.HasValue
             ? (await _accountRepo.GetAllAsync(ct)).FirstOrDefault(a => a.Id == dto.AccountId.Value)
             : null;
-        FundingSource? fs = dto.FundingSourceId.HasValue
-            ? (await _fsRepo.GetAllAsync(ct)).FirstOrDefault(f => f.Id == dto.FundingSourceId.Value)
-            : null;
+
+        // ↩️ The fund is resolved against what THIS WFP's office may use — the province-wide funds
+        // plus its own (follow-up to PPDO-109). Before this, any id the caller sent was accepted, so
+        // one office could snapshot another's private fund onto its own line.
+        //
+        // ⚠️ Refusing also fixes a second bug on the same lines: FundingSourceId was assigned
+        // from the request further down regardless of whether the row was found, so an id matching
+        // nothing was stored with both snapshots null — a dangling FK that renders as a line with no
+        // fund and is never reported anywhere.
+        FundingSource? fs = null;
+        if (dto.FundingSourceId is int wfpFundId)
+        {
+            fs = FundingSourceScope.FindVisibleById(
+                await _fsRepo.GetAllAsync(ct), wfpFundId, context?.OfficeId);
+            if (fs is null)
+                return ServiceResult<WfpExpenditureDto>.BadRequest(
+                    FundingSourceScope.NotFoundMessage(wfpFundId));
+        }
 
         // ── Compute (never trust client-sent totals) ─────────────────────────
         int? annualQuarterChoice = dto.Frequency == WfpFrequency.Annual
@@ -349,10 +369,21 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
     // blocked, mirroring WfpService.SaveAsync's "Cannot edit a finalized WFP." rule — a
     // finalized WFP is locked; an admin must Unlock it first (same as the record-level flow).
 
+    /// <summary>Resolves the activity's context, then applies the finalized-WFP lock.</summary>
     private async Task<string?> GetFinalLockErrorAsync(int wfpActivityId, CancellationToken ct)
+        => await GetFinalLockErrorAsync(await _repo.GetActivityContextAsync(wfpActivityId, ct), ct);
+
+    /// <summary>
+    /// The finalized-WFP lock, for a caller that already holds the context.
+    ///
+    /// ⚠️ A null <paramref name="context"/> is an unknown activity and passes: the FK constraint
+    /// rejects the write a moment later with a better error than anything invented here. That is
+    /// long-standing behaviour — and it is also why the fund scope check in SaveExpenditureAsync
+    /// reads <c>context?.OfficeId</c>, which FundingSourceScope treats as "shared funds only".
+    /// </summary>
+    private async Task<string?> GetFinalLockErrorAsync(WfpExpenditureContext? context, CancellationToken ct)
     {
-        WfpExpenditureContext? context = await _repo.GetActivityContextAsync(wfpActivityId, ct);
-        if (context is null) return null; // unknown activity — the FK constraint will reject the write
+        if (context is null) return null;
 
         WfpRecord? record = await _wfpRepo.GetByIntIdAsync(context.WfpRecordId, ct);
         if (record is null || record.Status != PlanningStatus.Final) return null;

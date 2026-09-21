@@ -18,4 +18,6 @@ public sealed record DivisionDto(
     bool CanManageResourceLinks,
     bool CanAccessBudgetPlanning,
     bool CanUploadAip,
-    bool CanManageConfig);
+    bool CanManageConfig,
+    /// <summary>Default landing page enum name, or null.</summary>
+    string? LandingPage = null);

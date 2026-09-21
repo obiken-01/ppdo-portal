@@ -18,6 +18,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { aipErrorMessage, archiveAip, finalizeAip, listAip } from "@/lib/aip";
 import { useMe } from "@/lib/me-cache";
+import { canOpenAipRecords, budgetPlanningFallback } from "@/lib/budget-planning-access";
 import DataTable, { type Column } from "@/components/ui/DataTable";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
@@ -74,7 +75,9 @@ function StatusBadge({ status }: { status: string }) {
 export default function AipListPage() {
   const { toast } = useToast();
 
-  const me = useMe((m) => m.canAccessBudgetPlanning);
+  // PPDO-81 — Admin/SuperAdmin. This page creates, finalizes and archives the base AIP record;
+  // an office encoder's surface is /budget-planning/aip/entry, which has no create path by design.
+  const me = useMe(canOpenAipRecords, budgetPlanningFallback);
   const [records, setRecords] = useState<AipRecordResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

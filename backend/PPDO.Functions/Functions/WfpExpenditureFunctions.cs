@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using PPDO.Application.Common;
@@ -71,7 +71,7 @@ public sealed class WfpExpenditureFunctions
             Route = "budget-planning/wfp/expenditures")] HttpRequestData req,
         CancellationToken ct)
     {
-        (User? _, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? _, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         SaveWfpExpenditureDto? body = await ConfigHttp.ReadBodyAsync<SaveWfpExpenditureDto>(req, ct);
@@ -93,7 +93,7 @@ public sealed class WfpExpenditureFunctions
             Route = "budget-planning/wfp/expenditures/{id:int}")] HttpRequestData req,
         int id, CancellationToken ct)
     {
-        (User? _, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? _, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         return await ConfigHttp.FromResultAsync(req, await _expenditures.DeleteExpenditureAsync(id, ct), ct);

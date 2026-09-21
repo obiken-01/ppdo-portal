@@ -1,0 +1,412 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ppdo-portal.local/schemas/external/v1/aip-response.schema.json",
+  "title": "PPDO Portal - External AIP API response (GET /api/external/v1/aip)",
+  "description": "1.1.0 for discussion with GSO and MIS. The released Annual Investment Program for one fiscal year - for every office (?fiscalYear=) or for one office (?fiscalYear=&officeCode=). Both calls return this same shape. Money is Philippine pesos, serialized as decimal strings with exactly two decimals. See README.md beside this file for the design decisions and open questions.",
+  "type": "object",
+  "required": ["data", "error", "message"],
+  "additionalProperties": false,
+  "properties": {
+    "data": {
+      "description": "The fiscal year's AIP, or null when no AIP exists for that fiscal year at all (a 200, not an error). An existing fiscal year with nothing released yet is NOT null - it returns empty 'offices' and a filled 'pendingOffices'.",
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/aip" }
+      ]
+    },
+    "error": {
+      "description": "Short error text on a non-2xx response; null on success.",
+      "type": ["string", "null"]
+    },
+    "message": {
+      "description": "Optional informational text; null when there is nothing to say.",
+      "type": ["string", "null"]
+    }
+  },
+
+  "$defs": {
+    "money": {
+      "description": "Philippine pesos as a decimal string, exactly two decimals, never negative. A string rather than a JSON number so no consumer parses it into a binary float. Matches the database's decimal(18,2).",
+      "type": "string",
+      "pattern": "^\\d{1,16}\\.\\d{2}$",
+      "examples": ["1250000.00", "0.00"]
+    },
+
+    "quantity": {
+      "description": "A non-negative decimal quantity as a string, up to two decimals. Matches decimal(18,2).",
+      "type": "string",
+      "pattern": "^\\d{1,16}(\\.\\d{1,2})?$",
+      "examples": ["60", "2.5"]
+    },
+
+    "refCode": {
+      "description": "AIP Reference Code per the DBM Budget Operations Manual for LGUs: Sector(4)-SubSector(3)-LGULevel(1)-OfficeType(2)-Office(3), then one 3-digit segment per Program/Project/Activity level. Do NOT infer a node's level from how many segments its code has - read the level from where the node sits in this tree. NOT unique: in legacy data a synthetic project or activity reuses its parent's refCode exactly (see isSynthetic).",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{3}-\\d-\\d{2}-\\d{3}(-\\d{3})*$",
+      "examples": ["8000-000-1-01-010", "8000-000-1-01-010-001-001-001"]
+    },
+
+    "amounts": {
+      "description": "PS / MOOE / CO and their total. total is always ps + mooe + co, computed by the provider.",
+      "type": "object",
+      "required": ["ps", "mooe", "co", "total"],
+      "additionalProperties": false,
+      "properties": {
+        "ps": { "$ref": "#/$defs/money", "description": "Personal Services." },
+        "mooe": { "$ref": "#/$defs/money", "description": "Maintenance and Other Operating Expenses." },
+        "co": { "$ref": "#/$defs/money", "description": "Capital Outlay." },
+        "total": { "$ref": "#/$defs/money", "description": "ps + mooe + co." }
+      }
+    },
+
+    "printedAmounts": {
+      "description": "FY2028+ only; null for the legacy format. The figures exactly as they appear on the printed AIP form (Annex B): MOOE and CO carry the +30% uplift, every figure is rounded UP to the thousand at the activity, and totals are sums of the rounded figures. Still pesos, not thousands. NEVER use these for ceiling or WFP limit checks - those use the base 'amounts'. Do not assume printed = 1.3 x base; rounding breaks that ratio.",
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/amounts" }
+      ]
+    },
+
+    "fundingSource": {
+      "description": "A funding source as it was recorded - a snapshot, so a later rename in PPDO's configuration does not rewrite a historical AIP.",
+      "type": "object",
+      "required": ["code", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "code": { "type": "string", "maxLength": 20, "examples": ["GF", "20% DF"] },
+        "name": {
+          "description": "Null only for a legacy row whose code never matched PPDO's funding-source list.",
+          "type": ["string", "null"],
+          "maxLength": 100,
+          "examples": ["General Fund"]
+        }
+      }
+    },
+
+    "fundTotal": {
+      "type": "object",
+      "required": ["fundingSource", "amounts"],
+      "additionalProperties": false,
+      "properties": {
+        "fundingSource": { "$ref": "#/$defs/fundingSource" },
+        "amounts": { "$ref": "#/$defs/amounts" }
+      }
+    },
+
+    "officeRef": {
+      "type": "object",
+      "required": ["code", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "code": { "type": "string", "description": "PPDO office code - the value accepted as officeCode.", "examples": ["PPDO"] },
+        "name": { "type": "string" }
+      }
+    },
+
+    "sector": {
+      "type": "object",
+      "required": ["code", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "code": { "type": "string", "enum": ["1000", "3000", "8000", "9000"] },
+        "name": { "type": "string", "enum": ["General", "Social", "Economic", "Others"] }
+      },
+      "oneOf": [
+        { "properties": { "code": { "const": "1000" }, "name": { "const": "General" } } },
+        { "properties": { "code": { "const": "3000" }, "name": { "const": "Social" } } },
+        { "properties": { "code": { "const": "8000" }, "name": { "const": "Economic" } } },
+        { "properties": { "code": { "const": "9000" }, "name": { "const": "Others" } } }
+      ]
+    },
+
+    "climateChange": {
+      "description": "Climate Change Expenditure Tagging amounts (Annex B columns 12-14). Base pesos; the uplift does not apply.",
+      "type": "object",
+      "required": ["adaptation", "mitigation", "typologyCodes"],
+      "additionalProperties": false,
+      "properties": {
+        "adaptation": { "$ref": "#/$defs/money" },
+        "mitigation": { "$ref": "#/$defs/money" },
+        "typologyCodes": {
+          "description": "CCET typology codes. An array because one activity can carry more than one. Empty when untagged.",
+          "type": "array",
+          "items": { "type": "string", "maxLength": 20, "examples": ["A214-01"] }
+        }
+      }
+    },
+
+    "procurementItem": {
+      "description": "FY2028+ only. One item an expenditure line is itemised into, as picked from PPDO's Price Index at save time. A plan, not a purchase commitment.",
+      "type": "object",
+      "required": ["name", "unit", "unitPrice", "qty", "numberOfDays", "lineTotal", "stockCardNo", "isFromPriceIndex"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "maxLength": 300 },
+        "unit": { "type": "string", "maxLength": 50 },
+        "unitPrice": { "$ref": "#/$defs/money", "description": "Unit price at save time (snapshot)." },
+        "qty": { "$ref": "#/$defs/quantity" },
+        "numberOfDays": { "$ref": "#/$defs/quantity", "description": "For day-based items (venue, meals). 1 for everything else." },
+        "lineTotal": { "$ref": "#/$defs/money", "description": "qty x unitPrice x numberOfDays, computed by the provider." },
+        "stockCardNo": {
+          "description": "The Price Index row's current Stock Card No. Null for free-typed items or when none is set.",
+          "type": ["string", "null"]
+        },
+        "isFromPriceIndex": {
+          "description": "False when the encoder typed the item by hand instead of picking it from the Price Index.",
+          "type": "boolean"
+        }
+      }
+    },
+
+    "expenditure": {
+      "description": "FY2028+ only. One expenditure line under an activity: one account, one funding source. Exactly one of ps/mooe/co is normally non-zero, matching the account's expense class.",
+      "type": "object",
+      "required": ["account", "fundingSource", "amounts", "procurementItems"],
+      "additionalProperties": false,
+      "properties": {
+        "account": {
+          "type": "object",
+          "required": ["number", "title", "expenseClass"],
+          "additionalProperties": false,
+          "properties": {
+            "number": { "type": "string", "maxLength": 20, "examples": ["5-02-03-010"] },
+            "title": { "type": "string", "maxLength": 300, "examples": ["Office Supplies Expenses"] },
+            "expenseClass": { "type": "string", "enum": ["PS", "MOOE", "CO"] }
+          }
+        },
+        "fundingSource": { "$ref": "#/$defs/fundingSource" },
+        "amounts": { "$ref": "#/$defs/amounts" },
+        "procurementItems": {
+          "description": "Empty when the amount was typed directly. When non-empty, the line's amount is the sum of the items' lineTotal.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/procurementItem" }
+        }
+      }
+    },
+
+    "activity": {
+      "description": "Leaf of the PPA tree. All money lives on activities.",
+      "type": "object",
+      "required": [
+        "refCode", "name", "isSynthetic", "esreCode", "implementingOffice", "schedule",
+        "expectedOutputs", "fundingSource", "amounts", "printedAmounts", "climateChange", "expenditures"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "refCode": { "$ref": "#/$defs/refCode" },
+        "name": { "type": "string", "maxLength": 1000 },
+        "isSynthetic": {
+          "description": "Legacy (uploaded) AIPs only - always false from FY2028, when AIPs are entered rather than uploaded. True when the uploaded workbook put money directly on a program or project row; the importer then created this stand-in activity to hold it, because money only ever lives on activities. It reuses that row's refCode and name, so it is not a separate activity in the province's document and does not print as its own line.",
+          "type": "boolean"
+        },
+        "esreCode": {
+          "description": "eSRE classification code from PPDO's configured list.",
+          "type": ["string", "null"],
+          "maxLength": 10,
+          "examples": ["SS", "ES", "ID", "EN"]
+        },
+        "implementingOffice": { "type": ["string", "null"], "maxLength": 200 },
+        "schedule": {
+          "type": "object",
+          "required": ["start", "end"],
+          "additionalProperties": false,
+          "properties": {
+            "start": { "type": ["string", "null"], "examples": ["January"] },
+            "end": { "type": ["string", "null"], "examples": ["December"] }
+          }
+        },
+        "expectedOutputs": { "type": ["string", "null"] },
+        "fundingSource": {
+          "description": "Legacy format (FY2027 and earlier): the activity's single funding source. FY2028+: always null - funding sources are recorded per expenditure line instead.",
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/fundingSource" }
+          ]
+        },
+        "amounts": { "$ref": "#/$defs/amounts", "description": "Base pesos as encoded. FY2028+: the sum of this activity's expenditures." },
+        "printedAmounts": { "$ref": "#/$defs/printedAmounts" },
+        "climateChange": { "$ref": "#/$defs/climateChange" },
+        "expenditures": {
+          "description": "FY2028+: this activity's expenditure lines. Legacy format: always empty.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/expenditure" }
+        }
+      }
+    },
+
+    "project": {
+      "type": "object",
+      "required": ["refCode", "name", "isSynthetic", "totals", "printedTotals", "activities"],
+      "additionalProperties": false,
+      "properties": {
+        "refCode": { "$ref": "#/$defs/refCode" },
+        "name": { "type": "string", "maxLength": 500 },
+        "isSynthetic": {
+          "description": "Legacy (uploaded) AIPs only - always false from FY2028. True when the uploaded workbook put money directly on a program row: the importer created this stand-in project (and a synthetic activity inside it) with the program's own refCode and name. It is not printed on the AIP form.",
+          "type": "boolean"
+        },
+        "totals": { "$ref": "#/$defs/amounts", "description": "Sum of this project's activity amounts. Added in 1.1.0." },
+        "printedTotals": { "$ref": "#/$defs/printedAmounts", "description": "Sum of this project's activity printedAmounts - never a rounding of 'totals'. Null for legacy. Added in 1.1.0." },
+        "activities": { "type": "array", "items": { "$ref": "#/$defs/activity" } }
+      }
+    },
+
+    "program": {
+      "type": "object",
+      "required": ["refCode", "name", "functionBand", "totals", "printedTotals", "projects"],
+      "additionalProperties": false,
+      "properties": {
+        "refCode": { "$ref": "#/$defs/refCode" },
+        "name": { "type": "string", "maxLength": 500 },
+        "functionBand": {
+          "description": "The band this program falls under on the WFP report. Null only for a legacy program nobody has classified.",
+          "type": ["string", "null"],
+          "enum": ["CORE", "STRATEGIC", "SUPPORT", null]
+        },
+        "totals": { "$ref": "#/$defs/amounts", "description": "Sum of this program's activity amounts. Added in 1.1.0." },
+        "printedTotals": { "$ref": "#/$defs/printedAmounts", "description": "Sum of this program's activity printedAmounts - never a rounding of 'totals'. Null for legacy. Added in 1.1.0." },
+        "projects": { "type": "array", "items": { "$ref": "#/$defs/project" } }
+      }
+    },
+
+    "group": {
+      "description": "One office-level row of the AIP (Annex B column B). An office usually has one group per sector it spends in, but a sector can hold several sub-office groups that SHARE the same refCode (e.g. 'OFFICE OF THE GOVERNOR - HOUSING'). A group's identity is (sector.code, name), never refCode alone.",
+      "type": "object",
+      "required": ["sector", "refCode", "name", "totals", "printedTotals", "programs"],
+      "additionalProperties": false,
+      "properties": {
+        "sector": { "$ref": "#/$defs/sector" },
+        "refCode": { "$ref": "#/$defs/refCode" },
+        "name": { "type": "string", "maxLength": 500 },
+        "totals": { "$ref": "#/$defs/amounts", "description": "Sum of this group's activity amounts." },
+        "printedTotals": { "$ref": "#/$defs/printedAmounts", "description": "Sum of this group's activity printedAmounts. Null for legacy." },
+        "programs": { "type": "array", "items": { "$ref": "#/$defs/program" } }
+      }
+    },
+
+    "officeAip": {
+      "description": "One released office's AIP for the fiscal year.",
+      "type": "object",
+      "required": ["office", "status", "releasedAt", "totals", "printedTotals", "totalsByFundingSource", "groups"],
+      "additionalProperties": false,
+      "properties": {
+        "office": { "$ref": "#/$defs/officeRef" },
+        "status": {
+          "description": "Why this office is released. Legacy: the fiscal year's record is 'Final'. Fy2028: PPDO's reviewer accepted this office's AIP ('Consolidated'). Neither value means PDC endorsement or Sangguniang Panlalawigan approval - PPDO's system does not track those steps.",
+          "type": "string",
+          "enum": ["Final", "Consolidated"]
+        },
+        "releasedAt": {
+          "description": "Fy2028: when PPDO accepted this office's AIP, ISO 8601 with +08:00. Lets a caller sync incrementally - re-fetch only offices released since its last pull. Legacy: null (the old format kept no per-office acceptance time).",
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "totals": { "$ref": "#/$defs/amounts", "description": "Sum over this office's groups, base pesos." },
+        "printedTotals": { "$ref": "#/$defs/printedAmounts", "description": "Sum over this office's groups' printedTotals. Null for legacy." },
+        "totalsByFundingSource": {
+          "description": "This office's base amounts per funding source. FY2028+: from expenditure lines. Legacy: from activity funding sources. Sums to this office's 'totals'.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/fundTotal" }
+        },
+        "groups": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/group" } }
+      }
+    },
+
+    "aip": {
+      "type": "object",
+      "required": [
+        "schemaVersion", "generatedAt", "fiscalYear", "aipFormat", "currency", "officeCode",
+        "totals", "printedTotals", "totalsByFundingSource", "offices", "pendingOffices"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "description": "Semantic version of this payload shape. Minor bumps only add fields; consumers must ignore fields they do not recognise.",
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "const": "1.1.0"
+        },
+        "generatedAt": {
+          "description": "When this response was produced. ISO 8601 with the Manila offset (+08:00).",
+          "type": "string",
+          "format": "date-time",
+          "pattern": "\\+08:00$"
+        },
+        "fiscalYear": { "type": "integer", "minimum": 2000, "maximum": 2100 },
+        "aipFormat": {
+          "description": "'Legacy' for FY2027 and earlier (activity-level funding source, no expenditure lines, no printed figures). 'Fy2028' for FY2028 onward (the redesigned AIP).",
+          "type": "string",
+          "enum": ["Legacy", "Fy2028"]
+        },
+        "currency": { "type": "string", "const": "PHP" },
+        "officeCode": {
+          "description": "The officeCode the request was filtered by, echoed back. Null when the request asked for the whole fiscal year.",
+          "type": ["string", "null"]
+        },
+        "totals": { "$ref": "#/$defs/amounts", "description": "Sum over 'offices' - released offices only, so a fiscal year with pending offices is not the full provincial total." },
+        "printedTotals": { "$ref": "#/$defs/printedAmounts", "description": "Sum over the offices' printedTotals. Null for legacy." },
+        "totalsByFundingSource": {
+          "description": "Base amounts per funding source, summed over 'offices'. Sums to 'totals'.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/fundTotal" }
+        },
+        "offices": {
+          "description": "Released offices, in AIP document order (by their first group's reference code). Empty when nothing matching is released yet. At most one entry when officeCode is set.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/officeAip" }
+        },
+        "pendingOffices": {
+          "description": "Offices that have an AIP in this fiscal year but are not released yet, so a caller can tell a partial fiscal year from a complete one: the response is complete only when this is empty. Always empty for the legacy format. At most one entry when officeCode is set.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/officeRef" }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "aipFormat": { "const": "Legacy" } } },
+          "then": {
+            "properties": {
+              "printedTotals": { "type": "null" },
+              "pendingOffices": { "maxItems": 0 },
+              "offices": {
+                "items": {
+                  "properties": {
+                    "status": { "const": "Final" },
+                    "releasedAt": { "type": "null" },
+                    "printedTotals": { "type": "null" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "aipFormat": { "const": "Fy2028" } } },
+          "then": {
+            "properties": {
+              "printedTotals": { "type": "object" },
+              "offices": {
+                "items": {
+                  "properties": {
+                    "status": { "const": "Consolidated" },
+                    "releasedAt": { "type": "string", "pattern": "\\+08:00$" },
+                    "printedTotals": { "type": "object" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "officeCode": { "type": "string" } }, "required": ["officeCode"] },
+          "then": {
+            "properties": {
+              "offices": { "maxItems": 1 },
+              "pendingOffices": { "maxItems": 1 }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

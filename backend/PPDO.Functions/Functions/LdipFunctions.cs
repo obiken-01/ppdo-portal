@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using PPDO.Application.Common;
@@ -45,7 +45,7 @@ public sealed class LdipFunctions
     private async Task<HttpResponseData?> DenyForeignOfficeAsync(
         HttpRequestData req, User caller, int id, CancellationToken ct)
     {
-        if (caller.OfficeId is null) return null;   // PPDO — full access
+        if (OfficeScope.IsHostOfficeUser(caller)) return null;   // host office — full access
 
         ServiceResult<LdipRecordDetailDto> existing = await _ldip.GetByIdAsync(id, ct);
         if (existing.IsSuccess && existing.Value!.OfficeId != caller.OfficeId)
@@ -63,9 +63,24 @@ public sealed class LdipFunctions
         (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
         if (denied is not null) return denied;
 
-        // Office users are always scoped to their own office; PPDO may filter.
-        int? officeId = caller!.OfficeId
-            ?? (int.TryParse(req.Query["officeId"], out int parsed) ? parsed : null);
+        // ⚠️ The comment above this line used to say "PPDO may filter" — and the code did not do
+        // that. `caller.OfficeId ?? query` clamps EVERY user with an office to it, and since
+        // DECISION F every user has one. So the ?officeId= filter was unreachable, and more
+        // importantly a **multi-office LDIP** (`office_id IS NULL`) was invisible to everybody,
+        // including SuperAdmin.
+        //
+        // That is not cosmetic. The two-tier resolver behind the AIP falls back to exactly those
+        // shared records, so on a database whose own-office LDIPs are archived, the document every
+        // office's AIP is built from could not be opened by anyone. Found by Ralph, who went
+        // looking for the LDIP his AIP programs came from and could not find it.
+        //
+        // Host-office users now see every record, including the shared ones, and may still narrow
+        // with ?officeId=. Guest offices stay clamped to their own — a multi-office LDIP holds
+        // every office's programs, so widening it for them would be a cross-office leak.
+        bool isHost = OfficeScope.IsHostOfficeUser(caller!);
+        int? officeId = isHost
+            ? (int.TryParse(req.Query["officeId"], out int parsed) ? parsed : null)
+            : caller!.OfficeId;
 
         IReadOnlyList<LdipRecordDto> data = await _ldip.GetAllAsync(req.Query["status"], officeId, ct);
         return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK,
@@ -93,7 +108,7 @@ public sealed class LdipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/ldip")] HttpRequestData req,
         CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         CreateLdipDto? body = await ConfigHttp.ReadBodyAsync<CreateLdipDto>(req, ct);
@@ -101,12 +116,13 @@ public sealed class LdipFunctions
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
                 ApiResponse<LdipRecordDetailDto>.Fail("Request body is missing or malformed."), ct);
 
-        // Office users always create for their own office, whatever the body says.
-        if (caller!.OfficeId is not null)
-            body = body with { OfficeId = caller.OfficeId };
+        // A guest office always creates for its own office, whatever the body says; the host
+        // office may create for any. Clamp expresses both, and since RAL-258 every user has an
+        // office id — so testing "has an office" here would have clamped the host office too.
+        body = body with { OfficeId = OfficeScope.Resolve(caller!).Clamp(body.OfficeId) };
 
         return await ConfigHttp.FromResultAsync(req,
-            await _ldip.CreateAsync(body, caller.Id, ct), ct, HttpStatusCode.Created);
+            await _ldip.CreateAsync(body, caller!.Id, ct), ct, HttpStatusCode.Created);
     }
 
     // ── PUT /api/budget-planning/ldip/{id} ───────────────────────────────────
@@ -115,7 +131,7 @@ public sealed class LdipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "budget-planning/ldip/{id:int}")] HttpRequestData req,
         int id, CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         HttpResponseData? forbidden = await DenyForeignOfficeAsync(req, caller!, id, ct);
@@ -126,8 +142,8 @@ public sealed class LdipFunctions
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
                 ApiResponse<LdipRecordDetailDto>.Fail("Request body is missing or malformed."), ct);
 
-        if (caller!.OfficeId is not null)
-            body = body with { OfficeId = caller.OfficeId };
+        // Same clamp as Create — see the note there on why this is not an "is null" test.
+        body = body with { OfficeId = OfficeScope.Resolve(caller!).Clamp(body.OfficeId) };
 
         return await ConfigHttp.FromResultAsync(req, await _ldip.UpdateAsync(id, body, ct), ct);
     }
@@ -142,7 +158,7 @@ public sealed class LdipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "budget-planning/ldip/{id:int}/programs/{programId:int}")] HttpRequestData req,
         int id, int programId, CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanUpload, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanUpload, ct);
         if (denied is not null) return denied;
 
         SaveLdipProgramDto? body = await ConfigHttp.ReadBodyAsync<SaveLdipProgramDto>(req, ct);
@@ -160,7 +176,7 @@ public sealed class LdipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "budget-planning/ldip/{id:int}")] HttpRequestData req,
         int id, CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         HttpResponseData? forbidden = await DenyForeignOfficeAsync(req, caller!, id, ct);
@@ -175,7 +191,7 @@ public sealed class LdipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/ldip/{id:int}/finalize")] HttpRequestData req,
         int id, CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         HttpResponseData? forbidden = await DenyForeignOfficeAsync(req, caller!, id, ct);
@@ -190,7 +206,7 @@ public sealed class LdipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/ldip/{id:int}/unlock")] HttpRequestData req,
         int id, CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         if (caller!.Role is not (UserRole.SuperAdmin or UserRole.Admin))
@@ -212,7 +228,7 @@ public sealed class LdipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/ldip/upload")] HttpRequestData req,
         CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanUpload, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanUpload, ct);
         if (denied is not null) return denied;
 
         if (!int.TryParse(req.Query["fiscalYearStart"], out int fyStart) || fyStart < 2000)
@@ -243,7 +259,7 @@ public sealed class LdipFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/ldip/confirm")] HttpRequestData req,
         CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanUpload, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanUpload, ct);
         if (denied is not null) return denied;
 
         LdipImportConfirmDto? body = await ConfigHttp.ReadBodyAsync<LdipImportConfirmDto>(req, ct);

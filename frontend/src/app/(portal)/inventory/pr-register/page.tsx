@@ -294,7 +294,7 @@ export default function PRListPage() {
   useEffect(() => {
     fetchMe()
       .then((data) => {
-        if (!data.canAccessInventory) { router.replace(data.officeId != null ? "/budget-planning" : "/dashboard"); return; }
+        if (!data.canAccessInventory) { router.replace(!data.isHostOffice ? "/budget-planning" : "/dashboard"); return; }
         setMe(data);
       })
       .catch(() => router.replace("/login"));

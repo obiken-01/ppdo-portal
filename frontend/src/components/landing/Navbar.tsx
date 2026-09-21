@@ -21,7 +21,7 @@ export default function Navbar() {
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/images/ppdo-logo-placeholder.png"
+            src="/images/ppdo-logo.png"
             alt="PPDO"
             width={28}
             height={28}

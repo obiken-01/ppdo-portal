@@ -32,9 +32,13 @@ public sealed class PpmpReportServiceTests
         UploadedById = Guid.NewGuid(), UploadedAt = DateTime.UtcNow,
     };
 
-    private static AipOffice MakeAipOffice(int id, int aipRecordId, string refCode) => new()
+    // officeId defaults to 1 — the single config office these tests scope against. Scoping matches
+    // on the FK since V18-32; the ref code is no longer what links an AipOffice to its owner.
+    private static AipOffice MakeAipOffice(
+        int id, int aipRecordId, string refCode, int? officeId = 1) => new()
     {
         Id = id, AipRecordId = aipRecordId, RefCode = refCode, Name = "Office", Sector = "General",
+        OfficeId = officeId,
     };
 
     private static AipProgram MakeProgram(int id, int officeId, string refCode) => new()

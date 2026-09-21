@@ -383,7 +383,7 @@ The Google Site currently serves as a central hub of links to Google Sheets, Dri
 |---|---|---|
 | `Ph_seal_occidental_mindoro.png` | Province of Occidental Mindoro Official Seal | `frontend/public/images/` |
 | `Bagong_Pilipinas_logo.png` | Bagong Pilipinas logo — use transparent PNG version | `frontend/public/images/` |
-| `ppdo-logo-placeholder.png` | Placeholder until official PPDO logo is provided | `frontend/public/images/` (generated) |
+| `ppdo-logo.png` | Placeholder until official PPDO logo is provided | `frontend/public/images/` (generated) |
 
 ### Mission (exact text)
 > "To be an effective and efficient department in helping the LGU attain its goals and thrust and provide better quality service."

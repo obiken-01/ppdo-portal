@@ -83,6 +83,45 @@ public sealed class AuditRepository : Repository<AuditLog>, IAuditRepository
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<AuditLog>> GetByRecordIdsAsync(
+        string tableName,
+        IReadOnlyList<int> recordIds,
+        IReadOnlyList<string> actions,
+        CancellationToken cancellationToken = default)
+    {
+        // An empty IN list would otherwise read as "no filter" to a careless caller one layer up.
+        if (recordIds.Count == 0 || actions.Count == 0) return [];
+
+        return await _context.AuditLogs
+            .AsNoTracking()
+            .Include(a => a.ChangedBy)
+            .Where(a => a.TableName == tableName
+                && a.RecordId != null && recordIds.Contains(a.RecordId.Value)
+                && actions.Contains(a.Action))
+            .OrderByDescending(a => a.ChangedAt).ThenByDescending(a => a.Id)
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<string?> GetLatestActionAsync(
+        string tableName,
+        IReadOnlyList<int> recordIds,
+        IReadOnlyList<string> actions,
+        CancellationToken cancellationToken = default)
+    {
+        if (recordIds.Count == 0 || actions.Count == 0) return null;
+
+        return await _context.AuditLogs
+            .AsNoTracking()
+            .Where(a => a.TableName == tableName
+                && a.RecordId != null && recordIds.Contains(a.RecordId.Value)
+                && actions.Contains(a.Action))
+            .OrderByDescending(a => a.ChangedAt).ThenByDescending(a => a.Id)
+            .Select(a => a.Action)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<string>> GetDistinctTableNamesAsync(CancellationToken cancellationToken = default)
         => await _context.AuditLogs
             .Select(a => a.TableName)

@@ -17,7 +17,8 @@ namespace PPDO.Application.Services;
 /// Updates full-replace the hierarchy, so removals renumber the remaining
 /// programs with no gaps — correct ref codes are a hard project requirement.
 ///
-/// Program budgets are stored in thousands (₱000), like AIP totals.
+/// Program budgets are stored in thousands (₱000) — NOT like AIP totals, which are pesos since
+/// V18-35 (PPDO-34). See LdipProgram.Budget for why LDIP deliberately did not move.
 /// Edit guard: only Draft records may be updated. Finalize additionally validates
 /// completeness (office set, year order, ≥1 program) — the WFP finalize pattern.
 /// </summary>
@@ -451,10 +452,20 @@ public sealed class LdipService : ILdipService
         return result;
     }
 
+    /// <summary>
+    /// Code → fund lookup for resolving an LDIP workbook's free-text fund-source cells.
+    ///
+    /// ⚠️ <b>SHARED funds only</b> — office_id null (v1.8.0 PPDO-109). The LDIP upload is PPDO's
+    /// multi-office bulk path, so it has no single office whose private funds would be in scope;
+    /// codes are globally unique (D6), so an unfiltered lookup could resolve one office's cell to
+    /// another office's fund. Same reasoning as the AIP upload in <c>AipService</c>.
+    /// </summary>
     private async Task<Dictionary<string, FundingSource>> LoadFundingSourceLookupAsync(CancellationToken ct)
     {
         IReadOnlyList<FundingSource> all = await _fsRepo.GetAllAsync(ct);
-        return all.ToDictionary(f => f.Code, StringComparer.OrdinalIgnoreCase);
+        return all
+            .Where(f => f.OfficeId is null)
+            .ToDictionary(f => f.Code, StringComparer.OrdinalIgnoreCase);
     }
 
     private static string Normalize(string sector) =>

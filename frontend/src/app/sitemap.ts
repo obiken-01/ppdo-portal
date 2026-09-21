@@ -15,7 +15,8 @@ export const dynamic = "force-static";
  */
 export default function sitemap(): MetadataRoute.Sitemap {
   // A non-production deployment publishes no sitemap (PPDO-21 — UAT). ⚠️ A sitemap is the one
-  // SEO surface that actively INVITES indexing — leaving it populated would undo the other three.
+  // SEO surface that actively INVITES indexing: robots.txt and a noindex tag both say "don't", while
+  // a sitemap hands over the full URL list. Leaving it populated would undo the other two.
   if (NOINDEX) return [];
 
   const lastModified = new Date();

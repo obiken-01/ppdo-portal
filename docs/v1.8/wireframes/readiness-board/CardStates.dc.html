@@ -1,0 +1,132 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #F1F3F5;
+      font-family: "Segoe UI", "Source Sans Pro", system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: #1F7A45; }
+    a:hover { color: #196638; }
+    .num { font-variant-numeric: tabular-nums; }
+    .cap {
+      margin: 0 0 8px; font-size: 12px; line-height: 16px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.025em; color: #5A636B;
+    }
+    .card {
+      display: flex; flex-direction: column; gap: 5px; background: #FFFFFF; border: 1px solid #E9ECEF;
+      padding: 10px 12px; width: 212px;
+    }
+    .code { font-size: 14px; line-height: 20px; font-weight: 500; color: #343A40; }
+    .name { font-size: 12px; line-height: 16px; color: #7D858C; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .meta { font-size: 12px; line-height: 16px; color: #5A636B; }
+    .rev { border-top: 1px solid #F1F3F5; padding-top: 5px; font-size: 12px; line-height: 16px; color: #7D858C; }
+    .pill {
+      display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 9999px;
+      font-size: 12px; line-height: 16px; font-weight: 500; white-space: nowrap;
+    }
+    .host {
+      display: inline-flex; padding: 2px 6px; border-radius: 9999px; background: #D4EDDE; color: #196638;
+      font-size: 10px; line-height: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.025em;
+    }
+    .compact {
+      display: flex; align-items: center; justify-content: space-between; gap: 6px; background: #FFFFFF;
+      border: 1px solid #E9ECEF; padding: 5px 8px; width: 212px;
+    }
+  </style>
+</helmet>
+
+<div style="padding: 32px; display: flex; flex-direction: column; gap: 32px;">
+
+  <div>
+    <h2 style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 600; color: #343A40;">Card states</h2>
+    <p style="margin: 2px 0 0; font-size: 12px; line-height: 16px; color: #5A636B;">One office per card, at the real column width. No % complete, by decision.</p>
+  </div>
+
+  <div style="display: flex; flex-wrap: wrap; gap: 40px; align-items: flex-start;">
+
+    <div>
+      <p class="cap">In progress</p>
+      <div class="card">
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;"><span class="code">OPA</span></div>
+        <span class="name">Office of the Provincial Agriculturist</span>
+        <span class="meta num">4 programs · 1 activity</span>
+        <span class="meta num">₱550 of ₱50M</span>
+        <span class="rev">Reviewer: Provincial Agriculturist</span>
+      </div>
+    </div>
+
+    <div>
+      <p class="cap">Host · returned by PPDO</p>
+      <div class="card">
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;">
+          <span class="code">PPDO</span>
+          <span class="host">Host</span>
+          <span class="pill" style="background: #FEF3CD; color: #EF9F27;">Returned</span>
+        </div>
+        <span class="name">Provincial Planning and Development Office</span>
+        <span class="meta num">25 programs · 2 activities</span>
+        <span class="meta num">₱1.12M of ₱10M</span>
+        <span class="rev">Reviewer: PDC</span>
+      </div>
+    </div>
+
+    <div>
+      <p class="cap">Over ceiling</p>
+      <div class="card">
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;"><span class="code">PSWDO</span></div>
+        <span class="name">Provincial Social Welfare and Development Office</span>
+        <span class="meta num">15 programs · 11 activities</span>
+        <span class="meta num" style="color: #E24B4A; font-weight: 500;">₱9.8M of ₱9.5M</span>
+        <div style="display: flex; flex-wrap: wrap; gap: 4px;"><span class="pill" style="background: #FDECEA; color: #E24B4A;">Over ceiling</span></div>
+        <span class="rev">Reviewer: PSWD Officer</span>
+      </div>
+    </div>
+
+    <div>
+      <p class="cap">No reviewer · no ceiling</p>
+      <div class="card">
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;"><span class="code">PLO</span></div>
+        <span class="name">Provincial Legal Office</span>
+        <span class="meta num">8 programs · 3 activities</span>
+        <span class="meta" style="color: #7D858C;">No ceiling published</span>
+        <div style="display: flex; flex-wrap: wrap; gap: 4px;"><span class="pill" style="background: #FDECEA; color: #E24B4A;">Cannot submit</span></div>
+        <span class="rev">No reviewer — assign</span>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="display: flex; flex-wrap: wrap; gap: 40px; align-items: flex-start;">
+
+    <div>
+      <p class="cap">Not started · no reviewer</p>
+      <div class="compact">
+        <span style="font-size: 12px; line-height: 16px; font-weight: 500; color: #343A40;">PGO</span>
+        <span class="num" style="display: flex; align-items: center; gap: 6px; font-size: 11px; line-height: 16px; color: #5A636B;">48 prog.<span style="display: inline-block; width: 6px; height: 6px; border-radius: 9999px; background: #E24B4A;"></span></span>
+      </div>
+    </div>
+
+    <div>
+      <p class="cap">Not started · has a reviewer</p>
+      <div class="compact">
+        <span style="font-size: 12px; line-height: 16px; font-weight: 500; color: #343A40;">HRMO</span>
+        <span class="num" style="display: flex; align-items: center; gap: 6px; font-size: 11px; line-height: 16px; color: #5A636B;">3 prog.<span style="display: inline-block; width: 6px; height: 6px;"></span></span>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

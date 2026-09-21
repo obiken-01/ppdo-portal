@@ -18,8 +18,9 @@ export const dynamic = "force-static";
 export default function robots(): MetadataRoute.Robots {
   // A non-production deployment asks crawlers for nothing at all (PPDO-21 — UAT).
   //
-  // ⚠️ No `sitemap` line either. Advertising a sitemap while disallowing the site is
-  // contradictory, and a crawler that reads it anyway gets handed the very URLs this is hiding.
+  // ⚠️ No `sitemap` line either. Advertising a sitemap while disallowing the site is contradictory,
+  // and a crawler that reads the sitemap anyway gets handed the very URLs this is hiding. The
+  // `noindex` meta tag in the root layout is the half with actual teeth — robots.txt is a request.
   if (NOINDEX) {
     return { rules: { userAgent: "*", disallow: ["/"] } };
   }

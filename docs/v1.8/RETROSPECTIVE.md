@@ -152,7 +152,7 @@ Where the fixes landed:
 **Root cause: there is no environment between a developer's machine and production.** `main`
 auto-deploys to Azure on push, so *`main` is the staging environment*. Defects that a UAT pass
 would have caught for free were instead caught by users, in production, and paid for with a patch
-release. RAL-221 (UAT environment) was scoped and then deferred. **The 12 patch releases across
+release. PPDO-21 (UAT environment) was scoped and then deferred. **The 12 patch releases across
 v1.4 and v1.7 are the invoice for that deferral.**
 
 Note also that unit tests, however plentiful, structurally cannot catch this class of defect —
@@ -293,12 +293,12 @@ Ordered by leverage. Items 1–3 are the ones worth landing **before** the next 
 > a patch train**, and §6 says to expect one that scales with batch size. Declining the gate is
 > therefore a decision to absorb the patches instead — which is a legitimate choice for a solo
 > maintainer who can ship a fix in hours, and was made with that cost visible rather than by
-> default. This is the second deferral of RAL-221; a third should probably reopen the question of
+> default. This is the second deferral of PPDO-21; a third should probably reopen the question of
 > whether it is ever going to happen, rather than deferring again.
 
 | # | Action | Addresses | Effort |
 |---|---|---|---|
-| **1** | ⏸️ **Stand up the UAT environment (RAL-221).** A second SWA + Functions slot against a UAT database, deployed from `release/*` before the merge to `main`. The `noindex` blocker is solved with an `X-Robots-Tag` header in SWA config. **Deferred again, deliberately, 2026-08-27** — not urgently needed, and the current release has the team's capacity. See the note below. | §3.1, §3.5 — the 12-patch-release problem | M |
+| **1** | ⏸️ **Stand up the UAT environment (PPDO-21).** A second SWA + Functions slot against a UAT database, deployed from `release/*` before the merge to `main`. The `noindex` blocker is solved with an `X-Robots-Tag` header in SWA config. **Deferred again, deliberately, 2026-08-27** — not urgently needed, and the current release has the team's capacity. See the note below. | §3.1, §3.5 — the 12-patch-release problem | M |
 | **2** | **Add a post-deploy smoke test to `deploy.yml`.** Poll `GET /api/health` until 200 (with a timeout) and fail the workflow on 503. One step, catches a dead deploy before a user does. | §3.5.2 | S |
 | **3** | **Gate migrations in CI, and flag the manual step in the deploy job.** Fail the build if a migration appears in the diff without a corresponding checklist acknowledgment; echo an explicit "MIGRATION REQUIRED — run `dotnet ef database update`" banner in the deploy log. Automating the run against Azure SQL is the better end state, but the banner is today's work. | §3.5.1 | S |
 | **4** | **Set a frontend file-size ceiling in lint.** Warn at 600 lines, error at 900, with existing offenders grandfathered via an explicit allowlist that may only shrink. This converts a good intention into a machine-checked rule — the move that has worked on this project. | §3.2, Pattern B | S |

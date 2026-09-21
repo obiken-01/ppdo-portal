@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { archiveLdip, finalizeLdip, ldipErrorMessage, listLdip, unlockLdip } from "@/lib/ldip";
 import { useMe } from "@/lib/me-cache";
+import { canOpenLdip, budgetPlanningFallback } from "@/lib/budget-planning-access";
 import DataTable, { type Column } from "@/components/ui/DataTable";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
@@ -43,7 +44,10 @@ function LdipListInner() {
   const { toast } = useToast();
   const searchParams = useSearchParams();
 
-  const me = useMe((m) => m.canAccessBudgetPlanning);
+  // PPDO-81 — host office (PPDO) only, any role. Gated on the OFFICE, not the role: PPDO planning
+  // staff work in the LDIP, but from FY2028 it is the closed list an AIP's programs must come from,
+  // so a guest office arriving to add a missing program would find every write control refused.
+  const me = useMe(canOpenLdip, budgetPlanningFallback);
   const [records, setRecords] = useState<LdipRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

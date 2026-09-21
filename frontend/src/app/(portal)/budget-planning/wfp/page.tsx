@@ -21,9 +21,10 @@
  *   POST /api/budget-planning/wfp/{id}/unlock
  */
 
-import { Fragment, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMe } from "@/lib/me-cache";
+import ClampedText from "@/components/ui/ClampedText";
 import { getAipSummary, listAip } from "@/lib/aip";
 import {
   downloadWfpReport,
@@ -34,12 +35,13 @@ import {
   unlockWfp,
   wfpErrorMessage,
 } from "@/lib/wfp";
-import { findGeneralFund, findPpdoOffice, listAccounts, listDivisions, listFundingSources, listOffices } from "@/lib/config";
+import { findGeneralFund, findHostOffice, listAccounts, listDivisions, listFundingSources, listOffices } from "@/lib/config";
 import { getCeiling, getSetupStatus, getAllocations, getPrograms } from "@/lib/allocation";
 import Modal from "@/components/ui/Modal";
 import MoneyInput from "@/components/ui/MoneyInput";
 import OfficeSelect from "@/components/ui/OfficeSelect";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
+import { wfpUnsupportedReason } from "@/lib/wfp-support";
 import { useToast } from "@/components/ui/Toast";
 import { formatMoney } from "@/lib/money";
 import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
@@ -133,39 +135,8 @@ const CF_FIELDS: [keyof SaveWfpLine, string][] = [
   ["meansOfVerification", "Means of Verification"],
 ];
 
-// Name cell with 2-line clamp + "more/less" toggle (only shown when actually clamped)
-function ClampedName({ name }: { name: string }) {
-  const [expanded, setExpanded] = useState(false);
-  const [isClamped, setIsClamped] = useState(false);
-  const spanRef = useRef<HTMLSpanElement>(null);
-
-  useLayoutEffect(() => {
-    if (expanded) return;
-    const el = spanRef.current;
-    if (el) setIsClamped(el.scrollHeight > el.clientHeight);
-  }, [name, expanded]);
-
-  return (
-    <>
-      <span
-        ref={spanRef}
-        className={expanded ? undefined : "line-clamp-2"}
-        title={!expanded && isClamped ? name : undefined}
-      >
-        {name}
-      </span>
-      {(isClamped || expanded) && (
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); setExpanded((p) => !p); }}
-          className="ml-1 text-xs text-green-700 hover:underline whitespace-nowrap"
-        >
-          {expanded ? "less" : "more"}
-        </button>
-      )}
-    </>
-  );
-}
+// ↩️ The local `ClampedName` that lived here became the shared `ClampedText` (PPDO-105) — the same
+// clamp + more/less, now the portal-wide rule for long text in a list table.
 
 // Account search combobox — replaces the plain <select> for object of expenditure
 function AccountCombobox({
@@ -271,7 +242,7 @@ function ExpenditurePopup({
       if (net > 0 && quarterly > net + 0.001)
         errs.push(`Line ${i + 1} (${l.expenditureType}): quarterly total ${formatMoney(quarterly)} exceeds net appropriation ${formatMoney(net)}.`);
     });
-    const aipBudget = activity.total != null ? activity.total * 1000 : null;
+    const aipBudget = activity.total != null ? activity.total : null;
     if (aipBudget != null) {
       const totalApprop = localLines.reduce((sum, l) => sum + l.totalAppropriation, 0);
       if (totalApprop > aipBudget + 0.001)
@@ -374,7 +345,7 @@ function ExpenditurePopup({
       <p className="mb-4 text-sm text-slate-600">
         AIP Budget:{" "}
         <span className="font-semibold tabular-nums text-slate-800">
-          {activity.total != null ? formatMoney(activity.total * 1000) : "—"}
+          {activity.total != null ? formatMoney(activity.total) : "—"}
         </span>
       </p>
 
@@ -658,7 +629,11 @@ function WfpPageInner() {
   const [confirm, setConfirm] = useState<ConfirmDialogProps | null>(null);
 
   const restoreConfirmed = useRef(false);
-  const fundingSourcesLoaded = useRef(false);
+  // PPDO-109 — keyed by office, not a bare boolean. Funds are now per-office (province-wide plus
+  // that office's own), so a PPDO user switching offices must re-fetch; a boolean would have kept
+  // the FIRST office's list for the rest of the session and quietly dropped the second office's own
+  // funds out of the picker. null = never fetched.
+  const fundingSourcesLoadedFor = useRef<number | null>(null);
   const accountsLoaded = useRef(false);
 
   // ── Effect A: Load selector lists on mount (accounts/funding deferred) ───
@@ -687,11 +662,11 @@ function WfpPageInner() {
   useEffect(() => {
     if (!me) return;
     if (!searchParams.get("officeId")) {
-      if (me.officeId != null) {
+      if (!me.isHostOffice) {
         setSelectedOfficeId(me.officeId);
       } else {
         // PPDO-internal users (me.officeId is null by design) default to PPDO itself.
-        const ppdo = findPpdoOffice(officeList);
+        const ppdo = findHostOffice(officeList);
         if (ppdo) setSelectedOfficeId(ppdo.id);
       }
     }
@@ -734,9 +709,12 @@ function WfpPageInner() {
       setHasUnsaved(false);
 
       try {
-        const fetchFunds: Promise<FundingSourceResponse[] | null> = !fundingSourcesLoaded.current
-          ? listFundingSources({ active: "true" })
-          : Promise.resolve(null);
+        // PPDO-109 — scoped to the selected office, so the picker shows the province-wide funds plus
+        // that office's own and never another office's.
+        const fetchFunds: Promise<FundingSourceResponse[] | null> =
+          fundingSourcesLoadedFor.current !== officeId
+            ? listFundingSources({ active: "true", officeId })
+            : Promise.resolve(null);
         const fetchAccts: Promise<AccountResponse[] | null> = !accountsLoaded.current
           ? listAccounts({ active: "true" })
           : Promise.resolve(null);
@@ -754,7 +732,7 @@ function WfpPageInner() {
         if (cancelled) return;
 
         setAipDetail(detail);
-        if (newFunds) { setFundingSources(newFunds); fundingSourcesLoaded.current = true; }
+        if (newFunds) { setFundingSources(newFunds); fundingSourcesLoadedFor.current = officeId; }
         if (newAccts) { setAccounts(newAccts); accountsLoaded.current = true; }
 
         // v1.4.3 (RAL-154): ceiling/allocation are now per fund source. This page is the
@@ -1037,12 +1015,12 @@ function WfpPageInner() {
   // ── Derived flags ─────────────────────────────────────────────────────────
 
   const isFinal = wfp?.status === "Final";
-  const isOfficeUser = me != null && me.officeId != null;
+  const isOfficeUser = me != null && !me.isHostOffice;
   const canBypassDivision =
-    me?.role === "SuperAdmin" || me?.role === "Admin" || me?.canManageAllocation === true;
+    me?.role === "SuperAdmin" || me?.role === "Admin" || me?.canManagePpdoAllocation === true;
 
-  // Gross total of all draft expenditure lines (in pesos — no ×1000 here).
-  // AIP totals are stored in thousands; division allocation is in pesos.
+  // Gross total of all draft expenditure lines. Everything on this page is pesos — AIP totals
+  // included, since V18-35 (PPDO-34) migrated them off thousands and deleted the ×1000s here.
   // Per D5: validation uses GROSS (totalAppropriation, not net).
   const divisionGrossTotal = useMemo(
     () =>
@@ -1058,7 +1036,13 @@ function WfpPageInner() {
     (setupStatus == null ||
       (setupStatus.hasAllocation && setupStatus.hasProgramAssignment));
 
+  // V18-81 — the selected AIP decides the year, so this is known before Save is pressed.
+  // Disabled with the reason showing, not hidden: the user has the permission, the fiscal year
+  // is what forbids it (Budget_Planning_Dashboard_Requirements.md §6.1).
+  const wfpUnsupported = aipDetail ? wfpUnsupportedReason(aipDetail.fiscalYear) : null;
+
   const canSave =
+    wfpUnsupported === null &&
     aipDetail != null &&
     selectedAipId != null &&
     selectedOfficeId != null &&
@@ -1206,8 +1190,20 @@ function WfpPageInner() {
           )}
         </div>
 
+        {/* Unsupported fiscal year (V18-81) — shown ABOVE the setup banner, because setup is
+            irrelevant for a year no WFP can be built in. Two banners here would ask the user to
+            fix something that would not help. */}
+        {wfpUnsupported && (
+          <div className="mb-4 px-4 py-3 bg-amber-50 border border-amber-300 text-amber-800 text-sm flex flex-col gap-1">
+            <span className="font-semibold">
+              WFP entry is not available for FY {aipDetail?.fiscalYear}.
+            </span>
+            <span>{wfpUnsupported}</span>
+          </div>
+        )}
+
         {/* Setup-incomplete banner */}
-        {!setupComplete && hasCeiling !== null && (
+        {!wfpUnsupported && !setupComplete && hasCeiling !== null && (
           <div className="mb-4 px-4 py-3 bg-amber-50 border border-amber-300 text-amber-800 text-sm flex flex-col gap-1">
             <span className="font-semibold">WFP entry is blocked — allocation setup incomplete:</span>
             <ul className="list-disc list-inside">
@@ -1215,7 +1211,7 @@ function WfpPageInner() {
               {setupStatus != null && !setupStatus.hasAllocation && <li>No division allocation set for this division.</li>}
               {setupStatus != null && !setupStatus.hasProgramAssignment && <li>No programs have been assigned to this division.</li>}
             </ul>
-            <span className="text-xs text-amber-700">Go to Budget Planning → Allocation to complete setup.</span>
+            <span className="text-xs text-amber-700">Go to Investment Planning → Allocation to complete setup.</span>
           </div>
         )}
 
@@ -1243,6 +1239,13 @@ function WfpPageInner() {
         ) : !selectedAipId || !selectedOfficeId ? (
           <p className="text-slate-600 text-sm py-8">
             Select an AIP and an office to view the WFP grid.
+          </p>
+        ) : wfpUnsupported ? (
+          // The banner above already says why. Without this branch the body still reads
+          // "complete the allocation setup … to start entering WFP data", which contradicts it
+          // and sends the user to do work that cannot help.
+          <p className="text-slate-600 text-sm py-8">
+            There is nothing to enter here for this fiscal year.
           </p>
         ) : !setupComplete ? (
           <p className="text-slate-600 text-sm py-8">
@@ -1339,7 +1342,7 @@ function WfpPageInner() {
                                       >
                                         {collapsed.has(pKey) ? "▶" : "▼"}
                                       </button>
-                                      <ClampedName name={program.name} />
+                                      <ClampedText text={program.name} />
                                     </div>
                                   </td>
                                   <td className="px-3 py-2" />
@@ -1365,7 +1368,7 @@ function WfpPageInner() {
                                             >
                                               {collapsed.has(prKey) ? "▶" : "▼"}
                                             </button>
-                                            <ClampedName name={project.name} />
+                                            <ClampedText text={project.name} />
                                           </div>
                                         </td>
                                         <td className="px-3 py-2" />
@@ -1388,7 +1391,7 @@ function WfpPageInner() {
                                               {activity.refCode}
                                             </td>
                                             <td className="px-3 py-2 pl-14 text-slate-600">
-                                              <ClampedName name={activity.name} />
+                                              <ClampedText text={activity.name} />
                                             </td>
                                             <td className="px-3 py-2 text-xs text-slate-600 whitespace-nowrap">
                                               {activity.fundingSourceSnapshot ?? "—"}
@@ -1406,7 +1409,7 @@ function WfpPageInner() {
                                               {fmtCurrency(total)}
                                             </td>
                                             <td className="px-3 py-2 text-right tabular-nums text-slate-600 text-xs">
-                                              {activity.total != null ? formatMoney(activity.total * 1000) : "—"}
+                                              {activity.total != null ? formatMoney(activity.total) : "—"}
                                             </td>
                                             <td className="px-3 py-2 text-right tabular-nums">
                                               {fmtCurrency(sumQ(activity.id, "q1"))}
@@ -1460,11 +1463,12 @@ function WfpPageInner() {
       {/* Sticky Save footer */}
       <div className="sticky bottom-0 bg-white border-t border-slate-200 px-6 py-3 flex items-center justify-between">
         <span className="text-sm text-amber-600 font-medium">
-          {hasUnsaved ? "You have unsaved changes." : ""}
+          {wfpUnsupported ? "" : hasUnsaved ? "You have unsaved changes." : ""}
         </span>
         <button
           onClick={handleSave}
           disabled={!canSave}
+          title={wfpUnsupported ?? undefined}
           className="px-5 py-2 bg-green-600 text-white text-sm font-medium hover:bg-green-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
         >
           {saving && (

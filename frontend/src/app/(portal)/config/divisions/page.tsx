@@ -14,9 +14,16 @@
  * CSV columns (§5 of Allocation_Requirements.md):
  *   office_code, code, name, is_active,
  *   can_access_budget_planning, can_access_inventory, can_access_reports,
- *   can_manage_config, can_upload_aip, can_manage_users, can_manage_resource_links
+ *   can_manage_config, can_upload_aip, can_manage_users, can_manage_resource_links,
+ *   landing_page (RAL-259 — enum name or blank)
  *
- * Access guard: only users with canManageConfig may view this page.
+ * Access guard: canManageConfig, or canManageOfficeSetup for a department head — who sees ONLY
+ * their own office's divisions and none of the feature flags (PPDO-108).
+ *
+ * ⚠️ **Hiding the flags here is courtesy, not the rule.** `ConfigDivisionFunctions` drops the seven
+ * `can*` fields from an office-scoped caller's payload and refuses a division belonging to another
+ * office outright; this page only spares them controls they cannot use. "We own the site, we can't
+ * let them set permissions of our features" (Ralph, 2026-09-16).
  *
  * Endpoints (ConfigDivisionFunctions.cs, { data, error, message } envelope):
  *   GET    /api/config/divisions?active=&officeId=
@@ -43,7 +50,7 @@ import {
 import DataTable, { type Column } from "@/components/ui/DataTable";
 import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import Modal from "@/components/ui/Modal";
-import MessageDialog from "@/components/ui/MessageDialog";
+import CsvImportSummary from "@/components/ui/CsvImportSummary";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import CsvUploadButton from "@/components/ui/CsvUploadButton";
 import CsvDownloadButton from "@/components/ui/CsvDownloadButton";
@@ -54,15 +61,17 @@ import type {
   CsvImportResult,
   DivisionResponse,
   OfficeResponse,
+  LandingPageKey,
   UpsertDivisionRequest,
 } from "@/types";
+import LandingPageSelect from "@/components/ui/LandingPageSelect";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const FLAG_FIELDS: { key: keyof UpsertDivisionRequest & `can${string}`; label: string }[] = [
-  { key: "canAccessBudgetPlanning", label: "Budget Planning" },
+  { key: "canAccessBudgetPlanning", label: "Investment Planning" },
   { key: "canAccessInventory",      label: "Inventory" },
   { key: "canAccessReports",        label: "Reports" },
   { key: "canManageConfig",         label: "Manage Config" },
@@ -142,12 +151,14 @@ interface FormState {
   canUploadAip:            boolean;
   canManageUsers:          boolean;
   canManageResourceLinks:  boolean;
+  landingPage:             LandingPageKey | null;
 }
 
 const blankForm = (): FormState => ({
   officeId: "",
   code: "",
   name: "",
+  landingPage: null,
   isActive: true,
   ...blankFlags(),
 });
@@ -161,6 +172,14 @@ export default function DivisionConfigPage() {
   const { toast } = useToast();
 
   const [authChecked] = useState(true);
+  /**
+   * PPDO-108 — the caller manages their OWN office only: no office column, no office picker, no
+   * feature flags, no CSV (a bulk upsert carries an office per row, so the server keeps those
+   * routes for config managers).
+   */
+  const [ownOfficeOnly, setOwnOfficeOnly] = useState(false);
+  const [ownOfficeName, setOwnOfficeName] = useState<string | null>(null);
+  const [ownOfficeId, setOwnOfficeId] = useState<number | null>(null);
   const [divisions, setDivisions] = useState<DivisionResponse[]>([]);
   const [offices, setOffices] = useState<OfficeResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -186,7 +205,17 @@ export default function DivisionConfigPage() {
   useEffect(() => {
     fetchMe()
       .then((data) => {
-        if (!data.canManageConfig) router.replace(data.officeId != null ? "/budget-planning" : "/dashboard");
+        if (!data.canManageConfig && !data.canManageOfficeSetup) {
+          router.replace(!data.isHostOffice ? "/budget-planning" : "/dashboard");
+          return;
+        }
+        // A config manager who also holds the setup grant keeps the full page — the narrower
+        // view is for callers who hold ONLY the setup grant, matching the server's own test.
+        if (!data.canManageConfig) {
+          setOwnOfficeOnly(true);
+          setOwnOfficeId(data.officeId ?? null);
+          setOwnOfficeName(data.officeName ?? data.officeCode ?? null);
+        }
       })
       .catch(() => router.replace("/login"));
   }, [router]);
@@ -239,7 +268,11 @@ export default function DivisionConfigPage() {
 
   function openAdd() {
     setEditTarget(null);
-    setForm(blankForm());
+    // The office picker is hidden for an own-office caller, so the id is filled in here. The
+    // server stamps it again from the caller's own office — this only keeps the form valid.
+    setForm(ownOfficeOnly && ownOfficeId != null
+      ? { ...blankForm(), officeId: ownOfficeId }
+      : blankForm());
     setFormError(null);
     setShowForm(true);
   }
@@ -258,6 +291,7 @@ export default function DivisionConfigPage() {
       canUploadAip:            division.canUploadAip,
       canManageUsers:          division.canManageUsers,
       canManageResourceLinks:  division.canManageResourceLinks,
+      landingPage:             division.landingPage,
     });
     setFormError(null);
     setShowForm(true);
@@ -284,6 +318,7 @@ export default function DivisionConfigPage() {
       canUploadAip:            form.canUploadAip,
       canManageUsers:          form.canManageUsers,
       canManageResourceLinks:  form.canManageResourceLinks,
+      landingPage:             form.landingPage,
     };
 
     setSaving(true);
@@ -390,11 +425,13 @@ export default function DivisionConfigPage() {
       sortable: true,
       render: (d) => <span className="font-medium text-slate-800">{d.name}</span>,
     },
-    {
+    // Dropped entirely when every row is the caller's own office — a column with one repeated
+    // value is noise, and it is the only place the word "office" appears in the grid.
+    ...(ownOfficeOnly ? [] : [{
       key: "officeName",
       header: "Office",
       sortable: true,
-      render: (d) => (
+      render: (d: DivisionResponse) => (
         <span className="text-slate-600 text-sm">
           {d.officeCode ? (
             <>
@@ -406,7 +443,7 @@ export default function DivisionConfigPage() {
           )}
         </span>
       ),
-    },
+    } satisfies Column<DivisionResponse>]),
     {
       key: "flags",
       header: "Flags",
@@ -446,15 +483,25 @@ export default function DivisionConfigPage() {
         {/* Header */}
         <ConfigPageHeader
           title="Divisions"
-          description="Configurable per-office divisions that carry data scope and feature-permission flags."
+          description={
+            ownOfficeOnly
+              ? `The divisions of ${ownOfficeName ?? "your office"}. They carry data scope; feature permissions are set by PPDO.`
+              : "Configurable per-office divisions that carry data scope and feature-permission flags."
+          }
           actions={
             <>
-              <CsvDownloadButton
-                filename="divisions.csv"
-                fetchCsv={exportDivisionsCsv}
-                onError={(msg) => toast.error("Export failed", msg)}
-              />
-              <CsvUploadButton onSelect={(file) => setPendingCsv(file)} />
+              {/* CSV is a multi-office bulk upsert, and the server keeps both routes for config
+                  managers — so it is not offered to an own-office caller at all. */}
+              {!ownOfficeOnly && (
+                <>
+                  <CsvDownloadButton
+                    filename="divisions.csv"
+                    fetchCsv={exportDivisionsCsv}
+                    onError={(msg) => toast.error("Export failed", msg)}
+                  />
+                  <CsvUploadButton onSelect={(file) => setPendingCsv(file)} />
+                </>
+              )}
               <button
                 onClick={openAdd}
                 className="flex items-center gap-1.5 bg-green-600 text-white font-semibold text-sm px-4 py-2.5 hover:bg-green-500 transition-colors shrink-0"
@@ -471,7 +518,7 @@ export default function DivisionConfigPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name, code, or office…"
+            placeholder={ownOfficeOnly ? "Search by name or code…" : "Search by name, code, or office…"}
             className="flex-1 min-w-[220px] px-3 py-2 text-sm border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-green-600"
           />
           <div className="flex items-center border border-slate-200 overflow-hidden">
@@ -536,7 +583,9 @@ export default function DivisionConfigPage() {
           }
         >
           <div className="space-y-4">
-            {/* Office */}
+            {/* Office — hidden for an own-office caller: there is only one answer, and the
+                server stamps it from the caller regardless of what the body says. */}
+            {!ownOfficeOnly && (
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Office *</label>
               <select
@@ -554,6 +603,7 @@ export default function DivisionConfigPage() {
                 <p className="mt-1 text-[11px] text-slate-600">Office cannot be changed.</p>
               )}
             </div>
+            )}
 
             {/* Name */}
             <div>
@@ -593,7 +643,9 @@ export default function DivisionConfigPage() {
               </p>
             </div>
 
-            {/* Feature flags */}
+            {/* Feature flags — PPDO's to set, never the office's (D8). The server drops these
+                fields from an own-office caller's payload; hiding them is the courtesy half. */}
+            {!ownOfficeOnly && (
             <div>
               <p className="text-xs font-medium text-slate-600 mb-2">Feature Flags</p>
               <div className="grid grid-cols-2 gap-2">
@@ -613,6 +665,27 @@ export default function DivisionConfigPage() {
                 Staff users inherit these flags from their division (per-user overrides take precedence).
               </p>
             </div>
+            )}
+            {ownOfficeOnly && (
+              <p className="text-[11px] text-slate-600">
+                Feature permissions for a division are set by PPDO, not here.
+              </p>
+            )}
+
+            <LandingPageSelect
+              label="Default landing page"
+              value={form.landingPage}
+              onChange={(landingPage) => setForm((prev) => ({ ...prev, landingPage }))}
+              reachability={{
+                // Divisions exist under any office, and a per-user override can grant a page
+                // the division's own flags do not — so this is a hint, not a hard filter.
+                // The resolver skips a default a given user cannot reach (RAL-262).
+                isOfficeUser: false,
+                canAccessInventory: form.canAccessInventory,
+                canAccessBudgetPlanning: form.canAccessBudgetPlanning,
+              }}
+              hint="Applied to users in this division who have no preference of their own. Follows the flags ticked above."
+            />
 
             {formError && (
               <div className="bg-danger-100 border border-danger-500/30 px-4 py-3">
@@ -651,40 +724,16 @@ export default function DivisionConfigPage() {
             <p className="text-xs text-slate-600">
               Expected columns: office_code, code, name, is_active, can_access_budget_planning,
               can_access_inventory, can_access_reports, can_manage_config, can_upload_aip,
-              can_manage_users, can_manage_resource_links.
+              can_manage_users, can_manage_resource_links, landing_page (optional —
+              MainDashboard, InventoryDashboard, BudgetPlanningDashboard or Profile; blank means
+              no preference).
             </p>
           </div>
         </Modal>
       )}
 
-      {/* ── CSV import summary ─────────────────────────────────────────────────── */}
       {importResult && (
-        <MessageDialog
-          title="Import complete"
-          variant={importResult.errors.length > 0 ? "warning" : "success"}
-          size="md"
-          onClose={() => setImportResult(null)}
-        >
-          <div className="space-y-3">
-            <div className="flex gap-4">
-              <Stat label="Added" value={importResult.new} tone="green" />
-              <Stat label="Updated" value={importResult.updated} tone="blue" />
-              <Stat label="Skipped" value={importResult.skipped} tone="slate" />
-            </div>
-            {importResult.errors.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-amber-500 uppercase tracking-wide mb-1">
-                  {importResult.errors.length} row{importResult.errors.length === 1 ? "" : "s"} skipped
-                </p>
-                <ul className="max-h-40 overflow-y-auto text-xs text-slate-600 list-disc pl-4 space-y-0.5">
-                  {importResult.errors.map((e, i) => (
-                    <li key={i}>{e}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        </MessageDialog>
+        <CsvImportSummary result={importResult} onClose={() => setImportResult(null)} />
       )}
 
       {/* ── Deactivate confirm ─────────────────────────────────────────────────── */}
@@ -696,17 +745,3 @@ export default function DivisionConfigPage() {
 // ---------------------------------------------------------------------------
 // Small helpers
 // ---------------------------------------------------------------------------
-
-function Stat({ label, value, tone }: { label: string; value: number; tone: "green" | "blue" | "slate" }) {
-  const cls: Record<typeof tone, string> = {
-    green: "text-green-700",
-    blue: "text-info-500",
-    slate: "text-slate-600",
-  };
-  return (
-    <div className="flex-1 border border-slate-200 px-3 py-2 text-center">
-      <div className={`text-2xl font-bold ${cls[tone]}`}>{value}</div>
-      <div className="text-[11px] text-slate-600 uppercase tracking-wide">{label}</div>
-    </div>
-  );
-}

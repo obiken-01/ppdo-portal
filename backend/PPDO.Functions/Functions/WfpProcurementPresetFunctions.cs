@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using PPDO.Application.Common;
@@ -62,7 +62,7 @@ public sealed class WfpProcurementPresetFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "config/procurement-presets/quick-save")] HttpRequestData req,
         CancellationToken ct)
     {
-        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccessBudgetPlanning, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccessBudgetPlanning, ct);
         if (denied is not null) return denied;
 
         UpsertProcurementPresetDto? body = await ConfigHttp.ReadBodyAsync<UpsertProcurementPresetDto>(req, ct);

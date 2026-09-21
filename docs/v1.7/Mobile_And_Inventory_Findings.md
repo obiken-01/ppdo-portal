@@ -211,6 +211,13 @@ Querying the dev database settled it. The seeded PPDO divisions (`office_id = 7`
 | FPIP | Fiscal Planning and Investment Programming Division |
 | OG-CSO | Open Governance and Civil Society Organization Engagement Division |
 
+> ⚠️ **Two of these codes have since changed** (checked against production 2026-09-02): `SMED` is
+> now **`RMED`**, and `MIS` is now **`ICT`**. The table above is left as recorded because it is a
+> findings doc — it states what the dev database held when it was queried, and that is what made
+> the bug below diagnosable. It is not a current reference. This drift is itself the point of the
+> section: **codes are configuration, not constants**, so query the `divisions` table rather than
+> reading any code out of a document.
+
 **Not one of the five hard-coded names — `Admin`, `Planning`, `RM`, `MIS`, `SPD` — matches
 any of these.** `PurchaseRequestService.ResolveDivisionByNameAsync` matches on `Name` only,
 so every submission from the Create PR form resolved to `null` and came back

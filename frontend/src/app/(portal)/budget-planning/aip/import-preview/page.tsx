@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMe } from "@/lib/me-cache";
+import { canOpenAipRecords, budgetPlanningFallback } from "@/lib/budget-planning-access";
 import { aipErrorMessage, confirmAipImport } from "@/lib/aip";
 import { useToast } from "@/components/ui/Toast";
 import type { AipImportPreviewResponse } from "@/types";
@@ -60,7 +61,10 @@ export default function AipImportPreviewPage() {
   const router = useRouter();
   const { toast } = useToast();
 
-  const me = useMe((m) => m.canUploadAip, "/budget-planning/aip");
+  // PPDO-81 — both grants now. canUploadAip is the upload authority; canOpenAipRecords is who may
+  // be on this surface at all. The fallback moved off "/budget-planning/aip" because that page now
+  // refuses the same callers and the redirect would bounce twice.
+  const me = useMe((m) => m.canUploadAip && canOpenAipRecords(m), budgetPlanningFallback);
   const [preview, setPreview]             = useState<AipImportPreviewResponse | null>(null);
   const [meta, setMeta]                   = useState<ImportMeta | null>(null);
   const [confirming, setConfirming]       = useState(false);

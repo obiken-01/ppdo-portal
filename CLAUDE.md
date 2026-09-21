@@ -198,6 +198,12 @@ Interfaces / contracts first → Implementations → Tests
 
 ### RBAC / Permissions
 - Effective permission resolution always goes through `PermissionService` — never inline the logic
+- **`docs/v1.8/Permission_Matrix.md` is the reference for who can do what** (PPDO-7): every flag × role ×
+  division default × override × scope, plus the cross-office read bypass and the one subtractive guard.
+  Every row is pinned by `PermissionMatrixTests`, and a flag added without a row fails the build.
+  ⚠️ A null `users.office_id` no longer means "PPDO, sees everything" — DECISION F (RAL-258) retired that
+  inversion; null now means unassigned and sees nothing, matching `DivisionScope`. Older tickets and
+  comments still asserting the old rule are stale.
 - `PermissionService.CanAccessInventoryAsync(user)` logic:
   ```
   SuperAdmin or Admin role → return true (always)
@@ -375,7 +381,7 @@ The public landing page (`src/app/(public)/page.tsx`) must include:
 - Left: `public/images/Ph_seal_occidental_mindoro.png` — Province of Occidental Mindoro Official Seal
 - Center: PPDO name + title text
 - Right: `public/images/Bagong_Pilipinas_logo.png` — Bagong Pilipinas ⚠️ use transparent PNG version
-- PPDO logo: `public/images/ppdo-logo-placeholder.png` — generate a simple green circle placeholder (replaced when official logo is provided)
+- PPDO logo: `public/images/ppdo-logo.png` — the official PPDO logo, 256×256 with transparency. (Was `ppdo-logo-placeholder.png` until 2026-08-14; the placeholder name had long since stopped being true and was renamed once it misled a reader into thinking the real logo was still missing.) The PWA icon set in `public/icons/` is derived from this file by `scripts/generate-pwa-icons.js` — re-run it if the logo is ever replaced.
 
 **Mission section** — styled card with logo header, title "MISSION" centered:
 > "To be an effective and efficient department in helping the LGU attain its goals and thrust and provide better quality service."
@@ -441,6 +447,19 @@ Run this seed on first migration. Do not change group names — they are referen
 ## Linear Project
 
 **PPDO Portal on Linear:** https://linear.app/ralphoksiprojects/project/ppdo-portal-bdecba26e877
+
+> ⚠️ **Ticket prefix changed 2026-09-02.** The project moved to its own Linear team, **PPDO-Dev**
+> (key `PPDO`). **New tickets are `PPDO-*`; reference those in new branches, commits and PRs.**
+>
+> The move renumbered only the issues that were **not archived** at the time — 28 of them. Every
+> issue Linear had already auto-archived (the 2026-08-27 batch and earlier — which is nearly all of
+> v0.1 → v1.7.4) stayed on the old `RalphOksiProjects` team and **kept its `RAL-` identifier**. So
+> both prefixes are live and correct, and v1.8.0 Phase 1 is legitimately split across the two.
+>
+> **Old identifiers still resolve** — `RAL-247` redirects to `PPDO-23`. The ~3,390 `RAL-` references
+> in this repo's code comments, docs and commit history were therefore left as they are, on purpose:
+> they are accurate historical record and they still click through. Do not bulk-rewrite them.
+> `docs/v1.8/Phase_Plan.md` §3.6 carries the per-ticket mapping for the v1.8.0 set.
 
 | Milestone | Issues |
 |---|---|
@@ -531,6 +550,28 @@ treat handing one back as a normal, cost-free outcome.
 
 ---
 
+## Documentation vault (Obsidian)
+
+`docs/` is an **Obsidian vault** (settings in `docs/.obsidian/`, adopted 2026-09-13). The documents
+are still plain markdown and are read as files — Obsidian is how Ralph browses them, not something a
+session needs to operate. Three rules keep the two ways of reading them compatible:
+
+- **Standard relative markdown links, never `[[wikilinks]]`.** GitHub does not render wikilinks, and
+  a relative path names exactly one file where a wikilink resolves by shortest match across a tree
+  full of per-version folders. The vault is configured for this (`app.json`: markdown links, relative
+  format, links updated on rename) — keep it that way, and write links the same way by hand.
+- ⚠️ **This repository is public — nothing personal goes in `docs/`.** Daily notes are switched off
+  for this vault and live in a separate vault outside the repo. A date-named note that lands in
+  `docs/` anyway is git-ignored as a safety net, not as the plan.
+- **Per-machine vault state is not committed** — `workspace.json`, `graph.json`, `appearance.json`,
+  and the plugin, theme and snippet folders. `app.json` and `core-plugins.json` are, so the setup
+  carries to a new machine.
+
+Optional, when a spec or standard is next touched anyway: a properties block at the top (`status`,
+`version`, `tickets`, `supersedes`), so which document is current is recorded on the document itself
+rather than only in this file. `.canvas` files are JSON and fine to keep beside the spec they
+illustrate.
+
 ## What NOT to Do
 
 - ❌ Do not use `var` for non-obvious types in C# — be explicit
@@ -557,15 +598,16 @@ treat handing one back as a normal, cost-free outcome.
 ## Implementation Status
 
 > ⚠️ **This section is a session progress update — not part of the original CLAUDE.md spec.**
-> **Updated: 2026-08-27 — current as of v1.7.4 (merged to `main` 2026-08-20).**
+> **Updated: 2026-09-21 — v1.8.0 complete on `release/1.8.0`, not yet merged to `main`.**
 >
-> **Keeping this current is part of the release ritual.** The first commit on every `release/X.Y.Z`
-> branch already bumps `APP_VERSION` in three files (`Sidebar.tsx`, `Footer.tsx`,
-> `login/page.tsx`) — update this section and the footer date stamp in that same commit. This
-> section previously drifted eleven weeks and six minor versions behind the code, which is why the
-> rule is written down here.
+> **Keeping this current is part of the release ritual.** ⚠️ `APP_VERSION` no longer lives in
+> three files — it is one constant in `frontend/src/lib/version.ts`, imported by `Sidebar.tsx`,
+> `Footer.tsx` and `login/page.tsx`. Bump it on the first commit of a `release/X.Y.Z` branch and
+> update this section and the footer date stamp in that same commit. This section previously drifted
+> eleven weeks and six minor versions behind the code, which is why the rule is written down here.
 
 **Shipped:** v0.1 → v1.7.4, 19 releases to `main` between 2026-05-26 and 2026-08-20.
+**Ready:** v1.8.0 — every ticket closed on `release/1.8.0`; see the pre-deployment checklist below.
 
 ### ✅ v1.0 — Core Portal & Inventory Monitoring (DONE)
 
@@ -640,6 +682,7 @@ the index — what shipped in each release, and the PR that merged it to `main`.
 | **v1.7.2B** | 2026-08-17 | #243, #245 | **Function App relocated Central US → Southeast Asia (RAL-237)** — removes the cross-region hop to Azure SQL; `Validators/` reorganized into per-feature subfolders (RAL-235) | 235, 237 |
 | **v1.7.3** | 2026-08-20 | #249 | Division name resolved in distribution history, code-keyed division upsert, division code in the history pill | 236, 239 |
 | **v1.7.4** | 2026-08-20 | #251 | Warehouse-count movement counted in Stock Overview columns, modal no longer closes on a drag-to-backdrop selection | 240, 273 |
+| **v1.8.0** | *pending* | — | **Office users, AIP redesign and the reviewer flow** — the largest release so far. Guest-office login and per-office scoping; AIP rebuilt for FY2028+ (entry wizard, expenditures, ceilings, ref codes); submit → review → return → re-submit with row-anchored comments; Annex B report and Excel export; external partner API with keys; Investment Planning rename; office setup for department heads (ceilings, divisions, per-office fund sources). ⚠️ **23 migrations, one of which rewrites existing AIP amounts** | PPDO-1…110, RAL-* (see the Linear note above) |
 
 > **v1.4.6 was never merged to `main`.** Its price-index work is the one real gap found in the
 > branch audit — see the `archive/fix/v1.4.6-budget-planning-query-perf` tag.
@@ -664,7 +707,7 @@ the index — what shipped in each release, and the PR that merged it to `main`.
 |---|---|
 | `ServiceResult<T>` | Shared result type in `PPDO.Application/Common/` — services return this instead of throwing exceptions for flow control. |
 | Token storage | Access token: in-memory only (`auth.ts`), cleared on reload. Refresh token: httpOnly, Secure, SameSite=Strict cookie set by the backend on `/auth/login` and `/auth/refresh` (scoped to `/api/auth/refresh`) — not accessible to JS, never in localStorage/sessionStorage. Browser sends it automatically (axios `withCredentials: true`); refresh flow is a credentialed `POST /api/auth/refresh`. (RAL-58) |
-| Default user password | `TamarawUser2026!` — set on `UserService.CreateAsync` and `ResetPasswordAsync`. |
+| One-time user passwords (RAL-254) | There is **no** shared default password. `UserService.CreateAsync` and `ResetPasswordAsync` each issue a unique random password via `PasswordGenerator` (12 chars, unambiguous alphabet, always policy-compliant). The plaintext is returned once in `UserCredentialResponseDto.TemporaryPassword`, shown once in the admin UI, and never stored or logged — if it is lost, reset again. |
 | Distribution as standalone | Distribution separated from Receive Delivery — `POST /api/distributions` creates standalone distribution records. FIFO batch allocation done on the frontend. |
 | Version indicator | `APP_VERSION` const in three places — `frontend/src/components/layout/Sidebar.tsx` (portal sidebar), `frontend/src/components/landing/Footer.tsx` (`Portal vX.Y.Z`, public landing page), and `frontend/src/app/(public)/login/page.tsx` (login page). All three must be updated together — they've drifted out of sync before. |
 | Version scheme | Patch releases (bug fixes, optimizations, no new features) use `vX.Y.Z` (e.g. `v1.0.1`). Feature milestones use `vX.Y` (e.g. `v1.2`). |
@@ -692,7 +735,7 @@ the index — what shipped in each release, and the PR that merged it to `main`.
 | v1.5 — PPMP Report | ✅ Done |
 | v1.6 — AIP Editing + Responsive Shell | ✅ Done |
 | v1.7 — Inventory (+ .1–.4 patches) | ✅ Done |
-| **v1.8.0 — AIP Redesign** | 🚧 **In planning** — RAL-241 epic, RAL-242…272, 7 phases / 73 items |
+| **v1.8.0 — Office Users, AIP Redesign & Reviewer Flow** | ✅ **Complete on `release/1.8.0`, awaiting merge to `main`** — Phases 1–5 all shipped. Phases 6–7 were deliberately not built; see below |
 | `techdebt` | 🔁 Ongoing — non-feature cleanup; tickets move into the active version milestone when they go In Progress |
 
 ### v1.0.1 Patch — Changes (merged to main 2026-06-08)
@@ -735,23 +778,46 @@ the index — what shipped in each release, and the PR that merged it to `main`.
 - Azure Functions Consumption plan still scales to zero after **~10 min** of no traffic — cold start takes 5-20s. The `GET /api/health` call on the login page pre-warms this (DB no longer needs pre-warming since the Basic-tier switch, but the call is harmless to keep).
 - Push to `main` → GitHub Actions builds and deploys both frontend and backend automatically
 - First-time DB setup: run `dotnet ef database update --project PPDO.Infrastructure` with `SqlConnectionString` env var pointing to Azure SQL
-- SuperAdmin seed account: `superadmin@ppdo.gov.ph` / `PPDOAdmin2026!`
+- SuperAdmin seed account: `superadmin@ppdo.gov.ph` — the bootstrap password is **not recorded in this
+  repository** (it is public). It lives in the maintainer's password manager; ask before standing up a new
+  environment. The seeded row carries `MustChangePassword = true`, so a fresh environment is forced to
+  rotate at first login. Never paste a working credential back into this file, a code comment, or a commit
+  message — the previous default was published here and ended up on the internet (RAL-274).
+- **The bootstrap password seeds new environments only — never set a live account to it.** It is meant to
+  be handed to whoever stands up a fresh environment, and its BCrypt hash is committed to this public repo,
+  so it is a value that will circulate. That is harmless while it only ever opens an empty, freshly-seeded
+  database that forces a rotation at first login. Point it at a live account and every person who has ever
+  seeded an environment holds that account's password. Give production and each local instance its own
+  password, set through the portal's change-password flow.
 
-### Next: v1.8.0 — AIP Redesign (in planning)
+### v1.8.0 — Office Users, AIP Redesign & Reviewer Flow (built, awaiting release)
 
-The largest single change attempted so far. **RAL-241** is the epic; **RAL-242…272** are the
-children, organized as **7 phases / 73 items**.
+The largest single change attempted so far, and it is **done on `release/1.8.0`**. **PPDO-28** was
+the Phase 1 epic; children carry a mix of `PPDO-*` and `RAL-*` identifiers after the 2026-09-02 team
+move (mapping in `docs/v1.8/Phase_Plan.md` §3.6). Planned as 7 phases / 73 items; **Phases 1–5
+shipped, Phases 6–7 did not** (see below).
 
 - **Approach: redesign, not retrofit.** Clean fiscal-year break — **FY2027 stays on the old
-  format, FY2028+ uses the new one, and there is no data migration.**
-- Phases 2 and 4 were unblocked at the 2026-08-25 PPDC meeting; **DECISION G is the current
-  blocker.**
+  format, FY2028+ uses the new one, and there is no data migration.** ⚠️ The one exception is
+  `MigrateAipAmountsToPesos`, which rewrites `aip_activities` money columns across **every** fiscal
+  year — units, not format.
 - The AIP reference code follows the DBM BOM segment layout — see the project docs before
   touching code structure.
-- **Read `docs/v1.8/RETROSPECTIVE.md` before starting.** Three findings apply directly: v1.8.0
-  rewrites `aip/detail/page.tsx` (2,057 lines — the largest file in the codebase, extract before
-  redesigning); a change this size is exactly what produced the v1.4 and v1.7 patch trains; and
-  the 1,061-test suite is what makes a clean-break redesign tractable at all.
+- `aip/detail/page.tsx` was extracted before the redesign (PPDO-64), as the retrospective asked.
+
+⚠️ **Before merging `release/1.8.0` → `main`, work `docs/v1.8/Pre_Deployment_Checklist.md`.**
+23 migrations production has never seen, one of which rewrites existing AIP amounts. The database
+steps are manual — **CI does not run migrations** — and the migration must run *before* the code
+deploys, or every funding-source read fails on a missing column.
+
+#### What was deliberately NOT built
+
+- **Phase 6 — offline entry.** `docs/v1.8/AIP_Offline_Caching_Spec.md` covers the caching
+  groundwork (V18-64…67) and is written but unticketed; **V18-68/69, the actual work-offline-and-
+  sync mechanics, are deferred to v1.8.1**. Nothing in v1.8.0 lets an encoder work disconnected.
+- **Phase 7 — hardening.** Four items, none ticketed. ⚠️ **V18-71 (concurrent-edit guard) is a
+  correctness gap, not hardening**: two or more encoders per office is confirmed normal, and today
+  the last save silently wins.
 
 > Check `PROJECT_DOCUMENTATION_NET_AZURE.md` Section 11 (Roadmap) for the full forward list.
 
@@ -764,13 +830,18 @@ children, organized as **7 phases / 73 items**.
 | `docs/PERFORMANCE_GUIDELINES.md` | Adding a query, endpoint, or list view |
 | `docs/DESIGN_SYSTEM.md` | Creating or restyling any page |
 | `docs/NAMING_CONVENTIONS.md` | Adding a table or column |
+| `docs/v1.8/Permission_Matrix.md` | Adding or changing a permission flag, a scope rule, or a gated endpoint |
+| `docs/v1.8/AIP_Entry_Spec.md` | Any v1.8.0 Phase 3 ticket (AIP Entry — PPDO-48 and its children) |
+| `docs/v1.8/AIP_Review_Spec.md` | Any v1.8.0 Phase 4 ticket (AIP Review — PPDO-67 and its children). ⚠️ Supersedes `Phase_Plan.md` §6 |
 | `docs/TEST_CONVENTIONS.md` | Writing tests or a PR test plan |
 | `docs/GIT_CONVENTIONS.md` | Branching, committing, releasing |
 | `docs/BUG_REPORT_STANDARD.md` | Filing a bug |
 | `docs/v1.8/RETROSPECTIVE.md` | Planning a release or changing process |
+| `docs/AI_DLC_Evaluation.md` | Considering an external AI development-workflow framework (AI-DLC assessed 2026-09-08 — cherry-pick, do not install) |
+| `docs/v1.8/Pre_Deployment_Checklist.md` | Merging `release/1.8.0` → `main` — v1.8.0 ships a migration that **rewrites existing AIP amounts**, so the baseline sums and restore path are captured before it runs |
 
 ---
 
-*CLAUDE.md — PPDO Portal — Implementation Status current to v1.7.4 — 2026-08-27 — Ralph Armand Alcaide*
+*CLAUDE.md — PPDO Portal — Implementation Status current to v1.8.0 (unreleased) — 2026-09-21 — Ralph Armand Alcaide*
 *Performance & scalability guidelines added 2026-06-22 (`docs/PERFORMANCE_GUIDELINES.md`) — from the v1.1.0 prod audit.*
 *Spec standard + ticket prompt revision added 2026-08-27, alongside the whole-project retrospective.*

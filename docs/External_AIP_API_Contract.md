@@ -1,6 +1,25 @@
-# External AIP API — Contract (DRAFT for discussion)
+# External AIP API — Contract (v0.6, historical)
 
-> **Status:** DRAFT v0.6 — proposed contract for review with GSO. Nothing is implemented yet.
+> ✅ **Built in v1.8.0** — merged to `release/1.8.0` (PPDO-15, -13, -14, -12; PRs #328–#331). ⚠️ Not
+> live until v1.8.0 merges to `main`, and no partner key can be issued until the API Access page
+> (PPDO-86) is merged.
+>
+> **This v0.6 draft is kept for history. What was built is defined by two newer documents:**
+> - [External_AIP_API_Spec.md](v1.8/External_AIP_API_Spec.md) — endpoints, keys, office scope, rate
+>   limit, logging, and every status code with its exact message.
+> - [external-api/](external-api/README.md) (schema 1.0.0) — the response shape, samples, and the open
+>   questions for GSO and MIS.
+>
+> **What changed since v0.6:** amounts are pesos in storage and decimal strings on the wire;
+> `sectors[]` became `groups[]` under `offices[]`; program- and project-level amounts became synthetic
+> activities; FY2028+ adds expenditure lines and printed figures; `officeCode` is an **optional**
+> filter, so the same call returns a whole fiscal year (with an all-offices key); FY2028+ offices are
+> released when PPDO accepts them, not when a record is `Final`; `/aip/fiscal-years` takes an optional
+> `officeCode`; keys are `ppdo_<prefix>_<secret>`, scoped to offices or all offices, limited to 60
+> requests a minute, and may expire. **Still accurate:** §1 direction and transport, §2 base URL,
+> §4.1 health (it no longer touches the database).
+
+> **Status:** v0.6 (historical) — the proposed contract as reviewed with GSO in June 2026. Built in v1.8.0 as described above.
 > **Audience:** GSO development team (consumer) + PPDO Portal team (provider).
 > **Purpose:** Let an authorized external system (GSO) **read finalized AIP records for an
 > office** so it can build its own WFP. Read-only, server-to-server.
@@ -351,3 +370,6 @@ endpoint needed.)
 - **Phase 2 (later): implementation.** API-key infrastructure (issue/hash/scope/revoke + per-key
   rate limiting), the health endpoint, the external read endpoints, audit logging, and tests —
   scoped as its own set of Linear tickets once this contract is signed off.
+- ✅ **Phase 2 built in v1.8.0:** PPDO-15 (keys), PPDO-13 (auth, scope, rate limit, request log),
+  PPDO-14 (read service), PPDO-12 (endpoints + schema contract test) — PRs #328–#331. The API Access
+  page to issue and revoke keys is PPDO-86.

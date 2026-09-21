@@ -1,0 +1,251 @@
+{
+  "data": {
+    "schemaVersion": "1.1.0",
+    "generatedAt": "2026-09-14T10:00:00+08:00",
+    "fiscalYear": 2027,
+    "aipFormat": "Legacy",
+    "currency": "PHP",
+    "officeCode": "PPDO",
+    "totals": {
+      "ps": "0.00",
+      "mooe": "1400000.00",
+      "co": "350000.00",
+      "total": "1750000.00"
+    },
+    "printedTotals": null,
+    "totalsByFundingSource": [
+      {
+        "fundingSource": {
+          "code": "GF",
+          "name": "General Fund"
+        },
+        "amounts": {
+          "ps": "0.00",
+          "mooe": "1400000.00",
+          "co": "0.00",
+          "total": "1400000.00"
+        }
+      },
+      {
+        "fundingSource": {
+          "code": "20% DF",
+          "name": "20% Development Fund"
+        },
+        "amounts": {
+          "ps": "0.00",
+          "mooe": "0.00",
+          "co": "350000.00",
+          "total": "350000.00"
+        }
+      }
+    ],
+    "offices": [
+      {
+        "office": {
+          "code": "PPDO",
+          "name": "Provincial Planning and Development Office"
+        },
+        "status": "Final",
+        "releasedAt": null,
+        "totals": {
+          "ps": "0.00",
+          "mooe": "1400000.00",
+          "co": "350000.00",
+          "total": "1750000.00"
+        },
+        "printedTotals": null,
+        "totalsByFundingSource": [
+          {
+            "fundingSource": {
+              "code": "GF",
+              "name": "General Fund"
+            },
+            "amounts": {
+              "ps": "0.00",
+              "mooe": "1400000.00",
+              "co": "0.00",
+              "total": "1400000.00"
+            }
+          },
+          {
+            "fundingSource": {
+              "code": "20% DF",
+              "name": "20% Development Fund"
+            },
+            "amounts": {
+              "ps": "0.00",
+              "mooe": "0.00",
+              "co": "350000.00",
+              "total": "350000.00"
+            }
+          }
+        ],
+        "groups": [
+          {
+            "sector": {
+              "code": "8000",
+              "name": "Economic"
+            },
+            "refCode": "8000-000-1-01-010",
+            "name": "PROVINCIAL PLANNING AND DEVELOPMENT OFFICE",
+            "totals": {
+              "ps": "0.00",
+              "mooe": "1400000.00",
+              "co": "350000.00",
+              "total": "1750000.00"
+            },
+            "printedTotals": null,
+            "programs": [
+              {
+                "refCode": "8000-000-1-01-010-001",
+                "name": "DEVELOPMENT PLANNING AND INVESTMENT PROGRAMMING",
+                "functionBand": "CORE",
+                "totals": {
+                  "ps": "0.00",
+                  "mooe": "1250000.00",
+                  "co": "350000.00",
+                  "total": "1600000.00"
+                },
+                "printedTotals": null,
+                "projects": [
+                  {
+                    "refCode": "8000-000-1-01-010-001-001",
+                    "name": "Updating of the Provincial Development and Physical Framework Plan",
+                    "isSynthetic": false,
+                    "totals": {
+                      "ps": "0.00",
+                      "mooe": "1250000.00",
+                      "co": "350000.00",
+                      "total": "1600000.00"
+                    },
+                    "printedTotals": null,
+                    "activities": [
+                      {
+                        "refCode": "8000-000-1-01-010-001-001-001",
+                        "name": "Conduct of sectoral planning workshops with municipal planning and development coordinators",
+                        "isSynthetic": false,
+                        "esreCode": "ES",
+                        "implementingOffice": "PPDO",
+                        "schedule": {
+                          "start": "January",
+                          "end": "June"
+                        },
+                        "expectedOutputs": "3 sectoral workshops conducted; draft plan chapters validated",
+                        "fundingSource": {
+                          "code": "GF",
+                          "name": "General Fund"
+                        },
+                        "amounts": {
+                          "ps": "0.00",
+                          "mooe": "1250000.00",
+                          "co": "0.00",
+                          "total": "1250000.00"
+                        },
+                        "printedAmounts": null,
+                        "climateChange": {
+                          "adaptation": "0.00",
+                          "mitigation": "0.00",
+                          "typologyCodes": []
+                        },
+                        "expenditures": []
+                      },
+                      {
+                        "refCode": "8000-000-1-01-010-001-001-002",
+                        "name": "Acquisition of survey drone for land-use mapping",
+                        "isSynthetic": false,
+                        "esreCode": "ID",
+                        "implementingOffice": "PPDO",
+                        "schedule": {
+                          "start": "April",
+                          "end": "May"
+                        },
+                        "expectedOutputs": "1 survey drone acquired",
+                        "fundingSource": {
+                          "code": "20% DF",
+                          "name": "20% Development Fund"
+                        },
+                        "amounts": {
+                          "ps": "0.00",
+                          "mooe": "0.00",
+                          "co": "350000.00",
+                          "total": "350000.00"
+                        },
+                        "printedAmounts": null,
+                        "climateChange": {
+                          "adaptation": "0.00",
+                          "mitigation": "0.00",
+                          "typologyCodes": []
+                        },
+                        "expenditures": []
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "refCode": "8000-000-1-01-010-002",
+                "name": "PROJECT MONITORING AND EVALUATION PROGRAM",
+                "functionBand": "STRATEGIC",
+                "totals": {
+                  "ps": "0.00",
+                  "mooe": "150000.00",
+                  "co": "0.00",
+                  "total": "150000.00"
+                },
+                "printedTotals": null,
+                "projects": [
+                  {
+                    "refCode": "8000-000-1-01-010-002",
+                    "name": "PROJECT MONITORING AND EVALUATION PROGRAM",
+                    "isSynthetic": true,
+                    "totals": {
+                      "ps": "0.00",
+                      "mooe": "150000.00",
+                      "co": "0.00",
+                      "total": "150000.00"
+                    },
+                    "printedTotals": null,
+                    "activities": [
+                      {
+                        "refCode": "8000-000-1-01-010-002",
+                        "name": "PROJECT MONITORING AND EVALUATION PROGRAM",
+                        "isSynthetic": true,
+                        "esreCode": "ES",
+                        "implementingOffice": "PPDO",
+                        "schedule": {
+                          "start": "January",
+                          "end": "December"
+                        },
+                        "expectedOutputs": "Quarterly project monitoring reports submitted to the PDC",
+                        "fundingSource": {
+                          "code": "GF",
+                          "name": "General Fund"
+                        },
+                        "amounts": {
+                          "ps": "0.00",
+                          "mooe": "150000.00",
+                          "co": "0.00",
+                          "total": "150000.00"
+                        },
+                        "printedAmounts": null,
+                        "climateChange": {
+                          "adaptation": "0.00",
+                          "mitigation": "0.00",
+                          "typologyCodes": []
+                        },
+                        "expenditures": []
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "pendingOffices": []
+  },
+  "error": null,
+  "message": null
+}

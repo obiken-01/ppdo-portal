@@ -212,6 +212,141 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.ToTable("aip_activities", (string)null);
                 });
 
+            modelBuilder.Entity("PPDO.Domain.Entities.AipDivisionAllocationLedger", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AipActivityId")
+                        .HasColumnType("int")
+                        .HasColumnName("aip_activity_id");
+
+                    b.Property<decimal>("AllocatedAmountSnapshot")
+                        .HasColumnType("decimal(18,2)")
+                        .HasColumnName("allocated_amount_snapshot");
+
+                    b.Property<int>("DivisionId")
+                        .HasColumnType("int")
+                        .HasColumnName("division_id");
+
+                    b.Property<int>("FiscalYear")
+                        .HasColumnType("int")
+                        .HasColumnName("fiscal_year");
+
+                    b.Property<int>("FundingSourceId")
+                        .HasColumnType("int")
+                        .HasColumnName("funding_source_id");
+
+                    b.Property<decimal>("ReservedAmount")
+                        .HasColumnType("decimal(18,2)")
+                        .HasColumnName("reserved_amount");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AipActivityId");
+
+                    b.HasIndex("FundingSourceId");
+
+                    b.HasIndex("DivisionId", "FiscalYear", "FundingSourceId", "AipActivityId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_aip_division_allocation_ledger_division_fy_fund_activity");
+
+                    b.ToTable("aip_division_allocation_ledger", (string)null);
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.AipExpenditure", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("AccountId")
+                        .HasColumnType("int")
+                        .HasColumnName("account_id");
+
+                    b.Property<string>("AccountNumberSnapshot")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("account_number_snapshot");
+
+                    b.Property<string>("AccountTitleSnapshot")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)")
+                        .HasColumnName("account_title_snapshot");
+
+                    b.Property<int>("ActivityId")
+                        .HasColumnType("int")
+                        .HasColumnName("activity_id");
+
+                    b.Property<decimal>("Co")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("decimal(18,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("co");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at");
+
+                    b.Property<int?>("FundingSourceId")
+                        .HasColumnType("int")
+                        .HasColumnName("funding_source_id");
+
+                    b.Property<string>("FundingSourceNameSnapshot")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("funding_source_name_snapshot");
+
+                    b.Property<string>("FundingSourceSnapshot")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("funding_source_snapshot");
+
+                    b.Property<decimal>("Mooe")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("decimal(18,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("mooe");
+
+                    b.Property<decimal>("Ps")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("decimal(18,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("ps");
+
+                    b.Property<decimal>("Total")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("decimal(18,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("total");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.HasIndex("ActivityId")
+                        .HasDatabaseName("IX_aip_expenditures_activity_id");
+
+                    b.HasIndex("FundingSourceId");
+
+                    b.ToTable("aip_expenditures", (string)null);
+                });
+
             modelBuilder.Entity("PPDO.Domain.Entities.AipOffice", b =>
                 {
                     b.Property<int>("Id")
@@ -230,6 +365,10 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasColumnType("nvarchar(max)")
                         .HasColumnName("name");
 
+                    b.Property<int?>("OfficeId")
+                        .HasColumnType("int")
+                        .HasColumnName("office_id");
+
                     b.Property<string>("RefCode")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -242,6 +381,14 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasColumnType("nvarchar(20)")
                         .HasColumnName("sector");
 
+                    b.Property<string>("WorkflowStatus")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasDefaultValue("Draft")
+                        .HasColumnName("workflow_status");
+
                     b.HasKey("Id");
 
                     b.HasIndex("AipRecordId")
@@ -250,10 +397,79 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.HasIndex("RefCode")
                         .HasDatabaseName("IX_aip_offices_ref_code");
 
+                    b.HasIndex("AipRecordId", "OfficeId")
+                        .HasDatabaseName("IX_aip_offices_aip_record_id_office_id");
+
                     b.HasIndex("AipRecordId", "RefCode")
                         .HasDatabaseName("IX_aip_offices_aip_record_id_ref_code");
 
+                    b.HasIndex("OfficeId", "WorkflowStatus")
+                        .HasDatabaseName("IX_aip_offices_workflow_status");
+
                     b.ToTable("aip_offices", (string)null);
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.AipProcurementItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ExpenditureId")
+                        .HasColumnType("int")
+                        .HasColumnName("expenditure_id");
+
+                    b.Property<decimal>("LineTotal")
+                        .HasColumnType("decimal(18,2)")
+                        .HasColumnName("line_total");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)")
+                        .HasColumnName("name");
+
+                    b.Property<decimal>("NumberOfDays")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("decimal(18,2)")
+                        .HasDefaultValue(1m)
+                        .HasColumnName("number_of_days");
+
+                    b.Property<int>("PeriodNo")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1)
+                        .HasColumnName("period_no");
+
+                    b.Property<int?>("PriceIndexItemId")
+                        .HasColumnType("int")
+                        .HasColumnName("price_index_item_id");
+
+                    b.Property<decimal>("Qty")
+                        .HasColumnType("decimal(18,2)")
+                        .HasColumnName("qty");
+
+                    b.Property<string>("Unit")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("unit");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasColumnType("decimal(18,2)")
+                        .HasColumnName("unit_price");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpenditureId")
+                        .HasDatabaseName("IX_aip_procurement_items_expenditure_id");
+
+                    b.HasIndex("PriceIndexItemId");
+
+                    b.ToTable("aip_procurement_items", (string)null);
                 });
 
             modelBuilder.Entity("PPDO.Domain.Entities.AipProgram", b =>
@@ -309,6 +525,10 @@ namespace PPDO.Infrastructure.Data.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("description");
+
                     b.Property<bool>("IsSynthetic")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
@@ -319,6 +539,10 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)")
                         .HasColumnName("name");
+
+                    b.Property<string>("Objective")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("objective");
 
                     b.Property<int>("ProgramId")
                         .HasColumnType("int")
@@ -405,6 +629,69 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.HasIndex("UploadedById");
 
                     b.ToTable("aip_records", (string)null);
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.AipReviewComment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AipOfficeId")
+                        .HasColumnType("int")
+                        .HasColumnName("aip_office_id");
+
+                    b.Property<Guid>("AuthorId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("author_id");
+
+                    b.Property<string>("AuthorSide")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)")
+                        .HasColumnName("author_side");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)")
+                        .HasColumnName("body");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("NodeId")
+                        .HasColumnType("int")
+                        .HasColumnName("node_id");
+
+                    b.Property<string>("NodeType")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)")
+                        .HasColumnName("node_type");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("resolved_at");
+
+                    b.Property<Guid?>("ResolvedById")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("resolved_by_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AuthorId");
+
+                    b.HasIndex("ResolvedById");
+
+                    b.HasIndex("AipOfficeId", "ResolvedAt")
+                        .HasDatabaseName("IX_aip_review_comments_office_resolved");
+
+                    b.ToTable("aip_review_comments", (string)null);
                 });
 
             modelBuilder.Entity("PPDO.Domain.Entities.Announcement", b =>
@@ -634,6 +921,64 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.ToTable("CalendarEvents", (string)null);
                 });
 
+            modelBuilder.Entity("PPDO.Domain.Entities.ClimateChangeTypology", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("category");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("code");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("description");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("name");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasDatabaseName("IX_climate_change_typologies_code");
+
+                    b.ToTable("climate_change_typologies", (string)null);
+                });
+
             modelBuilder.Entity("PPDO.Domain.Entities.Delivery", b =>
                 {
                     b.Property<Guid>("Id")
@@ -824,6 +1169,10 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasDefaultValue(true)
                         .HasColumnName("is_active");
 
+                    b.Property<int?>("LandingPage")
+                        .HasColumnType("int")
+                        .HasColumnName("landing_page");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -893,6 +1242,58 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.ToTable("division_allocations", (string)null);
                 });
 
+            modelBuilder.Entity("PPDO.Domain.Entities.EsreCode", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("code");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("description");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("name");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasDatabaseName("IX_esre_codes_code");
+
+                    b.ToTable("esre_codes", (string)null);
+                });
+
             modelBuilder.Entity("PPDO.Domain.Entities.FundingSource", b =>
                 {
                     b.Property<int>("Id")
@@ -939,6 +1340,10 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasColumnType("nvarchar(100)")
                         .HasColumnName("name");
 
+                    b.Property<int?>("OfficeId")
+                        .HasColumnType("int")
+                        .HasColumnName("office_id");
+
                     b.Property<DateTime>("UpdatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("datetime2")
@@ -950,6 +1355,9 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.HasIndex("Code")
                         .IsUnique()
                         .HasDatabaseName("IX_funding_sources_code");
+
+                    b.HasIndex("OfficeId")
+                        .HasDatabaseName("IX_funding_sources_office_id");
 
                     b.ToTable("funding_sources", (string)null);
                 });
@@ -1279,6 +1687,16 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasDefaultValue(true)
                         .HasColumnName("is_active");
 
+                    b.Property<bool>("IsHostOffice")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_host_office");
+
+                    b.Property<int?>("LandingPage")
+                        .HasColumnType("int")
+                        .HasColumnName("landing_page");
+
                     b.Property<string>("OfficeCode")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -1303,6 +1721,11 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasDefaultValueSql("GETUTCDATE()");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("IsHostOffice")
+                        .IsUnique()
+                        .HasDatabaseName("UX_offices_is_host_office")
+                        .HasFilter("[is_host_office] = 1");
 
                     b.HasIndex("OfficeCode")
                         .IsUnique()
@@ -1356,6 +1779,137 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasDatabaseName("IX_PRItems_PRId");
 
                     b.ToTable("PRItems", (string)null);
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.PartnerApiKey", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("AllOffices")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false)
+                        .HasColumnName("all_offices");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("KeyHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .HasColumnName("key_hash");
+
+                    b.Property<string>("KeyPrefix")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)")
+                        .HasColumnName("key_prefix");
+
+                    b.Property<DateTime?>("LastUsedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("last_used_at");
+
+                    b.Property<string>("PartnerName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("partner_name");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("revoked_at");
+
+                    b.Property<Guid?>("RevokedById")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("revoked_by_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("KeyPrefix")
+                        .IsUnique()
+                        .HasDatabaseName("UX_partner_api_keys_key_prefix");
+
+                    b.HasIndex("RevokedById");
+
+                    b.ToTable("partner_api_keys", (string)null);
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.PartnerApiKeyOffice", b =>
+                {
+                    b.Property<int>("KeyId")
+                        .HasColumnType("int")
+                        .HasColumnName("key_id");
+
+                    b.Property<int>("OfficeId")
+                        .HasColumnType("int")
+                        .HasColumnName("office_id");
+
+                    b.HasKey("KeyId", "OfficeId");
+
+                    b.HasIndex("OfficeId");
+
+                    b.ToTable("partner_api_key_offices", (string)null);
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.PartnerApiRequest", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int?>("FiscalYear")
+                        .HasColumnType("int")
+                        .HasColumnName("fiscal_year");
+
+                    b.Property<int>("KeyId")
+                        .HasColumnType("int")
+                        .HasColumnName("key_id");
+
+                    b.Property<string>("OfficeCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("office_code");
+
+                    b.Property<DateTime>("RequestedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("requested_at");
+
+                    b.Property<string>("Route")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("route");
+
+                    b.Property<int>("StatusCode")
+                        .HasColumnType("int")
+                        .HasColumnName("status_code");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("KeyId", "RequestedAt")
+                        .HasDatabaseName("IX_partner_api_requests_key_id_requested_at");
+
+                    b.ToTable("partner_api_requests", (string)null);
                 });
 
             modelBuilder.Entity("PPDO.Domain.Entities.PriceIndexItem", b =>
@@ -1543,6 +2097,10 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasColumnType("int")
                         .HasColumnName("division_id");
 
+                    b.Property<int?>("OfficeId")
+                        .HasColumnType("int")
+                        .HasColumnName("office_id");
+
                     b.Property<string>("OfficeRefCode")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -1558,6 +2116,9 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("DivisionId");
+
+                    b.HasIndex("OfficeId", "ProgramRefCode")
+                        .HasDatabaseName("IX_program_divisions_office_program");
 
                     b.HasIndex("OfficeRefCode", "ProgramRefCode", "DivisionId")
                         .IsUnique()
@@ -2130,6 +2691,17 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasColumnType("bit")
                         .HasDefaultValue(true);
 
+                    b.Property<int?>("LandingPage")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("LastPasswordResetAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("MustChangePassword")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
                     b.Property<int?>("OfficeId")
                         .HasColumnType("int");
 
@@ -2142,16 +2714,33 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.Property<bool?>("OverrideCanAccessReports")
                         .HasColumnType("bit");
 
-                    b.Property<bool?>("OverrideCanManageAllocation")
+                    b.Property<bool?>("OverrideCanManageApiKeys")
                         .HasColumnType("bit");
 
                     b.Property<bool?>("OverrideCanManageConfig")
                         .HasColumnType("bit");
 
+                    b.Property<bool?>("OverrideCanManageOfficeCeilings")
+                        .HasColumnType("bit")
+                        .HasColumnName("OverrideCanManagePboCeiling");
+
+                    b.Property<bool?>("OverrideCanManageOfficeSetup")
+                        .HasColumnType("bit");
+
+                    b.Property<bool?>("OverrideCanManagePpdoAllocation")
+                        .HasColumnType("bit")
+                        .HasColumnName("OverrideCanManageAllocation");
+
                     b.Property<bool?>("OverrideCanManageResourceLinks")
                         .HasColumnType("bit");
 
                     b.Property<bool?>("OverrideCanManageUsers")
+                        .HasColumnType("bit");
+
+                    b.Property<bool?>("OverrideCanReviewAllOffices")
+                        .HasColumnType("bit");
+
+                    b.Property<bool?>("OverrideCanReviewBudgetPlanning")
                         .HasColumnType("bit");
 
                     b.Property<bool?>("OverrideCanUploadAip")
@@ -2161,9 +2750,26 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<DateTime?>("PasswordResetAcknowledgedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("Position")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("RecoveryAnswerHash")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("RecoveryAttemptCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<DateTime?>("RecoveryFirstAttemptAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("RecoveryQuestionKey")
+                        .HasColumnType("int");
 
                     b.Property<string>("RefreshToken")
                         .HasMaxLength(100)
@@ -2210,8 +2816,10 @@ namespace PPDO.Infrastructure.Data.Migrations
                             Email = "superadmin@ppdo.gov.ph",
                             FullName = "System Administrator",
                             IsActive = true,
-                            PasswordHash = "$2a$11$HaBMPo0zwTrOTJt3jqY8Ou8RNcYTfedkTJCDuP2AW5RFvofq0wQEO",
+                            MustChangePassword = true,
+                            PasswordHash = "$2a$11$lOZMuB5SI/QZZe8xeWgYUuuHExMXKhav1hn.1eGPK9zHrCJRkHM/K",
                             Position = "System Administrator",
+                            RecoveryAttemptCount = 0,
                             Role = 0,
                             UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Username = "superadmin"
@@ -2737,6 +3345,61 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.Navigation("Project");
                 });
 
+            modelBuilder.Entity("PPDO.Domain.Entities.AipDivisionAllocationLedger", b =>
+                {
+                    b.HasOne("PPDO.Domain.Entities.AipActivity", "AipActivity")
+                        .WithMany()
+                        .HasForeignKey("AipActivityId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_aip_division_allocation_ledger_aip_activities_aip_activity_id");
+
+                    b.HasOne("PPDO.Domain.Entities.Division", "Division")
+                        .WithMany()
+                        .HasForeignKey("DivisionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_aip_division_allocation_ledger_divisions_division_id");
+
+                    b.HasOne("PPDO.Domain.Entities.FundingSource", "FundingSource")
+                        .WithMany()
+                        .HasForeignKey("FundingSourceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_aip_division_allocation_ledger_funding_sources_funding_source_id");
+
+                    b.Navigation("AipActivity");
+
+                    b.Navigation("Division");
+
+                    b.Navigation("FundingSource");
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.AipExpenditure", b =>
+                {
+                    b.HasOne("PPDO.Domain.Entities.Account", "Account")
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("PPDO.Domain.Entities.AipActivity", "Activity")
+                        .WithMany()
+                        .HasForeignKey("ActivityId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("PPDO.Domain.Entities.FundingSource", "FundingSource")
+                        .WithMany()
+                        .HasForeignKey("FundingSourceId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Account");
+
+                    b.Navigation("Activity");
+
+                    b.Navigation("FundingSource");
+                });
+
             modelBuilder.Entity("PPDO.Domain.Entities.AipOffice", b =>
                 {
                     b.HasOne("PPDO.Domain.Entities.AipRecord", "AipRecord")
@@ -2746,7 +3409,35 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasConstraintName("FK_aip_offices_aip_records_aip_record_id");
 
+                    b.HasOne("PPDO.Domain.Entities.Office", "Office")
+                        .WithMany()
+                        .HasForeignKey("OfficeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_aip_offices_offices_office_id");
+
                     b.Navigation("AipRecord");
+
+                    b.Navigation("Office");
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.AipProcurementItem", b =>
+                {
+                    b.HasOne("PPDO.Domain.Entities.AipExpenditure", "Expenditure")
+                        .WithMany("ProcurementItems")
+                        .HasForeignKey("ExpenditureId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_aip_procurement_items_aip_expenditures_expenditure_id");
+
+                    b.HasOne("PPDO.Domain.Entities.PriceIndexItem", "PriceIndexItem")
+                        .WithMany()
+                        .HasForeignKey("PriceIndexItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_aip_procurement_items_price_index_items_price_index_item_id");
+
+                    b.Navigation("Expenditure");
+
+                    b.Navigation("PriceIndexItem");
                 });
 
             modelBuilder.Entity("PPDO.Domain.Entities.AipProgram", b =>
@@ -2799,6 +3490,35 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.Navigation("Source");
 
                     b.Navigation("UploadedBy");
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.AipReviewComment", b =>
+                {
+                    b.HasOne("PPDO.Domain.Entities.AipOffice", "AipOffice")
+                        .WithMany()
+                        .HasForeignKey("AipOfficeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_aip_review_comments_aip_offices_aip_office_id");
+
+                    b.HasOne("PPDO.Domain.Entities.User", "Author")
+                        .WithMany()
+                        .HasForeignKey("AuthorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_aip_review_comments_Users_author_id");
+
+                    b.HasOne("PPDO.Domain.Entities.User", "ResolvedBy")
+                        .WithMany()
+                        .HasForeignKey("ResolvedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_aip_review_comments_Users_resolved_by_id");
+
+                    b.Navigation("AipOffice");
+
+                    b.Navigation("Author");
+
+                    b.Navigation("ResolvedBy");
                 });
 
             modelBuilder.Entity("PPDO.Domain.Entities.Announcement", b =>
@@ -2958,6 +3678,17 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.Navigation("FundingSource");
                 });
 
+            modelBuilder.Entity("PPDO.Domain.Entities.FundingSource", b =>
+                {
+                    b.HasOne("PPDO.Domain.Entities.Office", "Office")
+                        .WithMany()
+                        .HasForeignKey("OfficeId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("FK_funding_sources_offices_office_id");
+
+                    b.Navigation("Office");
+                });
+
             modelBuilder.Entity("PPDO.Domain.Entities.LdipOffice", b =>
                 {
                     b.HasOne("PPDO.Domain.Entities.LdipRecord", "LdipRecord")
@@ -3030,6 +3761,56 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.Navigation("PurchaseRequest");
                 });
 
+            modelBuilder.Entity("PPDO.Domain.Entities.PartnerApiKey", b =>
+                {
+                    b.HasOne("PPDO.Domain.Entities.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_partner_api_keys_Users_created_by");
+
+                    b.HasOne("PPDO.Domain.Entities.User", "RevokedBy")
+                        .WithMany()
+                        .HasForeignKey("RevokedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_partner_api_keys_Users_revoked_by");
+
+                    b.Navigation("CreatedBy");
+
+                    b.Navigation("RevokedBy");
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.PartnerApiKeyOffice", b =>
+                {
+                    b.HasOne("PPDO.Domain.Entities.PartnerApiKey", "Key")
+                        .WithMany("Offices")
+                        .HasForeignKey("KeyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("PPDO.Domain.Entities.Office", "Office")
+                        .WithMany()
+                        .HasForeignKey("OfficeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Key");
+
+                    b.Navigation("Office");
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.PartnerApiRequest", b =>
+                {
+                    b.HasOne("PPDO.Domain.Entities.PartnerApiKey", "Key")
+                        .WithMany("Requests")
+                        .HasForeignKey("KeyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Key");
+                });
+
             modelBuilder.Entity("PPDO.Domain.Entities.ProcurementPreset", b =>
                 {
                     b.HasOne("PPDO.Domain.Entities.Account", "Account")
@@ -3079,7 +3860,14 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("PPDO.Domain.Entities.Office", "Office")
+                        .WithMany()
+                        .HasForeignKey("OfficeId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Division");
+
+                    b.Navigation("Office");
                 });
 
             modelBuilder.Entity("PPDO.Domain.Entities.PurchaseRequest", b =>
@@ -3318,6 +4106,11 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.Navigation("Source");
                 });
 
+            modelBuilder.Entity("PPDO.Domain.Entities.AipExpenditure", b =>
+                {
+                    b.Navigation("ProcurementItems");
+                });
+
             modelBuilder.Entity("PPDO.Domain.Entities.AipOffice", b =>
                 {
                     b.Navigation("Programs");
@@ -3370,6 +4163,13 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.Navigation("Users");
 
                     b.Navigation("WfpRecords");
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.PartnerApiKey", b =>
+                {
+                    b.Navigation("Offices");
+
+                    b.Navigation("Requests");
                 });
 
             modelBuilder.Entity("PPDO.Domain.Entities.ProcurementPreset", b =>

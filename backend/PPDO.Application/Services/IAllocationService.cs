@@ -33,6 +33,34 @@ public interface IAllocationService
     Task<ServiceResult<BudgetCeilingDto>> UpsertCeilingAsync(
         int officeId, int fiscalYear, int fundingSourceId, decimal amount, CancellationToken ct = default);
 
+    /// <summary>
+    /// Whether an office's own setup (division split, programme assignment) may still be changed
+    /// for this fiscal year (v1.8.0 — PPDO-107, `Office_Setup_Spec.md` D10).
+    ///
+    /// True while the office holds at least one AIP group in an office-editable state (Draft,
+    /// DepartmentReview, ReturnedByPpdo) — and true when the office has no AIP rows for the year
+    /// at all, which is where setup normally happens, before any encoding.
+    ///
+    /// ⚠️ **Any group, not every group.** An office whose sectors are in different states still
+    /// has work in its own hands, and freezing its division split because one sector was accepted
+    /// would block the office from funding the ones still open.
+    ///
+    /// ⚠️ **Read this as "is the office still working", not as a permission.** The grant is checked
+    /// separately; this is the state gate applied on top of it, and it is deliberately NOT applied
+    /// to a PPDO caller holding <c>CanManagePpdoAllocation</c> — PPDO sets offices up across the
+    /// whole cycle, including after acceptance.
+    /// </summary>
+    Task<bool> IsOfficeSetupEditableAsync(int officeId, int fiscalYear, CancellationToken ct = default);
+
+    /// <summary>
+    /// The config office that owns an AIP office ref code, or null when none matches — longest
+    /// match wins (v1.8.0 — PPDO-107 exposed it; the rule itself is <c>AipOfficeOwnership</c>).
+    ///
+    /// ⚠️ Needed because the programme-assignment payload carries a ref code and no office id, so
+    /// an own-office caller cannot be checked against it without resolving the code first.
+    /// </summary>
+    Task<int?> ResolveOfficeIdForAipRefCodeAsync(string aipOfficeRefCode, CancellationToken ct = default);
+
     // ── Division Allocations ──────────────────────────────────────────────────
 
     /// <summary>

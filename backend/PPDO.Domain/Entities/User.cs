@@ -1,4 +1,4 @@
-using PPDO.Domain.Enums;
+﻿using PPDO.Domain.Enums;
 
 namespace PPDO.Domain.Entities;
 
@@ -109,9 +109,149 @@ public sealed class User
     /// Per-user grant for the Budget Allocation page (v1.2 — RAL-97). Unlike the other
     /// flags this is NOT a division flag: it is assigned to a specific finance-officer user
     /// regardless of role/division. Resolution: SuperAdmin → true; everyone else →
-    /// <c>OverrideCanManageAllocation ?? false</c> (Admin is NOT auto-granted this).
+    /// <c>OverrideCanManagePpdoAllocation ?? false</c> (Admin is NOT auto-granted this).
     /// </summary>
-    public bool? OverrideCanManageAllocation { get; set; }
+    public bool? OverrideCanManagePpdoAllocation { get; set; }
+
+    /// <summary>
+    /// Per-user grant for setting an office's budget ceiling (v1.8.0 — RAL-243). Held by the
+    /// Provincial Budget Office finance officer, who sets the ceiling for EVERY office —
+    /// a different authority from <see cref="OverrideCanManagePpdoAllocation"/>, which only
+    /// splits PPDO's own ceiling across its divisions. Like that flag this is NOT a division
+    /// flag. Resolution: SuperAdmin → true; everyone else →
+    /// <c>OverrideCanManageOfficeCeilings ?? false</c> (Admin is NOT auto-granted this).
+    /// </summary>
+    public bool? OverrideCanManageOfficeCeilings { get; set; }
+
+    /// <summary>
+    /// Per-user grant marking this user as their office's budget-planning REVIEWER
+    /// (v1.8.0 - RAL-244). The reviewer is the sole authority to submit the office's work,
+    /// and is the department head who checks it first.
+    ///
+    /// Deliberately named for budget planning, not AIP: LDIP and WFP reuse the same reviewer
+    /// once their workflows land. Only the scope of USE is AIP-first.
+    ///
+    /// Like the two allocation grants this is NOT a division flag. Resolution:
+    /// SuperAdmin -> true; everyone else -> <c>OverrideCanReviewBudgetPlanning ?? false</c>
+    /// (Admin is NOT auto-granted this).
+    ///
+    /// This flag grants review authority only - it takes nothing away. The write-denial that
+    /// distinguishes the two reviewer kinds is RAL-256; see IPermissionService for why the
+    /// guard cannot key on this flag alone.
+    /// </summary>
+    public bool? OverrideCanReviewBudgetPlanning { get; set; }
+
+    /// <summary>
+    /// Per-user grant for reviewing EVERY office's budget-planning work (v1.8.0 — RAL-257).
+    /// Held by the designated PPDO users who review what the offices submit, once consolidated.
+    ///
+    /// The first permission in this codebase that is explicitly CROSS-OFFICE: every other flag
+    /// narrows to the caller's own office. A holder may legitimately carry an
+    /// <see cref="OfficeId"/> — they are a real person in a real office — and that must not
+    /// narrow what they can review.
+    ///
+    /// Resolution: SuperAdmin -> true; everyone else -> <c>OverrideCanReviewAllOffices ?? false</c>
+    /// (Admin is NOT auto-granted this).
+    ///
+    /// Deliberately NOT modelled as "reviewer + all offices". It is resolved separately from
+    /// <see cref="OverrideCanReviewBudgetPlanning"/> even when one person holds both, because
+    /// the two reviewer kinds differ on what they may WRITE (RAL-256) and folding them together
+    /// would make the cross-office holder inherit the wrong write rule.
+    ///
+    /// READ SCOPE ONLY. The bypass is consumed through OfficeScope.ResolveForReview, which the
+    /// write paths do not call — see that method for why.
+    /// </summary>
+    public bool? OverrideCanReviewAllOffices { get; set; }
+
+    /// <summary>
+    /// Per-user grant for issuing and revoking partner API keys under Configuration → API Access
+    /// (v1.8.0 — PPDO-15). Like the other per-user grants above, this is NOT a division flag.
+    /// Resolution: SuperAdmin -> true; everyone else -> <c>OverrideCanManageApiKeys ?? false</c>
+    /// (Admin is NOT auto-granted this — a key reads AIP data across offices from outside the
+    /// portal, so it is deliberately a named person's job rather than a role default).
+    ///
+    /// Implies nothing else, and nothing implies it — not <see cref="OverrideCanManageConfig"/>,
+    /// not <see cref="OverrideCanManageUsers"/>, not <see cref="OverrideCanReviewAllOffices"/>.
+    /// Pinned by <c>PermissionMatrixTests</c> in both directions.
+    /// </summary>
+    public bool? OverrideCanManageApiKeys { get; set; }
+
+    /// <summary>
+    /// Per-user grant for setting up the holder's OWN office (v1.8.0 — PPDO-107): its division
+    /// split, its programme → division assignment, its divisions and its fund sources. Held by a
+    /// department head. Like the other per-user grants this is NOT a division flag. Resolution:
+    /// SuperAdmin → true; everyone else → <c>OverrideCanManageOfficeSetup ?? false</c> (Admin is
+    /// NOT auto-granted).
+    ///
+    /// ⚠️ **Own office only, and that is the whole point.** It exists because
+    /// <see cref="OverrideCanManagePpdoAllocation"/> is host-office-exclusive and must stay so —
+    /// widening that flag instead would re-open the leak `Permission_Matrix.md` §4a closed, where a
+    /// guest-office account held it and was offered PPDO's division-allocation surface.
+    ///
+    /// Implies nothing and nothing implies it — in particular NOT
+    /// <see cref="OverrideCanReviewBudgetPlanning"/>: reviewing an office's work and configuring
+    /// that office are different jobs, and the same person holding both is a grant, not an
+    /// inference. Pinned by <c>PermissionMatrixTests</c> in both directions.
+    /// </summary>
+    public bool? OverrideCanManageOfficeSetup { get; set; }
+
+    // ── Password reset (RAL-253) ────────────────────────────────────────────────
+
+    /// <summary>
+    /// The recovery question this user has chosen. Null until they complete the one-time setup
+    /// screen (RAL-266) — self-service reset (RAL-265) is unavailable until this is set.
+    /// </summary>
+    public RecoveryQuestion? RecoveryQuestionKey { get; set; }
+
+    /// <summary>
+    /// BCrypt hash of the normalized recovery answer (see RecoveryAnswerNormalizer in
+    /// PPDO.Application.Common). This IS a credential — never expose it, even to an admin, or
+    /// self-service reset degrades into an admin-mediated reset with extra steps.
+    /// </summary>
+    public string? RecoveryAnswerHash { get; set; }
+
+    /// <summary>
+    /// True after any reset — self-service or admin-initiated — forcing a password change at next
+    /// login before the user can reach anything else.
+    /// </summary>
+    public bool MustChangePassword { get; set; }
+
+    /// <summary>
+    /// Failed recovery-answer attempts within the current window. Reset to 0 on a successful
+    /// verify. Paired with <see cref="RecoveryFirstAttemptAt"/> to enforce "5 failures in an hour".
+    /// </summary>
+    public int RecoveryAttemptCount { get; set; }
+
+    /// <summary>
+    /// UTC timestamp of the first failed attempt in the current window. Null when
+    /// <see cref="RecoveryAttemptCount"/> is 0. The account is locked while
+    /// <c>RecoveryAttemptCount >= 5 &amp;&amp; now &lt; RecoveryFirstAttemptAt + 1 hour</c>.
+    /// </summary>
+    public DateTime? RecoveryFirstAttemptAt { get; set; }
+
+    /// <summary>
+    /// UTC timestamp of the most recent password reset — self-service (RAL-265) or
+    /// admin-initiated (RAL-254). Null if this account has never been reset. Paired with
+    /// <see cref="PasswordResetAcknowledgedAt"/> to decide whether the "your password was
+    /// reset" notice (RAL-267) is still owed to the user. A routine self-service password
+    /// change via <c>ChangePasswordAsync</c> does NOT touch this — that's a voluntary change,
+    /// not a reset someone else could have triggered.
+    /// </summary>
+    public DateTime? LastPasswordResetAt { get; set; }
+
+    /// <summary>
+    /// UTC timestamp the user last dismissed the reset notice (RAL-267). The notice is owed
+    /// again whenever <see cref="LastPasswordResetAt"/> is set and is null or newer than this.
+    /// </summary>
+    public DateTime? PasswordResetAcknowledgedAt { get; set; }
+
+    // ── Preferences ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// This user's preferred landing page (RAL-251). Null = no preference; the resolver falls
+    /// through to their division, then their office, then the first page they can actually reach.
+    /// </summary>
+    public LandingPage? LandingPage { get; set; }
 
     // ── Refresh token (JWT rotation) ─────────────────────────────────────────
 

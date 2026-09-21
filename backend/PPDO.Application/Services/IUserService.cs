@@ -32,14 +32,16 @@ public interface IUserService
     /// <summary>
     /// Creates a new user.
     /// Staff users require a division id (which carries their scope + feature flags);
-    /// SuperAdmin/Admin have none. The initial password is the system default.
+    /// SuperAdmin/Admin have none. A unique random initial password is generated and
+    /// returned once in <see cref="UserCredentialResponseDto.TemporaryPassword"/> — it is
+    /// never stored in plaintext and cannot be retrieved again (RAL-254).
     ///
     /// Returns:
     ///   <see cref="ServiceErrorCode.Forbidden"/>  — requester cannot create a user with the given role.
     ///   <see cref="ServiceErrorCode.Conflict"/>   — email already exists.
     ///   <see cref="ServiceErrorCode.BadRequest"/>  — Role or Division string is not a valid enum value.
     /// </summary>
-    Task<ServiceResult<UserResponseDto>> CreateAsync(
+    Task<ServiceResult<UserCredentialResponseDto>> CreateAsync(
         User requester,
         CreateUserDto dto,
         CancellationToken cancellationToken = default);
@@ -61,13 +63,16 @@ public interface IUserService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Resets the target user's password to the system default.
+    /// Resets the target user's password to a newly generated random one, returned once in
+    /// <see cref="UserCredentialResponseDto.TemporaryPassword"/>. The plaintext is never
+    /// stored or logged — if the caller loses it, the password must be reset again (RAL-254).
+    /// Any active refresh token is revoked.
     ///
     /// Returns:
     ///   <see cref="ServiceErrorCode.NotFound"/>   — target user not found.
     ///   <see cref="ServiceErrorCode.Forbidden"/>  — requester cannot manage the target user.
     /// </summary>
-    Task<ServiceResult<UserResponseDto>> ResetPasswordAsync(
+    Task<ServiceResult<UserCredentialResponseDto>> ResetPasswordAsync(
         User requester,
         Guid targetId,
         CancellationToken cancellationToken = default);
@@ -140,5 +145,28 @@ public interface IUserService
     Task<ServiceResult<bool>> ChangePasswordAsync(
         User caller,
         ChangePasswordDto dto,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Self-service one-time recovery-question setup (RAL-266). Overwrites any existing
+    /// question/answer — re-running this is how a user changes their recovery answer, not
+    /// just how they set it the first time — and clears any stale lockout state from a prior
+    /// answer.
+    ///
+    /// Returns:
+    ///   <see cref="ServiceErrorCode.NotFound"/>  — caller's user record not found.
+    ///   <see cref="ServiceErrorCode.BadRequest"/> — unknown question key, or blank answer.
+    /// </summary>
+    Task<ServiceResult<bool>> SetRecoveryAnswerAsync(
+        User caller,
+        SetRecoveryAnswerDto dto,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Dismisses the "your password was reset" notice (RAL-267) for the caller's own account.
+    /// Idempotent — safe to call when there is nothing to acknowledge.
+    /// </summary>
+    Task<ServiceResult<bool>> AcknowledgePasswordResetAsync(
+        User caller,
         CancellationToken cancellationToken = default);
 }

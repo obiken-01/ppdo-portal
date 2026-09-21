@@ -1,10 +1,37 @@
-namespace PPDO.Domain.Entities;
+﻿namespace PPDO.Domain.Entities;
 
 /// <summary>
-/// Annual Investment Program record — one per AIP creation (file upload or manual entry).
-/// Independent from LDIP (optional FK only). The office/program/project/activity
-/// hierarchy hangs off this record via <see cref="AipOffice"/>.
+/// Annual Investment Program record. Independent from LDIP (optional FK only). The
+/// office/program/project/activity hierarchy hangs off this record via <see cref="AipOffice"/>.
 /// Status workflow: Draft / Final / Archived.
+///
+/// <para>
+/// <b>One record per fiscal year, holding every office</b> (PPDO-61, 2026-09-05). An Admin opens
+/// the year, which creates this record and populates each office's programs from its own LDIP;
+/// the offices then build their own <see cref="AipOffice"/> subtree.
+/// </para>
+///
+/// <para>
+/// ↩️ V18-40 briefly added an <c>OfficeId</c> here, so that FY≥2028 could hold one record per
+/// office. That was withdrawn before it ever reached production. <b>Office identity lives on
+/// <see cref="AipOffice"/>, and only there</b> — which is what every scoped read already filters
+/// on (<c>AipReadScope</c>). Do not reintroduce an owner on this row: two carriers of the same
+/// fact is how they drift apart.
+/// </para>
+///
+/// <para>
+/// ⚠️ <b>PPDO is an ordinary office here</b> (tracker B12-b, 2026-08-26). No per-division AIP
+/// records, no division column on <see cref="AipOffice"/>, and divisions never print. Division of
+/// work is carried on the <i>program</i>, through <c>ProgramDivision</c>, exactly as WFP does. The
+/// tempting alternative — one record per PPDO division — would make PPDO structurally different
+/// from all 18 other offices, and every downstream feature would carry two code paths forever.
+/// </para>
+///
+/// <para>
+/// A sub-unit that genuinely does print is an <see cref="AipOffice"/> row <b>sharing the office
+/// ref code</b>, distinguished by <c>(Sector, Name)</c> — already built, and how the province
+/// actually encodes (Phase_Plan §12.6).
+/// </para>
 /// </summary>
 public sealed class AipRecord
 {

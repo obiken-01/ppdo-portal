@@ -253,7 +253,7 @@ export default function ItemsMasterPage() {
   useEffect(() => {
     fetchMe()
       .then((data) => {
-        if (!data.canAccessInventory) router.replace(data.officeId != null ? "/budget-planning" : "/dashboard");
+        if (!data.canAccessInventory) router.replace(!data.isHostOffice ? "/budget-planning" : "/dashboard");
       })
       .catch(() => router.replace("/login"));
   }, [router]);

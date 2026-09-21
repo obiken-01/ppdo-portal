@@ -1,0 +1,168 @@
+/**
+ * Who may open which Budget Planning page (PPDO-81).
+ *
+ * ⚠️ **These exist so the sidebar and the route guard cannot disagree.** Before this, `canAccessBudgetPlanning`
+ * opened every page under `/budget-planning` and each page re-stated its own rule inline — which is
+ * how the AIP record list came to be offered to encoders whose only button on it (`+ New AIP`) was
+ * already gated away from them. A nav item that leads to a redirect is worse than no nav item: the
+ * reader concludes the feature is broken rather than that it is not theirs.
+ *
+ * ⚠️ **Courtesy, not a guard.** Every rule here is enforced independently by the server — the AIP
+ * write paths run `AipWriteGuard`, and reads run `AipReadScope`. Hiding a link only spares somebody
+ * a page they cannot use; it is never the reason anything is safe.
+ */
+
+import type { MeResponse } from "@/types";
+
+/** Admin or SuperAdmin. The two roles that own province-wide setup. */
+function isAdminRole(me: MeResponse): boolean {
+  return me.role === "Admin" || me.role === "SuperAdmin";
+}
+
+/**
+ * The AIP **record list and detail** — `/budget-planning/aip` and its `new` / `detail` /
+ * `import-preview` children. Admin and SuperAdmin only.
+ *
+ * ⚠️ **Not the same page as AIP Entry, and the distinction is the point.** Since PPDO-61/62 the base
+ * AIP record is created once per fiscal year by an Admin, who thereby populates every office's
+ * programs from its LDIP. An office encoder never creates anything here — `aip/entry` deliberately
+ * offers no create action, precisely so there is one create path rather than two.
+ *
+ * ↩️ It used to be `canAccessBudgetPlanning`, so an encoder saw a table of every fiscal year's
+ * records whose only action was already denied them. Their surface is `aip/entry`.
+ *
+ * ⚠️ **Known consequence, accepted deliberately:** `aip/detail` is also the read view for the
+ * FY≤2027 **uploaded** AIPs, so a guest office now has no route to last year's approved document.
+ * That data is PPDO-held today. If an office ever needs it, the answer is a read-only view — not
+ * re-opening this list, whose create and finalize actions are what had to be contained.
+ */
+export function canOpenAipRecords(me: MeResponse): boolean {
+  return me.canAccessBudgetPlanning && isAdminRole(me);
+}
+
+/**
+ * The LDIP pages. Host office (PPDO) only — **any role**, not just Admin.
+ *
+ * ⚠️ **Gated on the office, not on the role, and the two would behave very differently here.** PPDO
+ * planning staff work in the LDIP as a matter of course; it is their page. What does not belong is
+ * a *guest* office seeing it: from FY2028 the LDIP is the **closed list** an AIP's programs must come
+ * from (`aipProgramsAreLdipOnly`), so an office missing a program will come here to add it — and
+ * every write control on the page is already Admin-only. They would find a page that shows them the
+ * problem and refuses the fix.
+ *
+ * The write gating inside the page is unchanged and still Admin/SuperAdmin. This decides only who
+ * sees the page at all.
+ */
+export function canOpenLdip(me: MeResponse): boolean {
+  return me.canAccessBudgetPlanning && me.isHostOffice;
+}
+
+/**
+ * The **AIP Review search** — `/budget-planning/aip/review/search`. Either reviewer.
+ *
+ * ↩️ **Widened in PPDO-79** from the cross-office grant alone. The search is *the* review page for
+ * both reviewers (decided 2026-09-13): a department head finds their own office's rows here and opens
+ * them in the activity modal, rather than scrolling the entry tree. The server clamps a department
+ * head to their own office, so widening the page widens nothing they can read.
+ *
+ * ⚠️ **Not `isHostOffice`, and not Admin.** Sitting in PPDO is the tempting wrong axis (tracker B4):
+ * a PPDO *division encoder* is in the host office and holds no review work — the search answers them
+ * with an empty page for the same reason.
+ *
+ * ⚠️ Courtesy, as this file's header says. The search and the activity read both enforce their own
+ * scope; hiding the nav item only spares somebody a redirect.
+ */
+export function canOpenAipReview(me: MeResponse): boolean {
+  return me.canAccessBudgetPlanning && (me.canReviewAllOffices || me.canReviewBudgetPlanning);
+}
+
+/**
+ * The **one-office review screen** — `/budget-planning/aip/review?officeId=…`. The PPDO consolidated
+ * reviewer's grant, and nothing weaker.
+ *
+ * ⚠️ **`canReviewAllOffices`, NOT `canReviewBudgetPlanning`** — and the two are one word apart in
+ * every sentence about them, which is why this is written down. This screen is where Return and
+ * Accept live, and both are the cross-office reviewer's alone. A department head's whole-office
+ * surface is AIP Entry, which carries the editability that belongs to them; the search links them
+ * there instead. (`AIP_Review_Spec.md` §3.1, §6.2.)
+ *
+ * ↩️ Until PPDO-79 this rule was `canOpenAipReview` and covered the search too. It split when the
+ * search opened to department heads — one rule for two pages would have either locked department
+ * heads out of search or let them reach a screen whose every action 403s.
+ *
+ * ⚠️ Courtesy, as this file's header says. `AipReviewFunctions` refuses the cross-office read,
+ * return and accept on its own account.
+ */
+export function canOpenAipOfficeReview(me: MeResponse): boolean {
+  return me.canAccessBudgetPlanning && me.canReviewAllOffices;
+}
+
+/**
+ * The **AIP (Annex B) report type** on `/budget-planning/report` — either reviewer (PPDO-92).
+ *
+ * ↩️ **This replaces `canOpenAipOfficeReview` on the old Consolidated AIP page**, which was the
+ * cross-office grant alone. The report widened with its endpoint (PPDO-90): a department head reads
+ * their OWN office's Annex B here, in any workflow state, because the point is seeing the document as
+ * it will print before sending it on. The server pins them to their own office, so offering the type
+ * offers nothing they could not already read.
+ *
+ * ⚠️ **Same rule as `canOpenAipReview`, and that is not a copy-paste slip** — the search and this
+ * report are the two surfaces both reviewers share. The one-office *review screen* stays narrower
+ * (`canOpenAipOfficeReview`), because Return and Accept live there.
+ */
+export function canOpenAipReport(me: MeResponse): boolean {
+  return me.canAccessBudgetPlanning && (me.canReviewAllOffices || me.canReviewBudgetPlanning);
+}
+
+/**
+ * The **Office Ceilings page** — `/budget-planning/office-ceilings`. PPDO finance (PPDO-106).
+ *
+ * ⚠️ **`canManageOfficeCeilings` alone, not `canManagePpdoAllocation`.** The two are independent by
+ * design (`Permission_Matrix.md` §4): this one is authority over *any* office's ceiling, the other
+ * is host-office-exclusive authority over PPDO's own division split. The page writes only ceilings,
+ * so the ceiling grant is both necessary and sufficient — pairing them would lock out a finance user
+ * who holds exactly the grant this page exists for.
+ *
+ * ↩️ The same grant used to reach the ceiling through the Allocation page, which now shows it
+ * read-only. The nav offers whichever of the two a caller can actually act on.
+ */
+export function canOpenOfficeCeilings(me: MeResponse): boolean {
+  return me.canAccessBudgetPlanning && me.canManageOfficeCeilings;
+}
+
+/**
+ * The **WFP and PPMP report types** — host office (PPDO) only.
+ *
+ * ⚠️ Both read the WFP, which is permanently PPDO-scoped (PPDO-20): a guest office has no WFP to
+ * report on, so offering them the type would produce an empty office picker and a dead end.
+ */
+export function canOpenWfpReport(me: MeResponse): boolean {
+  return me.canAccessBudgetPlanning && me.isHostOffice;
+}
+
+/**
+ * The **Report page** itself — anyone with at least one report type.
+ *
+ * ⚠️ Derived from the two rules above rather than stated again, so the page and the sidebar cannot
+ * come to disagree about who has something to read there. A reader with no allowed type would land
+ * on a page whose every selector was empty.
+ */
+export function canOpenBudgetPlanningReport(me: MeResponse): boolean {
+  return canOpenWfpReport(me) || canOpenAipReport(me);
+}
+
+/**
+ * Where to send somebody who reached one of the above without the grant.
+ *
+ * The Budget Planning hub, which anyone holding `canAccessBudgetPlanning` can open — it names the
+ * stage they are actually on, so the redirect lands somewhere that answers "then what should I be
+ * doing?" rather than dumping them at a generic dashboard.
+ *
+ * ⚠️ A guest-office user has no `/dashboard` — the sidebar gives them Budget Planning and nothing
+ * else (`Sidebar.tsx`) — so the no-access fallback splits on office, matching `ldip/new`'s existing
+ * redirect. Sending them to `/dashboard` would be a redirect to another redirect.
+ */
+export function budgetPlanningFallback(me: MeResponse): string {
+  if (me.canAccessBudgetPlanning) return "/budget-planning";
+  return me.isHostOffice ? "/dashboard" : "/account";
+}

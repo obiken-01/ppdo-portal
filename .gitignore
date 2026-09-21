@@ -176,3 +176,41 @@ dist/
 build/
 # Linear archive script progress log (local run state)
 scripts/.linear_archive_log.tsv
+
+# Python bytecode from the repo's scripts/ tooling
+__pycache__/
+*.py[cod]
+
+# Manual filename-versioned copies of the tracker workbooks. The live file is
+# tracked (docs/v1.8/v1.8.0_Open_Items_Tracker.xlsx); the ".backupN-DATE-before-X"
+# copies are local working state and are not diffable by git.
+# Retrospective action item 9 — docs/v1.8/RETROSPECTIVE.md §3.7.
+docs/**/*.backup*.xlsx
+
+# Database exports and backups. This repository is PUBLIC and production carries real
+# personnel names and budget figures — a .bacpac or .bak committed here publishes them.
+# Keep rehearsal copies outside the repo entirely; these patterns are the safety net,
+# not the plan. See docs/v1.8/Units_Migration_Runbook.md §1a.
+*.bacpac
+*.bak
+*.dacpac
+*.mdf
+*.ldf
+
+# Obsidian. docs/ is the documentation vault (CLAUDE.md, "Documentation vault").
+# The shared settings ARE committed: app.json (standard relative links) and core-plugins.json
+# (daily notes off), so the vault behaves the same on every machine. Everything below is
+# per-machine view state that changes on every click.
+docs/.obsidian/workspace.json
+docs/.obsidian/workspace-mobile.json
+docs/.obsidian/graph.json
+docs/.obsidian/appearance.json
+docs/.obsidian/plugins/
+docs/.obsidian/themes/
+docs/.obsidian/snippets/
+docs/.trash/
+
+# Daily notes live in a separate personal vault OUTSIDE this public repository, and the
+# daily-notes plugin is off for this vault. A date-named note created here by accident is
+# ignored as a safety net, not as the plan: the same stance as the database patterns above.
+docs/**/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].md

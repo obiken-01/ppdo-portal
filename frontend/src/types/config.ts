@@ -1,3 +1,5 @@
+import type { LandingPageKey } from "./auth";
+
 /**
  * Configuration module types (v1.1) — mirrors PPDO.Application/DTOs/Config/
  * and PPDO.Application/Common/ (ApiResponse, CsvImportResult).
@@ -81,6 +83,13 @@ export interface OfficeResponse {
   /** Last segment of the AIP office ref code (e.g. "013"). Used to match AIP → config office in WFP. */
   officeRefCode: string | null;
   isActive: boolean;
+  /** Landing-page enum name, or null for none (RAL-262). */
+  landingPage: LandingPageKey | null;
+  /**
+   * Whether this is the host office — its users hold cross-office authority
+   * (DECISION F, RAL-258). Exactly one office has this set.
+   */
+  isHostOffice: boolean;
 }
 
 /** Create/update body for an office. officeCode is the unique key. */
@@ -89,6 +98,8 @@ export interface UpsertOfficeRequest {
   officeName: string;
   officeRefCode?: string | null;
   isActive: boolean;
+  /** Landing-page enum name, or null for none (RAL-262). */
+  landingPage?: LandingPageKey | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -106,6 +117,19 @@ export interface FundingSourceResponse {
   isActive: boolean;
   /** Pipe-delimited alternate names, matched against AIP fund-source labels. Null = none. */
   aliases: string | null;
+  /**
+   * Owning office, or null for a province-wide fund (PPDO-109). A fund with an office belongs to
+   * that office alone and is invisible to every other one.
+   */
+  officeId: number | null;
+  /**
+   * True when the fund is province-wide and PPDO's — the same fact as `officeId === null`, sent so
+   * the UI has one thing to read when deciding what to render read-only.
+   */
+  isShared: boolean;
+  /** Owning office's code / name. Null on a shared fund. */
+  officeCode: string | null;
+  officeName: string | null;
 }
 
 /** Create/update body for a funding source. code is the unique key. */
@@ -118,6 +142,15 @@ export interface UpsertFundingSourceRequest {
   isActive: boolean;
   /** Pipe-delimited alternate names, matched against AIP fund-source labels. Null = none. */
   aliases: string | null;
+  /**
+   * Owning office for a new fund, or null for province-wide (PPDO-109).
+   *
+   * ⚠️ Honoured on CREATE only, and only for a config manager. A department head's value is
+   * overwritten server-side with their own office, and an UPDATE ignores the field entirely —
+   * ownership is set once, at creation. Omit it unless you are PPDO creating a fund on an office's
+   * behalf.
+   */
+  officeId?: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -125,6 +158,30 @@ export interface UpsertFundingSourceRequest {
 // ---------------------------------------------------------------------------
 
 /** Read model for a price index item (config table `price_index_items`). */
+/**
+ * Slim price-index row for item pickers (RAL-232) — the five fields the WFP procurement item
+ * table and the procurement-preset editor actually read.
+ *
+ * The full {@link PriceIndexItemResponse} is ~1,569 KB over the real 6,397-row catalogue; this is
+ * ~686 KB. Use it anywhere the extra four fields are not genuinely needed. The price-index
+ * management grid still uses the full response — do not narrow that one.
+ */
+export interface PriceIndexPickerItem {
+  id: number;
+  name: string;
+  unit: string;
+  unitPrice: number;
+  daysEnabled: boolean;
+}
+
+/** A page of the price-index management grid plus the total match count (RAL-233). */
+export interface PriceIndexPage {
+  items: PriceIndexItemResponse[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
 export interface PriceIndexItemResponse {
   id: number;
   name: string;
@@ -224,6 +281,8 @@ export interface DivisionResponse {
   canAccessBudgetPlanning: boolean;
   canUploadAip: boolean;
   canManageConfig: boolean;
+  /** Landing-page enum name, or null for none (RAL-262). */
+  landingPage: LandingPageKey | null;
 }
 
 /** Create/update body for a configurable division. name is the upsert key within an office. */
@@ -239,6 +298,8 @@ export interface UpsertDivisionRequest {
   canUploadAip: boolean;
   canManageUsers: boolean;
   canManageResourceLinks: boolean;
+  /** Landing-page enum name, or null for none (RAL-262). */
+  landingPage?: LandingPageKey | null;
 }
 
 // ── Audit Log (SuperAdmin-only) ───────────────────────────────────────────────
@@ -263,4 +324,104 @@ export interface AuditLogPage {
   totalCount: number;
   page: number;
   pageSize: number;
+}
+
+/**
+ * A CCET (Climate Change Expenditure Tagging) typology code — RAL-247.
+ * `category` is "Adaptation" | "Mitigation" | "Unclassified"; it is stored rather than derived
+ * from the code's leading letter so a code that breaks the convention can still be filed by hand.
+ */
+export interface ClimateChangeTypologyResponse {
+  id: number;
+  code: string;
+  name: string;
+  category: string;
+  description: string | null;
+  isActive: boolean;
+}
+
+export interface UpsertClimateChangeTypologyRequest {
+  code: string;
+  name: string;
+  category: string;
+  description?: string | null;
+  isActive: boolean;
+}
+
+/**
+ * An eSRE classification code — RAL-248. A closed vocabulary of four: SS (Social Services),
+ * ES (Economic Services), ID (Institutional Development), EN (Environmental Services).
+ *
+ * `code` is stored upper-case; `name` is what the picker labels the option with.
+ */
+export interface EsreCodeResponse {
+  id: number;
+  code: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+}
+
+/** Create/update body. `code` is the unique key and is upper-cased server-side. */
+export interface UpsertEsreCodeRequest {
+  code: string;
+  name: string;
+  description?: string | null;
+  isActive: boolean;
+}
+
+/**
+ * Configuration → API Access — partner API keys for the external AIP API (v1.8.0 — PPDO-86).
+ * `Active` | `Expired` | `Revoked`, computed server-side from expiresAt/revokedAt.
+ */
+export type ApiKeyStatus = "Active" | "Expired" | "Revoked";
+
+export interface ApiKeyOffice {
+  code: string;
+  name: string;
+}
+
+/** One row of the Configuration → API Access list. Never carries the key hash or secret. */
+export interface ApiKeyListItem {
+  id: number;
+  partnerName: string;
+  keyPrefix: string;
+  allOffices: boolean;
+  offices: ApiKeyOffice[];
+  status: ApiKeyStatus;
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+  createdAt: string;
+  createdByName: string;
+  revokedAt: string | null;
+  revokedByName: string | null;
+}
+
+/** POST /api/config/api-keys body. `officeIds` is ignored when `allOffices` is true. */
+export interface CreateApiKeyRequest {
+  partnerName: string;
+  allOffices: boolean;
+  officeIds: number[];
+  /** Plain calendar date, "yyyy-MM-dd" (Manila). Omit for no expiry. */
+  expiresAt?: string | null;
+}
+
+/** Response to a successful issue — `plaintextKey` is shown exactly once. */
+export interface CreateApiKeyResult {
+  key: ApiKeyListItem;
+  plaintextKey: string;
+}
+
+/** One row of the "Usage" modal — a logged call against the external API. */
+export interface ApiKeyRequestLogItem {
+  requestedAt: string;
+  route: string;
+  officeCode: string | null;
+  fiscalYear: number | null;
+  statusCode: number;
+}
+
+export interface ApiKeyRequestPage {
+  items: ApiKeyRequestLogItem[];
+  total: number;
 }

@@ -176,9 +176,9 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
             "  Leave a row completely blank to stop — rows after the first blank row are",
             "  not read.",
             "",
-            "DEFAULT PASSWORD:",
-            "  If you forget your portal password, contact your System Administrator.",
-            "  Default password (after reset): TamarawUser2026!",
+            "FORGOT YOUR PASSWORD:",
+            "  Contact your System Administrator to have it reset.",
+            "  They will issue you a new one-time password to sign in with.",
         ];
 
         for (int i = 0; i < lines.Length; i++)
@@ -1224,9 +1224,9 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
             "  Each sheet tab represents one Purchase Request.",
             "  The Instructions sheet is ignored during import.",
             "",
-            "DEFAULT PASSWORD:",
-            "  If you forget your portal password, contact your System Administrator.",
-            "  Default password (after reset): TamarawUser2026!",
+            "FORGOT YOUR PASSWORD:",
+            "  Contact your System Administrator to have it reset.",
+            "  They will issue you a new one-time password to sign in with.",
         ];
 
         for (int i = 0; i < lines.Length; i++)

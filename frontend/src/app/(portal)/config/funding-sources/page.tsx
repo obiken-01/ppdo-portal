@@ -13,13 +13,19 @@
  * Three user-facing fields (code, name, description) plus is_active; no type
  * filter — just search + status. code is the unique key (readonly on edit).
  *
- * Access guard: only users with canManageConfig may view this page.
+ * Access guard: canManageConfig, or canManageOfficeSetup for a department head — who manages their
+ * OWN office's funds and sees the province-wide ones read-only (PPDO-109).
+ *
+ * ⚠️ **The lock affordance here is courtesy, not the rule.** `ConfigFundingSourceFunctions` refuses
+ * a write against a shared fund or another office's outright, stamps a create with the caller's own
+ * office, and keeps the CSV routes for config managers. This page only spares a department head
+ * controls they cannot use.
  *
  * CSV upload is the seeding path — the initial 6 sources are loaded by uploading
  * funding_sources.csv here (no seed migration exists).
  *
  * Endpoints (ConfigFundingSourceFunctions.cs, { data, error, message } envelope):
- *   GET    /api/config/funding-sources?search=&active=
+ *   GET    /api/config/funding-sources?search=&active=&officeId=
  *   POST   /api/config/funding-sources
  *   PUT    /api/config/funding-sources/{id}
  *   DELETE /api/config/funding-sources/{id}    (soft delete)
@@ -42,7 +48,7 @@ import {
 import DataTable, { type Column } from "@/components/ui/DataTable";
 import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import Modal from "@/components/ui/Modal";
-import MessageDialog from "@/components/ui/MessageDialog";
+import CsvImportSummary from "@/components/ui/CsvImportSummary";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import CsvUploadButton from "@/components/ui/CsvUploadButton";
 import CsvDownloadButton from "@/components/ui/CsvDownloadButton";
@@ -119,6 +125,13 @@ export default function FundingSourceConfigPage() {
 
   // Auth / permission guard
   const [authChecked] = useState(true);
+  /**
+   * PPDO-109 — the caller manages their OWN office's funds only: the province-wide rows are shown
+   * locked, and CSV is not offered (a bulk upsert keyed by code spans every office, so the server
+   * keeps those routes for config managers).
+   */
+  const [ownOfficeOnly, setOwnOfficeOnly] = useState(false);
+  const [ownOfficeName, setOwnOfficeName] = useState<string | null>(null);
 
   // Data
   const [sources, setSources] = useState<FundingSourceResponse[]>([]);
@@ -150,7 +163,16 @@ export default function FundingSourceConfigPage() {
   useEffect(() => {
     fetchMe()
       .then((data) => {
-        if (!data.canManageConfig) router.replace(data.officeId != null ? "/budget-planning" : "/dashboard");
+        if (!data.canManageConfig && !data.canManageOfficeSetup) {
+          router.replace(!data.isHostOffice ? "/budget-planning" : "/dashboard");
+          return;
+        }
+        // A config manager who also holds the setup grant keeps the full page — the narrower view is
+        // for callers who hold ONLY the setup grant, matching the server's own test.
+        if (!data.canManageConfig) {
+          setOwnOfficeOnly(true);
+          setOwnOfficeName(data.officeName ?? data.officeCode ?? null);
+        }
       })
       .catch(() => router.replace("/login"));
   }, [router]);
@@ -279,7 +301,13 @@ export default function FundingSourceConfigPage() {
   function confirmDeactivate(source: FundingSourceResponse) {
     setConfirm({
       title: "Deactivate funding source?",
-      message: `${source.name} (${source.code}) will be hidden from dropdowns. Existing records that reference it are preserved.`,
+      // Two different truths, so two messages. For PPDO the deactivate always succeeds and the
+      // records are kept; for a department head the server refuses it outright while any AIP or WFP
+      // line still names the fund (PPDO-109), so promising "records are preserved" would describe an
+      // outcome they cannot reach.
+      message: ownOfficeOnly
+        ? `${source.name} (${source.code}) will be hidden from your AIP and WFP pickers. This is refused if any of your AIP or WFP lines still use it.`
+        : `${source.name} (${source.code}) will be hidden from dropdowns. Existing records that reference it are preserved.`,
       confirmLabel: "Deactivate",
       variant: "danger",
       onConfirm: () => void doDeactivate(source),
@@ -363,9 +391,42 @@ export default function FundingSourceConfigPage() {
             <span className="w-3 h-3 rounded-full shrink-0 border border-slate-200 bg-slate-100" title="No color" />
           )}
           <span className="font-medium text-slate-800">{s.name}</span>
+          {/* The lock says why the row has no actions. Shown only to a department head: to a config
+              manager every row is theirs, so a lock on most of them would say nothing. */}
+          {ownOfficeOnly && s.isShared && (
+            <span
+              className="text-[11px] text-slate-600 shrink-0"
+              title="Province-wide fund, maintained by PPDO. Every office uses it."
+              aria-label="Maintained by PPDO"
+            >
+              🔒
+            </span>
+          )}
         </div>
       ),
     },
+    // Whose fund it is — dropped for a department head, who sees only PPDO's and their own and gets
+    // the lock above instead. A column with one repeated value is noise (same call as PPDO-108).
+    ...(ownOfficeOnly
+      ? []
+      : [
+          {
+            key: "officeCode",
+            header: "Owner",
+            sortable: true,
+            sortValue: (s: FundingSourceResponse) => s.officeCode ?? "",
+            render: (s: FundingSourceResponse) =>
+              s.isShared ? (
+                <span className="text-slate-600 text-sm" title="Province-wide — every office uses it">
+                  Province-wide
+                </span>
+              ) : (
+                <span className="text-slate-600 text-sm" title={s.officeName ?? undefined}>
+                  <span className="font-mono text-xs">{s.officeCode}</span>
+                </span>
+              ),
+          } satisfies Column<FundingSourceResponse>,
+        ]),
     {
       key: "description",
       header: "Description",
@@ -403,6 +464,11 @@ export default function FundingSourceConfigPage() {
       align: "right",
       className: "whitespace-nowrap",
       render: (s) => {
+        // A department head gets no actions at all on a province-wide fund — the server refuses
+        // every one of them, so offering a button that can only 403 is worse than offering none.
+        if (ownOfficeOnly && s.isShared) {
+          return <span className="text-xs text-slate-600">PPDO</span>;
+        }
         const actions: RowAction[] = [{ key: "edit", label: "Edit", onClick: () => openEdit(s) }];
         if (s.isActive) {
           actions.push({ key: "deactivate", label: "Deactivate", onClick: () => confirmDeactivate(s), variant: "danger" });
@@ -434,15 +500,25 @@ export default function FundingSourceConfigPage() {
         {/* Header */}
         <ConfigPageHeader
           title="Funding Sources"
-          description="Budget funding sources used as the Source of Fund across AIP and WFP entries."
+          description={
+            ownOfficeOnly
+              ? `The province-wide funds, plus the funds of ${ownOfficeName ?? "your office"}. PPDO maintains the province-wide list; you can add your own below.`
+              : "Budget funding sources used as the Source of Fund across AIP and WFP entries."
+          }
           actions={
             <>
-              <CsvDownloadButton
-                filename="funding_sources.csv"
-                fetchCsv={exportFundingSourcesCsv}
-                onError={(msg) => toast.error("Export failed", msg)}
-              />
-              <CsvUploadButton onSelect={(file) => setPendingCsv(file)} />
+              {/* CSV is a multi-office bulk upsert, and the server keeps both routes for config
+                  managers — so it is not offered to an own-office caller at all. */}
+              {!ownOfficeOnly && (
+                <>
+                  <CsvDownloadButton
+                    filename="funding_sources.csv"
+                    fetchCsv={exportFundingSourcesCsv}
+                    onError={(msg) => toast.error("Export failed", msg)}
+                  />
+                  <CsvUploadButton onSelect={(file) => setPendingCsv(file)} />
+                </>
+              )}
               <button
                 onClick={openAdd}
                 className="flex items-center gap-1.5 bg-green-600 text-white font-semibold text-sm px-4 py-2.5 hover:bg-green-500 transition-colors shrink-0"
@@ -530,6 +606,17 @@ export default function FundingSourceConfigPage() {
           }
         >
           <div className="space-y-4">
+            {/* Scope note — no office picker to show: the server stamps the caller's own office on a
+                create and ignores the field on an update, so there is only one possible answer. */}
+            {ownOfficeOnly && !editTarget && (
+              <p className="bg-slate-100 border border-slate-200 px-3 py-2 text-[11px] text-slate-600">
+                This fund will belong to{" "}
+                <span className="font-medium text-slate-800">{ownOfficeName ?? "your office"}</span> — only
+                your office sees it. Codes are shared province-wide, so a code PPDO already uses will be
+                rejected.
+              </p>
+            )}
+
             {/* Code */}
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Code *</label>
@@ -673,34 +760,8 @@ export default function FundingSourceConfigPage() {
         </Modal>
       )}
 
-      {/* ── CSV import summary ─────────────────────────────────────────────────── */}
       {importResult && (
-        <MessageDialog
-          title="Import complete"
-          variant={importResult.errors.length > 0 ? "warning" : "success"}
-          size="md"
-          onClose={() => setImportResult(null)}
-        >
-          <div className="space-y-3">
-            <div className="flex gap-4">
-              <Stat label="Added" value={importResult.new} tone="green" />
-              <Stat label="Updated" value={importResult.updated} tone="blue" />
-              <Stat label="Skipped" value={importResult.skipped} tone="slate" />
-            </div>
-            {importResult.errors.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-amber-500 uppercase tracking-wide mb-1">
-                  {importResult.errors.length} row{importResult.errors.length === 1 ? "" : "s"} skipped
-                </p>
-                <ul className="max-h-40 overflow-y-auto text-xs text-slate-600 list-disc pl-4 space-y-0.5">
-                  {importResult.errors.map((e, i) => (
-                    <li key={i}>{e}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        </MessageDialog>
+        <CsvImportSummary result={importResult} onClose={() => setImportResult(null)} />
       )}
 
       {/* ── Deactivate confirm ─────────────────────────────────────────────────── */}
@@ -712,17 +773,3 @@ export default function FundingSourceConfigPage() {
 // ---------------------------------------------------------------------------
 // Small helpers
 // ---------------------------------------------------------------------------
-
-function Stat({ label, value, tone }: { label: string; value: number; tone: "green" | "blue" | "slate" }) {
-  const cls: Record<typeof tone, string> = {
-    green: "text-green-700",
-    blue: "text-info-500",
-    slate: "text-slate-600",
-  };
-  return (
-    <div className="flex-1 border border-slate-200 px-3 py-2 text-center">
-      <div className={`text-2xl font-bold ${cls[tone]}`}>{value}</div>
-      <div className="text-[11px] text-slate-600 uppercase tracking-wide">{label}</div>
-    </div>
-  );
-}

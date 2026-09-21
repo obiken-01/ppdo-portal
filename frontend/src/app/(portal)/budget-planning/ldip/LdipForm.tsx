@@ -20,7 +20,8 @@
  *
  * Ref codes shown here are PREVIEWS — the server recomputes all AIP ref codes
  * on every save, so they are authoritative. Budgets are entered and stored in
- * thousands (₱000), like AIP totals.
+ * thousands (₱000). AIP amounts moved to pesos at V18-35 (PPDO-34); LDIP did not —
+ * an LDIP budget is a multi-year total and crosses into no peso-denominated code.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -29,6 +30,7 @@ import { useRouter } from "next/navigation";
 import { createLdip, finalizeLdip, ldipErrorMessage, unlockLdip, updateLdip, updateLdipProgram } from "@/lib/ldip";
 import { listOffices } from "@/lib/config";
 import { useMe } from "@/lib/me-cache";
+import { canOpenLdip, budgetPlanningFallback } from "@/lib/budget-planning-access";
 import { formatMoney } from "@/lib/money";
 import MoneyInput from "@/components/ui/MoneyInput";
 import OfficeSelect from "@/components/ui/OfficeSelect";
@@ -308,10 +310,7 @@ function SectionHead({ num, title, hint }: { num: number; title: string; hint?: 
 export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
   const router = useRouter();
   const { toast } = useToast();
-  const me = useMe(
-    (m) => m.canAccessBudgetPlanning,
-    (m) => (m.officeId != null ? "/account" : "/dashboard"),
-  );
+  const me = useMe(canOpenLdip, budgetPlanningFallback);  // PPDO-81 — host office only.
 
   const isEdit = record != null;
   // Uploaded multi-office records (RAL-113) have no single office — editing them
@@ -320,7 +319,7 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
   const isMultiOffice = isEdit && record.officeId == null && record.entryMode === "Upload";
   const isReadOnly = isEdit && (record.status !== "Draft" || isMultiOffice);
   const isAdmin = me?.role === "Admin" || me?.role === "SuperAdmin";
-  const isOfficeUser = me != null && me.officeId != null;
+  const isOfficeUser = me != null && !me.isHostOffice;
   // RAL-115 — inline per-program edit for upload-derived programs, independent of the
   // form-level isReadOnly flag (multi-office Upload records are always isReadOnly per
   // RAL-113's design, but that's exactly the case this feature targets). Same gate as
@@ -456,7 +455,7 @@ export default function LdipForm({ record }: { record?: LdipRecordDetail }) {
   }, []);
 
   useEffect(() => {
-    if (!isEdit && me?.officeId != null) setOfficeId(me.officeId);
+    if (!isEdit && me != null && !me.isHostOffice) setOfficeId(me.officeId);
   }, [me, isEdit]);
 
   // ── Derived ────────────────────────────────────────────────────────────────

@@ -10,4 +10,10 @@ public sealed record UpdateOwnProfileDto(
     string  Username,
     string? Email,
     string? Position,
-    string? ContactNo);
+    string? ContactNo,
+    /// <summary>
+    /// Preferred landing page: "MainDashboard" | "InventoryDashboard" |
+    /// "BudgetPlanningDashboard" | "Profile". Null = no preference (RAL-262).
+    /// Rejected if the page would not be reachable for this user.
+    /// </summary>
+    string? LandingPage = null);
