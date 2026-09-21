@@ -89,17 +89,35 @@ Everything goes in its **own resource group** so teardown is a single delete.
 | --- | --- | --- |
 | Resource group | `ppdo-portal-rg` | `ppdo-portal-uat-rg` |
 | Static Web App | `ppdo-portal` | `ppdo-portal-uat` |
-| Function App | `ppdo-portal-api` | `ppdo-portal-api-uat` |
+| Function App | `ppdo-portal-api-sea` | `ppdo-portal-api-uat` |
 | SQL Server | `ppdo-portal-server` | `ppdo-portal-server-uat` |
 | SQL Database | `ppdo-portal-db` | `ppdo-portal-db-uat` |
 | Storage | `ppdoportalstorage` | `ppdoportaluatstorage` |
 | App Insights | `ppdo-portal-api` | `ppdo-portal-api-uat` |
 
-**Regions — mirror production.** SQL in Southeast Asia (matches the confirmed
-pricing above and is closest to users); Functions and App Insights in Central US
-as prod does. Fidelity matters here: if UAT sits in a different region to prod,
-its latency and cold-start behaviour differ, and the guide ends up documenting
-loading states that users will never actually see.
+**Regions — everything in Southeast Asia.**
+
+↩️ ⚠️ **Corrected 2026-09-21. This section used to say "Functions and App Insights in
+Central US as prod does" — that was true when it was drafted on 2026-08-10 and stopped being true a
+week later.** RAL-237 (2026-08-17) relocated the production Function App from Central US to
+Southeast Asia precisely *because* every request was crossing the Pacific to reach the database.
+Measured effect: **~2–6s per request → ~0.4s.** Production's Function App is now
+`ppdo-portal-api-sea`; the old Central US app is superseded.
+
+**Following the old instruction would have rebuilt the exact bug RAL-237 fixed**, and UAT testers
+would have judged v1.8.0's performance against a handicap production no longer has. CLAUDE.md states
+the rule plainly: *any new Azure resource goes in Southeast Asia.*
+
+| Resource | Region |
+|---|---|
+| SQL Server + Database | Southeast Asia |
+| Function App | Southeast Asia — **colocated with the database** |
+| Storage | Southeast Asia |
+| Static Web App | Free tier has no region choice; the edge serves globally |
+| App Insights | Southeast Asia (prod's still sits in Central US; telemetry is not latency-critical, but there is no reason to repeat it) |
+
+Fidelity still matters, and this *is* the faithful setup: matching production means matching
+production **as it is now**, not as it was before the relocation.
 
 ---
 
@@ -116,6 +134,7 @@ Create in this order — later resources need values from earlier ones.
 - [ ] **SQL Database** `ppdo-portal-db-uat` — **Basic** tier (5 DTU, 2GB)
 - [ ] **Function App** `ppdo-portal-api-uat`
   - [ ] Runtime .NET 9 **isolated**, Consumption plan, matching prod's OS
+  - [ ] ⚠️ **Region: Southeast Asia** — colocated with the SQL database (see §3)
   - [ ] Application settings per §5
   - [ ] **CORS** → add the UAT Static Web App URL
         (Portal only — `host.json` CORS does **not** work for the isolated worker)
