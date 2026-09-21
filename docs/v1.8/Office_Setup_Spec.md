@@ -86,9 +86,17 @@ stays exclusive to host-office users (`Permission_Matrix.md` §4a), which is wha
 | A department head with the grant | Opens Configuration → Fund Sources | The shared funds are listed **read-only**, their own office's funds are editable |
 | The same | Adds a fund with the code `GF` | Rejected: the code is taken (D6) |
 | The same | Adds a fund with a free code | Created against their office, visible only to their office |
-| The same | Deletes a fund used by a WFP or AIP line | Blocked, with the count of rows using it |
+| The same | Deletes a fund used by a WFP or AIP line | Blocked, with the count of rows using it. ↩️ **Clarified, PPDO-109:** the block applies to the **department head only**. A config manager keeps the unconditional soft delete, because that is what soft delete is FOR — retiring a fund from the pickers while decades of records keep resolving through it. Applying the guard to PPDO would make every fund that was ever used undeletable, which is all of them. |
 | An encoder in that office | Opens a WFP or AIP expenditure line | The fund picker shows shared funds **plus** their office's own |
 | An encoder in another office | The same picker | The first office's funds are absent |
+
+↩️ **Deferred, PPDO-109 — the picker is scoped, the expenditure WRITE is not.** The fund LIST every
+surface reads is office-scoped, so no office can pick another's fund through the UI. The AIP/WFP
+expenditure save paths still resolve any `fundingSourceId` they are handed, so a hand-crafted request
+could name another office's fund and have it snapshotted. Its effect is a wrong fund label on the
+caller's own line, outside their own ceiling — not a read of anyone else's data — and closing it means
+resolving the owning office at four write sites with four different call chains. Filed as its own
+techdebt ticket rather than widened into this one.
 
 ## 4. API contract
 
@@ -178,7 +186,7 @@ No change. `divisions.office_id` already exists.
 | **C1** — PPDO-106 | Office Ceilings page for finance; Allocation's ceiling becomes read-only; funding-source tabs built, General Fund only shown (D4) | — |
 | **C2** — PPDO-107 | `CanManageOfficeSetup`: permission service, `/auth/me`, admin toggle, `Permission_Matrix.md` rows, and the two allocation writes accepting an own-office department head | — |
 | **C3** — PPDO-108 | Division config scoped to a department head's own office; switches hidden and server-side dropped | PPDO-107 |
-| **C4** — PPDO-109 | ⚠️ MIGRATION. `funding_sources.office_id`, filtered reads, office-stamped writes, shared rows read-only, the WFP/AIP pickers | PPDO-107 |
+| **C4** — PPDO-109 ✅ | ⚠️ MIGRATION. `funding_sources.office_id`, filtered reads, office-stamped writes, shared rows read-only, the WFP/AIP pickers | PPDO-107 |
 
 C1 is independent and is the one finance needs first for UAT.
 
