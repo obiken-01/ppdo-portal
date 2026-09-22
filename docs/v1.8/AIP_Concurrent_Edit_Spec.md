@@ -210,26 +210,56 @@ Per endpoint, in this order:
 
 ## 5. Data model changes
 
-### `aip_activities` (legacy PascalCase table — see [NAMING_CONVENTIONS.md](../NAMING_CONVENTIONS.md))
+> ↩️ **Corrected 2026-09-22 while implementing PPDO-117.** This section originally said
+> `aip_activities` was a **legacy PascalCase** table requiring PascalCase columns, and that the
+> naming difference between the two tables was mandated by
+> [NAMING_CONVENTIONS.md](../NAMING_CONVENTIONS.md). **That was wrong.** `aip_activities`
+> post-dates that convention, `AipActivityConfiguration` maps every one of its columns to
+> snake_case, and it is not in [CLAUDE.md](../../CLAUDE.md)'s legacy list (`Users`,
+> `CalendarEvents`, `ResourceLinks`, the v1.0 inventory tables). **Both tables are snake_case.**
+> The only real asymmetry is that expenditures already carry `created_at`/`updated_at`.
+
+### `aip_activities` (snake_case)
 
 | Column | Type | Null | Notes |
 |---|---|---|---|
-| `RowVersion` | `rowversion` | no | SQL Server maintains it. Mapped with `.IsRowVersion()`. |
-| `UpdatedAt` | `datetime2` | yes | Null for rows never edited since the migration. |
-| `UpdatedById` | `uniqueidentifier` | yes | FK → `Users.Id`. Supplies the name in the 409. |
+| `row_version` | `rowversion` | no | SQL Server maintains it. Mapped with `.IsRowVersion()`. |
+| `updated_at` | `datetime2` | yes | Null for rows never edited since the migration. |
+| `updated_by_id` | `uniqueidentifier` | yes | FK → `Users.Id`, `Restrict`. Supplies the name in the 409. |
 
-⚠️ **`AipActivity` currently has no update tracking at all** — no `UpdatedAt`, no `UpdatedBy`,
-not even `CreatedAt`. Verified against the entity 2026-09-22. All three columns are new.
+⚠️ **`AipActivity` has no update tracking at all today** — no `UpdatedAt`, no `UpdatedBy`, not
+even `CreatedAt`. Verified against the entity 2026-09-22. All three columns are new.
 
 ### `aip_expenditures` (snake_case)
 
 | Column | Type | Null | Notes |
 |---|---|---|---|
 | `row_version` | `rowversion` | no | |
-| `updated_by_id` | `uniqueidentifier` | yes | FK → `Users.Id` |
+| `updated_by_id` | `uniqueidentifier` | yes | FK → `Users.Id`, `Restrict` |
 
-`created_at` and `updated_at` **already exist here** — the asymmetry with `aip_activities` is
-pre-existing, not introduced by this change. Do not "tidy" it in this migration.
+`created_at` and `updated_at` **already exist here**. That difference is pre-existing, not
+introduced by this change — do not "tidy" it in this migration.
+
+`Users` is itself a legacy PascalCase table, so both FKs point at `Users.Id` in PascalCase while
+the referencing columns are snake_case. That mixture is correct and is what the convention
+produces; it is not a mistake to clean up.
+
+### ⚠️ The test fixtures need the columns too — and a default
+
+Not anticipated when this section was first written. The Infrastructure tests build their schemas
+with **raw SQLite DDL** rather than running the model, so **six `CREATE TABLE` sites across four
+files** must learn the new columns:
+`AipActivityTotalsRecomputeTests`, `AipExpenditureRepositoryTests`, `AipOfficeRollupRepositoryTests`,
+`AipReviewSearchRepositoryTests`.
+
+**SQLite has no `rowversion` and nothing populates the token.** A plain nullable `BLOB` is not
+enough: EF reads the value back after an insert and fails with *"The data is NULL at ordinal N"*
+— 38 tests, all of them looking unrelated to concurrency. The fixtures need
+`row_version BLOB NOT NULL DEFAULT x'0000000000000001'`.
+
+Nothing bumps it there, so **the concurrency behaviour itself is not testable on SQLite** — it is
+SQL Server's, and is verified against SQL Server. Each fixture carries a comment saying so, in case
+someone later reads that default as meaningful.
 
 ### Why `rowversion` rather than comparing `UpdatedAt`
 
