@@ -509,7 +509,7 @@ whether the printed MOOE/CO carry the +30% (§12.2).
 | **V18-68** | Upload: per-node errors, never lose the local draft, server-assigned ref codes on arrival | 6 |
 | **V18-69** | Session persistence policy + "Sign out & clear local work" + auto-wipe after N days | 6 🔴 #7 |
 | **V18-70** | Azure SQL tier review for AIP season | 7 |
-| **V18-71** | Concurrent-edit guard within an office — soft lock or "changed by someone else" warning. ⚠️ **Promoted 2026-08-25:** tracker D5 confirms **two or more encoders per office**, so this is a correctness requirement, not hardening — today the last save silently wins | 7 |
+| **V18-71** | Concurrent-edit guard within an office — soft lock or "changed by someone else" warning. ⚠️ **Promoted 2026-08-25:** tracker D5 confirms **two or more encoders per office**, so this is a correctness requirement, not hardening — today the last save silently wins. ✅ **Specified and ticketed 2026-09-22** — see [AIP_Concurrent_Edit_Spec.md](AIP_Concurrent_Edit_Spec.md) and epic PPDO-116 (children PPDO-117…121). Settled as **optimistic concurrency on a `rowversion`, not a lock**; "soft" describes the locking model, and the conflicting save is still rejected with a 409 | 7 |
 | **V18-72** | Approval snapshot — preserve what was approved when a record is returned and edited | 7 |
 | **V18-73** | Amendment readiness — don't make approval terminal (RAL-78 already exists). ⚠️ **Doubly restated 2026-08-26:** the LFC is out of the system (§12.4), and the terminal authority now appears to be the **Sangguniang Panlalawigan resolution**, not any state this system owns. Supplementals reportedly go to the SP *first* — so this is a workflow question before it is a schema one (§12.6, tracker B14/B15) | 7 |
 
