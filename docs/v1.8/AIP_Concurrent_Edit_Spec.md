@@ -1,7 +1,7 @@
 ---
-status: draft — decisions §2 are proposed, not confirmed
+status: approved — §2 settled 2026-09-22
 version: v1.8.x (Phase 7)
-tickets: V18-71
+tickets: V18-71 (PPDO-116 … PPDO-121)
 supersedes: —
 ---
 
@@ -10,10 +10,16 @@ supersedes: —
 Governed by [SPEC_STANDARD.md](../SPEC_STANDARD.md). Implements **V18-71** from
 [Phase_Plan.md](Phase_Plan.md) §8.
 
-> ⚠️ **§2's decisions are proposals, not settled.** They are written as defaults so the rest of
-> the document can be concrete — it is faster to correct a proposal than to author from blank
-> ([CLAUDE.md](../../CLAUDE.md), "Eliciting feature details"). Each is marked 🅐–🅓 and each says
-> what changes if it is answered the other way. **Confirm these before the first ticket is cut.**
+> ✅ **§2 settled 2026-09-22.** Ralph: *"go with soft warning, optimistic concurrency"* — 🅐
+> confirmed explicitly. 🅑, 🅒 and 🅓 were presented alongside it as defaults and adopted with it;
+> they remain cheap to change until PPDO-118 starts, and each still records what would change.
+
+> ⚠️ **"Soft warning" does not mean the save goes through.** It is worth pinning, because the
+> phrase has a second reading that would leave the bug in place. **Soft** describes the *locking
+> model*: nothing is reserved, no lease is held, an abandoned tab blocks nobody, and the user may
+> choose to overwrite. **The conflicting save is still rejected** — 409, nothing written. A save
+> that completed with a warning attached would still destroy the first encoder's work, which is
+> the entire defect this document exists to close.
 
 ---
 
@@ -40,9 +46,9 @@ editor since they loaded it.
 
 ---
 
-## 2. Decisions (proposed — confirm before ticketing)
+## 2. Decisions (settled 2026-09-22)
 
-### 🅐 Optimistic concurrency, not a pessimistic lock
+### 🅐 Optimistic concurrency, not a pessimistic lock — ✅ **confirmed**
 
 A save carries the version the editor loaded. If the stored version has moved, the save is
 **rejected** and the editor is told. No lock is taken, nothing is reserved, and an abandoned tab
@@ -57,7 +63,7 @@ concurrency has one failure mode and it is the one we want.
 column), but §3, §4 and §6 are rewritten around lease acquisition and takeover, and the ticket
 split roughly doubles.
 
-### 🅑 The **activity row** is the unit of conflict
+### 🅑 The **activity row** is the unit of conflict — ✅ adopted
 
 Not the whole AIP record, not the office.
 
@@ -69,7 +75,7 @@ for the same reason.
 
 *If answered the other way:* far simpler to build, and near-useless.
 
-### 🅒 The loser keeps their input
+### 🅒 The loser keeps their input — ✅ adopted
 
 A rejected save never discards what the user typed. They see their value, the stored value, who
 saved it and when, and choose: **overwrite** or **discard mine and reload**.
@@ -77,7 +83,7 @@ saved it and when, and choose: **overwrite** or **discard mine and reload**.
 **Why not auto-merge:** these are money fields. A silent field-level merge produces a row neither
 person entered and neither person can explain at PDC.
 
-### 🅓 AIP Entry only, this round
+### 🅓 AIP Entry only, this round — ✅ adopted
 
 Activities and their expenditures. WFP entry has identical exposure and is deliberately excluded —
 the encoders are in AIP this season, and the mechanism is built to be liftable.
