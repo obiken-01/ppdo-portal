@@ -27,14 +27,14 @@ namespace PPDO.Functions.Functions;
 public sealed class ItemFunctions
 {
     private readonly IItemService  _items;
-    private readonly IJwtMiddleware _jwt;
+    private readonly IJwtValidator _jwt;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
-    public ItemFunctions(IItemService items, IJwtMiddleware jwt)
+    public ItemFunctions(IItemService items, IJwtValidator jwt)
     {
         _items = items;
         _jwt   = jwt;
@@ -120,7 +120,7 @@ public sealed class ItemFunctions
         if (caller is null)
             return req.CreateResponse(HttpStatusCode.Unauthorized);
 
-        CreateItemMasterDto? body = await DeserializeAsync<CreateItemMasterDto>(req, cancellationToken);
+        CreateItemMasterDto? body = await ConfigHttp.ReadBodyAsync<CreateItemMasterDto>(req, cancellationToken, _jsonOptions);
         if (body is null)
             return await BadRequest(req, "Request body is missing or malformed.");
 
@@ -142,7 +142,7 @@ public sealed class ItemFunctions
         if (caller is null)
             return req.CreateResponse(HttpStatusCode.Unauthorized);
 
-        UpdateItemMasterDto? body = await DeserializeAsync<UpdateItemMasterDto>(req, cancellationToken);
+        UpdateItemMasterDto? body = await ConfigHttp.ReadBodyAsync<UpdateItemMasterDto>(req, cancellationToken, _jsonOptions);
         if (body is null)
             return await BadRequest(req, "Request body is missing or malformed.");
 
@@ -175,17 +175,6 @@ public sealed class ItemFunctions
         => req.Headers.TryGetValues("Authorization", out IEnumerable<string>? values)
             ? values.FirstOrDefault()
             : null;
-
-    private static async Task<T?> DeserializeAsync<T>(
-        HttpRequestData req, CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await JsonSerializer.DeserializeAsync<T>(
-                req.Body, _jsonOptions, cancellationToken);
-        }
-        catch { return default; }
-    }
 
     private static async Task<HttpResponseData> OkJson<T>(
         HttpRequestData req, T body, CancellationToken cancellationToken)

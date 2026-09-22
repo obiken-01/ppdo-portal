@@ -21,12 +21,12 @@ namespace PPDO.Functions.Functions;
 public sealed class LdipFunctions
 {
     private readonly ILdipService        _ldip;
-    private readonly IJwtMiddleware      _jwt;
+    private readonly IJwtValidator      _jwt;
     private readonly IPermissionService  _permissions;
     private readonly IRepository<FundingSource> _fsRepo;
 
     public LdipFunctions(
-        ILdipService ldip, IJwtMiddleware jwt, IPermissionService permissions, IRepository<FundingSource> fsRepo)
+        ILdipService ldip, IJwtValidator jwt, IPermissionService permissions, IRepository<FundingSource> fsRepo)
     {
         _ldip        = ldip;
         _jwt         = jwt;

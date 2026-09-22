@@ -47,7 +47,7 @@ public interface IAuditService
     /// Persists one audit row for a Guid-keyed table, stamping <paramref name="actorId"/> as
     /// the acting user instead of reading <c>CallerContext</c>. Use this from a public,
     /// unauthenticated endpoint (e.g. self-service password reset via recovery answer, RAL-265)
-    /// where the actor has just proven their identity without a JWT, so JwtMiddleware never ran
+    /// where the actor has just proven their identity without a JWT, so JwtValidator never ran
     /// and CallerContext.UserId is unset.
     /// </summary>
     Task LogAsync(

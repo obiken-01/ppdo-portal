@@ -22,14 +22,14 @@ namespace PPDO.Functions.Functions;
 public sealed class ResourceLinkFunctions
 {
     private readonly IResourceLinkService _service;
-    private readonly IJwtMiddleware       _jwt;
+    private readonly IJwtValidator       _jwt;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
-    public ResourceLinkFunctions(IResourceLinkService service, IJwtMiddleware jwt)
+    public ResourceLinkFunctions(IResourceLinkService service, IJwtValidator jwt)
     {
         _service = service;
         _jwt     = jwt;
@@ -66,7 +66,7 @@ public sealed class ResourceLinkFunctions
             return req.CreateResponse(HttpStatusCode.Unauthorized);
 
         CreateResourceLinkDto? body =
-            await DeserializeAsync<CreateResourceLinkDto>(req, cancellationToken);
+            await ConfigHttp.ReadBodyAsync<CreateResourceLinkDto>(req, cancellationToken, _jsonOptions);
         if (body is null)
             return await BadRequest(req, "Request body is missing or malformed.");
 
@@ -90,7 +90,7 @@ public sealed class ResourceLinkFunctions
             return req.CreateResponse(HttpStatusCode.Unauthorized);
 
         UpdateResourceLinkDto? body =
-            await DeserializeAsync<UpdateResourceLinkDto>(req, cancellationToken);
+            await ConfigHttp.ReadBodyAsync<UpdateResourceLinkDto>(req, cancellationToken, _jsonOptions);
         if (body is null)
             return await BadRequest(req, "Request body is missing or malformed.");
 
@@ -125,17 +125,6 @@ public sealed class ResourceLinkFunctions
         => req.Headers.TryGetValues("Authorization", out IEnumerable<string>? values)
             ? values.FirstOrDefault()
             : null;
-
-    private static async Task<T?> DeserializeAsync<T>(
-        HttpRequestData req, CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await JsonSerializer.DeserializeAsync<T>(
-                req.Body, _jsonOptions, cancellationToken);
-        }
-        catch { return default; }
-    }
 
     private static async Task<HttpResponseData> OkJson<T>(
         HttpRequestData req, T body, CancellationToken cancellationToken)

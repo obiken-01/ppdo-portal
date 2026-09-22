@@ -28,7 +28,7 @@ public sealed class ConfigDivisionFunctionsTests
 
     private readonly Mock<IDivisionService>   _divisions   = new(MockBehavior.Strict);
     private readonly Mock<IOfficeService>     _offices     = new(MockBehavior.Strict);
-    private readonly Mock<IJwtMiddleware>     _jwt         = new(MockBehavior.Strict);
+    private readonly Mock<IJwtValidator>     _jwt         = new(MockBehavior.Strict);
     private readonly Mock<IPermissionService> _permissions = new(MockBehavior.Loose);
 
     private ConfigDivisionFunctions Sut =>

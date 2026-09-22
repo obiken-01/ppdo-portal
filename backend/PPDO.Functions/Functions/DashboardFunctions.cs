@@ -19,7 +19,7 @@ namespace PPDO.Functions.Functions;
 public sealed class DashboardFunctions
 {
     private readonly IDashboardService _dashboard;
-    private readonly IJwtMiddleware    _jwt;
+    private readonly IJwtValidator    _jwt;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -29,7 +29,7 @@ public sealed class DashboardFunctions
         Converters = { new JsonStringEnumConverter() },
     };
 
-    public DashboardFunctions(IDashboardService dashboard, IJwtMiddleware jwt)
+    public DashboardFunctions(IDashboardService dashboard, IJwtValidator jwt)
     {
         _dashboard = dashboard;
         _jwt       = jwt;
@@ -78,7 +78,7 @@ public sealed class DashboardFunctions
             return req.CreateResponse(HttpStatusCode.Unauthorized);
 
         CreateCalendarEventDto? body =
-            await DeserializeAsync<CreateCalendarEventDto>(req, cancellationToken);
+            await ConfigHttp.ReadBodyAsync<CreateCalendarEventDto>(req, cancellationToken, _jsonOptions);
         if (body is null)
             return await BadRequest(req, "Request body is missing or malformed.");
 
@@ -120,7 +120,7 @@ public sealed class DashboardFunctions
             return req.CreateResponse(HttpStatusCode.Unauthorized);
 
         ReviewCalendarEventDto? body =
-            await DeserializeAsync<ReviewCalendarEventDto>(req, cancellationToken);
+            await ConfigHttp.ReadBodyAsync<ReviewCalendarEventDto>(req, cancellationToken, _jsonOptions);
         if (body is null)
             return await BadRequest(req, "Request body is missing or malformed.");
 
@@ -144,7 +144,7 @@ public sealed class DashboardFunctions
             return req.CreateResponse(HttpStatusCode.Unauthorized);
 
         UpdateCalendarEventDto? body =
-            await DeserializeAsync<UpdateCalendarEventDto>(req, cancellationToken);
+            await ConfigHttp.ReadBodyAsync<UpdateCalendarEventDto>(req, cancellationToken, _jsonOptions);
         if (body is null)
             return await BadRequest(req, "Request body is missing or malformed.");
 
@@ -203,16 +203,6 @@ public sealed class DashboardFunctions
     {
         string? raw = req.Query[key];
         return int.TryParse(raw, out int value) ? value : fallback;
-    }
-
-    private static async Task<T?> DeserializeAsync<T>(
-        HttpRequestData req, CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await JsonSerializer.DeserializeAsync<T>(req.Body, _jsonOptions, cancellationToken);
-        }
-        catch { return default; }
     }
 
     private static async Task<HttpResponseData> OkJson<T>(

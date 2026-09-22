@@ -18,12 +18,12 @@ namespace PPDO.Functions.Functions;
 public sealed class AipNotificationFunctions
 {
     private readonly IAipNotificationService _notifications;
-    private readonly IJwtMiddleware          _jwt;
+    private readonly IJwtValidator          _jwt;
     private readonly IPermissionService      _permissions;
 
     public AipNotificationFunctions(
         IAipNotificationService notifications,
-        IJwtMiddleware          jwt,
+        IJwtValidator          jwt,
         IPermissionService      permissions)
     {
         _notifications = notifications;

@@ -34,7 +34,7 @@ public sealed class BudgetPlanningDashboardFunctionsTests
     private const int FiscalYear    = 2027;
 
     private readonly Mock<IBudgetPlanningDashboardService> _service     = new(MockBehavior.Strict);
-    private readonly Mock<IJwtMiddleware>                  _jwt         = new(MockBehavior.Strict);
+    private readonly Mock<IJwtValidator>                  _jwt         = new(MockBehavior.Strict);
     private readonly Mock<IPermissionService>              _permissions = new(MockBehavior.Loose);
 
     private BudgetPlanningDashboardFunctions Sut => new(_service.Object, _jwt.Object, _permissions.Object);

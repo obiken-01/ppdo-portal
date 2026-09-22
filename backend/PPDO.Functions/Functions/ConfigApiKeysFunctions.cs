@@ -19,11 +19,11 @@ namespace PPDO.Functions.Functions;
 public sealed class ConfigApiKeysFunctions
 {
     private readonly IPartnerApiKeyService _keys;
-    private readonly IJwtMiddleware _jwt;
+    private readonly IJwtValidator _jwt;
     private readonly IPermissionService _permissions;
 
     public ConfigApiKeysFunctions(
-        IPartnerApiKeyService keys, IJwtMiddleware jwt, IPermissionService permissions)
+        IPartnerApiKeyService keys, IJwtValidator jwt, IPermissionService permissions)
     {
         _keys = keys;
         _jwt = jwt;

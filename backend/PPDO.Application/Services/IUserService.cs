@@ -9,7 +9,7 @@ namespace PPDO.Application.Services;
 /// Implemented in <c>UserService.cs</c> in this namespace.
 ///
 /// The caller (Function handler) is responsible for:
-///   1. JWT validation (<see cref="IJwtMiddleware.ValidateAsync"/>)
+///   1. JWT validation (<see cref="IJwtValidator.ValidateAsync"/>)
 ///   2. Feature-level permission check (<see cref="IPermissionService.CanManageUsersAsync"/>)
 ///
 /// This service enforces the scope rules:

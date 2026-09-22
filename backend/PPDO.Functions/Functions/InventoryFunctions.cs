@@ -22,14 +22,14 @@ namespace PPDO.Functions.Functions;
 public sealed class InventoryFunctions
 {
     private readonly IInventoryService _service;
-    private readonly IJwtMiddleware    _jwt;
+    private readonly IJwtValidator    _jwt;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
-    public InventoryFunctions(IInventoryService service, IJwtMiddleware jwt)
+    public InventoryFunctions(IInventoryService service, IJwtValidator jwt)
     {
         _service = service;
         _jwt     = jwt;

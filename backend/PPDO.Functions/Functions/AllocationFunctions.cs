@@ -46,13 +46,13 @@ public sealed class AllocationFunctions
 {
     private readonly IAllocationService _allocation;
     private readonly IAipCeilingService _aipCeiling;
-    private readonly IJwtMiddleware     _jwt;
+    private readonly IJwtValidator     _jwt;
     private readonly IPermissionService _permissions;
 
     public AllocationFunctions(
         IAllocationService  allocation,
         IAipCeilingService  aipCeiling,
-        IJwtMiddleware      jwt,
+        IJwtValidator      jwt,
         IPermissionService  permissions)
     {
         _allocation  = allocation;

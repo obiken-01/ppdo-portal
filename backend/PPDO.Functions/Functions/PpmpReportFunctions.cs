@@ -20,12 +20,12 @@ public sealed class PpmpReportFunctions
 {
     private readonly IPpmpReportService       _report;
     private readonly IPpmpReportExcelService  _excel;
-    private readonly IJwtMiddleware           _jwt;
+    private readonly IJwtValidator           _jwt;
     private readonly IPermissionService       _permissions;
 
     public PpmpReportFunctions(
         IPpmpReportService report, IPpmpReportExcelService excel,
-        IJwtMiddleware jwt, IPermissionService permissions)
+        IJwtValidator jwt, IPermissionService permissions)
     {
         _report      = report;
         _excel       = excel;

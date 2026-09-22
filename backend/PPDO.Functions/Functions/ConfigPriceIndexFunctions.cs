@@ -19,10 +19,10 @@ namespace PPDO.Functions.Functions;
 public sealed class ConfigPriceIndexFunctions
 {
     private readonly IPriceIndexService _priceIndex;
-    private readonly IJwtMiddleware     _jwt;
+    private readonly IJwtValidator     _jwt;
     private readonly IPermissionService _permissions;
 
-    public ConfigPriceIndexFunctions(IPriceIndexService priceIndex, IJwtMiddleware jwt, IPermissionService permissions)
+    public ConfigPriceIndexFunctions(IPriceIndexService priceIndex, IJwtValidator jwt, IPermissionService permissions)
     {
         _priceIndex  = priceIndex;
         _jwt         = jwt;

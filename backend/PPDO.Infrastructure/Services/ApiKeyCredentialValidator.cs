@@ -12,7 +12,7 @@ namespace PPDO.Infrastructure.Services;
 /// only <see cref="IPartnerCredentialValidator"/> implementation today — see that interface for
 /// why it stays behind one.
 ///
-/// Register as scoped in Program.cs, alongside <see cref="JwtMiddleware"/>.
+/// Register as scoped in Program.cs, alongside <see cref="JwtValidator"/>.
 /// </summary>
 public sealed class ApiKeyCredentialValidator : IPartnerCredentialValidator
 {
@@ -53,7 +53,7 @@ public sealed class ApiKeyCredentialValidator : IPartnerCredentialValidator
         catch
         {
             // Never let a malformed header or a transient failure propagate — the caller always
-            // gets the uniform 401, matching JwtMiddleware's own never-throws contract.
+            // gets the uniform 401, matching JwtValidator's own never-throws contract.
             return null;
         }
     }
