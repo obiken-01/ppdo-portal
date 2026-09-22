@@ -119,15 +119,41 @@ the ticket split.
 
 No new endpoints. Every AIP **write** endpoint gains an optional-then-required version field.
 
-Affected today:
+### Coverage — exactly which edits are protected
 
-| Route | Row |
-|---|---|
-| `PUT /api/budget-planning/aip/{id}/activities/{activityId}` | activity |
-| `PUT /api/budget-planning/aip/activities/{id}/details` | activity |
-| `PUT /api/budget-planning/aip/activities/{id}/is-creation` | activity |
-| `PUT /api/budget-planning/aip/expenditures/{id}` | expenditure |
-| `DELETE` on either | the row being deleted |
+Verified against the endpoint list 2026-09-22.
+
+| Route | Versioned row | Covers |
+|---|---|---|
+| `PUT /api/budget-planning/aip/{id}/activities/{activityId}` | activity | inline amount edit — PS / MOOE / CO |
+| `PUT /api/budget-planning/aip/activities/{id}/details` | activity | **activity details** — ESRE code, dates, implementing office, expected outputs, CC adaptation/mitigation, typology |
+| `PUT /api/budget-planning/aip/activities/{id}/is-creation` | activity | the new-vs-continuing flag |
+| `DELETE /api/budget-planning/aip/activities/{id}` | activity | |
+| `PUT /api/budget-planning/aip/expenditures/{id}` | expenditure | **expenditure** — account, fund source, PS/MOOE/CO, **and its procurement items** |
+| `DELETE /api/budget-planning/aip/expenditures/{id}` | expenditure | |
+| `POST /api/budget-planning/aip/activities/{activityId}/expenditures` | — | **create: no version sent.** A row that does not exist yet cannot conflict. |
+
+**So yes: both activity details and expenditures are covered, and so are procurement items.**
+
+> ✅ **Procurement items need no version of their own.** They have **no endpoints** — they are
+> nested in the expenditure write DTO (`dto.ProcurementItems`) and persisted by
+> `ReplaceProcurementItemsAsync(expenditureId, …)`, a wholesale replace scoped to the parent. So
+> the only way to change an item is through the expenditure `PUT`, and versioning that row covers
+> them.
+>
+> ⚠️ **This holds because of one line, and a future change could quietly break it.**
+> `AipExpenditureService` sets `line.UpdatedAt = DateTime.UtcNow` **unconditionally** on update,
+> before any item handling — so the parent row is always dirtied and SQL Server always bumps its
+> `rowversion`, even when *only* the items changed. Remove that unconditional write as an
+> "optimisation" (skip the parent when nothing on it changed) and two encoders editing procurement
+> items under the same expenditure would both succeed, silently, last-write-wins — the exact bug
+> this spec exists to close, reintroduced one level down. **If procurement items ever get their own
+> endpoints, they need their own `rowversion`.**
+
+**Not covered, by decision** (§2 open follow-ups): program, project and office **renames**
+(`PUT .../programs/{id}`, `.../projects/{id}`, `.../offices/{officeId}`, `.../function-band`).
+Rare, and low-stakes next to amounts. Adding them later is the same three columns and the same
+service pattern — the mechanism does not change, only the table list.
 
 **Request** — one added field, base64 of the `rowversion`:
 
@@ -314,6 +340,8 @@ Verifiable against the running app by a person, two browsers, one office:
 - [ ] **Discard mine and reload** shows the other encoder's values.
 - [ ] Two encoders edit **different** activities in the same office simultaneously → both succeed, no warning. *(The regression that would make this feature hated.)*
 - [ ] Editing an activity's amounts while another adds an expenditure under it → both succeed.
+- [ ] Two encoders open the same **expenditure** and both edit **only its procurement items** → the second is stopped. *(The nesting case from §4 — it is protected by the parent row's version, not its own, so it is worth verifying rather than assuming.)*
+- [ ] Two encoders open the same activity and edit **details** (dates, ESRE, outputs) rather than amounts → the second is stopped. Same row, same guard.
 - [ ] Deleting the row in one browser, then saving in the other → "deleted", not a conflict panel.
 - [ ] A submitted (`SubmittedToPpdo`) record still returns PPDO-70's 403, not a 409.
 - [ ] After Deploy 3, a request with no `rowVersion` gets 400.
