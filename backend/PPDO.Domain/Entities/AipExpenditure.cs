@@ -1,3 +1,5 @@
+using PPDO.Domain.Common;
+
 namespace PPDO.Domain.Entities;
 
 /// <summary>
@@ -22,7 +24,7 @@ namespace PPDO.Domain.Entities;
 /// this entity's shape without its snapshots quietly loses the second question — which is the one
 /// an auditor asks.
 /// </summary>
-public sealed class AipExpenditure
+public sealed class AipExpenditure : IRowVersioned
 {
     /// <summary>Primary key (INT IDENTITY).</summary>
     public int Id { get; set; }

@@ -61,7 +61,7 @@ public sealed partial class AipServiceTests
         AipService sut = BuildSut(OfficeInState(AipWorkflowStatus.Draft));
 
         ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(
-            AipRecordId, 40, UpdateActivity(), WriteHostCaller(), CancellationToken.None);
+            AipRecordId, 40, UpdateActivity(), WriteHostCaller(), ct: CancellationToken.None);
 
         Assert.True(result.IsSuccess);
     }
@@ -80,7 +80,7 @@ public sealed partial class AipServiceTests
         AipService sut = BuildSut(OfficeInState(status));
 
         ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(
-            AipRecordId, 40, UpdateActivity(), WriteHostCaller(), CancellationToken.None);
+            AipRecordId, 40, UpdateActivity(), WriteHostCaller(), ct: CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -100,7 +100,7 @@ public sealed partial class AipServiceTests
         AipService sut = BuildSut(OfficeInState(status));
 
         ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(
-            AipRecordId, 40, UpdateActivity(), WriteHostCaller(), CancellationToken.None);
+            AipRecordId, 40, UpdateActivity(), WriteHostCaller(), ct: CancellationToken.None);
 
         Assert.True(result.IsSuccess);
     }
@@ -135,7 +135,7 @@ public sealed partial class AipServiceTests
         AipService sut = BuildSut(OfficeInState(AipWorkflowStatus.SubmittedToPpdo));
 
         ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(
-            AipRecordId, 40, UpdateActivity(), WriteHostCaller(), CancellationToken.None);
+            AipRecordId, 40, UpdateActivity(), WriteHostCaller(), ct: CancellationToken.None);
 
         Assert.Contains("review by PPDO", result.Error, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("sent on", result.Error, StringComparison.OrdinalIgnoreCase);
@@ -157,7 +157,7 @@ public sealed partial class AipServiceTests
         AipService sut = BuildSut(OfficeInState(AipWorkflowStatus.SubmittedToPpdo));
 
         ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(
-            AipRecordId, 40, UpdateActivity(), WriteHostCaller(), CancellationToken.None);
+            AipRecordId, 40, UpdateActivity(), WriteHostCaller(), ct: CancellationToken.None);
 
         Assert.False(result.IsSuccess);
     }

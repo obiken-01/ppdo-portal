@@ -1,3 +1,5 @@
+using PPDO.Domain.Common;
+
 namespace PPDO.Domain.Entities;
 
 /// <summary>
@@ -8,7 +10,7 @@ namespace PPDO.Domain.Entities;
 /// FundingSourceSnapshot preserves the funding source code at import time so
 /// historical records stay accurate if config is edited later.
 /// </summary>
-public sealed class AipActivity
+public sealed class AipActivity : IRowVersioned
 {
     /// <summary>Primary key (INT IDENTITY).</summary>
     public int Id { get; set; }

@@ -377,7 +377,7 @@ public sealed class AipFunctions
                 ApiResponse<AipActivityDto>.Fail("Request body is missing or malformed."), ct);
 
         return await ConfigHttp.FromResultAsync(req,
-            await _aip.UpdateActivityAsync(id, activityId, body, caller!, ct), ct);
+            await _aip.UpdateActivityAsync(id, activityId, body, caller!, ct: ct), ct);
     }
 
     // ── DELETE /api/budget-planning/aip/offices/{officeId} ────────────────────
@@ -512,7 +512,7 @@ public sealed class AipFunctions
                 ApiResponse<AipActivityDto>.Fail("Request body is missing or malformed."), ct);
 
         return await ConfigHttp.FromResultAsync(req,
-            await _aip.UpdateActivityIsCreationAsync(id, body.IsCreation, caller!, ct), ct);
+            await _aip.UpdateActivityIsCreationAsync(id, body.IsCreation, caller!, ct: ct), ct);
     }
 
     // ── PUT /api/budget-planning/aip/activities/{id}/details ──────────────────
@@ -533,6 +533,6 @@ public sealed class AipFunctions
                 ApiResponse<AipActivityDto>.Fail("Request body is missing or malformed."), ct);
 
         return await ConfigHttp.FromResultAsync(req,
-            await _aip.UpdateActivityDetailsAsync(id, body, caller!, ct), ct);
+            await _aip.UpdateActivityDetailsAsync(id, body, caller!, ct: ct), ct);
     }
 }

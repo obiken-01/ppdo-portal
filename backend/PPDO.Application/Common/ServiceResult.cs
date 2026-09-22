@@ -19,11 +19,31 @@ public sealed class ServiceResult<T>
     /// <summary>Machine-readable error category for HTTP status mapping.</summary>
     public ServiceErrorCode Code { get; }
 
-    private ServiceResult(T? value, string? error, ServiceErrorCode code)
+    /// <summary>
+    /// Structured detail accompanying a failure, serialized into the error response's <c>data</c>
+    /// (V18-71 / PPDO-118). Null on success and on every failure that has nothing to add.
+    ///
+    /// <para>
+    /// Added for the concurrency conflict, which is the first failure in this codebase the client
+    /// must <i>act</i> on rather than just read: to offer Overwrite / Discard the UI needs the
+    /// current values, who saved them, and the row's new version. A sentence cannot carry that.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ Typed as <c>object</c> so <see cref="ServiceResult{T}"/> stays feature-agnostic — it is
+    /// shared by every service and must not learn about AIP. Whatever goes in here is serialized
+    /// straight to the client, so it must contain <b>nothing internal</b>: no exception detail, no
+    /// SQL, no identifiers the caller may not see.
+    /// </para>
+    /// </summary>
+    public object? Details { get; }
+
+    private ServiceResult(T? value, string? error, ServiceErrorCode code, object? details = null)
     {
-        Value = value;
-        Error = error;
-        Code  = code;
+        Value   = value;
+        Error   = error;
+        Code    = code;
+        Details = details;
     }
 
     // ── Factory methods ────────────────────────────────────────────────────────
@@ -40,6 +60,13 @@ public sealed class ServiceResult<T>
     public static ServiceResult<T> Conflict(string error)
         => new(default, error, ServiceErrorCode.Conflict);
 
+    /// <summary>
+    /// A conflict carrying structured detail for the client to act on — see
+    /// <see cref="Details"/>. Used by the AIP concurrency guard (V18-71).
+    /// </summary>
+    public static ServiceResult<T> Conflict(string error, object details)
+        => new(default, error, ServiceErrorCode.Conflict, details);
+
     public static ServiceResult<T> BadRequest(string error)
         => new(default, error, ServiceErrorCode.BadRequest);
 
@@ -50,7 +77,7 @@ public sealed class ServiceResult<T>
     /// Only valid when <paramref name="source"/> is not successful.
     /// </summary>
     public static ServiceResult<T> FromError<TSource>(ServiceResult<TSource> source)
-        => new(default, source.Error, source.Code);
+        => new(default, source.Error, source.Code, source.Details);
 }
 
 /// <summary>Machine-readable error categories for HTTP status mapping.</summary>
