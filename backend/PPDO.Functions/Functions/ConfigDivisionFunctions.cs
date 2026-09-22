@@ -34,13 +34,13 @@ public sealed class ConfigDivisionFunctions
 {
     private readonly IDivisionService   _divisions;
     private readonly IOfficeService     _offices;
-    private readonly IJwtMiddleware     _jwt;
+    private readonly IJwtValidator     _jwt;
     private readonly IPermissionService _permissions;
 
     public ConfigDivisionFunctions(
         IDivisionService   divisions,
         IOfficeService     offices,
-        IJwtMiddleware     jwt,
+        IJwtValidator     jwt,
         IPermissionService permissions)
     {
         _divisions   = divisions;

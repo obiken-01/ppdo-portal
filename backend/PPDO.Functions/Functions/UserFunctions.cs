@@ -24,12 +24,12 @@ namespace PPDO.Functions.Functions;
 public sealed class UserFunctions
 {
     private readonly IUserService _users;
-    private readonly IJwtMiddleware _jwt;
+    private readonly IJwtValidator _jwt;
     private readonly IPermissionService _permissions;
 
     public UserFunctions(
         IUserService users,
-        IJwtMiddleware jwt,
+        IJwtValidator jwt,
         IPermissionService permissions)
     {
         _users       = users;

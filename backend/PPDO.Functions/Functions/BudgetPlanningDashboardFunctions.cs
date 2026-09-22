@@ -19,7 +19,7 @@ namespace PPDO.Functions.Functions;
 public sealed class BudgetPlanningDashboardFunctions
 {
     private readonly IBudgetPlanningDashboardService _service;
-    private readonly IJwtMiddleware                  _jwt;
+    private readonly IJwtValidator                  _jwt;
     private readonly IPermissionService              _permissions;
 
     /// <summary>
@@ -35,7 +35,7 @@ public sealed class BudgetPlanningDashboardFunctions
 
     public BudgetPlanningDashboardFunctions(
         IBudgetPlanningDashboardService service,
-        IJwtMiddleware                  jwt,
+        IJwtValidator                  jwt,
         IPermissionService              permissions)
     {
         _service     = service;

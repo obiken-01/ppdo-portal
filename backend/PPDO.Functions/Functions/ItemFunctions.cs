@@ -27,14 +27,14 @@ namespace PPDO.Functions.Functions;
 public sealed class ItemFunctions
 {
     private readonly IItemService  _items;
-    private readonly IJwtMiddleware _jwt;
+    private readonly IJwtValidator _jwt;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
-    public ItemFunctions(IItemService items, IJwtMiddleware jwt)
+    public ItemFunctions(IItemService items, IJwtValidator jwt)
     {
         _items = items;
         _jwt   = jwt;

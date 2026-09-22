@@ -23,7 +23,7 @@ public sealed class AipConsolidatedFunctionsTests
     private const int FiscalYear = 2028;
 
     private readonly Mock<IAipConsolidatedService> _consolidated = new(MockBehavior.Strict);
-    private readonly Mock<IJwtMiddleware>          _jwt          = new(MockBehavior.Strict);
+    private readonly Mock<IJwtValidator>          _jwt          = new(MockBehavior.Strict);
     private readonly Mock<IPermissionService>      _permissions  = new(MockBehavior.Loose);
 
     private AipConsolidatedFunctions Sut => new(_consolidated.Object, _jwt.Object, _permissions.Object);

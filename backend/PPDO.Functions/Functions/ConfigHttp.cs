@@ -33,7 +33,7 @@ internal static class ConfigHttp
     /// </summary>
     internal static async Task<(User? caller, HttpResponseData? denied)> AuthorizeAsync(
         HttpRequestData req,
-        IJwtMiddleware jwt,
+        IJwtValidator jwt,
         Func<User, Task<bool>> permit,
         CancellationToken cancellationToken)
     {
@@ -66,7 +66,7 @@ internal static class ConfigHttp
     /// </summary>
     internal static async Task<(User? caller, HttpResponseData? denied)> AuthorizeWriteAsync(
         HttpRequestData req,
-        IJwtMiddleware jwt,
+        IJwtValidator jwt,
         IPermissionService permissions,
         Func<User, Task<bool>> permit,
         CancellationToken cancellationToken)

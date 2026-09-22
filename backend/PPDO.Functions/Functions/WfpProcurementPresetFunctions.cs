@@ -20,11 +20,11 @@ namespace PPDO.Functions.Functions;
 public sealed class WfpProcurementPresetFunctions
 {
     private readonly IProcurementPresetService _presets;
-    private readonly IJwtMiddleware            _jwt;
+    private readonly IJwtValidator            _jwt;
     private readonly IPermissionService        _permissions;
 
     public WfpProcurementPresetFunctions(
-        IProcurementPresetService presets, IJwtMiddleware jwt, IPermissionService permissions)
+        IProcurementPresetService presets, IJwtValidator jwt, IPermissionService permissions)
     {
         _presets     = presets;
         _jwt         = jwt;

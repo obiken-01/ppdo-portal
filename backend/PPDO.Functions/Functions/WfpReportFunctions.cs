@@ -18,12 +18,12 @@ public sealed class WfpReportFunctions
 {
     private readonly IWfpReportService       _report;
     private readonly IWfpReportExcelService  _excel;
-    private readonly IJwtMiddleware          _jwt;
+    private readonly IJwtValidator          _jwt;
     private readonly IPermissionService      _permissions;
 
     public WfpReportFunctions(
         IWfpReportService report, IWfpReportExcelService excel,
-        IJwtMiddleware jwt, IPermissionService permissions)
+        IJwtValidator jwt, IPermissionService permissions)
     {
         _report      = report;
         _excel       = excel;

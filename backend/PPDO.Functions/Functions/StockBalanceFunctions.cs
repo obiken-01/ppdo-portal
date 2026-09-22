@@ -18,7 +18,7 @@ namespace PPDO.Functions.Functions;
 public sealed class StockBalanceFunctions
 {
     private readonly IStockBalanceService _service;
-    private readonly IJwtMiddleware       _jwt;
+    private readonly IJwtValidator       _jwt;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -26,7 +26,7 @@ public sealed class StockBalanceFunctions
         PropertyNameCaseInsensitive = true,
     };
 
-    public StockBalanceFunctions(IStockBalanceService service, IJwtMiddleware jwt)
+    public StockBalanceFunctions(IStockBalanceService service, IJwtValidator jwt)
     {
         _service = service;
         _jwt     = jwt;

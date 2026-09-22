@@ -46,7 +46,7 @@ public sealed class AllocationFunctionsTests
 
     private readonly Mock<IAllocationService>  _allocation  = new(MockBehavior.Strict);
     private readonly Mock<IAipCeilingService>  _aipCeiling  = new(MockBehavior.Strict);
-    private readonly Mock<IJwtMiddleware>      _jwt         = new(MockBehavior.Strict);
+    private readonly Mock<IJwtValidator>      _jwt         = new(MockBehavior.Strict);
     private readonly Mock<IPermissionService>  _permissions = new(MockBehavior.Loose);
 
     private AllocationFunctions Sut =>

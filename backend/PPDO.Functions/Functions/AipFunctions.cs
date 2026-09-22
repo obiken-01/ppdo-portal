@@ -19,13 +19,13 @@ namespace PPDO.Functions.Functions;
 public sealed class AipFunctions
 {
     private readonly IAipService               _aip;
-    private readonly IJwtMiddleware            _jwt;
+    private readonly IJwtValidator            _jwt;
     private readonly IPermissionService        _permissions;
     private readonly IRepository<FundingSource> _fsRepo;
 
     public AipFunctions(
         IAipService aip,
-        IJwtMiddleware jwt,
+        IJwtValidator jwt,
         IPermissionService permissions,
         IRepository<FundingSource> fsRepo)
     {

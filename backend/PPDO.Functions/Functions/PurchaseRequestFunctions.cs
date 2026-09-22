@@ -34,14 +34,14 @@ namespace PPDO.Functions.Functions;
 public sealed class PurchaseRequestFunctions
 {
     private readonly IPurchaseRequestService _service;
-    private readonly IJwtMiddleware          _jwt;
+    private readonly IJwtValidator          _jwt;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
-    public PurchaseRequestFunctions(IPurchaseRequestService service, IJwtMiddleware jwt)
+    public PurchaseRequestFunctions(IPurchaseRequestService service, IJwtValidator jwt)
     {
         _service = service;
         _jwt     = jwt;

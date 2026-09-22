@@ -47,7 +47,7 @@ public interface IAuthService
     /// <summary>
     /// Builds the current-user response DTO from a pre-loaded <see cref="User"/> entity.
     /// The user must have <see cref="User.Group"/> navigation loaded (guaranteed by
-    /// <c>JwtMiddleware.ValidateAsync</c>).
+    /// <c>JwtValidator.ValidateAsync</c>).
     /// </summary>
     Task<MeResponse> GetMeAsync(User user, CancellationToken cancellationToken = default);
 

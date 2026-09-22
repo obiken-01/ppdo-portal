@@ -35,12 +35,12 @@ namespace PPDO.Functions.Functions;
 public sealed class AipReviewCommentFunctions
 {
     private readonly IAipReviewCommentService _comments;
-    private readonly IJwtMiddleware           _jwt;
+    private readonly IJwtValidator           _jwt;
     private readonly IPermissionService       _permissions;
 
     public AipReviewCommentFunctions(
         IAipReviewCommentService comments,
-        IJwtMiddleware           jwt,
+        IJwtValidator           jwt,
         IPermissionService       permissions)
     {
         _comments    = comments;

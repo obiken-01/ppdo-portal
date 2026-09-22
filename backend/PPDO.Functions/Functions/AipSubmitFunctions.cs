@@ -29,14 +29,14 @@ public sealed class AipSubmitFunctions
     private readonly IAipSubmitService  _submit;
     private readonly IAipCeilingService _ceiling;
     private readonly IAipRepository     _aipRepo;
-    private readonly IJwtMiddleware     _jwt;
+    private readonly IJwtValidator     _jwt;
     private readonly IPermissionService _permissions;
 
     public AipSubmitFunctions(
         IAipSubmitService  submit,
         IAipCeilingService ceiling,
         IAipRepository     aipRepo,
-        IJwtMiddleware     jwt,
+        IJwtValidator     jwt,
         IPermissionService permissions)
     {
         _submit      = submit;

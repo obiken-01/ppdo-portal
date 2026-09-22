@@ -22,11 +22,11 @@ namespace PPDO.Functions.Functions
     public sealed class ConfigEsreCodeFunctions
     {
         private readonly IEsreCodeService _esreCodes;
-        private readonly IJwtMiddleware _jwt;
+        private readonly IJwtValidator _jwt;
         private readonly IPermissionService _permissions;
 
         public ConfigEsreCodeFunctions(
-        IEsreCodeService esreCodes, IJwtMiddleware jwt, IPermissionService permissions)
+        IEsreCodeService esreCodes, IJwtValidator jwt, IPermissionService permissions)
         {
             _esreCodes = esreCodes;
             _jwt = jwt;

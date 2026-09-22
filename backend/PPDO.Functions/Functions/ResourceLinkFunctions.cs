@@ -22,14 +22,14 @@ namespace PPDO.Functions.Functions;
 public sealed class ResourceLinkFunctions
 {
     private readonly IResourceLinkService _service;
-    private readonly IJwtMiddleware       _jwt;
+    private readonly IJwtValidator       _jwt;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
-    public ResourceLinkFunctions(IResourceLinkService service, IJwtMiddleware jwt)
+    public ResourceLinkFunctions(IResourceLinkService service, IJwtValidator jwt)
     {
         _service = service;
         _jwt     = jwt;

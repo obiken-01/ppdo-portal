@@ -19,10 +19,10 @@ namespace PPDO.Functions.Functions;
 public sealed class ConfigOfficeFunctions
 {
     private readonly IOfficeService     _offices;
-    private readonly IJwtMiddleware     _jwt;
+    private readonly IJwtValidator     _jwt;
     private readonly IPermissionService _permissions;
 
-    public ConfigOfficeFunctions(IOfficeService offices, IJwtMiddleware jwt, IPermissionService permissions)
+    public ConfigOfficeFunctions(IOfficeService offices, IJwtValidator jwt, IPermissionService permissions)
     {
         _offices     = offices;
         _jwt         = jwt;

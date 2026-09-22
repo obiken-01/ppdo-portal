@@ -19,7 +19,7 @@ namespace PPDO.Functions.Functions;
 public sealed class DashboardFunctions
 {
     private readonly IDashboardService _dashboard;
-    private readonly IJwtMiddleware    _jwt;
+    private readonly IJwtValidator    _jwt;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -29,7 +29,7 @@ public sealed class DashboardFunctions
         Converters = { new JsonStringEnumConverter() },
     };
 
-    public DashboardFunctions(IDashboardService dashboard, IJwtMiddleware jwt)
+    public DashboardFunctions(IDashboardService dashboard, IJwtValidator jwt)
     {
         _dashboard = dashboard;
         _jwt       = jwt;

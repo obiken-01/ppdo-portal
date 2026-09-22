@@ -32,9 +32,9 @@ namespace PPDO.Functions.Functions;
 public sealed class AnnouncementFunctions
 {
     private readonly IAnnouncementService _announcements;
-    private readonly IJwtMiddleware _jwt;
+    private readonly IJwtValidator _jwt;
 
-    public AnnouncementFunctions(IAnnouncementService announcements, IJwtMiddleware jwt)
+    public AnnouncementFunctions(IAnnouncementService announcements, IJwtValidator jwt)
     {
         _announcements = announcements;
         _jwt           = jwt;

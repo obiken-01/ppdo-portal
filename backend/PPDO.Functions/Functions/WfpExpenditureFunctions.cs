@@ -18,11 +18,11 @@ namespace PPDO.Functions.Functions;
 public sealed class WfpExpenditureFunctions
 {
     private readonly IWfpExpenditureService _expenditures;
-    private readonly IJwtMiddleware         _jwt;
+    private readonly IJwtValidator         _jwt;
     private readonly IPermissionService     _permissions;
 
     public WfpExpenditureFunctions(
-        IWfpExpenditureService expenditures, IJwtMiddleware jwt, IPermissionService permissions)
+        IWfpExpenditureService expenditures, IJwtValidator jwt, IPermissionService permissions)
     {
         _expenditures = expenditures;
         _jwt          = jwt;

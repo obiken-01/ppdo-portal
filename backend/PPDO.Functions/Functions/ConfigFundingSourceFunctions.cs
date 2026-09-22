@@ -41,10 +41,10 @@ namespace PPDO.Functions.Functions;
 public sealed class ConfigFundingSourceFunctions
 {
     private readonly IFundingSourceService _funding;
-    private readonly IJwtMiddleware        _jwt;
+    private readonly IJwtValidator        _jwt;
     private readonly IPermissionService    _permissions;
 
-    public ConfigFundingSourceFunctions(IFundingSourceService funding, IJwtMiddleware jwt, IPermissionService permissions)
+    public ConfigFundingSourceFunctions(IFundingSourceService funding, IJwtValidator jwt, IPermissionService permissions)
     {
         _funding     = funding;
         _jwt         = jwt;

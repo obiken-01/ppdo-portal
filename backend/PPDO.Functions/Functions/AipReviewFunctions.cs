@@ -41,12 +41,12 @@ namespace PPDO.Functions.Functions;
 public sealed class AipReviewFunctions
 {
     private readonly IAipReviewService  _review;
-    private readonly IJwtMiddleware     _jwt;
+    private readonly IJwtValidator     _jwt;
     private readonly IPermissionService _permissions;
 
     public AipReviewFunctions(
         IAipReviewService  review,
-        IJwtMiddleware     jwt,
+        IJwtValidator     jwt,
         IPermissionService permissions)
     {
         _review      = review;

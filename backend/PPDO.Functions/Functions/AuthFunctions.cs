@@ -21,7 +21,7 @@ namespace PPDO.Functions.Functions;
 ///   POST /api/auth/forgot-password  — username → recovery question to show (RAL-265)
 ///   POST /api/auth/verify-recovery  — username + answer → one-time temporary password (RAL-265)
 ///
-/// Protected endpoints (JWT validated via JwtMiddleware.ValidateAsync):
+/// Protected endpoints (JWT validated via JwtValidator.ValidateAsync):
 ///   POST /api/auth/logout             — revoke refresh token
 ///   GET  /api/auth/me                 — current user identity + effective permissions
 ///   GET  /api/auth/recovery-questions — the fixed catalog, for the setup screen (RAL-266)
@@ -47,10 +47,10 @@ public sealed class AuthFunctions
     private const int    AccessTokenLifetimeSeconds = 15 * 60;
 
     private readonly IAuthService _auth;
-    private readonly IJwtMiddleware _jwt;
+    private readonly IJwtValidator _jwt;
     private readonly JwtSettings _jwtSettings;
 
-    public AuthFunctions(IAuthService auth, IJwtMiddleware jwt, IOptions<JwtSettings> jwtOptions)
+    public AuthFunctions(IAuthService auth, IJwtValidator jwt, IOptions<JwtSettings> jwtOptions)
     {
         _auth = auth;
         _jwt  = jwt;

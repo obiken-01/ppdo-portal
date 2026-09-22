@@ -26,7 +26,7 @@ public sealed class ConfigApiKeysFunctionsTests
     };
 
     private readonly Mock<IPartnerApiKeyService> _keys = new(MockBehavior.Strict);
-    private readonly Mock<IJwtMiddleware> _jwt = new(MockBehavior.Strict);
+    private readonly Mock<IJwtValidator> _jwt = new(MockBehavior.Strict);
     private readonly Mock<IPermissionService> _permissions = new(MockBehavior.Loose);
 
     private ConfigApiKeysFunctions Sut => new(_keys.Object, _jwt.Object, _permissions.Object);

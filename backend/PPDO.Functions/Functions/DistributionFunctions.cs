@@ -21,14 +21,14 @@ namespace PPDO.Functions.Functions;
 public sealed class DistributionFunctions
 {
     private readonly IDistributionService _service;
-    private readonly IJwtMiddleware       _jwt;
+    private readonly IJwtValidator       _jwt;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
-    public DistributionFunctions(IDistributionService service, IJwtMiddleware jwt)
+    public DistributionFunctions(IDistributionService service, IJwtValidator jwt)
     {
         _service = service;
         _jwt     = jwt;

@@ -34,7 +34,7 @@ public sealed class PpmpReportFunctionsTests
 
     private readonly Mock<IPpmpReportService>      _report      = new(MockBehavior.Strict);
     private readonly Mock<IPpmpReportExcelService> _excel       = new(MockBehavior.Strict);
-    private readonly Mock<IJwtMiddleware>          _jwt         = new(MockBehavior.Strict);
+    private readonly Mock<IJwtValidator>          _jwt         = new(MockBehavior.Strict);
     private readonly Mock<IPermissionService>      _permissions = new(MockBehavior.Loose);
 
     private PpmpReportFunctions Sut => new(_report.Object, _excel.Object, _jwt.Object, _permissions.Object);

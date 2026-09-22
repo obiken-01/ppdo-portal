@@ -23,14 +23,14 @@ namespace PPDO.Functions.Functions;
 public sealed class ReportFunctions
 {
     private readonly IPRReportService _report;
-    private readonly IJwtMiddleware   _jwt;
+    private readonly IJwtValidator   _jwt;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
-    public ReportFunctions(IPRReportService report, IJwtMiddleware jwt)
+    public ReportFunctions(IPRReportService report, IJwtValidator jwt)
     {
         _report = report;
         _jwt    = jwt;

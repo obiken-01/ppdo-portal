@@ -18,10 +18,10 @@ namespace PPDO.Functions.Functions;
 public sealed class AuditLogFunctions
 {
     private readonly IAuditLogService _auditLog;
-    private readonly IJwtMiddleware _jwt;
+    private readonly IJwtValidator _jwt;
     private readonly IPermissionService _permissions;
 
-    public AuditLogFunctions(IAuditLogService auditLog, IJwtMiddleware jwt, IPermissionService permissions)
+    public AuditLogFunctions(IAuditLogService auditLog, IJwtValidator jwt, IPermissionService permissions)
     {
         _auditLog    = auditLog;
         _jwt         = jwt;
