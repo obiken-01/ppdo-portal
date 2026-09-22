@@ -842,6 +842,35 @@ public sealed class UserServiceTests
     }
 
     [Fact]
+    public async Task ResetPasswordAsync_InactiveTarget_ReturnsConflict()
+    {
+        // PPDO-115. Login filters on `&& u.IsActive`, so a deactivated account resolves to
+        // null and gets the same 401 as a wrong password. Resetting one used to succeed and
+        // hand over a password that could never work, with nothing saying why.
+        //
+        // Every other ResetPasswordAsync test builds an ACTIVE target (MakeStaff sets
+        // IsActive = true), so without this one the guard could be deleted and the suite
+        // would stay green.
+        User target = MakeStaff();
+        target.IsActive = false;
+        string originalHash = target.PasswordHash;
+
+        Mock<IUserRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByIdWithDivisionAsync(target.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(target);
+
+        ServiceResult<UserCredentialResponseDto> result =
+            await BuildSut(repo).ResetPasswordAsync(MakeAdmin(), target.Id);
+
+        Assert.Equal(ServiceErrorCode.Conflict, result.Code);
+
+        // The guard must fire BEFORE any mutation — a rejected reset that still rotated the
+        // hash would lock the account's old password out for nothing.
+        Assert.Equal(originalHash, target.PasswordHash);
+        repo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task ResetPasswordAsync_ValidTarget_ClearsRefreshToken()
     {
         User target = MakeStaff();

@@ -50,6 +50,10 @@ export interface RowAction {
   variant?: "default" | "primary" | "warn" | "danger";
   disabled?: boolean;
   loading?: boolean;
+  /** Native tooltip. Pair it with `disabled` so a greyed-out button can say WHY
+   * it is unavailable — a disabled control with no explanation reads as a bug
+   * (PPDO-115). */
+  title?: string;
 }
 
 const VARIANT_CLS: Record<NonNullable<RowAction["variant"]>, string> = {
@@ -115,7 +119,7 @@ function ActionButton({
 
   if (action.href) {
     return (
-      <Link href={action.href} className={cls} style={{ width }}>
+      <Link href={action.href} className={cls} style={{ width }} title={action.title}>
         {content}
       </Link>
     );
@@ -127,6 +131,7 @@ function ActionButton({
       disabled={action.disabled || action.loading}
       className={cls}
       style={{ width }}
+      title={action.title}
     >
       {content}
     </button>
