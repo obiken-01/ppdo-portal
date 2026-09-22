@@ -75,10 +75,35 @@ public sealed class AipExpenditure
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 
+    // ── Concurrency + update tracking (V18-71 / PPDO-117) ─────────────────────
+
+    /// <summary>
+    /// Optimistic-concurrency token. <b>SQL Server maintains this — never assign to it.</b>
+    /// See <see cref="AipActivity.RowVersion"/> for why a rowversion rather than a timestamp
+    /// comparison.
+    ///
+    /// ⚠️ This token also protects this line's <see cref="ProcurementItems"/>, which have no
+    /// endpoints of their own — they are written only through this row's update, as a wholesale
+    /// replace. That holds because <c>AipExpenditureService.UpdateAsync</c> sets
+    /// <see cref="UpdatedAt"/> <b>unconditionally</b>, so the parent is always dirtied and this
+    /// token always bumps, even when only the items changed. Make that write conditional and two
+    /// encoders editing items under the same line would both succeed, silently.
+    /// </summary>
+    public byte[] RowVersion { get; set; } = [];
+
+    /// <summary>
+    /// Who last changed this line. Null for rows untouched since PPDO-117 shipped. For the
+    /// conflict message, not the detection. (<see cref="UpdatedAt"/> already existed.)
+    /// </summary>
+    public Guid? UpdatedById { get; set; }
+
     // ── Navigation ────────────────────────────────────────────────────────────
 
     /// <summary>The parent AIP activity.</summary>
     public AipActivity Activity { get; set; } = null!;
+
+    /// <summary>The user behind <see cref="UpdatedById"/>. Null until first edited.</summary>
+    public User? UpdatedBy { get; set; }
 
     /// <summary>The chart-of-accounts row. Null when unmatched.</summary>
     public Account? Account { get; set; }

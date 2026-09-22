@@ -97,7 +97,13 @@ public sealed class AipReviewSearchRepositoryTests : IDisposable
                 cc_mitigation TEXT NULL,
                 cc_typology_code TEXT NULL,
                 is_creation INTEGER NOT NULL DEFAULT 0,
-                is_synthetic INTEGER NOT NULL DEFAULT 0
+                is_synthetic INTEGER NOT NULL DEFAULT 0,
+                -- PPDO-117. SQLite has no rowversion, so nothing bumps this; the NOT NULL
+                -- default exists only so EF can read the value back after an insert. The
+                -- concurrency behaviour itself is SQL Server's and is verified against it.
+                updated_at TEXT NULL,
+                updated_by_id TEXT NULL,
+                row_version BLOB NOT NULL DEFAULT x'0000000000000001'
             );
             """);
     }
