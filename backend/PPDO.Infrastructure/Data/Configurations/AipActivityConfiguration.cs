@@ -91,6 +91,32 @@ public sealed class AipActivityConfiguration : IEntityTypeConfiguration<AipActiv
             .IsRequired()
             .HasDefaultValue(false);
 
+        // ── Concurrency + update tracking (V18-71 / PPDO-117) ─────────────────
+        // snake_case like every other column on this table. `aip_activities` is NOT one of
+        // CLAUDE.md's legacy pre-v1.1 PascalCase tables — it post-dates that convention.
+
+        // IsRowVersion() is the whole mechanism: EF adds this to the UPDATE's WHERE clause and
+        // throws DbUpdateConcurrencyException when zero rows match. SQL Server maintains the
+        // value, so no write path can forget to bump it.
+        builder.Property(a => a.RowVersion)
+            .HasColumnName("row_version")
+            .IsRowVersion();
+
+        builder.Property(a => a.UpdatedAt)
+            .HasColumnName("updated_at");
+
+        builder.Property(a => a.UpdatedById)
+            .HasColumnName("updated_by_id");
+
+        // Restrict: an AIP activity must never be deleted because the user who last touched it
+        // was. Users are deactivated rather than deleted (PPDO-115), so this should never fire —
+        // and if it does, that is a signal worth reading, not a cascade to configure away.
+        builder.HasOne(a => a.UpdatedBy)
+            .WithMany()
+            .HasForeignKey(a => a.UpdatedById)
+            .HasConstraintName("FK_aip_activities_users_updated_by_id")
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.HasIndex(a => new { a.ProjectId, a.RefCode })
             .IsUnique()
             .HasDatabaseName("UX_aip_activities_project_id_ref_code");

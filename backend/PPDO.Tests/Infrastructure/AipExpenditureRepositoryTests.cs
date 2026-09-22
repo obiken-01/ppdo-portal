@@ -53,7 +53,13 @@ public sealed class AipExpenditureRepositoryTests : IDisposable
                 co TEXT NOT NULL DEFAULT '0',
                 total TEXT NOT NULL DEFAULT '0',
                 created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                -- PPDO-117. SQLite has no rowversion, so the token is an ordinary BLOB here and
+                -- nothing bumps it automatically. These tests only need the column to exist so
+                -- inserts and reads work; the concurrency behaviour itself is SQL Server's and is
+                -- verified against it, not here.
+                updated_by_id TEXT NULL,
+                row_version BLOB NOT NULL DEFAULT x'0000000000000001'
             );
             """);
 
@@ -92,7 +98,11 @@ public sealed class AipExpenditureRepositoryTests : IDisposable
                 ref_code TEXT NOT NULL DEFAULT '',
                 name TEXT NOT NULL DEFAULT '',
                 is_creation INTEGER NOT NULL DEFAULT 0,
-                is_synthetic INTEGER NOT NULL DEFAULT 0
+                is_synthetic INTEGER NOT NULL DEFAULT 0,
+                -- PPDO-117 — see the note on aip_expenditures above.
+                updated_at TEXT NULL,
+                updated_by_id TEXT NULL,
+                row_version BLOB NOT NULL DEFAULT x'0000000000000001'
             );
             """);
     }

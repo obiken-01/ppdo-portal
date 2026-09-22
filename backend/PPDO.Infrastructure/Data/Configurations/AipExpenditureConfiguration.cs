@@ -73,6 +73,24 @@ public sealed class AipExpenditureConfiguration : IEntityTypeConfiguration<AipEx
         builder.Property(e => e.CreatedAt).HasColumnName("created_at");
         builder.Property(e => e.UpdatedAt).HasColumnName("updated_at");
 
+        // ── Concurrency + update tracking (V18-71 / PPDO-117) ─────────────────
+        // created_at/updated_at above already existed; only the token and the actor are new.
+        // This token also covers this line's procurement items, which are written only through
+        // this row — see AipExpenditure.RowVersion for why that holds.
+        builder.Property(e => e.RowVersion)
+            .HasColumnName("row_version")
+            .IsRowVersion();
+
+        builder.Property(e => e.UpdatedById)
+            .HasColumnName("updated_by_id");
+
+        // Restrict — same reasoning as aip_activities.
+        builder.HasOne(e => e.UpdatedBy)
+            .WithMany()
+            .HasForeignKey(e => e.UpdatedById)
+            .HasConstraintName("FK_aip_expenditures_users_updated_by_id")
+            .OnDelete(DeleteBehavior.Restrict);
+
         // Every read is "this activity's lines", and V18-34's recompute runs on every write.
         builder.HasIndex(e => e.ActivityId)
             .HasDatabaseName("IX_aip_expenditures_activity_id");
