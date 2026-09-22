@@ -404,7 +404,15 @@ public record UpdateAipActivityDto(
     decimal? Co,
     decimal? CcAdaptation,
     decimal? CcMitigation,
-    string?  CcTypologyCode);
+    string?  CcTypologyCode,
+
+    /// <summary>
+    /// Base64 <c>rowversion</c> the client loaded, for the concurrent-edit guard
+    /// (V18-71 / PPDO-119). ⚠️ <b>Optional only during the staged rollout</b> — see
+    /// <c>docs/v1.8/AIP_Concurrent_Edit_Spec.md</c> §8. While it is null the save proceeds
+    /// unguarded, which is the old last-write-wins behaviour; PPDO-121 makes it required.
+    /// </summary>
+    string?  RowVersion = null);
 
 // ── Inline office/program/project edit (detail-page CRUD follow-up to RAL-179) ─
 // RefCode/Sector/hierarchy position stay immutable through these endpoints, same
@@ -481,7 +489,7 @@ public record AipRecordSummaryDto(
 
 public record UpdateAipProgramFunctionBandDto(string? FunctionBand);
 
-public record UpdateAipActivityIsCreationDto(bool IsCreation);
+public record UpdateAipActivityIsCreationDto(bool IsCreation, string? RowVersion = null);
 
 /// <summary>
 /// An entered-year activity's <b>descriptive</b> fields — everything the AIP form prints about an
@@ -519,4 +527,12 @@ public record UpdateAipActivityDetailsDto(
     string?  ExpectedOutputs,
     decimal? CcAdaptation,
     decimal? CcMitigation,
-    string?  CcTypologyCode);
+    string?  CcTypologyCode,
+
+    /// <summary>
+    /// Base64 <c>rowversion</c> the client loaded, for the concurrent-edit guard
+    /// (V18-71 / PPDO-119). ⚠️ <b>Optional only during the staged rollout</b> — see
+    /// <c>docs/v1.8/AIP_Concurrent_Edit_Spec.md</c> §8. While it is null the save proceeds
+    /// unguarded, which is the old last-write-wins behaviour; PPDO-121 makes it required.
+    /// </summary>
+    string?  RowVersion = null);
