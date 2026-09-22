@@ -18,11 +18,11 @@ namespace PPDO.Functions.Functions;
 public sealed class ConfigClimateChangeTypologyFunctions
 {
     private readonly IClimateChangeTypologyService _typologies;
-    private readonly IJwtMiddleware                _jwt;
+    private readonly IJwtValidator                _jwt;
     private readonly IPermissionService            _permissions;
 
     public ConfigClimateChangeTypologyFunctions(
-        IClimateChangeTypologyService typologies, IJwtMiddleware jwt, IPermissionService permissions)
+        IClimateChangeTypologyService typologies, IJwtValidator jwt, IPermissionService permissions)
     {
         _typologies  = typologies;
         _jwt         = jwt;

@@ -6,7 +6,18 @@ namespace PPDO.Domain.Interfaces;
 /// Validates a JWT Bearer token and returns the authenticated <see cref="User"/> entity
 /// (with Group navigation loaded) from the database.
 ///
-/// Implemented in PPDO.Infrastructure/Services/JwtMiddleware.cs.
+/// Implemented in PPDO.Infrastructure/Services/JwtValidator.cs.
+///
+/// <para><b>Renamed from <c>IJwtMiddleware</c> in PPDO-43, and the old name was actively
+/// misleading.</b> This is not pipeline middleware: it has no
+/// <c>Invoke(FunctionContext, FunctionExecutionDelegate)</c>, it is never registered with
+/// <c>worker.Use</c>, and it does not run unless a handler calls it by hand. It is an
+/// ordinary scoped service, invoked explicitly per endpoint as
+/// <c>await _jwt.ValidateAsync(...)</c> — which is exactly why forgetting that call silently
+/// leaves an endpoint unauthenticated. The old name cost real time: it led a reader to
+/// believe the worker pipeline already had an auth stage, and by extension an exception
+/// stage, when it had neither. Actual worker middleware lives in
+/// <c>PPDO.Functions/Middleware/</c>.</para>
 ///
 /// The caller is responsible for extracting the raw Authorization header value from the
 /// HTTP request and passing it here. This keeps the interface framework-agnostic (no
@@ -21,7 +32,7 @@ namespace PPDO.Domain.Interfaces;
 ///     return req.CreateResponse(HttpStatusCode.Unauthorized);
 /// </code>
 /// </summary>
-public interface IJwtMiddleware
+public interface IJwtValidator
 {
     /// <summary>
     /// Validates the JWT in the supplied Authorization header value (e.g. "Bearer eyJ...").

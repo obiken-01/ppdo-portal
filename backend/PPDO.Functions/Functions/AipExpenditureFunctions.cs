@@ -27,12 +27,12 @@ namespace PPDO.Functions.Functions;
 public sealed class AipExpenditureFunctions
 {
     private readonly IAipExpenditureService _expenditures;
-    private readonly IJwtMiddleware         _jwt;
+    private readonly IJwtValidator         _jwt;
     private readonly IPermissionService     _permissions;
 
     public AipExpenditureFunctions(
         IAipExpenditureService expenditures,
-        IJwtMiddleware         jwt,
+        IJwtValidator         jwt,
         IPermissionService     permissions)
     {
         _expenditures = expenditures;

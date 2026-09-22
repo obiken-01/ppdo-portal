@@ -23,12 +23,12 @@ namespace PPDO.Functions.Functions;
 public sealed class AipConsolidatedFunctions
 {
     private readonly IAipConsolidatedService _consolidated;
-    private readonly IJwtMiddleware          _jwt;
+    private readonly IJwtValidator          _jwt;
     private readonly IPermissionService      _permissions;
 
     public AipConsolidatedFunctions(
         IAipConsolidatedService consolidated,
-        IJwtMiddleware          jwt,
+        IJwtValidator          jwt,
         IPermissionService      permissions)
     {
         _consolidated = consolidated;

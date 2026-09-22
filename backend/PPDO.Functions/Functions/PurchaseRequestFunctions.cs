@@ -34,14 +34,14 @@ namespace PPDO.Functions.Functions;
 public sealed class PurchaseRequestFunctions
 {
     private readonly IPurchaseRequestService _service;
-    private readonly IJwtMiddleware          _jwt;
+    private readonly IJwtValidator          _jwt;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
-    public PurchaseRequestFunctions(IPurchaseRequestService service, IJwtMiddleware jwt)
+    public PurchaseRequestFunctions(IPurchaseRequestService service, IJwtValidator jwt)
     {
         _service = service;
         _jwt     = jwt;
@@ -245,7 +245,7 @@ public sealed class PurchaseRequestFunctions
         if (caller is null)
             return req.CreateResponse(HttpStatusCode.Unauthorized);
 
-        CreatePRDto? body = await DeserializeAsync<CreatePRDto>(req, cancellationToken);
+        CreatePRDto? body = await ConfigHttp.ReadBodyAsync<CreatePRDto>(req, cancellationToken, _jsonOptions);
         if (body is null)
             return await PlainError(req, HttpStatusCode.BadRequest,
                 "Request body is missing or malformed.", cancellationToken);
@@ -268,7 +268,7 @@ public sealed class PurchaseRequestFunctions
         if (caller is null)
             return req.CreateResponse(HttpStatusCode.Unauthorized);
 
-        UpdatePRDto? body = await DeserializeAsync<UpdatePRDto>(req, cancellationToken);
+        UpdatePRDto? body = await ConfigHttp.ReadBodyAsync<UpdatePRDto>(req, cancellationToken, _jsonOptions);
         if (body is null)
             return await PlainError(req, HttpStatusCode.BadRequest,
                 "Request body is missing or malformed.", cancellationToken);
@@ -320,17 +320,6 @@ public sealed class PurchaseRequestFunctions
         => req.Headers.TryGetValues("Authorization", out IEnumerable<string>? values)
             ? values.FirstOrDefault()
             : null;
-
-    private static async Task<T?> DeserializeAsync<T>(
-        HttpRequestData req, CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await JsonSerializer.DeserializeAsync<T>(
-                req.Body, _jsonOptions, cancellationToken);
-        }
-        catch { return default; }
-    }
 
     private static async Task<HttpResponseData> OkJson<T>(
         HttpRequestData req, T body, CancellationToken cancellationToken)

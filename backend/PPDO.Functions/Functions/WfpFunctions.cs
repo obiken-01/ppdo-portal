@@ -23,11 +23,11 @@ public sealed class WfpFunctions
 {
     private readonly IWfpService         _wfp;
     private readonly IWfpCeilingService  _ceilings;
-    private readonly IJwtMiddleware      _jwt;
+    private readonly IJwtValidator      _jwt;
     private readonly IPermissionService  _permissions;
 
     public WfpFunctions(
-        IWfpService wfp, IWfpCeilingService ceilings, IJwtMiddleware jwt, IPermissionService permissions)
+        IWfpService wfp, IWfpCeilingService ceilings, IJwtValidator jwt, IPermissionService permissions)
     {
         _wfp         = wfp;
         _ceilings    = ceilings;

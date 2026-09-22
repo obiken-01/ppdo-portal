@@ -21,7 +21,7 @@ namespace PPDO.Functions.Functions;
 ///   POST /api/auth/forgot-password  — username → recovery question to show (RAL-265)
 ///   POST /api/auth/verify-recovery  — username + answer → one-time temporary password (RAL-265)
 ///
-/// Protected endpoints (JWT validated via JwtMiddleware.ValidateAsync):
+/// Protected endpoints (JWT validated via JwtValidator.ValidateAsync):
 ///   POST /api/auth/logout             — revoke refresh token
 ///   GET  /api/auth/me                 — current user identity + effective permissions
 ///   GET  /api/auth/recovery-questions — the fixed catalog, for the setup screen (RAL-266)
@@ -47,10 +47,10 @@ public sealed class AuthFunctions
     private const int    AccessTokenLifetimeSeconds = 15 * 60;
 
     private readonly IAuthService _auth;
-    private readonly IJwtMiddleware _jwt;
+    private readonly IJwtValidator _jwt;
     private readonly JwtSettings _jwtSettings;
 
-    public AuthFunctions(IAuthService auth, IJwtMiddleware jwt, IOptions<JwtSettings> jwtOptions)
+    public AuthFunctions(IAuthService auth, IJwtValidator jwt, IOptions<JwtSettings> jwtOptions)
     {
         _auth = auth;
         _jwt  = jwt;
@@ -65,7 +65,7 @@ public sealed class AuthFunctions
         HttpRequestData req,
         CancellationToken cancellationToken)
     {
-        LoginRequestDto? body = await DeserializeAsync<LoginRequestDto>(req, cancellationToken);
+        LoginRequestDto? body = await ConfigHttp.ReadBodyAsync<LoginRequestDto>(req, cancellationToken, _jsonOptions);
         if (body is null || string.IsNullOrWhiteSpace(body.Username) || string.IsNullOrWhiteSpace(body.Password))
             return await BadRequest(req, "Username and Password are required.");
 
@@ -130,7 +130,7 @@ public sealed class AuthFunctions
         HttpRequestData req,
         CancellationToken cancellationToken)
     {
-        ForgotPasswordRequestDto? body = await DeserializeAsync<ForgotPasswordRequestDto>(req, cancellationToken);
+        ForgotPasswordRequestDto? body = await ConfigHttp.ReadBodyAsync<ForgotPasswordRequestDto>(req, cancellationToken, _jsonOptions);
         if (body is null || string.IsNullOrWhiteSpace(body.Username))
             return await BadRequest(req, "Username is required.");
 
@@ -146,7 +146,7 @@ public sealed class AuthFunctions
         HttpRequestData req,
         CancellationToken cancellationToken)
     {
-        VerifyRecoveryRequestDto? body = await DeserializeAsync<VerifyRecoveryRequestDto>(req, cancellationToken);
+        VerifyRecoveryRequestDto? body = await ConfigHttp.ReadBodyAsync<VerifyRecoveryRequestDto>(req, cancellationToken, _jsonOptions);
         if (body is null || string.IsNullOrWhiteSpace(body.Username) || string.IsNullOrWhiteSpace(body.Answer))
             return await BadRequest(req, "Username and Answer are required.");
 
@@ -330,21 +330,6 @@ public sealed class AuthFunctions
         // camelCase for all outgoing JSON responses (userId, fullName, etc.)
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
-
-    private static async Task<T?> DeserializeAsync<T>(
-        HttpRequestData req,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await JsonSerializer.DeserializeAsync<T>(
-                req.Body, _jsonOptions, cancellationToken);
-        }
-        catch
-        {
-            return default;
-        }
-    }
 
     private static async Task<HttpResponseData> Ok<T>(
         HttpRequestData req,

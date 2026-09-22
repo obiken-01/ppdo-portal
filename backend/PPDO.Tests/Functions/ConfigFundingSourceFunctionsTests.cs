@@ -29,7 +29,7 @@ public sealed class ConfigFundingSourceFunctionsTests
     private const int ForeignOffice = 99;
 
     private readonly Mock<IFundingSourceService> _funding     = new(MockBehavior.Strict);
-    private readonly Mock<IJwtMiddleware>        _jwt         = new(MockBehavior.Strict);
+    private readonly Mock<IJwtValidator>        _jwt         = new(MockBehavior.Strict);
     private readonly Mock<IPermissionService>    _permissions = new(MockBehavior.Loose);
 
     private ConfigFundingSourceFunctions Sut => new(_funding.Object, _jwt.Object, _permissions.Object);

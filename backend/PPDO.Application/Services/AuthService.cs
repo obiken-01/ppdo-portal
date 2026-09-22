@@ -342,7 +342,7 @@ public sealed class AuthService : IAuthService
 
         _logger.LogInformation("Password reset via recovery answer. UserId: {UserId}", user.Id);
 
-        // Actor is the account itself — this is a public endpoint, so JwtMiddleware never
+        // Actor is the account itself — this is a public endpoint, so JwtValidator never
         // ran and CallerContext.UserId is unset. Never snapshot PasswordHash or the issued
         // password, just that a reset happened (matches the admin-reset audit shape).
         await _audit.LogAsync("users", user.Id, AuditAction.Update, actorId: user.Id,

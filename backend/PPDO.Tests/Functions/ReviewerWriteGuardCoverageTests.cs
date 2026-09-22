@@ -529,7 +529,7 @@ public sealed class ReviewerWriteGuardCoverageTests
             Office   = new Office { Id = 7, OfficeCode = "PPDO", IsHostOffice = true },
         };
 
-        Mock<IJwtMiddleware> jwt = new();
+        Mock<IJwtValidator> jwt = new();
         jwt.Setup(j => j.ValidateAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
            .ReturnsAsync(caller);
 
@@ -563,13 +563,13 @@ public sealed class ReviewerWriteGuardCoverageTests
     /// the service mocks are never called on the 403 path — and on the not-forbidden path a
     /// default-returning mock is enough, since only "is it 403?" is asserted.
     /// </summary>
-    private static object Construct(Type type, IJwtMiddleware jwt, IPermissionService permissions)
+    private static object Construct(Type type, IJwtValidator jwt, IPermissionService permissions)
     {
         ConstructorInfo ctor = type.GetConstructors().Single();
 
         object?[] args = ctor.GetParameters().Select(p =>
         {
-            if (p.ParameterType == typeof(IJwtMiddleware))     return jwt;
+            if (p.ParameterType == typeof(IJwtValidator))     return jwt;
             if (p.ParameterType == typeof(IPermissionService)) return permissions;
             return StubOf(p.ParameterType);
         }).ToArray();

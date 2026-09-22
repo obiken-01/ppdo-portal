@@ -20,7 +20,7 @@ namespace PPDO.Domain.Interfaces;
 ///
 /// Always call these methods for permission checks in Function handlers.
 /// Never inline the resolution logic. The user's <see cref="User.Division"/> navigation
-/// must be loaded (JwtMiddleware guarantees this).
+/// must be loaded (JwtValidator guarantees this).
 /// </summary>
 public interface IPermissionService
 {

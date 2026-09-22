@@ -21,14 +21,14 @@ namespace PPDO.Functions.Functions;
 public sealed class DistributionFunctions
 {
     private readonly IDistributionService _service;
-    private readonly IJwtMiddleware       _jwt;
+    private readonly IJwtValidator       _jwt;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
-    public DistributionFunctions(IDistributionService service, IJwtMiddleware jwt)
+    public DistributionFunctions(IDistributionService service, IJwtValidator jwt)
     {
         _service = service;
         _jwt     = jwt;
@@ -69,7 +69,7 @@ public sealed class DistributionFunctions
             return req.CreateResponse(HttpStatusCode.Unauthorized);
 
         CreateItemDistributionDto? body =
-            await DeserializeAsync<CreateItemDistributionDto>(req, cancellationToken);
+            await ConfigHttp.ReadBodyAsync<CreateItemDistributionDto>(req, cancellationToken, _jsonOptions);
 
         if (body is null)
             return await PlainError(req, HttpStatusCode.BadRequest,
@@ -87,13 +87,6 @@ public sealed class DistributionFunctions
         => req.Headers.TryGetValues("Authorization", out IEnumerable<string>? vals)
             ? vals.FirstOrDefault()
             : null;
-
-    private static async Task<T?> DeserializeAsync<T>(
-        HttpRequestData req, CancellationToken cancellationToken)
-    {
-        try { return await JsonSerializer.DeserializeAsync<T>(req.Body, _jsonOptions, cancellationToken); }
-        catch { return default; }
-    }
 
     private static async Task<HttpResponseData> OkJson<T>(
         HttpRequestData req, T body, CancellationToken cancellationToken)

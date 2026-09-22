@@ -17,10 +17,10 @@ namespace PPDO.Functions.Functions;
 public sealed class ConfigAccountFunctions
 {
     private readonly IAccountService    _accounts;
-    private readonly IJwtMiddleware     _jwt;
+    private readonly IJwtValidator     _jwt;
     private readonly IPermissionService _permissions;
 
-    public ConfigAccountFunctions(IAccountService accounts, IJwtMiddleware jwt, IPermissionService permissions)
+    public ConfigAccountFunctions(IAccountService accounts, IJwtValidator jwt, IPermissionService permissions)
     {
         _accounts    = accounts;
         _jwt         = jwt;

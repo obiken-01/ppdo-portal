@@ -83,7 +83,7 @@ public readonly struct BudgetPlanningScope
     /// Caller with no office      → office <see cref="OfficeScope.NoOffice"/>, which matches
     ///                              nothing; the division axis is irrelevant either way.
     ///
-    /// Requires <see cref="User.Office"/> to be loaded (JwtMiddleware guarantees it). If it is
+    /// Requires <see cref="User.Office"/> to be loaded (JwtValidator guarantees it). If it is
     /// not, <see cref="OfficeScope.IsHostOfficeUser"/> answers false and the caller is treated
     /// as a guest-office user — more restrictive, never less.
     /// </summary>

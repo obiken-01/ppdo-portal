@@ -1,7 +1,7 @@
 namespace PPDO.Domain.Common;
 
 /// <summary>
-/// JWT claim name constants used by both JwtMiddleware (token validation, PPDO.Infrastructure)
+/// JWT claim name constants used by both JwtValidator (token validation, PPDO.Infrastructure)
 /// and AuthService (token creation, PPDO.Application).
 ///
 /// Centralised here in Domain so both layers can reference the same constants

@@ -7,7 +7,7 @@ namespace PPDO.Infrastructure.Services;
 
 /// <summary>
 /// Reads the current authenticated user's identity from <c>HttpContext.User</c> claims.
-/// <c>HttpContext.User</c> is populated by <see cref="JwtMiddleware.ValidateAsync"/> after a
+/// <c>HttpContext.User</c> is populated by <see cref="JwtValidator.ValidateAsync"/> after a
 /// successful token validation, so this service only has meaningful values on requests that
 /// have already passed through that validation step.
 ///

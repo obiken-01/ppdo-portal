@@ -33,7 +33,7 @@ namespace PPDO.Infrastructure.Services;
 ///
 /// Register as scoped in Program.cs.
 /// </summary>
-public sealed class JwtMiddleware : IJwtMiddleware
+public sealed class JwtValidator : IJwtValidator
 {
     private readonly string _secretKey;
     private readonly string _issuer;
@@ -41,14 +41,14 @@ public sealed class JwtMiddleware : IJwtMiddleware
     private readonly AppDbContext _context;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly CallerContext _callerContext;
-    private readonly ILogger<JwtMiddleware> _logger;
+    private readonly ILogger<JwtValidator> _logger;
 
-    public JwtMiddleware(
+    public JwtValidator(
         IConfiguration configuration,
         AppDbContext context,
         IHttpContextAccessor httpContextAccessor,
         CallerContext callerContext,
-        ILogger<JwtMiddleware> logger)
+        ILogger<JwtValidator> logger)
     {
         _secretKey = configuration["Jwt:SecretKey"]
             ?? throw new InvalidOperationException(

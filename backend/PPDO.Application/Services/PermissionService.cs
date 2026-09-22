@@ -30,7 +30,7 @@ namespace PPDO.Application.Services;
 /// CanAccessProfile is always true.
 ///
 /// No database access — the <see cref="User"/> must be loaded with <see cref="User.Division"/>
-/// AND <see cref="User.Office"/> included (JwtMiddleware guarantees both). Division drives the
+/// AND <see cref="User.Office"/> included (JwtValidator guarantees both). Division drives the
 /// flag lookups; Office carries the host-office flag that the two rules above branch on
 /// (DECISION F, RAL-258). When Division is null (SuperAdmin/Admin, or a not-yet-assigned Staff
 /// user) flag lookups fall back to false — harmless for SuperAdmin/Admin because they

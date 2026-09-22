@@ -11,7 +11,7 @@ namespace PPDO.Application.Services;
 /// Caller provides anonymous-object snapshots; this service serialises them to JSON
 /// and stamps the current authenticated user + UTC timestamp.
 /// User identity is read from <see cref="CallerContext"/>, which is set by
-/// JwtMiddleware after successful token validation — reliably available even when
+/// JwtValidator after successful token validation — reliably available even when
 /// IHttpContextAccessor.HttpContext is null in the Azure Functions isolated worker.
 /// </summary>
 public sealed class AuditService : IAuditService
