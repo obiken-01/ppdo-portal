@@ -159,6 +159,30 @@ internal static class ConfigHttp
         catch { return default; }
     }
 
+    /// <summary>
+    /// Decodes a base64 <c>rowversion</c> from a request body (V18-71 / PPDO-119).
+    /// <c>ok: false</c> means the value was present but not valid base64 — a 400, not a silent
+    /// null.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ A <b>missing</b> value (null/empty) returns <c>ok: true</c> with null bytes, and the save
+    /// then proceeds <b>unguarded</b>. That is the staged-rollout state described in
+    /// <c>docs/v1.8/AIP_Concurrent_Edit_Spec.md</c> §8, not the end state: while any caller can
+    /// omit the field, the concurrency guard is opt-out by omission. PPDO-121 turns the omission
+    /// into a 400 and is the ticket that actually switches the protection on.
+    /// </remarks>
+    internal static (bool ok, byte[]? bytes) DecodeRowVersion(string? base64)
+    {
+        if (string.IsNullOrWhiteSpace(base64)) return (true, null);
+
+        // Convert.FromBase64String throws on malformed input; TryFromBase64Chars does not, and a
+        // malformed token is a client bug worth reporting rather than an exception worth throwing.
+        byte[] buffer = new byte[((base64.Length * 3) + 3) / 4];
+        return Convert.TryFromBase64Chars(base64, buffer, out int written)
+            ? (true, buffer[..written])
+            : (false, null);
+    }
+
     internal static async Task<string> ReadTextAsync(HttpRequestData req)
     {
         using StreamReader reader = new(req.Body);
@@ -193,6 +217,17 @@ internal static class ConfigHttp
             ServiceErrorCode.Forbidden  => HttpStatusCode.Forbidden,
             _                           => HttpStatusCode.InternalServerError,
         };
+
+        // A failure carrying structured detail puts it in `data` so the client can act on it
+        // rather than only read a sentence (V18-71 / PPDO-119). Today that is the AIP concurrency
+        // conflict, which needs the current values and the new rowversion to offer Overwrite.
+        // Typed as ApiResponse<object> because Details is deliberately not T — the envelope shape
+        // is unchanged, only what rides in `data`.
+        if (result.Details is not null)
+            return EnvelopeAsync(req, status,
+                new ApiResponse<object>(result.Details, result.Error ?? "An unexpected error occurred.", null),
+                cancellationToken);
+
         return EnvelopeAsync(req, status, ApiResponse<T>.Fail(result.Error ?? "An unexpected error occurred."), cancellationToken);
     }
 

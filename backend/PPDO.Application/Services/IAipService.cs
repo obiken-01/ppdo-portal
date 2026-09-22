@@ -70,7 +70,8 @@ public interface IAipService
     /// Only allowed while the parent AipRecord is Draft. <paramref name="aipRecordId"/> is a
     /// defensive cross-check that the activity actually belongs to that record.</summary>
     Task<ServiceResult<AipActivityDto>> UpdateActivityAsync(
-        int aipRecordId, int activityId, UpdateAipActivityDto dto, User caller, CancellationToken ct = default);
+        int aipRecordId, int activityId, UpdateAipActivityDto dto, User caller,
+        byte[]? expectedRowVersion = null, CancellationToken ct = default);
 
     /// <summary>
     /// PPDO-52 — updates an entered-year activity's <b>descriptive</b> fields, leaving its money
@@ -86,7 +87,8 @@ public interface IAipService
     /// </para>
     /// </summary>
     Task<ServiceResult<AipActivityDto>> UpdateActivityDetailsAsync(
-        int activityId, UpdateAipActivityDetailsDto dto, User caller, CancellationToken ct = default);
+        int activityId, UpdateAipActivityDetailsDto dto, User caller,
+        byte[]? expectedRowVersion = null, CancellationToken ct = default);
 
     /// <summary>Renames an office (only Name is editable — RefCode/Sector are immutable).
     /// Draft-only.</summary>
@@ -196,7 +198,8 @@ public interface IAipService
     /// Sets an activity's "…-CREATION" PS flag (v1.4 Q2). No validation beyond existence.
     /// </summary>
     Task<ServiceResult<AipActivityDto>> UpdateActivityIsCreationAsync(
-        int activityId, bool isCreation, User caller, CancellationToken ct = default);
+        int activityId, bool isCreation, User caller,
+        byte[]? expectedRowVersion = null, CancellationToken ct = default);
 
     /// <summary>Wipes all AIP records (cascade removes hierarchy). Returns deleted AipRecord count.</summary>
     Task<int> PurgeAllAsync(CancellationToken ct = default);

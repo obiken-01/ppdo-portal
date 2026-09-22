@@ -64,6 +64,19 @@ public class Repository<T> : IRepository<T> where T : class
         {
             return await _context.SaveChangesAsync(cancellationToken);
         }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            // V18-71 / PPDO-118. Zero rows matched an UPDATE whose WHERE carried the caller's
+            // rowversion, i.e. somebody else saved this row since it was loaded. Same translation
+            // seam as the unique-index case below, and for the same reason: Application cannot see
+            // EF's exception types.
+            //
+            // ⚠️ Listed BEFORE the DbUpdateException catch because it derives from it. The filter
+            // below would not match a concurrency failure today, but relying on that is one edit
+            // away from being wrong, and the failure mode would be a conflict surfacing as a 500.
+            throw new ConcurrencyConflictException(
+                "The row changed since it was loaded.", ex);
+        }
         catch (DbUpdateException ex) when (SqlErrors.IsUniqueViolation(ex))
         {
             // V18-44 / PPDO-50. Application references only Domain — it cannot see
@@ -80,6 +93,25 @@ public class Repository<T> : IRepository<T> where T : class
                 "A unique constraint rejected this write.", SqlErrors.IndexNameOf(ex), ex);
         }
     }
+
+    /// <inheritdoc />
+    public void ExpectRowVersion(IRowVersioned entity, byte[]? rowVersion)
+    {
+        // Null means "no version supplied" — the PPDO-119 rollout state, where old clients are
+        // still allowed through. Doing nothing here leaves the save unguarded, which is exactly
+        // what that state means; PPDO-121 removes the callers that can reach it.
+        if (rowVersion is null) return;
+
+        // OriginalValue, not CurrentValue. EF builds the UPDATE's WHERE from the ORIGINAL value,
+        // and the one it read moments ago in this same request is by definition current — so
+        // leaving it alone would make the check pass every time. The version that matters came
+        // from the browser and is the one being written here.
+        _context.Entry(entity).Property(nameof(IRowVersioned.RowVersion)).OriginalValue = rowVersion;
+    }
+
+    /// <inheritdoc />
+    public async Task ReloadAsync(IRowVersioned entity, CancellationToken cancellationToken = default)
+        => await _context.Entry(entity).ReloadAsync(cancellationToken);
 
     /// <inheritdoc />
     public async Task ExecuteInTransactionAsync(Func<Task> operation, CancellationToken cancellationToken = default)

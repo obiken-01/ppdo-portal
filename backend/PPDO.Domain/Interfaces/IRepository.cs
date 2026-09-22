@@ -1,3 +1,5 @@
+using PPDO.Domain.Common;
+
 namespace PPDO.Domain.Interfaces;
 
 /// <summary>
@@ -55,4 +57,47 @@ public interface IRepository<T> where T : class
     /// scratch (reset any local accumulators at the start of the delegate).
     /// </summary>
     Task ExecuteInTransactionAsync(Func<Task> operation, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Declares which version of <paramref name="entity"/> the caller was working from, so the
+    /// next <see cref="SaveChangesAsync"/> includes it in the UPDATE's WHERE clause and fails
+    /// with <c>ConcurrencyConflictException</c> if the stored row has moved on since
+    /// (V18-71 / PPDO-118).
+    ///
+    /// <para>
+    /// Without this, EF compares against the version it read a moment ago inside this same
+    /// request — which is always current, so the check would pass every time and protect nothing.
+    /// The value that matters is the one the <b>browser</b> was holding, which arrives on the
+    /// request.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ <see cref="IRowVersioned"/> keeps this honest at compile time — today
+    /// <c>AipActivity</c> and <c>AipExpenditure</c>. Implementing that interface is still not
+    /// sufficient on its own: the property must also be mapped with <c>.IsRowVersion()</c>, or EF
+    /// treats it as an ordinary column and never puts it in the WHERE clause.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ Pass <c>null</c> and the call is a no-op: the save proceeds with no concurrency check.
+    /// That is the PPDO-119 rollout state, not the end state — see <c>AIP_Concurrent_Edit_Spec</c>
+    /// §8 and PPDO-121.
+    /// </para>
+    /// </summary>
+    void ExpectRowVersion(IRowVersioned entity, byte[]? rowVersion);
+
+    /// <summary>
+    /// Re-reads <paramref name="entity"/> from the database, discarding the tracked copy's
+    /// pending changes (V18-71 / PPDO-118).
+    ///
+    /// <para>
+    /// ⚠️ <b>Needed because an ordinary re-query will not do it.</b> After a failed
+    /// <see cref="SaveChangesAsync"/> the change tracker still holds the entity with the caller's
+    /// attempted values. A fresh <c>FirstOrDefaultAsync</c> for the same key runs the SQL but then
+    /// identity-resolves back to that same tracked instance and keeps its modified values — so
+    /// building a "here is what the row says now" payload from it would show the caller their own
+    /// rejected edit back, labelled as somebody else's.
+    /// </para>
+    /// </summary>
+    Task ReloadAsync(IRowVersioned entity, CancellationToken cancellationToken = default);
 }

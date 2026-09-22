@@ -1411,7 +1411,7 @@ public sealed partial class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], officeSeed: [new AipOffice { Id = 201, AipRecordId = 1, RefCode = "O", Name = "Office", Sector = "GENERAL", OfficeId = 1 }], programSeed: [new AipProgram { Id = 301, OfficeId = 201, RefCode = "P", Name = "Prog" }], projectSeed: [new AipProject { Id = 401, ProgramId = 301, RefCode = "J", Name = "Proj" }], actSeed: [act]);
 
         ServiceResult<AipActivityDto> result =
-            await sut.UpdateActivityIsCreationAsync(501, true, HostCaller(), CancellationToken.None);
+            await sut.UpdateActivityIsCreationAsync(501, true, HostCaller(), ct: CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.True(result.Value!.IsCreation);
@@ -1425,7 +1425,7 @@ public sealed partial class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], officeSeed: [new AipOffice { Id = 201, AipRecordId = 1, RefCode = "O", Name = "Office", Sector = "GENERAL", OfficeId = 1 }], programSeed: [new AipProgram { Id = 301, OfficeId = 201, RefCode = "P", Name = "Prog" }], projectSeed: [new AipProject { Id = 401, ProgramId = 301, RefCode = "J", Name = "Proj" }], actSeed: [act]);
 
         ServiceResult<AipActivityDto> result =
-            await sut.UpdateActivityIsCreationAsync(502, false, HostCaller(), CancellationToken.None);
+            await sut.UpdateActivityIsCreationAsync(502, false, HostCaller(), ct: CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.False(result.Value!.IsCreation);
@@ -1438,7 +1438,7 @@ public sealed partial class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
         ServiceResult<AipActivityDto> result =
-            await sut.UpdateActivityIsCreationAsync(999, true, HostCaller(), CancellationToken.None);
+            await sut.UpdateActivityIsCreationAsync(999, true, HostCaller(), ct: CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
