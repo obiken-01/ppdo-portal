@@ -35,7 +35,10 @@ public static class AipTreeMapper
         a.Id, a.ProjectId, a.RefCode, a.Name, a.EsreCode, a.ImplementingOffice,
         a.StartDate, a.EndDate, a.ExpectedOutputs, a.FundingSourceId, a.FundingSourceSnapshot,
         a.Ps, a.Mooe, a.Co, a.Total, a.CcAdaptation, a.CcMitigation, a.CcTypologyCode,
-        a.IsCreation, a.IsSynthetic, fundCodes ?? []);
+        a.IsCreation, a.IsSynthetic, fundCodes ?? [],
+        // The single mapper for this DTO, so every read path gets the token — see
+        // AipActivityDto.RowVersion for why a read that omits it silently disables the guard.
+        a.RowVersion is { Length: > 0 } rv ? Convert.ToBase64String(rv) : null);
 
     /// <summary>
     /// The nested tree for <paramref name="offices"/>, drawing each level from the flat lists

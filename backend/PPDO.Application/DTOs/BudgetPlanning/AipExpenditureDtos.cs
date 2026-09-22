@@ -22,7 +22,15 @@ public sealed record AipExpenditureDto(
     decimal  Mooe,
     decimal  Co,
     decimal  Total,
-    IReadOnlyList<AipProcurementItemDto> ProcurementItems);
+    IReadOnlyList<AipProcurementItemDto> ProcurementItems,
+
+    /// <summary>
+    /// Base64 <c>rowversion</c> — the concurrent-edit guard's token (V18-71 / PPDO-120).
+    /// ⚠️ A read that omits it leaves the client with nothing to send back, which silently
+    /// disables the guard on this line and on its procurement items, which have no token of
+    /// their own.
+    /// </summary>
+    string? RowVersion = null);
 
 /// <summary>
 /// One procurement item under an AIP expenditure line (V18-80 / PPDO-54).
