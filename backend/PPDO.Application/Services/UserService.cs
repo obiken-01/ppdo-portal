@@ -377,6 +377,21 @@ public sealed class UserService : IUserService
             return ServiceResult<UserCredentialResponseDto>.Forbidden(
                 "You do not have permission to reset this user's password.");
 
+        // A deactivated account cannot log in at all: UserRepository.FindByUsernameAsync
+        // filters on `&& u.IsActive`, so login resolves it to null and returns the SAME
+        // 401 as a wrong password (deliberately — the endpoint must not leak account
+        // existence). Resetting one therefore issued a password that could never work,
+        // with nothing anywhere saying why; the admin and the user both concluded the
+        // password was broken and retried until the 5-attempt lockout returned 429.
+        // Cost a UAT session on 2026-09-22 (PPDO-115).
+        //
+        // Conflict, not BadRequest: the request is well-formed and the caller is
+        // permitted — it is the target's current state that forbids it.
+        if (!target.IsActive)
+            return ServiceResult<UserCredentialResponseDto>.Conflict(
+                "This account is deactivated and cannot sign in, so resetting its password "
+                + "would have no effect. Reactivate the account first, then reset.");
+
         // Issued once, shown once — never stored or logged in plaintext (RAL-254).
         string temporaryPassword = PasswordGenerator.Generate();
 

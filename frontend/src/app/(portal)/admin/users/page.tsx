@@ -547,6 +547,7 @@ function ConfirmDialog({
   confirmLabel,
   danger,
   loading,
+  error,
   onConfirm,
   onCancel,
 }: {
@@ -554,6 +555,9 @@ function ConfirmDialog({
   confirmLabel: string;
   danger?: boolean;
   loading: boolean;
+  /** Server-side failure to show in place, so a rejected action explains itself
+   * instead of leaving the dialog sitting there looking hung (PPDO-115). */
+  error?: string | null;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -584,6 +588,11 @@ function ConfirmDialog({
       }
     >
       <p className="text-sm text-slate-600">{message}</p>
+      {error && (
+        <div className="mt-3 bg-danger-100 border border-danger-500/30 px-4 py-3">
+          <p className="text-sm text-danger-500">{error}</p>
+        </div>
+      )}
     </Modal>
   );
 }
@@ -629,6 +638,7 @@ export default function UsersPage() {
   const [saving, setSaving] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [resetError, setResetError] = useState<string | null>(null);
 
   // ---------------------------------------------------------------------------
   // Auth check — redirect if not canManageUsers
@@ -804,6 +814,7 @@ export default function UsersPage() {
   async function handleResetPassword() {
     if (!resetTarget) return;
     setActionLoading(true);
+    setResetError(null);
     try {
       const { data } = await api.put<UserCredentialResponse>(`/users/${resetTarget.id}/reset-password`);
       setResetTarget(null);
@@ -813,8 +824,13 @@ export default function UsersPage() {
         password: data.temporaryPassword,
         context:  "reset",
       });
-    } catch {
-      // keep modal open — user can retry
+    } catch (e: unknown) {
+      // Keep the modal open so the admin can retry — but SAY why it failed. This used to
+      // swallow the error entirely, which left the dialog sitting there looking hung. The
+      // 409 for a deactivated target (PPDO-115) is the case that made that unacceptable.
+      const data = (e as { response?: { data?: unknown } })?.response?.data;
+      const msg = typeof data === "string" ? data : (data as { message?: string } | undefined)?.message;
+      setResetError(msg ?? "Failed to reset the password. Please try again.");
     } finally {
       setActionLoading(false);
     }
@@ -952,7 +968,19 @@ export default function UsersPage() {
                           btnPaddingX="px-1"
                           actions={[
                             { key: "edit", label: "Edit", onClick: () => openEdit(user) },
-                            { key: "reset", label: "Reset", onClick: () => setResetTarget(user) },
+                            // A deactivated account cannot sign in (login filters on IsActive),
+                            // so a reset would issue a password that can never work — and the
+                            // resulting 401 is indistinguishable from a wrong password. The
+                            // backend rejects it with 409; this just stops the trip (PPDO-115).
+                            {
+                              key: "reset",
+                              label: "Reset",
+                              onClick: () => setResetTarget(user),
+                              disabled: !user.isActive,
+                              title: user.isActive
+                                ? undefined
+                                : "This account is deactivated and cannot sign in. Reactivate it first, then reset.",
+                            },
                             user.isActive
                               ? { key: "deactivate", label: "Deactivate", onClick: () => setDeactivateTarget(user), variant: "danger" }
                               : { key: "activate", label: "Activate", onClick: () => setDeactivateTarget(user) },
@@ -1049,8 +1077,9 @@ export default function UsersPage() {
           message={`Reset password for ${resetTarget.fullName}? A new one-time password will be issued and shown once, and any active session will be signed out.`}
           confirmLabel="Reset Password"
           loading={actionLoading}
+          error={resetError}
           onConfirm={handleResetPassword}
-          onCancel={() => setResetTarget(null)}
+          onCancel={() => { setResetTarget(null); setResetError(null); }}
         />
       )}
 
