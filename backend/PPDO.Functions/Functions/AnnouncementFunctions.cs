@@ -84,7 +84,7 @@ public sealed class AnnouncementFunctions
         if (caller is null)
             return req.CreateResponse(HttpStatusCode.Unauthorized);
 
-        CreateAnnouncementDto? body = await DeserializeAsync<CreateAnnouncementDto>(req, cancellationToken);
+        CreateAnnouncementDto? body = await ConfigHttp.ReadBodyAsync<CreateAnnouncementDto>(req, cancellationToken, _jsonOptions);
         if (body is null || string.IsNullOrWhiteSpace(body.Title))
             return await BadRequest(req, "Title and Content are required.");
 
@@ -107,7 +107,7 @@ public sealed class AnnouncementFunctions
         if (caller is null)
             return req.CreateResponse(HttpStatusCode.Unauthorized);
 
-        UpdateAnnouncementDto? body = await DeserializeAsync<UpdateAnnouncementDto>(req, cancellationToken);
+        UpdateAnnouncementDto? body = await ConfigHttp.ReadBodyAsync<UpdateAnnouncementDto>(req, cancellationToken, _jsonOptions);
         if (body is null || string.IsNullOrWhiteSpace(body.Title))
             return await BadRequest(req, "Title and Content are required.");
 
@@ -211,21 +211,6 @@ public sealed class AnnouncementFunctions
         // frontend can compare against "Draft"/"Published"/"Archived" directly.
         Converters = { new JsonStringEnumConverter() },
     };
-
-    private static async Task<T?> DeserializeAsync<T>(
-        HttpRequestData req,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await JsonSerializer.DeserializeAsync<T>(
-                req.Body, _jsonOptions, cancellationToken);
-        }
-        catch
-        {
-            return default;
-        }
-    }
 
     private static async Task<HttpResponseData> OkJson<T>(
         HttpRequestData req,

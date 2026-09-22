@@ -69,7 +69,7 @@ public sealed class DistributionFunctions
             return req.CreateResponse(HttpStatusCode.Unauthorized);
 
         CreateItemDistributionDto? body =
-            await DeserializeAsync<CreateItemDistributionDto>(req, cancellationToken);
+            await ConfigHttp.ReadBodyAsync<CreateItemDistributionDto>(req, cancellationToken, _jsonOptions);
 
         if (body is null)
             return await PlainError(req, HttpStatusCode.BadRequest,
@@ -87,13 +87,6 @@ public sealed class DistributionFunctions
         => req.Headers.TryGetValues("Authorization", out IEnumerable<string>? vals)
             ? vals.FirstOrDefault()
             : null;
-
-    private static async Task<T?> DeserializeAsync<T>(
-        HttpRequestData req, CancellationToken cancellationToken)
-    {
-        try { return await JsonSerializer.DeserializeAsync<T>(req.Body, _jsonOptions, cancellationToken); }
-        catch { return default; }
-    }
 
     private static async Task<HttpResponseData> OkJson<T>(
         HttpRequestData req, T body, CancellationToken cancellationToken)

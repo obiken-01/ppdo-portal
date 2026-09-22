@@ -121,7 +121,7 @@ public sealed class StockBalanceFunctions
         if (caller is null)
             return req.CreateResponse(HttpStatusCode.Unauthorized);
 
-        CreateStockBalanceDto? body = await DeserializeAsync<CreateStockBalanceDto>(req, cancellationToken);
+        CreateStockBalanceDto? body = await ConfigHttp.ReadBodyAsync<CreateStockBalanceDto>(req, cancellationToken, _jsonOptions);
         if (body is null)
             return await BadRequest(req, "Request body is missing or malformed.");
 
@@ -143,7 +143,7 @@ public sealed class StockBalanceFunctions
         if (caller is null)
             return req.CreateResponse(HttpStatusCode.Unauthorized);
 
-        UpdateStockBalanceDto? body = await DeserializeAsync<UpdateStockBalanceDto>(req, cancellationToken);
+        UpdateStockBalanceDto? body = await ConfigHttp.ReadBodyAsync<UpdateStockBalanceDto>(req, cancellationToken, _jsonOptions);
         if (body is null)
             return await BadRequest(req, "Request body is missing or malformed.");
 
@@ -212,7 +212,7 @@ public sealed class StockBalanceFunctions
             return req.CreateResponse(HttpStatusCode.Unauthorized);
 
         CommitStockBalanceImportDto? body =
-            await DeserializeAsync<CommitStockBalanceImportDto>(req, cancellationToken);
+            await ConfigHttp.ReadBodyAsync<CommitStockBalanceImportDto>(req, cancellationToken, _jsonOptions);
         if (body is null)
             return await BadRequest(req, "Request body is missing or malformed.");
 
@@ -228,16 +228,6 @@ public sealed class StockBalanceFunctions
         => req.Headers.TryGetValues("Authorization", out IEnumerable<string>? values)
             ? values.FirstOrDefault()
             : null;
-
-    private static async Task<T?> DeserializeAsync<T>(
-        HttpRequestData req, CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await JsonSerializer.DeserializeAsync<T>(req.Body, _jsonOptions, cancellationToken);
-        }
-        catch { return default; }
-    }
 
     private static async Task<HttpResponseData> ToResponse<T>(
         HttpRequestData req,

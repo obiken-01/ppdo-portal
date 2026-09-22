@@ -120,7 +120,7 @@ public sealed class ItemFunctions
         if (caller is null)
             return req.CreateResponse(HttpStatusCode.Unauthorized);
 
-        CreateItemMasterDto? body = await DeserializeAsync<CreateItemMasterDto>(req, cancellationToken);
+        CreateItemMasterDto? body = await ConfigHttp.ReadBodyAsync<CreateItemMasterDto>(req, cancellationToken, _jsonOptions);
         if (body is null)
             return await BadRequest(req, "Request body is missing or malformed.");
 
@@ -142,7 +142,7 @@ public sealed class ItemFunctions
         if (caller is null)
             return req.CreateResponse(HttpStatusCode.Unauthorized);
 
-        UpdateItemMasterDto? body = await DeserializeAsync<UpdateItemMasterDto>(req, cancellationToken);
+        UpdateItemMasterDto? body = await ConfigHttp.ReadBodyAsync<UpdateItemMasterDto>(req, cancellationToken, _jsonOptions);
         if (body is null)
             return await BadRequest(req, "Request body is missing or malformed.");
 
@@ -175,17 +175,6 @@ public sealed class ItemFunctions
         => req.Headers.TryGetValues("Authorization", out IEnumerable<string>? values)
             ? values.FirstOrDefault()
             : null;
-
-    private static async Task<T?> DeserializeAsync<T>(
-        HttpRequestData req, CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await JsonSerializer.DeserializeAsync<T>(
-                req.Body, _jsonOptions, cancellationToken);
-        }
-        catch { return default; }
-    }
 
     private static async Task<HttpResponseData> OkJson<T>(
         HttpRequestData req, T body, CancellationToken cancellationToken)

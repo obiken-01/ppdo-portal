@@ -130,9 +130,32 @@ internal static class ConfigHttp
             ? null
             : req.CreateResponse(HttpStatusCode.Forbidden);
 
-    internal static async Task<T?> ReadBodyAsync<T>(HttpRequestData req, CancellationToken cancellationToken)
+    /// <summary>
+    /// Reads and deserializes a JSON request body, returning <c>default</c> when it is missing or
+    /// malformed so the handler can answer 400. The single copy of what used to be a private
+    /// <c>DeserializeAsync&lt;T&gt;</c> in ten other Function files (PPDO-43).
+    /// </summary>
+    /// <param name="options">
+    /// ⚠️ <b>Pass the caller's own options whenever it has any.</b> The ten copies this replaced
+    /// were <i>not</i> interchangeable, which is the trap here: all used camelCase, but only four
+    /// set <c>PropertyNameCaseInsensitive</c>, and <c>AnnouncementFunctions</c> and
+    /// <c>DashboardFunctions</c> additionally register a <c>JsonStringEnumConverter</c>.
+    /// Defaulting those two to <see cref="Json"/> would stop <c>AnnouncementStatus</c> and
+    /// <c>CalendarEventStatus</c> deserializing from strings — and because the failure is
+    /// swallowed below it would not surface as a parse error, but as a silent null body and a
+    /// baffling 400. Omit this only when <see cref="Json"/> is genuinely what you want.
+    /// </param>
+    internal static async Task<T?> ReadBodyAsync<T>(
+        HttpRequestData req,
+        CancellationToken cancellationToken,
+        JsonSerializerOptions? options = null)
     {
-        try { return await JsonSerializer.DeserializeAsync<T>(req.Body, Json, cancellationToken); }
+        // Bare catch preserved from the ten originals rather than narrowed to JsonException.
+        // Narrowing is the better end state — it would let genuinely unexpected failures reach
+        // the new exception stage and be logged instead of masquerading as a malformed body —
+        // but it changes the failure status of every write endpoint, which is not a change to
+        // make while v1.8.0 is soaking in UAT. Noted on PPDO-43 as a follow-up.
+        try { return await JsonSerializer.DeserializeAsync<T>(req.Body, options ?? Json, cancellationToken); }
         catch { return default; }
     }
 

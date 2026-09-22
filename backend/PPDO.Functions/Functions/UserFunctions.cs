@@ -95,7 +95,7 @@ public sealed class UserFunctions
         if (!await _permissions.CanManageUsersAsync(caller, cancellationToken))
             return req.CreateResponse(HttpStatusCode.Forbidden);
 
-        CreateUserDto? body = await DeserializeAsync<CreateUserDto>(req, cancellationToken);
+        CreateUserDto? body = await ConfigHttp.ReadBodyAsync<CreateUserDto>(req, cancellationToken, _jsonOptions);
         if (body is null)
             return await BadRequest(req, "Request body is missing or malformed.");
 
@@ -121,7 +121,7 @@ public sealed class UserFunctions
         if (!await _permissions.CanManageUsersAsync(caller, cancellationToken))
             return req.CreateResponse(HttpStatusCode.Forbidden);
 
-        UpdateUserDto? body = await DeserializeAsync<UpdateUserDto>(req, cancellationToken);
+        UpdateUserDto? body = await ConfigHttp.ReadBodyAsync<UpdateUserDto>(req, cancellationToken, _jsonOptions);
         if (body is null)
             return await BadRequest(req, "Request body is missing or malformed.");
 
@@ -170,7 +170,7 @@ public sealed class UserFunctions
         if (caller.Role is not UserRole.SuperAdmin)
             return req.CreateResponse(HttpStatusCode.Forbidden);
 
-        SetPermissionsDto? body = await DeserializeAsync<SetPermissionsDto>(req, cancellationToken);
+        SetPermissionsDto? body = await ConfigHttp.ReadBodyAsync<SetPermissionsDto>(req, cancellationToken, _jsonOptions);
         if (body is null)
             return await BadRequest(req, "Request body is missing or malformed.");
 
@@ -255,7 +255,7 @@ public sealed class UserFunctions
             return req.CreateResponse(HttpStatusCode.Unauthorized);
 
         UpdateOwnProfileDto? body =
-            await DeserializeAsync<UpdateOwnProfileDto>(req, cancellationToken);
+            await ConfigHttp.ReadBodyAsync<UpdateOwnProfileDto>(req, cancellationToken, _jsonOptions);
         if (body is null)
             return await BadRequest(req, "Request body is missing or malformed.");
 
@@ -278,7 +278,7 @@ public sealed class UserFunctions
             return req.CreateResponse(HttpStatusCode.Unauthorized);
 
         ChangePasswordDto? body =
-            await DeserializeAsync<ChangePasswordDto>(req, cancellationToken);
+            await ConfigHttp.ReadBodyAsync<ChangePasswordDto>(req, cancellationToken, _jsonOptions);
         if (body is null)
             return await BadRequest(req, "Request body is missing or malformed.");
 
@@ -312,7 +312,7 @@ public sealed class UserFunctions
             return req.CreateResponse(HttpStatusCode.Unauthorized);
 
         SetRecoveryAnswerDto? body =
-            await DeserializeAsync<SetRecoveryAnswerDto>(req, cancellationToken);
+            await ConfigHttp.ReadBodyAsync<SetRecoveryAnswerDto>(req, cancellationToken, _jsonOptions);
         if (body is null)
             return await BadRequest(req, "Request body is missing or malformed.");
 
@@ -362,21 +362,6 @@ public sealed class UserFunctions
         PropertyNameCaseInsensitive = true,
         PropertyNamingPolicy        = JsonNamingPolicy.CamelCase,
     };
-
-    private static async Task<T?> DeserializeAsync<T>(
-        HttpRequestData req,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await JsonSerializer.DeserializeAsync<T>(
-                req.Body, _jsonOptions, cancellationToken);
-        }
-        catch
-        {
-            return default;
-        }
-    }
 
     private static async Task<HttpResponseData> OkJson<T>(
         HttpRequestData req,
