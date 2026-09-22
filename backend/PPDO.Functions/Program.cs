@@ -9,6 +9,7 @@ using PPDO.Application.Services;
 using PPDO.Application.Settings;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Interfaces;
+using PPDO.Functions.Middleware;
 using PPDO.Infrastructure.Data;
 using PPDO.Infrastructure.Repositories;
 using PPDO.Infrastructure.Services;
@@ -32,6 +33,14 @@ string[] allowedOrigins =
 var host = new HostBuilder()
     .ConfigureFunctionsWebApplication(worker =>
     {
+        // Exception handling (PPDO-43). MUST be registered FIRST: worker.Use runs stages
+        // outermost-first, so this wraps the CORS block below. That ordering is what keeps
+        // CORS headers on a 500 — CORS sets them before its own `await next`, so they are
+        // already on the response when an exception unwinds back out through it. Register
+        // this second and a failed request returns without CORS headers, which the browser
+        // reports as an opaque network error rather than a 500.
+        worker.UseMiddleware<ExceptionHandlingMiddleware>();
+
         // CORS middleware for the isolated worker model.
         // worker.Use takes Func<FunctionExecutionDelegate, FunctionExecutionDelegate>.
         // GetHttpContext() is available via the AspNetCore extension package and
@@ -96,6 +105,13 @@ var host = new HostBuilder()
 
         // -- Scoped request context ------------------------------------------
         services.AddScoped<CallerContext>();
+
+        // -- Worker middleware (PPDO-43) -------------------------------------
+        // UseMiddleware<T> would happily construct this itself via ActivatorUtilities, but
+        // CLAUDE.md's rule is that everything resolvable comes from here. Singleton is safe:
+        // its only dependency is ILogger<T>, and the per-invocation CallerContext is resolved
+        // from context.InstanceServices inside Invoke rather than injected.
+        services.AddSingleton<ExceptionHandlingMiddleware>();
 
         // -- Infrastructure services -----------------------------------------
         services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
