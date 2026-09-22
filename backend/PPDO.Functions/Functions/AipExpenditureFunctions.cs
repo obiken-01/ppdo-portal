@@ -93,8 +93,13 @@ public sealed class AipExpenditureFunctions
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
                 ApiResponse<AipExpenditureWriteResultDto>.Fail("Request body is missing or malformed."), ct);
 
+        (bool versionOk, byte[]? rowVersion) = ConfigHttp.DecodeRowVersion(body.RowVersion);
+        if (!versionOk)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<AipExpenditureWriteResultDto>.Fail("rowVersion is not valid base64."), ct);
+
         return await ConfigHttp.FromResultAsync(req,
-            await _expenditures.UpdateAsync(id, body, caller!, ct), ct);
+            await _expenditures.UpdateAsync(id, body, caller!, rowVersion, ct), ct);
     }
 
     // ── DELETE /api/budget-planning/aip/expenditures/{id} ────────────────────
@@ -111,7 +116,15 @@ public sealed class AipExpenditureFunctions
         // ⚠️ Returns the recomputed activity rather than 204, deliberately. Deleting the last line
         // takes the activity's total to 0 and the caller must render that; a bare 204 would leave
         // the page showing the pre-delete figure until someone reloaded.
+        // DELETE carries no body, so the version rides on the query string. Same guard and the
+        // same staged-rollout rule: absent is allowed for now, malformed is a 400.
+        (bool versionOk, byte[]? rowVersion) =
+            ConfigHttp.DecodeRowVersion(req.Query["rowVersion"]);
+        if (!versionOk)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<AipExpenditureWriteResultDto>.Fail("rowVersion is not valid base64."), ct);
+
         return await ConfigHttp.FromResultAsync(req,
-            await _expenditures.DeleteAsync(id, caller!, ct), ct);
+            await _expenditures.DeleteAsync(id, caller!, rowVersion, ct), ct);
     }
 }

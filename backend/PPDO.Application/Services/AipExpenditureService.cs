@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
+using PPDO.Domain.Common;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Enums;
 using PPDO.Domain.Interfaces;
@@ -18,6 +19,7 @@ public sealed class AipExpenditureService : IAipExpenditureService
     private readonly IRepository<FundingSource> _fsRepo;
     private readonly IAuditService              _audit;
     private readonly IPermissionService         _permissions;
+    private readonly IUserRepository           _userRepo;
     private readonly ILogger<AipExpenditureService> _logger;
 
     public AipExpenditureService(
@@ -29,6 +31,7 @@ public sealed class AipExpenditureService : IAipExpenditureService
         IRepository<FundingSource> fsRepo,
         IAuditService              audit,
         IPermissionService         permissions,
+        IUserRepository            userRepo,
         ILogger<AipExpenditureService> logger)
     {
         _aipRepo     = aipRepo;
@@ -39,6 +42,7 @@ public sealed class AipExpenditureService : IAipExpenditureService
         _fsRepo      = fsRepo;
         _audit       = audit;
         _permissions = permissions;
+        _userRepo    = userRepo;
         _logger      = logger;
     }
 
@@ -143,7 +147,8 @@ public sealed class AipExpenditureService : IAipExpenditureService
     // ── Update ────────────────────────────────────────────────────────────────
 
     public async Task<ServiceResult<AipExpenditureWriteResultDto>> UpdateAsync(
-        int expenditureId, UpdateAipExpenditureDto dto, User caller, CancellationToken ct = default)
+        int expenditureId, UpdateAipExpenditureDto dto, User caller,
+        byte[]? expectedRowVersion = null, CancellationToken ct = default)
     {
         AipExpenditure? line = await _expRepo.GetByIntIdAsync(expenditureId, ct);
         if (line is null)
@@ -171,6 +176,12 @@ public sealed class AipExpenditureService : IAipExpenditureService
         line.Mooe = dto.Mooe;
         line.Co   = dto.Co;
         line.UpdatedAt = DateTime.UtcNow;
+        // ⚠️ Unconditional, and PPDO-118 depends on it staying that way. This write is what dirties
+        // the parent row when ONLY its procurement items changed, and the parent's rowversion is
+        // what protects those items — they have no endpoints and no token of their own. Make this
+        // conditional as an "optimisation" and two encoders editing items under one line both
+        // succeed, silently.
+        line.UpdatedById = caller.Id;
         // ⚠️ The refusal below lands AFTER these assignments, so `line` — a tracked entity — is left
         // dirty. That is safe only because this method returns without calling SaveChangesAsync and
         // the DbContext is scoped to the request, and it is pinned by
@@ -207,7 +218,19 @@ public sealed class AipExpenditureService : IAipExpenditureService
         if (dto.ProcurementItems is not null)
             await _expRepo.ReplaceProcurementItemsAsync(line.Id, BuildItems(dto.ProcurementItems), ct);
 
-        await _expRepo.SaveChangesAsync(ct);
+        // Declared immediately before the save that matters. An intervening SaveChanges — the
+        // audit service performs its own — calls AcceptAllChanges and copies current values over
+        // original ones, which would silently discard the expectation.
+        _expRepo.ExpectRowVersion(line, expectedRowVersion);
+
+        try
+        {
+            await _expRepo.SaveChangesAsync(ct);
+        }
+        catch (ConcurrencyConflictException)
+        {
+            return await LineConflictAsync(line, caller, ct);
+        }
 
         await _audit.LogAsync("aip_expenditures", line.Id, AuditAction.Update, before,
             new { line.AccountId, line.FundingSourceId, line.Ps, line.Mooe, line.Co, line.Total }, ct);
@@ -218,7 +241,8 @@ public sealed class AipExpenditureService : IAipExpenditureService
     // ── Delete ────────────────────────────────────────────────────────────────
 
     public async Task<ServiceResult<AipExpenditureWriteResultDto>> DeleteAsync(
-        int expenditureId, User caller, CancellationToken ct = default)
+        int expenditureId, User caller,
+        byte[]? expectedRowVersion = null, CancellationToken ct = default)
     {
         AipExpenditure? line = await _expRepo.GetByIntIdAsync(expenditureId, ct);
         if (line is null)
@@ -235,15 +259,97 @@ public sealed class AipExpenditureService : IAipExpenditureService
                 ctx.Office, caller, _aipRepo, NotFoundLine(expenditureId), ct, "delete from");
         if (refused is not null) return refused;
 
-        await _audit.LogAsync("aip_expenditures", line.Id, AuditAction.Delete,
-            new { line.ActivityId, line.Ps, line.Mooe, line.Co, line.Total }, null, ct);
+        // Snapshot BEFORE the delete, log AFTER it — the values are still readable on the
+        // detached entity afterwards.
+        //
+        // ↩️ The audit call used to run first. That was harmless while a delete could not fail,
+        // but PPDO-118 gives it a way to: a stale version now rejects the save, and an audit row
+        // saying "deleted" would already have been committed for a row that still exists. The
+        // audit service performs its own SaveChangesAsync, so this is not one transaction that
+        // rolls back together — the ordering is the only thing keeping the two honest.
+        object deletedSnapshot = new { line.ActivityId, line.Ps, line.Mooe, line.Co, line.Total };
 
         await _expRepo.DeleteAsync(line, ct);
-        await _expRepo.SaveChangesAsync(ct);
+
+        // Declared here, not earlier: the audit service's own SaveChanges would otherwise call
+        // AcceptAllChanges and discard the expectation before it could be used.
+        _expRepo.ExpectRowVersion(line, expectedRowVersion);
+
+        try
+        {
+            await _expRepo.SaveChangesAsync(ct);
+        }
+        catch (ConcurrencyConflictException)
+        {
+            return await LineConflictAsync(line, caller, ct);
+        }
+
+        await _audit.LogAsync("aip_expenditures", expenditureId, AuditAction.Delete,
+            deletedSnapshot, null, ct);
 
         // ⚠️ afterDelete: true. This is the one call site where removing the last line must take
         // the activity to 0 rather than leaving it untouched — see IAipExpenditureService.
         return await AfterWriteAsync(line: null, activityId, afterDelete: true, ct);
+    }
+
+    // ── Concurrent-edit guard (V18-71 / PPDO-118) ─────────────────────────────
+
+    private const string LineNoun = "expenditure line";
+
+    /// <summary>
+    /// Builds the 409 after a rejected line save: who saved last, when, and what the line now
+    /// says.
+    ///
+    /// <para>
+    /// ⚠️ This also covers the line's <b>procurement items</b>. They have no endpoints and no
+    /// token of their own — they are written only through this row, as a wholesale replace — so
+    /// the parent's rowversion is what protects them. See <see cref="AipExpenditure.RowVersion"/>.
+    /// </para>
+    /// </summary>
+    private async Task<ServiceResult<AipExpenditureWriteResultDto>> LineConflictAsync(
+        AipExpenditure line, User caller, CancellationToken ct)
+    {
+        int lineId = line.Id;
+
+        // Reload, not re-query: the change tracker still holds this entity with the caller's
+        // rejected values, and a fresh query identity-resolves straight back to it.
+        try
+        {
+            await _expRepo.ReloadAsync(line, ct);
+        }
+        catch (Exception ex)
+        {
+            // A conflict we cannot describe is still a conflict. A 500 here would turn "someone
+            // else edited this" into "the app broke".
+            _logger.LogError(ex,
+                "Could not reload AIP expenditure after a concurrency conflict. ExpenditureId: {ExpenditureId}",
+                lineId);
+            return ServiceResult<AipExpenditureWriteResultDto>.Conflict(
+                AipConflictNarration.Message(LineNoun, null, sameUser: false));
+        }
+
+        AipExpenditure? current = await _expRepo.GetByIntIdAsync(lineId, ct);
+        if (current is null)
+            return ServiceResult<AipExpenditureWriteResultDto>.NotFound(
+                AipConflictNarration.DeletedMessage(LineNoun));
+
+        (string? changedByName, bool sameUser) = await AipConflictNarration.ResolveEditorAsync(
+            current.UpdatedById, caller.Id, _userRepo, ct);
+
+        _logger.LogWarning(
+            "AIP concurrent edit rejected. ExpenditureId: {ExpenditureId}, ActivityId: {ActivityId}, AttemptedByUserId: {AttemptedByUserId}, ChangedByUserId: {ChangedByUserId}",
+            lineId, current.ActivityId, caller.Id, current.UpdatedById);
+
+        IReadOnlyList<AipProcurementItem> items =
+            await _expRepo.GetProcurementItemsByExpenditureIdsAsync([lineId], ct);
+
+        return ServiceResult<AipExpenditureWriteResultDto>.Conflict(
+            AipConflictNarration.Message(LineNoun, changedByName, sameUser),
+            new AipConflictDto<AipExpenditureDto>(
+                changedByName,
+                current.UpdatedAt,
+                Convert.ToBase64String(current.RowVersion),
+                Map(current, items)));
     }
 
     // ── The two side effects every write owes ─────────────────────────────────
