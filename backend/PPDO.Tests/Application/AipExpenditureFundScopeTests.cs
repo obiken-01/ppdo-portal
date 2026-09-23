@@ -42,6 +42,7 @@ public sealed class AipExpenditureFundScopeTests
     private readonly Mock<IRepository<FundingSource>> _funds       = new();
     private readonly Mock<IAuditService>              _audit       = new();
     private readonly Mock<IPermissionService>         _permissions = new();
+    private readonly Mock<IUserRepository>     _users       = new(MockBehavior.Loose);
 
     private static readonly User Encoder = new()
     {
@@ -100,7 +101,7 @@ public sealed class AipExpenditureFundScopeTests
     private AipExpenditureService Build() => new(
         _aipRepo.Object, _expRepo.Object, _totals.Object, _ceiling.Object,
         _accounts.Object, _funds.Object, _audit.Object, _permissions.Object,
-        NullLogger<AipExpenditureService>.Instance);
+        _users.Object, NullLogger<AipExpenditureService>.Instance);
 
     private static CreateAipExpenditureDto Create(int? fundId) =>
         new(AccountId, fundId, 0m, 1_000m, 0m, []);
@@ -206,7 +207,7 @@ public sealed class AipExpenditureFundScopeTests
 
         ServiceResult<AipExpenditureWriteResultDto> result = await Build().UpdateAsync(
             900, new UpdateAipExpenditureDto(AccountId, ForeignFundId, 0m, 1_000m, 0m, null),
-            Encoder, CancellationToken.None);
+            Encoder, ct: CancellationToken.None);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
         _expRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
@@ -224,7 +225,7 @@ public sealed class AipExpenditureFundScopeTests
 
         ServiceResult<AipExpenditureWriteResultDto> result = await Build().UpdateAsync(
             900, new UpdateAipExpenditureDto(AccountId, SharedFundId, 0m, 1_000m, 0m, null),
-            Encoder, CancellationToken.None);
+            Encoder, ct: CancellationToken.None);
 
         Assert.True(result.IsSuccess);
     }

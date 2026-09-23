@@ -2188,42 +2188,30 @@ public sealed class AipService : IAipService
             // "someone else edited this" into "the app broke", which is strictly worse.
             _logger.LogError(ex,
                 "Could not reload AIP activity after a concurrency conflict. ActivityId: {ActivityId}", activityId);
-            return ServiceResult<AipActivityDto>.Conflict(ConflictMessage(null));
+            return ServiceResult<AipActivityDto>.Conflict(
+                AipConflictNarration.Message(ActivityNoun, null, sameUser: false));
         }
 
         // Reload on a deleted row detaches it — the other user deleted rather than edited, which
         // is a different answer and a different recovery (spec §3).
         if (activity.Id == 0 || await _aipRepo.GetActivityByIdAsync(activityId, ct) is null)
             return ServiceResult<AipActivityDto>.NotFound(
-                "This activity was deleted by someone else while you were editing it.");
+                AipConflictNarration.DeletedMessage(ActivityNoun));
 
         // GetNamesByIdsAsync, not GetByIdWithDivisionAsync — this file's existing idiom for
         // resolving a display name (see GetAllAsync). It projects the name in SQL instead of
         // materialising the user and its division for one string, which matters more here than
         // elsewhere: this runs on a failure path that fires while somebody is waiting.
-        // GetNamesByIdsAsync, not GetByIdWithDivisionAsync — this file's existing idiom for
-        // resolving a display name (see GetAllAsync). It projects the name in SQL instead of
-        // materialising the user and its division for one string, which matters more here than
-        // elsewhere: this runs on a failure path that fires while somebody is waiting.
-        //
-        // ⚠️ Reads UpdatedById only AFTER the reload above. SaveActivityAsync stamps the current
-        // caller onto the entity before saving, so reading it any earlier would report the person
-        // being refused as the person who made the change.
-        string? changedByName = null;
-        bool sameUser = activity.UpdatedById == caller.Id;
-        if (activity.UpdatedById is Guid changedById && !sameUser)
-        {
-            IReadOnlyDictionary<Guid, string> names =
-                await _userRepo.GetNamesByIdsAsync([changedById], ct);
-            changedByName = names.GetValueOrDefault(changedById);
-        }
+        // ⚠️ Resolved only AFTER the reload above — see AipConflictNarration.ResolveEditorAsync.
+        (string? changedByName, bool sameUser) = await AipConflictNarration.ResolveEditorAsync(
+            activity.UpdatedById, caller.Id, _userRepo, ct);
 
         _logger.LogWarning(
             "AIP concurrent edit rejected. ActivityId: {ActivityId}, AttemptedByUserId: {AttemptedByUserId}, ChangedByUserId: {ChangedByUserId}",
             activityId, caller.Id, activity.UpdatedById);
 
         return ServiceResult<AipActivityDto>.Conflict(
-            sameUser ? SameUserConflictMessage : ConflictMessage(changedByName),
+            AipConflictNarration.Message(ActivityNoun, changedByName, sameUser),
             new AipConflictDto<AipActivityDto>(
                 changedByName,
                 activity.UpdatedAt,
@@ -2231,18 +2219,7 @@ public sealed class AipService : IAipService
                 MapActivityToDto(activity)));
     }
 
-    private static string ConflictMessage(string? changedByName)
-        => changedByName is null
-            ? "This activity was changed by someone else while you were editing it."
-            : $"This activity was changed by {changedByName} while you were editing it.";
-
-    /// <summary>
-    /// The same account saved from somewhere else — a second tab, or two people on one shared
-    /// login, which this project has seen before (RAL-198). Naming the user here would read as
-    /// "changed by you", which sounds like a bug rather than an explanation.
-    /// </summary>
-    private const string SameUserConflictMessage =
-        "This activity was changed from another window signed in as you, while you were editing it.";
+    private const string ActivityNoun = "activity";
 
     // ── Purge (dev/test only) ─────────────────────────────────────────────────
 

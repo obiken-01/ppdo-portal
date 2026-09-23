@@ -22,7 +22,15 @@ public sealed record AipExpenditureDto(
     decimal  Mooe,
     decimal  Co,
     decimal  Total,
-    IReadOnlyList<AipProcurementItemDto> ProcurementItems);
+    IReadOnlyList<AipProcurementItemDto> ProcurementItems,
+
+    /// <summary>
+    /// Base64 <c>rowversion</c> — the concurrent-edit guard's token (V18-71 / PPDO-120).
+    /// ⚠️ A read that omits it leaves the client with nothing to send back, which silently
+    /// disables the guard on this line and on its procurement items, which have no token of
+    /// their own.
+    /// </summary>
+    string? RowVersion = null);
 
 /// <summary>
 /// One procurement item under an AIP expenditure line (V18-80 / PPDO-54).
@@ -102,7 +110,20 @@ public sealed record UpdateAipExpenditureDto(
     decimal  Ps,
     decimal  Mooe,
     decimal  Co,
-    IReadOnlyList<SaveAipProcurementItemDto>? ProcurementItems = null);
+    IReadOnlyList<SaveAipProcurementItemDto>? ProcurementItems = null,
+
+    /// <summary>
+    /// Base64 <c>rowversion</c> the client loaded, for the concurrent-edit guard
+    /// (V18-71 / PPDO-119). ⚠️ Optional only during the staged rollout — while it is null the save
+    /// proceeds unguarded. See <c>docs/v1.8/AIP_Concurrent_Edit_Spec.md</c> §8; PPDO-121 makes it
+    /// required.
+    ///
+    /// <para>
+    /// This token also covers the line's <c>ProcurementItems</c>, which have no endpoints of their
+    /// own and are written only through this request.
+    /// </para>
+    /// </summary>
+    string?  RowVersion = null);
 
 /// <summary>
 /// What an expenditure write returns: the line, plus its activity's recomputed totals so the page
