@@ -37,7 +37,9 @@ import AipMoneyInput from "@/components/aip/AipMoneyInput";
 import AipActivityNameCounter from "@/components/aip/AipActivityNameCounter";
 import { updateAipActivityDetails, aipErrorMessage } from "@/lib/aip";
 import { fmtThousands } from "@/lib/aip-units";
-import { AIP_ESRE_OPTIONS, AIP_MONTHS } from "@/lib/aipConstants";
+import { AIP_MONTHS } from "@/lib/aipConstants";
+import { useAipCodeOptions } from "@/hooks/useAipCodeOptions";
+import AipCodeSelect from "@/components/aip/AipCodeSelect";
 import { useAutoGrowTextarea } from "@/lib/useAutoGrowTextarea";
 import { inputCls, selectCls } from "@/components/aip/AipTreeCells";
 import MultiLookup, {
@@ -84,6 +86,8 @@ export default function AipActivityFields({
   const [endDate, setEndDate]                       = useState(activity.endDate ?? "");
   const [expectedOutputs, setExpectedOutputs]       = useState(activity.expectedOutputs ?? "");
   const [ccTypologyCode, setCcTypologyCode]         = useState(activity.ccTypologyCode ?? "");
+  // Config-backed eSRE and CC typology lists, fetched once per page load (Demo 2.2 / 2.3).
+  const codeOptions = useAipCodeOptions();
   // ⚠️ PESOS, both on screen and on the wire — the input shows exactly what is stored. Only the
   // read-only cells divide (see lib/aip-units).
   const [ccAdaptation, setCcAdaptation] = useState<number | null>(activity.ccAdaptation);
@@ -181,10 +185,14 @@ export default function AipActivityFields({
         <div>
           {/* ⚠️ One of the two the submit gate blocks on. */}
           <Label hint="needed to submit">eSRE code</Label>
-          <select value={esreCode} onChange={(e) => setEsreCode(e.target.value)} className={selectCls}>
-            <option value="">—</option>
-            {AIP_ESRE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
+          <AipCodeSelect
+            value={esreCode}
+            onChange={setEsreCode}
+            options={codeOptions.esre}
+            loaded={codeOptions.loaded}
+            className={selectCls}
+            ariaLabel="eSRE code"
+          />
         </div>
 
         {/* Spans two columns so Start and End share the row below — see the read view. */}
@@ -257,12 +265,28 @@ export default function AipActivityFields({
 
         <div>
           {/* ⚠️ Optional — the submit gate does NOT block on this (PPDO-81); leave it blank on an
-              activity with no climate-change component. Free text on both this form and the detail
-              page's — there is no canonical list of typology codes in the config, so inventing a
-              select here would reject codes the province actually uses. */}
+              activity with no climate-change component.
+
+              ↩️ Was free text until Demo 2.3 (PPDO-125). The reason given then — "there is no
+              canonical list of typology codes in the config, so inventing a select here would
+              reject codes the province actually uses" — no longer holds: config carries 60
+              typologies behind a CRUD page, and the free-text field is why nobody could tell a
+              typo from a real code. The config table IS the canonical list now, by decision.
+
+              ⚠️ The old concern survives in one form, so it is worth naming: a code the province
+              uses but config lacks can no longer be typed in. That is deliberate — the fix belongs
+              in Config → CC Typologies, where it helps every office, not in one encoder's row.
+              AipCodeSelect still keeps an ALREADY-SAVED code selectable, so this cannot silently
+              blank existing data. */}
           <Label>CC typology code</Label>
-          <input value={ccTypologyCode} onChange={(e) => setCcTypologyCode(e.target.value)}
-            className={inputCls} />
+          <AipCodeSelect
+            value={ccTypologyCode}
+            onChange={setCcTypologyCode}
+            options={codeOptions.ccTypology}
+            loaded={codeOptions.loaded}
+            className={selectCls}
+            ariaLabel="CC typology code"
+          />
         </div>
       </div>
 

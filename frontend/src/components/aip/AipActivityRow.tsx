@@ -9,7 +9,9 @@ import AipActivityNameCounter from "@/components/aip/AipActivityNameCounter";
 import { useState } from "react";
 import { aipErrorMessage, deleteAipActivity, updateAipActivity } from "@/lib/aip";
 import { fmtPesos } from "@/lib/aip-units";
-import { AIP_ESRE_OPTIONS, AIP_MONTHS } from "@/lib/aipConstants";
+import { AIP_MONTHS } from "@/lib/aipConstants";
+import { useAipCodeOptions } from "@/hooks/useAipCodeOptions";
+import AipCodeSelect from "@/components/aip/AipCodeSelect";
 import { useAutoGrowTextarea } from "@/lib/useAutoGrowTextarea";
 import { AmtTD, inputCls, selectCls } from "@/components/aip/AipTreeCells";
 import type { ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
@@ -41,6 +43,8 @@ export default function ActivityRow({
   const [endDate, setEndDate]                       = useState(act.endDate ?? "");
   const [expectedOutputs, setExpectedOutputs]       = useState(act.expectedOutputs ?? "");
   const [fundingSourceId, setFundingSourceId]       = useState(act.fundingSourceId != null ? String(act.fundingSourceId) : "");
+  // Config-backed pickers. Cached at module scope, so one request serves every row in the tree.
+  const codeOptions = useAipCodeOptions();
   // ⚠️ Money state is PESOS throughout — what is stored, what the ₱ inputs show, what the live row
   // total sums, and what is posted. Nothing converts on the way in or out.
   // ↩️ It was held in ₱000 and multiplied on save (decision P2-a, reversed 2026-09-07); only the
@@ -166,10 +170,15 @@ export default function ActivityRow({
         <AipActivityNameCounter name={name} />
       </td>
       <td className="px-2 py-1.5">
-        <select value={esreCode} onChange={(e) => setEsreCode(e.target.value)} className={selectCls}>
-          <option value="">—</option>
-          {AIP_ESRE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.value}</option>)}
-        </select>
+        <AipCodeSelect
+          value={esreCode}
+          onChange={setEsreCode}
+          options={codeOptions.esre}
+          loaded={codeOptions.loaded}
+          className={selectCls}
+          ariaLabel="eSRE code"
+          showName={false}
+        />
       </td>
       <td className="px-2 py-1.5">
         <input value={implementingOffice} onChange={(e) => setImplementingOffice(e.target.value)} className={inputCls} />
@@ -204,7 +213,15 @@ export default function ActivityRow({
       <td className="px-1 py-1.5"><AipMoneyInput value={ccAdaptation} onChange={setCcAdaptation} /></td>
       <td className="px-1 py-1.5"><AipMoneyInput value={ccMitigation} onChange={setCcMitigation} /></td>
       <td className="px-2 py-1.5">
-        <input value={ccTypologyCode} onChange={(e) => setCcTypologyCode(e.target.value)} className={inputCls} />
+        <AipCodeSelect
+          value={ccTypologyCode}
+          onChange={setCcTypologyCode}
+          options={codeOptions.ccTypology}
+          loaded={codeOptions.loaded}
+          className={selectCls}
+          ariaLabel="CC typology"
+          showName={false}
+        />
       </td>
       <td className="px-2 py-1.5 text-center whitespace-nowrap">
         <div className="flex flex-col items-center gap-1">
