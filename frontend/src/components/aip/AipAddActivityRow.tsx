@@ -9,7 +9,9 @@ import AipActivityNameCounter from "@/components/aip/AipActivityNameCounter";
 import { useState } from "react";
 import { addAipActivity, aipErrorMessage } from "@/lib/aip";
 import { fmtPesos } from "@/lib/aip-units";
-import { AIP_ESRE_OPTIONS, AIP_MONTHS } from "@/lib/aipConstants";
+import { AIP_MONTHS } from "@/lib/aipConstants";
+import { useAipCodeOptions } from "@/hooks/useAipCodeOptions";
+import AipCodeSelect from "@/components/aip/AipCodeSelect";
 import { useAutoGrowTextarea } from "@/lib/useAutoGrowTextarea";
 import { inputCls, selectCls } from "@/components/aip/AipTreeCells";
 import type { AipActivityDetail, FundingSourceResponse } from "@/types";
@@ -40,6 +42,7 @@ export default function AddActivityRow({
   const [ccAdaptation, setCcAdaptation] = useState<number | null>(null);
   const [ccMitigation, setCcMitigation] = useState<number | null>(null);
   const [ccTypologyCode, setCcTypologyCode] = useState("");
+  const codeOptions = useAipCodeOptions();
 
   const nameRef = useAutoGrowTextarea(name);
 
@@ -100,10 +103,14 @@ export default function AddActivityRow({
         <AipActivityNameCounter name={name} />
       </td>
       <td className="px-2 py-1.5">
-        <select value={esreCode} onChange={(e) => setEsreCode(e.target.value)} className={selectCls}>
-          <option value="">—</option>
-          {AIP_ESRE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.value}</option>)}
-        </select>
+        <AipCodeSelect
+          value={esreCode}
+          onChange={setEsreCode}
+          options={codeOptions.esre}
+          loaded={codeOptions.loaded}
+          className={selectCls}
+          ariaLabel="eSRE code"
+        />
       </td>
       <td className="px-2 py-1.5">
         <input value={implementingOffice} onChange={(e) => setImplementingOffice(e.target.value)} className={inputCls} />
@@ -138,7 +145,14 @@ export default function AddActivityRow({
       <td className="px-1 py-1.5"><AipMoneyInput value={ccAdaptation} onChange={setCcAdaptation} /></td>
       <td className="px-1 py-1.5"><AipMoneyInput value={ccMitigation} onChange={setCcMitigation} /></td>
       <td className="px-2 py-1.5">
-        <input value={ccTypologyCode} onChange={(e) => setCcTypologyCode(e.target.value)} className={inputCls} />
+        <AipCodeSelect
+          value={ccTypologyCode}
+          onChange={setCcTypologyCode}
+          options={codeOptions.ccTypology}
+          loaded={codeOptions.loaded}
+          className={selectCls}
+          ariaLabel="CC typology"
+        />
       </td>
       <td className="px-2 py-1.5 text-center whitespace-nowrap">
         <div className="flex flex-col items-center gap-1">
