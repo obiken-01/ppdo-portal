@@ -90,14 +90,15 @@ public sealed class AipService : IAipService
     // ── Read ──────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// The host office's <see cref="ProgramDivision"/> rows, loaded ONLY when the division axis
-    /// will actually narrow something (V18-39). A guest-office caller can never be narrowed by
-    /// division, so issuing this query for them would be a round trip whose result is discarded.
+    /// The caller's own office's <see cref="ProgramDivision"/> rows, loaded ONLY when the division
+    /// axis will actually narrow something (V18-39, re-keyed off the host office by PPDO-134). A
+    /// caller who is not narrowed at all — including most guest-office Staff with no division
+    /// assigned yet — never reaches this query.
     /// </summary>
-    private async Task<IReadOnlyList<ProgramDivision>> LoadHostAssignmentsAsync(
+    private async Task<IReadOnlyList<ProgramDivision>> LoadOwnAssignmentsAsync(
         AipReadScope scope, CancellationToken ct)
-        => scope.HostOfficeIdForAssignments is int hostOfficeId
-            ? await _allocationRepo.GetProgramDivisionsByOfficeIdAsync(hostOfficeId, ct)
+        => scope.OfficeIdForAssignments is int ownOfficeId
+            ? await _allocationRepo.GetProgramDivisionsByOfficeIdAsync(ownOfficeId, ct)
             : [];
 
     public async Task<IReadOnlyList<AipRecordDto>> GetAllAsync(
@@ -149,7 +150,7 @@ public sealed class AipService : IAipService
         List<int> officeIds  = offices.Select(o => o.Id).ToList();
         IReadOnlyList<AipProgram> allPrograms = await _aipRepo.GetProgramsByOfficeIdsAsync(officeIds, ct);
         IReadOnlyList<AipProgram> programs = scope.FilterPrograms(
-            allPrograms, offices, await LoadHostAssignmentsAsync(scope, ct));
+            allPrograms, offices, await LoadOwnAssignmentsAsync(scope, ct));
         List<int> programIds = programs.Select(p => p.Id).ToList();
         IReadOnlyList<AipProject>  projects = await _aipRepo.GetProjectsByProgramIdsAsync(programIds, ct);
         List<int> projectIds = projects.Select(j => j.Id).ToList();
@@ -220,7 +221,7 @@ public sealed class AipService : IAipService
         IReadOnlyList<AipProgram> programs = scope.FilterPrograms(
             await _aipRepo.GetProgramsByOfficeIdsAsync(officeIds, ct),
             offices,
-            await LoadHostAssignmentsAsync(scope, ct));
+            await LoadOwnAssignmentsAsync(scope, ct));
         List<int> programIds = programs.Select(p => p.Id).ToList();
         IReadOnlyList<AipProject>  projects = await _aipRepo.GetProjectsByProgramIdsAsync(programIds, ct);
         List<int> projectIds = projects.Select(j => j.Id).ToList();

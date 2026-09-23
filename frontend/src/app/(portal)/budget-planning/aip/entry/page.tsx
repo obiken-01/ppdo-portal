@@ -220,10 +220,12 @@ export default function AipEntryPage() {
   const canEdit = isOfficeEditable(workflowStatus);
   const holder = describeAipHolder(workflowStatus);
 
-  // The division filter applies to the HOST office only, and only when the user has a division —
-  // the same condition AipReadScope uses. A guest office is never division-filtered, so telling
-  // them about it would be a lie.
-  const divisionFiltered = me?.isHostOffice === true && me.divisionId != null && !!me.division;
+  // Mirrors AipReadScope.DivisionNarrows (PPDO-134): any office's Staff member with a division
+  // assigned is narrowed to it, host or guest alike. A guest office's Staff member with NO
+  // division is not narrowed — most guest offices have none configured yet, and this banner would
+  // be a lie for them ("assigned to X" when nothing is assigned). Admins/SuperAdmins are never
+  // narrowed regardless of office, so `me.division` being set is what actually gates this.
+  const divisionFiltered = me?.divisionId != null && !!me.division;
 
   const load = useCallback(async () => {
     setLoading(true);

@@ -7,7 +7,19 @@ using PPDO.Domain.Interfaces;
 
 namespace PPDO.Application.Services;
 
-/// <summary>Implementation of <see cref="IAipSubmitService"/> (V18-42 / PPDO-52, V18-49 / PPDO-59).</summary>
+/// <summary>
+/// Implementation of <see cref="IAipSubmitService"/> (V18-42 / PPDO-52, V18-49 / PPDO-59).
+///
+/// <para>
+/// ⚠️ <b>Readiness and submit are deliberately NOT division-scoped</b> — <see cref="ResolveAsync"/>
+/// and <see cref="BuildAsync"/> count every activity in the caller's whole office, unlike
+/// <see cref="AipReadScope"/>'s entry-page program filter. A division-scoped encoder can therefore
+/// see fewer programs on the entry page than "N activities in this office" counts. That mismatch
+/// pre-dates PPDO-134 for host-office callers and was accepted, not fixed, by it: submitting is an
+/// act on the WHOLE office's work, not one division's, so readiness answering for the office as a
+/// unit is correct — checked and left alone when the division axis was extended to guest offices.
+/// </para>
+/// </summary>
 public sealed class AipSubmitService : IAipSubmitService
 {
     private readonly IAipRepository            _aipRepo;
