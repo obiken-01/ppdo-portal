@@ -310,6 +310,50 @@ public sealed class AllocationServiceTests
         Assert.Contains("exceeds ceiling", result.Error, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Demo 2.4 / PPDO-126. An office with no divisions sent an EMPTY allocation list, both
+    /// existing guards passed trivially (Σ 0 ≤ any ceiling), the loop ran zero times, and the
+    /// method answered Ok — indistinguishable from a real save. The allocation page reported
+    /// "Saved" and nothing was written.
+    ///
+    /// ⚠️ The ceiling here is deliberately valid. The point is that everything else about the
+    /// request is fine and it STILL must not succeed, which is what made the original bug silent.
+    /// </summary>
+    [Fact]
+    public async Task UpsertAllocations_RejectsAnEmptyAllocationList()
+    {
+        BudgetCeiling ceiling = MakeCeiling(1, 2027, 1_000_000m);
+        (AllocationService sut, _, _, _, _, _, _, _) =
+            Build(ceilings: [ceiling], divisions: [], offices: [MakeOffice(1)]);
+
+        ServiceResult<IReadOnlyList<DivisionAllocationDto>> result =
+            await sut.UpsertAllocationsAsync(1, 2027, GfFundId, []);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("no divisions", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// The companion to the above: setting every division back to zero is a CLEAR-OUT, not a
+    /// no-op, and must still go through. Without this the guard above is one careless edit away
+    /// from blocking a legitimate operation, and nothing would catch it.
+    /// </summary>
+    [Fact]
+    public async Task UpsertAllocations_AcceptsZeroAmountsForRealDivisions()
+    {
+        Division div1 = MakeDivision(1, 1);
+        BudgetCeiling ceiling = MakeCeiling(1, 2027, 1_000_000m);
+        (AllocationService sut, _, _, _, _, _, _, _) =
+            Build(ceilings: [ceiling], divisions: [div1], offices: [MakeOffice(1)]);
+
+        ServiceResult<IReadOnlyList<DivisionAllocationDto>> result =
+            await sut.UpsertAllocationsAsync(1, 2027, GfFundId, [new(1, 0m)]);
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Value!);
+    }
+
     [Fact]
     public async Task UpsertAllocations_AcceptsWhenSumEqualsCeiling()
     {
