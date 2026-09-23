@@ -43,7 +43,18 @@ public record AipActivityDto(
     /// straight into its tree instead of reloading; both fill it.
     /// </para>
     /// </summary>
-    IReadOnlyList<string>? FundCodes = null);
+    IReadOnlyList<string>? FundCodes = null,
+
+    /// <summary>
+    /// Base64 <c>rowversion</c> — the concurrent-edit guard's token (V18-71 / PPDO-120).
+    ///
+    /// <para>
+    /// ⚠️ <b>Read paths must return this or the guard cannot work at all.</b> The client sends
+    /// back the version it was given; an activity delivered without one has nothing to send, so
+    /// its next save runs unguarded no matter what the write path does.
+    /// </para>
+    /// </summary>
+    string? RowVersion = null);
 
 public record AipProjectDto(
     int    Id,

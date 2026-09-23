@@ -7,6 +7,7 @@
 
 import api from "./api";
 import type {
+  AipConflict,
   AipRecordResponse,
   AipRecordDetail,
   AipRecordSummary,
@@ -54,6 +55,34 @@ function unwrap<T>(body: ApiResponse<T>): T {
 export function aipErrorMessage(err: unknown, fallback: string): string {
   const body = (err as { response?: { data?: ApiResponse<unknown> } })?.response?.data;
   return body?.error ?? body?.message ?? fallback;
+}
+
+/**
+ * Reads the concurrent-edit conflict out of a rejected save, or null if this was some other
+ * failure (V18-71 / PPDO-120).
+ *
+ * A conflict is the one failure the user must **act** on rather than read, so it is separated
+ * from `aipErrorMessage` at the call site:
+ *
+ * ```ts
+ * catch (err) {
+ *   const conflict = aipConflict<AipActivityDetail>(err);
+ *   if (conflict) { setConflict(conflict); return; }   // keep their input, offer the choice
+ *   setError(aipErrorMessage(err, "Could not save."));
+ * }
+ * ```
+ *
+ * ⚠️ **Checked before the generic message, never instead of it.** Falling through to
+ * `aipErrorMessage` on a 409 still shows correct text, but as a dead-end error — the user loses
+ * the Overwrite/Discard choice and, with it, any way to keep what they typed.
+ *
+ * Keyed on status 409 rather than on the payload's shape: a 409 without a body is still a
+ * conflict, and treating it as an ordinary error would be the wrong recovery.
+ */
+export function aipConflict<T = unknown>(err: unknown): AipConflict<T> | null {
+  const response = (err as { response?: { status?: number; data?: ApiResponse<AipConflict<T>> } })?.response;
+  if (response?.status !== 409) return null;
+  return response.data?.data ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -347,9 +376,14 @@ export async function updateAipExpenditure(
  * activity's total to 0, and the caller must render that — discarding the result leaves the page
  * showing the pre-delete figure until someone reloads.
  */
-export async function deleteAipExpenditure(id: number): Promise<AipExpenditureWriteResult> {
+export async function deleteAipExpenditure(
+  id: number, rowVersion?: string | null
+): Promise<AipExpenditureWriteResult> {
+  // DELETE has no body, so the concurrency token goes on the query string (PPDO-120). Same rule
+  // as everywhere else: omitting it means the delete runs unguarded, not that it is safe.
+  const query = rowVersion ? `?rowVersion=${encodeURIComponent(rowVersion)}` : "";
   const { data } = await api.delete<ApiResponse<AipExpenditureWriteResult>>(
-    `/budget-planning/aip/expenditures/${id}`
+    `/budget-planning/aip/expenditures/${id}${query}`
   );
   return unwrap(data);
 }

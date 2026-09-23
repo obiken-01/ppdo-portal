@@ -160,6 +160,16 @@ export interface UpdateAipActivityRequest {
   ccAdaptation?: number | null;
   ccMitigation?: number | null;
   ccTypologyCode?: string | null;
+
+  /**
+   * Base64 `rowversion` the row carried when it was loaded — the concurrent-edit guard
+   * (V18-71 / PPDO-120). Send it on every write.
+   *
+   * ⚠️ Optional only while the staged rollout runs: the server currently allows an omitted
+   * value and saves **unguarded**, which is the old last-write-wins behaviour. PPDO-121 makes
+   * it a 400. Omitting it is therefore not "safe", it is "unprotected".
+   */
+  rowVersion?: string | null;
 }
 
 /**
@@ -184,6 +194,16 @@ export interface UpdateAipActivityDetailsRequest {
   ccAdaptation?: number | null;
   ccMitigation?: number | null;
   ccTypologyCode?: string | null;
+
+  /**
+   * Base64 `rowversion` the row carried when it was loaded — the concurrent-edit guard
+   * (V18-71 / PPDO-120). Send it on every write.
+   *
+   * ⚠️ Optional only while the staged rollout runs: the server currently allows an omitted
+   * value and saves **unguarded**, which is the old last-write-wins behaviour. PPDO-121 makes
+   * it a 400. Omitting it is therefore not "safe", it is "unprotected".
+   */
+  rowVersion?: string | null;
 }
 
 // ── AIP inline office/program/project edit (detail-page CRUD) ────────────────
@@ -246,6 +266,15 @@ export interface AipActivityDetail {
    * those responses into its tree rather than reloading it.
    */
   fundCodes: string[];
+
+  /**
+   * Base64 `rowversion` for the concurrent-edit guard (V18-71 / PPDO-120). Hold it and send it
+   * back on the next write.
+   *
+   * ⚠️ Null means the server did not supply one — the save will then run **unguarded**, not
+   * safely. Treat a missing token as a gap, not a default.
+   */
+  rowVersion?: string | null;
 }
 
 export interface AipProjectDetail {
@@ -1192,6 +1221,15 @@ export interface AipExpenditure {
    * amount read-only for such a line.
    */
   procurementItems: AipProcurementItem[];
+
+  /**
+   * Base64 `rowversion` for the concurrent-edit guard (V18-71 / PPDO-120). Hold it and send it
+   * back on the next write.
+   *
+   * ⚠️ Null means the server did not supply one — the save will then run **unguarded**, not
+   * safely. Treat a missing token as a gap, not a default.
+   */
+  rowVersion?: string | null;
 }
 
 /**
@@ -1245,6 +1283,16 @@ export interface SaveAipExpenditureRequest {
    * in those three fields — it does not add the two together the way WFP does.
    */
   procurementItems?: SaveAipProcurementItemRequest[];
+
+  /**
+   * Base64 `rowversion` the row carried when it was loaded — the concurrent-edit guard
+   * (V18-71 / PPDO-120). Send it on every write.
+   *
+   * ⚠️ Optional only while the staged rollout runs: the server currently allows an omitted
+   * value and saves **unguarded**, which is the old last-write-wins behaviour. PPDO-121 makes
+   * it a 400. Omitting it is therefore not "safe", it is "unprotected".
+   */
+  rowVersion?: string | null;
 }
 
 /**
@@ -1679,4 +1727,27 @@ export interface AipOfficeHistory {
   entries: AipHistoryEntry[];
   /** Comments older than every hand-off, oldest first. */
   beforeFirstSubmission: AipReviewComment[];
+}
+
+// ── Concurrent-edit conflict (V18-71 / PPDO-120) ─────────────────────────────
+
+/**
+ * What a rejected save tells the encoder. Arrives as the `data` of a **409**; read it with
+ * `aipConflict(err)` from `lib/aip`.
+ */
+export interface AipConflict<T = unknown> {
+  /**
+   * ⚠️ **Null is a real case.** The row may never have been edited since the guard shipped, or
+   * the user may no longer resolve. Render "someone else" rather than assuming a name.
+   */
+  changedByName: string | null;
+  /** UTC. Render as UTC+8. Null under the same conditions as `changedByName`. */
+  changedAtUtc: string | null;
+  /**
+   * ⚠️ The version an **Overwrite** must resubmit with. Sending the stale one again just
+   * conflicts a second time; sending this one is what makes Overwrite a single request.
+   */
+  currentRowVersion: string;
+  /** The row as it now stands, for the side-by-side compare. */
+  current: T;
 }

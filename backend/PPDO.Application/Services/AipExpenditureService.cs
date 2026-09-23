@@ -615,7 +615,10 @@ public sealed class AipExpenditureService : IAipExpenditureService
         e.Ps, e.Mooe, e.Co, e.Total,
         (items ?? []).Select(i => new AipProcurementItemDto(
             i.Id, i.PriceIndexItemId, i.Name, i.Unit,
-            i.UnitPrice, i.Qty, i.NumberOfDays, i.LineTotal, i.PeriodNo)).ToList());
+            i.UnitPrice, i.Qty, i.NumberOfDays, i.LineTotal, i.PeriodNo)).ToList(),
+        // The single mapper for this DTO (it is internal precisely so there is only one), so
+        // every read path carries the token.
+        e.RowVersion is { Length: > 0 } rv ? Convert.ToBase64String(rv) : null);
 
     private sealed record AipContext(AipActivity Activity, AipOffice Office);
 }
