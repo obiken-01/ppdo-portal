@@ -5,14 +5,16 @@ using PPDO.Domain.Enums;
 namespace PPDO.Tests.Application;
 
 /// <summary>
-/// <see cref="AipReadScope"/> — the two-axis AIP rule (v1.8.0 Phase 2 — V18-39 / PPDO-38).
+/// <see cref="AipReadScope"/> — the two-axis AIP rule (v1.8.0 Phase 2 — V18-39 / PPDO-38,
+/// re-keyed off the caller's own office by PPDO-134).
 ///
 /// <para>
 /// ⚠️ <b>Every case here is a data-leak or data-loss case, and both directions are silent.</b>
-/// Honour division for a guest office and they see a fraction of their own AIP and report missing
-/// data; ignore it for PPDO and a division-scoped encoder sees every division's figures. Neither
-/// throws, and neither is visible in a diff at the call site — which is why the rule is tested
-/// here directly rather than only through the services that consume it.
+/// Honour division for an office that has none configured and its people see a fraction of their
+/// own AIP and report missing data; ignore it for a caller who genuinely has one and they see
+/// figures outside their division. Neither throws, and neither is visible in a diff at the call
+/// site — which is why the rule is tested here directly rather than only through the services
+/// that consume it.
 /// </para>
 /// </summary>
 public sealed class AipReadScopeTests
@@ -47,9 +49,9 @@ public sealed class AipReadScopeTests
         Id = id, OfficeId = aipOfficeId, RefCode = refCode, Name = $"Program {refCode}",
     };
 
-    private static ProgramDivision Assign(string programRefCode, int divisionId) => new()
+    private static ProgramDivision Assign(string programRefCode, int divisionId, int officeId = HostOfficeId) => new()
     {
-        Id = 0, OfficeId = HostOfficeId, OfficeRefCode = "01-010",
+        Id = 0, OfficeId = officeId, OfficeRefCode = "01-010",
         ProgramRefCode = programRefCode, DivisionId = divisionId,
     };
 
@@ -97,29 +99,74 @@ public sealed class AipReadScopeTests
         Assert.Empty(scope.FilterOffices([AipOff(3, null)]));
     }
 
-    // ── Division axis: guest offices ──────────────────────────────────────────
+    // ── Division axis: guest offices (PPDO-134) ───────────────────────────────
 
     [Fact]
-    public void DivisionNarrows_IsFalseForAGuestOfficeCaller_EvenWithADivision()
+    public void DivisionNarrows_IsFalseForAGuestOfficeCallerWithNoDivision()
     {
-        // A guest-office user can legitimately carry a division — divisions are office-scoped, so
-        // their office may well have them. It simply must not narrow what they see (PPDO-4).
-        AipReadScope scope = AipReadScope.Resolve(Caller(GuestOfficeId, isHost: false, divisionId: PlanningDivId));
+        // Most guest offices have no divisions configured yet (PPDO-122's thread). A filter keyed
+        // to nothing must not read as "nothing to show".
+        AipReadScope scope = AipReadScope.Resolve(Caller(GuestOfficeId, isHost: false, divisionId: null));
 
         Assert.False(scope.DivisionNarrows);
-        Assert.Null(scope.HostOfficeIdForAssignments);
+        Assert.Null(scope.OfficeIdForAssignments);
     }
 
     [Fact]
-    public void FilterPrograms_GuestOfficeCallerWithADivision_KeepsEveryProgramOfItsOwnOffice()
+    public void DivisionNarrows_IsTrueForAGuestOfficeCallerWithADivision()
     {
+        // ⚠️ Before PPDO-134 this was unconditionally false for every guest caller — a division-
+        // scoped guest encoder saw every program of their office regardless of division, once
+        // PPDO-123 let guest offices assign divisions at all. That was the leak.
         AipReadScope scope = AipReadScope.Resolve(Caller(GuestOfficeId, isHost: false, divisionId: PlanningDivId));
+
+        Assert.True(scope.DivisionNarrows);
+        Assert.Equal(GuestOfficeId, scope.OfficeIdForAssignments);
+    }
+
+    [Fact]
+    public void FilterPrograms_GuestOfficeCallerWithNoDivision_KeepsEveryProgramOfItsOwnOffice()
+    {
+        AipReadScope scope = AipReadScope.Resolve(Caller(GuestOfficeId, isHost: false, divisionId: null));
         List<AipOffice> inScope = [AipOff(2, GuestOfficeId)];
         List<AipProgram> programs = [Prog(1, 2, "P-A"), Prog(2, 2, "P-B")];
 
-        // No assignments passed, because none are loaded for a guest caller. If the division axis
-        // leaked in, this would come back empty and the office would report missing data.
+        // No assignments passed, because none are loaded when DivisionNarrows is false. If the
+        // division axis leaked in here, this would come back empty and the office would report
+        // missing data.
         Assert.Equal(2, scope.FilterPrograms(programs, inScope, []).Count);
+    }
+
+    [Fact]
+    public void FilterPrograms_GuestOfficeCallerWithADivision_SeesOnlyThatDivisionsPrograms()
+    {
+        AipReadScope scope = AipReadScope.Resolve(Caller(GuestOfficeId, isHost: false, divisionId: PlanningDivId));
+        List<AipOffice> inScope = [AipOff(2, GuestOfficeId)];
+        List<AipProgram> programs = [Prog(1, 2, "P-PLAN"), Prog(2, 2, "P-RMED")];
+        List<ProgramDivision> assignments =
+        [
+            Assign("P-PLAN", PlanningDivId, GuestOfficeId),
+            Assign("P-RMED", RmedDivId, GuestOfficeId),
+        ];
+
+        IReadOnlyList<AipProgram> result = scope.FilterPrograms(programs, inScope, assignments);
+
+        Assert.Equal("P-PLAN", Assert.Single(result).RefCode);
+    }
+
+    [Fact]
+    public void FilterPrograms_GuestOfficeCallerWithADivision_DoesNotTouchAnotherOfficesPrograms()
+    {
+        // A guest office's own division split must not reach into any other office's programs —
+        // it only ever narrows the caller's own office.
+        AipReadScope scope = AipReadScope.Resolve(Caller(GuestOfficeId, isHost: false, divisionId: PlanningDivId));
+        List<AipOffice> inScope = [AipOff(2, GuestOfficeId), AipOff(3, 99)];
+        List<AipProgram> programs = [Prog(1, 2, "P-PLAN"), Prog(2, 2, "P-RMED"), Prog(3, 3, "OTHER-ONE")];
+        List<ProgramDivision> assignments = [Assign("P-PLAN", PlanningDivId, GuestOfficeId)];
+
+        IReadOnlyList<AipProgram> result = scope.FilterPrograms(programs, inScope, assignments);
+
+        Assert.Equal(["OTHER-ONE", "P-PLAN"], result.Select(p => p.RefCode).OrderBy(c => c).ToArray());
     }
 
     // ── Division axis: host office ────────────────────────────────────────────
@@ -165,10 +212,25 @@ public sealed class AipReadScopeTests
     }
 
     [Fact]
+    public void FilterPrograms_GuestAdminSeeingAllDivisions_IsNotNarrowed()
+    {
+        // An office's own administrator (a department head) oversees every division of its work,
+        // same as a PPDO admin — never narrowed by division either.
+        AipReadScope scope = AipReadScope.Resolve(
+            Caller(GuestOfficeId, isHost: false, divisionId: null, role: UserRole.Admin));
+
+        Assert.False(scope.DivisionNarrows);
+        List<AipProgram> programs = [Prog(1, 2, "P-A"), Prog(2, 2, "P-B")];
+        Assert.Equal(2, scope.FilterPrograms(programs, [AipOff(2, GuestOfficeId)], []).Count);
+    }
+
+    [Fact]
     public void FilterPrograms_HostStaffWithNoDivision_SeesNoneOfTheHostsOwnPrograms()
     {
         // Unassigned means unassigned on both axes since DECISION F — an empty result, never
-        // "all divisions".
+        // "all divisions". This is the HOST-only half of the asymmetry PPDO-134 introduced; see
+        // FilterPrograms_GuestOfficeCallerWithNoDivision_KeepsEveryProgramOfItsOwnOffice for the
+        // opposite guest-office rule and why it differs.
         AipReadScope scope = AipReadScope.Resolve(Caller(HostOfficeId, isHost: true, divisionId: null));
         List<AipProgram> programs = [Prog(1, 1, "P-PLAN"), Prog(3, 2, "G-ONE")];
 
@@ -204,17 +266,20 @@ public sealed class AipReadScopeTests
     }
 
     [Fact]
-    public void HostOfficeIdForAssignments_IsSetOnlyWhenTheDivisionAxisWillBeUsed()
+    public void OfficeIdForAssignments_IsSetOnlyWhenTheDivisionAxisWillBeUsed()
     {
         // Guards against issuing the ProgramDivision query for callers who cannot be narrowed by it.
         Assert.Equal(HostOfficeId,
             AipReadScope.Resolve(Caller(HostOfficeId, isHost: true, divisionId: PlanningDivId))
-                .HostOfficeIdForAssignments);
+                .OfficeIdForAssignments);
+        Assert.Equal(GuestOfficeId,
+            AipReadScope.Resolve(Caller(GuestOfficeId, isHost: false, divisionId: PlanningDivId))
+                .OfficeIdForAssignments);
         Assert.Null(
             AipReadScope.Resolve(Caller(HostOfficeId, isHost: true, divisionId: null, role: UserRole.Admin))
-                .HostOfficeIdForAssignments);
+                .OfficeIdForAssignments);
         Assert.Null(
-            AipReadScope.Resolve(Caller(GuestOfficeId, isHost: false, divisionId: PlanningDivId))
-                .HostOfficeIdForAssignments);
+            AipReadScope.Resolve(Caller(GuestOfficeId, isHost: false, divisionId: null))
+                .OfficeIdForAssignments);
     }
 }

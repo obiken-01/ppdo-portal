@@ -577,6 +577,11 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
                       <span className="text-xs">•</span>
                       <span className="truncate">Funding Sources</span>
                     </Link>
+                    {/* PPDO-135 — assign their own Staff to the divisions above, without CanManageUsers. */}
+                    <Link href="/config/office-users" className={childLinkCls(isActive("/config/office-users"))}>
+                      <span className="text-xs">•</span>
+                      <span className="truncate">Staff Divisions</span>
+                    </Link>
                   </>
                 )}
                 {showManageUsers && (
