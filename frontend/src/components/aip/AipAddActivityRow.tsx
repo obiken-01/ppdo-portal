@@ -110,7 +110,6 @@ export default function AddActivityRow({
           loaded={codeOptions.loaded}
           className={selectCls}
           ariaLabel="eSRE code"
-          showName={false}
         />
       </td>
       <td className="px-2 py-1.5">
@@ -153,7 +152,6 @@ export default function AddActivityRow({
           loaded={codeOptions.loaded}
           className={selectCls}
           ariaLabel="CC typology"
-          showName={false}
         />
       </td>
       <td className="px-2 py-1.5 text-center whitespace-nowrap">

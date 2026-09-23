@@ -27,7 +27,6 @@ export default function AipCodeSelect({
   loaded,
   className,
   ariaLabel,
-  showName = true,
 }: {
   value: string;
   onChange: (next: string) => void;
@@ -36,11 +35,6 @@ export default function AipCodeSelect({
   loaded: boolean;
   className?: string;
   ariaLabel?: string;
-  /**
-   * Render `CODE — Name` rather than the bare code. False in the narrow table-row editors, where
-   * the column is a few characters wide and the name would truncate to nothing useful.
-   */
-  showName?: boolean;
 }) {
   const current = value.trim();
   const known = options.some((o) => o.code === current);
@@ -50,10 +44,18 @@ export default function AipCodeSelect({
   // marker on the one occasion it is true.
   const orphaned = current !== "" && loaded && !known;
 
+  /**
+   * ⚠️ <b>Code AND name, everywhere</b> — agreed with the finance officer (PPDO-125): the list
+   * shows both, and the <b>code</b> is what is stored on the activity. It is tempting to show the
+   * bare code in the two narrow table-row editors, where a JMC typology name runs to a full
+   * sentence and the closed control will truncate it. Resist that: a bare `M511-01` is
+   * unreadable to the person choosing, and truncation still leaves the code and the first words
+   * visible, which is enough to tell two options apart. The full text is on the option's title.
+   */
   function label(o: AipCodeOption): string {
     // `name` is seeded equal to `code` across every CC typology today, so guard against rendering
-    // "A222-01 — A222-01". Collapses automatically once real names are loaded.
-    if (!showName || o.name === o.code) return o.code;
+    // "A222-01 — A222-01". Collapses automatically once the JMC 2013-01 names are seeded.
+    if (o.name === o.code) return o.code;
     return `${o.code} — ${o.name}`;
   }
 
