@@ -274,6 +274,8 @@ function FundSection({
   const allocationTotal = divisions.reduce((sum, d) => sum + (allocationInputs[d.id] ?? 0), 0);
   const isOverCeiling = (ceilingInput ?? 0) > 0 && allocationTotal > (ceilingInput ?? 0) + 0.001;
   const remaining = (ceilingInput ?? 0) - allocationTotal;
+  // Demo 2.4. 15 of 19 offices are in this state, so it is the common case, not an edge one.
+  const hasNoDivisions = divisions.length === 0;
 
   // Without a division split there is no half-done state to report: the ceiling is either
   // set or it is not. "Ceiling only" would name a second step this office never has.
@@ -375,6 +377,21 @@ function FundSection({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
+              {/* ⚠️ An empty tbody rendered as a bare table with a header and nothing under it,
+                  which reads as "loading" or "broken" rather than "this office has no divisions".
+                  That silence is half of why the failed save went unnoticed (Demo 2.4). */}
+              {hasNoDivisions && (
+                <tr>
+                  <td colSpan={4} className="px-3 py-6 text-center text-xs text-slate-600">
+                    No divisions are configured for this office, so there is nothing to allocate
+                    to. Add them in{" "}
+                    <Link href="/config/divisions" className="text-green-700 hover:underline">
+                      Config → Divisions
+                    </Link>
+                    .
+                  </td>
+                </tr>
+              )}
               {divisions.map((div, i) => {
                 const amount = allocationInputs[div.id] ?? null;
                 const pct =
@@ -437,7 +454,12 @@ function FundSection({
           <div className="mt-4 flex items-center gap-3">
             <button
               onClick={onSaveAllocations}
-              disabled={savingAllocations || isOverCeiling || !ceiling}
+              // ⚠️ `hasNoDivisions` is the Demo 2.4 fix. Without it this button went live the
+              // moment a ceiling existed, even for an office with nothing to allocate TO — the
+              // PUT then carried zero rows, the server looped over nothing, returned OK, and the
+              // toast said "Saved". SPO on UAT hit exactly that. A control that cannot do
+              // anything must not look like one that can.
+              disabled={savingAllocations || isOverCeiling || !ceiling || hasNoDivisions}
               className={`px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed flex items-center gap-2 ${
                 isOverCeiling
                   ? "bg-red-100 text-red-700 border border-red-300"
@@ -449,11 +471,22 @@ function FundSection({
               )}
               {isOverCeiling ? "Over Ceiling — Cannot Save" : "Save Allocations"}
             </button>
-            {!ceiling && (
+            {/* Divisions first, ceiling second — that is the order the work actually happens in,
+                and naming the missing ceiling to someone who has no divisions sends them to fix
+                the wrong thing. */}
+            {hasNoDivisions ? (
+              <span className="text-xs text-slate-600">
+                This office has no divisions to allocate to — add them in{" "}
+                <Link href="/config/divisions" className="text-green-700 hover:underline">
+                  Config → Divisions
+                </Link>{" "}
+                first.
+              </span>
+            ) : !ceiling ? (
               <span className="text-xs text-slate-600">
                 Set a ceiling first before saving allocations.
               </span>
-            )}
+            ) : null}
           </div>
         </>
       )}
@@ -815,12 +848,28 @@ function AllocationPageInner() {
 
   async function handleSaveAllocations(fundId: number) {
     // PPDO-107 — either door: PPDO writing any office, or a department head writing their own.
-    if (!canEditSelectedOfficeSetup) return;
+    //
+    // ⚠️ Says so rather than returning in silence. This used to be a bare `return`: the click did
+    // nothing, showed nothing, and left the typed amounts sitting on screen looking unsaved-but-
+    // savable. A control that refuses must say it refused — that silence is the same defect class
+    // as the "Saved" that saved nothing (Demo 2.4).
+    if (!canEditSelectedOfficeSetup) {
+      toast.error(
+        "Not allowed",
+        "You do not have permission to change this office's division allocations.",
+      );
+      return;
+    }
     const inputs = allocationInputsByFund[fundId] ?? {};
     const total = divisions.reduce((sum, d) => sum + (inputs[d.id] ?? 0), 0);
     const ceilingAmount = ceilingInputs[fundId] ?? 0;
     const isOver = ceilingAmount > 0 && total > ceilingAmount + 0.001;
     if (selectedOfficeId == null || isOver) return;
+    // ⚠️ Belt and braces with the disabled button, deliberately. The button is the explanation;
+    // this is the guarantee. An empty list reaches the server as a valid request that saves
+    // nothing and answers OK, so the one thing that must never happen here is reporting success
+    // for it (Demo 2.4).
+    if (divisions.length === 0) return;
 
     setSavingAllocationsFundId(fundId);
     try {
@@ -828,13 +877,25 @@ function AllocationPageInner() {
         divisionId: d.id,
         amount: inputs[d.id] ?? 0,
       }));
-      await upsertAllocations({
+      const saved = await upsertAllocations({
         officeId: selectedOfficeId,
         fiscalYear: selectedFiscalYear,
         fundingSourceId: fundId,
         allocations: allocs,
       });
-      toast.success("Saved", "Division allocations saved.");
+      // ⚠️ Count what came back, don't assume. UpsertAllocationsAsync SILENTLY SKIPS any division
+      // that does not belong to the office ("continue", no error), so a partial save is returned
+      // as a success today and the missing rows are invisible until someone reloads and notices
+      // a figure went back. Claiming "Saved" over that is the same failure Demo 2.4 was about,
+      // one layer up.
+      if (saved.length < allocs.length) {
+        toast.error(
+          "Partly saved",
+          `${saved.length} of ${allocs.length} divisions were saved. Reload to see what is stored.`,
+        );
+      } else {
+        toast.success("Saved", "Division allocations saved.");
+      }
     } catch (err) {
       toast.error("Save failed", allocationErrorMessage(err, "Could not save allocations."));
     } finally {
